@@ -20,6 +20,10 @@ import { recordAnalyticsEvent } from '@/lib/analytics/events'
 import { logger } from '@/lib/logger'
 import { createEventPaymentToken } from '@/lib/events/event-payments'
 import { createEventManageToken } from '@/lib/events/manage-booking'
+import {
+  isSundayLunchOnlyEvent,
+  SUNDAY_LUNCH_ONLY_EVENT_MESSAGE
+} from '@/lib/events/sunday-lunch-only-policy'
 
 const CreateEventBookingSchema = z.object({
   event_id: z.string().uuid(),
@@ -144,7 +148,7 @@ async function sendBookingSmsIfAllowed(
 
   const to = customer.mobile_number || normalizedPhone
 
-  await sendSMS(to, smsBody, {
+  const smsResult = await sendSMS(to, smsBody, {
     customerId,
     metadata: {
       event_booking_id: bookingResult.booking_id,
@@ -152,6 +156,17 @@ async function sendBookingSmsIfAllowed(
       template_key: bookingResult.state === 'pending_payment' ? 'event_booking_pending_payment' : 'event_booking_confirmed'
     }
   })
+
+  if (!smsResult.success) {
+    logger.warn('Failed to send event booking SMS', {
+      metadata: {
+        customerId,
+        bookingId: bookingResult.booking_id,
+        state: bookingResult.state,
+        error: smsResult.error || 'Unknown SMS error'
+      }
+    })
+  }
 }
 
 export async function POST(request: NextRequest) {
@@ -215,6 +230,31 @@ export async function POST(request: NextRequest) {
           ? replayPayload.meta.status_code
           : 201
       return createApiResponse(replayPayload, replayStatus)
+    }
+
+    const { data: eventRow, error: eventLookupError } = await supabase
+      .from('events')
+      .select('id, name, date, start_datetime')
+      .eq('id', parsed.data.event_id)
+      .maybeSingle()
+
+    if (eventLookupError) {
+      return createErrorResponse('Failed to load event details', 'DATABASE_ERROR', 500)
+    }
+
+    if (!eventRow) {
+      return createErrorResponse('Selected event could not be found', 'NOT_FOUND', 404)
+    }
+
+    if (
+      isSundayLunchOnlyEvent({
+        id: (eventRow as any).id || null,
+        name: (eventRow as any).name || null,
+        date: (eventRow as any).date || null,
+        start_datetime: (eventRow as any).start_datetime || null
+      })
+    ) {
+      return createErrorResponse(SUNDAY_LUNCH_ONLY_EVENT_MESSAGE, 'POLICY_VIOLATION', 409)
     }
 
     const customerResolution = await ensureCustomerForPhone(supabase, normalizedPhone, {

@@ -16,12 +16,16 @@ const TEMPLATE_REMINDER_1D = 'event_reminder_1d'
 const TEMPLATE_REVIEW_FOLLOWUP = 'event_review_followup'
 const TEMPLATE_TABLE_REVIEW_FOLLOWUP = 'table_review_followup'
 const TEMPLATE_INTEREST_MARKETING_14D = 'event_interest_marketing_14d'
+const TEMPLATE_INTEREST_REMINDER_14D = 'event_interest_reminder_14d'
+const TEMPLATE_INTEREST_REMINDER_7D = 'event_interest_reminder_7d'
+const TEMPLATE_INTEREST_REMINDER_1D = 'event_interest_reminder_1d'
 
 type BookingWithRelations = {
   id: string
   customer_id: string
   event_id: string
   seats: number | null
+  is_reminder_only: boolean | null
   status: string
   review_sms_sent_at?: string | null
   review_window_closes_at?: string | null
@@ -49,6 +53,14 @@ type MarketingEventRow = {
   category_id: string | null
   booking_open: boolean | null
   event_status: string | null
+}
+
+type ManualInterestRecipientRow = {
+  id: string | null
+  customer_id: string | null
+  reminder_14d_sent_at: string | null
+  reminder_7d_sent_at: string | null
+  reminder_1d_sent_at: string | null
 }
 
 type TableBookingWithCustomer = {
@@ -127,7 +139,7 @@ async function loadSentTemplateSet(
   for (const idChunk of chunkArray(bookingIds)) {
     const { data, error } = await supabase
       .from('messages')
-      .select('event_booking_id, template_key, metadata')
+      .select('event_booking_id, template_key')
       .in('event_booking_id', idChunk)
       .in('template_key', templateKeys)
 
@@ -139,8 +151,8 @@ async function loadSentTemplateSet(
     }
 
     for (const row of data || []) {
-      const bookingId = (row as any).event_booking_id || (row as any)?.metadata?.event_booking_id
-      const templateKey = (row as any).template_key || (row as any)?.metadata?.template_key
+      const bookingId = (row as any).event_booking_id
+      const templateKey = (row as any).template_key
       if (typeof bookingId === 'string' && typeof templateKey === 'string') {
         sent.add(`${bookingId}:${templateKey}`)
       }
@@ -163,7 +175,7 @@ async function loadSentTableTemplateSet(
   for (const idChunk of chunkArray(bookingIds)) {
     const { data, error } = await supabase
       .from('messages')
-      .select('table_booking_id, template_key, metadata')
+      .select('table_booking_id, template_key')
       .in('table_booking_id', idChunk)
       .in('template_key', templateKeys)
 
@@ -175,8 +187,8 @@ async function loadSentTableTemplateSet(
     }
 
     for (const row of data || []) {
-      const bookingId = (row as any).table_booking_id || (row as any)?.metadata?.table_booking_id
-      const templateKey = (row as any).template_key || (row as any)?.metadata?.template_key
+      const bookingId = (row as any).table_booking_id
+      const templateKey = (row as any).template_key
       if (typeof bookingId === 'string' && typeof templateKey === 'string') {
         sent.add(`${bookingId}:${templateKey}`)
       }
@@ -196,6 +208,7 @@ async function loadEventBookingsForEngagement(
       customer_id,
       event_id,
       seats,
+      is_reminder_only,
       status,
       review_sms_sent_at,
       review_window_closes_at,
@@ -301,6 +314,51 @@ function resolveRelatedEventStart(value: any): string | null {
   return typeof eventRecord?.start_datetime === 'string' ? eventRecord.start_datetime : null
 }
 
+type InterestReminderTemplateKey =
+  | typeof TEMPLATE_INTEREST_REMINDER_14D
+  | typeof TEMPLATE_INTEREST_REMINDER_7D
+  | typeof TEMPLATE_INTEREST_REMINDER_1D
+
+function resolveInterestReminderTemplate(
+  nowMs: number,
+  eventStartMs: number
+): InterestReminderTemplateKey | null {
+  const dueAt14d = eventStartMs - 14 * 24 * 60 * 60 * 1000
+  const dueAt7d = eventStartMs - 7 * 24 * 60 * 60 * 1000
+  const dueAt1d = eventStartMs - 24 * 60 * 60 * 1000
+
+  if (nowMs >= dueAt1d) return TEMPLATE_INTEREST_REMINDER_1D
+  if (nowMs >= dueAt7d) return TEMPLATE_INTEREST_REMINDER_7D
+  if (nowMs >= dueAt14d) return TEMPLATE_INTEREST_REMINDER_14D
+  return null
+}
+
+function hasSentInterestReminder(
+  row: ManualInterestRecipientRow,
+  templateKey: InterestReminderTemplateKey
+): boolean {
+  if (templateKey === TEMPLATE_INTEREST_REMINDER_14D) {
+    return typeof row.reminder_14d_sent_at === 'string'
+  }
+  if (templateKey === TEMPLATE_INTEREST_REMINDER_7D) {
+    return typeof row.reminder_7d_sent_at === 'string'
+  }
+  return typeof row.reminder_1d_sent_at === 'string'
+}
+
+function interestReminderUpdatePayload(
+  templateKey: InterestReminderTemplateKey,
+  sentAt: string
+): Record<string, string> {
+  if (templateKey === TEMPLATE_INTEREST_REMINDER_14D) {
+    return { reminder_14d_sent_at: sentAt }
+  }
+  if (templateKey === TEMPLATE_INTEREST_REMINDER_7D) {
+    return { reminder_7d_sent_at: sentAt }
+  }
+  return { reminder_1d_sent_at: sentAt }
+}
+
 async function processInterestMarketing(
   supabase: ReturnType<typeof createAdminClient>,
   appBaseUrl: string
@@ -308,23 +366,6 @@ async function processInterestMarketing(
   const nowMs = Date.now()
   const supportPhone = process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || process.env.TWILIO_PHONE_NUMBER || undefined
   const events = await loadEventsForInterestMarketing(supabase)
-
-  const { data: priorMarketingMessages } = await supabase
-    .from('messages')
-    .select('customer_id, metadata, template_key')
-    .eq('template_key', TEMPLATE_INTEREST_MARKETING_14D)
-    .not('customer_id', 'is', null)
-    .limit(10000)
-
-  const messagedByEvent = new Map<string, Set<string>>()
-  for (const row of (priorMarketingMessages || []) as any[]) {
-    const eventId = row?.metadata?.event_id
-    const customerId = row?.customer_id
-    if (typeof eventId !== 'string' || typeof customerId !== 'string') continue
-    const set = messagedByEvent.get(eventId) || new Set<string>()
-    set.add(customerId)
-    messagedByEvent.set(eventId, set)
-  }
 
   const result = {
     sent: 0,
@@ -344,8 +385,8 @@ async function processInterestMarketing(
       continue
     }
 
-    const dueAtMs = eventStartMs - 14 * 24 * 60 * 60 * 1000
-    if (nowMs < dueAtMs) {
+    const manualTemplateKey = resolveInterestReminderTemplate(nowMs, eventStartMs)
+    if (!manualTemplateKey) {
       result.skipped += 1
       continue
     }
@@ -390,16 +431,16 @@ async function processInterestMarketing(
           : Promise.resolve({ data: [], error: null } as any),
       supabase
         .from('bookings')
-        .select('customer_id')
+        .select('customer_id, is_reminder_only')
         .eq('event_id', eventRow.id)
         .in('status', ['confirmed', 'pending_payment'])
         .not('customer_id', 'is', null),
       (supabase.from('event_interest_manual_recipients') as any)
-        .select('customer_id')
+        .select('id, customer_id, reminder_14d_sent_at, reminder_7d_sent_at, reminder_1d_sent_at')
         .eq('event_id', eventRow.id)
     ])
 
-    let manualRecipientsData = (manualRecipients.data || []) as Array<{ customer_id: string | null }>
+    let manualRecipientsData = (manualRecipients.data || []) as ManualInterestRecipientRow[]
     let manualRecipientsErrorMessage: string | undefined
 
     if (manualRecipients.error) {
@@ -415,7 +456,31 @@ async function processInterestMarketing(
         if (fallbackManualRecipients.error) {
           manualRecipientsErrorMessage = fallbackManualRecipients.error.message
         } else {
-          manualRecipientsData = (fallbackManualRecipients.data || []) as Array<{ customer_id: string | null }>
+          manualRecipientsData = ((fallbackManualRecipients.data || []) as Array<{ customer_id: string | null }>)
+            .map((row) => ({
+              id: null,
+              customer_id: row.customer_id,
+              reminder_14d_sent_at: null,
+              reminder_7d_sent_at: null,
+              reminder_1d_sent_at: null
+            }))
+        }
+      } else if (manualRecipients.error?.code === '42703') {
+        const fallbackManualRecipients = await (supabase.from('event_interest_manual_recipients') as any)
+          .select('id, customer_id')
+          .eq('event_id', eventRow.id)
+
+        if (fallbackManualRecipients.error) {
+          manualRecipientsErrorMessage = fallbackManualRecipients.error.message
+        } else {
+          manualRecipientsData = ((fallbackManualRecipients.data || []) as Array<{ customer_id: string | null }>)
+            .map((row) => ({
+              id: null,
+              customer_id: row.customer_id,
+              reminder_14d_sent_at: null,
+              reminder_7d_sent_at: null,
+              reminder_1d_sent_at: null
+            }))
         }
       } else {
         manualRecipientsErrorMessage = manualRecipients.error.message
@@ -464,70 +529,212 @@ async function processInterestMarketing(
 
     const alreadyBooked = new Set<string>(
       ((existingBookings.data || []) as any[])
-        .map((row) => row.customer_id)
+        .filter((row) => row?.is_reminder_only !== true)
+        .map((row) => row?.customer_id)
         .filter((value): value is string => typeof value === 'string')
     )
 
-    const alreadyMessaged = messagedByEvent.get(eventRow.id) || new Set<string>()
-    const candidateIds = Array.from(interestedCustomerIds).filter((customerId) => {
-      if (alreadyBooked.has(customerId)) return false
-      if (alreadyMessaged.has(customerId)) return false
-      return true
-    })
-
-    if (candidateIds.length === 0) {
-      continue
+    const manualRecipientsByCustomer = new Map<string, ManualInterestRecipientRow>()
+    for (const row of manualRecipientsData) {
+      if (typeof row.customer_id !== 'string') continue
+      manualRecipientsByCustomer.set(row.customer_id, row)
     }
 
-    const { data: customers, error: customerError } = await supabase
-      .from('customers')
-      .select('id, first_name, mobile_number, sms_status, marketing_sms_opt_in')
-      .in('id', candidateIds)
-      .eq('sms_status', 'active')
-      .eq('marketing_sms_opt_in', true)
+    const manualCandidateIds = Array.from(manualRecipientsByCustomer.keys()).filter(
+      (customerId) => !alreadyBooked.has(customerId)
+    )
+    const behaviorCandidateIds = Array.from(interestedCustomerIds).filter(
+      (customerId) => !alreadyBooked.has(customerId) && !manualRecipientsByCustomer.has(customerId)
+    )
 
-    if (customerError) {
-      logger.warn('Failed loading customers for interest marketing', {
-        metadata: {
-          eventId: eventRow.id,
-          error: customerError.message
+    if (behaviorCandidateIds.length > 0) {
+      const { data: priorMarketingRows, error: priorMarketingError } = await supabase
+        .from('messages')
+        .select('customer_id')
+        .eq('template_key', TEMPLATE_INTEREST_MARKETING_14D)
+        .like('body', `%event_id=${eventRow.id}%`)
+        .not('customer_id', 'is', null)
+        .limit(10000)
+
+      if (priorMarketingError) {
+        logger.warn('Failed loading prior interest marketing rows', {
+          metadata: { eventId: eventRow.id, error: priorMarketingError.message }
+        })
+      } else {
+        const alreadyMessaged = new Set(
+          ((priorMarketingRows || []) as Array<{ customer_id: string | null }>)
+            .map((row) => row.customer_id)
+            .filter((value): value is string => typeof value === 'string')
+        )
+        const candidateIds = behaviorCandidateIds.filter((customerId) => !alreadyMessaged.has(customerId))
+
+        if (candidateIds.length > 0) {
+          const { data: customers, error: customerError } = await supabase
+            .from('customers')
+            .select('id, first_name, mobile_number, sms_status, marketing_sms_opt_in')
+            .in('id', candidateIds)
+            .eq('sms_status', 'active')
+            .eq('marketing_sms_opt_in', true)
+
+          if (customerError) {
+            logger.warn('Failed loading customers for interest marketing', {
+              metadata: {
+                eventId: eventRow.id,
+                error: customerError.message
+              }
+            })
+          } else {
+            for (const customer of (customers || []) as any[]) {
+              if (!customer?.mobile_number || !customer?.id) {
+                continue
+              }
+
+              const firstName = customer.first_name || 'there'
+              const eventDateText = formatEventDateText(eventRow.start_datetime)
+              const destination = `${appBaseUrl}/events?event_id=${eventRow.id}`
+              const body = ensureReplyInstruction(
+                `The Anchor: Hi ${firstName}, reminder: ${eventRow.name} is coming up on ${eventDateText}. Book here: ${destination} Reply STOP to opt out.`,
+                supportPhone
+              )
+
+              const smsResult = await sendSMS(customer.mobile_number, body, {
+                customerId: customer.id,
+                metadata: {
+                  event_id: eventRow.id,
+                  event_type: eventType,
+                  category_id: eventCategoryId,
+                  matching_basis: matchingBasis,
+                  template_key: TEMPLATE_INTEREST_MARKETING_14D,
+                  marketing: true
+                }
+              })
+
+              if (!smsResult.success) {
+                result.skipped += 1
+                continue
+              }
+
+              result.sent += 1
+            }
+          }
         }
-      })
-      continue
+      }
     }
 
-    for (const customer of (customers || []) as any[]) {
-      if (!customer?.mobile_number || !customer?.id) {
-        continue
+    if (manualCandidateIds.length > 0) {
+      const { data: priorManualRows, error: priorManualError } = await supabase
+        .from('messages')
+        .select('customer_id')
+        .eq('template_key', manualTemplateKey)
+        .like('body', `%event_id=${eventRow.id}%`)
+        .not('customer_id', 'is', null)
+        .limit(10000)
+
+      if (priorManualError) {
+        logger.warn('Failed loading prior manual-interest reminder rows', {
+          metadata: {
+            eventId: eventRow.id,
+            templateKey: manualTemplateKey,
+            error: priorManualError.message
+          }
+        })
       }
 
-      const firstName = customer.first_name || 'there'
-      const eventDateText = formatEventDateText(eventRow.start_datetime)
-      const destination = `${appBaseUrl}/events?event_id=${eventRow.id}`
-      const body = ensureReplyInstruction(
-        `The Anchor: Hi ${firstName}, we thought you might like ${eventRow.name} on ${eventDateText}. Book here: ${destination} Reply STOP to opt out.`,
-        supportPhone
+      const alreadyMessagedManualTemplate = new Set(
+        ((priorManualRows || []) as Array<{ customer_id: string | null }>)
+          .map((row) => row.customer_id)
+          .filter((value): value is string => typeof value === 'string')
       )
 
-      const smsResult = await sendSMS(customer.mobile_number, body, {
-        customerId: customer.id,
-        metadata: {
-          event_id: eventRow.id,
-          event_type: eventType,
-          category_id: eventCategoryId,
-          matching_basis: matchingBasis,
-          template_key: TEMPLATE_INTEREST_MARKETING_14D,
-          marketing: true
-        }
-      })
+      const { data: manualCustomers, error: manualCustomerError } = await supabase
+        .from('customers')
+        .select('id, first_name, mobile_number, sms_status, marketing_sms_opt_in')
+        .in('id', manualCandidateIds)
+        .eq('sms_status', 'active')
+        .eq('marketing_sms_opt_in', true)
 
-      if (!smsResult.success) {
-        result.skipped += 1
+      if (manualCustomerError) {
+        logger.warn('Failed loading manual-interest recipients', {
+          metadata: {
+            eventId: eventRow.id,
+            error: manualCustomerError.message
+          }
+        })
         continue
       }
 
-      alreadyMessaged.add(customer.id)
-      result.sent += 1
+      for (const customer of (manualCustomers || []) as any[]) {
+        if (!customer?.mobile_number || !customer?.id) {
+          continue
+        }
+
+        const manualRecipient = manualRecipientsByCustomer.get(customer.id)
+        if (!manualRecipient) {
+          result.skipped += 1
+          continue
+        }
+
+        const alreadySentForTemplate = typeof manualRecipient.id === 'string'
+          ? hasSentInterestReminder(manualRecipient, manualTemplateKey)
+          : alreadyMessagedManualTemplate.has(customer.id)
+        if (alreadySentForTemplate) {
+          result.skipped += 1
+          continue
+        }
+
+        const firstName = customer.first_name || 'there'
+        const eventDateText = formatEventDateText(eventRow.start_datetime)
+        const destination = `${appBaseUrl}/events?event_id=${eventRow.id}`
+        const baseBody = manualTemplateKey === TEMPLATE_INTEREST_REMINDER_1D
+          ? `The Anchor: Hi ${firstName}, reminder: ${eventRow.name} is tomorrow at ${eventDateText}.`
+          : `The Anchor: Hi ${firstName}, reminder: ${eventRow.name} is coming up on ${eventDateText}.`
+        const body = ensureReplyInstruction(
+          `${baseBody} Book here: ${destination}`,
+          supportPhone
+        )
+
+        const smsResult = await sendSMS(customer.mobile_number, body, {
+          customerId: customer.id,
+          metadata: {
+            event_id: eventRow.id,
+            event_type: eventType,
+            category_id: eventCategoryId,
+            matching_basis: matchingBasis,
+            template_key: manualTemplateKey,
+            marketing: true,
+            manual_interest: true
+          }
+        })
+
+        if (!smsResult.success) {
+          result.skipped += 1
+          continue
+        }
+
+        const sentAt = smsResult.scheduledFor || new Date().toISOString()
+        if (typeof manualRecipient.id === 'string') {
+          const { error: updateError } = await (supabase.from('event_interest_manual_recipients') as any)
+            .update(interestReminderUpdatePayload(manualTemplateKey, sentAt))
+            .eq('id', manualRecipient.id)
+            .eq('event_id', eventRow.id)
+            .eq('customer_id', customer.id)
+
+          if (updateError) {
+            logger.warn('Failed updating manual-interest reminder cadence state', {
+              metadata: {
+                eventId: eventRow.id,
+                customerId: customer.id,
+                templateKey: manualTemplateKey,
+                error: updateError.message
+              }
+            })
+          }
+        } else {
+          alreadyMessagedManualTemplate.add(customer.id)
+        }
+
+        result.sent += 1
+      }
     }
   }
 
@@ -549,8 +756,21 @@ async function processReminders(
     sent1d: 0,
     skipped: 0
   }
+  const bookedCustomerEventKeys = new Set(
+    bookings
+      .filter((booking) => booking.is_reminder_only !== true)
+      .map((booking) => `${booking.event_id}:${booking.customer_id}`)
+  )
 
   for (const booking of bookings) {
+    if (
+      booking.is_reminder_only === true &&
+      bookedCustomerEventKeys.has(`${booking.event_id}:${booking.customer_id}`)
+    ) {
+      result.skipped += 1
+      continue
+    }
+
     const customer = booking.customer
     const event = booking.event
     const eventStartIso = resolveEventStartIso(event)

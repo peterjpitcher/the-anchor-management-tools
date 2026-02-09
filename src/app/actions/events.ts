@@ -552,6 +552,43 @@ export async function createEventManualBooking(input: {
     }
 
     if (state === 'confirmed' || state === 'pending_payment') {
+      let smsSent = false
+      if (bookingId) {
+        try {
+          const smsBody = ensureReplyInstruction(
+            buildEventBookingCreatedSms({
+              state,
+              firstName: parsed.data.firstName?.trim() || 'there',
+              eventName: (eventRow as any).name || 'your event',
+              seats: parsed.data.seats,
+              eventStartText: formatEventDateTimeForSms({
+                startDatetime: bookingResult.event_start_datetime ?? null
+              }),
+              paymentMode: bookingResult.payment_mode,
+              paymentLink: nextStepUrl,
+              manageLink: manageBookingUrl
+            }),
+            process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || process.env.TWILIO_PHONE_NUMBER || undefined
+          )
+
+          const smsResult = await sendSMS(normalizedPhone, smsBody, {
+            customerId: customerResolution.customerId,
+            metadata: {
+              event_booking_id: bookingId,
+              event_id: parsed.data.eventId,
+              template_key: state === 'pending_payment' ? 'event_booking_pending_payment' : 'event_booking_confirmed'
+            }
+          })
+
+          smsSent = smsResult.success === true
+          if (!smsResult.success) {
+            console.error('Failed to send event booking confirmation SMS:', smsResult.error)
+          }
+        } catch (smsError) {
+          console.error('Unexpected error sending event booking confirmation SMS:', smsError)
+        }
+      }
+
       await recordAnalyticsEvent(supabase, {
         customerId: customerResolution.customerId,
         eventType: 'event_booking_created',
@@ -561,7 +598,8 @@ export async function createEventManualBooking(input: {
           event_name: (eventRow as any).name || null,
           seats: parsed.data.seats,
           state,
-          source: 'admin'
+          source: 'admin',
+          sms_sent: smsSent
         }
       })
     }
@@ -639,6 +677,33 @@ function formatEventDateTimeForSms(input: {
     minute: '2-digit',
     hour12: true
   }).format(parsed)
+}
+
+function buildEventBookingCreatedSms(input: {
+  state: 'confirmed' | 'pending_payment'
+  firstName: string
+  eventName: string
+  seats: number
+  eventStartText: string
+  paymentMode?: 'free' | 'cash_only' | 'prepaid'
+  paymentLink?: string | null
+  manageLink?: string | null
+}): string {
+  const seatWord = input.seats === 1 ? 'seat' : 'seats'
+
+  if (input.state === 'pending_payment') {
+    if (input.paymentLink) {
+      return `The Anchor: Hi ${input.firstName}, we're holding ${input.seats} ${seatWord} for ${input.eventName}. Pay here: ${input.paymentLink}.${input.manageLink ? ` Manage booking: ${input.manageLink}` : ''}`
+    }
+
+    return `The Anchor: Hi ${input.firstName}, we're holding ${input.seats} ${seatWord} for ${input.eventName}. Your booking is pending payment and we'll text your payment link shortly.${input.manageLink ? ` Manage booking: ${input.manageLink}` : ''}`
+  }
+
+  const confirmedTail = input.paymentMode === 'cash_only'
+    ? ' Payment is cash on arrival.'
+    : ''
+
+  return `The Anchor: Hi ${input.firstName}, your booking for ${input.eventName} on ${input.eventStartText} is confirmed for ${input.seats} ${seatWord}.${confirmedTail}${input.manageLink ? ` Manage booking: ${input.manageLink}` : ''}`
 }
 
 function buildEventBookingCancelledSms(input: {

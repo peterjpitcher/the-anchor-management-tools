@@ -224,6 +224,7 @@ export async function getEventInterestAudience(eventId: string): Promise<EventIn
         .select('customer_id')
         .eq('event_id', eventId)
         .in('status', ['confirmed', 'pending_payment'])
+        .or('is_reminder_only.is.null,is_reminder_only.eq.false')
         .not('customer_id', 'is', null),
       admin
         .from('bookings')
