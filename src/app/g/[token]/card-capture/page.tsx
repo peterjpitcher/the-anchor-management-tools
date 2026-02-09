@@ -119,7 +119,7 @@ export default async function TableCardCapturePage({
             <div className="mt-5 rounded-md border border-gray-200 bg-gray-50 p-4 text-sm text-gray-700">
               <p className="font-medium text-gray-900">Card policy</p>
               <p className="mt-2">No charge is taken now. Your card is stored to secure the booking.</p>
-              <p className="mt-2">Up to £20 per person may be charged for late cancellation, no-show, or reductions.</p>
+              <p className="mt-2">Up to £15 per person may be charged for late cancellation, no-show, or reductions.</p>
               <p className="mt-2">Unpaid bill amounts may be charged for walkouts. Any charge is manager approved.</p>
             </div>
 

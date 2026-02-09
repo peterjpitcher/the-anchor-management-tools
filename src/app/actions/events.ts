@@ -450,6 +450,20 @@ export async function createEventManualBooking(input: {
     })
 
     if (bookingRpcError) {
+      if ((bookingRpcError as { code?: string }).code === '23505') {
+        return {
+          success: true,
+          data: {
+            state: 'blocked',
+            reason: 'customer_conflict',
+            booking_id: null,
+            manage_booking_url: null,
+            next_step_url: null,
+            table_booking_id: null,
+            table_name: null
+          }
+        }
+      }
       console.error('create_event_booking_v05 failed in createEventManualBooking:', bookingRpcError)
       return { error: 'Failed to create booking.' }
     }

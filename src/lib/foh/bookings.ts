@@ -3,7 +3,7 @@ import { recordAnalyticsEvent } from '@/lib/analytics/events'
 import { logger } from '@/lib/logger'
 import { sendManagerChargeApprovalEmail } from '@/lib/table-bookings/charge-approvals'
 
-const DEFAULT_FEE_PER_HEAD = 20
+const DEFAULT_FEE_PER_HEAD = 15
 
 function parseFeePerHeadSetting(value: any): number {
   if (typeof value === 'number' && Number.isFinite(value) && value > 0) {

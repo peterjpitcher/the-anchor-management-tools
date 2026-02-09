@@ -145,6 +145,8 @@ function formatEventBookingReason(reason: string | null | undefined): string {
       return 'This event is not currently bookable.'
     case 'insufficient_capacity':
       return 'There is not enough capacity for that booking.'
+    case 'customer_conflict':
+      return 'This customer already has an active booking for this event.'
     case 'no_table':
       return 'No table is available for this event booking.'
     case 'event_datetime_missing':
