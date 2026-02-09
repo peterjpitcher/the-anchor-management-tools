@@ -12,6 +12,7 @@ import {
   ClockIcon,
   LinkIcon,
   ChartBarIcon,
+  TableCellsIcon,
 } from '@heroicons/react/24/outline';
 import { checkUserPermission } from '@/app/actions/rbac';
 import type { ModuleName, ActionType } from '@/types/rbac';
@@ -56,6 +57,13 @@ const settingsSections = [
     description: 'Manage regular opening hours and special dates',
     href: '/settings/business-hours',
     icon: ClockIcon,
+    permission: { module: 'settings', action: 'manage' },
+  },
+  {
+    name: 'Table Setup',
+    description: 'Manage table names, numbers, capacities and joined-table rules',
+    href: '/settings/table-bookings',
+    icon: TableCellsIcon,
     permission: { module: 'settings', action: 'manage' },
   },
   {

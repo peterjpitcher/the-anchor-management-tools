@@ -1,25 +1,19 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { sendSMS } from '@/lib/twilio'
-import { sendEmail } from '@/lib/email/emailService'
 import { ensureReplyInstruction } from '@/lib/sms/support'
 import {
-  buildPaymentReminderSms,
-  buildPaymentReminderManagerEmail,
-  buildSessionEndSms,
-  buildSessionManagerEmail,
-  buildSessionStartSms,
+  buildPaymentReminderSmsForStage,
+  buildSessionThreeDayReminderSms,
 } from '@/lib/parking/notifications'
 import { logParkingNotification } from '@/lib/parking/repository'
 import type { ParkingBooking } from '@/types/parking'
-import { fromZonedTime, toZonedTime } from 'date-fns-tz'
-import { startOfDay, endOfDay } from 'date-fns'
 import { authorizeCronRequest } from '@/lib/cron-auth'
 
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
 
-const LONDON_TZ = 'Europe/London'
+const DAY_MS = 24 * 60 * 60 * 1000
 
 export async function GET(request: Request) {
   const authResult = authorizeCronRequest(request)
@@ -32,17 +26,15 @@ export async function GET(request: Request) {
     const supabase = await createAdminClient()
     const now = new Date()
 
-    const [paymentReminders, startNotifications, endNotifications] = await Promise.all([
-      processPaymentReminders(supabase, now),
-      processStartNotifications(supabase, now),
-      processEndNotifications(supabase, now)
+    const [pendingPaymentLifecycle, paidSessionReminders] = await Promise.all([
+      processPendingPaymentLifecycle(supabase, now),
+      processPaidSessionReminders(supabase, now),
     ])
 
     return NextResponse.json({
       success: true,
-      paymentReminders,
-      startNotifications,
-      endNotifications
+      pendingPaymentLifecycle,
+      paidSessionReminders,
     })
   } catch (error) {
     console.error('Parking notifications cron failed:', error)
@@ -50,251 +42,281 @@ export async function GET(request: Request) {
   }
 }
 
-async function processPaymentReminders(supabase: ReturnType<typeof createAdminClient>, now: Date) {
+async function processPendingPaymentLifecycle(supabase: ReturnType<typeof createAdminClient>, now: Date) {
   const { data: bookings, error } = await supabase
     .from('parking_bookings')
     .select('*')
     .eq('status', 'pending_payment')
     .eq('payment_status', 'pending')
-    .eq('payment_overdue_notified', false)
-    .lte('payment_due_at', now.toISOString())
+    .not('payment_due_at', 'is', null)
 
   if (error) {
-    console.error('Failed to fetch overdue parking bookings', error)
-    return { sent: 0, errors: 1 }
+    console.error('Failed to fetch pending parking payment lifecycle bookings', error)
+    return { sent: 0, expired: 0, errors: 1, skipped: 0 }
   }
 
   if (!bookings || bookings.length === 0) {
-    return { sent: 0, errors: 0 }
+    return { sent: 0, expired: 0, errors: 0, skipped: 0 }
   }
 
   let sent = 0
+  let expired = 0
   let errors = 0
+  let skipped = 0
 
   for (const booking of bookings as ParkingBooking[]) {
-    const paymentLink = await lookupPendingPaymentLink(supabase, booking.id)
-    const smsBody = buildPaymentReminderSms(booking, paymentLink || undefined)
-
-    const smsWithReply = ensureReplyInstruction(
-      smsBody,
-      process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || process.env.TWILIO_PHONE_NUMBER || undefined
-    )
-
-    const smsResult = await sendSMS(booking.customer_mobile, smsWithReply, {
-      customerId: booking.customer_id ?? undefined,
-      metadata: {
-        parking_booking_id: booking.id,
-        event_type: 'payment_overdue'
-      },
-      customerFallback: {
-        email: (booking as any)?.customer_email ?? null
-      }
-    })
-
-    await logParkingNotification({
-      booking_id: booking.id,
-      channel: 'sms',
-      event_type: 'payment_overdue',
-      status: smsResult.success ? 'sent' : 'failed',
-      sent_at: smsResult.success ? new Date().toISOString() : null,
-      message_sid: smsResult.success && smsResult.sid ? smsResult.sid : null,
-      payload: { sms: smsWithReply }
-    }, supabase)
-
-    if (!smsResult.success) {
-      errors += 1
+    const dueAt = new Date(booking.payment_due_at || booking.expires_at || '')
+    if (Number.isNaN(dueAt.getTime())) {
+      skipped += 1
       continue
     }
 
-    sent += 1
+    const msUntilDue = dueAt.getTime() - now.getTime()
+    if (msUntilDue <= 0) {
+      const { error: expireError } = await supabase
+        .from('parking_bookings')
+        .update({
+          status: 'expired',
+          payment_status: 'expired',
+          updated_at: now.toISOString(),
+        })
+        .eq('id', booking.id)
 
-    const managerEmail = buildPaymentReminderManagerEmail(booking, paymentLink || undefined)
-    const emailResult = await sendEmail({
-      to: managerEmail.to,
-      subject: managerEmail.subject,
-      html: managerEmail.html
-    })
-
-    await logParkingNotification({
-      booking_id: booking.id,
-      channel: 'email',
-      event_type: 'payment_overdue',
-      status: emailResult.success ? 'sent' : 'failed',
-      sent_at: emailResult.success ? new Date().toISOString() : null,
-      payload: { subject: managerEmail.subject }
-    }, supabase)
-
-    const { error: updateError } = await supabase
-      .from('parking_bookings')
-      .update({ payment_overdue_notified: true })
-      .eq('id', booking.id)
-
-    if (updateError) {
-      console.error('Failed to mark parking booking as notified', booking.id, updateError)
-    }
-  }
-
-  return { sent, errors }
-}
-
-async function processStartNotifications(supabase: ReturnType<typeof createAdminClient>, now: Date) {
-  const window = buildLondonWindow(now)
-
-  const { data: bookings, error } = await supabase
-    .from('parking_bookings')
-    .select('*')
-    .eq('status', 'confirmed')
-    .eq('payment_status', 'paid')
-    .eq('start_notification_sent', false)
-    .gte('start_at', window.startIso)
-    .lte('start_at', window.endIso)
-
-  if (error) {
-    console.error('Failed to fetch start notifications', error)
-    return { sent: 0, errors: 1 }
-  }
-
-  if (!bookings || bookings.length === 0) {
-    return { sent: 0, errors: 0 }
-  }
-
-  let sent = 0
-  let errors = 0
-
-  for (const booking of bookings as ParkingBooking[]) {
-    const smsBody = ensureReplyInstruction(
-      buildSessionStartSms(booking),
-      process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || process.env.TWILIO_PHONE_NUMBER || undefined
-    )
-
-    const smsResult = await sendSMS(booking.customer_mobile, smsBody, {
-      customerId: booking.customer_id ?? undefined,
-      metadata: {
-        parking_booking_id: booking.id,
-        event_type: 'session_start'
-      },
-      customerFallback: {
-        email: (booking as any)?.customer_email ?? null
+      if (expireError) {
+        console.error('Failed to expire unpaid parking booking', booking.id, expireError)
+        errors += 1
+      } else {
+        expired += 1
       }
+
+      continue
+    }
+
+    const shouldSendDayBefore =
+      !booking.unpaid_day_before_sms_sent &&
+      msUntilDue <= DAY_MS
+
+    const shouldSendWeekBefore =
+      !booking.unpaid_week_before_sms_sent &&
+      msUntilDue <= 7 * DAY_MS &&
+      msUntilDue > DAY_MS
+
+    if (!shouldSendDayBefore && !shouldSendWeekBefore) {
+      skipped += 1
+      continue
+    }
+
+    const paymentLink = await lookupPendingPaymentLink(supabase, booking.id)
+
+    if (shouldSendDayBefore) {
+      const smsResult = await sendParkingReminderSms({
+        supabase,
+        booking,
+        eventType: 'payment_reminder',
+        smsBody: buildPaymentReminderSmsForStage(booking, 'day_before_expiry', paymentLink || undefined),
+        payload: { stage: 'day_before_expiry' },
+      })
+
+      if (smsResult.sent) {
+        sent += 1
+        const { error: updateError } = await supabase
+          .from('parking_bookings')
+          .update({ unpaid_day_before_sms_sent: true })
+          .eq('id', booking.id)
+
+        if (updateError) {
+          console.error('Failed to mark day-before reminder sent', booking.id, updateError)
+        }
+      } else if (smsResult.skipped) {
+        skipped += 1
+      } else {
+        errors += 1
+      }
+
+      continue
+    }
+
+    const smsResult = await sendParkingReminderSms({
+      supabase,
+      booking,
+      eventType: 'payment_reminder',
+      smsBody: buildPaymentReminderSmsForStage(booking, 'week_before_expiry', paymentLink || undefined),
+      payload: { stage: 'week_before_expiry' },
     })
 
-    await logParkingNotification({
-      booking_id: booking.id,
-      channel: 'sms',
-      event_type: 'session_start',
-      status: smsResult.success ? 'sent' : 'failed',
-      sent_at: smsResult.success ? new Date().toISOString() : null,
-      message_sid: smsResult.success && smsResult.sid ? smsResult.sid : null,
-      payload: { sms: smsBody }
-    }, supabase)
-
-    const managerEmail = buildSessionManagerEmail(booking, 'start')
-    const emailResult = await sendEmail({ to: managerEmail.to, subject: managerEmail.subject, html: managerEmail.html })
-    await logParkingNotification({
-      booking_id: booking.id,
-      channel: 'email',
-      event_type: 'session_start',
-      status: emailResult.success ? 'sent' : 'failed',
-      sent_at: emailResult.success ? new Date().toISOString() : null,
-      payload: { subject: managerEmail.subject }
-    }, supabase)
-
-    if (smsResult.success) {
+    if (smsResult.sent) {
       sent += 1
       const { error: updateError } = await supabase
         .from('parking_bookings')
-        .update({ start_notification_sent: true })
+        .update({ unpaid_week_before_sms_sent: true })
         .eq('id', booking.id)
 
       if (updateError) {
-        console.error('Failed to mark start notification sent', booking.id, updateError)
+        console.error('Failed to mark week-before reminder sent', booking.id, updateError)
       }
+    } else if (smsResult.skipped) {
+      skipped += 1
     } else {
       errors += 1
     }
   }
 
-  return { sent, errors }
+  return { sent, expired, errors, skipped }
 }
 
-async function processEndNotifications(supabase: ReturnType<typeof createAdminClient>, now: Date) {
-  const window = buildLondonWindow(now)
-
+async function processPaidSessionReminders(supabase: ReturnType<typeof createAdminClient>, now: Date) {
   const { data: bookings, error } = await supabase
     .from('parking_bookings')
     .select('*')
     .eq('status', 'confirmed')
     .eq('payment_status', 'paid')
-    .eq('end_notification_sent', false)
-    .gte('end_at', window.startIso)
-    .lte('end_at', window.endIso)
 
   if (error) {
-    console.error('Failed to fetch end notifications', error)
-    return { sent: 0, errors: 1 }
+    console.error('Failed to fetch paid parking bookings for reminders', error)
+    return { startSent: 0, endSent: 0, errors: 1, skipped: 0 }
   }
 
   if (!bookings || bookings.length === 0) {
-    return { sent: 0, errors: 0 }
+    return { startSent: 0, endSent: 0, errors: 0, skipped: 0 }
   }
 
-  let sent = 0
+  let startSent = 0
+  let endSent = 0
   let errors = 0
+  let skipped = 0
 
   for (const booking of bookings as ParkingBooking[]) {
-    const smsBody = ensureReplyInstruction(
-      buildSessionEndSms(booking),
-      process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || process.env.TWILIO_PHONE_NUMBER || undefined
-    )
+    const startAt = new Date(booking.start_at)
+    const endAt = new Date(booking.end_at)
 
-    const smsResult = await sendSMS(booking.customer_mobile, smsBody, {
-      customerId: booking.customer_id ?? undefined,
-      metadata: {
-        parking_booking_id: booking.id,
-        event_type: 'session_end'
-      },
-      customerFallback: {
-        email: (booking as any)?.customer_email ?? null
+    const msUntilStart = startAt.getTime() - now.getTime()
+    const msUntilEnd = endAt.getTime() - now.getTime()
+
+    const shouldSendStart =
+      !booking.paid_start_three_day_sms_sent &&
+      msUntilStart > 0 &&
+      msUntilStart <= 3 * DAY_MS
+
+    const shouldSendEnd =
+      !booking.paid_end_three_day_sms_sent &&
+      msUntilEnd > 0 &&
+      msUntilEnd <= 3 * DAY_MS
+
+    if (!shouldSendStart && !shouldSendEnd) {
+      skipped += 1
+      continue
+    }
+
+    if (shouldSendStart) {
+      const smsResult = await sendParkingReminderSms({
+        supabase,
+        booking,
+        eventType: 'session_start',
+        smsBody: buildSessionThreeDayReminderSms(booking, 'start'),
+        payload: { stage: 'three_days_before_start' },
+      })
+
+      if (smsResult.sent) {
+        startSent += 1
+        const { error: updateError } = await supabase
+          .from('parking_bookings')
+          .update({ paid_start_three_day_sms_sent: true })
+          .eq('id', booking.id)
+
+        if (updateError) {
+          console.error('Failed to mark paid start reminder sent', booking.id, updateError)
+        }
+      } else if (smsResult.skipped) {
+        skipped += 1
+      } else {
+        errors += 1
       }
-    })
+    }
 
-    await logParkingNotification({
-      booking_id: booking.id,
-      channel: 'sms',
-      event_type: 'session_end',
-      status: smsResult.success ? 'sent' : 'failed',
-      sent_at: smsResult.success ? new Date().toISOString() : null,
-      message_sid: smsResult.success && smsResult.sid ? smsResult.sid : null,
-      payload: { sms: smsBody }
-    }, supabase)
+    if (shouldSendEnd) {
+      const smsResult = await sendParkingReminderSms({
+        supabase,
+        booking,
+        eventType: 'session_end',
+        smsBody: buildSessionThreeDayReminderSms(booking, 'end'),
+        payload: { stage: 'three_days_before_end' },
+      })
 
-    const managerEmail = buildSessionManagerEmail(booking, 'end')
-    const emailResult = await sendEmail({ to: managerEmail.to, subject: managerEmail.subject, html: managerEmail.html })
-    await logParkingNotification({
-      booking_id: booking.id,
-      channel: 'email',
-      event_type: 'session_end',
-      status: emailResult.success ? 'sent' : 'failed',
-      sent_at: emailResult.success ? new Date().toISOString() : null,
-      payload: { subject: managerEmail.subject }
-    }, supabase)
+      if (smsResult.sent) {
+        endSent += 1
+        const { error: updateError } = await supabase
+          .from('parking_bookings')
+          .update({ paid_end_three_day_sms_sent: true })
+          .eq('id', booking.id)
 
-    if (smsResult.success) {
-      sent += 1
-      const { error: updateError } = await supabase
-        .from('parking_bookings')
-        .update({ end_notification_sent: true })
-        .eq('id', booking.id)
-
-      if (updateError) {
-        console.error('Failed to mark end notification sent', booking.id, updateError)
+        if (updateError) {
+          console.error('Failed to mark paid end reminder sent', booking.id, updateError)
+        }
+      } else if (smsResult.skipped) {
+        skipped += 1
+      } else {
+        errors += 1
       }
-    } else {
-      errors += 1
     }
   }
 
-  return { sent, errors }
+  return { startSent, endSent, errors, skipped }
+}
+
+async function sendParkingReminderSms(params: {
+  supabase: ReturnType<typeof createAdminClient>
+  booking: ParkingBooking
+  eventType: 'payment_reminder' | 'session_start' | 'session_end'
+  smsBody: string
+  payload?: Record<string, unknown>
+}): Promise<{ sent: boolean; skipped: boolean }> {
+  const { supabase, booking, eventType, smsBody, payload } = params
+
+  if (!booking.customer_mobile) {
+    await logParkingNotification({
+      booking_id: booking.id,
+      channel: 'sms',
+      event_type: eventType,
+      status: 'skipped',
+      payload: {
+        reason: 'No customer mobile number on booking',
+        ...(payload || {}),
+      },
+    }, supabase)
+    return { sent: false, skipped: true }
+  }
+
+  const smsWithReply = ensureReplyInstruction(
+    smsBody,
+    process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || process.env.TWILIO_PHONE_NUMBER || undefined
+  )
+
+  const smsResult = await sendSMS(booking.customer_mobile, smsWithReply, {
+    customerId: booking.customer_id ?? undefined,
+    metadata: {
+      parking_booking_id: booking.id,
+      event_type: eventType,
+      ...(payload || {}),
+    },
+    customerFallback: {
+      email: booking.customer_email ?? undefined,
+    },
+  })
+
+  await logParkingNotification({
+    booking_id: booking.id,
+    channel: 'sms',
+    event_type: eventType,
+    status: smsResult.success ? 'sent' : 'failed',
+    sent_at: smsResult.success ? new Date().toISOString() : null,
+    message_sid: smsResult.success && smsResult.sid ? smsResult.sid : null,
+    payload: { sms: smsWithReply, ...(payload || {}) },
+  }, supabase)
+
+  return {
+    sent: smsResult.success,
+    skipped: false,
+  }
 }
 
 async function lookupPendingPaymentLink(supabase: ReturnType<typeof createAdminClient>, bookingId: string) {
@@ -314,18 +336,4 @@ async function lookupPendingPaymentLink(supabase: ReturnType<typeof createAdminC
 
   const metadata = data?.metadata as { approve_url?: string } | null
   return metadata?.approve_url ?? null
-}
-
-function buildLondonWindow(now: Date) {
-  const londonNow = toZonedTime(now, LONDON_TZ)
-  const startLondon = startOfDay(londonNow)
-  const endLondon = endOfDay(londonNow)
-
-  const startUtc = fromZonedTime(startLondon, LONDON_TZ)
-  const endUtc = fromZonedTime(endLondon, LONDON_TZ)
-
-  return {
-    startIso: startUtc.toISOString(),
-    endIso: endUtc.toISOString()
-  }
 }

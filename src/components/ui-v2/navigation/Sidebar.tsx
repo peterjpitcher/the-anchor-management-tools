@@ -10,7 +10,7 @@ export interface SidebarProps {
 
 export function Sidebar({ children, className }: SidebarProps) {
   return (
-    <nav className={cn('space-y-1 px-2', className)} aria-label="Sidebar">
+    <nav className={cn('space-y-0 px-1', className)} aria-label="Sidebar">
       {children}
     </nav>
   );

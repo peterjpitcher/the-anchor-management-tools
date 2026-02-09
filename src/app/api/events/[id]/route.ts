@@ -12,6 +12,12 @@ type EventMessageTemplateRow = {
   custom_content: string | null;
 };
 
+type EventCapacityRow = {
+  event_id: string
+  seats_remaining: number | null
+  is_full: boolean
+}
+
 export async function GET(
   _request: NextRequest,
   context: { params: Promise<{ id: string }> }
@@ -76,12 +82,59 @@ export async function GET(
     );
 
     const lastUpdated = event.updated_at || event.created_at;
+    let seatsRemaining: number | null =
+      typeof event.capacity === 'number' ? event.capacity : null
+    let isFull =
+      typeof seatsRemaining === 'number' ? seatsRemaining <= 0 : false
+
+    if (event.id) {
+      const { data: capacityRows, error: capacityError } = await supabase.rpc(
+        'get_event_capacity_snapshot_v05',
+        { p_event_ids: [event.id] }
+      )
+
+      if (!capacityError && Array.isArray(capacityRows) && capacityRows.length > 0) {
+        const capacityRow = capacityRows[0] as EventCapacityRow
+        seatsRemaining = capacityRow.seats_remaining
+        isFull = capacityRow.is_full
+      }
+    }
+
+    const paymentMode =
+      event.payment_mode ||
+      ((event.is_free === true || Number(event.price || 0) === 0) ? 'free' : 'cash_only')
+    const price = event.price_per_seat ?? event.price ?? 0
 
     // Add extended details with all SEO fields
     const extendedEvent = {
       id: event.id,
       slug: event.slug,
+      brief: event.brief || null,
+      event_type: event.event_type || null,
+      date: event.date,
+      time: event.time,
+      end_time: event.end_time || null,
+      doors_time: event.doors_time || null,
+      duration_minutes: event.duration_minutes || null,
+      last_entry_time: event.last_entry_time || null,
+      event_status: event.event_status,
       bookingUrl: event.booking_url || null,
+      booking_url: event.booking_url || null,
+      booking_mode: ['table', 'general', 'mixed'].includes(String(event.booking_mode))
+        ? event.booking_mode
+        : 'table',
+      payment_mode: paymentMode,
+      price,
+      price_per_seat: event.price_per_seat ?? null,
+      is_free: event.is_free === true,
+      capacity: event.capacity,
+      seats_remaining: seatsRemaining,
+      is_full: isFull,
+      waitlist_enabled: typeof event.capacity === 'number' && event.capacity > 0,
+      performer_name: event.performer_name || null,
+      performer_type: event.performer_type || null,
+      created_at: event.created_at,
+      updated_at: event.updated_at,
       highlights: event.highlights || [],
       keywords: event.keywords || [],
       shortDescription: event.short_description,
@@ -92,7 +145,12 @@ export async function GET(
       heroImageUrl: event.hero_image_url || event.image_url,
       thumbnailImageUrl: event.thumbnail_image_url || event.hero_image_url || event.image_url,
       posterImageUrl: event.poster_image_url || event.hero_image_url || event.image_url,
-      galleryImages: event.hero_image_url ? [event.hero_image_url] : [],
+      galleryImages:
+        Array.isArray(event.gallery_image_urls) && event.gallery_image_urls.length > 0
+          ? event.gallery_image_urls
+          : event.hero_image_url
+            ? [event.hero_image_url]
+            : [],
       imageUrl: event.hero_image_url || event.image_url, // Single image field for compatibility
       promoVideoUrl: event.promo_video_url,
       highlightVideos: event.highlight_video_urls || [],

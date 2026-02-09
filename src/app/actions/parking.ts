@@ -5,15 +5,12 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { checkUserPermission } from '@/app/actions/rbac'
 import { logAuditEvent } from './audit'
 import { z } from 'zod'
-import { calculateParkingPricing } from '@/lib/parking/pricing'
-import { getActiveParkingRate, insertParkingBooking, getParkingBooking, updateParkingBooking } from '@/lib/parking/repository'
-import { checkParkingCapacity } from '@/lib/parking/capacity'
+import { getActiveParkingRate, getParkingBooking, updateParkingBooking } from '@/lib/parking/repository'
 import { createParkingPaymentOrder, sendParkingPaymentRequest } from '@/lib/parking/payments'
 import { revalidatePath, revalidateTag } from 'next/cache'
 import type { ParkingBooking, ParkingBookingStatus, ParkingPaymentStatus } from '@/types/parking'
-import type { SupabaseClient } from '@supabase/supabase-js'
-import { resolveCustomerByPhone } from '@/lib/parking/customers'
 import type { ParkingRateConfig } from '@/lib/parking/pricing'
+import { createPendingParkingBooking } from '@/services/parking'
 
 const CreateParkingBookingSchema = z.object({
   customer_first_name: z.string().min(1, 'First name is required'),
@@ -55,12 +52,11 @@ const CreateParkingBookingSchema = z.object({
   send_payment_link: z
     .union([z.string(), z.boolean()])
     .optional()
-    .transform((value) => value === true || value === 'true' || value === 'on')
+    .transform((value) => {
+      if (value == null) return true
+      return value === true || value === 'true' || value === 'on'
+    })
 })
-
-function sanitizeRegistration(reg: string): string {
-  return reg.replace(/\s+/g, '').toUpperCase()
-}
 
 export async function createParkingBooking(formData: FormData) {
   try {
@@ -83,84 +79,34 @@ export async function createParkingBooking(formData: FormData) {
     }
 
     const data = parsedResult.data
-    const startDate = new Date(data.start_at)
-    const endDate = new Date(data.end_at)
-
-    if (endDate <= startDate) {
-      return { error: 'End time must be after start time' }
-    }
 
     const adminClient = createAdminClient()
-    const rateRecord = await getActiveParkingRate(adminClient)
-
-    if (!rateRecord) {
-      return { error: 'Parking rates have not been configured. Please add rates first.' }
-    }
-
-    const hourly = Number(rateRecord.hourly_rate)
-    const daily = Number(rateRecord.daily_rate)
-    const weekly = Number(rateRecord.weekly_rate)
-    const monthly = Number(rateRecord.monthly_rate)
-
-    if ([hourly, daily, weekly, monthly].some((value) => !Number.isFinite(value) || value <= 0)) {
-      return { error: 'Parking rates are invalid. Please review the rate configuration.' }
-    }
-
-    if (data.override_price != null && data.override_price <= 0) {
-      return { error: 'Override price must be greater than zero' }
-    }
-
-    const pricing = calculateParkingPricing(startDate, endDate, {
-      hourlyRate: hourly,
-      dailyRate: daily,
-      weeklyRate: weekly,
-      monthlyRate: monthly
-    })
-
-    const capacity = await checkParkingCapacity(data.start_at, data.end_at)
-    if (!data.capacity_override && capacity.remaining <= 0) {
-      return { error: 'No parking spaces remaining for the selected period' }
-    }
-
-    const customer = await resolveCustomerByPhone(supabase as SupabaseClient<any, 'public', any>, {
-      firstName: data.customer_first_name,
-      lastName: data.customer_last_name,
-      email: data.customer_email?.toLowerCase(),
-      phone: data.customer_mobile
-    })
-
-    const paymentDueAt = new Date()
-    paymentDueAt.setDate(paymentDueAt.getDate() + 7)
-
-    const payload = {
-      customer_id: customer.id,
-      customer_first_name: customer.first_name,
-      customer_last_name: customer.last_name ?? null,
-      customer_mobile: customer.mobile_number,
-      customer_email: customer.email ?? null,
-      vehicle_registration: sanitizeRegistration(data.vehicle_registration),
-      vehicle_make: data.vehicle_make ?? null,
-      vehicle_model: data.vehicle_model ?? null,
-      vehicle_colour: data.vehicle_colour ?? null,
-      start_at: data.start_at,
-      end_at: data.end_at,
-      duration_minutes: pricing.durationMinutes,
-      calculated_price: pricing.total,
-      pricing_breakdown: pricing.breakdown,
-      override_price: data.override_price ?? null,
-      override_reason: data.override_reason ?? null,
-      capacity_override: data.capacity_override || false,
-      capacity_override_reason: data.capacity_override_reason ?? null,
-      status: 'pending_payment',
-      payment_status: 'pending',
-      payment_due_at: paymentDueAt.toISOString(),
-      expires_at: paymentDueAt.toISOString(),
-      notes: data.notes ?? null,
-      created_by: user.id,
-      updated_by: user.id
-    }
-
-    const booking = await insertParkingBooking(payload, adminClient)
+    const { booking } = await createPendingParkingBooking(
+      {
+        customer: {
+          firstName: data.customer_first_name,
+          lastName: data.customer_last_name,
+          email: data.customer_email,
+          mobile: data.customer_mobile
+        },
+        vehicle: {
+          registration: data.vehicle_registration,
+          make: data.vehicle_make,
+          model: data.vehicle_model,
+          colour: data.vehicle_colour
+        },
+        startAt: data.start_at,
+        endAt: data.end_at,
+        notes: data.notes,
+        overridePrice: data.override_price,
+        overrideReason: data.override_reason,
+        capacityOverride: data.capacity_override,
+        capacityOverrideReason: data.capacity_override_reason,
+        createdBy: user.id,
+        updatedBy: user.id
+      },
+      { client: adminClient }
+    )
 
     await logAuditEvent({
       user_id: user.id,
@@ -179,13 +125,13 @@ export async function createParkingBooking(formData: FormData) {
     if (data.send_payment_link) {
       try {
         const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
-        const { approveUrl } = await createParkingPaymentOrder(booking as ParkingBooking, {
+        const { approveUrl } = await createParkingPaymentOrder(booking, {
           returnUrl: `${appUrl}/api/parking/payment/return?booking_id=${booking.id}`,
           cancelUrl: `${appUrl}/parking/bookings/${booking.id}?cancelled=true`,
           client: adminClient
         })
         paymentLink = approveUrl
-        await sendParkingPaymentRequest(booking as ParkingBooking, approveUrl, { client: adminClient })
+        await sendParkingPaymentRequest(booking, approveUrl, { client: adminClient })
       } catch (paymentError) {
         console.error('Failed to create parking payment order', paymentError)
       }
@@ -484,13 +430,23 @@ export async function generateParkingPaymentLink(bookingId: string) {
       await updateParkingBooking(
         bookingId,
         {
+          status: 'pending_payment',
+          payment_status: 'pending',
           payment_due_at: dueAt.toISOString(),
-          expires_at: dueAt.toISOString()
+          expires_at: dueAt.toISOString(),
+          payment_overdue_notified: false,
+          unpaid_week_before_sms_sent: false,
+          unpaid_day_before_sms_sent: false
         },
         adminClient
       )
+      booking.status = 'pending_payment'
+      booking.payment_status = 'pending'
       booking.payment_due_at = dueAt.toISOString()
       booking.expires_at = dueAt.toISOString()
+      booking.payment_overdue_notified = false
+      booking.unpaid_week_before_sms_sent = false
+      booking.unpaid_day_before_sms_sent = false
     }
 
     const appUrl = process.env.NEXT_PUBLIC_APP_URL
@@ -594,7 +550,9 @@ export async function markParkingBookingPaid(bookingId: string) {
       {
         status: 'confirmed',
         payment_status: 'paid',
-        confirmed_at: nowIso
+        confirmed_at: nowIso,
+        paid_start_three_day_sms_sent: false,
+        paid_end_three_day_sms_sent: false
       },
       adminClient
     )

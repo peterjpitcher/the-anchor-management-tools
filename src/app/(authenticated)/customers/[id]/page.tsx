@@ -38,6 +38,42 @@ const CUSTOMER_DETAIL_SELECT = `
   sms_deactivation_reason
 `
 
+type CustomerTableBooking = {
+  id: string
+  booking_reference: string | null
+  booking_date: string | null
+  booking_time: string | null
+  start_datetime: string | null
+  party_size: number | null
+  booking_type: string | null
+  booking_purpose: string | null
+  status: string | null
+}
+
+function formatCustomerTableBookingDateTime(booking: CustomerTableBooking): string {
+  if (booking.start_datetime) {
+    try {
+      return new Intl.DateTimeFormat('en-GB', {
+        timeZone: 'Europe/London',
+        weekday: 'short',
+        day: 'numeric',
+        month: 'short',
+        hour: 'numeric',
+        minute: '2-digit',
+        hour12: true
+      }).format(new Date(booking.start_datetime))
+    } catch {
+      // Fall through to date/time display.
+    }
+  }
+
+  if (booking.booking_date || booking.booking_time) {
+    return [booking.booking_date || 'Unknown date', booking.booking_time || 'Unknown time'].join(' ')
+  }
+
+  return 'Unknown time'
+}
+
 export default function CustomerViewPage() {
   const params = useParams<{ id: string }>()
   const customerId = params.id
@@ -53,6 +89,7 @@ export default function CustomerViewPage() {
   const [togglingSmsSetting, setTogglingSmsSetting] = useState(false)
   const [messages, setMessages] = useState<Message[]>([])
   const [messagesLoading, setMessagesLoading] = useState(false)
+  const [tableBookings, setTableBookings] = useState<CustomerTableBooking[]>([])
   const [smsStats, setSmsStats] = useState<{
     customer: {
       sms_opt_in: boolean
@@ -111,6 +148,7 @@ export default function CustomerViewPage() {
     try {
       const [
         { data: customerData, error: customerError },
+        { data: customerTableBookings, error: tableBookingsError },
         smsStatsResult,
         customerLabelsResult,
         customerAssignmentsResult,
@@ -120,6 +158,14 @@ export default function CustomerViewPage() {
           .select(CUSTOMER_DETAIL_SELECT)
           .eq('id', customerId)
           .single(),
+        (supabase.from('table_bookings') as any)
+          .select(
+            'id, booking_reference, booking_date, booking_time, start_datetime, party_size, booking_type, booking_purpose, status'
+          )
+          .eq('customer_id', customerId)
+          .order('start_datetime', { ascending: false, nullsFirst: false })
+          .order('booking_date', { ascending: false })
+          .order('booking_time', { ascending: false }),
         getCustomerSmsStats(customerId),
         getCustomerLabels(),
         getCustomerLabelAssignments(customerId),
@@ -132,6 +178,26 @@ export default function CustomerViewPage() {
         throw new Error('Customer not found')
       }
       setCustomer(customerData)
+
+      if (tableBookingsError) {
+        console.error('Failed to load customer table bookings:', tableBookingsError)
+        setTableBookings([])
+      } else {
+        const rows = Array.isArray(customerTableBookings) ? customerTableBookings : []
+        setTableBookings(
+          rows.map((row: any) => ({
+            id: row.id,
+            booking_reference: row.booking_reference || null,
+            booking_date: row.booking_date || null,
+            booking_time: row.booking_time || null,
+            start_datetime: row.start_datetime || null,
+            party_size: row.party_size ?? null,
+            booking_type: row.booking_type || null,
+            booking_purpose: row.booking_purpose || null,
+            status: row.status || null
+          }))
+        )
+      }
 
       if ('error' in smsStatsResult) {
         console.error('Failed to load SMS stats:', smsStatsResult.error)
@@ -336,6 +402,48 @@ export default function CustomerViewPage() {
                 />
               </Card>
             )}
+
+            <Card
+              header={
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <CardTitle>Table Bookings</CardTitle>
+                    <CardDescription>All table bookings for this customer.</CardDescription>
+                  </div>
+                  <span className="rounded-md bg-gray-100 px-2 py-1 text-xs text-gray-600">
+                    {tableBookings.length}
+                  </span>
+                </div>
+              }
+            >
+              {tableBookings.length === 0 ? (
+                <p className="text-sm text-gray-600">No table bookings found.</p>
+              ) : (
+                <div className="space-y-2">
+                  {tableBookings.map((booking) => (
+                    <div
+                      key={booking.id}
+                      className="rounded-md border border-gray-200 bg-gray-50 px-3 py-2"
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="text-sm font-medium text-gray-900">
+                          {booking.booking_reference || booking.id.slice(0, 8)}
+                        </p>
+                        <span className="rounded-md border border-gray-300 bg-white px-2 py-0.5 text-xs text-gray-700">
+                          {booking.status || 'unknown'}
+                        </span>
+                      </div>
+                      <p className="mt-1 text-xs text-gray-600">
+                        {formatCustomerTableBookingDateTime(booking)} · {booking.party_size || 1} people
+                      </p>
+                      <p className="mt-0.5 text-xs text-gray-500">
+                        {booking.booking_type || 'regular'} · {booking.booking_purpose || 'food'}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </Card>
 
             <Card
               header={

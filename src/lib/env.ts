@@ -14,6 +14,8 @@ const envSchema = z.object({
   TWILIO_AUTH_TOKEN: z.string().optional(),
   TWILIO_PHONE_NUMBER: z.string().optional(),
   TWILIO_MESSAGING_SERVICE_SID: z.string().optional(),
+  STRIPE_SECRET_KEY: z.string().optional(),
+  STRIPE_WEBHOOK_SECRET: z.string().optional(),
   SUSPEND_EVENT_SMS: z.string().optional(),
   SUSPEND_ALL_SMS: z.string().optional(),
   CRON_SECRET: z.string().min(1, 'CRON_SECRET is required').optional(),

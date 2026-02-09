@@ -4,7 +4,9 @@ import { formatPhoneForStorage } from '@/lib/utils';
 import { toLocalIsoDate } from '@/lib/dateUtils';
 import { SmsQueueService } from '@/services/sms-queue';
 import { syncCalendarEvent, deleteCalendarEvent, isCalendarConfigured } from '@/lib/google-calendar';
+import { recordAnalyticsEvent } from '@/lib/analytics/events';
 import { logAuditEvent } from '@/app/actions/audit'; // Audit logging will be in action, but helper types needed
+import { ensureCustomerForPhone } from '@/lib/sms/customers';
 import type {
   BookingStatus,
   BookingItemFormData,
@@ -222,23 +224,23 @@ export class PrivateBookingService {
         ? input.contact_email.trim().toLowerCase()
         : null;
 
-    // Customer Data for finding/creating
-    let customerData = null;
-    if (!input.customer_id && input.customer_first_name && normalizedContactPhone) {
-      customerData = {
-        first_name: input.customer_first_name,
-        last_name: input.customer_last_name?.trim() || '',
-        mobile_number: normalizedContactPhone,
-        email: normalizedContactEmail,
-        sms_opt_in: true
-      };
+    // Always resolve customer through the shared lookup-first helper.
+    // This keeps phone matching behavior consistent across all booking flows.
+    let resolvedCustomerId = input.customer_id ?? null;
+    if (!resolvedCustomerId && normalizedContactPhone) {
+      const ensured = await ensureCustomerForPhone(createAdminClient(), normalizedContactPhone, {
+        firstName: input.customer_first_name,
+        lastName: input.customer_last_name?.trim() || undefined,
+        email: normalizedContactEmail
+      });
+      resolvedCustomerId = ensured.customerId;
     }
 
     const bookingPayload = {
       ...input,
       contact_phone: normalizedContactPhone,
       contact_email: normalizedContactEmail,
-      customer_id: input.customer_id,
+      customer_id: resolvedCustomerId,
       event_date: finalEventDate,
       start_time: finalStartTime,
       internal_notes: internalNotes,
@@ -255,7 +257,7 @@ export class PrivateBookingService {
     const { data: booking, error } = await supabase.rpc('create_private_booking_transaction', {
       p_booking_data: bookingPayload,
       p_items: input.items || [],
-      p_customer_data: customerData
+      p_customer_data: null
     });
 
     if (error) {
@@ -472,7 +474,7 @@ export class PrivateBookingService {
         day: 'numeric', month: 'long'
       });
 
-      const smsMessage = `Hi ${updatedBooking.customer_first_name}, we've moved your tentative booking to ${eventDateReadable}. We've updated the hold on this date, so your deposit is now due by ${expiryReadable}.`;
+      const smsMessage = `The Anchor: Hi ${updatedBooking.customer_first_name}, we've moved your tentative booking to ${eventDateReadable}. We've updated the hold on this date, so your deposit is now due by ${expiryReadable}.`;
 
       await SmsQueueService.queueAndSend({
         booking_id: updatedBooking.id,
@@ -519,7 +521,7 @@ export class PrivateBookingService {
       const firstName =
         updatedBooking.customer_first_name || updatedBooking.customer_name?.split(' ')[0] || 'there';
 
-      const messageBody = `Hi ${firstName}, confirming setup for your event on ${eventDateReadable}. Your vendors/team can access the venue from ${setupTimeReadable}.`;
+      const messageBody = `The Anchor: Hi ${firstName}, confirming setup for your event on ${eventDateReadable}. Your vendors/team can access the venue from ${setupTimeReadable}.`;
 
       await SmsQueueService.queueAndSend({
         booking_id: updatedBooking.id,
@@ -553,9 +555,26 @@ export class PrivateBookingService {
       const firstName =
         updatedBooking.customer_first_name || updatedBooking.customer_name?.split(' ')[0] || 'there';
 
+      if (updatedBooking.status === 'confirmed' && updatedBooking.customer_id) {
+        try {
+          const adminClient = createAdminClient();
+          await recordAnalyticsEvent(adminClient, {
+            customerId: updatedBooking.customer_id,
+            privateBookingId: updatedBooking.id,
+            eventType: 'private_booking_confirmed',
+            metadata: {
+              via: 'private_booking_status_change',
+              event_type: updatedBooking.event_type ?? null
+            }
+          });
+        } catch (analyticsError) {
+          console.error('Failed to record private booking confirmation analytics:', analyticsError);
+        }
+      }
+
       if (updatedBooking.status === 'confirmed' && !updatedBooking.deposit_paid_date) {
         const eventType = updatedBooking.event_type || 'event';
-        const messageBody = `Hi ${firstName}, your private event booking at The Anchor on ${eventDateReadable} has been confirmed! We look forward to hosting your ${eventType}.`;
+        const messageBody = `The Anchor: Hi ${firstName}, your private event booking at The Anchor on ${eventDateReadable} has been confirmed. We look forward to hosting your ${eventType}.`;
 
         await SmsQueueService.queueAndSend({
           booking_id: updatedBooking.id,
@@ -578,7 +597,7 @@ export class PrivateBookingService {
       }
 
       if (updatedBooking.status === 'cancelled') {
-        const messageBody = `Hi ${firstName}, your private booking on ${eventDateReadable} has been cancelled.`;
+        const messageBody = `The Anchor: Hi ${firstName}, your private booking on ${eventDateReadable} has been cancelled.`;
 
         await SmsQueueService.queueAndSend({
           booking_id: updatedBooking.id,
@@ -610,7 +629,7 @@ export class PrivateBookingService {
           .in('status', ['pending', 'approved', 'sent']);
 
         if ((count ?? 0) === 0) {
-          const messageBody = `Hi ${firstName}, thank you for choosing The Anchor for your event! We hope you and your guests had a wonderful time. We'd love to welcome you back again soon.`;
+          const messageBody = `The Anchor: Hi ${firstName}, thank you for choosing The Anchor for your event. We hope you and your guests had a wonderful time. We'd love to welcome you back again soon.`;
 
           await SmsQueueService.queueAndSend({
             booking_id: updatedBooking.id,
@@ -769,7 +788,7 @@ export class PrivateBookingService {
       });
 
       const firstName = booking.customer_first_name || booking.customer_name?.split(' ')[0] || 'there';
-      const smsMessage = `Hi ${firstName}, your private booking on ${eventDate} has been cancelled. Reply to this message if you need any help or call 01753 682 707 if you believe this was a mistake.`;
+      const smsMessage = `The Anchor: Hi ${firstName}, your private booking on ${eventDate} has been cancelled. Reply to this message if you need help or call 01753 682 707 if you believe this was a mistake.`;
 
       await SmsQueueService.queueAndSend({
         booking_id: id,
@@ -840,7 +859,7 @@ export class PrivateBookingService {
         day: 'numeric', month: 'long', year: 'numeric'
       });
 
-      const smsMessage = `Hi ${booking.customer_first_name}, the hold on ${eventDate} has now expired and the date has been released. Please contact us if you'd like to re-book.`;
+      const smsMessage = `The Anchor: Hi ${booking.customer_first_name}, the hold on ${eventDate} has now expired and the date has been released. Please contact us if you'd like to re-book.`;
 
       await SmsQueueService.queueAndSend({
         booking_id: id,
@@ -929,13 +948,30 @@ export class PrivateBookingService {
 
     if (error) throw new Error('Failed to record deposit');
 
+    if (booking.customer_id) {
+      try {
+        const adminClient = createAdminClient();
+        await recordAnalyticsEvent(adminClient, {
+          customerId: booking.customer_id,
+          privateBookingId: bookingId,
+          eventType: 'private_booking_confirmed',
+          metadata: {
+            via: 'private_booking_deposit',
+            payment_method: method
+          }
+        });
+      } catch (analyticsError) {
+        console.error('Failed to record private booking confirmation analytics from deposit:', analyticsError);
+      }
+    }
+
     // SMS
     if (booking.contact_phone || booking.customer_id) {
       const eventDate = new Date(booking.event_date).toLocaleDateString('en-GB', {
         day: 'numeric', month: 'long', year: 'numeric'
       });
 
-      const smsMessage = `Hi ${booking.customer_first_name}, deposit received! Your booking for ${eventDate} is now fully confirmed. We'll be in touch closer to the time for final details.`;
+      const smsMessage = `The Anchor: Hi ${booking.customer_first_name}, deposit received. Your booking for ${eventDate} is now fully confirmed. We'll be in touch closer to the time for final details.`;
 
       await SmsQueueService.queueAndSend({
         booking_id: bookingId,
@@ -1009,7 +1045,7 @@ export class PrivateBookingService {
         day: 'numeric', month: 'long', year: 'numeric'
       });
 
-      const smsMessage = `Hi ${booking.customer_first_name}, thank you for your final payment. Your private booking on ${eventDate} is fully paid. Reply to this message with any questions.`;
+      const smsMessage = `The Anchor: Hi ${booking.customer_first_name}, thank you for your final payment. Your private booking on ${eventDate} is fully paid.`;
 
       await SmsQueueService.queueAndSend({
         booking_id: bookingId,
@@ -1639,12 +1675,12 @@ export class PrivateBookingService {
 
     if (depositAmount > 0) {
       if (isShortNotice) {
-        smsMessage = `Hi ${booking.customer_first_name}, thanks for your enquiry for ${eventDateReadable} at The Anchor. As this is a short-notice private booking, we need to secure the deposit of £${formattedDeposit} as soon as possible to confirm the date. Reply to this message to arrange payment.`;
+        smsMessage = `The Anchor: Hi ${booking.customer_first_name}, thanks for your enquiry for ${eventDateReadable} at The Anchor. As this is a short-notice private booking, we need to secure the deposit of £${formattedDeposit} as soon as possible to confirm the date. Please reply to arrange payment.`;
       } else {
-        smsMessage = `Hi ${booking.customer_first_name}, thanks for your enquiry for ${eventDateReadable} at The Anchor. We are holding this date for you until ${expiryReadable}. To secure it permanently, a deposit of £${formattedDeposit} is required by this date. Reply to this message with any questions.`;
+        smsMessage = `The Anchor: Hi ${booking.customer_first_name}, thanks for your enquiry for ${eventDateReadable} at The Anchor. We are holding this date for you until ${expiryReadable}. To secure it permanently, a deposit of £${formattedDeposit} is required by this date.`;
       }
     } else {
-      smsMessage = `Hi ${booking.customer_first_name}, thanks for your enquiry about private hire at The Anchor on ${eventDateReadable}. We normally require a deposit to secure the date, but we've waived it for you. Reply to this message with any questions.`;
+      smsMessage = `The Anchor: Hi ${booking.customer_first_name}, thanks for your enquiry about private hire at The Anchor on ${eventDateReadable}. We normally require a deposit to secure the date, but we've waived it for you.`;
     }
 
     await SmsQueueService.queueAndSend({

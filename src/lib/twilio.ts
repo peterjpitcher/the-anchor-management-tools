@@ -5,6 +5,7 @@ import { TWILIO_STATUS_CALLBACK, TWILIO_STATUS_CALLBACK_METHOD, env } from './en
 import { ensureCustomerForPhone } from '@/lib/sms/customers';
 import { recordOutboundSmsMessage } from '@/lib/sms/logging';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { evaluateSmsQuietHours } from '@/lib/sms/quiet-hours';
 
 const accountSid = env.TWILIO_ACCOUNT_SID;
 const authToken = env.TWILIO_AUTH_TOKEN;
@@ -29,6 +30,7 @@ export type SendSMSOptions = {
   customerId?: string;
   metadata?: Record<string, unknown>;
   createCustomerIfMissing?: boolean; // Default true
+  skipQuietHours?: boolean;
   customerFallback?: {
     firstName?: string;
     lastName?: string;
@@ -36,8 +38,146 @@ export type SendSMSOptions = {
   };
 };
 
-export const sendSMS = async (to: string, body: string, options: SendSMSOptions = {}) => {
+const TWILIO_SCHEDULE_MIN_DELAY_MS = 15 * 60 * 1000;
+
+async function resolveCustomerIdIfNeeded(
+  to: string,
+  options: SendSMSOptions
+): Promise<string | undefined> {
+  if (options.customerId) {
+    return options.customerId;
+  }
+
+  if (options.createCustomerIfMissing === false) {
+    return undefined;
+  }
+
+  const supabase = createAdminClient();
+  const { customerId: resolvedId } = await ensureCustomerForPhone(
+    supabase,
+    to,
+    options.customerFallback
+  );
+
+  return resolvedId ?? undefined;
+}
+
+async function isCustomerSmsSendAllowed(customerId: string): Promise<boolean> {
   try {
+    const supabase = createAdminClient();
+    const { data: customer, error } = await supabase
+      .from('customers')
+      .select('sms_status')
+      .eq('id', customerId)
+      .maybeSingle();
+
+    if (error || !customer) {
+      return true;
+    }
+
+    return customer.sms_status === null || customer.sms_status === 'active';
+  } catch {
+    return true;
+  }
+}
+
+function canUseTwilioScheduling(delayMs: number): boolean {
+  return Boolean(messagingServiceSid) && delayMs >= TWILIO_SCHEDULE_MIN_DELAY_MS;
+}
+
+export const sendSMS = async (to: string, body: string, options: SendSMSOptions = {}) => {
+  const resolvedCustomerId = await resolveCustomerIdIfNeeded(to, options);
+  if (resolvedCustomerId) {
+    const allowed = await isCustomerSmsSendAllowed(resolvedCustomerId);
+    if (!allowed) {
+      return {
+        success: false,
+        error: 'This number is not eligible to receive SMS messages'
+      };
+    }
+  }
+
+  if (!options.skipQuietHours) {
+    const quietHoursState = evaluateSmsQuietHours();
+
+    if (quietHoursState.inQuietHours) {
+      const scheduledFor = quietHoursState.nextAllowedSendAt;
+      const delayMs = Math.max(1000, scheduledFor.getTime() - Date.now());
+
+      if (!canUseTwilioScheduling(delayMs)) {
+        try {
+          const customerId = resolvedCustomerId;
+
+          if (!customerId) {
+            logger.error('Failed to defer SMS during quiet hours due to missing customer context', {
+              metadata: { to, scheduledFor: scheduledFor.toISOString() }
+            });
+            return {
+              success: false,
+              error: 'Failed to schedule message for delivery'
+            };
+          }
+
+          const { jobQueue } = await import('@/lib/unified-job-queue');
+          const enqueueResult = await jobQueue.enqueue('send_sms', {
+            to,
+            message: body,
+            customerId,
+            metadata: options.metadata
+          }, {
+            delay: delayMs
+          });
+
+          if (!enqueueResult.success) {
+            logger.error('Failed to defer SMS job during quiet hours', {
+              metadata: { to, scheduledFor: scheduledFor.toISOString(), error: enqueueResult.error }
+            });
+            return {
+              success: false,
+              error: 'Failed to schedule message for delivery'
+            };
+          }
+
+          logger.info('Deferred SMS to respect quiet hours', {
+            metadata: {
+              to,
+              scheduledFor: scheduledFor.toISOString(),
+              timezone: quietHoursState.timezone,
+              jobId: enqueueResult.jobId
+            }
+          });
+
+          return {
+            success: true,
+            sid: null,
+            fromNumber: null,
+            status: 'scheduled',
+            messageId: null,
+            customerId,
+            scheduledFor: scheduledFor.toISOString(),
+            deferred: true,
+            deferredBy: 'job_queue'
+          };
+        } catch (deferError: unknown) {
+          logger.error('Unexpected error deferring SMS during quiet hours', {
+            error: deferError instanceof Error ? deferError : new Error(String(deferError)),
+            metadata: { to, scheduledFor: scheduledFor.toISOString() }
+          });
+          return {
+            success: false,
+            error: 'Failed to schedule message for delivery'
+          };
+        }
+      }
+    }
+  }
+
+  try {
+    const quietHoursState = options.skipQuietHours ? null : evaluateSmsQuietHours();
+    const shouldScheduleWithTwilio = Boolean(
+      quietHoursState?.inQuietHours && canUseTwilioScheduling(quietHoursState.nextAllowedSendAt.getTime() - Date.now())
+    );
+
     // Build message parameters
     const messageParams: any = {
       body,
@@ -51,6 +191,11 @@ export const sendSMS = async (to: string, body: string, options: SendSMSOptions 
       messageParams.messagingServiceSid = messagingServiceSid;
     } else {
       messageParams.from = fromNumber;
+    }
+
+    if (shouldScheduleWithTwilio && quietHoursState) {
+      messageParams.scheduleType = 'fixed';
+      messageParams.sendAt = quietHoursState.nextAllowedSendAt.toISOString();
     }
 
     // Send SMS with retry logic
@@ -82,22 +227,29 @@ export const sendSMS = async (to: string, body: string, options: SendSMSOptions 
 
     // AUTOMATIC LOGGING
     let messageId: string | null = null;
-    let usedCustomerId: string | undefined = options.customerId;
+    let usedCustomerId: string | undefined = resolvedCustomerId ?? options.customerId;
 
     try {
       const supabase = createAdminClient();
 
       // If no customerId, try to resolve/create
-      if (!usedCustomerId) {
+      if (!usedCustomerId && options.createCustomerIfMissing !== false) {
         const { customerId: resolvedId } = await ensureCustomerForPhone(
-          supabase, 
-          to, 
+          supabase,
+          to,
           options.customerFallback
         );
         usedCustomerId = resolvedId ?? undefined;
       }
 
       if (usedCustomerId) {
+          const metadata = shouldScheduleWithTwilio
+            ? {
+                ...(options.metadata ?? {}),
+                quiet_hours_deferred: true,
+                scheduled_for: quietHoursState?.nextAllowedSendAt.toISOString() ?? null
+              }
+            : options.metadata;
           messageId = await recordOutboundSmsMessage({
           supabase,
           customerId: usedCustomerId,
@@ -107,7 +259,7 @@ export const sendSMS = async (to: string, body: string, options: SendSMSOptions 
           fromNumber: message.from ?? fromNumber ?? null,
           status: message.status ?? 'queued',
           twilioStatus: message.status ?? 'queued',
-          metadata: options.metadata,
+          metadata,
           segments,
           // Approximate cost if not provided by API immediately (usually it isn't)
           costUsd: segments * 0.04 
@@ -131,7 +283,10 @@ export const sendSMS = async (to: string, body: string, options: SendSMSOptions 
       fromNumber: message.from ?? null, 
       status: message.status ?? 'queued',
       messageId,
-      customerId: usedCustomerId
+      customerId: usedCustomerId,
+      scheduledFor: shouldScheduleWithTwilio ? quietHoursState?.nextAllowedSendAt.toISOString() : undefined,
+      deferred: shouldScheduleWithTwilio,
+      deferredBy: shouldScheduleWithTwilio ? 'twilio' : undefined
     };
   } catch (error: any) {
     logger.error('Failed to send SMS after retries', {

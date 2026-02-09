@@ -73,6 +73,11 @@ export interface ParkingBooking {
   payment_overdue_notified?: boolean | null;
   start_notification_sent?: boolean | null;
   end_notification_sent?: boolean | null;
+  initial_request_sms_sent?: boolean | null;
+  unpaid_week_before_sms_sent?: boolean | null;
+  unpaid_day_before_sms_sent?: boolean | null;
+  paid_start_three_day_sms_sent?: boolean | null;
+  paid_end_three_day_sms_sent?: boolean | null;
   created_at: string;
   updated_at: string;
 }

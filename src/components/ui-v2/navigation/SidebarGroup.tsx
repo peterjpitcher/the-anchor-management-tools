@@ -21,16 +21,16 @@ export function SidebarGroup({
   }
 
   return (
-    <div className={cn(showDivider && 'pt-2 pb-1', className)}>
+    <div className={cn(showDivider && 'pt-0.5', className)}>
       {showDivider && (
-        <hr className="border-t border-green-600 opacity-75 mb-2 mx-2" />
+        <hr className="mx-1.5 mb-0.5 border-t border-green-600 opacity-75" />
       )}
       {title && (
-        <h3 className="px-3 text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">
+        <h3 className="mb-0.5 px-1.5 text-xs font-semibold uppercase tracking-wider text-gray-400">
           {title}
         </h3>
       )}
-      <div className="space-y-1">
+      <div className="space-y-0">
         {children}
       </div>
     </div>

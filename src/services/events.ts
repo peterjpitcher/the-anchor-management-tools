@@ -8,6 +8,8 @@ export type CreateEventInput = {
   date: string;
   time: string;
   capacity?: number | null;
+  booking_mode?: 'table' | 'general' | 'mixed' | null;
+  event_type?: string | null;
   category_id?: string | null;
   short_description?: string | null;
   long_description?: string | null;
@@ -48,17 +50,84 @@ const eventFaqSchema = z.object({
   }, z.number().int().min(0).optional())
 })
 
+const PUBLISHED_EVENT_STATUSES = new Set([
+  'scheduled',
+  'cancelled',
+  'postponed',
+  'rescheduled',
+  'sold_out'
+])
+
+type PublishValidationInput = {
+  status?: string | null
+  name?: string | null
+  date?: string | null
+  time?: string | null
+  slug?: string | null
+  short_description?: string | null
+  hero_image_url?: string | null
+  thumbnail_image_url?: string | null
+  poster_image_url?: string | null
+  is_free?: boolean | null
+  price?: number | null
+}
+
+function hasValue(value: unknown): boolean {
+  return typeof value === 'string' ? value.trim().length > 0 : value !== null && value !== undefined
+}
+
+function isPublishedStatus(status: string | null | undefined): boolean {
+  if (!status) return false
+  return PUBLISHED_EVENT_STATUSES.has(status)
+}
+
+function normalizeSlugValue(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9-]/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-+|-+$/g, '')
+}
+
+export function getPublishValidationIssues(input: PublishValidationInput): string[] {
+  if (!isPublishedStatus(input.status || null)) {
+    return []
+  }
+
+  const missing: string[] = []
+
+  if (!hasValue(input.name)) missing.push('event name')
+  if (!hasValue(input.date)) missing.push('event date')
+  if (!hasValue(input.time)) missing.push('event start time')
+  if (!hasValue(input.slug)) missing.push('URL slug')
+  if (!hasValue(input.short_description)) missing.push('short description')
+
+  const hasImage =
+    hasValue(input.hero_image_url) ||
+    hasValue(input.thumbnail_image_url) ||
+    hasValue(input.poster_image_url)
+
+  if (!hasImage) {
+    missing.push('event image')
+  }
+
+  const isFree = input.is_free === true
+  const price = typeof input.price === 'number' && Number.isFinite(input.price) ? input.price : null
+
+  if (!isFree && (price === null || price <= 0)) {
+    missing.push('ticket price (or mark event as free)')
+  }
+
+  return missing
+}
+
 // Helper function to generate a URL-friendly slug
 function generateSlug(name: string, date: string): string {
-  const nameSlug = name
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .substring(0, 100);
+  const nameSlug = normalizeSlugValue(name).substring(0, 100)
 
-  const dateStr = toLocalIsoDate(new Date(date));
+  const dateStr = toLocalIsoDate(new Date(date))
 
-  return `${nameSlug}-${dateStr}`;
+  return normalizeSlugValue(`${nameSlug}-${dateStr}`)
 }
 
 // Helper function to format time to HH:MM
@@ -133,6 +202,11 @@ export const eventSchema = z.object({
     return `${parts[0].padStart(2, '0')}:${parts[1].padStart(2, '0')}`
   }),
   event_status: z.enum(['scheduled', 'cancelled', 'postponed', 'rescheduled', 'sold_out', 'draft']).default('scheduled'),
+  booking_mode: z.enum(['table', 'general', 'mixed']).default('table'),
+  event_type: z.string().trim().max(120).nullable().optional().transform((val) => {
+    if (!val) return null
+    return val.length > 0 ? val : null
+  }),
   performer_name: z.string().max(255).nullable().optional(),
   performer_type: z.string().max(50).nullable().optional(),
   price: z.preprocess(
@@ -219,9 +293,31 @@ export class EventService {
     const supabase = await createClient();
 
     // Determine slug: use provided or generate
-    const slug = input.slug && input.slug.trim() !== ''
-      ? input.slug.trim().toLowerCase().replace(/[^a-z0-9-]/g, '-')
-      : generateSlug(input.name, input.date);
+    const rawSlug =
+      input.slug && input.slug.trim() !== ''
+        ? input.slug.trim()
+        : generateSlug(input.name, input.date)
+    const slug = normalizeSlugValue(rawSlug)
+
+    const publishIssues = getPublishValidationIssues({
+      status: input.event_status,
+      name: input.name,
+      date: input.date,
+      time: input.time,
+      slug,
+      short_description: input.short_description,
+      hero_image_url: input.hero_image_url,
+      thumbnail_image_url: input.thumbnail_image_url,
+      poster_image_url: input.poster_image_url,
+      is_free: input.is_free,
+      price: input.price
+    })
+
+    if (publishIssues.length > 0) {
+      throw new Error(
+        `Published events require: ${publishIssues.join(', ')}. Save as Draft until complete.`
+      )
+    }
 
     // Check for duplicate slug
     const { data: existingSlug } = await supabase
@@ -269,34 +365,75 @@ export class EventService {
   static async updateEvent(id: string, input: UpdateEventInput) {
     const supabase = await createClient();
 
-    // 2. Slug Handling (only if name or date changes or slug is explicitly provided)
-    let slug = input.slug;
-    if (!slug && (input.name || input.date)) {
-      // If slug not provided but name/date changed, we might want to regenerate OR keep existing.
-      // The original logic was: "If no slug provided (or cleared), generate from name/date"
-      // But for updates, usually we keep the slug unless explicitly changed.
-      // Let's check if slug was passed as empty string (cleared)
-      if (input.slug === '') {
-        // Regenerate
-        // Need current name/date if not provided
-        let name = input.name;
-        let date = input.date;
+    const { data: currentEvent, error: currentEventError } = await supabase
+      .from('events')
+      .select(`
+        id,
+        name,
+        date,
+        time,
+        slug,
+        event_status,
+        short_description,
+        hero_image_url,
+        thumbnail_image_url,
+        poster_image_url,
+        is_free,
+        price
+      `)
+      .eq('id', id)
+      .maybeSingle()
 
-        if (!name || !date) {
-          const { data: current } = await supabase.from('events').select('name, date').eq('id', id).single();
-          if (current) {
-            name = name || current.name;
-            date = date || current.date;
-          }
-        }
-        if (name && date) {
-          slug = generateSlug(name, date);
-        }
+    if (currentEventError || !currentEvent) {
+      throw new Error('Event not found')
+    }
+
+    const nextStatus = input.event_status ?? currentEvent.event_status
+    const nextName = input.name ?? currentEvent.name
+    const nextDate = input.date ?? currentEvent.date
+    const nextTime = input.time ?? currentEvent.time
+    const nextShortDescription = input.short_description ?? currentEvent.short_description
+    const nextHeroImage = input.hero_image_url ?? currentEvent.hero_image_url
+    const nextThumbnailImage = input.thumbnail_image_url ?? currentEvent.thumbnail_image_url
+    const nextPosterImage = input.poster_image_url ?? currentEvent.poster_image_url
+    const nextIsFree = input.is_free ?? currentEvent.is_free
+    const nextPrice = input.price ?? currentEvent.price
+
+    let slug: string | undefined
+
+    if (typeof input.slug === 'string') {
+      const normalizedInputSlug = normalizeSlugValue(input.slug)
+      slug = normalizedInputSlug.length > 0 ? normalizedInputSlug : undefined
+    } else {
+      const currentSlug = typeof currentEvent.slug === 'string' ? normalizeSlugValue(currentEvent.slug) : ''
+      if (currentSlug.length > 0) {
+        slug = currentSlug
+      } else if (isPublishedStatus(nextStatus) && nextName && nextDate) {
+        slug = generateSlug(nextName, nextDate)
       }
     }
 
+    const publishIssues = getPublishValidationIssues({
+      status: nextStatus,
+      name: nextName,
+      date: nextDate,
+      time: nextTime,
+      slug: slug || null,
+      short_description: nextShortDescription,
+      hero_image_url: nextHeroImage,
+      thumbnail_image_url: nextThumbnailImage,
+      poster_image_url: nextPosterImage,
+      is_free: nextIsFree,
+      price: typeof nextPrice === 'number' ? nextPrice : Number(nextPrice || 0)
+    })
+
+    if (publishIssues.length > 0) {
+      throw new Error(
+        `Published events require: ${publishIssues.join(', ')}. Save as Draft until complete.`
+      )
+    }
+
     if (slug) {
-      slug = slug.trim().toLowerCase().replace(/[^a-z0-9-]/g, '-');
       // Check for duplicate slug (excluding current event)
       const { data: existing } = await supabase
         .from('events')

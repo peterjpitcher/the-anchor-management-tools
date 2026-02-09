@@ -4,6 +4,7 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { checkUserPermission } from '@/app/actions/rbac'
 import { logAuditEvent } from './audit'
+import { isGraphConfigured, sendInvoiceEmail } from '@/lib/microsoft-graph'
 import { z } from 'zod'
 import { revalidatePath, revalidateTag } from 'next/cache'
 import type {
@@ -16,6 +17,278 @@ import type {
 import { InvoiceService, CreateInvoiceSchema } from '@/services/invoices'
 
 type CreateInvoiceResult = { error: string } | { success: true; invoice: Invoice }
+type InvoiceEmailRecipients = { to: string | null; cc: string[] }
+type RemittanceAdviceResult = { sent: boolean; skippedReason?: string; error?: string }
+
+function parseRecipientList(raw: string | null | undefined): string[] {
+  if (!raw) return []
+  return String(raw)
+    .split(/[;,]/)
+    .map((s) => s.trim())
+    .filter(Boolean)
+}
+
+function formatDateForEmail(dateIso: string | null | undefined): string {
+  if (!dateIso) return 'N/A'
+  const date = new Date(dateIso)
+  if (Number.isNaN(date.getTime())) return 'N/A'
+  return date.toLocaleDateString('en-GB')
+}
+
+function formatCurrencyForEmail(amount: number | null | undefined): string {
+  const safe = Number.isFinite(Number(amount)) ? Number(amount) : 0
+  return `£${safe.toFixed(2)}`
+}
+
+function formatPaymentMethodForEmail(method: string | null | undefined): string | null {
+  if (!method) return null
+  return String(method)
+    .split('_')
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ')
+}
+
+function getForcedRemittanceTestRecipient(): string | null {
+  const candidate = process.env.INVOICE_REMITTANCE_TEST_RECIPIENT?.trim()
+  if (!candidate || !candidate.includes('@')) return null
+  return candidate
+}
+
+async function resolveInvoiceRecipientsForVendor(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  vendorId: string,
+  vendorEmailRaw: string | null | undefined
+): Promise<InvoiceEmailRecipients | { error: string }> {
+  const recipientsFromVendor = parseRecipientList(vendorEmailRaw)
+
+  const { data: contacts, error } = await supabase
+    .from('invoice_vendor_contacts')
+    .select('email, is_primary, receive_invoice_copy')
+    .eq('vendor_id', vendorId)
+    .order('is_primary', { ascending: false })
+    .order('created_at', { ascending: true })
+
+  if (error) {
+    return { error: error.message || 'Failed to resolve invoice recipients' }
+  }
+
+  const contactEmails = (contacts || [])
+    .map((contact: any) => ({
+      email: typeof contact?.email === 'string' ? contact.email.trim() : '',
+      isPrimary: !!contact?.is_primary,
+      cc: !!contact?.receive_invoice_copy,
+    }))
+    .filter((contact) => contact.email && contact.email.includes('@'))
+
+  const primaryEmail = contactEmails.find((contact) => contact.isPrimary)?.email || null
+  const firstVendorEmail = recipientsFromVendor[0] || null
+  const to = primaryEmail || firstVendorEmail || contactEmails[0]?.email || null
+
+  const ccRaw = [
+    ...recipientsFromVendor.slice(firstVendorEmail ? 1 : 0),
+    ...contactEmails.filter((contact) => contact.cc).map((contact) => contact.email),
+  ]
+
+  const seen = new Set<string>()
+  const toLower = to ? to.toLowerCase() : null
+  const cc = ccRaw
+    .map((email) => email.trim())
+    .filter((email) => email && email.includes('@') && email.toLowerCase() !== toLower)
+    .filter((email) => {
+      const key = email.toLowerCase()
+      if (seen.has(key)) return false
+      seen.add(key)
+      return true
+    })
+
+  return { to, cc }
+}
+
+async function sendRemittanceAdviceForPaidInvoice(
+  invoiceId: string,
+  sentByUserId?: string | null
+): Promise<RemittanceAdviceResult> {
+  if (!isGraphConfigured()) {
+    return { sent: false, skippedReason: 'email_not_configured' }
+  }
+
+  let invoice: InvoiceWithDetails
+  try {
+    invoice = await InvoiceService.getInvoiceById(invoiceId)
+  } catch (error: any) {
+    const message = error?.message || 'Failed to load invoice for remittance advice'
+    console.error('[Invoices] Remittance advice aborted:', message)
+    return { sent: false, skippedReason: 'invoice_lookup_failed', error: message }
+  }
+
+  if (invoice.status !== 'paid') {
+    return { sent: false, skippedReason: 'invoice_not_paid' }
+  }
+
+  const supabase = await createClient()
+  const forcedRecipient = getForcedRemittanceTestRecipient()
+  let toAddress: string | null = null
+  let ccAddresses: string[] = []
+  let resolvedRecipients: InvoiceEmailRecipients | null = null
+
+  if (forcedRecipient) {
+    toAddress = forcedRecipient
+    ccAddresses = []
+  } else {
+    const recipientResult = await resolveInvoiceRecipientsForVendor(
+      supabase,
+      invoice.vendor_id,
+      invoice.vendor?.email || null
+    )
+
+    if ('error' in recipientResult) {
+      console.error('[Invoices] Failed to resolve remittance recipients:', recipientResult.error)
+      return { sent: false, skippedReason: 'recipient_lookup_failed', error: recipientResult.error }
+    }
+
+    if (!recipientResult.to) {
+      return { sent: false, skippedReason: 'no_recipient' }
+    }
+
+    resolvedRecipients = recipientResult
+    toAddress = recipientResult.to
+    ccAddresses = recipientResult.cc
+  }
+
+  const latestPayment = (invoice.payments || [])
+    .slice()
+    .sort((a, b) => {
+      const aDate = new Date(a.payment_date || a.created_at || 0).getTime()
+      const bDate = new Date(b.payment_date || b.created_at || 0).getTime()
+      return bDate - aDate
+    })[0]
+
+  const paymentAmount = latestPayment?.amount ?? invoice.paid_amount
+  const paymentDate = formatDateForEmail(latestPayment?.payment_date || null)
+  const paymentMethod = formatPaymentMethodForEmail(latestPayment?.payment_method || null)
+  const outstandingBalance = Math.max(0, invoice.total_amount - invoice.paid_amount)
+  const recipientName = invoice.vendor?.contact_name || invoice.vendor?.name || 'there'
+
+  const subject = `Remittance Advice: Invoice ${invoice.invoice_number} (Paid)`
+  const body = `Hi ${recipientName},
+
+I hope you're doing well!
+
+This is a remittance advice confirming payment has been received for invoice ${invoice.invoice_number}.
+
+Invoice Total: ${formatCurrencyForEmail(invoice.total_amount)}
+Payment Received: ${formatCurrencyForEmail(paymentAmount)}
+Total Paid: ${formatCurrencyForEmail(invoice.paid_amount)}
+Outstanding Balance: ${formatCurrencyForEmail(outstandingBalance)}
+Payment Date: ${paymentDate}
+${paymentMethod ? `Payment Method: ${paymentMethod}` : ''}
+${latestPayment?.reference ? `Reference: ${latestPayment.reference}` : ''}
+
+If you have any questions, just let me know.
+
+Many thanks,
+Peter Pitcher
+Orange Jelly Limited
+07995087315`
+
+  const emailResult = await sendInvoiceEmail(
+    invoice,
+    toAddress,
+    subject,
+    body,
+    ccAddresses,
+    undefined,
+    {
+      documentKind: 'remittance_advice',
+      remittance: {
+        paymentDate: latestPayment?.payment_date || null,
+        paymentAmount: paymentAmount,
+        paymentMethod: latestPayment?.payment_method || null,
+        paymentReference: latestPayment?.reference || null,
+      },
+    }
+  )
+
+  const recipients = [toAddress, ...ccAddresses]
+
+  if (emailResult.success) {
+    const { error: logError } = await supabase.from('invoice_email_logs').insert(
+      recipients.map((address) => ({
+        invoice_id: invoiceId,
+        sent_to: address,
+        sent_by: sentByUserId || null,
+        subject,
+        body,
+        status: 'sent',
+      }))
+    )
+
+    if (logError) {
+      console.error('[Invoices] Failed to write remittance email logs:', logError)
+    }
+
+    await logAuditEvent({
+      operation_type: 'send',
+      resource_type: 'invoice',
+      resource_id: invoiceId,
+      operation_status: 'success',
+      additional_info: {
+        action: 'remittance_advice_sent',
+        invoice_number: invoice.invoice_number,
+        recipient: toAddress,
+        cc: ccAddresses,
+        remittance_test_override: forcedRecipient
+          ? {
+              forced_to: forcedRecipient,
+              original_to: resolvedRecipients?.to || null,
+              original_cc: resolvedRecipients?.cc || [],
+            }
+          : null,
+      },
+    })
+
+    return { sent: true }
+  }
+
+  const errorMessage = emailResult.error || 'Failed to send remittance advice'
+  const { error: failedLogError } = await supabase.from('invoice_email_logs').insert({
+    invoice_id: invoiceId,
+    sent_to: toAddress,
+    sent_by: sentByUserId || null,
+    subject,
+    body,
+    status: 'failed',
+    error_message: errorMessage,
+  })
+
+  if (failedLogError) {
+    console.error('[Invoices] Failed to write remittance failure log:', failedLogError)
+  }
+
+  await logAuditEvent({
+    operation_type: 'send',
+    resource_type: 'invoice',
+    resource_id: invoiceId,
+    operation_status: 'failure',
+    error_message: errorMessage,
+    additional_info: {
+      action: 'remittance_advice_send_failed',
+      invoice_number: invoice.invoice_number,
+      recipient: toAddress,
+      cc: ccAddresses,
+      remittance_test_override: forcedRecipient
+        ? {
+            forced_to: forcedRecipient,
+            original_to: resolvedRecipients?.to || null,
+            original_cc: resolvedRecipients?.cc || [],
+          }
+        : null,
+    },
+  })
+
+  return { sent: false, skippedReason: 'email_send_failed', error: errorMessage }
+}
 
 export async function getInvoices(
   status?: InvoiceStatus | 'unpaid',
@@ -122,6 +395,7 @@ export async function createInvoice(formData: FormData): Promise<CreateInvoiceRe
 
 export async function updateInvoiceStatus(formData: FormData) {
   try {
+    const supabase = await createClient()
     const hasPermission = await checkUserPermission('invoices', 'edit')
     if (!hasPermission) {
       return { error: 'You do not have permission to update invoices' }
@@ -167,6 +441,7 @@ export async function updateInvoiceStatus(formData: FormData) {
     }
 
     const { updatedInvoice, oldStatus } = await InvoiceService.updateInvoiceStatus(invoiceId, newStatus)
+    const { data: { user } } = await supabase.auth.getUser()
 
     await logAuditEvent({
       operation_type: 'update',
@@ -178,12 +453,17 @@ export async function updateInvoiceStatus(formData: FormData) {
       additional_info: { invoice_number: updatedInvoice.invoice_number }
     })
 
+    let remittanceAdvice: RemittanceAdviceResult | null = null
+    if (newStatus === 'paid' && oldStatus !== 'paid') {
+      remittanceAdvice = await sendRemittanceAdviceForPaidInvoice(invoiceId, user?.id || null)
+    }
+
     revalidatePath('/invoices')
     revalidatePath(`/invoices/${invoiceId}`)
     revalidateTag('dashboard')
     revalidatePath('/dashboard')
     
-    return { success: true }
+    return { success: true, remittanceAdvice }
   } catch (error: any) {
     console.error('Error in updateInvoiceStatus:', error)
     return { error: error.message || 'An unexpected error occurred' }
@@ -359,6 +639,7 @@ export async function deleteCatalogItem(formData: FormData) {
 
 export async function recordPayment(formData: FormData) {
   try {
+    const supabase = await createClient()
     const hasPermission = await checkUserPermission('invoices', 'edit')
     if (!hasPermission) {
       return { error: 'You do not have permission to record payments' }
@@ -383,6 +664,7 @@ export async function recordPayment(formData: FormData) {
       reference: reference || undefined,
       notes: notes || undefined
     });
+    const { data: { user } } = await supabase.auth.getUser()
 
     await logAuditEvent({
       operation_type: 'create',
@@ -396,10 +678,12 @@ export async function recordPayment(formData: FormData) {
       }
     })
 
+    const remittanceAdvice = await sendRemittanceAdviceForPaidInvoice(invoiceId, user?.id || null)
+
     revalidatePath('/invoices')
     revalidatePath(`/invoices/${invoiceId}`)
     
-    return { payment, success: true }
+    return { payment, success: true, remittanceAdvice }
   } catch (error: any) {
     console.error('Error in recordPayment:', error)
     return { error: error.message || 'An unexpected error occurred' }

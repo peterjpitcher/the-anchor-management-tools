@@ -17,37 +17,116 @@ export function formatBytes(bytes: number, decimals = 2): string {
   return `${parseFloat((bytes / Math.pow(k, i)).toFixed(dm))} ${sizes[i]}`;
 }
 
-export function generatePhoneVariants(phone: string): string[] {
-  const variants = [phone];
+const DEFAULT_COUNTRY_CODE = '44';
+const E164_MIN_DIGITS = 8;
+const E164_MAX_DIGITS = 15;
 
-  // Clean the phone number - remove all non-digits except leading +
-  const cleaned = phone.replace(/[^\d+]/g, '').replace(/\+/g, (match, offset) => offset === 0 ? match : '');
-  const digitsOnly = cleaned.replace(/^\+/, '');
+function sanitizePhoneInput(phone: string): string {
+  const trimmed = phone.trim();
+  if (!trimmed) return '';
 
-  // UK number handling
-  if (cleaned.startsWith('+44') && digitsOnly.length >= 12) {
-    const ukNumber = digitsOnly.substring(2); // Remove 44 from the digits
-    variants.push('+44' + ukNumber);
-    variants.push('44' + ukNumber);
-    variants.push('0' + ukNumber);
-  } else if (digitsOnly.startsWith('44') && digitsOnly.length >= 12) {
-    const ukNumber = digitsOnly.substring(2); // Remove 44
-    variants.push('+44' + ukNumber);
-    variants.push('44' + ukNumber);
-    variants.push('0' + ukNumber);
-  } else if (digitsOnly.startsWith('0') && digitsOnly.length === 11) {
-    const ukNumber = digitsOnly.substring(1); // Remove 0
-    variants.push('+44' + ukNumber);
-    variants.push('44' + ukNumber);
-    variants.push('0' + ukNumber);
+  let normalized = trimmed.replace(/[^\d+]/g, '');
+  normalized = normalized.replace(/(?!^)\+/g, '');
+
+  if (normalized.startsWith('00')) {
+    normalized = `+${normalized.slice(2)}`;
   }
 
-  // Also add the cleaned version if different from original
-  if (cleaned !== phone) {
-    variants.push(cleaned);
+  return normalized;
+}
+
+function sanitizeCountryCode(defaultCountryCode?: string): string {
+  const digitsOnly = (defaultCountryCode ?? DEFAULT_COUNTRY_CODE).replace(/\D/g, '');
+  return digitsOnly || DEFAULT_COUNTRY_CODE;
+}
+
+function assertE164Digits(digits: string): void {
+  if (!/^\d+$/.test(digits)) {
+    throw new Error('Invalid phone number format');
   }
 
-  return [...new Set(variants)];
+  if (digits.startsWith('0')) {
+    throw new Error('Invalid phone number format');
+  }
+
+  if (digits.length < E164_MIN_DIGITS || digits.length > E164_MAX_DIGITS) {
+    throw new Error('Invalid phone number format');
+  }
+}
+
+export function formatPhoneForStorage(
+  phone: string,
+  options: { defaultCountryCode?: string } = {}
+): string {
+  const cleaned = sanitizePhoneInput(phone);
+  if (!cleaned) {
+    throw new Error('Invalid phone number format');
+  }
+
+  const defaultCountryCode = sanitizeCountryCode(options.defaultCountryCode);
+  let digits = '';
+
+  if (cleaned.startsWith('+')) {
+    digits = cleaned.slice(1);
+  } else {
+    const localDigits = cleaned.replace(/\D/g, '');
+    if (!localDigits) {
+      throw new Error('Invalid phone number format');
+    }
+
+    if (localDigits.startsWith(defaultCountryCode)) {
+      digits = localDigits;
+    } else if (localDigits.startsWith('0')) {
+      digits = `${defaultCountryCode}${localDigits.replace(/^0+/, '')}`;
+    } else {
+      digits = `${defaultCountryCode}${localDigits}`;
+    }
+  }
+
+  assertE164Digits(digits);
+  return `+${digits}`;
+}
+
+export function generatePhoneVariants(
+  phone: string,
+  options: { defaultCountryCode?: string } = {}
+): string[] {
+  const variants = new Set<string>();
+  const raw = phone.trim();
+  const cleaned = sanitizePhoneInput(phone);
+
+  if (raw) {
+    variants.add(raw);
+  }
+
+  if (cleaned) {
+    variants.add(cleaned);
+    const cleanedDigits = cleaned.replace(/^\+/, '');
+    if (cleanedDigits) {
+      variants.add(cleanedDigits);
+      variants.add(`+${cleanedDigits}`);
+      variants.add(`00${cleanedDigits}`);
+    }
+  }
+
+  try {
+    const canonical = formatPhoneForStorage(phone, options);
+    variants.add(canonical);
+
+    const canonicalDigits = canonical.slice(1);
+    variants.add(canonicalDigits);
+    variants.add(`00${canonicalDigits}`);
+
+    if (canonical.startsWith('+44')) {
+      const ukNational = canonical.slice(3);
+      variants.add(`44${ukNational}`);
+      variants.add(`0${ukNational}`);
+    }
+  } catch {
+    // Keep whatever variants we can infer from raw input when normalization fails.
+  }
+
+  return [...variants];
 }
 
 export function generateSlug(text: string): string {
@@ -56,25 +135,6 @@ export function generateSlug(text: string): string {
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '')
     .replace(/-+/g, '-')
-}
-
-export function formatPhoneForStorage(phone: string): string {
-  // Clean the phone number - remove all non-digits except leading +
-  const cleaned = phone.replace(/[^\d+]/g, '').replace(/\+/g, (match, offset) => offset === 0 ? match : '');
-  const digitsOnly = cleaned.replace(/^\+/, '');
-
-  // Convert UK numbers to E164 format
-  if (digitsOnly.startsWith('44') && digitsOnly.length >= 12) {
-    return '+' + digitsOnly;
-  } else if (digitsOnly.startsWith('0') && digitsOnly.length === 11) {
-    // UK number starting with 0
-    return '+44' + digitsOnly.substring(1);
-  } else if (cleaned.startsWith('+')) {
-    return cleaned;
-  } else {
-    // Default to adding UK code if no country code
-    return '+44' + digitsOnly.replace(/^0/, '');
-  }
 }
 
 export function sanitizeMoneyString(value: unknown): string | null {

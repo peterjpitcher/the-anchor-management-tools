@@ -1,6 +1,10 @@
 // import type { PDFOptions } from 'puppeteer'
 import type { ChildProcess } from 'node:child_process'
-import { generateCompactInvoiceHTML } from './invoice-template-compact'
+import {
+  generateCompactInvoiceHTML,
+  type InvoiceDocumentKind,
+  type InvoiceRemittanceDetails
+} from './invoice-template-compact'
 import { generateCompactQuoteHTML } from './quote-template-compact'
 import type { InvoiceWithDetails, QuoteWithDetails } from '@/types/invoices'
 
@@ -29,6 +33,10 @@ type PdfGeneratorPage = {
 }
 
 type ExistingBrowserOptions = { browser?: PdfGeneratorBrowser }
+type InvoicePdfOptions = ExistingBrowserOptions & {
+  documentKind?: InvoiceDocumentKind
+  remittance?: InvoiceRemittanceDetails
+}
 
 const LOCAL_CHROMIUM_ARGS = [
   '--no-sandbox',
@@ -125,7 +133,7 @@ async function renderPdfFromHtml(
 // Generate PDF from invoice
 export async function generateInvoicePDF(
   invoice: InvoiceWithDetails,
-  options: ExistingBrowserOptions = {}
+  options: InvoicePdfOptions = {}
 ): Promise<Buffer> {
   let browser: PdfGeneratorBrowser | null = options.browser ?? null
   const shouldCloseBrowser = !browser
@@ -140,7 +148,9 @@ export async function generateInvoicePDF(
       invoice,
       logoUrl: process.env.NEXT_PUBLIC_APP_URL
         ? `${process.env.NEXT_PUBLIC_APP_URL}/logo-oj.jpg`
-        : undefined
+        : undefined,
+      documentKind: options.documentKind,
+      remittance: options.remittance,
     })
 
     // Generate PDF with A4 format

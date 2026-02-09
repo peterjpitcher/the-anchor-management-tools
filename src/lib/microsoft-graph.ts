@@ -2,6 +2,7 @@
 // import { ClientSecretCredential } from '@azure/identity'
 import type { InvoiceWithDetails, QuoteWithDetails } from '@/types/invoices'
 import { generateInvoicePDF, generateQuotePDF } from '@/lib/pdf-generator'
+import type { InvoiceDocumentKind, InvoiceRemittanceDetails } from '@/lib/invoice-template-compact'
 
 // Initialize Microsoft Graph client
 async function getGraphClient() {
@@ -48,6 +49,27 @@ function bufferToBase64(buffer: Buffer): string {
   return buffer.toString('base64')
 }
 
+function formatEmailDate(value: string | null | undefined): string {
+  if (!value) return 'N/A'
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return 'N/A'
+  return date.toLocaleDateString('en-GB')
+}
+
+function formatEmailPaymentMethod(value: string | null | undefined): string {
+  if (!value) return 'N/A'
+  return String(value)
+    .split('_')
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ')
+}
+
+type InvoiceEmailOptions = {
+  documentKind?: InvoiceDocumentKind
+  remittance?: InvoiceRemittanceDetails
+}
+
 // Send invoice email
 export async function sendInvoiceEmail(
   invoice: InvoiceWithDetails,
@@ -55,7 +77,8 @@ export async function sendInvoiceEmail(
   subject?: string,
   body?: string,
   ccRecipients?: string[],
-  additionalAttachments?: Array<{ name: string; contentType: string; buffer: Buffer }>
+  additionalAttachments?: Array<{ name: string; contentType: string; buffer: Buffer }>,
+  emailOptions?: InvoiceEmailOptions
 ): Promise<{ success: boolean; error?: string; messageId?: string }> {
   try {
     if (!isGraphConfigured()) {
@@ -72,11 +95,49 @@ export async function sendInvoiceEmail(
     const invoiceForPDF = invoice.status === 'draft'
       ? { ...invoice, status: 'sent' as const }
       : invoice
-    const pdfBuffer = await generateInvoicePDF(invoiceForPDF)
+    const documentKind = emailOptions?.documentKind ?? 'invoice'
+    const isRemittanceAdvice = documentKind === 'remittance_advice'
+    const remittanceData = emailOptions?.remittance
+    const pdfBuffer = await generateInvoicePDF(invoiceForPDF, {
+      documentKind,
+      remittance: remittanceData,
+    })
+
+    const recipientName = invoice.vendor?.contact_name || invoice.vendor?.name || 'there'
+    const outstandingBalance = Math.max(0, invoice.total_amount - invoice.paid_amount)
+    const remittancePaymentAmount = remittanceData?.paymentAmount ?? invoice.paid_amount
+    const remittancePaymentDate = formatEmailDate(remittanceData?.paymentDate)
+    const remittancePaymentMethod = formatEmailPaymentMethod(remittanceData?.paymentMethod)
+    const remittancePaymentReference = remittanceData?.paymentReference || 'N/A'
 
     // Default subject and body
-    const emailSubject = subject || `Invoice ${invoice.invoice_number} from Orange Jelly Limited`
-    const emailBody = body || `Hi ${invoice.vendor?.contact_name || invoice.vendor?.name || 'there'},
+    const emailSubject = subject || (isRemittanceAdvice
+      ? `Remittance Advice: Invoice ${invoice.invoice_number} (Paid)`
+      : `Invoice ${invoice.invoice_number} from Orange Jelly Limited`)
+    const emailBody = body || (isRemittanceAdvice
+      ? `Hi ${recipientName},
+
+I hope you're doing well!
+
+This is a remittance advice confirming payment has been received for invoice ${invoice.invoice_number}.
+
+Invoice Total: £${invoice.total_amount.toFixed(2)}
+Payment Received: £${remittancePaymentAmount.toFixed(2)}
+Total Paid: £${invoice.paid_amount.toFixed(2)}
+Outstanding Balance: £${outstandingBalance.toFixed(2)}
+Payment Date: ${remittancePaymentDate}
+Payment Method: ${remittancePaymentMethod}
+Reference: ${remittancePaymentReference}
+
+If you have any questions, just let me know.
+
+Many thanks,
+Peter Pitcher
+Orange Jelly Limited
+07995087315
+
+P.S. The remittance advice is attached as a PDF for your records.`
+      : `Hi ${recipientName},
 
 I hope you're doing well!
 
@@ -92,12 +153,14 @@ Peter Pitcher
 Orange Jelly Limited
 07995087315
 
-P.S. The invoice is attached as a PDF for easy viewing and printing.`
+P.S. The invoice is attached as a PDF for easy viewing and printing.`)
 
     const attachments: any[] = [
       {
         '@odata.type': '#microsoft.graph.fileAttachment',
-        name: `invoice-${invoice.invoice_number}.pdf`,
+        name: isRemittanceAdvice
+          ? `remittance-advice-${invoice.invoice_number}.pdf`
+          : `invoice-${invoice.invoice_number}.pdf`,
         contentType: 'application/pdf',
         contentBytes: bufferToBase64(pdfBuffer)
       }

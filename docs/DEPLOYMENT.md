@@ -127,16 +127,6 @@ GOOGLE_CALENDAR_ID=your_calendar_id@group.calendar.google.com
 GOOGLE_CALENDAR_INTERVIEW_ID=your_ops_calendar_id@group.calendar.google.com
 GOOGLE_SERVICE_ACCOUNT_KEY='{"type":"service_account",...}'
 
-# Rate Limiting (Upstash Redis)
-UPSTASH_REDIS_REST_URL=your_upstash_url
-UPSTASH_REDIS_REST_TOKEN=your_upstash_token
-
-# Error Tracking (Sentry)
-NEXT_PUBLIC_SENTRY_DSN=your_sentry_dsn
-SENTRY_ORG=your_sentry_org
-SENTRY_PROJECT=your_sentry_project
-SENTRY_AUTH_TOKEN=your_sentry_auth_token
-
 # Development/Testing
 SKIP_TWILIO_SIGNATURE_VALIDATION=true  # Staging only
 DEBUG=true  # Enable debug logging

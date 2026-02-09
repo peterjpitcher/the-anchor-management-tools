@@ -8,6 +8,7 @@ import { getInvoice } from './invoices'
 import { getQuote } from './quotes'
 import { z } from 'zod'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { parseRecipientList, resolveManualInvoiceRecipients } from '@/lib/invoice-recipients'
 
 // Email validation schema
 const SendInvoiceEmailSchema = z.object({
@@ -19,10 +20,32 @@ const SendInvoiceEmailSchema = z.object({
 
 const SendQuoteEmailSchema = z.object({
   quoteId: z.string().uuid('Invalid quote ID'),
-  recipientEmail: z.string().email('Invalid email address'),
+  recipientEmail: z.string().min(3, 'Recipient required'),
   subject: z.string().optional(),
   body: z.string().optional()
 })
+
+function splitRawRecipients(raw: string): string[] {
+  return raw
+    .split(/[;,]/)
+    .map((value) => value.trim())
+    .filter(Boolean)
+}
+
+function validateRecipientInput(raw: string): { recipients: string[] } | { error: string } {
+  const rawRecipients = splitRawRecipients(raw)
+  const recipients = parseRecipientList(raw)
+
+  if (rawRecipients.length === 0 || recipients.length === 0) {
+    return { error: 'At least one valid email address is required' }
+  }
+
+  if (rawRecipients.length !== recipients.length) {
+    return { error: 'One or more email addresses are invalid' }
+  }
+
+  return { recipients }
+}
 
 // Get email logs for an invoice
 export async function getInvoiceEmailLogs(invoiceId: string) {
@@ -88,32 +111,27 @@ export async function sendInvoiceViaEmail(formData: FormData) {
 
     const invoice = invoiceResult.invoice
 
-    // Support multiple recipients and prefer Primary contact in To
-    const raw = String(validatedData.recipientEmail)
-    const parts = raw.split(/[;,]/).map(s => s.trim()).filter(Boolean)
-    const emailValidator = z.string().email('Invalid email address')
-    const recipients = parts.length > 1 ? parts : [raw]
-    for (const addr of recipients) {
-      const parse = emailValidator.safeParse(addr)
-      if (!parse.success) {
-        return { error: `Invalid email address: ${addr}` }
-      }
+    const recipientValidation = validateRecipientInput(String(validatedData.recipientEmail))
+    if ('error' in recipientValidation) {
+      return { error: recipientValidation.error }
     }
 
-    // Determine To and CC using vendor Primary contact if present in list
-    let toAddress = recipients[0]
-    try {
-      const { data: primary } = await supabase
-        .from('invoice_vendor_contacts')
-        .select('email')
-        .eq('vendor_id', invoice.vendor_id)
-        .eq('is_primary', true)
-        .maybeSingle()
-      if (primary?.email && recipients.includes(primary.email)) {
-        toAddress = primary.email
-      }
-    } catch {}
-    const ccAddresses = recipients.filter(addr => addr !== toAddress)
+    const recipientResolution = await resolveManualInvoiceRecipients(
+      supabase as any,
+      invoice.vendor_id,
+      validatedData.recipientEmail
+    )
+
+    if ('error' in recipientResolution) {
+      return { error: recipientResolution.error }
+    }
+
+    if (!recipientResolution.to) {
+      return { error: 'At least one valid email address is required' }
+    }
+
+    const toAddress = recipientResolution.to
+    const ccAddresses = recipientResolution.cc
 
     const result = await sendInvoiceEmail(
       invoice,
@@ -171,7 +189,7 @@ export async function sendInvoiceViaEmail(formData: FormData) {
       operation_status: 'success',
       additional_info: { 
         action: 'email_sent',
-        recipient: recipients.join(', '),
+        recipient: recipientValidation.recipients.join(', '),
         invoice_number: invoice.invoice_number
       }
     })
@@ -250,31 +268,27 @@ Orange Jelly Limited
 
 P.S. I've attached a copy of the invoice for your reference.`
 
-    // Multi-recipient with Primary in To
-    const raw = String(validatedData.recipientEmail)
-    const parts = raw.split(/[;,]/).map(s => s.trim()).filter(Boolean)
-    const emailValidator = z.string().email('Invalid email address')
-    const recipients = parts.length > 1 ? parts : [raw]
-    for (const addr of recipients) {
-      const parse = emailValidator.safeParse(addr)
-      if (!parse.success) {
-        return { error: `Invalid email address: ${addr}` }
-      }
+    const recipientValidation = validateRecipientInput(String(validatedData.recipientEmail))
+    if ('error' in recipientValidation) {
+      return { error: recipientValidation.error }
     }
 
-    let toAddress = recipients[0]
-    try {
-      const { data: primary } = await supabase
-        .from('invoice_vendor_contacts')
-        .select('email')
-        .eq('vendor_id', invoice.vendor_id)
-        .eq('is_primary', true)
-        .maybeSingle()
-      if (primary?.email && recipients.includes(primary.email)) {
-        toAddress = primary.email
-      }
-    } catch {}
-    const ccAddresses = recipients.filter(addr => addr !== toAddress)
+    const recipientResolution = await resolveManualInvoiceRecipients(
+      supabase as any,
+      invoice.vendor_id,
+      validatedData.recipientEmail
+    )
+
+    if ('error' in recipientResolution) {
+      return { error: recipientResolution.error }
+    }
+
+    if (!recipientResolution.to) {
+      return { error: 'At least one valid email address is required' }
+    }
+
+    const toAddress = recipientResolution.to
+    const ccAddresses = recipientResolution.cc
 
     const result = await sendInvoiceEmail(
       invoice,
@@ -369,30 +383,27 @@ export async function sendQuoteViaEmail(formData: FormData) {
     const quote = quoteResult.quote
 
     // Support multiple recipients and prefer Primary in To
-    const raw = String(validatedData.recipientEmail)
-    const parts = raw.split(/[;,]/).map(s => s.trim()).filter(Boolean)
-    const emailValidator = z.string().email('Invalid email address')
-    const recipients = parts.length > 1 ? parts : [raw]
-    for (const addr of recipients) {
-      const parse = emailValidator.safeParse(addr)
-      if (!parse.success) {
-        return { error: `Invalid email address: ${addr}` }
-      }
+    const recipientValidation = validateRecipientInput(String(validatedData.recipientEmail))
+    if ('error' in recipientValidation) {
+      return { error: recipientValidation.error }
     }
 
-    let toAddress = recipients[0]
-    try {
-      const { data: primary } = await supabase
-        .from('invoice_vendor_contacts')
-        .select('email')
-        .eq('vendor_id', quote.vendor_id)
-        .eq('is_primary', true)
-        .maybeSingle()
-      if (primary?.email && recipients.includes(primary.email)) {
-        toAddress = primary.email
-      }
-    } catch {}
-    const ccAddresses = recipients.filter(addr => addr !== toAddress)
+    const recipientResolution = await resolveManualInvoiceRecipients(
+      supabase as any,
+      quote.vendor_id,
+      validatedData.recipientEmail
+    )
+
+    if ('error' in recipientResolution) {
+      return { error: recipientResolution.error }
+    }
+
+    if (!recipientResolution.to) {
+      return { error: 'At least one valid email address is required' }
+    }
+
+    const toAddress = recipientResolution.to
+    const ccAddresses = recipientResolution.cc
 
     const resultQ = await sendQuoteEmail(
       quote,
@@ -411,7 +422,7 @@ export async function sendQuoteViaEmail(formData: FormData) {
     const subjectQ = validatedData.subject || `Quote ${quote.quote_number} from Orange Jelly Limited`
     const bodyQ = validatedData.body || 'Default quote email template used'
     await supabase.from('invoice_email_logs').insert({
-      invoice_id: validatedData.quoteId, // NOTE: This column likely refers to a generic 'resource_id' or the schema is shared. If 'quote_id' exists it should be used, but based on existing code it seems shared or reused.
+      quote_id: validatedData.quoteId,
       sent_to: toAddress,
       sent_by: senderIdQ,
       subject: subjectQ,
@@ -420,7 +431,7 @@ export async function sendQuoteViaEmail(formData: FormData) {
     })
     for (const cc of ccAddresses) {
       await supabase.from('invoice_email_logs').insert({
-        invoice_id: validatedData.quoteId,
+        quote_id: validatedData.quoteId,
         sent_to: cc,
         sent_by: senderIdQ,
         subject: subjectQ,
@@ -451,7 +462,7 @@ export async function sendQuoteViaEmail(formData: FormData) {
       operation_status: 'success',
       additional_info: { 
         action: 'email_sent',
-        recipient: recipients.join(', '),
+        recipient: recipientValidation.recipients.join(', '),
         quote_number: quote.quote_number
       }
     })

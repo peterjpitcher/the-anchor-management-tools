@@ -2,13 +2,25 @@ import { InvoiceWithDetails } from '@/types/invoices'
 import { formatDateFull } from '@/lib/dateUtils'
 import { COMPANY_DETAILS } from '@/lib/company-details'
 
+export type InvoiceDocumentKind = 'invoice' | 'remittance_advice'
+
+export interface InvoiceRemittanceDetails {
+  paymentDate?: string | null
+  paymentAmount?: number | null
+  paymentMethod?: string | null
+  paymentReference?: string | null
+}
+
 export interface InvoiceTemplateData {
   invoice: InvoiceWithDetails
   logoUrl?: string
+  documentKind?: InvoiceDocumentKind
+  remittance?: InvoiceRemittanceDetails
 }
 
 export function generateCompactInvoiceHTML(data: InvoiceTemplateData): string {
-  const { invoice, logoUrl } = data
+  const { invoice, logoUrl, documentKind = 'invoice', remittance } = data
+  const isRemittanceAdvice = documentKind === 'remittance_advice'
 
   // Check if any line items have discounts or if there's an invoice discount
   const hasDiscounts = invoice.invoice_discount_percentage > 0 ||
@@ -22,6 +34,22 @@ export function generateCompactInvoiceHTML(data: InvoiceTemplateData): string {
       .replaceAll('>', '&gt;')
       .replaceAll('"', '&quot;')
       .replaceAll("'", '&#39;')
+  }
+
+  const formatAddressHtml = (value: string | null | undefined) => {
+    if (!value) return ''
+
+    const normalized = String(value).replace(/\r\n/g, '\n').trim()
+    if (!normalized) return ''
+
+    const parts = normalized.includes('\n')
+      ? normalized.split('\n')
+      : normalized.split(',')
+
+    return parts
+      .map((part) => escapeHtml(part.trim()))
+      .filter(Boolean)
+      .join('<br>')
   }
 
   const formatDate = (date: string | null) => {
@@ -38,6 +66,22 @@ export function generateCompactInvoiceHTML(data: InvoiceTemplateData): string {
       return '30 days'
     }
     return terms === 0 ? 'Due upon receipt' : `${terms} days`
+  }
+
+  const formatDateOrDash = (date: string | null | undefined) => {
+    if (!date) return '-'
+    const parsed = new Date(date)
+    if (Number.isNaN(parsed.getTime())) return '-'
+    return formatDateFull(date)
+  }
+
+  const formatPaymentMethod = (method: string | null | undefined) => {
+    if (!method) return '-'
+    return String(method)
+      .split('_')
+      .filter(Boolean)
+      .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+      .join(' ')
   }
 
   // Calculate line item totals
@@ -86,13 +130,49 @@ export function generateCompactInvoiceHTML(data: InvoiceTemplateData): string {
     }
   }
 
+  const latestPayment = (invoice.payments || [])
+    .slice()
+    .sort((a, b) => {
+      const aDate = new Date(a.payment_date || a.created_at || 0).getTime()
+      const bDate = new Date(b.payment_date || b.created_at || 0).getTime()
+      return bDate - aDate
+    })[0]
+
+  const remittancePaymentAmount = remittance?.paymentAmount ?? latestPayment?.amount ?? invoice.paid_amount
+  const remittancePaymentDate = remittance?.paymentDate ?? latestPayment?.payment_date ?? null
+  const remittancePaymentMethod = remittance?.paymentMethod ?? latestPayment?.payment_method ?? null
+  const remittancePaymentReference =
+    remittance?.paymentReference ?? latestPayment?.reference ?? invoice.reference ?? null
+  const outstandingBalance = Math.max(0, invoice.total_amount - invoice.paid_amount)
+
+  const documentTitle = isRemittanceAdvice ? 'Remittance Advice' : 'Invoice'
+  const documentHeader = isRemittanceAdvice ? 'REMITTANCE ADVICE' : 'INVOICE'
+  const documentNumberLabel = isRemittanceAdvice
+    ? `For Invoice #${invoice.invoice_number}`
+    : `#${invoice.invoice_number}`
+
+  const secondMetaLabel = isRemittanceAdvice ? 'Payment Date' : 'Due Date'
+  const secondMetaValue = isRemittanceAdvice
+    ? formatDateOrDash(remittancePaymentDate)
+    : formatDate(invoice.due_date)
+
+  const thirdMetaLabel = isRemittanceAdvice ? 'Payment Method' : 'Reference'
+  const thirdMetaValue = isRemittanceAdvice
+    ? formatPaymentMethod(remittancePaymentMethod)
+    : invoice.reference || '-'
+
+  const fourthMetaLabel = isRemittanceAdvice ? 'Payment Ref' : 'Terms'
+  const fourthMetaValue = isRemittanceAdvice
+    ? remittancePaymentReference || '-'
+    : formatPaymentTerms()
+
   return `
 <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Invoice ${invoice.invoice_number} - ${invoice.vendor?.name || 'Customer'}</title>
+  <title>${documentTitle} ${invoice.invoice_number} - ${invoice.vendor?.name || 'Customer'}</title>
   <style>
     @page {
       size: A4;
@@ -375,8 +455,8 @@ export function generateCompactInvoiceHTML(data: InvoiceTemplateData): string {
       </div>
     </div>
     <div class="invoice-header">
-      <h1>INVOICE</h1>
-      <div class="invoice-number">#${invoice.invoice_number}</div>
+      <h1>${documentHeader}</h1>
+      <div class="invoice-number">${escapeHtml(documentNumberLabel)}</div>
       <span class="status-badge" style="background-color: ${getStatusColor(invoice.status)}">
         ${formatStatus(invoice.status)}
       </span>
@@ -387,7 +467,7 @@ export function generateCompactInvoiceHTML(data: InvoiceTemplateData): string {
     <div class="address-block">
       <h3>From</h3>
       <p><strong>${COMPANY_DETAILS.name}</strong></p>
-      <p>${COMPANY_DETAILS.fullAddress.split(',').join('<br>')}</p>
+      <p>${formatAddressHtml(COMPANY_DETAILS.fullAddress)}</p>
       <p>${COMPANY_DETAILS.phone}</p>
       <p>${COMPANY_DETAILS.email}</p>
     </div>
@@ -395,7 +475,7 @@ export function generateCompactInvoiceHTML(data: InvoiceTemplateData): string {
       <h3>Bill To</h3>
       <p><strong>${invoice.vendor?.name || 'Customer'}</strong></p>
       ${invoice.vendor?.contact_name ? `<p>${invoice.vendor.contact_name}</p>` : ''}
-      ${invoice.vendor?.address ? `<p>${invoice.vendor.address.split(',').join('<br>')}</p>` : ''}
+      ${invoice.vendor?.address ? `<p>${formatAddressHtml(invoice.vendor.address)}</p>` : ''}
       ${invoice.vendor?.email ? `<p>${invoice.vendor.email}</p>` : ''}
       ${invoice.vendor?.phone ? `<p>${invoice.vendor.phone}</p>` : ''}
       ${invoice.vendor?.vat_number ? `<p>VAT: ${invoice.vendor.vat_number}</p>` : ''}
@@ -408,16 +488,16 @@ export function generateCompactInvoiceHTML(data: InvoiceTemplateData): string {
       <span class="meta-value">${formatDate(invoice.invoice_date)}</span>
     </div>
     <div class="meta-item">
-      <span class="meta-label">Due Date</span>
-      <span class="meta-value">${formatDate(invoice.due_date)}</span>
+      <span class="meta-label">${secondMetaLabel}</span>
+      <span class="meta-value">${escapeHtml(secondMetaValue)}</span>
     </div>
     <div class="meta-item">
-      <span class="meta-label">Reference</span>
-      <span class="meta-value">${invoice.reference || '-'}</span>
+      <span class="meta-label">${thirdMetaLabel}</span>
+      <span class="meta-value">${escapeHtml(thirdMetaValue)}</span>
     </div>
     <div class="meta-item">
-      <span class="meta-label">Terms</span>
-      <span class="meta-value">${formatPaymentTerms()}</span>
+      <span class="meta-label">${fourthMetaLabel}</span>
+      <span class="meta-value">${escapeHtml(fourthMetaValue)}</span>
     </div>
   </div>
 
@@ -465,35 +545,72 @@ export function generateCompactInvoiceHTML(data: InvoiceTemplateData): string {
         <span>VAT</span>
         <span>${formatCurrency(invoice.vat_amount)}</span>
       </div>
-      <div class="summary-row total">
-        <span>Total Due</span>
-        <span>${formatCurrency(invoice.total_amount)}</span>
-      </div>
+      ${isRemittanceAdvice ? `
+        <div class="summary-row">
+          <span>Invoice Total</span>
+          <span>${formatCurrency(invoice.total_amount)}</span>
+        </div>
+        <div class="summary-row">
+          <span>Total Paid</span>
+          <span>${formatCurrency(invoice.paid_amount)}</span>
+        </div>
+        <div class="summary-row total">
+          <span>Outstanding Balance</span>
+          <span>${formatCurrency(outstandingBalance)}</span>
+        </div>
+      ` : `
+        <div class="summary-row total">
+          <span>Total Due</span>
+          <span>${formatCurrency(invoice.total_amount)}</span>
+        </div>
+      `}
     </div>
   </div>
 
-  <div class="payment-section keep-together">
-    <h3>Payment Information</h3>
-    <div class="payment-grid">
-      <div class="payment-method">
-        <h4>Bank Transfer</h4>
-        <p><strong>Bank:</strong> ${COMPANY_DETAILS.bank.name}</p>
-        <p><strong>Account Name:</strong> ${COMPANY_DETAILS.bank.accountName}</p>
-        <p><strong>Sort Code:</strong> ${COMPANY_DETAILS.bank.sortCode}</p>
-        <p><strong>Account: </strong> ${COMPANY_DETAILS.bank.accountNumber}</p>
-        <p><strong>Reference:</strong> ${invoice.invoice_number}</p>
-      </div>
-      <div class="payment-method">
-        <h4>Other Methods</h4>
-        <p><strong>Card Payments:</strong> Subject to additional fees</p>
-        <p>For payment queries or to arrange card payment:</p>
-        <p>Contact: Peter Pitcher</p>
-        <p>Mobile: 07995087315</p>
-        <p>Office: ${COMPANY_DETAILS.phone}</p>
-        <p>Email: ${COMPANY_DETAILS.email}</p>
+  ${isRemittanceAdvice ? `
+    <div class="payment-section keep-together">
+      <h3>Remittance Details</h3>
+      <div class="payment-grid">
+        <div class="payment-method">
+          <h4>Payment Summary</h4>
+          <p><strong>Invoice Total:</strong> ${formatCurrency(invoice.total_amount)}</p>
+          <p><strong>Payment Received:</strong> ${formatCurrency(remittancePaymentAmount)}</p>
+          <p><strong>Total Paid:</strong> ${formatCurrency(invoice.paid_amount)}</p>
+          <p><strong>Outstanding Balance:</strong> ${formatCurrency(outstandingBalance)}</p>
+        </div>
+        <div class="payment-method">
+          <h4>Payment Reference</h4>
+          <p><strong>Invoice Number:</strong> ${escapeHtml(invoice.invoice_number)}</p>
+          <p><strong>Payment Date:</strong> ${escapeHtml(formatDateOrDash(remittancePaymentDate))}</p>
+          <p><strong>Method:</strong> ${escapeHtml(formatPaymentMethod(remittancePaymentMethod))}</p>
+          <p><strong>Reference:</strong> ${escapeHtml(remittancePaymentReference || '-')}</p>
+        </div>
       </div>
     </div>
-  </div>
+  ` : `
+    <div class="payment-section keep-together">
+      <h3>Payment Information</h3>
+      <div class="payment-grid">
+        <div class="payment-method">
+          <h4>Bank Transfer</h4>
+          <p><strong>Bank:</strong> ${COMPANY_DETAILS.bank.name}</p>
+          <p><strong>Account Name:</strong> ${COMPANY_DETAILS.bank.accountName}</p>
+          <p><strong>Sort Code:</strong> ${COMPANY_DETAILS.bank.sortCode}</p>
+          <p><strong>Account: </strong> ${COMPANY_DETAILS.bank.accountNumber}</p>
+          <p><strong>Reference:</strong> ${invoice.invoice_number}</p>
+        </div>
+        <div class="payment-method">
+          <h4>Other Methods</h4>
+          <p><strong>Card Payments:</strong> Subject to additional fees</p>
+          <p>For payment queries or to arrange card payment:</p>
+          <p>Contact: Peter Pitcher</p>
+          <p>Mobile: 07995087315</p>
+          <p>Office: ${COMPANY_DETAILS.phone}</p>
+          <p>Email: ${COMPANY_DETAILS.email}</p>
+        </div>
+      </div>
+    </div>
+  `}
 
   ${invoice.notes ? `
     <div class="notes-section keep-together">

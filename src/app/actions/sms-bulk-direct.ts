@@ -3,7 +3,7 @@
 
 'use server'
 
-import { jobQueue } from '@/lib/background-jobs'
+import { jobQueue } from '@/lib/unified-job-queue'
 import { logger } from '@/lib/logger'
 import { headers } from 'next/headers'
 import { rateLimiters } from '@/lib/rate-limit'
@@ -21,7 +21,7 @@ export async function sendBulkSMSDirect(customerIds: string[], message: string, 
     // Increased threshold from 50 to 100 for better performance
     // Queue for very large batches to avoid timeouts
     if (customerIds.length > 100) {
-      await jobQueue.enqueue('send_bulk_sms', {
+      const enqueueResult = await jobQueue.enqueue('send_bulk_sms', {
         customerIds,
         message,
         eventId,
@@ -29,6 +29,10 @@ export async function sendBulkSMSDirect(customerIds: string[], message: string, 
       }, {
         priority: 10 // High priority for bulk operations
       })
+
+      if (!enqueueResult.success) {
+        return { error: enqueueResult.error || 'Failed to queue SMS job' }
+      }
       
       logger.info('Bulk SMS job queued for large batch', { 
         metadata: { badge: customerIds.length } 

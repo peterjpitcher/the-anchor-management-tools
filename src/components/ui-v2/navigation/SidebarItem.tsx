@@ -26,7 +26,7 @@ export function SidebarItem({
   badge,
 }: SidebarItemProps) {
   const baseClasses = cn(
-    'group flex items-center justify-start text-left px-2 py-2 text-sm font-medium rounded-md w-full transition-colors duration-150',
+    'sidebar-item group flex w-full min-h-10 items-center justify-start rounded-md px-2 py-1 text-left text-sm font-medium transition-colors duration-150',
     active
       ? 'bg-green-700 text-white'
       : 'text-gray-100 hover:bg-green-700 hover:text-white',
@@ -42,7 +42,7 @@ export function SidebarItem({
   const content = (
     <>
       {Icon && <Icon className={iconClasses} aria-hidden="true" />}
-      <span className="flex-1">{children}</span>
+      <span className="flex-1 truncate whitespace-nowrap">{children}</span>
       {badge}
     </>
   );

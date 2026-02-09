@@ -70,6 +70,21 @@ export async function recordOutboundSmsMessage(params: RecordOutboundSmsParams):
 
   if (metadata !== null && metadata !== undefined) {
     insertPayload.metadata = metadata
+
+    // Mirror key booking/message identifiers to dedicated columns when available.
+    const metadataRecord = metadata as Record<string, unknown>
+    if (typeof metadataRecord.event_booking_id === 'string') {
+      insertPayload.event_booking_id = metadataRecord.event_booking_id
+    }
+    if (typeof metadataRecord.table_booking_id === 'string') {
+      insertPayload.table_booking_id = metadataRecord.table_booking_id
+    }
+    if (typeof metadataRecord.private_booking_id === 'string') {
+      insertPayload.private_booking_id = metadataRecord.private_booking_id
+    }
+    if (typeof metadataRecord.template_key === 'string') {
+      insertPayload.template_key = metadataRecord.template_key
+    }
   }
 
   try {

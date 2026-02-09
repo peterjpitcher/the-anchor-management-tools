@@ -1,5 +1,5 @@
 import { createAdminClient } from '@/lib/supabase/admin'
-import { getTodayIsoDate, getLocalIsoDateDaysAhead } from '@/lib/dateUtils'
+import { getTodayIsoDate, getLocalIsoDateDaysAhead, getLocalIsoDateDaysAgo } from '@/lib/dateUtils'
 import { buildEventChecklist, EVENT_CHECKLIST_TOTAL_TASKS, ChecklistTodoItem, EventChecklistItem } from '@/lib/event-checklist'
 import type { BookingStatus } from '@/types/private-bookings'
 
@@ -55,6 +55,7 @@ export type PrivateBookingCalendarOverview = {
 }
 
 const COMMAND_CENTER_LOOKAHEAD_DAYS = 90
+const COMMAND_CENTER_LOOKBACK_DAYS = 180
 
 type EventCategoryRow = {
     id: string
@@ -85,13 +86,10 @@ export async function getEventsCommandCenterData(): Promise<EventsOverviewResult
     const todayIso = getTodayIsoDate()
     const windowEndIso = getLocalIsoDateDaysAhead(30)
     const commandCenterEndIso = getLocalIsoDateDaysAhead(COMMAND_CENTER_LOOKAHEAD_DAYS)
+    const commandCenterStartIso = getLocalIsoDateDaysAgo(COMMAND_CENTER_LOOKBACK_DAYS)
 
     // 1. Parallel Fetching
     const [eventsResult, checklistResult] = await Promise.all([
-        // Fetch Events (Upcoming + sliver of past for context if needed, but primarily >= today)
-        // "Range: date >= today" per plan. But let's fetch a bit of past if needed for "recent" lists, 
-        // though the plan emphasizes "Approaching" and "Future".
-        // Let's stick to >= today for the main KPIs.
         supabase
             .from('events')
             .select(`
@@ -105,22 +103,15 @@ export async function getEventsCommandCenterData(): Promise<EventsOverviewResult
         event_status,
         category:event_categories(id, name, color)
       `)
-            .gte('date', todayIso)
+            .gte('date', commandCenterStartIso)
             .lte('date', commandCenterEndIso)
             .order('date', { ascending: true })
             .order('time', { ascending: true }),
 
-        // Fetch Checklist Statuses for UPCOMING events (we'll filter IDs after getting events? 
-        // Or just fetch all statuses for events in range? 
-        // Better to fetch events first then statuses, but for parallelism we can fetch all statuses for events >= today?
-        // Checklists table might be large. 
-        // Let's optimize: Fetch events first, then statuses?
-        // Plan suggests parallel. Let's fetch statuses for events >= today. 
-        // But we can't filter statuses by event date directly without a join.
         supabase
             .from('event_checklist_statuses')
             .select('event_id, task_key, completed_at, event:events!inner(date)')
-            .gte('event.date', todayIso)
+            .gte('event.date', commandCenterStartIso)
             .lte('event.date', commandCenterEndIso)
     ])
 
@@ -235,18 +226,20 @@ export async function getEventsCommandCenterData(): Promise<EventsOverviewResult
         }
     })
 
-    const totalOverdueTasks = mappedEvents.reduce((sum, e) => sum + e.checklist.overdueCount, 0)
-    const totalDueTodayTasks = mappedEvents.reduce((sum, e) => sum + e.checklist.dueTodayCount, 0)
-    const draftEvents = mappedEvents.filter((e) => e.eventStatus === 'draft').length
+    const upcomingEvents = mappedEvents.filter((event) => event.date >= todayIso)
+    const pastEvents = mappedEvents.filter((event) => event.date < todayIso)
+    const totalOverdueTasks = upcomingEvents.reduce((sum, event) => sum + event.checklist.overdueCount, 0)
+    const totalDueTodayTasks = upcomingEvents.reduce((sum, event) => sum + event.checklist.dueTodayCount, 0)
+    const draftEvents = upcomingEvents.filter((event) => event.eventStatus === 'draft').length
 
     // Todos (for sidebar)
     const todos: ChecklistTodoItem[] = []
-    mappedEvents.forEach(e => {
-        e.checklist.outstanding.forEach(item => {
+    upcomingEvents.forEach(event => {
+        event.checklist.outstanding.forEach(item => {
             todos.push({
                 ...item,
-                eventName: e.name,
-                eventDate: e.date
+                eventName: event.name,
+                eventDate: event.date
             })
         })
     })
@@ -261,8 +254,8 @@ export async function getEventsCommandCenterData(): Promise<EventsOverviewResult
             dueTodayTasks: totalDueTodayTasks,
             draftEvents,
         },
-        upcoming: mappedEvents.filter(e => e.date >= todayIso), // Ensure purely upcoming
-        past: [], // Not implemented yet
+        upcoming: upcomingEvents,
+        past: pastEvents,
         todos,
         privateBookingsForCalendar: [],
         error: undefined

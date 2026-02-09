@@ -189,20 +189,18 @@ All API endpoints require authentication except:
 
 **Critical Implementation Required**:
 ```typescript
-// Recommended implementation using Upstash
-import { Ratelimit } from '@upstash/ratelimit';
-import { Redis } from '@upstash/redis';
+import { checkRateLimit, rateLimitConfigs } from '@/lib/rate-limiter';
 
-const ratelimit = new Ratelimit({
-  redis: Redis.fromEnv(),
-  limiter: Ratelimit.slidingWindow(100, '15 m'), // 100 requests per 15 minutes
-});
+const result = await checkRateLimit(clientIp, rateLimitConfigs.publicApi);
+if (!result.allowed) {
+  return new Response('Too many requests', { status: 429 });
+}
 
 // Special limits for sensitive endpoints
-const smsRateLimit = new Ratelimit({
-  redis: Redis.fromEnv(),
-  limiter: Ratelimit.slidingWindow(10, '1 h'), // 10 SMS per hour
-});
+const smsResult = await checkRateLimit(clientIp, rateLimitConfigs.sendSms);
+if (!smsResult.allowed) {
+  return new Response('Rate limit exceeded', { status: 429 });
+}
 ```
 
 ### Webhook Security

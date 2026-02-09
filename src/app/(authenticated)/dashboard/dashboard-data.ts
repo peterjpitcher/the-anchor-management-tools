@@ -4,7 +4,7 @@ import { unstable_cache } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { PrivateBookingService } from '@/services/private-bookings'
-import { getTodayIsoDate } from '@/lib/dateUtils'
+import { getLocalIsoDateDaysAgo, getTodayIsoDate } from '@/lib/dateUtils'
 import { startOfWeek, subWeeks, format, addDays, differenceInCalendarDays } from 'date-fns'
 
 type EventSummary = {
@@ -18,6 +18,7 @@ type EventsSnapshot = {
   permitted: boolean
   today: EventSummary[]
   upcoming: EventSummary[]
+  past: EventSummary[]
   totalUpcoming: number
   nextUpcoming?: EventSummary
   error?: string
@@ -242,6 +243,7 @@ const fetchDashboardSnapshot = unstable_cache(
     }
 
     const todayIso = getTodayIsoDate()
+    const eventsLookbackIso = getLocalIsoDateDaysAgo(90)
     const nowIso = new Date().toISOString()
     const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
     const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
@@ -270,6 +272,7 @@ const fetchDashboardSnapshot = unstable_cache(
       permitted: hasModuleAccess(permissionsMap, 'events'),
       today: [],
       upcoming: [],
+      past: [],
       totalUpcoming: 0,
     }
 
@@ -469,33 +472,63 @@ const fetchDashboardSnapshot = unstable_cache(
 
       events.permitted ? (async () => {
         try {
-          const { data, error, count } = await supabase
-            .from('events')
-            .select(`
-              id,
-              name,
-              date,
-              time
-            `, { count: 'exact' })
-            .gte('date', todayIso)
-            .order('date', { ascending: true })
-            .order('time', { ascending: true })
-            .range(0, 24)
+          const [upcomingResult, pastResult] = await Promise.all([
+            supabase
+              .from('events')
+              .select(
+                `
+                  id,
+                  name,
+                  date,
+                  time
+                `,
+                { count: 'exact' }
+              )
+              .gte('date', todayIso)
+              .order('date', { ascending: true })
+              .order('time', { ascending: true })
+              .range(0, 24),
+            supabase
+              .from('events')
+              .select(
+                `
+                  id,
+                  name,
+                  date,
+                  time
+                `
+              )
+              .gte('date', eventsLookbackIso)
+              .lt('date', todayIso)
+              .order('date', { ascending: false })
+              .order('time', { ascending: false })
+              .range(0, 24),
+          ])
 
-          if (error) throw error
+          if (upcomingResult.error) throw upcomingResult.error
+          if (pastResult.error) throw pastResult.error
 
-          const processed = (data ?? []).map((event) => {
+          const toSummary = (event: {
+            id: string
+            name: string | null
+            date: string | null
+            time: string | null
+          }): EventSummary => {
             return {
               id: event.id as string,
               name: (event.name as string) ?? 'Untitled event',
               date: (event.date as string) ?? null,
               time: (event.time as string) ?? null,
             }
-          })
+          }
 
-          events.today = processed.filter((event) => event.date === todayIso)
-          events.upcoming = processed.filter((event) => event.date !== todayIso)
-          events.totalUpcoming = typeof count === 'number' ? count : events.upcoming.length
+          const upcoming = (upcomingResult.data ?? []).map(toSummary)
+          const pastDescending = (pastResult.data ?? []).map(toSummary)
+
+          events.today = upcoming.filter((event) => event.date === todayIso)
+          events.upcoming = upcoming.filter((event) => event.date !== todayIso)
+          events.past = [...pastDescending].reverse()
+          events.totalUpcoming = typeof upcomingResult.count === 'number' ? upcomingResult.count : events.upcoming.length
           events.nextUpcoming = events.upcoming[0]
         } catch (error) {
           console.error('Failed to load dashboard events:', error)
