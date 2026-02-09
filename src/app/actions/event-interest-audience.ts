@@ -41,13 +41,16 @@ export type EventInterestManualRecipient = AudienceCustomer & {
 
 export type EventInterestReminderPickerCandidate = AudienceCustomer & {
   last_engaged_at: string | null
-  source: 'same_event_type' | 'other_events'
+  source: 'same_segment' | 'other_events'
   manually_added: boolean
 }
 
 export interface EventInterestAudienceData {
   event_id: string
   event_type: string | null
+  category_id: string | null
+  category_name: string | null
+  matching_basis: 'category' | 'event_type' | null
   behavior_candidates: EventInterestBehaviorCandidate[]
   reminder_picker_candidates: EventInterestReminderPickerCandidate[]
   manual_recipients: EventInterestManualRecipient[]
@@ -96,13 +99,15 @@ function resolveRelatedEvent(value: any): {
   date: string | null
   time: string | null
   event_type: string | null
+  category_id: string | null
 } {
   const eventRecord = Array.isArray(value) ? value[0] : value
   return {
     start_datetime: typeof eventRecord?.start_datetime === 'string' ? eventRecord.start_datetime : null,
     date: typeof eventRecord?.date === 'string' ? eventRecord.date : null,
     time: typeof eventRecord?.time === 'string' ? eventRecord.time : null,
-    event_type: typeof eventRecord?.event_type === 'string' ? eventRecord.event_type : null
+    event_type: typeof eventRecord?.event_type === 'string' ? eventRecord.event_type : null,
+    category_id: typeof eventRecord?.category_id === 'string' ? eventRecord.category_id : null
   }
 }
 
@@ -111,6 +116,7 @@ function resolveRelatedEventStartMs(
 ): {
   startMs: number | null
   eventType: string | null
+  categoryId: string | null
 } {
   const relatedEvent = resolveRelatedEvent(value)
 
@@ -118,7 +124,8 @@ function resolveRelatedEventStartMs(
   if (Number.isFinite(startFromDatetime)) {
     return {
       startMs: startFromDatetime,
-      eventType: relatedEvent.event_type
+      eventType: relatedEvent.event_type,
+      categoryId: relatedEvent.category_id
     }
   }
 
@@ -128,14 +135,16 @@ function resolveRelatedEventStartMs(
     if (Number.isFinite(fallbackParsed)) {
       return {
         startMs: fallbackParsed,
-        eventType: relatedEvent.event_type
+        eventType: relatedEvent.event_type,
+        categoryId: relatedEvent.category_id
       }
     }
   }
 
   return {
     startMs: null,
-    eventType: relatedEvent.event_type
+    eventType: relatedEvent.event_type,
+    categoryId: relatedEvent.category_id
   }
 }
 
@@ -197,7 +206,7 @@ export async function getEventInterestAudience(eventId: string): Promise<EventIn
 
     const { data: event, error: eventError } = await admin
       .from('events')
-      .select('id, event_type')
+      .select('id, event_type, category_id, category:event_categories(name)')
       .eq('id', eventId)
       .maybeSingle()
 
@@ -218,12 +227,12 @@ export async function getEventInterestAudience(eventId: string): Promise<EventIn
         .not('customer_id', 'is', null),
       admin
         .from('bookings')
-        .select('customer_id, event:events!inner(start_datetime, date, time, event_type)')
+        .select('customer_id, event:events!inner(start_datetime, date, time, event_type, category_id)')
         .in('status', ['confirmed'])
         .not('customer_id', 'is', null),
       admin
         .from('waitlist_entries')
-        .select('customer_id, event:events!inner(start_datetime, date, time, event_type)')
+        .select('customer_id, event:events!inner(start_datetime, date, time, event_type, category_id)')
         .not('customer_id', 'is', null)
     ])
 
@@ -266,8 +275,17 @@ export async function getEventInterestAudience(eventId: string): Promise<EventIn
       manualRowsData = (manualRows.data || []) as Array<{ customer_id: string | null; created_at: string }>
     }
 
+    const eventCategory = Array.isArray((event as any).category) ? (event as any).category[0] : (event as any).category
+    const eventCategoryId =
+      typeof (event as any).category_id === 'string' && (event as any).category_id.trim().length > 0
+        ? (event as any).category_id
+        : null
+    const eventCategoryName = typeof eventCategory?.name === 'string' ? eventCategory.name : null
+    const eventType = typeof event.event_type === 'string' && event.event_type.trim().length > 0 ? event.event_type : null
+    const matchingBasis: 'category' | 'event_type' | null = eventCategoryId ? 'category' : eventType ? 'event_type' : null
+
     const nowMs = Date.now()
-    const lastEngagedAtSameTypeByCustomer = new Map<string, number>()
+    const lastEngagedAtSameSegmentByCustomer = new Map<string, number>()
     const lastEngagedAtAnyPastEventByCustomer = new Map<string, number>()
 
     for (const row of [...((pastBookings.data || []) as any[]), ...((pastWaitlist.data || []) as any[])]) {
@@ -281,16 +299,21 @@ export async function getEventInterestAudience(eventId: string): Promise<EventIn
         lastEngagedAtAnyPastEventByCustomer.set(customerId, relatedEvent.startMs)
       }
 
-      const isSameType = Boolean(event.event_type) && relatedEvent.eventType === event.event_type
-      if (!isSameType) continue
+      const isSameSegment =
+        matchingBasis === 'category'
+          ? Boolean(eventCategoryId) && relatedEvent.categoryId === eventCategoryId
+          : matchingBasis === 'event_type'
+            ? Boolean(eventType) && relatedEvent.eventType === eventType
+            : false
+      if (!isSameSegment) continue
 
-      const currentSameType = lastEngagedAtSameTypeByCustomer.get(customerId)
-      if (!currentSameType || relatedEvent.startMs > currentSameType) {
-        lastEngagedAtSameTypeByCustomer.set(customerId, relatedEvent.startMs)
+      const currentSameSegment = lastEngagedAtSameSegmentByCustomer.get(customerId)
+      if (!currentSameSegment || relatedEvent.startMs > currentSameSegment) {
+        lastEngagedAtSameSegmentByCustomer.set(customerId, relatedEvent.startMs)
       }
     }
 
-    const behaviorCustomerIds = new Set(lastEngagedAtSameTypeByCustomer.keys())
+    const behaviorCustomerIds = new Set(lastEngagedAtSameSegmentByCustomer.keys())
     const reminderPickerCustomerIds = new Set(lastEngagedAtAnyPastEventByCustomer.keys())
     const manualCustomerIds = new Set(
       manualRowsData.map((row) => row.customer_id).filter((id): id is string => typeof id === 'string')
@@ -333,7 +356,7 @@ export async function getEventInterestAudience(eventId: string): Promise<EventIn
       const customer = customersById.get(customerId)
       if (!customer) continue
 
-      const lastEngagedAtMs = lastEngagedAtSameTypeByCustomer.get(customerId)
+      const lastEngagedAtMs = lastEngagedAtSameSegmentByCustomer.get(customerId)
       behaviorCandidates.push({
         ...toAudienceCustomer(customerId, customer, currentlyBookedIds.has(customerId)),
         last_engaged_at: typeof lastEngagedAtMs === 'number' ? new Date(lastEngagedAtMs).toISOString() : null,
@@ -364,14 +387,14 @@ export async function getEventInterestAudience(eventId: string): Promise<EventIn
       reminderPickerCandidates.push({
         ...toAudienceCustomer(customerId, customer, currentlyBookedIds.has(customerId)),
         last_engaged_at: typeof lastEngagedAtMs === 'number' ? new Date(lastEngagedAtMs).toISOString() : null,
-        source: behaviorCustomerIds.has(customerId) ? 'same_event_type' : 'other_events',
+        source: behaviorCustomerIds.has(customerId) ? 'same_segment' : 'other_events',
         manually_added: manualCustomerIds.has(customerId)
       })
     }
 
     reminderPickerCandidates.sort((left, right) => {
       if (left.source !== right.source) {
-        return left.source === 'same_event_type' ? -1 : 1
+        return left.source === 'same_segment' ? -1 : 1
       }
       if (left.is_currently_booked !== right.is_currently_booked) {
         return left.is_currently_booked ? 1 : -1
@@ -405,7 +428,10 @@ export async function getEventInterestAudience(eventId: string): Promise<EventIn
       success: true,
       data: {
         event_id: event.id,
-        event_type: event.event_type,
+        event_type: eventType,
+        category_id: eventCategoryId,
+        category_name: eventCategoryName,
+        matching_basis: matchingBasis,
         behavior_candidates: behaviorCandidates,
         reminder_picker_candidates: reminderPickerCandidates,
         manual_recipients: manualRecipients,
