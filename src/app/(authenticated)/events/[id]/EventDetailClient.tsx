@@ -63,7 +63,7 @@ type EventCustomerSearchResult = {
   display_phone: string | null
 }
 
-type ReminderPickerFilter = 'all' | 'same_event_type' | 'other_events'
+type ReminderPickerFilter = 'all' | 'same_segment' | 'other_events'
 
 interface EventDetailClientProps {
   event: Event
@@ -384,9 +384,17 @@ export default function EventDetailClient({
 
   const reminderPickerCounts = useMemo(() => ({
     all: reminderPickerCandidates.length,
-    same_event_type: reminderPickerCandidates.filter((candidate) => candidate.source === 'same_event_type').length,
+    same_segment: reminderPickerCandidates.filter((candidate) => candidate.source === 'same_segment').length,
     other_events: reminderPickerCandidates.filter((candidate) => candidate.source === 'other_events').length
   }), [reminderPickerCandidates])
+  const sameSegmentLabel = interestAudience?.matching_basis === 'event_type' ? 'Same type' : 'Same category'
+  const sameSegmentLabelLower = sameSegmentLabel.toLowerCase()
+  const reminderPickerIntroText =
+    interestAudience?.matching_basis === 'event_type'
+      ? 'Pick from past guests who attended this type or other previous events.'
+      : interestAudience?.matching_basis === 'category'
+        ? 'Pick from past guests who attended this category or other previous events.'
+        : 'Pick from past guests who attended other previous events.'
 
   const filteredReminderPickerCandidates = useMemo(() => {
     const query = reminderPickerQuery.trim().toLowerCase()
@@ -1381,10 +1389,10 @@ export default function EventDetailClient({
               </div>
             ) : (
               <>
-                {!interestAudience.event_type && (
+                {!interestAudience.matching_basis && (
                   <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
-                    This event has no <span className="font-mono">event_type</span> yet. Same-type suggestions rely on
-                    <span className="font-mono"> event_type</span>, but other-event picks and manual recipients still work.
+                    This event has no <span className="font-mono">category</span> yet. Same-category suggestions rely on
+                    <span className="font-mono"> category</span>, but other-event picks and manual recipients still work.
                   </div>
                 )}
 
@@ -1396,7 +1404,7 @@ export default function EventDetailClient({
                         <div className="rounded-md border border-gray-200 bg-gray-50 p-3 space-y-3">
                           <div className="flex flex-wrap items-center justify-between gap-2">
                             <p className="text-xs text-gray-600">
-                              Pick from past guests who attended this type or other previous events.
+                              {reminderPickerIntroText}
                             </p>
                             <Button
                               type="button"
@@ -1425,10 +1433,10 @@ export default function EventDetailClient({
                                 <Button
                                   type="button"
                                   size="xs"
-                                  variant={reminderPickerFilter === 'same_event_type' ? 'primary' : 'secondary'}
-                                  onClick={() => setReminderPickerFilter('same_event_type')}
+                                  variant={reminderPickerFilter === 'same_segment' ? 'primary' : 'secondary'}
+                                  onClick={() => setReminderPickerFilter('same_segment')}
                                 >
-                                  Same type ({reminderPickerCounts.same_event_type})
+                                  {sameSegmentLabel} ({reminderPickerCounts.same_segment})
                                 </Button>
                                 <Button
                                   type="button"
@@ -1532,10 +1540,10 @@ export default function EventDetailClient({
 
                                             <div className="flex flex-wrap gap-1">
                                               <Badge
-                                                variant={candidate.source === 'same_event_type' ? 'secondary' : 'neutral'}
+                                                variant={candidate.source === 'same_segment' ? 'secondary' : 'neutral'}
                                                 size="sm"
                                               >
-                                                {candidate.source === 'same_event_type' ? 'Same type' : 'Other events'}
+                                                {candidate.source === 'same_segment' ? sameSegmentLabel : 'Other events'}
                                               </Badge>
                                               {candidate.sms_eligible_for_marketing ? (
                                                 <Badge variant="success" size="sm">Eligible</Badge>
@@ -1766,11 +1774,11 @@ export default function EventDetailClient({
                   </div>
                 </div>
 
-                <div className="space-y-3">
-                  <h3 className="text-sm font-semibold uppercase tracking-wide text-gray-600">Past behavior candidates</h3>
+                  <div className="space-y-3">
+                    <h3 className="text-sm font-semibold uppercase tracking-wide text-gray-600">Past behavior candidates</h3>
                   {interestAudience.behavior_candidates.length === 0 ? (
                     <div className="rounded-md border border-dashed border-gray-300 p-4 text-sm text-gray-600">
-                      No same-type history for this event yet.
+                      No {sameSegmentLabelLower} history for this event yet.
                       {interestAudience.reminder_picker_candidates.length > 0
                         ? ` Use “Pick from past guests” above to add from other events (${interestAudience.reminder_picker_candidates.length} found).`
                         : ''}

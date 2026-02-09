@@ -46,6 +46,7 @@ type MarketingEventRow = {
   name: string
   start_datetime: string | null
   event_type: string | null
+  category_id: string | null
   booking_open: boolean | null
   event_status: string | null
 }
@@ -267,7 +268,7 @@ async function loadEventsForInterestMarketing(
 ): Promise<MarketingEventRow[]> {
   const { data, error } = await supabase
     .from('events')
-    .select('id, name, start_datetime, event_type, booking_open, event_status')
+    .select('id, name, start_datetime, event_type, category_id, booking_open, event_status')
     .not('start_datetime', 'is', null)
     .eq('booking_open', true)
     .limit(500)
@@ -350,22 +351,43 @@ async function processInterestMarketing(
     }
 
     result.eventsProcessed += 1
+    const eventCategoryId =
+      typeof eventRow.category_id === 'string' && eventRow.category_id.trim().length > 0
+        ? eventRow.category_id
+        : null
+    const eventType =
+      typeof eventRow.event_type === 'string' && eventRow.event_type.trim().length > 0
+        ? eventRow.event_type
+        : null
+    const matchingBasis: 'category' | 'event_type' | null = eventCategoryId ? 'category' : eventType ? 'event_type' : null
 
     const [pastBookings, pastWaitlist, existingBookings, manualRecipients] = await Promise.all([
-      eventRow.event_type
+      matchingBasis === 'category'
         ? supabase
             .from('bookings')
-            .select('customer_id, event:events!inner(event_type, start_datetime)')
+            .select('customer_id, event:events!inner(category_id, start_datetime)')
             .not('customer_id', 'is', null)
-            .eq('event.event_type', eventRow.event_type)
-        : Promise.resolve({ data: [], error: null } as any),
-      eventRow.event_type
+            .eq('event.category_id', eventCategoryId)
+        : matchingBasis === 'event_type'
+          ? supabase
+              .from('bookings')
+              .select('customer_id, event:events!inner(event_type, start_datetime)')
+              .not('customer_id', 'is', null)
+              .eq('event.event_type', eventType)
+          : Promise.resolve({ data: [], error: null } as any),
+      matchingBasis === 'category'
         ? supabase
             .from('waitlist_entries')
-            .select('customer_id, event:events!inner(event_type, start_datetime)')
+            .select('customer_id, event:events!inner(category_id, start_datetime)')
             .not('customer_id', 'is', null)
-            .eq('event.event_type', eventRow.event_type)
-        : Promise.resolve({ data: [], error: null } as any),
+            .eq('event.category_id', eventCategoryId)
+        : matchingBasis === 'event_type'
+          ? supabase
+              .from('waitlist_entries')
+              .select('customer_id, event:events!inner(event_type, start_datetime)')
+              .not('customer_id', 'is', null)
+              .eq('event.event_type', eventType)
+          : Promise.resolve({ data: [], error: null } as any),
       supabase
         .from('bookings')
         .select('customer_id')
@@ -404,6 +426,7 @@ async function processInterestMarketing(
       logger.warn('Failed loading event interest marketing segments', {
         metadata: {
           eventId: eventRow.id,
+          matchingBasis,
           bookingError: pastBookings.error?.message,
           waitlistError: pastWaitlist.error?.message,
           existingError: existingBookings.error?.message,
@@ -490,7 +513,9 @@ async function processInterestMarketing(
         customerId: customer.id,
         metadata: {
           event_id: eventRow.id,
-          event_type: eventRow.event_type,
+          event_type: eventType,
+          category_id: eventCategoryId,
+          matching_basis: matchingBasis,
           template_key: TEMPLATE_INTEREST_MARKETING_14D,
           marketing: true
         }
