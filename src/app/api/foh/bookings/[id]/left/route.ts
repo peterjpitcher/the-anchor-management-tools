@@ -26,10 +26,19 @@ export async function POST(
   }
 
   const nowIso = new Date().toISOString()
+  const { error: assignmentError } = await (auth.supabase.from('booking_table_assignments') as any)
+    .update({ end_datetime: nowIso })
+    .eq('table_booking_id', id)
+    .lt('start_datetime', nowIso)
+
+  if (assignmentError) {
+    return NextResponse.json({ error: 'Failed to update booking table assignment end time' }, { status: 500 })
+  }
+
   const { data, error } = await (auth.supabase.from('table_bookings') as any)
-    .update({ left_at: nowIso, updated_at: nowIso })
+    .update({ left_at: nowIso, end_datetime: nowIso, updated_at: nowIso })
     .eq('id', id)
-    .select('id, status, left_at')
+    .select('id, status, left_at, end_datetime')
     .maybeSingle()
 
   if (error) {
@@ -38,6 +47,6 @@ export async function POST(
 
   return NextResponse.json({
     success: true,
-    data: data || { id, status: booking.status, left_at: nowIso }
+    data: data || { id, status: booking.status, left_at: nowIso, end_datetime: nowIso }
   })
 }
