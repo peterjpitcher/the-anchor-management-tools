@@ -1,0 +1,49 @@
+{
+  "exported_at_utc": "2026-02-09T21:37:40.484Z",
+  "total_rows": 105,
+  "export_path": "/Users/peterpitcher/Cursor/anchor-management-tools/output/spreadsheet/table-bookings-all-2026-02-09.csv",
+  "jan_feb_2026_by_booking_date_month": {
+    "2026-01": {
+      "total": 0,
+      "by_status": {}
+    },
+    "2026-02": {
+      "total": 8,
+      "by_status": {
+        "cancelled": 3,
+        "confirmed": 5
+      }
+    }
+  },
+  "jan_feb_2026_by_created_at_month": {
+    "2026-01": {
+      "total": 0,
+      "by_status": {}
+    },
+    "2026-02": {
+      "total": 8,
+      "by_status": {
+        "cancelled": 3,
+        "confirmed": 5
+      }
+    }
+  },
+  "all_months_by_booking_date": {
+    "2025-08": 11,
+    "2025-09": 30,
+    "2025-10": 17,
+    "2025-11": 28,
+    "2025-12": 11,
+    "2026-02": 8
+  },
+  "all_months_by_created_at": {
+    "2025-08": 12,
+    "2025-09": 33,
+    "2025-10": 18,
+    "2025-11": 25,
+    "2025-12": 9,
+    "2026-02": 8
+  },
+  "duplicate_booking_references_count": 0,
+  "duplicate_booking_references_top_50": []
+}

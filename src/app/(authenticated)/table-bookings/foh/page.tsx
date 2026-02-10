@@ -31,6 +31,7 @@ export default async function TableBookingsFohPage() {
   const navItems = fohOnlyMode
     ? undefined
     : [
+        { label: 'Back of House', href: '/table-bookings/boh' },
         { label: 'Front of House', href: '/table-bookings/foh', active: true },
         ...(canViewReports ? [{ label: 'Reports', href: '/table-bookings/reports' }] : [])
       ]

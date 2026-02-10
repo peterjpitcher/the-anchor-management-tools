@@ -141,6 +141,23 @@ type FohUpcomingEventsResponse = {
   error?: string
 }
 
+type FohMoveTableOption = {
+  id: string
+  name: string
+  table_number?: string | null
+  capacity?: number | null
+}
+
+type FohMoveTableAvailabilityResponse = {
+  success?: boolean
+  error?: string
+  data?: {
+    booking_id: string
+    assigned_table_ids?: string[]
+    tables: FohMoveTableOption[]
+  }
+}
+
 type SundayMenuItem = {
   menu_dish_id: string
   name: string
@@ -918,7 +935,10 @@ export function FohScheduleClient({
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [bookingActionInFlight, setBookingActionInFlight] = useState<string | null>(null)
   const [moveTargets, setMoveTargets] = useState<Record<string, string>>({})
+  const [selectedMoveOptions, setSelectedMoveOptions] = useState<FohMoveTableOption[]>([])
+  const [loadingSelectedMoveOptions, setLoadingSelectedMoveOptions] = useState(false)
   const [selectedBookingContext, setSelectedBookingContext] = useState<SelectedBookingContext | null>(null)
+  const [showCancelBookingConfirmation, setShowCancelBookingConfirmation] = useState(false)
 
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false)
   const [createMode, setCreateMode] = useState<FohCreateMode>('booking')
@@ -1370,14 +1390,6 @@ export function FohScheduleClient({
     }))
   }, [date, isCreateModalOpen])
 
-  const tables = useMemo(() => {
-    if (!schedule) return []
-    return schedule.lanes.map((lane) => ({
-      id: lane.table_id,
-      name: lane.table_name
-    }))
-  }, [schedule])
-
   const timeline = useMemo(() => buildTimelineRange(schedule), [schedule])
   const totals = useMemo(() => {
     if (!schedule) {
@@ -1491,12 +1503,67 @@ export function FohScheduleClient({
   const selectedBookingLeftTime = formatLifecycleTime(selectedBooking?.left_at)
   const selectedBookingNoShowTime = formatLifecycleTime(selectedBooking?.no_show_at)
   const selectedMoveTarget = selectedBooking ? moveTargets[selectedBooking.id] || '' : ''
-  const selectedMoveOptions = useMemo(() => {
-    if (!selectedBooking) return []
+  const selectedBookingCanBeCancelled = Boolean(
+    selectedBooking &&
+      !selectedBooking.is_private_block &&
+      selectedBookingVisualState !== 'cancelled' &&
+      selectedBookingVisualState !== 'no_show'
+  )
 
-    const assignedTableIds = new Set(selectedBooking.assigned_table_ids || [])
-    return tables.filter((table) => !assignedTableIds.has(table.id))
-  }, [selectedBooking, tables])
+  useEffect(() => {
+    let cancelled = false
+
+    async function loadSelectedMoveOptions() {
+      if (!selectedBooking || !canEdit || selectedBooking.is_private_block) {
+        setSelectedMoveOptions([])
+        setLoadingSelectedMoveOptions(false)
+        return
+      }
+
+      setLoadingSelectedMoveOptions(true)
+
+      try {
+        const response = await fetch(`/api/foh/bookings/${selectedBooking.id}/move-table`, {
+          cache: 'no-store'
+        })
+        const payload = (await response.json()) as FohMoveTableAvailabilityResponse
+
+        if (!response.ok || !payload.success || !payload.data) {
+          throw new Error(payload.error || 'Failed to load available tables')
+        }
+
+        if (cancelled) return
+
+        const availableTables = Array.isArray(payload.data.tables) ? payload.data.tables : []
+        setSelectedMoveOptions(availableTables)
+        setMoveTargets((current) => {
+          const currentValue = current[selectedBooking.id] || ''
+          if (currentValue && availableTables.some((table) => table.id === currentValue)) {
+            return current
+          }
+
+          return {
+            ...current,
+            [selectedBooking.id]: ''
+          }
+        })
+      } catch (error) {
+        if (cancelled) return
+        setSelectedMoveOptions([])
+        setErrorMessage(error instanceof Error ? error.message : 'Failed to load available tables')
+      } finally {
+        if (!cancelled) {
+          setLoadingSelectedMoveOptions(false)
+        }
+      }
+    }
+
+    void loadSelectedMoveOptions()
+
+    return () => {
+      cancelled = true
+    }
+  }, [selectedBooking, canEdit])
 
   useEffect(() => {
     if (!overlappingEventForTable) {
@@ -1524,6 +1591,7 @@ export function FohScheduleClient({
       laneTableId: context.laneTableId,
       laneTableName: context.laneTableName
     })
+    setShowCancelBookingConfirmation(false)
     setErrorMessage(null)
     setStatusMessage(null)
   }
@@ -1531,6 +1599,7 @@ export function FohScheduleClient({
   function closeBookingDetails() {
     setSelectedBookingContext(null)
     setBookingActionInFlight(null)
+    setShowCancelBookingConfirmation(false)
   }
 
   async function runAction(
@@ -1538,6 +1607,7 @@ export function FohScheduleClient({
     successMessage: string,
     inFlightLabel?: string
   ): Promise<boolean> {
+    setShowCancelBookingConfirmation(false)
     setErrorMessage(null)
     setStatusMessage(null)
     setBookingActionInFlight(inFlightLabel || successMessage)
@@ -1796,7 +1866,7 @@ export function FohScheduleClient({
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            customer_id: isWalkIn ? undefined : selectedCustomer?.id || undefined,
+            customer_id: selectedCustomer?.id || undefined,
             phone: createForm.phone.trim() || undefined,
             default_country_code: createForm.default_country_code || undefined,
             first_name: firstName,
@@ -1921,7 +1991,7 @@ export function FohScheduleClient({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          customer_id: isWalkIn ? undefined : selectedCustomer?.id || undefined,
+          customer_id: selectedCustomer?.id || undefined,
           phone: createForm.phone.trim() || undefined,
           default_country_code: createForm.default_country_code || undefined,
           first_name: firstName,
@@ -2459,6 +2529,22 @@ export function FohScheduleClient({
                   </button>
                   <button
                     type="button"
+                    disabled={Boolean(bookingActionInFlight) || !selectedBookingCanBeCancelled}
+                    onClick={() => {
+                      if (!selectedBookingCanBeCancelled) return
+                      setShowCancelBookingConfirmation((current) => !current)
+                    }}
+                    className={cn(
+                      'rounded-md border px-2 py-1.5 text-xs font-medium disabled:cursor-not-allowed disabled:opacity-60',
+                      showCancelBookingConfirmation
+                        ? 'border-red-400 bg-red-100 text-red-800'
+                        : 'border-red-300 text-red-700 hover:bg-red-50'
+                    )}
+                  >
+                    {showCancelBookingConfirmation ? 'Cancel selected' : 'Cancel booking'}
+                  </button>
+                  <button
+                    type="button"
                     disabled={Boolean(bookingActionInFlight)}
                     onClick={() => {
                       const raw = window.prompt('Walkout amount (GBP)')
@@ -2484,23 +2570,67 @@ export function FohScheduleClient({
                   </button>
                 </div>
 
+                {showCancelBookingConfirmation && selectedBookingCanBeCancelled && (
+                  <div className="rounded-md border border-red-300 bg-red-50 px-3 py-2">
+                    <p className="text-xs font-semibold text-red-900">Confirm cancellation</p>
+                    <p className="mt-1 text-xs text-red-800">
+                      This will mark the booking as cancelled and remove it from active covers.
+                    </p>
+                    <div className="mt-2 flex gap-2">
+                      <button
+                        type="button"
+                        disabled={Boolean(bookingActionInFlight)}
+                        onClick={() => setShowCancelBookingConfirmation(false)}
+                        className="rounded-md border border-gray-300 bg-white px-2.5 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        Keep booking
+                      </button>
+                      <button
+                        type="button"
+                        disabled={Boolean(bookingActionInFlight)}
+                        onClick={() => {
+                          void (async () => {
+                            const ok = await runAction(
+                              () => postBookingAction(`/api/foh/bookings/${selectedBooking.id}/cancel`),
+                              'Booking cancelled',
+                              'cancel'
+                            )
+                            if (ok) closeBookingDetails()
+                          })()
+                        }}
+                        className="rounded-md border border-red-400 bg-red-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {bookingActionInFlight === 'cancel' ? 'Cancelling…' : 'Confirm cancel'}
+                      </button>
+                    </div>
+                  </div>
+                )}
+
                 <div className="flex gap-2">
                   <select
                     value={selectedMoveTarget}
-                    disabled={Boolean(bookingActionInFlight)}
+                    disabled={Boolean(bookingActionInFlight) || loadingSelectedMoveOptions || selectedMoveOptions.length === 0}
                     onChange={(event) => onMoveTargetChange(selectedBooking.id, event.target.value)}
                     className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-xs"
                   >
-                    <option value="">Move to table…</option>
+                    <option value="">
+                      {loadingSelectedMoveOptions
+                        ? 'Loading available tables…'
+                        : selectedMoveOptions.length === 0
+                          ? 'No available tables'
+                          : 'Move to table…'}
+                    </option>
                     {selectedMoveOptions.map((table) => (
                       <option key={table.id} value={table.id}>
                         {table.name}
+                        {table.table_number ? ` (${table.table_number})` : ''}
+                        {table.capacity ? ` · cap ${table.capacity}` : ''}
                       </option>
                     ))}
                   </select>
                   <button
                     type="button"
-                    disabled={!selectedMoveTarget || Boolean(bookingActionInFlight)}
+                    disabled={!selectedMoveTarget || Boolean(bookingActionInFlight) || loadingSelectedMoveOptions}
                     onClick={() => {
                       if (!selectedMoveTarget) return
                       void (async () => {
@@ -2540,121 +2670,81 @@ export function FohScheduleClient({
         open={isCreateModalOpen}
         onClose={closeCreateModal}
         title={createMode === 'walk_in' ? 'Add walk-in' : 'Add booking'}
-        description={
-          createMode === 'walk_in'
-            ? 'Guest name and phone are optional. Covers are required. Tap a lane to pre-select a table and time.'
-            : 'Search existing customer by name or phone first. If not found, enter phone details to create a new customer.'
-        }
+        description="Search existing customer by name or phone first. If not found, enter phone details to create a new customer."
         size="lg"
       >
         <form onSubmit={handleCreateBooking} className="space-y-4">
-          {createMode === 'booking' && (
-            <div className="rounded-md border border-gray-200 bg-gray-50 p-3">
-              <label className="block text-xs font-medium text-gray-700">
-                Find existing customer
-                <input
-                  type="text"
-                  value={customerQuery}
-                  onChange={(event) => {
-                    setCustomerQuery(event.target.value)
-                    if (selectedCustomer) {
-                      setSelectedCustomer(null)
-                    }
-                  }}
-                  placeholder="Search by name or phone"
-                  className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
-                />
-              </label>
+          <div className="rounded-md border border-gray-200 bg-gray-50 p-3">
+            <label className="block text-xs font-medium text-gray-700">
+              Find existing customer
+              <input
+                type="text"
+                value={customerQuery}
+                onChange={(event) => {
+                  setCustomerQuery(event.target.value)
+                  if (selectedCustomer) {
+                    setSelectedCustomer(null)
+                  }
+                }}
+                placeholder="Search by name or phone"
+                className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+              />
+            </label>
 
-              <p className="mt-2 text-xs text-gray-500">
-                Phone assumption uses country code +{createForm.default_country_code || '44'} unless full international format is entered.
-              </p>
+            <p className="mt-2 text-xs text-gray-500">
+              Phone assumption uses country code +{createForm.default_country_code || '44'} unless full international format is entered.
+            </p>
 
-              {searchingCustomers && <p className="mt-2 text-xs text-gray-500">Searching customers…</p>}
+            {searchingCustomers && <p className="mt-2 text-xs text-gray-500">Searching customers…</p>}
 
-              {!selectedCustomer && customerResults.length > 0 && (
-                <div className="mt-2 max-h-56 overflow-auto rounded-md border border-gray-200 bg-white">
-                  {customerResults.map((customer) => (
-                    <button
-                      key={customer.id}
-                      type="button"
-                      onClick={() => {
-                        setSelectedCustomer(customer)
-                        setCreateForm((current) => ({
-                          ...current,
-                          phone: customer.mobile_e164 || customer.mobile_number || ''
-                        }))
-                      }}
-                      className="flex w-full items-start justify-between gap-3 border-b border-gray-100 px-3 py-2 text-left text-sm hover:bg-gray-50 last:border-b-0"
-                    >
-                      <span className="font-medium text-gray-900">{customer.full_name}</span>
-                      <span className="text-xs text-gray-500">{customer.display_phone || 'No phone'}</span>
-                    </button>
-                  ))}
-                </div>
-              )}
+            {!selectedCustomer && customerResults.length > 0 && (
+              <div className="mt-2 max-h-56 overflow-auto rounded-md border border-gray-200 bg-white">
+                {customerResults.map((customer) => (
+                  <button
+                    key={customer.id}
+                    type="button"
+                    onClick={() => {
+                      setSelectedCustomer(customer)
+                      setCreateForm((current) => ({
+                        ...current,
+                        phone: customer.mobile_e164 || customer.mobile_number || ''
+                      }))
+                    }}
+                    className="flex w-full items-start justify-between gap-3 border-b border-gray-100 px-3 py-2 text-left text-sm hover:bg-gray-50 last:border-b-0"
+                  >
+                    <span className="font-medium text-gray-900">{customer.full_name}</span>
+                    <span className="text-xs text-gray-500">{customer.display_phone || 'No phone'}</span>
+                  </button>
+                ))}
+              </div>
+            )}
 
-              {selectedCustomer && (
-                <div className="mt-2 rounded-md border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-900">
-                  <div className="flex items-start justify-between gap-2">
-                    <div>
-                      <p className="font-medium">Using customer: {selectedCustomer.full_name}</p>
-                      <p className="text-xs text-green-700">{selectedCustomer.display_phone || 'No stored phone'}</p>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setSelectedCustomer(null)
-                        setCustomerQuery('')
-                        setCustomerResults([])
-                      }}
-                      className="rounded border border-green-300 px-2 py-1 text-xs font-medium text-green-800 hover:bg-green-100"
-                    >
-                      Clear
-                    </button>
+            {selectedCustomer && (
+              <div className="mt-2 rounded-md border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-900">
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <p className="font-medium">Using customer: {selectedCustomer.full_name}</p>
+                    <p className="text-xs text-green-700">{selectedCustomer.display_phone || 'No stored phone'}</p>
                   </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedCustomer(null)
+                      setCustomerQuery('')
+                      setCustomerResults([])
+                    }}
+                    className="rounded border border-green-300 px-2 py-1 text-xs font-medium text-green-800 hover:bg-green-100"
+                  >
+                    Clear
+                  </button>
                 </div>
-              )}
-            </div>
-          )}
+              </div>
+            )}
+          </div>
 
           {createMode === 'walk_in' && walkInTargetTable && (
             <div className="rounded-md border border-green-200 bg-green-50 px-3 py-2 text-xs text-green-900">
               Walk-in will be moved to <span className="font-semibold">{walkInTargetTable.name}</span> after creation.
-            </div>
-          )}
-
-          {createMode === 'walk_in' && !selectedCustomer && (
-            <div className="rounded-md border border-gray-200 bg-gray-50 p-3">
-              <div className="grid gap-3 md:grid-cols-[1fr_180px]">
-                <label className="text-xs font-medium text-gray-700">
-                  Guest phone (recommended)
-                  <input
-                    type="tel"
-                    value={createForm.phone}
-                    onChange={(event) => setCreateForm((current) => ({ ...current, phone: event.target.value }))}
-                    placeholder="Optional"
-                    className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
-                  />
-                </label>
-                <label className="text-xs font-medium text-gray-700">
-                  Country code
-                  <input
-                    type="text"
-                    inputMode="numeric"
-                    pattern="[0-9]{1,4}"
-                    value={createForm.default_country_code}
-                    onChange={(event) => {
-                      const digitsOnly = event.target.value.replace(/\D/g, '').slice(0, 4)
-                      setCreateForm((current) => ({ ...current, default_country_code: digitsOnly }))
-                    }}
-                    className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
-                  />
-                </label>
-                <p className="text-xs text-gray-500 md:col-span-2">
-                  Start with phone when available. We match existing customer records by number before creating a new walk-in profile.
-                </p>
-              </div>
             </div>
           )}
 
@@ -2722,7 +2812,7 @@ export function FohScheduleClient({
               </div>
             )}
 
-            {!selectedCustomer && createMode !== 'walk_in' && (
+            {!selectedCustomer && (
               <label className="text-xs font-medium text-gray-700">
                 Phone
                 <input
@@ -2735,7 +2825,7 @@ export function FohScheduleClient({
               </label>
             )}
 
-            {!selectedCustomer && createMode !== 'walk_in' && (
+            {!selectedCustomer && (
               <label className="text-xs font-medium text-gray-700">
                 Default country code
                 <input
@@ -2845,20 +2935,7 @@ export function FohScheduleClient({
               </>
             )}
 
-            {!selectedCustomer && createMode === 'walk_in' && (
-              <label className="text-xs font-medium text-gray-700">
-                Guest name (optional)
-                <input
-                  type="text"
-                  value={createForm.customer_name}
-                  onChange={(event) => setCreateForm((current) => ({ ...current, customer_name: event.target.value }))}
-                  placeholder="Jane Smith"
-                  className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
-                />
-              </label>
-            )}
-
-            {!selectedCustomer && createMode !== 'walk_in' && (
+            {!selectedCustomer && (
               <label className="text-xs font-medium text-gray-700">
                 Customer name (for new customer)
                 <input
@@ -2871,7 +2948,7 @@ export function FohScheduleClient({
               </label>
             )}
 
-            {!selectedCustomer && createMode !== 'walk_in' && (
+            {!selectedCustomer && (
               <label className="text-xs font-medium text-gray-700">
                 First name (optional)
                 <input
@@ -2883,7 +2960,7 @@ export function FohScheduleClient({
               </label>
             )}
 
-            {!selectedCustomer && createMode !== 'walk_in' && (
+            {!selectedCustomer && (
               <label className="text-xs font-medium text-gray-700">
                 Last name (optional)
                 <input

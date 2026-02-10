@@ -2,7 +2,9 @@ import Link from 'next/link'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { headers } from 'next/headers'
 import { checkGuestTokenThrottle } from '@/lib/guest/token-throttle'
+import { formatGuestGreeting, getCustomerFirstNameById } from '@/lib/guest/names'
 import { getWaitlistOfferPreviewByRawToken } from '@/lib/events/waitlist-offers'
+import { GuestPageShell } from '@/components/features/shared/GuestPageShell'
 
 type WaitlistOfferPageProps = {
   params: Promise<{ token: string }>
@@ -73,9 +75,12 @@ export default async function WaitlistOfferPage({
 
   if (state === 'confirmed') {
     return (
-      <main className="min-h-screen bg-sidebar py-12 sm:py-20">
+      <GuestPageShell>
         <div className="mx-auto w-full max-w-xl rounded-xl border border-white/15 bg-white px-6 py-8 shadow-sm">
           <h1 className="text-2xl font-semibold text-slate-900">Seats confirmed</h1>
+          <p className="mt-2 text-sm text-slate-700">
+            {formatGuestGreeting(null, 'your waitlist seats are now confirmed.')}
+          </p>
           <p className="mt-3 text-sm text-slate-700">
             Your waitlist offer is confirmed and your booking is now active.
           </p>
@@ -88,15 +93,18 @@ export default async function WaitlistOfferPage({
             </Link>
           </div>
         </div>
-      </main>
+      </GuestPageShell>
     )
   }
 
   if (state === 'pending_payment') {
     return (
-      <main className="min-h-screen bg-sidebar py-12 sm:py-20">
+      <GuestPageShell>
         <div className="mx-auto w-full max-w-xl rounded-xl border border-white/15 bg-white px-6 py-8 shadow-sm">
           <h1 className="text-2xl font-semibold text-slate-900">Offer confirmed</h1>
+          <p className="mt-2 text-sm text-slate-700">
+            {formatGuestGreeting(null, 'your waitlist seats are reserved.')}
+          </p>
           <p className="mt-3 text-sm text-slate-700">
             Your seats are reserved. This event requires payment, and we will text you a payment link.
           </p>
@@ -109,15 +117,18 @@ export default async function WaitlistOfferPage({
             </Link>
           </div>
         </div>
-      </main>
+      </GuestPageShell>
     )
   }
 
   if (state === 'blocked') {
     return (
-      <main className="min-h-screen bg-sidebar py-12 sm:py-20">
+      <GuestPageShell>
         <div className="mx-auto w-full max-w-xl rounded-xl border border-white/15 bg-white px-6 py-8 shadow-sm">
           <h1 className="text-2xl font-semibold text-slate-900">Offer unavailable</h1>
+          <p className="mt-2 text-sm text-slate-700">
+            {formatGuestGreeting(null, 'this waitlist offer is not available.')}
+          </p>
           <p className="mt-3 text-sm text-slate-700">
             {getBlockedReasonMessage(reason)}
           </p>
@@ -130,7 +141,7 @@ export default async function WaitlistOfferPage({
             </Link>
           </div>
         </div>
-      </main>
+      </GuestPageShell>
     )
   }
 
@@ -144,9 +155,12 @@ export default async function WaitlistOfferPage({
 
   if (!throttle.allowed) {
     return (
-      <main className="min-h-screen bg-sidebar py-12 sm:py-20">
+      <GuestPageShell>
         <div className="mx-auto w-full max-w-xl rounded-xl border border-white/15 bg-white px-6 py-8 shadow-sm">
           <h1 className="text-2xl font-semibold text-slate-900">Offer unavailable</h1>
+          <p className="mt-2 text-sm text-slate-700">
+            {formatGuestGreeting(null, 'this waitlist offer is not available.')}
+          </p>
           <p className="mt-3 text-sm text-slate-700">
             {getBlockedReasonMessage('rate_limited')}
           </p>
@@ -159,7 +173,7 @@ export default async function WaitlistOfferPage({
             </Link>
           </div>
         </div>
-      </main>
+      </GuestPageShell>
     )
   }
 
@@ -175,9 +189,12 @@ export default async function WaitlistOfferPage({
   if (!previewState || previewState.state !== 'ready') {
     const blockedReason = previewState?.reason
     return (
-      <main className="min-h-screen bg-sidebar py-12 sm:py-20">
+      <GuestPageShell>
         <div className="mx-auto w-full max-w-xl rounded-xl border border-white/15 bg-white px-6 py-8 shadow-sm">
           <h1 className="text-2xl font-semibold text-slate-900">Offer unavailable</h1>
+          <p className="mt-2 text-sm text-slate-700">
+            {formatGuestGreeting(null, 'this waitlist offer is not available.')}
+          </p>
           <p className="mt-3 text-sm text-slate-700">
             {getBlockedReasonMessage(blockedReason)}
           </p>
@@ -185,7 +202,7 @@ export default async function WaitlistOfferPage({
             Please try booking another event or call {contactPhone} for help.
           </p>
         </div>
-      </main>
+      </GuestPageShell>
     )
   }
 
@@ -197,11 +214,15 @@ export default async function WaitlistOfferPage({
   const paymentNote = previewState.payment_mode === 'prepaid'
     ? 'This event requires payment after confirmation.'
     : 'This event does not require advance payment.'
+  const guestFirstName = await getCustomerFirstNameById(supabase, previewState.customer_id)
 
   return (
-    <main className="min-h-screen bg-sidebar py-12 sm:py-20">
+    <GuestPageShell>
       <div className="mx-auto w-full max-w-xl rounded-xl border border-white/15 bg-white px-6 py-8 shadow-sm">
         <h1 className="text-2xl font-semibold text-slate-900">Confirm your waitlist offer</h1>
+        <p className="mt-2 text-sm text-slate-700">
+          {formatGuestGreeting(guestFirstName, 'your waitlist offer details are below.')}
+        </p>
         <p className="mt-3 text-sm text-slate-700">
           We are holding {seats} {seatWord} for <span className="font-medium">{eventName}</span>.
         </p>
@@ -231,6 +252,6 @@ export default async function WaitlistOfferPage({
           </button>
         </form>
       </div>
-    </main>
+    </GuestPageShell>
   )
 }

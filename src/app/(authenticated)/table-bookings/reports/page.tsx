@@ -87,6 +87,7 @@ export default async function TableBookingReportsPage({ searchParams }: TableBoo
       title="Table Bookings Reports"
       subtitle="Guest analytics, conversion tracking, and engagement performance"
       navItems={[
+        { label: 'Back of House', href: '/table-bookings/boh' },
         { label: 'Front of House', href: '/table-bookings/foh' },
         { label: 'Reports', href: '/table-bookings/reports', active: true }
       ]}

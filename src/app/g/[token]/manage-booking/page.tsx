@@ -2,10 +2,12 @@ import Link from 'next/link'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { headers } from 'next/headers'
 import { checkGuestTokenThrottle } from '@/lib/guest/token-throttle'
+import { formatGuestGreeting, getCustomerFirstNameById } from '@/lib/guest/names'
 import {
   getEventManagePreviewByRawToken,
   getEventRefundPolicy
 } from '@/lib/events/manage-booking'
+import { GuestPageShell } from '@/components/features/shared/GuestPageShell'
 
 type ManageBookingPageProps = {
   params: Promise<{ token: string }>
@@ -130,9 +132,12 @@ export default async function ManageBookingPage({ params, searchParams }: Manage
 
   if (!throttle.allowed) {
     return (
-      <main className="min-h-screen bg-sidebar py-12 sm:py-20">
+      <GuestPageShell>
         <div className="mx-auto w-full max-w-xl rounded-xl border border-white/15 bg-white px-6 py-8 shadow-sm">
           <h1 className="text-2xl font-semibold text-slate-900">Manage booking unavailable</h1>
+          <p className="mt-2 text-sm text-slate-700">
+            {formatGuestGreeting(null, 'we could not load your booking details right now.')}
+          </p>
           <p className="mt-3 text-sm text-slate-700">{blockedReasonMessage('rate_limited')}</p>
           <p className="mt-3 text-sm text-slate-700">Call {contactPhone} for help.</p>
           <div className="mt-6">
@@ -141,7 +146,7 @@ export default async function ManageBookingPage({ params, searchParams }: Manage
             </Link>
           </div>
         </div>
-      </main>
+      </GuestPageShell>
     )
   }
 
@@ -150,9 +155,12 @@ export default async function ManageBookingPage({ params, searchParams }: Manage
 
   if (preview.state !== 'ready') {
     return (
-      <main className="min-h-screen bg-sidebar py-12 sm:py-20">
+      <GuestPageShell>
         <div className="mx-auto w-full max-w-xl rounded-xl border border-white/15 bg-white px-6 py-8 shadow-sm">
           <h1 className="text-2xl font-semibold text-slate-900">Manage booking unavailable</h1>
+          <p className="mt-2 text-sm text-slate-700">
+            {formatGuestGreeting(null, 'we could not load your booking details right now.')}
+          </p>
           <p className="mt-3 text-sm text-slate-700">{blockedReasonMessage(preview.reason)}</p>
           <p className="mt-3 text-sm text-slate-700">Call {contactPhone} for help.</p>
           <div className="mt-6">
@@ -161,7 +169,7 @@ export default async function ManageBookingPage({ params, searchParams }: Manage
             </Link>
           </div>
         </div>
-      </main>
+      </GuestPageShell>
     )
   }
 
@@ -170,11 +178,15 @@ export default async function ManageBookingPage({ params, searchParams }: Manage
   const pricePerSeat = Math.max(0, Number(preview.price_per_seat ?? 0))
   const policy = preview.event_start_datetime ? getEventRefundPolicy(preview.event_start_datetime) : { refundRate: 0, policyBand: 'none' as const }
   const statusMessage = actionStatusMessage(state, delta, refundStatus, refundAmount)
+  const guestFirstName = await getCustomerFirstNameById(supabase, preview.customer_id)
 
   return (
-    <main className="min-h-screen bg-sidebar py-12 sm:py-20">
+    <GuestPageShell>
       <div className="mx-auto w-full max-w-xl rounded-xl border border-white/15 bg-white px-6 py-8 shadow-sm">
         <h1 className="text-2xl font-semibold text-slate-900">Manage your booking</h1>
+        <p className="mt-2 text-sm text-slate-700">
+          {formatGuestGreeting(guestFirstName, 'your booking details are below.')}
+        </p>
 
         {statusMessage && (
           <div className="mt-3 rounded-md border border-emerald-300 bg-emerald-50 px-3 py-2 text-xs text-emerald-900">
@@ -251,6 +263,6 @@ export default async function ManageBookingPage({ params, searchParams }: Manage
           Need help? Call {contactPhone}.
         </p>
       </div>
-    </main>
+    </GuestPageShell>
   )
 }
