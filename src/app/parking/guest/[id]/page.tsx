@@ -3,6 +3,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import Link from 'next/link'
 import Image from 'next/image'
 import { formatDateTime } from '@/lib/dateUtils'
+import { formatGuestGreeting } from '@/lib/guest/names'
 import { formatCurrency } from '@/components/ui-v2/utils/format'
 import { Card } from '@/components/ui-v2/layout/Card'
 import { Container } from '@/components/ui-v2/layout/Container'
@@ -35,6 +36,7 @@ export default async function ParkingGuestBookingPage({ params, searchParams }: 
   const paymentStatus = booking.payment_status
   const bookingStatus = booking.status
   const paymentMessage = buildPaymentMessage(paymentStatus, paymentParam)
+  const customerFirstName = booking.customer_first_name || null
 
   return (
     <main className="min-h-screen bg-sidebar py-12 sm:py-20">
@@ -45,6 +47,9 @@ export default async function ParkingGuestBookingPage({ params, searchParams }: 
 
         <Card className="w-full border border-white/10 bg-white/95 p-6 sm:p-8">
           <h1 className="text-2xl font-semibold text-slate-900 text-center">Parking booking {paymentStatus === 'paid' ? 'confirmed' : 'received'}</h1>
+          <p className="mt-2 text-center text-sm text-slate-600">
+            {formatGuestGreeting(customerFirstName, 'your booking details are below.')}
+          </p>
           {paymentMessage && (
             <p className="mt-2 text-center text-sm text-slate-600">{paymentMessage}</p>
           )}

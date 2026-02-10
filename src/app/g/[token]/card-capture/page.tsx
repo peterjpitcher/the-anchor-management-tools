@@ -1,7 +1,9 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { headers } from 'next/headers'
 import { checkGuestTokenThrottle } from '@/lib/guest/token-throttle'
+import { formatGuestGreeting, getCustomerFirstNameById } from '@/lib/guest/names'
 import { getTableCardCapturePreviewByRawToken } from '@/lib/table-bookings/bookings'
+import { GuestPageShell } from '@/components/features/shared/GuestPageShell'
 
 function formatDateTime(dateIso?: string | null): string {
   if (!dateIso) return 'your booking time'
@@ -76,13 +78,20 @@ export default async function TableCardCapturePage({
   const bookingMoment = formatDateTime(preview.start_datetime)
   const showPendingHint = query.status === 'return' && preview.state === 'ready'
   const showRateLimitedHint = query.status === 'rate_limited' && preview.state === 'ready'
+  const guestFirstName =
+    preview.state === 'ready' || preview.state === 'already_completed'
+      ? await getCustomerFirstNameById(supabase, preview.customer_id)
+      : null
 
   return (
-    <div className="min-h-screen bg-gray-100 px-4 py-10">
+    <GuestPageShell>
       <div className="mx-auto w-full max-w-xl rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
         {preview.state === 'blocked' && (
           <>
             <h1 className="text-xl font-semibold text-gray-900">Card capture unavailable</h1>
+            <p className="mt-2 text-sm text-gray-600">
+              {formatGuestGreeting(null, 'we could not load your card capture details right now.')}
+            </p>
             <p className="mt-3 text-sm text-gray-600">{mapReason(preview.reason)}</p>
           </>
         )}
@@ -90,6 +99,9 @@ export default async function TableCardCapturePage({
         {preview.state === 'already_completed' && (
           <>
             <h1 className="text-xl font-semibold text-gray-900">Card capture complete</h1>
+            <p className="mt-2 text-sm text-gray-600">
+              {formatGuestGreeting(guestFirstName, 'your booking details are below.')}
+            </p>
             <p className="mt-3 text-sm text-gray-600">
               Your booking {preview.booking_reference ? `(${preview.booking_reference}) ` : ''}is already secured.
             </p>
@@ -99,6 +111,9 @@ export default async function TableCardCapturePage({
         {preview.state === 'ready' && (
           <>
             <h1 className="text-xl font-semibold text-gray-900">Secure your booking</h1>
+            <p className="mt-2 text-sm text-gray-700">
+              {formatGuestGreeting(guestFirstName, 'your booking details are below.')}
+            </p>
             <p className="mt-3 text-sm text-gray-700">
               Booking {preview.booking_reference ? `(${preview.booking_reference}) ` : ''}for {preview.party_size || 1}{' '}
               {Number(preview.party_size || 1) === 1 ? 'person' : 'people'} on {bookingMoment}.
@@ -134,6 +149,6 @@ export default async function TableCardCapturePage({
           </>
         )}
       </div>
-    </div>
+    </GuestPageShell>
   )
 }

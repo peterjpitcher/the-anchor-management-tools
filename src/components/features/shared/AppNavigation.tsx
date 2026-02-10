@@ -28,7 +28,7 @@ const primaryNavigation: NavigationItemWithPermission[] = [
 
 const secondaryNavigation: NavigationItemWithPermission[] = [
   { name: 'Menu Management', href: '/menu-management', icon: Squares2X2Icon, permission: { module: 'menu_management', action: 'view' } },
-  { name: 'Table Bookings', href: '/table-bookings/foh', icon: CalendarIcon, permission: { module: 'table_bookings', action: 'view' } },
+  { name: 'Table Bookings', href: '/table-bookings', icon: CalendarIcon, permission: { module: 'table_bookings', action: 'view' } },
   { name: 'Private Bookings', href: '/private-bookings', icon: BuildingOfficeIcon, permission: { module: 'private_bookings', action: 'view' } },
   { name: 'Parking', href: '/parking', icon: TruckIcon, permission: { module: 'parking', action: 'view' } },
 ];

@@ -16,6 +16,101 @@ type ResolvedCustomerResult = {
 type CustomerLookupRow = {
   id: string
   mobile_e164: string | null
+  first_name: string | null
+  last_name: string | null
+  email: string | null
+}
+
+function normalizeFallbackNameParts(input: {
+  firstName?: string
+  lastName?: string
+}): { firstName?: string; lastName?: string } {
+  const firstName = input.firstName?.trim()
+  const lastName = input.lastName?.trim()
+
+  if (!firstName) {
+    return { firstName: undefined, lastName: lastName || undefined }
+  }
+
+  if (lastName || !/\s/.test(firstName)) {
+    return {
+      firstName,
+      lastName: lastName || undefined
+    }
+  }
+
+  const parts = firstName.split(/\s+/).filter(Boolean)
+  if (parts.length <= 1) {
+    return {
+      firstName,
+      lastName: undefined
+    }
+  }
+
+  return {
+    firstName: parts[0],
+    lastName: parts.slice(1).join(' ')
+  }
+}
+
+function isPlaceholderFirstName(value: string | null | undefined): boolean {
+  const cleaned = value?.trim().toLowerCase()
+  return !cleaned || cleaned === 'unknown'
+}
+
+function isPlaceholderLastName(value: string | null | undefined): boolean {
+  const cleaned = value?.trim().toLowerCase()
+  if (!cleaned) {
+    return true
+  }
+
+  if (cleaned === 'unknown' || cleaned === 'guest' || cleaned === 'contact') {
+    return true
+  }
+
+  return /^\d{3,}$/.test(cleaned)
+}
+
+async function enrichMatchedCustomer(
+  client: SupabaseClient<any, 'public', any>,
+  input: {
+    existingCustomer: CustomerLookupRow
+    standardizedPhone: string
+    fallbackFirstName?: string
+    fallbackLastName?: string
+    fallbackEmail?: string | null
+  }
+): Promise<void> {
+  const updatePayload: Record<string, string> = {}
+
+  if (!input.existingCustomer.mobile_e164) {
+    updatePayload.mobile_e164 = input.standardizedPhone
+  }
+
+  if (input.fallbackFirstName && isPlaceholderFirstName(input.existingCustomer.first_name)) {
+    updatePayload.first_name = input.fallbackFirstName
+  }
+
+  if (input.fallbackLastName && isPlaceholderLastName(input.existingCustomer.last_name)) {
+    updatePayload.last_name = input.fallbackLastName
+  }
+
+  if (input.fallbackEmail && !input.existingCustomer.email?.trim()) {
+    updatePayload.email = input.fallbackEmail
+  }
+
+  if (Object.keys(updatePayload).length === 0) {
+    return
+  }
+
+  const { error } = await client
+    .from('customers')
+    .update(updatePayload)
+    .eq('id', input.existingCustomer.id)
+
+  if (error) {
+    console.error('Failed to enrich existing customer profile:', error)
+  }
 }
 
 function deriveNameParts(fullName?: string | null): CustomerFallback {
@@ -48,7 +143,7 @@ async function findCustomerByPhone(
 ): Promise<CustomerLookupRow | null> {
   const { data: canonicalMatches, error: canonicalLookupError } = await client
     .from('customers')
-    .select('id, mobile_e164')
+    .select('id, mobile_e164, first_name, last_name, email')
     .eq('mobile_e164', standardizedPhone)
     .order('created_at', { ascending: true })
     .limit(1)
@@ -61,7 +156,7 @@ async function findCustomerByPhone(
 
   const { data: legacyMatches, error: legacyLookupError } = await client
     .from('customers')
-    .select('id, mobile_e164')
+    .select('id, mobile_e164, first_name, last_name, email')
     .in('mobile_number', numbersToMatch)
     .order('created_at', { ascending: true })
     .limit(1)
@@ -91,30 +186,41 @@ export async function ensureCustomerForPhone(
     const standardizedPhone = formatPhoneForStorage(phone)
     const variants = generatePhoneVariants(standardizedPhone)
     const numbersToMatch = variants.length > 0 ? variants : [standardizedPhone]
+    const normalizedName = normalizeFallbackNameParts({
+      firstName: fallback.firstName,
+      lastName: fallback.lastName
+    })
+    const sanitizedEmail =
+      typeof fallback.email === 'string'
+        ? fallback.email.trim().toLowerCase() || null
+        : null
+
+    const providedFirstName = normalizedName.firstName && normalizedName.firstName.length > 0
+      ? normalizedName.firstName
+      : undefined
+    const providedLastName = normalizedName.lastName && normalizedName.lastName.length > 0
+      ? normalizedName.lastName
+      : undefined
 
     const existingMatch = await findCustomerByPhone(client, standardizedPhone, numbersToMatch)
     if (existingMatch) {
-      if (!existingMatch.mobile_e164) {
-        await client
-          .from('customers')
-          .update({
-            mobile_e164: standardizedPhone
-          })
-          .eq('id', existingMatch.id)
-      }
+      await enrichMatchedCustomer(client, {
+        existingCustomer: existingMatch,
+        standardizedPhone,
+        fallbackFirstName: providedFirstName,
+        fallbackLastName: providedLastName,
+        fallbackEmail: sanitizedEmail
+      })
 
       return { customerId: existingMatch.id, standardizedPhone }
     }
 
-    const sanitizedFirstName = fallback.firstName?.trim()
-    const sanitizedLastName = fallback.lastName?.trim()
-
-    const fallbackFirstName = sanitizedFirstName && sanitizedFirstName.length > 0
-      ? sanitizedFirstName
+    const fallbackFirstName = providedFirstName
+      ? providedFirstName
       : 'Unknown'
 
-    let fallbackLastName = sanitizedLastName && sanitizedLastName.length > 0
-      ? sanitizedLastName
+    let fallbackLastName = providedLastName
+      ? providedLastName
       : null
 
     if (!fallbackLastName) {
@@ -127,7 +233,7 @@ export async function ensureCustomerForPhone(
       last_name: fallbackLastName,
       mobile_number: standardizedPhone,
       mobile_e164: standardizedPhone,
-      email: fallback.email ?? null,
+      email: sanitizedEmail,
       sms_opt_in: true,
       sms_status: 'active'
     }
@@ -142,14 +248,13 @@ export async function ensureCustomerForPhone(
       if ((insertError as any)?.code === '23505') {
         const conflictMatch = await findCustomerByPhone(client, standardizedPhone, numbersToMatch)
         if (conflictMatch) {
-          if (!conflictMatch.mobile_e164) {
-            await client
-              .from('customers')
-              .update({
-                mobile_e164: standardizedPhone
-              })
-              .eq('id', conflictMatch.id)
-          }
+          await enrichMatchedCustomer(client, {
+            existingCustomer: conflictMatch,
+            standardizedPhone,
+            fallbackFirstName: providedFirstName,
+            fallbackLastName: providedLastName,
+            fallbackEmail: sanitizedEmail
+          })
 
           return { customerId: conflictMatch.id, standardizedPhone }
         }

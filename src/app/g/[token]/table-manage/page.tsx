@@ -1,8 +1,10 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { headers } from 'next/headers'
 import { checkGuestTokenThrottle } from '@/lib/guest/token-throttle'
+import { formatGuestGreeting, getCustomerFirstNameById } from '@/lib/guest/names'
 import { getTableManagePreviewByRawToken } from '@/lib/table-bookings/manage-booking'
 import { createSundayPreorderToken } from '@/lib/table-bookings/sunday-preorder'
+import { GuestPageShell } from '@/components/features/shared/GuestPageShell'
 
 function formatDateTime(value?: string | null): string {
   if (!value) return 'Unknown'
@@ -77,12 +79,15 @@ export default async function TableManageBookingPage({
 
   if (!throttle.allowed) {
     return (
-      <div className="min-h-screen bg-gray-100 px-4 py-10">
+      <GuestPageShell>
         <div className="mx-auto w-full max-w-xl rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
           <h1 className="text-xl font-semibold text-gray-900">Manage booking unavailable</h1>
+          <p className="mt-2 text-sm text-gray-600">
+            {formatGuestGreeting(null, 'we could not load your booking details right now.')}
+          </p>
           <p className="mt-3 text-sm text-gray-600">{mapBlockedReason('rate_limited')}</p>
         </div>
-      </div>
+      </GuestPageShell>
     )
   }
 
@@ -93,12 +98,15 @@ export default async function TableManageBookingPage({
 
   if (preview.state !== 'ready') {
     return (
-      <div className="min-h-screen bg-gray-100 px-4 py-10">
+      <GuestPageShell>
         <div className="mx-auto w-full max-w-xl rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
           <h1 className="text-xl font-semibold text-gray-900">Manage booking unavailable</h1>
+          <p className="mt-2 text-sm text-gray-600">
+            {formatGuestGreeting(null, 'we could not load your booking details right now.')}
+          </p>
           <p className="mt-3 text-sm text-gray-600">{mapBlockedReason(preview.reason)}</p>
         </div>
-      </div>
+      </GuestPageShell>
     )
   }
 
@@ -120,11 +128,15 @@ export default async function TableManageBookingPage({
       sundayPreorderUrl = null
     }
   }
+  const guestFirstName = await getCustomerFirstNameById(supabase, preview.customer_id)
 
   return (
-    <div className="min-h-screen bg-gray-100 px-4 py-10">
+    <GuestPageShell maxWidthClassName="max-w-2xl">
       <div className="mx-auto w-full max-w-2xl rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
         <h1 className="text-xl font-semibold text-gray-900">Manage table booking</h1>
+        <p className="mt-2 text-sm text-gray-600">
+          {formatGuestGreeting(guestFirstName, 'your booking details are below.')}
+        </p>
 
         {banner && (
           <div
@@ -221,6 +233,6 @@ export default async function TableManageBookingPage({
           </form>
         )}
       </div>
-    </div>
+    </GuestPageShell>
   )
 }

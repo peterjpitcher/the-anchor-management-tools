@@ -1,6 +1,8 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { headers } from 'next/headers'
 import { checkGuestTokenThrottle } from '@/lib/guest/token-throttle'
+import { formatGuestGreeting, normalizeGuestFirstName } from '@/lib/guest/names'
+import { GuestPageShell } from '@/components/features/shared/GuestPageShell'
 import {
   formatChargeRequestType,
   getChargeApprovalPreviewByRawToken,
@@ -123,13 +125,16 @@ export default async function ChargeRequestApprovalPage({
 
   if (!throttle.allowed) {
     return (
-      <div className="min-h-screen bg-gray-100 px-4 py-10">
+      <GuestPageShell maxWidthClassName="max-w-2xl">
         <div className="mx-auto w-full max-w-2xl rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
           <h1 className="text-xl font-semibold text-gray-900">Charge request approval</h1>
+          <p className="mt-2 text-sm text-gray-600">
+            {formatGuestGreeting(null, 'we could not load this approval request right now.')}
+          </p>
           {renderStatusBanner('rate_limited')}
           <p className="mt-4 text-sm text-gray-600">{mapBlockedReason('rate_limited')}</p>
         </div>
-      </div>
+      </GuestPageShell>
     )
   }
 
@@ -148,12 +153,16 @@ export default async function ChargeRequestApprovalPage({
     : formatMoney(0, 'GBP')
 
   const customerName = `${preview.customer_first_name || ''} ${preview.customer_last_name || ''}`.trim() || 'Guest'
+  const customerFirstName = normalizeGuestFirstName(preview.customer_first_name || customerName)
   const partySize = Math.max(1, Number(preview.party_size || preview.committed_party_size || 1))
 
   return (
-    <div className="min-h-screen bg-gray-100 px-4 py-10">
+    <GuestPageShell maxWidthClassName="max-w-2xl">
       <div className="mx-auto w-full max-w-2xl rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
         <h1 className="text-xl font-semibold text-gray-900">Charge request approval</h1>
+        <p className="mt-2 text-sm text-gray-600">
+          {formatGuestGreeting(customerFirstName, 'the charge request details are below.')}
+        </p>
 
         {renderStatusBanner(query.status)}
 
@@ -272,6 +281,6 @@ export default async function ChargeRequestApprovalPage({
           </>
         )}
       </div>
-    </div>
+    </GuestPageShell>
   )
 }

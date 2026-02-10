@@ -17,6 +17,7 @@ const PUBLIC_PATH_PREFIXES = [
   '/booking-success',
   '/table-booking',
   '/parking/guest',
+  '/g',
 ];
 
 const PUBLIC_FILE_EXTENSIONS = [

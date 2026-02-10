@@ -62,6 +62,16 @@ type TableBookingResponseData = {
   table_name: string | null
 }
 
+function isAssignmentConflictRpcError(error: { code?: string; message?: string } | null | undefined): boolean {
+  const code = typeof error?.code === 'string' ? error.code : ''
+  const message = typeof error?.message === 'string' ? error.message : ''
+  return (
+    code === '23P01'
+    || message.includes('table_assignment_overlap')
+    || message.includes('table_assignment_private_blocked')
+  )
+}
+
 export async function POST(request: NextRequest) {
   return withApiAuth(async (req) => {
     const idempotencyKey = getIdempotencyKey(req)
@@ -152,20 +162,30 @@ export async function POST(request: NextRequest) {
       p_source: 'brand_site'
     })
 
+    let bookingResult: TableBookingRpcResult
     if (rpcError) {
-      logger.error('create_table_booking_v05 RPC failed', {
-        error: new Error(rpcError.message),
-        metadata: {
-          customerId: customerResolution.customerId,
-          bookingDate: payload.date,
-          bookingTime,
-          purpose: payload.purpose
+      if (isAssignmentConflictRpcError(rpcError)) {
+        bookingResult = {
+          state: 'blocked',
+          reason: rpcError.message?.includes('table_assignment_private_blocked')
+            ? 'private_booking_blocked'
+            : 'no_table'
         }
-      })
-      return createErrorResponse('Failed to create table booking', 'DATABASE_ERROR', 500)
+      } else {
+        logger.error('create_table_booking_v05 RPC failed', {
+          error: new Error(rpcError.message),
+          metadata: {
+            customerId: customerResolution.customerId,
+            bookingDate: payload.date,
+            bookingTime,
+            purpose: payload.purpose
+          }
+        })
+        return createErrorResponse('Failed to create table booking', 'DATABASE_ERROR', 500)
+      }
+    } else {
+      bookingResult = (rpcResultRaw ?? {}) as TableBookingRpcResult
     }
-
-    const bookingResult = (rpcResultRaw ?? {}) as TableBookingRpcResult
     const appBaseUrl = process.env.NEXT_PUBLIC_APP_URL || request.nextUrl.origin
 
     let nextStepUrl: string | null = null

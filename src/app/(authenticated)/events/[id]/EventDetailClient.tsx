@@ -170,6 +170,36 @@ function formatCreatedAt(value: string): string {
   }
 }
 
+function splitName(fullName: string): { firstName?: string; lastName?: string } {
+  const cleaned = fullName.trim()
+  if (!cleaned) {
+    return {}
+  }
+
+  const parts = cleaned.split(/\s+/).filter(Boolean)
+  if (parts.length === 0) {
+    return {}
+  }
+
+  if (parts.length === 1) {
+    return { firstName: parts[0] }
+  }
+
+  return {
+    firstName: parts[0],
+    lastName: parts.slice(1).join(' ')
+  }
+}
+
+function deriveNameFromCustomerQuery(query: string): { firstName?: string; lastName?: string } {
+  const cleaned = query.trim()
+  if (!cleaned || !/\p{L}/u.test(cleaned)) {
+    return {}
+  }
+
+  return splitName(cleaned)
+}
+
 function isHttpUrl(value: string): boolean {
   try {
     const url = new URL(value)
@@ -558,6 +588,10 @@ export default function EventDetailClient({
       return
     }
 
+    const queryNameParts = selectedCustomer ? {} : deriveNameFromCustomerQuery(customerQuery)
+    const firstName = bookingForm.first_name.trim() || queryNameParts.firstName || undefined
+    const lastName = bookingForm.last_name.trim() || queryNameParts.lastName || undefined
+
     try {
       setIsCreatingBooking(true)
       setLastCreateResult(null)
@@ -565,8 +599,8 @@ export default function EventDetailClient({
       const result = await createEventManualBooking({
         eventId: event.id,
         phone: bookingForm.phone.trim(),
-        firstName: bookingForm.first_name.trim() || undefined,
-        lastName: bookingForm.last_name.trim() || undefined,
+        firstName,
+        lastName,
         defaultCountryCode: bookingForm.default_country_code.trim() || undefined,
         seats
       })

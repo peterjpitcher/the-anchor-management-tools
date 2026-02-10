@@ -3,6 +3,8 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { getEventPaymentPreviewByRawToken } from '@/lib/events/event-payments'
 import { headers } from 'next/headers'
 import { checkGuestTokenThrottle } from '@/lib/guest/token-throttle'
+import { formatGuestGreeting, getCustomerFirstNameById } from '@/lib/guest/names'
+import { GuestPageShell } from '@/components/features/shared/GuestPageShell'
 
 type EventPaymentPageProps = {
   params: Promise<{ token: string }>
@@ -63,9 +65,12 @@ export default async function EventPaymentPage({ params, searchParams }: EventPa
 
   if (state === 'success') {
     return (
-      <main className="min-h-screen bg-sidebar py-12 sm:py-20">
+      <GuestPageShell>
         <div className="mx-auto w-full max-w-xl rounded-xl border border-white/15 bg-white px-6 py-8 shadow-sm">
           <h1 className="text-2xl font-semibold text-slate-900">Payment received</h1>
+          <p className="mt-2 text-sm text-slate-700">
+            {formatGuestGreeting(null, 'your payment has been received.')}
+          </p>
           <p className="mt-3 text-sm text-slate-700">
             Thanks. We are confirming your booking now. You will receive a text confirmation shortly.
           </p>
@@ -78,15 +83,18 @@ export default async function EventPaymentPage({ params, searchParams }: EventPa
             </Link>
           </div>
         </div>
-      </main>
+      </GuestPageShell>
     )
   }
 
   if (state === 'blocked') {
     return (
-      <main className="min-h-screen bg-sidebar py-12 sm:py-20">
+      <GuestPageShell>
         <div className="mx-auto w-full max-w-xl rounded-xl border border-white/15 bg-white px-6 py-8 shadow-sm">
           <h1 className="text-2xl font-semibold text-slate-900">Payment link unavailable</h1>
+          <p className="mt-2 text-sm text-slate-700">
+            {formatGuestGreeting(null, 'we could not open your payment link.')}
+          </p>
           <p className="mt-3 text-sm text-slate-700">{blockedReasonMessage(reason)}</p>
           <p className="mt-3 text-sm text-slate-700">Please call {contactPhone} for help.</p>
           <div className="mt-6">
@@ -95,7 +103,7 @@ export default async function EventPaymentPage({ params, searchParams }: EventPa
             </Link>
           </div>
         </div>
-      </main>
+      </GuestPageShell>
     )
   }
 
@@ -109,9 +117,12 @@ export default async function EventPaymentPage({ params, searchParams }: EventPa
 
   if (!throttle.allowed) {
     return (
-      <main className="min-h-screen bg-sidebar py-12 sm:py-20">
+      <GuestPageShell>
         <div className="mx-auto w-full max-w-xl rounded-xl border border-white/15 bg-white px-6 py-8 shadow-sm">
           <h1 className="text-2xl font-semibold text-slate-900">Payment link unavailable</h1>
+          <p className="mt-2 text-sm text-slate-700">
+            {formatGuestGreeting(null, 'we could not open your payment link.')}
+          </p>
           <p className="mt-3 text-sm text-slate-700">{blockedReasonMessage('rate_limited')}</p>
           <p className="mt-3 text-sm text-slate-700">Please call {contactPhone} for help.</p>
           <div className="mt-6">
@@ -120,7 +131,7 @@ export default async function EventPaymentPage({ params, searchParams }: EventPa
             </Link>
           </div>
         </div>
-      </main>
+      </GuestPageShell>
     )
   }
 
@@ -129,9 +140,12 @@ export default async function EventPaymentPage({ params, searchParams }: EventPa
 
   if (preview.state !== 'ready') {
     return (
-      <main className="min-h-screen bg-sidebar py-12 sm:py-20">
+      <GuestPageShell>
         <div className="mx-auto w-full max-w-xl rounded-xl border border-white/15 bg-white px-6 py-8 shadow-sm">
           <h1 className="text-2xl font-semibold text-slate-900">Payment link unavailable</h1>
+          <p className="mt-2 text-sm text-slate-700">
+            {formatGuestGreeting(null, 'we could not open your payment link.')}
+          </p>
           <p className="mt-3 text-sm text-slate-700">{blockedReasonMessage(preview.reason)}</p>
           <p className="mt-3 text-sm text-slate-700">Please call {contactPhone} for help.</p>
           <div className="mt-6">
@@ -140,16 +154,20 @@ export default async function EventPaymentPage({ params, searchParams }: EventPa
             </Link>
           </div>
         </div>
-      </main>
+      </GuestPageShell>
     )
   }
 
+  const guestFirstName = await getCustomerFirstNameById(supabase, preview.customerId)
   const seatWord = preview.seats === 1 ? 'seat' : 'seats'
 
   return (
-    <main className="min-h-screen bg-sidebar py-12 sm:py-20">
+    <GuestPageShell>
       <div className="mx-auto w-full max-w-xl rounded-xl border border-white/15 bg-white px-6 py-8 shadow-sm">
         <h1 className="text-2xl font-semibold text-slate-900">Complete your payment</h1>
+        <p className="mt-2 text-sm text-slate-700">
+          {formatGuestGreeting(guestFirstName, 'your booking and payment details are below.')}
+        </p>
         {state === 'cancelled' && (
           <div className="mt-3 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">
             Payment was not completed. Your seats are still reserved if you pay before the hold expiry time below.
@@ -177,6 +195,6 @@ export default async function EventPaymentPage({ params, searchParams }: EventPa
           </button>
         </form>
       </div>
-    </main>
+    </GuestPageShell>
   )
 }

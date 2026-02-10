@@ -283,6 +283,16 @@ type FohCreateBookingResponseData = {
   sunday_preorder_reason: string | null
 }
 
+function isAssignmentConflictRpcError(error: { code?: string; message?: string } | null | undefined): boolean {
+  const code = typeof error?.code === 'string' ? error.code : ''
+  const message = typeof error?.message === 'string' ? error.message : ''
+  return (
+    code === '23P01'
+    || message.includes('table_assignment_overlap')
+    || message.includes('table_assignment_private_blocked')
+  )
+}
+
 export async function POST(request: NextRequest) {
   const auth = await requireFohPermission('edit')
   if (!auth.ok) {
@@ -407,21 +417,31 @@ export async function POST(request: NextRequest) {
     p_source: payload.walk_in === true ? 'walk-in' : 'admin'
   })
 
+  let bookingResult: TableBookingRpcResult
   if (rpcError) {
-    logger.error('create_table_booking_v05 RPC failed for FOH create', {
-      error: new Error(rpcError.message),
-      metadata: {
-        userId: auth.userId,
-        customerId,
-        bookingDate: payload.date,
-        bookingTime,
-        purpose: payload.purpose
+    if (isAssignmentConflictRpcError(rpcError)) {
+      bookingResult = {
+        state: 'blocked',
+        reason: rpcError.message?.includes('table_assignment_private_blocked')
+          ? 'private_booking_blocked'
+          : 'no_table'
       }
-    })
-    return NextResponse.json({ error: 'Failed to create table booking' }, { status: 500 })
+    } else {
+      logger.error('create_table_booking_v05 RPC failed for FOH create', {
+        error: new Error(rpcError.message),
+        metadata: {
+          userId: auth.userId,
+          customerId,
+          bookingDate: payload.date,
+          bookingTime,
+          purpose: payload.purpose
+        }
+      })
+      return NextResponse.json({ error: 'Failed to create table booking' }, { status: 500 })
+    }
+  } else {
+    bookingResult = (rpcResultRaw ?? {}) as TableBookingRpcResult
   }
-
-  let bookingResult = (rpcResultRaw ?? {}) as TableBookingRpcResult
   const appBaseUrl = process.env.NEXT_PUBLIC_APP_URL || request.nextUrl.origin
 
   let nextStepUrl: string | null = null

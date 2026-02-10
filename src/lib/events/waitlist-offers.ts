@@ -34,6 +34,7 @@ export type WaitlistOfferAcceptResult = {
 export type WaitlistOfferPreviewResult = {
   state: 'ready' | 'blocked'
   reason?: string
+  customer_id?: string
   waitlist_offer_id?: string
   event_id?: string
   event_name?: string
@@ -248,7 +249,7 @@ export async function getWaitlistOfferPreviewByRawToken(
 
   const { data: token, error: tokenError } = await supabase
     .from('guest_tokens')
-    .select('waitlist_offer_id, expires_at, consumed_at')
+    .select('customer_id, waitlist_offer_id, expires_at, consumed_at')
     .eq('hashed_token', hashedToken)
     .eq('action_type', 'waitlist_offer')
     .maybeSingle()
@@ -307,6 +308,7 @@ export async function getWaitlistOfferPreviewByRawToken(
 
   return {
     state: 'ready',
+    customer_id: token.customer_id,
     waitlist_offer_id: offer.id,
     event_id: offer.event_id,
     event_name: event?.name ?? 'your event',
