@@ -40,7 +40,7 @@ const baseBooking: ParkingBooking = {
 describe('parking notifications', () => {
   it('buildPaymentRequestSms includes link and amount', () => {
     const message = buildPaymentRequestSms(baseBooking, 'https://example.com/pay')
-    expect(message).toContain('Pay securely now')
+    expect(message).toContain('Pay here')
     expect(message).toContain('£25.00')
     expect(message).toContain('https://example.com/pay')
   })

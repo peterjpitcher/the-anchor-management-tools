@@ -6,6 +6,7 @@ import { ensureCustomerForPhone } from '@/lib/sms/customers';
 import { recordOutboundSmsMessage } from '@/lib/sms/logging';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { evaluateSmsQuietHours } from '@/lib/sms/quiet-hours';
+import { shortenUrlsInSmsBody } from '@/lib/sms/link-shortening';
 
 const accountSid = env.TWILIO_ACCOUNT_SID;
 const authToken = env.TWILIO_AUTH_TOKEN;
@@ -97,6 +98,16 @@ export const sendSMS = async (to: string, body: string, options: SendSMSOptions 
     }
   }
 
+  let smsBody = body;
+  try {
+    smsBody = await shortenUrlsInSmsBody(body);
+  } catch (shortenError: unknown) {
+    logger.warn('Failed to shorten URLs in SMS body; sending original content', {
+      error: shortenError instanceof Error ? shortenError : new Error(String(shortenError)),
+      metadata: { to }
+    });
+  }
+
   if (!options.skipQuietHours) {
     const quietHoursState = evaluateSmsQuietHours();
 
@@ -121,7 +132,7 @@ export const sendSMS = async (to: string, body: string, options: SendSMSOptions 
           const { jobQueue } = await import('@/lib/unified-job-queue');
           const enqueueResult = await jobQueue.enqueue('send_sms', {
             to,
-            message: body,
+            message: smsBody,
             customerId,
             metadata: options.metadata
           }, {
@@ -180,7 +191,7 @@ export const sendSMS = async (to: string, body: string, options: SendSMSOptions 
 
     // Build message parameters
     const messageParams: any = {
-      body,
+      body: smsBody,
       to,
       statusCallback: TWILIO_STATUS_CALLBACK,
       statusCallbackMethod: TWILIO_STATUS_CALLBACK_METHOD,
@@ -209,13 +220,13 @@ export const sendSMS = async (to: string, body: string, options: SendSMSOptions 
         onRetry: (error, attempt) => {
           logger.warn(`SMS send retry attempt ${attempt}`, {
             error,
-            metadata: { to, bodyLength: body.length }
+            metadata: { to, bodyLength: smsBody.length }
           });
         }
       }
     );
     
-    const segments = Math.ceil(body.length / 160);
+    const segments = Math.ceil(smsBody.length / 160);
 
     logger.info('SMS sent successfully', {
       metadata: { 
@@ -254,7 +265,7 @@ export const sendSMS = async (to: string, body: string, options: SendSMSOptions 
           supabase,
           customerId: usedCustomerId,
           to,
-          body,
+          body: smsBody,
           sid: message.sid,
           fromNumber: message.from ?? fromNumber ?? null,
           status: message.status ?? 'queued',
@@ -299,7 +310,7 @@ export const sendSMS = async (to: string, body: string, options: SendSMSOptions 
       const failureSid = `local-fail-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
       await recordOutboundSmsMessage({
         to,
-        body,
+        body: smsBody,
         sid: failureSid,
         customerId: options.customerId,
         status: 'failed',
