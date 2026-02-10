@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { sendEventBookingSeatUpdateSms } from '@/lib/events/event-payments'
 import {
   cancelEventBookingByRawToken,
   createSeatIncreaseCheckoutByManageToken,
@@ -201,6 +202,29 @@ export async function POST(request: NextRequest, context: RouteContext) {
         })
         refundStatus = refundResult.status
         refundAmount = refundResult.amount
+      }
+
+      if (
+        updateResult.state === 'updated' &&
+        Number(updateResult.delta ?? 0) !== 0 &&
+        updateResult.booking_id
+      ) {
+        try {
+          await sendEventBookingSeatUpdateSms(supabase, {
+            bookingId: updateResult.booking_id,
+            eventName: updateResult.event_name || null,
+            oldSeats: Math.max(1, Number(updateResult.old_seats ?? seatsInput)),
+            newSeats: Math.max(1, Number(updateResult.new_seats ?? seatsInput)),
+            appBaseUrl: process.env.NEXT_PUBLIC_APP_URL || request.nextUrl.origin
+          })
+        } catch (smsError) {
+          logger.warn('Failed to send guest seat update SMS', {
+            metadata: {
+              bookingId: updateResult.booking_id,
+              error: smsError instanceof Error ? smsError.message : String(smsError)
+            }
+          })
+        }
       }
 
       return redirectToState(request, token, {

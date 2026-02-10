@@ -201,6 +201,27 @@ export async function updateEventBookingSeatsByRawToken(
   return (data ?? {}) as EventManageSeatsUpdateResult
 }
 
+export async function updateEventBookingSeatsById(
+  supabase: SupabaseClient<any, 'public', any>,
+  input: {
+    bookingId: string
+    newSeats: number
+    actor?: string
+  }
+): Promise<EventManageSeatsUpdateResult> {
+  const { data, error } = await supabase.rpc('update_event_booking_seats_staff_v05', {
+    p_booking_id: input.bookingId,
+    p_new_seats: input.newSeats,
+    p_actor: input.actor || 'staff'
+  })
+
+  if (error) {
+    throw error
+  }
+
+  return (data ?? {}) as EventManageSeatsUpdateResult
+}
+
 export async function cancelEventBookingByRawToken(
   supabase: SupabaseClient<any, 'public', any>,
   input: {

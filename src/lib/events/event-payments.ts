@@ -346,6 +346,87 @@ export async function sendEventPaymentConfirmationSms(
   })
 }
 
+function formatSeatCount(count: number): string {
+  return `${count} ${count === 1 ? 'seat' : 'seats'}`
+}
+
+export async function sendEventBookingSeatUpdateSms(
+  supabase: SupabaseClient<any, 'public', any>,
+  input: {
+    bookingId: string
+    eventName?: string | null
+    oldSeats: number
+    newSeats: number
+    appBaseUrl?: string
+  }
+): Promise<boolean> {
+  if (input.oldSeats === input.newSeats) {
+    return false
+  }
+
+  const { data: booking, error: bookingError } = await supabase
+    .from('bookings')
+    .select('id, customer_id, event_id')
+    .eq('id', input.bookingId)
+    .maybeSingle()
+
+  if (bookingError || !booking?.customer_id) {
+    return false
+  }
+
+  const { data: customer, error: customerError } = await supabase
+    .from('customers')
+    .select('id, first_name, mobile_number, sms_status')
+    .eq('id', booking.customer_id)
+    .maybeSingle()
+
+  if (customerError || !customer || customer.sms_status !== 'active' || !customer.mobile_number) {
+    return false
+  }
+
+  const firstName = customer.first_name || 'there'
+  const supportPhone = process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || process.env.TWILIO_PHONE_NUMBER || undefined
+  const eventName = input.eventName || 'your event'
+  const oldLabel = formatSeatCount(Math.max(1, input.oldSeats))
+  const newLabel = formatSeatCount(Math.max(1, input.newSeats))
+
+  let manageLink: string | null = null
+  try {
+    const { data: eventRow } = await supabase
+      .from('events')
+      .select('start_datetime, date, time')
+      .eq('id', booking.event_id)
+      .maybeSingle()
+    const eventStartIso = eventRow?.start_datetime || null
+
+    const manageToken = await createEventManageToken(supabase, {
+      customerId: customer.id,
+      bookingId: booking.id,
+      eventStartIso,
+      appBaseUrl: input.appBaseUrl
+    })
+    manageLink = manageToken.url
+  } catch {
+    manageLink = null
+  }
+
+  const body = ensureReplyInstruction(
+    `The Anchor: Hi ${firstName}, your booking for ${eventName} has been updated from ${oldLabel} to ${newLabel}.${manageLink ? ` Manage booking: ${manageLink}` : ''}`,
+    supportPhone
+  )
+
+  const smsResult = await sendSMS(customer.mobile_number, body, {
+    customerId: customer.id,
+    metadata: {
+      event_booking_id: input.bookingId,
+      event_id: booking.event_id,
+      template_key: 'event_booking_seats_updated'
+    }
+  })
+
+  return smsResult.success === true
+}
+
 export async function sendEventPaymentRetrySms(
   supabase: SupabaseClient<any, 'public', any>,
   input: {

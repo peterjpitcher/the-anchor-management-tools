@@ -8,6 +8,7 @@ import {
 } from '@/lib/payments/stripe'
 import { recordAnalyticsEvent } from '@/lib/analytics/events'
 import {
+  sendEventBookingSeatUpdateSms,
   sendEventPaymentConfirmationSms,
   sendEventPaymentRetrySms
 } from '@/lib/events/event-payments'
@@ -108,7 +109,8 @@ function getSessionMetadata(stripeSession: any): Record<string, string> {
 
 async function handleSeatIncreaseCheckoutCompleted(
   supabase: ReturnType<typeof createAdminClient>,
-  stripeSession: any
+  stripeSession: any,
+  appBaseUrl: string
 ): Promise<void> {
   const checkoutSessionId = typeof stripeSession?.id === 'string' ? stripeSession.id : null
   if (!checkoutSessionId) {
@@ -152,21 +154,30 @@ async function handleSeatIncreaseCheckoutCompleted(
   const rpcResult = (rpcResultRaw ?? {}) as SeatIncreaseCompletedResult
 
   if (rpcResult.state === 'updated' && rpcResult.booking_id && rpcResult.customer_id) {
-    await recordAnalyticsEvent(supabase, {
-      customerId: rpcResult.customer_id,
-      eventBookingId: rpcResult.booking_id,
-      eventType: 'payment_succeeded',
-      metadata: {
-        payment_kind: 'seat_increase',
-        stripe_checkout_session_id: checkoutSessionId,
-        stripe_payment_intent_id: paymentIntentId || null,
-        amount,
-        currency,
-        old_seats: rpcResult.old_seats ?? null,
-        new_seats: rpcResult.new_seats ?? null,
-        delta: rpcResult.delta ?? null
-      }
-    })
+    await Promise.allSettled([
+      recordAnalyticsEvent(supabase, {
+        customerId: rpcResult.customer_id,
+        eventBookingId: rpcResult.booking_id,
+        eventType: 'payment_succeeded',
+        metadata: {
+          payment_kind: 'seat_increase',
+          stripe_checkout_session_id: checkoutSessionId,
+          stripe_payment_intent_id: paymentIntentId || null,
+          amount,
+          currency,
+          old_seats: rpcResult.old_seats ?? null,
+          new_seats: rpcResult.new_seats ?? null,
+          delta: rpcResult.delta ?? null
+        }
+      }),
+      sendEventBookingSeatUpdateSms(supabase, {
+        bookingId: rpcResult.booking_id,
+        eventName: rpcResult.event_name || null,
+        oldSeats: Math.max(1, Number(rpcResult.old_seats ?? 1)),
+        newSeats: Math.max(1, Number(rpcResult.new_seats ?? 1)),
+        appBaseUrl
+      })
+    ])
     return
   }
 
@@ -344,7 +355,7 @@ async function handleCheckoutSessionCompleted(
   }
 
   if (paymentKind === 'seat_increase') {
-    await handleSeatIncreaseCheckoutCompleted(supabase, stripeSession)
+    await handleSeatIncreaseCheckoutCompleted(supabase, stripeSession, appBaseUrl)
     return
   }
 

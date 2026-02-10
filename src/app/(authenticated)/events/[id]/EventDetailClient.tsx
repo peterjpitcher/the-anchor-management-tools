@@ -11,7 +11,12 @@ import { Badge } from '@/components/ui-v2/display/Badge'
 import { Button } from '@/components/ui-v2/forms/Button'
 import { toast } from '@/components/ui-v2/feedback/Toast'
 import { usePermissions } from '@/contexts/PermissionContext'
-import { cancelEventManualBooking, createEventManualBooking, deleteEvent } from '@/app/actions/events'
+import {
+  cancelEventManualBooking,
+  createEventManualBooking,
+  deleteEvent,
+  updateEventManualBookingSeats
+} from '@/app/actions/events'
 import { regenerateEventMarketingLinks, type EventMarketingLink } from '@/app/actions/event-marketing-links'
 import {
   addEventInterestManualRecipient,
@@ -156,6 +161,23 @@ function formatEventBookingReason(reason: string | null | undefined): string {
   }
 }
 
+function formatEventBookingUpdateReason(reason: string | null | undefined): string {
+  switch (reason) {
+    case 'invalid_seats':
+      return 'Seats must be at least 1.'
+    case 'booking_not_found':
+      return 'Booking was not found.'
+    case 'status_not_changeable':
+      return 'This booking cannot be edited in its current status.'
+    case 'event_started':
+      return 'This event has already started.'
+    case 'insufficient_capacity':
+      return 'There are not enough seats available for that change.'
+    default:
+      return reason ? reason.replace(/_/g, ' ') : 'Booking could not be updated.'
+  }
+}
+
 function formatCreatedAt(value: string): string {
   try {
     return new Intl.DateTimeFormat('en-GB', {
@@ -266,6 +288,7 @@ export default function EventDetailClient({
   const [selectedReminderCandidateIds, setSelectedReminderCandidateIds] = useState<string[]>([])
   const [isAddingReminderCandidates, setIsAddingReminderCandidates] = useState(false)
   const [cancellingBookingId, setCancellingBookingId] = useState<string | null>(null)
+  const [updatingBookingId, setUpdatingBookingId] = useState<string | null>(null)
 
   useEffect(() => {
     setMarketingLinks(initialMarketingLinks)
@@ -813,6 +836,61 @@ export default function EventDetailClient({
     }
   }, [canManageEvents, event.id, router])
 
+  const handleEditBookingSeats = useCallback(async (booking: EventBookingSummary) => {
+    if (!canManageEvents) {
+      toast.error('You do not have permission to edit bookings.')
+      return
+    }
+
+    const currentSeats = Math.max(1, Number(booking.seats || 1))
+    const rawInput = window.prompt('New seat count', String(currentSeats))
+    if (rawInput === null) {
+      return
+    }
+
+    const nextSeats = Number.parseInt(rawInput, 10)
+    if (!Number.isFinite(nextSeats) || nextSeats < 1 || nextSeats > 20) {
+      toast.error('Enter a seat count between 1 and 20.')
+      return
+    }
+
+    try {
+      setUpdatingBookingId(booking.id)
+      const result = await updateEventManualBookingSeats({
+        bookingId: booking.id,
+        seats: nextSeats,
+        sendSms: true
+      })
+
+      if ('error' in result) {
+        toast.error(result.error)
+        return
+      }
+
+      if (result.data.state === 'blocked') {
+        toast.error(formatEventBookingUpdateReason(result.data.reason))
+        return
+      }
+
+      if (result.data.state === 'unchanged') {
+        toast.success('Seat count unchanged.')
+        return
+      }
+
+      toast.success(
+        result.data.sms_sent
+          ? `Booking updated to ${result.data.new_seats} seat${result.data.new_seats === 1 ? '' : 's'} and SMS sent.`
+          : `Booking updated to ${result.data.new_seats} seat${result.data.new_seats === 1 ? '' : 's'}.`
+      )
+      router.refresh()
+    } catch (error) {
+      console.error('Failed updating booking seats:', error)
+      toast.error('Failed to update booking seats.')
+    } finally {
+      setUpdatingBookingId(null)
+    }
+  }, [canManageEvents, router])
+
   const handleCancelBooking = useCallback(async (booking: EventBookingSummary) => {
     if (!canManageEvents) {
       toast.error('You do not have permission to cancel bookings.')
@@ -1340,6 +1418,7 @@ export default function EventDetailClient({
                           const phone = booking.customer?.mobile_e164 || booking.customer?.mobile_number || 'No phone'
                           const canCancelBooking = ['confirmed', 'pending_payment'].includes(booking.status || '')
                           const isReminderOnly = booking.is_reminder_only === true || Math.max(0, Number(booking.seats || 0)) === 0
+                          const canEditBooking = canCancelBooking && !isReminderOnly
 
                           return (
                             <tr key={booking.id}>
@@ -1366,17 +1445,33 @@ export default function EventDetailClient({
                                 {formatCreatedAt(booking.created_at)}
                               </td>
                               <td className="px-3 py-2">
-                                {canManageEvents && canCancelBooking ? (
-                                  <Button
-                                    type="button"
-                                    size="xs"
-                                    variant="secondary"
-                                    onClick={() => handleCancelBooking(booking)}
-                                    loading={cancellingBookingId === booking.id}
-                                    disabled={cancellingBookingId === booking.id}
-                                  >
-                                    Cancel
-                                  </Button>
+                                {canManageEvents && (canEditBooking || canCancelBooking) ? (
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    {canEditBooking && (
+                                      <Button
+                                        type="button"
+                                        size="xs"
+                                        variant="secondary"
+                                        onClick={() => handleEditBookingSeats(booking)}
+                                        loading={updatingBookingId === booking.id}
+                                        disabled={updatingBookingId === booking.id || cancellingBookingId === booking.id}
+                                      >
+                                        Edit seats
+                                      </Button>
+                                    )}
+                                    {canCancelBooking && (
+                                      <Button
+                                        type="button"
+                                        size="xs"
+                                        variant="secondary"
+                                        onClick={() => handleCancelBooking(booking)}
+                                        loading={cancellingBookingId === booking.id}
+                                        disabled={cancellingBookingId === booking.id || updatingBookingId === booking.id}
+                                      >
+                                        Cancel
+                                      </Button>
+                                    )}
+                                  </div>
                                 ) : (
                                   <span className="text-xs text-gray-400">-</span>
                                 )}

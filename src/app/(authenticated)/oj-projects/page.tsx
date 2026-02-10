@@ -11,6 +11,7 @@ import { Select } from '@/components/ui-v2/forms/Select'
 import { Textarea } from '@/components/ui-v2/forms/Textarea'
 import { Alert } from '@/components/ui-v2/feedback/Alert'
 import { toast } from '@/components/ui-v2/feedback/Toast'
+import { Modal, ModalActions } from '@/components/ui-v2/overlay/Modal'
 import { formatDateDdMmmmYyyy, getTodayIsoDate } from '@/lib/dateUtils'
 import { usePermissions } from '@/contexts/PermissionContext'
 import { getVendors } from '@/app/actions/vendors'
@@ -18,7 +19,7 @@ import { getProjects } from '@/app/actions/oj-projects/projects'
 import { getRecurringCharges } from '@/app/actions/oj-projects/recurring-charges'
 import { getVendorBillingSettings } from '@/app/actions/oj-projects/vendor-settings'
 import { getWorkTypes } from '@/app/actions/oj-projects/work-types'
-import { createMileageEntry, createTimeEntry, getEntries } from '@/app/actions/oj-projects/entries'
+import { createMileageEntry, createTimeEntry, deleteEntry, getEntries, updateEntry } from '@/app/actions/oj-projects/entries'
 import { getOjProjectsEmailStatus } from '@/app/actions/oj-projects/system'
 import type { InvoiceVendor } from '@/types/invoices'
 import { BarChart } from '@/components/charts/BarChart'
@@ -30,11 +31,13 @@ import {
   ChevronUp,
   Clock,
   CreditCard,
+  Edit2,
   Hourglass,
   LayoutDashboard,
   List,
   MapPin,
   Plus,
+  Trash2,
   Users,
   Wallet
 } from 'lucide-react'
@@ -58,6 +61,35 @@ function monthRange(date: Date) {
     return copy.toISOString().split('T')[0]
   }
   return { start: toIso(start), end: toIso(end) }
+}
+
+type EntryFormState = {
+  id?: string
+  entry_type: 'time' | 'mileage'
+  vendor_id: string
+  project_id: string
+  entry_date: string
+  start_time: string
+  duration_hours: number
+  miles: string
+  work_type_id: string
+  description: string
+  internal_notes: string
+  billable: boolean
+}
+
+function toLondonTimeHm(iso: string | null) {
+  if (!iso) return ''
+  try {
+    return new Intl.DateTimeFormat('en-GB', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+      timeZone: 'Europe/London',
+    }).format(new Date(iso))
+  } catch {
+    return ''
+  }
 }
 
 function StatCard({
@@ -91,6 +123,8 @@ export default function OJProjectsDashboardPage() {
   const { hasPermission, loading: permissionsLoading } = usePermissions()
   const canView = hasPermission('oj_projects', 'view')
   const canCreate = hasPermission('oj_projects', 'create')
+  const canEdit = hasPermission('oj_projects', 'edit')
+  const canDelete = hasPermission('oj_projects', 'delete')
 
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -121,6 +155,21 @@ export default function OJProjectsDashboardPage() {
   const [internalNotes, setInternalNotes] = useState('')
   const [billable, setBillable] = useState(true)
   const [saving, setSaving] = useState(false)
+  const [isEditOpen, setIsEditOpen] = useState(false)
+  const [editSaving, setEditSaving] = useState(false)
+  const [editForm, setEditForm] = useState<EntryFormState>({
+    entry_type: 'time',
+    vendor_id: '',
+    project_id: '',
+    entry_date: '',
+    start_time: '09:00',
+    duration_hours: 1.0,
+    miles: '',
+    work_type_id: '',
+    description: '',
+    internal_notes: '',
+    billable: true,
+  })
 
   // Work History Graph Logic (Moved to Top Level)
   const [historyRange, setHistoryRange] = useState<30 | 60 | 90>(30)
@@ -567,6 +616,101 @@ export default function OJProjectsDashboardPage() {
     }
   }
 
+  function openEdit(entry: any) {
+    if (!canEdit) {
+      toast.error('You do not have permission to edit entries')
+      return
+    }
+    if (entry.status !== 'unbilled') {
+      toast.error('Only unbilled entries can be edited')
+      return
+    }
+
+    const durationMinutes = Number(entry.duration_minutes_raw ?? entry.duration_minutes_rounded ?? 60)
+    const durationHoursValue = durationMinutes > 0 ? durationMinutes / 60 : 1
+
+    setEditForm({
+      id: entry.id,
+      entry_type: entry.entry_type,
+      vendor_id: entry.vendor_id,
+      project_id: entry.project_id,
+      entry_date: entry.entry_date,
+      start_time: toLondonTimeHm(entry.start_at) || '09:00',
+      duration_hours: durationHoursValue,
+      miles: entry.miles != null ? String(entry.miles) : '',
+      work_type_id: entry.work_type_id || '',
+      description: entry.description || '',
+      internal_notes: entry.internal_notes || '',
+      billable: entry.billable ?? true,
+    })
+    setIsEditOpen(true)
+  }
+
+  async function saveEdit(e: React.FormEvent) {
+    e.preventDefault()
+    if (!canEdit) return
+    if (!editForm.id) return
+
+    setEditSaving(true)
+    try {
+      const fd = new FormData()
+      fd.append('id', editForm.id)
+      fd.append('entry_type', editForm.entry_type)
+      fd.append('vendor_id', editForm.vendor_id)
+      fd.append('project_id', editForm.project_id)
+      fd.append('entry_date', editForm.entry_date)
+      fd.append('description', editForm.description)
+      fd.append('internal_notes', editForm.internal_notes)
+      fd.append('billable', String(editForm.billable))
+
+      if (editForm.entry_type === 'time') {
+        fd.append('start_time', editForm.start_time)
+        fd.append('duration_minutes', String(editForm.duration_hours * 60))
+        fd.append('work_type_id', editForm.work_type_id || '')
+      } else {
+        fd.append('miles', editForm.miles)
+      }
+
+      const res = await updateEntry(fd)
+      if (res?.error) throw new Error(res.error)
+
+      toast.success('Entry updated')
+      if ((res as any)?.warning) {
+        toast.warning(String((res as any).warning))
+      }
+      setIsEditOpen(false)
+      await load()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to update entry')
+    } finally {
+      setEditSaving(false)
+    }
+  }
+
+  async function removeEntry(entry: any) {
+    if (!canDelete) {
+      toast.error('You do not have permission to delete entries')
+      return
+    }
+    if (entry.status !== 'unbilled') {
+      toast.error('Only unbilled entries can be deleted')
+      return
+    }
+    if (!window.confirm('Delete this entry? This cannot be undone.')) return
+
+    try {
+      const fd = new FormData()
+      fd.append('id', String(entry.id))
+      const res = await deleteEntry(fd)
+      if (res?.error) throw new Error(res.error)
+
+      toast.success('Entry deleted')
+      await load()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to delete entry')
+    }
+  }
+
   if (permissionsLoading || loading) {
     return (
       <PageLayout title="OJ Projects" subtitle="Time tracking and billing" loading loadingLabel="Loading OJ Projects…" />
@@ -957,6 +1101,7 @@ export default function OJProjectsDashboardPage() {
                         <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Client/Project</th>
                         <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Work</th>
                         <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                        <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
                       </tr>
                     </thead>
                     <tbody className="bg-white divide-y divide-gray-200">
@@ -987,6 +1132,40 @@ export default function OJProjectsDashboardPage() {
                             )}>
                               {entry.status}
                             </span>
+                          </td>
+                          <td className="px-4 py-3 text-sm text-right">
+                            <div className="inline-flex items-center gap-1.5">
+                              <button
+                                type="button"
+                                onClick={() => openEdit(entry)}
+                                disabled={!canEdit || entry.status !== 'unbilled'}
+                                title={entry.status === 'unbilled' ? 'Edit entry' : 'Only unbilled entries can be edited'}
+                                className={cn(
+                                  "inline-flex items-center gap-1 rounded-md border px-2 py-1 text-xs font-medium transition-colors",
+                                  canEdit && entry.status === 'unbilled'
+                                    ? "border-gray-200 text-gray-700 hover:bg-gray-50"
+                                    : "border-gray-100 text-gray-300 cursor-not-allowed"
+                                )}
+                              >
+                                <Edit2 className="w-3 h-3" />
+                                Edit
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => removeEntry(entry)}
+                                disabled={!canDelete || entry.status !== 'unbilled'}
+                                title={entry.status === 'unbilled' ? 'Delete entry' : 'Only unbilled entries can be deleted'}
+                                className={cn(
+                                  "inline-flex items-center gap-1 rounded-md border px-2 py-1 text-xs font-medium transition-colors",
+                                  canDelete && entry.status === 'unbilled'
+                                    ? "border-red-200 text-red-700 hover:bg-red-50"
+                                    : "border-gray-100 text-gray-300 cursor-not-allowed"
+                                )}
+                              >
+                                <Trash2 className="w-3 h-3" />
+                                Delete
+                              </button>
+                            </div>
                           </td>
                         </tr>
                       ))}
@@ -1246,6 +1425,156 @@ export default function OJProjectsDashboardPage() {
           </div>
         </div>
       </div>
+
+      <Modal open={isEditOpen} onClose={() => setIsEditOpen(false)} title="Edit Entry">
+        <form onSubmit={saveEdit} className="space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <FormGroup label="Type" required>
+              <Select
+                value={editForm.entry_type}
+                onChange={(e) => setEditForm({ ...editForm, entry_type: e.target.value as any })}
+                required
+                disabled
+              >
+                <option value="time">Time</option>
+                <option value="mileage">Mileage</option>
+              </Select>
+            </FormGroup>
+
+            <FormGroup label="Date" required>
+              <Input
+                type="date"
+                value={editForm.entry_date}
+                onChange={(e) => setEditForm({ ...editForm, entry_date: e.target.value })}
+                required
+              />
+            </FormGroup>
+
+            <FormGroup label="Client" required>
+              <Select
+                value={editForm.vendor_id}
+                onChange={(e) => setEditForm({ ...editForm, vendor_id: e.target.value, project_id: '' })}
+                required
+              >
+                <option value="">Select a client</option>
+                {vendors.map((v) => (
+                  <option key={v.id} value={v.id}>
+                    {v.name}
+                  </option>
+                ))}
+              </Select>
+            </FormGroup>
+
+            <FormGroup label="Project" required>
+              <Select
+                value={editForm.project_id}
+                onChange={(e) => setEditForm({ ...editForm, project_id: e.target.value })}
+                required
+                disabled={!editForm.vendor_id}
+              >
+                <option value="">Select a project</option>
+                {projects
+                  .filter((p) => p.vendor_id === editForm.vendor_id)
+                  .map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.project_code} — {p.project_name}
+                    </option>
+                  ))}
+              </Select>
+            </FormGroup>
+
+            {editForm.entry_type === 'time' ? (
+              <>
+                <FormGroup label="Start" required>
+                  <Input
+                    type="time"
+                    value={editForm.start_time}
+                    onChange={(e) => setEditForm({ ...editForm, start_time: e.target.value })}
+                    required
+                  />
+                </FormGroup>
+                <FormGroup label="Duration (h)" required>
+                  <Input
+                    type="number"
+                    min="0.25"
+                    step="0.25"
+                    value={editForm.duration_hours}
+                    onChange={(e) => setEditForm({ ...editForm, duration_hours: parseFloat(e.target.value) || 0 })}
+                    required
+                  />
+                </FormGroup>
+
+                <FormGroup label="Work Type">
+                  <Select
+                    value={editForm.work_type_id}
+                    onChange={(e) => setEditForm({ ...editForm, work_type_id: e.target.value })}
+                  >
+                    <option value="">Unspecified</option>
+                    {workTypes
+                      .filter((w) => w.is_active)
+                      .map((w) => (
+                        <option key={w.id} value={w.id}>
+                          {w.name}
+                        </option>
+                      ))}
+                  </Select>
+                </FormGroup>
+              </>
+            ) : (
+              <FormGroup label="Miles" required>
+                <Input
+                  type="number"
+                  min="0"
+                  step="0.1"
+                  value={editForm.miles}
+                  onChange={(e) => setEditForm({ ...editForm, miles: e.target.value })}
+                  required
+                />
+              </FormGroup>
+            )}
+
+            <div className="md:col-span-2 pt-2">
+              <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+                <input
+                  type="checkbox"
+                  className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                  checked={editForm.billable}
+                  onChange={(e) => setEditForm({ ...editForm, billable: e.target.checked })}
+                />
+                Billable Entry
+              </label>
+            </div>
+
+            <div className="md:col-span-2">
+              <FormGroup label="Description">
+                <Input
+                  value={editForm.description}
+                  onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
+                />
+              </FormGroup>
+            </div>
+
+            <div className="md:col-span-2">
+              <FormGroup label="Internal Notes">
+                <Textarea
+                  value={editForm.internal_notes}
+                  onChange={(e) => setEditForm({ ...editForm, internal_notes: e.target.value })}
+                  rows={3}
+                />
+              </FormGroup>
+            </div>
+          </div>
+
+          <ModalActions>
+            <Button type="button" variant="secondary" onClick={() => setIsEditOpen(false)}>
+              Cancel
+            </Button>
+            <Button type="submit" loading={editSaving} disabled={!canEdit || editSaving}>
+              Save Changes
+            </Button>
+          </ModalActions>
+        </form>
+      </Modal>
 
     </PageLayout>
   )

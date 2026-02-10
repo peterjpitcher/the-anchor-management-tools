@@ -2529,6 +2529,37 @@ export function FohScheduleClient({
                   </button>
                   <button
                     type="button"
+                    disabled={Boolean(bookingActionInFlight)}
+                    onClick={() => {
+                      const currentSize = Math.max(1, Number(selectedBooking.party_size || 1))
+                      const raw = window.prompt('New party size', String(currentSize))
+                      if (raw === null) return
+
+                      const nextSize = Number.parseInt(raw, 10)
+                      if (!Number.isFinite(nextSize) || nextSize < 1 || nextSize > 20) {
+                        setErrorMessage('Enter a party size between 1 and 20.')
+                        return
+                      }
+
+                      void (async () => {
+                        const ok = await runAction(
+                          () =>
+                            postBookingAction(`/api/foh/bookings/${selectedBooking.id}/party-size`, {
+                              party_size: nextSize,
+                              send_sms: true
+                            }),
+                          'Party size updated',
+                          'party_size'
+                        )
+                        if (ok) closeBookingDetails()
+                      })()
+                    }}
+                    className="rounded-md border border-gray-300 px-2 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {bookingActionInFlight === 'party_size' ? 'Saving…' : 'Edit party size'}
+                  </button>
+                  <button
+                    type="button"
                     disabled={Boolean(bookingActionInFlight) || !selectedBookingCanBeCancelled}
                     onClick={() => {
                       if (!selectedBookingCanBeCancelled) return
