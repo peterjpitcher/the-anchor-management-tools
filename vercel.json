@@ -87,6 +87,10 @@
       "schedule": "* * * * *"
     },
     {
+      "path": "/api/cron/event-guest-engagement",
+      "schedule": "*/15 * * * *"
+    },
+    {
       "path": "/api/cron/hiring-stage-reminders",
       "schedule": "0 9 * * *"
     },

@@ -70,6 +70,7 @@ export default function BackgroundJobsClient({
   const [isRefreshing, startRefreshTransition] = useTransition()
   const [isMutating, startMutateTransition] = useTransition()
   const [isProcessing, setIsProcessing] = useState(false)
+  const [isProcessingEngagement, setIsProcessingEngagement] = useState(false)
 
   useEffect(() => {
     setJobs(initialJobs)
@@ -157,6 +158,31 @@ export default function BackgroundJobsClient({
       })
       .finally(() => {
         setIsProcessing(false)
+      })
+  }
+
+  const processEventGuestEngagement = () => {
+    setIsProcessingEngagement(true)
+    setError(null)
+    runCronJob('event-guest-engagement')
+      .then((result) => {
+        if (!result.success) {
+          const message = result.error ?? 'Failed to process event guest engagement'
+          setError(message)
+          toast.error(message)
+          return
+        }
+        toast.success('Event guest engagement triggered')
+        fetchJobs()
+      })
+      .catch((err) => {
+        console.error('Error processing event guest engagement:', err)
+        const message = err instanceof Error ? err.message : 'Failed to process event guest engagement'
+        setError(message)
+        toast.error(message)
+      })
+      .finally(() => {
+        setIsProcessingEngagement(false)
       })
   }
 
@@ -281,17 +307,30 @@ export default function BackgroundJobsClient({
   ]
 
   const navActions = canManage ? (
-    <Button
-      variant="primary"
-      size="sm"
-      onClick={processJobs}
-      disabled={!canManage || isProcessing}
-      loading={isProcessing}
-      leftIcon={!isProcessing && <PlayIcon />}
-      title={!canManage ? 'You need settings manage permission to process jobs.' : undefined}
-    >
-      {isProcessing ? 'Processing...' : 'Process Jobs'}
-    </Button>
+    <div className="flex items-center gap-2">
+      <Button
+        variant="secondary"
+        size="sm"
+        onClick={processEventGuestEngagement}
+        disabled={!canManage || isProcessingEngagement}
+        loading={isProcessingEngagement}
+        leftIcon={!isProcessingEngagement && <PlayIcon />}
+        title={!canManage ? 'You need settings manage permission to process jobs.' : undefined}
+      >
+        {isProcessingEngagement ? 'Running Engagement...' : 'Run Engagement'}
+      </Button>
+      <Button
+        variant="primary"
+        size="sm"
+        onClick={processJobs}
+        disabled={!canManage || isProcessing}
+        loading={isProcessing}
+        leftIcon={!isProcessing && <PlayIcon />}
+        title={!canManage ? 'You need settings manage permission to process jobs.' : undefined}
+      >
+        {isProcessing ? 'Processing...' : 'Process Jobs'}
+      </Button>
+    </div>
   ) : undefined
 
   const selectedJobDetails = selectedJob ? jobs.find((j) => j.id === selectedJob) : null
