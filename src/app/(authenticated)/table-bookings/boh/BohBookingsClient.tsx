@@ -676,6 +676,42 @@ export function BohBookingsClient({
     )
   }
 
+  async function handleUpdatePartySize() {
+    if (!selectedBooking) return
+
+    const currentSize = Math.max(1, Number(selectedBooking.party_size || 1))
+    const raw = window.prompt('New party size', String(currentSize))
+    if (raw === null) {
+      return
+    }
+
+    const nextSize = Number.parseInt(raw, 10)
+    if (!Number.isFinite(nextSize) || nextSize < 1 || nextSize > 20) {
+      toast.error('Enter a party size between 1 and 20')
+      return
+    }
+
+    await runAction(
+      'party-size',
+      async () => {
+        const response = await fetch(`/api/boh/table-bookings/${selectedBooking.id}/party-size`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            party_size: nextSize,
+            send_sms: true
+          })
+        })
+
+        const payload = (await response.json()) as { error?: string }
+        if (!response.ok) {
+          throw new Error(payload.error || 'Failed to update party size')
+        }
+      },
+      'Party size updated'
+    )
+  }
+
   async function handleMoveTable() {
     if (!selectedBooking) return
     if (!moveTableId) {
@@ -1053,6 +1089,14 @@ export function BohBookingsClient({
               <div className="rounded-md border border-gray-200 bg-white p-3 space-y-3">
                 <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Status actions</p>
                 <div className="flex flex-wrap gap-2">
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    loading={actionLoadingKey === 'party-size'}
+                    onClick={() => void handleUpdatePartySize()}
+                  >
+                    Edit party size
+                  </Button>
                   <Button
                     variant="secondary"
                     size="sm"

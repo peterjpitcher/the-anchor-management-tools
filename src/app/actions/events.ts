@@ -10,8 +10,11 @@ import { createClient } from '@/lib/supabase/server' // Required for getting use
 import { createAdminClient } from '@/lib/supabase/admin'
 import { formatPhoneForStorage } from '@/lib/utils'
 import { ensureCustomerForPhone } from '@/lib/sms/customers'
-import { createEventManageToken } from '@/lib/events/manage-booking'
-import { createEventPaymentToken } from '@/lib/events/event-payments'
+import { createEventManageToken, updateEventBookingSeatsById } from '@/lib/events/manage-booking'
+import {
+  createEventPaymentToken,
+  sendEventBookingSeatUpdateSms
+} from '@/lib/events/event-payments'
 import { recordAnalyticsEvent } from '@/lib/analytics/events'
 import { sendSMS } from '@/lib/twilio'
 import { ensureReplyInstruction } from '@/lib/sms/support'
@@ -631,6 +634,12 @@ const cancelEventManualBookingSchema = z.object({
   sendSms: z.boolean().optional().default(true)
 })
 
+const updateEventManualBookingSeatsSchema = z.object({
+  bookingId: z.string().uuid(),
+  seats: z.number().int().min(1).max(20),
+  sendSms: z.boolean().optional().default(true)
+})
+
 type CancelEventManualBookingResult =
   | {
       error: string
@@ -641,6 +650,23 @@ type CancelEventManualBookingResult =
         state: 'cancelled' | 'already_cancelled' | 'blocked'
         reason: string | null
         booking_id: string
+        sms_sent: boolean
+      }
+    }
+
+type UpdateEventManualBookingSeatsResult =
+  | {
+      error: string
+    }
+  | {
+      success: true
+      data: {
+        state: 'updated' | 'unchanged' | 'blocked'
+        reason: string | null
+        booking_id: string
+        old_seats: number
+        new_seats: number
+        delta: number
         sms_sent: boolean
       }
     }
@@ -719,6 +745,132 @@ function buildEventBookingCancelledSms(input: {
 
   const seatWord = input.seats === 1 ? 'seat' : 'seats'
   return `The Anchor: Hi ${input.firstName}, your booking for ${input.eventName} on ${input.eventStartText} has been cancelled (${input.seats} ${seatWord}). Reply if you need help rebooking.`
+}
+
+export async function updateEventManualBookingSeats(input: {
+  bookingId: string
+  seats: number
+  sendSms?: boolean
+}): Promise<UpdateEventManualBookingSeatsResult> {
+  try {
+    const canManageEvents = await checkUserPermission('events', 'manage')
+    if (!canManageEvents) {
+      return { error: 'You do not have permission to edit event bookings.' }
+    }
+
+    const parsed = updateEventManualBookingSeatsSchema.safeParse(input)
+    if (!parsed.success) {
+      return { error: parsed.error.issues[0]?.message || 'Invalid seat count.' }
+    }
+
+    const supabase = createAdminClient()
+
+    const { data: bookingRow, error: bookingError } = await (supabase.from('bookings') as any)
+      .select('id, event_id')
+      .eq('id', parsed.data.bookingId)
+      .maybeSingle()
+
+    if (bookingError || !bookingRow?.id) {
+      return { error: 'Booking not found.' }
+    }
+
+    const updateResult = await updateEventBookingSeatsById(supabase, {
+      bookingId: parsed.data.bookingId,
+      newSeats: parsed.data.seats,
+      actor: 'admin'
+    })
+
+    if (!updateResult.booking_id) {
+      return { error: 'Booking update failed.' }
+    }
+
+    if (updateResult.state === 'blocked') {
+      return {
+        success: true,
+        data: {
+          state: 'blocked',
+          reason: updateResult.reason || 'unavailable',
+          booking_id: updateResult.booking_id,
+          old_seats: Math.max(1, Number(updateResult.old_seats ?? parsed.data.seats)),
+          new_seats: Math.max(1, Number(updateResult.new_seats ?? parsed.data.seats)),
+          delta: Number(updateResult.delta ?? 0),
+          sms_sent: false
+        }
+      }
+    }
+
+    const oldSeats = Math.max(1, Number(updateResult.old_seats ?? parsed.data.seats))
+    const newSeats = Math.max(1, Number(updateResult.new_seats ?? parsed.data.seats))
+    const delta = Number(updateResult.delta ?? (newSeats - oldSeats))
+
+    const tableSyncPromise = (supabase.from('table_bookings') as any)
+      .update({
+        party_size: newSeats,
+        committed_party_size: newSeats,
+        updated_at: new Date().toISOString()
+      })
+      .eq('event_booking_id', updateResult.booking_id)
+      .not('status', 'in', '(cancelled,no_show)')
+
+    const analyticsPromise =
+      delta !== 0 && bookingRow.event_id && updateResult.customer_id
+        ? recordAnalyticsEvent(supabase, {
+            customerId: updateResult.customer_id,
+            eventBookingId: updateResult.booking_id,
+            eventType: 'event_booking_updated',
+            metadata: {
+              event_id: bookingRow.event_id,
+              source: 'admin',
+              old_seats: oldSeats,
+              new_seats: newSeats,
+              delta
+            }
+          })
+        : Promise.resolve()
+
+    await Promise.allSettled([
+      tableSyncPromise,
+      analyticsPromise
+    ])
+
+    let smsSent = false
+    if (parsed.data.sendSms !== false && delta !== 0) {
+      try {
+        smsSent = await sendEventBookingSeatUpdateSms(supabase, {
+          bookingId: updateResult.booking_id,
+          eventName: updateResult.event_name || null,
+          oldSeats,
+          newSeats,
+          appBaseUrl: process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+        })
+      } catch (smsError) {
+        console.error('Failed to send seat update SMS:', smsError)
+      }
+    }
+
+    if (bookingRow.event_id) {
+      revalidatePath(`/events/${bookingRow.event_id}`)
+    }
+    revalidatePath('/events')
+    revalidatePath('/table-bookings/foh')
+    revalidatePath('/table-bookings/boh')
+
+    return {
+      success: true,
+      data: {
+        state: updateResult.state,
+        reason: null,
+        booking_id: updateResult.booking_id,
+        old_seats: oldSeats,
+        new_seats: newSeats,
+        delta,
+        sms_sent: smsSent
+      }
+    }
+  } catch (error) {
+    console.error('Unexpected updateEventManualBookingSeats error:', error)
+    return { error: getErrorMessage(error, 'Failed to update booking seats.') }
+  }
 }
 
 export async function cancelEventManualBooking(input: {
