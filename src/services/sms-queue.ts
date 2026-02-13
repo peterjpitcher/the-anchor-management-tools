@@ -65,6 +65,7 @@ export class SmsQueueService {
   static async sendPrivateBookingSms(
     bookingId: string,
     triggerType: string,
+    templateKey: string | undefined,
     phone: string,
     messageBody: string,
     customerId?: string
@@ -112,7 +113,9 @@ export class SmsQueueService {
         to: phone,
         body: messageBody,
         bookingId: bookingId,
-        customerId: resolvedCustomerId
+        customerId: resolvedCustomerId,
+        templateKey,
+        triggerType
       });
       
       if (result.error) {
@@ -178,6 +181,7 @@ export class SmsQueueService {
     const autoSendResult = await SmsQueueService.sendPrivateBookingSms(
       data.booking_id,
       data.trigger_type,
+      data.template_key,
       resolvedPhone,
       data.message_body,
       resolvedCustomerId
@@ -346,12 +350,23 @@ export class SmsQueueService {
       .eq('id', sms.booking_id)
       .single();
 
+    const templateKey =
+      typeof sms.template_key === 'string' && sms.template_key.trim().length > 0
+        ? sms.template_key
+        : undefined;
+    const triggerType =
+      typeof sms.trigger_type === 'string' && sms.trigger_type.trim().length > 0
+        ? sms.trigger_type
+        : undefined;
+
     // Send the SMS
     const result = await sendSms({
       to: sms.recipient_phone,
       body: sms.message_body,
       bookingId: sms.booking_id,
-      customerId: booking?.customer_id || undefined
+      customerId: booking?.customer_id || undefined,
+      templateKey,
+      triggerType
     });
     
     if (result.error) {

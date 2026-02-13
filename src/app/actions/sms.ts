@@ -8,6 +8,14 @@ import { logger } from '@/lib/logger'
 import { ensureReplyInstruction } from '@/lib/sms/support'
 import { ensureCustomerForPhone, resolveCustomerIdForSms } from '@/lib/sms/customers'
 import { sendBulkSms } from '@/lib/sms/bulk'
+import { buildSendSmsMetadata, type SendSmsMetadataInput } from '@/lib/sms/metadata'
+
+type SendSmsParams = SendSmsMetadataInput & {
+  to: string
+  body: string
+  bookingId?: string
+  customerId?: string
+}
 
 export async function sendOTPMessage(params: { phoneNumber: string; message: string; customerId?: string }) {
   try {
@@ -38,7 +46,7 @@ export async function sendOTPMessage(params: { phoneNumber: string; message: str
   }
 }
 
-export async function sendSms(params: { to: string; body: string; bookingId?: string; customerId?: string }) {
+export async function sendSms(params: SendSmsParams) {
   try {
     const headersList = await headers()
     const ip = headersList.get('x-forwarded-for') || headersList.get('x-real-ip') || 'unknown'
@@ -61,10 +69,12 @@ export async function sendSms(params: { to: string; body: string; bookingId?: st
 
     const supportPhone = process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || process.env.TWILIO_PHONE_NUMBER || undefined
     const messageBody = ensureReplyInstruction(params.body, supportPhone)
+    const metadata = buildSendSmsMetadata(params)
 
     // Use the enhanced sendSMS which handles logging automatically
     const result = await sendSMS(params.to, messageBody, {
       customerId: customerId ?? undefined,
+      metadata,
       createCustomerIfMissing: true
     })
 

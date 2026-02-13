@@ -9,6 +9,9 @@ import { createEventManageToken } from '@/lib/events/manage-booking'
 import { createGuestToken, hashGuestToken } from '@/lib/guest/tokens'
 import { getGoogleReviewLink } from '@/lib/events/review-link'
 import { recordAnalyticsEvent } from '@/lib/analytics/events'
+import { buildEventBaseUrl } from '@/lib/event-marketing-links'
+
+export const maxDuration = 300
 
 const LONDON_TIMEZONE = 'Europe/London'
 const TEMPLATE_REMINDER_7D = 'event_reminder_7d'
@@ -19,6 +22,34 @@ const TEMPLATE_INTEREST_MARKETING_14D = 'event_interest_marketing_14d'
 const TEMPLATE_INTEREST_REMINDER_14D = 'event_interest_reminder_14d'
 const TEMPLATE_INTEREST_REMINDER_7D = 'event_interest_reminder_7d'
 const TEMPLATE_INTEREST_REMINDER_1D = 'event_interest_reminder_1d'
+const JOB_NAME = 'event-guest-engagement'
+const STALE_RUN_WINDOW_MINUTES = 20
+const RUN_KEY_INTERVAL_MINUTES = 15
+const EVENT_ENGAGEMENT_LOOKBACK_DAYS = 14
+const EVENT_ENGAGEMENT_LOOKAHEAD_DAYS = 8
+const TABLE_ENGAGEMENT_LOOKBACK_DAYS = 7
+const TABLE_ENGAGEMENT_LOOKAHEAD_DAYS = 1
+const MAX_EVENT_REVIEW_FOLLOWUPS_PER_RUN = 50
+const MAX_TABLE_REVIEW_FOLLOWUPS_PER_RUN = 50
+const MAX_INTEREST_MARKETING_SMS_PER_RUN = 50
+const EVENT_ENGAGEMENT_SEND_GUARD_WINDOW_MINUTES = parsePositiveIntEnv(
+  'EVENT_ENGAGEMENT_SEND_GUARD_WINDOW_MINUTES',
+  60
+)
+const EVENT_ENGAGEMENT_HOURLY_SEND_GUARD_LIMIT = parsePositiveIntEnv(
+  'EVENT_ENGAGEMENT_HOURLY_SEND_GUARD_LIMIT',
+  120
+)
+const EVENT_ENGAGEMENT_TEMPLATE_KEYS = [
+  TEMPLATE_REMINDER_7D,
+  TEMPLATE_REMINDER_1D,
+  TEMPLATE_REVIEW_FOLLOWUP,
+  TEMPLATE_TABLE_REVIEW_FOLLOWUP,
+  TEMPLATE_INTEREST_MARKETING_14D,
+  TEMPLATE_INTEREST_REMINDER_14D,
+  TEMPLATE_INTEREST_REMINDER_7D,
+  TEMPLATE_INTEREST_REMINDER_1D
+]
 
 type BookingWithRelations = {
   id: string
@@ -48,6 +79,7 @@ type BookingWithRelations = {
 type MarketingEventRow = {
   id: string
   name: string
+  slug: string | null
   start_datetime: string | null
   event_type: string | null
   category_id: string | null
@@ -70,13 +102,208 @@ type TableBookingWithCustomer = {
   booking_type: string | null
   start_datetime: string | null
   review_sms_sent_at?: string | null
-  review_window_closes_at?: string | null
   customer: {
     id: string
     first_name: string | null
     mobile_number: string | null
     sms_status: string | null
   } | null
+}
+
+type CronRunAcquireResult = {
+  supabase: ReturnType<typeof createAdminClient>
+  runId: string
+  runKey: string
+  shouldResolve: boolean
+  skip: boolean
+  skipReason?: 'already_running' | 'already_completed'
+}
+
+function parsePositiveIntEnv(name: string, fallback: number): number {
+  const raw = process.env[name]
+  if (!raw) return fallback
+  const parsed = Number.parseInt(raw, 10)
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback
+}
+
+function pad2(value: number): string {
+  return String(value).padStart(2, '0')
+}
+
+function getLondonRunKey(now: Date = new Date()): string {
+  const londonNow = toZonedTime(now, LONDON_TIMEZONE)
+  const bucketMinute =
+    Math.floor(londonNow.getMinutes() / RUN_KEY_INTERVAL_MINUTES) *
+    RUN_KEY_INTERVAL_MINUTES
+
+  return [
+    `${londonNow.getFullYear()}-${pad2(londonNow.getMonth() + 1)}-${pad2(londonNow.getDate())}`,
+    `${pad2(londonNow.getHours())}:${pad2(bucketMinute)}`
+  ].join('T')
+}
+
+function isRunStale(startedAt: string | null | undefined): boolean {
+  const startedAtMs = Date.parse(startedAt || '')
+  if (!Number.isFinite(startedAtMs)) {
+    return true
+  }
+  return Date.now() - startedAtMs > STALE_RUN_WINDOW_MINUTES * 60 * 1000
+}
+
+async function acquireCronRun(runKey: string): Promise<CronRunAcquireResult> {
+  const supabase = createAdminClient()
+  const nowIso = new Date().toISOString()
+
+  const { data: existingRunning, error: existingRunningError } = await supabase
+    .from('cron_job_runs')
+    .select('id, run_key, started_at')
+    .eq('job_name', JOB_NAME)
+    .eq('status', 'running')
+    .order('started_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  if (existingRunningError) {
+    throw existingRunningError
+  }
+
+  if (existingRunning && !isRunStale(existingRunning.started_at)) {
+    logger.info('Event guest engagement already running, skipping duplicate trigger', {
+      metadata: {
+        runKey,
+        activeRunKey: existingRunning.run_key,
+        jobId: existingRunning.id
+      }
+    })
+    return {
+      supabase,
+      runId: existingRunning.id,
+      runKey,
+      shouldResolve: false,
+      skip: true,
+      skipReason: 'already_running'
+    }
+  }
+
+  if (existingRunning && isRunStale(existingRunning.started_at)) {
+    await supabase
+      .from('cron_job_runs')
+      .update({
+        status: 'failed',
+        finished_at: nowIso,
+        error_message: 'Marked stale by newer invocation'
+      })
+      .eq('id', existingRunning.id)
+      .eq('status', 'running')
+  }
+
+  const { data, error } = await supabase
+    .from('cron_job_runs')
+    .insert({
+      job_name: JOB_NAME,
+      run_key: runKey,
+      status: 'running',
+      started_at: nowIso
+    })
+    .select('id')
+    .single()
+
+  if (data?.id) {
+    return { supabase, runId: data.id, runKey, shouldResolve: true, skip: false }
+  }
+
+  const pgError = error as { code?: string; message?: string } | null
+  if (pgError?.code !== '23505') {
+    throw error
+  }
+
+  const { data: existing, error: fetchError } = await supabase
+    .from('cron_job_runs')
+    .select('id, status, started_at')
+    .eq('job_name', JOB_NAME)
+    .eq('run_key', runKey)
+    .maybeSingle()
+
+  if (fetchError) {
+    throw fetchError
+  }
+  if (!existing) {
+    throw error
+  }
+
+  const stale = isRunStale(existing.started_at)
+  if (existing.status === 'completed') {
+    logger.info('Event guest engagement already completed for this run key', {
+      metadata: { runKey, jobId: existing.id }
+    })
+    return {
+      supabase,
+      runId: existing.id,
+      runKey,
+      shouldResolve: false,
+      skip: true,
+      skipReason: 'already_completed'
+    }
+  }
+
+  if (existing.status === 'running' && !stale) {
+    logger.info('Event guest engagement already running for this run key', {
+      metadata: { runKey, jobId: existing.id }
+    })
+    return {
+      supabase,
+      runId: existing.id,
+      runKey,
+      shouldResolve: false,
+      skip: true,
+      skipReason: 'already_running'
+    }
+  }
+
+  const { data: restarted, error: restartError } = await supabase
+    .from('cron_job_runs')
+    .update({
+      status: 'running',
+      started_at: nowIso,
+      finished_at: null,
+      error_message: null
+    })
+    .eq('id', existing.id)
+    .select('id')
+    .single()
+
+  if (restartError) {
+    throw restartError
+  }
+
+  return {
+    supabase,
+    runId: restarted?.id ?? existing.id,
+    runKey,
+    shouldResolve: true,
+    skip: false
+  }
+}
+
+async function resolveCronRunResult(
+  supabase: ReturnType<typeof createAdminClient>,
+  runId: string,
+  status: 'completed' | 'failed',
+  errorMessage?: string
+) {
+  const payload: Record<string, unknown> = {
+    status,
+    finished_at: new Date().toISOString()
+  }
+
+  if (errorMessage) {
+    payload.error_message = errorMessage.slice(0, 2000)
+  }
+
+  await supabase
+    .from('cron_job_runs')
+    .update(payload)
+    .eq('id', runId)
 }
 
 function chunkArray<T>(input: T[], size = 200): T[][] {
@@ -198,9 +425,112 @@ async function loadSentTableTemplateSet(
   return sent
 }
 
+async function loadSentEventInterestCustomerSet(
+  supabase: ReturnType<typeof createAdminClient>,
+  customerIds: string[],
+  templateKeys: string[],
+  eventId: string
+): Promise<Set<string>> {
+  const sent = new Set<string>()
+  if (customerIds.length === 0 || templateKeys.length === 0) {
+    return sent
+  }
+
+  for (const customerChunk of chunkArray(customerIds)) {
+    const { data, error } = await (supabase.from('messages') as any)
+      .select('customer_id')
+      .in('customer_id', customerChunk)
+      .in('template_key', templateKeys)
+      .contains('metadata', { event_id: eventId })
+      .not('customer_id', 'is', null)
+      .limit(10000)
+
+    if (!error) {
+      for (const row of (data || []) as Array<{ customer_id: string | null }>) {
+        if (typeof row.customer_id === 'string') {
+          sent.add(row.customer_id)
+        }
+      }
+      continue
+    }
+
+    logger.warn('Failed loading event-interest dedupe rows via metadata; attempting body fallback', {
+      metadata: {
+        eventId,
+        templateKeys,
+        error: error.message
+      }
+    })
+
+    const { data: fallbackRows, error: fallbackError } = await (supabase.from('messages') as any)
+      .select('customer_id')
+      .in('customer_id', customerChunk)
+      .in('template_key', templateKeys)
+      .like('body', `%event_id=${eventId}%`)
+      .not('customer_id', 'is', null)
+      .limit(10000)
+
+    if (fallbackError) {
+      logger.warn('Failed loading event-interest dedupe rows via fallback body match', {
+        metadata: {
+          eventId,
+          templateKeys,
+          error: fallbackError.message
+        }
+      })
+      continue
+    }
+
+    for (const row of (fallbackRows || []) as Array<{ customer_id: string | null }>) {
+      if (typeof row.customer_id === 'string') {
+        sent.add(row.customer_id)
+      }
+    }
+  }
+
+  return sent
+}
+
+async function evaluateEventEngagementSendGuard(
+  supabase: ReturnType<typeof createAdminClient>
+): Promise<{ blocked: boolean; recentCount: number; windowMinutes: number; limit: number }> {
+  const windowMinutes = EVENT_ENGAGEMENT_SEND_GUARD_WINDOW_MINUTES
+  const limit = EVENT_ENGAGEMENT_HOURLY_SEND_GUARD_LIMIT
+  const sinceIso = new Date(Date.now() - windowMinutes * 60 * 1000).toISOString()
+
+  const { count, error } = await (supabase.from('messages') as any)
+    .select('id', { count: 'exact', head: true })
+    .eq('direction', 'outbound')
+    .in('template_key', EVENT_ENGAGEMENT_TEMPLATE_KEYS)
+    .gte('created_at', sinceIso)
+
+  if (error) {
+    const pgError = error as { code?: string; message?: string }
+    if (pgError?.code === '42703') {
+      logger.warn('Event engagement send guard skipped because schema is missing expected columns', {
+        metadata: { error: pgError.message }
+      })
+      return { blocked: false, recentCount: 0, windowMinutes, limit }
+    }
+    throw error
+  }
+
+  const recentCount = count ?? 0
+  return {
+    blocked: recentCount >= limit,
+    recentCount,
+    windowMinutes,
+    limit
+  }
+}
+
 async function loadEventBookingsForEngagement(
   supabase: ReturnType<typeof createAdminClient>
 ): Promise<BookingWithRelations[]> {
+  const nowMs = Date.now()
+  const windowStartIso = new Date(nowMs - EVENT_ENGAGEMENT_LOOKBACK_DAYS * 24 * 60 * 60 * 1000).toISOString()
+  const windowEndIso = new Date(nowMs + EVENT_ENGAGEMENT_LOOKAHEAD_DAYS * 24 * 60 * 60 * 1000).toISOString()
+
   const { data, error } = await supabase
     .from('bookings')
     .select(`
@@ -212,7 +542,7 @@ async function loadEventBookingsForEngagement(
       status,
       review_sms_sent_at,
       review_window_closes_at,
-      event:events(
+      event:events!inner(
         id,
         name,
         start_datetime,
@@ -228,7 +558,8 @@ async function loadEventBookingsForEngagement(
       )
     `)
     .in('status', ['confirmed'])
-    .not('event_id', 'is', null)
+    .gte('event.start_datetime', windowStartIso)
+    .lte('event.start_datetime', windowEndIso)
     .limit(2000)
 
   if (error) {
@@ -245,6 +576,10 @@ async function loadEventBookingsForEngagement(
 async function loadTableBookingsForEngagement(
   supabase: ReturnType<typeof createAdminClient>
 ): Promise<TableBookingWithCustomer[]> {
+  const nowMs = Date.now()
+  const windowStartIso = new Date(nowMs - TABLE_ENGAGEMENT_LOOKBACK_DAYS * 24 * 60 * 60 * 1000).toISOString()
+  const windowEndIso = new Date(nowMs + TABLE_ENGAGEMENT_LOOKAHEAD_DAYS * 24 * 60 * 60 * 1000).toISOString()
+
   const { data, error } = await supabase
     .from('table_bookings')
     .select(`
@@ -254,7 +589,6 @@ async function loadTableBookingsForEngagement(
       booking_type,
       start_datetime,
       review_sms_sent_at,
-      review_window_closes_at,
       customer:customers(
         id,
         first_name,
@@ -262,9 +596,11 @@ async function loadTableBookingsForEngagement(
         sms_status
       )
     `)
-    .in('status', ['confirmed', 'visited_waiting_for_review', 'review_clicked'])
+    .eq('status', 'confirmed')
     .not('start_datetime', 'is', null)
-    .limit(3000)
+    .gte('start_datetime', windowStartIso)
+    .lte('start_datetime', windowEndIso)
+    .limit(1000)
 
   if (error) {
     throw error
@@ -281,7 +617,7 @@ async function loadEventsForInterestMarketing(
 ): Promise<MarketingEventRow[]> {
   const { data, error } = await supabase
     .from('events')
-    .select('id, name, start_datetime, event_type, category_id, booking_open, event_status')
+    .select('id, name, slug, start_datetime, event_type, category_id, booking_open, event_status')
     .not('start_datetime', 'is', null)
     .eq('booking_open', true)
     .limit(500)
@@ -295,6 +631,15 @@ async function loadEventsForInterestMarketing(
     if (eventRow.event_status && ['cancelled', 'draft'].includes(eventRow.event_status)) return false
     return true
   })
+}
+
+function buildInterestEventDestination(eventRow: MarketingEventRow): string {
+  const slug = typeof eventRow.slug === 'string' ? eventRow.slug.trim() : ''
+  if (slug.length > 0) {
+    return buildEventBaseUrl(slug)
+  }
+
+  return 'https://www.the-anchor.pub/events'
 }
 
 function formatEventDateText(isoDateTime: string): string {
@@ -360,8 +705,7 @@ function interestReminderUpdatePayload(
 }
 
 async function processInterestMarketing(
-  supabase: ReturnType<typeof createAdminClient>,
-  appBaseUrl: string
+  supabase: ReturnType<typeof createAdminClient>
 ): Promise<{ sent: number; skipped: number; eventsProcessed: number }> {
   const nowMs = Date.now()
   const supportPhone = process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || process.env.TWILIO_PHONE_NUMBER || undefined
@@ -374,6 +718,10 @@ async function processInterestMarketing(
   }
 
   for (const eventRow of events) {
+    if (result.sent >= MAX_INTEREST_MARKETING_SMS_PER_RUN) {
+      break
+    }
+
     if (!eventRow.start_datetime) {
       result.skipped += 1
       continue
@@ -548,102 +896,80 @@ async function processInterestMarketing(
     )
 
     if (behaviorCandidateIds.length > 0) {
-      const { data: priorMarketingRows, error: priorMarketingError } = await supabase
-        .from('messages')
-        .select('customer_id')
-        .eq('template_key', TEMPLATE_INTEREST_MARKETING_14D)
-        .like('body', `%event_id=${eventRow.id}%`)
-        .not('customer_id', 'is', null)
-        .limit(10000)
+      const alreadyMessaged = await loadSentEventInterestCustomerSet(
+        supabase,
+        behaviorCandidateIds,
+        [TEMPLATE_INTEREST_MARKETING_14D],
+        eventRow.id
+      )
+      const candidateIds = behaviorCandidateIds.filter((customerId) => !alreadyMessaged.has(customerId))
 
-      if (priorMarketingError) {
-        logger.warn('Failed loading prior interest marketing rows', {
-          metadata: { eventId: eventRow.id, error: priorMarketingError.message }
-        })
-      } else {
-        const alreadyMessaged = new Set(
-          ((priorMarketingRows || []) as Array<{ customer_id: string | null }>)
-            .map((row) => row.customer_id)
-            .filter((value): value is string => typeof value === 'string')
-        )
-        const candidateIds = behaviorCandidateIds.filter((customerId) => !alreadyMessaged.has(customerId))
+      if (candidateIds.length > 0) {
+        const { data: customers, error: customerError } = await supabase
+          .from('customers')
+          .select('id, first_name, mobile_number, sms_status, marketing_sms_opt_in')
+          .in('id', candidateIds)
+          .eq('sms_status', 'active')
+          .eq('marketing_sms_opt_in', true)
 
-        if (candidateIds.length > 0) {
-          const { data: customers, error: customerError } = await supabase
-            .from('customers')
-            .select('id, first_name, mobile_number, sms_status, marketing_sms_opt_in')
-            .in('id', candidateIds)
-            .eq('sms_status', 'active')
-            .eq('marketing_sms_opt_in', true)
+        if (customerError) {
+          logger.warn('Failed loading customers for interest marketing', {
+            metadata: {
+              eventId: eventRow.id,
+              error: customerError.message
+            }
+          })
+        } else {
+          for (const customer of (customers || []) as any[]) {
+            if (result.sent >= MAX_INTEREST_MARKETING_SMS_PER_RUN) {
+              break
+            }
 
-          if (customerError) {
-            logger.warn('Failed loading customers for interest marketing', {
+            if (!customer?.mobile_number || !customer?.id) {
+              continue
+            }
+
+            const firstName = customer.first_name || 'there'
+            const eventDateText = formatEventDateText(eventRow.start_datetime)
+            const destination = buildInterestEventDestination(eventRow)
+            const body = ensureReplyInstruction(
+              `The Anchor: Hi ${firstName}, reminder: ${eventRow.name} is coming up on ${eventDateText}. Book here: ${destination} Reply STOP to opt out.`,
+              supportPhone
+            )
+
+            const smsResult = await sendSMS(customer.mobile_number, body, {
+              customerId: customer.id,
               metadata: {
-                eventId: eventRow.id,
-                error: customerError.message
+                event_id: eventRow.id,
+                event_type: eventType,
+                category_id: eventCategoryId,
+                matching_basis: matchingBasis,
+                template_key: TEMPLATE_INTEREST_MARKETING_14D,
+                marketing: true
               }
             })
-          } else {
-            for (const customer of (customers || []) as any[]) {
-              if (!customer?.mobile_number || !customer?.id) {
-                continue
-              }
 
-              const firstName = customer.first_name || 'there'
-              const eventDateText = formatEventDateText(eventRow.start_datetime)
-              const destination = `${appBaseUrl}/events?event_id=${eventRow.id}`
-              const body = ensureReplyInstruction(
-                `The Anchor: Hi ${firstName}, reminder: ${eventRow.name} is coming up on ${eventDateText}. Book here: ${destination} Reply STOP to opt out.`,
-                supportPhone
-              )
-
-              const smsResult = await sendSMS(customer.mobile_number, body, {
-                customerId: customer.id,
-                metadata: {
-                  event_id: eventRow.id,
-                  event_type: eventType,
-                  category_id: eventCategoryId,
-                  matching_basis: matchingBasis,
-                  template_key: TEMPLATE_INTEREST_MARKETING_14D,
-                  marketing: true
-                }
-              })
-
-              if (!smsResult.success) {
-                result.skipped += 1
-                continue
-              }
-
-              result.sent += 1
+            if (!smsResult.success) {
+              result.skipped += 1
+              continue
             }
+
+            result.sent += 1
           }
         }
       }
     }
 
+    if (result.sent >= MAX_INTEREST_MARKETING_SMS_PER_RUN) {
+      break
+    }
+
     if (manualCandidateIds.length > 0) {
-      const { data: priorManualRows, error: priorManualError } = await supabase
-        .from('messages')
-        .select('customer_id')
-        .eq('template_key', manualTemplateKey)
-        .like('body', `%event_id=${eventRow.id}%`)
-        .not('customer_id', 'is', null)
-        .limit(10000)
-
-      if (priorManualError) {
-        logger.warn('Failed loading prior manual-interest reminder rows', {
-          metadata: {
-            eventId: eventRow.id,
-            templateKey: manualTemplateKey,
-            error: priorManualError.message
-          }
-        })
-      }
-
-      const alreadyMessagedManualTemplate = new Set(
-        ((priorManualRows || []) as Array<{ customer_id: string | null }>)
-          .map((row) => row.customer_id)
-          .filter((value): value is string => typeof value === 'string')
+      const alreadyMessagedManualTemplate = await loadSentEventInterestCustomerSet(
+        supabase,
+        manualCandidateIds,
+        [manualTemplateKey],
+        eventRow.id
       )
 
       const { data: manualCustomers, error: manualCustomerError } = await supabase
@@ -664,6 +990,10 @@ async function processInterestMarketing(
       }
 
       for (const customer of (manualCustomers || []) as any[]) {
+        if (result.sent >= MAX_INTEREST_MARKETING_SMS_PER_RUN) {
+          break
+        }
+
         if (!customer?.mobile_number || !customer?.id) {
           continue
         }
@@ -684,7 +1014,7 @@ async function processInterestMarketing(
 
         const firstName = customer.first_name || 'there'
         const eventDateText = formatEventDateText(eventRow.start_datetime)
-        const destination = `${appBaseUrl}/events?event_id=${eventRow.id}`
+        const destination = buildInterestEventDestination(eventRow)
         const baseBody = manualTemplateKey === TEMPLATE_INTEREST_REMINDER_1D
           ? `The Anchor: Hi ${firstName}, reminder: ${eventRow.name} is tomorrow at ${eventDateText}.`
           : `The Anchor: Hi ${firstName}, reminder: ${eventRow.name} is coming up on ${eventDateText}.`
@@ -860,6 +1190,8 @@ async function processReviewFollowups(
   appBaseUrl: string
 ): Promise<{ sent: number; skipped: number }> {
   const now = new Date()
+  const nowMs = now.getTime()
+  const maxAgeMs = EVENT_ENGAGEMENT_LOOKBACK_DAYS * 24 * 60 * 60 * 1000
   const supportPhone = process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || process.env.TWILIO_PHONE_NUMBER || undefined
   const reviewLinkTarget = await getGoogleReviewLink(supabase)
 
@@ -868,18 +1200,20 @@ async function processReviewFollowups(
     const eventStartIso = resolveEventStartIso(booking.event)
     if (!eventStartIso) return false
     const eventStart = new Date(eventStartIso)
-    return eventStart.getTime() <= now.getTime()
+    const eventStartMs = eventStart.getTime()
+    return eventStartMs <= nowMs && nowMs - eventStartMs <= maxAgeMs
   })
+  const boundedPastBookings = confirmedPastBookings.slice(0, MAX_EVENT_REVIEW_FOLLOWUPS_PER_RUN)
 
   const sentSet = await loadSentTemplateSet(
     supabase,
-    confirmedPastBookings.map((b) => b.id),
+    boundedPastBookings.map((b) => b.id),
     [TEMPLATE_REVIEW_FOLLOWUP]
   )
 
   const result = { sent: 0, skipped: 0 }
 
-  for (const booking of confirmedPastBookings) {
+  for (const booking of boundedPastBookings) {
     const customer = booking.customer
     const event = booking.event
     const eventStartIso = resolveEventStartIso(event)
@@ -977,6 +1311,7 @@ async function processTableReviewFollowups(
   appBaseUrl: string
 ): Promise<{ sent: number; skipped: number }> {
   const now = Date.now()
+  const maxAgeMs = TABLE_ENGAGEMENT_LOOKBACK_DAYS * 24 * 60 * 60 * 1000
   const supportPhone = process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || process.env.TWILIO_PHONE_NUMBER || undefined
   const reviewLinkTarget = await getGoogleReviewLink(supabase)
 
@@ -984,18 +1319,19 @@ async function processTableReviewFollowups(
     if (booking.status !== 'confirmed' || booking.review_sms_sent_at) return false
     const startMs = Date.parse(booking.start_datetime || '')
     if (!Number.isFinite(startMs)) return false
-    return now >= startMs + 4 * 60 * 60 * 1000
+    return now >= startMs + 4 * 60 * 60 * 1000 && now - startMs <= maxAgeMs
   })
+  const boundedEligibleBookings = eligibleBookings.slice(0, MAX_TABLE_REVIEW_FOLLOWUPS_PER_RUN)
 
   const sentSet = await loadSentTableTemplateSet(
     supabase,
-    eligibleBookings.map((booking) => booking.id),
+    boundedEligibleBookings.map((booking) => booking.id),
     [TEMPLATE_TABLE_REVIEW_FOLLOWUP]
   )
 
   const result = { sent: 0, skipped: 0 }
 
-  for (const booking of eligibleBookings) {
+  for (const booking of boundedEligibleBookings) {
     const customer = booking.customer
     if (!customer || !customer.mobile_number || customer.sms_status !== 'active') {
       result.skipped += 1
@@ -1048,7 +1384,6 @@ async function processTableReviewFollowups(
         .update({
           status: 'visited_waiting_for_review',
           review_sms_sent_at: reviewSentAt,
-          review_window_closes_at: reviewWindowClosesAt,
           updated_at: new Date().toISOString()
         })
         .eq('id', booking.id)
@@ -1135,21 +1470,30 @@ async function processReviewWindowCompletion(
 async function processTableReviewWindowCompletion(
   supabase: ReturnType<typeof createAdminClient>
 ): Promise<{ completed: number }> {
+  const nowMs = Date.now()
   const nowIso = new Date().toISOString()
   const result = { completed: 0 }
 
   const { data: rows, error } = await (supabase.from('table_bookings') as any)
-    .select('id, customer_id, booking_type')
+    .select('id, customer_id, booking_type, review_sms_sent_at')
     .in('status', ['visited_waiting_for_review', 'review_clicked'])
-    .not('review_window_closes_at', 'is', null)
-    .lte('review_window_closes_at', nowIso)
+    .not('review_sms_sent_at', 'is', null)
     .limit(1000)
 
   if (error) {
     throw error
   }
 
-  const bookingRows = (rows || []) as Array<{ id: string; customer_id: string; booking_type: string | null }>
+  const bookingRows = ((rows || []) as Array<{
+    id: string
+    customer_id: string
+    booking_type: string | null
+    review_sms_sent_at: string | null
+  }>).filter((row) => {
+    const sentAtMs = Date.parse(row.review_sms_sent_at || '')
+    if (!Number.isFinite(sentAtMs)) return false
+    return sentAtMs + 7 * 24 * 60 * 60 * 1000 <= nowMs
+  })
   if (bookingRows.length === 0) {
     return result
   }
@@ -1186,15 +1530,66 @@ async function processTableReviewWindowCompletion(
 }
 
 export async function GET(request: NextRequest) {
+  let runContext: {
+    supabase: ReturnType<typeof createAdminClient>
+    runId: string
+    runKey: string
+    shouldResolve: boolean
+  } | null = null
+  let resolvedStatus: 'completed' | 'failed' | null = null
+  let runErrorMessage: string | undefined
+
   const auth = authorizeCronRequest(request)
   if (!auth.authorized) {
     return NextResponse.json({ error: auth.reason || 'Unauthorized' }, { status: 401 })
   }
 
-  const supabase = createAdminClient()
-  const appBaseUrl = process.env.NEXT_PUBLIC_APP_URL || request.nextUrl.origin
-
   try {
+    const runKey = getLondonRunKey()
+    const acquireResult = await acquireCronRun(runKey)
+    runContext = {
+      supabase: acquireResult.supabase,
+      runId: acquireResult.runId,
+      runKey,
+      shouldResolve: acquireResult.shouldResolve
+    }
+
+    if (acquireResult.skip) {
+      resolvedStatus = 'completed'
+      return NextResponse.json({
+        success: true,
+        skipped: true,
+        reason: acquireResult.skipReason,
+        runKey,
+        processedAt: new Date().toISOString()
+      })
+    }
+
+    const guard = await evaluateEventEngagementSendGuard(acquireResult.supabase)
+    if (guard.blocked) {
+      logger.error('Event guest engagement send guard tripped; run aborted', {
+        metadata: {
+          runKey,
+          recentCount: guard.recentCount,
+          limit: guard.limit,
+          windowMinutes: guard.windowMinutes
+        }
+      })
+
+      resolvedStatus = 'completed'
+      return NextResponse.json({
+        success: true,
+        skipped: true,
+        reason: 'send_guard_blocked',
+        runKey,
+        guard,
+        processedAt: new Date().toISOString()
+      })
+    }
+
+    const supabase = acquireResult.supabase
+    const appBaseUrl = process.env.NEXT_PUBLIC_APP_URL || request.nextUrl.origin
+
     const [bookings, tableBookings] = await Promise.all([
       loadEventBookingsForEngagement(supabase),
       loadTableBookingsForEngagement(supabase)
@@ -1204,11 +1599,12 @@ export async function GET(request: NextRequest) {
       processReminders(supabase, bookings, appBaseUrl),
       processReviewFollowups(supabase, bookings, appBaseUrl),
       processReviewWindowCompletion(supabase),
-      processInterestMarketing(supabase, appBaseUrl),
+      processInterestMarketing(supabase),
       processTableReviewFollowups(supabase, tableBookings, appBaseUrl),
       processTableReviewWindowCompletion(supabase)
     ])
 
+    resolvedStatus = 'completed'
     return NextResponse.json({
       success: true,
       reminders,
@@ -1217,9 +1613,14 @@ export async function GET(request: NextRequest) {
       tableReviews,
       tableCompletion,
       marketing,
+      runKey,
+      guard,
       processedAt: new Date().toISOString()
     })
   } catch (error) {
+    resolvedStatus = 'failed'
+    runErrorMessage = error instanceof Error ? error.message : String(error)
+
     logger.error('Failed to process event guest engagement cron', {
       error: error instanceof Error ? error : new Error(String(error))
     })
@@ -1231,5 +1632,14 @@ export async function GET(request: NextRequest) {
       },
       { status: 500 }
     )
+  } finally {
+    if (runContext?.shouldResolve && resolvedStatus) {
+      await resolveCronRunResult(
+        runContext.supabase,
+        runContext.runId,
+        resolvedStatus,
+        resolvedStatus === 'failed' ? runErrorMessage : undefined
+      )
+    }
   }
 }

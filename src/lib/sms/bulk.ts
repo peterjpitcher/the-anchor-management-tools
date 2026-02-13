@@ -149,6 +149,8 @@ export async function sendBulkSms(request: BulkSmsRequest): Promise<BulkSmsResul
               const sendResult = await sendSMS(customer.mobile_number as string, messageWithSupport, {
                 customerId: customer.id,
                 metadata: {
+                  template_key: 'bulk_sms_campaign',
+                  trigger_type: 'bulk_sms_campaign',
                   bulk_sms: true,
                   bulk_job_id: bulkJobId,
                   event_id: eventId,
