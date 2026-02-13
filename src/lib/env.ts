@@ -18,6 +18,18 @@ const envSchema = z.object({
   STRIPE_WEBHOOK_SECRET: z.string().optional(),
   SUSPEND_EVENT_SMS: z.string().optional(),
   SUSPEND_ALL_SMS: z.string().optional(),
+  SMS_SAFETY_GUARDS_ENABLED: z.string().optional(),
+  SMS_SAFETY_GLOBAL_HOURLY_LIMIT: z.string().optional(),
+  SMS_SAFETY_RECIPIENT_HOURLY_LIMIT: z.string().optional(),
+  SMS_SAFETY_RECIPIENT_DAILY_LIMIT: z.string().optional(),
+  SMS_SAFETY_IDEMPOTENCY_TTL_HOURS: z.string().optional(),
+  EVENT_ENGAGEMENT_SEND_GUARD_WINDOW_MINUTES: z.string().optional(),
+  EVENT_ENGAGEMENT_HOURLY_SEND_GUARD_LIMIT: z.string().optional(),
+  SUNDAY_PREORDER_SEND_GUARD_WINDOW_MINUTES: z.string().optional(),
+  SUNDAY_PREORDER_SEND_GUARD_LIMIT: z.string().optional(),
+  MAX_SUNDAY_PREORDER_SMS_PER_RUN: z.string().optional(),
+  PARKING_SEND_GUARD_WINDOW_MINUTES: z.string().optional(),
+  PARKING_SEND_GUARD_LIMIT: z.string().optional(),
   CRON_SECRET: z.string().min(1, 'CRON_SECRET is required').optional(),
   
   // Webhook configuration

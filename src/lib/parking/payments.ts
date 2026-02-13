@@ -145,7 +145,8 @@ export async function sendParkingPaymentRequest(
       customerId: booking.customer_id ?? undefined,
       metadata: {
         parking_booking_id: booking.id,
-        event_type: 'payment_request'
+        event_type: 'payment_request',
+        template_key: 'parking_payment_request'
       },
       customerFallback: {
         email: (booking as any)?.customer_email ?? null
@@ -337,7 +338,8 @@ async function sendConfirmationNotifications(booking: ParkingBooking, supabase: 
         customerId: booking.customer_id ?? undefined,
         metadata: {
           parking_booking_id: booking.id,
-          event_type: 'payment_confirmation'
+          event_type: 'payment_confirmation',
+          template_key: 'parking_payment_confirmation'
         },
         customerFallback: {
           email: (booking as any)?.customer_email ?? null

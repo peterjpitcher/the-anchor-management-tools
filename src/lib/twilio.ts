@@ -7,6 +7,13 @@ import { recordOutboundSmsMessage } from '@/lib/sms/logging';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { evaluateSmsQuietHours } from '@/lib/sms/quiet-hours';
 import { shortenUrlsInSmsBody } from '@/lib/sms/link-shortening';
+import { resolveSmsSuspensionReason } from '@/lib/sms/suspension';
+import {
+  buildSmsDedupContext,
+  claimSmsIdempotency,
+  evaluateSmsSafetyLimits,
+  releaseSmsIdempotencyClaim
+} from '@/lib/sms/safety';
 
 const accountSid = env.TWILIO_ACCOUNT_SID;
 const authToken = env.TWILIO_AUTH_TOKEN;
@@ -32,6 +39,7 @@ export type SendSMSOptions = {
   metadata?: Record<string, unknown>;
   createCustomerIfMissing?: boolean; // Default true
   skipQuietHours?: boolean;
+  skipSafetyGuards?: boolean;
   customerFallback?: {
     firstName?: string;
     lastName?: string;
@@ -87,6 +95,27 @@ function canUseTwilioScheduling(delayMs: number): boolean {
 }
 
 export const sendSMS = async (to: string, body: string, options: SendSMSOptions = {}) => {
+  const suspensionReason = resolveSmsSuspensionReason({
+    suspendAllSms: env.SUSPEND_ALL_SMS,
+    suspendEventSms: env.SUSPEND_EVENT_SMS,
+    metadata: options.metadata
+  });
+  if (suspensionReason) {
+    logger.error('Outbound SMS suppressed by suspension flag.', {
+      metadata: {
+        to,
+        suspensionReason,
+        templateKey: (options.metadata as Record<string, unknown> | undefined)?.template_key
+      }
+    });
+    return {
+      success: false,
+      error: suspensionReason === 'all_sms'
+        ? 'SMS sending is temporarily paused'
+        : 'Event messaging is temporarily paused'
+    };
+  }
+
   const resolvedCustomerId = await resolveCustomerIdIfNeeded(to, options);
   if (resolvedCustomerId) {
     const allowed = await isCustomerSmsSendAllowed(resolvedCustomerId);
@@ -96,6 +125,79 @@ export const sendSMS = async (to: string, body: string, options: SendSMSOptions 
         error: 'This number is not eligible to receive SMS messages'
       };
     }
+  }
+
+  const supabase = createAdminClient();
+  const shouldApplySafetyGuards = options.skipSafetyGuards !== true;
+  const dedupContext = shouldApplySafetyGuards
+    ? buildSmsDedupContext({
+        to,
+        customerId: resolvedCustomerId ?? options.customerId ?? null,
+        body,
+        metadata: options.metadata
+      })
+    : null;
+  let claimedDedupContext = false;
+
+  if (shouldApplySafetyGuards) {
+    const safetyLimits = await evaluateSmsSafetyLimits(supabase, {
+      to,
+      customerId: resolvedCustomerId ?? options.customerId ?? null
+    });
+
+    if (!safetyLimits.allowed) {
+      logger.error('Outbound SMS blocked by safety limits', {
+        metadata: {
+          to,
+          code: safetyLimits.code,
+          reason: safetyLimits.reason,
+          metrics: safetyLimits.metrics
+        }
+      });
+      return {
+        success: false,
+        error: 'SMS sending paused by safety guard',
+        code: safetyLimits.code
+      };
+    }
+  }
+
+  if (dedupContext) {
+    const claimResult = await claimSmsIdempotency(supabase, dedupContext);
+    if (claimResult === 'duplicate') {
+      logger.warn('Suppressed duplicate SMS send attempt', {
+        metadata: {
+          to,
+          templateKey: (options.metadata as Record<string, unknown> | undefined)?.template_key
+        }
+      });
+      return {
+        success: true,
+        sid: null,
+        fromNumber: null,
+        status: 'suppressed_duplicate',
+        messageId: null,
+        customerId: resolvedCustomerId ?? options.customerId,
+        suppressed: true,
+        suppressionReason: 'duplicate'
+      };
+    }
+
+    if (claimResult === 'conflict') {
+      logger.error('SMS send blocked by idempotency conflict', {
+        metadata: {
+          to,
+          templateKey: (options.metadata as Record<string, unknown> | undefined)?.template_key
+        }
+      });
+      return {
+        success: false,
+        error: 'SMS blocked by idempotency safety guard',
+        code: 'idempotency_conflict'
+      };
+    }
+
+    claimedDedupContext = claimResult === 'claimed';
   }
 
   let smsBody = body;
@@ -120,6 +222,9 @@ export const sendSMS = async (to: string, body: string, options: SendSMSOptions 
           const customerId = resolvedCustomerId;
 
           if (!customerId) {
+            if (claimedDedupContext && dedupContext) {
+              await releaseSmsIdempotencyClaim(supabase, dedupContext);
+            }
             logger.error('Failed to defer SMS during quiet hours due to missing customer context', {
               metadata: { to, scheduledFor: scheduledFor.toISOString() }
             });
@@ -140,6 +245,9 @@ export const sendSMS = async (to: string, body: string, options: SendSMSOptions 
           });
 
           if (!enqueueResult.success) {
+            if (claimedDedupContext && dedupContext) {
+              await releaseSmsIdempotencyClaim(supabase, dedupContext);
+            }
             logger.error('Failed to defer SMS job during quiet hours', {
               metadata: { to, scheduledFor: scheduledFor.toISOString(), error: enqueueResult.error }
             });
@@ -170,6 +278,9 @@ export const sendSMS = async (to: string, body: string, options: SendSMSOptions 
             deferredBy: 'job_queue'
           };
         } catch (deferError: unknown) {
+          if (claimedDedupContext && dedupContext) {
+            await releaseSmsIdempotencyClaim(supabase, dedupContext);
+          }
           logger.error('Unexpected error deferring SMS during quiet hours', {
             error: deferError instanceof Error ? deferError : new Error(String(deferError)),
             metadata: { to, scheduledFor: scheduledFor.toISOString() }
@@ -241,8 +352,6 @@ export const sendSMS = async (to: string, body: string, options: SendSMSOptions 
     let usedCustomerId: string | undefined = resolvedCustomerId ?? options.customerId;
 
     try {
-      const supabase = createAdminClient();
-
       // If no customerId, try to resolve/create
       if (!usedCustomerId && options.createCustomerIfMissing !== false) {
         const { customerId: resolvedId } = await ensureCustomerForPhone(
@@ -300,6 +409,9 @@ export const sendSMS = async (to: string, body: string, options: SendSMSOptions 
       deferredBy: shouldScheduleWithTwilio ? 'twilio' : undefined
     };
   } catch (error: any) {
+    if (claimedDedupContext && dedupContext) {
+      await releaseSmsIdempotencyClaim(supabase, dedupContext);
+    }
     logger.error('Failed to send SMS after retries', {
       error,
       metadata: { to, errorCode: error.code }

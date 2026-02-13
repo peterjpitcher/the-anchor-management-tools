@@ -163,6 +163,15 @@ type CashingUpSnapshot = {
   error?: string
 }
 
+type TableBookingsSnapshot = {
+  permitted: boolean
+  thisWeekTotal: number
+  lastWeekTotal: number
+  thisMonthTotal: number
+  lastMonthTotal: number
+  error?: string
+}
+
 type SystemHealthSnapshot = {
   permitted: boolean
   smsFailures24h: number
@@ -193,6 +202,7 @@ export type DashboardSnapshot = {
   users: UsersSnapshot
   loyalty: LoyaltySnapshot
   cashingUp: CashingUpSnapshot
+  tableBookings: TableBookingsSnapshot
   systemHealth: SystemHealthSnapshot
 }
 
@@ -366,6 +376,14 @@ const fetchDashboardSnapshot = unstable_cache(
     completedThrough: null,
   }
 
+    const tableBookings: TableBookingsSnapshot = {
+      permitted: hasModuleAccess(permissionsMap, 'table_bookings'),
+      thisWeekTotal: 0,
+      lastWeekTotal: 0,
+      thisMonthTotal: 0,
+      lastMonthTotal: 0,
+    }
+
     const systemHealth: SystemHealthSnapshot = {
       permitted: hasModuleAccess(permissionsMap, 'settings') || hasModuleAccess(permissionsMap, 'users'),
       smsFailures24h: 0,
@@ -467,6 +485,68 @@ const fetchDashboardSnapshot = unstable_cache(
         } catch (error) {
           console.error('Failed to load cashing up metrics', error)
           cashingUp.error = 'Failed'
+        }
+      })() : Promise.resolve(),
+
+      tableBookings.permitted ? (async () => {
+        try {
+          const today = new Date()
+          const thisWeekStart = startOfWeek(today, { weekStartsOn: 1 })
+          const dayOffsetInWeek = Math.max(0, differenceInCalendarDays(today, thisWeekStart))
+
+          const thisMonthStart = new Date(today.getFullYear(), today.getMonth(), 1)
+          const dayOffsetInMonth = Math.max(0, differenceInCalendarDays(today, thisMonthStart))
+
+          const lastWeekStart = subWeeks(thisWeekStart, 1)
+          const lastWeekEnd = addDays(lastWeekStart, dayOffsetInWeek)
+
+          const lastMonthStart = new Date(today.getFullYear(), today.getMonth() - 1, 1)
+          const lastMonthNaturalEnd = addDays(thisMonthStart, -1)
+          const comparableLastMonthEndCandidate = addDays(lastMonthStart, dayOffsetInMonth)
+          const lastMonthEnd =
+            comparableLastMonthEndCandidate.getTime() > lastMonthNaturalEnd.getTime()
+              ? lastMonthNaturalEnd
+              : comparableLastMonthEndCandidate
+
+          const [thisWeekResult, lastWeekResult, thisMonthResult, lastMonthResult] = await Promise.all([
+            supabase
+              .from('table_bookings')
+              .select('id', { count: 'exact', head: true })
+              .not('status', 'in', '(cancelled,no_show)')
+              .gte('booking_date', format(thisWeekStart, 'yyyy-MM-dd'))
+              .lte('booking_date', format(today, 'yyyy-MM-dd')),
+            supabase
+              .from('table_bookings')
+              .select('id', { count: 'exact', head: true })
+              .not('status', 'in', '(cancelled,no_show)')
+              .gte('booking_date', format(lastWeekStart, 'yyyy-MM-dd'))
+              .lte('booking_date', format(lastWeekEnd, 'yyyy-MM-dd')),
+            supabase
+              .from('table_bookings')
+              .select('id', { count: 'exact', head: true })
+              .not('status', 'in', '(cancelled,no_show)')
+              .gte('booking_date', format(thisMonthStart, 'yyyy-MM-dd'))
+              .lte('booking_date', format(today, 'yyyy-MM-dd')),
+            supabase
+              .from('table_bookings')
+              .select('id', { count: 'exact', head: true })
+              .not('status', 'in', '(cancelled,no_show)')
+              .gte('booking_date', format(lastMonthStart, 'yyyy-MM-dd'))
+              .lte('booking_date', format(lastMonthEnd, 'yyyy-MM-dd')),
+          ])
+
+          if (thisWeekResult.error) throw thisWeekResult.error
+          if (lastWeekResult.error) throw lastWeekResult.error
+          if (thisMonthResult.error) throw thisMonthResult.error
+          if (lastMonthResult.error) throw lastMonthResult.error
+
+          tableBookings.thisWeekTotal = thisWeekResult.count ?? 0
+          tableBookings.lastWeekTotal = lastWeekResult.count ?? 0
+          tableBookings.thisMonthTotal = thisMonthResult.count ?? 0
+          tableBookings.lastMonthTotal = lastMonthResult.count ?? 0
+        } catch (error) {
+          console.error('Failed to load dashboard table booking metrics:', error)
+          tableBookings.error = 'Failed to load table booking metrics'
         }
       })() : Promise.resolve(),
 
@@ -990,6 +1070,7 @@ const fetchDashboardSnapshot = unstable_cache(
       users: usersSnapshot,
       loyalty,
       cashingUp,
+      tableBookings,
       systemHealth,
     }
   },

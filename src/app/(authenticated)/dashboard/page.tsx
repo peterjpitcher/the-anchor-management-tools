@@ -1,7 +1,6 @@
 import Link from 'next/link'
 import {
   ArrowRightIcon,
-  BanknotesIcon,
   BellIcon,
   CalendarIcon,
   ChatBubbleLeftIcon,
@@ -57,6 +56,26 @@ function formatStatusLabel(value: string | null | undefined): string {
     .split('_')
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(' ')
+}
+
+function formatComparisonDelta(current: number, previous: number): string {
+  const delta = current - previous
+  const deltaPrefix = delta > 0 ? '+' : ''
+
+  if (previous <= 0) {
+    return `${deltaPrefix}${delta}`
+  }
+
+  const percent = Math.round((delta / previous) * 100)
+  const percentPrefix = percent > 0 ? '+' : ''
+
+  return `${deltaPrefix}${delta} (${percentPrefix}${percent}%)`
+}
+
+function getComparisonToneClass(current: number, previous: number): string {
+  if (current > previous) return 'text-emerald-700'
+  if (current < previous) return 'text-red-600'
+  return 'text-gray-500'
 }
 
 export default async function DashboardPage() {
@@ -248,23 +267,6 @@ export default async function DashboardPage() {
     iconWrapperClassName: string
   }> = []
 
-  if (snapshot.cashingUp.permitted) {
-    overviewCards.push({
-      key: 'weekly-takings',
-      href: '/cashing-up/dashboard',
-      title: 'Weekly Takings',
-      value: currencyFormatter.format(snapshot.cashingUp.thisWeekTotal),
-      description: (
-        <span className="text-xs text-gray-500">
-          {snapshot.cashingUp.completedThrough ? `(up to ${snapshot.cashingUp.completedThrough})` : '(no days cashed yet)'}
-        </span>
-      ),
-      icon: BanknotesIcon,
-      borderClassName: 'border-l-4 border-l-emerald-500',
-      iconWrapperClassName: 'bg-emerald-50 text-emerald-600',
-    })
-  }
-
   if (snapshot.privateBookings.permitted) {
     overviewCards.push({
       key: 'private-bookings-holds',
@@ -282,6 +284,34 @@ export default async function DashboardPage() {
     })
   }
 
+  if (snapshot.tableBookings.permitted) {
+    overviewCards.push({
+      key: 'table-bookings',
+      href: '/table-bookings',
+      title: 'Table Bookings (Wk / Mo)',
+      value: `${snapshot.tableBookings.thisWeekTotal} / ${snapshot.tableBookings.thisMonthTotal}`,
+      description: (
+        <div className="space-y-0.5 text-xs">
+          <p className="text-gray-500">
+            <span>Vs last week: </span>
+            <span className={getComparisonToneClass(snapshot.tableBookings.thisWeekTotal, snapshot.tableBookings.lastWeekTotal)}>
+              {formatComparisonDelta(snapshot.tableBookings.thisWeekTotal, snapshot.tableBookings.lastWeekTotal)}
+            </span>
+          </p>
+          <p className="text-gray-500">
+            <span>Vs last month: </span>
+            <span className={getComparisonToneClass(snapshot.tableBookings.thisMonthTotal, snapshot.tableBookings.lastMonthTotal)}>
+              {formatComparisonDelta(snapshot.tableBookings.thisMonthTotal, snapshot.tableBookings.lastMonthTotal)}
+            </span>
+          </p>
+        </div>
+      ),
+      icon: CalendarIcon,
+      borderClassName: 'border-l-4 border-l-sky-500',
+      iconWrapperClassName: 'bg-sky-50 text-sky-600',
+    })
+  }
+
   if (snapshot.parking.permitted) {
     overviewCards.push({
       key: 'parking-pending',
@@ -296,23 +326,6 @@ export default async function DashboardPage() {
       icon: TruckIcon,
       borderClassName: 'border-l-4 border-l-gray-400',
       iconWrapperClassName: 'bg-gray-100 text-gray-700',
-    })
-  }
-
-  if (snapshot.invoices.permitted) {
-    overviewCards.push({
-      key: 'unpaid-invoices',
-      href: '/invoices?status=unpaid',
-      title: 'Unpaid Invoices',
-      value: currencyFormatter.format(snapshot.invoices.totalUnpaidValue),
-      description: (
-        <span className="text-xs text-gray-500">
-          {snapshot.invoices.unpaidCount} outstanding • {snapshot.invoices.overdueCount} overdue
-        </span>
-      ),
-      icon: CurrencyPoundIcon,
-      borderClassName: 'border-l-4 border-l-red-500',
-      iconWrapperClassName: 'bg-red-50 text-red-600',
     })
   }
 
@@ -365,7 +378,7 @@ export default async function DashboardPage() {
     >
       <div className="p-4 sm:p-6 lg:p-8 space-y-6 max-w-[1600px] mx-auto">
         {/* 1. Overview */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
           {overviewCards.map((card) => (
             <Link key={card.key} href={card.href} className="block">
               <Card className={`hover:shadow-md transition-shadow cursor-pointer h-full ${card.borderClassName}`}>
