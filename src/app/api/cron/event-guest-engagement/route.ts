@@ -41,6 +41,10 @@ const EVENT_ENGAGEMENT_HOURLY_SEND_GUARD_LIMIT = parsePositiveIntEnv(
   'EVENT_ENGAGEMENT_HOURLY_SEND_GUARD_LIMIT',
   120
 )
+const EVENT_ENGAGEMENT_UPCOMING_SMS_ENABLED = parseBooleanEnv(
+  'EVENT_ENGAGEMENT_UPCOMING_SMS_ENABLED',
+  process.env.NODE_ENV !== 'production'
+)
 const EVENT_ENGAGEMENT_TEMPLATE_KEYS = [
   TEMPLATE_REMINDER_7D,
   TEMPLATE_REMINDER_1D,
@@ -2109,10 +2113,20 @@ export async function GET(request: NextRequest) {
       loadTableBookingsForEngagement(supabase)
     ])
 
-    const reminders = await processReminders(supabase, bookings, appBaseUrl, safetyState)
+    if (!EVENT_ENGAGEMENT_UPCOMING_SMS_ENABLED) {
+      logger.info('Event guest engagement upcoming-event SMS sends are disabled; skipping reminders + interest marketing', {
+        metadata: { runKey }
+      })
+    }
+
+    const reminders = EVENT_ENGAGEMENT_UPCOMING_SMS_ENABLED
+      ? await processReminders(supabase, bookings, appBaseUrl, safetyState)
+      : { sent7d: 0, sent1d: 0, skipped: bookings.length }
     const reviews = await processReviewFollowups(supabase, bookings, appBaseUrl, safetyState)
     const completion = await processReviewWindowCompletion(supabase)
-    const marketing = await processInterestMarketing(supabase, safetyState)
+    const marketing = EVENT_ENGAGEMENT_UPCOMING_SMS_ENABLED
+      ? await processInterestMarketing(supabase, safetyState)
+      : { sent: 0, skipped: 0, eventsProcessed: 0 }
     const tableReviews = await processTableReviewFollowups(supabase, tableBookings, appBaseUrl, safetyState)
     const tableCompletion = await processTableReviewWindowCompletion(supabase)
 

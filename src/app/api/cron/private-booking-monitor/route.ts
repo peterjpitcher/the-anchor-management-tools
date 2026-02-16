@@ -32,6 +32,10 @@ const PRIVATE_BOOKING_SEND_GUARD_ALLOW_SCHEMA_GAPS = parseBooleanEnv(
   'PRIVATE_BOOKING_SEND_GUARD_ALLOW_SCHEMA_GAPS',
   process.env.NODE_ENV !== 'production'
 )
+const PRIVATE_BOOKING_UPCOMING_EVENT_SMS_ENABLED = parseBooleanEnv(
+  'PRIVATE_BOOKING_UPCOMING_EVENT_SMS_ENABLED',
+  process.env.NODE_ENV !== 'production'
+)
 const PRIVATE_BOOKING_MONITOR_TEMPLATE_KEYS = [
   'private_booking_deposit_reminder_7day',
   'private_booking_deposit_reminder_1day',
@@ -434,6 +438,12 @@ export async function GET(request: Request) {
       recordSafetyAbort({ ...context, result })
     }
 
+    if (!PRIVATE_BOOKING_UPCOMING_EVENT_SMS_ENABLED) {
+      logger.info('Private booking monitor upcoming-event SMS sends are disabled; skipping balance + event reminders', {
+        metadata: { runKey }
+      })
+    }
+
     // --- PASS 1: REMINDERS (Drafts - Catch-up Logic) ---
     // Find draft bookings where hold_expiry is approaching (<= 7 days)
     const { data: drafts } = await supabase
@@ -651,7 +661,7 @@ export async function GET(request: Request) {
       }
     }
 
-    if (!abortState.aborted) {
+    if (!abortState.aborted && PRIVATE_BOOKING_UPCOMING_EVENT_SMS_ENABLED) {
       // --- PASS 3: BALANCE REMINDERS (Confirmed - Catch-up Logic) ---
       // Find confirmed bookings where event is <= 14 days away and balance > 0
       
@@ -765,7 +775,7 @@ export async function GET(request: Request) {
       }
     }
 
-    if (!abortState.aborted) {
+    if (!abortState.aborted && PRIVATE_BOOKING_UPCOMING_EVENT_SMS_ENABLED) {
       // --- PASS 4: EVENT REMINDER (Confirmed - 1 day before) ---
     const tomorrow = new Date(now)
     tomorrow.setDate(now.getDate() + 1)
