@@ -135,7 +135,7 @@ export async function GET(
       const utmParams = parseQueryParams(request.url);
       const ipAddress = extractClientIp(request);
       
-      await supabase
+      const { error: clickInsertError } = await supabase
         .from('short_link_clicks')
         .insert({
           short_link_id: resolvedLink.id,
@@ -153,10 +153,16 @@ export async function GET(
           utm_campaign: utmParams.utm_campaign,
           metadata: resolvedViaAlias ? { alias_code: shortCode } : {}
         });
-        
-      await (supabase as any).rpc('increment_short_link_clicks', {
+      if (clickInsertError) {
+        throw clickInsertError;
+      }
+
+      const { error: incrementError } = await (supabase as any).rpc('increment_short_link_clicks', {
         p_short_link_id: resolvedLink.id
       });
+      if (incrementError) {
+        throw incrementError;
+      }
     } catch (err) {
       console.error('Error tracking click:', err);
     }

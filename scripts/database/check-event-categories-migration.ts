@@ -1,36 +1,98 @@
-#!/usr/bin/env node
-import { createClient } from '@supabase/supabase-js';
-import * as dotenv from 'dotenv';
+#!/usr/bin/env tsx
 
-dotenv.config({ path: '.env.local' });
+import dotenv from 'dotenv'
+import path from 'path'
+import { createAdminClient } from '../../src/lib/supabase/admin'
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+dotenv.config({ path: path.resolve(process.cwd(), '.env.local') })
 
-if (!supabaseUrl || !supabaseServiceKey) {
-  console.error('Missing environment variables');
-  process.exit(1);
+const HARD_CAP = 500
+
+function markFailure(message: string, error?: unknown) {
+  process.exitCode = 1
+  if (error) {
+    console.error(`ERROR: ${message}`, error)
+    return
+  }
+  console.error(`ERROR: ${message}`)
 }
 
-const supabase = createClient(supabaseUrl, supabaseServiceKey);
-
-async function checkMigrationStatus() {
-  console.log('Checking event_categories migration status...\n');
-
-  // Check table columns
-  const { data: columns, error: columnsError } = await supabase
-    .rpc('get_table_columns', { table_name: 'event_categories' });
-
-  if (columnsError) {
-    console.error('Error fetching columns:', columnsError);
-    return;
+function parseBoundedInt(params: {
+  argv: string[]
+  flag: string
+  defaultValue: number
+  hardCap: number
+}): number {
+  const idx = params.argv.indexOf(params.flag)
+  if (idx === -1) {
+    return params.defaultValue
   }
 
-  console.log('Current columns in event_categories table:');
-  const columnNames = columns?.map((col: any) => col.column_name) || [];
-  columnNames.forEach((col: string) => console.log(`  - ${col}`));
+  const raw = params.argv[idx + 1]
+  const parsed = Number.parseInt(raw || '', 10)
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    throw new Error(`${params.flag} must be a positive integer (got '${raw || ''}')`)
+  }
+  if (parsed > params.hardCap) {
+    throw new Error(`${params.flag} too high (got ${parsed}, hard cap ${params.hardCap})`)
+  }
+  return parsed
+}
 
-  // Check which new columns exist
+function printList(label: string, entries: string[], limit: number) {
+  console.log(label)
+  const sliced = entries.slice(0, limit)
+  sliced.forEach((entry) => console.log(`  - ${entry}`))
+  if (entries.length > sliced.length) {
+    console.log(`  ... (${entries.length - sliced.length} more)`)
+  }
+}
+
+async function checkMigrationStatus() {
+  const argv = process.argv
+  if (argv.includes('--confirm')) {
+    throw new Error('check-event-categories-migration is strictly read-only; do not pass --confirm.')
+  }
+
+  const maxPrint = parseBoundedInt({ argv, flag: '--max-print', defaultValue: 200, hardCap: HARD_CAP })
+  console.log('Checking event_categories migration status...\n')
+  console.log(`Max print: ${maxPrint} (hard cap ${HARD_CAP})\n`)
+
+  const failures: string[] = []
+  const supabase = createAdminClient()
+
+  // Prefer helper RPC functions if they exist, but do not attempt to create them (read-only script).
+  let columnNames: string[] | null = null
+  const { data: columns, error: columnsError } = await supabase.rpc('get_table_columns', {
+    table_name: 'event_categories'
+  })
+
+  if (columnsError) {
+    failures.push(`get_table_columns failed: ${columnsError.message || 'unknown error'}`)
+  } else {
+    columnNames =
+      (columns as Array<{ column_name?: unknown }> | null | undefined)
+        ?.map((col) => col?.column_name)
+        .filter((name): name is string => typeof name === 'string' && name.length > 0) ?? []
+  }
+
+  if (!columnNames || columnNames.length === 0) {
+    const { data: sampleRows, error: sampleError } = await supabase
+      .from('event_categories')
+      .select('*')
+      .limit(1)
+
+    if (sampleError) {
+      failures.push(`select(event_categories.*) failed: ${sampleError.message || 'unknown error'}`)
+    } else if (!sampleRows || sampleRows.length === 0) {
+      failures.push('event_categories returned no rows; unable to infer column list')
+    } else {
+      columnNames = Object.keys(sampleRows[0] ?? {})
+    }
+  }
+
+  printList('Current columns in event_categories table:', columnNames ?? [], maxPrint)
+
   const newColumns = [
     'default_end_time',
     'default_price',
@@ -39,133 +101,83 @@ async function checkMigrationStatus() {
     'default_event_status',
     'slug',
     'meta_description'
-  ];
+  ]
 
-  console.log('\nNew columns from migration:');
-  newColumns.forEach(col => {
-    const exists = columnNames.includes(col);
-    console.log(`  - ${col}: ${exists ? '✅ EXISTS' : '❌ MISSING'}`);
-  });
+  console.log('\nNew columns from migration:')
+  newColumns.forEach((col) => {
+    const exists = Boolean(columnNames?.includes(col))
+    console.log(`  - ${col}: ${exists ? 'EXISTS' : 'MISSING'}`)
+  })
 
-  // Check constraints
-  const { data: constraints, error: constraintsError } = await supabase
-    .rpc('get_table_constraints', { table_name: 'event_categories' });
+  const { data: constraints, error: constraintsError } = await supabase.rpc('get_table_constraints', {
+    table_name: 'event_categories'
+  })
 
   if (constraintsError) {
-    console.error('Error fetching constraints:', constraintsError);
-    return;
+    failures.push(`get_table_constraints failed: ${constraintsError.message || 'unknown error'}`)
+  } else {
+    const constraintNames =
+      (constraints as Array<{ constraint_name?: unknown }> | null | undefined)
+        ?.map((c) => c?.constraint_name)
+        .filter((name): name is string => typeof name === 'string' && name.length > 0) ?? []
+
+    console.log('')
+    printList('Constraints on event_categories table:', constraintNames, maxPrint)
+
+    const newConstraints = ['check_default_event_status', 'check_default_performer_type']
+    console.log('\nNew constraints from migration:')
+    newConstraints.forEach((constraint) => {
+      const exists = constraintNames.includes(constraint)
+      console.log(`  - ${constraint}: ${exists ? 'EXISTS' : 'MISSING'}`)
+    })
   }
 
-  console.log('\nConstraints on event_categories table:');
-  const constraintNames = constraints?.map((c: any) => c.constraint_name) || [];
-  constraintNames.forEach((c: string) => console.log(`  - ${c}`));
-
-  const newConstraints = [
-    'check_default_event_status',
-    'check_default_performer_type'
-  ];
-
-  console.log('\nNew constraints from migration:');
-  newConstraints.forEach(constraint => {
-    const exists = constraintNames.includes(constraint);
-    console.log(`  - ${constraint}: ${exists ? '✅ EXISTS' : '❌ MISSING'}`);
-  });
-
-  // Check indexes
-  const { data: indexes, error: indexesError } = await supabase
-    .rpc('get_table_indexes', { table_name: 'event_categories' });
+  const { data: indexes, error: indexesError } = await supabase.rpc('get_table_indexes', {
+    table_name: 'event_categories'
+  })
 
   if (indexesError) {
-    console.error('Error fetching indexes:', indexesError);
-    return;
+    failures.push(`get_table_indexes failed: ${indexesError.message || 'unknown error'}`)
+  } else {
+    const indexNames =
+      (indexes as Array<{ indexname?: unknown }> | null | undefined)
+        ?.map((i) => i?.indexname)
+        .filter((name): name is string => typeof name === 'string' && name.length > 0) ?? []
+
+    console.log('')
+    printList('Indexes on event_categories table:', indexNames, maxPrint)
+
+    const hasSlugIndex = indexNames.some((i) => i.includes('slug'))
+    console.log(`\nSlug index present: ${hasSlugIndex ? 'yes' : 'no'}`)
   }
 
-  console.log('\nIndexes on event_categories table:');
-  const indexNames = indexes?.map((i: any) => i.indexname) || [];
-  indexNames.forEach((i: string) => console.log(`  - ${i}`));
-
-  const hasSlugIndex = indexNames.some((i: string) => i.includes('slug'));
-  console.log(`\nSlug index: ${hasSlugIndex ? '✅ EXISTS' : '❌ MISSING'}`);
-
-  // Check if slug column has unique constraint
-  if (columnNames.includes('slug')) {
-    const { data: uniqueConstraints } = await supabase
-      .rpc('get_column_constraints', { 
+  if (columnNames?.includes('slug')) {
+    const { data: uniqueConstraints, error: uniqueConstraintsError } = await supabase.rpc(
+      'get_column_constraints',
+      {
         table_name: 'event_categories',
         column_name: 'slug'
-      });
-    
-    const hasUniqueConstraint = uniqueConstraints?.some((c: any) => 
-      c.constraint_type === 'UNIQUE'
-    );
-    console.log(`Slug unique constraint: ${hasUniqueConstraint ? '✅ EXISTS' : '❌ MISSING'}`);
+      }
+    )
+
+    if (uniqueConstraintsError) {
+      failures.push(`get_column_constraints failed: ${uniqueConstraintsError.message || 'unknown error'}`)
+    } else {
+      const hasUniqueConstraint = (uniqueConstraints as Array<{ constraint_type?: unknown }> | null | undefined)?.some(
+        (c) => c?.constraint_type === 'UNIQUE'
+      )
+      console.log(`Slug unique constraint present: ${hasUniqueConstraint ? 'yes' : 'no'}`)
+    }
+  }
+
+  if (failures.length > 0) {
+    const preview = failures.slice(0, 3).join(' | ')
+    throw new Error(
+      `check-event-categories-migration completed with ${failures.length} error(s): ${preview}`
+    )
   }
 }
 
-// Create the required functions if they don't exist
-async function createHelperFunctions() {
-  try {
-    await supabase.rpc('exec_sql', {
-      sql: `
-        CREATE OR REPLACE FUNCTION get_table_columns(table_name text)
-        RETURNS TABLE(column_name text, data_type text, is_nullable text)
-        LANGUAGE sql
-        SECURITY DEFINER
-        AS $$
-          SELECT column_name::text, data_type::text, is_nullable::text
-          FROM information_schema.columns
-          WHERE table_schema = 'public' AND table_name = $1
-          ORDER BY ordinal_position;
-        $$;
-        
-        CREATE OR REPLACE FUNCTION get_table_constraints(table_name text)
-        RETURNS TABLE(constraint_name text, constraint_type text)
-        LANGUAGE sql
-        SECURITY DEFINER
-        AS $$
-          SELECT constraint_name::text, constraint_type::text
-          FROM information_schema.table_constraints
-          WHERE table_schema = 'public' AND table_name = $1;
-        $$;
-        
-        CREATE OR REPLACE FUNCTION get_table_indexes(table_name text)
-        RETURNS TABLE(indexname text)
-        LANGUAGE sql
-        SECURITY DEFINER
-        AS $$
-          SELECT indexname::text
-          FROM pg_indexes
-          WHERE schemaname = 'public' AND tablename = $1;
-        $$;
-        
-        CREATE OR REPLACE FUNCTION get_column_constraints(table_name text, column_name text)
-        RETURNS TABLE(constraint_name text, constraint_type text)
-        LANGUAGE sql
-        SECURITY DEFINER
-        AS $$
-          SELECT tc.constraint_name::text, tc.constraint_type::text
-          FROM information_schema.table_constraints tc
-          JOIN information_schema.constraint_column_usage ccu 
-            ON tc.constraint_name = ccu.constraint_name
-          WHERE tc.table_schema = 'public' 
-            AND tc.table_name = $1
-            AND ccu.column_name = $2;
-        $$;
-        
-        CREATE OR REPLACE FUNCTION exec_sql(sql text)
-        RETURNS void
-        LANGUAGE plpgsql
-        SECURITY DEFINER
-        AS $$
-        BEGIN
-          EXECUTE sql;
-        END;
-        $$;
-      `
-    });
-  } catch (error) {
-    console.log('Helper functions may already exist');
-  }
-}
-
-createHelperFunctions().then(() => checkMigrationStatus());
+void checkMigrationStatus().catch((error) => {
+  markFailure('check-event-categories-migration failed.', error)
+})

@@ -237,7 +237,10 @@ export class BusinessHoursService {
     if (error) throw new Error('Failed to update business hours');
 
     // Trigger slot regeneration
-    await supabase.rpc('auto_generate_weekly_slots');
+    const { error: regenerateSlotsError } = await supabase.rpc('auto_generate_weekly_slots');
+    if (regenerateSlotsError) {
+      throw new Error('Failed to regenerate slots after creating special hours');
+    }
     
     return { success: true, updatedCount: updates.length };
   }
@@ -357,13 +360,19 @@ export class BusinessHoursService {
 
     const override = existing as ServiceStatusOverride;
 
-    const { error: deleteError } = await supabase
+    const { data: deletedOverride, error: deleteError } = await supabase
       .from('service_status_overrides')
       .delete()
-      .eq('id', overrideId);
+      .eq('id', overrideId)
+      .select('id')
+      .maybeSingle();
 
     if (deleteError) {
       throw new Error('Failed to delete override');
+    }
+
+    if (!deletedOverride) {
+      throw new Error('Override not found');
     }
 
     const { data: globalStatus } = await supabase
@@ -407,9 +416,12 @@ export class BusinessHoursService {
       .from('service_statuses')
       .select('*')
       .eq('service_code', serviceCode)
-      .single();
+      .maybeSingle();
 
     if (fetchError) {
+      throw new Error('Failed to load service status');
+    }
+    if (!existing) {
       throw new Error('Service status not found');
     }
 
@@ -425,46 +437,68 @@ export class BusinessHoursService {
       .update(updatePayload)
       .eq('service_code', serviceCode)
       .select()
-      .single();
+      .maybeSingle();
 
     if (updateError) {
       throw new Error('Failed to update service status');
+    }
+    if (!updated) {
+      throw new Error('Service status not found');
     }
 
     const todayIso = getTodayIsoDate();
 
     if (serviceCode === 'sunday_lunch') {
       if (!validationResult.data.is_enabled) {
-        await supabase
+        const { error: disableSlotsError } = await supabase
           .from('service_slots')
           .update({ is_active: false, updated_at: new Date().toISOString() })
           .eq('booking_type', 'sunday_lunch')
           .gte('service_date', todayIso);
+
+        if (disableSlotsError) {
+          throw new Error('Failed to apply service slot update');
+        }
       } else {
-        await supabase
+        const { error: enableSlotsError } = await supabase
           .from('service_slots')
           .update({ is_active: true, updated_at: new Date().toISOString() })
           .eq('booking_type', 'sunday_lunch')
           .gte('service_date', todayIso);
 
-        const { data: disabledOverrides } = await supabase
+        if (enableSlotsError) {
+          throw new Error('Failed to apply service slot update');
+        }
+
+        const { data: disabledOverrides, error: disabledOverridesError } = await supabase
           .from('service_status_overrides')
           .select('start_date, end_date, is_enabled')
           .eq('service_code', 'sunday_lunch')
           .eq('is_enabled', false);
 
+        if (disabledOverridesError) {
+          throw new Error('Failed to load service status overrides');
+        }
+
         if (disabledOverrides && disabledOverrides.length > 0) {
           for (const override of disabledOverrides) {
-            await supabase
+            const { error: applyOverrideSlotsError } = await supabase
               .from('service_slots')
               .update({ is_active: false, updated_at: new Date().toISOString() })
               .eq('booking_type', 'sunday_lunch')
               .gte('service_date', override.start_date)
               .lte('service_date', override.end_date);
+
+            if (applyOverrideSlotsError) {
+              throw new Error('Failed to apply service status overrides');
+            }
           }
         }
 
-        await supabase.rpc('auto_generate_weekly_slots');
+        const { error: regenerateSlotsError } = await supabase.rpc('auto_generate_weekly_slots');
+        if (regenerateSlotsError) {
+          throw new Error('Failed to regenerate slots after enabling service status');
+        }
       }
     }
 
@@ -540,7 +574,14 @@ export class BusinessHoursService {
     }
 
     const supabase = createAdminClient();
-    const { data: existingDates } = await supabase.from('special_hours').select('date').in('date', datesToCreate);
+    const { data: existingDates, error: existingDatesError } = await supabase
+      .from('special_hours')
+      .select('date')
+      .in('date', datesToCreate);
+
+    if (existingDatesError) {
+      throw new Error('Failed to validate existing special hours');
+    }
 
     if (existingDates && existingDates.length > 0) {
       throw new Error(`Special hours already exist for ${existingDates.map(d => d.date).join(', ')}`);
@@ -552,16 +593,24 @@ export class BusinessHoursService {
     if (error) throw new Error('Failed to create special hours');
 
     // Trigger slot regeneration
-    await supabase.rpc('auto_generate_weekly_slots');
+    const { error: regenerateSlotsError } = await supabase.rpc('auto_generate_weekly_slots');
+    if (regenerateSlotsError) {
+      throw new Error('Failed to regenerate slots after updating special hours');
+    }
 
     return { data: data || [], datesToCreate };
   }
 
   static async updateSpecialHours(id: string, formData: FormData) {
     const supabase = createAdminClient();
-    const { data: oldData, error: loadError } = await supabase.from('special_hours').select('*').eq('id', id).single();
+    const { data: oldData, error: loadError } = await supabase
+      .from('special_hours')
+      .select('*')
+      .eq('id', id)
+      .maybeSingle();
 
     if (loadError) throw new Error('Failed to load special hours');
+    if (!oldData) throw new Error('Special hours not found');
 
     const rawData = {
       date: formData.get('date') as string,
@@ -587,32 +636,55 @@ export class BusinessHoursService {
       updated_at: new Date().toISOString()
     };
 
-    const { data, error } = await supabase.from('special_hours').update(payload).eq('id', id).select().single();
+    const { data, error } = await supabase
+      .from('special_hours')
+      .update(payload)
+      .eq('id', id)
+      .select()
+      .maybeSingle();
 
     if (error) {
       if (error.code === '23505') throw new Error('Special hours already exist for this date');
       throw new Error('Failed to update special hours');
     }
+    if (!data) throw new Error('Special hours not found');
 
     // Trigger slot regeneration
-    await supabase.rpc('auto_generate_weekly_slots');
+    const { error: regenerateSlotsError } = await supabase.rpc('auto_generate_weekly_slots');
+    if (regenerateSlotsError) {
+      throw new Error('Failed to regenerate slots after updating special hours');
+    }
 
     return { updated: data, oldData };
   }
 
   static async deleteSpecialHours(id: string) {
     const supabase = createAdminClient();
-    const { data: oldData } = await supabase.from('special_hours').select('*').eq('id', id).single();
-    
+    const { data: oldData, error: loadError } = await supabase
+      .from('special_hours')
+      .select('*')
+      .eq('id', id)
+      .maybeSingle();
+
+    if (loadError) throw new Error('Failed to load special hours');
     if (!oldData) throw new Error('Special hours not found');
 
-    const { error } = await supabase.from('special_hours').delete().eq('id', id);
+    const { data: deletedRows, error } = await supabase
+      .from('special_hours')
+      .delete()
+      .eq('id', id)
+      .select('*');
+
     if (error) throw new Error('Failed to delete special hours');
+    if (!deletedRows || deletedRows.length === 0) throw new Error('Special hours not found');
 
     // Trigger slot regeneration
-    await supabase.rpc('auto_generate_weekly_slots');
+    const { error: regenerateSlotsError } = await supabase.rpc('auto_generate_weekly_slots');
+    if (regenerateSlotsError) {
+      throw new Error('Failed to regenerate slots after deleting special hours');
+    }
 
-    return oldData;
+    return deletedRows[0];
   }
 
   static async isSiteOpen(siteId: string, date: string): Promise<boolean> {

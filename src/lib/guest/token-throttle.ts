@@ -68,6 +68,10 @@ function buildThrottleKey(scope: string, tokenHash: string, clientIp: string): s
   return `guest_token:${scope.slice(0, 40)}:${digest}`
 }
 
+function shouldFailClosedOnThrottleDbError(): boolean {
+  return process.env.NODE_ENV === 'production'
+}
+
 function checkGuestTokenThrottleLocal(input: {
   key: string
   maxAttempts: number
@@ -160,7 +164,7 @@ export async function checkGuestTokenThrottle(input: GuestTokenThrottleInput): P
     validRequests.push({ timestamp: nowMs })
 
     if (row?.id) {
-      const { error: updateError } = await (supabase.from('rate_limits') as any)
+      const { data: updatedRow, error: updateError } = await (supabase.from('rate_limits') as any)
         .update({
           requests: validRequests,
           window_ms: windowMs,
@@ -168,9 +172,14 @@ export async function checkGuestTokenThrottle(input: GuestTokenThrottleInput): P
           updated_at: new Date(nowMs).toISOString()
         })
         .eq('id', row.id)
+        .select('id')
+        .maybeSingle()
 
       if (updateError) {
         throw updateError
+      }
+      if (!updatedRow) {
+        throw new Error('rate_limits row missing during throttle update')
       }
     } else {
       const { error: insertError } = await (supabase.from('rate_limits') as any)
@@ -197,7 +206,7 @@ export async function checkGuestTokenThrottle(input: GuestTokenThrottleInput): P
           const retryValid = normalizeRequestTimestamps(retryRow.requests, windowStartMs)
           retryValid.push({ timestamp: nowMs })
 
-          const { error: retryUpdateError } = await (supabase.from('rate_limits') as any)
+          const { data: retryUpdatedRow, error: retryUpdateError } = await (supabase.from('rate_limits') as any)
             .update({
               requests: retryValid,
               window_ms: windowMs,
@@ -205,9 +214,14 @@ export async function checkGuestTokenThrottle(input: GuestTokenThrottleInput): P
               updated_at: new Date(nowMs).toISOString()
             })
             .eq('id', retryRow.id)
+            .select('id')
+            .maybeSingle()
 
           if (retryUpdateError) {
             throw retryUpdateError
+          }
+          if (!retryUpdatedRow) {
+            throw new Error('rate_limits row missing during retry throttle update')
           }
 
           validRequests.length = 0
@@ -237,6 +251,14 @@ export async function checkGuestTokenThrottle(input: GuestTokenThrottleInput): P
       remaining
     }
   } catch {
+    if (shouldFailClosedOnThrottleDbError()) {
+      return {
+        allowed: false,
+        retryAfterSeconds: Math.max(1, Math.ceil(windowMs / 1000)),
+        remaining: 0
+      }
+    }
+
     return checkGuestTokenThrottleLocal({
       key,
       maxAttempts,

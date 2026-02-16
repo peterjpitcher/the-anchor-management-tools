@@ -72,7 +72,7 @@ export class RetryableSupabase {
           query = query.eq(key, value)
         })
         
-        return await query.select().single()
+        return await query.select().maybeSingle()
       },
       `update ${table}`
     )

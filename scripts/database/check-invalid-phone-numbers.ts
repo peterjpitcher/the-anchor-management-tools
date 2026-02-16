@@ -1,19 +1,32 @@
-import { createClient } from '@supabase/supabase-js';
-import * as dotenv from 'dotenv';
-import { resolve } from 'path';
+#!/usr/bin/env tsx
 
-// Load environment variables
-dotenv.config({ path: resolve(__dirname, '../.env.local') });
+import dotenv from 'dotenv'
+import path from 'path'
+import { createAdminClient } from '../../src/lib/supabase/admin'
+import { assertScriptQuerySucceeded } from '../../src/lib/script-mutation-safety'
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+dotenv.config({ path: path.resolve(process.cwd(), '.env.local') })
 
-const supabase = createClient(supabaseUrl, supabaseServiceKey);
+function markFailure(message: string, error?: unknown) {
+  process.exitCode = 1
+  if (error) {
+    console.error(`❌ ${message}`, error)
+    return
+  }
+  console.error(`❌ ${message}`)
+}
 
 // UK phone number regex pattern from the migration
 const phoneRegex = /^(\+?44|0)?[0-9]{10,11}$/;
 
 async function checkInvalidPhoneNumbers() {
+  const argv = process.argv
+  if (argv.includes('--confirm')) {
+    throw new Error('check-invalid-phone-numbers is strictly read-only; do not pass --confirm.')
+  }
+
+  const supabase = createAdminClient()
+
   console.log('Checking for customers with invalid phone numbers...\n');
 
   // Get all customers
@@ -23,17 +36,29 @@ async function checkInvalidPhoneNumbers() {
     .order('created_at', { ascending: true });
 
   if (error) {
-    console.error('Error fetching customers:', error);
-    return;
+    markFailure('Error fetching customers.', error)
+    return
   }
 
-  const invalidCustomers = customers.filter(customer => {
-    if (!customer.mobile_number) return false;
-    return !phoneRegex.test(customer.mobile_number);
+  const rows = (assertScriptQuerySucceeded({
+    operation: 'Load customers for phone validation',
+    error: null,
+    data: customers ?? [],
+    allowMissing: true
+  }) ?? []) as Array<{
+    id: string
+    first_name: string | null
+    last_name: string | null
+    mobile_number: string | null
+  }>
+
+  const invalidCustomers = rows.filter(customer => {
+    if (!customer.mobile_number) return false
+    return !phoneRegex.test(customer.mobile_number)
   });
 
-  console.log(`Total customers: ${customers.length}`);
-  console.log(`Customers with invalid phone numbers: ${invalidCustomers.length}\n`);
+  console.log(`Total customers: ${rows.length}`)
+  console.log(`Customers with invalid phone numbers: ${invalidCustomers.length}\n`)
 
   if (invalidCustomers.length > 0) {
     console.log('Invalid phone numbers found:');
@@ -81,4 +106,6 @@ async function checkInvalidPhoneNumbers() {
   }
 }
 
-checkInvalidPhoneNumbers().catch(console.error);
+void checkInvalidPhoneNumbers().catch((error) => {
+  markFailure('check-invalid-phone-numbers failed.', error)
+})

@@ -3,6 +3,7 @@
 import { checkUserPermission } from './rbac'
 import { revalidatePath, revalidateTag } from 'next/cache'
 import { MessageService } from '@/services/messages'
+import { logger } from '@/lib/logger'
 
 export async function getUnreadMessageCounts(customerIds?: string[]) {
   try {
@@ -13,7 +14,9 @@ export async function getUnreadMessageCounts(customerIds?: string[]) {
 
     return await MessageService.getUnreadCounts(customerIds);
   } catch (error) {
-    console.error('Error fetching unread counts:', error)
+    logger.error('Error fetching unread counts', {
+      error: error instanceof Error ? error : new Error(String(error)),
+    })
     return {}
   }
 }
@@ -27,7 +30,9 @@ export async function getTotalUnreadCount() {
 
     return await MessageService.getTotalUnreadCount();
   } catch (error) {
-    console.error('Error fetching total unread badge: ', error)
+    logger.error('Error fetching total unread badge', {
+      error: error instanceof Error ? error : new Error(String(error)),
+    })
     return 0
   }
 }
@@ -51,7 +56,10 @@ export async function markMessagesAsRead(customerId: string) {
     
     return { success: true }
   } catch (error: any) {
-    console.error('Error marking messages as read:', error)
+    logger.error('Error marking messages as read', {
+      error: error instanceof Error ? error : new Error(String(error)),
+      metadata: { customerId },
+    })
     return { error: error.message || 'Failed to mark messages as read' }
   }
 }
@@ -69,7 +77,10 @@ export async function sendSmsReply(customerId: string, message: string) {
     const result = await MessageService.sendReply(customerId, message);
     return result;
   } catch (error: any) {
-    console.error('Failed to send SMS:', error)
+    logger.error('Failed to send SMS reply', {
+      error: error instanceof Error ? error : new Error(String(error)),
+      metadata: { customerId },
+    })
     return { error: error.message || 'Failed to send message' }
   }
 }

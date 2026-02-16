@@ -1,14 +1,22 @@
 #!/usr/bin/env tsx
 
-import { createClient } from '@supabase/supabase-js'
-import { config } from 'dotenv'
+/**
+ * Critical flow smoke checks (read-only).
+ *
+ * Safety note:
+ * - Strictly read-only and blocks `--confirm`.
+ * - Fails closed with non-zero exit when any smoke check fails.
+ */
 
-config({ path: '.env' })
+import dotenv from 'dotenv'
+import path from 'path'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { assertScriptQuerySucceeded } from '@/lib/script-mutation-safety'
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-)
+dotenv.config({ path: path.resolve(process.cwd(), '.env.local') })
+
+const SCRIPT_NAME = 'test-critical-flows'
+const APP_URL = process.env.NEXT_PUBLIC_APP_URL
 
 interface TestResult {
   flow: string
@@ -17,206 +25,96 @@ interface TestResult {
   error?: string
 }
 
-const results: TestResult[] = []
-
-async function testFlow(flow: string, test: string, testFn: () => Promise<void>) {
-  try {
-    await testFn()
-    results.push({ flow, test, status: 'pass' })
-    console.log(`✅ ${flow} - ${test}`)
-  } catch (error: any) {
-    results.push({ flow, test, status: 'fail', error: error.message })
-    console.log(`❌ ${flow} - ${test}: ${error.message}`)
-  }
-}
-
-// Test critical user flows
 async function runTests() {
-  console.log('🧪 PHASE 2: CRITICAL FLOW TESTING\n')
+  if (process.argv.includes('--confirm')) {
+    throw new Error('This script is read-only and does not support --confirm.')
+  }
+
+  const supabase = createAdminClient()
+  const results: TestResult[] = []
+
+  async function testFlow(flow: string, test: string, testFn: () => Promise<void>) {
+    try {
+      await testFn()
+      results.push({ flow, test, status: 'pass' })
+      console.log(`OK ${flow} - ${test}`)
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error)
+      results.push({ flow, test, status: 'fail', error: message })
+      console.log(`FAIL ${flow} - ${test}: ${message}`)
+    }
+  }
+
+  async function assertTableReadable(table: string, columns: string): Promise<void> {
+    const { count, error } = await supabase
+      .from(table as never)
+      .select(columns, { head: true, count: 'exact' })
+
+    assertScriptQuerySucceeded({
+      operation: `${table} lookup`,
+      error,
+      data: { count },
+      allowMissing: true,
+    })
+  }
+
+  console.log('Critical flow smoke checks (read-only)\n')
 
   // 1. Authentication Flow
-  console.log('\n1️⃣ Authentication Flow:')
+  console.log('\n1) Authentication Flow:')
   
   await testFlow('Auth', 'Unauthenticated access blocked', async () => {
-    const response = await fetch(`${process.env.NEXT_PUBLIC_APP_URL}/api/cron/reminders`, {
+    if (!APP_URL) {
+      throw new Error('NEXT_PUBLIC_APP_URL is required for auth smoke checks')
+    }
+
+    const response = await fetch(`${APP_URL}/api/cron/reminders`, {
       headers: { 'x-cron-secret': 'wrong-key' }
     })
     if (response.status !== 401) throw new Error(`Expected 401, got ${response.status}`)
   })
 
   // 2. Customer Management Flow
-  console.log('\n2️⃣ Customer Management:')
+  console.log('\n2) Customer Management:')
   
-  await testFlow('Customer', 'Create with invalid phone', async () => {
-    const { error } = await supabase
-      .from('customers')
-      .insert({
-        first_name: 'Test',
-        last_name: 'User',
-        mobile_number: '123' // Invalid phone
-      })
-    
-    if (!error) throw new Error('Should reject invalid phone number')
-  })
-  
-  await testFlow('Customer', 'Create with valid data', async () => {
-    const { data, error } = await supabase
-      .from('customers')
-      .insert({
-        first_name: 'Test',
-        last_name: 'User',
-        mobile_number: '+447700900000'
-      })
-      .select()
-      .single()
-    
-    if (error) throw error
-    
-    // Clean up
-    await supabase.from('customers').delete().eq('id', data.id)
+  await testFlow('Customer', 'Customers table readable', async () => {
+    await assertTableReadable('customers', 'id, mobile_number, sms_opt_in')
   })
 
   // 3. Event Management Flow
-  console.log('\n3️⃣ Event Management:')
+  console.log('\n3) Event Management:')
   
-  await testFlow('Event', 'Create with past date', async () => {
-    const { error } = await supabase
-      .from('events')
-      .insert({
-        name: 'Past Event',
-        date: '2020-01-01',
-        time: '19:00'
-      })
-    
-    // Note: Currently no constraint preventing past dates
-    if (error && error.code !== '23514') throw error
-  })
-  
-  await testFlow('Event', 'Create with invalid capacity', async () => {
-    const { data, error } = await supabase
-      .from('events')
-      .insert({
-        name: 'Test Event',
-        date: '2025-12-01',
-        time: '19:00',
-        capacity: -1
-      })
-      .select()
-      .single()
-    
-    // Should have constraint but may not
-    if (!error) {
-      await supabase.from('events').delete().eq('id', data.id)
-    }
+  await testFlow('Event', 'Events table readable', async () => {
+    await assertTableReadable('events', 'id, name, date, capacity, event_status')
   })
 
   // 4. Booking Flow
-  console.log('\n4️⃣ Booking Management:')
+  console.log('\n4) Booking Management:')
   
-  await testFlow('Booking', 'Create booking exceeding capacity', async () => {
-    // First create event with capacity
-    const { data: event } = await supabase
-      .from('events')
-      .insert({
-        name: 'Limited Event',
-        date: '2025-12-01',
-        time: '19:00',
-        capacity: 2
-      })
-      .select()
-      .single()
-    
-    if (!event) throw new Error('Failed to create test event')
-    
-    // Create customer
-    const { data: customer } = await supabase
-      .from('customers')
-      .insert({
-        first_name: 'Test',
-        last_name: 'Customer',
-        mobile_number: '+447700900001'
-      })
-      .select()
-      .single()
-    
-    if (!customer) throw new Error('Failed to create test customer')
-    
-    // Try to book more than capacity
-    const { error } = await supabase
-      .from('bookings')
-      .insert({
-        event_id: event.id,
-        customer_id: customer.id,
-        seats: 5 // Exceeds capacity of 2
-      })
-    
-    // Clean up
-    await supabase.from('customers').delete().eq('id', customer.id)
-    await supabase.from('events').delete().eq('id', event.id)
-    
-    // Should have validation but may not
-    if (!error) console.warn('  ⚠️  No capacity validation on bookings!')
+  await testFlow('Booking', 'Bookings table readable', async () => {
+    await assertTableReadable('bookings', 'id, event_id, customer_id, seats, status, created_at')
   })
 
   // 5. Message/SMS Flow
-  console.log('\n5️⃣ SMS Messaging:')
+  console.log('\n5) SMS Messaging:')
   
-  await testFlow('SMS', 'Send to opted-out customer', async () => {
-    // Create opted-out customer
-    const { data: customer } = await supabase
-      .from('customers')
-      .insert({
-        first_name: 'OptedOut',
-        last_name: 'Customer',
-        mobile_number: '+447700900002',
-        sms_opt_in: false
-      })
-      .select()
-      .single()
-    
-    if (!customer) throw new Error('Failed to create test customer')
-    
-    // Try to send message
-    const { error } = await supabase
-      .from('messages')
-      .insert({
-        customer_id: customer.id,
-        direction: 'outbound',
-        message_sid: 'TEST123',
-        body: 'Test message',
-        status: 'queued'
-      })
-    
-    // Clean up
-    await supabase.from('customers').delete().eq('id', customer.id)
-    
-    // Should allow creation but not send
-    if (error) throw error
+  await testFlow('SMS', 'Messages table readable', async () => {
+    await assertTableReadable('messages', 'id, customer_id, direction, to_number, twilio_status, created_at')
+  })
+
+  await testFlow('SMS', 'Idempotency table readable (distributed dedupe)', async () => {
+    await assertTableReadable('idempotency_keys', 'key, request_hash, expires_at')
   })
 
   // 6. Private Bookings Flow
-  console.log('\n6️⃣ Private Bookings:')
+  console.log('\n6) Private Bookings:')
   
-  await testFlow('Private Booking', 'Create with invalid dates', async () => {
-    const { error } = await supabase
-      .from('private_bookings')
-      .insert({
-        customer_name: 'Test Customer',
-        contact_email: 'test@example.com',
-        contact_phone: '+447700900003',
-        event_date: '2025-12-01',
-        start_time: '25:00', // Invalid time
-        end_time: '23:00',
-        guest_count: 50,
-        status: 'pending'
-      })
-    
-    // May not have time validation
-    if (!error) console.warn('  ⚠️  No time format validation!')
+  await testFlow('Private Booking', 'Private bookings table readable', async () => {
+    await assertTableReadable('private_bookings', 'id, customer_id, customer_name, contact_phone, status, created_at')
   })
 
   // 7. Permission/RBAC Flow
-  console.log('\n7️⃣ Role-Based Access Control:')
+  console.log('\n7) Role-Based Access Control:')
   
   await testFlow('RBAC', 'Check permission function exists', async () => {
     const { data, error } = await supabase.rpc('user_has_permission', {
@@ -225,27 +123,47 @@ async function runTests() {
       p_action: 'view'
     })
     
-    if (error && error.code === '42883') {
-      throw new Error('user_has_permission function not found')
+    if (error) {
+      if (error.code === '42883') {
+        throw new Error('user_has_permission function not found')
+      }
     }
+
+    assertScriptQuerySucceeded({
+      operation: 'user_has_permission RPC',
+      error,
+      data,
+      allowMissing: true,
+    })
+  })
+
+  // 8. Job Queue Schema
+  console.log('\n8) Job Queue Schema:')
+
+  await testFlow('Jobs', 'Jobs table has lease/token columns (prevents double-processing)', async () => {
+    await assertTableReadable('jobs', 'id, status, processing_token, lease_expires_at, last_heartbeat_at')
   })
 
   // Summary
-  console.log('\n📊 Test Summary:')
+  console.log('\nSummary:')
   const passed = results.filter(r => r.status === 'pass').length
   const failed = results.filter(r => r.status === 'fail').length
   
-  console.log(`  ✅ Passed: ${passed}`)
-  console.log(`  ❌ Failed: ${failed}`)
-  console.log(`  📈 Success Rate: ${Math.round((passed / results.length) * 100)}%`)
+  console.log(`  Passed: ${passed}`)
+  console.log(`  Failed: ${failed}`)
+  console.log(`  Success rate: ${Math.round((passed / results.length) * 100)}%`)
   
   if (failed > 0) {
-    console.log('\n❌ Failed Tests:')
+    console.log('\nFailed tests:')
     results.filter(r => r.status === 'fail').forEach(r => {
       console.log(`  - ${r.flow}: ${r.test}`)
       console.log(`    Error: ${r.error}`)
     })
+    process.exitCode = 1
   }
 }
 
-runTests().catch(console.error)
+runTests().catch((error: unknown) => {
+  console.error(`[${SCRIPT_NAME}] Fatal error:`, error)
+  process.exitCode = 1
+})

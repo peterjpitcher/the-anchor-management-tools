@@ -113,6 +113,14 @@ export const noteSchema = z.object({
 
 const ATTACHMENT_BUCKET_NAME = 'employee-attachments'; // Moved here for service scope
 
+function sanitizeEmployeeSearchTerm(value: string): string {
+  return value
+    .replace(/[,%_()"'\\]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 80);
+}
+
 export const addAttachmentSchema = z.object({
   employee_id: z.string().uuid(),
   attachment_file: z.instanceof(File)
@@ -138,7 +146,6 @@ export const addAttachmentSchema = z.object({
 export const deleteAttachmentSchema = z.object({
     employee_id: z.string().uuid(),
     attachment_id: z.string().uuid(),
-    storage_path: z.string().min(1),
 });
 
 export const EmergencyContactSchema = z.object({
@@ -383,11 +390,20 @@ export class EmployeeService {
       throw new Error('Employee not found or failed to fetch old data.');
     }
     
-    const { error } = await adminClient.from('employees').update(updateData).eq('employee_id', employeeId);
-    
+    const { data: updatedEmployee, error } = await adminClient
+      .from('employees')
+      .update(updateData)
+      .eq('employee_id', employeeId)
+      .select('*')
+      .maybeSingle();
+
     if (error) {
       console.error('Update employee error:', error);
       throw error;
+    }
+
+    if (!updatedEmployee) {
+      throw new Error('Employee not found or failed to update.');
     }
 
     // Keep Google Calendar birthday event in sync (best-effort).
@@ -412,7 +428,7 @@ export class EmployeeService {
       }
     }
     
-    return { updatedEmployee: updateData, oldEmployee: oldEmployee };
+    return { updatedEmployee, oldEmployee: oldEmployee };
   }
 
   static async deleteEmployee(employeeId: string) {
@@ -429,11 +445,20 @@ export class EmployeeService {
         throw new Error('Employee not found or failed to fetch old data.');
     }
 
-    const { error } = await adminClient.from('employees').delete().eq('employee_id', employeeId);
-    
+    const { data: deletedEmployee, error } = await adminClient
+      .from('employees')
+      .delete()
+      .eq('employee_id', employeeId)
+      .select('*')
+      .maybeSingle();
+
     if (error) {
       console.error('Delete employee error:', error);
       throw error;
+    }
+
+    if (!deletedEmployee) {
+      throw new Error('Employee not found or failed to delete.');
     }
     
     // Delete birthday calendar events if employee had a date of birth
@@ -446,7 +471,7 @@ export class EmployeeService {
         }
     }
     
-    return employee; // Return deleted employee for audit logging
+    return deletedEmployee; // Return deleted employee for audit logging
   }
 
   static async getEmployeeList(): Promise<{ id: string; name: string; }[] | null> {
@@ -551,22 +576,27 @@ export class EmployeeService {
     return data.signedUrl;
   }
 
-  static async deleteEmployeeAttachment(attachmentId: string, storagePath: string) {
+  static async deleteEmployeeAttachment(attachmentId: string, employeeId: string) {
     const adminClient = createAdminClient();
 
     const { data: attachment, error: fetchError } = await adminClient
       .from('employee_attachments')
       .select('file_name, storage_path')
       .eq('attachment_id', attachmentId)
+      .eq('employee_id', employeeId)
       .single();
     
     if (fetchError || !attachment) {
       throw new Error('Attachment not found');
     }
 
+    if (!attachment.storage_path) {
+      throw new Error('Attachment storage path is missing.');
+    }
+
     const { error: storageError } = await adminClient.storage
       .from(ATTACHMENT_BUCKET_NAME)
-      .remove([storagePath]);
+      .remove([attachment.storage_path]);
     
     if (storageError) {
       console.error('Error deleting file from storage:', storageError);
@@ -741,28 +771,47 @@ export class EmployeeService {
     if (fetchError || !rightToWork?.photo_storage_path) {
       throw new Error('No photo found to delete.');
     }
-    
-    // Delete from storage
-    const { error: storageError } = await adminClient.storage
-      .from(ATTACHMENT_BUCKET_NAME)
-      .remove([rightToWork.photo_storage_path]);
-      
-    if (storageError) {
-      console.error('Error deleting right to work photo from storage:', storageError);
-      throw new Error('Failed to delete photo from storage.');
-    }
-    
-    // Update database record
-    const { error: dbError } = await adminClient
+
+    const previousPhotoPath = rightToWork.photo_storage_path;
+
+    // Clear DB reference first with an optimistic guard to avoid stale-worker overwrite.
+    const { data: clearedRows, error: clearError } = await adminClient
       .from('employee_right_to_work')
       .update({ photo_storage_path: null })
-      .eq('employee_id', employeeId);
-      
-    if (dbError) {
-      console.error('Error updating right to work record:', dbError);
+      .eq('employee_id', employeeId)
+      .eq('photo_storage_path', previousPhotoPath)
+      .select('employee_id');
+
+    if (clearError) {
+      console.error('Error clearing right to work photo path:', clearError);
       throw new Error('Failed to update database record.');
     }
-    return { photoPath: rightToWork.photo_storage_path };
+
+    if (!clearedRows || clearedRows.length === 0) {
+      throw new Error('Right to work photo changed before deletion. Please refresh and try again.');
+    }
+
+    const { error: storageError } = await adminClient.storage
+      .from(ATTACHMENT_BUCKET_NAME)
+      .remove([previousPhotoPath]);
+
+    if (storageError) {
+      console.error('Error deleting right to work photo from storage:', storageError);
+
+      const { error: rollbackError } = await adminClient
+        .from('employee_right_to_work')
+        .update({ photo_storage_path: previousPhotoPath })
+        .eq('employee_id', employeeId)
+        .is('photo_storage_path', null);
+
+      if (rollbackError) {
+        console.error('Failed to restore right to work photo path after storage delete failure:', rollbackError);
+      }
+
+      throw new Error('Failed to delete photo from storage.');
+    }
+
+    return { photoPath: previousPhotoPath };
   }
 
   static async updateOnboardingChecklist(
@@ -956,7 +1005,7 @@ export class EmployeeService {
     const requestedPage = typeof request.page === 'number' && request.page > 0 ? request.page : 1;
     const rawStatus = request.statusFilter ?? 'Active';
     const statusFilter: 'all' | 'Active' | 'Former' | 'Prospective' = rawStatus === 'all' ? 'all' : (['Active', 'Former', 'Prospective'].includes(rawStatus) ? rawStatus : 'Active');
-    const searchTerm = (request.searchTerm ?? '').trim();
+    const searchTerm = sanitizeEmployeeSearchTerm(request.searchTerm ?? '');
 
     const applyFilters = <T>(query: T) => {
       let builder: any = query;

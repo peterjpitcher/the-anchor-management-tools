@@ -3,6 +3,7 @@ import { createGuestToken, hashGuestToken } from '@/lib/guest/tokens'
 import { recordAnalyticsEvent } from '@/lib/analytics/events'
 import { getFeePerHead } from '@/lib/foh/bookings'
 import { sendManagerChargeApprovalEmail } from '@/lib/table-bookings/charge-approvals'
+import { logger } from '@/lib/logger'
 
 type ChargeRequestType = 'late_cancel' | 'reduction_fee'
 
@@ -188,15 +189,17 @@ async function maybeMoveTableForPartySizeIncrease(
       .maybeSingle()
 
     if (currentAssignment) {
-      const { error: updateError } = await (supabase.from('booking_table_assignments') as any)
+      const { data: updatedAssignment, error: updateError } = await (supabase.from('booking_table_assignments') as any)
         .update({
           table_id: table.id,
           start_datetime: startIso,
           end_datetime: endIso
         })
         .eq('table_booking_id', bookingId)
+        .select('table_booking_id')
+        .maybeSingle()
 
-      if (updateError) {
+      if (updateError || !updatedAssignment) {
         continue
       }
     } else {
@@ -285,22 +288,53 @@ async function createSystemChargeRequestWithApproval(
   const chargeRequestId = chargeRequest?.id || null
 
   if (chargeRequestId) {
-    await recordAnalyticsEvent(supabase, {
-      customerId: input.customerId,
-      tableBookingId: input.bookingId,
-      eventType: 'charge_request_created',
-      metadata: {
-        charge_type: input.type,
-        amount,
-        currency: 'GBP',
-        requested_by: 'system'
-      }
-    })
+    try {
+      await recordAnalyticsEvent(supabase, {
+        customerId: input.customerId,
+        tableBookingId: input.bookingId,
+        eventType: 'charge_request_created',
+        metadata: {
+          charge_type: input.type,
+          amount,
+          currency: 'GBP',
+          requested_by: 'system'
+        }
+      })
+    } catch (analyticsError) {
+      logger.warn('Failed to record system charge-request analytics event', {
+        metadata: {
+          chargeRequestId,
+          bookingId: input.bookingId,
+          customerId: input.customerId,
+          error: analyticsError instanceof Error ? analyticsError.message : String(analyticsError)
+        }
+      })
+    }
 
-    await sendManagerChargeApprovalEmail(supabase, {
-      chargeRequestId,
-      appBaseUrl: input.appBaseUrl
-    })
+    try {
+      const emailResult = await sendManagerChargeApprovalEmail(supabase, {
+        chargeRequestId,
+        appBaseUrl: input.appBaseUrl
+      })
+
+      if (!emailResult.sent) {
+        logger.warn('Failed to send manager charge-approval email for system request', {
+          metadata: {
+            chargeRequestId,
+            bookingId: input.bookingId,
+            error: emailResult.error || 'unknown'
+          }
+        })
+      }
+    } catch (emailError) {
+      logger.warn('Failed to dispatch manager charge-approval email for system request', {
+        metadata: {
+          chargeRequestId,
+          bookingId: input.bookingId,
+          error: emailError instanceof Error ? emailError.message : String(emailError)
+        }
+      })
+    }
   }
 
   return { chargeRequestId }
@@ -448,7 +482,7 @@ export async function updateTableBookingByRawToken(
   if (input.action === 'cancel') {
     const nowIso = new Date().toISOString()
 
-    const { error: cancelError } = await (supabase.from('table_bookings') as any)
+    const { data: cancelledBooking, error: cancelError } = await (supabase.from('table_bookings') as any)
       .update({
         status: 'cancelled',
         cancelled_at: nowIso,
@@ -458,19 +492,38 @@ export async function updateTableBookingByRawToken(
       })
       .eq('id', bookingId)
       .eq('status', 'confirmed')
+      .select('id')
+      .maybeSingle()
 
     if (cancelError) {
       throw cancelError
     }
 
-    await recordAnalyticsEvent(supabase, {
-      customerId,
-      tableBookingId: bookingId,
-      eventType: 'table_booking_cancelled',
-      metadata: {
-        cancelled_by: 'guest'
+    if (!cancelledBooking) {
+      return {
+        state: 'blocked',
+        reason: 'booking_not_confirmed'
       }
-    })
+    }
+
+    try {
+      await recordAnalyticsEvent(supabase, {
+        customerId,
+        tableBookingId: bookingId,
+        eventType: 'table_booking_cancelled',
+        metadata: {
+          cancelled_by: 'guest'
+        }
+      })
+    } catch (analyticsError) {
+      logger.warn('Failed to record guest table-booking cancellation analytics event', {
+        metadata: {
+          bookingId,
+          customerId,
+          error: analyticsError instanceof Error ? analyticsError.message : String(analyticsError)
+        }
+      })
+    }
 
     const lateCancelCutoff = getLateCancelCutoff(startAt)
     if (now.getTime() < lateCancelCutoff.getTime()) {
@@ -505,27 +558,44 @@ export async function updateTableBookingByRawToken(
       }
     }
 
-    const chargeRequest = await createSystemChargeRequestWithApproval(supabase, {
-      bookingId,
-      customerId,
-      type: 'late_cancel',
-      amount: chargeAmount,
-      appBaseUrl: input.appBaseUrl,
-      metadata: {
-        source: 'guest_late_cancel',
-        old_party_size: oldPartySize,
-        committed_party_size: oldCommittedSize,
-        fee_per_head: feePerHead
+    let chargeRequestId: string | null = null
+    let finalChargeAmount: number | null = null
+    try {
+      const chargeRequest = await createSystemChargeRequestWithApproval(supabase, {
+        bookingId,
+        customerId,
+        type: 'late_cancel',
+        amount: chargeAmount,
+        appBaseUrl: input.appBaseUrl,
+        metadata: {
+          source: 'guest_late_cancel',
+          old_party_size: oldPartySize,
+          committed_party_size: oldCommittedSize,
+          fee_per_head: feePerHead
+        }
+      })
+      chargeRequestId = chargeRequest.chargeRequestId
+      if (chargeRequestId) {
+        finalChargeAmount = chargeAmount
       }
-    })
+    } catch (chargeRequestError) {
+      logger.error('Failed to create late-cancel charge request after guest cancellation', {
+        error: chargeRequestError instanceof Error ? chargeRequestError : new Error(String(chargeRequestError)),
+        metadata: {
+          bookingId,
+          customerId,
+          chargeAmount
+        }
+      })
+    }
 
     return {
       state: 'cancelled',
       table_booking_id: bookingId,
       customer_id: customerId,
       status: 'cancelled',
-      charge_request_id: chargeRequest.chargeRequestId,
-      charge_amount: chargeAmount
+      charge_request_id: chargeRequestId,
+      charge_amount: finalChargeAmount
     }
   }
 
@@ -572,8 +642,12 @@ export async function updateTableBookingByRawToken(
     }
   }
 
-  let chargeRequestId: string | null = null
-  let chargeAmount: number | null = null
+  let plannedReductionCharge:
+    | {
+        amount: number
+        metadata: Record<string, unknown>
+      }
+    | null = null
 
   if (newPartySize < oldPartySize && now.getTime() >= commitTime.getTime()) {
     const reductionCount = Math.max(0, oldCommittedSize - newPartySize)
@@ -586,15 +660,11 @@ export async function updateTableBookingByRawToken(
       })
 
       const suggestedAmount = Number((reductionCount * feePerHead).toFixed(2))
-      chargeAmount = Math.max(0, Math.min(suggestedAmount, remainingCap))
+      const chargeAmount = Math.max(0, Math.min(suggestedAmount, remainingCap))
 
       if (chargeAmount > 0) {
-        const chargeRequest = await createSystemChargeRequestWithApproval(supabase, {
-          bookingId,
-          customerId,
-          type: 'reduction_fee',
+        plannedReductionCharge = {
           amount: chargeAmount,
-          appBaseUrl: input.appBaseUrl,
           metadata: {
             source: 'guest_reduction_inside_3_days',
             old_party_size: oldPartySize,
@@ -603,14 +673,12 @@ export async function updateTableBookingByRawToken(
             reduction_count: reductionCount,
             fee_per_head: feePerHead
           }
-        })
-
-        chargeRequestId = chargeRequest.chargeRequestId
+        }
       }
     }
   }
 
-  const { error: updateError } = await (supabase.from('table_bookings') as any)
+  const { data: updatedBooking, error: updateError } = await (supabase.from('table_bookings') as any)
     .update({
       party_size: newPartySize,
       committed_party_size: nextCommittedSize,
@@ -619,9 +687,48 @@ export async function updateTableBookingByRawToken(
     })
     .eq('id', bookingId)
     .eq('status', 'confirmed')
+    .select('id')
+    .maybeSingle()
 
   if (updateError) {
     throw updateError
+  }
+
+  if (!updatedBooking) {
+    return {
+      state: 'blocked',
+      reason: 'booking_not_confirmed'
+    }
+  }
+
+  let chargeRequestId: string | null = null
+  let chargeAmount: number | null = null
+  if (plannedReductionCharge) {
+    try {
+      const chargeRequest = await createSystemChargeRequestWithApproval(supabase, {
+        bookingId,
+        customerId,
+        type: 'reduction_fee',
+        amount: plannedReductionCharge.amount,
+        appBaseUrl: input.appBaseUrl,
+        metadata: plannedReductionCharge.metadata
+      })
+      chargeRequestId = chargeRequest.chargeRequestId
+      if (chargeRequestId) {
+        chargeAmount = plannedReductionCharge.amount
+      }
+    } catch (chargeRequestError) {
+      logger.error('Failed to create reduction-fee charge request after guest booking update', {
+        error: chargeRequestError instanceof Error ? chargeRequestError : new Error(String(chargeRequestError)),
+        metadata: {
+          bookingId,
+          customerId,
+          newPartySize,
+          oldPartySize,
+          plannedChargeAmount: plannedReductionCharge.amount
+        }
+      })
+    }
   }
 
   return {

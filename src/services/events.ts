@@ -3,6 +3,14 @@ import { toLocalIsoDate } from '@/lib/dateUtils';
 import { generateEventMarketingLinks } from '@/app/actions/event-marketing-links';
 import { z } from 'zod';
 
+function sanitizeEventSearchTerm(value: string): string {
+  return value
+    .replace(/[,%_()"'\\]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 80);
+}
+
 export type CreateEventInput = {
   name: string;
   date: string;
@@ -486,14 +494,20 @@ export class EventService {
       throw new Error('Event not found');
     }
 
-    const { error } = await supabase
+    const { data: deletedEvent, error } = await supabase
       .from('events')
       .delete()
-      .eq('id', id);
+      .eq('id', id)
+      .select('id')
+      .maybeSingle();
 
     if (error) {
       console.error('Event deletion error:', error);
       throw new Error('Failed to delete event');
+    }
+
+    if (!deletedEvent) {
+      throw new Error('Event not found');
     }
 
     return event;
@@ -566,10 +580,13 @@ export class EventService {
       query = query.eq('event_status', status);
     }
     if (searchTerm) {
-      const searchPattern = `%${searchTerm}%`;
-      query = query.or(
-        `name.ilike.${searchPattern},slug.ilike.${searchPattern},short_description.ilike.${searchPattern}`
-      );
+      const sanitizedSearch = sanitizeEventSearchTerm(searchTerm);
+      if (sanitizedSearch.length > 0) {
+        const searchPattern = `%${sanitizedSearch}%`;
+        query = query.or(
+          `name.ilike.${searchPattern},slug.ilike.${searchPattern},short_description.ilike.${searchPattern}`
+        );
+      }
     }
 
     const from = (page - 1) * pageSize;

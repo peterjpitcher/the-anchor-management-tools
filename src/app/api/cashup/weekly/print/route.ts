@@ -30,8 +30,17 @@ export async function GET(request: NextRequest) {
   try {
     // Fetch Data
     // 1. Site Name
-    const { data: site } = await supabase.from('sites').select('name').eq('id', siteId).single();
-    const siteName = site?.name || 'Unknown Site';
+    const { data: site, error: siteError } = await supabase
+      .from('sites')
+      .select('name')
+      .eq('id', siteId)
+      .single();
+
+    if (siteError || !site) {
+      console.error('Failed to load site for weekly cashup print:', siteError);
+      return new NextResponse('Failed to load site details', { status: 500 });
+    }
+    const siteName = site.name;
 
     // 2. Weekly Data
     const weekData = await CashingUpService.getWeeklyReportData(supabase, siteId, weekStartDate);
@@ -64,6 +73,6 @@ export async function GET(request: NextRequest) {
 
   } catch (error: any) {
     console.error('PDF Generation Error:', error);
-    return new NextResponse('Failed to generate PDF: ' + error.message, { status: 500 });
+    return new NextResponse('Failed to generate PDF', { status: 500 });
   }
 }

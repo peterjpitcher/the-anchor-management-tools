@@ -319,10 +319,32 @@ export async function attemptApprovedChargeFromDecision(
 
   const paymentChargeType = type === 'walkout' ? 'walkout' : 'approved_fee'
   const nowIso = new Date().toISOString()
+  const recordChargeAnalytics = async (
+    eventType: 'charge_succeeded' | 'charge_failed',
+    metadata: Record<string, unknown>
+  ) => {
+    try {
+      await recordAnalyticsEvent(supabase, {
+        customerId,
+        tableBookingId,
+        eventType,
+        metadata
+      })
+    } catch (analyticsError) {
+      logger.warn('Failed recording approved-charge analytics event', {
+        metadata: {
+          chargeRequestId,
+          tableBookingId,
+          eventType,
+          error: analyticsError instanceof Error ? analyticsError.message : String(analyticsError)
+        }
+      })
+    }
+  }
 
   if (!isStripeConfigured()) {
     const errorMessage = 'Stripe is not configured'
-    await (supabase.from('charge_requests') as any)
+    const { data: failedChargeRequest, error: chargeRequestUpdateError } = await (supabase.from('charge_requests') as any)
       .update({
         charge_status: 'failed',
         updated_at: nowIso,
@@ -332,8 +354,18 @@ export async function attemptApprovedChargeFromDecision(
         }
       })
       .eq('id', chargeRequestId)
+      .select('id')
+      .maybeSingle()
 
-    await (supabase.from('payments') as any).insert({
+    if (chargeRequestUpdateError) {
+      throw new Error(`Failed to persist charge-request failure state: ${chargeRequestUpdateError.message}`)
+    }
+
+    if (!failedChargeRequest) {
+      throw new Error('Charge request not found while persisting failure state')
+    }
+
+    const { error: paymentInsertError } = await (supabase.from('payments') as any).insert({
       table_booking_id: tableBookingId,
       charge_type: paymentChargeType,
       amount,
@@ -345,16 +377,15 @@ export async function attemptApprovedChargeFromDecision(
       }
     })
 
-    await recordAnalyticsEvent(supabase, {
-      customerId,
-      tableBookingId,
-      eventType: 'charge_failed',
-      metadata: {
-        charge_request_id: chargeRequestId,
-        reason: 'stripe_not_configured',
-        amount,
-        currency
-      }
+    if (paymentInsertError) {
+      throw new Error(`Failed to persist failed payment audit row: ${paymentInsertError.message}`)
+    }
+
+    await recordChargeAnalytics('charge_failed', {
+      charge_request_id: chargeRequestId,
+      reason: 'stripe_not_configured',
+      amount,
+      currency
     })
 
     return {
@@ -372,7 +403,7 @@ export async function attemptApprovedChargeFromDecision(
   if (!stripeCustomerId || !stripePaymentMethodId) {
     const errorMessage = 'No card on file for this booking'
 
-    await (supabase.from('charge_requests') as any)
+    const { data: failedChargeRequest, error: chargeRequestUpdateError } = await (supabase.from('charge_requests') as any)
       .update({
         charge_status: 'failed',
         updated_at: nowIso,
@@ -384,8 +415,18 @@ export async function attemptApprovedChargeFromDecision(
         }
       })
       .eq('id', chargeRequestId)
+      .select('id')
+      .maybeSingle()
 
-    await (supabase.from('payments') as any).insert({
+    if (chargeRequestUpdateError) {
+      throw new Error(`Failed to persist charge-request failure state: ${chargeRequestUpdateError.message}`)
+    }
+
+    if (!failedChargeRequest) {
+      throw new Error('Charge request not found while persisting failure state')
+    }
+
+    const { error: paymentInsertError } = await (supabase.from('payments') as any).insert({
       table_booking_id: tableBookingId,
       charge_type: paymentChargeType,
       amount,
@@ -397,16 +438,15 @@ export async function attemptApprovedChargeFromDecision(
       }
     })
 
-    await recordAnalyticsEvent(supabase, {
-      customerId,
-      tableBookingId,
-      eventType: 'charge_failed',
-      metadata: {
-        charge_request_id: chargeRequestId,
-        reason: 'card_not_available',
-        amount,
-        currency
-      }
+    if (paymentInsertError) {
+      throw new Error(`Failed to persist failed payment audit row: ${paymentInsertError.message}`)
+    }
+
+    await recordChargeAnalytics('charge_failed', {
+      charge_request_id: chargeRequestId,
+      reason: 'card_not_available',
+      amount,
+      currency
     })
 
     return {
@@ -417,6 +457,8 @@ export async function attemptApprovedChargeFromDecision(
       errorMessage
     }
   }
+
+  let attemptedStripeIntent: { id: string; status: string } | null = null
 
   try {
     const stripeResult = await createStripeOffSessionCharge({
@@ -432,10 +474,14 @@ export async function attemptApprovedChargeFromDecision(
         charge_type: type
       }
     })
+    attemptedStripeIntent = {
+      id: stripeResult.id,
+      status: String(stripeResult.status || 'unknown')
+    }
 
     const mappedStatus = mapPaymentIntentStatus(stripeResult.status)
 
-    await (supabase.from('charge_requests') as any)
+    const { data: updatedChargeRequest, error: chargeRequestUpdateError } = await (supabase.from('charge_requests') as any)
       .update({
         charge_status: mappedStatus,
         stripe_payment_intent_id: stripeResult.id,
@@ -447,8 +493,18 @@ export async function attemptApprovedChargeFromDecision(
         }
       })
       .eq('id', chargeRequestId)
+      .select('id')
+      .maybeSingle()
 
-    await (supabase.from('payments') as any).insert({
+    if (chargeRequestUpdateError) {
+      throw new Error(`Failed updating charge request after Stripe attempt: ${chargeRequestUpdateError.message}`)
+    }
+
+    if (!updatedChargeRequest) {
+      throw new Error('Charge request not found while persisting Stripe attempt state')
+    }
+
+    const { error: paymentInsertError } = await (supabase.from('payments') as any).insert({
       table_booking_id: tableBookingId,
       charge_type: paymentChargeType,
       stripe_payment_intent_id: stripeResult.id,
@@ -464,32 +520,26 @@ export async function attemptApprovedChargeFromDecision(
       }
     })
 
+    if (paymentInsertError) {
+      throw new Error(`Failed inserting payment record after Stripe attempt: ${paymentInsertError.message}`)
+    }
+
     if (mappedStatus === 'succeeded') {
-      await recordAnalyticsEvent(supabase, {
-        customerId,
-        tableBookingId,
-        eventType: 'charge_succeeded',
-        metadata: {
-          charge_request_id: chargeRequestId,
-          stripe_payment_intent_id: stripeResult.id,
-          amount,
-          currency,
-          charge_type: type
-        }
+      await recordChargeAnalytics('charge_succeeded', {
+        charge_request_id: chargeRequestId,
+        stripe_payment_intent_id: stripeResult.id,
+        amount,
+        currency,
+        charge_type: type
       })
     } else if (mappedStatus === 'failed') {
-      await recordAnalyticsEvent(supabase, {
-        customerId,
-        tableBookingId,
-        eventType: 'charge_failed',
-        metadata: {
-          charge_request_id: chargeRequestId,
-          stripe_payment_intent_id: stripeResult.id,
-          amount,
-          currency,
-          charge_type: type,
-          reason: stripeResult.errorMessage || 'payment_intent_failed'
-        }
+      await recordChargeAnalytics('charge_failed', {
+        charge_request_id: chargeRequestId,
+        stripe_payment_intent_id: stripeResult.id,
+        amount,
+        currency,
+        charge_type: type,
+        reason: stripeResult.errorMessage || 'payment_intent_failed'
       })
     }
 
@@ -502,6 +552,10 @@ export async function attemptApprovedChargeFromDecision(
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Charge attempt failed'
+    const fallbackStatus: 'pending' | 'failed' =
+      attemptedStripeIntent && mapPaymentIntentStatus(attemptedStripeIntent.status) !== 'failed'
+        ? 'pending'
+        : 'failed'
 
     logger.error('Failed to execute approved charge request', {
       error: error instanceof Error ? error : new Error(String(error)),
@@ -511,47 +565,74 @@ export async function attemptApprovedChargeFromDecision(
       }
     })
 
-    await (supabase.from('charge_requests') as any)
+    const { data: fallbackChargeRequest, error: chargeRequestUpdateError } = await (supabase.from('charge_requests') as any)
       .update({
-        charge_status: 'failed',
+        charge_status: fallbackStatus,
+        stripe_payment_intent_id: attemptedStripeIntent?.id ?? null,
         updated_at: new Date().toISOString(),
         metadata: {
           ...(decisionResult as any).metadata,
-          charge_attempt_error: message
+          charge_attempt_error: message,
+          persistence_gap: attemptedStripeIntent ? true : undefined
         }
       })
       .eq('id', chargeRequestId)
+      .select('id')
+      .maybeSingle()
 
-    await (supabase.from('payments') as any).insert({
+    if (chargeRequestUpdateError) {
+      logger.warn('Failed to persist approved-charge request fallback state', {
+        metadata: {
+          chargeRequestId,
+          error: chargeRequestUpdateError.message
+        }
+      })
+    } else if (!fallbackChargeRequest) {
+      logger.warn('Failed to persist approved-charge request fallback state (row missing)', {
+        metadata: {
+          chargeRequestId
+        }
+      })
+    }
+
+    const { error: paymentInsertError } = await (supabase.from('payments') as any).insert({
       table_booking_id: tableBookingId,
       charge_type: paymentChargeType,
+      stripe_payment_intent_id: attemptedStripeIntent?.id ?? null,
       amount,
       currency,
-      status: 'failed',
+      status: fallbackStatus,
       metadata: {
         charge_request_id: chargeRequestId,
         charge_type: type,
         payment_kind: 'approved_charge',
-        reason: message
+        reason: message,
+        stripe_payment_intent_status: attemptedStripeIntent?.status ?? null,
+        persistence_gap: attemptedStripeIntent ? true : undefined
       }
     })
 
-    await recordAnalyticsEvent(supabase, {
-      customerId,
-      tableBookingId,
-      eventType: 'charge_failed',
-      metadata: {
-        charge_request_id: chargeRequestId,
-        amount,
-        currency,
-        charge_type: type,
-        reason: message
-      }
+    if (paymentInsertError) {
+      logger.warn('Failed to persist approved-charge payment fallback row', {
+        metadata: {
+          chargeRequestId,
+          error: paymentInsertError.message
+        }
+      })
+    }
+
+    await recordChargeAnalytics('charge_failed', {
+      charge_request_id: chargeRequestId,
+      amount,
+      currency,
+      charge_type: type,
+      stripe_payment_intent_id: attemptedStripeIntent?.id ?? null,
+      reason: message
     })
 
     return {
-      status: 'failed',
-      stripePaymentIntentId: null,
+      status: fallbackStatus,
+      stripePaymentIntentId: attemptedStripeIntent?.id ?? null,
       amount,
       currency,
       errorMessage: message

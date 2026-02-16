@@ -1,28 +1,89 @@
 #!/usr/bin/env tsx
-import { config } from 'dotenv';
-import { createClient } from '@supabase/supabase-js';
 
-// Load environment variables
-config({ path: '.env.local' });
+import dotenv from 'dotenv'
+import path from 'path'
+import { createAdminClient } from '../../src/lib/supabase/admin'
+import { assertScriptQuerySucceeded } from '../../src/lib/script-mutation-safety'
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+dotenv.config({ path: path.resolve(process.cwd(), '.env.local') })
 
-const supabase = createClient(supabaseUrl, supabaseServiceRoleKey, {
-  auth: {
-    autoRefreshToken: false,
-    persistSession: false
+const HARD_CAP = 200
+
+function markFailure(message: string, error?: unknown) {
+  process.exitCode = 1
+  if (error) {
+    console.error(`❌ ${message}`, error)
+    return
   }
-});
+  console.error(`❌ ${message}`)
+}
+
+function parseBoundedInt(params: {
+  argv: string[]
+  flag: string
+  defaultValue: number
+  hardCap: number
+}): number {
+  const idx = params.argv.indexOf(params.flag)
+  if (idx === -1) {
+    return params.defaultValue
+  }
+
+  const raw = params.argv[idx + 1]
+  const parsed = Number.parseInt(raw || '', 10)
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    throw new Error(`${params.flag} must be a positive integer (got '${raw || ''}')`)
+  }
+  if (parsed > params.hardCap) {
+    throw new Error(`${params.flag} too high (got ${parsed}, hard cap ${params.hardCap})`)
+  }
+  return parsed
+}
+
+function resolveBookingReference(argv: string[]): string | null {
+  const idx = argv.indexOf('--booking-ref')
+  if (idx !== -1) {
+    return argv[idx + 1] || null
+  }
+
+  const positional = argv[2]
+  if (positional && !positional.startsWith('-')) {
+    return positional
+  }
+
+  return null
+}
 
 async function checkLatestBookingDetails() {
-  console.log('🔍 Checking Latest Sunday Lunch Booking Details...\n');
+  const argv = process.argv
+  if (argv.includes('--confirm')) {
+    throw new Error('check-latest-booking-details is strictly read-only; do not pass --confirm.')
+  }
 
-  try {
-    // Get the most recent Sunday lunch booking
-    const { data: latestBooking, error: bookingError } = await supabase
-      .from('table_bookings')
-      .select(`
+  const bookingReference = resolveBookingReference(argv)
+  const useLatest = argv.includes('--latest')
+  if (!bookingReference && !useLatest) {
+    throw new Error(
+      'Missing booking target. Provide --booking-ref TB-YYYY-XXXX (or pass as first arg) OR pass --latest.'
+    )
+  }
+
+  const showNotes = argv.includes('--show-notes')
+  const itemsLimit = parseBoundedInt({ argv, flag: '--items-limit', defaultValue: 50, hardCap: HARD_CAP })
+  const paymentsLimit = parseBoundedInt({ argv, flag: '--payments-limit', defaultValue: 10, hardCap: HARD_CAP })
+
+  console.log('🔍 Checking Sunday Lunch booking details...\n')
+  console.log(`Target: ${bookingReference ? bookingReference : 'latest sunday_lunch booking'}`)
+  console.log(`Items limit: ${itemsLimit} (hard cap ${HARD_CAP})`)
+  console.log(`Payments limit: ${paymentsLimit} (hard cap ${HARD_CAP})`)
+  console.log(`Show guest notes: ${showNotes ? 'yes' : 'no'}\n`)
+
+  const supabase = createAdminClient()
+
+  const bookingQuery = supabase
+    .from('table_bookings')
+    .select(
+      `
         id,
         booking_reference,
         booking_date,
@@ -36,119 +97,165 @@ async function checkLatestBookingDetails() {
           last_name,
           mobile_number
         )
-      `)
-      .eq('booking_type', 'sunday_lunch')
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .single();
+      `
+    )
+    .eq('booking_type', 'sunday_lunch')
 
-    if (bookingError || !latestBooking) {
-      console.error('❌ No Sunday lunch bookings found:', bookingError);
-      return;
+  const { data: bookingRow, error: bookingError } = bookingReference
+    ? await bookingQuery.eq('booking_reference', bookingReference).maybeSingle()
+    : await bookingQuery.order('created_at', { ascending: false }).limit(1).maybeSingle()
+
+  if (bookingError) {
+    markFailure('Failed to load booking details.', bookingError)
+    return
+  }
+
+  if (!bookingRow) {
+    markFailure(bookingReference ? `Booking not found for reference '${bookingReference}'.` : 'No Sunday lunch bookings found.')
+    return
+  }
+
+  const booking = bookingRow as {
+    id: string
+    booking_reference: string | null
+    booking_date: string | null
+    booking_time: string | null
+    party_size: number | null
+    status: string | null
+    booking_type: string | null
+    created_at: string | null
+    customer: { first_name: string | null; last_name: string | null; mobile_number: string | null } | null
+  }
+
+  console.log('📋 Booking:')
+  console.log(`   Reference: ${booking.booking_reference || 'unknown'}`)
+  console.log(`   Created: ${booking.created_at ? new Date(booking.created_at).toLocaleString() : 'unknown'}`)
+  console.log(
+    `   Customer: ${booking.customer ? `${booking.customer.first_name || ''} ${booking.customer.last_name || ''}`.trim() || 'unknown' : 'unknown'}`
+  )
+  console.log(`   Date: ${booking.booking_date || 'unknown'} at ${booking.booking_time || 'unknown'}`)
+  console.log(`   Party Size: ${booking.party_size ?? 'unknown'}`)
+  console.log(`   Status: ${booking.status || 'unknown'}`)
+
+  console.log('\n📦 Order Details (table_booking_items):')
+  const { data: itemsRows, error: itemsError } = await supabase
+    .from('table_booking_items')
+    .select(
+      'id, menu_item_id, custom_item_name, item_type, quantity, price_at_booking, guest_name, special_requests, created_at'
+    )
+    .eq('booking_id', booking.id)
+    .order('created_at', { ascending: true })
+    .limit(itemsLimit)
+
+  if (itemsError) {
+    markFailure('Error fetching booking items.', itemsError)
+    return
+  }
+
+  const items = (itemsRows ?? []) as Array<{
+    id: string
+    menu_item_id: string | null
+    custom_item_name: string | null
+    item_type: string | null
+    quantity: number | null
+    price_at_booking: number | null
+    guest_name: string | null
+    special_requests: string | null
+    created_at: string | null
+  }>
+
+  if (items.length === 0) {
+    markFailure('No menu items found in database for this booking.')
+    return
+  }
+
+  let totalAmount = 0
+  items.forEach((item, index) => {
+    const qty = item.quantity ?? 0
+    const price = item.price_at_booking ?? 0
+    const itemTotal = qty * price
+    totalAmount += itemTotal
+
+    console.log(`\nItem ${index + 1}:`)
+    console.log(`   ID: ${item.id}`)
+    console.log(`   Menu Item ID: ${item.menu_item_id || 'NULL'}`)
+    console.log(`   Custom Item Name: ${item.custom_item_name || 'NULL'}`)
+    console.log(`   Item Type: ${item.item_type || 'unknown'}`)
+    console.log(`   Quantity: ${qty}`)
+    console.log(`   Price: £${price} each`)
+    console.log(`   Subtotal: £${itemTotal.toFixed(2)}`)
+    if (showNotes) {
+      console.log(`   Guest Name: ${item.guest_name || 'Not specified'}`)
+      console.log(`   Special Requests: ${item.special_requests || 'None'}`)
     }
+  })
 
-    console.log('📋 Latest Sunday Lunch Booking:');
-    console.log(`   Reference: ${latestBooking.booking_reference}`);
-    console.log(`   Created: ${new Date(latestBooking.created_at).toLocaleString()}`);
-    console.log(`   Customer: ${latestBooking.customer?.first_name} ${latestBooking.customer?.last_name}`);
-    console.log(`   Date: ${latestBooking.booking_date} at ${latestBooking.booking_time}`);
-    console.log(`   Party Size: ${latestBooking.party_size}`);
-    console.log(`   Status: ${latestBooking.status}`);
+  console.log(`\n💷 Total Order Value (sample): £${totalAmount.toFixed(2)}`)
+  if (typeof booking.party_size === 'number') {
+    console.log(`💰 Deposit Required (rule-of-thumb): £${(booking.party_size * 5).toFixed(2)}`)
+  }
 
-    console.log('\n📦 Order Details (from table_booking_items table):');
-    console.log('==================================================');
+  const menuItemIds = items.map((item) => item.menu_item_id).filter((id): id is string => Boolean(id))
+  if (menuItemIds.length > 0) {
+    const uniqueIds = Array.from(new Set(menuItemIds)).slice(0, HARD_CAP)
+    const { data: menuItemsRows, error: menuItemsError } = await supabase
+      .from('sunday_lunch_menu_items')
+      .select('id, name, category, price')
+      .in('id', uniqueIds)
 
-    // Get menu items for this booking
-    const { data: items, error: itemsError } = await supabase
-      .from('table_booking_items')
-      .select('*')
-      .eq('booking_id', latestBooking.id)
-      .order('created_at');
+    if (menuItemsError) {
+      markFailure('Error looking up sunday_lunch_menu_items.', menuItemsError)
+    } else {
+      const menuItems = (menuItemsRows ?? []) as Array<{
+        id: string
+        name: string | null
+        category: string | null
+        price: number | null
+      }>
 
-    if (itemsError) {
-      console.error('❌ Error fetching items:', itemsError);
-      return;
-    }
-
-    if (!items || items.length === 0) {
-      console.log('❌ NO MENU ITEMS FOUND IN DATABASE');
-      console.log('\n⚠️  This means the order details were not saved properly.');
-      return;
-    }
-
-    console.log(`\n✅ Found ${items.length} items in the order:\n`);
-
-    let totalAmount = 0;
-    items.forEach((item, index) => {
-      const itemTotal = item.price_at_booking * item.quantity;
-      totalAmount += itemTotal;
-      
-      console.log(`Item ${index + 1}:`);
-      console.log(`   Database ID: ${item.id}`);
-      console.log(`   Menu Item ID: ${item.menu_item_id || 'NULL'}`);
-      console.log(`   Custom Item Name: ${item.custom_item_name || 'NULL'} ${!item.custom_item_name ? '⚠️' : '✅'}`);
-      console.log(`   Item Type: ${item.item_type}`);
-      console.log(`   Quantity: ${item.quantity}`);
-      console.log(`   Price: £${item.price_at_booking} each`);
-      console.log(`   Subtotal: £${itemTotal.toFixed(2)}`);
-      console.log(`   Guest Name: ${item.guest_name || 'Not specified'}`);
-      console.log(`   Special Requests: ${item.special_requests || 'None'}`);
-      console.log(`   Created: ${new Date(item.created_at).toLocaleString()}`);
-      console.log('');
-    });
-
-    console.log(`💷 Total Order Value: £${totalAmount.toFixed(2)}`);
-    console.log(`💰 Deposit Required: £${(latestBooking.party_size * 5).toFixed(2)}`);
-
-    // If menu_item_id exists, look up the actual menu item
-    const menuItemIds = items.map(i => i.menu_item_id).filter(Boolean);
-    if (menuItemIds.length > 0) {
-      console.log('\n🍽️  Looking up menu items from sunday_lunch_menu_items:');
-      const { data: menuItems } = await supabase
-        .from('sunday_lunch_menu_items')
-        .select('id, name, category, price')
-        .in('id', menuItemIds);
-
-      if (menuItems) {
-        menuItems.forEach(item => {
-          console.log(`   - ${item.name} (${item.category}) - £${item.price}`);
-        });
+      if (menuItems.length > 0) {
+        console.log('\n🍽️  Menu Items Lookup:')
+        menuItems.forEach((row) => {
+          console.log(`   - ${row.name || row.id} (${row.category || 'unknown'}) - £${row.price ?? 0}`)
+        })
       }
     }
+  }
 
-    // Check if this booking has a payment record
-    const { data: payments } = await supabase
-      .from('table_booking_payments')
-      .select('*')
-      .eq('booking_id', latestBooking.id);
+  const { data: paymentsRows, error: paymentsError } = await supabase
+    .from('table_booking_payments')
+    .select('amount, status, payment_method, transaction_id, created_at')
+    .eq('booking_id', booking.id)
+    .order('created_at', { ascending: false })
+    .limit(paymentsLimit)
 
-    if (payments && payments.length > 0) {
-      console.log('\n💳 Payment Records:');
-      payments.forEach(payment => {
-        console.log(`   - Amount: £${payment.amount}`);
-        console.log(`     Status: ${payment.status}`);
-        console.log(`     Method: ${payment.payment_method}`);
-        if (payment.transaction_id) {
-          console.log(`     Transaction ID: ${payment.transaction_id}`);
-        }
-      });
-    }
+  const payments = (assertScriptQuerySucceeded({
+    operation: 'Load payment records',
+    error: paymentsError,
+    data: paymentsRows ?? [],
+    allowMissing: true
+  }) ?? []) as Array<{
+    amount: number | null
+    status: string | null
+    payment_method: string | null
+    transaction_id: string | null
+    created_at: string | null
+  }>
 
-    console.log('\n📍 Database Location Summary:');
-    console.log('   Main booking record: table_bookings');
-    console.log('   Order details: table_booking_items');
-    console.log('   Payment info: table_booking_payments');
-    console.log('   Customer info: customers');
-    
-    console.log('\n🔍 To view in Supabase Dashboard:');
-    console.log('   1. Go to Table Editor');
-    console.log('   2. Select "table_booking_items" table');
-    console.log(`   3. Filter by booking_id = '${latestBooking.id}'`);
-
-  } catch (error) {
-    console.error('❌ Unexpected error:', error);
+  if (payments.length > 0) {
+    console.log('\n💳 Payment Records:')
+    payments.forEach((payment) => {
+      console.log(`   - Amount: £${payment.amount ?? 0}`)
+      console.log(`     Status: ${payment.status || 'unknown'}`)
+      console.log(`     Method: ${payment.payment_method || 'unknown'}`)
+      if (payment.transaction_id) {
+        console.log(`     Transaction ID: ${payment.transaction_id}`)
+      }
+    })
   }
 }
 
-// Run the check
-checkLatestBookingDetails();
+void checkLatestBookingDetails().catch((error) => {
+  markFailure('check-latest-booking-details failed.', error)
+})
+

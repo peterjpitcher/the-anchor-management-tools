@@ -1,133 +1,127 @@
-import { createClient } from '@supabase/supabase-js';
-import { config } from 'dotenv';
+#!/usr/bin/env tsx
 
-config({ path: '.env.local' });
+import path from 'path'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { assertScriptQuerySucceeded } from '@/lib/script-mutation-safety'
+import { config } from 'dotenv'
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!,
-  {
-    auth: {
-      autoRefreshToken: false,
-      persistSession: false
-    }
-  }
-);
+config({ path: path.resolve(process.cwd(), '.env.local') })
 
-async function testPrivateBookingCustomerCreation() {
-  console.log('🧪 Testing Private Booking Customer Creation...\n');
-  
-  // Test data
-  const testBookingData = {
-    customer_first_name: 'Test',
-    customer_last_name: 'Customer',
-    contact_phone: '07700900123',
-    contact_email: 'test@example.com',
-    event_date: '2025-12-25',
-    start_time: '18:00',
-    event_type: 'Birthday Party',
-    guest_badge: 50,
-    status: 'draft'
-  };
-  
-  console.log('📋 Test booking data:', testBookingData);
-  
-  try {
-    // 1. Check if customer already exists
-    console.log('\n1️⃣ Checking for existing customer with phone:', testBookingData.contact_phone);
-    
-    const phoneVariants = [
-      testBookingData.contact_phone,
-      '+44' + testBookingData.contact_phone.substring(1),
-      '44' + testBookingData.contact_phone.substring(1)
-    ];
-    
-    const { data: existingCustomer } = await supabase
-      .from('customers')
-      .select('*')
-      .or(phoneVariants.map(v => `mobile_number.eq.${v}`).join(','))
-      .single();
-      
-    if (existingCustomer) {
-      console.log('✅ Found existing customer:', {
-        id: existingCustomer.id,
-        name: `${existingCustomer.first_name} ${existingCustomer.last_name}`,
-        phone: existingCustomer.mobile_number
-      });
-    } else {
-      console.log('❌ No existing customer found');
-    }
-    
-    // 2. Create a private booking (simulating the action)
-    console.log('\n2️⃣ Creating private booking...');
-    
-    const bookingData = {
-      ...testBookingData,
-      customer_name: `${testBookingData.customer_first_name} ${testBookingData.customer_last_name}`,
-      created_at: new Date().toISOString()
-    };
-    
-    const { data: booking, error: bookingError } = await supabase
-      .from('private_bookings')
-      .insert(bookingData)
-      .select()
-      .single();
-      
-    if (bookingError) {
-      console.error('❌ Error creating booking:', bookingError);
-      return;
-    }
-    
-    console.log('✅ Booking created:', {
-      id: booking.id,
-      customer_name: booking.customer_name,
-      customer_id: booking.customer_id
-    });
-    
-    // 3. Check if customer was created/linked
-    console.log('\n3️⃣ Verifying customer creation/linking...');
-    
-    if (booking.customer_id) {
-      const { data: linkedCustomer } = await supabase
-        .from('customers')
-        .select('*')
-        .eq('id', booking.customer_id)
-        .single();
-        
-      if (linkedCustomer) {
-        console.log('✅ Customer successfully linked:', {
-          id: linkedCustomer.id,
-          name: `${linkedCustomer.first_name} ${linkedCustomer.last_name}`,
-          phone: linkedCustomer.mobile_number,
-          email: linkedCustomer.email
-        });
-      }
-    } else {
-      console.log('⚠️  No customer_id in booking - customer creation may not be working');
-      console.log('   This is expected if testing directly in the database.');
-      console.log('   The customer creation logic is in the server action, not database triggers.');
-    }
-    
-    // 4. Clean up test data
-    if (!process.argv.includes('--keep')) {
-      console.log('\n4️⃣ Cleaning up test data...');
-      
-      await supabase
-        .from('private_bookings')
-        .delete()
-        .eq('id', booking.id);
-        
-      console.log('✅ Test booking deleted');
-      console.log('\n💡 Use --keep flag to preserve test data');
-    }
-    
-  } catch (error) {
-    console.error('❌ Unexpected error:', error);
-  }
-  
-  console.log('\n📝 Note: The customer creation logic is implemented in the server action.');
-  console.log('   This test only verifies database operations.');
-  console.log('   To fully test, create a booking through the UI at /private-bookings/new');
+type CustomerRow = {
+  id: string
+  first_name: string | null
+  last_name: string | null
+  mobile_number: string | null
+  created_at: string | null
 }
 
-testPrivateBookingCustomerCreation();
+type PrivateBookingRow = {
+  id: string
+  customer_id: string | null
+  customer_name: string | null
+  contact_phone: string | null
+  status: string | null
+  created_at: string | null
+}
+
+function readOptionalFlagValue(argv: string[], flag: string): string | null {
+  const eq = argv.find((arg) => arg.startsWith(`${flag}=`))
+  if (eq) {
+    return eq.split('=')[1] ?? null
+  }
+
+  const idx = argv.findIndex((arg) => arg === flag)
+  if (idx !== -1) {
+    return argv[idx + 1] ?? null
+  }
+
+  return null
+}
+
+async function testPrivateBookingCustomerCreation(): Promise<void> {
+  const argv = process.argv.slice(2)
+
+  if (argv.includes('--confirm') || argv.includes('--keep')) {
+    throw new Error(
+      'test-private-booking-customer-creation is now strictly read-only; use the UI flow to create private bookings.'
+    )
+  }
+
+  const phone =
+    (readOptionalFlagValue(argv, '--phone') ?? process.env.TEST_PRIVATE_BOOKING_CUSTOMER_CREATION_PHONE ?? '07700900123')
+      .trim()
+
+  const supabase = createAdminClient()
+
+  console.log('🧪 Private Booking Customer Creation (Read-only)')
+  console.log('Phone:', phone)
+  console.log('')
+
+  const phoneVariants = [
+    phone,
+    phone.startsWith('0') ? `+44${phone.substring(1)}` : phone,
+    phone.startsWith('0') ? `44${phone.substring(1)}` : phone,
+  ].filter((value, idx, arr) => arr.indexOf(value) === idx)
+
+  console.log('1️⃣ Looking up customers by mobile number variants...')
+  const { data: customersData, error: customerError } = await supabase
+    .from('customers')
+    .select('id, first_name, last_name, mobile_number, created_at')
+    .or(phoneVariants.map((value) => `mobile_number.eq.${value}`).join(','))
+    .order('created_at', { ascending: false })
+    .limit(5)
+
+  const customers =
+    (assertScriptQuerySucceeded({
+      operation: 'Lookup customers by mobile number variants',
+      error: customerError,
+      data: customersData as CustomerRow[] | null,
+      allowMissing: true,
+    }) ?? []) as CustomerRow[]
+
+  if (!customers || customers.length === 0) {
+    console.log('❌ No matching customers found.')
+  } else {
+    console.log(`✅ Found ${customers.length} matching customer(s):`)
+    for (const customer of customers) {
+      console.log(
+        `- id=${customer.id} name=${customer.first_name ?? ''} ${customer.last_name ?? ''} mobile=${customer.mobile_number} created_at=${customer.created_at}`
+      )
+    }
+  }
+
+  console.log('\n2️⃣ Looking up private bookings by contact_phone variants...')
+  const { data: privateBookingsData, error: bookingError } = await supabase
+    .from('private_bookings')
+    .select('id, customer_id, customer_name, contact_phone, status, created_at')
+    .or(phoneVariants.map((value) => `contact_phone.eq.${value}`).join(','))
+    .order('created_at', { ascending: false })
+    .limit(5)
+
+  const privateBookings =
+    (assertScriptQuerySucceeded({
+      operation: 'Lookup private bookings by contact phone variants',
+      error: bookingError,
+      data: privateBookingsData as PrivateBookingRow[] | null,
+      allowMissing: true,
+    }) ?? []) as PrivateBookingRow[]
+
+  if (!privateBookings || privateBookings.length === 0) {
+    console.log('No matching private bookings found.')
+  } else {
+    console.log(`Found ${privateBookings.length} matching private booking(s):`)
+    for (const booking of privateBookings) {
+      console.log(
+        `- id=${booking.id} customer_id=${booking.customer_id ?? 'null'} contact_phone=${booking.contact_phone ?? 'null'} status=${booking.status ?? 'null'} created_at=${booking.created_at}`
+      )
+    }
+  }
+
+  console.log('\n📝 Note: Customer creation/linking happens in the server action, not database triggers.')
+  console.log('To fully test creation/linking, create a booking through the UI at /private-bookings/new.')
+}
+
+testPrivateBookingCustomerCreation().catch((error) => {
+  console.error('❌ Unexpected error:', error)
+  process.exitCode = 1
+})

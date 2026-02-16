@@ -19,11 +19,15 @@ export async function GET(request: Request) {
   cronUrl.searchParams.set('force', 'true')
   cronUrl.searchParams.set('vendor_id', vendorId)
 
-  const headers = new Headers()
   const cronSecret = process.env.CRON_SECRET?.trim()
-  if (cronSecret) {
-    headers.set('authorization', `Bearer ${cronSecret}`)
+  if (!cronSecret) {
+    return NextResponse.json(
+      { error: 'CRON_SECRET is required to invoke preview billing run' },
+      { status: 500 }
+    )
   }
+  const headers = new Headers()
+  headers.set('authorization', `Bearer ${cronSecret}`)
 
   const cronRequest = new Request(cronUrl.toString(), { headers, method: 'GET' })
   return runOjProjectsBilling(cronRequest)

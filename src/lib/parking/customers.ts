@@ -22,11 +22,12 @@ export async function resolveCustomerByPhone(
 ): Promise<ResolvedCustomer> {
   const standardizedPhone = formatPhoneForStorage(params.phone)
   const variants = generatePhoneVariants(standardizedPhone)
+  const phoneLookupOr = variants.map((v) => `mobile_number.eq.${v}`).join(',')
 
   const { data: existingCustomer, error: lookupError } = await supabase
     .from('customers')
     .select('*')
-    .or(variants.map((v) => `mobile_number.eq.${v}`).join(','))
+    .or(phoneLookupOr)
     .maybeSingle()
 
   if (lookupError) {
@@ -38,28 +39,60 @@ export async function resolveCustomerByPhone(
 
   if (existingCustomer) {
     const customer = existingCustomer as any
+    let resolvedEmail = (customer.email as string | null) || undefined
+    let resolvedLastName = (customer.last_name as string | null) || undefined
 
     if (!customer.email && emailLower) {
-      await supabase
+      const { data: updatedEmailRow, error: emailUpdateError } = await supabase
         .from('customers')
         .update({ email: emailLower })
         .eq('id', customer.id)
+        .select('id')
+        .maybeSingle()
+
+      if (emailUpdateError) {
+        console.warn('Failed to enrich customer email during parking customer resolution', {
+          customerId: customer.id,
+          error: emailUpdateError.message
+        })
+      } else if (!updatedEmailRow) {
+        console.warn('Customer email enrichment affected no rows during parking customer resolution', {
+          customerId: customer.id
+        })
+      } else {
+        resolvedEmail = emailLower
+      }
     }
 
     const lastNameTrimmed = params.lastName?.trim()
     if (lastNameTrimmed && (!customer.last_name || customer.last_name !== lastNameTrimmed)) {
-      await supabase
+      const { data: updatedLastNameRow, error: lastNameUpdateError } = await supabase
         .from('customers')
         .update({ last_name: lastNameTrimmed })
         .eq('id', customer.id)
+        .select('id')
+        .maybeSingle()
+
+      if (lastNameUpdateError) {
+        console.warn('Failed to enrich customer last name during parking customer resolution', {
+          customerId: customer.id,
+          error: lastNameUpdateError.message
+        })
+      } else if (!updatedLastNameRow) {
+        console.warn('Customer last-name enrichment affected no rows during parking customer resolution', {
+          customerId: customer.id
+        })
+      } else {
+        resolvedLastName = lastNameTrimmed
+      }
     }
 
     return {
       id: customer.id as string,
       first_name: customer.first_name as string,
-      last_name: (customer.last_name as string | null) ?? undefined,
+      last_name: resolvedLastName,
       mobile_number: customer.mobile_number as string,
-      email: emailLower || (customer.email as string | null) || undefined
+      email: resolvedEmail
     }
   }
 
@@ -76,8 +109,29 @@ export async function resolveCustomerByPhone(
     .single()
 
   if (insertError) {
+    const pgError = insertError as { code?: string; message?: string }
+    if (pgError?.code === '23505') {
+      const { data: concurrentCustomer, error: concurrentLookupError } = await supabase
+        .from('customers')
+        .select('*')
+        .or(phoneLookupOr)
+        .maybeSingle()
+
+      if (concurrentLookupError) {
+        console.error('Failed to load concurrently-created customer', concurrentLookupError)
+      } else if (concurrentCustomer?.id) {
+        return {
+          id: concurrentCustomer.id as string,
+          first_name: concurrentCustomer.first_name as string,
+          last_name: (concurrentCustomer.last_name as string | null) ?? undefined,
+          mobile_number: concurrentCustomer.mobile_number as string,
+          email: (concurrentCustomer.email as string | null) ?? undefined
+        }
+      }
+    }
+
     console.error('Failed to create customer', insertError)
-    throw new Error(insertError.message)
+    throw new Error('Failed to create customer')
   }
 
   return {

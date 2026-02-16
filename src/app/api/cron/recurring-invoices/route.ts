@@ -8,7 +8,14 @@ import { isGraphConfigured, sendInvoiceEmail } from '@/lib/microsoft-graph'
 import { resolveVendorInvoiceRecipients } from '@/lib/invoice-recipients'
 import type { InvoiceLineItemInput, InvoiceWithDetails, RecurringFrequency } from '@/types/invoices'
 import { logAuditEvent } from '@/app/actions/audit'
+import {
+  claimIdempotencyKey,
+  computeIdempotencyRequestHash,
+  persistIdempotencyResponse,
+  releaseIdempotencyClaim
+} from '@/lib/api/idempotency'
 
+export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60 // 1 minute max
 
@@ -79,6 +86,15 @@ export async function GET(request: Request) {
     // Process each recurring invoice
     for (const recurringInvoice of dueRecurringInvoices || []) {
       results.processed++
+      const scheduledInvoiceDate = recurringInvoice.next_invoice_date
+      const claimKey = `cron:recurring-invoice:${recurringInvoice.id}:${scheduledInvoiceDate}`
+      const claimHash = computeIdempotencyRequestHash({
+        recurring_invoice_id: recurringInvoice.id,
+        scheduled_invoice_date: scheduledInvoiceDate
+      })
+      let claimHeld = false
+      let createdInvoiceId: string | null = null
+      let createdInvoiceNumber: string | null = null
       
       try {
         console.log(`[Cron] Processing recurring invoice ${recurringInvoice.id}`)
@@ -87,16 +103,46 @@ export async function GET(request: Request) {
         if (recurringInvoice.end_date && recurringInvoice.end_date < todayIso) {
           console.log(`[Cron] Recurring invoice ${recurringInvoice.id} has passed end date, deactivating`)
           
-          await supabase
+          const { data: deactivatedRecurringInvoice, error: deactivateError } = await supabase
             .from('recurring_invoices')
             .update({ 
               is_active: false,
               updated_at: new Date().toISOString()
             })
             .eq('id', recurringInvoice.id)
+            .select('id')
+            .maybeSingle()
+
+          if (deactivateError) {
+            throw deactivateError
+          }
+
+          if (!deactivatedRecurringInvoice) {
+            throw new Error(`Recurring invoice ${recurringInvoice.id} not found while deactivating`)
+          }
           
           continue
         }
+
+        const claim = await claimIdempotencyKey(supabase, claimKey, claimHash, 24 * 90)
+        if (claim.state === 'conflict') {
+          results.failed++
+          results.errors.push({
+            recurring_invoice_id: recurringInvoice.id,
+            vendor: recurringInvoice.vendor?.name,
+            error: 'Recurring invoice idempotency conflict'
+          })
+          continue
+        }
+
+        if (claim.state === 'in_progress' || claim.state === 'replay') {
+          console.log(
+            `[Cron] Recurring invoice ${recurringInvoice.id} for ${scheduledInvoiceDate} already processing/processed; skipping duplicate`
+          )
+          continue
+        }
+
+        claimHeld = claim.state === 'claimed'
 
         // Generate the invoice
         const invoiceDateIso = recurringInvoice.next_invoice_date
@@ -125,13 +171,15 @@ export async function GET(request: Request) {
           internal_notes: recurringInvoice.internal_notes,
           line_items: lineItems
         })
+        createdInvoiceId = newInvoice.id
+        createdInvoiceNumber = newInvoice.invoice_number
 
         const nextInvoiceDateIso = calculateNextInvoiceIsoDate(
           invoiceDateIso,
           recurringInvoice.frequency as RecurringFrequency
         )
 
-        const { error: recurringUpdateError } = await supabase
+        const { data: recurringUpdatedRow, error: recurringUpdateError } = await supabase
           .from('recurring_invoices')
           .update({
             next_invoice_date: nextInvoiceDateIso,
@@ -139,9 +187,14 @@ export async function GET(request: Request) {
             updated_at: new Date().toISOString()
           })
           .eq('id', recurringInvoice.id)
+          .select('id')
+          .maybeSingle()
 
         if (recurringUpdateError) {
           throw new Error(recurringUpdateError.message || 'Failed to update recurring invoice schedule')
+        }
+        if (!recurringUpdatedRow) {
+          throw new Error('Recurring invoice not found while updating schedule')
         }
 
         console.log(`[Cron] Successfully generated invoice ${newInvoice.invoice_number}`)
@@ -162,6 +215,23 @@ export async function GET(request: Request) {
         if (!emailConfigured) {
           results.skipped_send_not_configured++
           results.successful++
+          if (claimHeld) {
+            await persistIdempotencyResponse(
+              supabase,
+              claimKey,
+              claimHash,
+              {
+                state: 'processed',
+                recurring_invoice_id: recurringInvoice.id,
+                invoice_id: newInvoice.id,
+                invoice_number: newInvoice.invoice_number,
+                sent: false,
+                reason: 'email_not_configured'
+              },
+              24 * 90
+            )
+            claimHeld = false
+          }
           continue
         }
 
@@ -179,12 +249,46 @@ export async function GET(request: Request) {
             error: recipientResult.error || 'Failed to resolve invoice recipients'
           })
           results.successful++
+          if (claimHeld) {
+            await persistIdempotencyResponse(
+              supabase,
+              claimKey,
+              claimHash,
+              {
+                state: 'processed',
+                recurring_invoice_id: recurringInvoice.id,
+                invoice_id: newInvoice.id,
+                invoice_number: newInvoice.invoice_number,
+                sent: false,
+                reason: 'recipient_resolution_failed'
+              },
+              24 * 90
+            )
+            claimHeld = false
+          }
           continue
         }
 
         if (!recipientResult.to) {
           results.skipped_send_no_recipient++
           results.successful++
+          if (claimHeld) {
+            await persistIdempotencyResponse(
+              supabase,
+              claimKey,
+              claimHash,
+              {
+                state: 'processed',
+                recurring_invoice_id: recurringInvoice.id,
+                invoice_id: newInvoice.id,
+                invoice_number: newInvoice.invoice_number,
+                sent: false,
+                reason: 'no_recipient'
+              },
+              24 * 90
+            )
+            claimHeld = false
+          }
           continue
         }
 
@@ -207,6 +311,23 @@ export async function GET(request: Request) {
             error: invoiceFetchError?.message || 'Failed to load invoice for email'
           })
           results.successful++
+          if (claimHeld) {
+            await persistIdempotencyResponse(
+              supabase,
+              claimKey,
+              claimHash,
+              {
+                state: 'processed',
+                recurring_invoice_id: recurringInvoice.id,
+                invoice_id: newInvoice.id,
+                invoice_number: newInvoice.invoice_number,
+                sent: false,
+                reason: 'invoice_reload_failed'
+              },
+              24 * 90
+            )
+            claimHeld = false
+          }
           continue
         }
 
@@ -230,7 +351,7 @@ export async function GET(request: Request) {
             error: emailResult.error || 'Unknown error sending invoice email'
           })
 
-          await supabase
+          const { error: failedEmailLogError } = await supabase
             .from('invoice_email_logs')
             .insert({
               invoice_id: fullInvoice.id,
@@ -240,24 +361,55 @@ export async function GET(request: Request) {
               body,
               status: 'failed'
             })
+          if (failedEmailLogError) {
+            console.error(
+              `[Cron] Failed to write failed email log for recurring invoice ${recurringInvoice.id}:`,
+              failedEmailLogError
+            )
+          }
 
           results.successful++
+          if (claimHeld) {
+            await persistIdempotencyResponse(
+              supabase,
+              claimKey,
+              claimHash,
+              {
+                state: 'processed',
+                recurring_invoice_id: recurringInvoice.id,
+                invoice_id: fullInvoice.id,
+                invoice_number: fullInvoice.invoice_number,
+                sent: false,
+                reason: 'email_send_failed'
+              },
+              24 * 90
+            )
+            claimHeld = false
+          }
           continue
         }
 
-        const { error: invoiceUpdateError } = await supabase
+        const { data: statusTransition, error: invoiceUpdateError } = await supabase
           .from('invoices')
           .update({
             status: 'sent',
             updated_at: new Date().toISOString()
           })
           .eq('id', fullInvoice.id)
+          .eq('status', 'draft')
+          .select('id')
+          .maybeSingle()
 
         if (invoiceUpdateError) {
           throw new Error(invoiceUpdateError.message || 'Failed to update invoice status to sent')
         }
+        if (!statusTransition) {
+          console.warn(
+            `[Cron] Invoice ${fullInvoice.invoice_number} was already transitioned before recurring send finalization`
+          )
+        }
 
-        await supabase
+        const { error: sentEmailLogError } = await supabase
           .from('invoice_email_logs')
           .insert([
             {
@@ -277,6 +429,12 @@ export async function GET(request: Request) {
               status: 'sent'
             }))
           ])
+        if (sentEmailLogError) {
+          console.error(
+            `[Cron] Failed to write sent email logs for recurring invoice ${recurringInvoice.id}:`,
+            sentEmailLogError
+          )
+        }
 
         await logAuditEvent({
           operation_type: 'auto_send',
@@ -295,8 +453,65 @@ export async function GET(request: Request) {
 
         results.sent++
         results.successful++
+        if (claimHeld) {
+          await persistIdempotencyResponse(
+            supabase,
+            claimKey,
+            claimHash,
+            {
+              state: 'processed',
+              recurring_invoice_id: recurringInvoice.id,
+              invoice_id: fullInvoice.id,
+              invoice_number: fullInvoice.invoice_number,
+              sent: true,
+              recipient_to: recipientResult.to,
+              recipient_cc: recipientResult.cc
+            },
+            24 * 90
+          )
+          claimHeld = false
+        }
 
       } catch (error) {
+        if (claimHeld) {
+          if (createdInvoiceId) {
+            try {
+              await persistIdempotencyResponse(
+                supabase,
+                claimKey,
+                claimHash,
+                {
+                  state: 'processed_with_error',
+                  recurring_invoice_id: recurringInvoice.id,
+                  invoice_id: createdInvoiceId,
+                  invoice_number: createdInvoiceNumber,
+                  error: error instanceof Error ? error.message : String(error)
+                },
+                24 * 90
+              )
+              claimHeld = false
+            } catch (persistError) {
+              console.error(
+                `[Cron] Failed persisting recurring invoice idempotency response after partial success ${recurringInvoice.id}:`,
+                persistError
+              )
+              // Keep claim row in processing state to prevent duplicate invoice generation.
+              claimHeld = false
+            }
+          } else {
+            try {
+              await releaseIdempotencyClaim(supabase, claimKey, claimHash)
+            } catch (releaseError) {
+              console.error(
+                `[Cron] Failed releasing recurring invoice idempotency claim ${recurringInvoice.id}:`,
+                releaseError
+              )
+            } finally {
+              claimHeld = false
+            }
+          }
+        }
+
         console.error(`[Cron] Error processing recurring invoice ${recurringInvoice.id}:`, error)
         results.failed++
         results.errors.push({

@@ -1,82 +1,45 @@
-import { createClient } from '@supabase/supabase-js';
-import * as dotenv from 'dotenv';
-import path from 'path';
+import { config } from 'dotenv'
+import path from 'path'
+import { createAdminClient } from '@/lib/supabase/admin'
 
-// Load environment variables
-dotenv.config({ path: path.resolve(process.cwd(), '.env.local') });
+config({ path: path.resolve(process.cwd(), '.env.local') })
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+async function testEventImageSchema() {
+  console.log('Event image field diagnostics (read-only)\n')
 
-async function testEventCrudFixed() {
-  console.log('🧪 Testing Event CRUD Operations (After Fixes)...\n');
-  
-  const supabase = createClient(supabaseUrl, supabaseServiceKey);
-  
-  // Test 1: Create event with hero_image_url
-  console.log('1️⃣ Test: Create event with hero_image_url field');
-  const { data: event1, error: error1 } = await supabase
+  const supabase = createAdminClient()
+
+  console.log('1. Verifying new event image fields are selectable...')
+  const { data: sample, error: newFieldError } = await supabase
     .from('events')
-    .insert({
-      name: 'Test Event Fixed',
-      date: new Date(Date.now() + 86400000).toISOString().split('T')[0], // Tomorrow
-      time: '19:00',
-      slug: `test-fixed-${Date.now()}`,
-      hero_image_url: 'https://example.com/hero.jpg',
-      thumbnail_image_url: 'https://example.com/thumb.jpg',
-      poster_image_url: 'https://example.com/poster.jpg'
-    })
-    .select()
-    .single();
-    
-  if (error1) {
-    console.log('❌ Failed:', error1.message);
-  } else {
-    console.log('✅ Success: Event created with hero_image_url');
-    console.log('   Event ID:', event1.id);
-    console.log('   Hero Image:', event1.hero_image_url);
-    console.log('   Thumbnail:', event1.thumbnail_image_url);
-    console.log('   Poster:', event1.poster_image_url);
-    
-    // Test 2: Update event image fields
-    console.log('\n2️⃣ Test: Update event image fields');
-    const { error: updateError } = await supabase
-      .from('events')
-      .update({ 
-        hero_image_url: 'https://example.com/updated-hero.jpg',
-        thumbnail_image_url: 'https://example.com/updated-thumb.jpg'
-      })
-      .eq('id', event1.id);
-      
-    if (updateError) {
-      console.log('❌ Failed:', updateError.message);
-    } else {
-      console.log('✅ Success: Event images updated');
-    }
-    
-    // Clean up
-    await supabase.from('events').delete().eq('id', event1.id);
+    .select('id, hero_image_url, thumbnail_image_url, poster_image_url')
+    .limit(1)
+    .maybeSingle()
+
+  if (newFieldError) {
+    throw new Error(`New image field select failed: ${newFieldError.message}`)
   }
-  
-  // Test 3: Verify old image_url field fails as expected
-  console.log('\n3️⃣ Test: Verify image_url field still fails (expected)');
-  const { error: error3 } = await supabase
+
+  console.log(
+    '✅ New image fields are selectable',
+    sample ? `(sample event id: ${sample.id})` : '(no rows)',
+  )
+
+  console.log('\n2. Verifying legacy image_url field is not selectable (expected)...')
+  const { error: legacyFieldError } = await supabase
     .from('events')
-    .insert({
-      name: 'Test Event with image_url',
-      date: new Date(Date.now() + 86400000).toISOString().split('T')[0],
-      time: '20:00',
-      slug: `test-old-field-${Date.now()}`,
-      image_url: 'https://example.com/image.jpg'
-    });
-    
-  if (error3) {
-    console.log('✅ Expected failure:', error3.message);
-  } else {
-    console.log('❌ Unexpected success - image_url should not work');
+    .select('id, image_url')
+    .limit(1)
+
+  if (!legacyFieldError) {
+    throw new Error('Legacy image_url field is still selectable; expected it to be removed')
   }
-  
-  console.log('\n✅ All tests completed - fixes are working correctly!');
+
+  console.log(`✅ Legacy image_url select failed as expected: ${legacyFieldError.message}`)
+  console.log('\n✅ Event image field diagnostics complete.')
 }
 
-testEventCrudFixed().catch(console.error);
+testEventImageSchema().catch((error) => {
+  console.error('Fatal error:', error)
+  process.exitCode = 1
+})

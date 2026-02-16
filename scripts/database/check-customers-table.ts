@@ -1,31 +1,32 @@
-import { createClient } from '@supabase/supabase-js'
-import * as dotenv from 'dotenv'
-import * as path from 'path'
+#!/usr/bin/env tsx
 
-// Load environment variables
-dotenv.config({ path: path.join(__dirname, '../.env.local') })
+import { createAdminClient } from '../../src/lib/supabase/admin'
+import dotenv from 'dotenv'
+import path from 'path'
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
-const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
+const SCRIPT_NAME = 'check-customers-table'
 
-if (!supabaseUrl || !supabaseKey) {
-  console.error('Missing environment variables. Please check .env.local')
-  process.exit(1)
+function markFailure(message: string, error?: unknown) {
+  process.exitCode = 1
+  if (error) {
+    console.error(`[${SCRIPT_NAME}] ❌ ${message}`, error)
+    return
+  }
+  console.error(`[${SCRIPT_NAME}] ❌ ${message}`)
 }
 
-const supabase = createClient(supabaseUrl, supabaseKey)
+async function main() {
+  dotenv.config({ path: path.resolve(process.cwd(), '.env.local') })
 
-async function checkCustomersTable() {
+  const supabase = createAdminClient()
+
   console.log('=== Checking Customers Table Structure ===\n')
 
   // Get a sample customer to see its structure
-  const { data: customers, error } = await supabase
-    .from('customers')
-    .select('*')
-    .limit(1)
+  const { data: customers, error } = await (supabase.from('customers') as any).select('*').limit(1)
 
   if (error) {
-    console.error('Error fetching customers:', error)
+    markFailure('Error fetching customers.', error)
     return
   }
 
@@ -39,13 +40,23 @@ async function checkCustomersTable() {
       first_name: sample.first_name,
       last_name: sample.last_name,
       mobile_number: sample.mobile_number,
-      sms_opt_in: sample.sms_opt_in
+      sms_opt_in: sample.sms_opt_in,
     })
     console.log(`\nType of first_name: ${typeof sample.first_name}`)
     console.log(`Type of last_name: ${typeof sample.last_name}`)
+  } else {
+    console.log('No customers found')
+    markFailure('Expected at least one customer row.')
   }
 
-  process.exit(0)
+  if (process.exitCode === 1) {
+    console.log('\n❌ Customers table check completed with failures.')
+  } else {
+    console.log('\n✅ Customers table check complete!')
+  }
 }
 
-checkCustomersTable().catch(console.error)
+void main().catch((error) => {
+  markFailure('check-customers-table failed.', error)
+})
+

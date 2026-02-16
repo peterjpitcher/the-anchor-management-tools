@@ -27,6 +27,23 @@ function buildRedirectUrl(
   return redirectUrl
 }
 
+async function recordWaitlistAcceptanceAnalyticsSafe(
+  supabase: ReturnType<typeof createAdminClient>,
+  payload: Parameters<typeof recordAnalyticsEvent>[1],
+  context: Record<string, unknown>
+) {
+  try {
+    await recordAnalyticsEvent(supabase, payload)
+  } catch (analyticsError) {
+    logger.warn('Failed to record waitlist acceptance analytics event', {
+      metadata: {
+        ...context,
+        error: analyticsError instanceof Error ? analyticsError.message : String(analyticsError)
+      }
+    })
+  }
+}
+
 async function sendAcceptanceSms(
   supabase: ReturnType<typeof createAdminClient>,
   bookingId: string,
@@ -46,7 +63,10 @@ async function sendAcceptanceSms(
     return
   }
 
-  const [{ data: customer }, { data: event }] = await Promise.all([
+  const [
+    { data: customer, error: customerError },
+    { data: event, error: eventError },
+  ] = await Promise.all([
     supabase
       .from('customers')
       .select('id, first_name, mobile_number, sms_status')
@@ -59,12 +79,33 @@ async function sendAcceptanceSms(
       .maybeSingle()
   ])
 
+  if (customerError) {
+    logger.warn('Failed to load customer for waitlist acceptance SMS', {
+      metadata: { bookingId, error: customerError.message },
+    })
+    return
+  }
+
+  if (eventError) {
+    logger.warn('Failed to load event for waitlist acceptance SMS', {
+      metadata: { bookingId, error: eventError.message },
+    })
+    return
+  }
+
   if (!customer || customer.sms_status !== 'active' || !customer.mobile_number) {
     return
   }
 
+  if (!event) {
+    logger.warn('Waitlist acceptance SMS event lookup affected no rows', {
+      metadata: { bookingId, eventId: booking.event_id },
+    })
+    return
+  }
+
   const firstName = customer.first_name || 'there'
-  const eventName = event?.name || 'your event'
+  const eventName = event.name || 'your event'
   const seats = Math.max(1, Number(booking.seats ?? 1))
   const seatWord = seats === 1 ? 'seat' : 'seats'
   const supportPhone = process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || process.env.TWILIO_PHONE_NUMBER || undefined
@@ -73,7 +114,7 @@ async function sendAcceptanceSms(
     const manageToken = await createEventManageToken(supabase, {
       customerId: customer.id,
       bookingId: booking.id,
-      eventStartIso: event?.start_datetime || null,
+      eventStartIso: event.start_datetime || null,
       appBaseUrl
     })
     manageLink = manageToken.url
@@ -114,22 +155,46 @@ async function sendAcceptanceSms(
       message = `The Anchor: Hi ${firstName}, your waitlist offer is confirmed and ${seats} ${seatWord} are reserved for ${eventName}. Your booking is pending payment and we'll text your payment link shortly.${manageLink ? ` Manage booking: ${manageLink}` : ''}`
     }
   } else {
-    const cashOnArrivalText = event?.payment_mode === 'cash_only' ? ' Payment is cash on arrival.' : ''
+    const cashOnArrivalText = event.payment_mode === 'cash_only' ? ' Payment is cash on arrival.' : ''
     message = `The Anchor: Hi ${firstName}, your waitlist offer is confirmed. You're booked for ${eventName} with ${seats} ${seatWord}.${cashOnArrivalText}${manageLink ? ` Manage booking: ${manageLink}` : ''}`
   }
 
-  await sendSMS(
-    customer.mobile_number,
-    ensureReplyInstruction(message, supportPhone),
-    {
-      customerId: customer.id,
-      metadata: {
-        event_booking_id: booking.id,
-        event_id: event?.id ?? null,
-        template_key: state === 'pending_payment' ? 'event_waitlist_accepted_pending_payment' : 'event_waitlist_accepted_confirmed'
+  let smsResult: Awaited<ReturnType<typeof sendSMS>>
+  try {
+    smsResult = await sendSMS(
+      customer.mobile_number,
+      ensureReplyInstruction(message, supportPhone),
+      {
+        customerId: customer.id,
+        metadata: {
+          event_booking_id: booking.id,
+          event_id: event.id,
+          template_key: state === 'pending_payment' ? 'event_waitlist_accepted_pending_payment' : 'event_waitlist_accepted_confirmed'
+        }
       }
-    }
-  )
+    )
+  } catch (smsError) {
+    logger.warn('Waitlist acceptance SMS threw unexpectedly', {
+      metadata: {
+        bookingId: booking.id,
+        customerId: customer.id,
+        state,
+        error: smsError instanceof Error ? smsError.message : String(smsError)
+      }
+    })
+    return
+  }
+
+  if (!smsResult.success) {
+    logger.warn('Failed to send waitlist acceptance SMS', {
+      metadata: {
+        bookingId: booking.id,
+        customerId: customer.id,
+        state,
+        error: smsResult.error || 'Unknown SMS error'
+      }
+    })
+  }
 }
 
 export async function POST(request: NextRequest, context: RouteContext) {
@@ -172,7 +237,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
 
       if (bookingRow?.customer_id) {
         followUpTasks.push(
-          recordAnalyticsEvent(supabase, {
+          recordWaitlistAcceptanceAnalyticsSafe(supabase, {
             customerId: bookingRow.customer_id,
             eventBookingId: acceptance.booking_id,
             eventType: 'waitlist_offer_accepted',
@@ -181,6 +246,11 @@ export async function POST(request: NextRequest, context: RouteContext) {
               event_id: acceptance.event_id || bookingRow.event_id || null,
               state: acceptance.state
             }
+          }, {
+            customerId: bookingRow.customer_id,
+            eventBookingId: acceptance.booking_id,
+            eventId: acceptance.event_id || bookingRow.event_id || null,
+            state: acceptance.state
           })
         )
       }

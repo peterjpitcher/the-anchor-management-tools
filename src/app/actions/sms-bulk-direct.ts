@@ -3,12 +3,39 @@
 
 'use server'
 
+import { randomUUID } from 'crypto'
 import { jobQueue } from '@/lib/unified-job-queue'
 import { logger } from '@/lib/logger'
 import { headers } from 'next/headers'
 import { rateLimiters } from '@/lib/rate-limit'
+import {
+  buildBulkSmsDispatchKey,
+  normalizeBulkRecipientIds,
+  validateBulkSmsRecipientCount
+} from '@/lib/sms/bulk-dispatch-key'
 import { checkUserPermission } from './rbac'
 import { sendBulkSms } from '@/lib/sms/bulk'
+
+async function ensureBulkRateLimitNotExceeded() {
+  const headersList = await headers()
+  const ip = headersList.get('x-forwarded-for') || headersList.get('x-real-ip') || 'unknown'
+  const { NextRequest } = await import('next/server')
+  const mockReq = new NextRequest('http://localhost', {
+    headers: { 'x-forwarded-for': ip }
+  })
+
+  const rateLimitResponse = await rateLimiters.bulk(mockReq)
+  if (rateLimitResponse) {
+    return 'Too many bulk SMS operations. Please wait before sending more bulk messages.'
+  }
+
+  return null
+}
+
+function extractBulkSafetyAbortCode(errorMessage: string): string | null {
+  const match = errorMessage.match(/Bulk SMS aborted due to safety failure \(([^)]+)\):/)
+  return match?.[1] ?? null
+}
 
 // This is the corrected bulk SMS function that sends directly for small batches
 export async function sendBulkSMSDirect(customerIds: string[], message: string, eventId?: string, categoryId?: string) {
@@ -18,16 +45,42 @@ export async function sendBulkSMSDirect(customerIds: string[], message: string, 
       return { error: 'Insufficient permissions to send messages' }
     }
 
+    const rateLimitError = await ensureBulkRateLimitNotExceeded()
+    if (rateLimitError) {
+      return { error: rateLimitError }
+    }
+
+    const normalizedCustomerIds = normalizeBulkRecipientIds(customerIds)
+    if (normalizedCustomerIds.length === 0) {
+      return { error: 'No valid recipients to send' }
+    }
+
+    const recipientLimitError = validateBulkSmsRecipientCount(normalizedCustomerIds.length)
+    if (recipientLimitError) {
+      return { error: recipientLimitError }
+    }
+
+    const dispatchKey = buildBulkSmsDispatchKey({
+      customerIds: normalizedCustomerIds,
+      message,
+      eventId,
+      categoryId
+    })
+
     // Increased threshold from 50 to 100 for better performance
     // Queue for very large batches to avoid timeouts
-    if (customerIds.length > 100) {
+    if (normalizedCustomerIds.length > 100) {
+      const dispatchId = randomUUID()
+
       const enqueueResult = await jobQueue.enqueue('send_bulk_sms', {
-        customerIds,
+        customerIds: normalizedCustomerIds,
         message,
         eventId,
-        categoryId
+        categoryId,
+        jobId: dispatchId
       }, {
-        priority: 10 // High priority for bulk operations
+        priority: 10, // High priority for bulk operations
+        unique: dispatchKey
       })
 
       if (!enqueueResult.success) {
@@ -35,17 +88,17 @@ export async function sendBulkSMSDirect(customerIds: string[], message: string, 
       }
       
       logger.info('Bulk SMS job queued for large batch', { 
-        metadata: { badge: customerIds.length } 
+        metadata: { badge: normalizedCustomerIds.length } 
       })
       
       return { 
         success: true, 
-        message: `Queued SMS for ${customerIds.length} customers. Messages will be sent within the next few minutes.` 
+        message: `Queued SMS for ${normalizedCustomerIds.length} customers. Messages will be sent within the next few minutes.` 
       }
     }
     
     // For smaller batches, send directly via shared bulk helper
-    return await sendBulkSMSImmediate(customerIds, message, eventId, categoryId)
+    return await sendBulkSMSImmediate(normalizedCustomerIds, message, dispatchKey, eventId, categoryId)
     
   } catch (error) {
     logger.error('Failed to process bulk SMS', { 
@@ -57,21 +110,14 @@ export async function sendBulkSMSDirect(customerIds: string[], message: string, 
 }
 
 // Send bulk SMS immediately (for small/medium batches)
-async function sendBulkSMSImmediate(customerIds: string[], message: string, eventId?: string, categoryId?: string) {
+async function sendBulkSMSImmediate(
+  customerIds: string[],
+  message: string,
+  bulkJobId: string,
+  eventId?: string,
+  categoryId?: string
+) {
   try {
-    // Apply rate limiting
-    const headersList = await headers()
-    const ip = headersList.get('x-forwarded-for') || headersList.get('x-real-ip') || 'unknown'
-    const { NextRequest } = await import('next/server')
-    const mockReq = new NextRequest('http://localhost', {
-      headers: { 'x-forwarded-for': ip }
-    })
-
-    const rateLimitResponse = await rateLimiters.bulk(mockReq)
-    if (rateLimitResponse) {
-      return { error: 'Too many bulk SMS operations. Please wait before sending more bulk messages.' }
-    }
-
     // Check for essential Twilio credentials
     if (!process.env.TWILIO_ACCOUNT_SID || !process.env.TWILIO_AUTH_TOKEN) {
       logger.warn('Skipping SMS send - Twilio Account SID or Auth Token not configured')
@@ -87,10 +133,22 @@ async function sendBulkSMSImmediate(customerIds: string[], message: string, even
       message,
       eventId,
       categoryId,
-      bulkJobId: 'direct'
+      bulkJobId
     })
 
     if (!result.success) {
+      const abortCode = extractBulkSafetyAbortCode(result.error)
+      if (abortCode === 'logging_failed') {
+        // Fail-safe: some messages may have been sent but outbound logging failed, so we must not
+        // encourage retries that could amplify duplicate sends under degraded persistence.
+        return {
+          success: true,
+          message:
+            'Bulk SMS aborted because outbound message logging failed after sends may have occurred. Do not retry; please refresh and contact engineering.',
+          code: abortCode,
+          logFailure: true,
+        }
+      }
       return { error: result.error }
     }
 

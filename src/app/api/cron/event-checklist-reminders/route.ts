@@ -4,6 +4,12 @@ import { authorizeCronRequest } from '@/lib/cron-auth'
 import { getTodayIsoDate, formatDate, formatDateFull } from '@/lib/dateUtils'
 import { getOutstandingTodos, EVENT_CHECKLIST_DEFINITIONS } from '@/lib/event-checklist'
 import { sendEmail } from '@/lib/email/emailService'
+import {
+  claimIdempotencyKey,
+  computeIdempotencyRequestHash,
+  persistIdempotencyResponse,
+  releaseIdempotencyClaim
+} from '@/lib/api/idempotency'
 
 const RECIPIENT = process.env.EVENT_CHECKLIST_EMAIL_RECIPIENT || 'peter@orangejelly.co.uk'
 
@@ -22,6 +28,9 @@ type ChecklistEventSummary = {
 
 export async function GET(request: Request) {
 // ...
+  let claimKey: string | null = null
+  let claimHash: string | null = null
+  let claimHeld = false
   try {
     const auth = authorizeCronRequest(request)
     if (!auth.authorized) {
@@ -189,6 +198,37 @@ export async function GET(request: Request) {
         textBodyLines.push('')
       })
 
+    const reminderSignature = summaries
+      .map((summary) => {
+        const taskFingerprint = summary.tasks
+          .map((task) => `${task.status}:${task.label}:${task.dueDate}`)
+          .join('|')
+        return `${summary.eventId}:${taskFingerprint}`
+      })
+      .join('||')
+    claimKey = `cron:event-checklist-reminder:${todayIso}`
+    claimHash = computeIdempotencyRequestHash({
+      date: todayIso,
+      recipient: RECIPIENT,
+      signature: reminderSignature
+    })
+    const claim = await claimIdempotencyKey(supabase, claimKey, claimHash, 24 * 14)
+
+    if (claim.state === 'conflict') {
+      return NextResponse.json(
+        { success: false, error: 'Checklist reminder idempotency conflict' },
+        { status: 409 }
+      )
+    }
+
+    if (claim.state === 'in_progress' || claim.state === 'replay') {
+      return NextResponse.json(
+        { success: true, sent: false, reason: 'already_processed_or_in_progress' },
+        { status: 200 }
+      )
+    }
+    claimHeld = true
+
     const emailResult = await sendEmail({
       to: RECIPIENT,
       subject,
@@ -198,8 +238,27 @@ export async function GET(request: Request) {
 
     if (!emailResult.success) {
       console.error('[Checklist Cron] Failed to send email', emailResult.error)
+      await releaseIdempotencyClaim(supabase, claimKey, claimHash)
+      claimHeld = false
       return new NextResponse('Failed to send email', { status: 500 })
     }
+
+    await persistIdempotencyResponse(
+      supabase,
+      claimKey,
+      claimHash,
+      {
+        state: 'processed',
+        date: todayIso,
+        sent: true,
+        recipient: RECIPIENT,
+        overdue: overdueCount,
+        dueToday: dueTodayCount,
+        events: summaries.length
+      },
+      24 * 14
+    )
+    claimHeld = false
 
     return NextResponse.json({
       success: true,
@@ -210,6 +269,14 @@ export async function GET(request: Request) {
       events: summaries.length
     })
   } catch (error) {
+    try {
+      const supabase = createAdminClient()
+      if (typeof claimKey === 'string' && typeof claimHash === 'string' && claimHeld) {
+        await releaseIdempotencyClaim(supabase, claimKey, claimHash)
+      }
+    } catch (releaseError) {
+      console.error('[Checklist Cron] Failed releasing idempotency claim after error', releaseError)
+    }
     console.error('[Checklist Cron] Unexpected error', error)
     return new NextResponse('Internal Server Error', { status: 500 })
   }

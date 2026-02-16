@@ -218,11 +218,14 @@ export class PermissionService {
       .update({ name, description: description ?? null })
       .eq('id', roleId)
       .select()
-      .single();
+      .maybeSingle();
 
     if (error) {
       console.error('Error updating role:', error);
       throw new Error('Failed to update role');
+    }
+    if (!updated) {
+      throw new Error('Role not found');
     }
     return { updated, existing };
   }
@@ -244,22 +247,40 @@ export class PermissionService {
       throw new Error('System roles cannot be deleted');
     }
 
-    const { error } = await admin.from('roles').delete().eq('id', roleId);
+    const { data: deletedRole, error } = await admin
+      .from('roles')
+      .delete()
+      .eq('id', roleId)
+      .select('*')
+      .maybeSingle();
 
     if (error) {
       console.error('Error deleting role:', error);
       throw new Error('Failed to delete role');
+    }
+    if (!deletedRole) {
+      throw new Error('Role not found');
     }
     return existing;
   }
 
   static async assignPermissionsToRole(roleId: string, permissionIds: string[]) {
     const admin = createAdminClient();
+    const dedupedPermissionIds = Array.from(new Set(permissionIds));
 
-    const { data: existing } = await admin
+    const { data: existing, error: existingError } = await admin
       .from('role_permissions')
       .select('permission_id')
       .eq('role_id', roleId);
+
+    if (existingError) {
+      console.error('Error loading existing role permissions:', existingError);
+      throw new Error('Failed to load existing permissions');
+    }
+
+    const existingPermissionIds = Array.from(
+      new Set((existing || []).map((item: any) => item.permission_id).filter(Boolean))
+    );
 
     const { error: deleteError } = await admin
       .from('role_permissions')
@@ -271,8 +292,8 @@ export class PermissionService {
       throw new Error('Failed to update permissions');
     }
     
-    if (permissionIds.length > 0) {
-      const rolePermissions = permissionIds.map(permissionId => ({
+    if (dedupedPermissionIds.length > 0) {
+      const rolePermissions = dedupedPermissionIds.map(permissionId => ({
         role_id: roleId,
         permission_id: permissionId
       }));
@@ -283,19 +304,41 @@ export class PermissionService {
       
       if (insertError) {
         console.error('Error assigning permissions:', insertError);
+        if (existingPermissionIds.length > 0) {
+          const rollbackRows = existingPermissionIds.map((permissionId) => ({
+            role_id: roleId,
+            permission_id: permissionId
+          }));
+          const { error: rollbackError } = await admin
+            .from('role_permissions')
+            .insert(rollbackRows);
+          if (rollbackError) {
+            console.error('Failed to restore role permissions after insert failure:', rollbackError);
+          }
+        }
         throw new Error('Failed to assign permissions');
       }
     }
-    return { oldPermissions: existing || [], newPermissions: permissionIds };
+    return { oldPermissions: existing || [], newPermissions: dedupedPermissionIds };
   }
 
   static async assignRolesToUser(userId: string, roleIds: string[], assignedByUserId: string) {
     const admin = createAdminClient();
+    const dedupedRoleIds = Array.from(new Set(roleIds));
 
-    const { data: existing } = await admin
+    const { data: existing, error: existingError } = await admin
       .from('user_roles')
       .select('role_id')
       .eq('user_id', userId);
+
+    if (existingError) {
+      console.error('Error loading existing user roles:', existingError);
+      throw new Error('Failed to load existing roles');
+    }
+
+    const existingRoleIds = Array.from(
+      new Set((existing || []).map((item: any) => item.role_id).filter(Boolean))
+    );
 
     const { error: deleteError } = await admin
       .from('user_roles')
@@ -307,8 +350,8 @@ export class PermissionService {
       throw new Error('Failed to update user roles');
     }
     
-    if (roleIds.length > 0) {
-      const userRoles = roleIds.map(roleId => ({
+    if (dedupedRoleIds.length > 0) {
+      const userRoles = dedupedRoleIds.map(roleId => ({
         user_id: userId,
         role_id: roleId,
         assigned_by: assignedByUserId
@@ -320,10 +363,23 @@ export class PermissionService {
       
       if (insertError) {
         console.error('Error assigning roles:', insertError);
+        if (existingRoleIds.length > 0) {
+          const rollbackRows = existingRoleIds.map((roleId) => ({
+            user_id: userId,
+            role_id: roleId,
+            assigned_by: assignedByUserId
+          }));
+          const { error: rollbackError } = await admin
+            .from('user_roles')
+            .insert(rollbackRows);
+          if (rollbackError) {
+            console.error('Failed to restore user roles after insert failure:', rollbackError);
+          }
+        }
         throw new Error('Failed to assign roles');
       }
     }
-    return { oldRoles: existing || [], newRoles: roleIds };
+    return { oldRoles: existing || [], newRoles: dedupedRoleIds };
   }
 
   static async getAllUsers(actingUser: SupabaseUser) {

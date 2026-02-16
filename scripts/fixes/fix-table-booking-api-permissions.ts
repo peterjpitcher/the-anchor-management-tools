@@ -1,153 +1,208 @@
 #!/usr/bin/env tsx
 
 /**
- * Fix Table Booking API Permissions
- * 
- * This script updates the API key permissions to include table booking access
- * for the Anchor website integration.
+ * fix-table-booking-api-permissions (safe by default)
+ *
+ * Ensure an API key has permission to call the Table Booking API endpoints.
+ *
+ * Dry-run (default):
+ *   tsx scripts/fixes/fix-table-booking-api-permissions.ts --key-hash <sha256>
+ *
+ * Mutation mode (requires multi-gating):
+ *   RUN_FIX_TABLE_BOOKING_API_PERMISSIONS_MUTATION=true \\
+ *   ALLOW_FIX_TABLE_BOOKING_API_PERMISSIONS_MUTATION_SCRIPT=true \\
+ *     tsx scripts/fixes/fix-table-booking-api-permissions.ts --confirm --limit=1 --key-hash <sha256>
+ *
+ * Notes:
+ * - This script does NOT accept a raw API key to avoid secrets in shell history.
+ * - Compute the key hash locally:
+ *     API_KEY="anch_..." node -e "const {createHash}=require('crypto'); console.log(createHash('sha256').update(process.env.API_KEY||'').digest('hex'))"
  */
 
-import { createAdminClient } from '@/lib/supabase/server';
-import crypto from 'crypto';
+import * as dotenv from 'dotenv'
+import { resolve } from 'path'
+import { createAdminClient } from '../../src/lib/supabase/admin'
+import {
+  assertScriptExpectedRowCount,
+  assertScriptMutationSucceeded,
+  assertScriptQuerySucceeded
+} from '../../src/lib/script-mutation-safety'
+import {
+  assertFixTableBookingApiPermissionsLimit,
+  assertFixTableBookingApiPermissionsKeyHash,
+  assertFixTableBookingApiPermissionsMutationAllowed,
+  isFixTableBookingApiPermissionsMutationEnabled,
+  readFixTableBookingApiPermissionsLimit,
+  readFixTableBookingApiPermissionsKeyHash
+} from '../../src/lib/fix-table-booking-api-permissions-script-safety'
 
-async function fixTableBookingPermissions() {
-  console.log('🔧 Fixing Table Booking API Permissions');
-  console.log('=====================================\n');
+dotenv.config({ path: resolve(process.cwd(), '.env.local') })
 
-  const supabase = await createAdminClient();
-  
-  // The API key being used
-  const apiKey = 'bcf9b880cc9fe4615bd68090e88c6407d4ee7506';
-  const keyHash = crypto.createHash('sha256').update(apiKey).digest('hex');
-  
-  console.log('📌 API Key (first 8 chars):', apiKey.substring(0, 8) + '...');
-  console.log('📌 Key Hash:', keyHash);
-  
-  try {
-    // First, check the current permissions
-    console.log('\n🔍 Checking current API key permissions...');
-    const { data: currentKey, error: fetchError } = await supabase
-      .from('api_keys')
-      .select('*')
-      .eq('key_hash', keyHash)
-      .single();
-    
-    if (fetchError) {
-      console.error('❌ Error fetching API key:', fetchError);
-      return;
-    }
-    
-    if (!currentKey) {
-      console.error('❌ API key not found in database');
-      console.log('\n💡 The API key might need to be registered first.');
-      console.log('Use the generate-api-key.ts script to create a new key.');
-      return;
-    }
-    
-    console.log('\n✅ Found API key:', currentKey.name);
-    console.log('📋 Current permissions:', JSON.stringify(currentKey.permissions, null, 2));
-    console.log('🕐 Last used:', currentKey.last_used_at || 'Never');
-    console.log('📊 Usage count:', currentKey.usage_count || 0);
-    
-    // Update permissions to include table booking access
-    const newPermissions = [
-      'read:events',
-      'read:menu',
-      'read:business',
-      'read:table_bookings',    // Required for availability check
-      'write:table_bookings',   // Required for creating bookings
-      'create:bookings',        // Alternative permission name
-      'read:customers',         // May be needed for customer lookup
-      'write:customers'         // May be needed for creating new customers
-    ];
-    
-    console.log('\n🔄 Updating permissions...');
-    console.log('📋 New permissions:', JSON.stringify(newPermissions, null, 2));
-    
-    const { error: updateError } = await supabase
-      .from('api_keys')
-      .update({ 
-        permissions: newPermissions,
-        updated_at: new Date().toISOString()
-      })
-      .eq('key_hash', keyHash);
-    
-    if (updateError) {
-      console.error('❌ Error updating permissions:', updateError);
-      return;
-    }
-    
-    console.log('\n✅ Permissions updated successfully!');
-    
-    // Verify the update
-    const { data: updatedKey, error: verifyError } = await supabase
-      .from('api_keys')
-      .select('permissions')
-      .eq('key_hash', keyHash)
-      .single();
-    
-    if (verifyError) {
-      console.error('❌ Error verifying update:', verifyError);
-      return;
-    }
-    
-    console.log('\n🎉 Verification complete!');
-    console.log('📋 Updated permissions:', JSON.stringify(updatedKey.permissions, null, 2));
-    
-    console.log('\n📝 Next Steps:');
-    console.log('1. Test the API endpoint again with the same API key');
-    console.log('2. The table booking availability endpoint should now work');
-    console.log('3. Use header: X-API-Key: ' + apiKey.substring(0, 8) + '...');
-    
-    // Test the permissions
-    console.log('\n🧪 Testing permission check...');
-    const hasTableBookingRead = updatedKey.permissions.includes('read:table_bookings') || 
-                                updatedKey.permissions.includes('*');
-    const hasTableBookingWrite = updatedKey.permissions.includes('write:table_bookings') || 
-                                 updatedKey.permissions.includes('*');
-    
-    console.log('✅ Has read:table_bookings permission:', hasTableBookingRead);
-    console.log('✅ Has write:table_bookings permission:', hasTableBookingWrite);
-    
-  } catch (error) {
-    console.error('❌ Unexpected error:', error);
-  }
+type ApiKeyRow = {
+  id: string
+  name: string | null
+  permissions: string[] | null
+  is_active: boolean | null
+  rate_limit: number | null
+  last_used_at: string | null
 }
 
-// Alternative function to grant all permissions (use with caution)
-async function grantAllPermissions() {
-  console.log('\n⚠️  Granting ALL permissions to API key...');
-  console.log('This should only be used for testing!\n');
-  
-  const supabase = await createAdminClient();
-  const apiKey = 'bcf9b880cc9fe4615bd68090e88c6407d4ee7506';
-  const keyHash = crypto.createHash('sha256').update(apiKey).digest('hex');
-  
-  const { error } = await supabase
+function uniquePermissions(value: string[]): string[] {
+  const seen = new Set<string>()
+  const out: string[] = []
+  for (const perm of value) {
+    const normalized = typeof perm === 'string' ? perm.trim() : ''
+    if (!normalized) continue
+    if (seen.has(normalized)) continue
+    seen.add(normalized)
+    out.push(normalized)
+  }
+  return out
+}
+
+async function run(): Promise<void> {
+  const argv = process.argv
+  const confirm = argv.includes('--confirm')
+  const dryRunOverride = argv.includes('--dry-run')
+  const mutationEnabled =
+    !dryRunOverride && isFixTableBookingApiPermissionsMutationEnabled(argv, process.env)
+
+  if (argv.includes('--help')) {
+    console.log(`
+fix-table-booking-api-permissions (safe by default)
+
+Dry-run (default):
+  tsx scripts/fixes/fix-table-booking-api-permissions.ts --key-hash <sha256>
+
+Mutation mode (requires multi-gating):
+  RUN_FIX_TABLE_BOOKING_API_PERMISSIONS_MUTATION=true \\
+  ALLOW_FIX_TABLE_BOOKING_API_PERMISSIONS_MUTATION_SCRIPT=true \\
+    tsx scripts/fixes/fix-table-booking-api-permissions.ts --confirm --limit=1 --key-hash <sha256>
+
+Notes:
+  - This script ensures the API key permissions include "create:bookings".
+  - Provide --key-hash (sha256 hex) instead of the raw API key.
+`)
+    return
+  }
+
+  const keyHash = assertFixTableBookingApiPermissionsKeyHash(
+    readFixTableBookingApiPermissionsKeyHash(argv, process.env)
+  )
+
+  if (confirm && !mutationEnabled && !dryRunOverride) {
+    throw new Error(
+      'fix-table-booking-api-permissions blocked: --confirm requires RUN_FIX_TABLE_BOOKING_API_PERMISSIONS_MUTATION=true and ALLOW_FIX_TABLE_BOOKING_API_PERMISSIONS_MUTATION_SCRIPT=true.'
+    )
+  }
+
+  if (mutationEnabled) {
+    assertFixTableBookingApiPermissionsLimit(readFixTableBookingApiPermissionsLimit(argv, process.env))
+    assertFixTableBookingApiPermissionsMutationAllowed(process.env)
+  }
+
+  const supabase = createAdminClient()
+  const modeLabel = mutationEnabled ? 'MUTATION' : 'DRY-RUN'
+  console.log(`🔧 fix-table-booking-api-permissions (${modeLabel})\n`)
+
+  const { data: apiKeyRowRaw, error: apiKeyError } = await supabase
     .from('api_keys')
-    .update({ 
-      permissions: ['*'],
-      updated_at: new Date().toISOString()
-    })
-    .eq('key_hash', keyHash);
-  
-  if (error) {
-    console.error('❌ Error granting all permissions:', error);
-  } else {
-    console.log('✅ All permissions granted successfully!');
+    .select('id, name, permissions, is_active, rate_limit, last_used_at')
+    .eq('key_hash', keyHash)
+    .maybeSingle()
+
+  const apiKeyRow = assertScriptQuerySucceeded<ApiKeyRow | null>({
+    operation: 'Load api_keys row by key_hash',
+    error: apiKeyError,
+    data: apiKeyRowRaw as ApiKeyRow | null,
+    allowMissing: true
+  })
+
+  if (!apiKeyRow) {
+    throw new Error(
+      'fix-table-booking-api-permissions blocked: no matching api_keys row found for the provided --key-hash.'
+    )
   }
+
+  const currentPermissions = Array.isArray(apiKeyRow.permissions) ? apiKeyRow.permissions : []
+  const hasWildcard = currentPermissions.includes('*')
+  const requiredPermissions = ['create:bookings']
+  const nextPermissions = hasWildcard
+    ? ['*']
+    : uniquePermissions([...currentPermissions, ...requiredPermissions])
+
+  const missingRequired = requiredPermissions.filter(
+    (permission) => !hasWildcard && !currentPermissions.includes(permission)
+  )
+
+  console.log(`Key name: ${apiKeyRow.name || '<unnamed>'}`)
+  console.log(`Key id: ${apiKeyRow.id}`)
+  console.log(`Key hash: ${keyHash.slice(0, 8)}...`)
+  console.log(`Active: ${apiKeyRow.is_active === true}`)
+  console.log(`Rate limit: ${apiKeyRow.rate_limit ?? '<unknown>'}`)
+  console.log(`Last used: ${apiKeyRow.last_used_at || 'Never'}`)
+  console.log('\nCurrent permissions:')
+  console.log(JSON.stringify(currentPermissions, null, 2))
+
+  if (missingRequired.length === 0) {
+    console.log('\n✅ No update required (already includes create:bookings or wildcard).')
+    return
+  }
+
+  console.log('\nProposed permissions (additive):')
+  console.log(JSON.stringify(nextPermissions, null, 2))
+
+  if (!mutationEnabled) {
+    console.log(
+      '\nDry-run mode: no rows updated. Re-run with --confirm --limit=1 RUN_FIX_TABLE_BOOKING_API_PERMISSIONS_MUTATION=true ALLOW_FIX_TABLE_BOOKING_API_PERMISSIONS_MUTATION_SCRIPT=true to apply.'
+    )
+    return
+  }
+
+  const now = new Date().toISOString()
+  const { data: updatedRows, error: updateError } = await supabase
+    .from('api_keys')
+    .update({ permissions: nextPermissions, updated_at: now })
+    .eq('id', apiKeyRow.id)
+    .select('id')
+
+  const { updatedCount } = assertScriptMutationSucceeded({
+    operation: 'Update api_keys permissions',
+    error: updateError,
+    updatedRows: (updatedRows ?? []) as Array<{ id?: string }>,
+    allowZeroRows: false
+  })
+
+  assertScriptExpectedRowCount({
+    operation: 'Update api_keys permissions',
+    expected: 1,
+    actual: updatedCount
+  })
+
+  const { data: verifyRowRaw, error: verifyError } = await supabase
+    .from('api_keys')
+    .select('permissions')
+    .eq('id', apiKeyRow.id)
+    .maybeSingle()
+
+  const verifyRow = assertScriptQuerySucceeded<{ permissions: string[] | null } | null>({
+    operation: 'Reload api_keys permissions for verification',
+    error: verifyError,
+    data: verifyRowRaw as { permissions: string[] | null } | null,
+    allowMissing: true
+  })
+
+  const verifiedPermissions = Array.isArray(verifyRow?.permissions) ? verifyRow.permissions : []
+  if (!verifiedPermissions.includes('create:bookings') && !verifiedPermissions.includes('*')) {
+    throw new Error(
+      'fix-table-booking-api-permissions verification failed: updated permissions still missing create:bookings.'
+    )
+  }
+
+  console.log('\n✅ Permissions updated successfully.')
 }
 
-// Run the main function
-fixTableBookingPermissions()
-  .then(() => {
-    console.log('\n✅ Script completed successfully');
-    process.exit(0);
-  })
-  .catch((error) => {
-    console.error('\n❌ Script failed:', error);
-    process.exit(1);
-  });
-
-// Uncomment to grant all permissions instead
-// grantAllPermissions();
+run().catch((error) => {
+  console.error('❌ fix-table-booking-api-permissions script failed:', error)
+  process.exitCode = 1
+})

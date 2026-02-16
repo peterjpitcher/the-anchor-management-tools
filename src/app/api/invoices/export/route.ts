@@ -10,6 +10,20 @@ import { closePdfBrowser, createPdfBrowser, generateInvoicePDF } from '@/lib/pdf
 import { logAuditEvent } from '@/app/actions/audit'
 import type { InvoiceWithDetails } from '@/types/invoices'
 
+const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/
+const MAX_EXPORT_WINDOW_DAYS = 366
+
+function parseIsoDateUtcStart(value: string): Date | null {
+  if (!ISO_DATE_RE.test(value)) return null
+  const dt = new Date(`${value}T00:00:00.000Z`)
+  return Number.isNaN(dt.getTime()) ? null : dt
+}
+
+function safeMoney(value: unknown): number {
+  const amount = Number(value)
+  return Number.isFinite(amount) ? amount : 0
+}
+
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams
   const startDate = searchParams.get('start_date')
@@ -18,6 +32,29 @@ export async function GET(request: NextRequest) {
   
   if (!startDate || !endDate) {
     return new NextResponse('Start and end dates required', { status: 400 })
+  }
+
+  if (!ISO_DATE_RE.test(startDate) || !ISO_DATE_RE.test(endDate)) {
+    return new NextResponse('Dates must use YYYY-MM-DD format', { status: 400 })
+  }
+
+  if (!['all', 'paid', 'unpaid'].includes(exportType)) {
+    return new NextResponse('Invalid export type', { status: 400 })
+  }
+
+  const startDateObj = parseIsoDateUtcStart(startDate)
+  const endDateObj = parseIsoDateUtcStart(endDate)
+  if (!startDateObj || !endDateObj) {
+    return new NextResponse('Invalid date range', { status: 400 })
+  }
+
+  if (startDateObj > endDateObj) {
+    return new NextResponse('start_date cannot be after end_date', { status: 400 })
+  }
+
+  const rangeDays = Math.floor((endDateObj.getTime() - startDateObj.getTime()) / (1000 * 60 * 60 * 24))
+  if (rangeDays > MAX_EXPORT_WINDOW_DAYS) {
+    return new NextResponse('Date range too large. Please export 12 months or less per request.', { status: 400 })
   }
 
   const supabase = await createClient()
@@ -92,12 +129,12 @@ export async function GET(request: NextRequest) {
       invoice.vendor?.name || '',
       invoice.reference || '',
       invoice.status,
-      invoice.subtotal_amount.toFixed(2),
-      invoice.discount_amount.toFixed(2),
-      invoice.vat_amount.toFixed(2),
-      invoice.total_amount.toFixed(2),
-      invoice.paid_amount.toFixed(2),
-      (invoice.total_amount - invoice.paid_amount).toFixed(2)
+      safeMoney(invoice.subtotal_amount).toFixed(2),
+      safeMoney(invoice.discount_amount).toFixed(2),
+      safeMoney(invoice.vat_amount).toFixed(2),
+      safeMoney(invoice.total_amount).toFixed(2),
+      safeMoney(invoice.paid_amount).toFixed(2),
+      Math.max(0, safeMoney(invoice.total_amount) - safeMoney(invoice.paid_amount)).toFixed(2)
     ])
 
     const csvContent = [
@@ -138,19 +175,23 @@ Files included:
     // Generate ZIP file
     const zipContent = await zip.generateAsync({ type: 'arraybuffer' })
 
-    // Log export
-    await logAuditEvent({
-      user_id: user.id,
-      operation_type: 'export',
-      resource_type: 'invoices',
-      operation_status: 'success',
-      additional_info: {
-        start_date: startDate,
-        end_date: endDate,
-        export_type: exportType,
-        invoice_count: invoices.length,
-      },
-    })
+    // Best-effort logging: do not fail export delivery on telemetry issues.
+    try {
+      await logAuditEvent({
+        user_id: user.id,
+        operation_type: 'export',
+        resource_type: 'invoices',
+        operation_status: 'success',
+        additional_info: {
+          start_date: startDate,
+          end_date: endDate,
+          export_type: exportType,
+          invoice_count: invoices.length,
+        },
+      })
+    } catch (auditError) {
+      console.error('[Invoice Export] Failed to write audit log:', auditError)
+    }
 
     // Return ZIP file
     return new NextResponse(zipContent, {

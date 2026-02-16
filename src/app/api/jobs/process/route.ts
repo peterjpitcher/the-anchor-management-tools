@@ -1,28 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { jobQueue } from '@/lib/unified-job-queue'
 import { logger } from '@/lib/logger'
+import { authorizeCronRequest } from '@/lib/cron-auth'
 
 export const runtime = 'nodejs'
 export const maxDuration = 60 // 60 seconds max execution time
 export const dynamic = 'force-dynamic'
 export const fetchCache = 'force-no-store'
-
-function isAuthorized(request: NextRequest): boolean {
-  const authHeader = request.headers.get('authorization')
-  const cronSecret = process.env.CRON_SECRET
-  const vercelCron = request.headers.get('x-vercel-cron')
-
-  if (!cronSecret && process.env.NODE_ENV === 'development') {
-    return true
-  }
-
-  const bearerSecret = `Bearer ${cronSecret}`
-  return (
-    authHeader === bearerSecret ||
-    authHeader === cronSecret ||
-    Boolean(vercelCron)
-  )
-}
 
 function isHealthCheck(request: NextRequest): boolean {
   const processParam = request.nextUrl.searchParams.get('process')
@@ -34,8 +18,11 @@ function isHealthCheck(request: NextRequest): boolean {
 }
 
 async function handleProcessing(request: NextRequest, method: 'GET' | 'POST') {
-  // Reduced to 30 to prevent timeouts with SMS processing
-  const batchSize = parseInt(request.nextUrl.searchParams.get('batch') || '30')
+  // Reduced default to 30 and hard-capped to prevent large accidental flood runs.
+  const requestedBatch = Number.parseInt(request.nextUrl.searchParams.get('batch') || '30', 10)
+  const batchSize = Number.isFinite(requestedBatch)
+    ? Math.max(1, Math.min(100, requestedBatch))
+    : 30
 
   logger.info('Processing job queue', {
     metadata: {
@@ -54,13 +41,12 @@ async function handleProcessing(request: NextRequest, method: 'GET' | 'POST') {
 
 export async function POST(request: NextRequest) {
   try {
-    if (!isAuthorized(request)) {
-      const authHeader = request.headers.get('authorization')
+    const authResult = authorizeCronRequest(request)
+    if (!authResult.authorized) {
       logger.warn('Unauthorized job processor access attempt', {
         metadata: {
-          authHeader: authHeader ? `${authHeader.substring(0, 10)}...` : 'none',
-          hasVercelHeader: request.headers.get('x-vercel-cron'),
           env: process.env.NODE_ENV,
+          reason: authResult.reason,
         }
       })
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -83,7 +69,8 @@ export async function POST(request: NextRequest) {
 // Health check endpoint
 export async function GET(request: NextRequest) {
   try {
-    if (!isAuthorized(request)) {
+    const authResult = authorizeCronRequest(request)
+    if (!authResult.authorized) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 

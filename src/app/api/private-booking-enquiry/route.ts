@@ -1,15 +1,18 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { recordAnalyticsEvent } from '@/lib/analytics/events'
 import { PrivateBookingService } from '@/services/private-bookings'
 import {
+  claimIdempotencyKey,
   computeIdempotencyRequestHash,
   getIdempotencyKey,
-  lookupIdempotencyKey,
-  persistIdempotencyResponse
+  persistIdempotencyResponse,
+  releaseIdempotencyClaim
 } from '@/lib/api/idempotency'
 import { formatPhoneForStorage } from '@/lib/utils'
+import { createRateLimiter } from '@/lib/rate-limit'
+import { logger } from '@/lib/logger'
 
 const EnquirySchema = z.object({
   phone: z.string().min(5),
@@ -26,6 +29,12 @@ const EnquirySchema = z.object({
     }, z.number().int().min(1).max(200))
     .optional(),
   notes: z.string().max(2000).optional()
+})
+
+const privateBookingEnquiryLimiter = createRateLimiter({
+  windowMs: 5 * 60 * 1000,
+  max: 20,
+  message: 'Too many private booking enquiries. Please try again shortly.'
 })
 
 function splitName(name?: string): { firstName: string; lastName?: string } {
@@ -69,10 +78,40 @@ function resolveDateAndTime(input: z.infer<typeof EnquirySchema>): { eventDate?:
   }
 }
 
-export async function POST(request: Request) {
+async function recordPrivateBookingEnquiryAnalyticsSafe(
+  supabase: ReturnType<typeof createAdminClient>,
+  payload: Parameters<typeof recordAnalyticsEvent>[1],
+  context: Record<string, unknown>
+): Promise<void> {
   try {
+    await recordAnalyticsEvent(supabase, payload)
+  } catch (analyticsError) {
+    logger.warn('Failed to record private booking enquiry analytics event', {
+      metadata: {
+        ...context,
+        error: analyticsError instanceof Error ? analyticsError.message : String(analyticsError)
+      }
+    })
+  }
+}
+
+export async function POST(request: NextRequest) {
+  try {
+    const rateLimitResponse = await privateBookingEnquiryLimiter(request)
+    if (rateLimitResponse) {
+      return rateLimitResponse
+    }
+
     const supabase = createAdminClient()
-    const rawPayload = await request.json()
+    let rawPayload: unknown
+    try {
+      rawPayload = await request.json()
+    } catch {
+      return NextResponse.json(
+        { success: false, error: 'Invalid JSON body' },
+        { status: 400 }
+      )
+    }
 
     const idempotencyKey = getIdempotencyKey(request)
     if (!idempotencyKey) {
@@ -113,9 +152,9 @@ export async function POST(request: Request) {
       group_size: parsed.data.group_size || null,
       notes: parsed.data.notes || null
     })
-    const lookup = await lookupIdempotencyKey(supabase, idempotencyKey, requestHash)
+    const claim = await claimIdempotencyKey(supabase, idempotencyKey, requestHash)
 
-    if (lookup.state === 'conflict') {
+    if (claim.state === 'conflict') {
       return NextResponse.json(
         {
           success: false,
@@ -125,46 +164,90 @@ export async function POST(request: Request) {
       )
     }
 
-    if (lookup.state === 'replay') {
-      return NextResponse.json(lookup.response, { status: 201 })
+    if (claim.state === 'replay') {
+      return NextResponse.json(claim.response, { status: 201 })
     }
 
-    const booking = await PrivateBookingService.createBooking({
-      customer_first_name: firstName,
-      customer_last_name: lastName,
-      contact_phone: normalizedPhone,
-      event_date: eventDate,
-      start_time: startTime,
-      guest_count: parsed.data.group_size,
-      internal_notes: parsed.data.notes,
-      status: 'draft',
-      source: 'website'
-    })
+    if (claim.state === 'in_progress') {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'This request is already being processed. Please retry shortly.'
+        },
+        { status: 409 }
+      )
+    }
 
-    if ((booking as any)?.customer_id) {
-      await recordAnalyticsEvent(supabase, {
-        customerId: (booking as any).customer_id,
-        privateBookingId: (booking as any).id,
-        eventType: 'private_booking_enquiry_created',
-        metadata: {
-          source: 'brand_site',
-          via_endpoint: '/api/private-booking-enquiry'
-        }
+    let claimHeld = true
+    let mutationCommitted = false
+    try {
+      const booking = await PrivateBookingService.createBooking({
+        customer_first_name: firstName,
+        customer_last_name: lastName,
+        contact_phone: normalizedPhone,
+        event_date: eventDate,
+        start_time: startTime,
+        guest_count: parsed.data.group_size,
+        internal_notes: parsed.data.notes,
+        status: 'draft',
+        source: 'website'
       })
+      mutationCommitted = true
+
+      if ((booking as any)?.customer_id) {
+        await recordPrivateBookingEnquiryAnalyticsSafe(supabase, {
+          customerId: (booking as any).customer_id,
+          privateBookingId: (booking as any).id,
+          eventType: 'private_booking_enquiry_created',
+          metadata: {
+            source: 'brand_site',
+            via_endpoint: '/api/private-booking-enquiry'
+          }
+        }, {
+          privateBookingId: (booking as any).id,
+          customerId: (booking as any).customer_id
+        })
+      }
+
+      const responsePayload = {
+        success: true,
+        state: 'enquiry_created',
+        booking_id: (booking as any).id,
+        reference: (booking as any).booking_reference || (booking as any).id
+      }
+
+      try {
+        await persistIdempotencyResponse(supabase, idempotencyKey, requestHash, responsePayload)
+        claimHeld = false
+      } catch (persistError) {
+        // Returning 500 causes clients to retry, which can replay the enquiry creation and fan out
+        // downstream notifications during DB/idempotency-write degradation.
+        logger.error('Private booking enquiry created but failed to persist idempotency response', {
+          error: persistError instanceof Error ? persistError : new Error(String(persistError)),
+          metadata: {
+            idempotencyKey,
+          }
+        })
+        return NextResponse.json(responsePayload, { status: 201 })
+      }
+
+      return NextResponse.json(responsePayload, { status: 201 })
+    } finally {
+      if (claimHeld && !mutationCommitted) {
+        try {
+          await releaseIdempotencyClaim(supabase, idempotencyKey, requestHash)
+        } catch (releaseError) {
+          logger.error('Failed to release private booking enquiry idempotency claim', {
+            error: releaseError instanceof Error ? releaseError : new Error(String(releaseError)),
+            metadata: { idempotencyKey },
+          })
+        }
+      }
     }
-
-    const responsePayload = {
-      success: true,
-      state: 'enquiry_created',
-      booking_id: (booking as any).id,
-      reference: (booking as any).booking_reference || (booking as any).id
-    }
-
-    await persistIdempotencyResponse(supabase, idempotencyKey, requestHash, responsePayload)
-
-    return NextResponse.json(responsePayload, { status: 201 })
   } catch (error) {
-    console.error('Error creating private booking enquiry:', error)
+    logger.error('Error creating private booking enquiry', {
+      error: error instanceof Error ? error : new Error(String(error)),
+    })
     return NextResponse.json(
       { success: false, error: 'Failed to create enquiry' },
       { status: 500 }

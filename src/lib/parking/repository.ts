@@ -58,11 +58,14 @@ export async function updateParkingBooking(
     .update(payload)
     .eq('id', bookingId)
     .select()
-    .single()
+    .maybeSingle()
 
   if (error) {
     console.error('Failed to update parking booking', error)
     throw error
+  }
+  if (!data) {
+    throw new Error('Parking booking not found')
   }
 
   return data as ParkingBooking

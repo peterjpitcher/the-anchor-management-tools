@@ -165,8 +165,9 @@ export async function GET() {
     const data = await loadTableSetupData(auth.supabase)
     return NextResponse.json({ success: true, data })
   } catch (error) {
+    console.error('Failed to load table setup', error)
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Failed to load table setup' },
+      { error: 'Failed to load table setup' },
       { status: 500 }
     )
   }
@@ -414,8 +415,9 @@ export async function PUT(request: NextRequest) {
     const data = await loadTableSetupData(auth.supabase)
     return NextResponse.json({ success: true, data })
   } catch (error) {
+    console.error('Failed to refresh table setup after join-link update', error)
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Failed to refresh table setup' },
+      { error: 'Failed to refresh table setup' },
       { status: 500 }
     )
   }

@@ -91,9 +91,10 @@ export async function updateRecurringCharge(formData: FormData) {
     })
     .eq('id', id)
     .select('*')
-    .single()
+    .maybeSingle()
 
   if (error) return { error: error.message }
+  if (!data) return { error: 'Charge not found' }
   return { charge: data, success: true as const }
 }
 
@@ -105,15 +106,17 @@ export async function disableRecurringCharge(formData: FormData) {
   if (!id) return { error: 'Charge ID is required' }
 
   const supabase = await createClient()
-  const { error } = await supabase
+  const { data: updatedCharge, error } = await supabase
     .from('oj_vendor_recurring_charges')
     .update({
       is_active: false,
       updated_at: new Date().toISOString(),
     })
     .eq('id', id)
+    .select('id')
+    .maybeSingle()
 
   if (error) return { error: error.message }
+  if (!updatedCharge) return { error: 'Charge not found' }
   return { success: true as const }
 }
-

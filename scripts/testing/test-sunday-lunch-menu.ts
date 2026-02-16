@@ -1,110 +1,147 @@
 #!/usr/bin/env tsx
 
-import { createAdminClient } from '../src/lib/supabase/server';
+/**
+ * Sunday lunch menu diagnostics (read-only).
+ *
+ * Safety note:
+ * - This script MUST NOT write to the database.
+ * - It fails closed on any query error and blocks --confirm.
+ */
 
-async function testSundayLunchMenu() {
-  console.log('🍽️  Testing Sunday Lunch Menu System\n');
-  
-  const supabase = createAdminClient();
-  
-  try {
-    // 1. Test database query
-    console.log('1. Fetching menu items from database...');
-    const { data: menuItems, error } = await supabase
-      .from('sunday_lunch_menu_items')
-      .select('*')
-      .eq('is_active', true)
-      .order('category')
-      .order('display_order')
-      .order('name');
-      
-    if (error) {
-      console.error('❌ Error fetching menu items:', error);
-      return;
-    }
-    
-    console.log(`✅ Found ${menuItems.length} active menu items\n`);
-    
-    // 2. Display menu structure
-    const mains = menuItems.filter(item => item.category === 'main');
-    const sides = menuItems.filter(item => item.category === 'side');
-    
-    console.log('2. Menu Structure:');
-    console.log(`   Main Courses: ${mains.length}`);
-    console.log(`   Sides: ${sides.length}`);
-    console.log('');
-    
-    // 3. Display main courses
-    console.log('3. Main Courses:');
-    mains.forEach(main => {
-      console.log(`   - ${main.name} (£${main.price})`);
-      if (main.description) {
-        console.log(`     ${main.description}`);
-      }
-    });
-    console.log('');
-    
-    // 4. Display sides
-    console.log('4. Sides:');
-    const includedSides = sides.filter(s => s.price === 0);
-    const extraSides = sides.filter(s => s.price > 0);
-    
-    console.log('   Included with main course:');
-    includedSides.forEach(side => {
-      console.log(`   - ${side.name}`);
-      if (side.description) {
-        console.log(`     ${side.description}`);
-      }
-    });
-    
-    if (extraSides.length > 0) {
-      console.log('\n   Optional extras:');
-      extraSides.forEach(side => {
-        console.log(`   - ${side.name} (+£${side.price})`);
-        if (side.description) {
-          console.log(`     ${side.description}`);
-        }
-      });
-    }
-    console.log('');
-    
-    // 5. Test API endpoint
-    console.log('5. Testing API endpoint...');
-    const apiUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
-    
-    // Get next Sunday
-    const today = new Date();
-    const dayOfWeek = today.getDay();
-    const daysUntilSunday = dayOfWeek === 0 ? 7 : 7 - dayOfWeek;
-    const nextSunday = new Date(today);
-    nextSunday.setDate(today.getDate() + daysUntilSunday);
-    const sundayDate = nextSunday.toISOString().split('T')[0];
-    
-    console.log(`   Testing menu for: ${sundayDate}`);
-    
-    // Note: We can't test the actual API endpoint from here without an API key
-    // but we've verified the database structure is correct
-    console.log('   ✅ Database structure verified and ready for API requests\n');
-    
-    // 6. Check for any legacy categories
-    console.log('6. Checking for legacy categories...');
-    const { data: allItems } = await supabase
-      .from('sunday_lunch_menu_items')
-      .select('category')
-      .not('category', 'in', '("main","side")');
-      
-    if (allItems && allItems.length > 0) {
-      console.log(`   ⚠️  Found ${allItems.length} items with legacy categories`);
-    } else {
-      console.log('   ✅ No legacy categories found - migration successful!');
-    }
-    
-    console.log('\n✅ Sunday Lunch Menu System Test Complete!');
-    
-  } catch (error) {
-    console.error('❌ Test failed:', error);
-    process.exit(1);
+import dotenv from 'dotenv'
+import path from 'path'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { assertScriptQuerySucceeded } from '@/lib/script-mutation-safety'
+
+dotenv.config({ path: path.resolve(process.cwd(), '.env.local') })
+
+function assertReadOnlyScript(argv: string[] = process.argv.slice(2)): void {
+  if (argv.includes('--confirm')) {
+    throw new Error('test-sunday-lunch-menu is read-only and does not support --confirm.')
   }
 }
 
-testSundayLunchMenu();
+function toNumber(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value
+  }
+
+  if (typeof value === 'string') {
+    const parsed = Number(value)
+    if (Number.isFinite(parsed)) {
+      return parsed
+    }
+  }
+
+  return null
+}
+
+function formatMoney(value: unknown): string {
+  const numeric = toNumber(value)
+  if (numeric === null) {
+    return 'N/A'
+  }
+  return numeric.toFixed(2)
+}
+
+async function run(): Promise<void> {
+  assertReadOnlyScript()
+
+  console.log('Sunday lunch menu diagnostics (read-only)\n')
+
+  const supabase = createAdminClient()
+
+  console.log('1) Fetching active menu items...')
+  const { data: menuItems, error: menuError } = await supabase
+    .from('sunday_lunch_menu_items')
+    .select('id, name, description, price, category, display_order, is_active')
+    .eq('is_active', true)
+    .order('category')
+    .order('display_order')
+    .order('name')
+
+  const items =
+    assertScriptQuerySucceeded({
+      operation: 'select sunday_lunch_menu_items (active)',
+      error: menuError,
+      data: menuItems,
+      allowMissing: true,
+    }) ?? []
+
+  console.log(`Found ${items.length} active item(s).\n`)
+  if (items.length === 0) {
+    throw new Error('No active sunday_lunch_menu_items found.')
+  }
+
+  const mains = items.filter((item) => item.category === 'main')
+  const sides = items.filter((item) => item.category === 'side')
+
+  console.log('2) Menu structure:')
+  console.log(`- Main courses: ${mains.length}`)
+  console.log(`- Sides: ${sides.length}\n`)
+
+  console.log('3) Main courses:')
+  for (const main of mains) {
+    console.log(`- ${main.name} (GBP ${formatMoney(main.price)})`)
+    if (main.description) {
+      console.log(`  ${main.description}`)
+    }
+  }
+  console.log('')
+
+  console.log('4) Sides:')
+  const includedSides = sides.filter((side) => toNumber(side.price) === 0)
+  const extraSides = sides.filter((side) => {
+    const price = toNumber(side.price)
+    return typeof price === 'number' && price > 0
+  })
+
+  console.log('Included with main course:')
+  for (const side of includedSides) {
+    console.log(`- ${side.name}`)
+    if (side.description) {
+      console.log(`  ${side.description}`)
+    }
+  }
+
+  if (extraSides.length > 0) {
+    console.log('\nOptional extras:')
+    for (const side of extraSides) {
+      console.log(`- ${side.name} (+GBP ${formatMoney(side.price)})`)
+      if (side.description) {
+        console.log(`  ${side.description}`)
+      }
+    }
+  }
+  console.log('')
+
+  console.log('5) Checking for unexpected active categories...')
+  const { data: legacyRows, error: legacyError } = await supabase
+    .from('sunday_lunch_menu_items')
+    .select('id, category')
+    .eq('is_active', true)
+    .not('category', 'in', '("main","side")')
+    .limit(50)
+
+  const legacyItems =
+    assertScriptQuerySucceeded({
+      operation: 'select sunday_lunch_menu_items (unexpected categories)',
+      error: legacyError,
+      data: legacyRows,
+      allowMissing: true,
+    }) ?? []
+
+  if (legacyItems.length > 0) {
+    throw new Error(
+      `Found ${legacyItems.length} active menu item(s) with unexpected categories (expected only \"main\" or \"side\").`
+    )
+  }
+
+  console.log('✅ No unexpected active categories found.')
+  console.log('\n✅ Read-only Sunday lunch menu diagnostics completed.')
+}
+
+run().catch((error) => {
+  console.error('Fatal error:', error)
+  process.exitCode = 1
+})

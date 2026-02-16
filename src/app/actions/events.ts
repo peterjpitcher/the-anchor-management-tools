@@ -18,13 +18,39 @@ import {
 import { recordAnalyticsEvent } from '@/lib/analytics/events'
 import { sendSMS } from '@/lib/twilio'
 import { ensureReplyInstruction } from '@/lib/sms/support'
+import { logger } from '@/lib/logger'
 
 type CreateEventResult = { error: string } | { success: true; data: Event }
 type EventFaqInput = NonNullable<CreateEventInput['faqs']>[number]
 type PreparedEventData = Partial<CreateEventInput> & { faqs: EventFaqInput[] }
 
+type SmsSafetyMeta =
+  | {
+      success: boolean
+      code: string | null
+      logFailure: boolean
+    }
+  | null
+
 function getErrorMessage(error: unknown, fallback: string): string {
   return error instanceof Error ? error.message : fallback
+}
+
+async function recordEventAnalyticsSafe(
+  supabase: ReturnType<typeof createAdminClient>,
+  payload: Parameters<typeof recordAnalyticsEvent>[1],
+  context: Record<string, unknown>
+): Promise<void> {
+  try {
+    await recordAnalyticsEvent(supabase, payload)
+  } catch (analyticsError) {
+    logger.warn('Failed to record event analytics event', {
+      metadata: {
+        ...context,
+        error: analyticsError instanceof Error ? analyticsError.message : String(analyticsError)
+      }
+    })
+  }
 }
 
 // Helper to extract event data from FormData and apply category defaults
@@ -144,7 +170,11 @@ async function prepareEventDataFromFormData(formData: FormData, _existingEventId
       }
     }
   } catch (e) {
-    console.error('Error parsing FAQs:', e);
+    logger.warn('Failed to parse FAQs from event form data', {
+      metadata: {
+        error: e instanceof Error ? e.message : String(e),
+      },
+    })
   }
   data.faqs = faqs;
 
@@ -192,7 +222,9 @@ export async function createEvent(formData: FormData): Promise<CreateEventResult
     revalidatePath('/dashboard')
     return { success: true, data: event as Event };
   } catch (error: unknown) {
-    console.error('Unexpected error creating event:', error);
+    logger.error('Unexpected error creating event', {
+      error: error instanceof Error ? error : new Error(String(error)),
+    })
     return { error: getErrorMessage(error, 'An unexpected error occurred') };
   }
 }
@@ -240,7 +272,10 @@ export async function updateEvent(id: string, formData: FormData) {
     revalidatePath('/dashboard')
     return { success: true, data: event as Event };
   } catch (error: unknown) {
-    console.error('Unexpected error updating event:', error);
+    logger.error('Unexpected error updating event', {
+      error: error instanceof Error ? error : new Error(String(error)),
+      metadata: { eventId: id },
+    })
     return { error: getErrorMessage(error, 'An unexpected error occurred') };
   }
 }
@@ -278,7 +313,10 @@ export async function deleteEvent(id: string) {
     revalidatePath('/dashboard')
     return { success: true };
   } catch (error: unknown) {
-    console.error('Unexpected error deleting event:', error);
+    logger.error('Unexpected error deleting event', {
+      error: error instanceof Error ? error : new Error(String(error)),
+      metadata: { eventId: id },
+    })
     return { error: getErrorMessage(error, 'An unexpected error occurred') };
   }
 }
@@ -288,7 +326,10 @@ export async function getEventFAQs(eventId: string): Promise<{ data?: EventFAQ[]
     const data = await EventService.getEventFAQs(eventId);
     return { data };
   } catch (error: unknown) {
-    console.error('Error fetching event FAQs:', error);
+    logger.error('Error fetching event FAQs', {
+      error: error instanceof Error ? error : new Error(String(error)),
+      metadata: { eventId },
+    })
     return { error: getErrorMessage(error, 'Failed to fetch FAQs') };
   }
 }
@@ -298,7 +339,10 @@ export async function getEventById(eventId: string): Promise<{ data?: Event | nu
     const data = await EventService.getEventById(eventId);
     return { data };
   } catch (error: unknown) {
-    console.error('Error fetching event by ID:', error);
+    logger.error('Error fetching event by ID', {
+      error: error instanceof Error ? error : new Error(String(error)),
+      metadata: { eventId },
+    })
     return { error: getErrorMessage(error, 'Failed to fetch event') };
   }
 }
@@ -315,7 +359,9 @@ export async function getEvents(options?: {
     const { events, pagination } = await EventService.getEvents(options);
     return { data: events, pagination };
   } catch (error: unknown) {
-    console.error('Error fetching events:', error);
+    logger.error('Error fetching events', {
+      error: error instanceof Error ? error : new Error(String(error)),
+    })
     return { error: getErrorMessage(error, 'Failed to fetch events') };
   }
 }
@@ -344,6 +390,9 @@ type EventManualBookingResult =
         table_booking_id: string | null
         table_name: string | null
       }
+      meta?: {
+        sms: SmsSafetyMeta
+      }
     }
 
 type CreateEventBookingRpcResult = {
@@ -367,7 +416,9 @@ async function rollbackEventBookingForTableFailure(
   bookingId: string
 ): Promise<void> {
   const nowIso = new Date().toISOString()
-  await Promise.allSettled([
+  const rollbackErrors: string[] = []
+
+  const [bookingCancelResult, holdReleaseResult] = await Promise.all([
     (supabase.from('bookings') as any)
       .update({
         status: 'cancelled',
@@ -375,7 +426,9 @@ async function rollbackEventBookingForTableFailure(
         cancelled_by: 'system',
         updated_at: nowIso
       })
-      .eq('id', bookingId),
+      .eq('id', bookingId)
+      .select('id')
+      .maybeSingle(),
     (supabase.from('booking_holds') as any)
       .update({
         status: 'released',
@@ -385,7 +438,46 @@ async function rollbackEventBookingForTableFailure(
       .eq('event_booking_id', bookingId)
       .eq('hold_type', 'payment_hold')
       .eq('status', 'active')
+      .select('id'),
   ])
+
+  if (bookingCancelResult?.error) {
+    rollbackErrors.push(
+      `booking_cancel:${bookingCancelResult.error.message || 'unknown_error'}`
+    )
+  } else if (!bookingCancelResult?.data?.id) {
+    rollbackErrors.push('booking_cancel:no_row_updated')
+  }
+
+  if (holdReleaseResult?.error) {
+    rollbackErrors.push(
+      `payment_hold_release:${holdReleaseResult.error.message || 'unknown_error'}`
+    )
+  } else if (!Array.isArray(holdReleaseResult?.data)) {
+    rollbackErrors.push('payment_hold_release:mutation_result_unavailable')
+  } else if (holdReleaseResult.data.length === 0) {
+    const { data: remainingActiveHolds, error: remainingActiveHoldsError } = await (
+      supabase.from('booking_holds') as any
+    )
+      .select('id')
+      .eq('event_booking_id', bookingId)
+      .eq('hold_type', 'payment_hold')
+      .eq('status', 'active')
+
+    if (remainingActiveHoldsError) {
+      rollbackErrors.push(
+        `payment_hold_release:verification_error:${remainingActiveHoldsError.message || 'unknown_error'}`
+      )
+    } else if (!Array.isArray(remainingActiveHolds)) {
+      rollbackErrors.push('payment_hold_release:verification_result_unavailable')
+    } else if (remainingActiveHolds.length > 0) {
+      rollbackErrors.push(`payment_hold_release:active_rows_remaining:${remainingActiveHolds.length}`)
+    }
+  }
+
+  if (rollbackErrors.length > 0) {
+    throw new Error(`Rollback failed: ${rollbackErrors.join('; ')}`)
+  }
 }
 
 function normalizeEventBookingMode(value: unknown): 'table' | 'general' | 'mixed' {
@@ -467,7 +559,16 @@ export async function createEventManualBooking(input: {
           }
         }
       }
-      console.error('create_event_booking_v05 failed in createEventManualBooking:', bookingRpcError)
+      logger.error('create_event_booking_v05 failed in createEventManualBooking', {
+        error:
+          bookingRpcError instanceof Error
+            ? bookingRpcError
+            : new Error((bookingRpcError as { message?: string })?.message ?? String(bookingRpcError)),
+        metadata: {
+          eventId: parsed.data.eventId,
+          customerId: customerResolution.customerId,
+        },
+      })
       return { error: 'Failed to create booking.' }
     }
 
@@ -496,7 +597,13 @@ export async function createEventManualBooking(input: {
         })
         manageBookingUrl = manageToken.url
       } catch (tokenError) {
-        console.error('Failed to create event manage token:', tokenError)
+        logger.warn('Failed to create event manage token', {
+          metadata: {
+            bookingId,
+            customerId: customerResolution.customerId,
+            error: tokenError instanceof Error ? tokenError.message : String(tokenError),
+          },
+        })
       }
     }
 
@@ -514,11 +621,17 @@ export async function createEventManualBooking(input: {
         })
         nextStepUrl = paymentToken.url
       } catch (tokenError) {
-        console.error('Failed to create event payment token:', tokenError)
+        logger.warn('Failed to create event payment token', {
+          metadata: {
+            bookingId,
+            customerId: customerResolution.customerId,
+            error: tokenError instanceof Error ? tokenError.message : String(tokenError),
+          },
+        })
       }
     }
 
-    if (state === 'confirmed' && bookingId && bookingMode !== 'general') {
+    if ((state === 'confirmed' || state === 'pending_payment') && bookingId && bookingMode !== 'general') {
       const { data: tableRpcRaw, error: tableRpcError } = await supabase.rpc(
         'create_event_table_reservation_v05',
         {
@@ -533,7 +646,19 @@ export async function createEventManualBooking(input: {
 
       const tableResult = (tableRpcRaw || {}) as CreateEventTableReservationRpcResult
       if (tableRpcError || tableResult.state !== 'confirmed') {
-        await rollbackEventBookingForTableFailure(supabase, bookingId)
+        try {
+          await rollbackEventBookingForTableFailure(supabase, bookingId)
+        } catch (rollbackError) {
+          logger.error('Failed rolling back event booking after table reservation failure', {
+            error: rollbackError instanceof Error ? rollbackError : new Error(String(rollbackError)),
+            metadata: {
+              bookingId,
+              eventId: parsed.data.eventId,
+              customerId: customerResolution.customerId,
+            },
+          })
+          return { error: 'Failed to rollback booking after table reservation failure.' }
+        }
         reason = tableResult.reason || 'no_table'
         revalidatePath(`/events/${parsed.data.eventId}`)
         return {
@@ -554,6 +679,7 @@ export async function createEventManualBooking(input: {
       tableName = tableResult.table_name || null
     }
 
+    let smsMeta: SmsSafetyMeta = null
     if (state === 'confirmed' || state === 'pending_payment') {
       let smsSent = false
       if (bookingId) {
@@ -583,16 +709,47 @@ export async function createEventManualBooking(input: {
             }
           })
 
-          smsSent = smsResult.success === true
-          if (!smsResult.success) {
-            console.error('Failed to send event booking confirmation SMS:', smsResult.error)
+          const smsCode = typeof smsResult.code === 'string' ? smsResult.code : null
+          const smsLogFailure = smsResult.logFailure === true || smsCode === 'logging_failed'
+          const smsDeliveredOrUnknown = smsResult.success === true || smsLogFailure
+
+          smsSent = smsDeliveredOrUnknown
+          smsMeta = { success: smsDeliveredOrUnknown, code: smsCode, logFailure: smsLogFailure }
+
+          if (smsLogFailure) {
+            logger.error('Event manual booking SMS sent but outbound message logging failed', {
+              metadata: {
+                bookingId,
+                customerId: customerResolution.customerId,
+                code: smsCode,
+                logFailure: smsLogFailure,
+              },
+            })
+          }
+
+          if (!smsResult.success && !smsLogFailure) {
+            logger.warn('Failed to send event booking confirmation SMS', {
+              metadata: {
+                bookingId,
+                customerId: customerResolution.customerId,
+                code: smsCode,
+                error: smsResult.error,
+              },
+            })
           }
         } catch (smsError) {
-          console.error('Unexpected error sending event booking confirmation SMS:', smsError)
+          logger.warn('Event booking confirmation SMS threw unexpectedly', {
+            metadata: {
+              bookingId,
+              customerId: customerResolution.customerId,
+              error: smsError instanceof Error ? smsError.message : String(smsError),
+            },
+          })
+          smsMeta = { success: false, code: 'unexpected_exception', logFailure: false }
         }
       }
 
-      await recordAnalyticsEvent(supabase, {
+      await recordEventAnalyticsSafe(supabase, {
         customerId: customerResolution.customerId,
         eventType: 'event_booking_created',
         eventBookingId: bookingId || undefined,
@@ -604,6 +761,11 @@ export async function createEventManualBooking(input: {
           source: 'admin',
           sms_sent: smsSent
         }
+      }, {
+        customerId: customerResolution.customerId,
+        eventId: parsed.data.eventId,
+        eventBookingId: bookingId || null,
+        eventType: 'event_booking_created'
       })
     }
 
@@ -621,10 +783,15 @@ export async function createEventManualBooking(input: {
         next_step_url: nextStepUrl,
         table_booking_id: tableBookingId,
         table_name: tableName
-      }
+      },
+      meta: {
+        sms: smsMeta,
+      },
     }
   } catch (error) {
-    console.error('Unexpected createEventManualBooking error:', error)
+    logger.error('Unexpected createEventManualBooking error', {
+      error: error instanceof Error ? error : new Error(String(error)),
+    })
     return { error: getErrorMessage(error, 'Failed to create booking.') }
   }
 }
@@ -652,6 +819,9 @@ type CancelEventManualBookingResult =
         booking_id: string
         sms_sent: boolean
       }
+      meta?: {
+        sms: SmsSafetyMeta
+      }
     }
 
 type UpdateEventManualBookingSeatsResult =
@@ -668,6 +838,13 @@ type UpdateEventManualBookingSeatsResult =
         new_seats: number
         delta: number
         sms_sent: boolean
+      }
+      meta?: {
+        sms: SmsSafetyMeta
+        table_booking_sync?: {
+          success: boolean
+          error: string | null
+        }
       }
     }
 
@@ -811,10 +988,11 @@ export async function updateEventManualBookingSeats(input: {
       })
       .eq('event_booking_id', updateResult.booking_id)
       .not('status', 'in', '(cancelled,no_show)')
+      .select('id')
 
     const analyticsPromise =
       delta !== 0 && bookingRow.event_id && updateResult.customer_id
-        ? recordAnalyticsEvent(supabase, {
+        ? recordEventAnalyticsSafe(supabase, {
             customerId: updateResult.customer_id,
             eventBookingId: updateResult.booking_id,
             eventType: 'event_booking_updated',
@@ -825,26 +1003,109 @@ export async function updateEventManualBookingSeats(input: {
               new_seats: newSeats,
               delta
             }
+          }, {
+            customerId: updateResult.customer_id,
+            eventId: bookingRow.event_id,
+            eventBookingId: updateResult.booking_id,
+            eventType: 'event_booking_updated'
           })
         : Promise.resolve()
 
-    await Promise.allSettled([
+    const [tableSyncOutcome, analyticsOutcome] = await Promise.allSettled([
       tableSyncPromise,
       analyticsPromise
     ])
 
+    let tableBookingSyncMeta: { success: boolean; error: string | null } | null = null
+    if (tableSyncOutcome.status === 'rejected') {
+      const reason = tableSyncOutcome.reason instanceof Error ? tableSyncOutcome.reason.message : String(tableSyncOutcome.reason)
+      tableBookingSyncMeta = { success: false, error: reason }
+      logger.error('Linked table booking party-size sync task rejected unexpectedly', {
+        metadata: {
+          bookingId: updateResult.booking_id,
+          error: reason,
+        },
+      })
+    } else {
+      const syncResult = tableSyncOutcome.value as {
+        data?: Array<{ id?: string | null }> | null
+        error?: { message?: string } | null
+      } | null
+      let tableSyncError: string | null = null
+
+      if (syncResult?.error?.message) {
+        tableSyncError = syncResult.error.message
+      } else if (!Array.isArray(syncResult?.data)) {
+        tableSyncError = 'mutation_result_unavailable'
+      } else if (syncResult.data.length === 0) {
+        const {
+          data: remainingActiveLinkedBookings,
+          error: remainingActiveLinkedBookingsError
+        } = await (supabase.from('table_bookings') as any)
+          .select('id')
+          .eq('event_booking_id', updateResult.booking_id)
+          .not('status', 'in', '(cancelled,no_show)')
+
+        if (remainingActiveLinkedBookingsError?.message) {
+          tableSyncError = `verification_error:${remainingActiveLinkedBookingsError.message}`
+        } else if (!Array.isArray(remainingActiveLinkedBookings)) {
+          tableSyncError = 'verification_result_unavailable'
+        } else if (remainingActiveLinkedBookings.length > 0) {
+          tableSyncError = `active_rows_remaining:${remainingActiveLinkedBookings.length}`
+        }
+      }
+
+      if (tableSyncError) {
+        tableBookingSyncMeta = { success: false, error: tableSyncError }
+        logger.error('Failed to sync linked table booking party size after event booking seat update', {
+          metadata: {
+            bookingId: updateResult.booking_id,
+            error: tableSyncError,
+          },
+        })
+      } else {
+        tableBookingSyncMeta = { success: true, error: null }
+      }
+    }
+
+    if (analyticsOutcome.status === 'rejected') {
+      const reason = analyticsOutcome.reason instanceof Error ? analyticsOutcome.reason.message : String(analyticsOutcome.reason)
+      logger.warn('Event booking seat-update analytics task rejected unexpectedly', {
+        metadata: {
+          bookingId: updateResult.booking_id,
+          error: reason,
+        },
+      })
+    }
+
     let smsSent = false
+    let smsMeta: SmsSafetyMeta = null
     if (parsed.data.sendSms !== false && delta !== 0) {
       try {
-        smsSent = await sendEventBookingSeatUpdateSms(supabase, {
+        const smsResult = await sendEventBookingSeatUpdateSms(supabase, {
           bookingId: updateResult.booking_id,
           eventName: updateResult.event_name || null,
           oldSeats,
           newSeats,
           appBaseUrl: process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
         })
+        const smsCode = typeof smsResult.code === 'string' ? smsResult.code : null
+        const smsLogFailure = smsResult.logFailure === true || smsCode === 'logging_failed'
+        const smsDeliveredOrUnknown = smsResult.success === true || smsLogFailure
+        smsSent = smsDeliveredOrUnknown
+        smsMeta = {
+          success: smsDeliveredOrUnknown,
+          code: smsCode,
+          logFailure: smsLogFailure,
+        }
       } catch (smsError) {
-        console.error('Failed to send seat update SMS:', smsError)
+        logger.warn('Failed to send seat update SMS', {
+          metadata: {
+            bookingId: updateResult.booking_id,
+            error: smsError instanceof Error ? smsError.message : String(smsError),
+          },
+        })
+        smsMeta = { success: false, code: 'unexpected_exception', logFailure: false }
       }
     }
 
@@ -865,10 +1126,16 @@ export async function updateEventManualBookingSeats(input: {
         new_seats: newSeats,
         delta,
         sms_sent: smsSent
-      }
+      },
+      meta: {
+        sms: smsMeta,
+        table_booking_sync: tableBookingSyncMeta,
+      },
     }
   } catch (error) {
-    console.error('Unexpected updateEventManualBookingSeats error:', error)
+    logger.error('Unexpected updateEventManualBookingSeats error', {
+      error: error instanceof Error ? error : new Error(String(error)),
+    })
     return { error: getErrorMessage(error, 'Failed to update booking seats.') }
   }
 }
@@ -933,7 +1200,7 @@ export async function cancelEventManualBooking(input: {
     }
 
     const nowIso = new Date().toISOString()
-    const { error: cancelError } = await (supabase.from('bookings') as any)
+    const { data: cancelledBooking, error: cancelError } = await (supabase.from('bookings') as any)
       .update({
         status: 'cancelled',
         cancelled_at: nowIso,
@@ -941,12 +1208,18 @@ export async function cancelEventManualBooking(input: {
         updated_at: nowIso
       })
       .eq('id', bookingRow.id)
+      .select('id')
+      .maybeSingle()
 
     if (cancelError) {
       return { error: cancelError.message || 'Failed to cancel booking.' }
     }
 
-    await Promise.allSettled([
+    if (!cancelledBooking) {
+      return { error: 'Booking not found.' }
+    }
+
+    const [holdReleaseResult, tableBookingCancelResult] = await Promise.all([
       (supabase.from('booking_holds') as any)
         .update({
           status: 'released',
@@ -954,7 +1227,8 @@ export async function cancelEventManualBooking(input: {
           updated_at: nowIso
         })
         .eq('event_booking_id', bookingRow.id)
-        .eq('status', 'active'),
+        .eq('status', 'active')
+        .select('id'),
       (supabase.from('table_bookings') as any)
         .update({
           status: 'cancelled',
@@ -964,12 +1238,129 @@ export async function cancelEventManualBooking(input: {
         })
         .eq('event_booking_id', bookingRow.id)
         .not('status', 'in', '(cancelled,no_show)')
+        .select('id')
     ])
+
+    const followupFailureSet = new Set<string>()
+    let holdReleaseVerification: string | null = null
+    let tableBookingCancelVerification: string | null = null
+    let holdReleaseRemainingCount: number | null = null
+    let tableBookingCancelRemainingCount: number | null = null
+
+    if (holdReleaseResult?.error) {
+      followupFailureSet.add('booking_holds_release')
+    }
+    if (tableBookingCancelResult?.error) {
+      followupFailureSet.add('table_bookings_cancel')
+    }
+
+    const holdReleaseRows = Array.isArray(holdReleaseResult?.data) ? holdReleaseResult.data : null
+    const tableBookingCancelRows = Array.isArray(tableBookingCancelResult?.data)
+      ? tableBookingCancelResult.data
+      : null
+
+    if (!holdReleaseResult?.error && !holdReleaseRows) {
+      followupFailureSet.add('booking_holds_release')
+      holdReleaseVerification = 'mutation_result_unavailable'
+    }
+
+    if (!tableBookingCancelResult?.error && !tableBookingCancelRows) {
+      followupFailureSet.add('table_bookings_cancel')
+      tableBookingCancelVerification = 'mutation_result_unavailable'
+    }
+
+    if (followupFailureSet.size === 0) {
+      if (holdReleaseRows && holdReleaseRows.length === 0) {
+        const { data: remainingActiveHolds, error: remainingActiveHoldsError } = await (
+          supabase.from('booking_holds') as any
+        )
+          .select('id')
+          .eq('event_booking_id', bookingRow.id)
+          .eq('status', 'active')
+
+        if (remainingActiveHoldsError) {
+          followupFailureSet.add('booking_holds_release')
+          holdReleaseVerification = `verification_error:${remainingActiveHoldsError.message || 'unknown_error'}`
+        } else if (!Array.isArray(remainingActiveHolds)) {
+          followupFailureSet.add('booking_holds_release')
+          holdReleaseVerification = 'verification_result_unavailable'
+        } else if (remainingActiveHolds.length > 0) {
+          followupFailureSet.add('booking_holds_release')
+          holdReleaseVerification = 'active_rows_remaining'
+          holdReleaseRemainingCount = remainingActiveHolds.length
+        }
+      }
+
+      if (tableBookingCancelRows && tableBookingCancelRows.length === 0) {
+        const {
+          data: remainingActiveTableBookings,
+          error: remainingActiveTableBookingsError
+        } = await (supabase.from('table_bookings') as any)
+          .select('id')
+          .eq('event_booking_id', bookingRow.id)
+          .not('status', 'in', '(cancelled,no_show)')
+
+        if (remainingActiveTableBookingsError) {
+          followupFailureSet.add('table_bookings_cancel')
+          tableBookingCancelVerification = `verification_error:${remainingActiveTableBookingsError.message || 'unknown_error'}`
+        } else if (!Array.isArray(remainingActiveTableBookings)) {
+          followupFailureSet.add('table_bookings_cancel')
+          tableBookingCancelVerification = 'verification_result_unavailable'
+        } else if (remainingActiveTableBookings.length > 0) {
+          followupFailureSet.add('table_bookings_cancel')
+          tableBookingCancelVerification = 'active_rows_remaining'
+          tableBookingCancelRemainingCount = remainingActiveTableBookings.length
+        }
+      }
+    }
+
+    const followupFailures = Array.from(followupFailureSet)
+
+    if (followupFailures.length > 0) {
+      logger.warn('Event booking cancellation follow-up updates failed', {
+        metadata: {
+          bookingId: bookingRow.id,
+          failures: followupFailures,
+          holdReleaseError: holdReleaseResult?.error?.message,
+          tableBookingCancelError: tableBookingCancelResult?.error?.message,
+          holdReleaseVerification,
+          tableBookingCancelVerification,
+          holdReleaseRemainingCount,
+          tableBookingCancelRemainingCount
+        }
+      })
+
+      if (
+        followupFailures.length === 1 &&
+        followupFailures[0] === 'booking_holds_release'
+      ) {
+        return {
+          error:
+            'Booking cancelled but failed to release booking holds. Please refresh and contact engineering.'
+        }
+      }
+
+      if (
+        followupFailures.length === 1 &&
+        followupFailures[0] === 'table_bookings_cancel'
+      ) {
+        return {
+          error:
+            'Booking cancelled but failed to cancel linked table bookings. Please refresh and contact engineering.'
+        }
+      }
+
+      return {
+        error:
+          'Booking cancelled but follow-up updates failed. Please refresh and contact engineering.'
+      }
+    }
 
     const eventRecord = Array.isArray(bookingRow.event) ? bookingRow.event[0] : bookingRow.event
     const customerRecord = Array.isArray(bookingRow.customer) ? bookingRow.customer[0] : bookingRow.customer
 
     let smsSent = false
+    let smsMeta: SmsSafetyMeta = null
     const shouldSendSms = parsed.data.sendSms !== false
     if (
       shouldSendSms &&
@@ -993,20 +1384,46 @@ export async function cancelEventManualBooking(input: {
         process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || process.env.TWILIO_PHONE_NUMBER || undefined
       )
 
-      const smsResult = await sendSMS(customerRecord.mobile_number, smsBody, {
-        customerId: customerRecord.id,
-        metadata: {
-          event_booking_id: bookingRow.id,
-          event_id: bookingRow.event_id,
-          template_key: 'event_booking_cancelled_admin'
-        }
-      })
+      try {
+        const smsResult = await sendSMS(customerRecord.mobile_number, smsBody, {
+          customerId: customerRecord.id,
+          metadata: {
+            event_booking_id: bookingRow.id,
+            event_id: bookingRow.event_id,
+            template_key: 'event_booking_cancelled_admin'
+          }
+        })
 
-      smsSent = smsResult.success === true
+        const smsCode = typeof smsResult.code === 'string' ? smsResult.code : null
+        const smsLogFailure = smsResult.logFailure === true || smsCode === 'logging_failed'
+        const smsDeliveredOrUnknown = smsResult.success === true || smsLogFailure
+        smsSent = smsDeliveredOrUnknown
+        smsMeta = { success: smsDeliveredOrUnknown, code: smsCode, logFailure: smsLogFailure }
+
+        if (smsLogFailure) {
+          logger.error('Event booking cancellation SMS sent but outbound message logging failed', {
+            metadata: {
+              bookingId: bookingRow.id,
+              customerId: customerRecord.id,
+              code: smsCode,
+              logFailure: smsLogFailure,
+            },
+          })
+        }
+      } catch (smsError) {
+        logger.warn('Event booking cancellation SMS threw unexpectedly', {
+          metadata: {
+            bookingId: bookingRow.id,
+            customerId: customerRecord.id,
+            error: smsError instanceof Error ? smsError.message : String(smsError)
+          }
+        })
+        smsMeta = { success: false, code: 'unexpected_exception', logFailure: false }
+      }
     }
 
     if (bookingRow.customer_id) {
-      await recordAnalyticsEvent(supabase, {
+      await recordEventAnalyticsSafe(supabase, {
         customerId: bookingRow.customer_id,
         eventBookingId: bookingRow.id,
         eventType: 'event_booking_cancelled',
@@ -1016,6 +1433,11 @@ export async function cancelEventManualBooking(input: {
           source: 'admin',
           sms_sent: smsSent
         }
+      }, {
+        customerId: bookingRow.customer_id,
+        eventId: bookingRow.event_id,
+        eventBookingId: bookingRow.id,
+        eventType: 'event_booking_cancelled'
       })
     }
 
@@ -1030,10 +1452,15 @@ export async function cancelEventManualBooking(input: {
         reason: null,
         booking_id: bookingRow.id,
         sms_sent: smsSent
-      }
+      },
+      meta: {
+        sms: smsMeta,
+      },
     }
   } catch (error) {
-    console.error('Unexpected cancelEventManualBooking error:', error)
+    logger.error('Unexpected cancelEventManualBooking error', {
+      error: error instanceof Error ? error : new Error(String(error)),
+    })
     return { error: getErrorMessage(error, 'Failed to cancel booking.') }
   }
 }

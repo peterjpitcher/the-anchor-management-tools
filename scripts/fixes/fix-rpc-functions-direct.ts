@@ -1,48 +1,53 @@
 import * as dotenv from 'dotenv'
-import * as path from 'path'
-import { createClient } from '@supabase/supabase-js'
+import { resolve } from 'path'
+import { assertScriptQuerySucceeded } from '../../src/lib/script-mutation-safety'
+import { createAdminClient } from '../../src/lib/supabase/admin'
 
 // Load environment variables
-dotenv.config({ path: path.join(__dirname, '../.env.local') })
+dotenv.config({ path: resolve(process.cwd(), '.env.local') })
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
-const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
-
-if (!supabaseUrl || !supabaseKey) {
-  console.error('Missing environment variables. Please check .env.local')
-  process.exit(1)
-}
-
-async function executeSql(sql: string) {
-  const response = await fetch(`${supabaseUrl}/rest/v1/rpc/query`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'apikey': supabaseKey,
-      'Authorization': `Bearer ${supabaseKey}`
-    },
-    body: JSON.stringify({ query: sql })
-  })
-
-  if (!response.ok) {
-    const error = await response.text()
-    throw new Error(`SQL execution failed: ${error}`)
+function markFailure(message: string, error?: unknown) {
+  process.exitCode = 1
+  if (error) {
+    console.error(`❌ ${message}`, error)
+    return
   }
-
-  return response.json()
+  console.error(`❌ ${message}`)
 }
 
 async function fixRpcFunctions() {
-  console.log('=== Fixing RPC Functions via Direct SQL ===\n')
+  const argv = process.argv
+  if (argv.includes('--confirm')) {
+    throw new Error('This script is read-only and does not support --confirm.')
+  }
 
-  const supabase = createClient(supabaseUrl, supabaseKey)
+  if (argv.includes('--help')) {
+    console.log(`
+fix-rpc-functions-direct (read-only diagnostics)
+
+Usage:
+  ts-node scripts/fixes/fix-rpc-functions-direct.ts
+`)
+    return
+  }
+
+  console.log('=== RPC Function Diagnostics (read-only) ===\n')
+
+  const supabase = createAdminClient()
 
   // First, let's test the current function to see the exact error
   console.log('1. Testing current get_category_regulars function...')
-  const { data: categories } = await supabase
+  const { data: categoriesResult, error: categoriesError } = await supabase
     .from('event_categories')
     .select('id, name')
     .limit(1)
+
+  const categories = (assertScriptQuerySucceeded({
+    operation: 'Load event category sample',
+    error: categoriesError,
+    data: categoriesResult ?? [],
+    allowMissing: true
+  }) ?? []) as Array<{ id: string; name: string }>
 
   if (categories && categories.length > 0) {
     const categoryId = categories[0].id
@@ -55,11 +60,11 @@ async function fixRpcFunctions() {
       })
 
     if (testError) {
-      console.error('   Current error:', testError)
+      markFailure('get_category_regulars error', testError)
       
       // Now let's manually query the data to see what works
       console.log('\n2. Testing manual query...')
-      const { data: manualData, error: manualError } = await supabase
+      const { data: manualDataResult, error: manualError } = await supabase
         .from('customer_category_stats')
         .select(`
           customer_id,
@@ -78,21 +83,30 @@ async function fixRpcFunctions() {
         .order('times_attended', { ascending: false })
         .limit(10)
 
-      if (manualError) {
-        console.error('   Manual query error:', manualError)
-      } else {
-        console.log(`   ✓ Manual query found ${manualData?.length || 0} customers`)
-        manualData?.slice(0, 3).forEach(d => {
-          const c = (d as any).customers
-          console.log(`     - ${c.first_name} ${c.last_name} (attended ${d.times_attended} times)`)
-        })
-      }
+      const manualData = (assertScriptQuerySucceeded({
+        operation: 'Load manual customer category stats',
+        error: manualError,
+        data: manualDataResult ?? [],
+        allowMissing: true
+      }) ?? []) as Array<{
+        times_attended: number
+        customers?: {
+          first_name?: string | null
+          last_name?: string | null
+        } | null
+      }>
+
+      console.log(`   ✓ Manual query found ${manualData?.length || 0} customers`)
+      manualData?.slice(0, 3).forEach(d => {
+        const c = (d as any).customers
+        console.log(`     - ${c.first_name} ${c.last_name} (attended ${d.times_attended} times)`)
+      })
     } else {
       console.log(`   ✓ Function already works! Found ${regulars?.length || 0} customers`)
     }
+  } else {
+    markFailure('No event categories found; cannot test get_category_regulars')
   }
-
-  process.exit(0)
 }
 
-fixRpcFunctions().catch(console.error)
+fixRpcFunctions().catch((error) => markFailure('fix-rpc-functions-direct failed', error))

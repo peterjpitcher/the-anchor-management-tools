@@ -2,8 +2,16 @@ import { NextRequest } from 'next/server'
 import { z } from 'zod'
 
 import { withApiAuth, createApiResponse, createErrorResponse } from '@/lib/api/auth'
+import {
+  claimIdempotencyKey,
+  computeIdempotencyRequestHash,
+  getIdempotencyKey,
+  persistIdempotencyResponse,
+  releaseIdempotencyClaim
+} from '@/lib/api/idempotency'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { sendEmail } from '@/lib/email/emailService'
+import { logger } from '@/lib/logger'
 
 export const dynamic = 'force-dynamic'
 
@@ -162,11 +170,20 @@ export async function POST(request: NextRequest) {
       // Rate limit per IP (in addition to API key limits)
       if (submittedIp) {
         const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString()
-        const { count } = await supabase
+        const { count, error: rateLimitError } = await supabase
           .from('performer_submissions')
           .select('id', { count: 'exact', head: true })
           .eq('submitted_ip', submittedIp)
           .gte('created_at', oneHourAgo)
+
+        if (rateLimitError) {
+          logger.error('Failed to evaluate performer submission rate limit', {
+            // Supabase Postgrest errors are already `Error` instances; log them directly.
+            error: rateLimitError,
+            metadata: { submittedIp },
+          })
+          return createErrorResponse('Failed to process submission', 'DATABASE_ERROR', 500)
+        }
 
         if ((count || 0) >= RATE_LIMIT_MAX_PER_HOUR) {
           return createErrorResponse(
@@ -177,71 +194,156 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      const payload = {
-        full_name: parsedBody.fullName.trim(),
-        email: parsedBody.email.trim().toLowerCase(),
-        phone: parsedBody.phone.trim(),
-        bio: parsedBody.bio.trim(),
-        consent_data_storage: true,
-        source: 'website_open_mic',
-        submitted_ip: submittedIp,
-        user_agent: userAgent || null,
-      }
-
-      const { data: submission, error: insertError } = await supabase
-        .from('performer_submissions')
-        .insert([payload])
-        .select('id, full_name, email, phone, bio')
-        .single()
-
-      if (insertError || !submission) {
-        console.error('Failed to create performer submission:', insertError)
-        return createErrorResponse('Failed to save submission', 'DATABASE_ERROR', 500)
-      }
-
-      // Emails (non-fatal if they fail)
-      const performerEmail = buildPerformerConfirmationEmail({
-        fullName: submission.full_name,
+      const normalizedFullName = parsedBody.fullName.trim()
+      const normalizedEmail = parsedBody.email.trim().toLowerCase()
+      const normalizedPhone = parsedBody.phone.trim()
+      const normalizedBio = parsedBody.bio.trim()
+      const requestHash = computeIdempotencyRequestHash({
+        full_name: normalizedFullName,
+        email: normalizedEmail,
+        phone: normalizedPhone,
+        bio: normalizedBio,
+        source: 'website_open_mic'
       })
+      const hourBucket = Math.floor(Date.now() / (60 * 60 * 1000))
+      const idempotencyKey = getIdempotencyKey(request)
+        || `external_performer_interest:${requestHash.slice(0, 32)}:${hourBucket}`
+      const claim = await claimIdempotencyKey(supabase, idempotencyKey, requestHash)
 
-      const internalEmail = buildInternalNotificationEmail({
-        id: submission.id,
-        fullName: submission.full_name,
-        email: submission.email,
-        phone: submission.phone,
-        bio: submission.bio,
-      })
-
-      const [performerEmailResult, internalEmailResult] = await Promise.all([
-        sendEmail({
-          to: submission.email,
-          subject: performerEmail.subject,
-          html: performerEmail.html,
-          text: performerEmail.text,
-        }),
-        sendEmail({
-          to: 'manager@the-anchor.pub',
-          cc: ['leo.dowling@live.co.uk'],
-          subject: internalEmail.subject,
-          html: internalEmail.html,
-          text: internalEmail.text,
-        }),
-      ])
-
-      if (!performerEmailResult.success) {
-        console.error('Failed to send performer confirmation email:', performerEmailResult.error)
-      }
-      if (!internalEmailResult.success) {
-        console.error('Failed to send internal notification email:', internalEmailResult.error)
+      if (claim.state === 'conflict') {
+        return createErrorResponse(
+          'Idempotency key already used with a different request payload',
+          'IDEMPOTENCY_KEY_CONFLICT',
+          409
+        )
       }
 
-      return createApiResponse({
-        id: submission.id,
-        email_sent: {
-          performer: performerEmailResult.success,
-          internal: internalEmailResult.success,
-        },
-      })
+      if (claim.state === 'replay') {
+        return createApiResponse(claim.response)
+      }
+
+      if (claim.state === 'in_progress') {
+        return createErrorResponse(
+          'This request is already being processed. Please retry shortly.',
+          'IDEMPOTENCY_KEY_IN_PROGRESS',
+          409
+        )
+      }
+
+      let claimHeld = true
+      let mutationCommitted = false
+      try {
+        const payload = {
+          full_name: normalizedFullName,
+          email: normalizedEmail,
+          phone: normalizedPhone,
+          bio: normalizedBio,
+          consent_data_storage: true,
+          source: 'website_open_mic',
+          submitted_ip: submittedIp,
+          user_agent: userAgent || null,
+        }
+
+        const { data: submission, error: insertError } = await supabase
+          .from('performer_submissions')
+          .insert([payload])
+          .select('id, full_name, email, phone, bio')
+          .single()
+
+        if (insertError || !submission) {
+          const errorToLog = insertError ?? new Error('Insert failed with no error object')
+          logger.error('Failed to create performer submission', {
+            // Supabase Postgrest errors are already `Error` instances; log them directly.
+            error: errorToLog,
+          })
+          return createErrorResponse('Failed to save submission', 'DATABASE_ERROR', 500)
+        }
+
+        mutationCommitted = true
+
+        // Emails (non-fatal if they fail)
+        const performerEmail = buildPerformerConfirmationEmail({
+          fullName: submission.full_name,
+        })
+
+        const internalEmail = buildInternalNotificationEmail({
+          id: submission.id,
+          fullName: submission.full_name,
+          email: submission.email,
+          phone: submission.phone,
+          bio: submission.bio,
+        })
+
+        const [performerEmailResult, internalEmailResult] = await Promise.all([
+          sendEmail({
+            to: submission.email,
+            subject: performerEmail.subject,
+            html: performerEmail.html,
+            text: performerEmail.text,
+          }),
+          sendEmail({
+            to: 'manager@the-anchor.pub',
+            cc: ['leo.dowling@live.co.uk'],
+            subject: internalEmail.subject,
+            html: internalEmail.html,
+            text: internalEmail.text,
+          }),
+        ])
+
+        if (!performerEmailResult.success) {
+          logger.warn('Failed to send performer confirmation email', {
+            metadata: {
+              submissionId: submission.id,
+              error: performerEmailResult.error,
+            },
+          })
+        }
+        if (!internalEmailResult.success) {
+          logger.warn('Failed to send internal notification email', {
+            metadata: {
+              submissionId: submission.id,
+              error: internalEmailResult.error,
+            },
+          })
+        }
+
+        const responsePayload = {
+          id: submission.id,
+          email_sent: {
+            performer: performerEmailResult.success,
+            internal: internalEmailResult.success,
+          },
+        }
+
+        try {
+          await persistIdempotencyResponse(supabase, idempotencyKey, requestHash, responsePayload)
+          claimHeld = false
+        } catch (persistError) {
+          // Returning 500 causes clients to retry, which can replay the submission insert and
+          // re-send emails during DB/idempotency-write degradation.
+          logger.error('Performer-interest submission created but failed to persist idempotency response', {
+            error: persistError instanceof Error ? persistError : new Error(String(persistError)),
+            metadata: {
+              idempotencyKey,
+              submissionId: submission.id,
+            },
+          })
+          return createApiResponse(responsePayload)
+        }
+
+        return createApiResponse(responsePayload)
+      } finally {
+        if (claimHeld && !mutationCommitted) {
+          try {
+            await releaseIdempotencyClaim(supabase, idempotencyKey, requestHash)
+          } catch (releaseError) {
+            logger.error('Failed to release performer-interest idempotency claim', {
+              error: releaseError instanceof Error ? releaseError : new Error(String(releaseError)),
+              metadata: { idempotencyKey },
+            })
+          }
+        }
+      }
     },
     ['write:performers'],
     request,

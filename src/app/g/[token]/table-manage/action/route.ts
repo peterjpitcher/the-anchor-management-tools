@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { checkGuestTokenThrottle } from '@/lib/guest/token-throttle'
+import { logger } from '@/lib/logger'
 import { updateTableBookingByRawToken } from '@/lib/table-bookings/manage-booking'
 
 const ActionSchema = z.object({
@@ -71,7 +72,13 @@ export async function POST(
     }
 
     return redirectWithStatus(request, token, 'updated')
-  } catch {
+  } catch (error) {
+    logger.warn('Guest table-manage action failed unexpectedly', {
+      metadata: {
+        token,
+        error: error instanceof Error ? error.message : String(error)
+      }
+    })
     return redirectWithStatus(request, token, 'error')
   }
 }

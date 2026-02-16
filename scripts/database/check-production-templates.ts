@@ -1,61 +1,76 @@
 #!/usr/bin/env tsx
 
-/**
- * Script to check what templates are in production database
- */
+import dotenv from 'dotenv'
+import path from 'path'
+import { createAdminClient } from '../../src/lib/supabase/admin'
+import { assertScriptQuerySucceeded } from '../../src/lib/script-mutation-safety'
 
-import { createClient } from '@supabase/supabase-js'
-import { config } from 'dotenv'
-import { resolve } from 'path'
+dotenv.config({ path: path.resolve(process.cwd(), '.env.local') })
 
-// Load environment variables
-config({ path: resolve(__dirname, '../.env.local') })
-
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
-
-if (!supabaseUrl || !supabaseServiceKey) {
-  console.error('❌ Missing required environment variables')
-  process.exit(1)
-}
-
-const supabase = createClient(supabaseUrl, supabaseServiceKey)
-
-async function checkProductionTemplates() {
-  console.log('🔍 Checking production templates...\n')
-
-  // Check all message templates
-  const { data: templates, error: templatesError } = await supabase
-    .from('message_templates')
-    .select('*')
-    .in('template_type', ['booking_confirmation', 'booking_reminder_confirmation'])
-    .order('template_type')
-
-  if (templatesError) {
-    console.error('❌ Error loading templates:', templatesError)
+function markFailure(message: string, error?: unknown) {
+  process.exitCode = 1
+  if (error) {
+    console.error(`❌ ${message}`, error)
     return
   }
+  console.error(`❌ ${message}`)
+}
+
+async function checkProductionTemplates() {
+  const argv = process.argv
+  if (argv.includes('--confirm')) {
+    throw new Error('check-production-templates is strictly read-only; do not pass --confirm.')
+  }
+
+  const supabase = createAdminClient()
+
+  console.log('🔍 Checking production templates...\n')
+
+  const { data: templatesRows, error: templatesError } = await supabase
+    .from('message_templates')
+    .select('id, name, template_type, is_default, is_active, content, variables')
+    .in('template_type', ['booking_confirmation', 'booking_reminder_confirmation'])
+    .order('template_type', { ascending: true })
+
+  const templates = (assertScriptQuerySucceeded({
+    operation: 'Load booking confirmation templates',
+    error: templatesError,
+    data: templatesRows ?? [],
+    allowMissing: true
+  }) ?? []) as Array<{
+    id: string
+    name: string | null
+    template_type: string | null
+    is_default: boolean | null
+    is_active: boolean | null
+    content: string | null
+    variables: string[] | null
+  }>
 
   console.log('📋 Templates for booking confirmations:')
   console.log('=====================================\n')
-  
-  templates?.forEach(t => {
-    console.log(`Template: ${t.name}`)
-    console.log(`- ID: ${t.id}`)
-    console.log(`- Type: ${t.template_type}`)
-    console.log(`- Default: ${t.is_default}`)
-    console.log(`- Active: ${t.is_active}`)
-    console.log(`- Content: ${t.content}`)
-    console.log('---')
-  })
 
-  // Test the RPC function with a dummy event ID
+  if (templates.length === 0) {
+    markFailure('No booking confirmation templates found (message_templates returned 0 rows).')
+  }
+
+  for (const t of templates) {
+    console.log(`Template: ${t.name || 'unknown'}`)
+    console.log(`- ID: ${t.id}`)
+    console.log(`- Type: ${t.template_type || 'unknown'}`)
+    console.log(`- Default: ${t.is_default ? 'yes' : 'no'}`)
+    console.log(`- Active: ${t.is_active ? 'yes' : 'no'}`)
+    console.log(`- Variables: ${Array.isArray(t.variables) ? t.variables.join(', ') : 'none'}`)
+    console.log(`- Content: ${t.content || ''}`)
+    console.log('---')
+  }
+
   console.log('\n\n🧪 Testing RPC function:')
   console.log('========================\n')
-  
+
   const testEventId = '00000000-0000-0000-0000-000000000000'
   const testTypes = ['booking_confirmation', 'booking_reminder_confirmation']
-  
+
   for (const type of testTypes) {
     console.log(`\nTesting ${type}:`)
     const { data, error } = await supabase
@@ -63,41 +78,55 @@ async function checkProductionTemplates() {
         p_event_id: testEventId,
         p_template_type: type
       })
-      .single()
+      .maybeSingle()
 
     if (error) {
-      console.log(`❌ Error: ${error.message}`)
-    } else if (data) {
-      console.log(`✅ Found template`)
-      console.log(`- Content: ${data.content}`)
-      console.log(`- Variables: ${data.variables?.join(', ')}`)
-    } else {
-      console.log(`❌ No template returned`)
+      markFailure(`RPC get_message_template failed for template_type='${type}'.`, error)
+      continue
     }
+
+    if (!data) {
+      markFailure(`RPC get_message_template returned no template for template_type='${type}'.`)
+      continue
+    }
+
+    const record = data as { content?: string | null; variables?: string[] | null }
+    console.log('✅ Found template')
+    console.log(`- Content: ${record.content || ''}`)
+    console.log(`- Variables: ${Array.isArray(record.variables) ? record.variables.join(', ') : 'none'}`)
   }
 
-  // Check if there are any event-specific templates
   console.log('\n\n📋 Event-specific templates:')
   console.log('===========================\n')
-  
-  const { data: eventTemplates, error: eventError } = await supabase
+
+  const { data: eventTemplatesRows, error: eventError } = await supabase
     .from('event_message_templates')
-    .select('event_id, template_type, content, is_active')
+    .select('event_id, template_type, is_active')
     .in('template_type', ['booking_confirmation', 'booking_reminder_confirmation'])
     .limit(10)
 
-  if (eventError) {
-    console.error('❌ Error loading event templates:', eventError)
-  } else if (eventTemplates && eventTemplates.length > 0) {
-    eventTemplates.forEach(t => {
-      console.log(`Event ${t.event_id}: ${t.template_type} (active: ${t.is_active})`)
-    })
+  const eventTemplates = (assertScriptQuerySucceeded({
+    operation: 'Load event-specific templates',
+    error: eventError,
+    data: eventTemplatesRows ?? [],
+    allowMissing: true
+  }) ?? []) as Array<{ event_id: string; template_type: string | null; is_active: boolean | null }>
+
+  if (eventTemplates.length > 0) {
+    for (const t of eventTemplates) {
+      console.log(`Event ${t.event_id}: ${t.template_type || 'unknown'} (active: ${t.is_active ? 'yes' : 'no'})`)
+    }
   } else {
     console.log('No event-specific templates found')
   }
 
-  console.log('\n✅ Check complete!')
+  if (process.exitCode === 1) {
+    console.log('\n❌ Check completed with failures.')
+  } else {
+    console.log('\n✅ Check complete!')
+  }
 }
 
-// Run the check
-checkProductionTemplates().catch(console.error)
+void checkProductionTemplates().catch((error) => {
+  markFailure('check-production-templates failed.', error)
+})

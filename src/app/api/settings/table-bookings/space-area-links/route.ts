@@ -63,12 +63,10 @@ export async function GET() {
     const data = await loadSpaceAreaLinkData(auth.supabase)
     return NextResponse.json({ success: true, data })
   } catch (error) {
+    console.error('Failed to load private-booking space mappings', error)
     return NextResponse.json(
       {
-        error:
-          error instanceof Error
-            ? error.message
-            : 'Failed to load private-booking space mappings'
+        error: 'Failed to load private-booking space mappings'
       },
       { status: 500 }
     )

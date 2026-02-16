@@ -2,6 +2,7 @@
 
 import { createAdminClient } from '@/lib/supabase/admin'
 import { checkUserPermission } from '@/app/actions/rbac'
+import { logger } from '@/lib/logger'
 
 export async function diagnoseWebhookIssues() {
   const canManage = await checkUserPermission('settings', 'manage')
@@ -19,17 +20,20 @@ export async function diagnoseWebhookIssues() {
     issues: [],
     recommendations: []
   }
+
+  const diagnosticLogMarker = `diag_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`
   
   try {
     // 1. Check webhook_logs table structure
-    console.log('=== WEBHOOK DIAGNOSTIC REPORT ===')
-    console.log('Checking webhook_logs table...')
+    logger.info('Webhook diagnostic report starting', {
+      metadata: { diagnosticLogMarker }
+    })
     
     // Try to insert a test record to see what columns exist
     const testLog = {
       webhook_type: 'test',
       status: 'test',
-      message_sid: 'test123',
+      message_sid: diagnosticLogMarker,
       headers: { test: true },
       body: 'test body',
       params: { test: 'params' },
@@ -43,14 +47,30 @@ export async function diagnoseWebhookIssues() {
       .insert(testLog)
     
     if (insertError) {
-      console.log('webhook_logs table structure issue:', insertError.message)
+      logger.warn('webhook_logs table insert diagnostic failed', {
+        error: new Error(insertError.message),
+        metadata: { diagnosticLogMarker }
+      })
       if (insertError.message.includes('column') && insertError.message.includes('does not exist')) {
         report.issues.push('webhook_logs table is missing columns that the application is trying to use')
         report.recommendations.push('Run the migration: 20250622_fix_webhook_logs_table.sql')
       }
     } else {
       // Clean up test record
-      await supabase.from('webhook_logs').delete().eq('webhook_type', 'test')
+      const { error: cleanupError } = await supabase
+        .from('webhook_logs')
+        .delete()
+        .eq('webhook_type', 'test')
+        .eq('message_sid', diagnosticLogMarker)
+
+      if (cleanupError) {
+        logger.warn('Failed to clean up webhook diagnostic test record', {
+          error: cleanupError instanceof Error ? cleanupError : new Error(String(cleanupError)),
+          metadata: { diagnosticLogMarker }
+        })
+        report.issues.push('Failed to clean up diagnostic webhook log test record')
+        report.recommendations.push('Delete test webhook_logs rows with webhook_type=test and matching message_sid marker manually')
+      }
     }
     
     // 2. Check recent webhook logs
@@ -62,10 +82,15 @@ export async function diagnoseWebhookIssues() {
       .limit(20)
     
     if (logsError) {
-      console.log('Error fetching webhook logs:', logsError)
+      logger.warn('Error fetching webhook logs during diagnosis', {
+        error: new Error(logsError.message),
+        metadata: { diagnosticLogMarker }
+      })
       report.issues.push(`Cannot query webhook logs: ${logsError.message}`)
     } else {
-      console.log(`Found ${recentLogs?.length || 0} recent webhook logs`)
+      logger.info('Recent webhook logs fetched for diagnosis', {
+        metadata: { diagnosticLogMarker, count: recentLogs?.length || 0 }
+      })
       
       const errorLogs = recentLogs?.filter(log => 
         log.status === 'error' || 
@@ -76,7 +101,13 @@ export async function diagnoseWebhookIssues() {
       if (errorLogs.length > 0) {
         report.issues.push(`Found ${errorLogs.length} webhook errors in recent logs`)
         errorLogs.forEach(log => {
-          console.log(`  - ${log.status}: ${log.error_message || 'No error message'}`)
+          logger.info('Recent webhook error log', {
+            metadata: {
+              diagnosticLogMarker,
+              status: log.status,
+              error_message: log.error_message || null
+            }
+          })
         })
       }
       
@@ -97,10 +128,15 @@ export async function diagnoseWebhookIssues() {
       .limit(10)
     
     if (messagesError) {
-      console.log('Error fetching messages:', messagesError)
+      logger.warn('Error fetching messages during webhook diagnosis', {
+        error: new Error(messagesError.message),
+        metadata: { diagnosticLogMarker }
+      })
       report.issues.push(`Cannot query messages: ${messagesError.message}`)
     } else {
-      console.log(`Found ${recentMessages?.length || 0} recent messages`)
+      logger.info('Recent messages fetched for webhook diagnosis', {
+        metadata: { diagnosticLogMarker, count: recentMessages?.length || 0 }
+      })
       
       // Check for inbound messages
       const inboundMessages = recentMessages?.filter(m => m.direction === 'inbound') || []
@@ -130,7 +166,9 @@ export async function diagnoseWebhookIssues() {
       if (phoneFormats.size > 1) {
         report.issues.push('Inconsistent phone number formats in database')
         report.recommendations.push('Standardize all phone numbers to E.164 format (+44...)')
-        console.log('Phone format variations found:', Array.from(phoneFormats))
+        logger.info('Phone format variations found during webhook diagnosis', {
+          metadata: { diagnosticLogMarker, formats: Array.from(phoneFormats) }
+        })
       }
     }
     
@@ -142,9 +180,8 @@ export async function diagnoseWebhookIssues() {
       'SKIP_TWILIO_SIGNATURE_VALIDATION': process.env.SKIP_TWILIO_SIGNATURE_VALIDATION
     }
     
-    console.log('\nEnvironment variable status:')
-    Object.entries(envChecks).forEach(([key, value]) => {
-      console.log(`  ${key}: ${value === true ? 'Set' : value === false ? 'Not set' : value}`)
+    logger.info('Webhook diagnostic environment status', {
+      metadata: { diagnosticLogMarker, ...envChecks }
     })
     
     if (!envChecks['TWILIO_AUTH_TOKEN']) {
@@ -158,17 +195,21 @@ export async function diagnoseWebhookIssues() {
     }
     
     // Generate summary
-    console.log('\n=== SUMMARY ===')
-    console.log(`Issues found: ${report.issues.length}`)
-    report.issues.forEach((issue: string) => console.log(`  - ${issue}`))
-    
-    console.log(`\nRecommendations: ${report.recommendations.length}`)
-    report.recommendations.forEach((rec: string) => console.log(`  - ${rec}`))
+    logger.info('Webhook diagnostic summary', {
+      metadata: {
+        diagnosticLogMarker,
+        issues: report.issues.length,
+        recommendations: report.recommendations.length
+      }
+    })
     
     return report
     
   } catch (error) {
-    console.error('Diagnostic error:', error)
+    logger.error('Webhook diagnostic error', {
+      error: error instanceof Error ? error : new Error(String(error)),
+      metadata: { diagnosticLogMarker }
+    })
     report.error = error instanceof Error ? error.message : 'Unknown error'
     return report
   }

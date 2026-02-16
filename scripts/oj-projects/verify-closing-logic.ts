@@ -1,49 +1,48 @@
+#!/usr/bin/env tsx
+/**
+ * OJ project "closing logic" verification (read-only).
+ *
+ * This script previously created/deleted test projects using the service-role key to
+ * try to validate application-layer guards. That approach is unsafe and does not
+ * actually verify the Next.js server action logic (because direct Supabase calls bypass it).
+ *
+ * Safety:
+ * - Strictly read-only and blocks `--confirm`.
+ * - Fails closed on env / DB read errors.
+ */
 
-import { createClient } from '@supabase/supabase-js';
-import dotenv from 'dotenv';
-import path from 'path';
+import dotenv from 'dotenv'
+import path from 'path'
+import { createAdminClient } from '@/lib/supabase/admin'
 
-dotenv.config({ path: path.resolve(process.cwd(), '.env.local') });
+const SCRIPT_NAME = 'oj-verify-closing-logic'
 
-const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
-
-const VENDOR_ID = 'b9a6f8b9-9267-42ea-bfbf-7b122a79d9e3'; // Barons
-
-async function verify() {
-    // 1. Create a Closed Project
-    const { data: project } = await supabase
-        .from('oj_projects')
-        .insert({
-            vendor_id: VENDOR_ID,
-            project_name: 'Test Closed Project',
-            project_code: 'TEST-CLOSED',
-            status: 'completed', // Closed
-            budget_hours: 10
-        })
-        .select('id')
-        .single();
-
-    if (!project) throw new Error('Failed to create test project');
-    console.log(`Created test project (completed): ${project.id}`);
-
-    // 2. Try to add entry directly? 
-    // We can't use server actions here, so we must rely on the fact that server actions call `ensureProjectMatchesVendor`.
-    // Wait, the logic is IN the server action function, so calling supabase directly bypasses it unless it's in a Trigger.
-    // The implementations I made were in `entries.ts` (TypeScript code), not SQL triggers.
-    // So I cannot verify the TypeScript logic using a raw node script that calls Supabase directly.
-
-    // However, I can manually checking the function code or trust the implementation. 
-    // Or I can add a separate verification step where I verify the SQL state if I had implemented via Triggers.
-
-    // Since I implemented it in the App Layer (Next.js Server Action), a script bypassing the App Layer won't test it.
-    // I will skip backend verification via script and rely on code review or manual testing.
-
-    // Just delete the test project
-    await supabase.from('oj_projects').delete().eq('id', project.id);
-    console.log('Cleaned up test project. Skipping TS logic verification script.');
+function isFlagPresent(flag: string): boolean {
+  return process.argv.includes(flag)
 }
 
-verify();
+async function main() {
+  dotenv.config({ path: path.resolve(process.cwd(), '.env.local') })
+
+  if (isFlagPresent('--confirm')) {
+    throw new Error(`[${SCRIPT_NAME}] This script is read-only and does not support --confirm.`)
+  }
+
+  const supabase = createAdminClient()
+
+  // Minimal read-only smoke check that DB access works.
+  const { error } = await supabase.from('oj_projects').select('id', { head: true, count: 'exact' })
+  if (error) {
+    throw new Error(`[${SCRIPT_NAME}] Failed to read oj_projects: ${error.message}`)
+  }
+
+  console.log(`[${SCRIPT_NAME}] Read-only check complete.`)
+  console.log(
+    `[${SCRIPT_NAME}] Note: Application-layer closing guards must be verified via integration tests or app-layer calls, not direct Supabase scripts.`
+  )
+}
+
+main().catch((error) => {
+  console.error(`[${SCRIPT_NAME}] Failed`, error)
+  process.exitCode = 1
+})

@@ -26,10 +26,7 @@ export async function GET(request: NextRequest) {
     if (error) {
       console.error('[Cron] Error generating slots:', error);
       return NextResponse.json(
-        { 
-          error: 'Failed to generate slots',
-          details: error.message 
-        },
+        { error: 'Failed to generate slots' },
         { status: 500 }
       );
     }
@@ -58,10 +55,7 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     console.error('[Cron] Unexpected error:', error);
     return NextResponse.json(
-      { 
-        error: 'Internal server error',
-        message: error instanceof Error ? error.message : 'Unknown error'
-      },
+      { error: 'Internal server error' },
       { status: 500 }
     );
   }

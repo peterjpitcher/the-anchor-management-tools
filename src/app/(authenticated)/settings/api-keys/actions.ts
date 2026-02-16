@@ -175,10 +175,13 @@ export async function revokeApiKey(
       .update({ is_active: false })
       .eq('id', keyId)
       .select()
-      .single()
+      .maybeSingle()
 
     if (updateError) {
       throw updateError
+    }
+    if (!updated) {
+      return { error: 'API key not found' }
     }
 
     await logAuditEvent({

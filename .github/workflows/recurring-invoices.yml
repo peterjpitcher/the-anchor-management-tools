@@ -1,9 +1,7 @@
 name: Recurring Invoices
 
 on:
-  schedule:
-    - cron: '0 8 * * *'  # Run at 8 AM UTC daily
-  workflow_dispatch:      # Allow manual triggering
+  workflow_dispatch:      # Manual only (scheduled via Vercel cron)
 
 jobs:
   process-recurring-invoices:

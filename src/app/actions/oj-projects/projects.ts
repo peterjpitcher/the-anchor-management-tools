@@ -43,10 +43,12 @@ function deriveClientCode(vendorName: string) {
 }
 
 function randomSuffix(length = 5) {
-  while (true) {
-    const raw = crypto.randomBytes(6).toString('base64url').toUpperCase().replace(/[^A-Z0-9]/g, '')
-    if (raw.length >= length) return raw.slice(0, length)
-  }
+  const targetLength = Math.max(1, Math.floor(length))
+  return crypto
+    .randomBytes(Math.max(4, Math.ceil(targetLength / 2)))
+    .toString('hex')
+    .toUpperCase()
+    .slice(0, targetLength)
 }
 
 async function generateProjectCode(supabase: Awaited<ReturnType<typeof createClient>>, vendorId: string) {
@@ -228,9 +230,10 @@ export async function updateProject(formData: FormData) {
     })
     .eq('id', parsed.data.id)
     .select('*')
-    .single()
+    .maybeSingle()
 
   if (error) return { error: error.message }
+  if (!data) return { error: 'Project not found' }
   return { project: data, success: true as const }
 }
 
@@ -252,12 +255,15 @@ export async function deleteProject(formData: FormData) {
     return { error: 'Cannot delete a project with entries. Archive it instead.' }
   }
 
-  const { error } = await supabase
+  const { data: deletedProject, error } = await supabase
     .from('oj_projects')
     .delete()
     .eq('id', projectId)
+    .select('id')
+    .maybeSingle()
 
   if (error) return { error: error.message }
+  if (!deletedProject) return { error: 'Project not found' }
   return { success: true as const }
 }
 
@@ -274,14 +280,17 @@ export async function updateProjectStatus(formData: FormData) {
   }
 
   const supabase = await createClient()
-  const { error } = await supabase
+  const { data: updatedProject, error } = await supabase
     .from('oj_projects')
     .update({
       status,
       updated_at: new Date().toISOString()
     })
     .eq('id', id)
+    .select('id')
+    .maybeSingle()
 
   if (error) return { error: error.message }
+  if (!updatedProject) return { error: 'Project not found' }
   return { success: true as const }
 }

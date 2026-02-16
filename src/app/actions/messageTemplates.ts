@@ -206,14 +206,19 @@ export async function deleteMessageTemplate(templateId: string) {
       return { error: 'Template not found' }
     }
 
-    const { error } = await supabase
+    const { data: deletedTemplate, error } = await supabase
       .from('message_templates')
       .delete()
       .eq('id', templateId)
+      .select('id')
+      .maybeSingle()
 
     if (error) {
       console.error('Error deleting message template:', error)
       return { error: 'Failed to delete message template' }
+    }
+    if (!deletedTemplate) {
+      return { error: 'Template not found' }
     }
 
     await logAuditEvent({
@@ -241,17 +246,22 @@ export async function toggleMessageTemplate(templateId: string, nextActive: bool
   const { supabase } = ensure
 
   try {
-    const { error } = await supabase
+    const { data: updatedTemplate, error } = await supabase
       .from('message_templates')
       .update({
         is_active: nextActive,
         updated_at: new Date().toISOString(),
       })
       .eq('id', templateId)
+      .select('id')
+      .maybeSingle()
 
     if (error) {
       console.error('Error toggling message template:', error)
       return { error: 'Failed to update message template' }
+    }
+    if (!updatedTemplate) {
+      return { error: 'Template not found' }
     }
 
     await logAuditEvent({

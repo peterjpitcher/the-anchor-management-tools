@@ -117,8 +117,8 @@ async function sendRemittanceAdviceForPaidInvoice(
   try {
     invoice = await InvoiceService.getInvoiceById(invoiceId)
   } catch (error: any) {
-    const message = error?.message || 'Failed to load invoice for remittance advice'
-    console.error('[Invoices] Remittance advice aborted:', message)
+    const message = error?.message || 'Failed to load invoice for receipt'
+    console.error('[Invoices] Receipt dispatch aborted:', message)
     return { sent: false, skippedReason: 'invoice_lookup_failed', error: message }
   }
 
@@ -170,12 +170,12 @@ async function sendRemittanceAdviceForPaidInvoice(
   const outstandingBalance = Math.max(0, invoice.total_amount - invoice.paid_amount)
   const recipientName = invoice.vendor?.contact_name || invoice.vendor?.name || 'there'
 
-  const subject = `Remittance Advice: Invoice ${invoice.invoice_number} (Paid)`
+  const subject = `Receipt: Invoice ${invoice.invoice_number} (Paid)`
   const body = `Hi ${recipientName},
 
 I hope you're doing well!
 
-This is a remittance advice confirming payment has been received for invoice ${invoice.invoice_number}.
+This is a receipt confirming payment has been received for invoice ${invoice.invoice_number}.
 
 Invoice Total: ${formatCurrencyForEmail(invoice.total_amount)}
 Payment Received: ${formatCurrencyForEmail(paymentAmount)}
@@ -234,11 +234,11 @@ Orange Jelly Limited
       resource_id: invoiceId,
       operation_status: 'success',
       additional_info: {
-        action: 'remittance_advice_sent',
+        action: 'receipt_sent',
         invoice_number: invoice.invoice_number,
         recipient: toAddress,
         cc: ccAddresses,
-        remittance_test_override: forcedRecipient
+        receipt_test_override: forcedRecipient
           ? {
               forced_to: forcedRecipient,
               original_to: resolvedRecipients?.to || null,
@@ -251,7 +251,7 @@ Orange Jelly Limited
     return { sent: true }
   }
 
-  const errorMessage = emailResult.error || 'Failed to send remittance advice'
+  const errorMessage = emailResult.error || 'Failed to send receipt'
   const { error: failedLogError } = await supabase.from('invoice_email_logs').insert({
     invoice_id: invoiceId,
     sent_to: toAddress,
@@ -263,7 +263,7 @@ Orange Jelly Limited
   })
 
   if (failedLogError) {
-    console.error('[Invoices] Failed to write remittance failure log:', failedLogError)
+    console.error('[Invoices] Failed to write receipt failure log:', failedLogError)
   }
 
   await logAuditEvent({
@@ -273,11 +273,11 @@ Orange Jelly Limited
     operation_status: 'failure',
     error_message: errorMessage,
     additional_info: {
-      action: 'remittance_advice_send_failed',
+      action: 'receipt_send_failed',
       invoice_number: invoice.invoice_number,
       recipient: toAddress,
       cc: ccAddresses,
-      remittance_test_override: forcedRecipient
+      receipt_test_override: forcedRecipient
         ? {
             forced_to: forcedRecipient,
             original_to: resolvedRecipients?.to || null,
@@ -349,15 +349,20 @@ export async function createInvoice(formData: FormData): Promise<CreateInvoiceRe
       return { error: 'Line items are required' }
     }
 
-    const rawLineItems: InvoiceLineItemInput[] = JSON.parse(lineItemsJson)
-    const lineItems: InvoiceLineItemInput[] = rawLineItems.map((item) => ({
-      catalog_item_id: item.catalog_item_id,
-      description: item.description,
-      quantity: Number(item.quantity) || 0,
-      unit_price: Number(item.unit_price) || 0,
-      discount_percentage: Number(item.discount_percentage) || 0,
-      vat_rate: Number(item.vat_rate) || 0,
-    }))
+    let lineItems: InvoiceLineItemInput[]
+    try {
+      const rawLineItems: InvoiceLineItemInput[] = JSON.parse(lineItemsJson)
+      lineItems = rawLineItems.map((item) => ({
+        catalog_item_id: item.catalog_item_id,
+        description: item.description,
+        quantity: Number(item.quantity) || 0,
+        unit_price: Number(item.unit_price) || 0,
+        discount_percentage: Number(item.discount_percentage) || 0,
+        vat_rate: Number(item.vat_rate) || 0,
+      }))
+    } catch {
+      return { error: 'Invalid line items data' }
+    }
     if (!Array.isArray(lineItems) || lineItems.length === 0) {
       return { error: 'At least one line item is required' }
     }
@@ -645,15 +650,35 @@ export async function recordPayment(formData: FormData) {
       return { error: 'You do not have permission to record payments' }
     }
 
-    const invoiceId = formData.get('invoiceId') as string
-    const paymentDate = formData.get('paymentDate') as string
-    const amount = parseFloat(formData.get('amount') as string)
-    const paymentMethod = formData.get('paymentMethod') as string
-    const reference = formData.get('reference') as string
-    const notes = formData.get('notes') as string
+    const invoiceId = String(formData.get('invoiceId') || '').trim()
+    const paymentDate = String(formData.get('paymentDate') || '').trim()
+    const amountRaw = String(formData.get('amount') || '').trim()
+    const amount = Number.parseFloat(amountRaw)
+    const paymentMethod = String(formData.get('paymentMethod') || '').trim()
+    const reference = String(formData.get('reference') || '').trim()
+    const notes = String(formData.get('notes') || '').trim()
 
-    if (!invoiceId || !paymentDate || !amount || !paymentMethod) {
+    if (!invoiceId || !paymentDate || !paymentMethod || !amountRaw) {
       return { error: 'Missing required fields' }
+    }
+
+    if (!Number.isFinite(amount) || amount <= 0) {
+      return { error: 'Payment amount must be greater than zero' }
+    }
+
+    if (Number.isNaN(Date.parse(paymentDate))) {
+      return { error: 'Payment date is invalid' }
+    }
+
+    const { data: invoiceBeforePayment, error: invoiceBeforeError } = await supabase
+      .from('invoices')
+      .select('status')
+      .eq('id', invoiceId)
+      .is('deleted_at', null)
+      .maybeSingle()
+
+    if (invoiceBeforeError || !invoiceBeforePayment) {
+      return { error: invoiceBeforeError?.message || 'Invoice not found' }
     }
 
     const payment = await InvoiceService.recordPayment({
@@ -678,7 +703,22 @@ export async function recordPayment(formData: FormData) {
       }
     })
 
-    const remittanceAdvice = await sendRemittanceAdviceForPaidInvoice(invoiceId, user?.id || null)
+    let remittanceAdvice: RemittanceAdviceResult | null = null
+    const { data: invoiceAfterPayment, error: invoiceAfterError } = await supabase
+      .from('invoices')
+      .select('status')
+      .eq('id', invoiceId)
+      .is('deleted_at', null)
+      .maybeSingle()
+
+    if (invoiceAfterError) {
+      console.error('Error checking invoice status after payment:', invoiceAfterError)
+    } else if (
+      invoiceBeforePayment.status !== 'paid' &&
+      invoiceAfterPayment?.status === 'paid'
+    ) {
+      remittanceAdvice = await sendRemittanceAdviceForPaidInvoice(invoiceId, user?.id || null)
+    }
 
     revalidatePath('/invoices')
     revalidatePath(`/invoices/${invoiceId}`)
@@ -708,6 +748,7 @@ export async function updateInvoice(formData: FormData) {
       .from('invoices')
       .select('*')
       .eq('id', invoiceId)
+      .is('deleted_at', null)
       .single()
 
     if (fetchError || !existingInvoice) {

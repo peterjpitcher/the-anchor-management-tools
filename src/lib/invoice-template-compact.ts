@@ -145,8 +145,9 @@ export function generateCompactInvoiceHTML(data: InvoiceTemplateData): string {
     remittance?.paymentReference ?? latestPayment?.reference ?? invoice.reference ?? null
   const outstandingBalance = Math.max(0, invoice.total_amount - invoice.paid_amount)
 
-  const documentTitle = isRemittanceAdvice ? 'Remittance Advice' : 'Invoice'
-  const documentHeader = isRemittanceAdvice ? 'REMITTANCE ADVICE' : 'INVOICE'
+  // Internally we still call this "remittance advice", but the customer-facing term is "Receipt".
+  const documentTitle = isRemittanceAdvice ? 'Receipt' : 'Invoice'
+  const documentHeader = isRemittanceAdvice ? 'RECEIPT' : 'INVOICE'
   const documentNumberLabel = isRemittanceAdvice
     ? `For Invoice #${invoice.invoice_number}`
     : `#${invoice.invoice_number}`
@@ -569,7 +570,7 @@ export function generateCompactInvoiceHTML(data: InvoiceTemplateData): string {
 
   ${isRemittanceAdvice ? `
     <div class="payment-section keep-together">
-      <h3>Remittance Details</h3>
+      <h3>Receipt Details</h3>
       <div class="payment-grid">
         <div class="payment-method">
           <h4>Payment Summary</h4>

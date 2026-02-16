@@ -256,7 +256,6 @@ export default function EventDetailClient({
     phone: '',
     first_name: '',
     last_name: '',
-    default_country_code: '44',
     seats: '2'
   })
   const [customerQuery, setCustomerQuery] = useState('')
@@ -280,7 +279,6 @@ export default function EventDetailClient({
     phone: '',
     first_name: '',
     last_name: '',
-    default_country_code: '44'
   })
   const [isReminderPickerOpen, setIsReminderPickerOpen] = useState(false)
   const [reminderPickerFilter, setReminderPickerFilter] = useState<ReminderPickerFilter>('all')
@@ -334,10 +332,7 @@ export default function EventDetailClient({
       setSearchingCustomers(true)
 
       try {
-        const params = new URLSearchParams({
-          q: query,
-          default_country_code: bookingForm.default_country_code || '44'
-        })
+        const params = new URLSearchParams({ q: query })
 
         const response = await fetch(`/api/events/customers/search?${params.toString()}`, {
           cache: 'no-store'
@@ -366,7 +361,7 @@ export default function EventDetailClient({
       cancelled = true
       window.clearTimeout(timeoutId)
     }
-  }, [bookingForm.default_country_code, canManageEvents, customerQuery, selectedCustomer])
+  }, [canManageEvents, customerQuery, selectedCustomer])
 
   useEffect(() => {
     if (!canManageEvents) {
@@ -394,10 +389,7 @@ export default function EventDetailClient({
       setSearchingInterestCustomers(true)
 
       try {
-        const params = new URLSearchParams({
-          q: query,
-          default_country_code: '44'
-        })
+        const params = new URLSearchParams({ q: query })
 
         const response = await fetch(`/api/events/customers/search?${params.toString()}`, {
           cache: 'no-store'
@@ -624,7 +616,6 @@ export default function EventDetailClient({
         phone: bookingForm.phone.trim(),
         firstName,
         lastName,
-        defaultCountryCode: bookingForm.default_country_code.trim() || undefined,
         seats
       })
 
@@ -727,8 +718,7 @@ export default function EventDetailClient({
       const result = await addEventInterestManualRecipientByPhone(event.id, {
         phone: interestPhoneForm.phone.trim(),
         firstName: interestPhoneForm.first_name.trim() || undefined,
-        lastName: interestPhoneForm.last_name.trim() || undefined,
-        defaultCountryCode: interestPhoneForm.default_country_code.trim() || undefined
+        lastName: interestPhoneForm.last_name.trim() || undefined
       })
 
       if (!result.success) {
@@ -1230,25 +1220,7 @@ export default function EventDetailClient({
 
                   {!selectedCustomer && (
                     <label className="text-xs font-semibold uppercase tracking-wide text-gray-600">
-                      Country code
-                      <input
-                        type="text"
-                        value={bookingForm.default_country_code}
-                        onChange={(inputEvent) =>
-                          setBookingForm((current) => ({
-                            ...current,
-                            default_country_code: inputEvent.target.value.replace(/[^\d]/g, '').slice(0, 4)
-                          }))
-                        }
-                        className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
-                        placeholder="44"
-                      />
-                    </label>
-                  )}
-
-                  {!selectedCustomer && (
-                    <label className="sm:col-span-2 text-xs font-semibold uppercase tracking-wide text-gray-600">
-                      Phone number
+                      Phone (07... or +...)
                       <input
                         type="tel"
                         value={bookingForm.phone}
@@ -1259,7 +1231,7 @@ export default function EventDetailClient({
                           }))
                         }
                         className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
-                        placeholder="07555 123456"
+                        placeholder="07... or +..."
                       />
                     </label>
                   )}
@@ -1708,24 +1680,8 @@ export default function EventDetailClient({
                           </div>
 
                           <div className="grid gap-3 sm:grid-cols-2">
-                            <label className="text-xs font-semibold uppercase tracking-wide text-gray-600">
-                              Country code
-                              <input
-                                type="text"
-                                value={interestPhoneForm.default_country_code}
-                                onChange={(inputEvent) =>
-                                  setInterestPhoneForm((current) => ({
-                                    ...current,
-                                    default_country_code: inputEvent.target.value.replace(/[^\d]/g, '').slice(0, 4)
-                                  }))
-                                }
-                                className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
-                                placeholder="44"
-                              />
-                            </label>
-
-                            <label className="text-xs font-semibold uppercase tracking-wide text-gray-600">
-                              Phone number
+                            <label className="sm:col-span-2 text-xs font-semibold uppercase tracking-wide text-gray-600">
+                              Phone (07... or +...)
                               <input
                                 type="tel"
                                 value={interestPhoneForm.phone}
@@ -1736,7 +1692,7 @@ export default function EventDetailClient({
                                   }))
                                 }
                                 className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
-                                placeholder="07555 123456"
+                                placeholder="07... or +..."
                               />
                             </label>
 

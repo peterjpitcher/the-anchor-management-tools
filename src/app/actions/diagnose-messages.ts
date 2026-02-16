@@ -1,8 +1,9 @@
 'use server'
 
-import { createClient } from '@supabase/supabase-js'
 import twilio from 'twilio'
 import { checkUserPermission } from '@/app/actions/rbac'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { logger } from '@/lib/logger'
 
 export async function diagnoseMessages(date: string) {
   try {
@@ -26,12 +27,10 @@ export async function diagnoseMessages(date: string) {
       process.env.TWILIO_AUTH_TOKEN
     )
     
-    const supabase = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL,
-      process.env.SUPABASE_SERVICE_ROLE_KEY
-    )
-
-    console.log(`Diagnosing messages for ${date}`)
+    const supabase = createAdminClient()
+    logger.info('Diagnosing Twilio messages for date', {
+      metadata: { date }
+    })
 
     // Fetch messages from Twilio for the specific date
     const startDate = new Date(date)
@@ -44,16 +43,41 @@ export async function diagnoseMessages(date: string) {
       limit: 1000
     })
 
-    console.log(`Found ${twilioMessages.length} messages in Twilio for ${date}`)
+    logger.info('Twilio messages fetched for diagnosis', {
+      metadata: { date, count: twilioMessages.length }
+    })
+
+    if (twilioMessages.length === 0) {
+      return {
+        success: true,
+        summary: {
+          date: date,
+          twilioTotal: 0,
+          inDatabase: 0,
+          missing: 0,
+          missingOutbound: 0,
+          missingInbound: 0,
+        },
+        missingMessages: [],
+      }
+    }
 
     // Get all message SIDs
     const twilioSids = twilioMessages.map(m => m.sid)
 
     // Check which ones are in the database
-    const { data: dbMessages } = await supabase
+    const { data: dbMessages, error: dbError } = await supabase
       .from('messages')
       .select('twilio_message_sid, created_at, direction, from_number, to_number')
       .in('twilio_message_sid', twilioSids)
+
+    if (dbError) {
+      logger.error('Failed to query messages table during diagnosis', {
+        error: new Error(dbError.message),
+        metadata: { date }
+      })
+      return { error: 'Failed to check messages in database' }
+    }
 
     const dbSids = new Set(dbMessages?.map(m => m.twilio_message_sid) || [])
 
@@ -85,12 +109,15 @@ export async function diagnoseMessages(date: string) {
         direction: m.direction,
         from: m.from,
         to: m.to,
-        body: m.body?.substring(0, 50) + '...',
+        body: typeof m.body === 'string' ? `${m.body.substring(0, 50)}...` : null,
         dateSent: m.dateSent
       }))
     }
   } catch (error) {
-    console.error('Diagnosis failed:', error)
+    logger.error('Message diagnosis failed', {
+      error: error instanceof Error ? error : new Error(String(error)),
+      metadata: { date }
+    })
     return { error: `Diagnosis failed: ${error instanceof Error ? error.message : 'Unknown error'}` }
   }
 }

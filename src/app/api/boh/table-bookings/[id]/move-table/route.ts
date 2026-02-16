@@ -255,8 +255,9 @@ export async function GET(
       }
     })
   } catch (error) {
+    console.error('BOH move-table availability load failed', error)
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Failed to load available tables' },
+      { error: 'Failed to load available tables' },
       { status: 500 }
     )
   }
@@ -307,13 +308,34 @@ export async function POST(
   try {
     availability = await getMoveTableAvailability(auth.supabase, booking)
   } catch (error) {
+    console.error('BOH move-table availability check failed', error)
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Failed to check table availability' },
+      { error: 'Failed to check table availability' },
       { status: 500 }
     )
   }
 
-  const targetTable = availability.tables.find((table) => table.id === parsed.data.table_id)
+  let targetTable = availability.tables.find((table) => table.id === parsed.data.table_id) || null
+  if (!targetTable && availability.assignedTableIds.includes(parsed.data.table_id)) {
+    const { data: tableRow, error: tableRowError } = await (auth.supabase.from('tables') as any)
+      .select('id, table_number, name, capacity')
+      .eq('id', parsed.data.table_id)
+      .maybeSingle()
+
+    if (tableRowError) {
+      return NextResponse.json({ error: 'Failed to load target table' }, { status: 500 })
+    }
+
+    if (tableRow?.id) {
+      targetTable = {
+        id: tableRow.id as string,
+        table_number: typeof tableRow.table_number === 'string' ? tableRow.table_number : null,
+        name: typeof tableRow.name === 'string' ? tableRow.name : null,
+        capacity: typeof tableRow.capacity === 'number' ? tableRow.capacity : null
+      }
+    }
+  }
+
   if (!targetTable) {
     return NextResponse.json(
       { error: 'Target table is not available for this booking window' },
@@ -337,13 +359,15 @@ export async function POST(
 
   if (!alreadyOnlyOnTarget) {
     if (hasTargetAssignment) {
-      const { error: updateError } = await (auth.supabase.from('booking_table_assignments') as any)
+      const { data: updatedAssignment, error: updateError } = await (auth.supabase.from('booking_table_assignments') as any)
         .update({
           start_datetime: availability.startIso,
           end_datetime: availability.endIso
         })
         .eq('table_booking_id', booking.id)
         .eq('table_id', targetTable.id)
+        .select('table_booking_id')
+        .maybeSingle()
 
       if (updateError) {
         if (isAssignmentConflictError(updateError)) {
@@ -353,6 +377,12 @@ export async function POST(
           )
         }
         return NextResponse.json({ error: 'Failed to update target table assignment window' }, { status: 500 })
+      }
+      if (!updatedAssignment) {
+        return NextResponse.json(
+          { error: 'Current table assignment changed. Refresh and retry.' },
+          { status: 409 }
+        )
       }
     } else {
       const { error: insertError } = await (auth.supabase.from('booking_table_assignments') as any)

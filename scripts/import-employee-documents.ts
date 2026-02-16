@@ -1,9 +1,28 @@
+#!/usr/bin/env tsx
+
 import dotenv from 'dotenv'
 import path from 'path'
 import fs from 'fs/promises'
 import { createAdminClient } from '@/lib/supabase/admin'
+import {
+  assertScriptCompletedWithoutFailures,
+  assertScriptMutationAllowed,
+  assertScriptQuerySucceeded,
+} from '@/lib/script-mutation-safety'
 
-dotenv.config({ path: '.env.local' })
+dotenv.config({ path: path.resolve(process.cwd(), '.env.local') })
+
+const SCRIPT_NAME = 'import-employee-documents'
+const RUN_MUTATION_ENV = 'RUN_IMPORT_EMPLOYEE_DOCUMENTS_MUTATION'
+const ALLOW_MUTATION_ENV = 'ALLOW_IMPORT_EMPLOYEE_DOCUMENTS_MUTATION_SCRIPT'
+const HARD_CAP = 500
+
+const TRUTHY = new Set(['1', 'true', 'yes', 'on'])
+
+function isTruthyEnv(value: string | undefined): boolean {
+  if (!value) return false
+  return TRUTHY.has(value.trim().toLowerCase())
+}
 
 type DocType = 'payslip' | 'p45' | 'p60'
 
@@ -194,25 +213,52 @@ async function collectFiles(root: string): Promise<string[]> {
   return files
 }
 
-function parseArgs(argv: string[]) {
-  const config = {
+type ParsedArgs = {
+  root: string
+  confirm: boolean
+  dryRun: boolean
+  payslipCategory: string
+  p45Category: string
+  p60Category: string
+  limit: number | null
+}
+
+function parsePositiveInt(raw: string | null): number | null {
+  if (!raw) return null
+  const trimmed = String(raw).trim()
+  if (!/^[1-9]\d*$/.test(trimmed)) {
+    throw new Error(`[${SCRIPT_NAME}] Invalid positive integer: "${raw}"`)
+  }
+  const parsed = Number(trimmed)
+  if (!Number.isInteger(parsed) || parsed <= 0) {
+    throw new Error(`[${SCRIPT_NAME}] Invalid positive integer: "${raw}"`)
+  }
+  return parsed
+}
+
+function parseArgs(argv: string[]): ParsedArgs {
+  const config: ParsedArgs = {
     root: '',
-    commit: false,
+    confirm: false,
+    dryRun: true,
     payslipCategory: DEFAULT_CATEGORY_MAP.payslip,
     p45Category: DEFAULT_CATEGORY_MAP.p45,
     p60Category: DEFAULT_CATEGORY_MAP.p60,
-    limit: Infinity,
+    limit: null,
   }
+
+  let wantsDryRun = false
 
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i]
-    if (arg === '--commit') {
-      config.commit = true
+
+    if (arg === '--confirm' || arg === '--commit') {
+      config.confirm = true
       continue
     }
 
     if (arg === '--dry-run') {
-      config.commit = false
+      wantsDryRun = true
       continue
     }
 
@@ -243,23 +289,50 @@ function parseArgs(argv: string[]) {
     }
 
     if (arg.startsWith('--limit=')) {
-      const raw = Number(arg.split('=')[1])
-      if (Number.isFinite(raw) && raw > 0) {
-        config.limit = raw
-      }
+      config.limit = parsePositiveInt(arg.split('=')[1] ?? null)
+      continue
+    }
+
+    if (arg === '--limit') {
+      config.limit = parsePositiveInt(argv[i + 1] ?? null)
+      i += 1
+      continue
     }
   }
 
+  config.dryRun = wantsDryRun || !config.confirm
   return config
 }
 
 async function main() {
   const config = parseArgs(process.argv.slice(2))
 
+  console.log(`[${SCRIPT_NAME}] ${config.dryRun ? 'DRY RUN' : 'MUTATION'} starting`)
+
   if (!config.root) {
-    console.error('Missing --root path')
-    process.exit(1)
+    throw new Error(`[${SCRIPT_NAME}] Missing --root path`)
   }
+
+  if (!config.dryRun) {
+    if (!config.confirm) {
+      throw new Error(`[${SCRIPT_NAME}] mutation blocked: missing --confirm`)
+    }
+    if (config.limit === null) {
+      throw new Error(`[${SCRIPT_NAME}] mutation requires --limit <n> (hard cap ${HARD_CAP})`)
+    }
+    if (config.limit > HARD_CAP) {
+      throw new Error(`[${SCRIPT_NAME}] --limit exceeds hard cap (max ${HARD_CAP})`)
+    }
+    if (!isTruthyEnv(process.env[RUN_MUTATION_ENV])) {
+      throw new Error(
+        `[${SCRIPT_NAME}] mutation blocked by safety guard. Set ${RUN_MUTATION_ENV}=true to enable mutations.`
+      )
+    }
+
+    assertScriptMutationAllowed({ scriptName: SCRIPT_NAME, envVar: ALLOW_MUTATION_ENV })
+  }
+
+  const scanLimit = config.limit ?? Number.POSITIVE_INFINITY
 
   const root = path.resolve(config.root)
   const admin = createAdminClient()
@@ -268,13 +341,14 @@ async function main() {
     .from('employees')
     .select('employee_id, first_name, last_name, email_address')
 
-  if (employeeError || !employees) {
-    console.error('Failed to load employees:', employeeError?.message)
-    process.exit(1)
-  }
+  const employeeRows = assertScriptQuerySucceeded({
+    operation: 'Load employees',
+    error: employeeError,
+    data: employees as EmployeeLookup[] | null,
+  })
 
   const employeeIndex = new Map<string, Map<string, EmployeeLookup[]>>()
-  for (const employee of employees as EmployeeLookup[]) {
+  for (const employee of employeeRows as EmployeeLookup[]) {
     const lastKey = normalizeLetters(employee.last_name || '')
     const firstInitial = extractFirstInitial(employee.first_name)
     if (!lastKey || !firstInitial) continue
@@ -293,13 +367,14 @@ async function main() {
     .from('attachment_categories')
     .select('category_id, category_name')
 
-  if (categoryError || !categories) {
-    console.error('Failed to load attachment categories:', categoryError?.message)
-    process.exit(1)
-  }
+  const categoryRows = assertScriptQuerySucceeded({
+    operation: 'Load attachment_categories',
+    error: categoryError,
+    data: categories as Array<{ category_id: string; category_name: string }> | null,
+  })
 
   const categoryMap = new Map<string, { id: string; name: string }>()
-  for (const category of categories as { category_id: string; category_name: string }[]) {
+  for (const category of categoryRows as { category_id: string; category_name: string }[]) {
     categoryMap.set(normalizeLetters(category.category_name), {
       id: category.category_id,
       name: category.category_name,
@@ -318,7 +393,7 @@ async function main() {
   const candidates: CandidateMatch[] = []
 
   for (const filePath of sortedFiles) {
-    if (candidates.length >= config.limit) break
+    if (candidates.length >= scanLimit) break
     const extension = path.extname(filePath).toLowerCase()
     if (!ALLOWED_EXTENSIONS.has(extension)) continue
 
@@ -422,6 +497,7 @@ async function main() {
   }
 
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-')
+  await fs.mkdir(path.resolve('temp'), { recursive: true })
   const previewJson = path.resolve('temp', `employee-document-import-preview-${timestamp}.json`)
   const previewCsv = path.resolve('temp', `employee-document-import-preview-${timestamp}.csv`)
 
@@ -471,8 +547,8 @@ async function main() {
   console.log(`Preview JSON: ${previewJson}`)
   console.log(`Preview CSV: ${previewCsv}`)
 
-  if (!config.commit) {
-    console.log('Dry run only. Re-run with --commit to import.')
+  if (config.dryRun) {
+    console.log('DRY RUN only. Re-run with --confirm to import.')
     return
   }
 
@@ -517,8 +593,13 @@ async function main() {
       })
 
       if (insertError) {
-        await admin.storage.from(bucket).remove([uploadData.path])
-        results.push({ filePath: candidate.filePath, status: 'failed', reason: insertError.message })
+        const { error: removeError } = await admin.storage.from(bucket).remove([uploadData.path])
+        const suffix = removeError ? ` (cleanup failed: ${removeError.message || 'unknown error'})` : ''
+        results.push({
+          filePath: candidate.filePath,
+          status: 'failed',
+          reason: `${insertError.message}${suffix}`,
+        })
         continue
       }
 
@@ -544,9 +625,16 @@ async function main() {
   console.log(`Imported: ${importedCount}`)
   console.log(`Failed: ${failedCount}`)
   console.log(`Results JSON: ${resultsJson}`)
+
+  if (failedCount > 0) {
+    const failures = results
+      .filter((result) => result.status === 'failed')
+      .map((result) => `${result.filePath}: ${result.reason || 'failed'}`)
+    assertScriptCompletedWithoutFailures({ scriptName: SCRIPT_NAME, failureCount: failedCount, failures })
+  }
 }
 
 main().catch((error) => {
   console.error('Import failed:', error)
-  process.exit(1)
+  process.exitCode = 1
 })

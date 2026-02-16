@@ -1,68 +1,116 @@
 #!/usr/bin/env tsx
-
 /**
- * Test script to verify SMS template loading with and without eventId
+ * Template fallback diagnostics (read-only).
+ *
+ * Tests that the `get_message_template` RPC returns content for a "global" event id
+ * and optionally for a provided `--event-id` override.
+ *
+ * Safety:
+ * - Strictly read-only (RPC only).
+ * - Fails closed (non-zero exit) on any env/RPC failure.
+ * - Does not support `--confirm`.
  */
 
-import { getMessageTemplate } from '../src/lib/smsTemplates'
-import { config } from 'dotenv'
-import { resolve } from 'path'
+import dotenv from 'dotenv'
+import path from 'path'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { assertScriptQuerySucceeded } from '@/lib/script-mutation-safety'
 
-// Load environment variables
-config({ path: resolve(__dirname, '../.env.local') })
+dotenv.config({ path: path.resolve(process.cwd(), '.env.local') })
 
-async function testTemplateFix() {
-  console.log('🧪 Testing SMS template loading fix...\n')
+const SCRIPT_NAME = 'test-template-fix'
+const DEFAULT_EVENT_ID = '00000000-0000-0000-0000-000000000000'
+const DEFAULT_TYPES = ['booking_confirmation', 'booking_reminder_confirmation']
 
-  const testVariables = {
-    customer_name: 'Test Customer',
-    first_name: 'Test',
-    event_name: 'Quiz Night',
-    event_date: '2nd July',
-    event_time: '7:00 PM',
-    seats: '0',
-    venue_name: 'The Anchor',
-    contact_phone: '01753682707',
-    booking_reference: 'TEST-123'
-  }
-
-  // Test 1: With undefined eventId (should use global template)
-  console.log('Test 1: Loading template with undefined eventId')
-  console.log('================================================')
-  const result1 = await getMessageTemplate(undefined, 'reminderOnly', testVariables)
-  console.log('Result:', result1)
-  console.log('\n')
-
-  // Test 2: With null eventId (should use global template)
-  console.log('Test 2: Loading template with null eventId')
-  console.log('==========================================')
-  const result2 = await getMessageTemplate(null as any, 'reminderOnly', testVariables)
-  console.log('Result:', result2)
-  console.log('\n')
-
-  // Test 3: With valid eventId (should try event-specific first)
-  console.log('Test 3: Loading template with valid eventId')
-  console.log('===========================================')
-  const result3 = await getMessageTemplate('35fa3e92-dacd-43ee-948b-3f7610f0fe6a', 'reminderOnly', testVariables)
-  console.log('Result:', result3)
-  console.log('\n')
-
-  // Test 4: Test booking confirmation template
-  console.log('Test 4: Loading booking confirmation template')
-  console.log('=============================================')
-  testVariables.seats = '2'
-  const result4 = await getMessageTemplate(undefined, 'bookingConfirmation', testVariables)
-  console.log('Result:', result4)
-  console.log('\n')
-
-  // Summary
-  console.log('📊 Summary:')
-  console.log('===========')
-  console.log(`Test 1 (undefined eventId): ${result1 ? '✅ Success' : '❌ Failed'}`)
-  console.log(`Test 2 (null eventId): ${result2 ? '✅ Success' : '❌ Failed'}`)
-  console.log(`Test 3 (valid eventId): ${result3 ? '✅ Success' : '❌ Failed'}`)
-  console.log(`Test 4 (booking confirmation): ${result4 ? '✅ Success' : '❌ Failed'}`)
+type Args = {
+  eventIdOverride: string | null
+  types: string[]
 }
 
-// Run the test
-testTemplateFix().catch(console.error)
+function findFlagValue(argv: string[], flag: string): string | null {
+  const eq = argv.find((arg) => arg.startsWith(`${flag}=`))
+  if (eq) return eq.split('=')[1] ?? null
+
+  const idx = argv.indexOf(flag)
+  if (idx === -1) return null
+
+  const value = argv[idx + 1]
+  return typeof value === 'string' && value.length > 0 ? value : null
+}
+
+function readArgs(argv = process.argv.slice(2)): Args {
+  if (argv.includes('--confirm')) {
+    throw new Error(`[${SCRIPT_NAME}] This script is read-only and does not support --confirm`)
+  }
+
+  const eventIdOverride = (findFlagValue(argv, '--event-id') ?? process.env.TEST_TEMPLATE_EVENT_ID ?? '').trim() || null
+  const typesCsv = findFlagValue(argv, '--types') ?? process.env.TEST_TEMPLATE_TYPES ?? null
+  const types = typesCsv
+    ? typesCsv
+      .split(',')
+      .map((entry) => entry.trim())
+      .filter(Boolean)
+    : [...DEFAULT_TYPES]
+
+  return { eventIdOverride, types }
+}
+
+async function checkRpc(supabase: any, eventId: string, templateType: string): Promise<boolean> {
+  const { data, error } = await supabase.rpc('get_message_template', {
+    p_event_id: eventId,
+    p_template_type: templateType,
+  })
+
+  const rows =
+    assertScriptQuerySucceeded({
+      operation: `rpc get_message_template (${templateType}, eventId=${eventId})`,
+      error,
+      data,
+      allowMissing: true,
+    }) ?? []
+
+  const first = Array.isArray(rows) ? (rows[0] as any) : null
+  const content = typeof first?.content === 'string' ? first.content : ''
+  if (!content) {
+    console.error(`❌ Missing content for template_type=${templateType} eventId=${eventId}`)
+    return false
+  }
+
+  console.log(`✅ ${templateType} content preview: ${content.slice(0, 80)}${content.length > 80 ? '...' : ''}`)
+  return true
+}
+
+async function run(): Promise<void> {
+  const args = readArgs()
+
+  console.log(`[${SCRIPT_NAME}] starting (read-only)\n`)
+
+  const supabase = createAdminClient()
+  let failures = 0
+
+  console.log(`Test A: global fallback using eventId=${DEFAULT_EVENT_ID}`)
+  for (const templateType of args.types) {
+    const ok = await checkRpc(supabase, DEFAULT_EVENT_ID, templateType)
+    if (!ok) failures += 1
+  }
+
+  if (args.eventIdOverride && args.eventIdOverride !== DEFAULT_EVENT_ID) {
+    console.log(`\nTest B: override using eventId=${args.eventIdOverride}`)
+    for (const templateType of args.types) {
+      const ok = await checkRpc(supabase, args.eventIdOverride, templateType)
+      if (!ok) failures += 1
+    }
+  }
+
+  if (failures > 0) {
+    throw new Error(`[${SCRIPT_NAME}] completed with ${failures} failure(s)`)
+  }
+
+  console.log(`\n✅ [${SCRIPT_NAME}] completed successfully.`)
+}
+
+run().catch((error) => {
+  console.error('Fatal error:', error)
+  process.exitCode = 1
+})
+

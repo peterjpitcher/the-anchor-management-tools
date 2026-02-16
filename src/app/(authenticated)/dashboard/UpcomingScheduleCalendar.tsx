@@ -14,6 +14,18 @@ type DashboardEventSummary = {
   time: string | null
 }
 
+type DashboardCalendarNoteSummary = {
+  id: string
+  note_date: string
+  end_date: string
+  title: string
+  notes: string | null
+  source: string
+  start_time: string | null
+  end_time: string | null
+  color: string
+}
+
 type DashboardPrivateBookingSummary = {
   id: string
   customer_name: string | null
@@ -39,6 +51,7 @@ type DashboardParkingBookingSummary = {
 }
 
 const EVENT_ID_PREFIX = 'evt:'
+const NOTE_ID_PREFIX = 'note:'
 const PRIVATE_BOOKING_ID_PREFIX = 'pb:'
 const PARKING_ID_PREFIX = 'park:'
 
@@ -119,12 +132,26 @@ function getParkingColor(booking: DashboardParkingBookingSummary): string {
   return '#64748b'
 }
 
+function getCalendarNoteColor(note: DashboardCalendarNoteSummary): string {
+  return normalizeHexColor(note.color) ?? '#0EA5E9'
+}
+
+function getCalendarNoteDateLabel(note: DashboardCalendarNoteSummary): string {
+  if (note.note_date === note.end_date) {
+    return format(parseLocalDateTime(note.note_date, null), 'EEE d MMM yyyy')
+  }
+
+  return `${format(parseLocalDateTime(note.note_date, null), 'EEE d MMM yyyy')} to ${format(parseLocalDateTime(note.end_date, null), 'EEE d MMM yyyy')}`
+}
+
 export default function UpcomingScheduleCalendar({
   events,
+  calendarNotes,
   privateBookings,
   parkingBookings,
 }: {
   events: DashboardEventSummary[]
+  calendarNotes: DashboardCalendarNoteSummary[]
   privateBookings: DashboardPrivateBookingSummary[]
   parkingBookings: DashboardParkingBookingSummary[]
 }) {
@@ -138,6 +165,14 @@ export default function UpcomingScheduleCalendar({
     }
     return map
   }, [events])
+
+  const calendarNotesById = useMemo(() => {
+    const map = new Map<string, DashboardCalendarNoteSummary>()
+    for (const note of calendarNotes) {
+      map.set(note.id, note)
+    }
+    return map
+  }, [calendarNotes])
 
   const privateBookingsById = useMemo(() => {
     const map = new Map<string, DashboardPrivateBookingSummary>()
@@ -199,6 +234,25 @@ export default function UpcomingScheduleCalendar({
       })
     }
 
+    for (const note of calendarNotes) {
+      if (!note.note_date) continue
+
+      const start = parseLocalDateTime(note.note_date, null)
+      const endRaw = parseLocalDateTime(note.end_date || note.note_date, null)
+      const end = endRaw.getTime() < start.getTime() ? start : endRaw
+
+      const color = getCalendarNoteColor(note)
+      entries.push({
+        id: `${NOTE_ID_PREFIX}${note.id}`,
+        title: note.title,
+        start,
+        end,
+        allDay: true,
+        color,
+        textColor: getReadableTextColor(color),
+      })
+    }
+
     for (const booking of parkingBookings) {
       if (!booking.start_at) continue
 
@@ -219,14 +273,15 @@ export default function UpcomingScheduleCalendar({
     }
 
     return entries.sort((a, b) => a.start.getTime() - b.start.getTime())
-  }, [events, parkingBookings, privateBookings])
+  }, [calendarNotes, events, parkingBookings, privateBookings])
 
   const hiddenCount = useMemo(() => {
     const hiddenEvents = events.filter((event) => !event.date).length
+    const hiddenNotes = calendarNotes.filter((note) => !note.note_date).length
     const hiddenBookings = privateBookings.filter((booking) => !booking.event_date).length
     const hiddenParking = parkingBookings.filter((booking) => !booking.start_at).length
-    return hiddenEvents + hiddenBookings + hiddenParking
-  }, [events, parkingBookings, privateBookings])
+    return hiddenEvents + hiddenNotes + hiddenBookings + hiddenParking
+  }, [calendarNotes, events, parkingBookings, privateBookings])
 
   return (
     <div className="space-y-3">
@@ -234,6 +289,10 @@ export default function UpcomingScheduleCalendar({
         <span className="inline-flex items-center gap-1.5">
           <span className="inline-block h-2 w-2 rounded-sm bg-blue-500" />
           Events
+        </span>
+        <span className="inline-flex items-center gap-1.5">
+          <span className="inline-block h-2 w-2 rounded-sm bg-sky-500" />
+          Calendar notes
         </span>
         <span className="inline-flex items-center gap-1.5">
           <span className="inline-block h-2 w-2 rounded-sm bg-violet-500" />
@@ -253,6 +312,7 @@ export default function UpcomingScheduleCalendar({
         onViewChange={setView}
         firstDayOfWeek={1}
         renderEvent={(event) => {
+          const isCalendarNote = event.id.startsWith(NOTE_ID_PREFIX)
           const isPrivateBooking = event.id.startsWith(PRIVATE_BOOKING_ID_PREFIX)
           const isParking = event.id.startsWith(PARKING_ID_PREFIX)
 
@@ -276,6 +336,24 @@ export default function UpcomingScheduleCalendar({
                     {format(event.start, 'EEE d MMM yyyy')}
                     {!event.allDay && ` • ${format(event.start, 'HH:mm')}`}
                   </div>
+                </div>
+              )
+            }
+
+            if (isCalendarNote) {
+              const rawId = event.id.slice(NOTE_ID_PREFIX.length)
+              const note = calendarNotesById.get(rawId)
+              return (
+                <div className="space-y-1 text-xs">
+                  <div className="font-medium">Calendar note</div>
+                  <div className="whitespace-pre-wrap">{note?.title ?? event.title}</div>
+                  <div>
+                    {note ? getCalendarNoteDateLabel(note) : format(event.start, 'EEE d MMM yyyy')}
+                  </div>
+                  {note?.notes && <div className="whitespace-pre-wrap">{note.notes}</div>}
+                  {note?.source && (
+                    <div>{note.source === 'ai' ? 'AI generated' : 'Manual note'}</div>
+                  )}
                 </div>
               )
             }
@@ -337,6 +415,10 @@ export default function UpcomingScheduleCalendar({
           )
         }}
         onEventClick={(event) => {
+          if (event.id.startsWith(NOTE_ID_PREFIX)) {
+            return
+          }
+
           if (event.id.startsWith(EVENT_ID_PREFIX)) {
             router.push(`/events/${event.id.slice(EVENT_ID_PREFIX.length)}`)
             return

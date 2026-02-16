@@ -116,6 +116,7 @@ export async function uploadEventImage(
       .getPublicUrl(storagePath)
 
     // Save metadata to database if it's an event image
+    let createdImageRecordId: string | null = null
     if (event_id) {
       const { data: imageRecord, error: dbError } = await supabase
         .from('event_images')
@@ -137,35 +138,63 @@ export async function uploadEventImage(
       if (dbError) {
         // Clean up uploaded file on database error
         console.error('Database insert error:', dbError)
-        await supabase.storage.from(BUCKET_NAME).remove([storagePath])
+        const { error: cleanupError } = await supabase.storage.from(BUCKET_NAME).remove([storagePath])
+        if (cleanupError) {
+          console.error('Failed to cleanup uploaded image after metadata insert error:', cleanupError)
+        }
         return { type: 'error', message: 'Failed to save image metadata.' }
       }
+
+      createdImageRecordId = imageRecord?.id ?? null
     }
 
     // Update the appropriate table based on whether it's an event or category
     if (event_id) {
       // For events, update the hero_image_url field
-      const { error: updateError } = await supabase
+      const { data: updatedEvent, error: updateError } = await supabase
         .from('events')
         .update({ hero_image_url: publicUrl })
         .eq('id', event_id)
+        .select('id')
+        .maybeSingle()
 
-      if (updateError) {
-        console.error('Event update error:', updateError)
-        await supabase.storage.from(BUCKET_NAME).remove([storagePath])
-        return { type: 'error', message: 'Failed to update event image.' }
+      if (updateError || !updatedEvent) {
+        console.error('Event update error:', updateError ?? 'event not found')
+        const { error: storageCleanupError } = await supabase.storage.from(BUCKET_NAME).remove([storagePath])
+        if (storageCleanupError) {
+          console.error('Failed to cleanup uploaded event image after event update error:', storageCleanupError)
+        }
+
+        if (createdImageRecordId) {
+          const { error: metadataCleanupError } = await supabase
+            .from('event_images')
+            .delete()
+            .eq('id', createdImageRecordId)
+
+          if (metadataCleanupError) {
+            console.error('Failed to cleanup event image metadata after event update error:', metadataCleanupError)
+            return { type: 'error', message: 'Failed to update event image. Manual cleanup may be required.' }
+          }
+        }
+
+        return { type: 'error', message: updatedEvent ? 'Failed to update event image.' : 'Event not found.' }
       }
     } else if (category_id) {
       // For categories, update default_image_url
-      const { error: updateError } = await supabase
+      const { data: updatedCategory, error: updateError } = await supabase
         .from('event_categories')
         .update({ default_image_url: publicUrl })
         .eq('id', category_id)
+        .select('id')
+        .maybeSingle()
 
-      if (updateError) {
-        console.error('Category update error:', updateError)
-        await supabase.storage.from(BUCKET_NAME).remove([storagePath])
-        return { type: 'error', message: 'Failed to update category image.' }
+      if (updateError || !updatedCategory) {
+        console.error('Category update error:', updateError ?? 'category not found')
+        const { error: cleanupError } = await supabase.storage.from(BUCKET_NAME).remove([storagePath])
+        if (cleanupError) {
+          console.error('Failed to cleanup uploaded category image after category update error:', cleanupError)
+        }
+        return { type: 'error', message: updatedCategory ? 'Failed to update category image.' : 'Category not found.' }
       }
     }
 
@@ -217,10 +246,15 @@ export async function deleteEventImage(imageUrl: string, entityId: string) {
     const supabase = await createClient()
     
     // First, try to find the image in event_images table by URL
-    const { data: images } = await supabase
+    const { data: images, error: imagesError } = await supabase
       .from('event_images')
       .select('*')
       .eq('event_id', entityId)
+
+    if (imagesError) {
+      console.error('Failed to load event images for delete:', imagesError)
+      return { error: 'Failed to load event images.' }
+    }
     
     // Find the image that matches the URL
     let imageToDelete = null
@@ -239,24 +273,54 @@ export async function deleteEventImage(imageUrl: string, entityId: string) {
     
     // If we found the image in event_images, delete it from storage
     if (imageToDelete) {
-      // Delete from storage
+      const { data: deletedImage, error: deleteImageError } = await supabase
+        .from('event_images')
+        .delete()
+        .eq('id', imageToDelete.id)
+        .select('*')
+        .maybeSingle()
+
+      if (deleteImageError) {
+        console.error('Failed to delete event image metadata:', deleteImageError)
+        return { error: 'Failed to delete event image metadata.' }
+      }
+      if (!deletedImage) {
+        return { error: 'Image not found.' }
+      }
+
       const { error: storageError } = await supabase.storage
         .from(BUCKET_NAME)
         .remove([imageToDelete.storage_path])
 
       if (storageError) {
         console.error('Storage deletion error:', storageError)
-      }
 
-      // Delete from database
-      await supabase
-        .from('event_images')
-        .delete()
-        .eq('id', imageToDelete.id)
+        const { error: rollbackError } = await supabase.from('event_images').insert({
+          id: deletedImage.id,
+          event_id: deletedImage.event_id,
+          storage_path: deletedImage.storage_path,
+          file_name: deletedImage.file_name,
+          mime_type: deletedImage.mime_type,
+          file_size_bytes: deletedImage.file_size_bytes,
+          image_type: deletedImage.image_type,
+          alt_text: deletedImage.alt_text,
+          caption: deletedImage.caption,
+          display_order: deletedImage.display_order,
+          uploaded_by: deletedImage.uploaded_by,
+          created_at: deletedImage.created_at,
+          updated_at: deletedImage.updated_at,
+        })
+
+        if (rollbackError) {
+          console.error('Failed to rollback event image metadata after storage delete failure:', rollbackError)
+        }
+
+        return { error: 'Failed to remove image from storage.' }
+      }
     }
 
     // Always update the event to remove the image URL
-    const { error: updateError } = await supabase
+    const { data: updatedEvent, error: updateError } = await supabase
       .from('events')
       .update({ 
         hero_image_url: null,
@@ -264,10 +328,15 @@ export async function deleteEventImage(imageUrl: string, entityId: string) {
         poster_image_url: null
       })
       .eq('id', entityId)
+      .select('id')
+      .maybeSingle()
     
     if (updateError) {
       console.error('Failed to clear image URLs from event:', updateError)
       return { error: 'Failed to remove image from event.' }
+    }
+    if (!updatedEvent) {
+      return { error: 'Event not found.' }
     }
 
     // Log audit event
@@ -343,7 +412,7 @@ export async function updateImageMetadata(
 
     const supabase = await createClient()
     
-    const { error } = await supabase
+    const { data: updatedImage, error } = await supabase
       .from('event_images')
       .update({
         alt_text: data.alt_text,
@@ -352,9 +421,14 @@ export async function updateImageMetadata(
         updated_at: new Date().toISOString()
       })
       .eq('id', imageId)
+      .select('id')
+      .maybeSingle()
 
     if (error) {
       return { error: 'Failed to update image metadata.' }
+    }
+    if (!updatedImage) {
+      return { error: 'Image not found.' }
     }
 
     return { success: true }

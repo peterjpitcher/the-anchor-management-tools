@@ -4,7 +4,7 @@ import { unstable_cache } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { PrivateBookingService } from '@/services/private-bookings'
-import { getLocalIsoDateDaysAgo, getTodayIsoDate } from '@/lib/dateUtils'
+import { getLocalIsoDateDaysAgo, getLocalIsoDateDaysAhead, getTodayIsoDate } from '@/lib/dateUtils'
 import { startOfWeek, subWeeks, format, addDays, differenceInCalendarDays } from 'date-fns'
 
 type EventSummary = {
@@ -14,11 +14,24 @@ type EventSummary = {
   time: string | null
 }
 
+type CalendarNoteSummary = {
+  id: string
+  note_date: string
+  end_date: string
+  title: string
+  notes: string | null
+  source: string
+  start_time: string | null
+  end_time: string | null
+  color: string
+}
+
 type EventsSnapshot = {
   permitted: boolean
   today: EventSummary[]
   upcoming: EventSummary[]
   past: EventSummary[]
+  calendarNotes: CalendarNoteSummary[]
   totalUpcoming: number
   nextUpcoming?: EventSummary
   error?: string
@@ -241,6 +254,19 @@ function hasModuleAccess(permissions: Map<string, Set<string>>, module: string) 
   return false
 }
 
+function isMissingColumnError(error: unknown, columnName: string): boolean {
+  if (!error || typeof error !== 'object') {
+    return false
+  }
+
+  const pgError = error as { code?: string | null; message?: string | null }
+  if (pgError.code !== '42703') {
+    return false
+  }
+
+  return new RegExp(`\\b${columnName}\\b`, 'i').test(pgError.message ?? '')
+}
+
 const fetchDashboardSnapshot = unstable_cache(
   async (userId: string): Promise<DashboardSnapshot> => {
     const supabase = await createAdminClient()
@@ -254,7 +280,7 @@ const fetchDashboardSnapshot = unstable_cache(
 
     const todayIso = getTodayIsoDate()
     const eventsLookbackIso = getLocalIsoDateDaysAgo(90)
-    const nowIso = new Date().toISOString()
+    const calendarNotesHorizonIso = getLocalIsoDateDaysAhead(730)
     const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
     const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
     
@@ -283,8 +309,10 @@ const fetchDashboardSnapshot = unstable_cache(
       today: [],
       upcoming: [],
       past: [],
+      calendarNotes: [],
       totalUpcoming: 0,
     }
+    const canViewCalendarNotes = events.permitted || hasModuleAccess(permissionsMap, 'settings')
 
     const customers: CustomersSnapshot = {
       permitted: hasModuleAccess(permissionsMap, 'customers'),
@@ -616,6 +644,37 @@ const fetchDashboardSnapshot = unstable_cache(
         }
       })() : Promise.resolve(),
 
+      canViewCalendarNotes ? (async () => {
+        try {
+          const { data: notes, error } = await supabase
+            .from('calendar_notes')
+            .select('id, note_date, end_date, title, notes, source, start_time, end_time, color')
+            .gte('note_date', eventsLookbackIso)
+            .lte('note_date', calendarNotesHorizonIso)
+            .order('note_date', { ascending: true })
+            .order('end_date', { ascending: true })
+            .order('start_time', { ascending: true, nullsFirst: true })
+            .order('title', { ascending: true })
+            .range(0, 999)
+
+          if (error) throw error
+
+          events.calendarNotes = (notes ?? []).map((note) => ({
+            id: String(note.id),
+            note_date: String(note.note_date),
+            end_date: typeof note.end_date === 'string' ? note.end_date : String(note.note_date),
+            title: typeof note.title === 'string' ? note.title : 'Calendar note',
+            notes: typeof note.notes === 'string' ? note.notes : null,
+            source: typeof note.source === 'string' ? note.source : 'manual',
+            start_time: typeof note.start_time === 'string' ? note.start_time : null,
+            end_time: typeof note.end_time === 'string' ? note.end_time : null,
+            color: typeof note.color === 'string' ? note.color : '#0EA5E9',
+          }))
+        } catch (error) {
+          console.error('Failed to load dashboard calendar notes:', error)
+        }
+      })() : Promise.resolve(),
+
       customers.permitted ? (async () => {
         try {
           const [totalResult, newWeekResult, newMonthResult, lastMonthResult] = await Promise.all([
@@ -781,6 +840,7 @@ const fetchDashboardSnapshot = unstable_cache(
                 `,
                 { count: 'exact' }
               )
+              .is('deleted_at', null)
               .in('status', unpaidStatuses)
               .order('due_date', { ascending: true })
               .range(0, 4),
@@ -788,12 +848,14 @@ const fetchDashboardSnapshot = unstable_cache(
             supabase
               .from('invoices')
               .select('id', { count: 'exact', head: true })
+              .is('deleted_at', null)
               .in('status', scheduleStatuses)
               .lt('due_date', todayIso),
             // Total unpaid value (already there)
             supabase
               .from('invoices')
-              .select('total_amount')
+              .select('total_amount, paid_amount')
+              .is('deleted_at', null)
               .in('status', unpaidStatuses),
             // NEW: Overdue invoices list (up to 5 for display in today's schedule)
             supabase
@@ -808,6 +870,7 @@ const fetchDashboardSnapshot = unstable_cache(
                   vendor:invoice_vendors(name)
                 `
               )
+              .is('deleted_at', null)
               .in('status', scheduleStatuses)
               .lt('due_date', todayIso)
               .order('due_date', { ascending: true })
@@ -825,6 +888,7 @@ const fetchDashboardSnapshot = unstable_cache(
                   vendor:invoice_vendors(name)
                 `
               )
+              .is('deleted_at', null)
               .in('status', scheduleStatuses)
               .eq('due_date', todayIso)
               .order('due_date', { ascending: true })
@@ -848,7 +912,12 @@ const fetchDashboardSnapshot = unstable_cache(
           invoices.unpaidCount = unpaidResult.count ?? invoices.unpaid.length
           invoices.overdueCount = overdueCountResult.count ?? 0
           
-          invoices.totalUnpaidValue = (allUnpaidResult.data ?? []).reduce((sum, inv) => sum + (Number(inv.total_amount) || 0), 0)
+          invoices.totalUnpaidValue = (allUnpaidResult.data ?? []).reduce((sum, inv) => {
+            const total = Number(inv.total_amount ?? 0)
+            const paid = Number(inv.paid_amount ?? 0)
+            const outstanding = Math.max(0, total - paid)
+            return sum + (Number.isFinite(outstanding) ? outstanding : 0)
+          }, 0)
 
           invoices.overdue = (overdueListResult.data ?? []).map((invoice) => ({
             id: invoice.id as string,
@@ -928,16 +997,23 @@ const fetchDashboardSnapshot = unstable_cache(
 
       quotes.permitted ? (async () => {
         try {
-          const { data, error } = await supabase
+          let quotesResult = await supabase
             .from('quotes')
             .select('status, total_amount, valid_until')
+            .is('deleted_at', null)
 
-          if (error) throw error
+          if (quotesResult.error && isMissingColumnError(quotesResult.error, 'deleted_at')) {
+            quotesResult = await supabase
+              .from('quotes')
+              .select('status, total_amount, valid_until')
+          }
+
+          if (quotesResult.error) throw quotesResult.error
 
           const today = new Date()
           today.setHours(0, 0, 0, 0)
 
-          for (const quote of data ?? []) {
+          for (const quote of quotesResult.data ?? []) {
             const status = (quote.status as string) ?? 'draft'
             const totalAmount = Number(quote.total_amount ?? 0)
 

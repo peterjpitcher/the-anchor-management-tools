@@ -83,8 +83,11 @@ export async function POST(
     if (error) {
       return NextResponse.json({ error: 'Failed to mark booking as seated' }, { status: 500 })
     }
+    if (!data) {
+      return NextResponse.json({ error: 'Booking not found' }, { status: 404 })
+    }
 
-    return NextResponse.json({ success: true, data: data || { id, status: booking.status, seated_at: nowIso } })
+    return NextResponse.json({ success: true, data })
   }
 
   if (parsed.data.action === 'left') {
@@ -117,11 +120,11 @@ export async function POST(
     if (error) {
       return NextResponse.json({ error: 'Failed to mark booking as left' }, { status: 500 })
     }
+    if (!data) {
+      return NextResponse.json({ error: 'Booking not found' }, { status: 404 })
+    }
 
-    return NextResponse.json({
-      success: true,
-      data: data || { id, status: booking.status, left_at: nowIso, end_datetime: nowIso }
-    })
+    return NextResponse.json({ success: true, data })
   }
 
   if (parsed.data.action === 'completed') {
@@ -138,8 +141,11 @@ export async function POST(
     if (error) {
       return NextResponse.json({ error: 'Failed to mark booking as completed' }, { status: 500 })
     }
+    if (!data) {
+      return NextResponse.json({ error: 'Booking not found' }, { status: 404 })
+    }
 
-    return NextResponse.json({ success: true, data: data || { id, status: 'completed', left_at: nowIso } })
+    return NextResponse.json({ success: true, data })
   }
 
   if (parsed.data.action === 'confirmed') {
@@ -162,8 +168,11 @@ export async function POST(
     if (error) {
       return NextResponse.json({ error: 'Failed to mark booking as confirmed' }, { status: 500 })
     }
+    if (!data) {
+      return NextResponse.json({ error: 'Booking not found' }, { status: 404 })
+    }
 
-    return NextResponse.json({ success: true, data: data || { id, status: 'confirmed' } })
+    return NextResponse.json({ success: true, data })
   }
 
   if (parsed.data.action === 'cancelled') {
@@ -181,11 +190,11 @@ export async function POST(
     if (error) {
       return NextResponse.json({ error: 'Failed to cancel booking' }, { status: 500 })
     }
+    if (!data) {
+      return NextResponse.json({ error: 'Booking not found' }, { status: 404 })
+    }
 
-    return NextResponse.json({
-      success: true,
-      data: data || { id, status: 'cancelled', cancelled_at: nowIso, cancelled_by: 'staff' }
-    })
+    return NextResponse.json({ success: true, data })
   }
 
   if (booking.status === 'cancelled') {
@@ -210,7 +219,7 @@ export async function POST(
   const feePerHead = await getFeePerHead(auth.supabase)
   const suggestedAmount = committedPartySize * feePerHead
 
-  const { error: updateError } = await (auth.supabase.from('table_bookings') as any)
+  const { data: noShowRow, error: updateError } = await (auth.supabase.from('table_bookings') as any)
     .update({
       status: 'no_show',
       no_show_at: nowIso,
@@ -219,9 +228,14 @@ export async function POST(
       updated_at: nowIso
     })
     .eq('id', id)
+    .select('id')
+    .maybeSingle()
 
   if (updateError) {
     return NextResponse.json({ error: 'Failed to mark booking as no-show' }, { status: 500 })
+  }
+  if (!noShowRow) {
+    return NextResponse.json({ error: 'Booking not found' }, { status: 404 })
   }
 
   const { chargeRequestId, amount: chargeAmount, capApplied } = await createChargeRequestForBooking(auth.supabase, {

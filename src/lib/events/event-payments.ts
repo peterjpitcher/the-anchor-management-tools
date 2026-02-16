@@ -56,6 +56,38 @@ function formatPence(amount: number): number {
   return Math.round(amount * 100)
 }
 
+function isDuplicateKeyError(error: unknown): boolean {
+  const pgError = error as { code?: string } | null
+  return pgError?.code === '23505'
+}
+
+function normalizeThrownSmsSafety(error: unknown): { code: string; logFailure: boolean } {
+  const thrownCode = typeof (error as any)?.code === 'string' ? (error as any).code : null
+  const thrownLogFailure = (error as any)?.logFailure === true || thrownCode === 'logging_failed'
+
+  if (thrownLogFailure) {
+    return {
+      code: 'logging_failed',
+      logFailure: true
+    }
+  }
+
+  if (
+    thrownCode === 'safety_unavailable'
+    || thrownCode === 'idempotency_conflict'
+  ) {
+    return {
+      code: thrownCode,
+      logFailure: false
+    }
+  }
+
+  return {
+    code: 'safety_unavailable',
+    logFailure: false
+  }
+}
+
 export async function createEventPaymentToken(
   supabase: SupabaseClient<any, 'public', any>,
   input: {
@@ -247,29 +279,66 @@ export async function createEventCheckoutSessionByRawToken(
   }
 
   const nowIso = new Date().toISOString()
-  const { error: paymentInsertError } = await supabase
+  const { data: existingPayment, error: existingPaymentLookupError } = await supabase
     .from('payments')
-    .insert({
-      event_booking_id: preview.bookingId,
-      charge_type: 'prepaid_event',
-      stripe_checkout_session_id: session.id,
-      stripe_payment_intent_id: session.payment_intent ?? null,
-      amount: preview.totalAmount,
-      currency: preview.currency,
-      status: 'pending',
-      metadata: {
-        source: 'guest_token',
-        token_hash: preview.tokenHash,
-        checkout_url: session.url,
-        created_at: nowIso
-      }
-    })
+    .select('id')
+    .eq('stripe_checkout_session_id', session.id)
+    .limit(1)
+    .maybeSingle()
 
-  if (paymentInsertError) {
-    logger.error('Failed to store pending event payment row', {
-      error: new Error(paymentInsertError.message),
-      metadata: { bookingId: preview.bookingId, checkoutSessionId: session.id }
-    })
+  if (existingPaymentLookupError) {
+    throw new Error(
+      `Failed to verify pending event payment row before checkout persistence: ${existingPaymentLookupError.message}`
+    )
+  }
+
+  if (!existingPayment) {
+    const { data: insertedPayment, error: paymentInsertError } = await supabase
+      .from('payments')
+      .insert({
+        event_booking_id: preview.bookingId,
+        charge_type: 'prepaid_event',
+        stripe_checkout_session_id: session.id,
+        stripe_payment_intent_id: session.payment_intent ?? null,
+        amount: preview.totalAmount,
+        currency: preview.currency,
+        status: 'pending',
+        metadata: {
+          source: 'guest_token',
+          token_hash: preview.tokenHash,
+          checkout_url: session.url,
+          created_at: nowIso
+        }
+      })
+      .select('id')
+      .maybeSingle()
+
+    if (paymentInsertError) {
+      if (!isDuplicateKeyError(paymentInsertError)) {
+        throw new Error(
+          `Failed to persist pending event payment row: ${paymentInsertError.message}`
+        )
+      }
+
+      const { data: concurrentPayment, error: concurrentLookupError } = await supabase
+        .from('payments')
+        .select('id')
+        .eq('stripe_checkout_session_id', session.id)
+        .limit(1)
+        .maybeSingle()
+
+      if (concurrentLookupError) {
+        throw new Error(
+          `Failed to resolve concurrent pending event payment row after duplicate insert: ${concurrentLookupError.message}`
+        )
+      }
+
+      if (!concurrentPayment) {
+        throw new Error('Failed to resolve concurrent pending event payment row after duplicate insert')
+      }
+    } else if (!insertedPayment) {
+      throw new Error('Pending event payment insert affected no rows')
+    }
   }
 
   return {
@@ -288,15 +357,25 @@ export async function sendEventPaymentConfirmationSms(
     seats: number
     appBaseUrl?: string
   }
-): Promise<void> {
+): Promise<EventPaymentSmsMeta> {
   const { data: booking, error: bookingError } = await supabase
     .from('bookings')
     .select('id, customer_id, event_id')
     .eq('id', input.bookingId)
     .maybeSingle()
 
-  if (bookingError || !booking?.customer_id) {
-    return
+  if (bookingError) {
+    logger.error('Failed to load booking for event payment confirmation SMS', {
+      metadata: {
+        bookingId: input.bookingId,
+        error: bookingError.message,
+      }
+    })
+    return { success: false, code: 'safety_unavailable', logFailure: false }
+  }
+
+  if (!booking?.customer_id) {
+    return { success: false, code: null, logFailure: false }
   }
 
   const { data: customer, error: customerError } = await supabase
@@ -305,8 +384,19 @@ export async function sendEventPaymentConfirmationSms(
     .eq('id', booking.customer_id)
     .maybeSingle()
 
-  if (customerError || !customer || customer.sms_status !== 'active' || !customer.mobile_number) {
-    return
+  if (customerError) {
+    logger.error('Failed to load customer for event payment confirmation SMS', {
+      metadata: {
+        bookingId: input.bookingId,
+        customerId: booking.customer_id,
+        error: customerError.message,
+      }
+    })
+    return { success: false, code: 'safety_unavailable', logFailure: false }
+  }
+
+  if (!customer || customer.sms_status !== 'active' || !customer.mobile_number) {
+    return { success: false, code: null, logFailure: false }
   }
 
   const firstName = customer.first_name || 'there'
@@ -337,17 +427,72 @@ export async function sendEventPaymentConfirmationSms(
     supportPhone
   )
 
-  await sendSMS(customer.mobile_number, body, {
-    customerId: customer.id,
-    metadata: {
-      event_booking_id: input.bookingId,
-      template_key: 'event_payment_confirmed'
+  try {
+    const smsResult = await sendSMS(customer.mobile_number, body, {
+      customerId: customer.id,
+      metadata: {
+        event_booking_id: input.bookingId,
+        template_key: 'event_payment_confirmed'
+      }
+    })
+    const smsCode = typeof smsResult.code === 'string' ? smsResult.code : null
+    const smsLogFailure = smsResult.logFailure === true || smsCode === 'logging_failed'
+
+    if (smsLogFailure) {
+      logger.error('Event payment confirmation SMS sent but outbound message logging failed', {
+        metadata: {
+          bookingId: input.bookingId,
+          customerId: customer.id,
+          code: smsCode,
+          logFailure: smsLogFailure,
+        }
+      })
     }
-  })
+
+    if (!smsResult.success) {
+      logger.warn('Event payment confirmation SMS send returned non-success', {
+        metadata: {
+          bookingId: input.bookingId,
+          customerId: customer.id,
+          error: smsResult.error,
+          code: smsCode,
+        }
+      })
+    }
+    return {
+      success: smsResult.success === true,
+      code: smsCode,
+      logFailure: smsLogFailure
+    }
+  } catch (smsError) {
+    const thrownSafety = normalizeThrownSmsSafety(smsError)
+    logger.warn('Event payment confirmation SMS send threw unexpectedly', {
+      metadata: {
+        bookingId: input.bookingId,
+        customerId: customer.id,
+        error: smsError instanceof Error ? smsError.message : String(smsError),
+        code: thrownSafety.code,
+        logFailure: thrownSafety.logFailure,
+      }
+    })
+    return { success: false, code: thrownSafety.code, logFailure: thrownSafety.logFailure }
+  }
+}
+
+export type EventPaymentSmsMeta = {
+  success: boolean
+  code: string | null
+  logFailure: boolean
 }
 
 function formatSeatCount(count: number): string {
   return `${count} ${count === 1 ? 'seat' : 'seats'}`
+}
+
+export type EventBookingSeatUpdateSmsResult = {
+  success: boolean
+  code?: string | null
+  logFailure?: boolean
 }
 
 export async function sendEventBookingSeatUpdateSms(
@@ -359,9 +504,9 @@ export async function sendEventBookingSeatUpdateSms(
     newSeats: number
     appBaseUrl?: string
   }
-): Promise<boolean> {
+): Promise<EventBookingSeatUpdateSmsResult> {
   if (input.oldSeats === input.newSeats) {
-    return false
+    return { success: false, code: null, logFailure: false }
   }
 
   const { data: booking, error: bookingError } = await supabase
@@ -370,8 +515,18 @@ export async function sendEventBookingSeatUpdateSms(
     .eq('id', input.bookingId)
     .maybeSingle()
 
-  if (bookingError || !booking?.customer_id) {
-    return false
+  if (bookingError) {
+    logger.error('Failed to load booking for event seat update SMS', {
+      metadata: {
+        bookingId: input.bookingId,
+        error: bookingError.message,
+      }
+    })
+    return { success: false, code: 'safety_unavailable', logFailure: false }
+  }
+
+  if (!booking?.customer_id) {
+    return { success: false, code: null, logFailure: false }
   }
 
   const { data: customer, error: customerError } = await supabase
@@ -380,8 +535,19 @@ export async function sendEventBookingSeatUpdateSms(
     .eq('id', booking.customer_id)
     .maybeSingle()
 
-  if (customerError || !customer || customer.sms_status !== 'active' || !customer.mobile_number) {
-    return false
+  if (customerError) {
+    logger.error('Failed to load customer for event seat update SMS', {
+      metadata: {
+        bookingId: input.bookingId,
+        customerId: booking.customer_id,
+        error: customerError.message,
+      }
+    })
+    return { success: false, code: 'safety_unavailable', logFailure: false }
+  }
+
+  if (!customer || customer.sms_status !== 'active' || !customer.mobile_number) {
+    return { success: false, code: null, logFailure: false }
   }
 
   const firstName = customer.first_name || 'there'
@@ -415,16 +581,67 @@ export async function sendEventBookingSeatUpdateSms(
     supportPhone
   )
 
-  const smsResult = await sendSMS(customer.mobile_number, body, {
-    customerId: customer.id,
-    metadata: {
-      event_booking_id: input.bookingId,
-      event_id: booking.event_id,
-      template_key: 'event_booking_seats_updated'
-    }
-  })
+  try {
+    const smsResult = await sendSMS(customer.mobile_number, body, {
+      customerId: customer.id,
+      metadata: {
+        event_booking_id: input.bookingId,
+        event_id: booking.event_id,
+        template_key: 'event_booking_seats_updated'
+      }
+    })
+    const smsCode = typeof smsResult.code === 'string' ? smsResult.code : null
+    const smsLogFailure = smsResult.logFailure === true || smsCode === 'logging_failed'
 
-  return smsResult.success === true
+    if (smsLogFailure) {
+      logger.error('Event booking seat update SMS sent but outbound message logging failed', {
+        metadata: {
+          bookingId: input.bookingId,
+          customerId: customer.id,
+          code: smsCode,
+          logFailure: smsLogFailure,
+        }
+      })
+    }
+
+    if (!smsResult.success) {
+      logger.warn('Event booking seat update SMS send returned non-success', {
+        metadata: {
+          bookingId: input.bookingId,
+          customerId: customer.id,
+          error: smsResult.error,
+          code: smsCode,
+          logFailure: smsLogFailure,
+        }
+      })
+      return {
+        success: false,
+        code: smsCode ?? undefined,
+        logFailure: smsLogFailure
+      }
+    }
+    return {
+      success: true,
+      code: smsCode ?? undefined,
+      logFailure: smsLogFailure
+    }
+  } catch (smsError) {
+    const thrownSafety = normalizeThrownSmsSafety(smsError)
+    logger.warn('Event booking seat update SMS send threw unexpectedly', {
+      metadata: {
+        bookingId: input.bookingId,
+        customerId: customer.id,
+        error: smsError instanceof Error ? smsError.message : String(smsError),
+        code: thrownSafety.code,
+        logFailure: thrownSafety.logFailure,
+      }
+    })
+    return {
+      success: false,
+      code: thrownSafety.code,
+      logFailure: thrownSafety.logFailure
+    }
+  }
 }
 
 export async function sendEventPaymentRetrySms(
@@ -433,23 +650,33 @@ export async function sendEventPaymentRetrySms(
     bookingId: string
     appBaseUrl?: string
   }
-): Promise<void> {
+): Promise<EventPaymentSmsMeta> {
   const { data: booking, error: bookingError } = await supabase
     .from('bookings')
     .select('id, customer_id, event_id, seats, status, hold_expires_at')
     .eq('id', input.bookingId)
     .maybeSingle()
 
-  if (bookingError || !booking || booking.status !== 'pending_payment' || !booking.hold_expires_at) {
-    return
+  if (bookingError) {
+    logger.error('Failed to load booking for event payment retry SMS', {
+      metadata: {
+        bookingId: input.bookingId,
+        error: bookingError.message,
+      }
+    })
+    return { success: false, code: 'safety_unavailable', logFailure: false }
+  }
+
+  if (!booking || booking.status !== 'pending_payment' || !booking.hold_expires_at) {
+    return { success: false, code: null, logFailure: false }
   }
 
   const holdExpiresAt = parseIsoDate(booking.hold_expires_at)
   if (!holdExpiresAt || holdExpiresAt.getTime() <= Date.now()) {
-    return
+    return { success: false, code: null, logFailure: false }
   }
 
-  const [{ data: customer }, { data: event }] = await Promise.all([
+  const [{ data: customer, error: customerError }, { data: event, error: eventError }] = await Promise.all([
     supabase
       .from('customers')
       .select('id, first_name, mobile_number, sms_status')
@@ -462,8 +689,21 @@ export async function sendEventPaymentRetrySms(
       .maybeSingle()
   ])
 
+  if (customerError || eventError) {
+    logger.error('Failed to load customer/event context for event payment retry SMS', {
+      metadata: {
+        bookingId: booking.id,
+        customerId: booking.customer_id,
+        eventId: booking.event_id,
+        customerError: customerError?.message,
+        eventError: eventError?.message,
+      }
+    })
+    return { success: false, code: 'safety_unavailable', logFailure: false }
+  }
+
   if (!customer || customer.sms_status !== 'active' || !customer.mobile_number) {
-    return
+    return { success: false, code: null, logFailure: false }
   }
 
   let paymentLink: string
@@ -476,7 +716,7 @@ export async function sendEventPaymentRetrySms(
     })
     paymentLink = token.url
   } catch {
-    return
+    return { success: false, code: null, logFailure: false }
   }
 
   const firstName = customer.first_name || 'there'
@@ -486,12 +726,55 @@ export async function sendEventPaymentRetrySms(
     supportPhone
   )
 
-  await sendSMS(customer.mobile_number, body, {
-    customerId: customer.id,
-    metadata: {
-      event_booking_id: booking.id,
-      event_id: event?.id ?? null,
-      template_key: 'event_payment_retry'
+  try {
+    const smsResult = await sendSMS(customer.mobile_number, body, {
+      customerId: customer.id,
+      metadata: {
+        event_booking_id: booking.id,
+        event_id: event?.id ?? null,
+        template_key: 'event_payment_retry'
+      }
+    })
+    const smsCode = typeof smsResult.code === 'string' ? smsResult.code : null
+    const smsLogFailure = smsResult.logFailure === true || smsCode === 'logging_failed'
+
+    if (smsLogFailure) {
+      logger.error('Event payment retry SMS sent but outbound message logging failed', {
+        metadata: {
+          bookingId: booking.id,
+          customerId: customer.id,
+          code: smsCode,
+          logFailure: smsLogFailure,
+        }
+      })
     }
-  })
+
+    if (!smsResult.success) {
+      logger.warn('Event payment retry SMS send returned non-success', {
+        metadata: {
+          bookingId: booking.id,
+          customerId: customer.id,
+          error: smsResult.error,
+          code: smsCode,
+        }
+      })
+    }
+    return {
+      success: smsResult.success === true,
+      code: smsCode,
+      logFailure: smsLogFailure
+    }
+  } catch (smsError) {
+    const thrownSafety = normalizeThrownSmsSafety(smsError)
+    logger.warn('Event payment retry SMS send threw unexpectedly', {
+      metadata: {
+        bookingId: booking.id,
+        customerId: customer.id,
+        error: smsError instanceof Error ? smsError.message : String(smsError),
+        code: thrownSafety.code,
+        logFailure: thrownSafety.logFailure,
+      }
+    })
+    return { success: false, code: thrownSafety.code, logFailure: thrownSafety.logFailure }
+  }
 }

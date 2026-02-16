@@ -3,9 +3,11 @@
  * This replaces the multiple job queue implementations with a single, consistent system
  */
 
+import { createHash } from 'crypto'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { logger } from './logger'
 import { ensureReplyInstruction } from '@/lib/sms/support'
+import { claimIdempotencyKey, releaseIdempotencyClaim } from '@/lib/api/idempotency'
 
 const DEBUG_JOB_QUEUE = process.env.JOB_QUEUE_DEBUG === '1'
 
@@ -67,6 +69,26 @@ function resolveJobTimeoutMs(type: JobType): number {
   return DEFAULT_JOB_TIMEOUT_MS
 }
 
+function buildJobEnqueueLockKey(type: JobType, uniqueKey: string): string {
+  const normalized = uniqueKey.trim()
+  const prefix = `job_enqueue:${type}:`
+  const maxKeyLength = 255
+  const maxUniqueLength = Math.max(0, maxKeyLength - prefix.length)
+
+  if (normalized.length <= maxUniqueLength) {
+    return `${prefix}${normalized}`
+  }
+
+  const digest = createHash('sha256').update(normalized).digest('hex').slice(0, 48)
+  return `${prefix}sha:${digest}`
+}
+
+function buildJobEnqueueLockRequestHash(type: JobType, uniqueKey: string): string {
+  // Unique keys are already intended to represent the enqueue identity; keep the
+  // request hash stable so "double click" replays don't become idempotency conflicts.
+  return createHash('sha256').update(`${type}:${uniqueKey.trim()}`).digest('hex')
+}
+
 function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> {
   if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) {
     return promise
@@ -78,6 +100,49 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string)
       setTimeout(() => reject(new Error(message)), timeoutMs)
     }),
   ])
+}
+
+type FatalSmsSafetyCode = 'logging_failed' | 'safety_unavailable' | 'idempotency_conflict'
+
+function isFatalSmsSafetyCode(code: unknown): code is FatalSmsSafetyCode {
+  return (
+    code === 'logging_failed'
+    || code === 'safety_unavailable'
+    || code === 'idempotency_conflict'
+  )
+}
+
+function parseBulkSmsAbortCode(message: unknown): FatalSmsSafetyCode | null {
+  if (typeof message !== 'string') {
+    return null
+  }
+
+  const match = /Bulk SMS aborted due to safety failure \\(([^)]+)\\)/.exec(message)
+  if (!match) {
+    return null
+  }
+
+  const code = match[1]
+  return isFatalSmsSafetyCode(code) ? code : null
+}
+
+class FatalSmsSafetyError extends Error {
+  code: FatalSmsSafetyCode
+  smsSent: boolean
+
+  constructor(params: { code: FatalSmsSafetyCode; message: string; smsSent: boolean }) {
+    super(params.message)
+    this.name = 'FatalSmsSafetyError'
+    this.code = params.code
+    this.smsSent = params.smsSent
+  }
+}
+
+type ProcessJobOutcome = {
+  ok: boolean
+  fatalSmsSafetyFailure: boolean
+  fatalCode?: FatalSmsSafetyCode
+  errorMessage?: string
 }
 
 export interface JobPayload {
@@ -132,22 +197,118 @@ export class UnifiedJobQueue {
     payload: JobPayload,
     options: JobOptions = {}
   ): Promise<{ success: boolean; jobId?: string; error?: string }> {
+    let supabase: Awaited<ReturnType<typeof createAdminClient>> | null = null
+    let enqueueLock: { key: string; requestHash: string } | null = null
+    let enqueueLockClaimed = false
+
     try {
-      const supabase = await createAdminClient()
+      supabase = await createAdminClient()
 
       // Check for unique constraint if provided
       if (options.unique) {
-        const { data: existing } = await supabase
-          .from('jobs')
-          .select('id')
-          .eq('type', type)
-          .eq('status', 'pending')
-          .contains('payload', { unique_key: options.unique })
-          .single()
+        enqueueLock = {
+          key: buildJobEnqueueLockKey(type, options.unique),
+          requestHash: buildJobEnqueueLockRequestHash(type, options.unique),
+        }
 
+        const lockTtlHours = 0.25 // 15 minutes; should be released immediately on success/failure.
+        const lockState = await claimIdempotencyKey(
+          supabase as any,
+          enqueueLock.key,
+          enqueueLock.requestHash,
+          lockTtlHours
+        )
+
+        if (lockState.state === 'conflict') {
+          logger.error('Unable to acquire job enqueue idempotency lock due to conflict', {
+            metadata: {
+              type,
+              uniqueKey: options.unique,
+              lockKey: enqueueLock.key,
+            }
+          })
+          return {
+            success: false,
+            error: 'Failed to acquire job enqueue idempotency lock (conflict)',
+          }
+        }
+
+        if (lockState.state === 'in_progress' || lockState.state === 'replay') {
+          // Another caller is already enqueuing this unique job. Fail closed to avoid duplicates,
+          // but attempt to return an existing pending/processing job id if it is already visible.
+          const { data: existingRows, error: existingError } = await supabase
+            .from('jobs')
+            .select('id, status')
+            .eq('type', type)
+            .in('status', ['pending', 'processing'])
+            .contains('payload', { unique_key: options.unique })
+            .order('created_at', { ascending: false })
+            .limit(1)
+
+          if (existingError) {
+            logger.error('Unable to verify unique job constraint during enqueue lock contention', {
+              metadata: {
+                type,
+                uniqueKey: options.unique,
+                error: existingError.message,
+              }
+            })
+            return {
+              success: false,
+              error: `Failed to verify unique job constraint: ${existingError.message || 'unknown database error'}`,
+            }
+          }
+
+          const existing = existingRows?.[0]
+          if (existing) {
+            logger.info(`Job with unique key ${options.unique} already exists (lock contention)`, {
+              metadata: { jobId: existing.id, type, status: existing.status }
+            })
+            return { success: true, jobId: existing.id }
+          }
+
+          logger.warn('Job enqueue already in progress; no pending/processing job row visible yet', {
+            metadata: {
+              type,
+              uniqueKey: options.unique,
+              lockKey: enqueueLock.key,
+            }
+          })
+          return {
+            success: false,
+            error: 'Job enqueue already in progress; retry shortly',
+          }
+        }
+
+        enqueueLockClaimed = lockState.state === 'claimed'
+
+        const { data: existingRows, error: existingError } = await supabase
+          .from('jobs')
+          .select('id, status')
+          .eq('type', type)
+          .in('status', ['pending', 'processing'])
+          .contains('payload', { unique_key: options.unique })
+          .order('created_at', { ascending: false })
+          .limit(1)
+
+        if (existingError) {
+          logger.error('Unable to verify unique job constraint; blocking enqueue to fail closed', {
+            metadata: {
+              type,
+              uniqueKey: options.unique,
+              error: existingError.message
+            }
+          })
+          return {
+            success: false,
+            error: `Failed to verify unique job constraint: ${existingError.message || 'unknown database error'}`
+          }
+        }
+
+        const existing = existingRows?.[0]
         if (existing) {
           logger.info(`Job with unique key ${options.unique} already exists`, {
-            metadata: { jobId: existing.id, type }
+            metadata: { jobId: existing.id, type, status: existing.status }
           })
           return { success: true, jobId: existing.id }
         }
@@ -202,6 +363,21 @@ export class UnifiedJobQueue {
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Failed to enqueue job'
+      }
+    } finally {
+      if (enqueueLockClaimed && enqueueLock && supabase) {
+        try {
+          await releaseIdempotencyClaim(supabase as any, enqueueLock.key, enqueueLock.requestHash)
+        } catch (releaseError) {
+          logger.warn('Failed releasing job enqueue idempotency lock', {
+            metadata: {
+              type,
+              uniqueKey: options.unique ?? null,
+              lockKey: enqueueLock.key,
+              error: releaseError instanceof Error ? releaseError.message : String(releaseError),
+            }
+          })
+        }
       }
     }
   }
@@ -409,13 +585,22 @@ export class UnifiedJobQueue {
             error_message: errorMessage,
             updated_at: now,
           }
-        const { error: updateError } = await supabase
+        const { data: updatedRow, error: updateError } = await supabase
           .from('jobs')
           .update(update)
           .eq('id', job.id)
+          .select('id')
+          .maybeSingle()
 
         if (updateError) {
           logger.warn('Failed to reset stale job', { error: updateError, metadata: { jobId: job.id } })
+          return
+        }
+
+        if (!updatedRow) {
+          logger.warn('Skipping stale job reset because row no longer exists', {
+            metadata: { jobId: job.id }
+          })
           return
         }
 
@@ -453,20 +638,108 @@ export class UnifiedJobQueue {
       }, {}),
     })
 
-    // Process jobs in parallel
-    await Promise.allSettled(
-      jobs.map(job => this.processJob(job))
-    )
+    const sendJobTypes: JobType[] = ['send_sms', 'send_bulk_sms']
+    const sendJobs = jobs.filter((job) => sendJobTypes.includes(job.type))
+    const otherJobs = jobs.filter((job) => !sendJobTypes.includes(job.type))
+
+    // Non-SMS jobs can run concurrently.
+    if (otherJobs.length > 0) {
+      await Promise.allSettled(
+        otherJobs.map((job) => this.processJob(job))
+      )
+    }
+
+    // SMS jobs must run serially so we can abort remaining sends on fatal safety signals
+    // (e.g., outbound message persistence failures).
+    let abort: { code: FatalSmsSafetyCode; message: string } | null = null
+    for (const job of sendJobs) {
+      if (abort) {
+        await this.requeueAbortedSendJob(supabase, job, abort)
+        continue
+      }
+
+      const outcome = await this.processJob(job)
+      if (outcome.fatalSmsSafetyFailure && outcome.fatalCode) {
+        abort = {
+          code: outcome.fatalCode,
+          message: outcome.errorMessage || 'Fatal SMS safety failure',
+        }
+        logger.error('Aborting remaining SMS jobs due to fatal safety failure', {
+          metadata: {
+            code: abort.code,
+            jobId: job.id,
+            error: abort.message,
+          }
+        })
+      }
+    }
+  }
+
+  private async requeueAbortedSendJob(
+    supabase: ReturnType<typeof createAdminClient>,
+    job: Job,
+    abort: { code: FatalSmsSafetyCode; message: string }
+  ): Promise<void> {
+    const now = new Date().toISOString()
+    const token = job.processing_token ?? null
+    const rescheduleFor = new Date(Date.now() + 10 * 60 * 1000).toISOString()
+    const errorMessage = `Aborted due to fatal SMS safety failure (${abort.code}): ${abort.message}`
+    const truncatedErrorMessage = errorMessage.length > 500 ? errorMessage.slice(0, 500) : errorMessage
+
+    let update: any = supabase
+      .from('jobs')
+      .update({
+        status: 'pending',
+        scheduled_for: rescheduleFor,
+        started_at: null,
+        completed_at: null,
+        failed_at: null,
+        processing_token: null,
+        lease_expires_at: null,
+        last_heartbeat_at: null,
+        error_message: truncatedErrorMessage,
+        updated_at: now,
+      })
+      .eq('id', job.id)
+
+    if (token) {
+      update = update.eq('processing_token', token)
+    }
+
+    const { data: updatedRow, error } = await update.select('id').maybeSingle()
+
+    if (error) {
+      logger.error('Failed to requeue aborted SMS job', {
+        error,
+        metadata: {
+          jobId: job.id,
+          code: abort.code,
+        }
+      })
+      return
+    }
+
+    if (!updatedRow) {
+      logger.warn('Aborted SMS job requeue affected no rows', {
+        metadata: {
+          jobId: job.id,
+          tokenPresent: Boolean(token),
+          code: abort.code,
+        }
+      })
+    }
   }
 
   /**
    * Process a single job
    */
-  private async processJob(job: Job): Promise<void> {
+  private async processJob(job: Job): Promise<ProcessJobOutcome> {
     const startTime = Date.now()
     const supabase = await createAdminClient()
     const token = job.processing_token ?? null
     let heartbeat: ReturnType<typeof setInterval> | null = null
+    let abortLease: ((error: Error) => void) | null = null
+    let leaseLost: Promise<never> | null = null
 
     try {
       logQueueDebug('Starting job', { jobId: job.id, type: job.type })
@@ -474,7 +747,7 @@ export class UnifiedJobQueue {
       if (token) {
         const updateLease = async () => {
           const now = new Date().toISOString()
-          await supabase
+          const { data: leaseRow, error: leaseError } = await supabase
             .from('jobs')
             .update({
               lease_expires_at: new Date(Date.now() + DEFAULT_LEASE_SECONDS * 1000).toISOString(),
@@ -483,11 +756,40 @@ export class UnifiedJobQueue {
             })
             .eq('id', job.id)
             .eq('processing_token', token)
+            .select('id')
+            .maybeSingle()
+          if (leaseError) {
+            throw new Error(`Failed to update job lease: ${leaseError.message}`)
+          }
+          if (!leaseRow) {
+            throw new Error('Failed to update job lease: no row updated')
+          }
         }
+
+        let leaseAborted = false
+        leaseLost = new Promise<never>((_, reject) => {
+          abortLease = (error: Error) => {
+            if (leaseAborted) return
+            leaseAborted = true
+            reject(error)
+          }
+        })
+
+        // Fail closed before running side effects if our lease token is already invalid.
+        await updateLease()
 
         heartbeat = setInterval(() => {
           void updateLease().catch((error) => {
-            logger.warn('Failed to update job lease', { error: error as Error })
+            const leaseError = error instanceof Error ? error : new Error(String(error))
+            logger.error('Job lease heartbeat failed; aborting execution', {
+              error: leaseError,
+              metadata: { jobId: job.id, type: job.type }
+            })
+            if (heartbeat) {
+              clearInterval(heartbeat)
+              heartbeat = null
+            }
+            abortLease?.(leaseError)
           })
         }, HEARTBEAT_MS)
       } else {
@@ -498,11 +800,12 @@ export class UnifiedJobQueue {
 
       // Execute job based on type with timeout protection
       const timeoutMs = resolveJobTimeoutMs(job.type)
-      const result = await withTimeout(
-        this.executeJob(job.type, job.payload),
+      const execution = withTimeout(
+        this.executeJob(job.type, { ...job.payload, __job_id: job.id }),
         timeoutMs,
         `Job execution timeout (${timeoutMs}ms)`
       )
+      const result = leaseLost ? await Promise.race([execution, leaseLost]) : await execution
 
       // Mark as completed
       const completeUpdate = supabase
@@ -522,7 +825,33 @@ export class UnifiedJobQueue {
         completeUpdate.eq('processing_token', token)
       }
 
-      await completeUpdate
+      const { data: completedRow, error: completeError } = await completeUpdate
+        .select('id')
+        .maybeSingle()
+      if (completeError) {
+        // For SMS jobs, a completion-persistence failure happens after side effects ran and can
+        // cause retries to dribble duplicate sends. Treat as a fatal safety signal.
+        if (job.type === 'send_sms' || job.type === 'send_bulk_sms') {
+          throw new FatalSmsSafetyError({
+            code: 'logging_failed',
+            message: `Failed to persist job completion state: ${completeError.message}`,
+            smsSent: true,
+          })
+        }
+
+        throw new Error(`Failed to mark job completed: ${completeError.message}`)
+      }
+      if (!completedRow) {
+        if (job.type === 'send_sms' || job.type === 'send_bulk_sms') {
+          throw new FatalSmsSafetyError({
+            code: 'logging_failed',
+            message: 'Failed to persist job completion state: no row updated',
+            smsSent: true,
+          })
+        }
+
+        throw new Error('Failed to mark job completed: no row updated')
+      }
 
       logger.info(`Job completed: ${job.type}`, {
         metadata: {
@@ -531,13 +860,20 @@ export class UnifiedJobQueue {
         }
       })
 
+      return { ok: true, fatalSmsSafetyFailure: false }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+      const fatalError = error instanceof FatalSmsSafetyError ? error : null
+      const isSmsJob = job.type === 'send_sms' || job.type === 'send_bulk_sms'
 
       // Check if should retry
       const attempts = Number(job.attempts ?? 0)
       const maxAttempts = Number(job.max_attempts ?? 3)
-      const shouldRetry = attempts < maxAttempts
+      let shouldRetry = attempts < maxAttempts
+      if (fatalError?.code === 'logging_failed') {
+        // Transport send already succeeded; retries cannot repair missing persistence and can dribble sends.
+        shouldRetry = false
+      }
       const attemptIndex = Math.max(0, attempts - 1)
 
       const failureUpdate = supabase
@@ -561,7 +897,44 @@ export class UnifiedJobQueue {
         failureUpdate.eq('processing_token', token)
       }
 
-      await failureUpdate
+      const { data: failedRow, error: failurePersistError } = await failureUpdate
+        .select('id')
+        .maybeSingle()
+
+      let persistenceFatal: { code: FatalSmsSafetyCode; message: string } | null = null
+      if (failurePersistError) {
+        logger.error('Failed to persist job failure state', {
+          error: failurePersistError,
+          metadata: { jobId: job.id, type: job.type }
+        })
+        if (isSmsJob) {
+          persistenceFatal = {
+            code: 'safety_unavailable',
+            message: `Failed to persist job failure state: ${failurePersistError.message}`,
+          }
+        }
+      } else if (!failedRow) {
+        logger.warn('Job failure state was not persisted (no row updated)', {
+          metadata: { jobId: job.id, type: job.type, tokenPresent: Boolean(token) }
+        })
+        if (isSmsJob) {
+          persistenceFatal = {
+            code: 'safety_unavailable',
+            message: 'Failed to persist job failure state: no row updated',
+          }
+        }
+      }
+
+      if (persistenceFatal) {
+        logger.error('SMS job failure persistence failed; aborting further SMS processing', {
+          metadata: {
+            jobId: job.id,
+            type: job.type,
+            code: persistenceFatal.code,
+            error: persistenceFatal.message,
+          }
+        })
+      }
 
       logger.error(`Job failed: ${job.type}`, {
         error: error as Error,
@@ -571,6 +944,17 @@ export class UnifiedJobQueue {
           willRetry: shouldRetry
         }
       })
+
+      const combinedErrorMessage = persistenceFatal
+        ? `${errorMessage}; ${persistenceFatal.message}`
+        : errorMessage
+
+      return {
+        ok: false,
+        fatalSmsSafetyFailure: Boolean(fatalError) || Boolean(persistenceFatal),
+        fatalCode: fatalError?.code ?? persistenceFatal?.code,
+        errorMessage: combinedErrorMessage,
+      }
     } finally {
       if (heartbeat) {
         clearInterval(heartbeat)
@@ -606,21 +990,68 @@ export class UnifiedJobQueue {
         }
 
         {
+          const rawCustomerId = payload.customer_id ?? payload.customerId
+          const customerId =
+            typeof rawCustomerId === 'string' && rawCustomerId.trim().length > 0
+              ? rawCustomerId.trim()
+              : null
+
+          if (!customerId) {
+            throw new Error('send_sms job blocked: missing customer_id')
+          }
+
           const { sendSMS } = await import('@/lib/twilio')
+          const jobId = typeof payload.__job_id === 'string' ? payload.__job_id : null
           const supportPhone = process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || process.env.TWILIO_PHONE_NUMBER || undefined
           const messageWithSupport = ensureReplyInstruction(payload.message || '', supportPhone)
           const baseMetadata =
             typeof payload.metadata === 'object' && payload.metadata !== null
               ? { ...(payload.metadata as Record<string, unknown>) }
               : {}
+          if (jobId && baseMetadata.queue_job_id === undefined) {
+            // Keep job correlation metadata out of idempotency context to avoid
+            // turning duplicate SMS payloads into unique sends.
+            baseMetadata.queue_job_id = jobId
+          }
+          if (baseMetadata.template_key === undefined) {
+            // Ensure distributed SMS dedupe stays active for queue-driven sends.
+            baseMetadata.template_key = 'job_queue_sms'
+          }
+          if (baseMetadata.stage === undefined) {
+            // Include a message fingerprint in context so different queue messages don't conflict.
+            baseMetadata.stage = createHash('sha256').update(messageWithSupport).digest('hex').slice(0, 16)
+          }
           if (payload.booking_id && baseMetadata.booking_id === undefined) {
             baseMetadata.booking_id = payload.booking_id
           }
 
           const result = await sendSMS(payload.to, messageWithSupport, {
-            customerId: payload.customer_id || payload.customerId,
+            customerId,
             metadata: Object.keys(baseMetadata).length > 0 ? baseMetadata : undefined
           })
+
+          const code = (result as any)?.code
+          const logFailure = (result as any)?.logFailure === true
+
+          if (logFailure || code === 'logging_failed') {
+            throw new FatalSmsSafetyError({
+              code: 'logging_failed',
+              message: 'SMS sent but message persistence failed (logging_failed)',
+              smsSent: true,
+            })
+          }
+
+          if (!result.success) {
+            if (isFatalSmsSafetyCode(code)) {
+              throw new FatalSmsSafetyError({
+                code,
+                message: result.error || `SMS blocked by safety guard (${code})`,
+                smsSent: false,
+              })
+            }
+
+            throw new Error(result.error || 'Failed to send SMS')
+          }
 
           return result
         }
@@ -628,14 +1059,27 @@ export class UnifiedJobQueue {
       case 'send_bulk_sms':
         {
           const { sendBulkSms } = await import('@/lib/sms/bulk')
+          const normalizedUniqueKey = typeof payload.unique_key === 'string' ? payload.unique_key.trim() : ''
+          const normalizedJobId = typeof payload.jobId === 'string' ? payload.jobId.trim() : ''
+          const normalizedQueueJobId = typeof payload.__job_id === 'string' ? payload.__job_id.trim() : ''
+          const bulkJobId = normalizedUniqueKey || normalizedJobId || normalizedQueueJobId || 'unified_queue'
           const result = await sendBulkSms({
             customerIds: payload.customerIds,
             message: payload.message,
             eventId: payload.eventId,
             categoryId: payload.categoryId,
-            bulkJobId: payload?.jobId || 'unified_queue'
+            bulkJobId
           })
           if (!result.success) {
+            const fatalCode = parseBulkSmsAbortCode(result.error)
+            if (fatalCode) {
+              throw new FatalSmsSafetyError({
+                code: fatalCode,
+                message: result.error,
+                smsSent: fatalCode === 'logging_failed',
+              })
+            }
+
             throw new Error(result.error)
           }
           return result
@@ -675,14 +1119,22 @@ export class UnifiedJobQueue {
     }
 
     const supabase = await createAdminClient()
-    const { error: updateError } = await supabase
+    const { data: updatedJob, error: updateError } = await supabase
       .from('jobs')
       .update(update)
       .eq('id', jobId)
+      .select('id')
+      .maybeSingle()
 
     if (updateError) {
       logger.error('Failed to update job status', {
         error: updateError,
+        metadata: { jobId, status }
+      })
+      return false
+    }
+    if (!updatedJob) {
+      logger.warn('Job status update affected no rows', {
         metadata: { jobId, status }
       })
       return false

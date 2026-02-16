@@ -6,6 +6,7 @@ import { ensureReplyInstruction } from '@/lib/sms/support'
 import { sendSMS } from '@/lib/twilio'
 import { createSundayPreorderToken } from '@/lib/table-bookings/sunday-preorder'
 import { recordAnalyticsEvent } from '@/lib/analytics/events'
+import { persistCronRunResult, recoverCronRunLock } from '@/lib/cron-run-results'
 
 const TEMPLATE_REMINDER_48H = 'sunday_preorder_reminder_48h'
 const TEMPLATE_REMINDER_26H = 'sunday_preorder_reminder_26h'
@@ -58,6 +59,19 @@ function parsePositiveIntEnv(name: string, fallback: number): number {
   if (!raw) return fallback
   const parsed = Number.parseInt(raw, 10)
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback
+}
+
+function parseBooleanEnv(name: string, fallback: boolean): boolean {
+  const raw = process.env[name]
+  if (raw === undefined) return fallback
+  const normalized = raw.trim().toLowerCase()
+  if (['1', 'true', 'yes', 'on'].includes(normalized)) return true
+  if (['0', 'false', 'no', 'off'].includes(normalized)) return false
+  return fallback
+}
+
+function allowSundaySendGuardSchemaGaps(): boolean {
+  return parseBooleanEnv('SUNDAY_PREORDER_SEND_GUARD_ALLOW_SCHEMA_GAPS', process.env.NODE_ENV !== 'production')
 }
 
 function pad2(value: number): string {
@@ -187,10 +201,54 @@ async function acquireCronRun(runKey: string): Promise<CronRunAcquireResult> {
     })
     .eq('id', existing.id)
     .select('id')
-    .single()
+    .maybeSingle()
 
   if (restartError) {
     throw restartError
+  }
+
+  if (!restarted) {
+    logger.warn('Sunday pre-order restart update affected no rows; recovering lock', {
+      metadata: { runKey, jobId: existing.id }
+    })
+
+    const recovered = await recoverCronRunLock(supabase, {
+      jobName: JOB_NAME,
+      runKey,
+      nowIso,
+      context: JOB_NAME,
+      isRunStale
+    })
+
+    if (recovered.result === 'already_completed') {
+      return {
+        supabase,
+        runId: recovered.runId ?? existing.id,
+        runKey,
+        shouldResolve: false,
+        skip: true,
+        skipReason: 'already_completed'
+      }
+    }
+
+    if (recovered.result === 'already_running' || recovered.result === 'missing') {
+      return {
+        supabase,
+        runId: recovered.runId ?? existing.id,
+        runKey,
+        shouldResolve: false,
+        skip: true,
+        skipReason: 'already_running'
+      }
+    }
+
+    return {
+      supabase,
+      runId: recovered.runId ?? existing.id,
+      runKey,
+      shouldResolve: true,
+      skip: false
+    }
   }
 
   return {
@@ -208,19 +266,12 @@ async function resolveCronRunResult(
   status: 'completed' | 'failed',
   errorMessage?: string
 ) {
-  const payload: Record<string, unknown> = {
+  await persistCronRunResult(supabase, {
+    runId,
     status,
-    finished_at: new Date().toISOString()
-  }
-
-  if (errorMessage) {
-    payload.error_message = errorMessage.slice(0, 2000)
-  }
-
-  await supabase
-    .from('cron_job_runs')
-    .update(payload)
-    .eq('id', runId)
+    errorMessage,
+    context: JOB_NAME
+  })
 }
 
 async function evaluateSundaySendGuard(
@@ -239,10 +290,17 @@ async function evaluateSundaySendGuard(
   if (error) {
     const pgError = error as { code?: string; message?: string }
     if (pgError?.code === '42703' || pgError?.code === '42P01') {
-      logger.warn('Sunday pre-order send guard skipped because schema is missing expected columns', {
-        metadata: { error: pgError.message }
+      if (allowSundaySendGuardSchemaGaps()) {
+        logger.warn('Sunday pre-order send guard skipped because schema is missing expected columns', {
+          metadata: { error: pgError.message }
+        })
+        return { blocked: false, recentCount: 0, windowMinutes, limit }
+      }
+
+      logger.error('Sunday pre-order send guard blocked run because schema is unavailable', {
+        metadata: { error: pgError.message, windowMinutes, limit }
       })
-      return { blocked: false, recentCount: 0, windowMinutes, limit }
+      return { blocked: true, recentCount: limit, windowMinutes, limit }
     }
     throw error
   }
@@ -262,6 +320,52 @@ function totalSundaySmsSent(counters: {
   cancellationSmsSent: number
 }): number {
   return counters.reminders48Sent + counters.reminders26Sent + counters.cancellationSmsSent
+}
+
+async function sendSmsSafe(
+  to: string,
+  body: string,
+  options: {
+    customerId: string
+    metadata?: Record<string, unknown>
+  },
+  context: {
+    bookingId: string
+    customerId: string
+    templateKey: string
+  }
+): Promise<Awaited<ReturnType<typeof sendSMS>>> {
+  try {
+    return await sendSMS(to, body, options)
+  } catch (smsError) {
+    logger.warn('Failed sending Sunday pre-order SMS', {
+      metadata: {
+        ...context,
+        error: smsError instanceof Error ? smsError.message : String(smsError)
+      }
+    })
+    return {
+      success: false,
+      error: smsError instanceof Error ? smsError.message : 'Failed to send SMS'
+    } as Awaited<ReturnType<typeof sendSMS>>
+  }
+}
+
+async function recordAnalyticsEventSafe(
+  supabase: ReturnType<typeof createAdminClient>,
+  payload: Parameters<typeof recordAnalyticsEvent>[1],
+  context: Record<string, unknown>
+) {
+  try {
+    await recordAnalyticsEvent(supabase, payload)
+  } catch (analyticsError) {
+    logger.warn('Failed recording Sunday pre-order analytics event', {
+      metadata: {
+        ...context,
+        error: analyticsError instanceof Error ? analyticsError.message : String(analyticsError)
+      }
+    })
+  }
 }
 
 function chunkArray<T>(input: T[], size = 200): T[][] {
@@ -291,12 +395,13 @@ async function loadSentTemplateSet(
       .in('template_key', templateKeys)
 
     if (error) {
-      logger.warn('Failed to load Sunday pre-order message dedupe set', {
+      // Fail closed: running without a complete dedupe view can cause duplicate sends.
+      logger.error('Failed to load Sunday pre-order message dedupe set', {
         metadata: {
           error: error.message
         }
       })
-      continue
+      throw error
     }
 
     for (const row of data || []) {
@@ -309,6 +414,18 @@ async function loadSentTemplateSet(
   }
 
   return sent
+}
+
+function shouldAbortSundaySmsRun(smsResult: Awaited<ReturnType<typeof sendSMS>>): boolean {
+  const code = (smsResult as any)?.code
+  const logFailure = (smsResult as any)?.logFailure === true
+  // Fatal safety signals: loops must abort to avoid continued sends when dedupe/logging cannot be trusted.
+  return (
+    logFailure
+    || code === 'logging_failed'
+    || code === 'safety_unavailable'
+    || code === 'idempotency_conflict'
+  )
 }
 
 async function loadSundayBookings(
@@ -419,13 +536,43 @@ export async function GET(request: NextRequest) {
       cancellationSmsSent: 0,
       skipped: 0
     }
+    const abortState = {
+      safetyAborts: 0,
+      aborted: false,
+      abortReason: null as string | null,
+      abortBookingId: null as string | null,
+      abortTemplateKey: null as string | null
+    }
 
     const bookings = await loadSundayBookings(supabase)
-    const sentTemplateSet = await loadSentTemplateSet(
-      supabase,
-      bookings.map((booking) => booking.id),
-      [TEMPLATE_REMINDER_48H, TEMPLATE_REMINDER_26H, TEMPLATE_CANCELLED_24H]
-    )
+    let sentTemplateSet: Set<string>
+    try {
+      sentTemplateSet = await loadSentTemplateSet(
+        supabase,
+        bookings.map((booking) => booking.id),
+        [TEMPLATE_REMINDER_48H, TEMPLATE_REMINDER_26H, TEMPLATE_CANCELLED_24H]
+      )
+    } catch (dedupeError) {
+      abortState.safetyAborts += 1
+      abortState.aborted = true
+      abortState.abortReason = 'dedupe_unavailable'
+
+      logger.error('Aborting Sunday pre-order cron due to dedupe load failure', {
+        error: dedupeError instanceof Error ? dedupeError : new Error(String(dedupeError)),
+        metadata: { runKey }
+      })
+
+      resolvedStatus = 'failed'
+      runErrorMessage = abortState.abortReason
+      return NextResponse.json({
+        success: true,
+        counters,
+        runKey,
+        guard,
+        ...abortState,
+        processedAt: new Date().toISOString()
+      })
+    }
 
     for (const booking of bookings) {
       const customer = booking.customer
@@ -469,7 +616,7 @@ export async function GET(request: NextRequest) {
 
         counters.cancelledAt24h += 1
 
-        await recordAnalyticsEvent(supabase, {
+        await recordAnalyticsEventSafe(supabase, {
           customerId: customer.id,
           tableBookingId: booking.id,
           eventType: 'table_booking_cancelled',
@@ -477,6 +624,10 @@ export async function GET(request: NextRequest) {
             cancellation_reason: 'sunday_preorder_incomplete_24h',
             cancelled_by: 'system'
           }
+        }, {
+          bookingId: booking.id,
+          customerId: customer.id,
+          eventType: 'table_booking_cancelled'
         })
 
         const cancellationKey = `${booking.id}:${TEMPLATE_CANCELLED_24H}`
@@ -487,17 +638,42 @@ export async function GET(request: NextRequest) {
               supportPhone
             )
 
-            const smsResult = await sendSMS(customer.mobile_number, message, {
+            const smsResult = await sendSmsSafe(customer.mobile_number, message, {
               customerId: customer.id,
               metadata: {
                 table_booking_id: booking.id,
                 template_key: TEMPLATE_CANCELLED_24H
               }
+            }, {
+              bookingId: booking.id,
+              customerId: customer.id,
+              templateKey: TEMPLATE_CANCELLED_24H
             })
 
             if (smsResult.success) {
               sentTemplateSet.add(cancellationKey)
               counters.cancellationSmsSent += 1
+            }
+
+            if (shouldAbortSundaySmsRun(smsResult)) {
+              abortState.safetyAborts += 1
+              abortState.aborted = true
+              abortState.abortReason = (smsResult as any)?.code || 'sms_safety_abort'
+              abortState.abortBookingId = booking.id
+              abortState.abortTemplateKey = TEMPLATE_CANCELLED_24H
+
+              logger.error('Aborting Sunday pre-order cron due to fatal SMS safety signal', {
+                error: new Error(abortState.abortReason || 'sms_safety_abort'),
+                metadata: {
+                  runKey,
+                  bookingId: booking.id,
+                  templateKey: TEMPLATE_CANCELLED_24H,
+                  code: (smsResult as any)?.code || null,
+                  logFailure: (smsResult as any)?.logFailure === true
+                }
+              })
+
+              break
             }
           }
         }
@@ -545,7 +721,7 @@ export async function GET(request: NextRequest) {
         ? 'Final reminder: please complete your Sunday lunch pre-order.'
         : 'please complete your Sunday lunch pre-order.'
 
-      const smsResult = await sendSMS(
+      const smsResult = await sendSmsSafe(
         customer.mobile_number,
         ensureReplyInstruction(
           preorderUrl
@@ -559,11 +735,38 @@ export async function GET(request: NextRequest) {
             table_booking_id: booking.id,
             template_key: templateKey
           }
+        },
+        {
+          bookingId: booking.id,
+          customerId: customer.id,
+          templateKey: templateKey
         }
       )
 
+      if (shouldAbortSundaySmsRun(smsResult)) {
+        abortState.safetyAborts += 1
+        abortState.aborted = true
+        abortState.abortReason = (smsResult as any)?.code || 'sms_safety_abort'
+        abortState.abortBookingId = booking.id
+        abortState.abortTemplateKey = templateKey
+
+        logger.error('Aborting Sunday pre-order cron due to fatal SMS safety signal', {
+          error: new Error(abortState.abortReason || 'sms_safety_abort'),
+          metadata: {
+            runKey,
+            bookingId: booking.id,
+            templateKey,
+            code: (smsResult as any)?.code || null,
+            logFailure: (smsResult as any)?.logFailure === true
+          }
+        })
+      }
+
       if (!smsResult.success) {
         counters.skipped += 1
+        if (abortState.aborted) {
+          break
+        }
         continue
       }
 
@@ -573,14 +776,22 @@ export async function GET(request: NextRequest) {
       } else {
         counters.reminders48Sent += 1
       }
+
+      if (abortState.aborted) {
+        break
+      }
     }
 
-    resolvedStatus = 'completed'
+    resolvedStatus = abortState.aborted ? 'failed' : 'completed'
+    if (abortState.aborted) {
+      runErrorMessage = abortState.abortReason || 'sms_safety_abort'
+    }
     return NextResponse.json({
       success: true,
       counters,
       runKey,
       guard,
+      ...abortState,
       processedAt: new Date().toISOString()
     })
   } catch (error) {
@@ -594,7 +805,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(
       {
         success: false,
-        error: error instanceof Error ? error.message : 'Failed to process Sunday pre-orders'
+        error: 'Failed to process Sunday pre-orders'
       },
       { status: 500 }
     )

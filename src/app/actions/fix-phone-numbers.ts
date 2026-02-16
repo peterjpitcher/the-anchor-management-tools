@@ -182,21 +182,26 @@ export async function fixPhoneNumbers(dryRun: boolean = true) {
   
   console.log(`\nFound ${updates.length} phone numbers to update`)
   console.log(`Found ${unfixable.length} unfixable phone numbers`)
+
+  let successCount = 0
+  let errorCount = 0
   
   if (!dryRun && updates.length > 0) {
     console.log('\nApplying updates...')
-    
-    let successCount = 0
-    let errorCount = 0
-    
+
     for (const update of updates) {
-      const { error } = await supabase
+      const { data: updatedCustomer, error } = await supabase
         .from('customers')
         .update({ mobile_number: update.standardized })
         .eq('id', update.id)
+        .select('id')
+        .maybeSingle()
       
       if (error) {
         console.error(`Failed to update ${update.name}: ${error.message}`)
+        errorCount++
+      } else if (!updatedCustomer) {
+        console.error(`Failed to update ${update.name}: customer row not found`)
         errorCount++
       } else {
         successCount++
@@ -210,6 +215,7 @@ export async function fixPhoneNumbers(dryRun: boolean = true) {
   return {
     toUpdate: updates,
     unfixable,
-    dryRun
+    dryRun,
+    applied: dryRun ? null : { successCount, errorCount }
   }
 }

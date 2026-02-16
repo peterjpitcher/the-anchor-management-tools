@@ -1,61 +1,105 @@
-import { createAdminClient } from '../src/lib/supabase/server'
+#!/usr/bin/env tsx
+/**
+ * Audit log diagnostics (read-only).
+ *
+ * Safety note:
+ * - Do NOT insert audit logs from scripts; this is production DB mutation risk.
+ * - This script is strictly read-only and fails closed on query errors.
+ */
 
-async function testAuditLog() {
-  try {
-    const supabase = await createAdminClient()
-    
-    // Test inserting an audit log entry directly
-    const { data, error } = await supabase
-      .from('audit_logs')
-      .insert({
-        user_email: 'test@example.com',
-        operation_type: 'update',
-        resource_type: 'employee',
-        resource_id: '992f7599-91e3-4da5-a4a3-a4334c965868',
-        operation_status: 'success',
-        additional_info: {
-          action: 'update_onboarding_checklist',
-          field: 'wheniwork_invite_sent',
-          checked: true
-        }
-      })
-      .select()
-      .single()
+import dotenv from 'dotenv'
+import path from 'path'
+import { createAdminClient } from '@/lib/supabase/admin'
 
-    if (error) {
-      console.error('Error inserting audit log:', error)
-    } else {
-      console.log('Successfully inserted audit log:', data)
+dotenv.config({ path: path.resolve(process.cwd(), '.env.local') })
+
+const HARD_CAP_LIMIT = 50
+
+function getArgValue(flag: string): string | null {
+  const withEqualsPrefix = `${flag}=`
+  for (let i = 2; i < process.argv.length; i += 1) {
+    const entry = process.argv[i]
+    if (entry === flag) {
+      const next = process.argv[i + 1]
+      return typeof next === 'string' && next.length > 0 ? next : null
     }
-
-    // Now query audit logs for this employee
-    const { data: logs, error: queryError } = await supabase
-      .from('audit_logs')
-      .select('*')
-      .eq('resource_type', 'employee')
-      .eq('resource_id', '992f7599-91e3-4da5-a4a3-a4334c965868')
-      .order('created_at', { ascending: false })
-      .limit(5)
-
-    if (queryError) {
-      console.error('Error querying audit logs:', queryError)
-    } else {
-      console.log(`Found ${logs?.length || 0} audit logs for employee`)
-      logs?.forEach((log, i) => {
-        console.log(`\nLog ${i + 1}:`)
-        console.log(`  Operation: ${log.operation_type}`)
-        console.log(`  User: ${log.user_email || 'System'}`)
-        console.log(`  Status: ${log.operation_status}`)
-        console.log(`  Created: ${log.created_at}`)
-        if (log.additional_info) {
-          console.log(`  Additional Info:`, log.additional_info)
-        }
-      })
+    if (typeof entry === 'string' && entry.startsWith(withEqualsPrefix)) {
+      const value = entry.slice(withEqualsPrefix.length)
+      return value.length > 0 ? value : null
     }
-
-  } catch (error) {
-    console.error('Unexpected error:', error)
   }
+  return null
 }
 
-testAuditLog()
+function parseLimit(value: string | null, defaultValue: number): number {
+  if (!value) return defaultValue
+  const trimmed = value.trim()
+  if (!/^[1-9]\d*$/.test(trimmed)) {
+    throw new Error(`Invalid positive integer for --limit: ${value}`)
+  }
+  const parsed = Number(trimmed)
+  if (!Number.isInteger(parsed) || parsed <= 0) {
+    throw new Error(`Invalid positive integer for --limit: ${value}`)
+  }
+  if (parsed > HARD_CAP_LIMIT) {
+    throw new Error(`--limit exceeds hard cap ${HARD_CAP_LIMIT}`)
+  }
+  return parsed
+}
+
+async function run() {
+  if (process.argv.includes('--confirm')) {
+    throw new Error('This script is read-only and does not support --confirm.')
+  }
+
+  console.log('Audit log diagnostics (read-only)\n')
+
+  const resourceType = getArgValue('--resource-type') ?? process.env.TEST_AUDIT_LOG_RESOURCE_TYPE ?? 'employee'
+  const resourceId = getArgValue('--resource-id') ?? process.env.TEST_AUDIT_LOG_RESOURCE_ID ?? null
+  const limit = parseLimit(getArgValue('--limit') ?? process.env.TEST_AUDIT_LOG_LIMIT ?? null, 10)
+
+  console.log(`Resource type: ${resourceType}`)
+  console.log(`Resource id: ${resourceId ?? '(missing)'} (set --resource-id or TEST_AUDIT_LOG_RESOURCE_ID)`)
+  console.log(`Limit: ${limit}`)
+  console.log('')
+
+  if (!resourceId) {
+    throw new Error('Missing required --resource-id (or TEST_AUDIT_LOG_RESOURCE_ID)')
+  }
+
+  const supabase = createAdminClient()
+
+  const { data: logs, error } = await supabase
+    .from('audit_logs')
+    .select(
+      'id, operation_type, resource_type, resource_id, operation_status, user_email, user_id, created_at, additional_info'
+    )
+    .eq('resource_type', resourceType)
+    .eq('resource_id', resourceId)
+    .order('created_at', { ascending: false })
+    .limit(limit)
+
+  if (error) {
+    throw new Error(`Audit log lookup failed: ${error.message}`)
+  }
+
+  console.log(`Found ${logs?.length ?? 0} audit logs\n`)
+  for (const [idx, log] of (logs ?? []).entries()) {
+    console.log(`Log ${idx + 1}:`)
+    console.log(`- Operation: ${log.operation_type}`)
+    console.log(`- Status: ${log.operation_status}`)
+    console.log(`- User: ${log.user_email || log.user_id || 'System'}`)
+    console.log(`- Created: ${log.created_at}`)
+    if (log.additional_info) {
+      console.log('- Additional info:', log.additional_info)
+    }
+    console.log('')
+  }
+
+  console.log('✅ Read-only audit log diagnostics completed.')
+}
+
+run().catch((error) => {
+  console.error('Fatal error:', error)
+  process.exitCode = 1
+})

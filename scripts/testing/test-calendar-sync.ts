@@ -1,92 +1,155 @@
 #!/usr/bin/env tsx
+/**
+ * Google Calendar sync diagnostics (read-only).
+ *
+ * Safety note:
+ * - This script MUST NOT write to the database or to Google Calendar.
+ * - For operational resync, use `scripts/tools/resync-private-bookings-calendar.ts` (multi-gated + capped).
+ */
 
-import { config } from 'dotenv'
+import dotenv from 'dotenv'
 import path from 'path'
-import { createAdminClient } from '@/lib/supabase/server'
-import { syncCalendarEvent, isCalendarConfigured } from '@/lib/google-calendar'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { isCalendarConfigured } from '@/lib/google-calendar'
 
-// Load environment variables
-config({ path: path.resolve(process.cwd(), '.env.local') })
+dotenv.config({ path: path.resolve(process.cwd(), '.env.local') })
 
-async function testCalendarSync() {
-  console.log('=== Testing Google Calendar Sync ===\n')
+const HARD_CAP_LIMIT = 25
 
-  // Check configuration
-  console.log('1. Configuration Status:')
-  console.log('   Calendar configured:', isCalendarConfigured() ? '✓ Yes' : '✗ No')
-  console.log('')
-
-  if (!isCalendarConfigured()) {
-    console.log('❌ Google Calendar is not configured. Please check your environment variables.')
-    process.exit(1)
-  }
-
-  // Get a recent private booking to test with
-  const supabase = createAdminClient()
-  
-  console.log('2. Fetching recent private bookings...')
-  const { data: bookings, error } = await supabase
-    .from('private_bookings')
-    .select('*')
-    .order('created_at', { ascending: false })
-    .limit(5)
-
-  if (error) {
-    console.error('❌ Error fetching bookings:', error.message)
-    process.exit(1)
-  }
-
-  if (!bookings || bookings.length === 0) {
-    console.log('❌ No private bookings found to test with.')
-    process.exit(1)
-  }
-
-  console.log(`   Found ${bookings.length} bookings\n`)
-
-  // Display bookings
-  console.log('3. Recent bookings:')
-  bookings.forEach((booking, index) => {
-    console.log(`   ${index + 1}. ${booking.customer_name} - ${booking.event_date} - Status: ${booking.status}`)
-    console.log(`      Calendar Event ID: ${booking.calendar_event_id || 'Not synced'}`)
-  })
-  console.log('')
-
-  // Test sync on the most recent booking without a calendar event
-  const bookingToSync = bookings.find(b => !b.calendar_event_id) || bookings[0]
-  
-  console.log('4. Testing calendar sync:')
-  console.log(`   Syncing booking: ${bookingToSync.customer_name} (${bookingToSync.id})`)
-  console.log(`   Event date: ${bookingToSync.event_date}`)
-  console.log(`   Start time: ${bookingToSync.start_time}`)
-  console.log(`   Current calendar event ID: ${bookingToSync.calendar_event_id || 'None'}`)
-  console.log('')
-
-  try {
-    console.log('5. Attempting to sync with Google Calendar...')
-    const eventId = await syncCalendarEvent(bookingToSync)
-    
-    if (eventId) {
-      console.log(`   ✓ Success! Calendar event created/updated: ${eventId}`)
-      
-      // Update the booking with the calendar event ID
-      const { error: updateError } = await supabase
-        .from('private_bookings')
-        .update({ calendar_event_id: eventId })
-        .eq('id', bookingToSync.id)
-      
-      if (updateError) {
-        console.error('   ⚠️  Failed to update booking with calendar event ID:', updateError.message)
-      } else {
-        console.log('   ✓ Booking updated with calendar event ID')
-      }
-    } else {
-      console.log('   ❌ Failed to sync - no event ID returned')
+function getArgValue(flag: string): string | null {
+  const withEqualsPrefix = `${flag}=`
+  for (let i = 2; i < process.argv.length; i += 1) {
+    const entry = process.argv[i]
+    if (entry === flag) {
+      const next = process.argv[i + 1]
+      return typeof next === 'string' && next.length > 0 ? next : null
     }
-  } catch (error) {
-    console.error('   ❌ Error during sync:', error)
+    if (typeof entry === 'string' && entry.startsWith(withEqualsPrefix)) {
+      const value = entry.slice(withEqualsPrefix.length)
+      return value.length > 0 ? value : null
+    }
   }
-
-  console.log('\n=== Test Complete ===')
+  return null
 }
 
-testCalendarSync().catch(console.error)
+function parseLimit(value: string | null, defaultValue: number): number {
+  if (!value) return defaultValue
+  const trimmed = value.trim()
+  if (!/^[1-9]\d*$/.test(trimmed)) {
+    throw new Error(`Invalid positive integer for --limit: ${value}`)
+  }
+  const parsed = Number(trimmed)
+  if (!Number.isInteger(parsed) || parsed <= 0) {
+    throw new Error(`Invalid positive integer for --limit: ${value}`)
+  }
+  if (parsed > HARD_CAP_LIMIT) {
+    throw new Error(`--limit exceeds hard cap ${HARD_CAP_LIMIT}`)
+  }
+  return parsed
+}
+
+async function run() {
+  if (process.argv.includes('--confirm')) {
+    throw new Error(
+      'This script is read-only and does not support --confirm. Use scripts/tools/resync-private-bookings-calendar.ts for resync operations.'
+    )
+  }
+
+  console.log('Google Calendar sync diagnostics (read-only)\n')
+
+  const configured = isCalendarConfigured()
+  console.log(`Calendar configured: ${configured ? 'yes' : 'no'}`)
+  console.log('')
+
+  if (!configured) {
+    throw new Error('Google Calendar is not configured. Aborting diagnostics.')
+  }
+
+  const bookingId = getArgValue('--booking-id') ?? process.env.TEST_CALENDAR_SYNC_BOOKING_ID ?? null
+  const limit = parseLimit(getArgValue('--limit') ?? process.env.TEST_CALENDAR_SYNC_LIMIT ?? null, bookingId ? 1 : 5)
+
+  console.log(`Target booking id: ${bookingId ?? '(none)'} (set --booking-id or TEST_CALENDAR_SYNC_BOOKING_ID)`)
+  console.log(`Limit: ${limit}${bookingId ? ' (forced to 1 by --booking-id)' : ''}`)
+  console.log('')
+
+  const supabase = createAdminClient()
+
+  const selectFields =
+    'id, customer_name, event_date, start_time, end_time, status, calendar_event_id, created_at'
+
+  const bookings: Array<{
+    id: string
+    customer_name: string | null
+    event_date: string | null
+    start_time: string | null
+    end_time: string | null
+    status: string | null
+    calendar_event_id: string | null
+    created_at: string | null
+  }> = []
+
+  if (bookingId) {
+    const { data, error } = await supabase
+      .from('private_bookings')
+      .select(selectFields)
+      .eq('id', bookingId)
+      .maybeSingle()
+
+    if (error) {
+      throw new Error(`Failed to load booking ${bookingId}: ${error.message}`)
+    }
+    if (!data) {
+      throw new Error(`Booking not found: ${bookingId}`)
+    }
+    bookings.push(data as (typeof bookings)[number])
+  } else {
+    const { data, error } = await supabase
+      .from('private_bookings')
+      .select(selectFields)
+      .order('created_at', { ascending: false })
+      .limit(limit)
+
+    if (error) {
+      throw new Error(`Failed to load recent private bookings: ${error.message}`)
+    }
+
+    bookings.push(...((data ?? []) as unknown as (typeof bookings)))
+  }
+
+  if (bookings.length === 0) {
+    throw new Error('No private bookings found to inspect.')
+  }
+
+  console.log(`Found ${bookings.length} booking(s)\n`)
+
+  let missingCalendarEventId = 0
+  let missingDateOrTime = 0
+
+  for (const booking of bookings) {
+    const hasDateTime = Boolean(booking.event_date && booking.start_time)
+    const hasCalendarEventId = Boolean(booking.calendar_event_id)
+
+    if (!hasCalendarEventId) missingCalendarEventId += 1
+    if (!hasDateTime) missingDateOrTime += 1
+
+    console.log(`- ${booking.id}`)
+    console.log(`  Customer: ${booking.customer_name ?? '(unknown)'}`)
+    console.log(`  Date/time: ${booking.event_date ?? '(missing)'} ${booking.start_time ?? '(missing)'}-${booking.end_time ?? ''}`)
+    console.log(`  Status: ${booking.status ?? '(unknown)'}`)
+    console.log(`  Calendar event id: ${booking.calendar_event_id ?? '(missing)'}`)
+    console.log('')
+  }
+
+  console.log('Summary:')
+  console.log(`- Missing calendar_event_id: ${missingCalendarEventId}`)
+  console.log(`- Missing event_date/start_time: ${missingDateOrTime}`)
+  console.log('')
+  console.log('✅ Read-only calendar diagnostics completed.')
+  console.log('For resync operations (dangerous), use:')
+  console.log('  scripts/tools/resync-private-bookings-calendar.ts --booking-id <id> --confirm')
+}
+
+run().catch((error) => {
+  console.error('Fatal error:', error)
+  process.exitCode = 1
+})

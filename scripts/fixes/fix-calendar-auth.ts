@@ -75,7 +75,7 @@ async function testAuth() {
   }
 }
 
-testAuth().catch(console.error)
+testAuth().catch((error) => { console.error(error); process.exitCode = 1 })
 
 console.log('\n=== Next Steps ===')
 console.log('1. Switch to Node.js v20 using nvm')

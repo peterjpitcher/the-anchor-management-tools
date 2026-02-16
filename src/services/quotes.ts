@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { calculateInvoiceTotals } from '@/lib/invoiceCalculations';
+import { isQuoteStatusTransitionAllowed } from '@/lib/status-transitions';
 import type { QuoteStatus, InvoiceLineItemInput } from '@/types/invoices';
 
 export type CreateQuoteInput = {
@@ -13,6 +14,7 @@ export type CreateQuoteInput = {
   internal_notes?: string;
   line_items: InvoiceLineItemInput[];
 };
+export { isQuoteStatusTransitionAllowed } from '@/lib/status-transitions';
 
 export class QuoteService {
   static async createQuote(input: CreateQuoteInput) {

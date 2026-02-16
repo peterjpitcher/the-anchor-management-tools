@@ -105,7 +105,7 @@ export async function recordMenuIngredientPrice(input: RecordIngredientPriceInpu
       return { error: 'You do not have permission to manage menu ingredients' };
     }
 
-    const payload = MenuService.recordIngredientPrice(input);
+    await MenuService.recordIngredientPrice(input);
 
     revalidatePath(`/menu-management/ingredients/${input.ingredient_id}`);
     return { success: true };

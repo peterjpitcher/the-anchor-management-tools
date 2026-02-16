@@ -64,7 +64,7 @@ export async function GET(request: NextRequest) {
   })
   
   // Log contract generation
-  await supabase.from('private_booking_audit').insert({
+  const { error: auditError } = await supabase.from('private_booking_audit').insert({
     booking_id: bookingId,
     action: 'contract_generated',
     performed_by: user.id,
@@ -74,11 +74,27 @@ export async function GET(request: NextRequest) {
     }
   })
 
+  if (auditError) {
+    console.error('Failed to persist contract generation audit event', auditError)
+    return new NextResponse('Failed to generate contract', { status: 500 })
+  }
+
   // Update contract version
-  await supabase
+  const { data: updatedBooking, error: updateError } = await supabase
     .from('private_bookings')
     .update({ contract_version: booking.contract_version + 1 })
     .eq('id', bookingId)
+    .select('id')
+    .maybeSingle()
+
+  if (updateError) {
+    console.error('Failed to persist contract version update', updateError)
+    return new NextResponse('Failed to generate contract', { status: 500 })
+  }
+
+  if (!updatedBooking) {
+    return new NextResponse('Booking not found', { status: 404 })
+  }
 
   // Return HTML with print-friendly headers
   return new NextResponse(html, {

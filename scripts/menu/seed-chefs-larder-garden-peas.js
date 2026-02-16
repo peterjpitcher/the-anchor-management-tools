@@ -1,9 +1,70 @@
 #!/usr/bin/env node
 
+/**
+ * Seed a single menu ingredient + price history row (Chef's Larder garden peas).
+ *
+ * Safety:
+ * - DRY RUN by default.
+ * - To run mutations, you must pass `--confirm`, set env gates, and provide `--limit`.
+ */
+
 import fs from 'node:fs';
 import path from 'node:path';
 import dotenv from 'dotenv';
 import { createClient } from '@supabase/supabase-js';
+
+const SCRIPT_NAME = 'seed-chefs-larder-garden-peas';
+const RUN_MUTATION_ENV = 'RUN_SEED_CHEFS_LARDER_GARDEN_PEAS_MUTATION';
+const ALLOW_MUTATION_ENV = 'ALLOW_SEED_CHEFS_LARDER_GARDEN_PEAS_MUTATION_SCRIPT';
+const HARD_CAP = 10;
+
+const TRUTHY = new Set(['1', 'true', 'yes', 'on']);
+
+function isTruthyEnv(value) {
+  if (!value) return false;
+  return TRUTHY.has(String(value).trim().toLowerCase());
+}
+
+function findFlagValue(argv, flag) {
+  const withEqualsPrefix = `${flag}=`;
+  for (let i = 0; i < argv.length; i += 1) {
+    const entry = argv[i];
+    if (entry === flag) {
+      const next = argv[i + 1];
+      return typeof next === 'string' ? next : null;
+    }
+    if (typeof entry === 'string' && entry.startsWith(withEqualsPrefix)) {
+      return entry.slice(withEqualsPrefix.length);
+    }
+  }
+  return null;
+}
+
+function parsePositiveInt(raw) {
+  if (!raw) return null;
+  const trimmed = String(raw).trim();
+  if (!/^[1-9]\d*$/.test(trimmed)) {
+    throw new Error(`Invalid positive integer: ${raw}`);
+  }
+  const parsed = Number(trimmed);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+}
+
+function parseArgs(argv = process.argv) {
+  const rest = argv.slice(2);
+  const confirm = rest.includes('--confirm');
+  const dryRun = !confirm || rest.includes('--dry-run');
+  const limit = parsePositiveInt(findFlagValue(rest, '--limit'));
+
+  return { confirm, dryRun, limit };
+}
+
+function requireEnv(name, value) {
+  if (!value || String(value).trim().length === 0) {
+    throw new Error(`Missing required environment variable: ${name}`);
+  }
+  return String(value).trim();
+}
 
 const ALLOWED_ALLERGENS = [
   'celery',
@@ -76,16 +137,6 @@ const DIETARY_PATTERNS = [
     dotenv.config({ path: full, override: false });
   }
 });
-
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-if (!supabaseUrl || !serviceKey) {
-  console.error('Missing SUPABASE env vars. Ensure NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are set.');
-  process.exit(1);
-}
-
-const supabase = createClient(supabaseUrl, serviceKey);
 
 function normalizeList(values = []) {
   return values
@@ -161,20 +212,21 @@ const ingredientPayload = {
   is_active: true,
 };
 
-async function upsertIngredient() {
-  const { data: existing, error: fetchError } = await supabase
+async function fetchExistingIngredientId(supabase) {
+  const { data: existing, error } = await supabase
     .from('menu_ingredients')
     .select('id')
     .eq('name', ingredientPayload.name)
     .maybeSingle();
 
-  if (fetchError) {
-    throw fetchError;
-  }
+  if (error) throw error;
+  return existing?.id ?? null;
+}
 
-  if (existing) {
-    console.log('Ingredient exists, updating…');
-    const { error: updateError } = await supabase
+async function upsertIngredient(supabase, existingId) {
+  if (existingId) {
+    console.log(`[${SCRIPT_NAME}] Ingredient exists, updating...`);
+    const { data: updated, error } = await supabase
       .from('menu_ingredients')
       .update({
         description: ingredientPayload.description,
@@ -194,54 +246,120 @@ async function upsertIngredient() {
         notes: ingredientPayload.notes,
         is_active: ingredientPayload.is_active,
       })
-      .eq('id', existing.id);
-    if (updateError) throw updateError;
-    return existing.id;
+      .eq('id', existingId)
+      .select('id')
+      .single();
+
+    if (error) throw error;
+    if (!updated?.id) throw new Error('Ingredient update affected no rows');
+    return updated.id;
   }
 
-  console.log('Creating ingredient…');
-  const { data: created, error: insertError } = await supabase
+  console.log(`[${SCRIPT_NAME}] Creating ingredient...`);
+  const { data: created, error } = await supabase
     .from('menu_ingredients')
     .insert(ingredientPayload)
     .select('id')
     .single();
-  if (insertError) throw insertError;
+
+  if (error) throw error;
+  if (!created?.id) throw new Error('Ingredient insert returned no id');
   return created.id;
 }
 
-async function recordPrice(ingredientId) {
-  const { error } = await supabase.from('menu_ingredient_prices').insert({
-    ingredient_id: ingredientId,
-    pack_cost: ingredientPayload.pack_cost,
-    supplier_name: ingredientPayload.supplier_name,
-    supplier_sku: ingredientPayload.supplier_sku,
-  });
+async function recordPrice(supabase, ingredientId) {
+  const { data, error } = await supabase
+    .from('menu_ingredient_prices')
+    .insert({
+      ingredient_id: ingredientId,
+      pack_cost: ingredientPayload.pack_cost,
+      supplier_name: ingredientPayload.supplier_name,
+      supplier_sku: ingredientPayload.supplier_sku,
+    })
+    .select('ingredient_id')
+    .single();
+
   if (error) throw error;
+  if (!data?.ingredient_id) throw new Error('Price insert affected no rows');
 }
 
-async function logIngredient(ingredientId) {
+async function logIngredient(supabase, ingredientId) {
   const { data, error } = await supabase
     .from('menu_ingredients')
     .select('name, supplier_name, supplier_sku, allergens, dietary_flags, updated_at')
     .eq('id', ingredientId)
     .maybeSingle();
-  if (error) {
-    console.warn('Unable to verify ingredient record:', error);
-    return;
-  }
+
+  if (error) throw error;
+  if (!data) throw new Error('Unable to verify ingredient record: missing row');
   console.log('Current record snapshot:', data);
 }
 
 async function main() {
-  try {
-    const ingredientId = await upsertIngredient();
-    await recordPrice(ingredientId);
-    await logIngredient(ingredientId);
-    console.log('Ingredient seeded successfully.');
-  } catch (error) {
-    console.error('Failed to seed ingredient:', error);
-    process.exit(1);
+  const args = parseArgs(process.argv);
+
+  console.log(`[${SCRIPT_NAME}] ${args.dryRun ? 'DRY RUN' : 'MUTATION'} starting`);
+
+  const supabaseUrl = requireEnv('NEXT_PUBLIC_SUPABASE_URL', process.env.NEXT_PUBLIC_SUPABASE_URL);
+  const serviceKey = requireEnv('SUPABASE_SERVICE_ROLE_KEY', process.env.SUPABASE_SERVICE_ROLE_KEY);
+  const supabase = createClient(supabaseUrl, serviceKey);
+
+  const existingId = await fetchExistingIngredientId(supabase);
+  const plannedMutations = 2;
+
+  console.log(`[${SCRIPT_NAME}] Ingredient: ${ingredientPayload.name}`);
+  console.log(`[${SCRIPT_NAME}] Existing: ${existingId ? `yes (${existingId})` : 'no'}`);
+  console.log(`[${SCRIPT_NAME}] Planned mutations: ${plannedMutations} (ingredient upsert + price insert)`);
+
+  if (args.dryRun) {
+    if (existingId) {
+      await logIngredient(supabase, existingId);
+    }
+
+    console.log(`[${SCRIPT_NAME}] DRY RUN complete. No rows updated/inserted.`);
+    console.log(`[${SCRIPT_NAME}] To run mutations (dangerous), you must:`);
+    console.log(`- Pass --confirm`);
+    console.log(`- Set ${RUN_MUTATION_ENV}=true`);
+    console.log(`- Set ${ALLOW_MUTATION_ENV}=true`);
+    console.log(`- Provide --limit <n> (hard cap ${HARD_CAP})`);
+    return;
   }
+
+  if (!args.confirm) {
+    throw new Error(`[${SCRIPT_NAME}] mutation blocked: missing --confirm`);
+  }
+
+  if (!isTruthyEnv(process.env[RUN_MUTATION_ENV])) {
+    throw new Error(
+      `[${SCRIPT_NAME}] mutation blocked by safety guard. Set ${RUN_MUTATION_ENV}=true to enable mutations.`
+    );
+  }
+
+  if (!isTruthyEnv(process.env[ALLOW_MUTATION_ENV])) {
+    throw new Error(
+      `[${SCRIPT_NAME}] mutation blocked by safety guard. Set ${ALLOW_MUTATION_ENV}=true to allow this mutation script.`
+    );
+  }
+
+  const limit = args.limit;
+  if (!limit) {
+    throw new Error(`[${SCRIPT_NAME}] mutation requires --limit <n> (hard cap ${HARD_CAP})`);
+  }
+  if (limit > HARD_CAP) {
+    throw new Error(`[${SCRIPT_NAME}] --limit exceeds hard cap (max ${HARD_CAP})`);
+  }
+  if (plannedMutations > limit) {
+    throw new Error(`[${SCRIPT_NAME}] planned mutations (${plannedMutations}) exceeds --limit (${limit})`);
+  }
+
+  const ingredientId = await upsertIngredient(supabase, existingId);
+  await recordPrice(supabase, ingredientId);
+  await logIngredient(supabase, ingredientId);
+
+  console.log(`[${SCRIPT_NAME}] MUTATION complete. Ingredient seeded successfully.`);
 }
 
-main();
+main().catch((error) => {
+  console.error(`[${SCRIPT_NAME}] Failed to seed ingredient:`, error);
+  process.exitCode = 1;
+});

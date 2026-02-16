@@ -2,9 +2,19 @@ import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { calculateInvoiceTotals } from '@/lib/invoiceCalculations';
 import { getTodayIsoDate } from '@/lib/dateUtils';
+import { isInvoiceStatusTransitionAllowed } from '@/lib/status-transitions';
 import { z } from 'zod'; // Import Zod
 
 import type { InvoiceStatus, InvoiceLineItemInput, Invoice, InvoiceWithDetails, LineItemCatalogItem } from '@/types/invoices';
+
+function sanitizeInvoiceSearch(value: string): string {
+  return value
+    .replace(/[,%_()"'\\]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 80);
+}
+export { isInvoiceStatusTransitionAllowed } from '@/lib/status-transitions';
 
 // Invoice validation schema
 export const CreateInvoiceSchema = z.object({
@@ -179,6 +189,21 @@ export class InvoiceService {
   static async updateInvoice(invoiceId: string, input: Omit<CreateInvoiceInput, 'invoice_number'>) {
     const adminClient = await createAdminClient();
 
+    const { data: existingInvoice, error: existingInvoiceError } = await adminClient
+      .from('invoices')
+      .select('id, status')
+      .eq('id', invoiceId)
+      .is('deleted_at', null)
+      .maybeSingle()
+
+    if (existingInvoiceError || !existingInvoice) {
+      throw new Error('Invoice not found')
+    }
+
+    if (existingInvoice.status !== 'draft') {
+      throw new Error('Only draft invoices can be edited')
+    }
+
     // Calculate totals
     const totals = calculateInvoiceTotals(input.line_items, input.invoice_discount_percentage);
 
@@ -265,7 +290,10 @@ export class InvoiceService {
     }
 
     if (search) {
-      query = query.or(`invoice_number.ilike.%${search}%,reference.ilike.%${search}%`);
+      const searchTerm = sanitizeInvoiceSearch(search);
+      if (searchTerm.length > 0) {
+        query = query.or(`invoice_number.ilike.%${searchTerm}%,reference.ilike.%${searchTerm}%`);
+      }
     }
 
     const from = (page - 1) * limit;
@@ -380,10 +408,19 @@ export class InvoiceService {
       .from('invoices')
       .select('*')
       .eq('id', invoiceId)
+      .is('deleted_at', null)
       .single();
 
     if (fetchError || !currentInvoice) {
       throw new Error('Invoice not found');
+    }
+
+    if (!isInvoiceStatusTransitionAllowed(currentInvoice.status as InvoiceStatus, newStatus)) {
+      throw new Error(`Invalid status transition from ${currentInvoice.status} to ${newStatus}`);
+    }
+
+    if (currentInvoice.status === newStatus) {
+      return { updatedInvoice: currentInvoice, oldStatus: currentInvoice.status };
     }
 
     const updates: any = {
@@ -399,12 +436,18 @@ export class InvoiceService {
       .from('invoices')
       .update(updates)
       .eq('id', invoiceId)
+      .eq('status', currentInvoice.status)
+      .is('deleted_at', null)
       .select()
-      .single();
+      .maybeSingle();
 
     if (updateError) {
       console.error('Error updating invoice status:', updateError);
       throw new Error('Failed to update invoice status');
+    }
+
+    if (!updatedInvoice) {
+      throw new Error('Invoice status changed before update completed');
     }
     return { updatedInvoice, oldStatus: currentInvoice.status };
   }
@@ -416,6 +459,7 @@ export class InvoiceService {
       .from('invoices')
       .select('invoice_number, status')
       .eq('id', invoiceId)
+      .is('deleted_at', null)
       .single();
 
     if (fetchError || !invoice) {
@@ -426,17 +470,25 @@ export class InvoiceService {
       throw new Error('Only draft invoices can be deleted');
     }
 
-    const { error: deleteError } = await supabase
+    const { data: deletedInvoice, error: deleteError } = await supabase
       .from('invoices')
       .update({ 
         deleted_at: new Date().toISOString(),
-        deleted_by: userId
+        deleted_by: userId,
+        updated_at: new Date().toISOString()
       })
-      .eq('id', invoiceId);
+      .eq('id', invoiceId)
+      .eq('status', 'draft')
+      .is('deleted_at', null)
+      .select('invoice_number')
+      .maybeSingle();
 
     if (deleteError) {
       console.error('Error deleting invoice:', deleteError);
       throw new Error('Failed to delete invoice');
+    }
+    if (!deletedInvoice) {
+      throw new Error('Invoice is no longer deletable');
     }
     return invoice;
   }
@@ -477,11 +529,14 @@ export class InvoiceService {
       })
       .eq('id', itemId)
       .select()
-      .single();
+      .maybeSingle();
 
     if (error) {
       console.error('Error updating catalog item:', error);
       throw new Error('Failed to update catalog item');
+    }
+    if (!item) {
+      throw new Error('Catalog item not found');
     }
     return item;
   }
@@ -489,17 +544,22 @@ export class InvoiceService {
   static async deleteCatalogItem(itemId: string) {
     const supabase = await createClient();
     
-    const { error } = await supabase
+    const { data: updatedCatalogItem, error } = await supabase
       .from('line_item_catalog')
       .update({
         is_active: false,
         updated_at: new Date().toISOString()
       })
-      .eq('id', itemId);
+      .eq('id', itemId)
+      .select('id')
+      .maybeSingle();
 
     if (error) {
       console.error('Error deleting catalog item:', error);
       throw new Error('Failed to delete catalog item');
+    }
+    if (!updatedCatalogItem) {
+      throw new Error('Catalog item not found');
     }
     return { success: true };
   }

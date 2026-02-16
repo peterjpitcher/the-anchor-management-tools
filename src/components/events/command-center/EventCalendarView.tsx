@@ -3,9 +3,10 @@
 import { useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { addHours, format } from 'date-fns'
-import { LockClosedIcon } from '@heroicons/react/20/solid'
-import {
+import { CalendarDaysIcon, LockClosedIcon } from '@heroicons/react/20/solid'
+import type {
   EventOverview,
+  CalendarNoteCalendarOverview,
   PrivateBookingCalendarOverview,
 } from '@/app/(authenticated)/events/get-events-command-center'
 import { EventCalendar, type CalendarEvent } from '@/components/ui-v2/display/Calendar'
@@ -85,6 +86,7 @@ function getEventStartDate(event: EventOverview): Date {
 }
 
 const PRIVATE_BOOKING_ID_PREFIX = 'pb:'
+const CALENDAR_NOTE_ID_PREFIX = 'note:'
 
 function getPrivateBookingStartDate(booking: PrivateBookingCalendarOverview): Date {
   const [yearStr, monthStr, dayStr] = booking.event_date.split('-')
@@ -143,12 +145,50 @@ function getPrivateBookingColor(booking: PrivateBookingCalendarOverview): string
   }
 }
 
+function getCalendarNoteStartDate(note: CalendarNoteCalendarOverview): Date {
+  const [yearStr, monthStr, dayStr] = note.note_date.split('-')
+  const year = Number(yearStr)
+  const monthIndex = Number(monthStr) - 1
+  const day = Number(dayStr)
+
+  return new Date(
+    Number.isFinite(year) ? year : new Date().getFullYear(),
+    Number.isFinite(monthIndex) ? monthIndex : new Date().getMonth(),
+    Number.isFinite(day) ? day : new Date().getDate(),
+    0,
+    0
+  )
+}
+
+function getCalendarNoteEndDate(note: CalendarNoteCalendarOverview): Date {
+  const endDateIso = note.end_date || note.note_date
+  const [yearStr, monthStr, dayStr] = endDateIso.split('-')
+  const year = Number(yearStr)
+  const monthIndex = Number(monthStr) - 1
+  const day = Number(dayStr)
+
+  return new Date(
+    Number.isFinite(year) ? year : new Date().getFullYear(),
+    Number.isFinite(monthIndex) ? monthIndex : new Date().getMonth(),
+    Number.isFinite(day) ? day : new Date().getDate(),
+    0,
+    0
+  )
+}
+
+function getCalendarNoteDateLabel(note: CalendarNoteCalendarOverview): string {
+  if (note.note_date === note.end_date) return format(getCalendarNoteStartDate(note), 'EEE d MMM yyyy')
+  return `${format(getCalendarNoteStartDate(note), 'EEE d MMM yyyy')} to ${format(getCalendarNoteEndDate(note), 'EEE d MMM yyyy')}`
+}
+
 export default function EventCalendarView({
   events,
   privateBookings,
+  calendarNotes,
 }: {
   events: EventOverview[]
   privateBookings?: PrivateBookingCalendarOverview[]
+  calendarNotes?: CalendarNoteCalendarOverview[]
 }) {
   const router = useRouter()
   const [calendarView, setCalendarView] = useState<CalendarViewMode>('month')
@@ -160,6 +200,14 @@ export default function EventCalendarView({
     }
     return map
   }, [privateBookings])
+
+  const calendarNotesById = useMemo(() => {
+    const map = new Map<string, CalendarNoteCalendarOverview>()
+    for (const note of calendarNotes ?? []) {
+      map.set(note.id, note)
+    }
+    return map
+  }, [calendarNotes])
 
   const calendarEvents = useMemo<CalendarEvent[]>(() => {
     const eventEntries = events.map((event) => {
@@ -201,26 +249,53 @@ export default function EventCalendarView({
       }
     })
 
-    return [...eventEntries, ...privateBookingEntries].sort((a, b) => a.start.getTime() - b.start.getTime())
-  }, [events, privateBookings])
+    const noteEntries = (calendarNotes ?? []).map((note) => {
+      const start = getCalendarNoteStartDate(note)
+      const endRaw = getCalendarNoteEndDate(note)
+      const end = endRaw.getTime() < start.getTime() ? start : endRaw
+      const color = normalizeHexColor(note.color) ?? '#0EA5E9'
+
+      return {
+        id: `${CALENDAR_NOTE_ID_PREFIX}${note.id}`,
+        title: note.title,
+        start,
+        end,
+        allDay: true,
+        color,
+        textColor: getReadableTextColor(color),
+      }
+    })
+
+    return [...eventEntries, ...privateBookingEntries, ...noteEntries].sort((a, b) => a.start.getTime() - b.start.getTime())
+  }, [calendarNotes, events, privateBookings])
 
   const hasPrivateBookings = (privateBookings ?? []).length > 0
+  const hasCalendarNotes = (calendarNotes ?? []).length > 0
 
   return (
     <div className="space-y-4">
-      {events.length === 0 && !hasPrivateBookings && (
+      {events.length === 0 && !hasPrivateBookings && !hasCalendarNotes && (
         <div className="text-center py-6 bg-gray-50 rounded-lg border border-dashed border-gray-300">
           <p className="text-sm text-gray-500">No events found matching your criteria.</p>
         </div>
       )}
 
-      {hasPrivateBookings && (
+      {(hasPrivateBookings || hasCalendarNotes) && (
         <div className="flex items-center gap-2 text-xs text-gray-600">
-          <span className="inline-flex items-center gap-1">
-            <span className="inline-block h-2 w-2 rounded-sm bg-violet-500" />
-            <LockClosedIcon className="h-4 w-4 text-violet-600" />
-            Private bookings
-          </span>
+          {hasCalendarNotes && (
+            <span className="inline-flex items-center gap-1">
+              <span className="inline-block h-2 w-2 rounded-sm bg-sky-500" />
+              <CalendarDaysIcon className="h-4 w-4 text-sky-600" />
+              Calendar notes
+            </span>
+          )}
+          {hasPrivateBookings && (
+            <span className="inline-flex items-center gap-1">
+              <span className="inline-block h-2 w-2 rounded-sm bg-violet-500" />
+              <LockClosedIcon className="h-4 w-4 text-violet-600" />
+              Private bookings
+            </span>
+          )}
         </div>
       )}
 
@@ -230,6 +305,33 @@ export default function EventCalendarView({
         onViewChange={setCalendarView}
         firstDayOfWeek={1}
         renderEvent={(event) => {
+          if (event.id.startsWith(CALENDAR_NOTE_ID_PREFIX)) {
+            const noteId = event.id.slice(CALENDAR_NOTE_ID_PREFIX.length)
+            const note = calendarNotesById.get(noteId)
+            const tooltipContent = note ? (
+              <div className="space-y-1 text-xs">
+                <div className="font-medium">Calendar note</div>
+                <div className="whitespace-pre-wrap">{note.title}</div>
+                <div>
+                  {getCalendarNoteDateLabel(note)}
+                </div>
+                {note.notes && <div className="whitespace-pre-wrap">{note.notes}</div>}
+                <div className="text-gray-300">{note.source === 'ai' ? 'AI generated' : 'Manual note'}</div>
+              </div>
+            ) : (
+              <div className="text-xs whitespace-pre-wrap">{event.title}</div>
+            )
+
+            return (
+              <Tooltip content={tooltipContent} placement="top" delay={250} maxWidth={360}>
+                <span className="inline-flex min-w-0 items-center gap-1">
+                  <CalendarDaysIcon className="h-3 w-3 flex-none" />
+                  <span className="truncate">{event.title}</span>
+                </span>
+              </Tooltip>
+            )
+          }
+
           const isPrivateBooking = event.id.startsWith(PRIVATE_BOOKING_ID_PREFIX)
 
           if (!isPrivateBooking) {
@@ -280,6 +382,10 @@ export default function EventCalendarView({
           )
         }}
         onEventClick={(event) => {
+          if (event.id.startsWith(CALENDAR_NOTE_ID_PREFIX)) {
+            return
+          }
+
           if (event.id.startsWith(PRIVATE_BOOKING_ID_PREFIX)) {
             router.push(`/private-bookings/${event.id.slice(PRIVATE_BOOKING_ID_PREFIX.length)}`)
             return

@@ -1,3 +1,4 @@
+import { createHash } from 'crypto'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { Job, JobType, JobPayload, JobOptions } from './job-types'
 import { logger } from './logger'
@@ -84,7 +85,7 @@ export class JobQueue {
 
     // First, clean up any stuck processing jobs (older than 2 minutes)
     const twoMinutesAgo = new Date(Date.now() - 2 * 60 * 1000).toISOString()
-    await supabase
+    const { error: cleanupError } = await supabase
       .from('jobs')
       .update({
         status: 'failed',
@@ -94,6 +95,10 @@ export class JobQueue {
       .eq('status', 'processing')
       .lt('started_at', twoMinutesAgo)
       .in('type', LEGACY_JOB_TYPES)
+
+    if (cleanupError) {
+      logger.error('Failed to clean up stuck legacy jobs', { error: cleanupError })
+    }
 
     const { data: jobs, error } = await supabase
       .from('jobs')
@@ -143,8 +148,8 @@ export class JobQueue {
     const supabase = await createAdminClient()
 
     try {
-      // Mark job as processing
-      await supabase
+      // Claim pending job atomically so concurrent workers cannot execute it twice.
+      const { data: claimedJob, error: claimError } = await supabase
         .from('jobs')
         .update({
           status: 'processing',
@@ -152,6 +157,20 @@ export class JobQueue {
           attempts: job.attempts + 1
         })
         .eq('id', job.id)
+        .eq('status', 'pending')
+        .select('id')
+        .maybeSingle()
+
+      if (claimError) {
+        throw claimError
+      }
+
+      if (!claimedJob) {
+        logger.info('Skipping job processing because claim lost', {
+          metadata: { jobId: job.id, type: job.type }
+        })
+        return
+      }
 
       // Process job; bulk SMS can legitimately take longer, so skip the 30s timeout there
       const execution = this.executeJob(job.type, job.payload, job.id)
@@ -165,7 +184,7 @@ export class JobQueue {
         ])
 
       // Mark as completed
-      await supabase
+      const { data: completedJob, error: completionError } = await supabase
         .from('jobs')
         .update({
           status: 'completed',
@@ -174,6 +193,17 @@ export class JobQueue {
           updated_at: new Date().toISOString()
         })
         .eq('id', job.id)
+        .eq('status', 'processing')
+        .select('id')
+        .maybeSingle()
+
+      if (completionError) {
+        throw completionError
+      }
+
+      if (!completedJob) {
+        throw new Error('Failed to persist completed job state (job no longer processing)')
+      }
 
       logger.info(`Job completed: ${job.type}`, {
         metadata: {
@@ -188,7 +218,7 @@ export class JobQueue {
       // Check if should retry
       const shouldRetry = job.attempts + 1 < job.max_attempts
 
-      await supabase
+      const { data: failedJob, error: failedUpdateError } = await supabase
         .from('jobs')
         .update({
           status: shouldRetry ? 'pending' : 'failed',
@@ -201,6 +231,24 @@ export class JobQueue {
           updated_at: new Date().toISOString()
         })
         .eq('id', job.id)
+        .eq('status', 'processing')
+        .select('id')
+        .maybeSingle()
+
+      if (failedUpdateError) {
+        logger.error('Failed to persist failed legacy job state', {
+          error: failedUpdateError,
+          metadata: { jobId: job.id, attempt: job.attempts + 1 }
+        })
+        return
+      }
+
+      if (!failedJob) {
+        logger.warn('Skipping failed state persistence because job is no longer processing', {
+          metadata: { jobId: job.id, type: job.type, attempt: job.attempts + 1 }
+        })
+        return
+      }
 
       logger.error(`Job failed: ${job.type}`, {
         error: error as Error,
@@ -219,7 +267,7 @@ export class JobQueue {
   private async executeJob(type: JobType, payload: any, jobId?: string): Promise<any> {
     switch (type) {
       case 'send_sms':
-        return this.processSendSms(payload)
+        return this.processSendSms(payload, jobId)
 
       case 'send_bulk_sms':
         return this.processBulkSms(payload, jobId)
@@ -247,8 +295,18 @@ export class JobQueue {
     throw new Error(`send_email jobs are no longer supported (template=${payload.template})`)
   }
 
-  private async processSendSms(payload: JobPayload['send_sms']) {
-    const { sendSMS } = await import('./twilio')
+  private async processSendSms(payload: JobPayload['send_sms'], jobId?: string) {
+    const rawCustomerId = (payload as any)?.customerId ?? (payload as any)?.customer_id
+    const customerId =
+      typeof rawCustomerId === 'string' && rawCustomerId.trim().length > 0
+        ? rawCustomerId.trim()
+        : null
+
+    if (!customerId) {
+      throw new Error('send_sms job blocked: missing customer_id')
+    }
+
+    const { sendSMS } = await import('@/lib/twilio')
     const messageText = payload.message || ''
 
     if (payload.template) {
@@ -258,13 +316,48 @@ export class JobQueue {
     const supportPhone = (payload.variables?.contact_phone as string | undefined) || process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || process.env.TWILIO_PHONE_NUMBER || undefined
     const messageWithSupport = ensureReplyInstruction(messageText, supportPhone)
 
+    const metadata: Record<string, unknown> = payload.booking_id
+      ? { booking_id: payload.booking_id }
+      : {}
+    if (jobId && metadata.queue_job_id === undefined) {
+      metadata.queue_job_id = jobId
+    }
+    if (metadata.template_key === undefined) {
+      metadata.template_key = 'background_job_sms'
+    }
+    if (metadata.stage === undefined) {
+      metadata.stage = createHash('sha256').update(messageWithSupport).digest('hex').slice(0, 16)
+    }
+
     const result = await sendSMS(payload.to, messageWithSupport, {
-      customerId: payload.customerId || payload.customer_id,
-      metadata: payload.booking_id ? { booking_id: payload.booking_id } : undefined
+      customerId,
+      metadata
     })
 
-    if (!result.success || !result.sid) {
-      throw new Error(result.error as string)
+    if ((result as any)?.logFailure === true || (result as any)?.code === 'logging_failed') {
+      throw new Error('SMS sent but message persistence failed (logging_failed)')
+    }
+
+    if (!result.success) {
+      throw new Error((result as any).error || 'Failed to send SMS')
+    }
+
+    if (!result.sid) {
+      // `sendSMS` can return success without a SID when it suppresses duplicates or defers delivery.
+      const suppressed = (result as any)?.suppressed === true
+      const deferred = (result as any)?.deferred === true
+      if (suppressed || deferred) {
+        return {
+          success: true,
+          sid: null,
+          suppressed,
+          deferred,
+          status: (result as any)?.status,
+          scheduledFor: (result as any)?.scheduledFor,
+        }
+      }
+
+      throw new Error('SMS send returned success but no SID')
     }
 
     return { success: true, sid: result.sid }
@@ -293,12 +386,18 @@ export class JobQueue {
 
     if (customerId) {
       // Sync single customer
-      await supabase.rpc('rebuild_customer_category_stats', {
+      const { error } = await supabase.rpc('rebuild_customer_category_stats', {
         p_customer_id: customerId
       })
+      if (error) {
+        throw error
+      }
     } else {
       // Sync all customers (be careful with this!)
-      await supabase.rpc('rebuild_all_customer_category_stats')
+      const { error } = await supabase.rpc('rebuild_all_customer_category_stats')
+      if (error) {
+        throw error
+      }
     }
 
     return { success: true }

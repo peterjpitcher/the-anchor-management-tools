@@ -100,10 +100,18 @@ export async function createChargeRequestForBooking(
 
   const isPerHeadCappedType = ['late_cancel', 'no_show', 'reduction_fee'].includes(input.type)
   if (isPerHeadCappedType) {
-    const { data: bookingRow } = await (supabase.from('table_bookings') as any)
+    const { data: bookingRow, error: bookingLookupError } = await (supabase.from('table_bookings') as any)
       .select('committed_party_size, party_size')
       .eq('id', input.bookingId)
       .maybeSingle()
+
+    if (bookingLookupError) {
+      throw new Error(`Failed to load booking charge-cap context: ${bookingLookupError.message}`)
+    }
+
+    if (!bookingRow) {
+      throw new Error(`Booking not found while preparing charge request cap: ${input.bookingId}`)
+    }
 
     const committedPartySize = Math.max(
       1,
@@ -112,10 +120,14 @@ export async function createChargeRequestForBooking(
     const feePerHead = await getFeePerHead(supabase)
     const totalCap = Number((committedPartySize * feePerHead).toFixed(2))
 
-    const { data: existingRows } = await (supabase.from('charge_requests') as any)
+    const { data: existingRows, error: existingChargeLookupError } = await (supabase.from('charge_requests') as any)
       .select('amount, manager_decision, charge_status, type')
       .eq('table_booking_id', input.bookingId)
       .in('type', ['late_cancel', 'no_show', 'reduction_fee'])
+
+    if (existingChargeLookupError) {
+      throw new Error(`Failed to load existing capped charge requests: ${existingChargeLookupError.message}`)
+    }
 
     const alreadyAllocated = ((existingRows || []) as any[])
       .filter((row) => row.manager_decision !== 'waived' && row.charge_status !== 'waived')
@@ -155,18 +167,29 @@ export async function createChargeRequestForBooking(
   }
 
   if (input.customerId) {
-    await recordAnalyticsEvent(supabase, {
-      customerId: input.customerId,
-      tableBookingId: input.bookingId,
-      eventType: 'charge_request_created',
-      metadata: {
-        charge_type: input.type,
-        amount,
-        currency: 'GBP',
-        requested_by: 'foh',
-        cap_applied: capApplied
-      }
-    })
+    try {
+      await recordAnalyticsEvent(supabase, {
+        customerId: input.customerId,
+        tableBookingId: input.bookingId,
+        eventType: 'charge_request_created',
+        metadata: {
+          charge_type: input.type,
+          amount,
+          currency: 'GBP',
+          requested_by: 'foh',
+          cap_applied: capApplied
+        }
+      })
+    } catch (analyticsError) {
+      logger.warn('Failed recording FOH charge-request analytics event', {
+        metadata: {
+          bookingId: input.bookingId,
+          customerId: input.customerId,
+          chargeType: input.type,
+          error: analyticsError instanceof Error ? analyticsError.message : String(analyticsError)
+        }
+      })
+    }
   }
 
   const chargeRequestId = (data as any)?.id || null

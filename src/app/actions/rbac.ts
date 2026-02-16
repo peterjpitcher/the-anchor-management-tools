@@ -45,6 +45,13 @@ export async function getUserPermissions(userId?: string) {
     if (!user) return { error: 'Not authenticated' };
     
     const targetUserId = userId || user.id;
+
+    if (targetUserId !== user.id) {
+      const canManageUsers = await PermissionService.checkUserPermission('users', 'manage_roles', user.id);
+      if (!canManageUsers) {
+        return { error: 'Insufficient permissions to view other user permissions' };
+      }
+    }
     
     const permissions = await PermissionService.getUserPermissions(targetUserId);
     return { success: true, data: permissions as UserPermission[] };
@@ -65,6 +72,13 @@ export async function checkUserPermission(
   if (!user) return false;
   
   const targetUserId = userId || user.id;
+
+  if (targetUserId !== user.id) {
+    const canManageUsers = await PermissionService.checkUserPermission('users', 'manage_roles', user.id);
+    if (!canManageUsers) {
+      return false;
+    }
+  }
   
   return await PermissionService.checkUserPermission(moduleName, action, targetUserId);
 }

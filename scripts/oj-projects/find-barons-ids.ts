@@ -1,35 +1,53 @@
+#!/usr/bin/env tsx
+/**
+ * OJ vendor-id diagnostics (read-only).
+ *
+ * Safety:
+ * - Strictly read-only; does not support `--confirm`.
+ * - Fails closed on env/query errors (non-zero exit).
+ */
 
-import { createClient } from '@supabase/supabase-js';
-import dotenv from 'dotenv';
-import path from 'path';
+import dotenv from 'dotenv'
+import path from 'path'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { assertScriptQuerySucceeded } from '@/lib/script-mutation-safety'
 
-// Load environment variables from .env.local
-dotenv.config({ path: path.resolve(process.cwd(), '.env.local') });
+const SCRIPT_NAME = 'oj-find-barons-ids'
+const BARONS_VENDOR_ID = 'b9a6f8b9-9267-42ea-bfbf-7b122a79d9e3'
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-if (!supabaseUrl || !supabaseServiceKey) {
-    console.error('Missing Supabase credentials in .env.local');
-    process.exit(1);
+type Args = {
+  confirm: boolean
 }
 
-const supabase = createClient(supabaseUrl, supabaseServiceKey);
+function parseArgs(argv: string[] = process.argv): Args {
+  const rest = argv.slice(2)
+  return { confirm: rest.includes('--confirm') }
+}
 
 async function main() {
-    const vendorId = 'b9a6f8b9-9267-42ea-bfbf-7b122a79d9e3';
+  dotenv.config({ path: path.resolve(process.cwd(), '.env.local') })
 
-    // Find Projects
-    const { data: projects, error } = await supabase
-        .from('oj_projects')
-        .select('*')
-        .eq('vendor_id', vendorId);
+  const args = parseArgs(process.argv)
+  if (args.confirm) {
+    throw new Error(`[${SCRIPT_NAME}] This script is strictly read-only and does not support --confirm`)
+  }
 
-    if (error) {
-        console.error('Project Error:', error);
-    } else {
-        console.log('Projects for Barons:', projects);
-    }
+  const supabase = createAdminClient()
+  console.log(`[${SCRIPT_NAME}] read-only starting`)
+
+  const { data, error } = await supabase.from('oj_projects').select('*').eq('vendor_id', BARONS_VENDOR_ID)
+
+  const projects = assertScriptQuerySucceeded({
+    operation: `Load projects for vendor ${BARONS_VENDOR_ID}`,
+    data,
+    error,
+  })
+
+  console.log(`[${SCRIPT_NAME}] Found ${projects?.length ?? 0} project(s)`)
+  console.log(projects)
 }
 
-main();
+main().catch((error) => {
+  console.error(`[${SCRIPT_NAME}] Failed`, error)
+  process.exitCode = 1
+})

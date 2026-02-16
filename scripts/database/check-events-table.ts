@@ -1,31 +1,32 @@
-import { createClient } from '@supabase/supabase-js'
-import * as dotenv from 'dotenv'
-import * as path from 'path'
+#!/usr/bin/env tsx
 
-// Load environment variables
-dotenv.config({ path: path.join(__dirname, '../.env.local') })
+import { createAdminClient } from '../../src/lib/supabase/admin'
+import dotenv from 'dotenv'
+import path from 'path'
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
-const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
+const SCRIPT_NAME = 'check-events-table'
 
-if (!supabaseUrl || !supabaseKey) {
-  console.error('Missing environment variables. Please check .env.local')
-  process.exit(1)
+function markFailure(message: string, error?: unknown) {
+  process.exitCode = 1
+  if (error) {
+    console.error(`[${SCRIPT_NAME}] ❌ ${message}`, error)
+    return
+  }
+  console.error(`[${SCRIPT_NAME}] ❌ ${message}`)
 }
 
-const supabase = createClient(supabaseUrl, supabaseKey)
+async function main() {
+  dotenv.config({ path: path.resolve(process.cwd(), '.env.local') })
 
-async function checkEventsTable() {
+  const supabase = createAdminClient()
+
   console.log('=== Checking Events Table Structure ===\n')
 
   // Get a sample event to see its structure
-  const { data: events, error } = await supabase
-    .from('events')
-    .select('*')
-    .limit(1)
+  const { data: events, error } = await (supabase.from('events') as any).select('*').limit(1)
 
   if (error) {
-    console.error('Error fetching events:', error)
+    markFailure('Error fetching events.', error)
     return
   }
 
@@ -34,9 +35,19 @@ async function checkEventsTable() {
     console.log(Object.keys(events[0]))
     console.log('\nSample event data:')
     console.log(JSON.stringify(events[0], null, 2))
+  } else {
+    console.log('No events found')
+    markFailure('Expected at least one event row.')
   }
 
-  process.exit(0)
+  if (process.exitCode === 1) {
+    console.log('\n❌ Events table check completed with failures.')
+  } else {
+    console.log('\n✅ Events table check complete!')
+  }
 }
 
-checkEventsTable().catch(console.error)
+void main().catch((error) => {
+  markFailure('check-events-table failed.', error)
+})
+

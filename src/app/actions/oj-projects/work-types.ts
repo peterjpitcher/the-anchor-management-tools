@@ -76,9 +76,10 @@ export async function updateWorkType(formData: FormData) {
     })
     .eq('id', id)
     .select('*')
-    .single()
+    .maybeSingle()
 
   if (error) return { error: error.message }
+  if (!data) return { error: 'Work type not found' }
   return { workType: data, success: true as const }
 }
 
@@ -90,15 +91,17 @@ export async function disableWorkType(formData: FormData) {
   if (!id) return { error: 'Work type ID is required' }
 
   const supabase = await createClient()
-  const { error } = await supabase
+  const { data: updatedWorkType, error } = await supabase
     .from('oj_work_types')
     .update({
       is_active: false,
       updated_at: new Date().toISOString(),
     })
     .eq('id', id)
+    .select('id')
+    .maybeSingle()
 
   if (error) return { error: error.message }
+  if (!updatedWorkType) return { error: 'Work type not found' }
   return { success: true as const }
 }
-

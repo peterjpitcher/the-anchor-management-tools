@@ -22,6 +22,10 @@ export async function GET(request: NextRequest) {
       return NextResponse.redirect(`${appUrl}/parking/guest/${bookingId}?payment=not_found`)
     }
 
+    if (booking.payment_status === 'paid' && booking.status === 'confirmed') {
+      return NextResponse.redirect(`${appUrl}/parking/guest/${bookingId}?payment=success`)
+    }
+
     await captureParkingPayment(booking, paypalToken, { client: supabase })
 
     return NextResponse.redirect(`${appUrl}/parking/guest/${bookingId}?payment=success`)

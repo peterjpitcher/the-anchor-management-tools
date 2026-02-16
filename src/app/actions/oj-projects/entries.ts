@@ -367,9 +367,10 @@ export async function updateEntry(formData: FormData) {
       })
       .eq('id', parsed.data.id)
       .select('*')
-      .single()
+      .maybeSingle()
 
     if (error) return { error: error.message }
+    if (!data) return { error: 'Entry not found' }
 
     let warning: string | undefined
     try {
@@ -411,9 +412,10 @@ export async function updateEntry(formData: FormData) {
     })
     .eq('id', parsed.data.id)
     .select('*')
-    .single()
+    .maybeSingle()
 
   if (error) return { error: error.message }
+  if (!data) return { error: 'Entry not found' }
   return { entry: data, success: true as const }
 }
 
@@ -434,11 +436,14 @@ export async function deleteEntry(formData: FormData) {
   if (fetchError || !entry) return { error: fetchError?.message || 'Entry not found' }
   if (entry.status !== 'unbilled') return { error: 'Only unbilled entries can be deleted' }
 
-  const { error } = await supabase
+  const { data: deletedEntry, error } = await supabase
     .from('oj_entries')
     .delete()
     .eq('id', id)
+    .select('id')
+    .maybeSingle()
 
   if (error) return { error: error.message }
+  if (!deletedEntry) return { error: 'Entry not found' }
   return { success: true as const }
 }

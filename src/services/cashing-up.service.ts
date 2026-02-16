@@ -207,18 +207,30 @@ export class CashingUpService {
       sessionId = newSession.id;
     } else {
       // Update
-      const { error } = await supabase
+      const { data: updatedSession, error } = await supabase
         .from('cashup_sessions')
         .update(sessionData)
-        .eq('id', sessionId);
+        .eq('id', sessionId)
+        .select('id')
+        .maybeSingle();
       
       if (error) throw error;
+      if (!updatedSession) throw new Error('Session not found');
     }
 
     // Handle children (Replace strategy)
     // Delete existing
-    await supabase.from('cashup_payment_breakdowns').delete().eq('cashup_session_id', sessionId);
-    await supabase.from('cashup_cash_counts').delete().eq('cashup_session_id', sessionId);
+    const { error: deleteBreakdownsError } = await supabase
+      .from('cashup_payment_breakdowns')
+      .delete()
+      .eq('cashup_session_id', sessionId);
+    if (deleteBreakdownsError) throw deleteBreakdownsError;
+
+    const { error: deleteCountsError } = await supabase
+      .from('cashup_cash_counts')
+      .delete()
+      .eq('cashup_session_id', sessionId);
+    if (deleteCountsError) throw deleteCountsError;
 
     // Insert new
     const breakdowns = data.paymentBreakdowns.map(b => ({
@@ -252,23 +264,26 @@ export class CashingUpService {
 
   static async submitSession(supabase: SupabaseClient, id: string, userId: string) {
     // validations can be added here
-    const { error } = await supabase
+    const { data: updatedRow, error } = await supabase
       .from('cashup_sessions')
       .update({ 
-        status: 'approved', 
-        approved_by_user_id: userId,
+        status: 'submitted',
+        approved_by_user_id: null,
         updated_by_user_id: userId, 
         updated_at: new Date().toISOString() 
       })
       .eq('id', id)
-      .eq('status', 'draft'); // Can only submit drafts
+      .eq('status', 'draft') // Can only submit drafts
+      .select('id')
+      .maybeSingle();
     
     if (error) throw error;
+    if (!updatedRow) throw new Error('Session not found or not in draft status');
     return this.getSession(supabase, id);
   }
 
   static async approveSession(supabase: SupabaseClient, id: string, userId: string) {
-    const { error } = await supabase
+    const { data: updatedRow, error } = await supabase
       .from('cashup_sessions')
       .update({ 
         status: 'approved', 
@@ -277,30 +292,39 @@ export class CashingUpService {
         updated_at: new Date().toISOString() 
       })
       .eq('id', id)
-      .eq('status', 'submitted'); // Can only approve submitted
+      .eq('status', 'submitted') // Can only approve submitted
+      .select('id')
+      .maybeSingle();
     
     if (error) throw error;
+    if (!updatedRow) throw new Error('Session not found or not in submitted status');
     return this.getSession(supabase, id);
   }
 
   static async lockSession(supabase: SupabaseClient, id: string, userId: string) {
-    const { error } = await supabase
+    const { data: updatedRow, error } = await supabase
       .from('cashup_sessions')
       .update({ status: 'locked', updated_by_user_id: userId, updated_at: new Date().toISOString() })
-      .eq('id', id);
+      .eq('id', id)
+      .select('id')
+      .maybeSingle();
     
     if (error) throw error;
+    if (!updatedRow) throw new Error('Session not found');
     return this.getSession(supabase, id);
   }
 
   static async unlockSession(supabase: SupabaseClient, id: string, userId: string) {
-    const { error } = await supabase
+    const { data: updatedRow, error } = await supabase
       .from('cashup_sessions')
       .update({ status: 'approved', updated_by_user_id: userId, updated_at: new Date().toISOString() })
       .eq('id', id)
-      .eq('status', 'locked');
+      .eq('status', 'locked')
+      .select('id')
+      .maybeSingle();
     
     if (error) throw error;
+    if (!updatedRow) throw new Error('Session not found or not locked');
     return this.getSession(supabase, id);
   }
 

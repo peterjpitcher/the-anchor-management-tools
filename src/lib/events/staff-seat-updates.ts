@@ -2,6 +2,12 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { updateEventBookingSeatsById } from '@/lib/events/manage-booking'
 import { sendEventBookingSeatUpdateSms } from '@/lib/events/event-payments'
 
+export type SeatUpdateSmsMeta = {
+  success: boolean
+  code: string | null
+  logFailure: boolean
+}
+
 export type TableBookingSeatUpdateResult = {
   state: 'updated' | 'unchanged' | 'blocked'
   reason?: string
@@ -11,7 +17,35 @@ export type TableBookingSeatUpdateResult = {
   new_party_size: number
   delta: number
   sms_sent: boolean
+  sms: SeatUpdateSmsMeta | null
   event_id: string | null
+}
+
+function normalizeThrownSmsSafety(error: unknown): { code: string; logFailure: boolean } {
+  const thrownCode = typeof (error as any)?.code === 'string' ? (error as any).code : null
+  const thrownLogFailure = (error as any)?.logFailure === true || thrownCode === 'logging_failed'
+
+  if (thrownLogFailure) {
+    return {
+      code: 'logging_failed',
+      logFailure: true
+    }
+  }
+
+  if (
+    thrownCode === 'safety_unavailable'
+    || thrownCode === 'idempotency_conflict'
+  ) {
+    return {
+      code: thrownCode,
+      logFailure: false
+    }
+  }
+
+  return {
+    code: 'safety_unavailable',
+    logFailure: false
+  }
 }
 
 export function mapSeatUpdateBlockedReason(reason: string | null | undefined): string {
@@ -58,6 +92,7 @@ export async function updateTableBookingPartySizeWithLinkedEventSeats(
       new_party_size: input.partySize,
       delta: 0,
       sms_sent: false,
+      sms: null,
       event_id: null
     }
   }
@@ -72,6 +107,7 @@ export async function updateTableBookingPartySizeWithLinkedEventSeats(
       new_party_size: Math.max(1, Number(tableBooking.party_size || 1)),
       delta: 0,
       sms_sent: false,
+      sms: null,
       event_id: tableBooking.event_id || null
     }
   }
@@ -89,21 +125,39 @@ export async function updateTableBookingPartySizeWithLinkedEventSeats(
         new_party_size: oldPartySize,
         delta: 0,
         sms_sent: false,
+        sms: null,
         event_id: tableBooking.event_id || null
       }
     }
 
     const nowIso = new Date().toISOString()
-    const { error: tableUpdateError } = await (supabase.from('table_bookings') as any)
+    const { data: updatedTableBooking, error: tableUpdateError } = await (supabase.from('table_bookings') as any)
       .update({
         party_size: newPartySize,
         committed_party_size: newPartySize,
         updated_at: nowIso
       })
       .eq('id', tableBooking.id)
+      .select('id')
+      .maybeSingle()
 
     if (tableUpdateError) {
       throw tableUpdateError
+    }
+
+    if (!updatedTableBooking) {
+      return {
+        state: 'blocked',
+        reason: 'booking_not_found',
+        table_booking_id: tableBooking.id,
+        event_booking_id: null,
+        old_party_size: oldPartySize,
+        new_party_size: oldPartySize,
+        delta: 0,
+        sms_sent: false,
+        sms: null,
+        event_id: tableBooking.event_id || null
+      }
     }
 
     return {
@@ -114,6 +168,7 @@ export async function updateTableBookingPartySizeWithLinkedEventSeats(
       new_party_size: newPartySize,
       delta: newPartySize - oldPartySize,
       sms_sent: false,
+      sms: null,
       event_id: tableBooking.event_id || null
     }
   }
@@ -134,6 +189,7 @@ export async function updateTableBookingPartySizeWithLinkedEventSeats(
       new_party_size: Math.max(1, Number(bookingUpdate.new_seats ?? oldPartySize)),
       delta: Number(bookingUpdate.delta ?? 0),
       sms_sent: false,
+      sms: null,
       event_id: bookingUpdate.event_id || tableBooking.event_id || null
     }
   }
@@ -144,7 +200,7 @@ export async function updateTableBookingPartySizeWithLinkedEventSeats(
 
   if (delta !== 0 || oldPartySize !== updatedSeats) {
     const nowIso = new Date().toISOString()
-    const { error: tableUpdateError } = await (supabase.from('table_bookings') as any)
+    const { data: syncedTableRows, error: tableUpdateError } = await (supabase.from('table_bookings') as any)
       .update({
         party_size: updatedSeats,
         committed_party_size: updatedSeats,
@@ -152,24 +208,44 @@ export async function updateTableBookingPartySizeWithLinkedEventSeats(
       })
       .eq('event_booking_id', tableBooking.event_booking_id)
       .not('status', 'in', '(cancelled,no_show)')
+      .select('id')
 
     if (tableUpdateError) {
       throw tableUpdateError
     }
+
+    if (!Array.isArray(syncedTableRows) || syncedTableRows.length === 0) {
+      throw new Error('Linked table-booking seat sync affected no rows')
+    }
   }
 
   let smsSent = false
+  let sms: SeatUpdateSmsMeta | null = null
   if (input.sendSms !== false && delta !== 0 && bookingUpdate.booking_id) {
     try {
-      smsSent = await sendEventBookingSeatUpdateSms(supabase, {
+      const smsResult = await sendEventBookingSeatUpdateSms(supabase, {
         bookingId: bookingUpdate.booking_id,
         eventName: bookingUpdate.event_name || null,
         oldSeats,
         newSeats: updatedSeats,
         appBaseUrl: input.appBaseUrl
       })
-    } catch {
+      const smsCode = typeof smsResult.code === 'string' ? smsResult.code : null
+      const smsLogFailure = smsResult.logFailure === true || smsCode === 'logging_failed'
+      smsSent = smsResult.success === true
+      sms = {
+        success: smsResult.success === true,
+        code: smsCode,
+        logFailure: smsLogFailure
+      }
+    } catch (error: unknown) {
+      const normalizedSmsSafety = normalizeThrownSmsSafety(error)
       smsSent = false
+      sms = {
+        success: false,
+        code: normalizedSmsSafety.code,
+        logFailure: normalizedSmsSafety.logFailure
+      }
     }
   }
 
@@ -181,6 +257,7 @@ export async function updateTableBookingPartySizeWithLinkedEventSeats(
     new_party_size: updatedSeats,
     delta,
     sms_sent: smsSent,
+    sms,
     event_id: bookingUpdate.event_id || tableBooking.event_id || null
   }
 }

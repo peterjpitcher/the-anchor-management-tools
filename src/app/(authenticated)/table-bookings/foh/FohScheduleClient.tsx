@@ -201,6 +201,7 @@ type WalkInTargetTable = {
 
 type BookingVisualState =
   | 'private_block'
+  | 'pending_payment'
   | 'pending_card_capture'
   | 'confirmed'
   | 'seated'
@@ -240,6 +241,8 @@ function statusBadgeClass(status?: string | null): string {
       return 'bg-sky-100 text-sky-800 border-sky-200'
     case 'confirmed':
       return 'bg-green-100 text-green-800 border-green-200'
+    case 'pending_payment':
+      return 'bg-yellow-100 text-yellow-800 border-yellow-200'
     case 'pending_card_capture':
       return 'bg-yellow-100 text-yellow-800 border-yellow-200'
     case 'no_show':
@@ -266,6 +269,8 @@ function statusBlockClass(status?: string | null): string {
       return 'border-sky-300 bg-sky-200/90 text-sky-900'
     case 'confirmed':
       return 'border-green-300 bg-green-200/90 text-green-900'
+    case 'pending_payment':
+      return 'border-amber-300 bg-amber-200/90 text-amber-900'
     case 'pending_card_capture':
       return 'border-amber-300 bg-amber-200/90 text-amber-900'
     case 'no_show':
@@ -300,6 +305,8 @@ function getBookingVisualState(booking: FohBooking): BookingVisualState {
   }
 
   switch (booking.status) {
+    case 'pending_payment':
+      return 'pending_payment'
     case 'pending_card_capture':
       return 'pending_card_capture'
     case 'confirmed':
@@ -322,6 +329,8 @@ function getBookingVisualLabel(booking: FohBooking): string {
   switch (visualState) {
     case 'private_block':
       return 'Private block'
+    case 'pending_payment':
+      return 'Pending payment'
     case 'pending_card_capture':
       return 'Pending card'
     case 'seated':
@@ -600,29 +609,58 @@ function formatEventOptionDateTime(event: FohEventOption): string {
   return event.date
 }
 
-function formatUpcomingTickerEvent(event: FohUpcomingEvent): string {
-  if (event.start_datetime) {
-    try {
-      const dateLabel = new Intl.DateTimeFormat('en-GB', {
-        timeZone: 'Europe/London',
-        weekday: 'short',
-        day: 'numeric',
-        month: 'short',
-        hour: 'numeric',
-        minute: '2-digit',
-        hour12: true
-      }).format(new Date(event.start_datetime))
-      return `${dateLabel} ${event.name}`
-    } catch {
-      // Fallback to raw fields below.
-    }
-  }
+function getLondonDateIso(now = new Date()): string {
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Europe/London',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  })
+    .formatToParts(now)
+    .reduce<Record<string, string>>((acc, part) => {
+      if (part.type !== 'literal') {
+        acc[part.type] = part.value
+      }
+      return acc
+    }, {})
 
-  if (event.time) {
-    return `${event.date} ${event.time.slice(0, 5)} ${event.name}`
-  }
+  const year = parts.year || '1970'
+  const month = parts.month || '01'
+  const day = parts.day || '01'
+  return `${year}-${month}-${day}`
+}
 
-  return `${event.date} ${event.name}`
+function isoDateToUtcDayNumber(isoDate: string): number | null {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(isoDate)) return null
+  const [yearText, monthText, dayText] = isoDate.split('-')
+  const year = Number.parseInt(yearText, 10)
+  const month = Number.parseInt(monthText, 10)
+  const day = Number.parseInt(dayText, 10)
+  if (!Number.isFinite(year) || !Number.isFinite(month) || !Number.isFinite(day)) return null
+  if (month < 1 || month > 12 || day < 1 || day > 31) return null
+  return Math.floor(Date.UTC(year, month - 1, day) / 86_400_000)
+}
+
+function diffCalendarDays(fromIsoDate: string, toIsoDate: string): number | null {
+  const fromDay = isoDateToUtcDayNumber(fromIsoDate)
+  const toDay = isoDateToUtcDayNumber(toIsoDate)
+  if (fromDay == null || toDay == null) return null
+  return toDay - fromDay
+}
+
+function formatNextEventUrgency(event: FohUpcomingEvent, now = new Date()): string {
+  const todayIso = getLondonDateIso(now)
+  const daysUntil = diffCalendarDays(todayIso, event.date)
+  if (daysUntil == null) {
+    return 'Book Now'
+  }
+  if (daysUntil <= 0) {
+    return 'Today: Last Chance to Book'
+  }
+  if (daysUntil === 1) {
+    return '1 Day Left to Book'
+  }
+  return `${daysUntil} Days Left to Book`
 }
 
 function formatEventPaymentMode(paymentMode: FohEventOption['payment_mode']): string {
@@ -961,12 +999,12 @@ export function FohScheduleClient({
   const [tableEventPromptAcknowledgedEventId, setTableEventPromptAcknowledgedEventId] = useState<string | null>(null)
   const [clockNow, setClockNow] = useState(() => new Date())
   const [upcomingEvents, setUpcomingEvents] = useState<FohUpcomingEvent[]>([])
+  const [upcomingEventsLoaded, setUpcomingEventsLoaded] = useState(false)
 
   const [createForm, setCreateForm] = useState({
     booking_date: initialDate,
     event_id: '',
     phone: '',
-    default_country_code: '44',
     customer_name: '',
     first_name: '',
     last_name: '',
@@ -992,7 +1030,7 @@ export function FohScheduleClient({
   }, [])
 
   const fetchUpcomingEvents = useCallback(async () => {
-    const response = await fetch('/api/foh/events/upcoming?limit=4', {
+    const response = await fetch('/api/foh/events/upcoming?limit=1', {
       cache: 'no-store'
     })
 
@@ -1158,11 +1196,15 @@ export function FohScheduleClient({
       try {
         const rows = await fetchUpcomingEvents()
         if (!cancelled) {
-          setUpcomingEvents(rows.slice(0, 4))
+          setUpcomingEvents(rows.slice(0, 1))
         }
       } catch {
         if (!cancelled) {
           setUpcomingEvents([])
+        }
+      } finally {
+        if (!cancelled) {
+          setUpcomingEventsLoaded(true)
         }
       }
     }
@@ -1191,10 +1233,7 @@ export function FohScheduleClient({
       setSearchingCustomers(true)
 
       try {
-        const params = new URLSearchParams({
-          q: query,
-          default_country_code: createForm.default_country_code || '44'
-        })
+        const params = new URLSearchParams({ q: query })
 
         const response = await fetch(`/api/foh/customers/search?${params.toString()}`, {
           cache: 'no-store'
@@ -1224,7 +1263,7 @@ export function FohScheduleClient({
       cancelled = true
       window.clearTimeout(timeoutId)
     }
-  }, [customerQuery, createForm.default_country_code, selectedCustomer])
+  }, [customerQuery, selectedCustomer])
 
   useEffect(() => {
     if (isSundayDate(createForm.booking_date)) return
@@ -1426,17 +1465,7 @@ export function FohScheduleClient({
       }, 0)
     }
   }, [schedule])
-  const upcomingTickerText = useMemo(() => {
-    if (upcomingEvents.length === 0) {
-      return 'Reminder: no upcoming scheduled events right now.'
-    }
-
-    return `Reminder: book guests in for ${upcomingEvents.map((event) => formatUpcomingTickerEvent(event)).join(' • ')}`
-  }, [upcomingEvents])
-  const upcomingTickerAnimationDurationSeconds = useMemo(
-    () => Math.max(28, Math.round(upcomingTickerText.length * 0.24)),
-    [upcomingTickerText]
-  )
+  const nextUpcomingEvent = useMemo(() => upcomingEvents[0] || null, [upcomingEvents])
 
   const sundaySelected = isSundayDate(createForm.booking_date)
   const sundayMenuByCategory = useMemo(() => {
@@ -1637,7 +1666,6 @@ export function FohScheduleClient({
       booking_date: date,
       event_id: '',
       phone: '',
-      default_country_code: current.default_country_code || '44',
       customer_name: '',
       first_name: '',
       last_name: '',
@@ -1716,9 +1744,11 @@ export function FohScheduleClient({
     laneTableId?: string
     laneTableName?: string
     suggestedTime?: string
+    prefill?: Partial<Pick<typeof createForm, 'booking_date' | 'purpose' | 'event_id'>>
   }) {
     const requestedMode = options?.mode || 'booking'
     const walkInMode = requestedMode === 'walk_in'
+    const bookingDate = options?.prefill?.booking_date || date
 
     setErrorMessage(null)
     setStatusMessage(null)
@@ -1736,15 +1766,17 @@ export function FohScheduleClient({
       : null
     setCreateForm((current) => ({
       ...current,
-      booking_date: date,
+      booking_date: bookingDate,
       time: walkInMode
         ? options?.suggestedTime || walkInDefaults?.time || current.time
         : options?.suggestedTime || current.time,
       purpose:
         walkInMode
           ? walkInDefaults?.purpose || 'food'
-          : current.purpose,
-      event_id: walkInMode ? walkInDefaults?.eventId || '' : current.event_id,
+          : options?.prefill?.purpose || current.purpose,
+      event_id: walkInMode
+        ? options?.prefill?.event_id ?? walkInDefaults?.eventId ?? ''
+        : options?.prefill?.event_id ?? current.event_id,
       sunday_lunch: walkInMode ? false : current.sunday_lunch,
       phone: walkInMode ? '' : current.phone,
       customer_name: walkInMode ? '' : current.customer_name,
@@ -1868,7 +1900,6 @@ export function FohScheduleClient({
           body: JSON.stringify({
             customer_id: selectedCustomer?.id || undefined,
             phone: createForm.phone.trim() || undefined,
-            default_country_code: createForm.default_country_code || undefined,
             first_name: firstName,
             last_name: lastName,
             walk_in: isWalkIn || undefined,
@@ -1993,7 +2024,6 @@ export function FohScheduleClient({
         body: JSON.stringify({
           customer_id: selectedCustomer?.id || undefined,
           phone: createForm.phone.trim() || undefined,
-          default_country_code: createForm.default_country_code || undefined,
           first_name: firstName,
           last_name: lastName,
           walk_in: isWalkIn || undefined,
@@ -2099,15 +2129,26 @@ export function FohScheduleClient({
       ? 'border-green-300 bg-green-50 text-green-900'
       : 'border-gray-300 bg-gray-100 text-gray-700'
   )
-  const tickerContainerClass = cn(
-    'mb-2 overflow-hidden rounded-md border',
-    isManagerKioskStyle
-      ? 'border-green-300 bg-green-50 text-green-900'
-      : 'border-sidebar/30 bg-sidebar/5 text-sidebar'
+  const nextEventCalloutClass = cn(
+    'mb-2 flex flex-wrap items-center justify-between gap-2 rounded-lg border px-3 py-2',
+    'border-amber-300 bg-amber-50 text-amber-950',
+    isManagerKioskStyle && 'px-2 py-1.5'
   )
-  const tickerTextClass = cn(
-    'flex min-w-full w-max items-center whitespace-nowrap pr-6',
-    isManagerKioskStyle ? 'py-1.5 text-[11px] font-semibold' : 'py-2 text-sm font-medium'
+  const nextEventPillClass = cn(
+    'inline-flex items-center rounded-full bg-amber-200 px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wide text-amber-900',
+    isManagerKioskStyle && 'text-[9px]'
+  )
+  const nextEventTitleClass = cn(
+    'min-w-0 truncate text-sm font-semibold leading-tight text-amber-950',
+    isManagerKioskStyle && 'text-[11px]'
+  )
+  const nextEventMetaClass = cn(
+    'text-sm font-medium text-amber-800',
+    isManagerKioskStyle && 'text-[11px]'
+  )
+  const nextEventButtonClass = cn(
+    'inline-flex items-center justify-center rounded-md bg-amber-700 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-amber-800 focus:outline-none focus:ring-2 focus:ring-amber-300 focus:ring-offset-1',
+    isManagerKioskStyle && 'px-2.5 py-1 text-[11px]'
   )
   const daySwitchButtonClass = cn(
     'rounded-md border border-gray-300 text-sm text-gray-700 hover:bg-gray-50',
@@ -2165,18 +2206,43 @@ export function FohScheduleClient({
   return (
     <div className={pageWrapperClass}>
       <div className={serviceCardClass}>
-        <div className={tickerContainerClass}>
-          <div
-            className={tickerTextClass}
-            style={{
-              animation: `fohTickerMarquee ${upcomingTickerAnimationDurationSeconds}s linear infinite`
-            }}
-          >
-            <span className="pr-10">{upcomingTickerText}</span>
-            <span aria-hidden className="pr-10">
-              {upcomingTickerText}
-            </span>
-          </div>
+        <div className={nextEventCalloutClass} role="status" aria-label="Next event reminder">
+          {!upcomingEventsLoaded ? (
+            <p className={nextEventMetaClass}>Loading next event…</p>
+          ) : nextUpcomingEvent ? (
+            <>
+              <div className="min-w-0">
+                <div className="flex min-w-0 items-center gap-2">
+                  <span className={nextEventPillClass}>Next event</span>
+                  <span className={nextEventMetaClass}>{formatNextEventUrgency(nextUpcomingEvent, clockNow)}</span>
+                  <span className={nextEventTitleClass} title={nextUpcomingEvent.name}>
+                    {nextUpcomingEvent.name}
+                  </span>
+                </div>
+              </div>
+
+              {canEdit && (
+                <button
+                  type="button"
+                  onClick={() =>
+                    openCreateModal({
+                      mode: 'booking',
+                      prefill: {
+                        booking_date: nextUpcomingEvent.date,
+                        purpose: 'event',
+                        event_id: nextUpcomingEvent.id
+                      }
+                    })
+                  }
+                  className={nextEventButtonClass}
+                >
+                  Book guests
+                </button>
+              )}
+            </>
+          ) : (
+            <p className={nextEventMetaClass}>No upcoming events scheduled.</p>
+          )}
         </div>
 
         <div className={serviceHeaderClass}>
@@ -2723,7 +2789,7 @@ export function FohScheduleClient({
             </label>
 
             <p className="mt-2 text-xs text-gray-500">
-              Phone assumption uses country code +{createForm.default_country_code || '44'} unless full international format is entered.
+              Assumes +44 unless the number starts with + (or 00).
             </p>
 
             {searchingCustomers && <p className="mt-2 text-xs text-gray-500">Searching customers…</p>}
@@ -2850,24 +2916,7 @@ export function FohScheduleClient({
                   type="tel"
                   value={createForm.phone}
                   onChange={(event) => setCreateForm((current) => ({ ...current, phone: event.target.value }))}
-                  placeholder="07..."
-                  className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
-                />
-              </label>
-            )}
-
-            {!selectedCustomer && (
-              <label className="text-xs font-medium text-gray-700">
-                Default country code
-                <input
-                  type="text"
-                  inputMode="numeric"
-                  pattern="[0-9]{1,4}"
-                  value={createForm.default_country_code}
-                  onChange={(event) => {
-                    const digitsOnly = event.target.value.replace(/\D/g, '').slice(0, 4)
-                    setCreateForm((current) => ({ ...current, default_country_code: digitsOnly }))
-                  }}
+                  placeholder="07... or +..."
                   className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
                 />
               </label>
@@ -3164,17 +3213,6 @@ export function FohScheduleClient({
           </div>
         </form>
       </Modal>
-
-      <style jsx>{`
-        @keyframes fohTickerMarquee {
-          0% {
-            transform: translateX(0);
-          }
-          100% {
-            transform: translateX(-50%);
-          }
-        }
-      `}</style>
     </div>
   )
 }

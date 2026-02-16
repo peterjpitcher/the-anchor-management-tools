@@ -1,51 +1,101 @@
+#!/usr/bin/env tsx
+/**
+ * Debug Barons entries for November 2025 (read-only).
+ *
+ * Safety:
+ * - Strictly read-only; does not support `--confirm`.
+ * - Fails closed on env/query errors (non-zero exit).
+ */
 
-import { createClient } from '@supabase/supabase-js';
-import dotenv from 'dotenv';
-import path from 'path';
+import dotenv from 'dotenv'
+import path from 'path'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { assertScriptQuerySucceeded } from '@/lib/script-mutation-safety'
 
-dotenv.config({ path: path.resolve(process.cwd(), '.env.local') });
+const SCRIPT_NAME = 'oj-debug-november'
 
-const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
-
-async function debugNov() {
-    console.log('Fetching Barons Pubs vendor...');
-    const { data: vendor } = await supabase.from('invoice_vendors').select('id').eq('name', 'Barons Pubs').single();
-    if (!vendor) throw new Error('Vendor Barons Pubs not found');
-
-    const start = '2025-11-01';
-    const end = '2025-11-30';
-
-    console.log(`Searching for entries between ${start} and ${end}...`);
-
-    const { data: entries } = await supabase.from('oj_entries')
-        .select(`
-            *,
-            project:oj_projects(project_name),
-            work_type:oj_work_types(name)
-        `)
-        .eq('vendor_id', vendor.id)
-        .gte('entry_date', start)
-        .lte('entry_date', end)
-        .order('entry_date');
-
-    if (!entries) {
-        console.log('No entries found.');
-        return;
-    }
-
-    let totalHours = 0;
-
-    console.log(`\nFound ${entries.length} entries:`);
-    entries.forEach(e => {
-        const hours = (e.duration_minutes_rounded || 0) / 60;
-        totalHours += hours;
-        console.log(`[${e.entry_date}] ${hours}h - ${e.project?.project_name.padEnd(40)} - ${e.description}`);
-    });
-
-    console.log(`\nTotal Hours for November 2025: ${totalHours}`);
+type Args = {
+  confirm: boolean
 }
 
-debugNov();
+function parseArgs(argv: string[] = process.argv): Args {
+  const rest = argv.slice(2)
+  return { confirm: rest.includes('--confirm') }
+}
+
+async function main() {
+  dotenv.config({ path: path.resolve(process.cwd(), '.env.local') })
+
+  const args = parseArgs(process.argv)
+  if (args.confirm) {
+    throw new Error(`[${SCRIPT_NAME}] This script is strictly read-only and does not support --confirm`)
+  }
+
+  const supabase = createAdminClient()
+  console.log(`[${SCRIPT_NAME}] read-only starting`)
+
+  const { data: vendor, error: vendorError } = await supabase
+    .from('invoice_vendors')
+    .select('id')
+    .eq('name', 'Barons Pubs')
+    .maybeSingle()
+
+  const vendorRow = assertScriptQuerySucceeded({
+    operation: `Load vendor "Barons Pubs"`,
+    data: vendor,
+    error: vendorError,
+    allowMissing: true,
+  })
+  if (!vendorRow) {
+    throw new Error(`[${SCRIPT_NAME}] Vendor "Barons Pubs" not found`)
+  }
+
+  const start = '2025-11-01'
+  const end = '2025-11-30'
+
+  console.log(`[${SCRIPT_NAME}] Searching for entries between ${start} and ${end}...`)
+
+  const { data: entries, error: entriesError } = await supabase
+    .from('oj_entries')
+    .select(
+      `
+        *,
+        project:oj_projects(project_name),
+        work_type:oj_work_types(name)
+      `
+    )
+    .eq('vendor_id', vendorRow.id)
+    .gte('entry_date', start)
+    .lte('entry_date', end)
+    .order('entry_date')
+
+  const entryRows =
+    assertScriptQuerySucceeded({
+      operation: `Load November entries`,
+      data: entries,
+      error: entriesError,
+    }) ?? []
+
+  if (entryRows.length === 0) {
+    console.log(`[${SCRIPT_NAME}] No entries found.`)
+    return
+  }
+
+  let totalHours = 0
+  for (const entry of entryRows) {
+    const minutes = Number((entry as { duration_minutes_rounded?: unknown }).duration_minutes_rounded ?? 0)
+    const hours = Number.isFinite(minutes) ? minutes / 60 : 0
+    totalHours += hours
+    const date = (entry as { entry_date?: unknown }).entry_date
+    const description = (entry as { description?: unknown }).description
+    const projectName = (entry as { project?: { project_name?: unknown } }).project?.project_name
+    console.log(`[${date}] ${hours}h - ${String(projectName ?? '').padEnd(40)} - ${description}`)
+  }
+
+  console.log(`\n[${SCRIPT_NAME}] Total hours for November 2025: ${totalHours}`)
+}
+
+main().catch((error) => {
+  console.error(`[${SCRIPT_NAME}] Failed`, error)
+  process.exitCode = 1
+})

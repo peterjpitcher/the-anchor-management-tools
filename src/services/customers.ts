@@ -90,11 +90,14 @@ export class CustomerService {
       .update(payload)
       .eq('id', id)
       .select()
-      .single();
+      .maybeSingle();
 
     if (error) {
       console.error('Customer update error:', error);
       throw new Error('Failed to update customer');
+    }
+    if (!customer) {
+      throw new Error('Customer not found');
     }
 
     return customer;
@@ -104,20 +107,33 @@ export class CustomerService {
     const supabase = await createClient();
 
     // Fetch first to return for audit log
-    const { data: customer } = await supabase
+    const { data: customer, error: fetchError } = await supabase
       .from('customers')
       .select('*')
       .eq('id', id)
-      .single();
+      .maybeSingle();
 
-    const { error } = await supabase
+    if (fetchError) {
+      console.error('Customer lookup before delete error:', fetchError);
+      throw new Error('Failed to delete customer');
+    }
+    if (!customer) {
+      throw new Error('Customer not found');
+    }
+
+    const { data: deletedCustomer, error } = await supabase
       .from('customers')
       .delete()
-      .eq('id', id);
+      .eq('id', id)
+      .select('id')
+      .maybeSingle();
 
     if (error) {
       console.error('Customer deletion error:', error);
       throw new Error('Failed to delete customer');
+    }
+    if (!deletedCustomer) {
+      throw new Error('Customer not found');
     }
 
     return customer;
@@ -219,18 +235,20 @@ export class CustomerService {
 
     // Delete each test customer one by one to allow partial success and tracking
     for (const customer of testCustomers) {
-      const { error: deleteError } = await supabase
+      const { data: deletedCustomer, error: deleteError } = await supabase
         .from('customers')
         .delete()
-        .eq('id', customer.id);
+        .eq('id', customer.id)
+        .select('id')
+        .maybeSingle();
 
       const name = `${customer.first_name} ${customer.last_name || ''}`.trim();
 
-      if (deleteError) {
+      if (deleteError || !deletedCustomer) {
         failedDeletions.push({
           id: customer.id,
           name,
-          error: deleteError.message
+          error: deleteError?.message || 'Customer was already removed'
         });
       } else {
         deletedCustomers.push({
@@ -264,7 +282,7 @@ export class CustomerService {
 
     const { data: customer, error: fetchError } = await supabase
       .from('customers')
-      .select('id, sms_opt_in, sms_delivery_failures, sms_deactivated_at, sms_deactivation_reason')
+      .select('id, sms_opt_in, sms_status, marketing_sms_opt_in, sms_delivery_failures, sms_deactivated_at, sms_deactivation_reason')
       .eq('id', customerId)
       .maybeSingle();
 
@@ -277,32 +295,52 @@ export class CustomerService {
     };
 
     if (optIn) {
+      updateData.sms_status = 'active';
       updateData.sms_delivery_failures = 0;
+      updateData.sms_deactivated_at = null;
+      updateData.sms_deactivation_reason = null;
+    } else {
+      updateData.sms_status = 'opted_out';
+      updateData.marketing_sms_opt_in = false;
+      // Keep SMS status-derived fields consistent when explicitly opting out.
       updateData.sms_deactivated_at = null;
       updateData.sms_deactivation_reason = null;
     }
 
-    const { error: updateError } = await supabase
+    const { data: updatedCustomer, error: updateError } = await supabase
       .from('customers')
       .update(updateData)
-      .eq('id', customerId);
+      .eq('id', customerId)
+      .select('id')
+      .maybeSingle();
 
     if (updateError) {
       throw new Error('Failed to update customer SMS preferences');
+    }
+    if (!updatedCustomer) {
+      throw new Error('Customer not found');
     }
 
     return {
       oldValues: {
         sms_opt_in: customer.sms_opt_in,
+        sms_status: (customer as any).sms_status ?? null,
+        marketing_sms_opt_in: (customer as any).marketing_sms_opt_in ?? null,
         sms_delivery_failures: customer.sms_delivery_failures,
         sms_deactivated_at: customer.sms_deactivated_at,
         sms_deactivation_reason: customer.sms_deactivation_reason,
       },
       newValues: {
         sms_opt_in: optIn,
+        sms_status: (updateData.sms_status as string | undefined) ?? (customer as any).sms_status ?? null,
+        marketing_sms_opt_in: (updateData.marketing_sms_opt_in as boolean | undefined) ?? (customer as any).marketing_sms_opt_in ?? null,
         sms_delivery_failures: updateData.sms_delivery_failures ?? customer.sms_delivery_failures,
-        sms_deactivated_at: updateData.sms_deactivated_at ?? customer.sms_deactivated_at,
-        sms_deactivation_reason: updateData.sms_deactivation_reason ?? customer.sms_deactivation_reason,
+        sms_deactivated_at: Object.prototype.hasOwnProperty.call(updateData, 'sms_deactivated_at')
+          ? updateData.sms_deactivated_at
+          : customer.sms_deactivated_at,
+        sms_deactivation_reason: Object.prototype.hasOwnProperty.call(updateData, 'sms_deactivation_reason')
+          ? updateData.sms_deactivation_reason
+          : customer.sms_deactivation_reason,
       }
     };
   }

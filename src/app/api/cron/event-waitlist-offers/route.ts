@@ -20,8 +20,14 @@ export async function GET(request: NextRequest) {
       offersCreated: 0,
       offersSent: 0,
       offersCancelled: 0,
+      offersFailedClosed: 0,
+      safetyAborts: 0,
       skipped: 0,
-      errors: 0
+      errors: 0,
+      aborted: false,
+      abortReason: null as string | null,
+      abortEventId: null as string | null,
+      abortOfferId: null as string | null,
     }
 
     const { data: queuedRows, error: queuedError } = await supabase
@@ -53,45 +59,101 @@ export async function GET(request: NextRequest) {
 
         if (smsResult.success) {
           result.offersSent += 1
+
+          if (smsResult.logFailure === true || smsResult.code === 'logging_failed') {
+            result.safetyAborts += 1
+            result.aborted = true
+            result.abortReason = smsResult.code || 'sms_safety_abort'
+            result.abortEventId = eventId
+            result.abortOfferId = offerResult.waitlist_offer_id || null
+
+            logger.error('Aborting waitlist offer cron due to fatal SMS safety signal', {
+              error: new Error(result.abortReason),
+              metadata: {
+                eventId,
+                offerId: offerResult.waitlist_offer_id || null,
+                code: smsResult.code || null,
+                logFailure: smsResult.logFailure === true
+              }
+            })
+
+            break
+          }
+
           continue
         }
 
         result.offersCancelled += 1
 
-        if (offerResult.waitlist_offer_id && offerResult.waitlist_entry_id) {
-          const nowIso = new Date().toISOString()
-          const shouldExpireOffer = smsResult.reason === 'offer_window_unavailable'
+        if (!offerResult.waitlist_offer_id || !offerResult.waitlist_entry_id) {
+          throw new Error('Offered waitlist payload missing required IDs for cleanup')
+        }
 
-          await Promise.all([
-            supabase
-              .from('waitlist_offers')
-              .update({
-                status: shouldExpireOffer ? 'expired' : 'cancelled',
-                expired_at: nowIso
-              })
-              .eq('id', offerResult.waitlist_offer_id)
-              .eq('status', 'sent'),
-            supabase
-              .from('booking_holds')
-              .update({
-                status: shouldExpireOffer ? 'expired' : 'released',
-                released_at: nowIso,
-                updated_at: nowIso
-              })
-              .eq('waitlist_offer_id', offerResult.waitlist_offer_id)
-              .eq('status', 'active'),
-            supabase
-              .from('waitlist_entries')
-              .update({
-                status: shouldExpireOffer ? 'expired' : 'queued',
-                expired_at: shouldExpireOffer ? nowIso : null,
-                updated_at: nowIso
-              })
-              .eq('id', offerResult.waitlist_entry_id)
-              .eq('status', 'offered')
-          ])
+        const nowIso = new Date().toISOString()
+        const shouldExpireOffer = smsResult.reason === 'offer_window_unavailable'
+        if (!shouldExpireOffer) {
+          // Fail closed to avoid repeated SMS attempts on ambiguous or persistent delivery failures.
+          result.offersFailedClosed += 1
+        }
 
-          if (shouldExpireOffer && offerResult.customer_id) {
+        const { data: cleanedOffer, error: offerCleanupError } = await supabase
+          .from('waitlist_offers')
+          .update({
+            status: shouldExpireOffer ? 'expired' : 'cancelled',
+            expired_at: nowIso
+          })
+          .eq('id', offerResult.waitlist_offer_id)
+          .eq('status', 'sent')
+          .select('id')
+          .maybeSingle()
+
+        if (offerCleanupError) {
+          throw offerCleanupError
+        }
+        if (!cleanedOffer) {
+          throw new Error(`Waitlist offer cleanup affected no rows: ${offerResult.waitlist_offer_id}`)
+        }
+
+        const { data: cleanedHolds, error: holdCleanupError } = await supabase
+          .from('booking_holds')
+          .update({
+            status: shouldExpireOffer ? 'expired' : 'released',
+            released_at: nowIso,
+            updated_at: nowIso
+          })
+          .eq('waitlist_offer_id', offerResult.waitlist_offer_id)
+          .eq('status', 'active')
+          .select('id')
+
+        if (holdCleanupError) {
+          throw holdCleanupError
+        }
+        if (!cleanedHolds || cleanedHolds.length === 0) {
+          throw new Error(`Waitlist hold cleanup affected no rows: ${offerResult.waitlist_offer_id}`)
+        }
+
+        const { data: cleanedWaitlistEntry, error: waitlistEntryCleanupError } = await supabase
+          .from('waitlist_entries')
+          .update({
+            status: shouldExpireOffer ? 'expired' : 'cancelled',
+            expired_at: shouldExpireOffer ? nowIso : null,
+            cancelled_at: shouldExpireOffer ? null : nowIso,
+            updated_at: nowIso
+          })
+          .eq('id', offerResult.waitlist_entry_id)
+          .eq('status', 'offered')
+          .select('id')
+          .maybeSingle()
+
+        if (waitlistEntryCleanupError) {
+          throw waitlistEntryCleanupError
+        }
+        if (!cleanedWaitlistEntry) {
+          throw new Error(`Waitlist entry cleanup affected no rows: ${offerResult.waitlist_entry_id}`)
+        }
+
+        if (shouldExpireOffer && offerResult.customer_id) {
+          try {
             await recordAnalyticsEvent(supabase, {
               customerId: offerResult.customer_id,
               eventType: 'waitlist_offer_expired',
@@ -99,6 +161,14 @@ export async function GET(request: NextRequest) {
                 waitlist_offer_id: offerResult.waitlist_offer_id,
                 event_id: offerResult.event_id,
                 reason: 'offer_window_unavailable'
+              }
+            })
+          } catch (analyticsError) {
+            logger.warn('Failed recording waitlist offer expiration analytics', {
+              metadata: {
+                offerId: offerResult.waitlist_offer_id,
+                customerId: offerResult.customer_id,
+                error: analyticsError instanceof Error ? analyticsError.message : String(analyticsError)
               }
             })
           }
@@ -125,7 +195,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(
       {
         success: false,
-        error: error instanceof Error ? error.message : 'Failed to process waitlist offers'
+        error: 'Failed to process waitlist offers'
       },
       { status: 500 }
     )

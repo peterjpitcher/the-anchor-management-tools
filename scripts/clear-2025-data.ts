@@ -1,65 +1,161 @@
+#!/usr/bin/env tsx
 
-import { createClient } from '@supabase/supabase-js';
-import dotenv from 'dotenv';
-import path from 'path';
+import dotenv from 'dotenv'
+import path from 'path'
+import { createAdminClient } from '@/lib/supabase/admin'
+import {
+  assertScriptExpectedRowCount,
+  assertScriptMutationAllowed,
+  assertScriptMutationSucceeded,
+} from '@/lib/script-mutation-safety'
 
-// Load environment variables
-dotenv.config({ path: path.join(process.cwd(), '.env.local') });
+const SCRIPT_NAME = 'clear-2025-data'
+const RUN_MUTATION_ENV = 'RUN_CLEAR_2025_DATA_MUTATION'
+const ALLOW_MUTATION_ENV = 'ALLOW_CLEAR_2025_DATA_MUTATION_SCRIPT'
+const HARD_CAP = 5000
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const TRUTHY = new Set(['1', 'true', 'yes', 'on'])
 
-if (!supabaseUrl || !supabaseServiceRoleKey) {
-  console.error('Missing Supabase URL or Service Role Key');
-  process.exit(1);
+function isTruthyEnv(value: string | undefined): boolean {
+  if (!value) return false
+  return TRUTHY.has(value.trim().toLowerCase())
 }
 
-const supabase = createClient(supabaseUrl, supabaseServiceRoleKey);
+function findFlagValue(argv: string[], flag: string): string | null {
+  const withEqualsPrefix = `${flag}=`
+  for (let i = 0; i < argv.length; i += 1) {
+    const entry = argv[i]
+    if (entry === flag) {
+      const next = argv[i + 1]
+      return typeof next === 'string' ? next : null
+    }
+    if (typeof entry === 'string' && entry.startsWith(withEqualsPrefix)) {
+      return entry.slice(withEqualsPrefix.length)
+    }
+  }
+  return null
+}
 
-async function clear2025Data() {
-  console.log('🧹 Clearing Cashing Up data for 2025...');
+function parsePositiveInt(raw: string | null): number | null {
+  if (!raw) return null
+  if (!/^[1-9]\d*$/.test(raw)) {
+    throw new Error(`Invalid positive integer: "${raw}"`)
+  }
 
-  const startDate = '2025-01-01';
-  const endDate = '2025-12-31';
+  const parsed = Number(raw)
+  if (!Number.isInteger(parsed) || parsed <= 0) {
+    throw new Error(`Invalid positive integer: "${raw}"`)
+  }
 
-  // 1. Get IDs of sessions to delete
-  const { data: sessions, error: fetchError } = await supabase
-    .from('cashup_sessions')
+  return parsed
+}
+
+type Args = {
+  confirm: boolean
+  dryRun: boolean
+  limit: number | null
+}
+
+function parseArgs(argv: string[] = process.argv): Args {
+  const rest = argv.slice(2)
+  const confirm = rest.includes('--confirm')
+  const dryRun = !confirm || rest.includes('--dry-run')
+  const limit = parsePositiveInt(findFlagValue(rest, '--limit'))
+  return { confirm, dryRun, limit }
+}
+
+async function main() {
+  dotenv.config({ path: path.resolve(process.cwd(), '.env.local') })
+
+  const args = parseArgs(process.argv)
+  const admin = createAdminClient()
+
+  console.log(`[${SCRIPT_NAME}] ${args.dryRun ? 'DRY RUN' : 'MUTATION'} starting`)
+
+  const startDate = '2025-01-01'
+  const endDate = '2025-12-31'
+
+  const { count, error: countError } = await (admin.from('cashup_sessions') as any).select('id', {
+    count: 'exact',
+    head: true,
+  }).gte('session_date', startDate).lte('session_date', endDate)
+
+  if (countError) {
+    throw new Error(`[${SCRIPT_NAME}] failed to count cashup_sessions in range: ${countError.message || 'unknown error'}`)
+  }
+
+  const total = count ?? 0
+  console.log(`[${SCRIPT_NAME}] cashup_sessions in range=${total}`)
+
+  if (args.dryRun) {
+    console.log(`[${SCRIPT_NAME}] DRY RUN ok. No mutations performed.`)
+    return
+  }
+
+  if (!args.confirm) {
+    throw new Error(`[${SCRIPT_NAME}] mutation blocked: missing --confirm`)
+  }
+  if (args.limit === null) {
+    throw new Error(`[${SCRIPT_NAME}] mutation requires --limit <n> (hard cap ${HARD_CAP})`)
+  }
+  if (args.limit > HARD_CAP) {
+    throw new Error(`[${SCRIPT_NAME}] --limit exceeds hard cap (max ${HARD_CAP})`)
+  }
+  if (!isTruthyEnv(process.env[RUN_MUTATION_ENV])) {
+    throw new Error(
+      `[${SCRIPT_NAME}] mutation blocked by safety guard. Set ${RUN_MUTATION_ENV}=true to enable mutations.`
+    )
+  }
+
+  assertScriptMutationAllowed({ scriptName: SCRIPT_NAME, envVar: ALLOW_MUTATION_ENV })
+
+  const { data: sessionRows, error: selectError } = await (admin.from('cashup_sessions') as any)
     .select('id')
     .gte('session_date', startDate)
-    .lte('session_date', endDate);
+    .lte('session_date', endDate)
+    .limit(args.limit)
 
-  if (fetchError) {
-    console.error('Error fetching sessions:', fetchError);
-    return;
+  if (selectError) {
+    throw new Error(`[${SCRIPT_NAME}] failed to select cashup_sessions ids: ${selectError.message || 'unknown error'}`)
   }
 
-  if (!sessions || sessions.length === 0) {
-    console.log('No sessions found for 2025.');
-    return;
+  const sessionIds = Array.isArray(sessionRows)
+    ? sessionRows
+        .map((row) => (typeof row?.id === 'string' ? row.id : null))
+        .filter((id): id is string => typeof id === 'string' && id.length > 0)
+    : []
+
+  if (sessionIds.length === 0) {
+    console.log(`[${SCRIPT_NAME}] no sessions found to delete (within selected limit).`)
+    return
   }
 
-  const sessionIds = sessions.map(s => s.id);
-  console.log(`Found ${sessionIds.length} sessions to delete.`);
-
-  // 2. Delete Cash Counts (Cascade should handle this, but explicit delete is safer/cleaner if cascade fails)
-  // Actually, FK constraints usually have ON DELETE CASCADE. Let's check migration.
-  // Migration 20251122000000_cashing_up_module.sql:
-  // cashup_cash_counts ... REFERENCES cashup_sessions(id) ON DELETE CASCADE
-  // cashup_payment_breakdowns ... REFERENCES cashup_sessions(id) ON DELETE CASCADE
-  // So deleting sessions is sufficient.
-
-  // 3. Delete Sessions
-  const { error: deleteError, count } = await supabase
-    .from('cashup_sessions')
+  const { data: deletedRows, error: deleteError } = await (admin.from('cashup_sessions') as any)
     .delete()
-    .in('id', sessionIds);
+    .in('id', sessionIds)
+    .select('id')
 
-  if (deleteError) {
-    console.error('Error deleting sessions:', deleteError);
+  const { updatedCount } = assertScriptMutationSucceeded({
+    operation: 'Delete cashup_sessions rows',
+    error: deleteError,
+    updatedRows: deletedRows as Array<{ id?: string }> | null,
+    allowZeroRows: false,
+  })
+
+  assertScriptExpectedRowCount({
+    operation: 'Delete cashup_sessions rows',
+    expected: sessionIds.length,
+    actual: updatedCount,
+  })
+
+  if (total > updatedCount) {
+    console.log(`[${SCRIPT_NAME}] WARNING: deleted ${updatedCount}/${total}. Re-run with a higher --limit to continue.`)
   } else {
-    console.log(`✅ Successfully deleted ${sessionIds.length} sessions (and related records via cascade).`);
+    console.log(`[${SCRIPT_NAME}] deleted ${updatedCount} sessions (and related records via cascade).`)
   }
 }
 
-clear2025Data().catch(console.error);
+main().catch((error) => {
+  console.error(`[${SCRIPT_NAME}] Failed`, error)
+  process.exitCode = 1
+})

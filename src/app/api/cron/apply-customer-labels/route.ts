@@ -3,6 +3,10 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { logAuditEvent } from '@/app/actions/audit'
 import { authorizeCronRequest } from '@/lib/cron-auth'
 
+function isHealthCheck(request: NextRequest): boolean {
+  return request.nextUrl.searchParams.get('health') === 'true'
+}
+
 export async function GET(request: NextRequest) {
   console.log('[Cron] Customer labels endpoint called')
   
@@ -16,6 +20,14 @@ export async function GET(request: NextRequest) {
         { error: 'Unauthorized' },
         { status: 401 }
       )
+    }
+
+    if (isHealthCheck(request)) {
+      return NextResponse.json({
+        status: 'ok',
+        service: 'cron-apply-customer-labels',
+        timestamp: new Date().toISOString(),
+      })
     }
 
     console.log('[Cron] Starting customer label application')
@@ -40,7 +52,7 @@ export async function GET(request: NextRequest) {
     if (error) {
       console.error('[Cron] Error applying customer labels:', error)
       return NextResponse.json(
-        { error: 'Failed to apply customer labels', details: error.message },
+        { error: 'Failed to apply customer labels' },
         { status: 500 }
       )
     }

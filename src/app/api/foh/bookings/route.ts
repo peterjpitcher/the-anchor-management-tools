@@ -184,6 +184,247 @@ async function createManualWalkInBookingOverride(params: {
   const nowIso = new Date().toISOString()
   const bookingType = params.payload.sunday_lunch === true ? 'sunday_lunch' : 'regular'
 
+  type TableCandidate = {
+    id: string
+    displayName: string
+    capacity: number
+  }
+
+  type TableCombo = {
+    tableIds: string[]
+    tableNames: string[]
+    totalCapacity: number
+  }
+
+  async function computeAvailableCombos(): Promise<TableCombo[]> {
+    const [tablesResult, joinLinksResult] = await Promise.all([
+      (params.supabase.from('tables') as any)
+        .select('id, table_number, name, capacity, is_bookable')
+        .order('table_number', { ascending: true, nullsFirst: false })
+        .order('name', { ascending: true, nullsFirst: false }),
+      (params.supabase.from('table_join_links') as any)
+        .select('table_id, join_table_id')
+    ])
+
+    if (tablesResult.error) {
+      throw new Error('Failed to load tables for walk-in override allocation')
+    }
+
+    if (joinLinksResult.error) {
+      throw new Error('Failed to load table join links for walk-in override allocation')
+    }
+
+    const partySize = Math.max(1, Number(params.payload.party_size || 1))
+    const rawTables = (tablesResult.data || []) as any[]
+    const candidates = rawTables
+      .filter((row) => row?.id && row.is_bookable !== false)
+      .map((row) => ({
+        id: String(row.id),
+        table_number: typeof row.table_number === 'string' ? row.table_number : null,
+        name: typeof row.name === 'string' ? row.name : null,
+        capacity: Math.max(0, Number(row.capacity || 0))
+      }))
+      .filter((row) => row.capacity > 0)
+
+    if (candidates.length === 0) {
+      return []
+    }
+
+    const candidateTableIds = candidates.map((row) => row.id)
+
+    const { data: overlappingAssignments, error: overlapError } = await (params.supabase.from('booking_table_assignments') as any)
+      .select('table_id, table_booking_id')
+      .in('table_id', candidateTableIds)
+      .lt('start_datetime', endIso)
+      .gt('end_datetime', startIso)
+
+    if (overlapError) {
+      throw new Error('Failed to check walk-in override table overlaps')
+    }
+
+    const overlappingRows = (overlappingAssignments || []) as any[]
+    const overlappingBookingIds = Array.from(
+      new Set(
+        overlappingRows
+          .map((row) => (typeof row?.table_booking_id === 'string' ? row.table_booking_id : null))
+          .filter((value): value is string => Boolean(value))
+      )
+    )
+
+    const activeOverlappingBookingIds = new Set<string>()
+    if (overlappingBookingIds.length > 0) {
+      const { data: overlappingBookings, error: overlappingBookingsError } = await (params.supabase.from('table_bookings') as any)
+        .select('id, status')
+        .in('id', overlappingBookingIds)
+
+      if (overlappingBookingsError) {
+        throw new Error('Failed to check overlapping booking statuses for walk-in override')
+      }
+
+      for (const row of (overlappingBookings || []) as any[]) {
+        if (typeof row?.id === 'string' && row.status !== 'cancelled') {
+          activeOverlappingBookingIds.add(row.id)
+        }
+      }
+    }
+
+    const unavailableByAssignment = new Set<string>()
+    for (const row of overlappingRows) {
+      if (
+        typeof row?.table_id === 'string'
+        && typeof row?.table_booking_id === 'string'
+        && activeOverlappingBookingIds.has(row.table_booking_id)
+      ) {
+        unavailableByAssignment.add(row.table_id)
+      }
+    }
+
+    const unavailableByPrivateBlocks = new Set<string>()
+    await Promise.all(
+      candidates.map(async (table) => {
+        const { data: privateBlockResult, error: privateBlockError } = await params.supabase.rpc(
+          'is_table_blocked_by_private_booking_v05',
+          {
+            p_table_id: table.id,
+            p_window_start: startIso,
+            p_window_end: endIso,
+            p_exclude_private_booking_id: null
+          }
+        )
+
+        if (privateBlockError) {
+          throw new Error('Failed to check private blocks for walk-in override')
+        }
+
+        if (privateBlockResult === true) {
+          unavailableByPrivateBlocks.add(table.id)
+        }
+      })
+    )
+
+    const availableTables: TableCandidate[] = candidates
+      .filter((table) => !unavailableByAssignment.has(table.id))
+      .filter((table) => !unavailableByPrivateBlocks.has(table.id))
+      .map((table) => ({
+        id: table.id,
+        displayName: table.name || table.table_number || `Table ${table.id.slice(0, 4)}`,
+        capacity: table.capacity
+      }))
+
+    if (availableTables.length === 0) {
+      return []
+    }
+
+    const availableById = new Map<string, TableCandidate>()
+    for (const table of availableTables) {
+      availableById.set(table.id, table)
+    }
+
+    const neighbors = new Map<string, Set<string>>()
+    for (const row of (joinLinksResult.data || []) as any[]) {
+      const a = typeof row?.table_id === 'string' ? row.table_id : null
+      const b = typeof row?.join_table_id === 'string' ? row.join_table_id : null
+      if (!a || !b) continue
+      if (!availableById.has(a) || !availableById.has(b)) continue
+
+      const aSet = neighbors.get(a) || new Set<string>()
+      aSet.add(b)
+      neighbors.set(a, aSet)
+
+      const bSet = neighbors.get(b) || new Set<string>()
+      bSet.add(a)
+      neighbors.set(b, bSet)
+    }
+
+    const sortedIds = Array.from(availableById.keys()).sort((a, b) => a.localeCompare(b))
+    const combos: TableCombo[] = []
+
+    for (const table of availableTables) {
+      if (table.capacity >= partySize) {
+        combos.push({
+          tableIds: [table.id],
+          tableNames: [table.displayName],
+          totalCapacity: table.capacity
+        })
+      }
+    }
+
+    function isConnectedToCombo(candidateId: string, existingIds: string[]): boolean {
+      for (const existingId of existingIds) {
+        if (neighbors.get(existingId)?.has(candidateId)) {
+          return true
+        }
+      }
+      return false
+    }
+
+    function dfs(currentIds: string[], lastIndex: number, totalCapacity: number, currentNames: string[]) {
+      if (currentIds.length >= 2 && totalCapacity >= partySize) {
+        combos.push({
+          tableIds: [...currentIds],
+          tableNames: [...currentNames],
+          totalCapacity
+        })
+      }
+
+      if (currentIds.length >= 4) return
+
+      for (let idx = lastIndex + 1; idx < sortedIds.length; idx += 1) {
+        const nextId = sortedIds[idx]
+        if (!nextId) continue
+        if (!isConnectedToCombo(nextId, currentIds)) continue
+        const nextTable = availableById.get(nextId)
+        if (!nextTable) continue
+
+        dfs(
+          [...currentIds, nextId],
+          idx,
+          totalCapacity + nextTable.capacity,
+          [...currentNames, nextTable.displayName]
+        )
+      }
+    }
+
+    for (let idx = 0; idx < sortedIds.length; idx += 1) {
+      const baseId = sortedIds[idx]
+      const base = availableById.get(baseId)
+      if (!base) continue
+      dfs([baseId], idx, base.capacity, [base.displayName])
+    }
+
+    const filtered = combos
+      .filter((combo) => combo.totalCapacity >= partySize)
+      .sort((a, b) => {
+        if (a.tableIds.length !== b.tableIds.length) {
+          return a.tableIds.length - b.tableIds.length
+        }
+        if (a.totalCapacity !== b.totalCapacity) {
+          return a.totalCapacity - b.totalCapacity
+        }
+        return a.tableNames.join(' + ').localeCompare(b.tableNames.join(' + '))
+      })
+
+    // De-dupe identical combos.
+    const seen = new Set<string>()
+    const deduped: TableCombo[] = []
+    for (const combo of filtered) {
+      const key = combo.tableIds.join(',')
+      if (seen.has(key)) continue
+      seen.add(key)
+      deduped.push(combo)
+    }
+
+    return deduped
+  }
+
+  const combos = await computeAvailableCombos()
+  if (combos.length === 0) {
+    return {
+      state: 'blocked',
+      reason: 'no_table'
+    }
+  }
+
   for (let attempt = 0; attempt < 8; attempt += 1) {
     const bookingReference = buildWalkInBookingReference()
     const { data, error } = await (params.supabase.from('table_bookings') as any)
@@ -212,19 +453,118 @@ async function createManualWalkInBookingOverride(params: {
       .maybeSingle()
 
     if (!error && data?.id) {
+      const tableBookingId = data.id as string
+
+      for (const combo of combos) {
+        const assignmentPayload = combo.tableIds.map((tableId) => ({
+          table_booking_id: tableBookingId,
+          table_id: tableId,
+          start_datetime: startIso,
+          end_datetime: endIso,
+          created_at: nowIso
+        }))
+
+        const { error: assignmentError } = await (params.supabase.from('booking_table_assignments') as any)
+          .insert(assignmentPayload)
+
+        if (!assignmentError) {
+          return {
+            state: 'confirmed',
+            table_booking_id: tableBookingId,
+            booking_reference: (data.booking_reference as string) || bookingReference,
+            status: 'confirmed',
+            table_id: combo.tableIds[0],
+            table_ids: combo.tableIds,
+            table_name: combo.tableNames.join(' + '),
+            table_names: combo.tableNames,
+            tables_joined: combo.tableIds.length > 1,
+            party_size: params.payload.party_size,
+            booking_purpose: params.payload.purpose,
+            booking_type: bookingType,
+            start_datetime: startIso,
+            end_datetime: endIso,
+            hold_expires_at: undefined,
+            card_capture_required: false,
+            sunday_lunch: params.payload.sunday_lunch === true
+          }
+        }
+
+        if (isAssignmentConflictRpcError(assignmentError)) {
+          continue
+        }
+
+        throw assignmentError
+      }
+
+      // If we couldn't assign any table combo (race condition), clean up the inserted booking.
+      const cleanupOutcomes = await Promise.allSettled([
+        (params.supabase.from('booking_table_assignments') as any)
+          .delete()
+          .eq('table_booking_id', tableBookingId),
+        (params.supabase.from('table_bookings') as any)
+          .delete()
+          .eq('id', tableBookingId)
+          .select('id')
+          .maybeSingle()
+      ])
+
+      const cleanupLabels = ['booking_table_assignments_delete', 'table_bookings_delete']
+      const cleanupErrors: string[] = []
+      cleanupOutcomes.forEach((outcome, index) => {
+        const label = cleanupLabels[index] || `cleanup_step_${index}`
+        if (outcome.status === 'rejected') {
+          const message = outcome.reason instanceof Error ? outcome.reason.message : String(outcome.reason)
+          cleanupErrors.push(`${label}:rejected:${message}`)
+          return
+        }
+
+        const value = outcome.value as { data?: any; error?: { message?: string } | null } | null
+        if (value?.error?.message) {
+          cleanupErrors.push(`${label}:${value.error.message}`)
+          return
+        }
+
+        if (label === 'table_bookings_delete' && !value?.data?.id) {
+          cleanupErrors.push(`${label}:no_row_deleted`)
+        }
+      })
+
+      if (cleanupErrors.length > 0) {
+        // Fail closed by marking the booking cancelled if delete did not succeed, so it won't block
+        // future availability checks (those ignore cancelled bookings).
+        try {
+          const { data: cancelledRow, error: cancelError } = await (params.supabase.from('table_bookings') as any)
+            .update({
+              status: 'cancelled',
+              cancellation_reason: 'walk_in_override_cleanup_failed',
+              cancelled_at: nowIso,
+              updated_at: nowIso
+            })
+            .eq('id', tableBookingId)
+            .select('id')
+            .maybeSingle()
+
+          if (cancelError) {
+            cleanupErrors.push(`table_bookings_cancel:${cancelError.message || 'unknown_error'}`)
+          } else if (!cancelledRow?.id) {
+            cleanupErrors.push('table_bookings_cancel:no_row_updated')
+          }
+        } catch (cancelThrow) {
+          const message = cancelThrow instanceof Error ? cancelThrow.message : String(cancelThrow)
+          cleanupErrors.push(`table_bookings_cancel:rejected:${message}`)
+        }
+
+        logger.error('Walk-in override cleanup failed after table assignment race', {
+          metadata: {
+            tableBookingId,
+            errors: cleanupErrors,
+          }
+        })
+      }
+
       return {
-        state: 'confirmed',
-        table_booking_id: data.id as string,
-        booking_reference: (data.booking_reference as string) || bookingReference,
-        status: 'confirmed',
-        party_size: params.payload.party_size,
-        booking_purpose: params.payload.purpose,
-        booking_type: bookingType,
-        start_datetime: startIso,
-        end_datetime: endIso,
-        hold_expires_at: undefined,
-        card_capture_required: false,
-        sunday_lunch: params.payload.sunday_lunch === true
+        state: 'blocked',
+        reason: 'no_table'
       }
     }
 
@@ -243,16 +583,22 @@ async function markWalkInBookingAsSeated(
   bookingId: string
 ): Promise<void> {
   const nowIso = new Date().toISOString()
-  const { error } = await (supabase.from('table_bookings') as any)
+  const { data: seatedRow, error } = await (supabase.from('table_bookings') as any)
     .update({
       seated_at: nowIso,
       updated_at: nowIso
     })
     .eq('id', bookingId)
     .is('seated_at', null)
+    .select('id')
+    .maybeSingle()
 
   if (error) {
     throw error
+  }
+
+  if (!seatedRow) {
+    throw new Error('Manual walk-in booking was not marked as seated')
   }
 }
 
@@ -291,6 +637,23 @@ function isAssignmentConflictRpcError(error: { code?: string; message?: string }
     || message.includes('table_assignment_overlap')
     || message.includes('table_assignment_private_blocked')
   )
+}
+
+async function recordFohTableBookingAnalyticsSafe(
+  supabase: any,
+  payload: Parameters<typeof recordAnalyticsEvent>[1],
+  context: Record<string, unknown>
+) {
+  try {
+    await recordAnalyticsEvent(supabase, payload)
+  } catch (analyticsError) {
+    logger.warn('Failed to record FOH table booking analytics event', {
+      metadata: {
+        ...context,
+        error: analyticsError instanceof Error ? analyticsError.message : String(analyticsError)
+      }
+    })
+  }
 }
 
 export async function POST(request: NextRequest) {
@@ -489,10 +852,7 @@ export async function POST(request: NextRequest) {
       })
       return NextResponse.json(
         {
-          error:
-            walkInOverrideError instanceof Error
-              ? walkInOverrideError.message || 'Failed to create walk-in booking override'
-              : 'Failed to create walk-in booking override',
+          error: 'Failed to create walk-in booking override',
           reason: fallbackReason
         },
         { status: 500 }
@@ -566,7 +926,7 @@ export async function POST(request: NextRequest) {
         })) || holdExpiresAt
     }
 
-    await recordAnalyticsEvent(auth.supabase, {
+    await recordFohTableBookingAnalyticsSafe(auth.supabase, {
       customerId,
       tableBookingId: bookingResult.table_booking_id,
       eventType: 'table_booking_created',
@@ -578,10 +938,15 @@ export async function POST(request: NextRequest) {
         table_name: bookingResult.table_name || null,
         source: 'foh'
       }
+    }, {
+      userId: auth.userId,
+      customerId,
+      tableBookingId: bookingResult.table_booking_id,
+      eventType: 'table_booking_created'
     })
 
     if (bookingResult.state === 'pending_card_capture') {
-      await recordAnalyticsEvent(auth.supabase, {
+      await recordFohTableBookingAnalyticsSafe(auth.supabase, {
         customerId,
         tableBookingId: bookingResult.table_booking_id,
         eventType: 'card_capture_started',
@@ -590,6 +955,11 @@ export async function POST(request: NextRequest) {
           next_step_url_provided: Boolean(nextStepUrl),
           source: 'foh'
         }
+      }, {
+        userId: auth.userId,
+        customerId,
+        tableBookingId: bookingResult.table_booking_id,
+        eventType: 'card_capture_started'
       })
     }
   }
@@ -620,16 +990,61 @@ export async function POST(request: NextRequest) {
     const mode = payload.sunday_preorder_mode || 'send_link'
 
     if (mode === 'capture_now') {
-      const captureResult = await saveSundayPreorderByBookingId(auth.supabase, {
-        bookingId: bookingResult.table_booking_id,
-        items: payload.sunday_preorder_items || []
-      })
+      let captureResult: Awaited<ReturnType<typeof saveSundayPreorderByBookingId>> | null = null
+      try {
+        captureResult = await saveSundayPreorderByBookingId(auth.supabase, {
+          bookingId: bookingResult.table_booking_id,
+          items: payload.sunday_preorder_items || []
+        })
+      } catch (captureError) {
+        logger.warn('Failed to capture Sunday pre-order during FOH booking create', {
+          metadata: {
+            userId: auth.userId,
+            tableBookingId: bookingResult.table_booking_id,
+            error: captureError instanceof Error ? captureError.message : String(captureError),
+          }
+        })
+        // Keep the response fail-safe: the table booking is already committed, and returning
+        // 500 encourages operator retries that can create duplicates.
+        sundayPreorderReason = 'capture_exception'
+      }
 
-      if (captureResult.state === 'saved') {
+      if (captureResult?.state === 'saved') {
         sundayPreorderState = 'captured'
       } else {
-        sundayPreorderReason = captureResult.reason || 'capture_failed'
-        const fallbackLink = await sendSundayPreorderLinkSmsIfAllowed(auth.supabase, {
+        if (!sundayPreorderReason) {
+          sundayPreorderReason = captureResult?.reason || 'capture_failed'
+        }
+
+        try {
+          const fallbackLink = await sendSundayPreorderLinkSmsIfAllowed(auth.supabase, {
+            customerId,
+            tableBookingId: bookingResult.table_booking_id,
+            bookingStartIso: bookingResult.start_datetime || null,
+            bookingReference: bookingResult.booking_reference || null,
+            appBaseUrl
+          })
+
+          if (fallbackLink.sent) {
+            sundayPreorderState = 'link_sent'
+            sundayPreorderReason = `capture_failed:${sundayPreorderReason}`
+          } else {
+            sundayPreorderState = 'capture_blocked'
+          }
+        } catch (fallbackError) {
+          logger.warn('Failed to send Sunday pre-order fallback link after capture failure', {
+            metadata: {
+              userId: auth.userId,
+              tableBookingId: bookingResult.table_booking_id,
+              error: fallbackError instanceof Error ? fallbackError.message : String(fallbackError),
+            }
+          })
+          sundayPreorderState = 'capture_blocked'
+        }
+      }
+    } else {
+      try {
+        const linkResult = await sendSundayPreorderLinkSmsIfAllowed(auth.supabase, {
           customerId,
           tableBookingId: bookingResult.table_booking_id,
           bookingStartIso: bookingResult.start_datetime || null,
@@ -637,25 +1052,20 @@ export async function POST(request: NextRequest) {
           appBaseUrl
         })
 
-        if (fallbackLink.sent) {
-          sundayPreorderState = 'link_sent'
-          sundayPreorderReason = `capture_failed:${sundayPreorderReason}`
-        } else {
-          sundayPreorderState = 'capture_blocked'
+        sundayPreorderState = linkResult.sent ? 'link_sent' : 'link_not_sent'
+        if (!linkResult.sent) {
+          sundayPreorderReason = 'link_not_sent'
         }
-      }
-    } else {
-      const linkResult = await sendSundayPreorderLinkSmsIfAllowed(auth.supabase, {
-        customerId,
-        tableBookingId: bookingResult.table_booking_id,
-        bookingStartIso: bookingResult.start_datetime || null,
-        bookingReference: bookingResult.booking_reference || null,
-        appBaseUrl
-      })
-
-      sundayPreorderState = linkResult.sent ? 'link_sent' : 'link_not_sent'
-      if (!linkResult.sent) {
-        sundayPreorderReason = 'link_not_sent'
+      } catch (linkError) {
+        logger.warn('Failed to send Sunday pre-order link during FOH booking create', {
+          metadata: {
+            userId: auth.userId,
+            tableBookingId: bookingResult.table_booking_id,
+            error: linkError instanceof Error ? linkError.message : String(linkError),
+          }
+        })
+        sundayPreorderState = 'link_not_sent'
+        sundayPreorderReason = 'link_exception'
       }
     }
   }

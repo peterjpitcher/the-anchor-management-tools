@@ -10,6 +10,23 @@ type RouteContext = {
   params: Promise<{ token: string }>
 }
 
+async function recordReviewRedirectAnalyticsSafe(
+  supabase: ReturnType<typeof createAdminClient>,
+  payload: Parameters<typeof recordAnalyticsEvent>[1],
+  context: Record<string, unknown>
+) {
+  try {
+    await recordAnalyticsEvent(supabase, payload)
+  } catch (analyticsError) {
+    logger.warn('Failed to record review redirect analytics event', {
+      metadata: {
+        ...context,
+        error: analyticsError instanceof Error ? analyticsError.message : String(analyticsError)
+      }
+    })
+  }
+}
+
 export async function GET(request: NextRequest, context: RouteContext) {
   const { token } = await context.params
   const supabase = createAdminClient()
@@ -52,7 +69,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
         .maybeSingle()
 
       if (booking) {
-        await supabase
+        const { error: bookingUpdateError } = await supabase
           .from('bookings')
           .update({
             status: booking.status === 'completed' ? booking.status : 'review_clicked',
@@ -62,8 +79,16 @@ export async function GET(request: NextRequest, context: RouteContext) {
           .eq('id', booking.id)
           .in('status', ['visited_waiting_for_review', 'confirmed', 'review_clicked'])
 
-        if (guestToken.customer_id) {
-          await recordAnalyticsEvent(supabase, {
+        if (bookingUpdateError) {
+          logger.warn('Failed updating event booking review-clicked status from token redirect', {
+            metadata: {
+              tokenId: guestToken.id,
+              eventBookingId: booking.id,
+              error: bookingUpdateError.message
+            }
+          })
+        } else if (guestToken.customer_id) {
+          await recordReviewRedirectAnalyticsSafe(supabase, {
             customerId: guestToken.customer_id,
             eventBookingId: booking.id,
             eventType: 'review_link_clicked',
@@ -71,6 +96,10 @@ export async function GET(request: NextRequest, context: RouteContext) {
               event_id: booking.event_id,
               booking_type: 'event'
             }
+          }, {
+            tokenId: guestToken.id,
+            eventBookingId: booking.id,
+            customerId: guestToken.customer_id
           })
         }
       }
@@ -84,7 +113,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
         .maybeSingle()
 
       if (tableBooking) {
-        await (supabase.from('table_bookings') as any)
+        const { error: tableBookingUpdateError } = await (supabase.from('table_bookings') as any)
           .update({
             status: tableBooking.status === 'completed' ? tableBooking.status : 'review_clicked',
             review_clicked_at: nowIso,
@@ -93,14 +122,26 @@ export async function GET(request: NextRequest, context: RouteContext) {
           .eq('id', tableBooking.id)
           .in('status', ['visited_waiting_for_review', 'confirmed', 'review_clicked'])
 
-        if (guestToken.customer_id) {
-          await recordAnalyticsEvent(supabase, {
+        if (tableBookingUpdateError) {
+          logger.warn('Failed updating table booking review-clicked status from token redirect', {
+            metadata: {
+              tokenId: guestToken.id,
+              tableBookingId: tableBooking.id,
+              error: tableBookingUpdateError.message
+            }
+          })
+        } else if (guestToken.customer_id) {
+          await recordReviewRedirectAnalyticsSafe(supabase, {
             customerId: guestToken.customer_id,
             tableBookingId: tableBooking.id,
             eventType: 'review_link_clicked',
             metadata: {
               booking_type: tableBooking.booking_type || 'table'
             }
+          }, {
+            tokenId: guestToken.id,
+            tableBookingId: tableBooking.id,
+            customerId: guestToken.customer_id
           })
         }
       }

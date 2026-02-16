@@ -1,77 +1,168 @@
 #!/usr/bin/env tsx
-
 /**
- * Script to test template loading against production
+ * Production template diagnostics (read-only).
+ *
+ * Safety:
+ * - Strictly read-only (select/RPC only).
+ * - Fails closed (non-zero exit) on any env/query/RPC failure.
+ * - Does not support `--confirm`.
+ *
+ * Notes:
+ * - This script runs against the Supabase project configured in `.env.local`.
+ * - Use `--event-id` to test an event-specific template lookup; otherwise the all-zero UUID is used.
  */
 
-import { config } from 'dotenv'
-import { resolve } from 'path'
+import dotenv from 'dotenv'
+import path from 'path'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { assertScriptQuerySucceeded } from '@/lib/script-mutation-safety'
 
-// Load environment variables
-config({ path: resolve(__dirname, '../.env.local') })
+dotenv.config({ path: path.resolve(process.cwd(), '.env.local') })
 
-const PRODUCTION_URL = 'https://management.orangejelly.co.uk'
+const SCRIPT_NAME = 'test-production-templates'
+const DEFAULT_EVENT_ID = '00000000-0000-0000-0000-000000000000'
+const DEFAULT_TYPES = ['booking_confirmation', 'booking_reminder_confirmation']
+const HARD_CAP_LIMIT = 50
 
-async function testProductionTemplates() {
-  console.log('🧪 Testing template loading in production...\n')
-
-  try {
-    // Test the debug endpoint
-    const tests = [
-      { type: 'bookingConfirmation', description: 'Booking with seats' },
-      { type: 'reminderOnly', description: 'Reminder only (0 seats)' }
-    ]
-
-    for (const test of tests) {
-      console.log(`\n📋 Testing ${test.description} (${test.type})...`)
-      
-      const response = await fetch(`${PRODUCTION_URL}/api/debug/test-template?type=${test.type}`)
-      
-      if (!response.ok) {
-        console.error(`❌ Request failed: ${response.status} ${response.statusText}`)
-        continue
-      }
-
-      const data = await response.json()
-      
-      console.log('\nDebug info:')
-      console.log('- Template type:', data.debug?.templateType)
-      console.log('- Mapped type:', data.debug?.mappedType)
-      console.log('- Environment vars present:', data.debug?.envVarsPresent)
-      
-      console.log('\nRPC Result:')
-      if (data.rpcResult?.success) {
-        console.log('✅ RPC succeeded')
-        console.log('- Content:', data.rpcResult.data?.content?.substring(0, 50) + '...')
-      } else {
-        console.log('❌ RPC failed:', data.rpcResult?.error)
-      }
-      
-      console.log('\nTemplate Function Result:')
-      if (data.templateFunctionResult?.success) {
-        console.log('✅ Template function succeeded')
-        console.log('- Result:', data.templateFunctionResult.result?.substring(0, 50) + '...')
-      } else {
-        console.log('❌ Template function failed')
-      }
-      
-      console.log('\nAvailable Templates:')
-      if (data.availableTemplates?.length > 0) {
-        data.availableTemplates.forEach(t => {
-          console.log(`- ${t.name} (default: ${t.is_default}, active: ${t.is_active})`)
-        })
-      } else {
-        console.log('❌ No templates found')
-      }
-    }
-
-    console.log('\n\n💡 Check the Vercel function logs for detailed debug output')
-    console.log('   The logs will show exactly what\'s happening during template lookup')
-
-  } catch (error) {
-    console.error('❌ Error testing production:', error)
-  }
+type Args = {
+  eventId: string
+  types: string[]
+  limit: number
 }
 
-// Run the test
-testProductionTemplates()
+function findFlagValue(argv: string[], flag: string): string | null {
+  const eq = argv.find((arg) => arg.startsWith(`${flag}=`))
+  if (eq) return eq.split('=')[1] ?? null
+
+  const idx = argv.indexOf(flag)
+  if (idx === -1) return null
+
+  const value = argv[idx + 1]
+  return typeof value === 'string' && value.length > 0 ? value : null
+}
+
+function parsePositiveInt(value: string | null, defaultValue: number): number {
+  if (!value) return defaultValue
+  const trimmed = value.trim()
+  if (!/^[1-9]\d*$/.test(trimmed)) {
+    throw new Error(`[${SCRIPT_NAME}] Invalid positive integer: ${value}`)
+  }
+  const parsed = Number(trimmed)
+  if (!Number.isInteger(parsed) || parsed <= 0) {
+    throw new Error(`[${SCRIPT_NAME}] Invalid positive integer: ${value}`)
+  }
+  if (parsed > HARD_CAP_LIMIT) {
+    throw new Error(`[${SCRIPT_NAME}] --limit exceeds hard cap ${HARD_CAP_LIMIT}`)
+  }
+  return parsed
+}
+
+function readArgs(argv = process.argv.slice(2)): Args {
+  if (argv.includes('--confirm')) {
+    throw new Error(`[${SCRIPT_NAME}] This script is read-only and does not support --confirm`)
+  }
+
+  const eventId = (findFlagValue(argv, '--event-id') ?? process.env.TEST_TEMPLATE_EVENT_ID ?? DEFAULT_EVENT_ID).trim()
+  if (!eventId) {
+    throw new Error(`[${SCRIPT_NAME}] Missing --event-id (or TEST_TEMPLATE_EVENT_ID)`)
+  }
+
+  const typesCsv = findFlagValue(argv, '--types') ?? process.env.TEST_TEMPLATE_TYPES ?? null
+  const types = typesCsv
+    ? typesCsv
+      .split(',')
+      .map((entry) => entry.trim())
+      .filter(Boolean)
+    : [...DEFAULT_TYPES]
+
+  const limit = parsePositiveInt(findFlagValue(argv, '--limit') ?? process.env.TEST_TEMPLATE_LIMIT ?? null, 20)
+
+  return { eventId, types, limit }
+}
+
+async function run(): Promise<void> {
+  const args = readArgs()
+
+  console.log(`[${SCRIPT_NAME}] starting (read-only)\n`)
+  console.log(`eventId: ${args.eventId}`)
+  console.log(`types: ${args.types.join(', ')}`)
+  console.log(`limit: ${args.limit}\n`)
+
+  const supabase = createAdminClient()
+  let failures = 0
+
+  console.log('1) Listing message_templates rows...')
+  const { data: templates, error: templatesError } = await supabase
+    .from('message_templates')
+    .select('id, name, template_type, is_default, is_active, content, updated_at')
+    .in('template_type', args.types)
+    .order('template_type')
+    .order('is_default', { ascending: false })
+    .limit(args.limit)
+
+  const templateRows =
+    assertScriptQuerySucceeded({
+      operation: 'select message_templates',
+      error: templatesError,
+      data: templates,
+      allowMissing: true,
+    }) ?? []
+
+  if (templateRows.length === 0) {
+    console.error('❌ No message_templates found for requested template types.')
+    failures += 1
+  } else {
+    for (const row of templateRows as any[]) {
+      const preview = typeof row?.content === 'string' ? row.content.slice(0, 80) : ''
+      console.log(`- ${row.template_type} :: ${row.name} (default=${row.is_default}, active=${row.is_active})`)
+      console.log(`  id=${row.id} updated_at=${row.updated_at ?? 'N/A'}`)
+      console.log(`  content=${preview}${preview.length === 80 ? '...' : ''}`)
+    }
+  }
+
+  console.log('\n2) Testing get_message_template RPC...')
+  for (const templateType of args.types) {
+    console.log(`\nRPC: ${templateType}`)
+    const { data: rpcData, error: rpcError } = await supabase.rpc('get_message_template', {
+      p_event_id: args.eventId,
+      p_template_type: templateType,
+    })
+
+    const rpcRows =
+      assertScriptQuerySucceeded({
+        operation: `rpc get_message_template (${templateType})`,
+        error: rpcError,
+        data: rpcData,
+        allowMissing: true,
+      }) ?? []
+
+    if (!Array.isArray(rpcRows) || rpcRows.length === 0) {
+      console.error(`❌ RPC returned no rows for ${templateType}`)
+      failures += 1
+      continue
+    }
+
+    const first = rpcRows[0] as any
+    const content = typeof first?.content === 'string' ? first.content : ''
+    if (!content) {
+      console.error(`❌ RPC returned empty content for ${templateType}`)
+      failures += 1
+      continue
+    }
+
+    console.log(`✅ content preview: ${content.slice(0, 80)}${content.length > 80 ? '...' : ''}`)
+    console.log(`variables: ${Array.isArray(first?.variables) ? first.variables.join(', ') : 'N/A'}`)
+    console.log(`send_timing: ${first?.send_timing ?? 'N/A'} custom_timing_hours: ${first?.custom_timing_hours ?? 'N/A'}`)
+  }
+
+  if (failures > 0) {
+    throw new Error(`[${SCRIPT_NAME}] completed with ${failures} failure(s)`)
+  }
+
+  console.log(`\n✅ [${SCRIPT_NAME}] completed successfully.`)
+}
+
+run().catch((error) => {
+  console.error('Fatal error:', error)
+  process.exitCode = 1
+})

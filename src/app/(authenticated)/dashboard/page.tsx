@@ -78,6 +78,11 @@ function getComparisonToneClass(current: number, previous: number): string {
   return 'text-gray-500'
 }
 
+function formatNoteDateRange(startDate: string, endDate: string): string {
+  if (startDate === endDate) return formatDate(startDate)
+  return `${formatDate(startDate)} to ${formatDate(endDate)}`
+}
+
 export default async function DashboardPage() {
   const snapshot = await loadDashboardSnapshot()
 
@@ -112,18 +117,27 @@ export default async function DashboardPage() {
 
   const overdueInvoices = snapshot.invoices.permitted ? snapshot.invoices.overdue : []
   const invoicesDueToday = snapshot.invoices.permitted ? snapshot.invoices.dueToday : []
+  const calendarNotes = snapshot.events.calendarNotes
+  const notesToday = calendarNotes.filter((note) => note.note_date <= todayIso && note.end_date >= todayIso)
 
   const todayItemCount =
-    eventsToday.length + privateToday.length + parkingToday.length + invoicesDueToday.length + overdueInvoices.length
+    eventsToday.length +
+    privateToday.length +
+    parkingToday.length +
+    invoicesDueToday.length +
+    overdueInvoices.length +
+    notesToday.length
 
   const calendarEvents = snapshot.events.permitted
     ? [...snapshot.events.past, ...snapshot.events.today, ...snapshot.events.upcoming]
     : []
+  const calendarNotesForSchedule = calendarNotes
   const calendarPrivateBookings = snapshot.privateBookings.permitted ? snapshot.privateBookings.upcoming : []
   const calendarParkingBookings = snapshot.parking.permitted ? snapshot.parking.upcoming : []
 
   const upcomingScheduleCount =
     calendarEvents.filter((event) => Boolean(event.date)).length +
+    calendarNotesForSchedule.filter((note) => Boolean(note.note_date)).length +
     calendarPrivateBookings.filter((booking) => Boolean(booking.event_date)).length +
     calendarParkingBookings.filter((booking) => Boolean(booking.start_at)).length
 
@@ -410,6 +424,7 @@ export default async function DashboardPage() {
             >
               <UpcomingScheduleCalendar
                 events={calendarEvents}
+                calendarNotes={calendarNotesForSchedule}
                 privateBookings={calendarPrivateBookings}
                 parkingBookings={calendarParkingBookings}
               />
@@ -519,6 +534,23 @@ export default async function DashboardPage() {
                           View
                         </Button>
                       </Link>
+                    </div>
+                  ))}
+
+                  {/* Calendar Notes */}
+                  {notesToday.map((note) => (
+                    <div key={note.id} className="p-4 flex items-start gap-4 hover:bg-gray-50 transition-colors">
+                      <div className="p-2 bg-sky-100 text-sky-600 rounded-lg">
+                        <CalendarIcon className="h-5 w-5" />
+                      </div>
+                      <div className="flex-1">
+                        <h4 className="text-sm font-medium text-gray-900">{note.title}</h4>
+                        <p className="text-xs text-gray-500">
+                          Calendar Note • {formatNoteDateRange(note.note_date, note.end_date)}
+                          {note.source === 'ai' ? ' • AI generated' : ''}
+                        </p>
+                        {note.notes && <p className="mt-1 text-xs text-gray-500 line-clamp-2">{note.notes}</p>}
+                      </div>
                     </div>
                   ))}
 

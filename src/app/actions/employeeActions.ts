@@ -645,6 +645,7 @@ export async function saveEmployeeAttachmentRecord(
   }
 
   const adminClient = createAdminClient()
+  let metadataSaved = false
 
   try {
     const { error: dbError } = await adminClient.from('employee_attachments').insert({
@@ -660,7 +661,21 @@ export async function saveEmployeeAttachmentRecord(
     if (dbError) {
       throw new Error(`Database insert failed: ${dbError.message}`)
     }
+    metadataSaved = true
+  } catch (error: any) {
+    console.error('Attachment record save error:', error)
 
+    if (!metadataSaved) {
+      const { error: removeError } = await adminClient.storage.from(EMPLOYEE_ATTACHMENTS_BUCKET_NAME).remove([storage_path])
+      if (removeError) {
+        console.error(`Failed to clean up uploaded file '${storage_path}' after DB error`, removeError)
+      }
+    }
+
+    return { type: 'error', message: error?.message || 'An unexpected error occurred during upload.' }
+  }
+
+  try {
     const userInfo = await getCurrentUser()
     await logAuditEvent({
       ...(userInfo.user_id && { user_id: userInfo.user_id }),
@@ -676,7 +691,11 @@ export async function saveEmployeeAttachmentRecord(
         storage_path,
       },
     })
+  } catch (auditError) {
+    console.error('Failed to write employee attachment audit event:', auditError)
+  }
 
+  try {
     const emailResult = await maybeSendEmployeeAttachmentEmail({
       adminClient,
       employeeId: employee_id,
@@ -690,18 +709,12 @@ export async function saveEmployeeAttachmentRecord(
     if (emailResult.attempted && !emailResult.success) {
       console.error('Employee attachment email failed:', emailResult.error);
     }
-
-    revalidatePath(`/employees/${employee_id}`)
-    return { type: 'success', message: 'Attachment uploaded successfully!' }
-  } catch (error: any) {
-    console.error('Attachment record save error:', error)
-    const { error: removeError } = await adminClient.storage.from(EMPLOYEE_ATTACHMENTS_BUCKET_NAME).remove([storage_path])
-    if (removeError) {
-      console.error(`Failed to clean up uploaded file '${storage_path}' after DB error`, removeError)
-    }
-
-    return { type: 'error', message: error?.message || 'An unexpected error occurred during upload.' }
+  } catch (emailError) {
+    console.error('Unexpected employee attachment email error:', emailError)
   }
+
+  revalidatePath(`/employees/${employee_id}`)
+  return { type: 'success', message: 'Attachment uploaded successfully!' }
 }
 
 export async function addEmployeeAttachment(
@@ -813,10 +826,10 @@ export async function deleteEmployeeAttachment(prevState: DeleteState, formData:
         return { type: 'error', message: 'Invalid IDs provided.', errors: result.error.flatten().fieldErrors };
     }
 
-    const { employee_id, attachment_id, storage_path } = result.data;
+    const { employee_id, attachment_id } = result.data;
     
     try {
-      const deletedAttachment = await EmployeeService.deleteEmployeeAttachment(attachment_id, storage_path);
+      const deletedAttachment = await EmployeeService.deleteEmployeeAttachment(attachment_id, employee_id);
 
       const userInfo = await getCurrentUser();
       await logAuditEvent({
@@ -828,7 +841,7 @@ export async function deleteEmployeeAttachment(prevState: DeleteState, formData:
           operation_status: 'success',
           additional_info: {
               file_name: deletedAttachment.file_name || 'Unknown',
-              storage_path: storage_path
+              storage_path: deletedAttachment.storage_path
           }
       });
 

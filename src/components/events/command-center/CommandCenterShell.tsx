@@ -1,7 +1,11 @@
 'use client'
 
 import React, { useState, useMemo } from 'react'
-import { EventsOverviewResult } from '@/app/(authenticated)/events/get-events-command-center'
+import type {
+    EventsOverviewResult,
+    EventOverview,
+    CalendarNoteCalendarOverview,
+} from '@/app/(authenticated)/events/get-events-command-center'
 import ControlBar, { ViewMode, FilterType } from './ControlBar'
 import EventCalendarView from './EventCalendarView'
 import EventGrid from './EventGrid'
@@ -29,7 +33,7 @@ export default function CommandCenterShell({ initialData }: CommandCenterShellPr
     )
 
     // Filter Logic
-    const filterEvents = (events: EventsOverviewResult['upcoming']) => {
+    const filterEvents = (events: EventOverview[]) => {
         let filtered = events
 
         // 1. Text Search
@@ -52,8 +56,20 @@ export default function CommandCenterShell({ initialData }: CommandCenterShellPr
         return filtered
     }
 
-    const filteredEvents = useMemo(() => filterEvents(initialData.upcoming), [initialData.upcoming, searchQuery, filter])
-    const filteredCalendarEvents = useMemo(() => filterEvents(allEvents), [allEvents, searchQuery, filter])
+    const filteredAllEvents = useMemo(() => filterEvents(allEvents), [allEvents, searchQuery, filter])
+    const filteredCalendarNotes = useMemo(() => {
+        if (!searchQuery.trim()) {
+            return initialData.calendarNotes
+        }
+
+        const q = searchQuery.toLowerCase()
+        return initialData.calendarNotes.filter((note: CalendarNoteCalendarOverview) => (
+            note.title.toLowerCase().includes(q) ||
+            (note.notes || '').toLowerCase().includes(q) ||
+            note.note_date.includes(searchQuery) ||
+            note.end_date.includes(searchQuery)
+        ))
+    }, [initialData.calendarNotes, searchQuery])
 
 
     return (
@@ -75,13 +91,14 @@ export default function CommandCenterShell({ initialData }: CommandCenterShellPr
                     <div className="flex-1 overflow-y-auto min-h-0 pb-20 scrollbar-hide">
                         {viewMode === 'calendar' ? (
                             <EventCalendarView
-                                events={filteredCalendarEvents}
+                                events={filteredAllEvents}
                                 privateBookings={initialData.privateBookingsForCalendar}
+                                calendarNotes={filteredCalendarNotes}
                             />
                         ) : viewMode === 'grid' ? (
-                            <EventGrid events={filteredEvents} />
+                            <EventGrid events={filteredAllEvents} />
                         ) : (
-                            <EventList events={filteredEvents} />
+                            <EventList events={filteredAllEvents} />
                         )}
                     </div>
                 </div>

@@ -78,20 +78,31 @@ export async function updatePerformerSubmission(
       return { success: true }
     }
 
-    const { data: existing } = await supabase
+    const { data: existing, error: existingError } = await supabase
       .from('performer_submissions')
       .select('id, status, internal_notes')
       .eq('id', id)
       .maybeSingle()
 
-    const { error } = await supabase
+    if (existingError) {
+      console.error('Failed to load performer submission before update:', existingError)
+      return { error: 'Failed to update submission' }
+    }
+
+    const { data: updatedSubmission, error } = await supabase
       .from('performer_submissions')
       .update(updatePayload)
       .eq('id', id)
+      .select('id')
+      .maybeSingle()
 
     if (error) {
       console.error('Failed to update performer submission:', error)
       return { error: 'Failed to update submission' }
+    }
+
+    if (!updatedSubmission) {
+      return { error: 'Submission not found' }
     }
 
     await logAuditEvent({
@@ -120,4 +131,3 @@ export async function updatePerformerSubmission(
     return { error: message }
   }
 }
-

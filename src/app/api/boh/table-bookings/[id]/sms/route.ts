@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
+import { createHash } from 'crypto'
 import { requireFohPermission } from '@/lib/foh/api-auth'
 import { ensureReplyInstruction } from '@/lib/sms/support'
 import { sendSMS } from '@/lib/twilio'
+import { logger } from '@/lib/logger'
 
 const SendBookingSmsSchema = z.object({
   message: z.string().trim().min(1).max(640)
@@ -86,17 +88,46 @@ export async function POST(
 
   const supportPhone = process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || process.env.TWILIO_PHONE_NUMBER || undefined
   const smsBody = ensureReplyInstruction(parsed.data.message, supportPhone)
+  const messageStage = createHash('sha256').update(smsBody).digest('hex').slice(0, 16)
 
-  const smsResult = await sendSMS(customer.mobile_number, smsBody, {
-    customerId: customer.id,
-    metadata: {
-      table_booking_id: booking.id,
-      booking_reference: booking.booking_reference || null,
-      source: 'boh_manual_booking_sms'
-    }
-  })
+  let smsResult: Awaited<ReturnType<typeof sendSMS>>
+  try {
+    smsResult = await sendSMS(customer.mobile_number, smsBody, {
+      customerId: customer.id,
+      metadata: {
+        table_booking_id: booking.id,
+        booking_reference: booking.booking_reference || null,
+        template_key: 'boh_manual_booking_sms',
+        trigger_type: 'boh_manual_booking_sms',
+        stage: messageStage,
+        source: 'boh_manual_booking_sms'
+      }
+    })
+  } catch (smsError) {
+    logger.error('BOH table booking SMS send threw unexpectedly', {
+      error: smsError instanceof Error ? smsError : new Error(String(smsError)),
+      metadata: {
+        tableBookingId: booking.id,
+        customerId: customer.id,
+      },
+    })
+    return NextResponse.json({ error: 'Failed to send SMS' }, { status: 502 })
+  }
 
-  if (!smsResult.success) {
+  const smsCode = typeof (smsResult as any)?.code === 'string' ? (smsResult as any).code : null
+  const smsLogFailure = smsResult.logFailure === true || smsCode === 'logging_failed'
+
+  if (smsLogFailure) {
+    logger.error('BOH table booking SMS sent but outbound message logging failed', {
+      metadata: {
+        tableBookingId: booking.id,
+        customerId: customer.id,
+        code: smsCode,
+      },
+    })
+  }
+
+  if (!smsResult.success && !smsLogFailure) {
     return NextResponse.json(
       { error: smsResult.error || 'Failed to send SMS' },
       { status: 502 }
@@ -111,7 +142,9 @@ export async function POST(
       to: customer.mobile_number,
       sid: smsResult.sid || null,
       scheduled_for: smsResult.scheduledFor || null,
-      status: smsResult.status || null
+      status: smsResult.status || null,
+      code: smsCode,
+      logFailure: smsLogFailure
     }
   })
 }

@@ -1,169 +1,189 @@
-#!/usr/bin/env node
-import { createClient } from '@supabase/supabase-js';
-import * as dotenv from 'dotenv';
+#!/usr/bin/env tsx
 
-dotenv.config({ path: '.env.local' });
+import dotenv from 'dotenv'
+import path from 'path'
+import { createAdminClient } from '../../src/lib/supabase/admin'
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+dotenv.config({ path: path.resolve(process.cwd(), '.env.local') })
 
-if (!supabaseUrl || !supabaseServiceKey) {
-  console.error('Missing environment variables');
-  process.exit(1);
+const HARD_CAP = 5000
+
+function markFailure(message: string, error?: unknown) {
+  process.exitCode = 1
+  if (error) {
+    console.error(`ERROR: ${message}`, error)
+    return
+  }
+  console.error(`ERROR: ${message}`)
 }
 
-const supabase = createClient(supabaseUrl, supabaseServiceKey);
+function parseBoundedInt(params: {
+  argv: string[]
+  flag: string
+  defaultValue: number
+  hardCap: number
+}): number {
+  const idx = params.argv.indexOf(params.flag)
+  if (idx === -1) {
+    return params.defaultValue
+  }
+
+  const raw = params.argv[idx + 1]
+  const parsed = Number.parseInt(raw || '', 10)
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    throw new Error(`${params.flag} must be a positive integer (got '${raw || ''}')`)
+  }
+  if (parsed > params.hardCap) {
+    throw new Error(`${params.flag} too high (got ${parsed}, hard cap ${params.hardCap})`)
+  }
+  return parsed
+}
 
 async function checkMigrationStatus() {
-  console.log('Checking event_categories migration status...\n');
+  const argv = process.argv
+  if (argv.includes('--confirm')) {
+    throw new Error('check-migration-simple is strictly read-only; do not pass --confirm.')
+  }
 
-  // Test query to check columns by selecting from the table
+  const checkNullSlugs = argv.includes('--check-null-slugs')
+  const checkDuplicateSlugs = argv.includes('--check-duplicate-slugs')
+  const maxSlugs = parseBoundedInt({ argv, flag: '--max-slugs', defaultValue: 500, hardCap: HARD_CAP })
+  const nullSlugSample = parseBoundedInt({ argv, flag: '--null-slug-sample', defaultValue: 20, hardCap: 200 })
+
+  console.log('Checking event_categories migration status (simple)...\n')
+  console.log(`Check NULL slugs: ${checkNullSlugs ? 'yes' : 'no'}`)
+  console.log(`Check duplicate slugs: ${checkDuplicateSlugs ? 'yes' : 'no'}`)
+  console.log(`Max slugs for duplicate scan: ${maxSlugs} (hard cap ${HARD_CAP})`)
+  console.log(`NULL slug sample limit: ${nullSlugSample} (hard cap 200)\n`)
+
+  const supabase = createAdminClient()
+
   const { data: sample, error: sampleError } = await supabase
     .from('event_categories')
     .select('*')
-    .limit(1);
+    .limit(1)
 
   if (sampleError) {
-    console.error('Error fetching sample data:', sampleError);
-    return;
+    throw new Error(`Load sample event_categories row failed: ${sampleError.message || 'unknown error'}`)
   }
 
-  console.log('Sample event_category record:');
-  if (sample && sample.length > 0) {
-    const record = sample[0];
-    const columns = Object.keys(record);
-    console.log('Columns found:', columns);
+  if (!sample || sample.length === 0) {
+    console.log('No event categories found in the database.')
+    return
+  }
 
-    // Check which new columns exist
-    const newColumns = [
-      'default_end_time',
-      'default_price',
-      'default_is_free',
-      'default_performer_type',
-      'default_event_status',
-      'slug',
-      'meta_description'
-    ];
+  const record = sample[0] as Record<string, unknown>
+  const columns = Object.keys(record)
+  console.log(`Columns found (${columns.length}):`)
+  columns.forEach((col) => console.log(`  - ${col}`))
 
-    console.log('\nNew columns from migration:');
-    newColumns.forEach(col => {
-      const exists = columns.includes(col);
-      console.log(`  - ${col}: ${exists ? '✅ EXISTS' : '❌ MISSING'}`);
-    });
+  const newColumns = [
+    'default_end_time',
+    'default_price',
+    'default_is_free',
+    'default_performer_type',
+    'default_event_status',
+    'slug',
+    'meta_description'
+  ]
 
-    // If slug exists, check if it has values
-    if (columns.includes('slug')) {
-      const { data: slugCheck, error: slugError } = await supabase
-        .from('event_categories')
-        .select('id, name, slug')
-        .is('slug', null);
+  console.log('\nNew columns from migration:')
+  newColumns.forEach((col) => {
+    const exists = columns.includes(col)
+    console.log(`  - ${col}: ${exists ? 'EXISTS' : 'MISSING'}`)
+  })
 
-      if (!slugError && slugCheck) {
-        console.log(`\nCategories with NULL slugs: ${slugCheck.length}`);
-        if (slugCheck.length > 0) {
-          console.log('Categories needing slugs:');
-          slugCheck.forEach(cat => console.log(`  - ${cat.name} (ID: ${cat.id})`));
-        }
+  if (!columns.includes('slug')) {
+    console.log('\nSlug checks skipped: slug column not present.')
+    return
+  }
+
+  if (checkNullSlugs) {
+    const { count: nullCount, error: nullCountError } = await supabase
+      .from('event_categories')
+      .select('*', { count: 'exact', head: true })
+      .is('slug', null)
+
+    if (nullCountError) {
+      throw new Error(`Count NULL slugs failed: ${nullCountError.message || 'unknown error'}`)
+    }
+
+    console.log(`\nCategories with NULL slugs: ${typeof nullCount === 'number' ? String(nullCount) : 'unknown'}`)
+
+    const { data: nullRows, error: nullRowsError } = await supabase
+      .from('event_categories')
+      .select('id, name')
+      .is('slug', null)
+      .limit(nullSlugSample)
+
+    if (nullRowsError) {
+      throw new Error(`Load NULL slug sample failed: ${nullRowsError.message || 'unknown error'}`)
+    }
+
+    const rows = (nullRows ?? []) as Array<{ id?: unknown; name?: unknown }>
+    if (rows.length > 0) {
+      console.log('Sample categories needing slugs:')
+      rows.forEach((row) => console.log(`  - ${String(row.name || 'unknown')} (id=${String(row.id || 'unknown')})`))
+    }
+  }
+
+  if (checkDuplicateSlugs) {
+    const { count: slugCount, error: slugCountError } = await supabase
+      .from('event_categories')
+      .select('*', { count: 'exact', head: true })
+      .not('slug', 'is', null)
+
+    if (slugCountError) {
+      throw new Error(`Count non-null slugs failed: ${slugCountError.message || 'unknown error'}`)
+    }
+
+    if (typeof slugCount !== 'number') {
+      throw new Error('Duplicate slug scan refused: unable to determine slug row count.')
+    }
+
+    if (slugCount > maxSlugs) {
+      throw new Error(
+        `Duplicate slug scan refused: ${slugCount} non-null slugs exceeds --max-slugs ${maxSlugs} (hard cap ${HARD_CAP}). Use a SQL group-by query instead.`
+      )
+    }
+
+    const { data: allSlugs, error: allSlugsError } = await supabase
+      .from('event_categories')
+      .select('slug')
+      .not('slug', 'is', null)
+      .limit(maxSlugs)
+
+    if (allSlugsError) {
+      throw new Error(`Load slugs failed: ${allSlugsError.message || 'unknown error'}`)
+    }
+
+    const slugs = (allSlugs ?? []) as Array<{ slug?: unknown }>
+    if (slugs.length !== slugCount) {
+      throw new Error(`Duplicate slug scan truncated: fetched ${slugs.length} of ${slugCount}. Increase --max-slugs (up to hard cap ${HARD_CAP}).`)
+    }
+
+    const slugCounts = new Map<string, number>()
+    slugs.forEach((row) => {
+      const slug = typeof row.slug === 'string' ? row.slug : String(row.slug || '')
+      if (!slug) {
+        return
       }
+      slugCounts.set(slug, (slugCounts.get(slug) ?? 0) + 1)
+    })
+
+    const duplicates = Array.from(slugCounts.entries()).filter(([, count]) => count > 1)
+    if (duplicates.length === 0) {
+      console.log('\nNo duplicate slugs found.')
+      return
     }
 
-    // Check for duplicate slugs
-    if (columns.includes('slug')) {
-      const { data: allCats, error: allError } = await supabase
-        .from('event_categories')
-        .select('slug')
-        .not('slug', 'is', null);
-
-      if (!allError && allCats) {
-        const slugCounts = allCats.reduce((acc: any, cat: any) => {
-          acc[cat.slug] = (acc[cat.slug] || 0) + 1;
-          return acc;
-        }, {});
-
-        const duplicates = Object.entries(slugCounts).filter(([_, count]) => (count as number) > 1);
-        if (duplicates.length > 0) {
-          console.log('\nDuplicate slugs found:');
-          duplicates.forEach(([slug, count]) => console.log(`  - ${slug}: ${count} occurrences`));
-        } else {
-          console.log('\nNo duplicate slugs found ✅');
-        }
-      }
-    }
-  } else {
-    console.log('No event categories found in the database');
+    console.log(`\nDuplicate slugs found (${duplicates.length}):`)
+    duplicates.forEach(([slug, count]) => console.log(`  - ${slug}: ${count}`))
   }
 
-  // Try to test constraints by attempting invalid inserts
-  console.log('\nTesting constraints...');
-
-  // Test default_event_status constraint
-  if (sample && sample[0] && 'default_event_status' in sample[0]) {
-    const { error: statusError } = await supabase
-      .from('event_categories')
-      .insert({
-        name: 'Test Invalid Status ' + Date.now(),
-        default_event_status: 'invalid_status'
-      });
-
-    if (statusError && statusError.message.includes('check_default_event_status')) {
-      console.log('  - check_default_event_status: ✅ EXISTS (constraint working)');
-    } else if (statusError) {
-      console.log('  - check_default_event_status: ❓ Unknown (different error)', statusError.message);
-    } else {
-      console.log('  - check_default_event_status: ❌ MISSING (invalid value accepted)');
-      // Clean up test record
-      await supabase
-        .from('event_categories')
-        .delete()
-        .like('name', 'Test Invalid Status%');
-    }
-  }
-
-  // Test default_performer_type constraint
-  if (sample && sample[0] && 'default_performer_type' in sample[0]) {
-    const { error: performerError } = await supabase
-      .from('event_categories')
-      .insert({
-        name: 'Test Invalid Performer ' + Date.now(),
-        default_performer_type: 'invalid_performer'
-      });
-
-    if (performerError && performerError.message.includes('check_default_performer_type')) {
-      console.log('  - check_default_performer_type: ✅ EXISTS (constraint working)');
-    } else if (performerError) {
-      console.log('  - check_default_performer_type: ❓ Unknown (different error)', performerError.message);
-    } else {
-      console.log('  - check_default_performer_type: ❌ MISSING (invalid value accepted)');
-      // Clean up test record
-      await supabase
-        .from('event_categories')
-        .delete()
-        .like('name', 'Test Invalid Performer%');
-    }
-  }
-
-  // Test slug unique constraint
-  if (sample && sample[0] && 'slug' in sample[0] && sample[0].slug) {
-    const { error: slugError } = await supabase
-      .from('event_categories')
-      .insert({
-        name: 'Test Duplicate Slug ' + Date.now(),
-        slug: sample[0].slug // Try to use existing slug
-      });
-
-    if (slugError && (slugError.message.includes('unique') || slugError.message.includes('duplicate'))) {
-      console.log('  - slug UNIQUE constraint: ✅ EXISTS (constraint working)');
-    } else if (slugError) {
-      console.log('  - slug UNIQUE constraint: ❓ Unknown (different error)', slugError.message);
-    } else {
-      console.log('  - slug UNIQUE constraint: ❌ MISSING (duplicate slug accepted)');
-      // Clean up test record
-      await supabase
-        .from('event_categories')
-        .delete()
-        .like('name', 'Test Duplicate Slug%');
-    }
-  }
+  console.log('\nConstraint/index checks skipped (read-only script).')
 }
 
-checkMigrationStatus().catch(console.error);
+void checkMigrationStatus().catch((error) => {
+  markFailure('check-migration-simple failed.', error)
+})

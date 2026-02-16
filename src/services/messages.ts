@@ -2,6 +2,7 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import { ensureReplyInstruction } from '@/lib/sms/support';
 import { env } from '@/lib/env';
 import { sendSMS } from '@/lib/twilio';
+import { createHash } from 'crypto';
 
 export class MessageService {
   static async getUnreadCounts(customerIds?: string[]) {
@@ -98,24 +99,38 @@ export class MessageService {
     
     const supportPhone = env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || env.TWILIO_PHONE_NUMBER || null;
     const messageWithSupport = ensureReplyInstruction(message, supportPhone);
+    const messageStage = createHash('sha256').update(messageWithSupport).digest('hex').slice(0, 16);
 
     // Send SMS via enhanced sendSMS which handles logging
     const result = await sendSMS(customer.mobile_number, messageWithSupport, {
       customerId,
       metadata: {
+        template_key: 'message_thread_reply',
+        trigger_type: 'message_thread_reply',
+        stage: messageStage,
         type: 'reply',
         source: 'message_thread'
       }
     });
 
+    const smsCode = (result as any)?.code;
+    const smsLogFailure = (result as any)?.logFailure === true || smsCode === 'logging_failed';
+
     if (!result.success) {
-      throw new Error(result.error || 'Failed to send SMS');
+      return {
+        success: false,
+        error: result.error || 'Failed to send SMS',
+        code: smsCode,
+        logFailure: smsLogFailure,
+      };
     }
     
     return { 
       success: true, 
       messageSid: result.sid,
-      status: result.status 
+      status: result.status,
+      code: smsCode,
+      logFailure: smsLogFailure,
     };
   }
 

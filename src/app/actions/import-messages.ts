@@ -3,6 +3,7 @@
 import twilio from 'twilio'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { logger } from '@/lib/logger'
 import { logAuditEvent } from '@/app/actions/audit'
 import type { ActionType } from '@/types/rbac'
 import type { User as SupabaseUser } from '@supabase/supabase-js'
@@ -33,7 +34,10 @@ async function requireMessagesPermission(
   })
 
   if (error) {
-    console.error('Error verifying messages permissions:', error)
+    logger.error('Error verifying messages permissions', {
+      error: error instanceof Error ? error : new Error(String(error)),
+      metadata: { action },
+    })
     return { error: 'Failed to verify permissions' }
   }
 
@@ -118,13 +122,28 @@ export async function importMissedMessages(
   )
 
   try {
+    const parsedStart = new Date(startDate)
+    const parsedEnd = new Date(endDate)
+
+    if (Number.isNaN(parsedStart.getTime()) || Number.isNaN(parsedEnd.getTime())) {
+      const message = 'Invalid start or end date'
+      await logFailure(message)
+      return { error: message }
+    }
+
+    if (parsedEnd.getTime() < parsedStart.getTime()) {
+      const message = 'End date must be on or after start date'
+      await logFailure(message)
+      return { error: message }
+    }
+
     let allMessages: any[] = []
 
     try {
       await twilioClient.messages.each(
         {
-          dateSentAfter: new Date(startDate),
-          dateSentBefore: new Date(endDate),
+          dateSentAfter: parsedStart,
+          dateSentBefore: parsedEnd,
           pageSize: 100,
         },
         (message) => {
@@ -132,10 +151,16 @@ export async function importMissedMessages(
         },
       )
     } catch (error) {
-      console.error('Error fetching messages with pagination:', error)
+      logger.warn('Error fetching Twilio messages with pagination; falling back to list()', {
+        metadata: {
+          startDate,
+          endDate,
+          error: error instanceof Error ? error.message : String(error),
+        },
+      })
       allMessages = await twilioClient.messages.list({
-        dateSentAfter: new Date(startDate),
-        dateSentBefore: new Date(endDate),
+        dateSentAfter: parsedStart,
+        dateSentBefore: parsedEnd,
         limit: 1000,
       })
     }
@@ -150,10 +175,42 @@ export async function importMissedMessages(
 
     const combinedMessages = [...inboundMessages, ...outboundMessages]
     const messageSids = combinedMessages.map((m) => m.sid)
-    const { data: existingMessages } = await admin
+    if (messageSids.length === 0) {
+      const summary = {
+        totalFound: messages.length,
+        inboundMessages: inboundMessages.length,
+        outboundMessages: outboundMessages.length,
+        alreadyInDatabase: 0,
+        imported: 0,
+        failed: 0,
+      }
+
+      await logSuccess(summary, {
+        messagingServiceSid,
+        twilioPhoneNumber,
+        errorCount: 0,
+      })
+
+      return {
+        success: true,
+        summary,
+      }
+    }
+
+    const { data: existingMessages, error: existingMessagesError } = await admin
       .from('messages')
       .select('twilio_message_sid')
       .in('twilio_message_sid', messageSids)
+
+    if (existingMessagesError) {
+      logger.error('Failed checking existing message SIDs during import', {
+        error: new Error(existingMessagesError.message),
+        metadata: { messageSidCount: messageSids.length },
+      })
+      const message = 'Failed to verify existing messages'
+      await logFailure(message, { detail: existingMessagesError.message })
+      return { error: message }
+    }
 
     const existingSids = new Set(
       existingMessages?.map((m) => m.twilio_message_sid) || [],
@@ -168,39 +225,165 @@ export async function importMissedMessages(
       }
     })
 
-    const { data: existingCustomers } = await admin
-      .from('customers')
-      .select('*')
-      .in('mobile_number', Array.from(phoneNumbers))
+    const phoneNumbersList = Array.from(phoneNumbers)
+    const customerMap = new Map<string, any>()
 
-    const customerMap = new Map(
-      existingCustomers?.map((c) => [c.mobile_number, c]) || [],
-    )
+    if (phoneNumbersList.length > 0) {
+      const selectCustomerFields =
+        'id, first_name, last_name, mobile_number, mobile_e164, mobile_number_raw'
+
+      const {
+        data: existingCustomersByE164,
+        error: existingCustomersByE164Error,
+      } = await admin
+        .from('customers')
+        .select(selectCustomerFields)
+        .in('mobile_e164', phoneNumbersList)
+
+      if (existingCustomersByE164Error) {
+        logger.error('Failed loading existing customers by mobile_e164 during import', {
+          error: new Error(existingCustomersByE164Error.message),
+        })
+        const message = 'Failed to verify existing customers'
+        await logFailure(message, { detail: existingCustomersByE164Error.message })
+        return { error: message }
+      }
+
+      const {
+        data: existingCustomersByMobile,
+        error: existingCustomersByMobileError,
+      } = await admin
+        .from('customers')
+        .select(selectCustomerFields)
+        .in('mobile_number', phoneNumbersList)
+
+      if (existingCustomersByMobileError) {
+        logger.error('Failed loading existing customers by mobile_number during import', {
+          error: new Error(existingCustomersByMobileError.message),
+        })
+        const message = 'Failed to verify existing customers'
+        await logFailure(message, { detail: existingCustomersByMobileError.message })
+        return { error: message }
+      }
+
+      const {
+        data: existingCustomersByRaw,
+        error: existingCustomersByRawError,
+      } = await admin
+        .from('customers')
+        .select(selectCustomerFields)
+        .in('mobile_number_raw', phoneNumbersList)
+
+      if (existingCustomersByRawError) {
+        logger.error('Failed loading existing customers by mobile_number_raw during import', {
+          error: new Error(existingCustomersByRawError.message),
+        })
+        const message = 'Failed to verify existing customers'
+        await logFailure(message, { detail: existingCustomersByRawError.message })
+        return { error: message }
+      }
+
+      const allCustomers = [
+        ...(existingCustomersByE164 ?? []),
+        ...(existingCustomersByMobile ?? []),
+        ...(existingCustomersByRaw ?? []),
+      ]
+
+      for (const customer of allCustomers) {
+        const keys = [
+          customer.mobile_e164,
+          customer.mobile_number,
+          customer.mobile_number_raw,
+        ].filter((value): value is string => typeof value === 'string' && value.length > 0)
+
+        for (const key of keys) {
+          if (phoneNumbers.has(key) && !customerMap.has(key)) {
+            customerMap.set(key, customer)
+          }
+        }
+      }
+    }
 
     const customersToCreate: Record<string, any>[] = []
     for (const phone of phoneNumbers) {
       if (!customerMap.has(phone)) {
+        const digits = phone.replace(/\D/g, '')
+        const lastName = digits.length >= 4 ? digits.slice(-4) : 'Contact'
+        const nowIso = new Date().toISOString()
         customersToCreate.push({
           first_name: 'Unknown',
-          last_name: phone.replace(/\D/g, '').slice(-4),
+          last_name: lastName,
           mobile_number: phone,
-          sms_opt_in: true,
+          mobile_e164: phone,
+          mobile_number_raw: phone,
+          sms_opt_in: false,
+          marketing_sms_opt_in: false,
+          sms_status: 'sms_deactivated',
+          sms_deactivated_at: nowIso,
+          sms_deactivation_reason: 'import_missed_messages_placeholder',
         })
       }
     }
 
     if (customersToCreate.length > 0) {
-      const { data: newCustomers, error: createError } = await admin
+      const { error: createError } = await admin
         .from('customers')
-        .insert(customersToCreate)
-        .select()
+        .upsert(customersToCreate, {
+          onConflict: 'mobile_e164',
+          ignoreDuplicates: true,
+        })
 
       if (createError) {
-        console.error('Failed to create customers:', createError)
-      } else if (newCustomers) {
-        newCustomers.forEach((customer) => {
-          customerMap.set(customer.mobile_number, customer)
+        logger.error('Failed to create placeholder customers during import', {
+          error: new Error(createError.message),
+          metadata: { customerCount: customersToCreate.length },
         })
+        const message = 'Failed to create placeholder customers'
+        await logFailure(message, { detail: createError.message })
+        return { error: message }
+      }
+
+      const selectCustomerFields =
+        'id, first_name, last_name, mobile_number, mobile_e164, mobile_number_raw'
+      const { data: refreshedCustomers, error: refreshedCustomersError } = await admin
+        .from('customers')
+        .select(selectCustomerFields)
+        .in(
+          'mobile_e164',
+          customersToCreate
+            .map((customer) => customer.mobile_e164)
+            .filter((value): value is string => typeof value === 'string' && value.length > 0),
+        )
+
+      if (refreshedCustomersError) {
+        logger.error('Failed to reload placeholder customers during import', {
+          error: new Error(refreshedCustomersError.message),
+          metadata: { customerCount: customersToCreate.length },
+        })
+        const message = 'Failed to verify placeholder customers'
+        await logFailure(message, { detail: refreshedCustomersError.message })
+        return { error: message }
+      }
+
+      for (const customer of refreshedCustomers ?? []) {
+        const keys = [
+          customer.mobile_e164,
+          customer.mobile_number,
+          customer.mobile_number_raw,
+        ].filter((value): value is string => typeof value === 'string' && value.length > 0)
+
+        for (const key of keys) {
+          if (phoneNumbers.has(key) && !customerMap.has(key)) {
+            customerMap.set(key, customer)
+          }
+        }
+      }
+
+      const unresolvedPhones = Array.from(phoneNumbers).filter((phone) => !customerMap.has(phone))
+      if (unresolvedPhones.length > 0) {
+        const message = `Failed to resolve ${unresolvedPhones.length} customer(s) needed for import`
+        await logFailure(message, { unresolvedPhones })
+        return { error: message }
       }
     }
 
@@ -264,15 +447,20 @@ export async function importMissedMessages(
     if (messagesToInsert.length > 0) {
       const { data: insertedMessages, error: batchError } = await admin
         .from('messages')
-        .insert(messagesToInsert)
-        .select()
+        .upsert(messagesToInsert, {
+          onConflict: 'twilio_message_sid',
+          ignoreDuplicates: true,
+        })
+        .select('twilio_message_sid')
 
       if (batchError) {
-        console.error('Failed to batch insert messages:', batchError)
-        failed += messagesToInsert.length
-        errors.push(
-          `Failed to batch insert ${messagesToInsert.length} messages: ${batchError.message}`,
-        )
+        logger.error('Failed to batch insert messages during import', {
+          error: new Error(batchError.message),
+          metadata: { messageCount: messagesToInsert.length },
+        })
+        const message = `Failed to import messages: ${batchError.message}`
+        await logFailure(message, { detail: batchError.message })
+        return { error: message }
       } else {
         imported = insertedMessages?.length || 0
       }
@@ -299,7 +487,9 @@ export async function importMissedMessages(
       errors: errors.length > 0 ? errors : undefined,
     }
   } catch (error) {
-    console.error('Import failed:', error)
+    logger.error('Import missed messages failed', {
+      error: error instanceof Error ? error : new Error(String(error)),
+    })
     const message = `Import failed: ${
       error instanceof Error ? error.message : 'Unknown error'
     }`

@@ -1,38 +1,88 @@
-import { config } from 'dotenv';
-import { createClient } from '@supabase/supabase-js';
+#!/usr/bin/env tsx
+
+import { config } from 'dotenv'
+import path from 'path'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { assertScriptQuerySucceeded } from '@/lib/script-mutation-safety'
 
 // Load environment variables
-config({ path: '.env.local' });
+config({ path: path.resolve(process.cwd(), '.env.local') })
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+type SmsJobRow = {
+  id: string
+  status: string | null
+  created_at: string | null
+  scheduled_for: string | null
+  payload: Record<string, unknown> | null
+  error: string | null
+}
 
-const supabase = createClient(supabaseUrl, supabaseServiceRoleKey, {
-  auth: {
-    autoRefreshToken: false,
-    persistSession: false
+type OutboundMessageRow = {
+  id: string
+  to_number: string | null
+  twilio_status: string | null
+  status: string | null
+  created_at: string | null
+  body: string | null
+  error_message: string | null
+}
+
+type ConfirmedBookingRow = {
+  id: string
+  booking_reference: string | null
+  booking_type: string | null
+  party_size: number | null
+  booking_date: string | null
+  booking_time: string | null
+  created_at: string | null
+  customer: {
+    first_name: string | null
+    last_name: string | null
+    mobile_number: string | null
+    sms_opt_in: boolean | null
+  } | null
+}
+
+function assertReadOnlyScript(argv: string[] = process.argv.slice(2)): void {
+  if (argv.includes('--confirm')) {
+    throw new Error('test-sms-flow is read-only and does not support --confirm.')
   }
-});
+}
+
+function markFailure(message: string, error?: unknown) {
+  process.exitCode = 1
+  if (error) {
+    console.error(`❌ ${message}`, error)
+    return
+  }
+  console.error(`❌ ${message}`)
+}
 
 async function testSMSFlow() {
-  console.log('🔍 Testing SMS Flow for Table Bookings...\n');
+  console.log('🔍 Testing SMS Flow for Table Bookings...\n')
 
   try {
+    assertReadOnlyScript()
+    const supabase = createAdminClient()
+
     // 1. Check if SMS jobs are being created
-    console.log('1️⃣ Checking recent SMS jobs:');
-    const { data: recentJobs, error: jobsError } = await supabase
+    console.log('1️⃣ Checking recent SMS jobs:')
+    const { data: recentJobsData, error: jobsError } = await supabase
       .from('jobs')
       .select('*')
       .eq('type', 'send_sms')
       .order('created_at', { ascending: false })
       .limit(5);
 
-    if (jobsError) {
-      console.error('❌ Error fetching jobs:', jobsError);
-      return;
-    }
+    const recentJobs =
+      (assertScriptQuerySucceeded({
+        operation: 'Load recent send_sms jobs',
+        error: jobsError,
+        data: recentJobsData as SmsJobRow[] | null,
+        allowMissing: true,
+      }) ?? []) as SmsJobRow[]
 
-    if (!recentJobs || recentJobs.length === 0) {
+    if (recentJobs.length === 0) {
       console.log('⚠️  No SMS jobs found in queue');
     } else {
       console.log(`✅ Found ${recentJobs.length} recent SMS jobs:\n`);
@@ -40,8 +90,8 @@ async function testSMSFlow() {
         console.log(`Job ${index + 1}:`);
         console.log(`  ID: ${job.id}`);
         console.log(`  Status: ${job.status}`);
-        console.log(`  Created: ${new Date(job.created_at).toLocaleString()}`);
-        console.log(`  Scheduled for: ${new Date(job.scheduled_for).toLocaleString()}`);
+        console.log(`  Created: ${new Date(job.created_at ?? '').toLocaleString()}`);
+        console.log(`  Scheduled for: ${new Date(job.scheduled_for ?? '').toLocaleString()}`);
         if (job.payload?.template) {
           console.log(`  Template: ${job.payload.template}`);
         }
@@ -56,7 +106,7 @@ async function testSMSFlow() {
     }
 
     // 2. Check actual SMS messages sent
-    console.log('\n2️⃣ Checking recent SMS messages:');
+    console.log('\n2️⃣ Checking recent SMS messages:')
     const { data: recentMessages, error: messagesError } = await supabase
       .from('messages')
       .select('*')
@@ -64,22 +114,25 @@ async function testSMSFlow() {
       .order('created_at', { ascending: false })
       .limit(5);
 
-    if (messagesError) {
-      console.error('❌ Error fetching messages:', messagesError);
-      return;
-    }
+    const safeRecentMessages =
+      (assertScriptQuerySucceeded({
+        operation: 'Load recent outbound messages',
+        error: messagesError,
+        data: recentMessages as OutboundMessageRow[] | null,
+        allowMissing: true,
+      }) ?? []) as OutboundMessageRow[]
 
-    if (!recentMessages || recentMessages.length === 0) {
+    if (safeRecentMessages.length === 0) {
       console.log('⚠️  No outbound messages found');
     } else {
-      console.log(`✅ Found ${recentMessages.length} recent outbound messages:\n`);
-      recentMessages.forEach((msg, index) => {
+      console.log(`✅ Found ${safeRecentMessages.length} recent outbound messages:\n`);
+      safeRecentMessages.forEach((msg, index) => {
         console.log(`Message ${index + 1}:`);
         console.log(`  ID: ${msg.id}`);
         console.log(`  To: ${msg.to_number}`);
         console.log(`  Status: ${msg.twilio_status || msg.status}`);
-        console.log(`  Created: ${new Date(msg.created_at).toLocaleString()}`);
-        console.log(`  Body preview: ${msg.body.substring(0, 50)}...`);
+        console.log(`  Created: ${new Date(msg.created_at ?? '').toLocaleString()}`);
+        console.log(`  Body preview: ${String(msg.body ?? '').substring(0, 50)}...`);
         if (msg.error_message) {
           console.log(`  Error: ${msg.error_message}`);
         }
@@ -88,17 +141,21 @@ async function testSMSFlow() {
     }
 
     // 3. Check Twilio configuration
-    console.log('\n3️⃣ Checking Twilio Configuration:');
-    const twilioPhone = process.env.TWILIO_PHONE_NUMBER;
-    const twilioSid = process.env.TWILIO_ACCOUNT_SID;
+    console.log('\n3️⃣ Checking Twilio Configuration:')
+    const twilioPhone = process.env.TWILIO_PHONE_NUMBER
+    const twilioSid = process.env.TWILIO_ACCOUNT_SID
     
     console.log(`  Twilio Phone: ${twilioPhone ? '✅ Set' : '❌ Not set'}`);
     console.log(`  Twilio SID: ${twilioSid ? '✅ Set' : '❌ Not set'}`);
     console.log(`  Twilio Token: ${process.env.TWILIO_AUTH_TOKEN ? '✅ Set' : '❌ Not set'}`);
 
+    if (!twilioSid || !process.env.TWILIO_AUTH_TOKEN || !twilioPhone) {
+      markFailure('Twilio environment variables are incomplete (TWILIO_ACCOUNT_SID/TWILIO_AUTH_TOKEN/TWILIO_PHONE_NUMBER).')
+    }
+
     // 4. Check recent table bookings
-    console.log('\n4️⃣ Checking recent confirmed table bookings:');
-    const { data: recentBookings } = await supabase
+    console.log('\n4️⃣ Checking recent confirmed table bookings:')
+    const { data: recentBookings, error: bookingError } = await supabase
       .from('table_bookings')
       .select(`
         id,
@@ -116,19 +173,27 @@ async function testSMSFlow() {
       .order('created_at', { ascending: false })
       .limit(3);
 
-    if (recentBookings && recentBookings.length > 0) {
-      console.log(`✅ Found ${recentBookings.length} recent confirmed bookings:`);
-      recentBookings.forEach((booking, index) => {
+    const safeRecentBookings =
+      (assertScriptQuerySucceeded({
+        operation: 'Load recent confirmed table bookings',
+        error: bookingError,
+        data: recentBookings as ConfirmedBookingRow[] | null,
+        allowMissing: true,
+      }) ?? []) as ConfirmedBookingRow[]
+
+    if (safeRecentBookings.length > 0) {
+      console.log(`✅ Found ${safeRecentBookings.length} recent confirmed bookings:`);
+      safeRecentBookings.forEach((booking, index) => {
         console.log(`\nBooking ${index + 1}: ${booking.booking_reference}`);
         console.log(`  Customer: ${booking.customer?.first_name} ${booking.customer?.last_name}`);
         console.log(`  Phone: ${booking.customer?.mobile_number}`);
         console.log(`  SMS Opt-in: ${booking.customer?.sms_opt_in ? 'Yes' : 'No'}`);
-        console.log(`  Created: ${new Date(booking.created_at).toLocaleString()}`);
+        console.log(`  Created: ${new Date(booking.created_at ?? '').toLocaleString()}`);
       });
     }
 
     // 5. Summary
-    console.log('\n📊 SMS Flow Summary:');
+    console.log('\n📊 SMS Flow Summary:')
     console.log('===================');
     
     const pendingJobs = recentJobs?.filter(j => j.status === 'pending').length || 0;
@@ -149,9 +214,11 @@ async function testSMSFlow() {
     }
 
   } catch (error) {
-    console.error('❌ Unexpected error:', error);
+    markFailure('Unexpected error.', error)
   }
 }
 
 // Run the test
-testSMSFlow();
+void testSMSFlow().catch((error) => {
+  markFailure('test-sms-flow failed.', error)
+})

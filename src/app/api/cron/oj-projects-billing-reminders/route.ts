@@ -2,6 +2,13 @@ import { NextResponse } from 'next/server'
 import { authorizeCronRequest } from '@/lib/cron-auth'
 import { isGraphConfigured, sendInternalReminder } from '@/lib/microsoft-graph'
 import { formatInTimeZone } from 'date-fns-tz'
+import { createAdminClient } from '@/lib/supabase/admin'
+import {
+  claimIdempotencyKey,
+  computeIdempotencyRequestHash,
+  persistIdempotencyResponse,
+  releaseIdempotencyClaim
+} from '@/lib/api/idempotency'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
@@ -13,6 +20,10 @@ function toIsoDateUtc(date: Date) {
 }
 
 export async function GET(request: Request) {
+  const supabase = createAdminClient()
+  let claimKey: string | null = null
+  let claimHash: string | null = null
+  let claimHeld = false
   const authResult = authorizeCronRequest(request)
   if (!authResult.authorized) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -60,9 +71,63 @@ export async function GET(request: Request) {
     })
   }
 
-  const res = await sendInternalReminder(subject, body)
-  if (!res.success) {
-    return NextResponse.json({ sent: false, error: res.error || 'Failed to send reminder' }, { status: 500 })
+  try {
+    claimKey = `cron:oj-projects-billing-reminder:${billingDateIso}:${daysUntilBilling}`
+    claimHash = computeIdempotencyRequestHash({
+      billing_date: billingDateIso,
+      days_until_billing: daysUntilBilling,
+      subject,
+      body
+    })
+    const claim = await claimIdempotencyKey(supabase, claimKey, claimHash, 24 * 30)
+
+    if (claim.state === 'conflict') {
+      return NextResponse.json({ sent: false, error: 'Idempotency conflict' }, { status: 409 })
+    }
+    if (claim.state === 'in_progress' || claim.state === 'replay') {
+      return NextResponse.json({
+        sent: false,
+        skipped: true,
+        reason: 'already_processed_or_in_progress',
+        days_until_billing: daysUntilBilling,
+        billing_date: billingDateIso
+      })
+    }
+    claimHeld = true
+
+    const res = await sendInternalReminder(subject, body)
+    if (!res.success) {
+      await releaseIdempotencyClaim(supabase, claimKey, claimHash)
+      claimHeld = false
+      return NextResponse.json({ sent: false, error: 'Failed to send reminder' }, { status: 500 })
+    }
+
+    await persistIdempotencyResponse(
+      supabase,
+      claimKey,
+      claimHash,
+      {
+        state: 'processed',
+        sent: true,
+        billing_date: billingDateIso,
+        days_until_billing: daysUntilBilling
+      },
+      24 * 30
+    )
+    claimHeld = false
+  } catch (error) {
+    console.error('OJ billing reminders cron failed', error)
+    if (claimHeld && claimKey && claimHash) {
+      try {
+        await releaseIdempotencyClaim(supabase, claimKey, claimHash)
+      } catch (releaseError) {
+        console.error('Failed to release OJ billing reminder idempotency claim', releaseError)
+      }
+    }
+    return NextResponse.json(
+      { sent: false, error: 'Failed to send reminder' },
+      { status: 500 }
+    )
   }
 
   return NextResponse.json({
@@ -73,4 +138,3 @@ export async function GET(request: Request) {
     period_end: periodEndIso,
   })
 }
-

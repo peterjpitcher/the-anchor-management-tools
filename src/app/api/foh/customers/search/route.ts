@@ -11,7 +11,11 @@ type CustomerRow = {
 }
 
 function normalizeSearchTerm(value: string): string {
-  return value.replace(/[,%_]/g, '').trim()
+  return value
+    .replace(/[,%_()"'\\]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 80)
 }
 
 function buildFullName(customer: CustomerRow): string {

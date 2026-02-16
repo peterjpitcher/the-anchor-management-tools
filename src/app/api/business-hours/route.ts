@@ -18,7 +18,7 @@ export async function GET(_request: NextRequest) {
 
     const { data: businessHours, error: hoursError } = await supabase
       .from('business_hours')
-      .select('*')
+      .select('day_of_week, opens, closes, kitchen_opens, kitchen_closes, is_closed')
       .order('day_of_week', { ascending: true })
 
     if (hoursError) {
@@ -31,7 +31,7 @@ export async function GET(_request: NextRequest) {
 
     const { data: specialHours, error: specialError } = await supabase
       .from('special_hours')
-      .select('*')
+      .select('date, opens, closes, kitchen_opens, kitchen_closes, is_closed')
       .gte('date', format(today, 'yyyy-MM-dd'))
       .lte('date', format(thirtyDaysFromNow, 'yyyy-MM-dd'))
       .order('date', { ascending: true })

@@ -109,4 +109,4 @@ async function main() {
   console.log('🔍 Run npm run build to check for remaining errors');
 }
 
-main().catch(console.error);
+main().catch((error) => { console.error(error); process.exitCode = 1 });

@@ -1,64 +1,81 @@
 #!/usr/bin/env tsx
-import { config } from 'dotenv';
-import { createClient } from '@supabase/supabase-js';
 
-// Load environment variables
-config({ path: '.env.local' });
+import dotenv from 'dotenv'
+import path from 'path'
+import { createAdminClient } from '../../src/lib/supabase/admin'
+import { assertScriptQuerySucceeded } from '../../src/lib/script-mutation-safety'
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+dotenv.config({ path: path.resolve(process.cwd(), '.env.local') })
 
-const supabase = createClient(supabaseUrl, supabaseServiceRoleKey, {
-  auth: {
-    autoRefreshToken: false,
-    persistSession: false
+function markFailure(message: string, error?: unknown) {
+  process.exitCode = 1
+  if (error) {
+    console.error(`❌ ${message}`, error)
+    return
   }
-});
+  console.error(`❌ ${message}`)
+}
 
-async function checkSMSTemplates() {
-  console.log('📱 Checking SMS Templates\n');
-  console.log('=' .repeat(60));
-  
-  try {
-    const { data: templates, error } = await supabase
-      .from('table_booking_sms_templates')
-      .select('*')
-      .order('template_key');
+async function checkSmsTemplates() {
+  const argv = process.argv
+  if (argv.includes('--confirm')) {
+    throw new Error('check-sms-templates is strictly read-only; do not pass --confirm.')
+  }
 
-    if (error) {
-      console.error('❌ Error fetching templates:', error);
-      return;
-    }
+  const supabase = createAdminClient()
 
-    if (!templates || templates.length === 0) {
-      console.log('⚠️  No SMS templates found');
-      return;
-    }
+  console.log('📱 Checking SMS Templates\n')
+  console.log('='.repeat(60))
 
-    console.log(`Found ${templates.length} templates:\n`);
+  const { data: templatesRows, error } = await supabase
+    .from('table_booking_sms_templates')
+    .select('template_key, booking_type, is_active, template_text, variables')
+    .order('template_key', { ascending: true })
+
+  const templates = (assertScriptQuerySucceeded({
+    operation: 'Load table_booking_sms_templates',
+    error,
+    data: templatesRows ?? [],
+    allowMissing: true
+  }) ?? []) as Array<{
+    template_key: string | null
+    booking_type: string | null
+    is_active: boolean | null
+    template_text: string | null
+    variables: string[] | null
+  }>
+
+  if (templates.length === 0) {
+    markFailure('No SMS templates found in table_booking_sms_templates (0 rows).')
+  } else {
+    console.log(`Found ${templates.length} template(s):\n`)
 
     for (const template of templates) {
-      console.log(`📝 Template: ${template.template_key}`);
-      console.log(`   Type: ${template.booking_type || 'all'}`);
-      console.log(`   Active: ${template.is_active ? '✅' : '❌'}`);
-      console.log(`   Text: ${template.template_text}`);
-      console.log(`   Variables: ${template.variables?.join(', ') || 'none'}`);
-      console.log('');
+      console.log(`📝 Template: ${template.template_key || 'unknown'}`)
+      console.log(`   Type: ${template.booking_type || 'all'}`)
+      console.log(`   Active: ${template.is_active ? '✅' : '❌'}`)
+      console.log(`   Text: ${(template.template_text || '').substring(0, 200)}${(template.template_text || '').length > 200 ? '...' : ''}`)
+      console.log(`   Variables: ${Array.isArray(template.variables) ? template.variables.join(', ') : 'none'}`)
+      console.log('')
     }
+  }
 
-    // Check specifically for payment_request template
-    const paymentTemplate = templates.find(t => t.template_key === 'payment_request');
-    if (paymentTemplate) {
-      console.log('✅ Payment request template exists');
-      console.log('   Content:', paymentTemplate.template_text);
-    } else {
-      console.log('⚠️  No payment_request template found - need to create one!');
-    }
+  const paymentTemplate = templates.find((t) => t.template_key === 'payment_request')
+  if (paymentTemplate) {
+    console.log('✅ payment_request template exists')
+    console.log(`   Content preview: ${(paymentTemplate.template_text || '').substring(0, 200)}${(paymentTemplate.template_text || '').length > 200 ? '...' : ''}`)
+  } else {
+    markFailure('No payment_request template found (expected template_key=payment_request).')
+  }
 
-  } catch (error) {
-    console.error('❌ Unexpected error:', error);
+  if (process.exitCode === 1) {
+    console.log('\n❌ SMS templates check completed with failures.')
+  } else {
+    console.log('\n✅ SMS templates check complete!')
   }
 }
 
-// Run the check
-checkSMSTemplates();
+void checkSmsTemplates().catch((error) => {
+  markFailure('check-sms-templates failed.', error)
+})
+

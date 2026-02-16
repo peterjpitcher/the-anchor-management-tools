@@ -13,8 +13,7 @@ async function main() {
     process.env.ANCHOR_API_KEY;
 
   if (!apiKey) {
-    console.error('Missing API key. Set TEST_API_KEY in .env.local.');
-    process.exit(1);
+    throw new Error('Missing API key. Set TEST_API_KEY in .env.local.')
   }
 
   const baseUrl = process.env.API_BASE_URL || 'http://localhost:3000';
@@ -65,5 +64,5 @@ async function main() {
 
 main().catch((error) => {
   console.error('Request failed:', error);
-  process.exit(1);
+  process.exitCode = 1;
 });

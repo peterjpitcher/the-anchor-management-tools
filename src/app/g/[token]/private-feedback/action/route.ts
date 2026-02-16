@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { checkGuestTokenThrottle } from '@/lib/guest/token-throttle'
+import { logger } from '@/lib/logger'
 import { submitPrivateBookingFeedbackByRawToken } from '@/lib/private-bookings/feedback'
 
 const FeedbackSchema = z.object({
@@ -78,7 +79,13 @@ export async function POST(
     }
 
     return redirectWithStatus(request, token, 'submitted')
-  } catch {
+  } catch (error) {
+    logger.warn('Guest private-feedback submission failed unexpectedly', {
+      metadata: {
+        token,
+        error: error instanceof Error ? error.message : String(error)
+      }
+    })
     return redirectWithStatus(request, token, 'error')
   }
 }

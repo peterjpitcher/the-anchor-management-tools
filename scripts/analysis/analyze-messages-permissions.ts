@@ -1,202 +1,205 @@
-#!/usr/bin/env node
-import dotenv from 'dotenv';
-import { createClient } from '@supabase/supabase-js';
+#!/usr/bin/env tsx
+/**
+ * Messages module RBAC diagnostics (read-only).
+ *
+ * Safety:
+ * - Strictly read-only; does not support `--confirm`.
+ * - Fails closed on env/query errors (non-zero exit).
+ * - Avoids `process.exit` so errors/logs flush and the script is testable.
+ *
+ * Notes:
+ * - Supports both legacy `permissions/role_permissions` and `rbac_*` table layouts.
+ */
 
-// Load environment variables
-dotenv.config({ path: '.env.local' });
-// Fallback to .env if .env.local doesn't have the required vars
-if (!process.env.NEXT_PUBLIC_SUPABASE_URL || (!process.env.SUPABASE_SERVICE_ROLE_KEY && !process.env.SUPABASE_SERVICE_KEY)) {
-  dotenv.config({ path: '.env' });
+import dotenv from 'dotenv'
+import path from 'path'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { assertScriptQuerySucceeded } from '@/lib/script-mutation-safety'
+
+const SCRIPT_NAME = 'analyze-messages-permissions'
+
+type PermissionRow = {
+  id?: unknown
+  module_name?: unknown
+  action?: unknown
+  description?: unknown
 }
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_KEY!;
-
-if (!supabaseUrl || !supabaseServiceKey) {
-  console.error('Missing required environment variables');
-  process.exit(1);
+type RolePermissionRow = {
+  role_id?: unknown
+  permission_id?: unknown
+  roles?: { name?: unknown; description?: unknown } | null
+  permissions?: { module_name?: unknown; action?: unknown } | null
+  rbac_roles?: { name?: unknown; description?: unknown } | null
+  rbac_permissions?: { module_name?: unknown; action?: unknown } | null
 }
 
-const supabase = createClient(supabaseUrl, supabaseServiceKey, {
-  auth: {
-    autoRefreshToken: false,
-    persistSession: false
+function loadEnv(): void {
+  dotenv.config({ path: path.resolve(process.cwd(), '.env.local') })
+  if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
+    dotenv.config({ path: path.resolve(process.cwd(), '.env') })
   }
-});
+}
 
-async function analyzeMessagesPermissions() {
-  console.log('=== ANALYZING MESSAGES MODULE PERMISSIONS ===\n');
+function assertReadOnly(argv: string[] = process.argv.slice(2)): void {
+  if (argv.includes('--confirm')) {
+    throw new Error(`[${SCRIPT_NAME}] This script is read-only and does not support --confirm.`)
+  }
+}
+
+async function tryLoadPermissions(params: { supabase: any; table: string }): Promise<PermissionRow[]> {
+  const { data, error } = await params.supabase
+    .from(params.table)
+    .select('id, module_name, action, description')
+    .eq('module_name', 'messages')
+    .order('action', { ascending: true })
+
+  const rows =
+    assertScriptQuerySucceeded({
+      operation: `[${SCRIPT_NAME}] Load ${params.table} permissions for module_name=messages`,
+      error,
+      data: (data ?? null) as PermissionRow[] | null,
+      allowMissing: true,
+    }) ?? []
+
+  return rows
+}
+
+function printPermissions(perms: PermissionRow[]): void {
+  console.log(`\n[${SCRIPT_NAME}] Message module permissions:`)
+  console.log(`[${SCRIPT_NAME}] Count: ${perms.length}`)
+
+  for (const perm of perms) {
+    console.log(`- action=${String(perm.action ?? '')} id=${String(perm.id ?? '')}`)
+    if (perm.description) {
+      console.log(`  description=${String(perm.description ?? '')}`)
+    }
+  }
+}
+
+async function loadRolePermissionsLegacy(supabase: any): Promise<RolePermissionRow[]> {
+  const { data, error } = await supabase
+    .from('role_permissions')
+    .select(
+      `
+      role_id,
+      permission_id,
+      permissions!inner(module_name, action),
+      roles!inner(name, description)
+    `
+    )
+    .eq('permissions.module_name', 'messages')
+
+  const rows =
+    assertScriptQuerySucceeded({
+      operation: `[${SCRIPT_NAME}] Load role_permissions for module_name=messages`,
+      error,
+      data: (data ?? null) as RolePermissionRow[] | null,
+      allowMissing: true,
+    }) ?? []
+
+  return rows
+}
+
+async function loadRolePermissionsRbac(supabase: any): Promise<RolePermissionRow[]> {
+  const { data, error } = await supabase
+    .from('rbac_role_permissions')
+    .select(
+      `
+      role_id,
+      permission_id,
+      rbac_permissions!inner(module_name, action),
+      rbac_roles!inner(name, description)
+    `
+    )
+    .eq('rbac_permissions.module_name', 'messages')
+
+  const rows =
+    assertScriptQuerySucceeded({
+      operation: `[${SCRIPT_NAME}] Load rbac_role_permissions for module_name=messages`,
+      error,
+      data: (data ?? null) as RolePermissionRow[] | null,
+      allowMissing: true,
+    }) ?? []
+
+  return rows
+}
+
+function printRolePermissions(params: {
+  title: string
+  rows: RolePermissionRow[]
+  getRoleName: (row: RolePermissionRow) => string
+  getAction: (row: RolePermissionRow) => string
+}): void {
+  console.log(`\n[${SCRIPT_NAME}] ${params.title}`)
+
+  const roleMap = new Map<string, string[]>()
+  for (const row of params.rows) {
+    const roleName = params.getRoleName(row)
+    const action = params.getAction(row)
+    if (!roleMap.has(roleName)) {
+      roleMap.set(roleName, [])
+    }
+    roleMap.get(roleName)?.push(action)
+  }
+
+  if (roleMap.size === 0) {
+    console.log(`[${SCRIPT_NAME}] No roles found with messages permissions.`)
+    return
+  }
+
+  for (const [role, actions] of roleMap.entries()) {
+    const unique = Array.from(new Set(actions)).sort((a, b) => a.localeCompare(b))
+    console.log(`\n${role}:`)
+    for (const action of unique) {
+      console.log(`- ${action}`)
+    }
+  }
+}
+
+async function main() {
+  loadEnv()
+  assertReadOnly()
+
+  const supabase = createAdminClient()
+  console.log(`[${SCRIPT_NAME}] read-only starting`)
+
+  let permissionsTable: 'permissions' | 'rbac_permissions' = 'permissions'
+  let permissions: PermissionRow[] = []
 
   try {
-    // First, check if permissions table exists
-    const { data: tableCheck, error: tableError } = await supabase
-      .from('permissions')
-      .select('*')
-      .limit(1);
-
-    if (tableError) {
-      console.error('Error accessing permissions table:', tableError);
-      
-      // Try alternative table names
-      console.log('\nChecking for alternative RBAC table names...');
-      
-      const { data: rbacPermCheck, error: rbacPermError } = await supabase
-        .from('rbac_permissions')
-        .select('*')
-        .limit(1);
-        
-      if (!rbacPermError) {
-        console.log('Found rbac_permissions table. Analyzing...');
-        
-        // Get all permissions for messages module
-        const { data: messagePerms, error: msgError } = await supabase
-          .from('rbac_permissions')
-          .select('*')
-          .eq('module_name', 'messages')
-          .order('action');
-
-        if (msgError) {
-          console.error('Error fetching message permissions:', msgError);
-        } else {
-          console.log('\nMessage Module Permissions:');
-          console.log('==========================');
-          if (messagePerms && messagePerms.length > 0) {
-            messagePerms.forEach(perm => {
-              console.log(`- Action: ${perm.action}`);
-              console.log(`  ID: ${perm.id}`);
-              if (perm.description) {
-                console.log(`  Description: ${perm.description}`);
-              }
-              console.log('');
-            });
-          } else {
-            console.log('No permissions found for messages module.');
-          }
-        }
-
-        // Check role permissions
-        console.log('\nChecking which roles have message permissions...');
-        const { data: rolePerms, error: rolePermError } = await supabase
-          .from('rbac_role_permissions')
-          .select(`
-            role_id,
-            permission_id,
-            rbac_permissions!inner(module_name, action),
-            rbac_roles!inner(name, description)
-          `)
-          .eq('rbac_permissions.module_name', 'messages');
-
-        if (!rolePermError && rolePerms) {
-          console.log('\nRoles with Message Permissions:');
-          console.log('================================');
-          
-          const roleMap = new Map();
-          rolePerms.forEach(rp => {
-            const roleName = rp.rbac_roles?.name || rp.role_id;
-            if (!roleMap.has(roleName)) {
-              roleMap.set(roleName, []);
-            }
-            roleMap.get(roleName).push(rp.rbac_permissions?.action || 'unknown');
-          });
-
-          roleMap.forEach((actions, role) => {
-            console.log(`\n${role}:`);
-            actions.forEach(action => {
-              console.log(`  - ${action}`);
-            });
-          });
-        }
-        
-        return;
-      }
-    }
-
-    // If we get here, we found the permissions table
-    console.log('Found permissions table. Analyzing...');
-    
-    // Get all permissions for messages module
-    const { data: messagePerms, error: msgError } = await supabase
-      .from('permissions')
-      .select('*')
-      .eq('module_name', 'messages')
-      .order('action');
-
-    if (msgError) {
-      console.error('Error fetching message permissions:', msgError);
-    } else {
-      console.log('\nMessage Module Permissions:');
-      console.log('==========================');
-      if (messagePerms && messagePerms.length > 0) {
-        messagePerms.forEach(perm => {
-          console.log(`- Action: ${perm.action}`);
-          console.log(`  ID: ${perm.id}`);
-          if (perm.description) {
-            console.log(`  Description: ${perm.description}`);
-          }
-          console.log('');
-        });
-      } else {
-        console.log('No permissions found for messages module.');
-      }
-    }
-
-    // Check role permissions
-    console.log('\nChecking which roles have message permissions...');
-    const { data: rolePerms, error: rolePermError } = await supabase
-      .from('role_permissions')
-      .select(`
-        role_id,
-        permission_id,
-        permissions!inner(module_name, action),
-        roles!inner(name, description)
-      `)
-      .eq('permissions.module_name', 'messages');
-
-    if (!rolePermError && rolePerms) {
-      console.log('\nRoles with Message Permissions:');
-      console.log('================================');
-      
-      const roleMap = new Map();
-      rolePerms.forEach(rp => {
-        const roleName = rp.roles?.name || rp.role_id;
-        if (!roleMap.has(roleName)) {
-          roleMap.set(roleName, []);
-        }
-        roleMap.get(roleName).push(rp.permissions?.action || 'unknown');
-      });
-
-      roleMap.forEach((actions, role) => {
-        console.log(`\n${role}:`);
-        actions.forEach(action => {
-          console.log(`  - ${action}`);
-        });
-      });
-    }
-
-    // Check if there are any users with direct message permissions
-    console.log('\n\nChecking for user role assignments...');
-    const { data: userRoles, error: userRoleError } = await supabase
-      .from('user_roles')
-      .select(`
-        user_id,
-        roles!inner(name)
-      `)
-      .limit(10);
-
-    if (!userRoleError && userRoles) {
-      console.log(`\nFound ${userRoles.length} user role assignments (showing first 10)`);
-    }
-
+    permissions = await tryLoadPermissions({ supabase, table: 'permissions' })
   } catch (error) {
-    console.error('Unexpected error:', error);
+    console.log(`[${SCRIPT_NAME}] Failed to query permissions table; trying rbac_permissions fallback...`)
+    permissionsTable = 'rbac_permissions'
+    permissions = await tryLoadPermissions({ supabase, table: 'rbac_permissions' })
   }
+
+  console.log(`[${SCRIPT_NAME}] Using permissions table: ${permissionsTable}`)
+  printPermissions(permissions)
+
+  if (permissionsTable === 'rbac_permissions') {
+    const rolePerms = await loadRolePermissionsRbac(supabase)
+    printRolePermissions({
+      title: 'Roles with messages permissions (rbac_role_permissions)',
+      rows: rolePerms,
+      getRoleName: (row) => String(row.rbac_roles?.name ?? row.role_id ?? '(unknown role)'),
+      getAction: (row) => String(row.rbac_permissions?.action ?? '(unknown action)'),
+    })
+    return
+  }
+
+  const rolePerms = await loadRolePermissionsLegacy(supabase)
+  printRolePermissions({
+    title: 'Roles with messages permissions (role_permissions)',
+    rows: rolePerms,
+    getRoleName: (row) => String(row.roles?.name ?? row.role_id ?? '(unknown role)'),
+    getAction: (row) => String(row.permissions?.action ?? '(unknown action)'),
+  })
 }
 
-// Run the analysis
-analyzeMessagesPermissions().then(() => {
-  console.log('\n=== ANALYSIS COMPLETE ===');
-  process.exit(0);
-}).catch(err => {
-  console.error('Fatal error:', err);
-  process.exit(1);
-});
+main().catch((error) => {
+  console.error(`[${SCRIPT_NAME}] Failed`, error)
+  process.exitCode = 1
+})
+

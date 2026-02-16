@@ -1,26 +1,57 @@
+#!/usr/bin/env tsx
+/**
+ * OJ retainer project listing (read-only).
+ *
+ * Safety:
+ * - Strictly read-only; does not support `--confirm`.
+ * - Fails closed on env/query errors (non-zero exit).
+ */
 
-import { createClient } from '@supabase/supabase-js';
-import dotenv from 'dotenv';
-import path from 'path';
+import dotenv from 'dotenv'
+import path from 'path'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { assertScriptQuerySucceeded } from '@/lib/script-mutation-safety'
 
-dotenv.config({ path: path.resolve(process.cwd(), '.env.local') });
+const SCRIPT_NAME = 'oj-find-retainers'
+const BARONS_VENDOR_ID = 'b9a6f8b9-9267-42ea-bfbf-7b122a79d9e3'
 
-const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
-
-async function main() {
-    const vendorId = 'b9a6f8b9-9267-42ea-bfbf-7b122a79d9e3'; // Barons Pubs
-
-    const { data: projects, error } = await supabase
-        .from('oj_projects')
-        .select('*')
-        .eq('vendor_id', vendorId)
-        .eq('is_retainer', true);
-
-    if (error) console.error(error);
-    else console.log('Retainer Projects:', projects);
+type Args = {
+  confirm: boolean
 }
 
-main();
+function parseArgs(argv: string[] = process.argv): Args {
+  const rest = argv.slice(2)
+  return { confirm: rest.includes('--confirm') }
+}
+
+async function main() {
+  dotenv.config({ path: path.resolve(process.cwd(), '.env.local') })
+
+  const args = parseArgs(process.argv)
+  if (args.confirm) {
+    throw new Error(`[${SCRIPT_NAME}] This script is strictly read-only and does not support --confirm`)
+  }
+
+  const supabase = createAdminClient()
+  console.log(`[${SCRIPT_NAME}] read-only starting`)
+
+  const { data, error } = await supabase
+    .from('oj_projects')
+    .select('*')
+    .eq('vendor_id', BARONS_VENDOR_ID)
+    .eq('is_retainer', true)
+
+  const projects = assertScriptQuerySucceeded({
+    operation: `Load retainer projects`,
+    data,
+    error,
+  })
+
+  console.log(`[${SCRIPT_NAME}] Found ${projects?.length ?? 0} retainer project(s) for vendor ${BARONS_VENDOR_ID}`)
+  console.log(projects)
+}
+
+main().catch((error) => {
+  console.error(`[${SCRIPT_NAME}] Failed`, error)
+  process.exitCode = 1
+})

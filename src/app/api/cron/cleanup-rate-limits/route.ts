@@ -36,8 +36,15 @@ export async function GET(request: Request) {
   } catch (error) {
     console.error('Error cleaning up rate limits:', error);
     return new NextResponse(
-      `Internal Server Error: ${error instanceof Error ? error.message : 'Unknown error'}`,
-      { status: 500 }
+      JSON.stringify({
+        success: false,
+        error: 'Internal server error',
+        timestamp: new Date().toISOString()
+      }),
+      {
+        status: 500,
+        headers: { 'Content-Type': 'application/json' }
+      }
     );
   }
 }

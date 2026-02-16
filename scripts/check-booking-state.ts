@@ -1,91 +1,115 @@
+#!/usr/bin/env tsx
+/**
+ * Inspect a pending booking token and any linked booking row (read-only).
+ *
+ * Safety:
+ * - Strictly read-only; blocks `--confirm`.
+ * - Requires explicit `--token` (no hard-coded production identifiers).
+ * - Fails closed on env/query errors via `process.exitCode = 1`.
+ *
+ * Usage:
+ *   tsx scripts/check-booking-state.ts --token <pending_booking_token_uuid>
+ */
 
-import { createClient } from '@supabase/supabase-js'
 import dotenv from 'dotenv'
 import path from 'path'
+import { createAdminClient } from '@/lib/supabase/admin'
 
-// Load environment variables from .env.local
+const SCRIPT_NAME = 'check-booking-state'
+
 dotenv.config({ path: path.resolve(process.cwd(), '.env.local') })
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+function readOptionalFlagValue(argv: string[], flag: string): string | null {
+  const eq = argv.find((arg) => arg.startsWith(`${flag}=`))
+  if (eq) {
+    return eq.split('=').slice(1).join('=') || null
+  }
 
-if (!supabaseUrl || !supabaseServiceKey) {
-    console.error('Missing Supabase credentials')
-    process.exit(1)
+  const idx = argv.findIndex((arg) => arg === flag)
+  if (idx === -1) {
+    return null
+  }
+
+  const value = argv[idx + 1]
+  return typeof value === 'string' && value.trim().length > 0 ? value : null
 }
 
-const supabase = createClient(supabaseUrl, supabaseServiceKey)
+function assertReadOnly(argv: string[] = process.argv.slice(2)) {
+  if (argv.includes('--confirm')) {
+    throw new Error(`[${SCRIPT_NAME}] This script is read-only and does not support --confirm.`)
+  }
+}
 
-async function checkBooking() {
-    const token = 'ed551746-5b55-43ad-aaa5-a3b6cb9e6fb9'
-    console.log(`Checking pending booking for token: ${token}`)
+async function main() {
+  const argv = process.argv.slice(2)
+  assertReadOnly(argv)
 
-    // 1. Get Pending Booking
-    const { data: pending, error: pendingError } = await supabase
-        .from('pending_bookings')
-        .select('*')
-        .eq('token', token)
-        .single()
+  const token = readOptionalFlagValue(argv, '--token')
+  if (!token) {
+    throw new Error(`[${SCRIPT_NAME}] Missing required --token`)
+  }
 
-    if (pendingError) {
-        console.error('Error fetching pending booking:', pendingError)
-        return
-    }
+  const supabase = createAdminClient()
 
-    if (!pending) {
-        console.log('No pending booking found for this token.')
-        return
-    }
+  console.log(`Checking pending booking for token: ${token}`)
 
-    console.log('Pending Booking Found:', JSON.stringify(pending, null, 2))
+  const { data: pending, error: pendingError } = await supabase
+    .from('pending_bookings')
+    .select('*')
+    .eq('token', token)
+    .maybeSingle()
 
-    if (!pending.booking_id) {
-        console.log('Pending booking has no booking_id associated yet.')
+  if (pendingError) {
+    throw new Error(`[${SCRIPT_NAME}] Error fetching pending booking: ${pendingError.message || 'unknown error'}`)
+  }
 
-        // Check if there are any bookings for this event/customer anyway
-        if (pending.customer_id && pending.event_id) {
-            console.log('Checking for disconnected bookings for this customer/event...')
-            const { data: disconnected, error: discError } = await supabase
-                .from('bookings')
-                .select('*')
-                .eq('event_id', pending.event_id)
-                .eq('customer_id', pending.customer_id)
+  if (!pending) {
+    throw new Error(`[${SCRIPT_NAME}] No pending booking found for token=${token}`)
+  }
 
-            console.log('Disconnected Bookings:', disconnected)
-        }
+  console.log('Pending booking:', JSON.stringify(pending, null, 2))
 
-    } else {
-        // 2. Get Actual Booking
-        console.log(`\nFetching Booking ID: ${pending.booking_id}`)
-        const { data: booking, error: bookingError } = await supabase
-            .from('bookings')
-            .select('*')
-            .eq('id', pending.booking_id)
-            .single()
+  if (!pending.booking_id) {
+    console.log('Pending booking has no booking_id associated yet.')
 
-        if (bookingError) {
-            console.error('Error fetching booking:', bookingError)
-        } else {
-            console.log('Booking Record:', JSON.stringify(booking, null, 2))
-        }
-    }
-
-    // 3. List all bookings for this event to see what's there
-    /*
-    if (pending.event_id) {
-      console.log(`\nAll Bookings for Event ID: ${pending.event_id}`)
-      const { data: allBookings, error: allError } = await supabase
+    if (pending.customer_id && pending.event_id) {
+      console.log('Checking for disconnected bookings for this customer/event...')
+      const { data: disconnected, error: discError } = await supabase
         .from('bookings')
-        .select('id, seats, is_reminder_only, customer_id, created_at')
+        .select('*')
         .eq('event_id', pending.event_id)
-      
-      if (allError) {
-          console.error('Error listing event bookings:', allError)
-      } else {
-          console.table(allBookings)
+        .eq('customer_id', pending.customer_id)
+
+      if (discError) {
+        throw new Error(`[${SCRIPT_NAME}] Error fetching disconnected bookings: ${discError.message || 'unknown error'}`)
       }
+
+      console.log('Disconnected bookings:', JSON.stringify(disconnected ?? [], null, 2))
     }
-    */
+
+    return
+  }
+
+  console.log(`\nFetching booking id=${pending.booking_id}`)
+  const { data: booking, error: bookingError } = await supabase
+    .from('bookings')
+    .select('*')
+    .eq('id', pending.booking_id)
+    .maybeSingle()
+
+  if (bookingError) {
+    throw new Error(`[${SCRIPT_NAME}] Error fetching booking: ${bookingError.message || 'unknown error'}`)
+  }
+
+  if (!booking) {
+    throw new Error(`[${SCRIPT_NAME}] Booking not found for id=${pending.booking_id}`)
+  }
+
+  console.log('Booking:', JSON.stringify(booking, null, 2))
 }
 
-checkBooking()
+main().catch((error) => {
+  console.error(`[${SCRIPT_NAME}] Failed:`, error)
+  process.exitCode = 1
+})
+

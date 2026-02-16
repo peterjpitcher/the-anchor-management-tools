@@ -1,169 +1,218 @@
 #!/usr/bin/env tsx
 
-import { createClient } from '@supabase/supabase-js';
-import * as dotenv from 'dotenv';
-import { resolve } from 'path';
+import path from 'path'
+import dotenv from 'dotenv'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { assertScriptQuerySucceeded } from '@/lib/script-mutation-safety'
 
-// Load environment variables
-dotenv.config({ path: resolve(process.cwd(), '.env.local') });
+dotenv.config({ path: path.resolve(process.cwd(), '.env.local') })
 
-async function testLoyaltyEnrollment() {
-  console.log('🧪 Testing loyalty enrollment SMS flow...\n');
-  
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  
-  if (!supabaseUrl || !supabaseServiceRoleKey) {
-    throw new Error('Missing required environment variables');
-  }
-  
-  const supabase = createClient(supabaseUrl, supabaseServiceRoleKey);
-  
-  // Create a test customer
-  const testPhone = '+447' + Math.floor(Math.random() * 900000000 + 100000000);
-  const testFirstName = 'Test';
-  const testLastName = 'Customer' + new Date().getTime();
-  
-  console.log('📱 Creating test customer:');
-  console.log(`   Name: ${testFirstName} ${testLastName}`);
-  console.log(`   Phone: ${testPhone}`);
-  
-  const { data: customer, error: customerError } = await supabase
-    .from('customers')
-    .insert({
-      first_name: testFirstName,
-      last_name: testLastName,
-      mobile_number: testPhone,
-      sms_opt_in: true
-    })
-    .select()
-    .single();
-    
-  if (customerError || !customer) {
-    console.error('❌ Failed to create customer:', customerError);
-    return;
-  }
-  
-  console.log('✅ Customer created:', customer.id);
-  
-  // Get the loyalty program
-  const { data: program } = await supabase
-    .from('loyalty_programs')
-    .select('id, settings')
-    .eq('active', true)
-    .single();
-    
-  if (!program) {
-    console.error('❌ No active loyalty program found');
-    return;
-  }
-  
-  console.log('✅ Found loyalty program:', program.id);
-  
-  // Get the default tier
-  const { data: defaultTier } = await supabase
-    .from('loyalty_tiers')
-    .select('id, name')
-    .eq('program_id', program.id)
-    .eq('level', 1)
-    .single();
-    
-  if (!defaultTier) {
-    console.error('❌ No default tier found');
-    return;
-  }
-  
-  console.log('✅ Default tier:', defaultTier.name);
-  
-  // Create loyalty member
-  console.log('\n🎯 Creating loyalty member...');
-  const { data: member, error: memberError } = await supabase
-    .from('loyalty_members')
-    .insert({
-      customer_id: customer.id,
-      program_id: program.id,
-      tier_id: defaultTier.id,
-      status: 'active',
-      join_date: new Date().toISOString().split('T')[0],
-      available_points: 50,
-      total_points: 50,
-      lifetime_points: 50
-    })
-    .select()
-    .single();
-    
-  if (memberError || !member) {
-    console.error('❌ Failed to create member:', memberError);
-    return;
-  }
-  
-  console.log('✅ Member created:', member.id);
-  
-  // Check if welcome series was started
-  console.log('\n📧 Checking welcome series...');
-  const { data: welcomeSeries } = await supabase
-    .from('loyalty_welcome_series')
-    .select('*')
-    .eq('member_id', member.id)
-    .single();
-    
-  if (welcomeSeries) {
-    console.log('✅ Welcome series started:', welcomeSeries.id);
-  } else {
-    console.log('⚠️  No welcome series found');
-  }
-  
-  // Check for SMS jobs
-  console.log('\n📱 Checking for SMS jobs...');
-  const { data: smsJobs } = await supabase
-    .from('background_jobs')
-    .select('*')
-    .eq('type', 'send_sms')
-    .eq('status', 'pending')
-    .ilike('payload', `%${customer.id}%`)
-    .order('created_at', { ascending: false })
-    .limit(5);
-    
-  if (smsJobs && smsJobs.length > 0) {
-    console.log(`✅ Found ${smsJobs.length} SMS job(s):`);
-    smsJobs.forEach((job, index) => {
-      console.log(`\n   Job ${index + 1}:`);
-      console.log(`   - ID: ${job.id}`);
-      console.log(`   - Status: ${job.status}`);
-      console.log(`   - Created: ${new Date(job.created_at).toLocaleString()}`);
-      const payload = job.payload as any;
-      console.log(`   - To: ${payload.to}`);
-      console.log(`   - Message: ${payload.message?.substring(0, 50)}...`);
-      console.log(`   - Type: ${payload.type}`);
-    });
-  } else {
-    console.log('❌ No SMS jobs found for this customer');
-  }
-  
-  // Clean up test data
-  console.log('\n🧹 Cleaning up test data...');
-  
-  // Delete member
-  await supabase
-    .from('loyalty_members')
-    .delete()
-    .eq('id', member.id);
-    
-  // Delete customer
-  await supabase
-    .from('customers')
-    .delete()
-    .eq('id', customer.id);
-    
-  console.log('✅ Test data cleaned up');
+type CustomerRow = {
+  id: string
+  first_name: string | null
+  last_name: string | null
+  mobile_number: string | null
+  sms_opt_in: boolean | null
+  sms_status: string | null
 }
 
-testLoyaltyEnrollment()
-  .then(() => {
-    console.log('\n✅ Test complete');
-    process.exit(0);
+type ProgramRow = { id: string }
+
+type LoyaltyMemberRow = {
+  id: string
+  status: string | null
+  tier_id: string | null
+  join_date: string | null
+}
+
+type WelcomeSeriesRow = { id: string | null }
+
+type RecentJobRow = {
+  id: string
+  status: string | null
+  created_at: string | null
+  scheduled_for: string | null
+  payload: unknown
+  error: string | null
+}
+
+function readOptionalFlagValue(argv: string[], flag: string): string | null {
+  const eq = argv.find((arg) => arg.startsWith(`${flag}=`))
+  if (eq) {
+    return eq.split('=')[1] ?? null
+  }
+
+  const idx = argv.findIndex((arg) => arg === flag)
+  if (idx !== -1) {
+    return argv[idx + 1] ?? null
+  }
+
+  return null
+}
+
+function readCustomerId(argv: string[] = process.argv): string | null {
+  return (
+    readOptionalFlagValue(argv, '--customer-id') ??
+    process.env.TEST_LOYALTY_ENROLLMENT_CUSTOMER_ID ??
+    null
+  )
+}
+
+function assertCustomerId(customerId: string | null): string {
+  const id = customerId?.trim() || ''
+  if (!id) {
+    throw new Error(
+      'test-loyalty-enrollment blocked: --customer-id (or TEST_LOYALTY_ENROLLMENT_CUSTOMER_ID) is required.'
+    )
+  }
+  return id
+}
+
+async function main() {
+  const argv = process.argv.slice(2)
+  const customerId = assertCustomerId(readCustomerId(process.argv))
+
+  if (argv.includes('--confirm')) {
+    throw new Error(
+      'test-loyalty-enrollment is read-only. It no longer creates/deletes customers or loyalty members.'
+    )
+  }
+
+  const supabase = createAdminClient()
+
+  console.log('🔍 Loyalty enrollment SMS diagnostics (read-only)')
+  console.log('Customer:', customerId)
+
+  const { data: customerData, error: customerError } = await supabase
+    .from('customers')
+    .select('id, first_name, last_name, mobile_number, sms_opt_in, sms_status')
+    .eq('id', customerId)
+    .maybeSingle()
+
+  const customer = assertScriptQuerySucceeded({
+    operation: `Lookup customer ${customerId}`,
+    error: customerError,
+    data: customerData as CustomerRow | null,
+    allowMissing: true,
+  }) as CustomerRow | null
+
+  if (!customer) {
+    throw new Error('Customer not found.')
+  }
+
+  console.log(`Name: ${[customer.first_name, customer.last_name].filter(Boolean).join(' ') || '(unknown)'}`)
+  console.log(`Mobile: ${customer.mobile_number || '(missing)'}`)
+  console.log(`SMS opt-in: ${customer.sms_opt_in ? 'Yes' : 'No'}`)
+  console.log(`SMS status: ${customer.sms_status || 'N/A'}`)
+
+  const { data: programData, error: programError } = await supabase
+    .from('loyalty_programs')
+    .select('id')
+    .eq('active', true)
+    .maybeSingle()
+
+  const program = assertScriptQuerySucceeded({
+    operation: 'Lookup active loyalty program',
+    error: programError,
+    data: programData as ProgramRow | null,
+    allowMissing: true,
+  }) as ProgramRow | null
+
+  if (!program) {
+    console.log('No active loyalty program found.')
+    return
+  }
+
+  console.log('Active program:', program.id)
+
+  const { data: membersData, error: membersError } = await supabase
+    .from('loyalty_members')
+    .select('*')
+    .eq('customer_id', customer.id)
+    .eq('program_id', program.id)
+    .order('created_at', { ascending: false })
+    .limit(5)
+
+  const members =
+    (assertScriptQuerySucceeded({
+      operation: 'Lookup loyalty members',
+      error: membersError,
+      data: membersData as LoyaltyMemberRow[] | null,
+      allowMissing: true,
+    }) ?? []) as LoyaltyMemberRow[]
+
+  if (!members || members.length === 0) {
+    console.log('No loyalty membership found for this customer/program.')
+  } else {
+    console.log(`Found ${members.length} loyalty member(s) (showing up to 5):`)
+    for (const member of members) {
+      console.log(`- Member: ${member.id}`)
+      if (member.status) console.log(`  Status: ${member.status}`)
+      if (member.tier_id) console.log(`  Tier: ${member.tier_id}`)
+      if (member.join_date) console.log(`  Join date: ${member.join_date}`)
+
+      const { data: welcomeSeriesData, error: welcomeError } = await supabase
+        .from('loyalty_welcome_series')
+        .select('*')
+        .eq('member_id', member.id)
+        .maybeSingle()
+
+      const welcomeSeries = assertScriptQuerySucceeded({
+        operation: `Lookup loyalty_welcome_series for member ${member.id}`,
+        error: welcomeError,
+        data: welcomeSeriesData as WelcomeSeriesRow | null,
+        allowMissing: true,
+      }) as WelcomeSeriesRow | null
+
+      if (!welcomeSeries) {
+        console.log('  Welcome series: (none found)')
+      } else {
+        console.log(`  Welcome series: ${welcomeSeries.id || '(unknown id)'}`)
+      }
+    }
+  }
+
+  const { data: recentJobsData, error: jobsError } = await supabase
+    .from('jobs')
+    .select('id, status, created_at, scheduled_for, payload, error')
+    .eq('type', 'send_sms')
+    .order('created_at', { ascending: false })
+    .limit(50)
+
+  const recentJobs =
+    (assertScriptQuerySucceeded({
+      operation: 'Lookup recent send_sms jobs',
+      error: jobsError,
+      data: recentJobsData as RecentJobRow[] | null,
+      allowMissing: true,
+    }) ?? []) as RecentJobRow[]
+
+  const scanned = recentJobs.length
+  const customerJobs = recentJobs.filter((job: RecentJobRow) => {
+    const payloadText = typeof job.payload === 'string' ? job.payload : JSON.stringify(job.payload ?? {})
+    return payloadText.includes(customer.id)
   })
-  .catch((error) => {
-    console.error('\n❌ Error:', error);
-    process.exit(1);
-  });
+
+  console.log(
+    `Recent send_sms jobs referencing this customer: ${customerJobs.length} (scanned last ${scanned})`
+  )
+
+  for (const job of customerJobs.slice(0, 10)) {
+    console.log(`- Job: ${job.id}`)
+    console.log(`  Status: ${job.status}`)
+    console.log(`  Created: ${job.created_at}`)
+    console.log(`  Scheduled: ${job.scheduled_for || 'N/A'}`)
+    if (job.error) console.log(`  Error: ${job.error}`)
+  }
+
+  if (customerJobs.length > 10) {
+    console.log(`(showing first 10; ${customerJobs.length - 10} more omitted)`)
+  }
+
+  console.log('✅ Diagnostics complete (read-only).')
+}
+
+main().catch((error) => {
+  console.error('❌ test-loyalty-enrollment failed:', error instanceof Error ? error.message : String(error))
+  process.exitCode = 1
+})

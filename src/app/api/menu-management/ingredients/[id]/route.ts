@@ -6,7 +6,12 @@ import {
 
 export async function PATCH(request: NextRequest, context: { params: Promise<{ id: string }> }) {
   const { id } = await context.params;
-  const payload = await request.json();
+  let payload: any;
+  try {
+    payload = await request.json();
+  } catch {
+    return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
+  }
   const result = await updateMenuIngredient(id, payload);
   const status = result.error ? 400 : 200;
   return NextResponse.json(result, { status });

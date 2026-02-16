@@ -1,58 +1,14 @@
 #!/usr/bin/env tsx
 
 /**
- * Script to delete all customers with 'test' in their first or last name
- * Run with: tsx scripts/delete-test-customers.ts
+ * Deprecated wrapper.
+ *
+ * This script previously attempted to call a Next.js server action (which is unsafe and often
+ * runtime-broken in standalone scripts). It now delegates to the hardened admin-client variant.
+ *
+ * Usage is identical to `delete-test-customers-direct.ts`:
+ * - Dry-run (default): tsx scripts/cleanup/delete-test-customers.ts
+ * - Mutation: RUN_DELETE_TEST_CUSTOMERS_DIRECT_MUTATION=true ALLOW_DELETE_TEST_CUSTOMERS_DIRECT_MUTATION=true tsx scripts/cleanup/delete-test-customers.ts --confirm --limit 10
  */
 
-import { deleteTestCustomers } from '@/app/actions/customers'
-
-async function main() {
-  console.log('🔍 Starting deletion of test customers...')
-  console.log('Looking for customers with "test" in first or last name (case-insensitive)\n')
-
-  try {
-    const result = await deleteTestCustomers()
-
-    if (result.error) {
-      console.error('❌ Error:', result.error)
-      process.exit(1)
-    }
-
-    if (result.success) {
-      console.log(`✅ ${result.message}`)
-      
-      if (result.deletedCount > 0) {
-        console.log('\n📋 Deleted customers:')
-        result.deletedCustomers.forEach((customer: any) => {
-          console.log(`  - ${customer.name} (ID: ${customer.id})`)
-        })
-      }
-    } else {
-      console.log(`⚠️  ${result.message}`)
-      
-      if (result.deletedCount > 0) {
-        console.log('\n✅ Successfully deleted:')
-        result.deletedCustomers.forEach((customer: any) => {
-          console.log(`  - ${customer.name} (ID: ${customer.id})`)
-        })
-      }
-      
-      if (result.failedCount > 0) {
-        console.log('\n❌ Failed to delete:')
-        result.failedDeletions.forEach((failure: any) => {
-          console.log(`  - ${failure.name} (ID: ${failure.id})`)
-          console.log(`    Error: ${failure.error}`)
-        })
-      }
-    }
-
-    console.log('\n✨ Operation complete. All changes have been logged to the audit trail.')
-  } catch (error) {
-    console.error('❌ Unexpected error:', error)
-    process.exit(1)
-  }
-}
-
-// Run the script
-main().catch(console.error)
+import './delete-test-customers-direct'

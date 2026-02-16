@@ -59,12 +59,14 @@ export async function removeProjectContact(formData: FormData) {
   if (!id) return { error: 'Project contact ID is required' }
 
   const supabase = await createClient()
-  const { error } = await supabase
+  const { data: deletedContact, error } = await supabase
     .from('oj_project_contacts')
     .delete()
     .eq('id', id)
+    .select('id')
+    .maybeSingle()
 
   if (error) return { error: error.message }
+  if (!deletedContact) return { error: 'Project contact not found' }
   return { success: true as const }
 }
-

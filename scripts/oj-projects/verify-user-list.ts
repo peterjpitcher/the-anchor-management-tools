@@ -1,14 +1,28 @@
+#!/usr/bin/env tsx
+/**
+ * Verify a raw user-exported list against OJ entries (Barons Pubs) (read-only).
+ *
+ * Safety:
+ * - Strictly read-only; does not support `--confirm`.
+ * - Fails closed on env/query errors (non-zero exit).
+ * - Exits non-zero when missing entries or project issues are detected.
+ */
 
-import { createClient } from '@supabase/supabase-js';
-import dotenv from 'dotenv';
-import path from 'path';
+import dotenv from 'dotenv'
+import path from 'path'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { assertScriptQuerySucceeded } from '@/lib/script-mutation-safety'
 
-dotenv.config({ path: path.resolve(process.cwd(), '.env.local') });
+const SCRIPT_NAME = 'oj-verify-user-list'
 
-const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+type Args = {
+  confirm: boolean
+}
+
+function parseArgs(argv: string[] = process.argv): Args {
+  const rest = argv.slice(2)
+  return { confirm: rest.includes('--confirm') }
+}
 
 const RAW_DATA = `Thursday, September 4, 2025	September 2025	11:30:00 AM	12:30:00 PM	1.00	£62.50		Call with Zonal
 Wednesday, September 10, 2025	September 2025	5:30:00 PM	7:30:00 PM	2.00	£125.00		Marketing Workshop Prep
@@ -128,16 +142,32 @@ function norm(str: string) {
     return str.toLowerCase().replace(/\s+/g, ' ').trim();
 }
 
-async function verify() {
+async function verify(supabase: ReturnType<typeof createAdminClient>) {
     console.log('Fetching Barons Pubs vendor...');
-    const { data: vendor } = await supabase.from('invoice_vendors').select('id').eq('name', 'Barons Pubs').single();
-    if (!vendor) throw new Error('Vendor Barons Pubs not found');
+    const { data: vendor, error: vendorError } = await supabase
+        .from('invoice_vendors')
+        .select('id')
+        .eq('name', 'Barons Pubs')
+        .maybeSingle()
 
-    const { data: entries } = await supabase.from('oj_entries')
+    const vendorRow = assertScriptQuerySucceeded({
+        operation: `Load vendor "Barons Pubs"`,
+        data: vendor,
+        error: vendorError,
+        allowMissing: true,
+    })
+    if (!vendorRow) throw new Error('Vendor "Barons Pubs" not found');
+
+    const { data: entries, error: entriesError } = await supabase.from('oj_entries')
         .select('*, work_type:oj_work_types(name), project:oj_projects(project_name)')
-        .eq('vendor_id', vendor.id);
+        .eq('vendor_id', vendorRow.id);
 
-    if (!entries) throw new Error('Failed to fetch data');
+    const entryRows = assertScriptQuerySucceeded({
+        operation: `Load OJ entries for vendor`,
+        data: entries,
+        error: entriesError,
+    })
+    if (!entryRows) throw new Error('Failed to fetch entries data');
 
     const lines = RAW_DATA.split('\n').filter(l => l.trim().length > 0);
 
@@ -155,7 +185,7 @@ async function verify() {
         const description = clean(parts[7] || parts[parts.length - 1]);
 
         // Find matching entry in DB
-        const matches = entries.filter(e =>
+        const matches = entryRows.filter(e =>
             e.entry_date === dateIso &&
             norm(e.description || '') === norm(description)
         );
@@ -163,7 +193,7 @@ async function verify() {
         if (matches.length === 0) {
             console.error(`[MISSING] ${dateIso} - ${description}`);
             // Attempt to find by close match?
-            const fuzzyMatches = entries.filter(e => e.entry_date === dateIso);
+            const fuzzyMatches = entryRows.filter(e => e.entry_date === dateIso);
             if (fuzzyMatches.length > 0) {
                 console.log(`    Possible candidates on ${dateIso}:`);
                 fuzzyMatches.forEach(f => console.log(`      - "${f.description}"`));
@@ -227,6 +257,27 @@ async function verify() {
     console.log('--- VERIFICATION END ---');
     console.log(`Missing Entries: ${missingCount}`);
     console.log(`Project Issues: ${wrongProjectCount}`);
+
+    if (missingCount > 0 || wrongProjectCount > 0) {
+        throw new Error(`[${SCRIPT_NAME}] Verification failed (missing=${missingCount}, projectIssues=${wrongProjectCount})`)
+    }
 }
 
-verify();
+async function main() {
+    dotenv.config({ path: path.resolve(process.cwd(), '.env.local') })
+
+    const args = parseArgs(process.argv)
+    if (args.confirm) {
+        throw new Error(`[${SCRIPT_NAME}] This script is strictly read-only and does not support --confirm`)
+    }
+
+    const supabase = createAdminClient()
+    console.log(`[${SCRIPT_NAME}] read-only starting`)
+    await verify(supabase)
+    console.log(`[${SCRIPT_NAME}] Verification OK`)
+}
+
+main().catch((error) => {
+    console.error(`[${SCRIPT_NAME}] Failed`, error)
+    process.exitCode = 1
+})

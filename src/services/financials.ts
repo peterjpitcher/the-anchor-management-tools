@@ -23,6 +23,11 @@ type SaveEntry = {
   value: number | null;
 };
 
+type DeletionPair = {
+  metric: string;
+  timeframe: PLTimeframe;
+};
+
 function timeframeStartDate(timeframe: PnlTimeframeKey): string {
   const config = PNL_TIMEFRAMES.find((item) => item.key === timeframe);
   if (!config) return new Date().toISOString().slice(0, 10);
@@ -34,6 +39,39 @@ function timeframeStartDate(timeframe: PnlTimeframeKey): string {
 
 function roundCurrency(value: number): number {
   return Number(value.toFixed(2));
+}
+
+function dedupeDeletionPairs(entries: SaveEntry[]): DeletionPair[] {
+  const seen = new Set<string>();
+  const pairs: DeletionPair[] = [];
+
+  for (const entry of entries) {
+    const key = `${entry.metric}::${entry.timeframe}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    pairs.push({ metric: entry.metric, timeframe: entry.timeframe });
+  }
+
+  return pairs;
+}
+
+async function deleteFinancialRowsByPair(
+  supabase: ReturnType<typeof createAdminClient>,
+  table: 'pl_targets' | 'pl_manual_actuals',
+  pairs: DeletionPair[],
+  fallbackErrorMessage: string
+) {
+  for (const pair of pairs) {
+    const { error } = await supabase
+      .from(table)
+      .delete()
+      .eq('metric_key', pair.metric)
+      .eq('timeframe', pair.timeframe);
+
+    if (error) {
+      throw new Error(error.message || fallbackErrorMessage);
+    }
+  }
 }
 
 export class FinancialService {
@@ -154,15 +192,12 @@ export class FinancialService {
     }
 
     if (deletions.length) {
-      const { error } = await supabase
-        .from('pl_targets')
-        .delete()
-        .in('metric_key', deletions.map((entry) => entry.metric))
-        .in('timeframe', deletions.map((entry) => entry.timeframe));
-
-      if (error) {
-        throw new Error(error.message || 'Failed to clear P&L targets');
-      }
+      await deleteFinancialRowsByPair(
+        supabase,
+        'pl_targets',
+        dedupeDeletionPairs(deletions),
+        'Failed to clear P&L targets'
+      );
     }
   }
 
@@ -194,15 +229,12 @@ export class FinancialService {
     }
 
     if (deletions.length) {
-      const { error } = await supabase
-        .from('pl_manual_actuals')
-        .delete()
-        .in('metric_key', deletions.map((entry) => entry.metric))
-        .in('timeframe', deletions.map((entry) => entry.timeframe));
-
-      if (error) {
-        throw new Error(error.message || 'Failed to clear manual P&L inputs');
-      }
+      await deleteFinancialRowsByPair(
+        supabase,
+        'pl_manual_actuals',
+        dedupeDeletionPairs(deletions),
+        'Failed to clear manual P&L inputs'
+      );
     }
   }
 }

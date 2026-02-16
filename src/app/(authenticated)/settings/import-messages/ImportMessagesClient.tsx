@@ -201,7 +201,9 @@ export default function ImportMessagesClient({
             </li>
             <li>Imports both messages you sent and messages you received.</li>
             <li>Skips messages that already exist in the database.</li>
-            <li>Creates new customers for unknown phone numbers.</li>
+            <li>
+              Creates placeholder customers for unknown phone numbers (SMS is deactivated by default).
+            </li>
             <li>Preserves the original timestamp from when the message was sent.</li>
             <li>Calculates outbound message cost estimates for reporting.</li>
           </ul>

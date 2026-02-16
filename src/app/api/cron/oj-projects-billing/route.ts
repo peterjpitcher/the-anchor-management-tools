@@ -7,7 +7,14 @@ import { resolveVendorInvoiceRecipients } from '@/lib/invoice-recipients'
 import { generateOjTimesheetPDF } from '@/lib/oj-timesheet'
 import { formatInTimeZone } from 'date-fns-tz'
 import type { InvoiceWithDetails } from '@/types/invoices'
+import {
+  claimIdempotencyKey,
+  computeIdempotencyRequestHash,
+  persistIdempotencyResponse,
+  releaseIdempotencyClaim
+} from '@/lib/api/idempotency'
 
+export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 export const maxDuration = 300
 
@@ -86,6 +93,128 @@ function addDaysIsoDate(dateIso: string, days: number) {
   const dt = new Date(Date.UTC(y, m - 1, d))
   dt.setUTCDate(dt.getUTCDate() + days)
   return dt.toISOString().slice(0, 10)
+}
+
+async function updateBillingRunById(
+  supabase: any,
+  billingRunId: string,
+  patch: Record<string, unknown>
+) {
+  const { data: updatedBillingRun, error: updateError } = await supabase
+    .from('oj_billing_runs')
+    .update(patch)
+    .eq('id', billingRunId)
+    .select('id')
+    .maybeSingle()
+
+  if (updateError) {
+    throw new Error(updateError.message || `Failed to update billing run ${billingRunId}`)
+  }
+
+  if (!updatedBillingRun) {
+    throw new Error(`Billing run not found while updating status: ${billingRunId}`)
+  }
+}
+
+async function throwOnMutationError(
+  mutation: any,
+  context: string
+) {
+  const { error } = await mutation as { error?: { message?: string } | null }
+  if (error) {
+    throw new Error(error.message || context)
+  }
+}
+
+async function lockRowsForBillingRunOrThrow(input: {
+  supabase: any
+  table: 'oj_entries' | 'oj_recurring_charge_instances'
+  ids: string[]
+  billingRunId: string
+  context: string
+}) {
+  const uniqueIds = Array.from(new Set((input.ids || []).map((id) => String(id))))
+  if (uniqueIds.length === 0) {
+    return
+  }
+
+  const { data: lockedRows, count: lockedCount, error: lockError } = await input.supabase
+    .from(input.table)
+    .update({
+      status: 'billing_pending',
+      billing_run_id: input.billingRunId,
+      updated_at: new Date().toISOString(),
+    })
+    .in('id', uniqueIds)
+    .eq('status', 'unbilled')
+    .select('id', { count: 'exact' })
+
+  if (lockError) {
+    throw new Error(lockError.message || input.context)
+  }
+
+  const effectiveLockedCount = lockedCount ?? (lockedRows?.length ?? 0)
+  if (effectiveLockedCount !== uniqueIds.length) {
+    const lockedIdSet = new Set((lockedRows || []).map((row: any) => String(row.id)))
+    const missingIds = uniqueIds.filter((id) => !lockedIdSet.has(id))
+    const sampleMissing = missingIds.slice(0, 5).join(', ')
+    const missingSuffix = sampleMissing
+      ? ` Missing ids: ${sampleMissing}${missingIds.length > 5 ? ', ...' : ''}`
+      : ''
+
+    throw new Error(
+      `${input.context} Locked ${effectiveLockedCount}/${uniqueIds.length} rows.${missingSuffix}`
+    )
+  }
+}
+
+async function updateSelectedRowsByIdsOrThrow(input: {
+  supabase: any
+  table: 'oj_entries' | 'oj_recurring_charge_instances'
+  ids: string[]
+  patch: Record<string, unknown>
+  context: string
+  expectedStatus?: string
+  billingRunId?: string
+}) {
+  const uniqueIds = Array.from(new Set((input.ids || []).map((id) => String(id))))
+  if (uniqueIds.length === 0) {
+    return
+  }
+
+  let query = input.supabase
+    .from(input.table)
+    .update(input.patch)
+    .in('id', uniqueIds)
+
+  if (input.expectedStatus) {
+    query = query.eq('status', input.expectedStatus)
+  }
+
+  if (input.billingRunId) {
+    query = query.eq('billing_run_id', input.billingRunId)
+  }
+
+  const { data: updatedRows, count: updatedCount, error: updateError } = await query
+    .select('id', { count: 'exact' })
+
+  if (updateError) {
+    throw new Error(updateError.message || input.context)
+  }
+
+  const effectiveUpdatedCount = updatedCount ?? (updatedRows?.length ?? 0)
+  if (effectiveUpdatedCount !== uniqueIds.length) {
+    const updatedIdSet = new Set((updatedRows || []).map((row: any) => String(row.id)))
+    const missingIds = uniqueIds.filter((id) => !updatedIdSet.has(id))
+    const sampleMissing = missingIds.slice(0, 5).join(', ')
+    const missingSuffix = sampleMissing
+      ? ` Missing ids: ${sampleMissing}${missingIds.length > 5 ? ', ...' : ''}`
+      : ''
+
+    throw new Error(
+      `${input.context} Updated ${effectiveUpdatedCount}/${uniqueIds.length} rows.${missingSuffix}`
+    )
+  }
 }
 
 function getPreviousMonthPeriod(now: Date) {
@@ -537,14 +666,17 @@ async function splitRecurringInstanceForCap(input: {
   }
 
   if (input.persist) {
-    const { error: updateError } = await input.supabase!
+    const { data: updatedRow, error: updateError } = await input.supabase!
       .from('oj_recurring_charge_instances')
       .update({
         amount_ex_vat_snapshot: partial.exVat,
         updated_at: nowIso,
       })
       .eq('id', candidate.id)
+      .select('id')
+      .maybeSingle()
     if (updateError) throw new Error(updateError.message)
+    if (!updatedRow) throw new Error(`Recurring charge instance not found while splitting for cap: ${candidate.id}`)
 
     const { data: inserted, error: insertError } = await input.supabase!
       .from('oj_recurring_charge_instances')
@@ -613,14 +745,17 @@ async function splitMileageEntryForCap(input: {
 
   if (input.persist) {
     if (!input.supabase) throw new Error('Supabase client required for split persist')
-    const { error: updateError } = await input.supabase
+    const { data: updatedRow, error: updateError } = await input.supabase
       .from('oj_entries')
       .update({
         miles: partial.miles,
         updated_at: nowIso,
       })
       .eq('id', candidate.id)
+      .select('id')
+      .maybeSingle()
     if (updateError) throw new Error(updateError.message)
+    if (!updatedRow) throw new Error(`Mileage entry not found while splitting for cap: ${candidate.id}`)
 
     const { data: inserted, error: insertError } = await input.supabase
       .from('oj_entries')
@@ -713,7 +848,7 @@ async function splitTimeEntryForCap(input: {
 
   if (input.persist) {
     if (!input.supabase) throw new Error('Supabase client required for split persist')
-    const { error: updateError } = await input.supabase
+    const { data: updatedRow, error: updateError } = await input.supabase
       .from('oj_entries')
       .update({
         duration_minutes_rounded: partial.minutes,
@@ -722,7 +857,10 @@ async function splitTimeEntryForCap(input: {
         updated_at: nowIso,
       })
       .eq('id', candidate.id)
+      .select('id')
+      .maybeSingle()
     if (updateError) throw new Error(updateError.message)
+    if (!updatedRow) throw new Error(`Time entry not found while splitting for cap: ${candidate.id}`)
 
     const { data: inserted, error: insertError } = await input.supabase
       .from('oj_entries')
@@ -1682,6 +1820,25 @@ async function loadInvoiceWithDetails(supabase: ReturnType<typeof createAdminCli
   return { invoice: data as InvoiceWithDetails }
 }
 
+function buildOjInvoiceSendClaimParams(input: {
+  invoiceId: string
+  billingRunId: string
+  to: string
+  cc: string[]
+  subject: string
+}) {
+  const claimKey = `cron:oj-projects-billing:invoice-send:${input.invoiceId}`
+  const claimHash = computeIdempotencyRequestHash({
+    invoice_id: input.invoiceId,
+    billing_run_id: input.billingRunId,
+    to: input.to.trim().toLowerCase(),
+    cc: input.cc.map((value) => value.trim().toLowerCase()).sort(),
+    subject: input.subject
+  })
+
+  return { claimKey, claimHash }
+}
+
 export async function GET(request: Request) {
   const authResult = authorizeCronRequest(request)
   if (!authResult.authorized) {
@@ -1720,7 +1877,8 @@ export async function GET(request: Request) {
       .limit(10000)
 
     if (entryVendorError) {
-      return NextResponse.json({ error: entryVendorError.message }, { status: 500 })
+      console.error('Failed to load OJ billing entry vendors', entryVendorError)
+      return NextResponse.json({ error: 'Failed to load billing vendor candidates' }, { status: 500 })
     }
     for (const row of entryVendors || []) {
       if (row?.vendor_id) vendorIds.add(String(row.vendor_id))
@@ -1734,7 +1892,8 @@ export async function GET(request: Request) {
       .limit(10000)
 
     if (chargeVendorError) {
-      return NextResponse.json({ error: chargeVendorError.message }, { status: 500 })
+      console.error('Failed to load OJ billing recurring-charge vendors', chargeVendorError)
+      return NextResponse.json({ error: 'Failed to load billing vendor candidates' }, { status: 500 })
     }
     for (const row of chargeVendors || []) {
       if (row?.vendor_id) vendorIds.add(String(row.vendor_id))
@@ -1749,7 +1908,8 @@ export async function GET(request: Request) {
       .limit(10000)
 
     if (instanceVendorError) {
-      return NextResponse.json({ error: instanceVendorError.message }, { status: 500 })
+      console.error('Failed to load OJ billing recurring-charge instance vendors', instanceVendorError)
+      return NextResponse.json({ error: 'Failed to load billing vendor candidates' }, { status: 500 })
     }
     for (const row of instanceVendors || []) {
       if (row?.vendor_id) vendorIds.add(String(row.vendor_id))
@@ -1897,10 +2057,20 @@ export async function GET(request: Request) {
 
         if (recoveredInvoice?.id) {
           billingRun.invoice_id = recoveredInvoice.id
-          await supabase
+          const { data: updatedBillingRun, error: billingRunUpdateError } = await supabase
             .from('oj_billing_runs')
             .update({ invoice_id: recoveredInvoice.id, updated_at: new Date().toISOString() })
             .eq('id', billingRun.id)
+            .select('id')
+            .maybeSingle()
+
+          if (billingRunUpdateError) {
+            throw new Error(`Failed to persist recovered invoice link on billing run: ${billingRunUpdateError.message}`)
+          }
+
+          if (!updatedBillingRun) {
+            throw new Error('Billing run not found while persisting recovered invoice link')
+          }
         }
       }
 
@@ -1923,14 +2093,11 @@ export async function GET(request: Request) {
         }
 
         if (!isGraphConfigured()) {
-          await supabase
-            .from('oj_billing_runs')
-            .update({
-              status: 'failed',
-              error_message: 'Email service is not configured',
-              updated_at: new Date().toISOString(),
-            })
-            .eq('id', billingRun.id)
+          await updateBillingRunById(supabase, billingRun.id, {
+            status: 'failed',
+            error_message: 'Email service is not configured',
+            updated_at: new Date().toISOString(),
+          })
 
           results.failed++
           results.vendors.push({
@@ -1955,22 +2122,30 @@ export async function GET(request: Request) {
               ? { status: 'paid', invoice_id: invoice.id, billed_at: new Date().toISOString(), paid_at: new Date().toISOString(), updated_at: new Date().toISOString() }
               : { status: 'billed', invoice_id: invoice.id, billed_at: new Date().toISOString(), updated_at: new Date().toISOString() }
 
-          await supabase
-            .from('oj_entries')
-            .update(updatePayload)
-            .eq('billing_run_id', billingRun.id)
-            .eq('status', 'billing_pending')
+          await throwOnMutationError(
+            supabase
+              .from('oj_entries')
+              .update(updatePayload)
+              .eq('billing_run_id', billingRun.id)
+              .eq('status', 'billing_pending'),
+            `Failed to reconcile OJ entry statuses for billing run ${billingRun.id}`
+          )
 
-          await supabase
-            .from('oj_recurring_charge_instances')
-            .update(updatePayload)
-            .eq('billing_run_id', billingRun.id)
-            .eq('status', 'billing_pending')
+          await throwOnMutationError(
+            supabase
+              .from('oj_recurring_charge_instances')
+              .update(updatePayload)
+              .eq('billing_run_id', billingRun.id)
+              .eq('status', 'billing_pending'),
+            `Failed to reconcile OJ recurring instance statuses for billing run ${billingRun.id}`
+          )
 
-          await supabase
-            .from('oj_billing_runs')
-            .update({ status: 'sent', error_message: null, run_finished_at: new Date().toISOString(), updated_at: new Date().toISOString() })
-            .eq('id', billingRun.id)
+          await updateBillingRunById(supabase, billingRun.id, {
+            status: 'sent',
+            error_message: null,
+            run_finished_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          })
 
           results.sent++
           results.vendors.push({ vendor_id: vendorId, status: 'sent', invoice_id: invoice.id, invoice_number: invoice.invoice_number })
@@ -2053,12 +2228,21 @@ export async function GET(request: Request) {
           ]
         }
 
-        const sendRes = await sendInvoiceEmail(invoice, recipients.to, subject, body, recipients.cc, additionalAttachments)
-        if (!sendRes.success) {
-          await supabase
-            .from('oj_billing_runs')
-            .update({ status: 'failed', error_message: sendRes.error || 'Failed to send invoice email', updated_at: new Date().toISOString() })
-            .eq('id', billingRun.id)
+        const { claimKey, claimHash } = buildOjInvoiceSendClaimParams({
+          invoiceId: invoice.id,
+          billingRunId: billingRun.id,
+          to: recipients.to,
+          cc: recipients.cc,
+          subject
+        })
+        const sendClaim = await claimIdempotencyKey(supabase, claimKey, claimHash, 24 * 180)
+        if (sendClaim.state === 'conflict') {
+          await updateBillingRunById(supabase, billingRun.id, {
+            status: 'failed',
+            error_message: 'Invoice email idempotency conflict; manual reconciliation required.',
+            run_finished_at: new Date().toISOString(),
+            updated_at: new Date().toISOString()
+          })
 
           results.failed++
           results.vendors.push({
@@ -2066,67 +2250,246 @@ export async function GET(request: Request) {
             status: 'failed',
             invoice_id: invoice.id,
             invoice_number: invoice.invoice_number,
-            error: sendRes.error || 'Failed to send invoice email',
+            error: 'Invoice email idempotency conflict'
+          })
+          continue
+        }
+        if (sendClaim.state === 'in_progress') {
+          results.skipped++
+          results.vendors.push({
+            vendor_id: vendorId,
+            status: 'skipped',
+            invoice_id: invoice.id,
+            invoice_number: invoice.invoice_number,
+            error: 'Invoice email already being processed by another run'
           })
           continue
         }
 
-        await supabase
+        let claimHeld = sendClaim.state === 'claimed'
+        const skipEmailSend = sendClaim.state === 'replay'
+
+        if (!skipEmailSend) {
+          const sendRes = await sendInvoiceEmail(invoice, recipients.to, subject, body, recipients.cc, additionalAttachments)
+          if (!sendRes.success) {
+            if (claimHeld) {
+              try {
+                await releaseIdempotencyClaim(supabase, claimKey, claimHash)
+              } catch (releaseError) {
+                console.error('Failed to release OJ billing invoice send claim:', releaseError)
+              }
+              claimHeld = false
+            }
+
+            await updateBillingRunById(supabase, billingRun.id, {
+              status: 'failed',
+              error_message: sendRes.error || 'Failed to send invoice email',
+              updated_at: new Date().toISOString(),
+            })
+
+            results.failed++
+            results.vendors.push({
+              vendor_id: vendorId,
+              status: 'failed',
+              invoice_id: invoice.id,
+              invoice_number: invoice.invoice_number,
+              error: sendRes.error || 'Failed to send invoice email',
+            })
+            continue
+          }
+        }
+
+        const { data: sentInvoiceRow, error: sentInvoiceError } = await supabase
           .from('invoices')
           .update({ status: 'sent', updated_at: new Date().toISOString() })
           .eq('id', invoice.id)
+          .eq('status', 'draft')
+          .select('id')
+          .maybeSingle()
 
-        // Log To + CC
-        await supabase.from('invoice_email_logs').insert({
-          invoice_id: invoice.id,
-          sent_to: recipients.to,
-          sent_by: 'system',
-          subject,
-          body: 'Automatically sent by OJ Projects monthly billing.',
-          status: 'sent',
-        })
-        for (const cc of recipients.cc) {
-          await supabase.from('invoice_email_logs').insert({
+        let invoiceFinalized = Boolean(sentInvoiceRow)
+
+        if (sentInvoiceError) {
+          if (claimHeld) {
+            try {
+              await persistIdempotencyResponse(
+                supabase,
+                claimKey,
+                claimHash,
+                {
+                  state: 'processed_with_error',
+                  invoice_id: invoice.id,
+                  billing_run_id: billingRun.id,
+                  message: 'Invoice email sent but invoice status update failed'
+                },
+                24 * 180
+              )
+              claimHeld = false
+            } catch (persistError) {
+              console.error('Failed to persist OJ billing invoice send claim after send:', persistError)
+            }
+          }
+
+          await updateBillingRunById(supabase, billingRun.id, {
+            status: 'failed',
+            error_message: 'Invoice email sent but invoice status update failed',
+            run_finished_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          })
+
+          results.failed++
+          results.vendors.push({
+            vendor_id: vendorId,
+            status: 'failed',
             invoice_id: invoice.id,
-            sent_to: cc,
+            invoice_number: invoice.invoice_number,
+            error: 'Invoice email sent but invoice status update failed'
+          })
+          continue
+        }
+
+        if (!invoiceFinalized) {
+          const { data: latestInvoice, error: latestInvoiceError } = await supabase
+            .from('invoices')
+            .select('status')
+            .eq('id', invoice.id)
+            .maybeSingle()
+
+          if (!latestInvoiceError) {
+            invoiceFinalized = ['sent', 'paid', 'overdue', 'partially_paid'].includes(String(latestInvoice?.status || ''))
+          }
+
+          if (latestInvoiceError || !invoiceFinalized) {
+            if (claimHeld) {
+              try {
+                await persistIdempotencyResponse(
+                  supabase,
+                  claimKey,
+                  claimHash,
+                  {
+                    state: 'processed_with_error',
+                    invoice_id: invoice.id,
+                    billing_run_id: billingRun.id,
+                    message: 'Invoice email sent but invoice status update did not transition row'
+                  },
+                  24 * 180
+                )
+                claimHeld = false
+              } catch (persistError) {
+                console.error('Failed to persist OJ billing invoice send claim after status mismatch:', persistError)
+              }
+            }
+
+            await supabase.from('invoice_email_logs').insert({
+              invoice_id: invoice.id,
+              sent_to: recipients.to,
+              sent_by: 'system',
+              subject,
+              body: 'Invoice email sent, but invoice status update failed. Manual reconciliation required.',
+              status: 'sent',
+            })
+
+            await updateBillingRunById(supabase, billingRun.id, {
+              status: 'failed',
+              error_message: 'Invoice email sent but invoice status update failed',
+              run_finished_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+            })
+
+            results.failed++
+            results.vendors.push({
+              vendor_id: vendorId,
+              status: 'failed',
+              invoice_id: invoice.id,
+              invoice_number: invoice.invoice_number,
+              error: 'Invoice email sent but invoice status update failed'
+            })
+            continue
+          }
+        }
+
+        if (!skipEmailSend) {
+          // Log To + CC
+          const { error: toLogError } = await supabase.from('invoice_email_logs').insert({
+            invoice_id: invoice.id,
+            sent_to: recipients.to,
             sent_by: 'system',
             subject,
             body: 'Automatically sent by OJ Projects monthly billing.',
             status: 'sent',
           })
+          if (toLogError) {
+            console.error('Failed to write OJ billing invoice send log (to):', toLogError)
+          }
+          for (const cc of recipients.cc) {
+            const { error: ccLogError } = await supabase.from('invoice_email_logs').insert({
+              invoice_id: invoice.id,
+              sent_to: cc,
+              sent_by: 'system',
+              subject,
+              body: 'Automatically sent by OJ Projects monthly billing.',
+              status: 'sent',
+            })
+            if (ccLogError) {
+              console.error('Failed to write OJ billing invoice send log (cc):', ccLogError)
+            }
+          }
         }
 
-        await supabase
-          .from('oj_entries')
-          .update({
-            status: 'billed',
-            invoice_id: invoice.id,
-            billed_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-          })
-          .eq('billing_run_id', billingRun.id)
-          .eq('status', 'billing_pending')
+        await throwOnMutationError(
+          supabase
+            .from('oj_entries')
+            .update({
+              status: 'billed',
+              invoice_id: invoice.id,
+              billed_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+            })
+            .eq('billing_run_id', billingRun.id)
+            .eq('status', 'billing_pending'),
+          `Failed to mark OJ entries as billed for billing run ${billingRun.id}`
+        )
 
-        await supabase
-          .from('oj_recurring_charge_instances')
-          .update({
-            status: 'billed',
-            invoice_id: invoice.id,
-            billed_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-          })
-          .eq('billing_run_id', billingRun.id)
-          .eq('status', 'billing_pending')
+        await throwOnMutationError(
+          supabase
+            .from('oj_recurring_charge_instances')
+            .update({
+              status: 'billed',
+              invoice_id: invoice.id,
+              billed_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+            })
+            .eq('billing_run_id', billingRun.id)
+            .eq('status', 'billing_pending'),
+          `Failed to mark OJ recurring instances as billed for billing run ${billingRun.id}`
+        )
 
-        await supabase
-          .from('oj_billing_runs')
-          .update({
-            status: 'sent',
-            error_message: null,
-            run_finished_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-          })
-          .eq('id', billingRun.id)
+        await updateBillingRunById(supabase, billingRun.id, {
+          status: 'sent',
+          error_message: null,
+          run_finished_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        })
+
+        if (claimHeld) {
+          try {
+            await persistIdempotencyResponse(
+              supabase,
+              claimKey,
+              claimHash,
+              {
+                state: 'sent',
+                invoice_id: invoice.id,
+                billing_run_id: billingRun.id,
+                sent_to: recipients.to
+              },
+              24 * 180
+            )
+            claimHeld = false
+          } catch (persistError) {
+            console.error('Failed to persist OJ billing invoice send idempotency response:', persistError)
+          }
+        }
 
         results.sent++
         results.vendors.push({ vendor_id: vendorId, status: 'sent', invoice_id: invoice.id, invoice_number: invoice.invoice_number })
@@ -2153,28 +2516,31 @@ export async function GET(request: Request) {
 
       const hasStranded = (strandedPending?.length ?? 0) > 0 || (strandedRecurring?.length ?? 0) > 0
       if (hasStranded) {
-        await supabase
-          .from('oj_entries')
-          .update({ status: 'unbilled', billing_run_id: null, updated_at: new Date().toISOString() })
-          .eq('billing_run_id', billingRun.id)
-          .eq('status', 'billing_pending')
+        await throwOnMutationError(
+          supabase
+            .from('oj_entries')
+            .update({ status: 'unbilled', billing_run_id: null, updated_at: new Date().toISOString() })
+            .eq('billing_run_id', billingRun.id)
+            .eq('status', 'billing_pending'),
+          `Failed to unlock stranded OJ entries for billing run ${billingRun.id}`
+        )
 
-        await supabase
-          .from('oj_recurring_charge_instances')
-          .update({ status: 'unbilled', billing_run_id: null, updated_at: new Date().toISOString() })
-          .eq('billing_run_id', billingRun.id)
-          .eq('status', 'billing_pending')
+        await throwOnMutationError(
+          supabase
+            .from('oj_recurring_charge_instances')
+            .update({ status: 'unbilled', billing_run_id: null, updated_at: new Date().toISOString() })
+            .eq('billing_run_id', billingRun.id)
+            .eq('status', 'billing_pending'),
+          `Failed to unlock stranded OJ recurring instances for billing run ${billingRun.id}`
+        )
 
-        await supabase
-          .from('oj_billing_runs')
-          .update({
-            status: 'processing',
-            selected_entry_ids: null,
-            carried_forward_inc_vat: null,
-            error_message: null,
-            updated_at: new Date().toISOString(),
-          })
-          .eq('id', billingRun.id)
+        await updateBillingRunById(supabase, billingRun.id, {
+          status: 'processing',
+          selected_entry_ids: null,
+          carried_forward_inc_vat: null,
+          error_message: null,
+          updated_at: new Date().toISOString(),
+        })
       }
 
       // Load billing settings
@@ -2374,17 +2740,18 @@ export async function GET(request: Request) {
           )
           : null
 
-      const selectedEntryIds = [...selectedMileage, ...selectedTime].map((e: any) => String(e.id))
-      const selectedRecurringInstanceIds = (selectedRecurringInstances || []).map((c: any) => String(c.id))
+      const selectedEntryIds = Array.from(
+        new Set([...selectedMileage, ...selectedTime].map((e: any) => String(e.id)))
+      )
+      const selectedRecurringInstanceIds = Array.from(
+        new Set((selectedRecurringInstances || []).map((c: any) => String(c.id)))
+      )
 
-      await supabase
-        .from('oj_billing_runs')
-        .update({
-          selected_entry_ids: selectedEntryIds,
-          carried_forward_inc_vat: carriedForwardIncVat,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', billingRun.id)
+      await updateBillingRunById(supabase, billingRun.id, {
+        selected_entry_ids: selectedEntryIds,
+        carried_forward_inc_vat: carriedForwardIncVat,
+        updated_at: new Date().toISOString(),
+      })
 
       // If nothing selected and nothing eligible, mark run sent (no invoice).
       const hasAnyEligible = (eligibleRecurringInstances?.length || 0) > 0 || (eligibleEntries?.length || 0) > 0
@@ -2392,66 +2759,46 @@ export async function GET(request: Request) {
 
       if (!hasAnySelected) {
         if (hasAnyEligible && billingMode === 'cap') {
-          await supabase
-            .from('oj_billing_runs')
-            .update({
-              status: 'failed',
-              error_message: 'Nothing could be billed within the monthly cap. Increase the cap or reduce charges.',
-              run_finished_at: new Date().toISOString(),
-              updated_at: new Date().toISOString(),
-            })
-            .eq('id', billingRun.id)
+          await updateBillingRunById(supabase, billingRun.id, {
+            status: 'failed',
+            error_message: 'Nothing could be billed within the monthly cap. Increase the cap or reduce charges.',
+            run_finished_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          })
 
           results.failed++
           results.vendors.push({ vendor_id: vendorId, status: 'failed', error: 'Nothing could be billed within the monthly cap.' })
           continue
         }
 
-        await supabase
-          .from('oj_billing_runs')
-          .update({
-            status: 'sent',
-            invoice_id: null,
-            error_message: null,
-            run_finished_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-          })
-          .eq('id', billingRun.id)
+        await updateBillingRunById(supabase, billingRun.id, {
+          status: 'sent',
+          invoice_id: null,
+          error_message: null,
+          run_finished_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        })
 
         results.skipped++
         results.vendors.push({ vendor_id: vendorId, status: 'skipped' })
         continue
       }
 
-      // Lock selected entries to this billing run
-      if (selectedEntryIds.length > 0) {
-        const { error: lockError } = await supabase
-          .from('oj_entries')
-          .update({
-            status: 'billing_pending',
-            billing_run_id: billingRun.id,
-            updated_at: new Date().toISOString(),
-          })
-          .in('id', selectedEntryIds)
-          .eq('status', 'unbilled')
+      await lockRowsForBillingRunOrThrow({
+        supabase,
+        table: 'oj_entries',
+        ids: selectedEntryIds,
+        billingRunId: billingRun.id,
+        context: `Failed to lock selected OJ entries for billing run ${billingRun.id}.`,
+      })
 
-        if (lockError) throw new Error(lockError.message)
-      }
-
-      // Lock selected recurring charge instances to this billing run
-      if (selectedRecurringInstanceIds.length > 0) {
-        const { error: lockRecurringError } = await supabase
-          .from('oj_recurring_charge_instances')
-          .update({
-            status: 'billing_pending',
-            billing_run_id: billingRun.id,
-            updated_at: new Date().toISOString(),
-          })
-          .in('id', selectedRecurringInstanceIds)
-          .eq('status', 'unbilled')
-
-        if (lockRecurringError) throw new Error(lockRecurringError.message)
-      }
+      await lockRowsForBillingRunOrThrow({
+        supabase,
+        table: 'oj_recurring_charge_instances',
+        ids: selectedRecurringInstanceIds,
+        billingRunId: billingRun.id,
+        context: `Failed to lock selected OJ recurring instances for billing run ${billingRun.id}.`,
+      })
 
       // Build invoice line items
       let lineItems: Array<{
@@ -2597,30 +2944,36 @@ export async function GET(request: Request) {
       if (createInvoiceError || !createdInvoice) {
         // Revert locked entries so they can be re-billed later
         if (selectedEntryIds.length > 0) {
-          await supabase
-            .from('oj_entries')
-            .update({ status: 'unbilled', billing_run_id: null, updated_at: new Date().toISOString() })
-            .in('id', selectedEntryIds)
-            .eq('status', 'billing_pending')
-            .eq('billing_run_id', billingRun.id)
+          await updateSelectedRowsByIdsOrThrow({
+            supabase,
+            table: 'oj_entries',
+            ids: selectedEntryIds,
+            patch: { status: 'unbilled', billing_run_id: null, updated_at: new Date().toISOString() },
+            expectedStatus: 'billing_pending',
+            billingRunId: billingRun.id,
+            context: `Failed to unlock OJ entries after invoice create failure for billing run ${billingRun.id}.`,
+          })
         }
         if (selectedRecurringInstanceIds.length > 0) {
-          await supabase
-            .from('oj_recurring_charge_instances')
-            .update({ status: 'unbilled', billing_run_id: null, updated_at: new Date().toISOString() })
-            .in('id', selectedRecurringInstanceIds)
-            .eq('status', 'billing_pending')
-            .eq('billing_run_id', billingRun.id)
+          await updateSelectedRowsByIdsOrThrow({
+            supabase,
+            table: 'oj_recurring_charge_instances',
+            ids: selectedRecurringInstanceIds,
+            patch: { status: 'unbilled', billing_run_id: null, updated_at: new Date().toISOString() },
+            expectedStatus: 'billing_pending',
+            billingRunId: billingRun.id,
+            context: `Failed to unlock OJ recurring instances after invoice create failure for billing run ${billingRun.id}.`,
+          })
         }
         throw new Error(createInvoiceError?.message || 'Failed to create invoice')
       }
 
       const invoiceId = (createdInvoice as any).id as string
 
-      await supabase
-        .from('oj_billing_runs')
-        .update({ invoice_id: invoiceId, updated_at: new Date().toISOString() })
-        .eq('id', billingRun.id)
+      await updateBillingRunById(supabase, billingRun.id, {
+        invoice_id: invoiceId,
+        updated_at: new Date().toISOString(),
+      })
 
       if (preview) {
         results.skipped++
@@ -2630,15 +2983,12 @@ export async function GET(request: Request) {
 
       // If email not configured, leave invoice as draft + entries as billing_pending (retry later)
       if (!isGraphConfigured()) {
-        await supabase
-          .from('oj_billing_runs')
-          .update({
-            status: 'failed',
-            error_message: 'Email service is not configured',
-            run_finished_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-          })
-          .eq('id', billingRun.id)
+        await updateBillingRunById(supabase, billingRun.id, {
+          status: 'failed',
+          error_message: 'Email service is not configured',
+          run_finished_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        })
 
         results.failed++
         results.vendors.push({ vendor_id: vendorId, status: 'failed', invoice_id: invoiceId, invoice_number: invoiceNumber, error: 'Email service is not configured' })
@@ -2652,15 +3002,12 @@ export async function GET(request: Request) {
       const recipients = await resolveVendorInvoiceRecipients(supabase, vendorId, vendor.email)
       if ('error' in recipients) throw new Error(recipients.error)
       if (!recipients.to) {
-        await supabase
-          .from('oj_billing_runs')
-          .update({
-            status: 'failed',
-            error_message: 'No invoice recipient email configured (primary contact or vendor email)',
-            run_finished_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-          })
-          .eq('id', billingRun.id)
+        await updateBillingRunById(supabase, billingRun.id, {
+          status: 'failed',
+          error_message: 'No invoice recipient email configured (primary contact or vendor email)',
+          run_finished_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        })
 
         results.failed++
         results.vendors.push({ vendor_id: vendorId, status: 'failed', invoice_id: invoiceId, invoice_number: invoiceNumber, error: 'No invoice recipient email configured' })
@@ -2691,81 +3038,268 @@ export async function GET(request: Request) {
         ]
       }
 
-      const sendRes = await sendInvoiceEmail(fullInvoice, recipients.to, subject, body, recipients.cc, additionalAttachments)
-      if (!sendRes.success) {
-        await supabase
-          .from('oj_billing_runs')
-          .update({
+      const { claimKey, claimHash } = buildOjInvoiceSendClaimParams({
+        invoiceId,
+        billingRunId: billingRun.id,
+        to: recipients.to,
+        cc: recipients.cc,
+        subject
+      })
+      const sendClaim = await claimIdempotencyKey(supabase, claimKey, claimHash, 24 * 180)
+      if (sendClaim.state === 'conflict') {
+        await updateBillingRunById(supabase, billingRun.id, {
+          status: 'failed',
+          error_message: 'Invoice email idempotency conflict; manual reconciliation required.',
+          run_finished_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        })
+
+        results.failed++
+        results.vendors.push({
+          vendor_id: vendorId,
+          status: 'failed',
+          invoice_id: invoiceId,
+          invoice_number: invoiceNumber,
+          error: 'Invoice email idempotency conflict'
+        })
+        continue
+      }
+      if (sendClaim.state === 'in_progress') {
+        results.skipped++
+        results.vendors.push({
+          vendor_id: vendorId,
+          status: 'skipped',
+          invoice_id: invoiceId,
+          invoice_number: invoiceNumber,
+          error: 'Invoice email already being processed by another run'
+        })
+        continue
+      }
+
+      let claimHeld = sendClaim.state === 'claimed'
+      const skipEmailSend = sendClaim.state === 'replay'
+
+      if (!skipEmailSend) {
+        const sendRes = await sendInvoiceEmail(fullInvoice, recipients.to, subject, body, recipients.cc, additionalAttachments)
+        if (!sendRes.success) {
+          if (claimHeld) {
+            try {
+              await releaseIdempotencyClaim(supabase, claimKey, claimHash)
+            } catch (releaseError) {
+              console.error('Failed to release OJ billing invoice send claim:', releaseError)
+            }
+            claimHeld = false
+          }
+
+          await updateBillingRunById(supabase, billingRun.id, {
             status: 'failed',
             error_message: sendRes.error || 'Failed to send invoice email',
             run_finished_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
           })
-          .eq('id', billingRun.id)
+
+          results.failed++
+          results.vendors.push({ vendor_id: vendorId, status: 'failed', invoice_id: invoiceId, invoice_number: invoiceNumber, error: sendRes.error || 'Failed to send invoice email' })
+          continue
+        }
+      }
+
+      const { data: sentInvoiceRow, error: sentInvoiceError } = await supabase
+        .from('invoices')
+        .update({ status: 'sent', updated_at: new Date().toISOString() })
+        .eq('id', invoiceId)
+        .eq('status', 'draft')
+        .select('id')
+        .maybeSingle()
+
+      let invoiceFinalized = Boolean(sentInvoiceRow)
+
+      if (sentInvoiceError) {
+        if (claimHeld) {
+          try {
+            await persistIdempotencyResponse(
+              supabase,
+              claimKey,
+              claimHash,
+              {
+                state: 'processed_with_error',
+                invoice_id: invoiceId,
+                billing_run_id: billingRun.id,
+                message: 'Invoice email sent but invoice status update failed'
+              },
+              24 * 180
+            )
+            claimHeld = false
+          } catch (persistError) {
+            console.error('Failed to persist OJ billing invoice send claim after send:', persistError)
+          }
+        }
+
+        await updateBillingRunById(supabase, billingRun.id, {
+          status: 'failed',
+          error_message: 'Invoice email sent but invoice status update failed',
+          run_finished_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        })
 
         results.failed++
-        results.vendors.push({ vendor_id: vendorId, status: 'failed', invoice_id: invoiceId, invoice_number: invoiceNumber, error: sendRes.error || 'Failed to send invoice email' })
+        results.vendors.push({
+          vendor_id: vendorId,
+          status: 'failed',
+          invoice_id: invoiceId,
+          invoice_number: invoiceNumber,
+          error: 'Invoice email sent but invoice status update failed'
+        })
         continue
       }
 
-      await supabase.from('invoices').update({ status: 'sent', updated_at: new Date().toISOString() }).eq('id', invoiceId)
+      if (!invoiceFinalized) {
+        const { data: latestInvoice, error: latestInvoiceError } = await supabase
+          .from('invoices')
+          .select('status')
+          .eq('id', invoiceId)
+          .maybeSingle()
 
-      await supabase.from('invoice_email_logs').insert({
-        invoice_id: invoiceId,
-        sent_to: recipients.to,
-        sent_by: 'system',
-        subject,
-        body: 'Automatically sent by OJ Projects monthly billing.',
-        status: 'sent',
-      })
-      for (const cc of recipients.cc) {
-        await supabase.from('invoice_email_logs').insert({
+        if (!latestInvoiceError) {
+          invoiceFinalized = ['sent', 'paid', 'overdue', 'partially_paid'].includes(String(latestInvoice?.status || ''))
+        }
+
+        if (latestInvoiceError || !invoiceFinalized) {
+          if (claimHeld) {
+            try {
+              await persistIdempotencyResponse(
+                supabase,
+                claimKey,
+                claimHash,
+                {
+                  state: 'processed_with_error',
+                  invoice_id: invoiceId,
+                  billing_run_id: billingRun.id,
+                  message: 'Invoice email sent but invoice status update did not transition row'
+                },
+                24 * 180
+              )
+              claimHeld = false
+            } catch (persistError) {
+              console.error('Failed to persist OJ billing invoice send claim after status mismatch:', persistError)
+            }
+          }
+
+          await supabase.from('invoice_email_logs').insert({
+            invoice_id: invoiceId,
+            sent_to: recipients.to,
+            sent_by: 'system',
+            subject,
+            body: 'Invoice email sent, but invoice status update failed. Manual reconciliation required.',
+            status: 'sent',
+          })
+
+          await updateBillingRunById(supabase, billingRun.id, {
+            status: 'failed',
+            error_message: 'Invoice email sent but invoice status update failed',
+            run_finished_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          })
+
+          results.failed++
+          results.vendors.push({
+            vendor_id: vendorId,
+            status: 'failed',
+            invoice_id: invoiceId,
+            invoice_number: invoiceNumber,
+            error: 'Invoice email sent but invoice status update failed'
+          })
+          continue
+        }
+      }
+
+      if (!skipEmailSend) {
+        const { error: toLogError } = await supabase.from('invoice_email_logs').insert({
           invoice_id: invoiceId,
-          sent_to: cc,
+          sent_to: recipients.to,
           sent_by: 'system',
           subject,
           body: 'Automatically sent by OJ Projects monthly billing.',
           status: 'sent',
         })
+        if (toLogError) {
+          console.error('Failed to write OJ billing invoice send log (to):', toLogError)
+        }
+        for (const cc of recipients.cc) {
+          const { error: ccLogError } = await supabase.from('invoice_email_logs').insert({
+            invoice_id: invoiceId,
+            sent_to: cc,
+            sent_by: 'system',
+            subject,
+            body: 'Automatically sent by OJ Projects monthly billing.',
+            status: 'sent',
+          })
+          if (ccLogError) {
+            console.error('Failed to write OJ billing invoice send log (cc):', ccLogError)
+          }
+        }
       }
 
       if (selectedEntryIds.length > 0) {
-        await supabase
-          .from('oj_entries')
-          .update({
+        await updateSelectedRowsByIdsOrThrow({
+          supabase,
+          table: 'oj_entries',
+          ids: selectedEntryIds,
+          patch: {
             status: 'billed',
             invoice_id: invoiceId,
             billed_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
-          })
-          .in('id', selectedEntryIds)
-          .eq('billing_run_id', billingRun.id)
-          .eq('status', 'billing_pending')
+          },
+          expectedStatus: 'billing_pending',
+          billingRunId: billingRun.id,
+          context: `Failed to mark selected OJ entries as billed for billing run ${billingRun.id}.`,
+        })
       }
 
       if (selectedRecurringInstanceIds.length > 0) {
-        await supabase
-          .from('oj_recurring_charge_instances')
-          .update({
+        await updateSelectedRowsByIdsOrThrow({
+          supabase,
+          table: 'oj_recurring_charge_instances',
+          ids: selectedRecurringInstanceIds,
+          patch: {
             status: 'billed',
             invoice_id: invoiceId,
             billed_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
-          })
-          .in('id', selectedRecurringInstanceIds)
-          .eq('billing_run_id', billingRun.id)
-          .eq('status', 'billing_pending')
+          },
+          expectedStatus: 'billing_pending',
+          billingRunId: billingRun.id,
+          context: `Failed to mark selected OJ recurring instances as billed for billing run ${billingRun.id}.`,
+        })
       }
 
-      await supabase
-        .from('oj_billing_runs')
-        .update({
-          status: 'sent',
-          error_message: null,
-          run_finished_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', billingRun.id)
+      await updateBillingRunById(supabase, billingRun.id, {
+        status: 'sent',
+        error_message: null,
+        run_finished_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      })
+
+      if (claimHeld) {
+        try {
+          await persistIdempotencyResponse(
+            supabase,
+            claimKey,
+            claimHash,
+            {
+              state: 'sent',
+              invoice_id: invoiceId,
+              billing_run_id: billingRun.id,
+              sent_to: recipients.to
+            },
+            24 * 180
+          )
+          claimHeld = false
+        } catch (persistError) {
+          console.error('Failed to persist OJ billing invoice send idempotency response:', persistError)
+        }
+      }
 
       results.sent++
       results.vendors.push({ vendor_id: vendorId, status: 'sent', invoice_id: invoiceId, invoice_number: invoiceNumber })
@@ -2774,11 +3308,14 @@ export async function GET(request: Request) {
       results.failed++
       results.vendors.push({ vendor_id: vendorId, status: 'failed', error: message })
       try {
-        await supabase
-          .from('oj_billing_runs')
-          .update({ status: 'failed', error_message: message, run_finished_at: new Date().toISOString(), updated_at: new Date().toISOString() })
-          .eq('vendor_id', vendorId)
-          .eq('period_yyyymm', period.period_yyyymm)
+        await throwOnMutationError(
+          supabase
+            .from('oj_billing_runs')
+            .update({ status: 'failed', error_message: message, run_finished_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+            .eq('vendor_id', vendorId)
+            .eq('period_yyyymm', period.period_yyyymm),
+          `Failed to persist failed billing run state for vendor ${vendorId} period ${period.period_yyyymm}`
+        )
       } catch { }
     }
   }

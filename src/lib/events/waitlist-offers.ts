@@ -44,6 +44,14 @@ export type WaitlistOfferPreviewResult = {
   expires_at?: string
 }
 
+export type WaitlistOfferSmsDispatchResult = {
+  success: boolean
+  scheduledSendAt?: string
+  reason?: string
+  code?: string
+  logFailure?: boolean
+}
+
 function formatLondonDateTime(isoDateTime: string | null | undefined): string {
   if (!isoDateTime) return 'your event time'
   try {
@@ -96,6 +104,33 @@ function resolveEventStartDateTimeIso(
   return fallback ?? undefined
 }
 
+function normalizeThrownSmsSafety(error: unknown): { code: string; logFailure: boolean } {
+  const thrownCode = typeof (error as any)?.code === 'string' ? (error as any).code : null
+  const thrownLogFailure = (error as any)?.logFailure === true || thrownCode === 'logging_failed'
+
+  if (thrownLogFailure) {
+    return {
+      code: 'logging_failed',
+      logFailure: true
+    }
+  }
+
+  if (
+    thrownCode === 'safety_unavailable'
+    || thrownCode === 'idempotency_conflict'
+  ) {
+    return {
+      code: thrownCode,
+      logFailure: false
+    }
+  }
+
+  return {
+    code: 'safety_unavailable',
+    logFailure: false
+  }
+}
+
 export async function createNextWaitlistOffer(
   supabase: SupabaseClient<any, 'public', any>,
   eventId: string
@@ -115,7 +150,7 @@ export async function sendWaitlistOfferSms(
   supabase: SupabaseClient<any, 'public', any>,
   offer: WaitlistOfferCreateResult,
   appBaseUrl: string
-): Promise<{ success: boolean; scheduledSendAt?: string; reason?: string }> {
+): Promise<WaitlistOfferSmsDispatchResult> {
   if (offer.state !== 'offered' || !offer.waitlist_offer_id || !offer.customer_id || !offer.event_id) {
     return { success: false, reason: 'invalid_offer_payload' }
   }
@@ -126,9 +161,21 @@ export async function sendWaitlistOfferSms(
     .eq('id', offer.customer_id)
     .maybeSingle()
 
-  if (customerError || !customer) {
+  if (customerError) {
     logger.warn('Failed to load customer for waitlist offer SMS', {
       metadata: { offerId: offer.waitlist_offer_id, error: customerError?.message }
+    })
+    return {
+      success: false,
+      reason: 'customer_lookup_failed',
+      code: 'safety_unavailable',
+      logFailure: false
+    }
+  }
+
+  if (!customer) {
+    logger.warn('Waitlist offer SMS customer lookup affected no rows', {
+      metadata: { offerId: offer.waitlist_offer_id, customerId: offer.customer_id }
     })
     return { success: false, reason: 'customer_not_found' }
   }
@@ -137,11 +184,37 @@ export async function sendWaitlistOfferSms(
     return { success: false, reason: 'sms_not_active' }
   }
 
-  const { data: eventRow } = await supabase
+  const { data: eventRow, error: eventError } = await supabase
     .from('events')
     .select('name, start_datetime, date, time')
     .eq('id', offer.event_id)
     .maybeSingle()
+
+  if (eventError) {
+    logger.warn('Failed to load event for waitlist offer SMS', {
+      metadata: {
+        offerId: offer.waitlist_offer_id,
+        eventId: offer.event_id,
+        error: eventError.message,
+      },
+    })
+    return {
+      success: false,
+      reason: 'event_lookup_failed',
+      code: 'safety_unavailable',
+      logFailure: false
+    }
+  }
+
+  if (!eventRow) {
+    logger.warn('Waitlist offer SMS event lookup affected no rows', {
+      metadata: {
+        offerId: offer.waitlist_offer_id,
+        eventId: offer.event_id,
+      },
+    })
+    return { success: false, reason: 'event_not_found' }
+  }
 
   const eventStartDateTimeIso = resolveEventStartDateTimeIso(eventRow, offer.event_start_datetime ?? null)
   const quietHoursState = evaluateSmsQuietHours()
@@ -173,20 +246,61 @@ export async function sendWaitlistOfferSms(
     supportPhone
   )
 
-  const smsResult = await sendSMS(customer.mobile_number, messageBody, {
-    customerId: customer.id,
-    metadata: {
-      waitlist_offer_id: offer.waitlist_offer_id,
-      event_id: offer.event_id,
-      template_key: 'event_waitlist_offer'
-    }
-  })
-
-  if (!smsResult.success) {
-    await supabase
+  const cleanupWaitlistGuestTokenAfterSmsFailure = async () => {
+    const { error: tokenDeleteError } = await supabase
       .from('guest_tokens')
       .delete()
       .eq('hashed_token', hashGuestToken(rawToken))
+
+    if (tokenDeleteError) {
+      logger.warn('Failed to remove guest token after waitlist offer SMS failure', {
+        metadata: {
+          offerId: offer.waitlist_offer_id,
+          customerId: customer.id,
+          error: tokenDeleteError.message
+        }
+      })
+    }
+  }
+
+  let smsResult: Awaited<ReturnType<typeof sendSMS>>
+  try {
+    smsResult = await sendSMS(customer.mobile_number, messageBody, {
+      customerId: customer.id,
+      metadata: {
+        waitlist_offer_id: offer.waitlist_offer_id,
+        waitlist_entry_id: offer.waitlist_entry_id,
+        event_id: offer.event_id,
+        template_key: 'event_waitlist_offer'
+      }
+    })
+  } catch (smsError) {
+    await cleanupWaitlistGuestTokenAfterSmsFailure()
+    const normalizedSmsSafety = normalizeThrownSmsSafety(smsError)
+    logger.warn('Waitlist offer SMS send threw unexpectedly', {
+      metadata: {
+        offerId: offer.waitlist_offer_id,
+        customerId: customer.id,
+        error: smsError instanceof Error ? smsError.message : String(smsError),
+        code: normalizedSmsSafety.code,
+        logFailure: normalizedSmsSafety.logFailure
+      }
+    })
+    return {
+      success: false,
+      reason: 'sms_send_failed',
+      code: normalizedSmsSafety.code,
+      logFailure: normalizedSmsSafety.logFailure
+    }
+  }
+
+  const smsCode = smsResult.code
+  // Normalize fatal logging failures so callers can reliably abort fanout loops.
+  const smsLogFailure =
+    smsResult.logFailure === true || smsCode === 'logging_failed' ? true : smsResult.logFailure
+
+  if (!smsResult.success) {
+    await cleanupWaitlistGuestTokenAfterSmsFailure()
 
     logger.warn('Failed to send waitlist offer SMS', {
       metadata: {
@@ -196,14 +310,20 @@ export async function sendWaitlistOfferSms(
       }
     })
 
-    return { success: false, reason: 'sms_send_failed' }
+    return {
+      success: false,
+      reason: 'sms_send_failed',
+      code: smsCode,
+      logFailure: smsLogFailure
+    }
   }
 
   const scheduledSendAt = smsResult.scheduledFor || new Date().toISOString()
   const effectiveExpiresAt = computeOfferExpiryFromScheduledSend(scheduledSendAt, eventStartDateTimeIso)
+  let criticalPersistenceError = false
 
-  await Promise.all([
-    recordAnalyticsEvent(supabase, {
+  try {
+    await recordAnalyticsEvent(supabase, {
       customerId: customer.id,
       eventType: 'waitlist_offer_sent',
       metadata: {
@@ -212,33 +332,123 @@ export async function sendWaitlistOfferSms(
         scheduled_send_at: scheduledSendAt,
         expires_at: effectiveExpiresAt
       }
-    }),
-    supabase
-      .from('waitlist_offers')
-      .update({
-        scheduled_sms_send_time: scheduledSendAt,
-        sent_at: scheduledSendAt,
-        expires_at: effectiveExpiresAt
-      })
-      .eq('id', offer.waitlist_offer_id),
-    supabase
-      .from('booking_holds')
-      .update({
-        scheduled_sms_send_time: scheduledSendAt,
-        expires_at: effectiveExpiresAt,
-        updated_at: new Date().toISOString()
-      })
-      .eq('waitlist_offer_id', offer.waitlist_offer_id)
-      .eq('status', 'active'),
-    supabase
-      .from('guest_tokens')
-      .update({
-        expires_at: effectiveExpiresAt
-      })
-      .eq('hashed_token', hashedToken)
-  ])
+    })
+  } catch (analyticsError) {
+    logger.warn('Failed to record waitlist offer sent analytics event', {
+      metadata: {
+        offerId: offer.waitlist_offer_id,
+        customerId: customer.id,
+        error: analyticsError instanceof Error ? analyticsError.message : String(analyticsError)
+      }
+    })
+  }
 
-  return { success: true, scheduledSendAt }
+  const { data: updatedOffer, error: offerUpdateError } = await supabase
+    .from('waitlist_offers')
+    .update({
+      scheduled_sms_send_time: scheduledSendAt,
+      sent_at: scheduledSendAt,
+      expires_at: effectiveExpiresAt
+    })
+    .eq('id', offer.waitlist_offer_id)
+    .select('id')
+    .maybeSingle()
+
+  if (offerUpdateError) {
+    criticalPersistenceError = true
+    logger.error('Failed to persist waitlist offer SMS send timestamps', {
+      metadata: {
+        offerId: offer.waitlist_offer_id,
+        customerId: customer.id,
+        error: offerUpdateError.message
+      }
+    })
+  } else if (!updatedOffer) {
+    criticalPersistenceError = true
+    logger.warn('Waitlist offer SMS send timestamp update affected no rows', {
+      metadata: {
+        offerId: offer.waitlist_offer_id,
+        customerId: customer.id
+      }
+    })
+  }
+
+  const { data: updatedHolds, error: holdUpdateError } = await supabase
+    .from('booking_holds')
+    .update({
+      scheduled_sms_send_time: scheduledSendAt,
+      expires_at: effectiveExpiresAt,
+      updated_at: new Date().toISOString()
+    })
+    .eq('waitlist_offer_id', offer.waitlist_offer_id)
+    .eq('status', 'active')
+    .select('id')
+
+  if (holdUpdateError) {
+    criticalPersistenceError = true
+    logger.error('Failed to persist waitlist hold SMS send timestamps', {
+      metadata: {
+        offerId: offer.waitlist_offer_id,
+        customerId: customer.id,
+        error: holdUpdateError.message
+      }
+    })
+  } else if (!updatedHolds || updatedHolds.length === 0) {
+    criticalPersistenceError = true
+    logger.warn('Waitlist hold SMS send timestamp update affected no rows', {
+      metadata: {
+        offerId: offer.waitlist_offer_id,
+        customerId: customer.id
+      }
+    })
+  }
+
+  const { data: updatedToken, error: tokenUpdateError } = await supabase
+    .from('guest_tokens')
+    .update({
+      expires_at: effectiveExpiresAt
+    })
+    .eq('hashed_token', hashedToken)
+    .select('id')
+    .maybeSingle()
+
+  if (tokenUpdateError) {
+    criticalPersistenceError = true
+    logger.error('Failed to persist waitlist guest token expiry after SMS send', {
+      metadata: {
+        offerId: offer.waitlist_offer_id,
+        customerId: customer.id,
+        error: tokenUpdateError.message
+      }
+    })
+  } else if (!updatedToken) {
+    criticalPersistenceError = true
+    logger.warn('Waitlist guest token expiry update affected no rows', {
+      metadata: {
+        offerId: offer.waitlist_offer_id,
+        customerId: customer.id
+      }
+    })
+  }
+
+  if (criticalPersistenceError) {
+    return {
+      // SMS was sent (or scheduled) but we could not persist critical state updates.
+      // Treat this as `logging_failed` so callers abort rather than retrying and fanning out duplicates.
+      success: true,
+      scheduledSendAt,
+      reason: 'post_send_persistence_failed',
+      code: 'logging_failed',
+      logFailure: true
+    }
+  }
+
+  return {
+    success: true,
+    scheduledSendAt,
+    code: smsCode,
+    logFailure: smsLogFailure
+  }
 }
 
 export async function getWaitlistOfferPreviewByRawToken(

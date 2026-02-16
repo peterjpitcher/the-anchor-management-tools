@@ -28,6 +28,8 @@ interface RawCustomerRow {
   last_name: string | null
   mobile_number: string
   sms_opt_in: boolean | null
+  marketing_sms_opt_in?: boolean | null
+  sms_status?: string | null
   created_at: string
   bookings?: Array<{ count?: number }>
   event_bookings?: Array<{
@@ -47,6 +49,8 @@ interface NormalizedCustomer {
   last_name: string | null
   mobile_number: string
   sms_opt_in: boolean | null
+  marketing_sms_opt_in: boolean | null
+  sms_status: string | null
   created_at: string
   total_bookings: number
   event_bookings: Array<{
@@ -104,7 +108,11 @@ function sanitizeFilters(raw: Partial<FilterOptions> | undefined): FilterOptions
 }
 
 function escapeIlikeTerm(term: string): string {
-  return term.replace(/[%_]/g, (match) => `\\${match}`)
+  return term
+    .replace(/[,%_()"'\\]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 80)
 }
 
 function endOfDayIso(date: string): string {
@@ -130,6 +138,8 @@ function normalizeCustomer(row: RawCustomerRow): NormalizedCustomer {
     last_name: row.last_name,
     mobile_number: row.mobile_number,
     sms_opt_in: row.sms_opt_in ?? null,
+    marketing_sms_opt_in: row.marketing_sms_opt_in ?? null,
+    sms_status: row.sms_status ?? null,
     created_at: row.created_at,
     total_bookings: totalBookings,
     event_bookings: eventBookings,
@@ -142,6 +152,17 @@ function normalizeCustomer(row: RawCustomerRow): NormalizedCustomer {
 }
 
 function customerMatchesFilters(customer: NormalizedCustomer, filters: FilterOptions): boolean {
+  // Bulk messaging is treated as marketing: require explicit marketing opt-in and non-blocked eligibility.
+  if (customer.sms_opt_in !== true) {
+    return false
+  }
+  if (customer.marketing_sms_opt_in !== true) {
+    return false
+  }
+  if (customer.sms_status !== null && customer.sms_status !== 'active') {
+    return false
+  }
+
   if (filters.hasBookings === 'with_bookings' && customer.total_bookings === 0) {
     return false
   }
@@ -211,6 +232,8 @@ function applyBaseFilters(
     last_name,
     mobile_number,
     sms_opt_in,
+    marketing_sms_opt_in,
+    sms_status,
     created_at,
     bookings(count),
     event_bookings:bookings(event_id, seats, is_reminder_only),

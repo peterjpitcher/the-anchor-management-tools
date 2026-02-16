@@ -112,4 +112,4 @@ async function main() {
   console.log('\n🔍 Running final build check...\n');
 }
 
-main().catch(console.error);
+main().catch((error) => { console.error(error); process.exitCode = 1 });
