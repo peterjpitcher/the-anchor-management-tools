@@ -139,6 +139,51 @@ describe('sendSMS logging fail-closed behavior', () => {
     })
   })
 
+  it('skips outbound message persistence when skipMessageLogging is enabled', async () => {
+    vi.resetModules()
+
+    const { createAdminClient } = await import('@/lib/supabase/admin')
+    const twilio = (await import('twilio')).default
+
+    const twilioCreate = vi.fn().mockResolvedValue({
+      sid: 'SM999',
+      status: 'sent',
+      from: '+15555550123',
+    })
+
+    ;(twilio as unknown as vi.Mock).mockReturnValue({
+      messages: {
+        create: twilioCreate,
+      },
+    })
+
+    const from = vi.fn()
+    ;(createAdminClient as unknown as vi.Mock).mockReturnValue({ from })
+
+    const { sendSMS } = await import('@/lib/twilio')
+
+    const result = await sendSMS('+447956315214', 'Food order', {
+      createCustomerIfMissing: false,
+      skipSafetyGuards: true,
+      skipQuietHours: true,
+      skipMessageLogging: true,
+      metadata: {
+        template_key: 'foh_food_order_alert',
+        trigger_type: 'foh_food_order_alert',
+        stage: 'test',
+      },
+    })
+
+    expect(twilioCreate).toHaveBeenCalledTimes(1)
+    expect(from).not.toHaveBeenCalled()
+    expect(result).toMatchObject({
+      success: true,
+      sid: 'SM999',
+    })
+    expect((result as any).code).toBeUndefined()
+    expect((result as any).logFailure).toBeUndefined()
+  })
+
   afterEach(() => {
     if (previousTwilioAccountSid === undefined) {
       delete process.env.TWILIO_ACCOUNT_SID
