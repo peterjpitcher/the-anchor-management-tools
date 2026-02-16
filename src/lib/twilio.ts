@@ -8,7 +8,6 @@ import { recordOutboundSmsMessage } from '@/lib/sms/logging';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { evaluateSmsQuietHours } from '@/lib/sms/quiet-hours';
 import { shortenUrlsInSmsBody } from '@/lib/sms/link-shortening';
-import { resolveSmsSuspensionReason } from '@/lib/sms/suspension';
 import { formatPhoneForStorage, generatePhoneVariants } from '@/lib/utils';
 import {
   buildSmsDedupContext,
@@ -199,27 +198,6 @@ export const sendSMS = async (to: string, body: string, options: SendSMSOptions 
   let claimedDedupContext = false;
 
   try {
-    const suspensionReason = resolveSmsSuspensionReason({
-      suspendAllSms: env.SUSPEND_ALL_SMS,
-      suspendEventSms: env.SUSPEND_EVENT_SMS,
-      metadata: options.metadata
-    });
-    if (suspensionReason) {
-      logger.error('Outbound SMS suppressed by suspension flag.', {
-        metadata: {
-          to,
-          suspensionReason,
-          templateKey: (options.metadata as Record<string, unknown> | undefined)?.template_key
-        }
-      });
-      return {
-        success: false,
-        error: suspensionReason === 'all_sms'
-          ? 'SMS sending is temporarily paused'
-          : 'Event messaging is temporarily paused'
-      };
-    }
-
     const customerResolution = await resolveCustomerIdIfNeeded(to, options);
     const resolvedCustomerId = customerResolution.customerId;
     if (customerResolution.resolutionError) {

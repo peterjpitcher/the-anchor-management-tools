@@ -81,7 +81,9 @@ export const TWILIO_STATUS_CALLBACK_METHOD = 'POST' as const;
 
 // Export helper functions for optional features
 export const isSmsEnabled = () => {
-  return !!(env.TWILIO_ACCOUNT_SID && env.TWILIO_AUTH_TOKEN && env.TWILIO_PHONE_NUMBER);
+  const hasTwilioCredentials = Boolean(env.TWILIO_ACCOUNT_SID && env.TWILIO_AUTH_TOKEN);
+  const hasSmsSender = Boolean(env.TWILIO_PHONE_NUMBER || env.TWILIO_MESSAGING_SERVICE_SID);
+  return hasTwilioCredentials && hasSmsSender;
 };
 
 export const isServerActionEnabled = () => {
