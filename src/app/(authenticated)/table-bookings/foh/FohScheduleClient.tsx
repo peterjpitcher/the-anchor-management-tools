@@ -2303,16 +2303,6 @@ export function FohScheduleClient({
               </button>
               <button
                 type="button"
-                onClick={() => openCreateModal({ mode: 'walk_in' })}
-                className={cn(
-                  'rounded-md border border-green-300 bg-white px-4 py-2 text-sm font-medium text-sidebar hover:bg-green-50',
-                  isManagerKioskStyle && 'px-2.5 py-1 text-[11px] font-semibold'
-                )}
-              >
-                Add walk-in
-              </button>
-              <button
-                type="button"
                 onClick={() => openCreateModal({ mode: 'booking' })}
                 className={cn(
                   'rounded-md px-4 py-2 text-sm text-white',
