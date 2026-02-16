@@ -38,6 +38,15 @@ describe('foh food order alert route safety signals', () => {
       logFailure: true,
     })
     expect(sendSMS).toHaveBeenCalledTimes(1)
+    expect(sendSMS).toHaveBeenCalledWith(
+      '+447956315214',
+      'Food order',
+      expect.objectContaining({
+        createCustomerIfMissing: false,
+        skipMessageLogging: true,
+        skipQuietHours: true,
+      })
+    )
   })
 
   it('fails safe when the SMS transport may have succeeded but message logging failed', async () => {

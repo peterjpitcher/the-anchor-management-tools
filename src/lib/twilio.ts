@@ -41,6 +41,7 @@ export type SendSMSOptions = {
   createCustomerIfMissing?: boolean; // Default true
   skipQuietHours?: boolean;
   skipSafetyGuards?: boolean;
+  skipMessageLogging?: boolean;
   customerFallback?: {
     firstName?: string;
     lastName?: string;
@@ -466,6 +467,21 @@ export const sendSMS = async (to: string, body: string, options: SendSMSOptions 
       // AUTOMATIC LOGGING
       let messageId: string | null = null;
       let usedCustomerId: string | undefined = resolvedCustomerId ?? options.customerId;
+      const skipMessageLogging = options.skipMessageLogging === true;
+
+      if (skipMessageLogging) {
+        return {
+          success: true,
+          sid: message.sid,
+          fromNumber: message.from ?? null,
+          status: message.status ?? 'queued',
+          messageId: null,
+          customerId: usedCustomerId ?? null,
+          scheduledFor: shouldScheduleWithTwilio ? quietHoursState?.nextAllowedSendAt.toISOString() : undefined,
+          deferred: shouldScheduleWithTwilio,
+          deferredBy: shouldScheduleWithTwilio ? 'twilio' : undefined
+        };
+      }
 
       try {
         // If no customerId, try to resolve/create
@@ -590,25 +606,27 @@ export const sendSMS = async (to: string, body: string, options: SendSMSOptions 
       });
 
       // Record failed attempt so downstream logic can enforce failure limits
-      try {
-        const failureSid = `local-fail-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
-        await recordOutboundSmsMessage({
-          to,
-          body: smsBody,
-          sid: failureSid,
-          customerId: resolvedCustomerId ?? options.customerId,
-          status: 'failed',
-          twilioStatus: String(error.code ?? 'failed'),
-          metadata: {
-            error_code: error.code,
-            error_message: error.message
-          }
-        })
-      } catch (logError: unknown) {
-        logger.error('Failed to log outbound SMS failure', {
-          error: logError instanceof Error ? logError : new Error(String(logError)),
-          metadata: { to }
-        })
+      if (options.skipMessageLogging !== true) {
+        try {
+          const failureSid = `local-fail-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+          await recordOutboundSmsMessage({
+            to,
+            body: smsBody,
+            sid: failureSid,
+            customerId: resolvedCustomerId ?? options.customerId,
+            status: 'failed',
+            twilioStatus: String(error.code ?? 'failed'),
+            metadata: {
+              error_code: error.code,
+              error_message: error.message
+            }
+          })
+        } catch (logError: unknown) {
+          logger.error('Failed to log outbound SMS failure', {
+            error: logError instanceof Error ? logError : new Error(String(logError)),
+            metadata: { to }
+          })
+        }
       }
       
       // Provide user-friendly error messages

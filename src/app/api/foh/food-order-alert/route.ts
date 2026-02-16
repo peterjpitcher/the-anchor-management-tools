@@ -30,6 +30,7 @@ export async function POST(request: NextRequest) {
   try {
     smsResult = await sendSMS(FOOD_ORDER_ALERT_NUMBER, FOOD_ORDER_ALERT_MESSAGE, {
       createCustomerIfMissing: false,
+      skipMessageLogging: true,
       skipQuietHours: true,
       metadata: {
         template_key: 'foh_food_order_alert',
