@@ -141,19 +141,33 @@ export const RetryConfigs = {
     backoff: 'exponential' as const,
     factor: 2,
     retryIf: (error: any) => {
-      // Don't retry on invalid phone numbers or opt-outs
-      if (error.code === 21211 || // Invalid phone number
-          error.code === 21610) {  // Opt-out
+      const code = Number(error?.code)
+      const status = typeof error?.status === 'number' ? error.status : Number.NaN
+
+      // Don't retry on permanent Twilio failures.
+      if (
+        code === 21211 || // Invalid phone number
+        code === 21610 || // Recipient has opted out
+        code === 21614 || // 'To' number is not a valid mobile number
+        code === 21612 || // 'To' number is not currently reachable via SMS
+        code === 21408 // Permission denied
+      ) {
         return false
       }
-      
-      // Retry on rate limits or server errors
-      if (error.code === 20429 || // Rate limit
-          error.status >= 500) {
+
+      // Retry only when Twilio explicitly indicates back-pressure.
+      // Avoid retrying ambiguous transport/server failures because the upstream
+      // request may have succeeded and retries can duplicate outbound SMS.
+      if (
+        code === 20429 || // Twilio rate limit
+        code === 30001 || // Queue overflow
+        status === 429
+      ) {
         return true
       }
-      
-      return true
+
+      // Default deny: unknown Twilio 4xx-style responses should not be retried.
+      return false
     }
   },
   

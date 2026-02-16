@@ -1,54 +1,67 @@
-import { createClient } from '@supabase/supabase-js'
-import * as dotenv from 'dotenv'
-import * as path from 'path'
+#!/usr/bin/env tsx
 
-// Load environment variables
-dotenv.config({ path: path.join(__dirname, '../.env.local') })
+import dotenv from 'dotenv'
+import path from 'path'
+import { createAdminClient } from '../../src/lib/supabase/admin'
+import { assertScriptQuerySucceeded } from '../../src/lib/script-mutation-safety'
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
-const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
+dotenv.config({ path: path.resolve(process.cwd(), '.env.local') })
 
-if (!supabaseUrl || !supabaseKey) {
-  console.error('Missing environment variables. Please check .env.local')
-  process.exit(1)
+function markFailure(message: string, error?: unknown) {
+  process.exitCode = 1
+  if (error) {
+    console.error(`❌ ${message}`, error)
+    return
+  }
+  console.error(`❌ ${message}`)
 }
 
-const supabase = createClient(supabaseUrl, supabaseKey)
-
 async function checkEventCategoriesData() {
+  const argv = process.argv
+  if (argv.includes('--confirm')) {
+    throw new Error('check-event-categories-data is strictly read-only; do not pass --confirm.')
+  }
+
+  const supabase = createAdminClient()
+
   console.log('=== Checking Event Categories Data ===\n')
 
-  try {
-    // 1. Check events with categories
-    const { data: eventsWithCategories, error: eventsError } = await supabase
-      .from('events')
-      .select('id, name, category_id, event_categories(name)')
-      .not('category_id', 'is', null)
-      .limit(10)
-    
-    if (eventsError) {
-      console.error('Error checking events:', eventsError)
-      return
-    }
-    
-    console.log(`✅ Found ${eventsWithCategories?.length || 0} events with categories:`)
-    eventsWithCategories?.forEach((event: any) => {
-      console.log(`  - ${event.name} → ${event.event_categories?.name || 'Unknown category'}`)
-    })
-    
-    // 2. Check customer_category_stats
-    const { count: statsCount } = await supabase
-      .from('customer_category_stats')
-      .select('*', { count: 'exact', head: true })
-    
-    console.log(`\n✅ Customer category stats: ${statsCount || 0} records`)
-    
-    // 3. Check a specific category's stats
-    if (eventsWithCategories && eventsWithCategories.length > 0) {
-      const testCategoryId = eventsWithCategories[0].category_id
-      const { data: categoryStats, error: statsError } = await supabase
+  const { data: eventsRows, error: eventsError } = await supabase
+    .from('events')
+    .select('id, name, category_id, event_categories(name)')
+    .not('category_id', 'is', null)
+    .limit(10)
+
+  const eventsWithCategories = (assertScriptQuerySucceeded({
+    operation: 'Load sample events with categories',
+    error: eventsError,
+    data: eventsRows ?? [],
+    allowMissing: true
+  }) ?? []) as Array<{ name: string | null; category_id: string | null; event_categories?: { name?: string | null } | null }>
+
+  console.log(`✅ Found ${eventsWithCategories.length} event(s) with categories (sample):`)
+  eventsWithCategories.forEach((event) => {
+    const categoryName = event.event_categories?.name || 'Unknown category'
+    console.log(`  - ${event.name || 'unknown event'} → ${categoryName}`)
+  })
+
+  const { count: statsCount, error: statsCountError } = await supabase
+    .from('customer_category_stats')
+    .select('*', { count: 'exact', head: true })
+
+  if (statsCountError) {
+    markFailure('Failed counting customer_category_stats records.', statsCountError)
+  } else {
+    console.log(`\n✅ Customer category stats: ${statsCount || 0} record(s)`)
+  }
+
+  if (eventsWithCategories.length > 0) {
+    const testCategoryId = eventsWithCategories[0]?.category_id
+    if (testCategoryId) {
+      const { data: categoryStatsRows, error: statsError } = await supabase
         .from('customer_category_stats')
-        .select(`
+        .select(
+          `
           customer_id,
           times_attended,
           last_attended_date,
@@ -57,25 +70,39 @@ async function checkEventCategoriesData() {
             last_name,
             sms_opt_in
           )
-        `)
+        `
+        )
         .eq('category_id', testCategoryId)
         .eq('customers.sms_opt_in', true)
         .limit(5)
-      
-      if (statsError) {
-        console.error('\nError fetching category stats:', statsError)
-      } else {
-        console.log(`\nSample stats for category "${eventsWithCategories[0].event_categories?.name}":`)
-        categoryStats?.forEach((stat: any) => {
-          console.log(`  - ${stat.customers.first_name} ${stat.customers.last_name}: ${stat.times_attended} times`)
-        })
-      }
+
+      const categoryStats = (assertScriptQuerySucceeded({
+        operation: 'Load sample category stats',
+        error: statsError,
+        data: categoryStatsRows ?? [],
+        allowMissing: true
+      }) ?? []) as Array<{
+        times_attended: number | null
+        customers: { first_name: string | null; last_name: string | null } | null
+      }>
+
+      const categoryName = eventsWithCategories[0]?.event_categories?.name || 'unknown category'
+      console.log(`\nSample stats for category "${categoryName}":`)
+      categoryStats.forEach((stat) => {
+        const customerName = stat.customers
+          ? `${stat.customers.first_name || ''} ${stat.customers.last_name || ''}`.trim() || 'unknown'
+          : 'unknown'
+        console.log(`  - ${customerName}: ${stat.times_attended ?? 0} time(s)`)
+      })
+    } else {
+      markFailure('Sample events returned category_id=null; unable to query category stats.')
     }
-    
-    // 4. Check recent bookings to see if they should be creating stats
-    const { data: recentBookings, error: bookingsError } = await supabase
-      .from('bookings')
-      .select(`
+  }
+
+  const { data: recentBookingsRows, error: bookingsError } = await supabase
+    .from('bookings')
+    .select(
+      `
         id,
         customer_id,
         event_id,
@@ -84,24 +111,35 @@ async function checkEventCategoriesData() {
           name,
           category_id
         )
-      `)
-      .eq('status', 'confirmed')
-      .not('events.category_id', 'is', null)
-      .order('created_at', { ascending: false })
-      .limit(5)
-    
-    if (bookingsError) {
-      console.error('\nError checking bookings:', bookingsError)
-    } else {
-      console.log(`\n✅ Recent bookings with categories:`)
-      recentBookings?.forEach((booking: any) => {
-        console.log(`  - Customer ${booking.customer_id} → ${booking.events.name}`)
-      })
-    }
-    
-  } catch (error) {
-    console.error('Error:', error)
+      `
+    )
+    .eq('status', 'confirmed')
+    .not('events.category_id', 'is', null)
+    .order('created_at', { ascending: false })
+    .limit(5)
+
+  const recentBookings = (assertScriptQuerySucceeded({
+    operation: 'Load recent bookings with categorized events',
+    error: bookingsError,
+    data: recentBookingsRows ?? [],
+    allowMissing: true
+  }) ?? []) as Array<{
+    customer_id: string | null
+    events: { name: string | null } | null
+  }>
+
+  console.log(`\n✅ Recent confirmed bookings with categories: ${recentBookings.length}`)
+  recentBookings.forEach((booking) => {
+    console.log(`  - Customer ${booking.customer_id || 'unknown'} → ${booking.events?.name || 'unknown event'}`)
+  })
+
+  if (process.exitCode === 1) {
+    console.log('\n❌ Event categories data check completed with failures.')
+  } else {
+    console.log('\n✅ Event categories data check complete!')
   }
 }
 
-checkEventCategoriesData().catch(console.error)
+void checkEventCategoriesData().catch((error) => {
+  markFailure('check-event-categories-data failed.', error)
+})

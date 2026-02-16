@@ -44,9 +44,9 @@ export async function POST(
   if (error) {
     return NextResponse.json({ error: 'Failed to mark booking as left' }, { status: 500 })
   }
+  if (!data) {
+    return NextResponse.json({ error: 'Booking not found' }, { status: 404 })
+  }
 
-  return NextResponse.json({
-    success: true,
-    data: data || { id, status: booking.status, left_at: nowIso, end_datetime: nowIso }
-  })
+  return NextResponse.json({ success: true, data })
 }

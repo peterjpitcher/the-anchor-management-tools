@@ -40,10 +40,9 @@ export async function POST(
   if (error) {
     return NextResponse.json({ error: 'Failed to cancel booking' }, { status: 500 })
   }
+  if (!data) {
+    return NextResponse.json({ error: 'Booking not found' }, { status: 404 })
+  }
 
-  return NextResponse.json({
-    success: true,
-    data: data || { id, status: 'cancelled', cancelled_at: nowIso, cancelled_by: 'staff' }
-  })
+  return NextResponse.json({ success: true, data })
 }
-

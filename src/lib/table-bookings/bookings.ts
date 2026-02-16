@@ -5,6 +5,7 @@ import { sendSMS } from '@/lib/twilio'
 import { ensureReplyInstruction } from '@/lib/sms/support'
 import { createTableManageToken } from '@/lib/table-bookings/manage-booking'
 import { createSundayPreorderToken } from '@/lib/table-bookings/sunday-preorder'
+import { logger } from '@/lib/logger'
 
 export type TableBookingState = 'confirmed' | 'pending_card_capture' | 'blocked'
 
@@ -47,6 +48,14 @@ export type TableCardCapturePreview = {
   end_datetime?: string
 }
 
+type SmsSafetyMeta =
+  | {
+      success: boolean
+      code: string | null
+      logFailure: boolean
+    }
+  | null
+
 type TableBookingNotificationRow = {
   id: string
   customer_id: string | null
@@ -72,6 +81,30 @@ type CustomerNotificationRow = {
 }
 
 export const MANAGER_TABLE_BOOKING_EMAIL = 'manager@the-anchor.pub'
+
+function normalizeThrownSmsSafety(error: unknown): { code: string; logFailure: boolean } {
+  const thrownCode = typeof (error as any)?.code === 'string' ? (error as any).code : null
+  const thrownLogFailure = (error as any)?.logFailure === true || thrownCode === 'logging_failed'
+
+  if (thrownLogFailure) {
+    return {
+      code: 'logging_failed',
+      logFailure: true
+    }
+  }
+
+  if (thrownCode) {
+    return {
+      code: thrownCode,
+      logFailure: false
+    }
+  }
+
+  return {
+    code: 'safety_unavailable',
+    logFailure: false
+  }
+}
 
 export function mapTableBookingBlockedReason(reason?: string | null):
   | 'outside_hours'
@@ -348,7 +381,7 @@ export async function sendTableBookingCreatedSmsIfAllowed(
     bookingResult: TableBookingRpcResult
     nextStepUrl?: string | null
   }
-): Promise<{ scheduledFor?: string }> {
+): Promise<{ scheduledFor?: string; sms: SmsSafetyMeta }> {
   const { data: customer, error } = await supabase
     .from('customers')
     .select('id, first_name, mobile_number, sms_status')
@@ -356,7 +389,7 @@ export async function sendTableBookingCreatedSmsIfAllowed(
     .maybeSingle()
 
   if (error || !customer || customer.sms_status !== 'active') {
-    return {}
+    return { sms: null }
   }
 
   const firstName = customer.first_name || 'there'
@@ -389,48 +422,109 @@ export async function sendTableBookingCreatedSmsIfAllowed(
     smsBody = `The Anchor: Hi ${firstName}, your table booking for ${partySize} ${seatWord} on ${bookingMoment} is confirmed.${manageLink ? ` Manage booking: ${manageLink}` : ''}`
   }
 
-  const result = await sendSMS(
-    customer.mobile_number || input.normalizedPhone,
-    ensureReplyInstruction(smsBody, supportPhone),
-    {
-      customerId: input.customerId,
-      metadata: {
-        table_booking_id: input.bookingResult.table_booking_id,
-        template_key:
-          input.bookingResult.state === 'pending_card_capture'
-            ? 'table_booking_pending_card_capture'
-            : 'table_booking_confirmed'
+  let result: Awaited<ReturnType<typeof sendSMS>>
+  try {
+    result = await sendSMS(
+      customer.mobile_number || input.normalizedPhone,
+      ensureReplyInstruction(smsBody, supportPhone),
+      {
+        customerId: input.customerId,
+        metadata: {
+          table_booking_id: input.bookingResult.table_booking_id,
+          template_key:
+            input.bookingResult.state === 'pending_card_capture'
+              ? 'table_booking_pending_card_capture'
+              : 'table_booking_confirmed'
+        }
       }
+    )
+  } catch (smsError) {
+    const thrownSafety = normalizeThrownSmsSafety(smsError)
+    logger.warn('Table booking created SMS threw unexpectedly', {
+      metadata: {
+        tableBookingId: input.bookingResult.table_booking_id,
+        customerId: input.customerId,
+        error: smsError instanceof Error ? smsError.message : String(smsError),
+        code: thrownSafety.code,
+        logFailure: thrownSafety.logFailure,
+      }
+    })
+    return {
+      sms: {
+        success: false,
+        code: thrownSafety.code,
+        logFailure: thrownSafety.logFailure,
+      },
     }
-  )
+  }
+
+  const smsCode = typeof result.code === 'string' ? result.code : null
+  const smsLogFailure = result.logFailure === true || smsCode === 'logging_failed'
+  const smsDeliveredOrUnknown = result.success === true || smsLogFailure
+
+  if (smsLogFailure) {
+    logger.error('Table booking created SMS sent but outbound message logging failed', {
+      metadata: {
+        tableBookingId: input.bookingResult.table_booking_id,
+        customerId: input.customerId,
+        code: smsCode,
+        logFailure: smsLogFailure,
+      },
+    })
+  }
+
+  if (!result.success) {
+    logger.warn('Table booking created SMS send returned non-success', {
+      metadata: {
+        tableBookingId: input.bookingResult.table_booking_id,
+        customerId: input.customerId,
+        state: input.bookingResult.state,
+        error: result.error,
+        code: smsCode,
+      }
+    })
+  }
 
   return {
-    scheduledFor: result.success ? result.scheduledFor : undefined
+    scheduledFor: smsDeliveredOrUnknown ? result.scheduledFor : undefined,
+    sms: {
+      success: smsDeliveredOrUnknown,
+      code: smsCode,
+      logFailure: smsLogFailure,
+    },
   }
 }
 
 export async function sendTableBookingConfirmedAfterCardCaptureSmsIfAllowed(
   supabase: SupabaseClient<any, 'public', any>,
   tableBookingId: string
-): Promise<void> {
-  const { data: booking, error } = await supabase
+): Promise<SmsSafetyMeta> {
+  const { data: booking, error: bookingError } = await supabase
     .from('table_bookings')
     .select('id, customer_id, party_size, booking_date, booking_time, start_datetime, status, booking_type')
     .eq('id', tableBookingId)
     .maybeSingle()
 
-  if (error || !booking || booking.status !== 'confirmed' || !booking.customer_id) {
-    return
+  if (bookingError) {
+    throw new Error(`Failed to load table booking for post-card-capture SMS: ${bookingError.message}`)
   }
 
-  const { data: customer } = await supabase
+  if (!booking || booking.status !== 'confirmed' || !booking.customer_id) {
+    return null
+  }
+
+  const { data: customer, error: customerError } = await supabase
     .from('customers')
     .select('id, first_name, mobile_number, sms_status')
     .eq('id', booking.customer_id)
     .maybeSingle()
 
+  if (customerError) {
+    throw new Error(`Failed to load customer for post-card-capture SMS: ${customerError.message}`)
+  }
+
   if (!customer || customer.sms_status !== 'active' || !customer.mobile_number) {
-    return
+    return null
   }
 
   const firstName = customer.first_name || 'there'
@@ -486,13 +580,64 @@ export async function sendTableBookingConfirmedAfterCardCaptureSmsIfAllowed(
     supportPhone
   )
 
-  await sendSMS(customer.mobile_number, body, {
-    customerId: customer.id,
-    metadata: {
-      table_booking_id: tableBookingId,
-      template_key: sundayPreorderTemplateKey
+  try {
+    const smsResult = await sendSMS(customer.mobile_number, body, {
+      customerId: customer.id,
+      metadata: {
+        table_booking_id: tableBookingId,
+        template_key: sundayPreorderTemplateKey
+      }
+    })
+
+    const smsCode = typeof smsResult.code === 'string' ? smsResult.code : null
+    const smsLogFailure = smsResult.logFailure === true || smsCode === 'logging_failed'
+    const smsDeliveredOrUnknown = smsResult.success === true || smsLogFailure
+
+    if (smsLogFailure) {
+      logger.error('Table booking post-card-capture SMS sent but outbound message logging failed', {
+        metadata: {
+          tableBookingId,
+          customerId: customer.id,
+          code: smsCode,
+          logFailure: smsLogFailure,
+        },
+      })
     }
-  })
+
+    if (!smsResult.success) {
+      logger.warn('Table booking post-card-capture SMS send returned non-success', {
+        metadata: {
+          tableBookingId,
+          customerId: customer.id,
+          error: smsResult.error,
+          code: smsCode,
+        }
+      })
+    }
+
+    return {
+      success: smsDeliveredOrUnknown,
+      code: smsCode,
+      logFailure: smsLogFailure,
+    }
+  } catch (smsError) {
+    const thrownSafety = normalizeThrownSmsSafety(smsError)
+    logger.warn('Table booking post-card-capture SMS threw unexpectedly', {
+      metadata: {
+        tableBookingId,
+        customerId: customer.id,
+        error: smsError instanceof Error ? smsError.message : String(smsError),
+        code: thrownSafety.code,
+        logFailure: thrownSafety.logFailure,
+      }
+    })
+
+    return {
+      success: false,
+      code: thrownSafety.code,
+      logFailure: thrownSafety.logFailure,
+    }
+  }
 }
 
 export async function sendSundayPreorderLinkSmsIfAllowed(
@@ -504,7 +649,7 @@ export async function sendSundayPreorderLinkSmsIfAllowed(
     bookingReference?: string | null
     appBaseUrl?: string | null
   }
-): Promise<{ sent: boolean; scheduledFor?: string; url?: string }> {
+): Promise<{ sent: boolean; scheduledFor?: string; url?: string; sms: SmsSafetyMeta }> {
   const { data: customer } = await supabase
     .from('customers')
     .select('id, first_name, mobile_number, sms_status')
@@ -512,7 +657,7 @@ export async function sendSundayPreorderLinkSmsIfAllowed(
     .maybeSingle()
 
   if (!customer || customer.sms_status !== 'active' || !customer.mobile_number) {
-    return { sent: false }
+    return { sent: false, sms: null }
   }
 
   let tokenUrl: string
@@ -525,7 +670,7 @@ export async function sendSundayPreorderLinkSmsIfAllowed(
     })
     tokenUrl = token.url
   } catch {
-    return { sent: false }
+    return { sent: false, sms: null }
   }
 
   const supportPhone = process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || process.env.TWILIO_PHONE_NUMBER || undefined
@@ -536,18 +681,72 @@ export async function sendSundayPreorderLinkSmsIfAllowed(
     supportPhone
   )
 
-  const result = await sendSMS(customer.mobile_number, message, {
-    customerId: customer.id,
-    metadata: {
-      table_booking_id: input.tableBookingId,
-      template_key: 'sunday_preorder_request'
+  let result: Awaited<ReturnType<typeof sendSMS>>
+  try {
+    result = await sendSMS(customer.mobile_number, message, {
+      customerId: customer.id,
+      metadata: {
+        table_booking_id: input.tableBookingId,
+        template_key: 'sunday_preorder_request'
+      }
+    })
+  } catch (smsError) {
+    const thrownSafety = normalizeThrownSmsSafety(smsError)
+    logger.warn('Sunday pre-order link SMS threw unexpectedly', {
+      metadata: {
+        tableBookingId: input.tableBookingId,
+        customerId: customer.id,
+        error: smsError instanceof Error ? smsError.message : String(smsError),
+        code: thrownSafety.code,
+        logFailure: thrownSafety.logFailure,
+      }
+    })
+    return {
+      sent: false,
+      url: tokenUrl,
+      sms: {
+        success: false,
+        code: thrownSafety.code,
+        logFailure: thrownSafety.logFailure,
+      },
     }
-  })
+  }
+
+  const smsCode = typeof result.code === 'string' ? result.code : null
+  const smsLogFailure = result.logFailure === true || smsCode === 'logging_failed'
+  const smsDeliveredOrUnknown = result.success === true || smsLogFailure
+
+  if (smsLogFailure) {
+    logger.error('Sunday pre-order link SMS sent but outbound message logging failed', {
+      metadata: {
+        tableBookingId: input.tableBookingId,
+        customerId: customer.id,
+        code: smsCode,
+        logFailure: smsLogFailure,
+      },
+    })
+  }
+
+  if (!result.success) {
+    logger.warn('Sunday pre-order link SMS send returned non-success', {
+      metadata: {
+        tableBookingId: input.tableBookingId,
+        customerId: customer.id,
+        error: result.error,
+        code: smsCode,
+      }
+    })
+  }
 
   return {
-    sent: result.success,
-    scheduledFor: result.success ? result.scheduledFor : undefined,
-    url: tokenUrl
+    sent: smsDeliveredOrUnknown,
+    scheduledFor: smsDeliveredOrUnknown ? result.scheduledFor : undefined,
+    url: tokenUrl,
+    sms: {
+      success: smsDeliveredOrUnknown,
+      code: smsCode,
+      logFailure: smsLogFailure,
+    },
   }
 }
 
@@ -576,28 +775,145 @@ export async function alignTableCardCaptureHoldToScheduledSend(
 
   const expiresAt = new Date(nextExpiryMs).toISOString()
 
-  await Promise.allSettled([
-    supabase
-      .from('table_bookings')
-      .update({ hold_expires_at: expiresAt, updated_at: new Date().toISOString() })
-      .eq('id', input.tableBookingId)
-      .eq('status', 'pending_card_capture'),
-    supabase
-      .from('booking_holds')
-      .update({
-        scheduled_sms_send_time: input.scheduledSendIso,
-        expires_at: expiresAt,
-        updated_at: new Date().toISOString()
-      })
-      .eq('table_booking_id', input.tableBookingId)
-      .eq('hold_type', 'card_capture_hold')
-      .eq('status', 'active'),
-    supabase
-      .from('card_captures')
-      .update({ expires_at: expiresAt, updated_at: new Date().toISOString() })
-      .eq('table_booking_id', input.tableBookingId)
-      .eq('status', 'pending')
+  const [bookingSyncResult, holdSyncResult, captureSyncResult] = await Promise.allSettled([
+    (async () => {
+      const { data, error } = await supabase
+        .from('table_bookings')
+        .update({ hold_expires_at: expiresAt, updated_at: new Date().toISOString() })
+        .eq('id', input.tableBookingId)
+        .eq('status', 'pending_card_capture')
+        .select('id')
+        .maybeSingle()
+
+      if (error) {
+        throw error
+      }
+
+      return Boolean(data)
+    })(),
+    (async () => {
+      const { data, error } = await supabase
+        .from('booking_holds')
+        .update({
+          scheduled_sms_send_time: input.scheduledSendIso,
+          expires_at: expiresAt,
+          updated_at: new Date().toISOString()
+        })
+        .eq('table_booking_id', input.tableBookingId)
+        .eq('hold_type', 'card_capture_hold')
+        .eq('status', 'active')
+        .select('id')
+
+      if (error) {
+        throw error
+      }
+
+      return (data || []).length
+    })(),
+    (async () => {
+      const { data, error } = await supabase
+        .from('card_captures')
+        .update({ expires_at: expiresAt, updated_at: new Date().toISOString() })
+        .eq('table_booking_id', input.tableBookingId)
+        .eq('status', 'pending')
+        .select('id')
+
+      if (error) {
+        throw error
+      }
+
+      return (data || []).length
+    })()
   ])
+
+  if (bookingSyncResult.status === 'rejected') {
+    logger.warn('Failed to align table booking hold expiry to deferred card-capture SMS send time', {
+      metadata: {
+        tableBookingId: input.tableBookingId,
+        error: bookingSyncResult.reason instanceof Error
+          ? bookingSyncResult.reason.message
+          : String(bookingSyncResult.reason)
+      }
+    })
+  } else if (!bookingSyncResult.value) {
+    logger.warn('Table booking hold-expiry alignment affected no rows', {
+      metadata: {
+        tableBookingId: input.tableBookingId
+      }
+    })
+  }
+
+  if (holdSyncResult.status === 'rejected') {
+    logger.warn('Failed to align booking-hold expiry to deferred card-capture SMS send time', {
+      metadata: {
+        tableBookingId: input.tableBookingId,
+        error: holdSyncResult.reason instanceof Error
+          ? holdSyncResult.reason.message
+          : String(holdSyncResult.reason)
+      }
+    })
+  } else if (holdSyncResult.value === 0) {
+    logger.warn('Booking-hold expiry alignment affected no rows', {
+      metadata: {
+        tableBookingId: input.tableBookingId
+      }
+    })
+  }
+
+  if (captureSyncResult.status === 'rejected') {
+    logger.warn('Failed to align card-capture expiry to deferred card-capture SMS send time', {
+      metadata: {
+        tableBookingId: input.tableBookingId,
+        error: captureSyncResult.reason instanceof Error
+          ? captureSyncResult.reason.message
+          : String(captureSyncResult.reason)
+      }
+    })
+  } else if (captureSyncResult.value === 0) {
+    logger.warn('Card-capture expiry alignment affected no rows', {
+      metadata: {
+        tableBookingId: input.tableBookingId
+      }
+    })
+  }
+
+  const alignmentFailures: string[] = []
+
+  if (bookingSyncResult.status === 'rejected') {
+    alignmentFailures.push(
+      `table_bookings_update_failed:${bookingSyncResult.reason instanceof Error
+        ? bookingSyncResult.reason.message
+        : String(bookingSyncResult.reason)}`
+    )
+  } else if (!bookingSyncResult.value) {
+    alignmentFailures.push('table_bookings_update_no_rows')
+  }
+
+  if (holdSyncResult.status === 'rejected') {
+    alignmentFailures.push(
+      `booking_holds_update_failed:${holdSyncResult.reason instanceof Error
+        ? holdSyncResult.reason.message
+        : String(holdSyncResult.reason)}`
+    )
+  } else if (holdSyncResult.value === 0) {
+    alignmentFailures.push('booking_holds_update_no_rows')
+  }
+
+  if (captureSyncResult.status === 'rejected') {
+    alignmentFailures.push(
+      `card_captures_update_failed:${captureSyncResult.reason instanceof Error
+        ? captureSyncResult.reason.message
+        : String(captureSyncResult.reason)}`
+    )
+  } else if (captureSyncResult.value === 0) {
+    alignmentFailures.push('card_captures_update_no_rows')
+  }
+
+  if (alignmentFailures.length > 0) {
+    throw new Error(
+      `Failed to align table card-capture hold state to scheduled SMS send time: ${alignmentFailures.join('; ')}`
+    )
+  }
 
   return expiresAt
 }

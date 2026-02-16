@@ -103,9 +103,13 @@ export async function updateAttachmentCategory(input: { id: string; name?: strin
       .from('attachment_categories')
       .select('*')
       .eq('category_id', input.id)
-      .single()
+      .maybeSingle()
 
-    if (fetchError || !existing) {
+    if (fetchError) {
+      console.error('Error loading attachment category before update:', fetchError)
+      return { error: 'Failed to load attachment category' }
+    }
+    if (!existing) {
       return { error: 'Category not found' }
     }
 
@@ -121,11 +125,14 @@ export async function updateAttachmentCategory(input: { id: string; name?: strin
       .update({ category_name: normalizedName, email_on_upload: nextEmailOnUpload })
       .eq('category_id', input.id)
       .select()
-      .single()
+      .maybeSingle()
 
     if (error) {
       console.error('Error updating attachment category:', error)
       return { error: 'Failed to update attachment category' }
+    }
+    if (!data) {
+      return { error: 'Category not found' }
     }
 
     await logAuditEvent({
@@ -159,20 +166,31 @@ export async function deleteAttachmentCategory(categoryId: string) {
       .from('attachment_categories')
       .select('*')
       .eq('category_id', categoryId)
-      .single()
+      .maybeSingle()
 
-    if (fetchError || !existing) {
+    if (fetchError) {
+      console.error('Error loading attachment category before delete:', fetchError)
+      return { error: 'Failed to load attachment category' }
+    }
+
+    if (!existing) {
       return { error: 'Category not found' }
     }
 
-    const { error } = await supabase
+    const { data: deletedCategory, error } = await supabase
       .from('attachment_categories')
       .delete()
       .eq('category_id', categoryId)
+      .select('category_id')
+      .maybeSingle()
 
     if (error) {
       console.error('Error deleting attachment category:', error)
       return { error: 'Failed to delete attachment category' }
+    }
+
+    if (!deletedCategory) {
+      return { error: 'Category not found' }
     }
 
     await logAuditEvent({

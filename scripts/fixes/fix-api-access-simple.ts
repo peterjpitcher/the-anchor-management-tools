@@ -1,70 +1,156 @@
-import { createClient } from '@supabase/supabase-js';
-import dotenv from 'dotenv';
+#!/usr/bin/env tsx
+/**
+ * API key access diagnostics (read-only).
+ *
+ * Safety:
+ * - Blocks --confirm (no mutations).
+ * - Requires explicit --key-hash (or API_KEY_HASH) target.
+ * - Fails closed via process.exitCode on env/query validation failures.
+ */
 
-// Load environment variables
-dotenv.config({ path: '.env.local' });
+import dotenv from 'dotenv'
+import path from 'path'
+import { assertScriptQuerySucceeded } from '../../src/lib/script-mutation-safety'
+import { createAdminClient } from '../../src/lib/supabase/admin'
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+dotenv.config({ path: path.resolve(process.cwd(), '.env.local') })
 
-if (!supabaseUrl || !supabaseServiceKey) {
-  console.error('Missing Supabase environment variables');
-  process.exit(1);
+function hasFlag(flag: string): boolean {
+  return process.argv.includes(flag)
 }
 
-const supabase = createClient(supabaseUrl, supabaseServiceKey);
-
-async function testAPIKeyAccess() {
-  console.log('Testing API key access with service role...\n');
-
-  // Test with service role (should always work)
-  const { data: serviceData, error: serviceError } = await supabase
-    .from('api_keys')
-    .select('*')
-    .eq('key_hash', '33d30abf849cac33c3537d83fae428d1a38b6c2fb41dea79fb8d4fc872ff64a5');
-
-  if (serviceError) {
-    console.error('❌ Service role query failed:', serviceError);
-    return;
-  }
-
-  console.log('✅ Service role can access API keys');
-  console.log('Found', serviceData?.length || 0, 'matching keys');
-  
-  if (serviceData && serviceData.length > 0) {
-    console.log('\nAPI Key Details:');
-    console.log('- Name:', serviceData[0].name);
-    console.log('- Active:', serviceData[0].is_active);
-    console.log('- Permissions:', serviceData[0].permissions);
-    console.log('- Rate Limit:', serviceData[0].rate_limit);
-  }
-
-  // Now test with anon key to see if that's the issue
-  console.log('\nTesting with anon key...');
-  const anonClient = createClient(
-    supabaseUrl,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  );
-
-  const { data: anonData, error: anonError } = await anonClient
-    .from('api_keys')
-    .select('*')
-    .eq('key_hash', '33d30abf849cac33c3537d83fae428d1a38b6c2fb41dea79fb8d4fc872ff64a5');
-
-  if (anonError) {
-    console.error('❌ Anon role query failed:', anonError.message);
-    console.log('\nThis confirms RLS is blocking access. Please run this SQL in Supabase:');
-    console.log(`
--- Option 1: Create a policy to allow reading active API keys
-CREATE POLICY "Allow reading active API keys" ON api_keys
-FOR SELECT USING (is_active = true);
-
--- Option 2: Or temporarily disable RLS (less secure)
--- ALTER TABLE api_keys DISABLE ROW LEVEL SECURITY;
-    `);
-  } else {
-    console.log('✅ Anon role can access API keys - no RLS issue');
-  }
+function getArgValue(flag: string): string | null {
+  const index = process.argv.indexOf(flag)
+  if (index === -1) return null
+  const value = process.argv[index + 1]
+  return typeof value === 'string' && value.trim().length > 0 ? value.trim() : null
 }
 
-testAPIKeyAccess().catch(console.error);
+function requireEnv(name: string, value: string | undefined): string {
+  if (!value || value.trim().length === 0) {
+    throw new Error(`Missing required environment variable: ${name}`)
+  }
+  return value.trim()
+}
+
+function requireKeyHash(rawValue: string | null): string {
+  if (!rawValue) {
+    throw new Error('Missing required --key-hash (or API_KEY_HASH).')
+  }
+
+  const normalized = rawValue.trim().toLowerCase()
+  if (!/^[a-f0-9]{64}$/.test(normalized)) {
+    throw new Error('Invalid --key-hash value. Expected a 64-character sha256 hex string.')
+  }
+
+  return normalized
+}
+
+async function queryAnonVisibleRows(
+  supabaseUrl: string,
+  anonKey: string,
+  keyHash: string
+): Promise<{ visibleCount: number | null; errorMessage: string | null }> {
+  const requestUrl = new URL('/rest/v1/api_keys', supabaseUrl)
+  requestUrl.searchParams.set('select', 'id')
+  requestUrl.searchParams.set('key_hash', `eq.${keyHash}`)
+  requestUrl.searchParams.set('limit', '1')
+
+  const response = await fetch(requestUrl.toString(), {
+    headers: {
+      apikey: anonKey,
+      authorization: `Bearer ${anonKey}`,
+      prefer: 'count=exact'
+    }
+  })
+
+  if (!response.ok) {
+    let message = `${response.status} ${response.statusText}`
+    try {
+      const payload = await response.json() as { message?: string }
+      if (typeof payload.message === 'string' && payload.message.trim().length > 0) {
+        message = payload.message.trim()
+      }
+    } catch {
+      // Keep fallback status text when no JSON error payload is returned.
+    }
+    return { visibleCount: null, errorMessage: message }
+  }
+
+  const contentRange = response.headers.get('content-range')
+  if (contentRange) {
+    const [, total] = contentRange.split('/')
+    const parsedTotal = Number.parseInt(total ?? '', 10)
+    if (Number.isFinite(parsedTotal) && parsedTotal >= 0) {
+      return { visibleCount: parsedTotal, errorMessage: null }
+    }
+  }
+
+  const rows = await response.json() as unknown[]
+  return { visibleCount: rows.length, errorMessage: null }
+}
+
+async function run() {
+  if (hasFlag('--confirm')) {
+    throw new Error('This script is read-only and does not support --confirm.')
+  }
+
+  const supabaseUrl = requireEnv('NEXT_PUBLIC_SUPABASE_URL', process.env.NEXT_PUBLIC_SUPABASE_URL)
+  const keyHash = requireKeyHash(getArgValue('--key-hash') ?? process.env.API_KEY_HASH ?? null)
+
+  console.log('API key access diagnostics (read-only)')
+  console.log(`Target key hash: ${keyHash}`)
+  console.log('')
+
+  const serviceClient = createAdminClient()
+  const { data: serviceRowsResult, error: serviceError } = await serviceClient
+    .from('api_keys')
+    .select('id, name, is_active, permissions, rate_limit')
+    .eq('key_hash', keyHash)
+    .limit(5)
+
+  const serviceRows = (assertScriptQuerySucceeded({
+    operation: 'Load api_keys rows for target hash',
+    error: serviceError,
+    data: serviceRowsResult ?? [],
+    allowMissing: true
+  }) ?? []) as Array<{
+    id: string
+    name: string | null
+    is_active: boolean | null
+    permissions: unknown
+    rate_limit: number | null
+  }>
+
+  if (!serviceRows || serviceRows.length === 0) {
+    throw new Error('No api_keys rows matched the provided --key-hash.')
+  }
+
+  console.log(`Service role access verified. Matching rows: ${serviceRows.length}`)
+  const first = serviceRows[0]
+  console.log(`- Name: ${first.name}`)
+  console.log(`- Active: ${first.is_active ? 'yes' : 'no'}`)
+  console.log(`- Permissions: ${JSON.stringify(first.permissions)}`)
+  console.log(`- Rate limit: ${first.rate_limit}`)
+
+  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim() ?? ''
+  if (!anonKey) {
+    console.log('\nAnon key is not configured; skipping anon role visibility check.')
+    return
+  }
+
+  console.log('\nRunning anon role visibility check...')
+  const anonResult = await queryAnonVisibleRows(supabaseUrl, anonKey, keyHash)
+
+  if (anonResult.errorMessage) {
+    console.log(`Anon role query failed (likely expected with RLS): ${anonResult.errorMessage}`)
+    return
+  }
+
+  console.log(`Anon role query succeeded. Visible rows: ${anonResult.visibleCount ?? 0}`)
+}
+
+run().catch((error) => {
+  console.error('Fatal error:', error)
+  process.exitCode = 1
+})

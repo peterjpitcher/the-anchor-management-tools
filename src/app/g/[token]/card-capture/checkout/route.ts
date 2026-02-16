@@ -8,6 +8,7 @@ import {
   isStripeConfigured
 } from '@/lib/payments/stripe'
 import { getTableCardCapturePreviewByRawToken } from '@/lib/table-bookings/bookings'
+import { logger } from '@/lib/logger'
 
 export async function POST(
   request: NextRequest,
@@ -52,10 +53,21 @@ export async function POST(
     : undefined
 
   try {
-    const { data: customerRecord } = await (supabase.from('customers') as any)
+    const { data: customerRecord, error: customerLookupError } = await (supabase.from('customers') as any)
       .select('id, first_name, last_name, mobile_number, mobile_e164, stripe_customer_id')
       .eq('id', preview.customer_id)
       .maybeSingle()
+
+    if (customerLookupError) {
+      logger.warn('Failed to load customer for card-capture checkout', {
+        metadata: {
+          customerId: preview.customer_id,
+          tableBookingId: preview.table_booking_id,
+          error: customerLookupError.message
+        }
+      })
+      return NextResponse.redirect(new URL(`/g/${token}/card-capture?status=error`, request.url), 303)
+    }
 
     let stripeCustomerId: string | undefined =
       typeof customerRecord?.stripe_customer_id === 'string'
@@ -75,7 +87,7 @@ export async function POST(
 
       stripeCustomerId = createdCustomer.id
 
-      await supabase
+      const { error: customerUpdateError } = await supabase
         .from('customers')
         .update({
           stripe_customer_id: stripeCustomerId,
@@ -83,6 +95,17 @@ export async function POST(
         })
         .eq('id', preview.customer_id)
         .is('stripe_customer_id', null)
+
+      if (customerUpdateError) {
+        logger.warn('Failed to persist stripe_customer_id after card-capture checkout customer create', {
+          metadata: {
+            customerId: preview.customer_id,
+            tableBookingId: preview.table_booking_id,
+            stripeCustomerId,
+            error: customerUpdateError.message
+          }
+        })
+      }
     }
 
     const session = await createStripeSetupCheckoutSession({
@@ -104,7 +127,14 @@ export async function POST(
     }
 
     return NextResponse.redirect(session.url, 303)
-  } catch {
+  } catch (error) {
+    logger.error('Failed to create card-capture checkout session', {
+      error: error instanceof Error ? error : new Error(String(error)),
+      metadata: {
+        customerId: preview.customer_id,
+        tableBookingId: preview.table_booking_id
+      }
+    })
     return NextResponse.redirect(new URL(`/g/${token}/card-capture?status=error`, request.url), 303)
   }
 }

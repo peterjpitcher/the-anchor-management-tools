@@ -13,7 +13,12 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const payload = await request.json();
+  let payload: any;
+  try {
+    payload = await request.json();
+  } catch {
+    return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
+  }
   const result = await createMenuRecipe(payload);
   const status = result.error ? 400 : 201;
   return NextResponse.json(result, { status });

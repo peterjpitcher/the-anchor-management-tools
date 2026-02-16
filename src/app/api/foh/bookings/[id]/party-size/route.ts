@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { requireFohPermission } from '@/lib/foh/api-auth'
+import { logger } from '@/lib/logger'
 import {
   mapSeatUpdateBlockedReason,
   updateTableBookingPartySizeWithLinkedEventSeats
@@ -67,9 +68,13 @@ export async function POST(
       data: result
     })
   } catch (error) {
+    logger.error('FOH table-booking party-size update failed', {
+      error: error instanceof Error ? error : new Error(String(error)),
+      metadata: { tableBookingId: id },
+    })
     return NextResponse.json(
       {
-        error: error instanceof Error ? error.message : 'Failed to update booking party size'
+        error: 'Failed to update booking party size'
       },
       { status: 500 }
     )

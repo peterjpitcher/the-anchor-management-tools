@@ -1,9 +1,24 @@
-import { createClient, SupabaseClient } from '@supabase/supabase-js'
 import * as fs from 'fs'
 import * as path from 'path'
 import Papa from 'papaparse'
 import * as dotenv from 'dotenv'
 import { formatPhoneForStorage, generatePhoneVariants } from '../../src/lib/utils'
+import {
+  assertTwilioLogBackfillBatchInsertComplete,
+  assertTwilioLogBackfillCompletedWithoutUnresolvedRows,
+  assertTwilioLogBackfillLookupSafe,
+  isTwilioLogBackfillDuplicateKeyError
+} from '../../src/lib/twilio-log-backfill-safety'
+import {
+  assertTwilioLogBackfillCustomerCreationAllowed,
+  assertTwilioLogBackfillMutationAllowed,
+  buildTwilioLogBackfillPlaceholderCustomerInsert,
+  isTwilioLogBackfillCustomerCreationEnabled,
+  isTwilioLogBackfillMutationEnabled,
+  parseTwilioLogBackfillArgs,
+  requireScriptLimit
+} from '../../src/lib/twilio-log-backfill-script-safety'
+import { createAdminClient } from '../../src/lib/supabase/admin'
 
 type CsvRow = {
   From: string
@@ -24,25 +39,9 @@ type CsvRow = {
 }
 
 type CustomerCache = Map<string, string | null>
+type ScriptSupabaseClient = ReturnType<typeof createAdminClient>
 
 dotenv.config({ path: path.resolve(process.cwd(), '.env.local') })
-
-interface Options {
-  dryRun?: boolean
-}
-
-function parseArgs(): { filePath: string; options: Options } {
-  const [, , filePath, ...rest] = process.argv
-  if (!filePath) {
-    throw new Error('Usage: tsx scripts/sms-tools/backfill-twilio-log.ts <path-to-csv> [--dry-run]')
-  }
-
-  const options: Options = {
-    dryRun: rest.includes('--dry-run')
-  }
-
-  return { filePath, options }
-}
 
 function loadCsv(filePath: string): CsvRow[] {
   if (!fs.existsSync(filePath)) {
@@ -71,7 +70,7 @@ function chunk<T>(values: T[], size: number): T[][] {
   return chunks
 }
 
-async function fetchExistingSids(supabase: SupabaseClient, sids: string[]): Promise<Set<string>> {
+async function fetchExistingSids(supabase: ScriptSupabaseClient, sids: string[]): Promise<Set<string>> {
   const existing = new Set<string>()
   const batches = chunk(Array.from(new Set(sids)), 250)
 
@@ -108,10 +107,17 @@ function deriveDirection(twilioDirection?: string): 'inbound' | 'outbound' {
 }
 
 async function resolveCustomerId(
-  supabase: SupabaseClient,
+  supabase: ScriptSupabaseClient,
   cache: CustomerCache,
   phone: string | undefined,
-  fallbackName?: string
+  options: {
+    fallbackName?: string
+    allowCreateIfMissing: boolean
+    createControls?: {
+      createdPhones: Set<string>
+      maxCreates: number
+    }
+  }
 ): Promise<string | null> {
   if (!phone) {
     return null
@@ -135,44 +141,73 @@ async function resolveCustomerId(
   }
 
   const variants = generatePhoneVariants(standardized)
-  let query = supabase.from('customers').select('id').limit(1)
-  if (variants.length === 1) {
-    query = query.eq('mobile_number', variants[0])
-  } else {
-    const filter = variants.map(value => `mobile_number.eq.${value}`).join(',')
-    query = query.or(filter)
+  const buildLookupQuery = () => {
+    let query = supabase.from('customers').select('id').limit(1)
+    if (variants.length === 1) {
+      query = query.eq('mobile_number', variants[0])
+    } else {
+      const filter = variants.map(value => `mobile_number.eq.${value}`).join(',')
+      query = query.or(filter)
+    }
+    return query
   }
 
-  const { data: existing, error: lookupError } = await query.maybeSingle()
+  const { data: existing, error: lookupError } = await buildLookupQuery().maybeSingle()
 
-  if (lookupError) {
-    console.error('Failed to lookup customer by phone:', lookupError)
-  }
+  assertTwilioLogBackfillLookupSafe({
+    phone: standardized,
+    error: lookupError as { message?: string; code?: string } | null
+  })
 
   if (existing?.id) {
     cache.set(standardized, existing.id)
     return existing.id
   }
 
-  const nameParts = (fallbackName ?? '').trim().split(' ').filter(Boolean)
-  const firstName = nameParts[0] || 'Guest'
-  const lastName = nameParts.slice(1).join(' ') || ''
+  if (!options.allowCreateIfMissing) {
+    cache.set(standardized, null)
+    return null
+  }
+
+  if (options.createControls) {
+    if (!options.createControls.createdPhones.has(standardized)) {
+      if (options.createControls.createdPhones.size >= options.createControls.maxCreates) {
+        throw new Error(
+          `Backfill customer creation exceeded limit (max ${options.createControls.maxCreates}). Rerun with a smaller import batch or increase --create-customers-limit.`
+        )
+      }
+      options.createControls.createdPhones.add(standardized)
+    }
+  }
 
   const { data: inserted, error: insertError } = await supabase
     .from('customers')
-    .insert({
-      first_name: firstName,
-      last_name: lastName,
-      mobile_number: standardized,
-      sms_opt_in: true
-    })
+    .insert(buildTwilioLogBackfillPlaceholderCustomerInsert({
+      phoneE164: standardized,
+      fallbackName: options.fallbackName
+    }))
     .select('id')
     .single()
 
   if (insertError) {
-    console.error('Failed to create customer for phone:', standardized, insertError)
-    cache.set(standardized, null)
-    return null
+    if (isTwilioLogBackfillDuplicateKeyError(insertError as { message?: string; code?: string } | null)) {
+      const { data: concurrentExisting, error: concurrentLookupError } = await buildLookupQuery().maybeSingle()
+      assertTwilioLogBackfillLookupSafe({
+        phone: standardized,
+        error: concurrentLookupError as { message?: string; code?: string } | null
+      })
+
+      if (concurrentExisting?.id) {
+        cache.set(standardized, concurrentExisting.id)
+        return concurrentExisting.id
+      }
+
+      throw new Error(`Failed to resolve concurrently-created customer for phone ${standardized}`)
+    }
+
+    throw new Error(
+      `Failed to create customer for phone ${standardized}: ${insertError.message || 'unknown database error'}`
+    )
   }
 
   cache.set(standardized, inserted?.id ?? null)
@@ -186,19 +221,41 @@ function toNumber(value?: string): number | null {
 }
 
 async function main() {
-  const { filePath, options } = parseArgs()
-  const csvRows = loadCsv(filePath)
+  const args = parseTwilioLogBackfillArgs()
+  const mutationEnabled = isTwilioLogBackfillMutationEnabled(process.argv)
+  const customerCreationEnabled = isTwilioLogBackfillCustomerCreationEnabled(process.argv)
 
-  console.log(`Loaded ${csvRows.length} rows from ${filePath}`)
-
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-  const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY
-
-  if (!supabaseUrl || !supabaseKey) {
-    throw new Error('Missing Supabase credentials in environment variables')
+  if (args.confirm && !args.dryRun && !mutationEnabled) {
+    throw new Error(
+      'backfill-twilio-log blocked by safety guard. To enable writes: pass --confirm and set RUN_TWILIO_LOG_BACKFILL_MUTATION=true and ALLOW_TWILIO_LOG_BACKFILL_MUTATION_SCRIPT=true.'
+    )
   }
 
-  const supabase = createClient(supabaseUrl, supabaseKey)
+  if (args.allowCreateCustomers && !args.dryRun && !customerCreationEnabled) {
+    throw new Error(
+      'backfill-twilio-log customer creation blocked by safety guard. To enable: pass --allow-create-customers and set RUN_TWILIO_LOG_BACKFILL_CREATE_CUSTOMERS=true and ALLOW_TWILIO_LOG_BACKFILL_CREATE_CUSTOMERS=true (plus mutation send gates).'
+    )
+  }
+
+  const insertLimit = mutationEnabled
+    ? requireScriptLimit({ label: '--limit', value: args.limit, hardCap: 1000 })
+    : null
+  const customerCreateLimit = customerCreationEnabled
+    ? requireScriptLimit({ label: '--create-customers-limit', value: args.createCustomersLimit, hardCap: 50 })
+    : null
+
+  if (mutationEnabled) {
+    assertTwilioLogBackfillMutationAllowed()
+  }
+  if (customerCreationEnabled) {
+    assertTwilioLogBackfillCustomerCreationAllowed()
+  }
+
+  const csvRows = loadCsv(args.filePath)
+
+  console.log(`Loaded ${csvRows.length} rows from ${args.filePath}`)
+
+  const supabase = createAdminClient()
 
   const sids = csvRows.map(row => row.Sid)
   const existingSidSet = await fetchExistingSids(supabase, sids)
@@ -211,14 +268,21 @@ async function main() {
     return
   }
 
-  console.log(`Preparing to import ${newRows.length} new message(s)${options.dryRun ? ' (dry run)' : ''}`)
+  const rowsToProcess = insertLimit ? newRows.slice(0, insertLimit) : newRows
+  if (insertLimit && rowsToProcess.length !== newRows.length) {
+    console.log(`Applying insert limit: processing ${rowsToProcess.length}/${newRows.length} new message(s).`)
+  }
+
+  console.log(`Preparing to import ${rowsToProcess.length} new message(s)${args.dryRun ? ' (dry run)' : ''}`)
 
   const customerCache: CustomerCache = new Map()
   const records = [] as any[]
-  let skippedWithoutCustomer = 0
-  const sourceFile = path.basename(filePath)
+  const unresolvedRows: Array<{ sid: string; reason: string }> = []
+  const createControls = customerCreationEnabled && customerCreateLimit
+    ? { createdPhones: new Set<string>(), maxCreates: customerCreateLimit }
+    : undefined
 
-  for (const row of newRows) {
+  for (const row of rowsToProcess) {
     const direction = deriveDirection(row.Direction)
     const customerPhone = direction === 'outbound' ? row.To : row.From
     const sentAtIso = parseDate(row.SentDate)
@@ -226,10 +290,16 @@ async function main() {
     const status = (row.Status || '').toLowerCase() || null
     const segments = toNumber(row.NumSegments) ?? 1
 
-    const customerId = await resolveCustomerId(supabase, customerCache, customerPhone)
+    const customerId = await resolveCustomerId(supabase, customerCache, customerPhone, {
+      allowCreateIfMissing: customerCreationEnabled,
+      createControls
+    })
 
     if (!customerId) {
-      skippedWithoutCustomer += 1
+      unresolvedRows.push({
+        sid: row.Sid,
+        reason: 'customer_unresolved'
+      })
       continue
     }
 
@@ -275,20 +345,19 @@ async function main() {
 
   if (records.length === 0) {
     console.log('After processing, no records remain to insert (possible parsing issues).')
-    if (skippedWithoutCustomer > 0) {
-      console.log(`Skipped ${skippedWithoutCustomer} message(s) with unresolvable customer IDs.`)
-    }
+    assertTwilioLogBackfillCompletedWithoutUnresolvedRows({ unresolvedRows })
     return
   }
 
-  if (options.dryRun) {
+  if (args.dryRun) {
     console.log('Dry run complete. Sample record:', records[0])
     console.log(`Would insert ${records.length} records.`)
-    if (skippedWithoutCustomer > 0) {
-      console.log(`Skipped ${skippedWithoutCustomer} message(s) with unresolvable customer IDs.`)
-    }
+    assertTwilioLogBackfillCompletedWithoutUnresolvedRows({ unresolvedRows })
     return
   }
+
+  // Fail closed before writing anything if any rows could not be resolved.
+  assertTwilioLogBackfillCompletedWithoutUnresolvedRows({ unresolvedRows })
 
   const batches = chunk(records, 100)
   let inserted = 0
@@ -304,17 +373,19 @@ async function main() {
       throw error
     }
 
-    inserted += data?.length ?? 0
-    console.log(`Inserted batch of ${data?.length ?? 0}; total inserted so far: ${inserted}`)
+    const { insertedCount } = assertTwilioLogBackfillBatchInsertComplete({
+      expectedRows: batch.length,
+      insertedRows: (data ?? null) as Array<{ id?: string }> | null
+    })
+    inserted += insertedCount
+    console.log(`Inserted batch of ${insertedCount}; total inserted so far: ${inserted}`)
   }
 
   console.log(`Backfill complete. Inserted ${inserted} new message(s).`)
-  if (skippedWithoutCustomer > 0) {
-    console.log(`Skipped ${skippedWithoutCustomer} message(s) with unresolvable customer IDs.`)
-  }
+  assertTwilioLogBackfillCompletedWithoutUnresolvedRows({ unresolvedRows })
 }
 
 main().catch(error => {
   console.error('Backfill failed:', error)
-  process.exit(1)
+  process.exitCode = 1
 })

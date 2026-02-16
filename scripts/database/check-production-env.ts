@@ -77,4 +77,4 @@ async function checkProductionEnv() {
   console.log('   tsx scripts/test-booking-api.ts');
 }
 
-checkProductionEnv().catch(console.error);
+checkProductionEnv().catch((error) => { console.error(error); process.exitCode = 1 });

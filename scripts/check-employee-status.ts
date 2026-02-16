@@ -1,39 +1,72 @@
+#!/usr/bin/env tsx
+/**
+ * Employee status diagnostics (read-only).
+ *
+ * Safety:
+ * - Strictly read-only; does not support `--confirm`.
+ * - Fails closed: any query error or prohibited status exits non-zero.
+ */
 
 import dotenv from 'dotenv'
-dotenv.config({ path: '.env.local' })
+import path from 'path'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { assertScriptQuerySucceeded } from '@/lib/script-mutation-safety'
 
-async function checkEmployeeStatuses() {
-    console.log('🔍 Checking Employee Statuses...')
-    const admin = createAdminClient()
+const SCRIPT_NAME = 'check-employee-status'
 
-    // We can't use .distinct() easily on all fields, but we can group by
-    // Or just fetch all unique statuses.
-    // Supabase JS SDK doesn't always have a distinct helper, but we can select status.
+const EXPECTED_STATUSES = new Set(['Active', 'Inactive', 'Suspended', 'Prospective'])
 
-    const { data, error } = await admin
-        .from('employees')
-        .select('status')
-
-    if (error) {
-        console.error('❌ Error fetching employees:', error)
-        return
-    }
-
-    const statuses = data.map(e => e.status)
-    const uniqueStatuses = [...new Set(statuses)]
-
-    console.log('✅ Unique Statuses found in DB:', uniqueStatuses)
-
-    // define expected
-    const expected = ['Active', 'Inactive', 'Suspended', 'Prospective']
-    const invalid = uniqueStatuses.filter(s => !expected.includes(s))
-
-    if (invalid.length > 0) {
-        console.error('❌ Prohibited Statuses found:', invalid)
-    } else {
-        console.log('✅ All statuses are valid.')
-    }
+type Args = {
+  confirm: boolean
 }
 
-checkEmployeeStatuses()
+function parseArgs(argv: string[] = process.argv): Args {
+  const rest = argv.slice(2)
+  return { confirm: rest.includes('--confirm') }
+}
+
+async function main() {
+  dotenv.config({ path: path.resolve(process.cwd(), '.env.local') })
+
+  const args = parseArgs(process.argv)
+  if (args.confirm) {
+    throw new Error(`[${SCRIPT_NAME}] This script is read-only and does not support --confirm.`)
+  }
+
+  const admin = createAdminClient()
+  console.log(`[${SCRIPT_NAME}] read-only starting`)
+
+  const { data, error } = await admin.from('employees').select('status')
+
+  const rows =
+    assertScriptQuerySucceeded({
+      operation: `[${SCRIPT_NAME}] Load employees.status`,
+      error,
+      data: (data ?? null) as Array<{ status?: unknown }> | null,
+    }) ?? []
+
+  const uniqueStatuses = new Set<string>()
+
+  for (const row of rows) {
+    const status = row?.status
+    if (typeof status === 'string' && status.trim().length > 0) {
+      uniqueStatuses.add(status.trim())
+    }
+  }
+
+  const sorted = Array.from(uniqueStatuses).sort((a, b) => a.localeCompare(b))
+  console.log(`[${SCRIPT_NAME}] Unique statuses: ${JSON.stringify(sorted)}`)
+
+  const invalid = sorted.filter((status) => !EXPECTED_STATUSES.has(status))
+  if (invalid.length > 0) {
+    throw new Error(`[${SCRIPT_NAME}] Prohibited employee statuses found: ${invalid.join(', ')}`)
+  }
+
+  console.log(`[${SCRIPT_NAME}] OK: all employee statuses are valid.`)
+}
+
+main().catch((error) => {
+  console.error(`[${SCRIPT_NAME}] Failed`, error)
+  process.exitCode = 1
+})
+

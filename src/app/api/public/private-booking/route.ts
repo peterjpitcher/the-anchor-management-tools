@@ -1,15 +1,18 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { PrivateBookingService, type CreatePrivateBookingInput } from '@/services/private-bookings';
 import type { BookingItemFormData } from '@/types/private-bookings';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { recordAnalyticsEvent } from '@/lib/analytics/events';
 import { formatPhoneForStorage } from '@/lib/utils';
 import {
+    claimIdempotencyKey,
     computeIdempotencyRequestHash,
     getIdempotencyKey,
-    lookupIdempotencyKey,
-    persistIdempotencyResponse
+    persistIdempotencyResponse,
+    releaseIdempotencyClaim
 } from '@/lib/api/idempotency';
+import { createRateLimiter } from '@/lib/rate-limit';
+import { logger } from '@/lib/logger';
 
 // Schema for public booking requests
 // Simplified version of the internal types but stricter validation could be added here
@@ -24,13 +27,49 @@ const DEPRECATION_HEADERS = {
     Link: '</api/private-booking-enquiry>; rel="successor-version"'
 } as const;
 
+const privateBookingPublicLimiter = createRateLimiter({
+    windowMs: 5 * 60 * 1000,
+    max: 20,
+    message: 'Too many private booking requests. Please try again shortly.'
+});
+
+async function recordPublicPrivateBookingAnalyticsSafe(
+    supabase: ReturnType<typeof createAdminClient>,
+    payload: Parameters<typeof recordAnalyticsEvent>[1],
+    context: Record<string, unknown>
+): Promise<void> {
+    try {
+        await recordAnalyticsEvent(supabase, payload);
+    } catch (analyticsError) {
+        logger.warn('Failed to record public private-booking analytics event', {
+            metadata: {
+                ...context,
+                error: analyticsError instanceof Error ? analyticsError.message : String(analyticsError)
+            }
+        });
+    }
+}
+
 /**
  * Public endpoint to create a private booking.
  * Accepts booking details and items, creates a draft booking.
  */
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
     try {
-        const body = await request.json();
+        const rateLimitResponse = await privateBookingPublicLimiter(request);
+        if (rateLimitResponse) {
+            return rateLimitResponse;
+        }
+
+        let body: any;
+        try {
+            body = await request.json();
+        } catch {
+            return NextResponse.json(
+                { success: false, error: 'Invalid JSON body' },
+                { status: 400 }
+            );
+        }
         const supabase = createAdminClient();
         const idempotencyKey = getIdempotencyKey(request);
 
@@ -72,9 +111,9 @@ export async function POST(request: Request) {
             ...body,
             contact_phone: normalizedPhone || body.contact_phone || null
         });
-        const lookup = await lookupIdempotencyKey(supabase, idempotencyKey, requestHash);
+        const claim = await claimIdempotencyKey(supabase, idempotencyKey, requestHash);
 
-        if (lookup.state === 'conflict') {
+        if (claim.state === 'conflict') {
             return NextResponse.json(
                 {
                     success: false,
@@ -84,65 +123,114 @@ export async function POST(request: Request) {
             );
         }
 
-        if (lookup.state === 'replay') {
-            return NextResponse.json(lookup.response, {
+        if (claim.state === 'replay') {
+            return NextResponse.json(claim.response, {
                 status: 201,
                 headers: DEPRECATION_HEADERS
             });
         }
 
-        // Basic validation
-        if (!body.customer_first_name || !(normalizedPhone || body.contact_phone)) {
+        if (claim.state === 'in_progress') {
             return NextResponse.json(
-                { success: false, error: 'Missing required fields' },
-                { status: 400 }
+                {
+                    success: false,
+                    error: 'This request is already being processed. Please retry shortly.'
+                },
+                { status: 409 }
             );
         }
 
-        // Ensure status is forced to draft and source is website
-        const bodyWithoutCountryCode = { ...(body as PublicBookingRequest) };
-        delete bodyWithoutCountryCode.default_country_code;
-        const bookingPayload: CreatePrivateBookingInput = {
-            ...bodyWithoutCountryCode,
-            contact_phone: normalizedPhone || body.contact_phone,
-            status: 'draft',
-            source: 'website',
-            // Ensure items are properly typed even if passed from frontend
-            items: body.items
-        };
-
-        const booking = await PrivateBookingService.createBooking(bookingPayload);
-
-        if ((booking as any)?.customer_id) {
-            await recordAnalyticsEvent(supabase, {
-                customerId: (booking as any).customer_id,
-                privateBookingId: (booking as any).id,
-                eventType: 'private_booking_enquiry_created',
-                metadata: {
-                    source: 'brand_site'
-                }
-            });
-        }
-
-        const responsePayload = {
-            success: true,
-            state: 'enquiry_created',
-            booking_id: booking.id,
-            reference: booking.booking_reference || booking.id,
-            data: {
-                id: booking.id,
-                reference: booking.booking_reference // If available, otherwise just ID
+        let claimHeld = true;
+        let createdBookingId: string | null = null;
+        try {
+            // Basic validation
+            if (!body.customer_first_name || !(normalizedPhone || body.contact_phone)) {
+                return NextResponse.json(
+                    { success: false, error: 'Missing required fields' },
+                    { status: 400 }
+                );
             }
-        };
 
-        await persistIdempotencyResponse(supabase, idempotencyKey, requestHash, responsePayload);
+            // Ensure status is forced to draft and source is website
+            const bodyWithoutCountryCode = { ...(body as PublicBookingRequest) };
+            delete bodyWithoutCountryCode.default_country_code;
+            const bookingPayload: CreatePrivateBookingInput = {
+                ...bodyWithoutCountryCode,
+                contact_phone: normalizedPhone || body.contact_phone,
+                status: 'draft',
+                source: 'website',
+                // Ensure items are properly typed even if passed from frontend
+                items: body.items
+            };
 
-        return NextResponse.json(responsePayload, {
-            status: 201,
-            headers: DEPRECATION_HEADERS
-        });
+            const booking = await PrivateBookingService.createBooking(bookingPayload);
+            createdBookingId = typeof booking?.id === 'string' ? booking.id : null;
+
+            if ((booking as any)?.customer_id) {
+                await recordPublicPrivateBookingAnalyticsSafe(supabase, {
+                    customerId: (booking as any).customer_id,
+                    privateBookingId: (booking as any).id,
+                    eventType: 'private_booking_enquiry_created',
+                    metadata: {
+                        source: 'brand_site'
+                    }
+                }, {
+                    privateBookingId: (booking as any).id,
+                    customerId: (booking as any).customer_id
+                });
+            }
+
+            const responsePayload = {
+                success: true,
+                state: 'enquiry_created',
+                booking_id: booking.id,
+                reference: booking.booking_reference || booking.id,
+                data: {
+                    id: booking.id,
+                    reference: booking.booking_reference // If available, otherwise just ID
+                }
+            };
+
+            try {
+                await persistIdempotencyResponse(supabase, idempotencyKey, requestHash, responsePayload);
+                claimHeld = false;
+            } catch (persistError) {
+                // Booking was created, but we could not persist the idempotency response.
+                // Fail closed by leaving the idempotency claim in place so a client retry
+                // cannot create a duplicate booking.
+                logger.error('Failed to persist public private-booking idempotency response', {
+                    error: persistError instanceof Error ? persistError : new Error(String(persistError)),
+                    metadata: {
+                        bookingId: createdBookingId,
+                        idempotencyKey,
+                        requestHash
+                    }
+                });
+            }
+
+            return NextResponse.json(responsePayload, {
+                status: 201,
+                headers: DEPRECATION_HEADERS
+            });
+        } finally {
+            if (claimHeld && !createdBookingId) {
+                try {
+                    await releaseIdempotencyClaim(supabase, idempotencyKey, requestHash);
+                } catch (releaseError) {
+                    logger.error('Failed to release public private-booking idempotency claim', {
+                        error: releaseError instanceof Error ? releaseError : new Error(String(releaseError)),
+                        metadata: {
+                            idempotencyKey,
+                            requestHash
+                        }
+                    });
+                }
+            }
+        }
     } catch (error) {
-        console.error('Error creating private booking:', error);
+        logger.error('Error creating public private booking', {
+            error: error instanceof Error ? error : new Error(String(error))
+        });
         return NextResponse.json(
             { success: false, error: 'Failed to create booking' },
             { status: 500 }

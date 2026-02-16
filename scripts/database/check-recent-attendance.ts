@@ -1,20 +1,73 @@
-import 'dotenv/config';
-import { getSupabaseAdminClient } from '../src/lib/supabase-singleton.js';
+#!/usr/bin/env tsx
 
-const supabase = getSupabaseAdminClient();
+import dotenv from 'dotenv'
+import path from 'path'
+import { createAdminClient } from '../../src/lib/supabase/admin'
+import { assertScriptQuerySucceeded } from '../../src/lib/script-mutation-safety'
+
+dotenv.config({ path: path.resolve(process.cwd(), '.env.local') })
+
+const HARD_CAP = 200
+
+function markFailure(message: string, error?: unknown) {
+  process.exitCode = 1
+  if (error) {
+    console.error(`ERROR: ${message}`, error)
+    return
+  }
+  console.error(`ERROR: ${message}`)
+}
+
+function parseBoundedInt(params: {
+  argv: string[]
+  flag: string
+  defaultValue: number
+  hardCap: number
+}): number {
+  const idx = params.argv.indexOf(params.flag)
+  if (idx === -1) {
+    return params.defaultValue
+  }
+
+  const raw = params.argv[idx + 1]
+  const parsed = Number.parseInt(raw || '', 10)
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    throw new Error(`${params.flag} must be a positive integer (got '${raw || ''}')`)
+  }
+  if (parsed > params.hardCap) {
+    throw new Error(`${params.flag} too high (got ${parsed}, hard cap ${params.hardCap})`)
+  }
+  return parsed
+}
 
 async function checkRecentAttendance() {
-  console.log('=== Checking Recent Attendance ===\n');
+  const argv = process.argv
+  if (argv.includes('--confirm')) {
+    throw new Error('check-recent-attendance is strictly read-only; do not pass --confirm.')
+  }
 
-  try {
-    // First, check if we have any recent bookings
-    console.log('1. Checking recent bookings (last 90 days)...');
-    const ninetyDaysAgo = new Date();
-    ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
+  const days = parseBoundedInt({ argv, flag: '--days', defaultValue: 90, hardCap: 365 })
+  const limit = parseBoundedInt({ argv, flag: '--limit', defaultValue: 10, hardCap: HARD_CAP })
+  const includeQualifiers = argv.includes('--include-qualifiers')
+  const qualifiersLimit = parseBoundedInt({ argv, flag: '--qualifiers-limit', defaultValue: 500, hardCap: 5000 })
 
-    const { data: recentBookings, error: bookingsError } = await supabase
-      .from('bookings')
-      .select(`
+  console.log('Checking recent attendance (read-only sample)...\n')
+  console.log(`Days: ${days} (hard cap 365)`)
+  console.log(`Limit: ${limit} (hard cap ${HARD_CAP})`)
+  console.log(`Include qualifiers: ${includeQualifiers ? 'yes' : 'no'}`)
+  console.log(`Qualifiers limit: ${qualifiersLimit} (hard cap 5000)\n`)
+
+  const supabase = createAdminClient()
+  const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000)
+  const sinceDate = since.toISOString().split('T')[0]
+
+  console.log(`Since date: ${sinceDate}\n`)
+
+  console.log('1) Recent bookings (sample, last N days):')
+  const { data: recentBookingsRows, error: bookingsError } = await supabase
+    .from('bookings')
+    .select(
+      `
         id,
         customer_id,
         seats,
@@ -23,81 +76,105 @@ async function checkRecentAttendance() {
           date,
           name
         )
-      `)
-      .gte('events.date', ninetyDaysAgo.toISOString().split('T')[0])
-      .gt('seats', 0)
-      .order('events.date', { ascending: false })
-      .limit(10);
+      `
+    )
+    .gte('events.date', sinceDate)
+    .gt('seats', 0)
+    .order('events.date', { ascending: false })
+    .limit(limit)
 
-    if (bookingsError) {
-      console.error('Error fetching bookings:', bookingsError);
-    } else {
-      console.log(`Found ${recentBookings?.length || 0} recent bookings`);
-      if (recentBookings && recentBookings.length > 0) {
-        console.log('\nSample recent bookings:');
-        recentBookings.forEach(b => {
-          console.log(`  - Customer ${b.customer_id} booked ${b.seats} seats for "${b.events.name}" on ${b.events.date}`);
-        });
-      }
-    }
+  const recentBookings = (assertScriptQuerySucceeded({
+    operation: 'Load recent bookings (with events join)',
+    error: bookingsError,
+    data: recentBookingsRows ?? [],
+    allowMissing: true
+  }) ?? []) as Array<{
+    id: string
+    customer_id: string | null
+    seats: number | null
+    created_at: string | null
+    events: { date: string | null; name: string | null }
+  }>
 
-    // Check customer_category_stats for recent attendance
-    console.log('\n2. Checking customer_category_stats for recent attendance...');
-    const { data: recentStats, error: statsError } = await supabase
-      .from('customer_category_stats')
-      .select('*')
-      .gte('last_attended_date', ninetyDaysAgo.toISOString().split('T')[0])
-      .order('last_attended_date', { ascending: false })
-      .limit(10);
+  console.log(`Found ${recentBookings.length} booking(s) in sample.`)
+  recentBookings.forEach((row) => {
+    console.log(
+      `  - customer ${row.customer_id || 'unknown'} booked ${row.seats ?? 0} seat(s) for '${row.events?.name || 'unknown'}' on ${row.events?.date || 'unknown'}`
+    )
+  })
 
-    if (statsError) {
-      console.error('Error fetching stats:', statsError);
-    } else {
-      console.log(`Found ${recentStats?.length || 0} customers with attendance in last 90 days`);
-      if (recentStats && recentStats.length > 0) {
-        console.log('\nSample recent attendees:');
-        recentStats.forEach(s => {
-          console.log(`  - Customer ${s.customer_id}: ${s.times_attended} events, last: ${s.last_attended_date}`);
-        });
-      }
-    }
+  console.log('\n2) customer_category_stats recent attendance (sample):')
+  const { data: recentStatsRows, error: statsError } = await supabase
+    .from('customer_category_stats')
+    .select('customer_id, times_attended, last_attended_date')
+    .gte('last_attended_date', sinceDate)
+    .order('last_attended_date', { ascending: false })
+    .limit(limit)
 
-    // Check for customers who meet Regular criteria
-    console.log('\n3. Checking who qualifies for Regular label...');
-    const { data: qualifiers, error: qualError } = await supabase
-      .from('customer_category_stats')
-      .select('customer_id, times_attended, last_attended_date')
-      .gte('last_attended_date', ninetyDaysAgo.toISOString().split('T')[0]);
+  const recentStats = (assertScriptQuerySucceeded({
+    operation: 'Load customer_category_stats (recent attendance)',
+    error: statsError,
+    data: recentStatsRows ?? [],
+    allowMissing: true
+  }) ?? []) as Array<{
+    customer_id: string
+    times_attended: number | null
+    last_attended_date: string | null
+  }>
 
-    if (!qualError && qualifiers) {
-      // Group by customer and sum attendance
-      const customerTotals: Record<string, { total: number, lastDate: string }> = {};
-      qualifiers.forEach(q => {
-        if (!customerTotals[q.customer_id]) {
-          customerTotals[q.customer_id] = { total: 0, lastDate: q.last_attended_date };
-        }
-        customerTotals[q.customer_id].total += q.times_attended;
-        if (q.last_attended_date > customerTotals[q.customer_id].lastDate) {
-          customerTotals[q.customer_id].lastDate = q.last_attended_date;
-        }
-      });
+  console.log(`Found ${recentStats.length} row(s) in sample.`)
+  recentStats.forEach((row) => {
+    console.log(
+      `  - customer ${row.customer_id}: ${row.times_attended ?? 'unknown'} events, last: ${row.last_attended_date || 'unknown'}`
+    )
+  })
 
-      const regularQualifiers = Object.entries(customerTotals)
-        .filter(([_, data]) => data.total >= 5)
-        .map(([customerId, data]) => ({ customerId, ...data }));
-
-      console.log(`\nCustomers who qualify for Regular label: ${regularQualifiers.length}`);
-      if (regularQualifiers.length > 0) {
-        console.log('Qualifiers:');
-        regularQualifiers.slice(0, 5).forEach(q => {
-          console.log(`  - Customer ${q.customerId}: ${q.total} total events, last: ${q.lastDate}`);
-        });
-      }
-    }
-
-  } catch (error) {
-    console.error('Error:', error);
+  if (!includeQualifiers) {
+    return
   }
+
+  console.log('\n3) Regular label qualifiers (sample; totals computed over sample rows only):')
+  const { data: qualifiersRows, error: qualifiersError } = await supabase
+    .from('customer_category_stats')
+    .select('customer_id, times_attended, last_attended_date')
+    .gte('last_attended_date', sinceDate)
+    .limit(qualifiersLimit)
+
+  const qualifiers = (assertScriptQuerySucceeded({
+    operation: 'Load qualifier stats rows',
+    error: qualifiersError,
+    data: qualifiersRows ?? [],
+    allowMissing: true
+  }) ?? []) as Array<{
+    customer_id: string
+    times_attended: number | null
+    last_attended_date: string | null
+  }>
+
+  const totals = new Map<string, { total: number; lastDate: string }>()
+  qualifiers.forEach((row) => {
+    const customerId = row.customer_id
+    const count = row.times_attended ?? 0
+    const lastDate = row.last_attended_date || 'unknown'
+    const existing = totals.get(customerId) || { total: 0, lastDate }
+    totals.set(customerId, {
+      total: existing.total + count,
+      lastDate: lastDate > existing.lastDate ? lastDate : existing.lastDate
+    })
+  })
+
+  const regularQualifiers = Array.from(totals.entries())
+    .filter(([, data]) => data.total >= 5)
+    .map(([customerId, data]) => ({ customerId, ...data }))
+    .slice(0, 10)
+
+  console.log(`Qualifiers (sample): ${regularQualifiers.length}`)
+  regularQualifiers.forEach((row) => {
+    console.log(`  - customer ${row.customerId}: ${row.total} total events, last: ${row.lastDate}`)
+  })
 }
 
-checkRecentAttendance().catch(console.error);
+void checkRecentAttendance().catch((error) => {
+  markFailure('check-recent-attendance failed.', error)
+})
+

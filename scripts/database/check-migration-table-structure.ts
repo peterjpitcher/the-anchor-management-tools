@@ -1,109 +1,115 @@
 #!/usr/bin/env tsx
 
-import { createClient } from '@supabase/supabase-js'
-import { config } from 'dotenv'
+/**
+ * Migration table diagnostics (read-only).
+ *
+ * Safety:
+ * - No DB mutations.
+ * - Fails closed on unexpected query errors (non-zero exit).
+ */
 
-// Load environment variables
-config({ path: '.env' })
+import * as dotenv from 'dotenv'
+import { resolve } from 'path'
+import { createAdminClient } from '../../src/lib/supabase/admin'
 
-async function checkMigrationTableStructure() {
-  console.log('🔍 Checking Migration Table Structures\n')
-  
-  if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
-    console.error('❌ Missing required environment variables')
-    process.exit(1)
+dotenv.config({ path: resolve(process.cwd(), '.env.local') })
+
+function markFailure(message: string, error?: unknown) {
+  process.exitCode = 1
+  if (error) {
+    console.error(`❌ ${message}`, error)
+    return
   }
-  
-  const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    {
-      auth: {
-        autoRefreshToken: false,
-        persistSession: false
-      }
-    }
-  )
-  
-  try {
-    // Query information schema to get column details for migration tables
-    const migrationTables = ['supabase_migrations', 'schema_migrations', 'migrations', '_migrations']
-    
-    for (const tableName of migrationTables) {
-      console.log(`\nTable: ${tableName}`)
-      console.log('=' .repeat(50))
-      
-      // Try to get column information
-      const { data: columns, error } = await supabase
-        .rpc('get_table_columns', { table_name: tableName })
-        .select('*')
-      
-      if (error) {
-        // Try alternative approach - select with limit 0 to get column info
-        const { data: sample, error: sampleError } = await supabase
-          .from(tableName)
-          .select('*')
-          .limit(0)
-        
-        if (!sampleError) {
-          // Get column names from the query
-          console.log('Table exists but unable to get column details')
-          
-          // Try to insert a dummy record to see the structure
-          const { error: insertError } = await supabase
-            .from(tableName)
-            .insert({})
-            .select()
-          
-          if (insertError) {
-            console.log('Error details:', insertError.message)
-            if (insertError.message.includes('null value')) {
-              // Parse required columns from error message
-              console.log('Required columns based on error:', insertError.message)
-            }
-          }
-        } else {
-          console.log('Unable to access table')
-        }
-      } else if (columns && columns.length > 0) {
-        console.log('Columns:')
-        columns.forEach((col: any) => {
-          console.log(`  - ${col.column_name}: ${col.data_type}`)
-        })
-      }
-    }
-    
-    // Try to understand the expected format by attempting to query with specific columns
-    console.log('\n\nTrying common migration table column patterns:')
-    
-    const commonPatterns = [
-      { table: 'supabase_migrations', columns: ['version', 'inserted_at'] },
-      { table: 'supabase_migrations', columns: ['name', 'executed_at'] },
-      { table: 'supabase_migrations', columns: ['id', 'name', 'hash', 'executed_at'] },
-      { table: 'schema_migrations', columns: ['version'] },
-      { table: 'migrations', columns: ['id', 'name', 'batch', 'migration_time'] }
-    ]
-    
-    for (const pattern of commonPatterns) {
-      try {
-        const { data, error } = await supabase
-          .from(pattern.table)
-          .select(pattern.columns.join(','))
-          .limit(1)
-        
-        if (!error) {
-          console.log(`\n✅ ${pattern.table} has columns: ${pattern.columns.join(', ')}`)
-        }
-      } catch (e) {
-        // Silent fail
-      }
-    }
-    
-  } catch (error) {
-    console.error('❌ Error checking migration table structure:', error)
-    process.exit(1)
+  console.error(`❌ ${message}`)
+}
+
+function isFlagPresent(flag: string): boolean {
+  return process.argv.includes(flag)
+}
+
+function isMissingTableError(error: { message?: string } | null): boolean {
+  const message = error?.message?.toLowerCase() ?? ''
+  return message.includes('does not exist') || message.includes('relation') && message.includes('does not exist')
+}
+
+async function run() {
+  if (isFlagPresent('--help')) {
+    console.log(`
+check-migration-table-structure (read-only)
+
+Usage:
+  tsx scripts/database/check-migration-table-structure.ts
+`)
+    return
   }
+
+  if (isFlagPresent('--confirm')) {
+    throw new Error('check-migration-table-structure is read-only and does not support --confirm.')
+  }
+
+  console.log('🔍 Checking migration table structures (read-only)\n')
+
+  const supabase = createAdminClient()
+
+  const migrationTables = ['supabase_migrations', 'schema_migrations', 'migrations', '_migrations']
+
+  for (const tableName of migrationTables) {
+    console.log(`\nTable: ${tableName}`)
+    console.log('='.repeat(50))
+
+    const { count, error: countError } = await supabase
+      .from(tableName)
+      .select('*', { count: 'exact', head: true })
+
+    if (countError) {
+      if (isMissingTableError(countError)) {
+        console.log('Not found (table does not exist).')
+        continue
+      }
+      throw new Error(`Failed checking ${tableName}: ${countError.message || 'unknown error'}`)
+    }
+
+    console.log(`Rows: ${typeof count === 'number' ? count : 0}`)
+
+    const { data: columns, error: columnsError } = await supabase
+      .rpc('get_table_columns', { table_name: tableName })
+      .select('*')
+
+    if (!columnsError && Array.isArray(columns) && columns.length > 0) {
+      console.log('Columns:')
+      columns.forEach((col: any) => {
+        const name = col?.column_name ?? '<unknown>'
+        const type = col?.data_type ?? '<unknown>'
+        console.log(`  - ${name}: ${type}`)
+      })
+      continue
+    }
+
+    // Fallback: infer from a sample row (if any).
+    const { data: sampleRows, error: sampleError } = await supabase
+      .from(tableName)
+      .select('*')
+      .limit(1)
+
+    if (sampleError) {
+      throw new Error(`Failed sampling ${tableName}: ${sampleError.message || 'unknown error'}`)
+    }
+
+    if (Array.isArray(sampleRows) && sampleRows.length > 0 && sampleRows[0] && typeof sampleRows[0] === 'object') {
+      console.log('Columns (inferred from sample row):')
+      Object.keys(sampleRows[0] as Record<string, unknown>).forEach((key) => {
+        console.log(`  - ${key}`)
+      })
+    } else {
+      console.log(
+        'Table exists but has no rows; cannot infer columns without get_table_columns().'
+      )
+    }
+  }
+
+  console.log('\n✅ Migration table diagnostics complete.')
 }
 
 // Run the check
-checkMigrationTableStructure()
+run()
+  .catch((error) => markFailure('check-migration-table-structure failed', error))

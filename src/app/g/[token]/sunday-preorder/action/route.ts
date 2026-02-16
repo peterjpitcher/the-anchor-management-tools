@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { checkGuestTokenThrottle } from '@/lib/guest/token-throttle'
+import { logger } from '@/lib/logger'
 import { saveSundayPreorderByRawToken } from '@/lib/table-bookings/sunday-preorder'
 
 function redirectWithStatus(request: NextRequest, token: string, status: string) {
@@ -60,7 +61,13 @@ export async function POST(
     }
 
     return redirectWithStatus(request, token, 'error')
-  } catch {
+  } catch (error) {
+    logger.warn('Guest Sunday-preorder submission failed unexpectedly', {
+      metadata: {
+        token,
+        error: error instanceof Error ? error.message : String(error)
+      }
+    })
     return redirectWithStatus(request, token, 'error')
   }
 }

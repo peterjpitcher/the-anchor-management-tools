@@ -7,7 +7,8 @@ import { logAuditEvent } from './audit'
 import { z } from 'zod'
 import { revalidatePath, revalidateTag } from 'next/cache'
 import { getTodayIsoDate, getLocalIsoDateDaysAhead, toLocalIsoDate } from '@/lib/dateUtils'
-import { QuoteService } from '@/services/quotes'
+import { calculateInvoiceTotals } from '@/lib/invoiceCalculations'
+import { QuoteService, isQuoteStatusTransitionAllowed } from '@/services/quotes'
 import type { 
   Quote, 
   QuoteWithDetails, 
@@ -26,6 +27,23 @@ const CreateQuoteSchema = z.object({
   notes: z.string().optional(),
   internal_notes: z.string().optional()
 })
+
+function normalizeQuoteLineItems(lineItems: InvoiceLineItemInput[]): InvoiceLineItemInput[] {
+  return lineItems.map((item) => ({
+    catalog_item_id: item.catalog_item_id || undefined,
+    description: String(item.description || ''),
+    quantity: Number(item.quantity) || 0,
+    unit_price: Number(item.unit_price) || 0,
+    discount_percentage: Number(item.discount_percentage) || 0,
+    vat_rate: Number(item.vat_rate) || 0,
+  }))
+}
+
+function isSoftDeletedRecord(record: Record<string, unknown> | null | undefined): boolean {
+  if (!record) return false
+  if (!Object.prototype.hasOwnProperty.call(record, 'deleted_at')) return false
+  return Boolean((record as any).deleted_at)
+}
 
 // Get quote summary
 export async function getQuoteSummary() {
@@ -60,7 +78,9 @@ export async function getQuoteSummary() {
     const today = new Date()
     today.setHours(0, 0, 0, 0)
 
-    quotes?.forEach(quote => {
+    const visibleQuotes = (quotes || []).filter((quote: any) => !isSoftDeletedRecord(quote as Record<string, unknown>))
+
+    visibleQuotes.forEach(quote => {
       if (quote.status === 'draft') {
         summary.draft_badge++
       } else if (quote.status === 'sent') {
@@ -111,9 +131,11 @@ export async function getQuotes(status?: QuoteStatus) {
       return { error: 'Failed to fetch quotes' }
     }
 
+    const visibleQuotes = (quotes || []).filter((quote: any) => !isSoftDeletedRecord(quote as Record<string, unknown>))
+
     // Update expired status for sent quotes
     const today = getTodayIsoDate()
-    const updatedQuotes = quotes.map(quote => ({
+    const updatedQuotes = visibleQuotes.map(quote => ({
       ...quote,
       status: quote.status === 'sent' && quote.valid_until < today ? 'expired' as QuoteStatus : quote.status
     }))
@@ -148,6 +170,10 @@ export async function getQuote(quoteId: string) {
     if (error) {
       console.error('Error fetching quote:', error)
       return { error: 'Failed to fetch quote' }
+    }
+
+    if (isSoftDeletedRecord(quote as Record<string, unknown>)) {
+      return { error: 'Quote not found' }
     }
 
     // Update expired status if needed
@@ -187,7 +213,13 @@ export async function createQuote(formData: FormData) {
       return { error: 'Line items are required' }
     }
 
-    const lineItems: InvoiceLineItemInput[] = JSON.parse(lineItemsJson)
+    let lineItems: InvoiceLineItemInput[]
+    try {
+      lineItems = normalizeQuoteLineItems(JSON.parse(lineItemsJson))
+    } catch {
+      return { error: 'Invalid line items data' }
+    }
+
     if (!Array.isArray(lineItems) || lineItems.length === 0) {
       return { error: 'At least one line item is required' }
     }
@@ -248,7 +280,7 @@ export async function updateQuoteStatus(formData: FormData) {
     // Get current quote
     const { data: currentQuote, error: fetchError } = await supabase
       .from('quotes')
-      .select('*')
+      .select('id, quote_number, status, converted_to_invoice_id')
       .eq('id', quoteId)
       .single()
 
@@ -256,18 +288,37 @@ export async function updateQuoteStatus(formData: FormData) {
       return { error: 'Quote not found' }
     }
 
+    if (currentQuote.status === newStatus) {
+      return { success: true }
+    }
+
+    if (!isQuoteStatusTransitionAllowed(currentQuote.status as QuoteStatus, newStatus)) {
+      return { error: `Invalid quote status transition from ${currentQuote.status} to ${newStatus}` }
+    }
+
+    if (currentQuote.converted_to_invoice_id) {
+      return { error: 'Converted quotes cannot have their status changed' }
+    }
+
     // Update status
-    const { error: updateError } = await supabase
+    const { data: updatedQuote, error: updateError } = await supabase
       .from('quotes')
       .update({
         status: newStatus,
         updated_at: new Date().toISOString()
       })
       .eq('id', quoteId)
+      .eq('status', currentQuote.status)
+      .select('id')
+      .maybeSingle()
 
     if (updateError) {
       console.error('Error updating quote status:', updateError)
       return { error: 'Failed to update quote status' }
+    }
+
+    if (!updatedQuote) {
+      return { error: 'Quote status changed before this update could be applied' }
     }
 
     await logAuditEvent({
@@ -309,7 +360,10 @@ export async function updateQuote(formData: FormData) {
     // Get current quote
     const { data: currentQuote, error: fetchError } = await supabase
       .from('quotes')
-      .select('*')
+      .select(`
+        *,
+        line_items:quote_line_items(*)
+      `)
       .eq('id', quoteId)
       .single()
 
@@ -338,60 +392,76 @@ export async function updateQuote(formData: FormData) {
       return { error: 'Line items are required' }
     }
 
-    const lineItems: InvoiceLineItemInput[] = JSON.parse(lineItemsJson)
+    let lineItems: InvoiceLineItemInput[]
+    try {
+      lineItems = normalizeQuoteLineItems(JSON.parse(lineItemsJson))
+    } catch {
+      return { error: 'Invalid line items data' }
+    }
+
     if (!Array.isArray(lineItems) || lineItems.length === 0) {
       return { error: 'At least one line item is required' }
     }
 
-    // Calculate totals
-    let subtotal = 0
-    let totalVat = 0
+    const totals = calculateInvoiceTotals(lineItems, validatedData.quote_discount_percentage)
 
-    lineItems.forEach(item => {
-      const lineSubtotal = item.quantity * item.unit_price
-      const lineDiscount = lineSubtotal * (item.discount_percentage / 100)
-      const lineAfterDiscount = lineSubtotal - lineDiscount
-      subtotal += lineAfterDiscount
-    })
+    const previousQuoteValues = {
+      vendor_id: currentQuote.vendor_id,
+      quote_date: currentQuote.quote_date,
+      valid_until: currentQuote.valid_until,
+      reference: currentQuote.reference,
+      quote_discount_percentage: currentQuote.quote_discount_percentage,
+      subtotal_amount: currentQuote.subtotal_amount,
+      discount_amount: currentQuote.discount_amount,
+      vat_amount: currentQuote.vat_amount,
+      total_amount: currentQuote.total_amount,
+      notes: currentQuote.notes,
+      internal_notes: currentQuote.internal_notes,
+    }
 
-    const quoteDiscount = subtotal * (validatedData.quote_discount_percentage / 100)
-    const afterQuoteDiscount = subtotal - quoteDiscount
+    const previousLineItems = Array.isArray(currentQuote.line_items)
+      ? currentQuote.line_items.map((item: any) => ({
+          quote_id: quoteId,
+          catalog_item_id: item.catalog_item_id || null,
+          description: item.description,
+          quantity: item.quantity,
+          unit_price: item.unit_price,
+          discount_percentage: item.discount_percentage,
+          vat_rate: item.vat_rate
+        }))
+      : []
 
-    // Calculate VAT after all discounts
-    lineItems.forEach(item => {
-      const lineSubtotal = item.quantity * item.unit_price
-      const lineDiscount = lineSubtotal * (item.discount_percentage / 100)
-      const lineAfterDiscount = lineSubtotal - lineDiscount
-      const lineShare = lineAfterDiscount / subtotal
-      const lineAfterQuoteDiscount = lineAfterDiscount - (quoteDiscount * lineShare)
-      const lineVat = lineAfterQuoteDiscount * (item.vat_rate / 100)
-      totalVat += lineVat
-    })
-
-    const totalAmount = afterQuoteDiscount + totalVat
+    const quoteUpdatePayload = {
+      vendor_id: validatedData.vendor_id,
+      quote_date: validatedData.quote_date,
+      valid_until: validatedData.valid_until,
+      reference: validatedData.reference,
+      quote_discount_percentage: validatedData.quote_discount_percentage,
+      subtotal_amount: totals.subtotalBeforeInvoiceDiscount,
+      discount_amount: totals.invoiceDiscountAmount,
+      vat_amount: totals.vatAmount,
+      total_amount: totals.totalAmount,
+      notes: validatedData.notes,
+      internal_notes: validatedData.internal_notes,
+      updated_at: new Date().toISOString()
+    }
 
     // Update quote
-    const { error: updateError } = await supabase
+    const { data: updatedQuote, error: updateError } = await supabase
       .from('quotes')
-      .update({
-        vendor_id: validatedData.vendor_id,
-        quote_date: validatedData.quote_date,
-        valid_until: validatedData.valid_until,
-        reference: validatedData.reference,
-        quote_discount_percentage: validatedData.quote_discount_percentage,
-        subtotal_amount: subtotal,
-        discount_amount: quoteDiscount,
-        vat_amount: totalVat,
-        total_amount: totalAmount,
-        notes: validatedData.notes,
-        internal_notes: validatedData.internal_notes,
-        updated_at: new Date().toISOString()
-      })
+      .update(quoteUpdatePayload)
       .eq('id', quoteId)
+      .eq('status', 'draft')
+      .select('id')
+      .maybeSingle()
 
     if (updateError) {
       console.error('Error updating quote:', updateError)
       return { error: 'Failed to update quote' }
+    }
+
+    if (!updatedQuote) {
+      return { error: 'Quote changed before this update could be applied' }
     }
 
     // Delete existing line items
@@ -402,6 +472,22 @@ export async function updateQuote(formData: FormData) {
 
     if (deleteError) {
       console.error('Error deleting line items:', deleteError)
+      const { data: rolledBackQuote, error: rollbackQuoteError } = await supabase
+        .from('quotes')
+        .update({
+          ...previousQuoteValues,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', quoteId)
+        .eq('status', 'draft')
+        .select('id')
+        .maybeSingle()
+
+      if (rollbackQuoteError) {
+        console.error('Failed to roll back quote after line-item delete failure:', rollbackQuoteError)
+      } else if (!rolledBackQuote) {
+        console.error('Failed to roll back quote after line-item delete failure: quote no longer draft')
+      }
       return { error: 'Failed to update line items' }
     }
 
@@ -424,6 +510,31 @@ export async function updateQuote(formData: FormData) {
 
     if (lineItemsError) {
       console.error('Error creating line items:', lineItemsError)
+      const { data: rolledBackQuote, error: rollbackQuoteError } = await supabase
+        .from('quotes')
+        .update({
+          ...previousQuoteValues,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', quoteId)
+        .eq('status', 'draft')
+        .select('id')
+        .maybeSingle()
+
+      if (rollbackQuoteError) {
+        console.error('Failed to roll back quote after line-item insert failure:', rollbackQuoteError)
+      } else if (!rolledBackQuote) {
+        console.error('Failed to roll back quote after line-item insert failure: quote no longer draft')
+      }
+
+      if (previousLineItems.length > 0) {
+        const { error: rollbackLineItemsError } = await supabase
+          .from('quote_line_items')
+          .insert(previousLineItems)
+        if (rollbackLineItemsError) {
+          console.error('Failed to restore prior quote line items after insert failure:', rollbackLineItemsError)
+        }
+      }
       return { error: 'Failed to create quote line items' }
     }
 
@@ -437,7 +548,7 @@ export async function updateQuote(formData: FormData) {
         vendor_id: currentQuote.vendor_id
       },
       new_values: { 
-        total_amount: totalAmount,
+        total_amount: totals.totalAmount,
         vendor_id: validatedData.vendor_id
       }
     })
@@ -461,6 +572,7 @@ export async function updateQuote(formData: FormData) {
 export async function deleteQuote(formData: FormData) {
   try {
     const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
     
     const hasPermission = await checkUserPermission('invoices', 'delete')
     if (!hasPermission) {
@@ -475,7 +587,7 @@ export async function deleteQuote(formData: FormData) {
     // Check if quote can be deleted (only draft quotes)
     const { data: quote, error: fetchError } = await supabase
       .from('quotes')
-      .select('status')
+      .select('*')
       .eq('id', quoteId)
       .single()
 
@@ -483,22 +595,68 @@ export async function deleteQuote(formData: FormData) {
       return { error: 'Quote not found' }
     }
 
+    if (isSoftDeletedRecord(quote as Record<string, unknown>)) {
+      return { error: 'Quote not found' }
+    }
+
     if (quote.status !== 'draft') {
       return { error: 'Only draft quotes can be deleted' }
     }
 
-    // Soft delete the quote
-    const { error: deleteError } = await supabase
+    // Prefer soft delete where supported, but fall back to hard delete when
+    // legacy quote schemas do not have deleted_at/deleted_by columns.
+    const { data: softDeleted, error: softDeleteError } = await supabase
       .from('quotes')
       .update({ 
         deleted_at: new Date().toISOString(),
-        deleted_by: (await supabase.auth.getUser()).data.user?.id
+        deleted_by: user?.id || null
       })
       .eq('id', quoteId)
+      .eq('status', 'draft')
+      .select('id')
+      .maybeSingle()
 
-    if (deleteError) {
-      console.error('Error deleting quote:', deleteError)
+    const missingSoftDeleteColumns =
+      softDeleteError &&
+      (
+        (softDeleteError as any).code === '42703' ||
+        /deleted_at|deleted_by/i.test(softDeleteError.message || '')
+      )
+
+    if (softDeleteError && !missingSoftDeleteColumns) {
+      console.error('Error deleting quote:', softDeleteError)
       return { error: 'Failed to delete quote' }
+    }
+
+    if (missingSoftDeleteColumns) {
+      const { error: lineItemsDeleteError } = await supabase
+        .from('quote_line_items')
+        .delete()
+        .eq('quote_id', quoteId)
+
+      if (lineItemsDeleteError) {
+        console.error('Error deleting quote line items before hard delete:', lineItemsDeleteError)
+        return { error: 'Failed to delete quote line items' }
+      }
+
+      const { data: hardDeleted, error: hardDeleteError } = await supabase
+        .from('quotes')
+        .delete()
+        .eq('id', quoteId)
+        .eq('status', 'draft')
+        .select('id')
+        .maybeSingle()
+
+      if (hardDeleteError) {
+        console.error('Error hard deleting quote:', hardDeleteError)
+        return { error: 'Failed to delete quote' }
+      }
+
+      if (!hardDeleted) {
+        return { error: 'Quote is no longer deletable' }
+      }
+    } else if (!softDeleted) {
+      return { error: 'Quote is no longer deletable' }
     }
 
     await logAuditEvent({
@@ -542,6 +700,10 @@ export async function convertQuoteToInvoice(quoteId: string) {
       return { error: 'Quote not found' }
     }
 
+    if (isSoftDeletedRecord(quote as Record<string, unknown>)) {
+      return { error: 'Quote not found' }
+    }
+
     if (quote.status !== 'accepted') {
       return { error: 'Only accepted quotes can be converted to invoices' }
     }
@@ -550,8 +712,31 @@ export async function convertQuoteToInvoice(quoteId: string) {
       return { error: 'This quote has already been converted to an invoice' }
     }
 
+    const quoteLineItems = Array.isArray(quote.line_items) ? quote.line_items as QuoteLineItem[] : []
+    if (quoteLineItems.length === 0) {
+      return { error: 'Quote has no line items and cannot be converted' }
+    }
+
     // Get next invoice number
     const adminClient = await createAdminClient()
+    const rollbackCreatedInvoice = async (invoiceId: string) => {
+      const { error: lineItemsDeleteError } = await adminClient
+        .from('invoice_line_items')
+        .delete()
+        .eq('invoice_id', invoiceId)
+      if (lineItemsDeleteError) {
+        console.error('Error rolling back invoice line items after conversion failure:', lineItemsDeleteError)
+      }
+
+      const { error: invoiceDeleteError } = await adminClient
+        .from('invoices')
+        .delete()
+        .eq('id', invoiceId)
+      if (invoiceDeleteError) {
+        console.error('Error rolling back invoice after conversion failure:', invoiceDeleteError)
+      }
+    }
+
     const { data: seriesData, error: seriesError } = await adminClient
       .rpc('get_and_increment_invoice_series', { p_series_code: 'INV' })
       .single()
@@ -591,7 +776,7 @@ export async function convertQuoteToInvoice(quoteId: string) {
     }
 
     // Copy line items
-    const invoiceLineItems = quote.line_items.map((item: QuoteLineItem) => ({
+    const invoiceLineItems = quoteLineItems.map((item: QuoteLineItem) => ({
       invoice_id: invoice.id,
       catalog_item_id: item.catalog_item_id,
       description: item.description,
@@ -609,20 +794,24 @@ export async function convertQuoteToInvoice(quoteId: string) {
 
     if (lineItemsError) {
       console.error('Error creating invoice line items:', lineItemsError)
-      // Rollback invoice creation
-      await supabase.from('invoices').delete().eq('id', invoice.id)
+      await rollbackCreatedInvoice(invoice.id)
       return { error: 'Failed to create invoice line items' }
     }
 
-    // Update quote with invoice reference
-    const { error: updateError } = await supabase
+    // Finalize conversion only if quote is still accepted and unconverted.
+    const { data: updatedQuote, error: updateError } = await supabase
       .from('quotes')
       .update({ converted_to_invoice_id: invoice.id })
       .eq('id', quoteId)
+      .eq('status', 'accepted')
+      .is('converted_to_invoice_id', null)
+      .select('id')
+      .maybeSingle()
 
-    if (updateError) {
+    if (updateError || !updatedQuote) {
       console.error('Error updating quote:', updateError)
-      // Don't rollback, just log the issue
+      await rollbackCreatedInvoice(invoice.id)
+      return { error: 'Quote conversion could not be finalized. Please retry.' }
     }
 
     await logAuditEvent({

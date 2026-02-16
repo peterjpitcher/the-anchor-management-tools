@@ -1,5 +1,5 @@
 import { createAdminClient } from '@/lib/supabase/admin'
-import { getTodayIsoDate, getLocalIsoDateDaysAhead, getLocalIsoDateDaysAgo } from '@/lib/dateUtils'
+import { getTodayIsoDate, getLocalIsoDateDaysAhead } from '@/lib/dateUtils'
 import { buildEventChecklist, EVENT_CHECKLIST_TOTAL_TASKS, ChecklistTodoItem, EventChecklistItem } from '@/lib/event-checklist'
 import type { BookingStatus } from '@/types/private-bookings'
 
@@ -39,6 +39,7 @@ export type EventsOverviewResult = {
     past: EventOverview[]
     todos: ChecklistTodoItem[]
     privateBookingsForCalendar: PrivateBookingCalendarOverview[]
+    calendarNotes: CalendarNoteCalendarOverview[]
     error?: string
 }
 
@@ -54,8 +55,17 @@ export type PrivateBookingCalendarOverview = {
     guest_count: number | null
 }
 
-const COMMAND_CENTER_LOOKAHEAD_DAYS = 90
-const COMMAND_CENTER_LOOKBACK_DAYS = 180
+export type CalendarNoteCalendarOverview = {
+    id: string
+    note_date: string
+    end_date: string
+    title: string
+    notes: string | null
+    source: string
+    start_time: string | null
+    end_time: string | null
+    color: string
+}
 
 type EventCategoryRow = {
     id: string
@@ -81,16 +91,17 @@ type ChecklistStatusRow = {
     completed_at: string | null
 }
 
+const COMMAND_CENTER_PAGE_SIZE = 1000
+
 export async function getEventsCommandCenterData(): Promise<EventsOverviewResult> {
     const supabase = createAdminClient()
     const todayIso = getTodayIsoDate()
     const windowEndIso = getLocalIsoDateDaysAhead(30)
-    const commandCenterEndIso = getLocalIsoDateDaysAhead(COMMAND_CENTER_LOOKAHEAD_DAYS)
-    const commandCenterStartIso = getLocalIsoDateDaysAgo(COMMAND_CENTER_LOOKBACK_DAYS)
 
-    // 1. Parallel Fetching
-    const [eventsResult, checklistResult] = await Promise.all([
-        supabase
+    const events: CommandCenterEventRow[] = []
+    let eventsError: unknown = null
+    for (let start = 0; ; start += COMMAND_CENTER_PAGE_SIZE) {
+        const { data, error } = await supabase
             .from('events')
             .select(`
         id,
@@ -103,42 +114,94 @@ export async function getEventsCommandCenterData(): Promise<EventsOverviewResult
         event_status,
         category:event_categories(id, name, color)
       `)
-            .gte('date', commandCenterStartIso)
-            .lte('date', commandCenterEndIso)
             .order('date', { ascending: true })
-            .order('time', { ascending: true }),
+            .order('time', { ascending: true })
+            .range(start, start + COMMAND_CENTER_PAGE_SIZE - 1)
 
-        supabase
-            .from('event_checklist_statuses')
-            .select('event_id, task_key, completed_at, event:events!inner(date)')
-            .gte('event.date', commandCenterStartIso)
-            .lte('event.date', commandCenterEndIso)
-    ])
+        if (error) {
+            eventsError = error
+            break
+        }
 
-    if (eventsResult.error) {
-        console.error('Error fetching events:', eventsResult.error)
+        const chunk = (data || []) as CommandCenterEventRow[]
+        events.push(...chunk)
+        if (chunk.length < COMMAND_CENTER_PAGE_SIZE) {
+            break
+        }
+    }
+
+    if (eventsError) {
+        console.error('Error fetching events:', eventsError)
         return {
             kpis: { activeEvents: 0, overdueTasks: 0, dueTodayTasks: 0, draftEvents: 0 },
             upcoming: [],
             past: [],
             todos: [],
             privateBookingsForCalendar: [],
+            calendarNotes: [],
             error: 'Failed to load events.'
         }
     }
 
-    if (checklistResult.error) {
-        console.error('Error fetching checklist statuses:', checklistResult.error)
+    let calendarNotes: CalendarNoteCalendarOverview[] = []
+    try {
+        const { data: noteRows, error: notesError } = await supabase
+            .from('calendar_notes')
+            .select('id, note_date, end_date, title, notes, source, start_time, end_time, color')
+            .order('note_date', { ascending: true })
+            .order('end_date', { ascending: true })
+            .order('start_time', { ascending: true, nullsFirst: true })
+            .order('title', { ascending: true })
+
+        if (notesError) {
+            throw notesError
+        }
+
+        calendarNotes = (noteRows ?? []).map((row) => ({
+            id: String(row.id),
+            note_date: String(row.note_date),
+            end_date: typeof row.end_date === 'string' ? row.end_date : String(row.note_date),
+            title: String(row.title ?? ''),
+            notes: typeof row.notes === 'string' ? row.notes : null,
+            source: typeof row.source === 'string' ? row.source : 'manual',
+            start_time: typeof row.start_time === 'string' ? row.start_time : null,
+            end_time: typeof row.end_time === 'string' ? row.end_time : null,
+            color: typeof row.color === 'string' ? row.color : '#0EA5E9',
+        }))
+    } catch (notesError) {
+        console.error('Error fetching calendar notes:', notesError)
     }
 
-    const events = (eventsResult.data || []) as CommandCenterEventRow[]
-    const checklistStatuses = checklistResult.error
-        ? []
-        : ((checklistResult.data || []) as ChecklistStatusRow[])
+    const checklistStatuses: ChecklistStatusRow[] = []
+    let checklistError: unknown = null
+    for (let start = 0; ; start += COMMAND_CENTER_PAGE_SIZE) {
+        const { data, error } = await supabase
+            .from('event_checklist_statuses')
+            .select('event_id, task_key, completed_at')
+            .order('event_id', { ascending: true })
+            .order('task_key', { ascending: true })
+            .range(start, start + COMMAND_CENTER_PAGE_SIZE - 1)
+
+        if (error) {
+            checklistError = error
+            break
+        }
+
+        const chunk = (data || []) as ChecklistStatusRow[]
+        checklistStatuses.push(...chunk)
+        if (chunk.length < COMMAND_CENTER_PAGE_SIZE) {
+            break
+        }
+    }
+
+    if (checklistError) {
+        console.error('Error fetching checklist statuses:', checklistError)
+    }
 
     // Map statuses by Event ID
+    const checklistStatusesForMap = checklistError ? [] : checklistStatuses
     const statusMap = new Map<string, { task_key: string; completed_at: string | null }[]>()
-    checklistStatuses.forEach((status) => {
+    checklistStatusesForMap.forEach((status) => {
         if (!statusMap.has(status.event_id)) {
             statusMap.set(status.event_id, [])
         }
@@ -258,6 +321,7 @@ export async function getEventsCommandCenterData(): Promise<EventsOverviewResult
         past: pastEvents,
         todos,
         privateBookingsForCalendar: [],
+        calendarNotes,
         error: undefined
     }
 }

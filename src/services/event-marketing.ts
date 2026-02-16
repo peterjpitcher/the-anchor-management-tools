@@ -157,12 +157,19 @@ export class EventMarketingService {
           })
           .eq('id', existing.id)
           .select('id, short_code, destination_url, metadata, updated_at')
-          .single();
+          .maybeSingle();
 
         if (updateError) {
           console.error('Failed to update marketing link', channel.key, updateError);
         } else if (updated) {
           existingByChannel.set(channel.key, updated as ExistingShortLink);
+        } else {
+          try {
+            const inserted = await insertShortLinkWithRetries(event, payload, metadata);
+            existingByChannel.set(channel.key, inserted);
+          } catch (insertError) {
+            console.error('Failed to recreate marketing link after stale update', channel.key, insertError);
+          }
         }
       }
     }

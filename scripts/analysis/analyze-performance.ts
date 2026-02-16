@@ -1,311 +1,209 @@
 #!/usr/bin/env tsx
 
-import { createClient } from '@supabase/supabase-js'
-import { config } from 'dotenv'
-import { readFileSync, readdirSync } from 'fs'
-import { join } from 'path'
+import dotenv from 'dotenv'
+import fs from 'node:fs'
+import path from 'node:path'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { assertScriptQuerySucceeded } from '@/lib/script-mutation-safety'
 
-config({ path: '.env' })
+const SCRIPT_NAME = 'analyze-performance'
+const PAYLOAD_SAMPLE_LIMIT = 100
+const SCAN_ROOT = path.join(process.cwd(), 'src/app/actions')
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-)
+type Severity = 'critical' | 'high' | 'medium' | 'low'
 
-interface PerformanceIssue {
+type PerformanceIssue = {
   component: string
   issue: string
-  severity: 'critical' | 'high' | 'medium' | 'low'
+  severity: Severity
   impact: string
   recommendation: string
 }
 
 const issues: PerformanceIssue[] = []
 
-// Analyze database queries for performance issues
-async function analyzeDatabaseQueries() {
-  console.log('🔍 Analyzing Database Queries...\n')
-  
-  // Check for missing indexes
-  const { data: tables } = await supabase.rpc('get_table_indexes', {})
-  
-  // Check for unpaginated queries
-  const actionsDir = join(process.cwd(), 'src/app/actions')
-  const files = readdirSync(actionsDir)
-  
-  for (const file of files) {
-    if (file.endsWith('.ts')) {
-      const content = readFileSync(join(actionsDir, file), 'utf-8')
-      
-      // Check for queries without limit
-      if (content.includes('.select(') && !content.includes('.limit(') && !content.includes('.single()')) {
-        issues.push({
-          component: file,
-          issue: 'Unpaginated query detected',
-          severity: 'medium',
-          impact: 'Could return large datasets',
-          recommendation: 'Add pagination with .limit() and .range()'
-        })
-      }
-      
-      // Check for N+1 queries
-      if (content.includes('for (') && content.includes('await') && content.includes('.select(')) {
-        issues.push({
-          component: file,
-          issue: 'Potential N+1 query pattern',
-          severity: 'high',
-          impact: 'Multiple sequential database queries',
-          recommendation: 'Use joins or batch queries'
-        })
-      }
-      
-      // Check for missing indexes on commonly filtered columns
-      const filterPatterns = content.matchAll(/\.eq\(['"](\w+)['"],/g)
-      for (const match of filterPatterns) {
-        const column = match[1]
-        if (['customer_id', 'event_id', 'employee_id', 'created_at'].includes(column)) {
-          // These should have indexes
-          console.log(`  ✅ Common filter column: ${column}`)
-        }
-      }
-    }
+function assertReadOnly(argv: string[]): void {
+  if (argv.includes('--confirm')) {
+    throw new Error(`[${SCRIPT_NAME}] read-only script does not support --confirm`)
   }
 }
 
-// Analyze API response sizes
-async function analyzePayloadSizes() {
-  console.log('\n🔍 Analyzing Payload Sizes...\n')
-  
-  // Test some common endpoints
-  const testCases = [
-    { table: 'events', expected: 100 },
-    { table: 'customers', expected: 500 },
-    { table: 'bookings', expected: 1000 },
-    { table: 'messages', expected: 5000 }
-  ]
-  
-  for (const test of testCases) {
-    const { data, error } = await supabase
-      .from(test.table)
-      .select('*')
-      .limit(100)
-    
-    if (!error && data) {
-      const size = JSON.stringify(data).length
-      const avgSize = Math.round(size / data.length)
-      
-      console.log(`  ${test.table}: ~${avgSize} bytes per record`)
-      
-      if (avgSize > 1000) {
-        issues.push({
-          component: test.table,
-          issue: 'Large payload size',
-          severity: 'medium',
-          impact: `${avgSize} bytes per record`,
-          recommendation: 'Consider selecting only needed columns'
-        })
-      }
-    }
-  }
+function addIssue(issue: PerformanceIssue): void {
+  issues.push(issue)
 }
 
-// Check for slow operations
-async function analyzeSlowOperations() {
-  console.log('\n🔍 Checking for Slow Operations...\n')
-  
-  // Analyze server actions for expensive operations
-  const expensivePatterns = [
-    { pattern: /sendBulkSMS/g, operation: 'Bulk SMS sending' },
-    { pattern: /exportEmployees/g, operation: 'Employee export' },
-    { pattern: /rebuildCustomerCategoryStats/g, operation: 'Stats rebuild' },
-    { pattern: /categorizeHistoricalEvents/g, operation: 'Historical categorization' }
-  ]
-  
-  const actionsDir = join(process.cwd(), 'src/app/actions')
-  const files = readdirSync(actionsDir)
-  
-  for (const file of files) {
-    if (file.endsWith('.ts')) {
-      const content = readFileSync(join(actionsDir, file), 'utf-8')
-      
-      for (const { pattern, operation } of expensivePatterns) {
-        if (pattern.test(content)) {
-          console.log(`  ⚠️  ${operation} in ${file}`)
-          issues.push({
-            component: file,
-            issue: `${operation} without background processing`,
-            severity: 'high',
-            impact: 'Could timeout or block UI',
-            recommendation: 'Use background jobs or streaming'
-          })
-        }
-      }
-    }
-  }
+function listActionFiles(scanRoot: string): string[] {
+  const entries = fs.readdirSync(scanRoot, { withFileTypes: true })
+  return entries
+    .filter((entry) => entry.isFile() && /\.(ts|tsx)$/.test(entry.name))
+    .map((entry) => path.join(scanRoot, entry.name))
 }
 
-// Security vulnerability scan
-async function securityScan() {
-  console.log('\n🔍 Security Vulnerability Scan...\n')
-  
-  // Check for common vulnerabilities
-  const vulnerabilities = [
-    {
-      name: 'SQL Injection',
-      check: async () => {
-        // Already using Supabase parameterized queries
-        console.log('  ✅ SQL Injection: Protected by Supabase')
-      }
-    },
-    {
-      name: 'Cross-Site Scripting (XSS)',
-      check: async () => {
-        // React auto-escapes by default
-        console.log('  ✅ XSS: Protected by React')
-      }
-    },
-    {
-      name: 'CSRF',
-      check: async () => {
-        // Next.js has built-in CSRF protection
-        console.log('  ✅ CSRF: Protected by Next.js')
-      }
-    },
-    {
-      name: 'Authentication Bypass',
-      check: async () => {
-        // Test unauthenticated access
-        const { data, error } = await supabase
-          .from('events')
-          .select('id')
-          .limit(1)
-        
-        if (!error) {
-          issues.push({
-            component: 'events table',
-            issue: 'Anonymous read access allowed',
-            severity: 'medium',
-            impact: 'Public can view events',
-            recommendation: 'Review if this is intentional'
-          })
-        }
-      }
-    },
-    {
-      name: 'Rate Limiting',
-      check: async () => {
-        console.log('  ⚠️  Rate Limiting: Only Supabase defaults')
-        issues.push({
-          component: 'API',
-          issue: 'No custom rate limiting',
-          severity: 'high',
-          impact: 'SMS/bulk operations can be abused',
-          recommendation: 'Implement rate limiting middleware'
-        })
-      }
-    },
-    {
-      name: 'Session Management',
-      check: async () => {
-        console.log('  ✅ Session Management: Handled by Supabase Auth')
-      }
-    }
-  ]
-  
-  for (const vuln of vulnerabilities) {
-    await vuln.check()
-  }
-}
+function analyzeActionSourceContent(filePath: string, content: string): void {
+  const component = path.basename(filePath)
 
-// Check for insecure direct object references
-async function checkIDOR() {
-  console.log('\n🔍 Checking for IDOR vulnerabilities...\n')
-  
-  // Test if we can access other users' data
-  const testCases = [
-    { table: 'bookings', column: 'customer_id' },
-    { table: 'messages', column: 'customer_id' },
-    { table: 'employee_notes', column: 'employee_id' }
-  ]
-  
-  for (const test of testCases) {
-    console.log(`  Testing ${test.table}...`)
-    // RLS should prevent unauthorized access
-    // This is just a check that RLS exists
-  }
-}
-
-// Dependency vulnerability scan
-async function scanDependencies() {
-  console.log('\n🔍 Dependency Vulnerability Scan...\n')
-  
-  try {
-    const packageJson = JSON.parse(readFileSync('package.json', 'utf-8'))
-    const deps = { ...packageJson.dependencies, ...packageJson.devDependencies }
-    
-    // Check for known vulnerable versions
-    const knownVulnerabilities = [
-      { package: 'next', vulnerableVersions: ['< 13.5.0'], issue: 'Security patches' }
-    ]
-    
-    for (const vuln of knownVulnerabilities) {
-      const version = deps[vuln.package]
-      if (version) {
-        console.log(`  ${vuln.package}: ${version}`)
-      }
-    }
-    
-    console.log('\n  ℹ️  Run "npm audit" for full vulnerability scan')
-  } catch (error) {
-    console.error('  ❌ Could not read package.json')
-  }
-}
-
-// Main execution
-async function runPerformanceAndSecurityTests() {
-  console.log('🔍 PHASE 4: PERFORMANCE & SECURITY TESTING\n')
-  
-  await analyzeDatabaseQueries()
-  await analyzePayloadSizes()
-  await analyzeSlowOperations()
-  await securityScan()
-  await checkIDOR()
-  await scanDependencies()
-  
-  // Summary
-  console.log('\n📊 Issues Summary:\n')
-  
-  const critical = issues.filter(i => i.severity === 'critical')
-  const high = issues.filter(i => i.severity === 'high')
-  const medium = issues.filter(i => i.severity === 'medium')
-  const low = issues.filter(i => i.severity === 'low')
-  
-  console.log(`  🔴 Critical: ${critical.length}`)
-  console.log(`  🟠 High: ${high.length}`)
-  console.log(`  🟡 Medium: ${medium.length}`)
-  console.log(`  🟢 Low: ${low.length}`)
-  
-  if (critical.length > 0) {
-    console.log('\n🔴 CRITICAL Issues:')
-    critical.forEach(issue => {
-      console.log(`\n  Component: ${issue.component}`)
-      console.log(`  Issue: ${issue.issue}`)
-      console.log(`  Impact: ${issue.impact}`)
-      console.log(`  Fix: ${issue.recommendation}`)
+  if (content.includes('.select(') && !content.includes('.limit(') && !content.includes('.single(')) {
+    addIssue({
+      component,
+      issue: 'Potential unpaginated query',
+      severity: 'medium',
+      impact: 'Query may return large datasets and slow requests.',
+      recommendation: 'Add explicit pagination (`.limit/.range`) where large lists are possible.',
     })
   }
-  
-  if (high.length > 0) {
-    console.log('\n🟠 HIGH Priority Issues:')
-    high.forEach(issue => {
-      console.log(`\n  Component: ${issue.component}`)
-      console.log(`  Issue: ${issue.issue}`)
-      console.log(`  Impact: ${issue.impact}`)
-      console.log(`  Fix: ${issue.recommendation}`)
+
+  if (content.includes('for (') && content.includes('await') && content.includes('.select(')) {
+    addIssue({
+      component,
+      issue: 'Potential N+1 query pattern',
+      severity: 'high',
+      impact: 'Sequential reads inside loops can amplify latency under load.',
+      recommendation: 'Use batched reads, joins, or map/reduce preloading patterns.',
     })
   }
-  
-  console.log('\n✅ Performance & Security analysis complete!')
+
+  if (content.includes('sendBulkSMS') || content.includes('rebuildCustomerCategoryStats')) {
+    addIssue({
+      component,
+      issue: 'Potential expensive synchronous action path',
+      severity: 'high',
+      impact: 'Heavy work in request path can timeout and block workers.',
+      recommendation: 'Prefer queue/background job execution and return early.',
+    })
+  }
 }
 
-runPerformanceAndSecurityTests().catch(console.error)
+async function analyzeDatabaseQueries(supabase: ReturnType<typeof createAdminClient>): Promise<void> {
+  console.log('Analyzing database query surfaces...')
+
+  const { data: indexData, error: indexError } = await (supabase as any).rpc('get_table_indexes', {})
+  assertScriptQuerySucceeded({
+    operation: 'Load table index metadata via get_table_indexes RPC',
+    error: indexError,
+    data: indexData as unknown[] | null,
+    allowMissing: true,
+  })
+
+  const actionFiles = listActionFiles(SCAN_ROOT)
+  for (const filePath of actionFiles) {
+    const content = fs.readFileSync(filePath, 'utf8')
+    analyzeActionSourceContent(filePath, content)
+  }
+}
+
+async function analyzePayloadSizes(supabase: ReturnType<typeof createAdminClient>): Promise<void> {
+  console.log('Analyzing payload sample sizes...')
+
+  const tables = ['events', 'customers', 'bookings', 'messages'] as const
+  for (const table of tables) {
+    const { data, error } = await (supabase.from(table) as any)
+      .select('id')
+      .limit(PAYLOAD_SAMPLE_LIMIT)
+
+    const rows =
+      (assertScriptQuerySucceeded({
+        operation: `Load payload sample for ${table}`,
+        error,
+        data: data as Array<{ id: string }> | null,
+        allowMissing: true,
+      }) ?? []) as Array<{ id: string }>
+
+    console.log(`- ${table}: sampled ${rows.length} row(s)`)
+  }
+}
+
+function analyzeSecurityPostureNotes(): void {
+  console.log('Collecting static security posture notes...')
+
+  addIssue({
+    component: 'api',
+    issue: 'No explicit custom rate-limit scan in this diagnostic',
+    severity: 'high',
+    impact: 'High-volume endpoints may be abuse-prone during incident scenarios.',
+    recommendation: 'Ensure route-level rate limits exist on high-fanout mutation/send paths.',
+  })
+}
+
+function analyzeDependencyMetadata(): void {
+  console.log('Inspecting package metadata...')
+
+  const packageJsonPath = path.join(process.cwd(), 'package.json')
+  const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8')) as {
+    dependencies?: Record<string, string>
+    devDependencies?: Record<string, string>
+  }
+
+  const deps = {
+    ...(packageJson.dependencies || {}),
+    ...(packageJson.devDependencies || {}),
+  }
+
+  if (typeof deps.next === 'string') {
+    console.log(`- next: ${deps.next}`)
+  } else {
+    addIssue({
+      component: 'package.json',
+      issue: 'Next.js dependency not found in package manifest',
+      severity: 'critical',
+      impact: 'Build/runtime assumptions may be invalid.',
+      recommendation: 'Verify package.json dependency integrity.',
+    })
+  }
+}
+
+function printSummary(): void {
+  const counts: Record<Severity, number> = {
+    critical: 0,
+    high: 0,
+    medium: 0,
+    low: 0,
+  }
+
+  for (const issue of issues) {
+    counts[issue.severity] += 1
+  }
+
+  console.log('\nIssues summary:')
+  console.log(`- critical: ${counts.critical}`)
+  console.log(`- high: ${counts.high}`)
+  console.log(`- medium: ${counts.medium}`)
+  console.log(`- low: ${counts.low}`)
+
+  const prioritized: Severity[] = ['critical', 'high', 'medium', 'low']
+  for (const severity of prioritized) {
+    const severityIssues = issues.filter((issue) => issue.severity === severity)
+    if (severityIssues.length === 0) continue
+
+    console.log(`\n${severity.toUpperCase()} issues:`)
+    for (const issue of severityIssues) {
+      console.log(`- [${issue.component}] ${issue.issue}`)
+      console.log(`  Impact: ${issue.impact}`)
+      console.log(`  Recommendation: ${issue.recommendation}`)
+    }
+  }
+}
+
+async function main() {
+  dotenv.config({ path: path.resolve(process.cwd(), '.env.local') })
+  assertReadOnly(process.argv)
+
+  if (!fs.existsSync(SCAN_ROOT)) {
+    throw new Error(`[${SCRIPT_NAME}] missing scan root: ${SCAN_ROOT}`)
+  }
+
+  const supabase = createAdminClient()
+
+  console.log('Performance and security diagnostic scan\n')
+
+  await analyzeDatabaseQueries(supabase)
+  await analyzePayloadSizes(supabase)
+  analyzeSecurityPostureNotes()
+  analyzeDependencyMetadata()
+  printSummary()
+}
+
+main().catch((error) => {
+  console.error(`[${SCRIPT_NAME}] Failed`, error)
+  process.exitCode = 1
+})
+

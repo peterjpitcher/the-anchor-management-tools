@@ -9,8 +9,9 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import {
   computeIdempotencyRequestHash,
   getIdempotencyKey,
-  lookupIdempotencyKey,
-  persistIdempotencyResponse
+  claimIdempotencyKey,
+  persistIdempotencyResponse,
+  releaseIdempotencyClaim
 } from '@/lib/api/idempotency'
 import { formatPhoneForStorage } from '@/lib/utils'
 import { ensureCustomerForPhone } from '@/lib/sms/customers'
@@ -40,12 +41,39 @@ type EventWaitlistResult = {
   seats_remaining?: number
 }
 
+type SmsSafetyMeta =
+  | {
+      success: boolean
+      code: string | null
+      logFailure: boolean
+    }
+  | null
+
+async function recordEventWaitlistAnalyticsSafe(
+  supabase: ReturnType<typeof createAdminClient>,
+  payload: Parameters<typeof recordAnalyticsEvent>[1],
+  context: Record<string, unknown>
+) {
+  try {
+    await recordAnalyticsEvent(supabase, payload)
+  } catch (analyticsError) {
+    logger.warn('Failed to record event waitlist analytics event', {
+      metadata: {
+        ...context,
+        error: analyticsError instanceof Error ? analyticsError.message : String(analyticsError)
+      }
+    })
+  }
+}
+
 async function sendWaitlistSmsIfAllowed(
   supabase: ReturnType<typeof createAdminClient>,
   customerId: string,
   normalizedPhone: string,
-  requestedSeats: number
-): Promise<void> {
+  requestedSeats: number,
+  eventId: string,
+  waitlistEntryId?: string | null
+): Promise<SmsSafetyMeta> {
   const { data: customer, error } = await supabase
     .from('customers')
     .select('id, first_name, mobile_number, sms_status')
@@ -56,11 +84,11 @@ async function sendWaitlistSmsIfAllowed(
     logger.warn('Unable to load customer for event waitlist SMS', {
       metadata: { customerId, error: error?.message }
     })
-    return
+    return null
   }
 
   if (customer.sms_status !== 'active') {
-    return
+    return null
   }
 
   const seatWord = requestedSeats === 1 ? 'seat' : 'seats'
@@ -71,12 +99,65 @@ async function sendWaitlistSmsIfAllowed(
     supportPhone
   )
 
-  await sendSMS(customer.mobile_number || normalizedPhone, smsBody, {
-    customerId,
-    metadata: {
-      template_key: 'event_waitlist_joined'
+  let smsResult: Awaited<ReturnType<typeof sendSMS>>
+  try {
+    smsResult = await sendSMS(customer.mobile_number || normalizedPhone, smsBody, {
+      customerId,
+      metadata: {
+        template_key: 'event_waitlist_joined',
+        event_id: eventId,
+        waitlist_entry_id: waitlistEntryId ?? null
+      }
+    })
+  } catch (smsError) {
+    logger.warn('Event waitlist join SMS threw unexpectedly', {
+      metadata: {
+        customerId,
+        eventId,
+        waitlistEntryId: waitlistEntryId ?? null,
+        error: smsError instanceof Error ? smsError.message : String(smsError)
+      }
+    })
+    return {
+      success: false,
+      code: 'unexpected_exception',
+      logFailure: false,
     }
-  })
+  }
+
+  const smsCode = typeof smsResult.code === 'string' ? smsResult.code : null
+  const smsLogFailure = smsResult.logFailure === true || smsCode === 'logging_failed'
+  const smsDeliveredOrUnknown = smsResult.success === true || smsLogFailure
+
+  if (smsLogFailure) {
+    logger.error('Event waitlist SMS sent but outbound message logging failed', {
+      metadata: {
+        customerId,
+        eventId,
+        waitlistEntryId: waitlistEntryId ?? null,
+        code: smsCode,
+        logFailure: smsLogFailure,
+      },
+    })
+  }
+
+  if (!smsResult.success && !smsLogFailure) {
+    logger.warn('Failed to send event waitlist join SMS', {
+      metadata: {
+        customerId,
+        eventId,
+        waitlistEntryId: waitlistEntryId ?? null,
+        error: smsResult.error || 'Unknown SMS error',
+        code: smsCode,
+      }
+    })
+  }
+
+  return {
+    success: smsDeliveredOrUnknown,
+    code: smsCode,
+    logFailure: smsLogFailure,
+  }
 }
 
 export async function POST(request: NextRequest) {
@@ -123,7 +204,7 @@ export async function POST(request: NextRequest) {
     })
 
     const supabase = createAdminClient()
-    const idempotencyState = await lookupIdempotencyKey(supabase, idempotencyKey, requestHash)
+    const idempotencyState = await claimIdempotencyKey(supabase, idempotencyKey, requestHash)
 
     if (idempotencyState.state === 'conflict') {
       return createErrorResponse(
@@ -142,69 +223,137 @@ export async function POST(request: NextRequest) {
       return createApiResponse(replayPayload, replayStatus)
     }
 
-    const customerResolution = await ensureCustomerForPhone(supabase, normalizedPhone, {
-      firstName: parsed.data.first_name,
-      lastName: parsed.data.last_name,
-      email: parsed.data.email || null
-    })
-    if (!customerResolution.customerId) {
-      return createErrorResponse('Failed to resolve customer', 'CUSTOMER_RESOLUTION_FAILED', 500)
+    if (idempotencyState.state === 'in_progress') {
+      return createErrorResponse(
+        'This request is already being processed. Please retry shortly.',
+        'IDEMPOTENCY_KEY_IN_PROGRESS',
+        409
+      )
     }
 
-    const { data: rpcResultRaw, error: rpcError } = await supabase.rpc('create_event_waitlist_entry_v05', {
-      p_event_id: parsed.data.event_id,
-      p_customer_id: customerResolution.customerId,
-      p_requested_seats: parsed.data.requested_seats
-    })
-
-    if (rpcError) {
-      logger.error('create_event_waitlist_entry_v05 RPC failed', {
-        error: new Error(rpcError.message),
-        metadata: { eventId: parsed.data.event_id, customerId: customerResolution.customerId }
+    let claimHeld = true
+    let mutationCommitted = false
+    try {
+      const customerResolution = await ensureCustomerForPhone(supabase, normalizedPhone, {
+        firstName: parsed.data.first_name,
+        lastName: parsed.data.last_name,
+        email: parsed.data.email || null
       })
-      return createErrorResponse('Failed to join waitlist', 'DATABASE_ERROR', 500)
-    }
+      if (!customerResolution.customerId) {
+        return createErrorResponse('Failed to resolve customer', 'CUSTOMER_RESOLUTION_FAILED', 500)
+      }
 
-    const waitlistResult = (rpcResultRaw ?? {}) as EventWaitlistResult
-    const state = waitlistResult.state || 'blocked'
+      const { data: rpcResultRaw, error: rpcError } = await supabase.rpc('create_event_waitlist_entry_v05', {
+        p_event_id: parsed.data.event_id,
+        p_customer_id: customerResolution.customerId,
+        p_requested_seats: parsed.data.requested_seats
+      })
 
-    if (state === 'queued') {
-      await Promise.allSettled([
-        recordAnalyticsEvent(supabase, {
-          customerId: customerResolution.customerId,
-          eventType: 'waitlist_joined',
-          metadata: {
-            event_id: parsed.data.event_id,
-            requested_seats: parsed.data.requested_seats,
-            existing: waitlistResult.existing ?? false
+      if (rpcError) {
+        logger.error('create_event_waitlist_entry_v05 RPC failed', {
+          error: new Error(rpcError.message),
+          metadata: { eventId: parsed.data.event_id, customerId: customerResolution.customerId }
+        })
+        return createErrorResponse('Failed to join waitlist', 'DATABASE_ERROR', 500)
+      }
+
+      const waitlistResult = (rpcResultRaw ?? {}) as EventWaitlistResult
+      const state = waitlistResult.state || 'blocked'
+      mutationCommitted = state === 'queued' || Boolean(waitlistResult.waitlist_entry_id)
+      let smsMeta: SmsSafetyMeta = null
+
+      if (state === 'queued') {
+        const [, smsOutcome] = await Promise.allSettled([
+          recordEventWaitlistAnalyticsSafe(supabase, {
+            customerId: customerResolution.customerId,
+            eventType: 'waitlist_joined',
+            metadata: {
+              event_id: parsed.data.event_id,
+              requested_seats: parsed.data.requested_seats,
+              existing: waitlistResult.existing ?? false
+            }
+          }, {
+            customerId: customerResolution.customerId,
+            eventId: parsed.data.event_id,
+            waitlistEntryId: waitlistResult.waitlist_entry_id ?? null
+          }),
+          sendWaitlistSmsIfAllowed(
+            supabase,
+            customerResolution.customerId,
+            normalizedPhone,
+            parsed.data.requested_seats,
+            parsed.data.event_id,
+            waitlistResult.waitlist_entry_id ?? null
+          )
+        ])
+
+        if (smsOutcome.status === 'fulfilled') {
+          smsMeta = smsOutcome.value
+        } else {
+          const reason = smsOutcome.reason instanceof Error ? smsOutcome.reason.message : String(smsOutcome.reason)
+          logger.warn('Event waitlist SMS task rejected unexpectedly', {
+            metadata: {
+              eventId: parsed.data.event_id,
+              waitlistEntryId: waitlistResult.waitlist_entry_id ?? null,
+              error: reason,
+            },
+          })
+          smsMeta = {
+            success: false,
+            code: 'unexpected_exception',
+            logFailure: false,
           }
-        }),
-        sendWaitlistSmsIfAllowed(
-          supabase,
-          customerResolution.customerId,
-          normalizedPhone,
-          parsed.data.requested_seats
-        )
-      ])
-    }
+        }
+      }
 
-    const responseStatus = state === 'queued' && !waitlistResult.existing ? 201 : 200
-    const responsePayload = {
-      success: true,
-      data: {
-        queued: state === 'queued',
-        state,
-        waitlist_entry_id: waitlistResult.waitlist_entry_id ?? null,
-        reason: waitlistResult.reason ?? null,
-        seats_remaining: waitlistResult.seats_remaining ?? null
-      },
-      meta: {
-        status_code: responseStatus
+      const responseStatus = state === 'queued' && !waitlistResult.existing ? 201 : 200
+      const responsePayload = {
+        success: true,
+        data: {
+          queued: state === 'queued',
+          state,
+          waitlist_entry_id: waitlistResult.waitlist_entry_id ?? null,
+          reason: waitlistResult.reason ?? null,
+          seats_remaining: waitlistResult.seats_remaining ?? null
+        },
+        meta: {
+          status_code: responseStatus,
+          sms: smsMeta,
+        }
+      }
+
+      try {
+        await persistIdempotencyResponse(supabase, idempotencyKey, requestHash, responsePayload)
+        claimHeld = false
+      } catch (persistError) {
+        // Fail closed: the waitlist entry may have been created, so we must not release the claim
+        // and allow client retries to create duplicate entries / resend confirmations.
+        logger.error('Failed to persist event waitlist idempotency response', {
+          error: persistError instanceof Error ? persistError : new Error(String(persistError)),
+          metadata: {
+            key: idempotencyKey,
+            requestHash,
+            eventId: parsed.data.event_id,
+            waitlistEntryId: waitlistResult.waitlist_entry_id ?? null,
+            state,
+          },
+        })
+      }
+
+      return createApiResponse(responsePayload, responseStatus)
+    } finally {
+      if (claimHeld && !mutationCommitted) {
+        try {
+          await releaseIdempotencyClaim(supabase, idempotencyKey, requestHash)
+        } catch (releaseError) {
+          logger.warn('Failed to release event waitlist idempotency claim', {
+            metadata: {
+              key: idempotencyKey,
+              error: releaseError instanceof Error ? releaseError.message : String(releaseError)
+            }
+          })
+        }
       }
     }
-
-    await persistIdempotencyResponse(supabase, idempotencyKey, requestHash, responsePayload)
-
-    return createApiResponse(responsePayload, responseStatus)
   }, ['create:bookings'], request)
 }

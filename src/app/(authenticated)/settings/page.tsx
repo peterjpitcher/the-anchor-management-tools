@@ -53,6 +53,13 @@ const settingsSections = [
     permission: { module: 'events', action: 'manage' },
   },
   {
+    name: 'Calendar Notes',
+    description: 'Add and generate important calendar dates with AI',
+    href: '/settings/calendar-notes',
+    icon: CalendarDaysIcon,
+    permission: { module: 'settings', action: 'manage' },
+  },
+  {
     name: 'Business Hours',
     description: 'Manage regular opening hours and special dates',
     href: '/settings/business-hours',

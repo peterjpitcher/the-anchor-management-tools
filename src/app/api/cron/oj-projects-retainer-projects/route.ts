@@ -27,10 +27,12 @@ function deriveClientCode(vendorName: string) {
 }
 
 function randomSuffix(length = 5) {
-  while (true) {
-    const raw = crypto.randomBytes(6).toString('base64url').toUpperCase().replace(/[^A-Z0-9]/g, '')
-    if (raw.length >= length) return raw.slice(0, length)
-  }
+  const targetLength = Math.max(1, Math.floor(length))
+  return crypto
+    .randomBytes(Math.max(4, Math.ceil(targetLength / 2)))
+    .toString('hex')
+    .toUpperCase()
+    .slice(0, targetLength)
 }
 
 async function generateRetainerProjectCode(
@@ -100,7 +102,8 @@ export async function GET(request: Request) {
     .limit(10000)
 
   if (settingsError) {
-    return NextResponse.json({ error: settingsError.message }, { status: 500 })
+    console.error('Failed to load OJ retainer settings', settingsError)
+    return NextResponse.json({ error: 'Failed to load retainer settings' }, { status: 500 })
   }
 
   const vendorIds = (retainerSettings || [])
@@ -118,7 +121,8 @@ export async function GET(request: Request) {
     .limit(10000)
 
   if (vendorsError) {
-    return NextResponse.json({ error: vendorsError.message }, { status: 500 })
+    console.error('Failed to load OJ retainer vendors', vendorsError)
+    return NextResponse.json({ error: 'Failed to load retainer vendors' }, { status: 500 })
   }
 
   const vendorNameById = new Map<string, string>()
@@ -202,11 +206,15 @@ export async function GET(request: Request) {
         project_code: String(created.project_code || projectCode),
       })
     } catch (err) {
+      console.error('Failed to create OJ retainer project for vendor', {
+        vendorId,
+        error: err instanceof Error ? err.message : String(err)
+      })
       results.push({
         vendor_id: vendorId,
         vendor_name: vendorName,
         status: 'failed',
-        error: err instanceof Error ? err.message : 'Failed to create retainer project',
+        error: 'Failed to create retainer project',
       })
     }
   }
@@ -218,4 +226,3 @@ export async function GET(request: Request) {
     vendors: results,
   })
 }
-

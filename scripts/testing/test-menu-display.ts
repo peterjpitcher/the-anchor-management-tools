@@ -1,81 +1,120 @@
 #!/usr/bin/env tsx
-import { config } from 'dotenv';
+/**
+ * Menu item display diagnostics (read-only).
+ *
+ * Checks that the public table-booking endpoint includes key menu item fields.
+ *
+ * Safety:
+ * - Performs GET requests only.
+ * - Fails closed (non-zero exit) on request/parse failures or missing expected fields.
+ * - Does not support `--confirm`.
+ */
 
-// Load environment variables
-config({ path: '.env.local' });
+import dotenv from 'dotenv'
+import path from 'path'
 
-console.log('🔍 Testing Menu Item Display Issues\n');
+dotenv.config({ path: path.resolve(process.cwd(), '.env.local') })
 
-const bookingRef = 'TB-2025-9907';
+const SCRIPT_NAME = 'test-menu-display'
+const DEFAULT_BASE_URL = 'http://localhost:3000'
 
-console.log('1️⃣ PAYMENT PAGE PUBLIC API CHECK');
-console.log('=================================');
-console.log(`Testing: /api/table-bookings/${bookingRef}/public`);
-
-// Test the public API endpoint
-async function testPublicAPI() {
-  try {
-    const response = await fetch(`http://localhost:3000/api/table-bookings/${bookingRef}/public`);
-    const data = await response.json();
-    
-    console.log('\n📤 API Response:');
-    console.log(JSON.stringify(data, null, 2));
-    
-    if (data.items) {
-      console.log('\n⚠️  ISSUE FOUND: Items only contain:');
-      data.items.forEach((item: any, index: number) => {
-        console.log(`   Item ${index + 1}:`, item);
-      });
-      console.log('\n❌ MISSING FIELDS:');
-      console.log('   - custom_item_name');
-      console.log('   - guest_name');
-      console.log('   - special_requests');
-      console.log('   - item_type');
-    }
-  } catch (error) {
-    console.error('Error testing public API:', error);
-  }
+type Args = {
+  baseUrl: string
+  bookingRef: string
 }
 
-console.log('\n2️⃣ FIX NEEDED FOR PAYMENT PAGE');
-console.log('================================');
-console.log('File: src/app/api/table-bookings/[booking_reference]/public/route.ts');
-console.log('Lines 28-31 need to be updated to include all fields:');
-console.log(`
-table_booking_items(
-  quantity,
-  price_at_booking,
-  custom_item_name,    // ADD THIS
-  guest_name,          // ADD THIS
-  special_requests,    // ADD THIS
-  item_type           // ADD THIS
-)
-`);
+function findFlagValue(argv: string[], flag: string): string | null {
+  const eq = argv.find((arg) => arg.startsWith(`${flag}=`))
+  if (eq) return eq.split('=')[1] ?? null
 
-console.log('\n3️⃣ CONFIRMATION EMAIL CHECK');
-console.log('============================');
-console.log('✅ Email template DOES include menu items');
-console.log('   - Line 102: Shows custom_item_name');
-console.log('   - Line 107-111: Shows special_requests');
-console.log('   - Properly calculates totals');
+  const idx = argv.indexOf(flag)
+  if (idx === -1) return null
 
-console.log('\n4️⃣ MANAGER EMAIL CHECK');
-console.log('======================');
-console.log('✅ Manager email CORRECTLY shows all menu details');
-console.log('   - Fetches complete table_booking_items data');
-console.log('   - Shows item names, guest names, special requests');
-console.log('   - Includes dietary requirements and allergies');
+  const value = argv[idx + 1]
+  return typeof value === 'string' && value.length > 0 ? value : null
+}
 
-console.log('\n📊 SUMMARY');
-console.log('==========');
-console.log('✅ Data is stored correctly in database');
-console.log('✅ Admin UI displays correctly');
-console.log('✅ Manager email works correctly');
-console.log('✅ Confirmation email template is correct');
-console.log('❌ Payment page API missing menu item fields');
+function normalizeBaseUrl(value: string): string {
+  const trimmed = value.trim().replace(/\/+$/, '')
+  if (!trimmed) {
+    throw new Error(`[${SCRIPT_NAME}] Invalid base URL`)
+  }
+  return trimmed
+}
 
-console.log('\n🔧 REQUIRED FIX:');
-console.log('Update the public API endpoint to fetch all menu item fields');
+function readArgs(argv = process.argv.slice(2)): Args {
+  if (argv.includes('--confirm')) {
+    throw new Error(`[${SCRIPT_NAME}] This script is read-only and does not support --confirm`)
+  }
 
-// Run the test
-testPublicAPI();
+  const baseUrl = normalizeBaseUrl(findFlagValue(argv, '--url') ?? process.env.TEST_MENU_DISPLAY_BASE_URL ?? DEFAULT_BASE_URL)
+  const bookingRef =
+    (findFlagValue(argv, '--booking-ref') ?? process.env.TEST_MENU_DISPLAY_BOOKING_REF ?? '').trim()
+
+  if (!bookingRef) {
+    throw new Error(
+      `[${SCRIPT_NAME}] Missing --booking-ref (or TEST_MENU_DISPLAY_BOOKING_REF).`
+    )
+  }
+
+  return { baseUrl, bookingRef }
+}
+
+function hasOwn(obj: unknown, key: string): boolean {
+  return !!obj && typeof obj === 'object' && Object.prototype.hasOwnProperty.call(obj, key)
+}
+
+async function run(): Promise<void> {
+  const args = readArgs()
+
+  console.log(`[${SCRIPT_NAME}] starting (read-only)\n`)
+  console.log(`Base URL: ${args.baseUrl}`)
+  console.log(`Booking reference: ${args.bookingRef}\n`)
+
+  const url = `${args.baseUrl}/api/table-bookings/${encodeURIComponent(args.bookingRef)}/public`
+  console.log(`GET ${url}`)
+
+  const response = await fetch(url, { method: 'GET', headers: { Accept: 'application/json' } })
+  const bodyText = await response.text()
+  if (!response.ok) {
+    throw new Error(`Request failed: ${response.status} ${response.statusText} body=${bodyText.slice(0, 200)}`)
+  }
+
+  let payload: any
+  try {
+    payload = JSON.parse(bodyText)
+  } catch (error) {
+    throw new Error(`Response was not JSON: ${error instanceof Error ? error.message : String(error)}`)
+  }
+
+  const items = Array.isArray(payload?.items) ? payload.items : []
+  console.log(`\nitems: ${items.length}`)
+
+  const requiredFields = ['custom_item_name', 'guest_name', 'special_requests', 'item_type']
+  let failures = 0
+
+  if (items.length === 0) {
+    console.error('❌ No items returned. (This script targets bookings that include menu items.)')
+    failures += 1
+  }
+
+  for (const [idx, item] of items.entries()) {
+    const missing = requiredFields.filter((field) => !hasOwn(item, field))
+    if (missing.length > 0) {
+      failures += 1
+      console.error(`❌ Item ${idx + 1} missing fields: ${missing.join(', ')}`)
+    }
+  }
+
+  if (failures > 0) {
+    throw new Error(`[${SCRIPT_NAME}] public API payload missing expected menu item fields`)
+  }
+
+  console.log('\n✅ Public API includes expected menu item fields.')
+}
+
+run().catch((error) => {
+  console.error('Fatal error:', error)
+  process.exitCode = 1
+})
+

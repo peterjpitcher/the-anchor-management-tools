@@ -8,7 +8,7 @@ on:
     - cron: '0 9 * * *'
     # Invoice Reminders (10 AM daily)
     - cron: '0 10 * * *'
-    # Recurring Invoices (8 AM daily)
+    # Birthday Reminders (8 AM daily)
     - cron: '0 8 * * *'
     # Auto Send Invoices (7 AM daily)
     - cron: '0 7 * * *'
@@ -38,7 +38,6 @@ on:
           - process-jobs
           - reminders
           - invoice-reminders
-          - recurring-invoices
           - auto-send-invoices
           - apply-customer-labels
           - birthday-reminders
@@ -107,9 +106,9 @@ jobs:
             run_job "/api/cron/invoice-reminders" "Invoice Reminders"
           fi
 
-          # 4. Recurring Invoices & Birthday Reminders (8 AM)
-          if [ "${{ github.event.schedule }}" == "0 8 * * *" ] || [ "${{ inputs.job }}" == "recurring-invoices" ] || [ "${{ inputs.job }}" == "birthday-reminders" ] || [ "${{ inputs.job }}" == "all" ]; then
-            run_job "/api/cron/recurring-invoices" "Recurring Invoices"
+          # 4. Birthday Reminders (8 AM)
+          # Recurring invoices are scheduled via Vercel cron.
+          if [ "${{ github.event.schedule }}" == "0 8 * * *" ] || [ "${{ inputs.job }}" == "birthday-reminders" ] || [ "${{ inputs.job }}" == "all" ]; then
             run_job "/api/cron/birthday-reminders" "Birthday Reminders"
           fi
 

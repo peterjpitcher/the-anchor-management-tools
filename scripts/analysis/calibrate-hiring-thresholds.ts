@@ -1,29 +1,44 @@
 #!/usr/bin/env tsx
 
-import { createClient } from '@supabase/supabase-js'
-import { config } from 'dotenv'
+import dotenv from 'dotenv'
+import path from 'path'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { assertScriptQuerySucceeded } from '@/lib/script-mutation-safety'
 
-config({ path: '.env' })
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-)
-
-const args = new Map(process.argv.slice(2).map((entry) => {
-  const [key, value] = entry.replace(/^--/, '').split('=')
-  return [key, value ?? '']
-}))
-
-const sinceArg = args.get('since')
-const sinceDate = sinceArg ? new Date(sinceArg) : new Date(Date.now() - 180 * 24 * 60 * 60 * 1000)
-const sinceIso = sinceDate.toISOString()
+const SCRIPT_NAME = 'calibrate-hiring-thresholds'
+const DEFAULT_SINCE_DAYS = 180
 
 type ScoreRow = {
   job_id: string
   ai_score: number | null
   outcome_status: string | null
-  job: { title: string }
+  job: { title: string } | null
+}
+
+function readOptionalFlagValue(argv: string[], flag: string): string | null {
+  const withEqualsPrefix = `${flag}=`
+  for (let i = 0; i < argv.length; i += 1) {
+    const entry = argv[i]
+    if (entry === flag) {
+      const next = argv[i + 1]
+      return typeof next === 'string' ? next : null
+    }
+    if (typeof entry === 'string' && entry.startsWith(withEqualsPrefix)) {
+      return entry.slice(withEqualsPrefix.length)
+    }
+  }
+  return null
+}
+
+function parseSinceIso(argv: string[]): string {
+  const raw = readOptionalFlagValue(argv, '--since')
+  const sinceDate = raw
+    ? new Date(raw)
+    : new Date(Date.now() - DEFAULT_SINCE_DAYS * 24 * 60 * 60 * 1000)
+  if (!Number.isFinite(sinceDate.getTime())) {
+    throw new Error(`[${SCRIPT_NAME}] Invalid --since value: ${raw}`)
+  }
+  return sinceDate.toISOString()
 }
 
 function average(values: number[]) {
@@ -31,18 +46,25 @@ function average(values: number[]) {
   return values.reduce((sum, value) => sum + value, 0) / values.length
 }
 
-async function run() {
-  const { data, error } = await supabase
-    .from('hiring_applications')
+async function main() {
+  dotenv.config({ path: path.resolve(process.cwd(), '.env.local') })
+  if (process.argv.includes('--confirm')) {
+    throw new Error(`[${SCRIPT_NAME}] read-only script does not support --confirm`)
+  }
+
+  const sinceIso = parseSinceIso(process.argv.slice(2))
+  const supabase = createAdminClient()
+  const { data, error } = await (supabase.from('hiring_applications') as any)
     .select('job_id, ai_score, outcome_status, job:hiring_jobs(title)')
     .gte('created_at', sinceIso)
 
-  if (error) {
-    console.error('Failed to load application scores:', error)
-    process.exit(1)
-  }
-
-  const rows = (data || []) as ScoreRow[]
+  const rows =
+    (assertScriptQuerySucceeded({
+      operation: 'Load application scores',
+      error,
+      data: data as ScoreRow[] | null,
+      allowMissing: true,
+    }) ?? []) as ScoreRow[]
   const byJob = new Map<string, ScoreRow[]>()
 
   for (const row of rows) {
@@ -90,7 +112,7 @@ async function run() {
   }
 }
 
-run().catch((error) => {
-  console.error(error)
-  process.exit(1)
+main().catch((error) => {
+  console.error(`[${SCRIPT_NAME}] Failed`, error)
+  process.exitCode = 1
 })

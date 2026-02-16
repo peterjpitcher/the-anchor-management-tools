@@ -7,6 +7,7 @@ import { syncCalendarEvent, deleteCalendarEvent, isCalendarConfigured } from '@/
 import { recordAnalyticsEvent } from '@/lib/analytics/events';
 import { logAuditEvent } from '@/app/actions/audit'; // Audit logging will be in action, but helper types needed
 import { ensureCustomerForPhone } from '@/lib/sms/customers';
+import { logger } from '@/lib/logger';
 import type {
   BookingStatus,
   BookingItemFormData,
@@ -14,6 +15,31 @@ import type {
   PrivateBookingAuditWithUser
 } from '@/types/private-bookings';
 import { z } from 'zod'; // Import z for schemas
+
+type PrivateBookingSmsSideEffectSummary = {
+  triggerType: string
+  templateKey: string
+  queueId?: string
+  sent?: boolean
+  suppressed?: boolean
+  requiresApproval?: boolean
+  code?: string | null
+  logFailure?: boolean
+  error?: string
+}
+
+type NormalizedSmsSafetyMeta = {
+  code: string | null
+  logFailure: boolean
+  fatal: boolean
+}
+
+function normalizeSmsSafetyMeta(result: any): NormalizedSmsSafetyMeta {
+  const code = typeof result?.code === 'string' ? result.code : null
+  const logFailure = result?.logFailure === true || code === 'logging_failed'
+  const fatal = logFailure || code === 'safety_unavailable' || code === 'idempotency_conflict'
+  return { code, logFailure, fatal }
+}
 
 const toNumber = (value: unknown, fallback = 0): number => {
   if (typeof value === 'number') {
@@ -27,6 +53,14 @@ const toNumber = (value: unknown, fallback = 0): number => {
 
   return fallback;
 };
+
+function sanitizeBookingSearchTerm(value: string): string {
+  return value
+    .replace(/[,%_()"'\\]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 80);
+}
 
 // Helper function to format time to HH:MM
 export function formatTimeToHHMM(time: string | undefined): string | undefined {
@@ -271,7 +305,12 @@ export class PrivateBookingService {
     if (booking) {
       // Ensure booking object passed to sendCreationSms has the calculated hold_expiry
       const bookingWithHoldExpiry = { ...booking, hold_expiry: holdExpiryIso };
-      this.sendCreationSms(bookingWithHoldExpiry, normalizedContactPhone).catch(console.error);
+      void this.sendCreationSms(bookingWithHoldExpiry, normalizedContactPhone).catch((smsError) => {
+        logger.error('Private booking creation SMS background task failed', {
+          error: smsError instanceof Error ? smsError : new Error(String(smsError)),
+          metadata: { bookingId: booking.id }
+        })
+      })
     }
 
     // Google Calendar Sync
@@ -282,10 +321,18 @@ export class PrivateBookingService {
         try {
           const eventId = await syncCalendarEvent(booking);
           if (eventId) {
-            await createAdminClient()
+            const { data: updatedCalendarRow, error: calendarUpdateError } = await createAdminClient()
               .from('private_bookings')
               .update({ calendar_event_id: eventId })
-              .eq('id', booking.id);
+              .eq('id', booking.id)
+              .select('id')
+              .maybeSingle();
+
+            if (calendarUpdateError) {
+              console.error('Failed to persist calendar_event_id after booking create:', calendarUpdateError);
+            } else if (!updatedCalendarRow) {
+              console.error('Failed to persist calendar_event_id after booking create: booking row not found');
+            }
           }
         } catch (e) {
           console.error('Calendar sync failed:', e);
@@ -312,6 +359,24 @@ export class PrivateBookingService {
 
     if (fetchError || !currentBooking) {
       throw new Error('Booking not found');
+    }
+
+    let completedStatusAlreadyMessaged = false;
+    if (input.status === 'completed' && currentBooking.status !== 'completed') {
+      const admin = createAdminClient();
+      const { count, error: duplicateCheckError } = await admin
+        .from('private_booking_sms_queue')
+        .select('*', { count: 'exact', head: true })
+        .eq('booking_id', id)
+        .eq('trigger_type', 'booking_completed')
+        .in('status', ['pending', 'approved', 'sent']);
+
+      if (duplicateCheckError) {
+        console.error('Failed to verify completed-booking SMS duplicate guard:', duplicateCheckError);
+        throw new Error('Failed completed-booking SMS duplicate safety check');
+      }
+
+      completedStatusAlreadyMessaged = (count ?? 0) > 0;
     }
 
     // 2. Prepare Updates
@@ -454,17 +519,78 @@ export class PrivateBookingService {
       .update(updatePayload)
       .eq('id', id)
       .select()
-      .single();
+      .maybeSingle();
 
     if (error) {
       console.error('Error updating private booking:', error);
       throw new Error('Failed to update private booking');
     }
 
+    if (!updatedBooking) {
+      throw new Error('Booking not found');
+    }
+
+    const smsSideEffects: Array<{
+      triggerType: string
+      templateKey: string
+      queueId?: string
+      sent?: boolean
+      suppressed?: boolean
+      requiresApproval?: boolean
+      code?: string | null
+      logFailure?: boolean
+      error?: string
+    }> = []
+
+    let abortSmsSideEffects = false
+
+    const captureSmsSideEffect = (triggerType: string, templateKey: string, result: any) => {
+      const safety = normalizeSmsSafetyMeta(result)
+      const summary = {
+        triggerType,
+        templateKey,
+        queueId: typeof result?.queueId === 'string' ? result.queueId : undefined,
+        sent: result?.sent === true,
+        suppressed: result?.suppressed === true,
+        requiresApproval: result?.requiresApproval === true,
+        code: safety.code,
+        logFailure: safety.logFailure,
+        error: typeof result?.error === 'string' ? result.error : undefined
+      }
+
+      smsSideEffects.push(summary)
+
+      if (safety.fatal) {
+        abortSmsSideEffects = true
+      }
+
+      if (summary.logFailure) {
+        logger.error('Private booking SMS logging failed', {
+          metadata: {
+            bookingId: id,
+            triggerType,
+            templateKey,
+            code: summary.code
+          }
+        })
+      }
+
+      if (summary.error) {
+        logger.error('Private booking SMS queue/send failed', {
+          metadata: {
+            bookingId: id,
+            triggerType,
+            templateKey,
+            error: summary.error
+          }
+        })
+      }
+    }
+
     // 4. Side Effects
 
     // Send Date Change SMS if hold was reset
-    if (holdExpiryIso && updatedBooking.status === 'draft') {
+    if (!abortSmsSideEffects && holdExpiryIso && updatedBooking.status === 'draft') {
       const eventDateReadable = new Date(updatedBooking.event_date).toLocaleDateString('en-GB', {
         day: 'numeric', month: 'long', year: 'numeric'
       });
@@ -476,7 +602,7 @@ export class PrivateBookingService {
 
       const smsMessage = `The Anchor: Hi ${updatedBooking.customer_first_name}, we've moved your tentative booking to ${eventDateReadable}. We've updated the hold on this date, so your deposit is now due by ${expiryReadable}.`;
 
-      await SmsQueueService.queueAndSend({
+      const result = await SmsQueueService.queueAndSend({
         booking_id: updatedBooking.id,
         trigger_type: 'date_changed',
         template_key: 'private_booking_date_changed',
@@ -491,7 +617,8 @@ export class PrivateBookingService {
           new_date: eventDateReadable,
           new_expiry: expiryReadable
         }
-      }).catch(console.error);
+      })
+      captureSmsSideEffect('date_changed', 'private_booking_date_changed', result)
     }
 
     const statusChanged = updatedBooking.status && updatedBooking.status !== currentBooking.status;
@@ -504,7 +631,7 @@ export class PrivateBookingService {
       Boolean(updatedBooking.setup_time) &&
       (setupDateChanged || setupTimeChanged);
 
-    if (shouldSendSetupReminder) {
+    if (!abortSmsSideEffects && shouldSendSetupReminder) {
       const eventDateReadable = new Date(updatedBooking.event_date).toLocaleDateString('en-GB', {
         day: 'numeric',
         month: 'long',
@@ -523,7 +650,7 @@ export class PrivateBookingService {
 
       const messageBody = `The Anchor: Hi ${firstName}, confirming setup for your event on ${eventDateReadable}. Your vendors/team can access the venue from ${setupTimeReadable}.`;
 
-      await SmsQueueService.queueAndSend({
+      const result = await SmsQueueService.queueAndSend({
         booking_id: updatedBooking.id,
         trigger_type: 'setup_reminder',
         template_key: 'private_booking_setup_reminder',
@@ -541,7 +668,8 @@ export class PrivateBookingService {
           setup_time: updatedBooking.setup_time ?? null,
           setup_date: updatedBooking.setup_date ?? null
         }
-      }).catch(console.error);
+      })
+      captureSmsSideEffect('setup_reminder', 'private_booking_setup_reminder', result)
     }
 
     // Status change messages (e.g. status modal)
@@ -572,11 +700,11 @@ export class PrivateBookingService {
         }
       }
 
-      if (updatedBooking.status === 'confirmed' && !updatedBooking.deposit_paid_date) {
+      if (!abortSmsSideEffects && updatedBooking.status === 'confirmed' && !updatedBooking.deposit_paid_date) {
         const eventType = updatedBooking.event_type || 'event';
         const messageBody = `The Anchor: Hi ${firstName}, your private event booking at The Anchor on ${eventDateReadable} has been confirmed. We look forward to hosting your ${eventType}.`;
 
-        await SmsQueueService.queueAndSend({
+        const result = await SmsQueueService.queueAndSend({
           booking_id: updatedBooking.id,
           trigger_type: 'booking_confirmed',
           template_key: 'private_booking_confirmed',
@@ -593,13 +721,14 @@ export class PrivateBookingService {
             event_date: eventDateReadable,
             event_type: updatedBooking.event_type ?? null
           }
-        }).catch(console.error);
+        })
+        captureSmsSideEffect('booking_confirmed', 'private_booking_confirmed', result)
       }
 
-      if (updatedBooking.status === 'cancelled') {
+      if (!abortSmsSideEffects && updatedBooking.status === 'cancelled') {
         const messageBody = `The Anchor: Hi ${firstName}, your private booking on ${eventDateReadable} has been cancelled.`;
 
-        await SmsQueueService.queueAndSend({
+        const result = await SmsQueueService.queueAndSend({
           booking_id: updatedBooking.id,
           trigger_type: 'booking_cancelled',
           template_key: 'private_booking_cancelled',
@@ -616,39 +745,31 @@ export class PrivateBookingService {
             event_date: eventDateReadable,
             reason: 'status_change'
           }
-        }).catch(console.error);
+        })
+        captureSmsSideEffect('booking_cancelled', 'private_booking_cancelled', result)
       }
 
-      if (updatedBooking.status === 'completed') {
-        const admin = createAdminClient();
-        const { count } = await admin
-          .from('private_booking_sms_queue')
-          .select('*', { count: 'exact', head: true })
-          .eq('booking_id', updatedBooking.id)
-          .eq('trigger_type', 'booking_completed')
-          .in('status', ['pending', 'approved', 'sent']);
+      if (!abortSmsSideEffects && updatedBooking.status === 'completed' && !completedStatusAlreadyMessaged) {
+        const messageBody = `The Anchor: Hi ${firstName}, thank you for choosing The Anchor for your event. We hope you and your guests had a wonderful time. We'd love to welcome you back again soon.`;
 
-        if ((count ?? 0) === 0) {
-          const messageBody = `The Anchor: Hi ${firstName}, thank you for choosing The Anchor for your event. We hope you and your guests had a wonderful time. We'd love to welcome you back again soon.`;
-
-          await SmsQueueService.queueAndSend({
-            booking_id: updatedBooking.id,
-            trigger_type: 'booking_completed',
-            template_key: 'private_booking_thank_you',
-            message_body: messageBody,
-            customer_phone: updatedBooking.contact_phone,
-            customer_name:
-              updatedBooking.customer_name ||
-              `${updatedBooking.customer_first_name ?? ''} ${updatedBooking.customer_last_name ?? ''}`.trim(),
-            customer_id: updatedBooking.customer_id,
-            created_by: performedByUserId,
-            priority: 4,
-            metadata: {
-              template: 'private_booking_thank_you',
-              event_date: eventDateReadable
-            }
-          }).catch(console.error);
-        }
+        const result = await SmsQueueService.queueAndSend({
+          booking_id: updatedBooking.id,
+          trigger_type: 'booking_completed',
+          template_key: 'private_booking_thank_you',
+          message_body: messageBody,
+          customer_phone: updatedBooking.contact_phone,
+          customer_name:
+            updatedBooking.customer_name ||
+            `${updatedBooking.customer_first_name ?? ''} ${updatedBooking.customer_last_name ?? ''}`.trim(),
+          customer_id: updatedBooking.customer_id,
+          created_by: performedByUserId,
+          priority: 4,
+          metadata: {
+            template: 'private_booking_thank_you',
+            event_date: eventDateReadable
+          }
+        })
+        captureSmsSideEffect('booking_completed', 'private_booking_thank_you', result)
       }
     }
 
@@ -662,22 +783,41 @@ export class PrivateBookingService {
           if (updatedBooking.calendar_event_id) {
             const deleted = await deleteCalendarEvent(updatedBooking.calendar_event_id)
             if (deleted) {
-              await supabase
+              const { data: clearedCalendarRow, error: clearCalendarError } = await supabase
                 .from('private_bookings')
                 .update({ calendar_event_id: null })
                 .eq('id', id)
+                .select('id')
+                .maybeSingle()
+
+              if (clearCalendarError) {
+                console.error('Failed to clear private booking calendar event id after removal:', clearCalendarError)
+              } else if (!clearedCalendarRow) {
+                console.error('Failed to clear private booking calendar event id after removal: booking row not found')
+              }
               updatedBooking.calendar_event_id = null
             }
+          }
+          if (smsSideEffects.length > 0) {
+            ;(updatedBooking as any).smsSideEffects = smsSideEffects
           }
           return updatedBooking
         }
 
         const eventId = await syncCalendarEvent(updatedBooking);
         if (eventId && eventId !== updatedBooking.calendar_event_id) {
-          await supabase
+          const { data: updatedCalendarRow, error: calendarUpdateError } = await supabase
             .from('private_bookings')
             .update({ calendar_event_id: eventId })
-            .eq('id', id);
+            .eq('id', id)
+            .select('id')
+            .maybeSingle();
+
+          if (calendarUpdateError) {
+            console.error('Failed to persist private booking calendar event id during update:', calendarUpdateError);
+          } else if (!updatedCalendarRow) {
+            console.error('Failed to persist private booking calendar event id during update: booking row not found');
+          }
           updatedBooking.calendar_event_id = eventId
         }
       } catch (error) {
@@ -685,6 +825,9 @@ export class PrivateBookingService {
       }
     }
 
+    if (smsSideEffects.length > 0) {
+      ;(updatedBooking as any).smsSideEffects = smsSideEffects
+    }
     return updatedBooking;
   }
 
@@ -702,7 +845,7 @@ export class PrivateBookingService {
   ) {
     const supabase = await createClient();
 
-    const { error } = await supabase
+    const { data: updatedBooking, error } = await supabase
       .from('private_bookings')
       .update({
         discount_type: data.discount_type,
@@ -710,11 +853,17 @@ export class PrivateBookingService {
         discount_reason: data.discount_reason,
         updated_at: new Date().toISOString()
       })
-      .eq('id', bookingId);
+      .eq('id', bookingId)
+      .select('id')
+      .maybeSingle();
 
     if (error) {
       console.error('Error applying booking discount:', error);
       throw new Error(error.message || 'Failed to apply booking discount');
+    }
+
+    if (!updatedBooking) {
+      throw new Error('Booking not found');
     }
 
     return { success: true };
@@ -740,7 +889,7 @@ export class PrivateBookingService {
 
     // 2. Update Status
     const nowIso = new Date().toISOString();
-    let { error: updateError } = await supabase
+    let { data: updatedBookingRow, error: updateError } = await supabase
       .from('private_bookings')
       .update({
         status: 'cancelled',
@@ -748,7 +897,9 @@ export class PrivateBookingService {
         cancelled_at: nowIso,
         updated_at: nowIso
       })
-      .eq('id', id);
+      .eq('id', id)
+      .select('id')
+      .maybeSingle();
 
     // Fallback for legacy schema
     if (updateError && (updateError.code === 'PGRST204' || (updateError.message || '').includes('cancellation_reason'))) {
@@ -758,12 +909,19 @@ export class PrivateBookingService {
           status: 'cancelled',
           updated_at: nowIso
         })
-        .eq('id', id);
+        .eq('id', id)
+        .select('id')
+        .maybeSingle();
       updateError = fallback.error || null;
+      updatedBookingRow = fallback.data || null;
     }
 
     if (updateError) {
       throw new Error('Failed to cancel booking');
+    }
+
+    if (!updatedBookingRow) {
+      throw new Error('Booking not found');
     }
 
     // 3. Calendar Cleanup
@@ -771,15 +929,25 @@ export class PrivateBookingService {
       try {
         const deleted = await deleteCalendarEvent(booking.calendar_event_id);
         if (deleted) {
-          await supabase
+          const { data: clearedCalendarRow, error: clearCalendarError } = await supabase
             .from('private_bookings')
             .update({ calendar_event_id: null })
-            .eq('id', id);
+            .eq('id', id)
+            .select('id')
+            .maybeSingle();
+
+          if (clearCalendarError) {
+            console.error('Failed to clear calendar event id after cancellation:', clearCalendarError);
+          } else if (!clearedCalendarRow) {
+            console.error('Failed to clear calendar event id after cancellation: booking row not found');
+          }
         }
       } catch (error) {
         console.error('Failed to delete calendar event:', error);
       }
     }
+
+    const smsSideEffects: PrivateBookingSmsSideEffectSummary[] = []
 
     // 4. SMS Notification
     if (booking.contact_phone || booking.customer_id) {
@@ -790,29 +958,74 @@ export class PrivateBookingService {
       const firstName = booking.customer_first_name || booking.customer_name?.split(' ')[0] || 'there';
       const smsMessage = `The Anchor: Hi ${firstName}, your private booking on ${eventDate} has been cancelled. Reply to this message if you need help or call 01753 682 707 if you believe this was a mistake.`;
 
-      await SmsQueueService.queueAndSend({
-        booking_id: id,
-        trigger_type: 'booking_cancelled',
-        template_key: 'private_booking_cancelled',
-        message_body: smsMessage,
-        customer_phone: booking.contact_phone,
-        customer_name: booking.customer_name || `${booking.customer_first_name} ${booking.customer_last_name || ''}`.trim(),
-        customer_id: booking.customer_id,
-        created_by: performedByUserId,
-        priority: 2,
-        metadata: {
-          template: 'private_booking_cancelled',
-          event_date: eventDate,
-          reason: reason || 'staff_cancelled'
-        }
-      });
+      let smsResult: any
+      try {
+        smsResult = await SmsQueueService.queueAndSend({
+          booking_id: id,
+          trigger_type: 'booking_cancelled',
+          template_key: 'private_booking_cancelled',
+          message_body: smsMessage,
+          customer_phone: booking.contact_phone,
+          customer_name: booking.customer_name || `${booking.customer_first_name} ${booking.customer_last_name || ''}`.trim(),
+          customer_id: booking.customer_id,
+          created_by: performedByUserId,
+          priority: 2,
+          metadata: {
+            template: 'private_booking_cancelled',
+            event_date: eventDate,
+            reason: reason || 'staff_cancelled'
+          }
+        });
+      } catch (smsError) {
+        smsResult = { error: smsError instanceof Error ? smsError.message : String(smsError) }
+      }
+
+      const smsSafety = normalizeSmsSafetyMeta(smsResult)
+      const smsSummary: PrivateBookingSmsSideEffectSummary = {
+        triggerType: 'booking_cancelled',
+        templateKey: 'private_booking_cancelled',
+        queueId: typeof smsResult?.queueId === 'string' ? smsResult.queueId : undefined,
+        sent: smsResult?.sent === true,
+        suppressed: smsResult?.suppressed === true,
+        requiresApproval: smsResult?.requiresApproval === true,
+        code: smsSafety.code,
+        logFailure: smsSafety.logFailure,
+        error: typeof smsResult?.error === 'string' ? smsResult.error : undefined
+      }
+
+      smsSideEffects.push(smsSummary)
+
+      if (smsSummary.logFailure) {
+        logger.error('Private booking SMS logging failed', {
+          metadata: {
+            bookingId: id,
+            triggerType: smsSummary.triggerType,
+            templateKey: smsSummary.templateKey,
+            code: smsSummary.code ?? null
+          }
+        })
+      }
+
+      if (smsSummary.error) {
+        logger.error('Private booking SMS queue/send failed', {
+          metadata: {
+            bookingId: id,
+            triggerType: smsSummary.triggerType,
+            templateKey: smsSummary.templateKey,
+            error: smsSummary.error
+          }
+        })
+      }
     }
 
-    return { success: true };
+    return smsSideEffects.length > 0 ? { success: true, smsSideEffects } : { success: true };
   }
 
-  static async expireBooking(id: string) {
-    const supabase = await createClient();
+  static async expireBooking(
+    id: string,
+    options?: { sendNotification?: boolean; asSystem?: boolean }
+  ) {
+    const supabase = options?.asSystem ? createAdminClient() : await createClient();
     const nowIso = new Date().toISOString();
 
     // 1. Get Booking
@@ -826,7 +1039,7 @@ export class PrivateBookingService {
     if (booking.status !== 'draft') throw new Error('Only draft bookings can be expired');
 
     // 2. Update Status
-    const { error: updateError } = await supabase
+    const { data: updatedBookingRow, error: updateError } = await supabase
       .from('private_bookings')
       .update({
         status: 'cancelled',
@@ -834,19 +1047,30 @@ export class PrivateBookingService {
         cancelled_at: nowIso,
         updated_at: nowIso
       })
-      .eq('id', id);
+      .eq('id', id)
+      .select('id')
+      .maybeSingle();
 
     if (updateError) throw new Error('Failed to expire booking');
+    if (!updatedBookingRow) throw new Error('Booking not found');
 
     // 3. Calendar Cleanup
     if (booking.calendar_event_id && isCalendarConfigured()) {
       try {
         const deleted = await deleteCalendarEvent(booking.calendar_event_id);
         if (deleted) {
-          await supabase
+          const { data: clearedCalendarRow, error: clearCalendarError } = await supabase
             .from('private_bookings')
             .update({ calendar_event_id: null })
-            .eq('id', id);
+            .eq('id', id)
+            .select('id')
+            .maybeSingle();
+
+          if (clearCalendarError) {
+            console.error('Failed to clear calendar event id after expiry:', clearCalendarError);
+          } else if (!clearedCalendarRow) {
+            console.error('Failed to clear calendar event id after expiry: booking row not found');
+          }
         }
       } catch (error) {
         console.error('Failed to delete calendar event:', error);
@@ -854,31 +1078,45 @@ export class PrivateBookingService {
     }
 
     // 4. SMS Notification
-    if (booking.contact_phone || booking.customer_id) {
+    let smsSent = false
+    let smsCode: string | null = null
+    let smsLogFailure = false
+    if (options?.sendNotification !== false && (booking.contact_phone || booking.customer_id)) {
       const eventDate = new Date(booking.event_date).toLocaleDateString('en-GB', {
         day: 'numeric', month: 'long', year: 'numeric'
       });
 
       const smsMessage = `The Anchor: Hi ${booking.customer_first_name}, the hold on ${eventDate} has now expired and the date has been released. Please contact us if you'd like to re-book.`;
 
-      await SmsQueueService.queueAndSend({
-        booking_id: id,
-        trigger_type: 'booking_expired',
-        template_key: 'private_booking_expired',
-        message_body: smsMessage,
-        customer_phone: booking.contact_phone,
-        customer_name: booking.customer_name,
-        customer_id: booking.customer_id,
-        created_by: undefined,
-        priority: 2,
-        metadata: {
-          template: 'private_booking_expired',
-          event_date: eventDate
-        }
-      }).catch(console.error);
+      let smsResult: any
+      try {
+        smsResult = await SmsQueueService.queueAndSend({
+          booking_id: id,
+          trigger_type: 'booking_expired',
+          template_key: 'private_booking_expired',
+          message_body: smsMessage,
+          customer_phone: booking.contact_phone,
+          customer_name: booking.customer_name,
+          customer_id: booking.customer_id,
+          created_by: undefined,
+          priority: 2,
+          metadata: {
+            template: 'private_booking_expired',
+            event_date: eventDate
+          }
+        });
+      } catch (error) {
+        console.error('Failed to queue expiry SMS notification:', error)
+        smsResult = { error: 'Failed to queue SMS notification' }
+      }
+
+      const smsSafety = normalizeSmsSafetyMeta(smsResult)
+      smsCode = smsSafety.code
+      smsLogFailure = smsSafety.logFailure
+      smsSent = Boolean(!smsResult.error && 'sent' in smsResult && smsResult.sent)
     }
 
-    return { success: true };
+    return { success: true, smsSent, smsCode, smsLogFailure };
   }
 
   static async deletePrivateBooking(id: string) {
@@ -944,9 +1182,10 @@ export class PrivateBookingService {
       })
       .eq('id', bookingId)
       .select()
-      .single();
+      .maybeSingle();
 
     if (error) throw new Error('Failed to record deposit');
+    if (!updatedBooking) throw new Error('Booking not found');
 
     if (booking.customer_id) {
       try {
@@ -965,6 +1204,8 @@ export class PrivateBookingService {
       }
     }
 
+    const smsSideEffects: PrivateBookingSmsSideEffectSummary[] = []
+
     // SMS
     if (booking.contact_phone || booking.customer_id) {
       const eventDate = new Date(booking.event_date).toLocaleDateString('en-GB', {
@@ -973,23 +1214,65 @@ export class PrivateBookingService {
 
       const smsMessage = `The Anchor: Hi ${booking.customer_first_name}, deposit received. Your booking for ${eventDate} is now fully confirmed. We'll be in touch closer to the time for final details.`;
 
-      await SmsQueueService.queueAndSend({
-        booking_id: bookingId,
-        trigger_type: 'deposit_received',
-        template_key: 'private_booking_deposit_received',
-        message_body: smsMessage,
-        customer_phone: booking.contact_phone,
-        customer_name: booking.customer_name || `${booking.customer_first_name} ${booking.customer_last_name || ''}`.trim(),
-        customer_id: booking.customer_id,
-        created_by: performedByUserId,
-        priority: 1,
-        metadata: {
-          template: 'private_booking_deposit_received',
-          first_name: booking.customer_first_name,
-          amount: amount,
-          event_date: eventDate
-        }
-      });
+      let smsResult: any
+      try {
+        smsResult = await SmsQueueService.queueAndSend({
+          booking_id: bookingId,
+          trigger_type: 'deposit_received',
+          template_key: 'private_booking_deposit_received',
+          message_body: smsMessage,
+          customer_phone: booking.contact_phone,
+          customer_name: booking.customer_name || `${booking.customer_first_name} ${booking.customer_last_name || ''}`.trim(),
+          customer_id: booking.customer_id,
+          created_by: performedByUserId,
+          priority: 1,
+          metadata: {
+            template: 'private_booking_deposit_received',
+            first_name: booking.customer_first_name,
+            amount: amount,
+            event_date: eventDate
+          }
+        });
+      } catch (smsError) {
+        smsResult = { error: smsError instanceof Error ? smsError.message : String(smsError) }
+      }
+
+      const smsSafety = normalizeSmsSafetyMeta(smsResult)
+      const smsSummary: PrivateBookingSmsSideEffectSummary = {
+        triggerType: 'deposit_received',
+        templateKey: 'private_booking_deposit_received',
+        queueId: typeof smsResult?.queueId === 'string' ? smsResult.queueId : undefined,
+        sent: smsResult?.sent === true,
+        suppressed: smsResult?.suppressed === true,
+        requiresApproval: smsResult?.requiresApproval === true,
+        code: smsSafety.code,
+        logFailure: smsSafety.logFailure,
+        error: typeof smsResult?.error === 'string' ? smsResult.error : undefined
+      }
+
+      smsSideEffects.push(smsSummary)
+
+      if (smsSummary.logFailure) {
+        logger.error('Private booking SMS logging failed', {
+          metadata: {
+            bookingId: bookingId,
+            triggerType: smsSummary.triggerType,
+            templateKey: smsSummary.templateKey,
+            code: smsSummary.code ?? null
+          }
+        })
+      }
+
+      if (smsSummary.error) {
+        logger.error('Private booking SMS queue/send failed', {
+          metadata: {
+            bookingId: bookingId,
+            triggerType: smsSummary.triggerType,
+            templateKey: smsSummary.templateKey,
+            error: smsSummary.error
+          }
+        })
+      }
     }
 
     // Calendar Sync
@@ -1002,17 +1285,25 @@ export class PrivateBookingService {
 
         const eventId = await syncCalendarEvent(fullBookingForSync);
         if (eventId && eventId !== booking.calendar_event_id) {
-          await supabase
+          const { data: updatedCalendarRow, error: calendarUpdateError } = await supabase
             .from('private_bookings')
             .update({ calendar_event_id: eventId })
-            .eq('id', bookingId);
+            .eq('id', bookingId)
+            .select('id')
+            .maybeSingle();
+
+          if (calendarUpdateError) {
+            console.error('Failed to persist calendar event id after deposit:', calendarUpdateError);
+          } else if (!updatedCalendarRow) {
+            console.error('Failed to persist calendar event id after deposit: booking row not found');
+          }
         }
       } catch (error) {
         console.error('Calendar sync failed during deposit record:', error);
       }
     }
 
-    return { success: true };
+    return smsSideEffects.length > 0 ? { success: true, smsSideEffects } : { success: true };
   }
 
   static async recordFinalPayment(bookingId: string, method: string, performedByUserId?: string) {
@@ -1035,9 +1326,12 @@ export class PrivateBookingService {
       })
       .eq('id', bookingId)
       .select()
-      .single();
+      .maybeSingle();
 
     if (error) throw new Error('Failed to record final payment');
+    if (!updatedBooking) throw new Error('Booking not found');
+
+    const smsSideEffects: PrivateBookingSmsSideEffectSummary[] = []
 
     // SMS
     if (booking.contact_phone || booking.customer_id) {
@@ -1047,22 +1341,64 @@ export class PrivateBookingService {
 
       const smsMessage = `The Anchor: Hi ${booking.customer_first_name}, thank you for your final payment. Your private booking on ${eventDate} is fully paid.`;
 
-      await SmsQueueService.queueAndSend({
-        booking_id: bookingId,
-        trigger_type: 'final_payment_received',
-        template_key: 'private_booking_final_payment',
-        message_body: smsMessage,
-        customer_phone: booking.contact_phone,
-        customer_name: booking.customer_name || `${booking.customer_first_name} ${booking.customer_last_name || ''}`.trim(),
-        customer_id: booking.customer_id,
-        created_by: performedByUserId,
-        priority: 1,
-        metadata: {
-          template: 'private_booking_final_payment',
-          first_name: booking.customer_first_name,
-          event_date: eventDate
-        }
-      });
+      let smsResult: any
+      try {
+        smsResult = await SmsQueueService.queueAndSend({
+          booking_id: bookingId,
+          trigger_type: 'final_payment_received',
+          template_key: 'private_booking_final_payment',
+          message_body: smsMessage,
+          customer_phone: booking.contact_phone,
+          customer_name: booking.customer_name || `${booking.customer_first_name} ${booking.customer_last_name || ''}`.trim(),
+          customer_id: booking.customer_id,
+          created_by: performedByUserId,
+          priority: 1,
+          metadata: {
+            template: 'private_booking_final_payment',
+            first_name: booking.customer_first_name,
+            event_date: eventDate
+          }
+        });
+      } catch (smsError) {
+        smsResult = { error: smsError instanceof Error ? smsError.message : String(smsError) }
+      }
+
+      const smsSafety = normalizeSmsSafetyMeta(smsResult)
+      const smsSummary: PrivateBookingSmsSideEffectSummary = {
+        triggerType: 'final_payment_received',
+        templateKey: 'private_booking_final_payment',
+        queueId: typeof smsResult?.queueId === 'string' ? smsResult.queueId : undefined,
+        sent: smsResult?.sent === true,
+        suppressed: smsResult?.suppressed === true,
+        requiresApproval: smsResult?.requiresApproval === true,
+        code: smsSafety.code,
+        logFailure: smsSafety.logFailure,
+        error: typeof smsResult?.error === 'string' ? smsResult.error : undefined
+      }
+
+      smsSideEffects.push(smsSummary)
+
+      if (smsSummary.logFailure) {
+        logger.error('Private booking SMS logging failed', {
+          metadata: {
+            bookingId: bookingId,
+            triggerType: smsSummary.triggerType,
+            templateKey: smsSummary.templateKey,
+            code: smsSummary.code ?? null
+          }
+        })
+      }
+
+      if (smsSummary.error) {
+        logger.error('Private booking SMS queue/send failed', {
+          metadata: {
+            bookingId: bookingId,
+            triggerType: smsSummary.triggerType,
+            templateKey: smsSummary.templateKey,
+            error: smsSummary.error
+          }
+        })
+      }
     }
 
     // Calendar Sync
@@ -1075,17 +1411,25 @@ export class PrivateBookingService {
 
         const eventId = await syncCalendarEvent(fullBookingForSync);
         if (eventId && eventId !== booking.calendar_event_id) {
-          await supabase
+          const { data: updatedCalendarRow, error: calendarUpdateError } = await supabase
             .from('private_bookings')
             .update({ calendar_event_id: eventId })
-            .eq('id', bookingId);
+            .eq('id', bookingId)
+            .select('id')
+            .maybeSingle();
+
+          if (calendarUpdateError) {
+            console.error('Failed to persist calendar event id after final payment:', calendarUpdateError);
+          } else if (!updatedCalendarRow) {
+            console.error('Failed to persist calendar event id after final payment: booking row not found');
+          }
         }
       } catch (error) {
         console.error('Calendar sync failed during final payment record:', error);
       }
     }
 
-    return { success: true };
+    return smsSideEffects.length > 0 ? { success: true, smsSideEffects } : { success: true };
   }
 
   static async addNote(bookingId: string, note: string, userId: string, userEmail?: string) {
@@ -1241,19 +1585,22 @@ export class PrivateBookingService {
 
     const searchTerm = options.search?.trim();
     if (searchTerm) {
-      const pattern = `%${searchTerm}%`;
+      const sanitizedSearch = sanitizeBookingSearchTerm(searchTerm);
+      if (sanitizedSearch.length > 0) {
+        const pattern = `%${sanitizedSearch}%`;
 
-      query = query.or(
-        [
-          `customer_name.ilike.${pattern}`,
-          `customer_first_name.ilike.${pattern}`,
-          `customer_last_name.ilike.${pattern}`,
-          `customer_full_name.ilike.${pattern}`,
-          `contact_phone.ilike.${pattern}`,
-          `contact_email.ilike.${pattern}`,
-          `event_type.ilike.${pattern}`,
-        ].join(',')
-      );
+        query = query.or(
+          [
+            `customer_name.ilike.${pattern}`,
+            `customer_first_name.ilike.${pattern}`,
+            `customer_last_name.ilike.${pattern}`,
+            `customer_full_name.ilike.${pattern}`,
+            `contact_phone.ilike.${pattern}`,
+            `contact_email.ilike.${pattern}`,
+            `event_type.ilike.${pattern}`,
+          ].join(',')
+        );
+      }
     }
 
     const { data, error, count } = await query.range(start, end);
@@ -1683,23 +2030,50 @@ export class PrivateBookingService {
       smsMessage = `The Anchor: Hi ${booking.customer_first_name}, thanks for your enquiry about private hire at The Anchor on ${eventDateReadable}. We normally require a deposit to secure the date, but we've waived it for you.`;
     }
 
-    await SmsQueueService.queueAndSend({
-      booking_id: booking.id,
-      trigger_type: 'booking_created',
-      template_key: 'private_booking_created',
-      message_body: smsMessage,
-      customer_phone: phone ?? undefined,
-      customer_name: booking.customer_name,
-      customer_id: booking.customer_id,
-      created_by: booking.created_by,
-      priority: 2,
-      metadata: {
-        template: 'private_booking_created',
-        first_name: booking.customer_first_name,
-        event_date: eventDateReadable,
-        deposit_amount: depositAmount
+    try {
+      const result = await SmsQueueService.queueAndSend({
+        booking_id: booking.id,
+        trigger_type: 'booking_created',
+        template_key: 'private_booking_created',
+        message_body: smsMessage,
+        customer_phone: phone ?? undefined,
+        customer_name: booking.customer_name,
+        customer_id: booking.customer_id,
+        created_by: booking.created_by,
+        priority: 2,
+        metadata: {
+          template: 'private_booking_created',
+          first_name: booking.customer_first_name,
+          event_date: eventDateReadable,
+          deposit_amount: depositAmount
+        }
+      });
+
+      const smsSafety = normalizeSmsSafetyMeta(result)
+      if (smsSafety.logFailure) {
+        logger.error('Private booking created SMS logging failed', {
+          metadata: {
+            bookingId: booking.id,
+            triggerType: 'booking_created',
+            templateKey: 'private_booking_created',
+            code: smsSafety.code
+          }
+        })
       }
-    });
+
+      if (typeof result?.error === 'string') {
+        logger.error('Private booking created SMS queue/send failed', {
+          metadata: {
+            bookingId: booking.id,
+            triggerType: 'booking_created',
+            templateKey: 'private_booking_created',
+            error: result.error
+          }
+        })
+      }
+    } catch (smsError) {
+      console.error('Failed to queue booking created SMS after booking creation:', smsError);
+    }
   }
 
   static async addBookingItem(data: {
@@ -1787,14 +2161,20 @@ export class PrivateBookingService {
     if (data.discount_type !== undefined) updateData.discount_type = data.discount_type;
     if (data.notes !== undefined) updateData.notes = data.notes;
 
-    const { error } = await supabase
+    const { data: updatedItem, error } = await supabase
       .from('private_booking_items')
       .update(updateData)
-      .eq('id', itemId);
+      .eq('id', itemId)
+      .select('id')
+      .maybeSingle();
 
     if (error) {
       console.error('Error updating booking item:', error);
       throw new Error(error.message || 'Failed to update booking item');
+    }
+
+    if (!updatedItem) {
+      throw new Error('Item not found');
     }
 
     return { success: true, bookingId: currentItem.booking_id };
@@ -1814,14 +2194,20 @@ export class PrivateBookingService {
       throw new Error('Item not found');
     }
 
-    const { error } = await supabase
+    const { data: deletedItem, error } = await supabase
       .from('private_booking_items')
       .delete()
-      .eq('id', itemId);
+      .eq('id', itemId)
+      .select('id')
+      .maybeSingle();
 
     if (error) {
       console.error('Error deleting booking item:', error);
       throw new Error(error.message || 'Failed to delete booking item');
+    }
+
+    if (!deletedItem) {
+      throw new Error('Item not found');
     }
 
     return { success: true, bookingId: item.booking_id };
@@ -1836,7 +2222,7 @@ export class PrivateBookingService {
 
     const { data: existingItems, error: fetchError } = await supabase
       .from('private_booking_items')
-      .select('id')
+      .select('id, display_order')
       .eq('booking_id', bookingId);
 
     if (fetchError) {
@@ -1851,22 +2237,51 @@ export class PrivateBookingService {
       throw new Error('Booking items list must include all existing items');
     }
 
-    const updateResults = await Promise.all(
-      orderedIds.map((id, index) =>
-        supabase
+    const previousOrder = new Map((existingItems || []).map((item) => [item.id, item.display_order ?? 0]));
+
+    try {
+      for (const [index, id] of orderedIds.entries()) {
+        const { data: updatedRows, error: updateError } = await supabase
           .from('private_booking_items')
           .update({ display_order: index })
           .eq('id', id)
           .eq('booking_id', bookingId)
           .select('id')
-      )
-    );
+          .limit(1);
 
-    const updateError = updateResults.find((result) => result.error)?.error;
+        if (updateError || !updatedRows || updatedRows.length === 0) {
+          throw updateError || new Error(`Failed to update display order for item ${id}`);
+        }
+      }
+    } catch (updateFailure) {
+      // Best-effort rollback to avoid leaving partially reordered items.
+      await Promise.allSettled(
+        Array.from(previousOrder.entries()).map(async ([id, displayOrder]) => {
+          const { data: restoredRow, error: restoreError } = await supabase
+            .from('private_booking_items')
+            .update({ display_order: displayOrder })
+            .eq('id', id)
+            .eq('booking_id', bookingId)
+            .select('id')
+            .maybeSingle()
 
-    if (updateError) {
-      console.error('Error updating booking item order:', updateError);
-      throw new Error(updateError.message || 'Failed to update booking item order');
+          if (restoreError) {
+            console.error('Failed to restore booking item order during rollback:', restoreError)
+            return
+          }
+
+          if (!restoredRow) {
+            console.error('Failed to restore booking item order during rollback: item no longer exists', { id, bookingId })
+          }
+        })
+      );
+
+      console.error('Error updating booking item order:', updateFailure);
+      throw new Error(
+        updateFailure instanceof Error
+          ? updateFailure.message
+          : 'Failed to update booking item order'
+      );
     }
 
     return { success: true };
@@ -1962,11 +2377,15 @@ export class PrivateBookingService {
       .update(dbData)
       .eq('id', id)
       .select()
-      .single();
+      .maybeSingle();
 
     if (error) {
       console.error('Error updating venue space:', error);
       throw new Error(error.message || 'Failed to update venue space');
+    }
+
+    if (!updated) {
+      throw new Error('Venue space not found');
     }
 
     if (updated) {
@@ -2012,14 +2431,20 @@ export class PrivateBookingService {
       throw new Error('Venue space not found');
     }
 
-    const { error } = await admin
+    const { data: deletedVenueSpace, error } = await admin
       .from('venue_spaces')
       .delete()
-      .eq('id', id);
+      .eq('id', id)
+      .select('id')
+      .maybeSingle();
 
     if (error) {
       console.error('Error deleting venue space:', error);
       throw new Error(error.message || 'Failed to delete venue space');
+    }
+
+    if (!deletedVenueSpace) {
+      throw new Error('Venue space not found');
     }
 
     await logAuditEvent({
@@ -2148,7 +2573,7 @@ export class PrivateBookingService {
       .update(dbData)
       .eq('id', id)
       .select()
-      .single();
+      .maybeSingle();
 
     if (error) {
       console.error('Error updating catering package:', error);
@@ -2156,6 +2581,10 @@ export class PrivateBookingService {
         throw new Error('A catering package with this name already exists. Please choose a different name.');
       }
       throw new Error(error.message || 'Failed to update catering package');
+    }
+
+    if (!updated) {
+      throw new Error('Catering package not found');
     }
 
     if (updated) {
@@ -2205,14 +2634,20 @@ export class PrivateBookingService {
       throw new Error('Catering package not found');
     }
 
-    const { error } = await admin
+    const { data: deletedPackage, error } = await admin
       .from('catering_packages')
       .delete()
-      .eq('id', id);
+      .eq('id', id)
+      .select('id')
+      .maybeSingle();
 
     if (error) {
       console.error('Error deleting catering package:', error);
       throw new Error(error.message || 'Failed to delete catering package');
+    }
+
+    if (!deletedPackage) {
+      throw new Error('Catering package not found');
     }
 
     await logAuditEvent({
@@ -2349,11 +2784,15 @@ export class PrivateBookingService {
       .update(dbData)
       .eq('id', id)
       .select()
-      .single();
+      .maybeSingle();
 
     if (error) {
       console.error('Error updating vendor:', error);
       throw new Error(error.message || 'Failed to update vendor');
+    }
+
+    if (!updated) {
+      throw new Error('Vendor not found');
     }
 
     if (updated) {
@@ -2405,14 +2844,20 @@ export class PrivateBookingService {
       throw new Error('Vendor not found');
     }
 
-    const { error } = await admin
+    const { data: deletedVendor, error } = await admin
       .from('vendors')
       .delete()
-      .eq('id', id);
+      .eq('id', id)
+      .select('id')
+      .maybeSingle();
 
     if (error) {
       console.error('Error deleting vendor:', error);
       throw new Error(error.message || 'Failed to delete vendor');
+    }
+
+    if (!deletedVendor) {
+      throw new Error('Vendor not found');
     }
 
     await logAuditEvent({

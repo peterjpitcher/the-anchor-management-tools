@@ -42,17 +42,21 @@ async function main() {
   ]
 
   const results = [] as string[]
+  let failures = 0
   for (const c of checks) {
     const { status, location } = await requestWithHost(base + c.path, c.host)
     const ok = status >= 300 && status < 400 && (!!c.expectedHostIncludes ? (location || '').includes(c.expectedHostIncludes) : !!location)
+    if (!ok) failures += 1
     results.push(`${ok ? 'PASS' : 'FAIL'} ${c.host}${c.path} -> ${status} ${location || ''}`)
   }
 
   console.log(results.join('\n'))
+  if (failures > 0) {
+    process.exitCode = 1
+  }
 }
 
 main().catch((e) => {
   console.error(e)
-  process.exit(1)
+  process.exitCode = 1
 })
-

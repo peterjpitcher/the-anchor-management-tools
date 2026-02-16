@@ -23,6 +23,7 @@ const mockSingle = vi.fn()
 const mockUpdate = vi.fn()
 const mockUpdateEq = vi.fn()
 const mockUpdateSelect = vi.fn()
+const mockUpdateMaybeSingle = vi.fn()
 const mockIs = vi.fn()
 
 const mockInsert = vi.fn()
@@ -60,7 +61,7 @@ describe('ShortLinkService', () => {
 
     mockUpdate.mockReturnValue({ eq: mockUpdateEq })
     mockUpdateEq.mockReturnValue({ is: mockIs, select: mockUpdateSelect })
-    mockUpdateSelect.mockReturnValue({ single: mockSingle })
+    mockUpdateSelect.mockReturnValue({ maybeSingle: mockUpdateMaybeSingle, single: mockSingle })
     mockIs.mockResolvedValue({ data: null, error: null })
 
     mockRpc.mockReturnValue({ single: mockRpcSingle })
@@ -149,6 +150,24 @@ describe('ShortLinkService', () => {
         expires_at: null,
       })
     ).rejects.toThrow('already exists')
+  })
+
+  it('throws not-found when short-link update affects no rows', async () => {
+    mockMaybeSingle.mockResolvedValue({
+      data: { id: 'my-id', short_code: 'abc123', created_at: '2026-01-01T00:00:00Z' },
+      error: null,
+    })
+    mockUpdateMaybeSingle.mockResolvedValue({ data: null, error: null })
+
+    await expect(
+      ShortLinkService.updateShortLink({
+        id: 'my-id',
+        name: null,
+        destination_url: 'https://example.com',
+        link_type: 'custom' as any,
+        expires_at: null,
+      })
+    ).rejects.toThrow('Short link not found')
   })
 
   it('createShortLinkInternal returns existing short link for the same destination URL', async () => {

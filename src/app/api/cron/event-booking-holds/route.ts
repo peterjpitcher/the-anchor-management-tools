@@ -25,6 +25,7 @@ export async function GET(request: NextRequest) {
     const result = {
       expiredPendingBookings: 0,
       expiredPaymentHolds: 0,
+      cancelledEventTableBookings: 0,
       expiredWaitlistOffers: 0,
       expiredWaitlistEntries: 0,
       expiredWaitlistHolds: 0,
@@ -64,6 +65,10 @@ export async function GET(request: NextRequest) {
       }
 
       result.expiredPendingBookings += (expiredBookings || []).length
+      const expiredBookingIds = (expiredBookings || []).map((row: any) => row.id).filter(Boolean)
+      if (expiredBookingIds.length === 0) {
+        continue
+      }
 
       const { data: expiredHolds, error: expireHoldsError } = await supabase
         .from('booking_holds')
@@ -74,7 +79,7 @@ export async function GET(request: NextRequest) {
         })
         .eq('hold_type', 'payment_hold')
         .eq('status', 'active')
-        .in('event_booking_id', ids)
+        .in('event_booking_id', expiredBookingIds)
         .select('id')
 
       if (expireHoldsError) {
@@ -82,6 +87,25 @@ export async function GET(request: NextRequest) {
       }
 
       result.expiredPaymentHolds += (expiredHolds || []).length
+
+      const { data: cancelledTables, error: cancelTablesError } = await supabase
+        .from('table_bookings')
+        .update({
+          status: 'cancelled',
+          cancellation_reason: 'event_booking_payment_hold_expired',
+          cancelled_at: nowIso,
+          updated_at: nowIso,
+          hold_expires_at: null
+        })
+        .in('event_booking_id', expiredBookingIds)
+        .neq('status', 'cancelled')
+        .select('id')
+
+      if (cancelTablesError) {
+        throw cancelTablesError
+      }
+
+      result.cancelledEventTableBookings += (cancelledTables || []).length
     }
 
     const { data: expiredOffers, error: expiredOffersError } = await supabase
@@ -96,19 +120,26 @@ export async function GET(request: NextRequest) {
     }
 
     const offerIds = (expiredOffers || []).map((row: any) => row.id)
-    const offerById = new Map<string, { id: string; customer_id: string | null; event_id: string | null }>()
+    const offerById = new Map<
+      string,
+      {
+        id: string
+        customer_id: string | null
+        event_id: string | null
+        waitlist_entry_id: string | null
+      }
+    >()
     for (const offer of (expiredOffers || []) as any[]) {
       if (offer?.id) {
         offerById.set(offer.id, {
           id: offer.id,
           customer_id: offer.customer_id ?? null,
-          event_id: offer.event_id ?? null
+          event_id: offer.event_id ?? null,
+          waitlist_entry_id: offer.waitlist_entry_id ?? null
         })
       }
     }
-    const waitlistEntryIds = (expiredOffers || [])
-      .map((row: any) => row.waitlist_entry_id)
-      .filter(Boolean)
+    const expiredWaitlistEntryIds: string[] = []
 
     for (const ids of chunkIds(offerIds)) {
       const { data, error } = await supabase
@@ -126,19 +157,36 @@ export async function GET(request: NextRequest) {
       }
 
       result.expiredWaitlistOffers += (data || []).length
+      const expiredOfferIds = (data || []).map((row: any) => row.id).filter(Boolean)
+      if (expiredOfferIds.length === 0) {
+        continue
+      }
 
       for (const row of (data || []) as Array<{ id: string }>) {
         const offer = offerById.get(row.id)
+        if (offer?.waitlist_entry_id) {
+          expiredWaitlistEntryIds.push(offer.waitlist_entry_id)
+        }
         if (offer?.customer_id) {
-          await recordAnalyticsEvent(supabase, {
-            customerId: offer.customer_id,
-            eventType: 'waitlist_offer_expired',
-            metadata: {
-              waitlist_offer_id: offer.id,
-              event_id: offer.event_id,
-              reason: 'offer_expired_timeout'
-            }
-          })
+          try {
+            await recordAnalyticsEvent(supabase, {
+              customerId: offer.customer_id,
+              eventType: 'waitlist_offer_expired',
+              metadata: {
+                waitlist_offer_id: offer.id,
+                event_id: offer.event_id,
+                reason: 'offer_expired_timeout'
+              }
+            })
+          } catch (analyticsError) {
+            logger.warn('Failed recording waitlist offer expiry analytics event', {
+              metadata: {
+                waitlistOfferId: offer.id,
+                customerId: offer.customer_id,
+                error: analyticsError instanceof Error ? analyticsError.message : String(analyticsError)
+              }
+            })
+          }
         }
       }
 
@@ -151,7 +199,7 @@ export async function GET(request: NextRequest) {
         })
         .eq('hold_type', 'waitlist_hold')
         .eq('status', 'active')
-        .in('waitlist_offer_id', ids)
+        .in('waitlist_offer_id', expiredOfferIds)
         .select('id')
 
       if (expireHoldsError) {
@@ -161,6 +209,7 @@ export async function GET(request: NextRequest) {
       result.expiredWaitlistHolds += (expiredHolds || []).length
     }
 
+    const waitlistEntryIds = [...new Set(expiredWaitlistEntryIds)]
     for (const ids of chunkIds(waitlistEntryIds)) {
       const { data, error } = await supabase
         .from('waitlist_entries')
@@ -224,6 +273,10 @@ export async function GET(request: NextRequest) {
       }
 
       result.expiredPendingCardCaptureBookings += (expiredTableBookings || []).length
+      const expiredTableBookingIds = (expiredTableBookings || []).map((row: any) => row.id).filter(Boolean)
+      if (expiredTableBookingIds.length === 0) {
+        continue
+      }
 
       for (const row of (expiredTableBookings || []) as any[]) {
         const bookingId = row?.id
@@ -234,15 +287,25 @@ export async function GET(request: NextRequest) {
           continue
         }
 
-        await recordAnalyticsEvent(supabase, {
-          customerId,
-          tableBookingId: bookingId,
-          eventType: 'card_capture_expired',
-          metadata: {
-            booking_type: bookingType || 'table',
-            reason: 'hold_expired'
-          }
-        })
+        try {
+          await recordAnalyticsEvent(supabase, {
+            customerId,
+            tableBookingId: bookingId,
+            eventType: 'card_capture_expired',
+            metadata: {
+              booking_type: bookingType || 'table',
+              reason: 'hold_expired'
+            }
+          })
+        } catch (analyticsError) {
+          logger.warn('Failed recording card capture expiry analytics event', {
+            metadata: {
+              bookingId,
+              customerId,
+              error: analyticsError instanceof Error ? analyticsError.message : String(analyticsError)
+            }
+          })
+        }
       }
 
       const { data: expiredCardCaptureHolds, error: expireCardCaptureHoldsError } = await supabase
@@ -254,7 +317,7 @@ export async function GET(request: NextRequest) {
         })
         .eq('hold_type', 'card_capture_hold')
         .eq('status', 'active')
-        .in('table_booking_id', ids)
+        .in('table_booking_id', expiredTableBookingIds)
         .select('id')
 
       if (expireCardCaptureHoldsError) {
@@ -270,7 +333,7 @@ export async function GET(request: NextRequest) {
           updated_at: nowIso
         })
         .eq('status', 'pending')
-        .in('table_booking_id', ids)
+        .in('table_booking_id', expiredTableBookingIds)
         .select('id')
 
       if (expireCardCapturesError) {
@@ -293,7 +356,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(
       {
         success: false,
-        error: error instanceof Error ? error.message : 'Failed to process hold expiry'
+        error: 'Failed to process hold expiry'
       },
       { status: 500 }
     )

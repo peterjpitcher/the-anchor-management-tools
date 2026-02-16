@@ -1,30 +1,63 @@
+#!/usr/bin/env tsx
+/**
+ * OJ constraint inspection diagnostic (read-only).
+ *
+ * Safety:
+ * - Strictly read-only; does not support `--confirm`.
+ * - Fails closed on any env/DB/RPC error (non-zero exit).
+ */
 
-import { createClient } from '@supabase/supabase-js';
-import dotenv from 'dotenv';
-import path from 'path';
+import dotenv from 'dotenv'
+import path from 'path'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { assertScriptQuerySucceeded } from '@/lib/script-mutation-safety'
 
-dotenv.config({ path: path.resolve(process.cwd(), '.env.local') });
+const SCRIPT_NAME = 'oj-debug-constraint'
 
-const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
-
-async function inspect() {
-    const { data, error } = await supabase
-        .rpc('get_constraint_def', { table_name: 'oj_projects', constraint_name: 'chk_oj_projects_retainer_period' });
-
-    // Since we can't easily call internal pg functions without a wrapper, let's try querying information_schema
-    // but Supabase JS client doesn't support raw SQL query directly without RPC.
-    // We'll rely on error message analysis or just try to "fix" the data format if it's the issue.
-
-    // The error said: `new row for relation "oj_projects" violates check constraint "chk_oj_projects_retainer_period"`
-    // Failing row: `..., 2025-09, ...`
-
-    // Let's suspect the regex logic in the migration was messed up by escaping. 
-    // `^\\d{4}-\\d{2}$` -> maybe it wanted `^[0-9]{4}-[0-9]{2}$` to be safe.
-
-    console.log('Skipping direct inspection due to client limitations.');
+type Args = {
+  confirm: boolean
 }
 
-inspect();
+function parseArgs(argv: string[] = process.argv): Args {
+  const rest = argv.slice(2)
+  return { confirm: rest.includes('--confirm') }
+}
+
+async function main() {
+  dotenv.config({ path: path.resolve(process.cwd(), '.env.local') })
+
+  const args = parseArgs(process.argv)
+  if (args.confirm) {
+    throw new Error(`[${SCRIPT_NAME}] This script is strictly read-only and does not support --confirm`)
+  }
+
+  const supabase = createAdminClient()
+  console.log(`[${SCRIPT_NAME}] read-only starting`)
+
+  const { data, error } = await supabase.rpc('get_constraint_def', {
+    table_name: 'oj_projects',
+    constraint_name: 'chk_oj_projects_retainer_period',
+  })
+
+  const result = assertScriptQuerySucceeded({
+    operation: `RPC get_constraint_def(oj_projects, chk_oj_projects_retainer_period)`,
+    data,
+    error,
+    allowMissing: true,
+  })
+
+  if (!result) {
+    throw new Error(
+      `[${SCRIPT_NAME}] RPC get_constraint_def returned no result. Ensure the RPC exists and returns a definition.`
+    )
+  }
+
+  console.log(`[${SCRIPT_NAME}] Constraint definition:`)
+  console.log(result)
+}
+
+main().catch((error) => {
+  console.error(`[${SCRIPT_NAME}] Failed`, error)
+  process.exitCode = 1
+})
+

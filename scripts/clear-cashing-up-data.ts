@@ -1,68 +1,189 @@
-import { createClient } from '@supabase/supabase-js';
-import dotenv from 'dotenv';
-import path from 'path';
+#!/usr/bin/env tsx
 
-// Load environment variables
-dotenv.config({ path: path.join(process.cwd(), '.env.local') });
+import dotenv from 'dotenv'
+import path from 'path'
+import { createAdminClient } from '@/lib/supabase/admin'
+import {
+  assertScriptExpectedRowCount,
+  assertScriptMutationAllowed,
+  assertScriptMutationSucceeded,
+  assertScriptQuerySucceeded,
+} from '@/lib/script-mutation-safety'
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const SCRIPT_NAME = 'clear-cashing-up-data'
+const RUN_MUTATION_ENV = 'RUN_CLEAR_CASHING_UP_DATA_MUTATION'
+const ALLOW_MUTATION_ENV = 'ALLOW_CLEAR_CASHING_UP_DATA_MUTATION_SCRIPT'
+const HARD_CAP = 5000
 
-if (!supabaseUrl || !supabaseServiceRoleKey) {
-  console.error('Missing Supabase URL or Service Role Key');
-  process.exit(1);
+const TRUTHY = new Set(['1', 'true', 'yes', 'on'])
+
+function isTruthyEnv(value: string | undefined): boolean {
+  if (!value) return false
+  return TRUTHY.has(value.trim().toLowerCase())
 }
 
-const supabase = createClient(supabaseUrl, supabaseServiceRoleKey);
-
-async function clearCashingUpData() {
-  console.log('🧹 Clearing Cashing Up data...');
-
-  // 1. Delete Cash Counts
-  const { error: countsError, count: countsCount } = await supabase
-    .from('cashup_cash_counts')
-    .delete()
-    .neq('id', '00000000-0000-0000-0000-000000000000'); // Hack to match all rows, or use empty filter with allow delete policy if needed, but service role bypasses RLS.
-    // Actually, without a WHERE clause, delete() might be blocked by Supabase safety unless 'neq' or similar is used, or if we allow full table delete. 
-    // Using a condition that is always true like id IS NOT NULL is safer for the library.
-    // But usually delete() requires a filter. 
-    // Let's use .gt('id', '00000000-0000-0000-0000-000000000000') assuming UUIDs.
-  
-  // Better approach: Select all IDs first? No, that's slow.
-  // .neq('id', '00000000-0000-0000-0000-000000000000') is a common pattern for "all".
-  // Or just .not('id', 'is', null)
-
-  if (countsError) {
-    console.error('Error deleting cash counts:', countsError);
-  } else {
-    console.log(`Deleted cash counts.`);
+function findFlagValue(argv: string[], flag: string): string | null {
+  const withEqualsPrefix = `${flag}=`
+  for (let i = 0; i < argv.length; i += 1) {
+    const entry = argv[i]
+    if (entry === flag) {
+      const next = argv[i + 1]
+      return typeof next === 'string' ? next : null
+    }
+    if (typeof entry === 'string' && entry.startsWith(withEqualsPrefix)) {
+      return entry.slice(withEqualsPrefix.length)
+    }
   }
-
-  // 2. Delete Payment Breakdowns
-  const { error: breakdownsError } = await supabase
-    .from('cashup_payment_breakdowns')
-    .delete()
-    .neq('id', '00000000-0000-0000-0000-000000000000');
-
-  if (breakdownsError) {
-    console.error('Error deleting payment breakdowns:', breakdownsError);
-  } else {
-    console.log(`Deleted payment breakdowns.`);
-  }
-
-  // 3. Delete Sessions
-  const { error: sessionsError } = await supabase
-    .from('cashup_sessions')
-    .delete()
-    .neq('id', '00000000-0000-0000-0000-000000000000');
-
-  if (sessionsError) {
-    console.error('Error deleting sessions:', sessionsError);
-  } else {
-    console.log(`Deleted sessions.`);
-  }
-
-  console.log('✅ Cashing Up data cleared!');
+  return null
 }
 
-clearCashingUpData().catch(console.error);
+function parsePositiveInt(raw: string | null): number | null {
+  if (!raw) return null
+  if (!/^[1-9]\d*$/.test(raw)) {
+    throw new Error(`Invalid positive integer: "${raw}"`)
+  }
+
+  const parsed = Number(raw)
+  if (!Number.isInteger(parsed) || parsed <= 0) {
+    throw new Error(`Invalid positive integer: "${raw}"`)
+  }
+
+  return parsed
+}
+
+type Args = {
+  confirm: boolean
+  dryRun: boolean
+  limit: number | null
+}
+
+function parseArgs(argv: string[] = process.argv): Args {
+  const rest = argv.slice(2)
+  const confirm = rest.includes('--confirm')
+  const dryRun = !confirm || rest.includes('--dry-run')
+  const limit = parsePositiveInt(findFlagValue(rest, '--limit'))
+
+  return { confirm, dryRun, limit }
+}
+
+async function countRows(supabase: ReturnType<typeof createAdminClient>, table: string): Promise<number> {
+  const { count, error } = await (supabase.from(table) as any).select('id', { count: 'exact', head: true })
+  if (error) {
+    throw new Error(`Failed to count ${table}: ${error.message || 'unknown error'}`)
+  }
+  return count ?? 0
+}
+
+async function selectIds(
+  supabase: ReturnType<typeof createAdminClient>,
+  table: string,
+  limit: number
+): Promise<string[]> {
+  const { data, error } = await (supabase.from(table) as any).select('id').limit(limit)
+  const rows = assertScriptQuerySucceeded({
+    operation: `Select ${table} ids`,
+    error,
+    data: data as Array<{ id: string }> | null,
+    allowMissing: true,
+  })
+
+  if (!Array.isArray(rows) || rows.length === 0) {
+    return []
+  }
+
+  return rows
+    .map((row) => (typeof row?.id === 'string' ? row.id : null))
+    .filter((id): id is string => typeof id === 'string' && id.length > 0)
+}
+
+async function deleteByIds(
+  supabase: ReturnType<typeof createAdminClient>,
+  table: string,
+  ids: string[]
+): Promise<number> {
+  if (ids.length === 0) {
+    return 0
+  }
+
+  const { data, error } = await (supabase.from(table) as any).delete().in('id', ids).select('id')
+  const { updatedCount } = assertScriptMutationSucceeded({
+    operation: `Delete ${table} rows`,
+    error,
+    updatedRows: data as Array<{ id?: string }> | null,
+    allowZeroRows: false,
+  })
+
+  assertScriptExpectedRowCount({
+    operation: `Delete ${table} rows`,
+    expected: ids.length,
+    actual: updatedCount,
+  })
+
+  return updatedCount
+}
+
+async function main() {
+  dotenv.config({ path: path.resolve(process.cwd(), '.env.local') })
+
+  const args = parseArgs(process.argv)
+  const supabase = createAdminClient()
+
+  console.log(`[${SCRIPT_NAME}] ${args.dryRun ? 'DRY RUN' : 'MUTATION'} starting`)
+
+  const tables = ['cashup_cash_counts', 'cashup_payment_breakdowns', 'cashup_sessions'] as const
+
+  for (const table of tables) {
+    const count = await countRows(supabase, table)
+    console.log(`[${SCRIPT_NAME}] ${table}: ${count} row(s)`)
+  }
+
+  if (args.dryRun) {
+    console.log(`[${SCRIPT_NAME}] DRY RUN complete. No rows deleted.`)
+    return
+  }
+
+  if (!args.confirm) {
+    throw new Error(`[${SCRIPT_NAME}] mutation blocked: missing --confirm`)
+  }
+
+  if (!isTruthyEnv(process.env[RUN_MUTATION_ENV])) {
+    throw new Error(
+      `[${SCRIPT_NAME}] mutation blocked by safety guard. Set ${RUN_MUTATION_ENV}=true to enable mutations.`
+    )
+  }
+
+  assertScriptMutationAllowed({
+    scriptName: SCRIPT_NAME,
+    envVar: ALLOW_MUTATION_ENV,
+  })
+
+  const limit = args.limit
+  if (!limit) {
+    throw new Error(`[${SCRIPT_NAME}] mutation requires --limit <n> (hard cap ${HARD_CAP})`)
+  }
+  if (limit > HARD_CAP) {
+    throw new Error(`[${SCRIPT_NAME}] --limit exceeds hard cap (max ${HARD_CAP})`)
+  }
+
+  let deletedTotal = 0
+
+  // Delete children first, then sessions
+  for (const table of tables) {
+    const ids = await selectIds(supabase, table, limit)
+    if (ids.length === 0) {
+      console.log(`[${SCRIPT_NAME}] ${table}: no rows selected for deletion`)
+      continue
+    }
+
+    const deleted = await deleteByIds(supabase, table, ids)
+    deletedTotal += deleted
+    console.log(`[${SCRIPT_NAME}] ${table}: deleted ${deleted} row(s)`)
+  }
+
+  console.log(`[${SCRIPT_NAME}] MUTATION complete. Deleted ${deletedTotal} row(s) total.`)
+}
+
+main().catch((error) => {
+  console.error(`[${SCRIPT_NAME}] Failed`, error)
+  process.exitCode = 1
+})

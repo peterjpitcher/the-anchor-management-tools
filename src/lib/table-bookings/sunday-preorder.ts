@@ -488,10 +488,14 @@ async function saveSundayPreorderFromPageData(
 
   const nowIso = new Date().toISOString()
 
-  await (supabase.from('table_booking_items') as any)
+  const { error: deleteError } = await (supabase.from('table_booking_items') as any)
     .delete()
     .eq('booking_id', pageData.booking_id)
     .not('menu_dish_id', 'is', null)
+
+  if (deleteError) {
+    throw deleteError
+  }
 
   const insertRows = Array.from(quantityByDish.entries()).map(([dishId, quantity]) => {
     const menuItem = allowedItems.get(dishId)!
@@ -513,15 +517,21 @@ async function saveSundayPreorderFromPageData(
     throw insertError
   }
 
-  const { error: bookingUpdateError } = await (supabase.from('table_bookings') as any)
+  const { data: updatedBooking, error: bookingUpdateError } = await (supabase.from('table_bookings') as any)
     .update({
       sunday_preorder_completed_at: nowIso,
       updated_at: nowIso
     })
     .eq('id', pageData.booking_id)
+    .select('id')
+    .maybeSingle()
 
   if (bookingUpdateError) {
     throw bookingUpdateError
+  }
+
+  if (!updatedBooking) {
+    throw new Error(`Sunday pre-order save affected no booking rows: ${pageData.booking_id}`)
   }
 
   return {

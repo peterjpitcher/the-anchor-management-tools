@@ -80,7 +80,7 @@ export async function updateVendorContact(formData: FormData) {
   if (!parsed.success) return { error: parsed.error.errors[0].message }
 
   const supabase = await createClient()
-  const { error } = await supabase
+  const { data: updatedContact, error } = await supabase
     .from('invoice_vendor_contacts')
     .update({
       name: parsed.data.name || null,
@@ -91,8 +91,11 @@ export async function updateVendorContact(formData: FormData) {
       receive_invoice_copy: parsed.data.receiveInvoiceCopy || false,
     })
     .eq('id', id)
+    .select('id')
+    .maybeSingle()
 
   if (error) return { error: error.message }
+  if (!updatedContact) return { error: 'Contact not found' }
   revalidatePath('/invoices/vendors')
   return { success: true }
 }
@@ -105,12 +108,15 @@ export async function deleteVendorContact(formData: FormData) {
   if (!id) return { error: 'Contact ID is required' }
 
   const supabase = await createClient()
-  const { error } = await supabase
+  const { data: deletedContact, error } = await supabase
     .from('invoice_vendor_contacts')
     .delete()
     .eq('id', id)
+    .select('id')
+    .maybeSingle()
 
   if (error) return { error: error.message }
+  if (!deletedContact) return { error: 'Contact not found' }
   revalidatePath('/invoices/vendors')
   return { success: true }
 }

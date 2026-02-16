@@ -1,12 +1,19 @@
 'use server';
 
 import { createClient } from '@/lib/supabase/server';
+import { createAdminClient } from '@/lib/supabase/admin';
 import { sendEmail } from '@/lib/email/emailService';
 import { getUpcomingBirthday, calculateAge } from '@/lib/employeeUtils';
 import { format } from 'date-fns';
 import { checkUserPermission } from './rbac';
 import { logAuditEvent } from './audit';
 import { syncBirthdayCalendarEvent, deleteBirthdayCalendarEvent } from '@/lib/google-calendar-birthdays';
+import {
+  claimIdempotencyKey,
+  computeIdempotencyRequestHash,
+  persistIdempotencyResponse,
+  releaseIdempotencyClaim
+} from '@/lib/api/idempotency';
 
 interface EmployeeWithBirthday {
   employee_id: string;
@@ -24,9 +31,31 @@ interface EmployeeWithBirthday {
  * This can be called via a cron job
  */
 async function sendBirthdayRemindersInternal(daysAhead: number = 7) {
-  try {
-    const supabase = await createClient();
+  const supabase = createAdminClient();
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const runDateKey = today.toISOString().slice(0, 10);
+  const idempotencyKey = `cron:employee-birthday-reminder:${runDateKey}:${daysAhead}`;
+  const requestHash = computeIdempotencyRequestHash({
+    run_date: runDateKey,
+    days_ahead: daysAhead
+  });
 
+  const claim = await claimIdempotencyKey(supabase, idempotencyKey, requestHash, 24 * 3);
+  if (claim.state === 'conflict') {
+    return { error: 'Birthday reminder idempotency conflict' };
+  }
+  if (claim.state === 'in_progress' || claim.state === 'replay') {
+    return {
+      success: true,
+      sent: 0,
+      message: `Birthday reminders already processed for ${runDateKey}`
+    };
+  }
+
+  let claimHeld = claim.state === 'claimed';
+
+  try {
     // Get all active employees with date of birth
     const { data: employees, error } = await supabase
       .from('employees')
@@ -36,11 +65,14 @@ async function sendBirthdayRemindersInternal(daysAhead: number = 7) {
 
     if (error) {
       console.error('Error fetching employees:', error);
-      return { error: 'Failed to fetch employees' };
+      throw new Error('Failed to fetch employees');
     }
 
     if (!employees || employees.length === 0) {
-      return { success: true, sent: 0, message: 'No active employees with birthdays found' };
+      const response = { success: true, sent: 0, message: 'No active employees with birthdays found' };
+      await persistIdempotencyResponse(supabase, idempotencyKey, requestHash, response, 24 * 3);
+      claimHeld = false;
+      return response;
     }
 
     // Find employees with upcoming birthdays
@@ -49,7 +81,7 @@ async function sendBirthdayRemindersInternal(daysAhead: number = 7) {
     for (const employee of employees) {
       const birthday = getUpcomingBirthday(employee.date_of_birth, daysAhead);
       
-      if (birthday.isUpcoming && birthday.daysUntil === 7) { // Exactly 1 week away
+      if (birthday.isUpcoming && birthday.daysUntil === daysAhead) {
         const age = calculateAge(employee.date_of_birth);
         upcomingBirthdays.push({
           ...employee,
@@ -60,7 +92,14 @@ async function sendBirthdayRemindersInternal(daysAhead: number = 7) {
     }
 
     if (upcomingBirthdays.length === 0) {
-      return { success: true, sent: 0, message: 'No birthdays exactly 1 week away' };
+      const response = {
+        success: true,
+        sent: 0,
+        message: `No birthdays exactly ${daysAhead} day${daysAhead === 1 ? '' : 's'} away`
+      };
+      await persistIdempotencyResponse(supabase, idempotencyKey, requestHash, response, 24 * 3);
+      claimHeld = false;
+      return response;
     }
 
     // Prepare email content
@@ -76,7 +115,7 @@ async function sendBirthdayRemindersInternal(daysAhead: number = 7) {
     });
 
     if (!result.success) {
-      return { error: 'Failed to send birthday reminder email' };
+      throw new Error('Failed to send birthday reminder email');
     }
 
     // Log the action
@@ -91,14 +130,25 @@ async function sendBirthdayRemindersInternal(daysAhead: number = 7) {
       }
     });
 
-    return { 
+    const response = { 
       success: true, 
       sent: upcomingBirthdays.length,
       message: `Birthday reminder sent for ${upcomingBirthdays.length} employee${upcomingBirthdays.length > 1 ? 's' : ''}`
     };
+    await persistIdempotencyResponse(supabase, idempotencyKey, requestHash, response, 24 * 3);
+    claimHeld = false;
+    return response;
   } catch (error) {
+    if (claimHeld) {
+      try {
+        await releaseIdempotencyClaim(supabase, idempotencyKey, requestHash);
+      } catch (releaseError) {
+        console.error('Failed to release birthday reminder idempotency claim:', releaseError);
+      }
+    }
+
     console.error('Error sending birthday reminders:', error);
-    return { error: 'An unexpected error occurred' };
+    return { error: error instanceof Error ? error.message : 'An unexpected error occurred' };
   }
 }
 

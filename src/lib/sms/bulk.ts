@@ -3,6 +3,7 @@ import { formatDateInLondon, formatTime12Hour } from '@/lib/dateUtils'
 import { ensureReplyInstruction } from '@/lib/sms/support'
 import { logger } from '@/lib/logger'
 import { sendSMS } from '@/lib/twilio'
+import { normalizeBulkRecipientIds, validateBulkSmsRecipientCount } from '@/lib/sms/bulk-dispatch-key'
 
 type BulkSmsRequest = {
   customerIds: string[]
@@ -23,6 +24,33 @@ type BulkSmsResult = {
   results: Array<{ customerId: string; messageSid: string }>
   errors?: Array<{ customerId: string; error: string }>
 } | { success: false; error: string }
+
+type BulkAbortSignal = {
+  code: string
+  error: string
+}
+
+function normalizePositiveInt(value: number | undefined, fallback: number, max: number): number {
+  if (!Number.isFinite(value)) {
+    return fallback
+  }
+  const normalized = Math.floor(value as number)
+  if (normalized < 1) {
+    return fallback
+  }
+  return Math.min(normalized, max)
+}
+
+function normalizeNonNegativeInt(value: number | undefined, fallback: number, max: number): number {
+  if (!Number.isFinite(value)) {
+    return fallback
+  }
+  const normalized = Math.floor(value as number)
+  if (normalized < 0) {
+    return fallback
+  }
+  return Math.min(normalized, max)
+}
 
 function buildPersonalizedMessage(
   base: string,
@@ -63,14 +91,72 @@ function buildPersonalizedMessage(
   return personalized
 }
 
+function normalizeAbortErrorMessage(error: unknown): string {
+  if (error instanceof Error && error.message.trim().length > 0) {
+    return error.message
+  }
+
+  if (typeof (error as any)?.message === 'string' && (error as any).message.trim().length > 0) {
+    return (error as any).message
+  }
+
+  return 'Unexpected SMS send exception'
+}
+
+function resolveAbortSignalFromThrownSendError(error: unknown): BulkAbortSignal {
+  const thrownCode = typeof (error as any)?.code === 'string'
+    ? (error as any).code
+    : null
+  const thrownLogFailure = (error as any)?.logFailure === true || thrownCode === 'logging_failed'
+  const errorMessage = normalizeAbortErrorMessage(error)
+
+  if (thrownLogFailure) {
+    return {
+      code: 'logging_failed',
+      error: errorMessage,
+    }
+  }
+
+  if (
+    thrownCode === 'safety_unavailable'
+    || thrownCode === 'idempotency_conflict'
+    || thrownCode === 'logging_failed'
+  ) {
+    return {
+      code: thrownCode,
+      error: errorMessage,
+    }
+  }
+
+  // sendSMS is expected to return structured failures. A thrown exception indicates
+  // the safety pipeline is degraded, so abort fanout to fail closed.
+  return {
+    code: 'safety_unavailable',
+    error: errorMessage,
+  }
+}
+
 export async function sendBulkSms(request: BulkSmsRequest): Promise<BulkSmsResult> {
   try {
-    const supabase = createAdminClient()
     const { customerIds, message, eventId, categoryId } = request
-    const chunkSize = request.chunkSize ?? 25
-    const concurrency = request.concurrency ?? 5
-    const batchDelayMs = request.batchDelayMs ?? 400
+    const normalizedCustomerIds = normalizeBulkRecipientIds(customerIds)
+    const recipientLimitError = validateBulkSmsRecipientCount(normalizedCustomerIds.length)
+    const chunkSize = normalizePositiveInt(request.chunkSize, 25, 100)
+    // Reliability hardening: keep dispatch single-flight so a fatal safety signal
+    // can halt fanout before additional in-flight sends are started.
+    const concurrency = normalizePositiveInt(request.concurrency, 1, 1)
+    const batchDelayMs = normalizeNonNegativeInt(request.batchDelayMs, 400, 60_000)
     const bulkJobId = request.bulkJobId ?? 'direct'
+
+    if (normalizedCustomerIds.length === 0) {
+      return { success: false, error: 'No recipients provided for bulk SMS' }
+    }
+
+    if (recipientLimitError) {
+      return { success: false, error: recipientLimitError }
+    }
+
+    const supabase = createAdminClient()
 
     const contactPhone = process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER
       || process.env.TWILIO_PHONE_NUMBER
@@ -79,10 +165,20 @@ export async function sendBulkSms(request: BulkSmsRequest): Promise<BulkSmsResul
     // Load customers
     const { data: customers, error: customerError } = await supabase
       .from('customers')
-      .select('id, first_name, last_name, mobile_number, sms_opt_in')
-      .in('id', customerIds)
+      .select('id, first_name, last_name, mobile_number, mobile_e164, sms_opt_in, sms_status, marketing_sms_opt_in')
+      .in('id', normalizedCustomerIds)
 
-    if (customerError || !customers || customers.length === 0) {
+    if (customerError) {
+      logger.error('Bulk SMS blocked because customer lookup failed', {
+        metadata: {
+          bulkJobId,
+          error: customerError.message,
+        },
+      })
+      return { success: false, error: 'Failed to load customers for bulk SMS' }
+    }
+
+    if (!customers || customers.length === 0) {
       return { success: false, error: 'No valid customers found' }
     }
 
@@ -91,53 +187,115 @@ export async function sendBulkSms(request: BulkSmsRequest): Promise<BulkSmsResul
     let categoryDetails: { name: string | null } | null = null
 
     if (eventId) {
-      const { data: event } = await supabase
+      const { data: event, error: eventError } = await supabase
         .from('events')
         .select('name, date, time')
         .eq('id', eventId)
-        .single()
-      if (event) {
-        eventDetails = { name: event.name, date: event.date, time: event.time }
+        .maybeSingle()
+
+      if (eventError) {
+        logger.error('Bulk SMS blocked because event context lookup failed', {
+          metadata: { bulkJobId, eventId, error: eventError.message },
+        })
+        return { success: false, error: 'Failed to load event context for bulk SMS' }
       }
+
+      if (!event) {
+        return { success: false, error: 'Event not found for bulk SMS context' }
+      }
+
+      eventDetails = { name: event.name, date: event.date, time: event.time }
     }
 
     if (categoryId) {
-      const { data: category } = await supabase
+      const { data: category, error: categoryError } = await supabase
         .from('event_categories')
         .select('name')
         .eq('id', categoryId)
-        .single()
-      if (category) {
-        categoryDetails = { name: category.name }
+        .maybeSingle()
+
+      if (categoryError) {
+        logger.error('Bulk SMS blocked because category context lookup failed', {
+          metadata: { bulkJobId, categoryId, error: categoryError.message },
+        })
+        return { success: false, error: 'Failed to load category context for bulk SMS' }
       }
+
+      if (!category) {
+        return { success: false, error: 'Category not found for bulk SMS context' }
+      }
+
+      categoryDetails = { name: category.name }
     }
 
     const validCustomers = customers.filter(customer => {
-      if (!customer.mobile_number) {
+      const recipient =
+        typeof (customer as any).mobile_e164 === 'string' && (customer as any).mobile_e164.trim().length > 0
+          ? (customer as any).mobile_e164
+          : typeof (customer as any).mobile_number === 'string' && (customer as any).mobile_number.trim().length > 0
+            ? (customer as any).mobile_number
+            : null
+
+      if (!recipient) {
         logger.debug('Skipping customer with no mobile number', { metadata: { customerId: customer.id } })
         return false
       }
-      if (customer.sms_opt_in !== true) {
+      if ((customer as any).sms_opt_in !== true) {
         logger.debug('Skipping customer without SMS opt-in', { metadata: { customerId: customer.id } })
         return false
       }
+      if ((customer as any).marketing_sms_opt_in !== true) {
+        logger.debug('Skipping customer without marketing SMS opt-in', { metadata: { customerId: customer.id } })
+        return false
+      }
+
+      const smsStatus = ((customer as any).sms_status ?? null) as string | null
+      if (smsStatus !== null && smsStatus !== 'active') {
+        logger.debug('Skipping customer with blocked sms_status', {
+          metadata: { customerId: customer.id, smsStatus },
+        })
+        return false
+      }
+
       return true
     })
 
     if (validCustomers.length === 0) {
-      return { success: false, error: 'No customers with valid mobile numbers and SMS opt-in' }
+      return { success: false, error: 'No customers eligible for marketing SMS' }
     }
 
     const results: Array<{ customerId: string; messageSid: string }> = []
     const errors: Array<{ customerId: string; error: string }> = []
+    const abort = { current: null as { code: string; error: string } | null }
+
+    function shouldAbortBulkSend(code: unknown): boolean {
+      // Fatal safety signals: we cannot safely continue sending in a loop.
+      return (
+        code === 'safety_unavailable'
+        || code === 'idempotency_conflict'
+        || code === 'logging_failed'
+      )
+    }
 
     for (let i = 0; i < validCustomers.length; i += chunkSize) {
       const chunk = validCustomers.slice(i, i + chunkSize)
       for (let j = 0; j < chunk.length; j += concurrency) {
+        if (abort.current) {
+          break
+        }
+
         const window = chunk.slice(j, j + concurrency)
         await Promise.all(
           window.map(async customer => {
             try {
+              if (abort.current) {
+                errors.push({
+                  customerId: customer.id,
+                  error: `Aborted bulk send due to prior safety failure (${abort.current.code})`
+                })
+                return
+              }
+
               const personalized = buildPersonalizedMessage(
                 message,
                 { first_name: customer.first_name, last_name: customer.last_name },
@@ -145,8 +303,13 @@ export async function sendBulkSms(request: BulkSmsRequest): Promise<BulkSmsResul
                 categoryDetails ?? undefined,
                 contactPhone
               )
-              const messageWithSupport = personalized
-              const sendResult = await sendSMS(customer.mobile_number as string, messageWithSupport, {
+              const messageWithSupport = ensureReplyInstruction(personalized, contactPhone)
+              const recipient =
+                typeof (customer as any).mobile_e164 === 'string' && (customer as any).mobile_e164.trim().length > 0
+                  ? (customer as any).mobile_e164
+                  : (customer as any).mobile_number
+
+              const sendResult = await sendSMS(recipient as string, messageWithSupport, {
                 customerId: customer.id,
                 metadata: {
                   template_key: 'bulk_sms_campaign',
@@ -158,7 +321,19 @@ export async function sendBulkSms(request: BulkSmsRequest): Promise<BulkSmsResul
                 }
               })
 
-              if (!sendResult.success || !sendResult.sid) {
+              const fatalCode = (sendResult as any)?.code
+              const logFailure = (sendResult as any)?.logFailure === true
+
+              if (!abort.current && (logFailure || shouldAbortBulkSend(fatalCode))) {
+                abort.current = {
+                  code: String(fatalCode ?? 'fatal'),
+                  error: logFailure
+                    ? 'SMS sent but message persistence failed'
+                    : (sendResult as any)?.error || 'Bulk send aborted by safety guard'
+                }
+              }
+
+              if (!sendResult.success) {
                 errors.push({
                   customerId: customer.id,
                   error: sendResult.error || 'Failed to send SMS'
@@ -166,22 +341,61 @@ export async function sendBulkSms(request: BulkSmsRequest): Promise<BulkSmsResul
                 return
               }
 
+              const deliveryToken =
+                sendResult.sid ||
+                (sendResult.deferred ? `deferred:${bulkJobId}:${customer.id}` : null) ||
+                (sendResult.suppressed ? `suppressed:${bulkJobId}:${customer.id}` : null)
+
+              if (!deliveryToken) {
+                errors.push({
+                  customerId: customer.id,
+                  error: 'SMS send succeeded but no delivery reference was returned'
+                })
+                return
+              }
+
               results.push({
                 customerId: customer.id,
-                messageSid: sendResult.sid
+                messageSid: deliveryToken
               })
             } catch (error) {
+              if (!abort.current) {
+                abort.current = resolveAbortSignalFromThrownSendError(error)
+              }
+
               logger.error('Failed to send SMS to customer', {
                 error: error as Error,
-                metadata: { customerId: customer.id, bulkJobId }
+                metadata: {
+                  customerId: customer.id,
+                  bulkJobId,
+                  abortCode: abort.current?.code ?? null,
+                }
               })
               errors.push({
                 customerId: customer.id,
-                error: error instanceof Error ? error.message : 'Unknown error'
+                error: normalizeAbortErrorMessage(error)
               })
             }
           })
         )
+      }
+
+      if (abort.current) {
+        logger.error('Bulk SMS aborted due to safety failure', {
+          metadata: {
+            bulkJobId,
+            code: abort.current.code,
+            error: abort.current.error,
+            sent: results.length,
+            failed: errors.length,
+            total: validCustomers.length
+          }
+        })
+
+        return {
+          success: false,
+          error: `Bulk SMS aborted due to safety failure (${abort.current.code}): ${abort.current.error}`
+        }
       }
 
       if (i + chunkSize < validCustomers.length) {

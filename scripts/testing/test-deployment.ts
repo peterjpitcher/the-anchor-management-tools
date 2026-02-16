@@ -1,82 +1,92 @@
 #!/usr/bin/env tsx
+/**
+ * Deployment status diagnostics (read-only).
+ *
+ * Safety:
+ * - Performs GET requests only.
+ * - Fails closed (non-zero exit) on connectivity failures.
+ */
 
-import * as dotenv from 'dotenv';
-import path from 'path';
-import fetch from 'node-fetch';
+import dotenv from 'dotenv'
+import path from 'path'
 
-// Load environment variables
-dotenv.config({ path: path.resolve(process.cwd(), '.env.local') });
+dotenv.config({ path: path.resolve(process.cwd(), '.env.local') })
 
-async function testDeployment() {
-  console.log('🧪 TESTING DEPLOYMENT STATUS\n');
-  console.log('=' + '='.repeat(50) + '\n');
+const SCRIPT_NAME = 'test-deployment'
+const DEFAULT_URL = 'https://management.orangejelly.co.uk'
 
-  const apiUrl = 'https://management.orangejelly.co.uk';
-  
-  // Test 1: Check if the site is up
-  console.log('1. Testing site availability...');
-  try {
-    const response = await fetch(apiUrl);
-    console.log(`   ✅ Site is up (Status: ${response.status})`);
-  } catch (error) {
-    console.log(`   ❌ Site is down: ${error}`);
-    return;
-  }
+function findFlagValue(argv: string[], flag: string): string | null {
+  const eq = argv.find((arg) => arg.startsWith(`${flag}=`))
+  if (eq) return eq.split('=')[1] ?? null
 
-  // Test 2: Check API health
-  console.log('\n2. Testing API health endpoint...');
-  try {
-    const response = await fetch(`${apiUrl}/api/health`);
-    if (response.status === 404) {
-      console.log('   ⚠️  No health endpoint found (404)');
-    } else {
-      console.log(`   ✅ API responded (Status: ${response.status})`);
-    }
-  } catch (error) {
-    console.log(`   ❌ API error: ${error}`);
-  }
+  const idx = argv.indexOf(flag)
+  if (idx === -1) return null
 
-  // Test 3: Check deployment info (if available)
-  console.log('\n3. Checking deployment info...');
-  try {
-    // Try to fetch the build ID from the deployment
-    const response = await fetch(apiUrl);
-    const headers = response.headers;
-    
-    console.log('   Deployment headers:');
-    console.log(`   - X-Vercel-Deployment-URL: ${headers.get('x-vercel-deployment-url') || 'Not found'}`);
-    console.log(`   - X-Vercel-ID: ${headers.get('x-vercel-id') || 'Not found'}`);
-    console.log(`   - Age: ${headers.get('age') || '0'} seconds`);
-    
-    const deploymentAge = parseInt(headers.get('age') || '0');
-    if (deploymentAge < 3600) {
-      console.log(`   ℹ️  Deployment is recent (less than 1 hour old)`);
-    } else {
-      console.log(`   ⚠️  Deployment is ${Math.floor(deploymentAge / 3600)} hours old`);
-    }
-  } catch (error) {
-    console.log(`   ❌ Error checking deployment: ${error}`);
-  }
-
-  // Test 4: Check if our specific code changes are deployed
-  console.log('\n4. Testing for our code changes...');
-  console.log('   (This requires a valid API key to test booking initiation)');
-  console.log('   To test manually, check if:');
-  console.log('   - New pending_bookings have metadata.initial_sms');
-  console.log('   - SMS is sent without recording in messages table');
-  console.log('   - No "null customer_id" errors in logs');
-
-  console.log('\n📋 MANUAL VERIFICATION STEPS:');
-  console.log('1. Go to: https://vercel.com/dashboard');
-  console.log('2. Find your project: the-anchor-management-tools');
-  console.log('3. Check "Deployments" tab');
-  console.log('4. Look for deployment from commit: 3aee739');
-  console.log('5. Status should be "Ready" (green checkmark)');
-  
-  console.log('\n🔍 If deployment is missing or failed:');
-  console.log('1. Click "Redeploy" on the latest deployment');
-  console.log('2. Or push a new commit to trigger deployment');
-  console.log('3. Or use: vercel --prod (if CLI installed)');
+  const value = argv[idx + 1]
+  return typeof value === 'string' && value.length > 0 ? value : null
 }
 
-testDeployment().catch(console.error);
+function normalizeBaseUrl(value: string): string {
+  const trimmed = value.trim().replace(/\/+$/, '')
+  if (!trimmed) {
+    throw new Error(`[${SCRIPT_NAME}] Invalid base URL`)
+  }
+  return trimmed
+}
+
+async function run(): Promise<void> {
+  const argv = process.argv.slice(2)
+  if (argv.includes('--confirm')) {
+    throw new Error(`[${SCRIPT_NAME}] This script is read-only and does not support --confirm`)
+  }
+
+  const baseUrl = normalizeBaseUrl(findFlagValue(argv, '--url') ?? process.env.TEST_DEPLOYMENT_URL ?? DEFAULT_URL)
+
+  console.log(`[${SCRIPT_NAME}] starting (read-only)\n`)
+  console.log(`Base URL: ${baseUrl}\n`)
+
+  console.log('1) Testing site availability...')
+  let response: Response
+  try {
+    response = await fetch(baseUrl, { method: 'GET' })
+  } catch (error) {
+    throw new Error(`Site unavailable: ${error instanceof Error ? error.message : String(error)}`)
+  }
+
+  console.log(`OK Site responded (status ${response.status})`)
+
+  console.log('\n2) Testing /api/health (if present)...')
+  try {
+    const health = await fetch(`${baseUrl}/api/health`, { method: 'GET' })
+    if (health.status === 404) {
+      console.log('WARN No health endpoint found (404)')
+    } else {
+      console.log(`OK /api/health responded (status ${health.status})`)
+    }
+  } catch (error) {
+    console.error(`FAIL /api/health request failed: ${error instanceof Error ? error.message : String(error)}`)
+    process.exitCode = 1
+  }
+
+  console.log('\n3) Deployment headers (if present)...')
+  const headers = response.headers
+  const deploymentUrl = headers.get('x-vercel-deployment-url')
+  const vercelId = headers.get('x-vercel-id')
+  const ageSeconds = Number(headers.get('age') || '0')
+
+  console.log(`- x-vercel-deployment-url: ${deploymentUrl || 'N/A'}`)
+  console.log(`- x-vercel-id: ${vercelId || 'N/A'}`)
+  console.log(`- age: ${Number.isFinite(ageSeconds) ? ageSeconds : 'N/A'}s`)
+
+  console.log('\n4) Manual verification notes...')
+  console.log('- Confirm the latest deployment is Ready in Vercel, and that the expected code changes are present.')
+  console.log('- For incident-related changes, validate logs/metrics for no duplicate or unlogged sends.')
+
+  console.log(`\n✅ [${SCRIPT_NAME}] completed.`)
+}
+
+run().catch((error) => {
+  console.error('Fatal error:', error)
+  process.exitCode = 1
+})
+

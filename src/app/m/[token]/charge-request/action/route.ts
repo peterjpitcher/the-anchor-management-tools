@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { recordAnalyticsEvent } from '@/lib/analytics/events'
 import { checkGuestTokenThrottle } from '@/lib/guest/token-throttle'
+import { logger } from '@/lib/logger'
 import {
   attemptApprovedChargeFromDecision,
   decideChargeRequestByRawToken,
@@ -37,6 +38,34 @@ function redirectWithStatus(request: NextRequest, token: string, status: string)
 function amountFromPreview(preview: ChargeApprovalPreview): number {
   const amount = typeof preview.amount === 'number' ? preview.amount : Number(preview.amount || 0)
   return Number.isFinite(amount) && amount > 0 ? normalizeAmount(amount) : 0
+}
+
+async function recordChargeApprovalAnalyticsSafe(
+  supabase: ReturnType<typeof createAdminClient>,
+  input: {
+    customerId: string
+    tableBookingId: string
+    eventType: 'charge_waived' | 'charge_approved'
+    metadata: Record<string, unknown>
+  }
+): Promise<void> {
+  try {
+    await recordAnalyticsEvent(supabase, {
+      customerId: input.customerId,
+      tableBookingId: input.tableBookingId,
+      eventType: input.eventType,
+      metadata: input.metadata
+    })
+  } catch (analyticsError) {
+    logger.warn('Failed recording manager charge-approval analytics event', {
+      metadata: {
+        customerId: input.customerId,
+        tableBookingId: input.tableBookingId,
+        eventType: input.eventType,
+        error: analyticsError instanceof Error ? analyticsError.message : String(analyticsError)
+      }
+    })
+  }
 }
 
 export async function POST(
@@ -91,7 +120,7 @@ export async function POST(
       return redirectWithStatus(request, token, 'error')
     }
 
-    await recordAnalyticsEvent(supabase, {
+    await recordChargeApprovalAnalyticsSafe(supabase, {
       customerId: preview.customer_id,
       tableBookingId: preview.table_booking_id,
       eventType: 'charge_waived',
@@ -132,7 +161,7 @@ export async function POST(
     return redirectWithStatus(request, token, 'error')
   }
 
-  await recordAnalyticsEvent(supabase, {
+  await recordChargeApprovalAnalyticsSafe(supabase, {
     customerId: preview.customer_id,
     tableBookingId: preview.table_booking_id,
     eventType: 'charge_approved',

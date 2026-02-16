@@ -59,7 +59,7 @@ export async function POST(
   const feePerHead = await getFeePerHead(auth.supabase)
   const suggestedAmount = committedPartySize * feePerHead
 
-  const { error: updateError } = await (auth.supabase.from('table_bookings') as any)
+  const { data: noShowRow, error: updateError } = await (auth.supabase.from('table_bookings') as any)
     .update({
       status: 'no_show',
       no_show_at: nowIso,
@@ -68,9 +68,14 @@ export async function POST(
       updated_at: nowIso
     })
     .eq('id', id)
+    .select('id')
+    .maybeSingle()
 
   if (updateError) {
     return NextResponse.json({ error: 'Failed to mark no-show' }, { status: 500 })
+  }
+  if (!noShowRow) {
+    return NextResponse.json({ error: 'Booking not found' }, { status: 404 })
   }
 
   const { chargeRequestId, amount: chargeAmount, capApplied } = await createChargeRequestForBooking(auth.supabase, {

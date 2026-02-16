@@ -75,11 +75,14 @@ export class VendorService {
       .update(payload)
       .eq('id', id)
       .select()
-      .single();
+      .maybeSingle();
 
     if (error) {
       console.error('Error updating vendor:', error);
       throw new Error('Failed to update vendor');
+    }
+    if (!vendor) {
+      throw new Error('Vendor not found');
     }
 
     return vendor;
@@ -93,6 +96,7 @@ export class VendorService {
       .from('invoices')
       .select('id')
       .eq('vendor_id', vendorId)
+      .is('deleted_at', null)
       .limit(1);
 
     if (checkError) {
@@ -102,26 +106,36 @@ export class VendorService {
 
     if (invoices && invoices.length > 0) {
       // Soft delete by marking as inactive
-      const { error } = await supabase
+      const { data: deactivatedVendor, error } = await supabase
         .from('invoice_vendors')
         .update({ is_active: false })
-        .eq('id', vendorId);
+        .eq('id', vendorId)
+        .select('id')
+        .maybeSingle();
 
       if (error) {
         console.error('Error deactivating vendor:', error);
         throw new Error('Failed to deactivate vendor');
       }
+      if (!deactivatedVendor) {
+        throw new Error('Vendor not found');
+      }
       return { action: 'deactivated' };
     } else {
       // Hard delete if no invoices
-      const { error } = await supabase
+      const { data: deletedVendor, error } = await supabase
         .from('invoice_vendors')
         .delete()
-        .eq('id', vendorId);
+        .eq('id', vendorId)
+        .select('id')
+        .maybeSingle();
 
       if (error) {
         console.error('Error deleting vendor:', error);
         throw new Error('Failed to delete vendor');
+      }
+      if (!deletedVendor) {
+        throw new Error('Vendor not found');
       }
       return { action: 'deleted' };
     }

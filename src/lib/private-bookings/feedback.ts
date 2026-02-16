@@ -295,11 +295,22 @@ async function sendPrivateBookingFeedbackManagerEmail(
     comments ? `<p><strong>Comments:</strong><br/>${escapeHtml(comments)}</p>` : '<p><strong>Comments:</strong> None provided.</p>'
   ].join('')
 
-  const result = await sendEmail({
-    to: PRIVATE_BOOKING_FEEDBACK_MANAGER_EMAIL,
-    subject,
-    html
-  })
+  let result: Awaited<ReturnType<typeof sendEmail>>
+  try {
+    result = await sendEmail({
+      to: PRIVATE_BOOKING_FEEDBACK_MANAGER_EMAIL,
+      subject,
+      html
+    })
+  } catch (emailError) {
+    logger.warn('Private-booking feedback manager email send threw unexpectedly', {
+      metadata: {
+        privateBookingId: input.privateBookingId,
+        error: emailError instanceof Error ? emailError.message : String(emailError)
+      }
+    })
+    return false
+  }
 
   if (!result.success) {
     logger.warn('Failed to send private-booking feedback manager email', {
@@ -336,6 +347,45 @@ export async function submitPrivateBookingFeedbackByRawToken(
   const ratingOverall = parseNumber(input.ratingOverall)
   const ratingFood = input.ratingFood == null ? null : parseNumber(input.ratingFood)
   const ratingService = input.ratingService == null ? null : parseNumber(input.ratingService)
+  const tokenConsumedAt = new Date().toISOString()
+
+  const { data: consumedToken, error: tokenConsumeError } = await (supabase.from('guest_tokens') as any)
+    .update({ consumed_at: tokenConsumedAt })
+    .eq('id', preview.token_id)
+    .is('consumed_at', null)
+    .select('id')
+    .maybeSingle()
+
+  if (tokenConsumeError) {
+    throw tokenConsumeError
+  }
+
+  if (!consumedToken) {
+    const { data: existingFeedback, error: existingFeedbackError } = await (supabase.from('feedback') as any)
+      .select('id')
+      .eq('private_booking_id', preview.private_booking_id)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+
+    if (existingFeedbackError) {
+      throw existingFeedbackError
+    }
+
+    if (existingFeedback?.id) {
+      return {
+        state: 'submitted',
+        private_booking_id: preview.private_booking_id,
+        feedback_id: existingFeedback.id,
+        manager_email_sent: false
+      }
+    }
+
+    return {
+      state: 'blocked',
+      reason: 'token_used'
+    }
+  }
 
   const { data: insertedFeedback, error: insertError } = await (supabase.from('feedback') as any)
     .insert({
@@ -349,40 +399,79 @@ export async function submitPrivateBookingFeedbackByRawToken(
     .maybeSingle()
 
   if (insertError) {
+    const { data: rollbackToken, error: rollbackTokenConsumeError } = await (supabase.from('guest_tokens') as any)
+      .update({ consumed_at: null })
+      .eq('id', preview.token_id)
+      .eq('consumed_at', tokenConsumedAt)
+      .select('id')
+      .maybeSingle()
+
+    if (rollbackTokenConsumeError) {
+      logger.error('Failed to rollback private-feedback token consumption after insert failure', {
+        error: new Error(rollbackTokenConsumeError.message),
+        metadata: {
+          tokenId: preview.token_id,
+          privateBookingId: preview.private_booking_id
+        }
+      })
+    } else if (!rollbackToken) {
+      logger.error('Private-feedback token rollback affected no rows after insert failure', {
+        metadata: {
+          tokenId: preview.token_id,
+          privateBookingId: preview.private_booking_id
+        }
+      })
+    }
+
     throw insertError
   }
 
-  await (supabase.from('guest_tokens') as any)
-    .update({ consumed_at: new Date().toISOString() })
-    .eq('id', preview.token_id)
-    .is('consumed_at', null)
-
-  await recordAnalyticsEvent(supabase, {
-    customerId: preview.customer_id,
-    privateBookingId: preview.private_booking_id,
-    eventType: 'feedback_submitted',
-    metadata: {
-      rating_overall: ratingOverall,
-      rating_food: ratingFood,
-      rating_service: ratingService
-    }
-  })
+  try {
+    await recordAnalyticsEvent(supabase, {
+      customerId: preview.customer_id,
+      privateBookingId: preview.private_booking_id,
+      eventType: 'feedback_submitted',
+      metadata: {
+        rating_overall: ratingOverall,
+        rating_food: ratingFood,
+        rating_service: ratingService
+      }
+    })
+  } catch (analyticsError) {
+    logger.warn('Failed to record private-booking feedback analytics event', {
+      metadata: {
+        privateBookingId: preview.private_booking_id,
+        customerId: preview.customer_id,
+        error: analyticsError instanceof Error ? analyticsError.message : String(analyticsError)
+      }
+    })
+  }
 
   const customerName =
     `${preview.customer_first_name || ''} ${preview.customer_last_name || ''}`.trim() ||
     preview.customer_name ||
     'Guest'
 
-  const managerEmailSent = await sendPrivateBookingFeedbackManagerEmail({
-    customerName,
-    privateBookingId: preview.private_booking_id,
-    eventDate: preview.event_date,
-    startTime: preview.start_time,
-    ratingOverall,
-    ratingFood,
-    ratingService,
-    comments
-  })
+  let managerEmailSent = false
+  try {
+    managerEmailSent = await sendPrivateBookingFeedbackManagerEmail({
+      customerName,
+      privateBookingId: preview.private_booking_id,
+      eventDate: preview.event_date,
+      startTime: preview.start_time,
+      ratingOverall,
+      ratingFood,
+      ratingService,
+      comments
+    })
+  } catch (emailError) {
+    logger.warn('Unexpected private-booking feedback email failure', {
+      metadata: {
+        privateBookingId: preview.private_booking_id,
+        error: emailError instanceof Error ? emailError.message : String(emailError)
+      }
+    })
+  }
 
   return {
     state: 'submitted',

@@ -126,13 +126,20 @@ export async function classifyReceiptTransactionsWithAI(
 
     updatePayload.updated_at = now
 
-    const { error: updateError } = await client
+    const { data: updatedTransaction, error: updateError } = await client
       .from('receipt_transactions')
       .update(updatePayload)
       .eq('id', transaction.id)
+      .select('id')
+      .maybeSingle()
 
     if (updateError) {
       console.error('Failed to persist AI classification', updateError)
+      continue
+    }
+
+    if (!updatedTransaction) {
+      console.error('Failed to persist AI classification: transaction not found', { transactionId: transaction.id })
       continue
     }
 

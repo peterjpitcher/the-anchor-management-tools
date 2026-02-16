@@ -158,9 +158,10 @@ export class ShortLinkService {
       })
       .eq('id', input.id)
       .select()
-      .single();
+      .maybeSingle();
 
     if (error) throw new Error('Failed to update short link');
+    if (!updated) throw new Error('Short link not found');
     return updated;
   }
 
@@ -176,12 +177,15 @@ export class ShortLinkService {
     if (fetchError) throw new Error('Failed to load short link');
     if (!existing) throw new Error('Short link not found');
 
-    const { error } = await supabase
+    const { data: deletedLink, error } = await supabase
       .from('short_links')
       .delete()
-      .eq('id', id);
+      .eq('id', id)
+      .select('id')
+      .maybeSingle();
 
     if (error) throw new Error('Failed to delete short link');
+    if (!deletedLink) throw new Error('Short link not found');
 
     return existing;
   }
@@ -269,16 +273,28 @@ export class ShortLinkService {
     }
     
     // Track the click (fire and forget)
-    supabase
-      .from('short_link_clicks')
-      .insert({
-        short_link_id: resolvedLink.id,
-        metadata: resolvedViaAlias ? { alias_code: input.short_code } : {}
-      })
-      .then(async () => {
-        await (supabase as any).rpc('increment_short_link_clicks', {
-          p_short_link_id: resolvedLink.id
+    void (async () => {
+      const { error: clickInsertError } = await supabase
+        .from('short_link_clicks')
+        .insert({
+          short_link_id: resolvedLink.id,
+          metadata: resolvedViaAlias ? { alias_code: input.short_code } : {}
         });
+
+        if (clickInsertError) {
+          console.error('Failed recording short link click event:', clickInsertError);
+          return;
+        }
+
+      const { error: incrementError } = await (supabase as any).rpc('increment_short_link_clicks', {
+        p_short_link_id: resolvedLink.id
+      });
+
+      if (incrementError) {
+        console.error('Failed incrementing short link click counter:', incrementError);
+      }
+    })().catch((clickTrackingError: unknown) => {
+        console.error('Unexpected short link click tracking failure:', clickTrackingError);
       });
     
     return {

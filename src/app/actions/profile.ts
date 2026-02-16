@@ -76,17 +76,23 @@ export async function updateProfile({
     return { error: 'Not authenticated' }
   }
 
-  const { error } = await supabase
+  const { data: updatedProfile, error } = await supabase
     .from('profiles')
     .update({
       full_name: fullName,
       updated_at: new Date().toISOString(),
     })
     .eq('id', user.id)
+    .select('id')
+    .maybeSingle()
 
   if (error) {
     console.error('Error updating profile', error)
     return { error: 'Failed to update profile' }
+  }
+
+  if (!updatedProfile) {
+    return { error: 'Profile not found' }
   }
 
   revalidatePath('/profile')
@@ -109,17 +115,23 @@ export async function toggleNotification({
     return { error: 'Not authenticated' }
   }
 
-  const { error } = await supabase
+  const { data: updatedProfile, error } = await supabase
     .from('profiles')
     .update({
       [field]: value,
       updated_at: new Date().toISOString(),
     })
     .eq('id', user.id)
+    .select('id')
+    .maybeSingle()
 
   if (error) {
     console.error('Error updating notifications', error)
     return { error: 'Failed to update notification preferences' }
+  }
+
+  if (!updatedProfile) {
+    return { error: 'Profile not found' }
   }
 
   revalidatePath('/profile')
@@ -223,17 +235,32 @@ export async function uploadAvatar(formData: FormData) {
     return { error: 'Failed to upload avatar' }
   }
 
-  const { error: updateError } = await supabase
+  const { data: updatedProfile, error: updateError } = await supabase
     .from('profiles')
     .update({
       avatar_url: filePath,
       updated_at: new Date().toISOString(),
     })
     .eq('id', user.id)
+    .select('id')
+    .maybeSingle()
 
   if (updateError) {
     console.error('Error updating profile avatar', updateError)
     return { error: 'Failed to update avatar' }
+  }
+
+  if (!updatedProfile) {
+    const { error: cleanupError } = await supabase.storage
+      .from('avatars')
+      .remove([filePath])
+
+    if (cleanupError) {
+      console.error('Failed to remove uploaded avatar after profile missing', cleanupError)
+      return { error: 'Profile not found. Manual file cleanup may be required.' }
+    }
+
+    return { error: 'Profile not found' }
   }
 
   revalidatePath('/profile')

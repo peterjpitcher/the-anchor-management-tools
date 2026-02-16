@@ -1,42 +1,219 @@
-import { createClient } from '@supabase/supabase-js';
-import * as dotenv from 'dotenv';
+#!/usr/bin/env tsx
 
-// Load environment variables
-dotenv.config({ path: '.env.local' });
+/**
+ * fix-superadmin-permissions (safe by default)
+ *
+ * Intended use: ensure the super_admin role has the customers:manage permission.
+ * Optionally, grant additional missing permissions to super_admin behind explicit caps.
+ *
+ * Dry-run (default):
+ *   tsx scripts/fixes/fix-superadmin-permissions.ts
+ *
+ * Mutation mode (requires multi-gating):
+ *   RUN_FIX_SUPERADMIN_PERMISSIONS_MUTATION=true \\
+ *   ALLOW_FIX_SUPERADMIN_PERMISSIONS_MUTATION_SCRIPT=true \\
+ *     tsx scripts/fixes/fix-superadmin-permissions.ts --confirm --ensure-customers-manage
+ *
+ * Grant all missing permissions (high risk; requires explicit caps):
+ *   RUN_FIX_SUPERADMIN_PERMISSIONS_MUTATION=true \\
+ *   ALLOW_FIX_SUPERADMIN_PERMISSIONS_MUTATION_SCRIPT=true \\
+ *     tsx scripts/fixes/fix-superadmin-permissions.ts --confirm --grant-all-missing --limit 50 [--offset 0]
+ */
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+import * as dotenv from 'dotenv'
+import { resolve } from 'path'
+import { createAdminClient } from '../../src/lib/supabase/admin'
+import {
+  assertScriptCompletedWithoutFailures,
+  assertScriptExpectedRowCount,
+  assertScriptMutationSucceeded,
+  assertScriptQuerySucceeded
+} from '../../src/lib/script-mutation-safety'
+import {
+  assertFixSuperadminPermissionsLimit,
+  assertFixSuperadminPermissionsMutationAllowed,
+  isFixSuperadminPermissionsMutationEnabled,
+  readFixSuperadminPermissionsLimit,
+  readFixSuperadminPermissionsOffset
+} from '../../src/lib/fix-superadmin-permissions-script-safety'
 
-if (!supabaseUrl || !supabaseServiceKey) {
-  console.error('Missing required environment variables:');
-  console.error('- NEXT_PUBLIC_SUPABASE_URL:', !!supabaseUrl);
-  console.error('- SUPABASE_SERVICE_ROLE_KEY:', !!supabaseServiceKey);
-  process.exit(1);
+dotenv.config({ path: resolve(process.cwd(), '.env.local') })
+
+type PermissionRow = {
+  id: string
+  module_name: string | null
+  action: string | null
 }
 
-const supabase = createClient(supabaseUrl, supabaseServiceKey, {
-  auth: {
-    persistSession: false,
-    autoRefreshToken: false,
+type RoleRow = {
+  id: string
+  name: string | null
+}
+
+type RolePermissionRow = {
+  permission_id: string
+}
+
+function isFlagPresent(flag: string, argv: string[] = process.argv): boolean {
+  return argv.includes(flag)
+}
+
+function formatPermissionLabel(permission: PermissionRow): string {
+  return `${permission.module_name ?? 'unknown'}:${permission.action ?? 'unknown'}`
+}
+
+async function run(): Promise<void> {
+  const argv = process.argv
+  const confirm = isFlagPresent('--confirm', argv)
+  const mutationEnabled = isFixSuperadminPermissionsMutationEnabled(argv, process.env)
+  const ensureCustomersManage = isFlagPresent('--ensure-customers-manage', argv)
+  const grantAllMissing = isFlagPresent('--grant-all-missing', argv)
+
+  const HARD_CAP = 200
+
+  if (isFlagPresent('--help', argv)) {
+    console.log(`
+fix-superadmin-permissions (safe by default)
+
+Dry-run (default):
+  tsx scripts/fixes/fix-superadmin-permissions.ts
+
+Mutation mode (requires multi-gating):
+  RUN_FIX_SUPERADMIN_PERMISSIONS_MUTATION=true \\
+  ALLOW_FIX_SUPERADMIN_PERMISSIONS_MUTATION_SCRIPT=true \\
+    tsx scripts/fixes/fix-superadmin-permissions.ts --confirm --ensure-customers-manage
+
+Grant all missing permissions (high risk; requires explicit caps):
+  RUN_FIX_SUPERADMIN_PERMISSIONS_MUTATION=true \\
+  ALLOW_FIX_SUPERADMIN_PERMISSIONS_MUTATION_SCRIPT=true \\
+    tsx scripts/fixes/fix-superadmin-permissions.ts --confirm --grant-all-missing --limit 50 [--offset 0]
+
+Notes:
+  - --limit is required for --grant-all-missing (hard cap ${HARD_CAP}).
+  - In dry-run mode, no rows are updated.
+`)
+    return
   }
-});
 
-async function fixSuperadminPermissions() {
-  console.log('🔧 Fixing superadmin permissions...\n');
+  if (confirm && !mutationEnabled && !isFlagPresent('--dry-run', argv)) {
+    throw new Error(
+      'fix-superadmin-permissions received --confirm but RUN_FIX_SUPERADMIN_PERMISSIONS_MUTATION is not enabled. Set RUN_FIX_SUPERADMIN_PERMISSIONS_MUTATION=true and ALLOW_FIX_SUPERADMIN_PERMISSIONS_MUTATION_SCRIPT=true to apply updates.'
+    )
+  }
 
-  try {
-    // Step 1: Ensure customers:manage permission exists
-    console.log('1️⃣  Ensuring customers:manage permission exists...');
-    const { data: existingPerm } = await supabase
-      .from('permissions')
-      .select('id')
-      .eq('module_name', 'customers')
-      .eq('action', 'manage')
-      .single();
+  if (mutationEnabled) {
+    if (!ensureCustomersManage && !grantAllMissing) {
+      throw new Error(
+        'fix-superadmin-permissions blocked: mutation mode requires an explicit operation flag (--ensure-customers-manage and/or --grant-all-missing).'
+      )
+    }
 
-    let customersManagePermId;
-    if (!existingPerm) {
-      const { data: newPerm, error: permError } = await supabase
+    assertFixSuperadminPermissionsMutationAllowed(process.env)
+  }
+
+  const supabase = createAdminClient()
+  const modeLabel = mutationEnabled ? 'MUTATION' : 'DRY-RUN'
+
+  console.log(`🔧 fix-superadmin-permissions (${modeLabel})\n`)
+
+  const { data: roleRowRaw, error: roleError } = await supabase
+    .from('roles')
+    .select('id, name')
+    .eq('name', 'super_admin')
+    .maybeSingle()
+
+  const roleRow = assertScriptQuerySucceeded({
+    operation: 'Load super_admin role',
+    error: roleError,
+    data: roleRowRaw as RoleRow | null,
+  }) as RoleRow | null
+
+  if (!roleRow?.id) {
+    throw new Error('super_admin role not found')
+  }
+
+  console.log(`Role: super_admin (${roleRow.id})`)
+
+  const { data: customersManagePermRaw, error: customersManagePermError } = await supabase
+    .from('permissions')
+    .select('id, module_name, action')
+    .eq('module_name', 'customers')
+    .eq('action', 'manage')
+    .maybeSingle()
+
+  const customersManagePerm = assertScriptQuerySucceeded({
+    operation: 'Load customers:manage permission',
+    error: customersManagePermError,
+    data: customersManagePermRaw as PermissionRow | null,
+    allowMissing: true
+  }) as PermissionRow | null
+
+  const { data: allPermissionsRaw, error: permissionsError } = await supabase
+    .from('permissions')
+    .select('id, module_name, action')
+
+  const allPermissions = assertScriptQuerySucceeded({
+    operation: 'Load all permissions',
+    error: permissionsError,
+    data: allPermissionsRaw ?? [],
+    allowMissing: true
+  }) as PermissionRow[]
+
+  const { data: existingRolePermsRaw, error: existingRolePermsError } = await supabase
+    .from('role_permissions')
+    .select('permission_id')
+    .eq('role_id', roleRow.id)
+
+  const existingRolePerms = assertScriptQuerySucceeded({
+    operation: 'Load existing role_permissions for super_admin',
+    error: existingRolePermsError,
+    data: existingRolePermsRaw ?? [],
+    allowMissing: true
+  }) as RolePermissionRow[]
+
+  const existingPermIds = new Set(
+    existingRolePerms
+      .map((row) => row.permission_id)
+      .filter((id): id is string => typeof id === 'string' && id.length > 0)
+  )
+
+  const missingPermissions = allPermissions.filter((perm) => !existingPermIds.has(perm.id))
+  const customersManageAssigned = customersManagePerm ? existingPermIds.has(customersManagePerm.id) : false
+
+  console.log(`Permissions total: ${allPermissions.length}`)
+  console.log(`Assigned to super_admin: ${existingPermIds.size}`)
+  console.log(`Missing from super_admin: ${missingPermissions.length}`)
+  console.log(
+    `customers:manage permission: ${customersManagePerm ? `present (${customersManagePerm.id})` : 'missing'}`
+  )
+  console.log(`customers:manage assigned: ${customersManageAssigned}`)
+
+  if (!mutationEnabled) {
+    if (missingPermissions.length > 0) {
+      const preview = missingPermissions
+        .slice(0, 10)
+        .map(formatPermissionLabel)
+        .join(', ')
+      console.log(`\nSample missing permissions (first 10): ${preview}`)
+    }
+
+    console.log('\nDry-run mode: no changes applied.')
+    console.log('To mutate, pass --confirm and set env gates:')
+    console.log('  RUN_FIX_SUPERADMIN_PERMISSIONS_MUTATION=true')
+    console.log('  ALLOW_FIX_SUPERADMIN_PERMISSIONS_MUTATION_SCRIPT=true')
+    console.log('Then select an operation:')
+    console.log('  --ensure-customers-manage')
+    console.log('  --grant-all-missing --limit <n> [--offset <n>]')
+    return
+  }
+
+  const failures: string[] = []
+
+  if (ensureCustomersManage) {
+    let permissionId = customersManagePerm?.id ?? null
+    if (!permissionId) {
+      console.log('\nCreating customers:manage permission...')
+      const { data: insertedPermRows, error: insertPermError } = await supabase
         .from('permissions')
         .insert({
           module_name: 'customers',
@@ -44,122 +221,124 @@ async function fixSuperadminPermissions() {
           description: 'Manage customer labels and settings'
         })
         .select('id')
-        .single();
 
-      if (permError) {
-        console.error('Error creating permission:', permError.message);
-        return;
-      }
-      customersManagePermId = newPerm.id;
-      console.log('✅ Created customers:manage permission');
-    } else {
-      customersManagePermId = existingPerm.id;
-      console.log('✅ Permission already exists');
-    }
-
-    // Step 2: Get super_admin role
-    console.log('\n2️⃣  Finding super_admin role...');
-    const { data: superAdminRole, error: roleError } = await supabase
-      .from('roles')
-      .select('id, name')
-      .eq('name', 'super_admin')
-      .single();
-
-    if (roleError || !superAdminRole) {
-      console.error('Could not find super_admin role:', roleError?.message);
-      return;
-    }
-    console.log('✅ Found super_admin role:', superAdminRole.id);
-
-    // Step 3: Get all permissions
-    console.log('\n3️⃣  Fetching all permissions...');
-    const { data: allPermissions, error: permissionsError } = await supabase
-      .from('permissions')
-      .select('id, module_name, action');
-
-    if (permissionsError || !allPermissions) {
-      console.error('Could not fetch permissions:', permissionsError?.message);
-      return;
-    }
-    console.log(`✅ Found ${allPermissions.length} total permissions`);
-
-    // Step 4: Check existing role_permissions for super_admin
-    console.log('\n4️⃣  Checking existing permissions for super_admin...');
-    const { data: existingRolePerms, error: existingError } = await supabase
-      .from('role_permissions')
-      .select('permission_id')
-      .eq('role_id', superAdminRole.id);
-
-    if (existingError) {
-      console.error('Error checking existing permissions:', existingError.message);
-      return;
-    }
-
-    const existingPermIds = new Set(existingRolePerms?.map(rp => rp.permission_id) || []);
-    const missingPermissions = allPermissions.filter(p => !existingPermIds.has(p.id));
-
-    console.log(`📊 Super_admin has ${existingPermIds.size}/${allPermissions.length} permissions`);
-    console.log(`📊 Missing ${missingPermissions.length} permissions`);
-
-    // Step 5: Grant missing permissions
-    if (missingPermissions.length > 0) {
-      console.log('\n5️⃣  Granting missing permissions to super_admin...');
-      
-      const rolePermissionsToInsert = missingPermissions.map(p => ({
-        role_id: superAdminRole.id,
-        permission_id: p.id
-      }));
-
-      // Insert in batches to avoid timeout
-      const batchSize = 10;
-      for (let i = 0; i < rolePermissionsToInsert.length; i += batchSize) {
-        const batch = rolePermissionsToInsert.slice(i, i + batchSize);
-        const { error: insertError } = await supabase
-          .from('role_permissions')
-          .insert(batch);
-
-        if (insertError) {
-          console.error(`Error inserting batch ${i / batchSize + 1}:`, insertError.message);
-        } else {
-          console.log(`✅ Granted ${batch.length} permissions (batch ${i / batchSize + 1})`);
+      try {
+        const { updatedCount } = assertScriptMutationSucceeded({
+          operation: 'Insert customers:manage permission',
+          error: insertPermError,
+          updatedRows: insertedPermRows as Array<{ id?: string }> | null,
+          allowZeroRows: false
+        })
+        assertScriptExpectedRowCount({
+          operation: 'Insert customers:manage permission',
+          expected: 1,
+          actual: updatedCount
+        })
+        permissionId = insertedPermRows?.[0]?.id ?? null
+        if (!permissionId) {
+          throw new Error('Insert customers:manage permission returned no id')
         }
+        console.log(`✅ Created customers:manage permission (${permissionId})`)
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error)
+        failures.push(message)
+        console.error(`❌ Failed creating customers:manage permission: ${message}`)
       }
-    } else {
-      console.log('\n✅ Super_admin already has all permissions!');
     }
 
-    // Step 6: Verify customers:manage is granted
-    console.log('\n6️⃣  Verifying customers:manage permission...');
-    const { data: verifyPerm } = await supabase
-      .from('role_permissions')
-      .select('*')
-      .eq('role_id', superAdminRole.id)
-      .eq('permission_id', customersManagePermId)
-      .single();
+    if (permissionId && !existingPermIds.has(permissionId)) {
+      console.log('\nGranting customers:manage to super_admin...')
+      const { data: insertedRolePermRows, error: insertRolePermError } = await supabase
+        .from('role_permissions')
+        .insert({
+          role_id: roleRow.id,
+          permission_id: permissionId
+        })
+        .select('permission_id')
 
-    if (verifyPerm) {
-      console.log('✅ Confirmed: super_admin has customers:manage permission');
-    } else {
-      console.log('❌ Warning: customers:manage permission not found for super_admin');
+      try {
+        const { updatedCount } = assertScriptMutationSucceeded({
+          operation: 'Insert role_permissions row for customers:manage',
+          error: insertRolePermError,
+          updatedRows: insertedRolePermRows as Array<{ id?: string }> | null,
+          allowZeroRows: false
+        })
+        assertScriptExpectedRowCount({
+          operation: 'Insert role_permissions row for customers:manage',
+          expected: 1,
+          actual: updatedCount
+        })
+        console.log('✅ Granted customers:manage to super_admin')
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error)
+        failures.push(message)
+        console.error(`❌ Failed granting customers:manage: ${message}`)
+      }
+    } else if (permissionId) {
+      console.log('\nℹ️ customers:manage is already granted to super_admin; skipping.')
     }
-
-    console.log('\n🎉 Permission fixes completed!');
-    console.log('\n📝 Summary:');
-    console.log('- customers:manage permission exists');
-    console.log('- super_admin role has been granted all permissions');
-    console.log('- You should now see "Customer Labels" in settings');
-    console.log('\n⚠️  Please refresh your browser to see the changes!');
-
-  } catch (error) {
-    console.error('Unexpected error:', error);
-    process.exit(1);
   }
+
+  if (grantAllMissing) {
+    const limit = assertFixSuperadminPermissionsLimit(
+      readFixSuperadminPermissionsLimit(argv, process.env),
+      HARD_CAP
+    )
+    const offset = readFixSuperadminPermissionsOffset(argv, process.env) ?? 0
+
+    const sortedMissing = [...missingPermissions].sort((a, b) =>
+      formatPermissionLabel(a).localeCompare(formatPermissionLabel(b))
+    )
+    const slice = sortedMissing.slice(offset, offset + limit)
+
+    console.log(`\nGranting missing permissions: offset=${offset} limit=${limit}`)
+    console.log(`Selected: ${slice.length}/${sortedMissing.length} missing permission(s)`)
+
+    if (slice.length === 0) {
+      console.log('No missing permissions selected for granting.')
+    } else {
+      const insertRows = slice.map((perm) => ({
+        role_id: roleRow.id,
+        permission_id: perm.id
+      }))
+
+      const { data: insertedRows, error: insertError } = await supabase
+        .from('role_permissions')
+        .insert(insertRows)
+        .select('permission_id')
+
+      try {
+        const { updatedCount } = assertScriptMutationSucceeded({
+          operation: 'Insert missing role_permissions rows for super_admin',
+          error: insertError,
+          updatedRows: insertedRows as Array<{ id?: string }> | null,
+          allowZeroRows: false
+        })
+        assertScriptExpectedRowCount({
+          operation: 'Insert missing role_permissions rows for super_admin',
+          expected: slice.length,
+          actual: updatedCount
+        })
+        console.log(`✅ Granted ${updatedCount} permission(s) to super_admin`)
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error)
+        failures.push(message)
+        console.error(`❌ Grant-all-missing failed: ${message}`)
+      }
+    }
+  }
+
+  assertScriptCompletedWithoutFailures({
+    scriptName: 'fix-superadmin-permissions',
+    failureCount: failures.length,
+    failures
+  })
+
+  console.log('\n✅ fix-superadmin-permissions completed without unresolved failures.')
 }
 
-// Run the fix
-fixSuperadminPermissions()
-  .then(() => process.exit(0))
-  .catch((error) => {
-    console.error('Fatal error:', error);
-    process.exit(1);
-  });
+run().catch((error) => {
+  console.error('fix-superadmin-permissions failed:', error)
+  process.exitCode = 1
+})
+

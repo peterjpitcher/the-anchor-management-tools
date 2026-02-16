@@ -1,24 +1,38 @@
 #!/usr/bin/env tsx
 
-import { createClient } from '@supabase/supabase-js'
-import { config } from 'dotenv'
+import dotenv from 'dotenv'
+import path from 'path'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { assertScriptQuerySucceeded } from '@/lib/script-mutation-safety'
 
-config({ path: '.env' })
+const SCRIPT_NAME = 'evaluate-hiring-screening'
+const DEFAULT_SINCE_DAYS = 90
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-)
+function readOptionalFlagValue(argv: string[], flag: string): string | null {
+  const withEqualsPrefix = `${flag}=`
+  for (let i = 0; i < argv.length; i += 1) {
+    const entry = argv[i]
+    if (entry === flag) {
+      const next = argv[i + 1]
+      return typeof next === 'string' ? next : null
+    }
+    if (typeof entry === 'string' && entry.startsWith(withEqualsPrefix)) {
+      return entry.slice(withEqualsPrefix.length)
+    }
+  }
+  return null
+}
 
-const args = new Map(process.argv.slice(2).map((entry) => {
-  const [key, value] = entry.replace(/^--/, '').split('=')
-  return [key, value ?? '']
-}))
-
-const jobId = args.get('jobId') || null
-const sinceArg = args.get('since')
-const sinceDate = sinceArg ? new Date(sinceArg) : new Date(Date.now() - 90 * 24 * 60 * 60 * 1000)
-const sinceIso = sinceDate.toISOString()
+function parseSinceIso(argv: string[]): string {
+  const raw = readOptionalFlagValue(argv, '--since')
+  const sinceDate = raw
+    ? new Date(raw)
+    : new Date(Date.now() - DEFAULT_SINCE_DAYS * 24 * 60 * 60 * 1000)
+  if (!Number.isFinite(sinceDate.getTime())) {
+    throw new Error(`[${SCRIPT_NAME}] Invalid --since value: ${raw}`)
+  }
+  return sinceDate.toISOString()
+}
 
 function groupCount<T>(items: T[], keyFn: (item: T) => string) {
   return items.reduce<Record<string, number>>((acc, item) => {
@@ -28,7 +42,17 @@ function groupCount<T>(items: T[], keyFn: (item: T) => string) {
   }, {})
 }
 
-async function run() {
+async function main() {
+  dotenv.config({ path: path.resolve(process.cwd(), '.env.local') })
+  if (process.argv.includes('--confirm')) {
+    throw new Error(`[${SCRIPT_NAME}] read-only script does not support --confirm`)
+  }
+
+  const argv = process.argv.slice(2)
+  const jobId = readOptionalFlagValue(argv, '--jobId') ?? readOptionalFlagValue(argv, '--job-id')
+  const sinceIso = parseSinceIso(argv)
+
+  const supabase = createAdminClient()
   const query = supabase
     .from('hiring_applications')
     .select('id, job_id, ai_score, ai_recommendation, outcome_status, created_at')
@@ -39,12 +63,13 @@ async function run() {
   }
 
   const { data, error } = await query
-  if (error) {
-    console.error('Failed to load applications:', error)
-    process.exit(1)
-  }
-
-  const rows = data || []
+  const rows =
+    assertScriptQuerySucceeded({
+      operation: 'Load applications',
+      error,
+      data: data as Array<any> | null,
+      allowMissing: true,
+    }) ?? []
   const withOutcome = rows.filter((row) => row.outcome_status)
   const byRecommendation = groupCount(withOutcome, (row) => row.ai_recommendation || 'none')
   const byOutcome = groupCount(withOutcome, (row) => row.outcome_status || 'none')
@@ -62,10 +87,17 @@ async function run() {
   const inviteHired = invitePred.filter((row) => row.outcome_status === 'hired')
   const inviteRejected = invitePred.filter((row) => row.outcome_status === 'rejected')
 
-  const { data: overrides } = await supabase
+  const { data: overridesData, error: overridesError } = await (supabase as any)
     .from('hiring_application_overrides')
     .select('override_type, reason, created_at')
     .gte('created_at', sinceIso)
+  const overrides =
+    assertScriptQuerySucceeded({
+      operation: 'Load application overrides',
+      error: overridesError,
+      data: overridesData as Array<any> | null,
+      allowMissing: true,
+    }) ?? []
 
   console.log('Hiring screening evaluation')
   console.log(`Since: ${sinceIso}`)
@@ -82,7 +114,7 @@ async function run() {
   console.log(`Invite predictions: ${invitePred.length}`)
   console.log(`Invite -> hired: ${inviteHired.length}`)
   console.log(`Invite -> rejected: ${inviteRejected.length}`)
-  if (overrides && overrides.length > 0) {
+  if (overrides.length > 0) {
     const byType = groupCount(overrides, (row) => row.override_type || 'unknown')
     console.log('---')
     console.log(`Overrides: ${overrides.length}`)
@@ -90,7 +122,7 @@ async function run() {
   }
 }
 
-run().catch((error) => {
-  console.error(error)
-  process.exit(1)
+main().catch((error) => {
+  console.error(`[${SCRIPT_NAME}] Failed`, error)
+  process.exitCode = 1
 })

@@ -112,14 +112,14 @@ export async function sendInvoiceEmail(
 
     // Default subject and body
     const emailSubject = subject || (isRemittanceAdvice
-      ? `Remittance Advice: Invoice ${invoice.invoice_number} (Paid)`
+      ? `Receipt: Invoice ${invoice.invoice_number} (Paid)`
       : `Invoice ${invoice.invoice_number} from Orange Jelly Limited`)
     const emailBody = body || (isRemittanceAdvice
       ? `Hi ${recipientName},
 
 I hope you're doing well!
 
-This is a remittance advice confirming payment has been received for invoice ${invoice.invoice_number}.
+This is a receipt confirming payment has been received for invoice ${invoice.invoice_number}.
 
 Invoice Total: £${invoice.total_amount.toFixed(2)}
 Payment Received: £${remittancePaymentAmount.toFixed(2)}
@@ -136,7 +136,7 @@ Peter Pitcher
 Orange Jelly Limited
 07995087315
 
-P.S. The remittance advice is attached as a PDF for your records.`
+P.S. The receipt is attached as a PDF for your records.`
       : `Hi ${recipientName},
 
 I hope you're doing well!
@@ -159,7 +159,7 @@ P.S. The invoice is attached as a PDF for easy viewing and printing.`)
       {
         '@odata.type': '#microsoft.graph.fileAttachment',
         name: isRemittanceAdvice
-          ? `remittance-advice-${invoice.invoice_number}.pdf`
+          ? `receipt-${invoice.invoice_number}.pdf`
           : `invoice-${invoice.invoice_number}.pdf`,
         contentType: 'application/pdf',
         contentBytes: bufferToBase64(pdfBuffer)

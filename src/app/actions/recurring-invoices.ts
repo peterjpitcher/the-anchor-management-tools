@@ -238,7 +238,13 @@ export async function createRecurringInvoice(formData: FormData) {
 
         if (lineItemsError) {
           console.error('Error creating line items:', lineItemsError)
-          await supabase.from('recurring_invoices').delete().eq('id', recurringInvoice.id)
+          const { error: rollbackError } = await supabase
+            .from('recurring_invoices')
+            .delete()
+            .eq('id', recurringInvoice.id)
+          if (rollbackError) {
+            console.error('Failed to roll back recurring invoice after line-item insert failure:', rollbackError)
+          }
           return { error: 'Failed to create line items' }
         }
       }
@@ -297,22 +303,71 @@ export async function updateRecurringInvoice(formData: FormData) {
     })
 
     const { id, ...updateData } = validatedData
+    const { data: priorLineItems, error: priorLineItemsError } = await supabase
+      .from('recurring_invoice_line_items')
+      .select('catalog_item_id, description, quantity, unit_price, discount_percentage, vat_rate')
+      .eq('recurring_invoice_id', id)
 
-    const { error: updateError } = await supabase
+    if (priorLineItemsError) {
+      console.error('Error loading prior recurring invoice line items:', priorLineItemsError)
+      return { error: 'Failed to update recurring invoice' }
+    }
+
+    const { data: updatedRecurringInvoice, error: updateError } = await supabase
       .from('recurring_invoices')
       .update({
         ...updateData,
         updated_at: new Date().toISOString()
       })
       .eq('id', id)
+      .select('id')
+      .maybeSingle()
 
-    if (updateError) return { error: 'Failed to update recurring invoice' }
+    if (updateError) {
+      console.error('Error updating recurring invoice:', updateError)
+      return { error: 'Failed to update recurring invoice' }
+    }
+    if (!updatedRecurringInvoice) {
+      return { error: 'Recurring invoice not found' }
+    }
 
-    await supabase.from('recurring_invoice_line_items').delete().eq('recurring_invoice_id', id)
+    const { error: deleteLineItemsError } = await supabase
+      .from('recurring_invoice_line_items')
+      .delete()
+      .eq('recurring_invoice_id', id)
+
+    if (deleteLineItemsError) {
+      console.error('Error deleting recurring invoice line items:', deleteLineItemsError)
+      return { error: 'Failed to update line items' }
+    }
 
     const lineItemsJson = formData.get('line_items')
     if (lineItemsJson) {
-      const lineItems = JSON.parse(lineItemsJson as string)
+      let lineItems: InvoiceLineItemInput[]
+      try {
+        lineItems = JSON.parse(lineItemsJson as string)
+      } catch {
+        if (Array.isArray(priorLineItems) && priorLineItems.length > 0) {
+          const { error: restoreError } = await supabase
+            .from('recurring_invoice_line_items')
+            .insert(
+              priorLineItems.map((item: any) => ({
+                recurring_invoice_id: id,
+                catalog_item_id: item.catalog_item_id || null,
+                description: item.description,
+                quantity: item.quantity,
+                unit_price: item.unit_price,
+                discount_percentage: item.discount_percentage || 0,
+                vat_rate: item.vat_rate
+              }))
+            )
+          if (restoreError) {
+            console.error('Failed restoring prior recurring invoice line items after parse error:', restoreError)
+          }
+        }
+        return { error: 'Invalid line items payload' }
+      }
+
       if (lineItems.length > 0) {
         const { error: lineItemsError } = await supabase
           .from('recurring_invoice_line_items')
@@ -323,11 +378,31 @@ export async function updateRecurringInvoice(formData: FormData) {
               description: item.description,
               quantity: item.quantity,
               unit_price: item.unit_price,
-              discount_percentage: item.discount_percentage || 0,
-              vat_rate: item.vat_rate
-            }))
+                discount_percentage: item.discount_percentage || 0,
+                vat_rate: item.vat_rate
+              }))
           )
-        if (lineItemsError) return { error: 'Failed to update line items' }
+        if (lineItemsError) {
+          if (Array.isArray(priorLineItems) && priorLineItems.length > 0) {
+            const { error: restoreError } = await supabase
+              .from('recurring_invoice_line_items')
+              .insert(
+                priorLineItems.map((item: any) => ({
+                  recurring_invoice_id: id,
+                  catalog_item_id: item.catalog_item_id || null,
+                  description: item.description,
+                  quantity: item.quantity,
+                  unit_price: item.unit_price,
+                  discount_percentage: item.discount_percentage || 0,
+                  vat_rate: item.vat_rate
+                }))
+              )
+            if (restoreError) {
+              console.error('Failed restoring prior recurring invoice line items after insert failure:', restoreError)
+            }
+          }
+          return { error: 'Failed to update line items' }
+        }
       }
     }
 
@@ -373,12 +448,15 @@ export async function deleteRecurringInvoice(formData: FormData) {
 
     if (lineItemsError) return { error: 'Failed to delete items' }
 
-    const { error: deleteError } = await supabase
+    const { data: deletedRecurringInvoice, error: deleteError } = await supabase
       .from('recurring_invoices')
       .delete()
       .eq('id', id)
+      .select('id')
+      .maybeSingle()
 
     if (deleteError) return { error: 'Failed to delete invoice' }
+    if (!deletedRecurringInvoice) return { error: 'Recurring invoice not found' }
 
     await logAuditEvent({
       user_id: user.id,
@@ -468,7 +546,7 @@ export async function generateInvoiceFromRecurring(
       recurringInvoice.frequency as RecurringFrequency
     )
 
-    await supabase
+    const { data: recurringUpdate, error: recurringUpdateError } = await supabase
       .from('recurring_invoices')
       .update({
         next_invoice_date: nextDateIso,
@@ -476,6 +554,17 @@ export async function generateInvoiceFromRecurring(
         updated_at: new Date().toISOString()
       })
       .eq('id', recurringInvoiceId)
+      .eq('is_active', true)
+      .select('id')
+      .maybeSingle()
+
+    if (recurringUpdateError) {
+      console.error('Error updating recurring invoice schedule:', recurringUpdateError)
+      return { error: 'Failed to update recurring invoice schedule' }
+    }
+    if (!recurringUpdate) {
+      return { error: 'Recurring invoice was changed before schedule update completed' }
+    }
 
     await logAuditEvent({
       user_id: user?.id, // Might be undefined if triggered by cron, handle gracefully in audit
@@ -513,15 +602,19 @@ export async function toggleRecurringInvoiceStatus(formData: FormData) {
     const currentStatus = formData.get('current_status') === 'true'
     if (!id) return { error: 'ID required' }
 
-    const { error } = await supabase
+    const { data: updatedRecurringInvoice, error } = await supabase
       .from('recurring_invoices')
       .update({ 
         is_active: !currentStatus,
         updated_at: new Date().toISOString()
       })
       .eq('id', id)
+      .eq('is_active', currentStatus)
+      .select('id')
+      .maybeSingle()
 
     if (error) return { error: 'Failed to toggle status' }
+    if (!updatedRecurringInvoice) return { error: 'Recurring invoice status changed before this update could be applied' }
 
     await logAuditEvent({
       user_id: user.id,

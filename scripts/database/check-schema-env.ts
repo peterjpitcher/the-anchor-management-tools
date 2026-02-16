@@ -1,137 +1,98 @@
-import { createClient } from '@supabase/supabase-js';
-import * as dotenv from 'dotenv';
-import path from 'path';
+#!/usr/bin/env tsx
 
-// Load environment variables
-dotenv.config({ path: path.resolve(process.cwd(), '.env.local') });
+import dotenv from 'dotenv'
+import path from 'path'
+import { createAdminClient } from '../../src/lib/supabase/admin'
+import { assertScriptCompletedWithoutFailures } from '../../src/lib/script-mutation-safety'
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+dotenv.config({ path: path.resolve(process.cwd(), '.env.local') })
 
-if (!supabaseUrl || !supabaseServiceKey) {
-  console.error('Missing required environment variables');
-  process.exit(1);
+function markFailure(message: string, error?: unknown) {
+  process.exitCode = 1
+  if (error) {
+    console.error(`ERROR: ${message}`, error)
+    return
+  }
+  console.error(`ERROR: ${message}`)
+}
+
+function isMissingColumnError(message: string): boolean {
+  return message.includes('column') && message.includes('does not exist')
 }
 
 async function checkCurrentSchema() {
-  console.log('🔍 Checking Current Database Schema...\n');
-  
-  const supabase = createClient(supabaseUrl, supabaseServiceKey);
-  
-  // Check events table columns
-  console.log('📊 Events Table Schema:');
-  
-  // Try to query specific fields
-  const { error: imageUrlError } = await supabase
-    .from('events')
-    .select('image_url')
-    .limit(1);
-    
-  const { error: heroImageError } = await supabase
-    .from('events')
-    .select('hero_image_url')
-    .limit(1);
-    
-  const { error: imageUrlsError } = await supabase
-    .from('events')
-    .select('image_urls')
-    .limit(1);
-    
-  console.log('- image_url field:', imageUrlError ? '❌ NOT FOUND' : '✅ EXISTS');
-  console.log('- hero_image_url field:', heroImageError ? '❌ NOT FOUND' : '✅ EXISTS');
-  console.log('- image_urls field:', imageUrlsError ? '❌ NOT FOUND' : '✅ EXISTS');
-  
-  // Check for other image fields
-  const { error: galleryError } = await supabase
-    .from('events')
-    .select('gallery_image_urls')
-    .limit(1);
-    
-  const { error: posterError } = await supabase
-    .from('events')
-    .select('poster_image_url')
-    .limit(1);
-    
-  const { error: thumbnailError } = await supabase
-    .from('events')
-    .select('thumbnail_image_url')
-    .limit(1);
-    
-  console.log('- gallery_image_urls field:', galleryError ? '❌ NOT FOUND' : '✅ EXISTS');
-  console.log('- poster_image_url field:', posterError ? '❌ NOT FOUND' : '✅ EXISTS');
-  console.log('- thumbnail_image_url field:', thumbnailError ? '❌ NOT FOUND' : '✅ EXISTS');
-  
-  // Check event_categories for faqs field
-  console.log('\n📂 Event Categories Schema:');
-  const { error: faqsError } = await supabase
-    .from('event_categories')
-    .select('faqs')
-    .limit(1);
-    
-  const { error: catImageUrlError } = await supabase
-    .from('event_categories')
-    .select('image_url')
-    .limit(1);
-    
-  console.log('- faqs field:', faqsError ? '❌ NOT FOUND' : '✅ EXISTS');
-  console.log('- image_url field:', catImageUrlError ? '❌ NOT FOUND' : '✅ EXISTS');
-  
-  // Check private_bookings fields
-  console.log('\n🏢 Private Bookings Schema:');
-  const { error: customerNameError } = await supabase
-    .from('private_bookings')
-    .select('customer_name')
-    .limit(1);
-    
-  const { error: firstNameError } = await supabase
-    .from('private_bookings')
-    .select('customer_first_name')
-    .limit(1);
-    
-  const { error: sourceError } = await supabase
-    .from('private_bookings')
-    .select('source')
-    .limit(1);
-    
-  const { error: specialReqError } = await supabase
-    .from('private_bookings')
-    .select('special_requirements')
-    .limit(1);
-    
-  const { error: accessibilityError } = await supabase
-    .from('private_bookings')
-    .select('accessibility_needs')
-    .limit(1);
-    
-  console.log('- customer_name field:', customerNameError ? '❌ NOT FOUND' : '✅ EXISTS');
-  console.log('- customer_first_name field:', firstNameError ? '❌ NOT FOUND' : '✅ EXISTS');
-  console.log('- source field:', sourceError ? '❌ NOT FOUND' : '✅ EXISTS');
-  console.log('- special_requirements field:', specialReqError ? '❌ NOT FOUND' : '✅ EXISTS');
-  console.log('- accessibility_needs field:', accessibilityError ? '❌ NOT FOUND' : '✅ EXISTS');
-  
-  // Check profiles table
-  console.log('\n👤 Profiles Table Schema:');
-  const { error: smsNotifError } = await supabase
-    .from('profiles')
-    .select('sms_notifications')
-    .limit(1);
-    
-  const { error: emailNotifError } = await supabase
-    .from('profiles')
-    .select('email_notifications')
-    .limit(1);
-    
-  console.log('- sms_notifications field:', smsNotifError ? '❌ NOT FOUND' : '✅ EXISTS');
-  console.log('- email_notifications field:', emailNotifError ? '❌ NOT FOUND' : '✅ EXISTS');
-  
-  // Check menu_items table
-  console.log('\n🍽️ Menu Items Table Schema:');
-  const { error: menuImageError } = await supabase
-    .from('menu_items')
-    .select('image_url')
-    .limit(1);
-    
-  console.log('- image_url field:', menuImageError ? '❌ NOT FOUND' : '✅ EXISTS');
+  const argv = process.argv
+  if (argv.includes('--confirm')) {
+    throw new Error('check-schema-env is strictly read-only; do not pass --confirm.')
+  }
+
+  console.log('Checking current database schema (env)...\n')
+  const supabase = createAdminClient()
+
+  const failures: string[] = []
+
+  async function checkColumn(table: string, column: string): Promise<'EXISTS' | 'MISSING' | 'ERROR'> {
+    const { error } = await supabase.from(table).select(column).limit(1)
+    if (!error) {
+      return 'EXISTS'
+    }
+
+    const message = error.message || 'unknown error'
+    if (isMissingColumnError(message)) {
+      return 'MISSING'
+    }
+
+    failures.push(`${table}.${column}: ${message}`)
+    return 'ERROR'
+  }
+
+  console.log('Events table:')
+  for (const column of [
+    'image_url',
+    'hero_image_url',
+    'image_urls',
+    'gallery_image_urls',
+    'poster_image_url',
+    'thumbnail_image_url'
+  ]) {
+    const result = await checkColumn('events', column)
+    console.log(`- ${column}: ${result}`)
+  }
+
+  console.log('\nEvent categories table:')
+  for (const column of ['faqs', 'image_url']) {
+    const result = await checkColumn('event_categories', column)
+    console.log(`- ${column}: ${result}`)
+  }
+
+  console.log('\nPrivate bookings table:')
+  for (const column of [
+    'customer_name',
+    'customer_first_name',
+    'source',
+    'special_requirements',
+    'accessibility_needs'
+  ]) {
+    const result = await checkColumn('private_bookings', column)
+    console.log(`- ${column}: ${result}`)
+  }
+
+  console.log('\nProfiles table:')
+  for (const column of ['sms_notifications', 'email_notifications']) {
+    const result = await checkColumn('profiles', column)
+    console.log(`- ${column}: ${result}`)
+  }
+
+  console.log('\nMenu items table:')
+  console.log(`- image_url: ${await checkColumn('menu_items', 'image_url')}`)
+
+  assertScriptCompletedWithoutFailures({
+    scriptName: 'check-schema-env',
+    failureCount: failures.length,
+    failures
+  })
 }
 
-checkCurrentSchema().catch(console.error);
+void checkCurrentSchema().catch((error) => {
+  markFailure('check-schema-env failed.', error)
+})

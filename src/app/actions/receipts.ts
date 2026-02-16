@@ -363,6 +363,12 @@ function sanitizeText(input: string): string {
     .replace(/\s+/g, ' ')
 }
 
+function sanitizeReceiptSearchTerm(input: string): string {
+  return sanitizeText(input)
+    .replace(/[,%_()"'\\]/g, '')
+    .slice(0, 80)
+}
+
 function sanitizeForPath(input: string, fallback = 'receipt'): string {
   const cleaned = sanitizeText(input)
     .replace(/[^a-zA-Z0-9\s-]/g, '')
@@ -843,39 +849,56 @@ async function applyAutomationRules(
 
     updatePayload.updated_at = now
 
-    const { error } = await supabase
+    const { data: updatedTransaction, error } = await supabase
       .from('receipt_transactions')
       .update(updatePayload)
       .eq('id', transaction.id)
+      .select('id')
+      .maybeSingle()
 
-    if (!error) {
-      if (statusChanged) {
-        statusAutoUpdated += 1
-        classificationLogs.push({
-          transaction_id: transaction.id,
-          previous_status: transaction.status,
-          new_status: targetStatus,
-          action_type: 'rule_auto_mark',
-          note: `Auto-marked by rule: ${matchingRule.name}`,
-          performed_by: null,
-          rule_id: matchingRule.id,
-          performed_at: now,
-        })
-      }
+    if (error) {
+      console.warn('[receipts] applyAutomationRules failed to persist transaction update', {
+        transactionId: transaction.id,
+        ruleId: matchingRule.id,
+        error,
+      })
+      continue
+    }
 
-      if (classificationNotes.length) {
-        classificationLogs.push({
-          transaction_id: transaction.id,
-          previous_status: transaction.status,
-          new_status: statusChanged ? targetStatus : transaction.status,
-          action_type: 'rule_classification',
-          note: `Classification updated by rule ${matchingRule.name}: ${classificationNotes.join(' | ')}`,
-          performed_by: null,
-          rule_id: matchingRule.id,
-          performed_at: now,
-        })
-        classificationUpdated += 1
-      }
+    if (!updatedTransaction) {
+      console.warn('[receipts] applyAutomationRules update affected no transaction rows', {
+        transactionId: transaction.id,
+        ruleId: matchingRule.id,
+      })
+      continue
+    }
+
+    if (statusChanged) {
+      statusAutoUpdated += 1
+      classificationLogs.push({
+        transaction_id: transaction.id,
+        previous_status: transaction.status,
+        new_status: targetStatus,
+        action_type: 'rule_auto_mark',
+        note: `Auto-marked by rule: ${matchingRule.name}`,
+        performed_by: null,
+        rule_id: matchingRule.id,
+        performed_at: now,
+      })
+    }
+
+    if (classificationNotes.length) {
+      classificationLogs.push({
+        transaction_id: transaction.id,
+        previous_status: transaction.status,
+        new_status: statusChanged ? targetStatus : transaction.status,
+        action_type: 'rule_classification',
+        note: `Classification updated by rule ${matchingRule.name}: ${classificationNotes.join(' | ')}`,
+        performed_by: null,
+        rule_id: matchingRule.id,
+        performed_at: now,
+      })
+      classificationUpdated += 1
     }
   }
 
@@ -1379,11 +1402,14 @@ export async function markReceiptTransaction(input: {
     .update(updatePayload)
     .eq('id', input.transactionId)
     .select('*')
-    .single()
+    .maybeSingle()
 
-  if (updateError || !updated) {
+  if (updateError) {
     console.error('Failed to update receipt transaction:', updateError)
     return { error: 'Failed to update the transaction.' }
+  }
+  if (!updated) {
+    return { error: 'Transaction not found' }
   }
 
   await supabase.from('receipt_transaction_logs').insert({
@@ -1503,11 +1529,14 @@ export async function updateReceiptClassification(input: {
     .update(updatePayload)
     .eq('id', transactionId)
     .select('*')
-    .single()
+    .maybeSingle()
 
-  if (updateError || !updated) {
+  if (updateError) {
     console.error('Failed to update receipt classification:', updateError)
     return { error: 'Failed to update classification.' }
+  }
+  if (!updated) {
+    return { error: 'Transaction not found' }
   }
 
   await supabase.from('receipt_transaction_logs').insert({
@@ -1617,7 +1646,12 @@ export async function uploadReceiptForTransaction(formData: FormData) {
   if (recordError || !receipt) {
     console.error('Failed to record receipt metadata:', recordError)
     // Attempt cleanup
-    await supabase.storage.from(RECEIPT_BUCKET).remove([storagePath])
+    const { error: cleanupStorageError } = await supabase.storage.from(RECEIPT_BUCKET).remove([storagePath])
+    if (cleanupStorageError) {
+      console.error('Failed to cleanup receipt storage after metadata insert error:', cleanupStorageError)
+      return { error: 'Failed to store receipt metadata. Uploaded file cleanup requires manual reconciliation.' }
+    }
+
     return { error: 'Failed to store receipt metadata.' }
   }
 
@@ -1638,12 +1672,37 @@ export async function uploadReceiptForTransaction(formData: FormData) {
     rule_applied_id: null,
   }
 
-  await supabase
+  const { data: updatedTransaction, error: transactionUpdateError } = await supabase
     .from('receipt_transactions')
     .update(updatePayload)
     .eq('id', transactionId)
+    .select('id')
+    .maybeSingle()
 
-  await supabase.from('receipt_transaction_logs').insert({
+  if (transactionUpdateError || !updatedTransaction) {
+    console.error('Failed to update receipt transaction after upload:', transactionUpdateError)
+    const { error: rollbackReceiptError } = await supabase.from('receipt_files').delete().eq('id', receipt.id)
+    if (rollbackReceiptError) {
+      console.error('Failed to rollback receipt file record after transaction update error:', rollbackReceiptError)
+    }
+
+    const { error: rollbackStorageError } = await supabase.storage.from(RECEIPT_BUCKET).remove([storagePath])
+    if (rollbackStorageError) {
+      console.error('Failed to rollback receipt file storage after transaction update error:', rollbackStorageError)
+    }
+
+    if (rollbackReceiptError || rollbackStorageError) {
+      return { error: 'Failed to update transaction status after receipt upload. Receipt cleanup requires manual reconciliation.' }
+    }
+
+    if (!updatedTransaction) {
+      return { error: 'Transaction not found' }
+    }
+
+    return { error: 'Failed to update transaction status after receipt upload.' }
+  }
+
+  const { error: uploadLogError } = await supabase.from('receipt_transaction_logs').insert({
     transaction_id: transactionId,
     previous_status: transaction.status,
     new_status: 'completed',
@@ -1653,6 +1712,10 @@ export async function uploadReceiptForTransaction(formData: FormData) {
     rule_id: null,
     performed_at: now,
   })
+
+  if (uploadLogError) {
+    console.error('Failed to record receipt upload transaction log:', uploadLogError)
+  }
 
   await logAuditEvent({
     operation_type: 'upload_receipt',
@@ -1691,18 +1754,47 @@ export async function deleteReceiptFile(fileId: string) {
     return { error: 'Receipt not found' }
   }
 
-  const { data: transaction } = await supabase
+  const { data: transaction, error: transactionError } = await supabase
     .from('receipt_transactions')
     .select('*')
     .eq('id', receipt.transaction_id)
     .single()
 
-  await supabase.storage.from(RECEIPT_BUCKET).remove([receipt.storage_path])
-  await supabase.from('receipt_files').delete().eq('id', fileId)
+  if (transactionError) {
+    console.error('Failed to load receipt transaction before delete:', transactionError)
+  }
+
+  const { error: deleteFileError } = await supabase.from('receipt_files').delete().eq('id', fileId)
+  if (deleteFileError) {
+    console.error('Failed to delete receipt file record:', deleteFileError)
+    return { error: 'Failed to remove receipt record.' }
+  }
+
+  const { error: storageRemoveError } = await supabase.storage.from(RECEIPT_BUCKET).remove([receipt.storage_path])
+  if (storageRemoveError) {
+    console.error('Failed to remove receipt file from storage:', storageRemoveError)
+
+    const { error: rollbackError } = await supabase.from('receipt_files').insert({
+      id: receipt.id,
+      transaction_id: receipt.transaction_id,
+      storage_path: receipt.storage_path,
+      file_name: receipt.file_name,
+      mime_type: receipt.mime_type,
+      file_size_bytes: receipt.file_size_bytes,
+      uploaded_by: receipt.uploaded_by,
+      uploaded_at: receipt.uploaded_at,
+    })
+
+    if (rollbackError) {
+      console.error('Failed to rollback receipt file record after storage delete failure:', rollbackError)
+    }
+
+    return { error: 'Failed to remove stored receipt file.' }
+  }
 
   const now = new Date().toISOString()
 
-  await supabase.from('receipt_transaction_logs').insert({
+  const { error: deleteLogError } = await supabase.from('receipt_transaction_logs').insert({
     transaction_id: receipt.transaction_id,
     previous_status: transaction?.status ?? null,
     new_status: 'pending',
@@ -1713,14 +1805,23 @@ export async function deleteReceiptFile(fileId: string) {
     performed_at: now,
   })
 
+  if (deleteLogError) {
+    console.error('Failed to record receipt deletion transaction log:', deleteLogError)
+  }
+
   // If there are no receipts left, revert to pending
-  const { data: remaining } = await supabase
+  const { data: remaining, error: remainingError } = await supabase
     .from('receipt_files')
     .select('id')
     .eq('transaction_id', receipt.transaction_id)
 
+  if (remainingError) {
+    console.error('Failed to check for remaining receipts:', remainingError)
+    return { error: 'Receipt was removed, but failed to verify remaining receipt files.' }
+  }
+
   if (!remaining?.length) {
-    await supabase
+    const { data: updatedTransaction, error: transactionUpdateError } = await supabase
       .from('receipt_transactions')
       .update({
         status: 'pending',
@@ -1733,6 +1834,17 @@ export async function deleteReceiptFile(fileId: string) {
         rule_applied_id: null,
       })
       .eq('id', receipt.transaction_id)
+      .select('id')
+      .maybeSingle()
+
+    if (transactionUpdateError) {
+      console.error('Failed to reset receipt transaction status after delete:', transactionUpdateError)
+      return { error: 'Receipt was removed, but failed to reset transaction status.' }
+    }
+
+    if (!updatedTransaction) {
+      return { error: 'Receipt was removed, but transaction no longer exists.' }
+    }
   }
 
   await logAuditEvent({
@@ -1858,10 +1970,13 @@ export async function updateReceiptRule(ruleId: string, formData: FormData): Pro
     })
     .eq('id', ruleId)
     .select('*')
-    .single()
+    .maybeSingle()
 
-  if (error || !updated) {
+  if (error) {
     return { error: 'Failed to update rule.' }
+  }
+  if (!updated) {
+    return { error: 'Rule not found' }
   }
 
   await logAuditEvent({
@@ -1891,10 +2006,13 @@ export async function toggleReceiptRule(ruleId: string, isActive: boolean) {
     .update({ is_active: isActive })
     .eq('id', ruleId)
     .select('*')
-    .single()
+    .maybeSingle()
 
-  if (error || !updated) {
+  if (error) {
     return { error: 'Failed to update rule status.' }
+  }
+  if (!updated) {
+    return { error: 'Rule not found' }
   }
 
   await logAuditEvent({
@@ -2029,8 +2147,11 @@ export async function getReceiptWorkspaceData(filters: ReceiptWorkspaceFilters =
   }
 
   if (filters.search) {
-    const qs = `%${filters.search.toLowerCase()}%`
-    baseQuery = baseQuery.or(`details.ilike.${qs},transaction_type.ilike.${qs}`)
+    const sanitizedSearch = sanitizeReceiptSearchTerm(filters.search.toLowerCase())
+    if (sanitizedSearch.length > 0) {
+      const qs = `%${sanitizedSearch}%`
+      baseQuery = baseQuery.or(`details.ilike.${qs},transaction_type.ilike.${qs}`)
+    }
   }
 
   if (filters.missingVendorOnly) {

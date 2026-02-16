@@ -35,6 +35,23 @@ function redirectToState(request: NextRequest, token: string, params: Record<str
   return NextResponse.redirect(redirectUrl, { status: 303 })
 }
 
+async function recordGuestManageBookingAnalyticsSafe(
+  supabase: ReturnType<typeof createAdminClient>,
+  payload: Parameters<typeof recordAnalyticsEvent>[1],
+  context: Record<string, unknown>
+) {
+  try {
+    await recordAnalyticsEvent(supabase, payload)
+  } catch (analyticsError) {
+    logger.warn('Failed to record guest manage-booking analytics event', {
+      metadata: {
+        ...context,
+        error: analyticsError instanceof Error ? analyticsError.message : String(analyticsError)
+      }
+    })
+  }
+}
+
 export async function POST(request: NextRequest, context: RouteContext) {
   const { token } = await context.params
   const throttle = await checkGuestTokenThrottle({
@@ -105,7 +122,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
       }
 
       if (cancelResult.customer_id && cancelResult.booking_id) {
-        await recordAnalyticsEvent(supabase, {
+        await recordGuestManageBookingAnalyticsSafe(supabase, {
           customerId: cancelResult.customer_id,
           eventBookingId: cancelResult.booking_id,
           eventType: 'event_booking_cancelled',
@@ -116,6 +133,10 @@ export async function POST(request: NextRequest, context: RouteContext) {
             refund_status: refundStatus,
             refund_amount: refundAmount
           }
+        }, {
+          customerId: cancelResult.customer_id,
+          eventBookingId: cancelResult.booking_id,
+          eventType: 'event_booking_cancelled'
         })
       }
 

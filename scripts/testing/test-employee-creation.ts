@@ -1,133 +1,81 @@
 #!/usr/bin/env tsx
+
 /**
- * Test script to verify employee creation saves to all required tables
+ * Read-only diagnostics for employee table connectivity.
+ *
+ * This script used to insert/delete employee records using the service-role key.
+ * Keep scripts in this repo strictly read-only by default to avoid accidental
+ * production DB mutations during incident response.
  */
 
-import { createClient } from '@supabase/supabase-js';
-import * as dotenv from 'dotenv';
-import path from 'path';
+import dotenv from 'dotenv'
+import path from 'path'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { assertScriptQuerySucceeded } from '@/lib/script-mutation-safety'
 
 // Load environment variables
-dotenv.config({ path: path.join(__dirname, '../.env.local') });
+dotenv.config({ path: path.resolve(process.cwd(), '.env.local') })
+const SCRIPT_NAME = 'test-employee-creation'
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+async function readSample(params: {
+  supabase: ReturnType<typeof createAdminClient>
+  table: string
+  columns: string
+}) {
+  const { data, error } = await supabase
+    .from(params.table)
+    .select(params.columns)
+    .limit(1)
+    .maybeSingle()
 
-if (!supabaseUrl || !supabaseServiceKey) {
-  console.error('❌ Missing required environment variables');
-  process.exit(1);
+  return assertScriptQuerySucceeded({
+    operation: `Read ${params.table}`,
+    error,
+    data,
+    allowMissing: true,
+  })
 }
 
-const supabase = createClient(supabaseUrl, supabaseServiceKey, {
-  auth: {
-    autoRefreshToken: false,
-    persistSession: false
+async function testEmployeeTables() {
+  if (process.argv.includes('--confirm')) {
+    throw new Error('This script is read-only and does not support --confirm.')
   }
-});
 
-async function testEmployeeCreation() {
-  console.log('🧪 Testing Employee Creation Flow\n');
+  console.log('Employee table diagnostics (read-only)\n')
 
-  // Test employee data
-  const testEmployee = {
-    first_name: 'Test',
-    last_name: 'Employee',
-    email_address: `test.employee.${Date.now()}@example.com`,
-    job_title: 'Test Position',
-    employment_start_date: '2024-01-01',
-    status: 'Active'
-  };
+  const supabase = createAdminClient()
 
-  const testFinancials = {
-    ni_number: 'AA123456A',
-    bank_name: 'Test Bank',
-    bank_sort_code: '12-34-56',
-    bank_account_number: '12345678'
-  };
+  const employees = await readSample({
+    supabase,
+    table: 'employees',
+    columns: 'employee_id, first_name, last_name, status, created_at',
+  })
+  console.log('employees:', employees ? '✅ readable' : '✅ readable (no rows)')
 
-  const testHealth = {
-    doctor_name: 'Dr. Test',
-    doctor_address: '123 Test Street',
-    allergies: 'Test allergies',
-    has_diabetes: true,
-    has_epilepsy: false,
-    is_registered_disabled: true,
-    disability_reg_number: 'TEST123'
-  };
+  const financial = await readSample({
+    supabase,
+    table: 'employee_financial_details',
+    columns: 'employee_id, ni_number, bank_name',
+  })
+  console.log(
+    'employee_financial_details:',
+    financial ? '✅ readable' : '✅ readable (no rows)',
+  )
 
-  try {
-    // 1. Create employee
-    console.log('1️⃣ Creating employee...');
-    const { data: employee, error: empError } = await supabase
-      .from('employees')
-      .insert(testEmployee)
-      .select()
-      .single();
+  const health = await readSample({
+    supabase,
+    table: 'employee_health_records',
+    columns: 'employee_id, doctor_name, has_diabetes, is_registered_disabled',
+  })
+  console.log(
+    'employee_health_records:',
+    health ? '✅ readable' : '✅ readable (no rows)',
+  )
 
-    if (empError) {
-      console.error('❌ Failed to create employee:', empError);
-      return;
-    }
-    console.log('✅ Employee created:', employee.employee_id);
-
-    // 2. Create financial details
-    console.log('\n2️⃣ Creating financial details...');
-    const { error: finError } = await supabase
-      .from('employee_financial_details')
-      .insert({ employee_id: employee.employee_id, ...testFinancials });
-
-    if (finError) {
-      console.error('❌ Failed to create financial details:', finError);
-    } else {
-      console.log('✅ Financial details created');
-    }
-
-    // 3. Create health record
-    console.log('\n3️⃣ Creating health record...');
-    const { error: healthError } = await supabase
-      .from('employee_health_records')
-      .insert({ employee_id: employee.employee_id, ...testHealth });
-
-    if (healthError) {
-      console.error('❌ Failed to create health record:', healthError);
-    } else {
-      console.log('✅ Health record created');
-    }
-
-    // 4. Verify all data was saved
-    console.log('\n4️⃣ Verifying saved data...');
-    
-    const { data: savedFinancials } = await supabase
-      .from('employee_financial_details')
-      .select('*')
-      .eq('employee_id', employee.employee_id)
-      .single();
-
-    const { data: savedHealth } = await supabase
-      .from('employee_health_records')
-      .select('*')
-      .eq('employee_id', employee.employee_id)
-      .single();
-
-    console.log('\n✅ Verification Results:');
-    console.log('- Employee:', employee.first_name, employee.last_name);
-    console.log('- Financial NI:', savedFinancials?.ni_number);
-    console.log('- Health Doctor:', savedHealth?.doctor_name);
-    console.log('- Has Diabetes:', savedHealth?.has_diabetes);
-    console.log('- Is Disabled:', savedHealth?.is_registered_disabled);
-
-    // 5. Cleanup
-    console.log('\n5️⃣ Cleaning up test data...');
-    await supabase.from('employees').delete().eq('employee_id', employee.employee_id);
-    console.log('✅ Test data cleaned up');
-
-  } catch (error) {
-    console.error('❌ Test failed:', error);
-  }
+  console.log('\n✅ Employee table diagnostics complete.')
 }
 
-// Run the test
-testEmployeeCreation().then(() => {
-  console.log('\n✅ Test completed');
-  process.exit(0);
-});
+testEmployeeTables().catch((error: unknown) => {
+  console.error(`[${SCRIPT_NAME}] Fatal error:`, error)
+  process.exitCode = 1
+})

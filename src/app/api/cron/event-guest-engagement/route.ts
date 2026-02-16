@@ -6,10 +6,11 @@ import { logger } from '@/lib/logger'
 import { ensureReplyInstruction } from '@/lib/sms/support'
 import { sendSMS } from '@/lib/twilio'
 import { createEventManageToken } from '@/lib/events/manage-booking'
-import { createGuestToken, hashGuestToken } from '@/lib/guest/tokens'
+import { createGuestToken } from '@/lib/guest/tokens'
 import { getGoogleReviewLink } from '@/lib/events/review-link'
 import { recordAnalyticsEvent } from '@/lib/analytics/events'
 import { buildEventBaseUrl } from '@/lib/event-marketing-links'
+import { persistCronRunResult, recoverCronRunLock } from '@/lib/cron-run-results'
 
 export const maxDuration = 300
 
@@ -119,11 +120,87 @@ type CronRunAcquireResult = {
   skipReason?: 'already_running' | 'already_completed'
 }
 
+type EventEngagementCronSafetyAbort = {
+  runKey: string
+  stage: string
+  bookingId: string | null
+  tableBookingId: string | null
+  customerId: string | null
+  eventId: string | null
+  templateKey: string | null
+  code: string
+  logFailure: boolean
+}
+
+class EventEngagementCronSafetyAbortError extends Error {
+  abort: EventEngagementCronSafetyAbort
+
+  constructor(abort: EventEngagementCronSafetyAbort) {
+    super(abort.code)
+    this.name = 'EventEngagementCronSafetyAbortError'
+    this.abort = abort
+  }
+}
+
+type EventEngagementCronSafetyState = {
+  runKey: string
+  safetyAborts: EventEngagementCronSafetyAbort[]
+  primaryAbort: EventEngagementCronSafetyAbort | null
+  recordSafetyAbort: (abort: Omit<EventEngagementCronSafetyAbort, 'runKey'>) => void
+  throwSafetyAbort: () => never
+}
+
+function extractSmsSafetySignal(smsResult: Awaited<ReturnType<typeof sendSMS>>): {
+  code: string | null
+  logFailure: boolean
+} {
+  const code = typeof (smsResult as any)?.code === 'string' ? ((smsResult as any).code as string) : null
+  const logFailure = (smsResult as any)?.logFailure === true
+  return { code, logFailure }
+}
+
+function isFatalSmsSafetySignal(signal: { code: string | null; logFailure: boolean }): boolean {
+  return (
+    signal.logFailure ||
+    signal.code === 'logging_failed' ||
+    signal.code === 'safety_unavailable' ||
+    signal.code === 'idempotency_conflict'
+  )
+}
+
+function maybeRecordFatalSmsSafetyAbort(
+  safety: EventEngagementCronSafetyState,
+  smsResult: Awaited<ReturnType<typeof sendSMS>>,
+  context: Omit<EventEngagementCronSafetyAbort, 'runKey' | 'code' | 'logFailure'>
+) {
+  const signal = extractSmsSafetySignal(smsResult)
+  if (!isFatalSmsSafetySignal(signal)) return
+
+  safety.recordSafetyAbort({
+    ...context,
+    code: signal.code ?? 'logging_failed',
+    logFailure: signal.logFailure,
+  })
+}
+
 function parsePositiveIntEnv(name: string, fallback: number): number {
   const raw = process.env[name]
   if (!raw) return fallback
   const parsed = Number.parseInt(raw, 10)
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback
+}
+
+function parseBooleanEnv(name: string, fallback: boolean): boolean {
+  const raw = process.env[name]
+  if (raw === undefined) return fallback
+  const normalized = raw.trim().toLowerCase()
+  if (['1', 'true', 'yes', 'on'].includes(normalized)) return true
+  if (['0', 'false', 'no', 'off'].includes(normalized)) return false
+  return fallback
+}
+
+function allowEventEngagementSendGuardSchemaGaps(): boolean {
+  return parseBooleanEnv('EVENT_ENGAGEMENT_SEND_GUARD_ALLOW_SCHEMA_GAPS', process.env.NODE_ENV !== 'production')
 }
 
 function pad2(value: number): string {
@@ -270,10 +347,54 @@ async function acquireCronRun(runKey: string): Promise<CronRunAcquireResult> {
     })
     .eq('id', existing.id)
     .select('id')
-    .single()
+    .maybeSingle()
 
   if (restartError) {
     throw restartError
+  }
+
+  if (!restarted) {
+    logger.warn('Event guest engagement restart update affected no rows; recovering lock', {
+      metadata: { runKey, jobId: existing.id }
+    })
+
+    const recovered = await recoverCronRunLock(supabase, {
+      jobName: JOB_NAME,
+      runKey,
+      nowIso,
+      context: JOB_NAME,
+      isRunStale
+    })
+
+    if (recovered.result === 'already_completed') {
+      return {
+        supabase,
+        runId: recovered.runId ?? existing.id,
+        runKey,
+        shouldResolve: false,
+        skip: true,
+        skipReason: 'already_completed'
+      }
+    }
+
+    if (recovered.result === 'already_running' || recovered.result === 'missing') {
+      return {
+        supabase,
+        runId: recovered.runId ?? existing.id,
+        runKey,
+        shouldResolve: false,
+        skip: true,
+        skipReason: 'already_running'
+      }
+    }
+
+    return {
+      supabase,
+      runId: recovered.runId ?? existing.id,
+      runKey,
+      shouldResolve: true,
+      skip: false
+    }
   }
 
   return {
@@ -291,19 +412,12 @@ async function resolveCronRunResult(
   status: 'completed' | 'failed',
   errorMessage?: string
 ) {
-  const payload: Record<string, unknown> = {
+  await persistCronRunResult(supabase, {
+    runId,
     status,
-    finished_at: new Date().toISOString()
-  }
-
-  if (errorMessage) {
-    payload.error_message = errorMessage.slice(0, 2000)
-  }
-
-  await supabase
-    .from('cron_job_runs')
-    .update(payload)
-    .eq('id', runId)
+    errorMessage,
+    context: JOB_NAME
+  })
 }
 
 function chunkArray<T>(input: T[], size = 200): T[][] {
@@ -312,6 +426,54 @@ function chunkArray<T>(input: T[], size = 200): T[][] {
     chunks.push(input.slice(i, i + size))
   }
   return chunks
+}
+
+async function sendSmsSafe(
+  to: string,
+  body: string,
+  options: {
+    customerId: string
+    metadata?: Record<string, unknown>
+  },
+  context: {
+    customerId?: string
+    bookingId?: string
+    tableBookingId?: string
+    eventId?: string
+    templateKey?: string
+  }
+): Promise<Awaited<ReturnType<typeof sendSMS>>> {
+  try {
+    return await sendSMS(to, body, options)
+  } catch (smsError) {
+    logger.warn('Failed sending SMS in event guest engagement cron', {
+      metadata: {
+        ...context,
+        error: smsError instanceof Error ? smsError.message : String(smsError)
+      }
+    })
+    return {
+      success: false,
+      error: smsError instanceof Error ? smsError.message : 'Failed to send SMS'
+    } as Awaited<ReturnType<typeof sendSMS>>
+  }
+}
+
+async function recordAnalyticsEventSafe(
+  supabase: ReturnType<typeof createAdminClient>,
+  payload: Parameters<typeof recordAnalyticsEvent>[1],
+  context: Record<string, unknown>
+) {
+  try {
+    await recordAnalyticsEvent(supabase, payload)
+  } catch (analyticsError) {
+    logger.warn('Failed recording event guest engagement analytics event', {
+      metadata: {
+        ...context,
+        error: analyticsError instanceof Error ? analyticsError.message : String(analyticsError)
+      }
+    })
+  }
 }
 
 function isUndefinedTableError(error: any): boolean {
@@ -371,10 +533,7 @@ async function loadSentTemplateSet(
       .in('template_key', templateKeys)
 
     if (error) {
-      logger.warn('Failed loading sent template dedupe set', {
-        metadata: { error: error.message }
-      })
-      continue
+      throw error
     }
 
     for (const row of data || []) {
@@ -407,10 +566,7 @@ async function loadSentTableTemplateSet(
       .in('template_key', templateKeys)
 
     if (error) {
-      logger.warn('Failed loading sent table-template dedupe set', {
-        metadata: { error: error.message }
-      })
-      continue
+      throw error
     }
 
     for (const row of data || []) {
@@ -471,14 +627,7 @@ async function loadSentEventInterestCustomerSet(
       .limit(10000)
 
     if (fallbackError) {
-      logger.warn('Failed loading event-interest dedupe rows via fallback body match', {
-        metadata: {
-          eventId,
-          templateKeys,
-          error: fallbackError.message
-        }
-      })
-      continue
+      throw fallbackError
     }
 
     for (const row of (fallbackRows || []) as Array<{ customer_id: string | null }>) {
@@ -506,11 +655,18 @@ async function evaluateEventEngagementSendGuard(
 
   if (error) {
     const pgError = error as { code?: string; message?: string }
-    if (pgError?.code === '42703') {
-      logger.warn('Event engagement send guard skipped because schema is missing expected columns', {
-        metadata: { error: pgError.message }
+    if (pgError?.code === '42703' || pgError?.code === '42P01') {
+      if (allowEventEngagementSendGuardSchemaGaps()) {
+        logger.warn('Event engagement send guard skipped because schema is missing expected columns', {
+          metadata: { error: pgError.message }
+        })
+        return { blocked: false, recentCount: 0, windowMinutes, limit }
+      }
+
+      logger.error('Event engagement send guard blocked run because schema is unavailable', {
+        metadata: { error: pgError.message, windowMinutes, limit }
       })
-      return { blocked: false, recentCount: 0, windowMinutes, limit }
+      return { blocked: true, recentCount: limit, windowMinutes, limit }
     }
     throw error
   }
@@ -705,7 +861,8 @@ function interestReminderUpdatePayload(
 }
 
 async function processInterestMarketing(
-  supabase: ReturnType<typeof createAdminClient>
+  supabase: ReturnType<typeof createAdminClient>,
+  safety: EventEngagementCronSafetyState
 ): Promise<{ sent: number; skipped: number; eventsProcessed: number }> {
   const nowMs = Date.now()
   const supportPhone = process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || process.env.TWILIO_PHONE_NUMBER || undefined
@@ -896,12 +1053,36 @@ async function processInterestMarketing(
     )
 
     if (behaviorCandidateIds.length > 0) {
-      const alreadyMessaged = await loadSentEventInterestCustomerSet(
-        supabase,
-        behaviorCandidateIds,
-        [TEMPLATE_INTEREST_MARKETING_14D],
-        eventRow.id
-      )
+      let alreadyMessaged: Set<string>
+
+      try {
+        alreadyMessaged = await loadSentEventInterestCustomerSet(
+          supabase,
+          behaviorCandidateIds,
+          [TEMPLATE_INTEREST_MARKETING_14D],
+          eventRow.id
+        )
+      } catch (error) {
+        logger.error('Failed loading event-interest dedupe set for interest marketing', {
+          error: error instanceof Error ? error : new Error(String(error)),
+          metadata: {
+            eventId: eventRow.id,
+            templateKey: TEMPLATE_INTEREST_MARKETING_14D,
+            customerCount: behaviorCandidateIds.length,
+          },
+        })
+        safety.recordSafetyAbort({
+          stage: 'interest_marketing:dedupe',
+          bookingId: null,
+          tableBookingId: null,
+          customerId: null,
+          eventId: eventRow.id,
+          templateKey: TEMPLATE_INTEREST_MARKETING_14D,
+          code: 'dedupe_unavailable',
+          logFailure: false,
+        })
+        safety.throwSafetyAbort()
+      }
       const candidateIds = behaviorCandidateIds.filter((customerId) => !alreadyMessaged.has(customerId))
 
       if (candidateIds.length > 0) {
@@ -937,7 +1118,7 @@ async function processInterestMarketing(
               supportPhone
             )
 
-            const smsResult = await sendSMS(customer.mobile_number, body, {
+            const smsResult = await sendSmsSafe(customer.mobile_number, body, {
               customerId: customer.id,
               metadata: {
                 event_id: eventRow.id,
@@ -947,7 +1128,23 @@ async function processInterestMarketing(
                 template_key: TEMPLATE_INTEREST_MARKETING_14D,
                 marketing: true
               }
+            }, {
+              customerId: customer.id,
+              eventId: eventRow.id,
+              templateKey: TEMPLATE_INTEREST_MARKETING_14D
             })
+
+            maybeRecordFatalSmsSafetyAbort(safety, smsResult, {
+              stage: 'interest_marketing:send_sms',
+              bookingId: null,
+              tableBookingId: null,
+              customerId: customer.id,
+              eventId: eventRow.id,
+              templateKey: TEMPLATE_INTEREST_MARKETING_14D,
+            })
+            if (safety.primaryAbort) {
+              safety.throwSafetyAbort()
+            }
 
             if (!smsResult.success) {
               result.skipped += 1
@@ -965,12 +1162,36 @@ async function processInterestMarketing(
     }
 
     if (manualCandidateIds.length > 0) {
-      const alreadyMessagedManualTemplate = await loadSentEventInterestCustomerSet(
-        supabase,
-        manualCandidateIds,
-        [manualTemplateKey],
-        eventRow.id
-      )
+      let alreadyMessagedManualTemplate: Set<string>
+
+      try {
+        alreadyMessagedManualTemplate = await loadSentEventInterestCustomerSet(
+          supabase,
+          manualCandidateIds,
+          [manualTemplateKey],
+          eventRow.id
+        )
+      } catch (error) {
+        logger.error('Failed loading event-interest dedupe set for manual-interest marketing', {
+          error: error instanceof Error ? error : new Error(String(error)),
+          metadata: {
+            eventId: eventRow.id,
+            templateKey: manualTemplateKey,
+            customerCount: manualCandidateIds.length,
+          },
+        })
+        safety.recordSafetyAbort({
+          stage: 'interest_marketing:dedupe',
+          bookingId: null,
+          tableBookingId: null,
+          customerId: null,
+          eventId: eventRow.id,
+          templateKey: manualTemplateKey,
+          code: 'dedupe_unavailable',
+          logFailure: false,
+        })
+        safety.throwSafetyAbort()
+      }
 
       const { data: manualCustomers, error: manualCustomerError } = await supabase
         .from('customers')
@@ -1023,7 +1244,7 @@ async function processInterestMarketing(
           supportPhone
         )
 
-        const smsResult = await sendSMS(customer.mobile_number, body, {
+        const smsResult = await sendSmsSafe(customer.mobile_number, body, {
           customerId: customer.id,
           metadata: {
             event_id: eventRow.id,
@@ -1034,20 +1255,38 @@ async function processInterestMarketing(
             marketing: true,
             manual_interest: true
           }
+        }, {
+          customerId: customer.id,
+          eventId: eventRow.id,
+          templateKey: manualTemplateKey
+        })
+
+        maybeRecordFatalSmsSafetyAbort(safety, smsResult, {
+          stage: 'interest_marketing:send_sms',
+          bookingId: null,
+          tableBookingId: null,
+          customerId: customer.id,
+          eventId: eventRow.id,
+          templateKey: manualTemplateKey,
         })
 
         if (!smsResult.success) {
           result.skipped += 1
+          if (safety.primaryAbort) {
+            safety.throwSafetyAbort()
+          }
           continue
         }
 
         const sentAt = smsResult.scheduledFor || new Date().toISOString()
         if (typeof manualRecipient.id === 'string') {
-          const { error: updateError } = await (supabase.from('event_interest_manual_recipients') as any)
+          const { data: updatedManualRecipient, error: updateError } = await (supabase.from('event_interest_manual_recipients') as any)
             .update(interestReminderUpdatePayload(manualTemplateKey, sentAt))
             .eq('id', manualRecipient.id)
             .eq('event_id', eventRow.id)
             .eq('customer_id', customer.id)
+            .select('id')
+            .maybeSingle()
 
           if (updateError) {
             logger.warn('Failed updating manual-interest reminder cadence state', {
@@ -1058,12 +1297,23 @@ async function processInterestMarketing(
                 error: updateError.message
               }
             })
+          } else if (!updatedManualRecipient) {
+            logger.warn('Manual-interest reminder cadence state update affected no rows', {
+              metadata: {
+                eventId: eventRow.id,
+                customerId: customer.id,
+                templateKey: manualTemplateKey
+              }
+            })
           }
         } else {
           alreadyMessagedManualTemplate.add(customer.id)
         }
 
         result.sent += 1
+        if (safety.primaryAbort) {
+          safety.throwSafetyAbort()
+        }
       }
     }
   }
@@ -1074,12 +1324,35 @@ async function processInterestMarketing(
 async function processReminders(
   supabase: ReturnType<typeof createAdminClient>,
   bookings: BookingWithRelations[],
-  appBaseUrl: string
+  appBaseUrl: string,
+  safety: EventEngagementCronSafetyState
 ): Promise<{ sent7d: number; sent1d: number; skipped: number }> {
   const now = new Date()
   const supportPhone = process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || process.env.TWILIO_PHONE_NUMBER || undefined
   const bookingIds = bookings.map((b) => b.id)
-  const sentSet = await loadSentTemplateSet(supabase, bookingIds, [TEMPLATE_REMINDER_7D, TEMPLATE_REMINDER_1D])
+  let sentSet: Set<string>
+
+  try {
+    sentSet = await loadSentTemplateSet(supabase, bookingIds, [TEMPLATE_REMINDER_7D, TEMPLATE_REMINDER_1D])
+  } catch (error) {
+    logger.error('Failed loading event engagement reminder dedupe set', {
+      error: error instanceof Error ? error : new Error(String(error)),
+      metadata: {
+        bookingCount: bookingIds.length,
+      },
+    })
+    safety.recordSafetyAbort({
+      stage: 'reminders:dedupe',
+      bookingId: null,
+      tableBookingId: null,
+      customerId: null,
+      eventId: null,
+      templateKey: null,
+      code: 'dedupe_unavailable',
+      logFailure: false,
+    })
+    safety.throwSafetyAbort()
+  }
 
   const result = {
     sent7d: 0,
@@ -1162,14 +1435,31 @@ async function processReminders(
       supportPhone
     )
 
-    const smsResult = await sendSMS(customer.mobile_number, messageBody, {
+    const smsResult = await sendSmsSafe(customer.mobile_number, messageBody, {
       customerId: customer.id,
       metadata: {
         event_booking_id: booking.id,
         event_id: event.id,
         template_key: templateKey
       }
+    }, {
+      customerId: customer.id,
+      bookingId: booking.id,
+      eventId: event.id,
+      templateKey: templateKey
     })
+
+    maybeRecordFatalSmsSafetyAbort(safety, smsResult, {
+      stage: 'reminders:send_sms',
+      bookingId: booking.id,
+      tableBookingId: null,
+      customerId: customer.id,
+      eventId: event.id,
+      templateKey: templateKey,
+    })
+    if (safety.primaryAbort) {
+      safety.throwSafetyAbort()
+    }
 
     if (!smsResult.success) {
       result.skipped += 1
@@ -1187,7 +1477,8 @@ async function processReminders(
 async function processReviewFollowups(
   supabase: ReturnType<typeof createAdminClient>,
   bookings: BookingWithRelations[],
-  appBaseUrl: string
+  appBaseUrl: string,
+  safety: EventEngagementCronSafetyState
 ): Promise<{ sent: number; skipped: number }> {
   const now = new Date()
   const nowMs = now.getTime()
@@ -1205,11 +1496,33 @@ async function processReviewFollowups(
   })
   const boundedPastBookings = confirmedPastBookings.slice(0, MAX_EVENT_REVIEW_FOLLOWUPS_PER_RUN)
 
-  const sentSet = await loadSentTemplateSet(
-    supabase,
-    boundedPastBookings.map((b) => b.id),
-    [TEMPLATE_REVIEW_FOLLOWUP]
-  )
+  let sentSet: Set<string>
+
+  try {
+    sentSet = await loadSentTemplateSet(
+      supabase,
+      boundedPastBookings.map((b) => b.id),
+      [TEMPLATE_REVIEW_FOLLOWUP]
+    )
+  } catch (error) {
+    logger.error('Failed loading event engagement review-followup dedupe set', {
+      error: error instanceof Error ? error : new Error(String(error)),
+      metadata: {
+        bookingCount: boundedPastBookings.length,
+      },
+    })
+    safety.recordSafetyAbort({
+      stage: 'reviews:dedupe',
+      bookingId: null,
+      tableBookingId: null,
+      customerId: null,
+      eventId: null,
+      templateKey: TEMPLATE_REVIEW_FOLLOWUP,
+      code: 'dedupe_unavailable',
+      logFailure: false,
+    })
+    safety.throwSafetyAbort()
+  }
 
   const result = { sent: 0, skipped: 0 }
 
@@ -1248,7 +1561,7 @@ async function processReviewFollowups(
       supportPhone
     )
 
-    const smsResult = await sendSMS(customer.mobile_number, messageBody, {
+    const smsResult = await sendSmsSafe(customer.mobile_number, messageBody, {
       customerId: customer.id,
       metadata: {
         event_booking_id: booking.id,
@@ -1256,38 +1569,102 @@ async function processReviewFollowups(
         template_key: TEMPLATE_REVIEW_FOLLOWUP,
         review_redirect_target: reviewLinkTarget
       }
+    }, {
+      customerId: customer.id,
+      bookingId: booking.id,
+      eventId: event.id,
+      templateKey: TEMPLATE_REVIEW_FOLLOWUP
+    })
+
+    maybeRecordFatalSmsSafetyAbort(safety, smsResult, {
+      stage: 'reviews:send_sms',
+      bookingId: booking.id,
+      tableBookingId: null,
+      customerId: customer.id,
+      eventId: event.id,
+      templateKey: TEMPLATE_REVIEW_FOLLOWUP,
     })
 
     if (!smsResult.success) {
-      await supabase
+      const { error: deleteTokenError } = await supabase
         .from('guest_tokens')
         .delete()
         .eq('hashed_token', hashedToken)
+      if (deleteTokenError) {
+        logger.warn('Failed deleting provisional review token after SMS failure', {
+          metadata: {
+            bookingId: booking.id,
+            customerId: customer.id,
+            error: deleteTokenError.message
+          }
+        })
+      }
       result.skipped += 1
+      if (safety.primaryAbort) {
+        safety.throwSafetyAbort()
+      }
       continue
     }
 
     const reviewSentAt = smsResult.scheduledFor || new Date().toISOString()
     const reviewWindowClosesAt = new Date(Date.parse(reviewSentAt) + 7 * 24 * 60 * 60 * 1000).toISOString()
 
-    await Promise.all([
-      supabase
-        .from('bookings')
-        .update({
-          status: 'visited_waiting_for_review',
-          review_sms_sent_at: reviewSentAt,
-          review_window_closes_at: reviewWindowClosesAt,
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', booking.id)
-        .eq('status', 'confirmed'),
-      supabase
-        .from('guest_tokens')
-        .update({
-          expires_at: reviewWindowClosesAt
-        })
-        .eq('hashed_token', hashGuestToken(rawToken)),
-      recordAnalyticsEvent(supabase, {
+    const { data: updatedBooking, error: bookingUpdateError } = await supabase
+      .from('bookings')
+      .update({
+        status: 'visited_waiting_for_review',
+        review_sms_sent_at: reviewSentAt,
+        review_window_closes_at: reviewWindowClosesAt,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', booking.id)
+      .eq('status', 'confirmed')
+      .select('id')
+      .maybeSingle()
+    if (bookingUpdateError) {
+      logger.warn('Failed updating event booking review follow-up state after SMS send', {
+        metadata: {
+          bookingId: booking.id,
+          customerId: customer.id,
+          error: bookingUpdateError.message
+        }
+      })
+    } else if (!updatedBooking) {
+      logger.warn('Review follow-up state update affected no booking rows after SMS send', {
+        metadata: {
+          bookingId: booking.id,
+          customerId: customer.id
+        }
+      })
+    }
+
+    const { data: updatedToken, error: tokenUpdateError } = await supabase
+      .from('guest_tokens')
+      .update({
+        expires_at: reviewWindowClosesAt
+      })
+      .eq('hashed_token', hashedToken)
+      .select('id')
+      .maybeSingle()
+    if (tokenUpdateError) {
+      logger.warn('Failed updating review token expiry after SMS send', {
+        metadata: {
+          bookingId: booking.id,
+          customerId: customer.id,
+          error: tokenUpdateError.message
+        }
+      })
+    } else if (!updatedToken) {
+      logger.warn('Review token expiry update affected no rows after SMS send', {
+        metadata: {
+          bookingId: booking.id,
+          customerId: customer.id
+        }
+      })
+    }
+
+    try {
+      await recordAnalyticsEvent(supabase, {
         customerId: customer.id,
         eventBookingId: booking.id,
         eventType: 'review_sms_sent',
@@ -1297,9 +1674,20 @@ async function processReviewFollowups(
           review_window_closes_at: reviewWindowClosesAt
         }
       })
-    ])
+    } catch (analyticsError) {
+      logger.warn('Failed to record review follow-up analytics event', {
+        metadata: {
+          bookingId: booking.id,
+          customerId: customer.id,
+          error: analyticsError instanceof Error ? analyticsError.message : String(analyticsError)
+        }
+      })
+    }
 
     result.sent += 1
+    if (safety.primaryAbort) {
+      safety.throwSafetyAbort()
+    }
   }
 
   return result
@@ -1308,7 +1696,8 @@ async function processReviewFollowups(
 async function processTableReviewFollowups(
   supabase: ReturnType<typeof createAdminClient>,
   tableBookings: TableBookingWithCustomer[],
-  appBaseUrl: string
+  appBaseUrl: string,
+  safety: EventEngagementCronSafetyState
 ): Promise<{ sent: number; skipped: number }> {
   const now = Date.now()
   const maxAgeMs = TABLE_ENGAGEMENT_LOOKBACK_DAYS * 24 * 60 * 60 * 1000
@@ -1323,11 +1712,33 @@ async function processTableReviewFollowups(
   })
   const boundedEligibleBookings = eligibleBookings.slice(0, MAX_TABLE_REVIEW_FOLLOWUPS_PER_RUN)
 
-  const sentSet = await loadSentTableTemplateSet(
-    supabase,
-    boundedEligibleBookings.map((booking) => booking.id),
-    [TEMPLATE_TABLE_REVIEW_FOLLOWUP]
-  )
+  let sentSet: Set<string>
+
+  try {
+    sentSet = await loadSentTableTemplateSet(
+      supabase,
+      boundedEligibleBookings.map((booking) => booking.id),
+      [TEMPLATE_TABLE_REVIEW_FOLLOWUP]
+    )
+  } catch (error) {
+    logger.error('Failed loading table booking review-followup dedupe set', {
+      error: error instanceof Error ? error : new Error(String(error)),
+      metadata: {
+        bookingCount: boundedEligibleBookings.length,
+      },
+    })
+    safety.recordSafetyAbort({
+      stage: 'table_reviews:dedupe',
+      bookingId: null,
+      tableBookingId: null,
+      customerId: null,
+      eventId: null,
+      templateKey: TEMPLATE_TABLE_REVIEW_FOLLOWUP,
+      code: 'dedupe_unavailable',
+      logFailure: false,
+    })
+    safety.throwSafetyAbort()
+  }
 
   const result = { sent: 0, skipped: 0 }
 
@@ -1358,43 +1769,106 @@ async function processTableReviewFollowups(
       supportPhone
     )
 
-    const smsResult = await sendSMS(customer.mobile_number, messageBody, {
+    const smsResult = await sendSmsSafe(customer.mobile_number, messageBody, {
       customerId: customer.id,
       metadata: {
         table_booking_id: booking.id,
         template_key: TEMPLATE_TABLE_REVIEW_FOLLOWUP,
         review_redirect_target: reviewLinkTarget
       }
+    }, {
+      customerId: customer.id,
+      tableBookingId: booking.id,
+      templateKey: TEMPLATE_TABLE_REVIEW_FOLLOWUP
+    })
+
+    maybeRecordFatalSmsSafetyAbort(safety, smsResult, {
+      stage: 'table_reviews:send_sms',
+      bookingId: null,
+      tableBookingId: booking.id,
+      customerId: customer.id,
+      eventId: null,
+      templateKey: TEMPLATE_TABLE_REVIEW_FOLLOWUP,
     })
 
     if (!smsResult.success) {
-      await supabase
+      const { error: deleteTokenError } = await supabase
         .from('guest_tokens')
         .delete()
         .eq('hashed_token', hashedToken)
+      if (deleteTokenError) {
+        logger.warn('Failed deleting provisional table-review token after SMS failure', {
+          metadata: {
+            tableBookingId: booking.id,
+            customerId: customer.id,
+            error: deleteTokenError.message
+          }
+        })
+      }
       result.skipped += 1
+      if (safety.primaryAbort) {
+        safety.throwSafetyAbort()
+      }
       continue
     }
 
     const reviewSentAt = smsResult.scheduledFor || new Date().toISOString()
     const reviewWindowClosesAt = new Date(Date.parse(reviewSentAt) + 7 * 24 * 60 * 60 * 1000).toISOString()
 
-    await Promise.all([
-      (supabase.from('table_bookings') as any)
-        .update({
-          status: 'visited_waiting_for_review',
-          review_sms_sent_at: reviewSentAt,
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', booking.id)
-        .eq('status', 'confirmed'),
-      supabase
-        .from('guest_tokens')
-        .update({
-          expires_at: reviewWindowClosesAt
-        })
-        .eq('hashed_token', hashGuestToken(rawToken)),
-      recordAnalyticsEvent(supabase, {
+    const { data: updatedTableBooking, error: tableBookingUpdateError } = await (supabase.from('table_bookings') as any)
+      .update({
+        status: 'visited_waiting_for_review',
+        review_sms_sent_at: reviewSentAt,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', booking.id)
+      .eq('status', 'confirmed')
+      .select('id')
+      .maybeSingle()
+    if (tableBookingUpdateError) {
+      logger.warn('Failed updating table booking review follow-up state after SMS send', {
+        metadata: {
+          tableBookingId: booking.id,
+          customerId: customer.id,
+          error: tableBookingUpdateError.message
+        }
+      })
+    } else if (!updatedTableBooking) {
+      logger.warn('Table-booking review follow-up state update affected no rows after SMS send', {
+        metadata: {
+          tableBookingId: booking.id,
+          customerId: customer.id
+        }
+      })
+    }
+
+    const { data: updatedTableReviewToken, error: tokenUpdateError } = await supabase
+      .from('guest_tokens')
+      .update({
+        expires_at: reviewWindowClosesAt
+      })
+      .eq('hashed_token', hashedToken)
+      .select('id')
+      .maybeSingle()
+    if (tokenUpdateError) {
+      logger.warn('Failed updating table-review token expiry after SMS send', {
+        metadata: {
+          tableBookingId: booking.id,
+          customerId: customer.id,
+          error: tokenUpdateError.message
+        }
+      })
+    } else if (!updatedTableReviewToken) {
+      logger.warn('Table-review token expiry update affected no rows after SMS send', {
+        metadata: {
+          tableBookingId: booking.id,
+          customerId: customer.id
+        }
+      })
+    }
+
+    try {
+      await recordAnalyticsEvent(supabase, {
         customerId: customer.id,
         tableBookingId: booking.id,
         eventType: 'review_sms_sent',
@@ -1404,9 +1878,20 @@ async function processTableReviewFollowups(
           review_window_closes_at: reviewWindowClosesAt
         }
       })
-    ])
+    } catch (analyticsError) {
+      logger.warn('Failed to record table-review follow-up analytics event', {
+        metadata: {
+          tableBookingId: booking.id,
+          customerId: customer.id,
+          error: analyticsError instanceof Error ? analyticsError.message : String(analyticsError)
+        }
+      })
+    }
 
     result.sent += 1
+    if (safety.primaryAbort) {
+      safety.throwSafetyAbort()
+    }
   }
 
   return result
@@ -1453,13 +1938,18 @@ async function processReviewWindowCompletion(
 
     for (const updated of (updatedRows || []) as Array<{ id: string; customer_id: string; event_id: string }>) {
       result.completed += 1
-      await recordAnalyticsEvent(supabase, {
+      await recordAnalyticsEventSafe(supabase, {
         customerId: updated.customer_id,
         eventBookingId: updated.id,
         eventType: 'review_window_closed',
         metadata: {
           event_id: updated.event_id
         }
+      }, {
+        bookingId: updated.id,
+        customerId: updated.customer_id,
+        eventId: updated.event_id,
+        eventType: 'review_window_closed'
       })
     }
   }
@@ -1515,13 +2005,17 @@ async function processTableReviewWindowCompletion(
 
     for (const updated of (updatedRows || []) as Array<{ id: string; customer_id: string; booking_type: string | null }>) {
       result.completed += 1
-      await recordAnalyticsEvent(supabase, {
+      await recordAnalyticsEventSafe(supabase, {
         customerId: updated.customer_id,
         tableBookingId: updated.id,
         eventType: 'review_window_closed',
         metadata: {
           booking_type: updated.booking_type || 'regular'
         }
+      }, {
+        tableBookingId: updated.id,
+        customerId: updated.customer_id,
+        eventType: 'review_window_closed'
       })
     }
   }
@@ -1538,6 +2032,8 @@ export async function GET(request: NextRequest) {
   } | null = null
   let resolvedStatus: 'completed' | 'failed' | null = null
   let runErrorMessage: string | undefined
+  let guard: Awaited<ReturnType<typeof evaluateEventEngagementSendGuard>> | null = null
+  const safetyAborts: EventEngagementCronSafetyAbort[] = []
 
   const auth = authorizeCronRequest(request)
   if (!auth.authorized) {
@@ -1547,6 +2043,24 @@ export async function GET(request: NextRequest) {
   try {
     const runKey = getLondonRunKey()
     const acquireResult = await acquireCronRun(runKey)
+    const safetyState: EventEngagementCronSafetyState = {
+      runKey,
+      safetyAborts,
+      primaryAbort: null,
+      recordSafetyAbort: (abort) => {
+        const entry: EventEngagementCronSafetyAbort = { runKey, ...abort }
+        safetyAborts.push(entry)
+        if (!safetyState.primaryAbort) {
+          safetyState.primaryAbort = entry
+        }
+      },
+      throwSafetyAbort: () => {
+        if (safetyState.primaryAbort) {
+          throw new EventEngagementCronSafetyAbortError(safetyState.primaryAbort)
+        }
+        throw new Error('Missing event engagement safety abort metadata')
+      },
+    }
     runContext = {
       supabase: acquireResult.supabase,
       runId: acquireResult.runId,
@@ -1565,7 +2079,7 @@ export async function GET(request: NextRequest) {
       })
     }
 
-    const guard = await evaluateEventEngagementSendGuard(acquireResult.supabase)
+    guard = await evaluateEventEngagementSendGuard(acquireResult.supabase)
     if (guard.blocked) {
       logger.error('Event guest engagement send guard tripped; run aborted', {
         metadata: {
@@ -1595,14 +2109,12 @@ export async function GET(request: NextRequest) {
       loadTableBookingsForEngagement(supabase)
     ])
 
-    const [reminders, reviews, completion, marketing, tableReviews, tableCompletion] = await Promise.all([
-      processReminders(supabase, bookings, appBaseUrl),
-      processReviewFollowups(supabase, bookings, appBaseUrl),
-      processReviewWindowCompletion(supabase),
-      processInterestMarketing(supabase),
-      processTableReviewFollowups(supabase, tableBookings, appBaseUrl),
-      processTableReviewWindowCompletion(supabase)
-    ])
+    const reminders = await processReminders(supabase, bookings, appBaseUrl, safetyState)
+    const reviews = await processReviewFollowups(supabase, bookings, appBaseUrl, safetyState)
+    const completion = await processReviewWindowCompletion(supabase)
+    const marketing = await processInterestMarketing(supabase, safetyState)
+    const tableReviews = await processTableReviewFollowups(supabase, tableBookings, appBaseUrl, safetyState)
+    const tableCompletion = await processTableReviewWindowCompletion(supabase)
 
     resolvedStatus = 'completed'
     return NextResponse.json({
@@ -1618,6 +2130,32 @@ export async function GET(request: NextRequest) {
       processedAt: new Date().toISOString()
     })
   } catch (error) {
+    if (error instanceof EventEngagementCronSafetyAbortError) {
+      resolvedStatus = 'failed'
+      runErrorMessage = error.abort.code
+
+      logger.error('Aborting event guest engagement cron due to fatal SMS safety signal', {
+        error: new Error(error.abort.code),
+        metadata: error.abort,
+      })
+
+      return NextResponse.json({
+        success: true,
+        aborted: true,
+        abortReason: error.abort.code,
+        abortStage: error.abort.stage,
+        abortBookingId: error.abort.bookingId,
+        abortTableBookingId: error.abort.tableBookingId,
+        abortCustomerId: error.abort.customerId,
+        abortEventId: error.abort.eventId,
+        abortTemplateKey: error.abort.templateKey,
+        safetyAborts,
+        runKey: error.abort.runKey,
+        guard,
+        processedAt: new Date().toISOString(),
+      })
+    }
+
     resolvedStatus = 'failed'
     runErrorMessage = error instanceof Error ? error.message : String(error)
 
@@ -1628,7 +2166,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(
       {
         success: false,
-        error: error instanceof Error ? error.message : 'Failed to process event guest engagement'
+        error: 'Failed to process event guest engagement'
       },
       { status: 500 }
     )

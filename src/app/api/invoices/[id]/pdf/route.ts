@@ -6,6 +6,7 @@ export const maxDuration = 60
 import { createClient } from '@/lib/supabase/server'
 import { generateInvoicePDF } from '@/lib/pdf-generator'
 import { checkUserPermission } from '@/app/actions/rbac'
+import { logAuditEvent } from '@/app/actions/audit'
 
 export async function GET(
   request: NextRequest,
@@ -52,17 +53,23 @@ export async function GET(
     // Generate PDF
     const pdfBuffer = await generateInvoicePDF(invoice)
     
-    // Log invoice generation
-    await supabase.from('invoice_audit_logs').insert({
-      invoice_id: invoiceId,
-      action: 'pdf_generated',
-      performed_by: user.id,
-      performed_at: new Date().toISOString(),
-      details: { 
-        invoice_number: invoice.invoice_number,
-        ip_address: request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip')
-      }
-    })
+    // Best-effort logging: do not fail PDF generation on telemetry issues.
+    try {
+      await logAuditEvent({
+        user_id: user.id,
+        operation_type: 'read',
+        resource_type: 'invoice',
+        resource_id: invoiceId,
+        operation_status: 'success',
+        additional_info: {
+          action: 'pdf_generated',
+          invoice_number: invoice.invoice_number,
+          ip_address: request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip')
+        }
+      })
+    } catch (auditError) {
+      console.error('[Invoices PDF] Failed to write audit log:', auditError)
+    }
 
     // Return PDF with appropriate headers
     return new NextResponse(pdfBuffer as unknown as BodyInit, {

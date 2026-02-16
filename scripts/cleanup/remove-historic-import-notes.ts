@@ -1,76 +1,225 @@
+#!/usr/bin/env tsx
 
-import { createClient } from '@supabase/supabase-js';
-import dotenv from 'dotenv';
-import path from 'path';
+/**
+ * remove-historic-import-notes (safe by default)
+ *
+ * Removes the "Historic Import" marker from cashing-up session notes.
+ *
+ * Dry-run (default):
+ *   tsx scripts/cleanup/remove-historic-import-notes.ts
+ *
+ * Mutation mode (requires multi-gating + explicit caps):
+ *   RUN_REMOVE_HISTORIC_IMPORT_NOTES_MUTATION=true \\
+ *   ALLOW_REMOVE_HISTORIC_IMPORT_NOTES_MUTATION_SCRIPT=true \\
+ *     tsx scripts/cleanup/remove-historic-import-notes.ts --confirm --limit 100 [--offset 0]
+ */
 
-// Load environment variables
-dotenv.config({ path: path.join(process.cwd(), '.env.local') });
+import * as dotenv from 'dotenv'
+import { resolve } from 'path'
+import { createAdminClient } from '../../src/lib/supabase/admin'
+import {
+  assertScriptCompletedWithoutFailures,
+  assertScriptExpectedRowCount,
+  assertScriptMutationSucceeded,
+  assertScriptQuerySucceeded
+} from '../../src/lib/script-mutation-safety'
+import {
+  assertRemoveHistoricImportNotesLimit,
+  assertRemoveHistoricImportNotesMutationAllowed,
+  isRemoveHistoricImportNotesMutationEnabled,
+  readRemoveHistoricImportNotesLimit,
+  readRemoveHistoricImportNotesOffset
+} from '../../src/lib/remove-historic-import-notes-script-safety'
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+dotenv.config({ path: resolve(process.cwd(), '.env.local') })
 
-if (!supabaseUrl || !supabaseServiceRoleKey) {
-  console.error('Missing Supabase URL or Service Role Key');
-  process.exit(1);
+function isFlagPresent(flag: string, argv: string[] = process.argv): boolean {
+  return argv.includes(flag)
 }
 
-const supabase = createClient(supabaseUrl, supabaseServiceRoleKey);
+function normalizeWhitespace(value: string): string {
+  return value.replace(/\s\s+/g, ' ').trim()
+}
 
-async function removeHistoricImportNotes() {
-  console.log('🧹 Removing "Historic Import" from cashing up notes...');
+function stripHistoricImportMarker(value: string): string | null {
+  const withoutMarker = normalizeWhitespace(value.replace(/Historic Import/gi, ''))
+  return withoutMarker.length === 0 ? null : withoutMarker
+}
 
-  // 1. Fetch sessions with "Historic Import" in notes
-  const { data: sessions, error: fetchError } = await supabase
+type SessionRow = {
+  id: string
+  notes: string | null
+  created_at?: string | null
+}
+
+async function run(): Promise<void> {
+  const argv = process.argv
+  const confirm = isFlagPresent('--confirm', argv)
+  const mutationEnabled = isRemoveHistoricImportNotesMutationEnabled(argv, process.env)
+
+  const HARD_CAP = 500
+
+  if (isFlagPresent('--help', argv)) {
+    console.log(`
+remove-historic-import-notes (safe by default)
+
+Dry-run (default):
+  tsx scripts/cleanup/remove-historic-import-notes.ts
+
+Mutation mode (requires multi-gating + explicit caps):
+  RUN_REMOVE_HISTORIC_IMPORT_NOTES_MUTATION=true \\
+  ALLOW_REMOVE_HISTORIC_IMPORT_NOTES_MUTATION_SCRIPT=true \\
+    tsx scripts/cleanup/remove-historic-import-notes.ts --confirm --limit 100 [--offset 0]
+
+Notes:
+  - --limit is required in mutation mode (hard cap ${HARD_CAP}).
+  - In dry-run mode, no rows are updated.
+`)
+    return
+  }
+
+  if (confirm && !mutationEnabled && !isFlagPresent('--dry-run', argv)) {
+    throw new Error(
+      'remove-historic-import-notes received --confirm but RUN_REMOVE_HISTORIC_IMPORT_NOTES_MUTATION is not enabled. Set RUN_REMOVE_HISTORIC_IMPORT_NOTES_MUTATION=true and ALLOW_REMOVE_HISTORIC_IMPORT_NOTES_MUTATION_SCRIPT=true to apply updates.'
+    )
+  }
+
+  if (mutationEnabled) {
+    assertRemoveHistoricImportNotesMutationAllowed(process.env)
+  }
+
+  const supabase = createAdminClient()
+  const modeLabel = mutationEnabled ? 'MUTATION' : 'DRY-RUN'
+
+  console.log(`🧹 Removing "Historic Import" from cashup session notes (${modeLabel})`)
+
+  const { count: totalCountRaw, error: countError } = await supabase
     .from('cashup_sessions')
-    .select('id, notes')
-    .ilike('notes', '%Historic Import%');
+    .select('id', { count: 'exact', head: true })
+    .ilike('notes', '%Historic Import%')
 
-  if (fetchError) {
-    console.error('Error fetching sessions:', fetchError);
-    return;
+  assertScriptQuerySucceeded({
+    operation: 'Count cashup_sessions rows with Historic Import notes',
+    error: countError,
+    data: { ok: true }
+  })
+
+  const totalCount = typeof totalCountRaw === 'number' && Number.isInteger(totalCountRaw) ? totalCountRaw : 0
+  console.log(`Matching sessions: ${totalCount}`)
+
+  if (totalCount === 0) {
+    console.log('✅ No sessions found with "Historic Import" in notes.')
+    return
   }
 
-  if (!sessions || sessions.length === 0) {
-    console.log('No sessions found with "Historic Import" in notes.');
-    return;
+  if (!mutationEnabled) {
+    const { data: sampleRowsRaw, error: sampleError } = await supabase
+      .from('cashup_sessions')
+      .select('id, notes, created_at')
+      .ilike('notes', '%Historic Import%')
+      .order('created_at', { ascending: false })
+      .limit(10)
+
+    const sampleRows = assertScriptQuerySucceeded({
+      operation: 'Load sample cashup_sessions rows with Historic Import notes',
+      error: sampleError,
+      data: sampleRowsRaw ?? [],
+      allowMissing: true
+    }) as SessionRow[]
+
+    if (sampleRows.length > 0) {
+      console.log('\nSample sessions (showing before -> after):')
+      sampleRows.forEach((row) => {
+        const before = row.notes ?? ''
+        const after = stripHistoricImportMarker(before)
+        const beforePreview = before.length > 80 ? `${before.slice(0, 80)}…` : before
+        const afterPreview =
+          after === null ? '<null>' : after.length > 80 ? `${after.slice(0, 80)}…` : after
+        console.log(`- ${row.id}: "${beforePreview}" -> "${afterPreview}"`)
+      })
+    }
+
+    console.log('\nDry-run mode: no rows updated.')
+    console.log(
+      'To mutate, pass --confirm + --limit, and set RUN_REMOVE_HISTORIC_IMPORT_NOTES_MUTATION=true and ALLOW_REMOVE_HISTORIC_IMPORT_NOTES_MUTATION_SCRIPT=true.'
+    )
+    return
   }
 
-  console.log(`Found ${sessions.length} sessions to update.`);
+  const limit = assertRemoveHistoricImportNotesLimit(
+    readRemoveHistoricImportNotesLimit(argv, process.env),
+    HARD_CAP
+  )
+  const offset = readRemoveHistoricImportNotesOffset(argv, process.env) ?? 0
+  const rangeStart = offset
+  const rangeEnd = offset + limit - 1
 
-  let updatedCount = 0;
-  let errorCount = 0;
+  console.log(`Processing window: offset=${offset} limit=${limit}`)
+
+  const { data: sessionsRaw, error: fetchError } = await supabase
+    .from('cashup_sessions')
+    .select('id, notes, created_at')
+    .ilike('notes', '%Historic Import%')
+    .order('id', { ascending: true })
+    .range(rangeStart, rangeEnd)
+
+  const sessions = assertScriptQuerySucceeded({
+    operation: 'Load cashup_sessions rows for Historic Import note cleanup',
+    error: fetchError,
+    data: sessionsRaw ?? [],
+    allowMissing: true
+  }) as SessionRow[]
+
+  if (sessions.length === 0) {
+    console.log('No sessions found in the selected window. Nothing to update.')
+    return
+  }
+
+  const failures: string[] = []
+  let updatedCount = 0
 
   for (const session of sessions) {
-    if (!session.notes) continue; // Should not happen due to filter, but safety first
+    const before = session.notes ?? ''
+    const nextNotes = stripHistoricImportMarker(before)
 
-    // Remove "Historic Import" and trim whitespace
-    // Regex handles:
-    // 1. "Historic Import" literal
-    // 2. Surrounding whitespace clean up to avoid "  " or leading/trailing space
-    let newNotes = session.notes.replace(/Historic Import/gi, '').trim();
-    
-    // Optional: clean up double spaces if they were created in the middle
-    newNotes = newNotes.replace(/\s\s+/g, ' ');
-
-    // If the note becomes empty (it was ONLY "Historic Import"), set it to null or empty string
-    // Database schema allows NULL for notes (TEXT NULL)
-    const finalNotes = newNotes.length === 0 ? null : newNotes;
-
-    const { error: updateError } = await supabase
+    const { data: updatedRows, error: updateError } = await supabase
       .from('cashup_sessions')
-      .update({ notes: finalNotes })
-      .eq('id', session.id);
+      .update({ notes: nextNotes })
+      .eq('id', session.id)
+      .ilike('notes', '%Historic Import%')
+      .select('id')
 
-    if (updateError) {
-      console.error(`Error updating session ${session.id}:`, updateError);
-      errorCount++;
-    } else {
-        // console.log(`Updated session ${session.id}: "${session.notes}" -> "${finalNotes}"`);
-      updatedCount++;
+    try {
+      const { updatedCount: rowCount } = assertScriptMutationSucceeded({
+        operation: `Update cashup_sessions notes for ${session.id}`,
+        error: updateError,
+        updatedRows: updatedRows as Array<{ id?: string }> | null,
+        allowZeroRows: false
+      })
+      assertScriptExpectedRowCount({
+        operation: `Update cashup_sessions notes for ${session.id}`,
+        expected: 1,
+        actual: rowCount
+      })
+      updatedCount += 1
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      failures.push(`${session.id}:${message}`)
+      console.error(`❌ Failed updating session ${session.id}: ${message}`)
     }
   }
 
-  console.log(`✅ Completed. Updated: ${updatedCount}, Errors: ${errorCount}`);
+  console.log(`✅ Updated ${updatedCount}/${sessions.length} session(s).`)
+
+  assertScriptCompletedWithoutFailures({
+    scriptName: 'remove-historic-import-notes',
+    failureCount: failures.length,
+    failures
+  })
 }
 
-removeHistoricImportNotes().catch(console.error);
+run().catch((error) => {
+  console.error('remove-historic-import-notes failed:', error)
+  process.exitCode = 1
+})
+

@@ -9,8 +9,9 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import {
   computeIdempotencyRequestHash,
   getIdempotencyKey,
-  lookupIdempotencyKey,
-  persistIdempotencyResponse
+  claimIdempotencyKey,
+  persistIdempotencyResponse,
+  releaseIdempotencyClaim
 } from '@/lib/api/idempotency'
 import { formatPhoneForStorage } from '@/lib/utils'
 import { ensureCustomerForPhone } from '@/lib/sms/customers'
@@ -24,6 +25,8 @@ import {
   type TableBookingRpcResult
 } from '@/lib/table-bookings/bookings'
 import { logger } from '@/lib/logger'
+
+type SmsSafetyMeta = Awaited<ReturnType<typeof sendTableBookingCreatedSmsIfAllowed>>['sms']
 
 const CreateTableBookingSchema = z.object({
   phone: z.string().trim().min(7).max(32),
@@ -70,6 +73,23 @@ function isAssignmentConflictRpcError(error: { code?: string; message?: string }
     || message.includes('table_assignment_overlap')
     || message.includes('table_assignment_private_blocked')
   )
+}
+
+async function recordTableBookingAnalyticsSafe(
+  supabase: ReturnType<typeof createAdminClient>,
+  payload: Parameters<typeof recordAnalyticsEvent>[1],
+  context: Record<string, unknown>
+) {
+  try {
+    await recordAnalyticsEvent(supabase, payload)
+  } catch (analyticsError) {
+    logger.warn('Failed to record table booking analytics event', {
+      metadata: {
+        ...context,
+        error: analyticsError instanceof Error ? analyticsError.message : String(analyticsError)
+      }
+    })
+  }
 }
 
 export async function POST(request: NextRequest) {
@@ -123,7 +143,7 @@ export async function POST(request: NextRequest) {
     })
 
     const supabase = createAdminClient()
-    const idempotencyState = await lookupIdempotencyKey(supabase, idempotencyKey, requestHash)
+    const idempotencyState = await claimIdempotencyKey(supabase, idempotencyKey, requestHash)
 
     if (idempotencyState.state === 'conflict') {
       return createErrorResponse(
@@ -142,166 +162,250 @@ export async function POST(request: NextRequest) {
       return createApiResponse(replayPayload, replayStatus)
     }
 
-    const customerResolution = await ensureCustomerForPhone(supabase, normalizedPhone, {
-      firstName: payload.first_name,
-      lastName: payload.last_name,
-      email: payload.email || null
-    })
-    if (!customerResolution.customerId) {
-      return createErrorResponse('Failed to resolve customer', 'CUSTOMER_RESOLUTION_FAILED', 500)
+    if (idempotencyState.state === 'in_progress') {
+      return createErrorResponse(
+        'This request is already being processed. Please retry shortly.',
+        'IDEMPOTENCY_KEY_IN_PROGRESS',
+        409
+      )
     }
 
-    const { data: rpcResultRaw, error: rpcError } = await supabase.rpc('create_table_booking_v05', {
-      p_customer_id: customerResolution.customerId,
-      p_booking_date: payload.date,
-      p_booking_time: bookingTime,
-      p_party_size: payload.party_size,
-      p_booking_purpose: payload.purpose,
-      p_notes: payload.notes || null,
-      p_sunday_lunch: payload.sunday_lunch === true,
-      p_source: 'brand_site'
-    })
+    let claimHeld = true
+    let mutationCommitted = false
+    try {
+      const customerResolution = await ensureCustomerForPhone(supabase, normalizedPhone, {
+        firstName: payload.first_name,
+        lastName: payload.last_name,
+        email: payload.email || null
+      })
+      if (!customerResolution.customerId) {
+        return createErrorResponse('Failed to resolve customer', 'CUSTOMER_RESOLUTION_FAILED', 500)
+      }
 
-    let bookingResult: TableBookingRpcResult
-    if (rpcError) {
-      if (isAssignmentConflictRpcError(rpcError)) {
-        bookingResult = {
-          state: 'blocked',
-          reason: rpcError.message?.includes('table_assignment_private_blocked')
-            ? 'private_booking_blocked'
-            : 'no_table'
+      const { data: rpcResultRaw, error: rpcError } = await supabase.rpc('create_table_booking_v05', {
+        p_customer_id: customerResolution.customerId,
+        p_booking_date: payload.date,
+        p_booking_time: bookingTime,
+        p_party_size: payload.party_size,
+        p_booking_purpose: payload.purpose,
+        p_notes: payload.notes || null,
+        p_sunday_lunch: payload.sunday_lunch === true,
+        p_source: 'brand_site'
+      })
+
+      let bookingResult: TableBookingRpcResult
+      if (rpcError) {
+        if (isAssignmentConflictRpcError(rpcError)) {
+          bookingResult = {
+            state: 'blocked',
+            reason: rpcError.message?.includes('table_assignment_private_blocked')
+              ? 'private_booking_blocked'
+              : 'no_table'
+          }
+        } else {
+          logger.error('create_table_booking_v05 RPC failed', {
+            error: new Error(rpcError.message),
+            metadata: {
+              customerId: customerResolution.customerId,
+              bookingDate: payload.date,
+              bookingTime,
+              purpose: payload.purpose
+            }
+          })
+          return createErrorResponse('Failed to create table booking', 'DATABASE_ERROR', 500)
         }
       } else {
-        logger.error('create_table_booking_v05 RPC failed', {
-          error: new Error(rpcError.message),
-          metadata: {
-            customerId: customerResolution.customerId,
-            bookingDate: payload.date,
-            bookingTime,
-            purpose: payload.purpose
-          }
-        })
-        return createErrorResponse('Failed to create table booking', 'DATABASE_ERROR', 500)
+        bookingResult = (rpcResultRaw ?? {}) as TableBookingRpcResult
       }
-    } else {
-      bookingResult = (rpcResultRaw ?? {}) as TableBookingRpcResult
-    }
-    const appBaseUrl = process.env.NEXT_PUBLIC_APP_URL || request.nextUrl.origin
+      mutationCommitted = Boolean(bookingResult.table_booking_id)
+      const appBaseUrl = process.env.NEXT_PUBLIC_APP_URL || request.nextUrl.origin
 
-    let nextStepUrl: string | null = null
-    let holdExpiresAt = bookingResult.hold_expires_at || null
-
-    if (
-      bookingResult.state === 'pending_card_capture' &&
-      bookingResult.table_booking_id &&
-      bookingResult.hold_expires_at
-    ) {
-      try {
-        const token = await createTableCardCaptureToken(supabase, {
-          customerId: customerResolution.customerId,
-          tableBookingId: bookingResult.table_booking_id,
-          holdExpiresAt: bookingResult.hold_expires_at,
-          appBaseUrl
-        })
-        nextStepUrl = token.url
-      } catch (tokenError) {
-        logger.warn('Failed to create table card capture token', {
-          metadata: {
-            tableBookingId: bookingResult.table_booking_id,
-            error: tokenError instanceof Error ? tokenError.message : String(tokenError)
-          }
-        })
-      }
-    }
-
-    if (bookingResult.state === 'confirmed' || bookingResult.state === 'pending_card_capture') {
-      const smsSendResult = await sendTableBookingCreatedSmsIfAllowed(supabase, {
-        customerId: customerResolution.customerId,
-        normalizedPhone,
-        bookingResult,
-        nextStepUrl
-      })
-
-      const managerEmailResult = await sendManagerTableBookingCreatedEmailIfAllowed(supabase, {
-        tableBookingId: bookingResult.table_booking_id || null,
-        fallbackCustomerId: customerResolution.customerId,
-        createdVia: 'api'
-      })
-      if (!managerEmailResult.sent && managerEmailResult.error) {
-        logger.warn('Failed to send manager booking-created email', {
-          metadata: {
-            tableBookingId: bookingResult.table_booking_id || null,
-            error: managerEmailResult.error
-          }
-        })
-      }
+      let nextStepUrl: string | null = null
+      let holdExpiresAt = bookingResult.hold_expires_at || null
+      let smsMeta: SmsSafetyMeta = null
 
       if (
         bookingResult.state === 'pending_card_capture' &&
         bookingResult.table_booking_id &&
-        smsSendResult.scheduledFor
+        bookingResult.hold_expires_at
       ) {
-        holdExpiresAt =
-          (await alignTableCardCaptureHoldToScheduledSend(supabase, {
+        try {
+          const token = await createTableCardCaptureToken(supabase, {
+            customerId: customerResolution.customerId,
             tableBookingId: bookingResult.table_booking_id,
-            scheduledSendIso: smsSendResult.scheduledFor,
-            bookingStartIso: bookingResult.start_datetime || null
-          })) || holdExpiresAt
+            holdExpiresAt: bookingResult.hold_expires_at,
+            appBaseUrl
+          })
+          nextStepUrl = token.url
+        } catch (tokenError) {
+          logger.warn('Failed to create table card capture token', {
+            metadata: {
+              tableBookingId: bookingResult.table_booking_id,
+              error: tokenError instanceof Error ? tokenError.message : String(tokenError)
+            }
+          })
+        }
       }
 
-      await recordAnalyticsEvent(supabase, {
-        customerId: customerResolution.customerId,
-        tableBookingId: bookingResult.table_booking_id,
-        eventType: 'table_booking_created',
-        metadata: {
-          party_size: payload.party_size,
-          booking_purpose: payload.purpose,
-          sunday_lunch: payload.sunday_lunch === true,
-          status: bookingResult.status || bookingResult.state,
-          table_name: bookingResult.table_name || null
-        }
-      })
+      if (bookingResult.state === 'confirmed' || bookingResult.state === 'pending_card_capture') {
+        let smsSendResult: Awaited<ReturnType<typeof sendTableBookingCreatedSmsIfAllowed>> | null = null
 
-      if (bookingResult.state === 'pending_card_capture') {
-        await recordAnalyticsEvent(supabase, {
+        try {
+          smsSendResult = await sendTableBookingCreatedSmsIfAllowed(supabase, {
+            customerId: customerResolution.customerId,
+            normalizedPhone,
+            bookingResult,
+            nextStepUrl
+          })
+          smsMeta = smsSendResult.sms
+        } catch (smsError) {
+          logger.warn('Table booking created SMS task rejected unexpectedly', {
+            metadata: {
+              tableBookingId: bookingResult.table_booking_id || null,
+              customerId: customerResolution.customerId,
+              state: bookingResult.state,
+              error: smsError instanceof Error ? smsError.message : String(smsError)
+            }
+          })
+          smsMeta = { success: false, code: 'unexpected_exception', logFailure: false }
+        }
+
+        try {
+          const managerEmailResult = await sendManagerTableBookingCreatedEmailIfAllowed(supabase, {
+            tableBookingId: bookingResult.table_booking_id || null,
+            fallbackCustomerId: customerResolution.customerId,
+            createdVia: 'api'
+          })
+          if (!managerEmailResult.sent && managerEmailResult.error) {
+            logger.warn('Failed to send manager booking-created email', {
+              metadata: {
+                tableBookingId: bookingResult.table_booking_id || null,
+                error: managerEmailResult.error
+              }
+            })
+          }
+        } catch (emailError) {
+          logger.warn('Manager booking-created email task rejected unexpectedly', {
+            metadata: {
+              tableBookingId: bookingResult.table_booking_id || null,
+              error: emailError instanceof Error ? emailError.message : String(emailError)
+            }
+          })
+        }
+
+        if (
+          bookingResult.state === 'pending_card_capture' &&
+          bookingResult.table_booking_id &&
+          smsSendResult?.scheduledFor
+        ) {
+          try {
+            holdExpiresAt =
+              (await alignTableCardCaptureHoldToScheduledSend(supabase, {
+                tableBookingId: bookingResult.table_booking_id,
+                scheduledSendIso: smsSendResult.scheduledFor,
+                bookingStartIso: bookingResult.start_datetime || null
+              })) || holdExpiresAt
+          } catch (alignmentError) {
+            logger.warn('Failed to align card capture hold with scheduled SMS send', {
+              metadata: {
+                tableBookingId: bookingResult.table_booking_id,
+                error: alignmentError instanceof Error ? alignmentError.message : String(alignmentError)
+              }
+            })
+          }
+        }
+
+        await recordTableBookingAnalyticsSafe(supabase, {
           customerId: customerResolution.customerId,
           tableBookingId: bookingResult.table_booking_id,
-          eventType: 'card_capture_started',
+          eventType: 'table_booking_created',
           metadata: {
-            hold_expires_at: holdExpiresAt,
-            next_step_url_provided: Boolean(nextStepUrl)
+            party_size: payload.party_size,
+            booking_purpose: payload.purpose,
+            sunday_lunch: payload.sunday_lunch === true,
+            status: bookingResult.status || bookingResult.state,
+            table_name: bookingResult.table_name || null
           }
+        }, {
+          tableBookingId: bookingResult.table_booking_id,
+          customerId: customerResolution.customerId,
+          eventType: 'table_booking_created'
+        })
+
+        if (bookingResult.state === 'pending_card_capture') {
+          await recordTableBookingAnalyticsSafe(supabase, {
+            customerId: customerResolution.customerId,
+            tableBookingId: bookingResult.table_booking_id,
+            eventType: 'card_capture_started',
+            metadata: {
+              hold_expires_at: holdExpiresAt,
+              next_step_url_provided: Boolean(nextStepUrl)
+            }
+          }, {
+            tableBookingId: bookingResult.table_booking_id,
+            customerId: customerResolution.customerId,
+            eventType: 'card_capture_started'
+          })
+        }
+      }
+
+      const responseState: TableBookingResponseData['state'] =
+        bookingResult.state === 'confirmed' || bookingResult.state === 'pending_card_capture'
+          ? bookingResult.state
+          : 'blocked'
+
+      const responseStatus = responseState === 'blocked' ? 200 : 201
+
+      const responsePayload = {
+        success: true,
+        data: {
+          state: responseState,
+          table_booking_id: bookingResult.table_booking_id || null,
+          booking_reference: bookingResult.booking_reference || null,
+          reason: bookingResult.reason || null,
+          blocked_reason:
+            responseState === 'blocked' ? mapTableBookingBlockedReason(bookingResult.reason) : null,
+          next_step_url: responseState === 'pending_card_capture' ? nextStepUrl : null,
+          hold_expires_at: responseState === 'pending_card_capture' ? holdExpiresAt : null,
+          table_name: bookingResult.table_name || null
+        } satisfies TableBookingResponseData,
+        meta: {
+          status_code: responseStatus,
+          sms: smsMeta,
+        }
+      }
+
+      try {
+        await persistIdempotencyResponse(supabase, idempotencyKey, requestHash, responsePayload)
+        claimHeld = false
+      } catch (persistError) {
+        // Fail closed: a booking may already exist, and releasing the claim would allow retries
+        // to create duplicates / resend confirmations under degraded idempotency persistence.
+        logger.error('Failed to persist table booking idempotency response', {
+          error: persistError instanceof Error ? persistError : new Error(String(persistError)),
+          metadata: {
+            key: idempotencyKey,
+            requestHash,
+            tableBookingId: bookingResult.table_booking_id || null,
+            state: responseState,
+          },
         })
       }
-    }
 
-    const responseState: TableBookingResponseData['state'] =
-      bookingResult.state === 'confirmed' || bookingResult.state === 'pending_card_capture'
-        ? bookingResult.state
-        : 'blocked'
-
-    const responseStatus = responseState === 'blocked' ? 200 : 201
-
-    const responsePayload = {
-      success: true,
-      data: {
-        state: responseState,
-        table_booking_id: bookingResult.table_booking_id || null,
-        booking_reference: bookingResult.booking_reference || null,
-        reason: bookingResult.reason || null,
-        blocked_reason:
-          responseState === 'blocked' ? mapTableBookingBlockedReason(bookingResult.reason) : null,
-        next_step_url: responseState === 'pending_card_capture' ? nextStepUrl : null,
-        hold_expires_at: responseState === 'pending_card_capture' ? holdExpiresAt : null,
-        table_name: bookingResult.table_name || null
-      } satisfies TableBookingResponseData,
-      meta: {
-        status_code: responseStatus
+      return createApiResponse(responsePayload, responseStatus)
+    } finally {
+      if (claimHeld && !mutationCommitted) {
+        try {
+          await releaseIdempotencyClaim(supabase, idempotencyKey, requestHash)
+        } catch (releaseError) {
+          logger.warn('Failed to release table booking idempotency claim', {
+            metadata: {
+              key: idempotencyKey,
+              error: releaseError instanceof Error ? releaseError.message : String(releaseError)
+            }
+          })
+        }
       }
     }
-
-    await persistIdempotencyResponse(supabase, idempotencyKey, requestHash, responsePayload)
-
-    return createApiResponse(responsePayload, responseStatus)
   }, ['create:bookings'], request)
 }

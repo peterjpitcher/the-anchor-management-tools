@@ -163,6 +163,10 @@ function mapRefundStatus(status: string | null): 'refunded' | 'pending' | 'faile
   }
 }
 
+function isDuplicateKeyError(error: { code?: string; message?: string } | null | undefined): boolean {
+  return error?.code === '23505'
+}
+
 export async function getEventManagePreviewByRawToken(
   supabase: SupabaseClient<any, 'public', any>,
   rawToken: string
@@ -262,7 +266,7 @@ export async function processEventRefund(
     }
   }
 
-  const { data: payment } = await supabase
+  const { data: payment, error: paymentLookupError } = await supabase
     .from('payments')
     .select('id, amount, currency, stripe_payment_intent_id')
     .eq('event_booking_id', input.bookingId)
@@ -273,6 +277,10 @@ export async function processEventRefund(
     .limit(1)
     .maybeSingle()
 
+  if (paymentLookupError) {
+    throw paymentLookupError
+  }
+
   if (!payment?.stripe_payment_intent_id) {
     return {
       status: 'manual_required',
@@ -282,13 +290,60 @@ export async function processEventRefund(
     }
   }
 
+  const { data: existingRefund, error: existingRefundError } = await (supabase.from('payments') as any)
+    .select('id, status, currency, metadata')
+    .eq('event_booking_id', input.bookingId)
+    .eq('charge_type', 'refund')
+    .contains('metadata', { source_payment_id: payment.id })
+    .in('status', ['refunded', 'pending', 'succeeded'])
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  if (existingRefundError) {
+    throw existingRefundError
+  }
+
+  if (existingRefund) {
+    const existingMetadata =
+      typeof existingRefund.metadata === 'object' && existingRefund.metadata !== null
+        ? (existingRefund.metadata as Record<string, unknown>)
+        : {}
+
+    const existingStripeRefundId =
+      typeof existingMetadata.stripe_refund_id === 'string' ? existingMetadata.stripe_refund_id : undefined
+
+    if (existingRefund.status === 'pending') {
+      return {
+        status: 'pending',
+        amount: refundAmount,
+        currency: (existingRefund.currency || payment.currency || 'GBP').toUpperCase(),
+        stripeRefundId: existingStripeRefundId
+      }
+    }
+
+    return {
+      status: 'succeeded',
+      amount: refundAmount,
+      currency: (existingRefund.currency || payment.currency || 'GBP').toUpperCase(),
+      stripeRefundId: existingStripeRefundId
+    }
+  }
+
+  let stripeRefundMeta: { id: string; status: string; currency: string | null } | null = null
+
   try {
     const stripeRefund = await createStripeRefund({
       paymentIntentId: payment.stripe_payment_intent_id,
       amountMinor: amountToMinor(refundAmount),
       reason: 'requested_by_customer',
-      idempotencyKey: `event_refund_${input.bookingId}_${amountToMinor(refundAmount)}_${input.reason}`
+      idempotencyKey: `event_refund_${input.bookingId}_${payment.id}_${amountToMinor(refundAmount)}`
     })
+    stripeRefundMeta = {
+      id: stripeRefund.id,
+      status: String(stripeRefund.status || 'unknown'),
+      currency: stripeRefund.currency || null
+    }
 
     const mappedStatus = mapRefundStatus(stripeRefund.status)
     const paymentStatus =
@@ -300,7 +355,7 @@ export async function processEventRefund(
 
     const currency = (stripeRefund.currency || payment.currency || 'GBP').toUpperCase()
 
-    await supabase
+    const { error: refundInsertError } = await supabase
       .from('payments')
       .insert({
         event_booking_id: input.bookingId,
@@ -318,20 +373,34 @@ export async function processEventRefund(
         }
       })
 
+    if (refundInsertError) {
+      throw refundInsertError
+    }
+
     if (mappedStatus === 'refunded' || mappedStatus === 'pending') {
-      await recordAnalyticsEvent(supabase, {
-        customerId: input.customerId,
-        eventBookingId: input.bookingId,
-        eventType: 'refund_created',
-        metadata: {
-          event_id: input.eventId,
-          amount: refundAmount,
-          currency,
-          stripe_refund_id: stripeRefund.id,
-          stripe_refund_status: stripeRefund.status,
-          reason: input.reason
-        }
-      })
+      try {
+        await recordAnalyticsEvent(supabase, {
+          customerId: input.customerId,
+          eventBookingId: input.bookingId,
+          eventType: 'refund_created',
+          metadata: {
+            event_id: input.eventId,
+            amount: refundAmount,
+            currency,
+            stripe_refund_id: stripeRefund.id,
+            stripe_refund_status: stripeRefund.status,
+            reason: input.reason
+          }
+        })
+      } catch (analyticsError) {
+        logger.warn('Failed to record event refund analytics event', {
+          metadata: {
+            bookingId: input.bookingId,
+            customerId: input.customerId,
+            error: analyticsError instanceof Error ? analyticsError.message : String(analyticsError)
+          }
+        })
+      }
     }
 
     return {
@@ -349,26 +418,44 @@ export async function processEventRefund(
       }
     })
 
-    await supabase
+    const { error: failedInsertError } = await supabase
       .from('payments')
       .insert({
         event_booking_id: input.bookingId,
         charge_type: 'refund',
         amount: refundAmount,
-        currency: 'GBP',
-        status: 'failed',
+        currency: (stripeRefundMeta?.currency || payment.currency || 'GBP').toUpperCase(),
+        status: stripeRefundMeta ? 'pending' : 'failed',
         metadata: {
           reason: input.reason,
           error: error instanceof Error ? error.message : String(error),
+          source_payment_id: payment.id,
+          stripe_refund_id: stripeRefundMeta?.id,
+          stripe_refund_status: stripeRefundMeta?.status,
+          persistence_gap: stripeRefundMeta ? true : undefined,
           ...(input.metadata || {})
         }
       })
 
+    if (failedInsertError) {
+      logger.warn('Failed persisting event refund fallback row', {
+        metadata: {
+          bookingId: input.bookingId,
+          amount: refundAmount,
+          error: failedInsertError.message
+        }
+      })
+    }
+
     return {
-      status: 'failed',
+      status: stripeRefundMeta ? 'manual_required' : 'failed',
       amount: refundAmount,
-      currency: 'GBP',
-      reason: error instanceof Error ? error.message : String(error)
+      currency: (stripeRefundMeta?.currency || payment.currency || 'GBP').toUpperCase(),
+      reason: stripeRefundMeta
+        ? 'refund_processed_but_local_record_failed'
+        : error instanceof Error
+          ? error.message
+          : String(error)
     }
   }
 }
@@ -471,23 +558,65 @@ export async function createSeatIncreaseCheckoutByManageToken(
     throw new Error('Stripe checkout did not return a URL')
   }
 
-  await supabase
+  const { data: existingPayment, error: existingPaymentLookupError } = await supabase
     .from('payments')
-    .insert({
-      event_booking_id: preview.booking_id,
-      charge_type: 'seat_increase',
-      stripe_checkout_session_id: session.id,
-      stripe_payment_intent_id: session.payment_intent ?? null,
-      amount,
-      currency: 'GBP',
-      status: 'pending',
-      metadata: {
-        payment_kind: 'seat_increase',
-        target_seats: targetSeats,
-        delta_seats: deltaSeats,
-        checkout_url: session.url
+    .select('id')
+    .eq('stripe_checkout_session_id', session.id)
+    .limit(1)
+    .maybeSingle()
+
+  if (existingPaymentLookupError) {
+    throw new Error(
+      `Failed to verify existing seat-increase payment row before checkout persistence: ${existingPaymentLookupError.message}`
+    )
+  }
+
+  if (!existingPayment) {
+    const { data: insertedPayment, error: paymentInsertError } = await supabase
+      .from('payments')
+      .insert({
+        event_booking_id: preview.booking_id,
+        charge_type: 'seat_increase',
+        stripe_checkout_session_id: session.id,
+        stripe_payment_intent_id: session.payment_intent ?? null,
+        amount,
+        currency: 'GBP',
+        status: 'pending',
+        metadata: {
+          payment_kind: 'seat_increase',
+          target_seats: targetSeats,
+          delta_seats: deltaSeats,
+          checkout_url: session.url
+        }
+      })
+      .select('id')
+      .maybeSingle()
+
+    if (paymentInsertError) {
+      if (isDuplicateKeyError(paymentInsertError)) {
+        const { data: concurrentPayment, error: concurrentLookupError } = await supabase
+          .from('payments')
+          .select('id')
+          .eq('stripe_checkout_session_id', session.id)
+          .limit(1)
+          .maybeSingle()
+
+        if (concurrentLookupError) {
+          throw new Error(
+            `Failed to verify concurrent seat-increase payment row after duplicate insert: ${concurrentLookupError.message}`
+          )
+        }
+
+        if (!concurrentPayment) {
+          throw new Error('Failed to resolve concurrent seat-increase payment row after duplicate insert')
+        }
+      } else {
+        throw new Error(`Failed to persist pending seat-increase payment row: ${paymentInsertError.message}`)
       }
-    })
+    } else if (!insertedPayment) {
+      throw new Error('Seat-increase payment insert affected no rows')
+    }
+  }
 
   return {
     state: 'created',

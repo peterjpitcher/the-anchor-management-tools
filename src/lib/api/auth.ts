@@ -24,62 +24,72 @@ export async function generateApiKey(): Promise<string> {
 
 export async function validateApiKey(apiKey: string | null): Promise<ApiKey | null> {
   if (!apiKey) {
-    console.log('[API Auth] No API key provided');
     return null;
   }
-  
-  console.log('[API Auth] Validating API key:', apiKey.substring(0, 10) + '...');
-  
+
   // Use admin client for API key validation since api_keys table requires elevated permissions
   const supabase = createAdminClient();
   const keyHash = await hashApiKey(apiKey);
-  console.log('[API Auth] Key hash:', keyHash);
-  
+
   const { data, error } = await supabase
     .from('api_keys')
     .select('id, name, permissions, rate_limit, is_active')
     .eq('key_hash', keyHash)
     .eq('is_active', true);
-  
+
   if (error) {
-    console.log('[API Auth] Database query error:', error.message);
+    console.error('[API Auth] Failed to validate API key');
     return null;
   }
-  
+
   if (!data || data.length === 0) {
-    console.log('[API Auth] No matching key found');
     return null;
   }
-  
+
   if (data.length > 1) {
-    console.log('[API Auth] Multiple keys found with same hash, using first one');
+    console.error('[API Auth] Duplicate active API key hashes detected');
   }
-  
+
   const keyData = data[0];
-  
-  console.log('[API Auth] Key validated:', keyData.name);
-  
+
   // Update last used timestamp
-  await supabase
+  const { data: updatedKey, error: updateError } = await supabase
     .from('api_keys')
     .update({ last_used_at: new Date().toISOString() })
-    .eq('id', keyData.id);
-  
+    .eq('id', keyData.id)
+    .select('id')
+    .maybeSingle();
+
+  if (updateError) {
+    console.error('[API Auth] Failed to update API key last_used_at');
+  } else if (!updatedKey) {
+    console.error('[API Auth] API key disappeared before last_used_at could be updated');
+  }
+
   return keyData as ApiKey;
 }
 
-export async function checkRateLimit(apiKeyId: string, limit: number): Promise<boolean> {
+// Returns `null` when rate limit checks are unavailable so callers can fail closed explicitly.
+export async function checkRateLimit(apiKeyId: string, limit: number): Promise<boolean | null> {
   const supabase = createAdminClient();
   
   // Count requests in the last hour
   const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
   
-  const { count } = await supabase
+  const { count, error } = await supabase
     .from('api_usage')
     .select('*', { count: 'exact', head: true })
     .eq('api_key_id', apiKeyId)
     .gte('created_at', oneHourAgo);
-  
+
+  if (error) {
+    console.error('[API Auth] Rate limit check failed; blocking request (fail closed)', {
+      apiKeyId,
+      error: error.message,
+    });
+    return null;
+  }
+
   return (count || 0) < limit;
 }
 
@@ -93,7 +103,7 @@ export async function logApiUsage(
   const supabase = createAdminClient();
   const headersList = await headers();
   
-  await supabase.from('api_usage').insert({
+  const { error } = await supabase.from('api_usage').insert({
     api_key_id: apiKeyId,
     endpoint,
     method,
@@ -102,6 +112,10 @@ export async function logApiUsage(
     ip_address: headersList.get('x-forwarded-for') || headersList.get('x-real-ip'),
     user_agent: headersList.get('user-agent'),
   });
+
+  if (error) {
+    throw error;
+  }
 }
 
 export function createApiResponse(
@@ -154,6 +168,71 @@ export function createErrorResponse(
   );
 }
 
+function extractApiKey(headersList: Headers): string | null {
+  const xApiKey = headersList.get('x-api-key')?.trim();
+  if (xApiKey) {
+    return xApiKey;
+  }
+
+  const authHeader = headersList.get('authorization')?.trim();
+  if (!authHeader) {
+    return null;
+  }
+
+  const bearerMatch = authHeader.match(/^Bearer\s+(.+)$/i);
+  return bearerMatch?.[1]?.trim() || null;
+}
+
+function safePathname(url: string | null | undefined): string {
+  if (!url) {
+    return '/';
+  }
+
+  try {
+    return new URL(url).pathname || '/';
+  } catch {
+    return '/';
+  }
+}
+
+function normalizeRequestMethod(method: string | null | undefined): string {
+  const normalized = method?.trim().toUpperCase();
+  if (!normalized) {
+    return 'GET';
+  }
+
+  return /^[A-Z]+$/.test(normalized) ? normalized : 'GET';
+}
+
+function normalizeRequestUrl(url: string | null | undefined): string {
+  if (!url) {
+    return 'http://localhost/';
+  }
+
+  try {
+    return new URL(url).toString();
+  } catch {
+    if (url.startsWith('/')) {
+      return `http://localhost${url}`;
+    }
+    return 'http://localhost/';
+  }
+}
+
+async function safeLogApiUsage(
+  apiKeyId: string,
+  endpoint: string,
+  method: string,
+  statusCode: number,
+  responseTime: number
+): Promise<void> {
+  try {
+    await logApiUsage(apiKeyId, endpoint, method, statusCode, responseTime);
+  } catch {
+    console.error('[API Auth] Failed to log API usage');
+  }
+}
+
 export async function withApiAuth(
   handler: (req: Request, apiKey: ApiKey) => Promise<Response>,
   requiredPermissions: string[] = ['read:events'],
@@ -161,26 +240,8 @@ export async function withApiAuth(
 ): Promise<Response> {
   const startTime = Date.now();
   const headersList = await headers();
-  
-  console.log('[API Auth] Headers received:');
-  headersList.forEach((value, key) => {
-    if (key.toLowerCase().includes('api') || key.toLowerCase().includes('auth')) {
-      console.log(`  ${key}: ${value.substring(0, 20)}...`);
-    }
-  });
-  
-  // Check both X-API-Key and Authorization headers
-  const xApiKey = headersList.get('x-api-key');
-  const authHeader = headersList.get('authorization');
-  
-  console.log('[API Auth] X-API-Key header:', xApiKey ? xApiKey.substring(0, 10) + '...' : 'Not found');
-  console.log('[API Auth] Authorization header:', authHeader ? authHeader.substring(0, 20) + '...' : 'Not found');
-  
-  const apiKey = xApiKey || authHeader?.replace('Bearer ', '');
-  
-  console.log('[API Auth] Final API key to validate:', apiKey ? apiKey.substring(0, 10) + '...' : 'None');
-  
-  const validatedKey = await validateApiKey(apiKey || null);
+  const apiKey = extractApiKey(headersList);
+  const validatedKey = await validateApiKey(apiKey);
   
   if (!validatedKey) {
     return createErrorResponse('Invalid or missing API key', 'UNAUTHORIZED', 401);
@@ -197,6 +258,14 @@ export async function withApiAuth(
   
   // Check rate limit
   const withinLimit = await checkRateLimit(validatedKey.id, validatedKey.rate_limit);
+
+  if (withinLimit === null) {
+    return createErrorResponse(
+      'Rate limiting is temporarily unavailable',
+      'RATE_LIMIT_UNAVAILABLE',
+      503
+    );
+  }
   
   if (!withinLimit) {
     return createErrorResponse(
@@ -207,16 +276,17 @@ export async function withApiAuth(
   }
   
   try {
-    const req = request || new Request(headersList.get('x-url') || '');
+    const fallbackUrl = normalizeRequestUrl(headersList.get('x-url'));
+    const fallbackMethod = normalizeRequestMethod(headersList.get('x-method'));
+    const req = request || new Request(fallbackUrl, { method: fallbackMethod });
     const response = await handler(req, validatedKey);
     const responseTime = Date.now() - startTime;
     
     // Log usage
-    const url = new URL(req.url || headersList.get('x-url') || '');
-    await logApiUsage(
+    await safeLogApiUsage(
       validatedKey.id,
-      url.pathname,
-      req.method || headersList.get('x-method') || 'GET',
+      safePathname(req.url),
+      req.method || fallbackMethod,
       response.status,
       responseTime
     );
@@ -224,10 +294,10 @@ export async function withApiAuth(
     return response;
   } catch (error) {
     const responseTime = Date.now() - startTime;
-    
-    await logApiUsage(
+
+    await safeLogApiUsage(
       validatedKey.id,
-      new URL(headersList.get('x-url') || '').pathname,
+      safePathname(request?.url || headersList.get('x-url')),
       headersList.get('x-method') || 'GET',
       500,
       responseTime

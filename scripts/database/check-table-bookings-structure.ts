@@ -1,43 +1,65 @@
-import { config } from 'dotenv';
-import { createAdminClient } from '../src/lib/supabase/server.js';
+#!/usr/bin/env tsx
 
-// Load environment variables
-config({ path: '.env.local' });
+import dotenv from 'dotenv'
+import path from 'path'
+import { createAdminClient } from '../../src/lib/supabase/admin'
+import { assertScriptQuerySucceeded } from '../../src/lib/script-mutation-safety'
 
-async function checkTableStructure() {
-  const supabase = createAdminClient();
-  
-  console.log('Checking table_bookings structure...\n');
-  
-  try {
-    // Get a sample record to see the structure
-    const { data: sample, error } = await supabase
-      .from('table_bookings')
-      .select('*')
-      .limit(1);
-    
-    if (error) {
-      console.error('Error:', error);
-      return;
-    }
-    
-    if (sample && sample.length > 0) {
-      console.log('Table columns:');
-      Object.keys(sample[0]).forEach(key => {
-        const value = sample[0][key];
-        const type = value === null ? 'null' : typeof value;
-        console.log(`  - ${key}: ${type}`);
-      });
-      
-      console.log('\nSample record:');
-      console.log(JSON.stringify(sample[0], null, 2));
-    } else {
-      console.log('No records found in table_bookings');
-    }
-    
-  } catch (error) {
-    console.error('Unexpected error:', error);
+dotenv.config({ path: path.resolve(process.cwd(), '.env.local') })
+
+function markFailure(message: string, error?: unknown) {
+  process.exitCode = 1
+  if (error) {
+    console.error(`ERROR: ${message}`, error)
+    return
+  }
+  console.error(`ERROR: ${message}`)
+}
+
+async function checkTableBookingsStructure() {
+  const argv = process.argv
+  if (argv.includes('--confirm')) {
+    throw new Error('check-table-bookings-structure is strictly read-only; do not pass --confirm.')
+  }
+
+  const showSample = argv.includes('--show-sample')
+
+  console.log('Checking table_bookings structure (sample row)...\n')
+  console.log(`Show sample payload: ${showSample ? 'yes' : 'no'}\n`)
+
+  const supabase = createAdminClient()
+
+  const { data: sampleRows, error: sampleError } = await supabase.from('table_bookings').select('*').limit(1)
+
+  const rows = (assertScriptQuerySucceeded({
+    operation: 'Load table_bookings sample row',
+    error: sampleError,
+    data: sampleRows ?? [],
+    allowMissing: true
+  }) ?? []) as Array<Record<string, unknown>>
+
+  if (rows.length === 0) {
+    console.log('No rows found in table_bookings.')
+    return
+  }
+
+  const sample = rows[0] ?? {}
+  console.log('Columns:')
+  Object.keys(sample).forEach((key) => {
+    const value = sample[key]
+    const type = value === null ? 'null' : Array.isArray(value) ? 'array' : typeof value
+    console.log(`  - ${key}: ${type}`)
+  })
+
+  if (showSample) {
+    console.log('\nSample row (may contain PII):')
+    console.log(JSON.stringify(sample, null, 2))
+  } else {
+    console.log('\nUse --show-sample to print the sample row payload.')
   }
 }
 
-checkTableStructure().catch(console.error);
+void checkTableBookingsStructure().catch((error) => {
+  markFailure('check-table-bookings-structure failed.', error)
+})
+

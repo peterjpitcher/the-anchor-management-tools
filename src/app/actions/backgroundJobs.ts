@@ -101,7 +101,7 @@ export async function retryBackgroundJob(jobId: string) {
 
     const { supabase } = ensure
 
-    const { error } = await supabase
+    const { data: retriedJob, error } = await supabase
       .from('jobs')
       .update({
         status: 'pending',
@@ -111,10 +111,15 @@ export async function retryBackgroundJob(jobId: string) {
         updated_at: new Date().toISOString(),
       })
       .eq('id', jobId)
+      .select('id')
+      .maybeSingle()
 
     if (error) {
       console.error('Error retrying job:', error)
       return { error: 'Failed to retry job' }
+    }
+    if (!retriedJob) {
+      return { error: 'Job not found' }
     }
 
     await logAuditEvent({
@@ -143,14 +148,19 @@ export async function deleteBackgroundJob(jobId: string) {
 
     const { supabase } = ensure
 
-    const { error } = await supabase
+    const { data: deletedJob, error } = await supabase
       .from('jobs')
       .delete()
       .eq('id', jobId)
+      .select('id')
+      .maybeSingle()
 
     if (error) {
       console.error('Error deleting job:', error)
       return { error: 'Failed to delete job' }
+    }
+    if (!deletedJob) {
+      return { error: 'Job not found' }
     }
 
     await logAuditEvent({

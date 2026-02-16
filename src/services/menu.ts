@@ -338,12 +338,16 @@ export class MenuService {
     }
 
     if (input.pack_cost > 0) {
-      await supabase.from('menu_ingredient_prices').insert({
+      const { error: priceHistoryError } = await supabase.from('menu_ingredient_prices').insert({
         ingredient_id: ingredient.id,
         pack_cost: input.pack_cost,
         supplier_name: input.supplier_name || null,
         supplier_sku: input.supplier_sku || null,
       });
+      if (priceHistoryError) {
+        console.error('createMenuIngredient price history error:', priceHistoryError);
+        throw new Error('Failed to record ingredient price history');
+      }
     }
 
     return ingredient;
@@ -394,12 +398,16 @@ export class MenuService {
 
     // Only record new price if it actually changed
     if (input.pack_cost !== existing.pack_cost && input.pack_cost !== undefined) {
-      await supabase.from('menu_ingredient_prices').insert({
+      const { error: priceHistoryError } = await supabase.from('menu_ingredient_prices').insert({
         ingredient_id: id,
         pack_cost: input.pack_cost,
         supplier_name: input.supplier_name || null,
         supplier_sku: input.supplier_sku || null,
       });
+      if (priceHistoryError) {
+        console.error('updateMenuIngredient price history error:', priceHistoryError);
+        throw new Error('Failed to record ingredient price history');
+      }
     }
 
     return ingredient;
@@ -428,10 +436,18 @@ export class MenuService {
   static async deleteIngredient(id: string) {
     const supabase = await createClient();
 
-    const { error } = await supabase.from('menu_ingredients').delete().eq('id', id);
+    const { data: deletedIngredient, error } = await supabase
+      .from('menu_ingredients')
+      .delete()
+      .eq('id', id)
+      .select('id')
+      .maybeSingle();
     if (error) {
       console.error('deleteMenuIngredient error:', error);
       throw new Error('Failed to delete ingredient');
+    }
+    if (!deletedIngredient) {
+      throw new Error('Ingredient not found');
     }
 
     return { success: true };
@@ -685,11 +701,14 @@ export class MenuService {
       .update(recipeData)
       .eq('id', id)
       .select()
-      .single();
+      .maybeSingle();
 
-    if (recipeError || !recipe) {
+    if (recipeError) {
       console.error('updateMenuRecipe recipe error:', recipeError);
       throw new Error('Failed to update recipe');
+    }
+    if (!recipe) {
+      throw new Error('Recipe not found');
     }
 
     const { error: deleteIngredientsError } = await supabase
@@ -722,7 +741,11 @@ export class MenuService {
       }
     }
 
-    await supabase.rpc('menu_refresh_recipe_calculations', { p_recipe_id: id });
+    const { error: refreshRecipeError } = await supabase.rpc('menu_refresh_recipe_calculations', { p_recipe_id: id });
+    if (refreshRecipeError) {
+      console.error('updateMenuRecipe refresh calculations error:', refreshRecipeError);
+      throw new Error('Failed to refresh recipe calculations');
+    }
 
     return recipe;
   }
@@ -730,10 +753,18 @@ export class MenuService {
   static async deleteRecipe(id: string) {
     const supabase = await createClient();
 
-    const { error } = await supabase.from('menu_recipes').delete().eq('id', id);
+    const { data: deletedRecipe, error } = await supabase
+      .from('menu_recipes')
+      .delete()
+      .eq('id', id)
+      .select('id')
+      .maybeSingle();
     if (error) {
       console.error('deleteMenuRecipe error:', error);
       throw new Error('Failed to delete recipe');
+    }
+    if (!deletedRecipe) {
+      throw new Error('Recipe not found');
     }
     return { success: true };
   }
@@ -1062,11 +1093,14 @@ export class MenuService {
       })
       .eq('id', id)
       .select()
-      .single();
+      .maybeSingle();
 
-    if (dishError || !dish) {
+    if (dishError) {
       console.error('updateMenuDish dish error:', dishError);
       throw new Error('Failed to update dish');
+    }
+    if (!dish) {
+      throw new Error('Dish not found');
     }
 
     const { error: deleteIngredientsError } = await supabase
@@ -1158,7 +1192,11 @@ export class MenuService {
       throw new Error('Failed to update dish assignments');
     }
 
-    await supabase.rpc('menu_refresh_dish_calculations', { p_dish_id: id });
+    const { error: refreshDishError } = await supabase.rpc('menu_refresh_dish_calculations', { p_dish_id: id });
+    if (refreshDishError) {
+      console.error('updateMenuDish refresh calculations error:', refreshDishError);
+      throw new Error('Failed to refresh dish calculations');
+    }
 
     return dish;
   }
@@ -1166,10 +1204,18 @@ export class MenuService {
   static async deleteDish(id: string) {
     const supabase = await createClient();
 
-    const { error } = await supabase.from('menu_dishes').delete().eq('id', id);
+    const { data: deletedDish, error } = await supabase
+      .from('menu_dishes')
+      .delete()
+      .eq('id', id)
+      .select('id')
+      .maybeSingle();
     if (error) {
       console.error('deleteMenuDish error:', error);
       throw new Error('Failed to delete dish');
+    }
+    if (!deletedDish) {
+      throw new Error('Dish not found');
     }
 
     return { success: true };

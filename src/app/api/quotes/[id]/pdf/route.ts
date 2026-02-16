@@ -47,22 +47,31 @@ export async function GET(
     return new NextResponse('Quote not found', { status: 404 })
   }
 
+  const quoteRecord = quote as Record<string, unknown>
+  if ('deleted_at' in quoteRecord && quoteRecord.deleted_at) {
+    return new NextResponse('Quote not found', { status: 404 })
+  }
+
   try {
     // Generate PDF
     const pdfBuffer = await generateQuotePDF(quote)
     
-    // Log quote generation
-    await logAuditEvent({
-      operation_type: 'read',
-      resource_type: 'quote',
-      resource_id: quoteId,
-      operation_status: 'success',
-      additional_info: { 
-        action: 'pdf_generated',
-        quote_number: quote.quote_number,
-        ip_address: request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip')
-      }
-    })
+    // Best-effort logging: do not fail PDF generation on telemetry issues.
+    try {
+      await logAuditEvent({
+        operation_type: 'read',
+        resource_type: 'quote',
+        resource_id: quoteId,
+        operation_status: 'success',
+        additional_info: { 
+          action: 'pdf_generated',
+          quote_number: quote.quote_number,
+          ip_address: request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip')
+        }
+      })
+    } catch (auditError) {
+      console.error('[Quotes PDF] Failed to write audit log:', auditError)
+    }
 
     // Return PDF with appropriate headers
     return new NextResponse(pdfBuffer as unknown as BodyInit, {

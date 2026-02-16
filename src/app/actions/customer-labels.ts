@@ -176,9 +176,12 @@ export async function updateCustomerLabel(
       .update(labelData)
       .eq('id', id)
       .select()
-      .single()
+      .maybeSingle()
 
     if (error) throw error
+    if (!data) {
+      return { error: 'Customer label not found' }
+    }
 
     // Log audit event
     await logAuditEvent({
@@ -224,12 +227,17 @@ export async function deleteCustomerLabel(id: string): Promise<{ success?: boole
       return { error: 'Customer label not found' }
     }
 
-    const { error } = await admin
+    const { data: deletedLabel, error } = await admin
       .from('customer_labels')
       .delete()
       .eq('id', id)
+      .select('id')
+      .maybeSingle()
 
     if (error) throw error
+    if (!deletedLabel) {
+      return { error: 'Customer label not found' }
+    }
 
     // Log audit event
     await logAuditEvent({
@@ -310,13 +318,18 @@ export async function removeLabelFromCustomer(
 
     const { user, admin } = permission
 
-    const { error } = await admin
+    const { data: removedAssignment, error } = await admin
       .from('customer_label_assignments')
       .delete()
       .eq('customer_id', customerId)
       .eq('label_id', labelId)
+      .select('customer_id, label_id')
+      .maybeSingle()
 
     if (error) throw error
+    if (!removedAssignment) {
+      return { error: 'Label assignment not found' }
+    }
 
     await logAuditEvent({
       user_id: user.id,

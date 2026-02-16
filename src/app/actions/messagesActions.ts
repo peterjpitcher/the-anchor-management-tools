@@ -4,6 +4,7 @@ import type { Message } from '@/types/database'
 
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { logger } from '@/lib/logger'
 import { revalidatePath } from 'next/cache'
 import { checkUserPermission } from './rbac'
 
@@ -63,6 +64,14 @@ type ConversationAccumulator = {
 const RECENT_CONVERSATION_LIMIT = 25
 const RECENT_MESSAGE_FETCH_LIMIT = 400
 const UNREAD_MESSAGE_FETCH_LIMIT = 500
+
+function toError(error: unknown): Error {
+  if (error instanceof Error) return error
+  if (typeof error === 'object' && error && 'message' in error) {
+    return new Error(String((error as { message?: unknown }).message))
+  }
+  return new Error(String(error))
+}
 
 function extractCustomer(message: RawMessage): CustomerSummary {
   const customerRecord = Array.isArray(message.customers)
@@ -201,17 +210,23 @@ export async function getMessages(): Promise<InboxResponse> {
   const { count: unreadCountRaw, error: unreadCountError } = unreadCountResult
 
   if (recentError) {
-    console.error('Error fetching recent messages:', recentError)
+    logger.error('Error fetching recent messages', {
+      error: toError(recentError),
+    })
     return { error: 'Failed to load messages' }
   }
 
   if (unreadError) {
-    console.error('Error fetching unread messages:', unreadError)
+    logger.error('Error fetching unread messages', {
+      error: toError(unreadError),
+    })
     return { error: 'Failed to load messages' }
   }
 
   if (unreadCountError) {
-    console.error('Error counting unread messages:', unreadCountError)
+    logger.warn('Error counting unread messages', {
+      error: toError(unreadCountError),
+    })
   }
 
   const conversationMap = new Map<string, ConversationAccumulator>()
@@ -318,7 +333,9 @@ export async function getUnreadMessageCount() {
     .is('read_at', null)
 
   if (error) {
-    console.error('Error fetching unread count:', error)
+    logger.warn('Error fetching unread count', {
+      error: toError(error),
+    })
     return { badge: 0 }
   }
 
@@ -350,13 +367,19 @@ export async function getConversationMessages(
 
   const { data: messages, error: messagesError } = messagesResult
   if (messagesError) {
-    console.error('Error loading conversation messages:', messagesError)
+    logger.error('Error loading conversation messages', {
+      error: toError(messagesError),
+      metadata: { customerId },
+    })
     return { error: 'Failed to load conversation' }
   }
 
   const { data: customer, error: customerError } = customerResult
   if (customerError) {
-    console.error('Error loading conversation customer:', customerError)
+    logger.warn('Error loading conversation customer', {
+      error: toError(customerError),
+      metadata: { customerId },
+    })
   }
 
   return {
@@ -380,15 +403,24 @@ export async function markMessageAsRead(messageId: string) {
 
   const supabase = createAdminClient()
 
-  const { error } = await supabase
+  const { data: updatedMessage, error } = await supabase
     .from('messages')
     .update({ read_at: new Date().toISOString() })
     .eq('id', messageId)
     .eq('direction', 'inbound')
+    .select('id')
+    .maybeSingle()
 
   if (error) {
-    console.error('Error marking message as read:', error)
+    logger.error('Error marking message as read', {
+      error: toError(error),
+      metadata: { messageId },
+    })
     throw new Error('Failed to mark message as read')
+  }
+
+  if (!updatedMessage) {
+    throw new Error('Message not found')
   }
 
   revalidatePath('/messages')
@@ -410,7 +442,9 @@ export async function markAllMessagesAsRead() {
     .is('read_at', null)
 
   if (error) {
-    console.error('Error marking all messages as read:', error)
+    logger.error('Error marking all messages as read', {
+      error: toError(error),
+    })
     throw new Error('Failed to mark all messages as read')
   }
 
@@ -434,7 +468,10 @@ export async function markConversationAsRead(customerId: string) {
     .is('read_at', null)
 
   if (error) {
-    console.error('Error marking conversation as read:', error)
+    logger.error('Error marking conversation as read', {
+      error: toError(error),
+      metadata: { customerId },
+    })
     throw new Error('Failed to mark conversation as read')
   }
 
@@ -461,7 +498,10 @@ export async function markConversationAsUnread(customerId: string) {
     .maybeSingle()
 
   if (fetchError) {
-    console.error('Error finding latest inbound message:', fetchError)
+    logger.error('Error finding latest inbound message', {
+      error: toError(fetchError),
+      metadata: { customerId },
+    })
     throw new Error('Failed to mark conversation as unread')
   }
 
@@ -469,14 +509,23 @@ export async function markConversationAsUnread(customerId: string) {
     return { success: true }
   }
 
-  const { error: updateError } = await supabase
+  const { data: updatedMessage, error: updateError } = await supabase
     .from('messages')
     .update({ read_at: null })
     .eq('id', latestInbound.id)
+    .select('id')
+    .maybeSingle()
 
   if (updateError) {
-    console.error('Error marking conversation as unread:', updateError)
+    logger.error('Error marking conversation as unread', {
+      error: toError(updateError),
+      metadata: { customerId },
+    })
     throw new Error('Failed to mark conversation as unread')
+  }
+
+  if (!updatedMessage) {
+    throw new Error('Message not found')
   }
 
   revalidatePath('/messages')

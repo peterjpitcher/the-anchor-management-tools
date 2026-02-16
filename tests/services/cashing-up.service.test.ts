@@ -10,6 +10,7 @@ const mockDelete = vi.fn();
 const mockEq = vi.fn();
 const mockSingle = vi.fn();
 const mockMaybeSingle = vi.fn();
+const mockSelectFromEq = vi.fn();
 
 const mockSupabase = {
   from: vi.fn(() => ({
@@ -25,11 +26,13 @@ mockSelect.mockReturnValue({ eq: mockEq });
 mockInsert.mockReturnValue({ select: vi.fn(() => ({ single: mockSingle })) });
 mockUpdate.mockReturnValue({ eq: mockEq });
 mockDelete.mockReturnValue({ eq: mockEq });
+mockSelectFromEq.mockReturnValue({ single: mockSingle, maybeSingle: mockMaybeSingle });
 mockEq.mockReturnValue({ 
   single: mockSingle, 
   maybeSingle: mockMaybeSingle,
   eq: mockEq,
-  is: mockEq 
+  is: mockEq,
+  select: mockSelectFromEq
 });
 
 describe('CashingUpService', () => {
@@ -49,11 +52,13 @@ describe('CashingUpService', () => {
         single: mockSingle, 
         maybeSingle: mockMaybeSingle,
         eq: mockEq,
-        is: mockEq // Handle chained .eq().is()
+        is: mockEq, // Handle chained .eq().is()
+        select: mockSelectFromEq
     });
     mockInsert.mockReturnValue({ select: vi.fn(() => ({ single: mockSingle })) });
     mockUpdate.mockReturnValue({ eq: mockEq });
     mockDelete.mockReturnValue({ eq: mockEq });
+    mockSelectFromEq.mockReturnValue({ single: mockSingle, maybeSingle: mockMaybeSingle });
   });
 
   it('should calculate totals correctly on upsert', async () => {
@@ -116,5 +121,65 @@ describe('CashingUpService', () => {
 
     await expect(CashingUpService.upsertSession(mockSupabase, dto, userId))
       .rejects.toThrow('already exists');
+  });
+
+  it('should move draft sessions to submitted on submitSession', async () => {
+    mockMaybeSingle.mockResolvedValueOnce({ data: { id: 'session-1' }, error: null });
+    mockSingle.mockResolvedValueOnce({ data: { id: 'session-1', status: 'submitted' }, error: null });
+
+    await CashingUpService.submitSession(mockSupabase, 'session-1', 'user-1');
+
+    expect(mockUpdate).toHaveBeenCalledWith(expect.objectContaining({
+      status: 'submitted',
+      approved_by_user_id: null
+    }));
+  });
+
+  it('should reject submitSession when session is not draft', async () => {
+    mockMaybeSingle.mockResolvedValueOnce({ data: null, error: null });
+
+    await expect(
+      CashingUpService.submitSession(mockSupabase, 'session-1', 'user-1')
+    ).rejects.toThrow('not in draft status');
+  });
+
+  it('should reject approveSession when session is not submitted', async () => {
+    mockMaybeSingle.mockResolvedValueOnce({ data: null, error: null });
+
+    await expect(
+      CashingUpService.approveSession(mockSupabase, 'session-1', 'user-1')
+    ).rejects.toThrow('not in submitted status');
+  });
+
+  it('should reject upsertSession update when target session no longer exists', async () => {
+    const userId = 'user-123';
+    const dto = {
+      siteId: 'site-1',
+      sessionDate: '2025-01-01',
+      paymentBreakdowns: [],
+      cashCounts: []
+    };
+
+    mockMaybeSingle.mockResolvedValueOnce({ data: null, error: null });
+
+    await expect(
+      CashingUpService.upsertSession(mockSupabase, dto, userId, 'session-1')
+    ).rejects.toThrow('Session not found');
+  });
+
+  it('should reject lockSession when session is missing', async () => {
+    mockMaybeSingle.mockResolvedValueOnce({ data: null, error: null });
+
+    await expect(
+      CashingUpService.lockSession(mockSupabase, 'session-1', 'user-1')
+    ).rejects.toThrow('Session not found');
+  });
+
+  it('should reject unlockSession when session is not locked', async () => {
+    mockMaybeSingle.mockResolvedValueOnce({ data: null, error: null });
+
+    await expect(
+      CashingUpService.unlockSession(mockSupabase, 'session-1', 'user-1')
+    ).rejects.toThrow('Session not found or not locked');
   });
 });

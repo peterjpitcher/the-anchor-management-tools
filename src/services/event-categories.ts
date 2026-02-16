@@ -5,12 +5,16 @@ export class EventCategoryService {
   static async createCategory(input: CategoryFormData) {
     const admin = createAdminClient();
 
-    const { data: maxSortOrder } = await admin
+    const { data: maxSortOrder, error: sortOrderError } = await admin
       .from('event_categories')
       .select('sort_order')
       .order('sort_order', { ascending: false })
       .limit(1)
       .maybeSingle();
+
+    if (sortOrderError) {
+      throw new Error('Failed to load event category order');
+    }
 
     const nextSortOrder = (maxSortOrder?.sort_order || 0) + 1;
 
@@ -95,17 +99,25 @@ export class EventCategoryService {
       .eq('id', id)
       .maybeSingle();
 
+    if (loadError) {
+      throw new Error('Failed to load event category');
+    }
     if (!category) {
       throw new Error('Event category not found');
     }
 
-    const { error } = await admin
+    const { data: deletedCategory, error } = await admin
       .from('event_categories')
       .delete()
-      .eq('id', id);
+      .eq('id', id)
+      .select('*')
+      .maybeSingle();
     
     if (error) {
       throw new Error('Failed to delete event category');
+    }
+    if (!deletedCategory) {
+      throw new Error('Event category not found');
     }
 
     return category;

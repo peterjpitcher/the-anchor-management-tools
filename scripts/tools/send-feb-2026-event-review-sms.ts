@@ -4,14 +4,27 @@ import path from 'path'
 import dotenv from 'dotenv'
 import { createClient } from '@supabase/supabase-js'
 import { sendSMS } from '../../src/lib/twilio'
+import {
+  assertFeb2026EventReviewSmsSendAllowed,
+  assertFeb2026EventReviewSmsSendLimit,
+  isFeb2026EventReviewSmsRunEnabled,
+  isFeb2026EventReviewSmsSendEnabled,
+  readFeb2026EventReviewSmsSendLimit
+} from '../../src/lib/send-feb-2026-event-review-sms-safety'
+import {
+  buildManualReviewCampaignSmsMetadata,
+  assertManualReviewCampaignCompletedWithoutErrors,
+  cleanupManualReviewCampaignToken,
+  persistManualReviewCampaignSendState
+} from '../../src/lib/manual-review-campaign-safety'
 
 dotenv.config({ path: path.resolve(process.cwd(), '.env.local') })
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY
-const APP_BASE_URL = (process.env.NEXT_PUBLIC_APP_URL || 'https://management.orangejelly.co.uk').replace(/\/$/, '')
-const ALLOW_SEND = (process.env.ALLOW_FEB_REVIEW_SMS_SEND || '').trim().toLowerCase() === 'true'
 const MANUAL_TEMPLATE_KEY = 'event_review_followup_manual_feb_2026'
+const CAMPAIGN_KEY = 'manual_feb_4_11_2026_review_campaign'
+const SEND_HARD_CAP = 200
 
 if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
   throw new Error('Missing Supabase environment variables')
@@ -75,6 +88,45 @@ function generateGuestToken(): string {
 function normalizeRelatedRow<T>(value: T | T[] | null | undefined): T | null {
   if (!value) return null
   return Array.isArray(value) ? value[0] ?? null : value
+}
+
+function readArgValue(argv: string[], flag: string): string | null {
+  const idx = argv.findIndex((arg) => arg === flag)
+  if (idx !== -1) {
+    const value = argv[idx + 1]
+    return typeof value === 'string' && value.trim().length > 0 ? value.trim() : null
+  }
+
+  const eq = argv.find((arg) => arg.startsWith(`${flag}=`))
+  if (eq) {
+    const [, value] = eq.split('=', 2)
+    return value && value.trim().length > 0 ? value.trim() : null
+  }
+
+  return null
+}
+
+function normalizeBaseUrl(raw: string): string {
+  const trimmed = raw.trim().replace(/\/$/, '')
+  if (!/^https?:\/\//.test(trimmed)) {
+    throw new Error(`Invalid --url (expected http(s)://...): ${raw}`)
+  }
+  return trimmed
+}
+
+function resolveAppBaseUrl(argv: string[]): { baseUrl: string; source: 'arg' | 'env' | 'default' } {
+  const fromArg = readArgValue(argv, '--url') ?? readArgValue(argv, '--app-url')
+  if (fromArg) {
+    return { baseUrl: normalizeBaseUrl(fromArg), source: 'arg' }
+  }
+
+  const fromEnv = process.env.NEXT_PUBLIC_APP_URL
+  if (fromEnv && fromEnv.trim().length > 0) {
+    return { baseUrl: normalizeBaseUrl(fromEnv), source: 'env' }
+  }
+
+  // Safe default: never default scripts to production URLs.
+  return { baseUrl: 'http://localhost:3000', source: 'default' }
 }
 
 function uniqueEventNames(bookings: ResolvedBooking[]): string[] {
@@ -163,10 +215,46 @@ async function main() {
     },
   })
 
-  const reviewLinkTarget = await readGoogleReviewLink(supabase)
-  if (!ALLOW_SEND) {
-    console.log('Running in dry-run mode. Set ALLOW_FEB_REVIEW_SMS_SEND=true to send SMS messages.')
+  const argv = process.argv.slice(2)
+  const hasConfirmFlag = argv.includes('--confirm')
+  const dryRunOverride = argv.includes('--dry-run')
+  const sendEnabled = !dryRunOverride && isFeb2026EventReviewSmsSendEnabled(process.argv)
+  const sendLimit = readFeb2026EventReviewSmsSendLimit(process.argv)
+  const appBase = resolveAppBaseUrl(argv)
+
+  if (hasConfirmFlag && !sendEnabled && !isFeb2026EventReviewSmsRunEnabled() && !dryRunOverride) {
+    throw new Error(
+      'send-feb-2026-event-review-sms blocked: --confirm requires RUN_FEB_REVIEW_SMS_SEND=true.'
+    )
   }
+
+  if (sendEnabled && appBase.source === 'default') {
+    throw new Error(
+      'send-feb-2026-event-review-sms blocked: sending requires an explicit --url (or NEXT_PUBLIC_APP_URL).'
+    )
+  }
+
+  if (!sendEnabled) {
+    const extra = dryRunOverride ? ' (--dry-run)' : ''
+    console.log(
+      `Read-only mode${extra}. Re-run with --confirm RUN_FEB_REVIEW_SMS_SEND=true ALLOW_FEB_REVIEW_SMS_SEND=true --limit=25 --url=https://your-domain to send SMS messages.`
+    )
+  } else {
+    assertFeb2026EventReviewSmsSendAllowed()
+
+    if (!sendLimit) {
+      throw new Error(
+        'send-feb-2026-event-review-sms blocked: sending requires an explicit cap via --limit=<n> (or FEB_REVIEW_SMS_SEND_LIMIT).'
+      )
+    }
+
+    assertFeb2026EventReviewSmsSendLimit(sendLimit, SEND_HARD_CAP)
+    console.log(`Send mode enabled. Will send up to ${sendLimit} message(s) (hard cap ${SEND_HARD_CAP}).`)
+  }
+
+  console.log(`App base URL: ${appBase.baseUrl} (${appBase.source})`)
+
+  const reviewLinkTarget = await readGoogleReviewLink(supabase)
 
   const { data: events, error: eventsError } = await supabase
     .from('events')
@@ -221,9 +309,14 @@ async function main() {
   }
 
   const skipped: Array<{ customerId: string; reason: string; bookingIds: string[] }> = []
+  const processingErrors: Array<{ customerId: string; reason: string; bookingIds: string[] }> = []
   const sent: SendResult[] = []
 
   for (const [customerId, customerBookings] of grouped.entries()) {
+    if (sendEnabled && sendLimit && sent.length >= sendLimit) {
+      break
+    }
+
     const customer = customerBookings[0]?.customer
     const bookingIds = customerBookings.map((row) => row.id)
 
@@ -239,7 +332,7 @@ async function main() {
     const firstName = (customer.first_name || 'there').trim() || 'there'
     const eventNames = uniqueEventNames(customerBookings)
     const primaryBooking = customerBookings[0]
-    if (!ALLOW_SEND) {
+    if (!sendEnabled) {
       skipped.push({
         customerId,
         reason: 'dry_run',
@@ -249,6 +342,7 @@ async function main() {
     }
 
     let hashedToken: string | null = null
+    let smsDispatched = false
     try {
       const { rawToken, hashedToken: createdHashedToken } = await createReviewRedirectToken(
         supabase,
@@ -257,45 +351,47 @@ async function main() {
       )
       hashedToken = createdHashedToken
 
-      const redirectUrl = `${APP_BASE_URL}/r/${rawToken}`
+      const redirectUrl = `${appBase.baseUrl}/r/${rawToken}`
       const messageBody = buildEngagingMessage(firstName, eventNames, redirectUrl)
+      const campaignEventIds = Array.from(
+        new Set(
+          customerBookings
+            .map((row) => row.event_id)
+            .filter((eventId): eventId is string => typeof eventId === 'string' && eventId.trim().length > 0)
+        )
+      )
+      const metadata = buildManualReviewCampaignSmsMetadata({
+        templateKey: MANUAL_TEMPLATE_KEY,
+        campaignKey: CAMPAIGN_KEY,
+        source: CAMPAIGN_KEY,
+        customerId,
+        primaryBookingId: primaryBooking.id,
+        eventIds: campaignEventIds,
+        reviewRedirectTarget: reviewLinkTarget
+      })
+
       const smsResult = await sendSMS(customer.mobile_number, messageBody, {
         customerId,
-        metadata: {
-          event_booking_id: primaryBooking.id,
-          event_id: primaryBooking.event_id,
-          template_key: MANUAL_TEMPLATE_KEY,
-          source: 'manual_feb_4_11_2026_review_campaign',
-          review_redirect_target: reviewLinkTarget
-        }
+        metadata
       })
 
       if (!smsResult.success || !smsResult.sid) {
         throw new Error(smsResult.error || 'SMS send failed')
       }
+      smsDispatched = true
 
       const sentAt = new Date().toISOString()
       const reviewWindowClosesAt = new Date(Date.parse(sentAt) + 7 * 24 * 60 * 60 * 1000).toISOString()
 
-      for (const bookingId of bookingIds) {
-        await supabase
-          .from('bookings')
-          .update({
-            status: 'visited_waiting_for_review',
-            review_sms_sent_at: sentAt,
-            review_window_closes_at: reviewWindowClosesAt,
-            updated_at: new Date().toISOString(),
-          })
-          .eq('id', bookingId)
-          .eq('status', 'confirmed')
+      const persistence = await persistManualReviewCampaignSendState(supabase, {
+        bookingIds,
+        sentAtIso: sentAt,
+        reviewWindowClosesAtIso: reviewWindowClosesAt,
+        hashedToken: createdHashedToken
+      })
+      if (persistence.error) {
+        throw new Error(persistence.error)
       }
-
-      await supabase
-        .from('guest_tokens')
-        .update({
-          expires_at: reviewWindowClosesAt,
-        })
-        .eq('hashed_token', createdHashedToken)
 
       sent.push({
         customerId,
@@ -305,17 +401,24 @@ async function main() {
         sentAt,
       })
     } catch (error) {
-      if (hashedToken) {
-        await supabase
-          .from('guest_tokens')
-          .delete()
-          .eq('hashed_token', hashedToken)
+      let failureReason = error instanceof Error ? error.message : String(error)
+
+      if (hashedToken && !smsDispatched) {
+        const cleanup = await cleanupManualReviewCampaignToken(supabase, hashedToken)
+        if (cleanup.error) {
+          failureReason = `${failureReason}; token_cleanup_failed=${cleanup.error}`
+        }
       }
 
       skipped.push({
         customerId,
-        reason: error instanceof Error ? error.message : String(error),
+        reason: failureReason,
         bookingIds,
+      })
+      processingErrors.push({
+        customerId,
+        reason: failureReason,
+        bookingIds
       })
     }
   }
@@ -352,9 +455,11 @@ async function main() {
       )
     }
   }
+
+  assertManualReviewCampaignCompletedWithoutErrors(processingErrors)
 }
 
 main().catch((error) => {
   console.error('Failed to send manual review campaign', error)
-  process.exit(1)
+  process.exitCode = 1
 })

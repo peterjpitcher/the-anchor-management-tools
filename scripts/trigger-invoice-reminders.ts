@@ -1,361 +1,596 @@
+#!/usr/bin/env tsx
 
-import {
-  createAdminClient
-} from '@/lib/supabase/admin'
-import {
-  sendInvoiceEmail
-} from '@/lib/microsoft-graph'
-import {
-  isGraphConfigured
-} from '@/lib/microsoft-graph'
-import type {
-  InvoiceWithDetails
-} from '@/types/invoices'
 import dotenv from 'dotenv'
 import path from 'path'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { isGraphConfigured, sendInvoiceEmail } from '@/lib/microsoft-graph'
+import {
+  assertInvoiceReminderScriptCompletedWithoutErrors,
+  hasSentInvoiceEmailLog,
+  insertSentInvoiceEmailLogs,
+} from '@/lib/invoice-reminder-safety'
+import {
+  assertScriptMutationAllowed,
+  assertScriptMutationSucceeded,
+  assertScriptQuerySucceeded,
+} from '@/lib/script-mutation-safety'
+import { getTodayIsoDate } from '@/lib/dateUtils'
+import type { InvoiceWithDetails } from '@/types/invoices'
 
-// Load environment variables
-dotenv.config({ path: path.resolve(process.cwd(), '.env.local') })
+const SCRIPT_NAME = 'trigger-invoice-reminders'
+const RUN_MUTATION_ENV = 'RUN_TRIGGER_INVOICE_REMINDERS_MUTATION'
+const ALLOW_MUTATION_ENV = 'ALLOW_INVOICE_REMINDER_TRIGGER_SCRIPT'
+const HARD_CAP = 50
+const MAX_EMAIL_RECIPIENTS = 5
 
+const TRUTHY = new Set(['1', 'true', 'yes', 'on'])
+
+function isTruthyEnv(value: string | undefined): boolean {
+  if (!value) return false
+  return TRUTHY.has(value.trim().toLowerCase())
+}
+
+function findFlagValue(argv: string[], flag: string): string | null {
+  const withEqualsPrefix = `${flag}=`
+  for (let i = 0; i < argv.length; i += 1) {
+    const entry = argv[i]
+    if (entry === flag) {
+      const next = argv[i + 1]
+      return typeof next === 'string' ? next : null
+    }
+    if (typeof entry === 'string' && entry.startsWith(withEqualsPrefix)) {
+      return entry.slice(withEqualsPrefix.length)
+    }
+  }
+  return null
+}
+
+function parsePositiveInt(raw: string | null): number | null {
+  if (!raw) return null
+  if (!/^[1-9]\d*$/.test(raw)) {
+    throw new Error(`Invalid positive integer: "${raw}"`)
+  }
+
+  const parsed = Number(raw)
+  if (!Number.isInteger(parsed) || parsed <= 0) {
+    throw new Error(`Invalid positive integer: "${raw}"`)
+  }
+
+  return parsed
+}
+
+function normalizeBaseUrl(raw: string): string {
+  const trimmed = raw.trim().replace(/\/+$/, '')
+  if (!trimmed) return ''
+  if (!/^https?:\/\//i.test(trimmed)) {
+    throw new Error(`[${SCRIPT_NAME}] invalid --url (must start with http:// or https://): ${trimmed}`)
+  }
+  return trimmed
+}
+
+type Args = {
+  confirm: boolean
+  dryRun: boolean
+  limit: number | null
+  url: string
+  internalEmail: string | null
+}
+
+function parseArgs(argv: string[] = process.argv): Args {
+  const rest = argv.slice(2)
+  const confirm = rest.includes('--confirm')
+  const dryRun = !confirm || rest.includes('--dry-run')
+  const limit = parsePositiveInt(findFlagValue(rest, '--limit'))
+  const urlFlag = findFlagValue(rest, '--url')
+  const urlEnv = process.env.NEXT_PUBLIC_APP_URL
+  const rawUrl = urlFlag ?? urlEnv ?? (dryRun ? 'http://localhost:3000' : '')
+  const url = normalizeBaseUrl(rawUrl)
+  const internalEmail = process.env.MICROSOFT_USER_EMAIL?.trim() || null
+
+  return {
+    confirm,
+    dryRun,
+    limit,
+    url,
+    internalEmail,
+  }
+}
+
+// Configuration for reminder intervals (days)
 const REMINDER_INTERVALS = {
   DUE_TODAY: 0, // On the due date
   FIRST_REMINDER: 7, // 7 days after due date
   SECOND_REMINDER: 14, // 14 days after due date
-  FINAL_REMINDER: 30 // 30 days after due date
+  FINAL_REMINDER: 30, // 30 days after due date
 }
 
-async function main() {
-  try {
-    console.log('[Cron] Starting invoice reminders processing (Script Mode)')
+function toUtcMidnightMs(isoDate: string): number {
+  return Date.parse(`${isoDate}T00:00:00.000Z`)
+}
 
-    const supabase = createAdminClient()
-    const today = new Date()
-    today.setHours(0, 0, 0, 0)
+function formatIsoDateForUk(isoDate: string): string {
+  const dt = new Date(`${isoDate}T00:00:00.000Z`)
+  if (Number.isNaN(dt.getTime())) {
+    return isoDate
+  }
+  return dt.toLocaleDateString('en-GB', { timeZone: 'UTC' })
+}
 
-    // Get all overdue and due today invoices
-    const { data: overdueInvoices, error: fetchError } = await supabase
-      .from('invoices')
-      .select(
-        `
-        *,
-        vendor:invoice_vendors(
-          id,
-          name,
-          email,
-          contact_name,
-          contacts:invoice_vendor_contacts(
-            email,
-            is_primary
-          )
-        ),
-        line_items:invoice_line_items(*),
-        payments:invoice_payments(*)
+function resolveVendorEmail(invoice: any): string | null {
+  const direct = invoice?.vendor?.email
+  if (typeof direct === 'string' && direct.trim().length > 0) {
+    return direct.trim()
+  }
+
+  const contacts = invoice?.vendor?.contacts
+  if (!Array.isArray(contacts)) {
+    return null
+  }
+
+  const primary = contacts.find((c) => c?.is_primary && typeof c?.email === 'string' && c.email.trim().length > 0)
+  if (primary?.email) {
+    return primary.email.trim()
+  }
+
+  const first = contacts.find((c) => typeof c?.email === 'string' && c.email.trim().length > 0)
+  return first?.email ? String(first.email).trim() : null
+}
+
+function resolveReminderType(daysOverdue: number): string | null {
+  if (daysOverdue === REMINDER_INTERVALS.DUE_TODAY) return 'Due Today'
+  if (daysOverdue === REMINDER_INTERVALS.FIRST_REMINDER) return 'First Reminder'
+  if (daysOverdue === REMINDER_INTERVALS.SECOND_REMINDER) return 'Second Reminder'
+  if (daysOverdue === REMINDER_INTERVALS.FINAL_REMINDER) return 'Final Reminder'
+  return null
+}
+
+function parseRecipients(raw: string): { to: string; cc: string[] } | { error: string } {
+  const recipients = raw
+    .split(/[;,]/)
+    .map((entry) => entry.trim())
+    .filter(Boolean)
+
+  if (recipients.length === 0) {
+    return { error: 'No recipient emails after parsing vendor email field' }
+  }
+
+  if (recipients.length > MAX_EMAIL_RECIPIENTS) {
+    return { error: `Vendor email contains too many recipients (${recipients.length} > ${MAX_EMAIL_RECIPIENTS})` }
+  }
+
+  const to = recipients[0]
+  const cc = recipients.slice(1)
+  return { to, cc }
+}
+
+async function loadInvoices(supabase: any, todayIso: string): Promise<any[]> {
+  const { data, error } = await supabase
+    .from('invoices')
+    .select(
       `
+      *,
+      vendor:invoice_vendors(
+        id,
+        name,
+        email,
+        contact_name,
+        contacts:invoice_vendor_contacts(
+          email,
+          is_primary
+        )
+      ),
+      line_items:invoice_line_items(*),
+      payments:invoice_payments(*)
+    `
+    )
+    .in('status', ['sent', 'partially_paid', 'overdue'])
+    .lte('due_date', todayIso)
+    .order('due_date', { ascending: true })
+
+  const rows = assertScriptQuerySucceeded({
+    operation: `[${SCRIPT_NAME}] load invoices due <= ${todayIso}`,
+    error,
+    data: data as any[] | null,
+    allowMissing: true,
+  })
+
+  return Array.isArray(rows) ? rows : []
+}
+
+async function main(): Promise<void> {
+  dotenv.config({ path: path.resolve(process.cwd(), '.env.local') })
+
+  const args = parseArgs(process.argv)
+  console.log(`[${SCRIPT_NAME}] ${args.dryRun ? 'DRY RUN' : 'MUTATION'} starting`)
+
+  if (!args.dryRun) {
+    if (!args.confirm) {
+      throw new Error(`[${SCRIPT_NAME}] mutation blocked: missing --confirm`)
+    }
+    if (args.limit === null) {
+      throw new Error(`[${SCRIPT_NAME}] mutation requires --limit <n> (hard cap ${HARD_CAP})`)
+    }
+    if (args.limit > HARD_CAP) {
+      throw new Error(`[${SCRIPT_NAME}] --limit exceeds hard cap (max ${HARD_CAP})`)
+    }
+    if (!isTruthyEnv(process.env[RUN_MUTATION_ENV])) {
+      throw new Error(
+        `[${SCRIPT_NAME}] mutation blocked by safety guard. Set ${RUN_MUTATION_ENV}=true to enable mutations.`
       )
-      .in('status', ['sent', 'partially_paid', 'overdue'])
-      .lte('due_date', today.toISOString())
-      .order('due_date', { ascending: true })
+    }
+    assertScriptMutationAllowed({ scriptName: SCRIPT_NAME, envVar: ALLOW_MUTATION_ENV })
 
-    if (fetchError) {
-      console.error('[Cron] Error fetching overdue invoices:', fetchError)
-      process.exit(1)
+    if (!isGraphConfigured()) {
+      throw new Error(`[${SCRIPT_NAME}] mutation blocked: Microsoft Graph is not configured`)
+    }
+    if (!args.internalEmail) {
+      throw new Error(`[${SCRIPT_NAME}] mutation blocked: MICROSOFT_USER_EMAIL is required`)
+    }
+    if (!args.url) {
+      throw new Error(
+        `[${SCRIPT_NAME}] mutation blocked: set NEXT_PUBLIC_APP_URL or pass --url https://... to avoid sending incorrect invoice links`
+      )
+    }
+  }
+
+  const supabase = createAdminClient()
+  const todayIso = getTodayIsoDate()
+  const todayUtcMs = toUtcMidnightMs(todayIso)
+
+  const invoices = await loadInvoices(supabase, todayIso)
+  console.log(`[${SCRIPT_NAME}] invoice candidates=${invoices.length}`)
+
+  const results = {
+    scanned: invoices.length,
+    processed: 0,
+    status_updates: 0,
+    internal_sent: 0,
+    customer_sent: 0,
+    errors: [] as Array<{ invoice_number: string; vendor?: string; error: string }>,
+  }
+
+  let mutationCandidatesProcessed = 0
+  for (const invoice of invoices) {
+    const invoiceId = String(invoice?.id || '')
+    const invoiceNumber = String(invoice?.invoice_number || '')
+    const vendorName = typeof invoice?.vendor?.name === 'string' ? invoice.vendor.name : undefined
+
+    if (!invoiceId || !invoiceNumber) {
+      results.errors.push({
+        invoice_number: invoiceNumber || '<missing invoice_number>',
+        vendor: vendorName,
+        error: 'Invoice missing id or invoice_number',
+      })
+      continue
     }
 
-    console.log(`[Cron] Found ${overdueInvoices?.length || 0} invoices to process`)
-
-    const results = {
-      processed: 0,
-      reminders_sent: 0,
-      internal_notifications: 0,
-      errors: [] as Array<{
-        invoice_number: string
-        vendor?: string
-        error: string
-      }>
+    const dueDateIso = String(invoice?.due_date || '').slice(0, 10)
+    const dueDateUtcMs = toUtcMidnightMs(dueDateIso)
+    if (!dueDateIso || Number.isNaN(dueDateUtcMs)) {
+      results.errors.push({
+        invoice_number: invoiceNumber,
+        vendor: vendorName,
+        error: `Invoice due_date is invalid (${String(invoice?.due_date)})`,
+      })
+      continue
     }
 
-    // Check if email is configured
-    const emailConfigured = isGraphConfigured()
-    const internalEmail = process.env.MICROSOFT_USER_EMAIL || 'peter@orangejelly.co.uk'
+    const daysOverdue = Math.floor((todayUtcMs - dueDateUtcMs) / (1000 * 60 * 60 * 24))
+    const reminderType = resolveReminderType(daysOverdue)
+    const needsOverdueTransition = daysOverdue > 0 && invoice?.status !== 'overdue'
 
-    // Process each overdue invoice
-    for (const invoice of overdueInvoices || []) {
-      results.processed++
-      let internalReminderSent = false
-      let customerReminderSent = false
+    const isMutationCandidate = Boolean(reminderType || needsOverdueTransition)
+    if (isMutationCandidate && !args.dryRun) {
+      if (mutationCandidatesProcessed >= (args.limit ?? 0)) {
+        console.log(
+          `[${SCRIPT_NAME}] cap reached (${mutationCandidatesProcessed}/${args.limit}). Stopping before invoice ${invoiceNumber}.`
+        )
+        break
+      }
+      mutationCandidatesProcessed += 1
+    }
 
-      // Resolve vendor email: prefers vendor.email, then primary contact, then first contact
-      const vendorEmail = invoice.vendor?.email || 
-        (Array.isArray(invoice.vendor?.contacts) 
-          ? (invoice.vendor.contacts.find((c: any) => c.is_primary)?.email || invoice.vendor.contacts[0]?.email)
-          : null)
+    results.processed += 1
 
-      try {
-        const dueDate = new Date(invoice.due_date)
-        const daysOverdue = Math.floor((today.getTime() - dueDate.getTime()) / (1000 * 60 * 60 * 24))
-        
-        console.log(`[Cron] Invoice ${invoice.invoice_number} is ${daysOverdue} days overdue`)
+    if (needsOverdueTransition) {
+      if (args.dryRun) {
+        console.log(`[${SCRIPT_NAME}] DRY RUN would mark invoice overdue: ${invoiceNumber} (due ${dueDateIso})`)
+      } else {
+        const { data: updatedRows, error } = await supabase
+          .from('invoices')
+          .update({
+            status: 'overdue',
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', invoiceId)
+          .in('status', ['sent', 'partially_paid'])
+          .select('id')
 
-        // Update status to overdue if not already and actually overdue
-        if (daysOverdue > 0 && invoice.status !== 'overdue') {
-          await supabase
-            .from('invoices')
-            .update({
-              status: 'overdue',
-              updated_at: new Date().toISOString()
-            })
-            .eq('id', invoice.id)
+        const { updatedCount } = assertScriptMutationSucceeded({
+          operation: `[${SCRIPT_NAME}] mark invoice overdue (${invoiceNumber})`,
+          error,
+          updatedRows: updatedRows as Array<{ id?: string }> | null,
+          allowZeroRows: true,
+        })
+
+        if (updatedCount > 0) {
+          results.status_updates += updatedCount
+        } else {
+          console.log(`[${SCRIPT_NAME}] overdue transition skipped (state changed): ${invoiceNumber}`)
         }
+      }
+    }
 
-        // Check if we should send a reminder based on intervals
-        const shouldSendReminder = 
-          daysOverdue === REMINDER_INTERVALS.DUE_TODAY ||
-          daysOverdue === REMINDER_INTERVALS.FIRST_REMINDER ||
-          daysOverdue === REMINDER_INTERVALS.SECOND_REMINDER ||
-          daysOverdue === REMINDER_INTERVALS.FINAL_REMINDER
+    if (!reminderType) {
+      continue
+    }
 
-        if (!shouldSendReminder) {
-          continue
-        }
+    const outstandingAmount = Number(invoice?.total_amount || 0) - Number(invoice?.paid_amount || 0)
+    const vendorEmail = resolveVendorEmail(invoice)
+    const invoiceUrl = `${args.url}/invoices/${invoiceId}`
 
-        // Determine reminder type
-        let reminderType = 'First Reminder'
-        if (daysOverdue === REMINDER_INTERVALS.DUE_TODAY) {
-          reminderType = 'Due Today'
-        } else if (daysOverdue === REMINDER_INTERVALS.SECOND_REMINDER) {
-          reminderType = 'Second Reminder'
-        } else if (daysOverdue === REMINDER_INTERVALS.FINAL_REMINDER) {
-          reminderType = 'Final Reminder'
-        }
+    if (args.dryRun) {
+      console.log(
+        `[${SCRIPT_NAME}] DRY RUN would send ${reminderType} for ${invoiceNumber} (${daysOverdue} days overdue) vendor=${vendorName || 'Unknown'} amount=GBP ${outstandingAmount.toFixed(2)} link=${invoiceUrl}`
+      )
+      continue
+    }
 
-        // Calculate outstanding amount
-        const outstandingAmount = invoice.total_amount - invoice.paid_amount
+    let internalReminderSent = false
+    let customerReminderSent = false
 
-        // Send internal notification
-        if (emailConfigured) {
-          try {
-            const statusText = daysOverdue > 0 ? 'overdue' : 'due'
-            const internalSubject = `[${reminderType}] Invoice ${invoice.invoice_number} - ${invoice.vendor?.name || 'Unknown'} - £${outstandingAmount.toFixed(2)} ${statusText}`
-            
-            const internalBody = `
+    // Internal notification (required in mutation mode).
+    try {
+      const internalEmail = args.internalEmail!
+      const internalSubject = `[${reminderType}] Invoice ${invoiceNumber} - ${vendorName || 'Unknown'}`
+      const internalBody = `
 Invoice Reminder Alert
 
-Invoice: ${invoice.invoice_number}
-Vendor: ${invoice.vendor?.name || 'Unknown'}
-Contact: ${invoice.vendor?.contact_name || 'N/A'}
+Invoice: ${invoiceNumber}
+Vendor: ${vendorName || 'Unknown'}
+Contact: ${invoice?.vendor?.contact_name || 'N/A'}
 Email: ${vendorEmail || 'No email'}
 
-Amount Due: £${outstandingAmount.toFixed(2)}
+Amount Due: GBP ${outstandingAmount.toFixed(2)}
 Days Overdue: ${daysOverdue}
-Due Date: ${dueDate.toLocaleDateString('en-GB')}
+Due Date: ${formatIsoDateForUk(dueDateIso)}
 Reminder Type: ${reminderType}
 
-${vendorEmail ? 'Customer reminder has been sent.' : 'No vendor email on file - manual follow-up required.'}
+${vendorEmail ? 'Customer reminder will be sent.' : 'No vendor email on file - manual follow-up required.'}
 
-View invoice: ${process.env.NEXT_PUBLIC_APP_URL || 'https://management.orangejelly.co.uk'}/invoices/${invoice.id}
-            `.trim()
+View invoice: ${invoiceUrl}
+      `.trim()
 
-            const { data: existingInternalReminder, error: internalCheckError } = await supabase
-              .from('invoice_email_logs')
-              .select('id')
-              .eq('invoice_id', invoice.id)
-              .eq('status', 'sent')
-              .eq('subject', internalSubject)
-              .maybeSingle()
+      const logCheck = await hasSentInvoiceEmailLog(supabase, {
+        invoiceId,
+        subject: internalSubject,
+      })
 
-            if (internalCheckError) {
-              console.error('[Cron] Error checking existing internal reminder logs:', internalCheckError)
-            }
-
-            if (existingInternalReminder) {
-              console.log(`[Cron] Internal reminder already sent for invoice ${invoice.invoice_number} (${reminderType}); skipping duplicate`)
-            } else {
-              // Create a simple invoice object for internal notification
-              const internalInvoice = {
-                ...invoice,
-                invoice_number: `REMINDER: ${invoice.invoice_number}`
-              }
-
-              const internalResult = await sendInvoiceEmail(
-                internalInvoice as InvoiceWithDetails,
-                internalEmail,
-                internalSubject,
-                internalBody
-              )
-
-              if (internalResult.success) {
-                console.log(`[Cron] Internal reminder sent for invoice ${invoice.invoice_number}`)
-                results.internal_notifications++
-                internalReminderSent = true
-
-                // Log internal notification
-                await supabase
-                  .from('invoice_email_logs')
-                  .insert({
-                    invoice_id: invoice.id,
-                    sent_to: internalEmail,
-                    sent_by: 'system',
-                    subject: internalSubject,
-                    body: `Internal ${reminderType} - ${daysOverdue} days overdue`,
-                    status: 'sent'
-                  })
-              }
-            }
-          } catch (error) {
-            console.error(`[Cron] Error sending internal reminder:`, error)
-          }
+      if (logCheck.error) {
+        results.errors.push({
+          invoice_number: invoiceNumber,
+          vendor: vendorName,
+          error: `Internal reminder dedupe check failed: ${logCheck.error}`,
+        })
+      } else if (logCheck.exists) {
+        console.log(`[${SCRIPT_NAME}] internal reminder already sent; skipping: ${invoiceNumber} (${reminderType})`)
+      } else {
+        const internalInvoice = {
+          ...invoice,
+          invoice_number: `REMINDER: ${invoiceNumber}`,
         }
 
-        // Send customer reminder if email available
-        if (emailConfigured && vendorEmail) {
-          try {
-            const customerSubject = daysOverdue === 0
-              ? `Payment Due Today: Invoice ${invoice.invoice_number} from Orange Jelly Limited`
-              : `${reminderType}: Invoice ${invoice.invoice_number} from Orange Jelly Limited`
-            
-            let customerBody = `Dear ${invoice.vendor.contact_name || invoice.vendor.name},
+        const sendResult = await sendInvoiceEmail(
+          internalInvoice as InvoiceWithDetails,
+          internalEmail,
+          internalSubject,
+          internalBody
+        )
 
-`
+        if (!sendResult.success) {
+          results.errors.push({
+            invoice_number: invoiceNumber,
+            vendor: vendorName,
+            error: sendResult.error || 'Failed to send internal reminder',
+          })
+        } else {
+          internalReminderSent = true
+          results.internal_sent += 1
+          const logResult = await insertSentInvoiceEmailLogs(supabase, [
+            {
+              invoice_id: invoiceId,
+              sent_to: internalEmail,
+              sent_by: 'system',
+              subject: internalSubject,
+              body: `Internal ${reminderType} - ${daysOverdue} days overdue`,
+              status: 'sent',
+            },
+          ])
 
-            if (daysOverdue === 0) {
-              customerBody += `This is a friendly reminder that invoice ${invoice.invoice_number} is due for payment today.
-
-`
-            } else {
-              customerBody += `This is a friendly reminder that invoice ${invoice.invoice_number} is now ${daysOverdue} days overdue.
-
-`
-            }
-
-            customerBody += `Invoice Details:
-- Invoice Number: ${invoice.invoice_number}
-- Amount Due: £${outstandingAmount.toFixed(2)}
-- Due Date: ${dueDate.toLocaleDateString('en-GB')}
-`
-
-            if (daysOverdue >= REMINDER_INTERVALS.FINAL_REMINDER) {
-              customerBody += `
-This is our final reminder. Please arrange payment immediately to avoid any disruption to services.
-`
-            } else {
-              customerBody += `
-Please arrange payment at your earliest convenience.
-`
-            }
-
-            customerBody += `
-If you have already made payment, please disregard this reminder. If you have any questions about this invoice, please don't hesitate to contact us.
-
-Best regards,
-Orange Jelly Limited
-`
-
-            const { data: existingCustomerReminder, error: customerCheckError } = await supabase
-              .from('invoice_email_logs')
-              .select('id')
-              .eq('invoice_id', invoice.id)
-              .eq('status', 'sent')
-              .eq('subject', customerSubject)
-              .maybeSingle()
-
-            if (customerCheckError) {
-              console.error('[Cron] Error checking existing customer reminder logs:', customerCheckError)
-            }
-
-            if (existingCustomerReminder) {
-              console.log(`[Cron] Customer reminder already sent for invoice ${invoice.invoice_number} (${reminderType}); skipping duplicate`)
-            } else {
-              // Support multiple recipients — first as To, others as CC
-              const raw = String(vendorEmail)
-              const recipients = raw.split(/[;,]/).map(s => s.trim()).filter(Boolean)
-              const toAddress = recipients[0] || raw
-              const ccAddresses = (recipients[0] ? recipients.slice(1) : []).filter(Boolean)
-
-              const customerResult = await sendInvoiceEmail(
-                invoice as InvoiceWithDetails,
-                toAddress,
-                customerSubject,
-                customerBody,
-                ccAddresses
-              )
-
-              if (customerResult.success) {
-                console.log(`[Cron] Customer reminder sent for invoice ${invoice.invoice_number}`)
-                results.reminders_sent++
-                customerReminderSent = true
-
-                // Log To and CC
-                await supabase
-                  .from('invoice_email_logs')
-                  .insert({
-                    invoice_id: invoice.id,
-                    sent_to: toAddress,
-                    sent_by: 'system',
-                    subject: customerSubject,
-                    body: `${reminderType} - ${daysOverdue} days overdue`,
-                    status: 'sent'
-                  })
-                for (const cc of ccAddresses) {
-                  await supabase
-                    .from('invoice_email_logs')
-                    .insert({
-                      invoice_id: invoice.id,
-                      sent_to: cc,
-                      sent_by: 'system',
-                      subject: customerSubject,
-                      body: `${reminderType} - ${daysOverdue} days overdue`,
-                      status: 'sent'
-                    })
-                }
-              } else {
-                console.error(`[Cron] Failed to send customer reminder for invoice ${invoice.invoice_number}:`, customerResult.error)
-              }
-            }
-          } catch (error) {
-            console.error(`[Cron] Error sending customer reminder:`, error)
+          if (logResult.error) {
             results.errors.push({
-              invoice_number: invoice.invoice_number,
-              vendor: invoice.vendor?.name,
-              error: 'Failed to send customer reminder'
+              invoice_number: invoiceNumber,
+              vendor: vendorName,
+              error: `Internal reminder sent but log persistence failed: ${logResult.error}`,
             })
           }
         }
+      }
+    } catch (error) {
+      results.errors.push({
+        invoice_number: invoiceNumber,
+        vendor: vendorName,
+        error: error instanceof Error ? error.message : 'Failed to send internal reminder',
+      })
+    }
 
-        // Log reminder in audit trail
-        await supabase
-          .from('audit_logs')
-          .insert({
-            operation_type: 'update',
-            resource_type: 'invoice',
-            resource_id: invoice.id,
-            user_id: 'system',
-            operation_status: 'success',
-            operation_details: {
-              action: 'reminder_sent',
-              reminder_type: reminderType,
-              days_overdue: daysOverdue,
-              invoice_number: invoice.invoice_number,
-              vendor: invoice.vendor?.name,
-              internal_notification: internalReminderSent,
-              customer_reminder: customerReminderSent
-            }
+    // Customer reminder (optional when vendor email exists).
+    if (vendorEmail) {
+      try {
+        const customerSubject =
+          daysOverdue === 0
+            ? `Payment Due Today: Invoice ${invoiceNumber} from Orange Jelly Limited`
+            : `${reminderType}: Invoice ${invoiceNumber} from Orange Jelly Limited`
+
+        const recipientParse = parseRecipients(vendorEmail)
+        if ('error' in recipientParse) {
+          results.errors.push({
+            invoice_number: invoiceNumber,
+            vendor: vendorName,
+            error: recipientParse.error,
+          })
+        } else {
+          const greetingTarget = invoice?.vendor?.contact_name || vendorName || 'there'
+          const customerBodyLines = [
+            `Dear ${greetingTarget},`,
+            '',
+            daysOverdue === 0
+              ? `This is a friendly reminder that invoice ${invoiceNumber} is due for payment today.`
+              : `This is a friendly reminder that invoice ${invoiceNumber} is now ${daysOverdue} days overdue.`,
+            '',
+            'Invoice Details:',
+            `- Invoice Number: ${invoiceNumber}`,
+            `- Amount Due: GBP ${outstandingAmount.toFixed(2)}`,
+            `- Due Date: ${formatIsoDateForUk(dueDateIso)}`,
+            '',
+            daysOverdue >= REMINDER_INTERVALS.FINAL_REMINDER
+              ? 'This is our final reminder. Please arrange payment immediately to avoid any disruption to services.'
+              : 'Please arrange payment at your earliest convenience.',
+            '',
+            "If you have already made payment, please disregard this reminder. If you have any questions about this invoice, please don't hesitate to contact us.",
+            '',
+            'Best regards,',
+            'Orange Jelly Limited',
+          ]
+
+          const logCheck = await hasSentInvoiceEmailLog(supabase, {
+            invoiceId,
+            subject: customerSubject,
           })
 
+          if (logCheck.error) {
+            results.errors.push({
+              invoice_number: invoiceNumber,
+              vendor: vendorName,
+              error: `Customer reminder dedupe check failed: ${logCheck.error}`,
+            })
+          } else if (logCheck.exists) {
+            console.log(`[${SCRIPT_NAME}] customer reminder already sent; skipping: ${invoiceNumber} (${reminderType})`)
+          } else {
+            const sendResult = await sendInvoiceEmail(
+              invoice as InvoiceWithDetails,
+              recipientParse.to,
+              customerSubject,
+              customerBodyLines.join('\n'),
+              recipientParse.cc
+            )
+
+            if (!sendResult.success) {
+              results.errors.push({
+                invoice_number: invoiceNumber,
+                vendor: vendorName,
+                error: sendResult.error || 'Failed to send customer reminder',
+              })
+            } else {
+              customerReminderSent = true
+              results.customer_sent += 1
+              const logRows = [
+                {
+                  invoice_id: invoiceId,
+                  sent_to: recipientParse.to,
+                  sent_by: 'system',
+                  subject: customerSubject,
+                  body: `${reminderType} - ${daysOverdue} days overdue`,
+                  status: 'sent' as const,
+                },
+                ...recipientParse.cc.map((cc) => ({
+                  invoice_id: invoiceId,
+                  sent_to: cc,
+                  sent_by: 'system',
+                  subject: customerSubject,
+                  body: `${reminderType} - ${daysOverdue} days overdue`,
+                  status: 'sent' as const,
+                })),
+              ]
+
+              const logResult = await insertSentInvoiceEmailLogs(supabase, logRows)
+              if (logResult.error) {
+                results.errors.push({
+                  invoice_number: invoiceNumber,
+                  vendor: vendorName,
+                  error: `Customer reminder sent but log persistence failed: ${logResult.error}`,
+                })
+              }
+            }
+          }
+        }
       } catch (error) {
-        console.error(`[Cron] Error processing invoice ${invoice.invoice_number}:`, error)
         results.errors.push({
-          invoice_number: invoice.invoice_number,
-          vendor: invoice.vendor?.name,
-          error: error instanceof Error ? error.message : 'Unknown error'
+          invoice_number: invoiceNumber,
+          vendor: vendorName,
+          error: error instanceof Error ? error.message : 'Failed to send customer reminder',
         })
       }
     }
 
-    console.log('[Cron] Invoice reminders processing completed:', results)
-  } catch (error) {
-    console.error('[Cron] Fatal error in invoice reminders cron:', error)
-    process.exit(1)
+    // Audit trail is required for mutation mode (fail closed).
+    try {
+      const { data: auditRows, error: auditError } = await supabase
+        .from('audit_logs')
+        .insert({
+          operation_type: 'update',
+          resource_type: 'invoice',
+          resource_id: invoiceId,
+          user_id: 'system',
+          operation_status: 'success',
+          operation_details: {
+            action: 'reminder_sent',
+            reminder_type: reminderType,
+            days_overdue: daysOverdue,
+            invoice_number: invoiceNumber,
+            vendor: vendorName,
+            internal_notification: internalReminderSent,
+            customer_reminder: customerReminderSent,
+          },
+        })
+        .select('id')
+
+      const { updatedCount } = assertScriptMutationSucceeded({
+        operation: `[${SCRIPT_NAME}] insert audit log (${invoiceNumber})`,
+        error: auditError,
+        updatedRows: auditRows as Array<{ id?: string }> | null,
+      })
+
+      if (updatedCount !== 1) {
+        results.errors.push({
+          invoice_number: invoiceNumber,
+          vendor: vendorName,
+          error: `Audit log insert returned unexpected row count (${updatedCount})`,
+        })
+      }
+    } catch (error) {
+      results.errors.push({
+        invoice_number: invoiceNumber,
+        vendor: vendorName,
+        error: error instanceof Error ? error.message : 'Failed to write reminder audit log',
+      })
+    }
   }
+
+  console.log(`[${SCRIPT_NAME}] completed`, {
+    scanned: results.scanned,
+    processed: results.processed,
+    status_updates: results.status_updates,
+    internal_sent: results.internal_sent,
+    customer_sent: results.customer_sent,
+    errors: results.errors.length,
+  })
+
+  assertInvoiceReminderScriptCompletedWithoutErrors(results.errors)
 }
 
-main()
+main().catch((error) => {
+  process.exitCode = 1
+  console.error(`[${SCRIPT_NAME}] fatal error`, error)
+})
+

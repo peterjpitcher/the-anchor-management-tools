@@ -159,7 +159,11 @@ export async function createParkingBooking(formData: FormData) {
 }
 
 function escapeLikePattern(input: string) {
-  return input.replace(/[%_\\]/g, '\\$&')
+  return input
+    .replace(/[,%_()"'\\]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 80)
 }
 
 export async function listParkingBookings(options?: {
@@ -345,13 +349,18 @@ export async function updateParkingBookingStatus(
         updatesToApply = { ...updatesToApply, cancelled_at: nowIso }
       }
 
-      const { data: latestPayment } = await adminClient
+      const { data: latestPayment, error: latestPaymentError } = await adminClient
         .from('parking_booking_payments')
         .select('*')
         .eq('booking_id', bookingId)
         .order('created_at', { ascending: false })
         .limit(1)
         .maybeSingle()
+
+      if (latestPaymentError) {
+        console.error('Failed to load latest parking payment during cancellation:', latestPaymentError)
+        return { error: 'Failed to update booking payment status' }
+      }
 
       if (latestPayment) {
         const paymentUpdates: Record<string, unknown> = {
@@ -375,10 +384,21 @@ export async function updateParkingBookingStatus(
           (paymentUpdates as any).status === 'failed' ||
           (paymentUpdates as any).status === 'refunded'
         ) {
-          await adminClient
+          const { data: updatedPayment, error: paymentUpdateError } = await adminClient
             .from('parking_booking_payments')
             .update(paymentUpdates)
             .eq('id', latestPayment.id)
+            .select('id')
+            .maybeSingle()
+
+          if (paymentUpdateError) {
+            console.error('Failed to update parking payment during cancellation:', paymentUpdateError)
+            return { error: 'Failed to update booking payment status' }
+          }
+
+          if (!updatedPayment) {
+            return { error: 'Failed to update booking payment status' }
+          }
         }
       }
     }
@@ -506,7 +526,7 @@ export async function markParkingBookingPaid(bookingId: string) {
     const amount = booking.override_price ?? booking.calculated_price ?? 0
     const nowIso = new Date().toISOString()
 
-    const { data: paymentRecord } = await adminClient
+    const { data: paymentRecord, error: paymentRecordError } = await adminClient
       .from('parking_booking_payments')
       .select('*')
       .eq('booking_id', bookingId)
@@ -514,8 +534,13 @@ export async function markParkingBookingPaid(bookingId: string) {
       .limit(1)
       .maybeSingle()
 
+    if (paymentRecordError) {
+      console.error('Failed to load parking payment record:', paymentRecordError)
+      return { error: 'Failed to update payment status' }
+    }
+
     if (paymentRecord) {
-      await adminClient
+      const { data: updatedPayment, error: paymentUpdateError } = await adminClient
         .from('parking_booking_payments')
         .update({
           status: 'paid',
@@ -528,8 +553,19 @@ export async function markParkingBookingPaid(bookingId: string) {
           }
         })
         .eq('id', paymentRecord.id)
+        .select('id')
+        .maybeSingle()
+
+      if (paymentUpdateError) {
+        console.error('Failed to update parking payment record:', paymentUpdateError)
+        return { error: 'Failed to update payment status' }
+      }
+
+      if (!updatedPayment) {
+        return { error: 'Payment record not found' }
+      }
     } else {
-      await adminClient
+      const { error: paymentInsertError } = await adminClient
         .from('parking_booking_payments')
         .insert({
           booking_id: bookingId,
@@ -543,6 +579,11 @@ export async function markParkingBookingPaid(bookingId: string) {
             settled_by: user.id
           }
         })
+
+      if (paymentInsertError) {
+        console.error('Failed to create parking payment record:', paymentInsertError)
+        return { error: 'Failed to update payment status' }
+      }
     }
 
     const updated = await updateParkingBooking(

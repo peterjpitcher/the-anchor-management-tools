@@ -3,12 +3,25 @@
  * Script to check if invoice system is properly configured in the database
  */
 
-import { createAdminClient } from '@/lib/supabase/server'
+import { createAdminClient } from '../../src/lib/supabase/admin'
+import dotenv from 'dotenv'
+import path from 'path'
 
 async function checkInvoiceSystem() {
+  dotenv.config({ path: path.resolve(process.cwd(), '.env.local') })
+
   console.log('🔍 Checking Invoice System Configuration...\n')
   
-  const supabase = await createAdminClient()
+  const supabase = createAdminClient()
+
+  function markFailure(message: string, error?: unknown) {
+    process.exitCode = 1
+    if (error) {
+      console.error(`❌ ${message}`, error)
+      return
+    }
+    console.error(`❌ ${message}`)
+  }
   
   // 1. Check if invoice tables exist
   console.log('📊 Checking database tables...')
@@ -34,7 +47,7 @@ async function checkInvoiceSystem() {
     ])
   
   if (tablesError) {
-    console.error('❌ Error checking tables:', tablesError)
+    markFailure('Error checking invoice tables.', tablesError)
   } else {
     console.log(`✅ Found ${tables?.length || 0} invoice-related tables:`)
     tables?.forEach(t => console.log(`   - ${t.table_name}`))
@@ -48,7 +61,7 @@ async function checkInvoiceSystem() {
     .eq('module', 'invoices')
   
   if (permError) {
-    console.error('❌ Error checking permissions:', permError)
+    markFailure('Error checking invoice permissions.', permError)
   } else if (permissions?.length === 0) {
     console.log('⚠️  No invoice permissions found in RBAC system!')
   } else {
@@ -69,7 +82,7 @@ async function checkInvoiceSystem() {
     .eq('rbac_permissions.module', 'invoices')
   
   if (rolePermError) {
-    console.error('❌ Error checking role permissions:', rolePermError)
+    markFailure('Error checking role permissions for invoices module.', rolePermError)
   } else if (rolePerms?.length === 0) {
     console.log('⚠️  No roles have invoice permissions assigned!')
   } else {
@@ -97,8 +110,9 @@ async function checkInvoiceSystem() {
   if (invoiceError) {
     if (invoiceError.message.includes('does not exist')) {
       console.log('❌ Invoice table does not exist!')
+      markFailure('Invoice table does not exist.')
     } else {
-      console.error('❌ Error checking invoices:', invoiceError)
+      markFailure('Error checking invoices.', invoiceError)
     }
   } else {
     console.log(`✅ Found ${invoiceCount || 0} invoices in the database`)
@@ -113,8 +127,9 @@ async function checkInvoiceSystem() {
   if (recurringError) {
     if (recurringError.message.includes('does not exist')) {
       console.log('❌ Recurring invoices table does not exist!')
+      markFailure('Recurring invoices table does not exist.')
     } else {
-      console.error('❌ Error checking recurring invoices:', recurringError)
+      markFailure('Error checking recurring invoices.', recurringError)
     }
   } else {
     console.log(`✅ Found ${recurringCount || 0} recurring invoice templates`)
@@ -129,8 +144,9 @@ async function checkInvoiceSystem() {
   if (seriesError) {
     if (seriesError.message.includes('does not exist')) {
       console.log('❌ Invoice series table does not exist!')
+      markFailure('Invoice series table does not exist.')
     } else {
-      console.error('❌ Error checking series:', seriesError)
+      markFailure('Error checking invoice series.', seriesError)
     }
   } else if (series?.length === 0) {
     console.log('⚠️  No invoice series configured')
@@ -147,18 +163,22 @@ async function checkInvoiceSystem() {
     console.log('❌ CRITICAL: Invoice tables do not exist in the database!')
     console.log('   The invoice system code exists but the database tables are missing.')
     console.log('   This needs to be fixed by running the invoice system migration.')
+    markFailure('Invoice tables are missing.')
   } else if (!permissions || permissions.length === 0) {
     console.log('⚠️  WARNING: Invoice tables exist but no RBAC permissions are configured.')
     console.log('   Users cannot access the invoice system without proper permissions.')
+    markFailure('Invoice RBAC permissions are missing.')
   } else if (!rolePerms || rolePerms.length === 0) {
     console.log('⚠️  WARNING: Permissions exist but no roles have invoice access.')
     console.log('   Need to assign invoice permissions to appropriate roles.')
+    markFailure('No roles have invoice permissions assigned.')
   } else {
     console.log('✅ Invoice system appears to be properly configured.')
     console.log('   If users cannot see it, check their role assignments.')
   }
-  
-  process.exit(0)
 }
 
-checkInvoiceSystem().catch(console.error)
+void checkInvoiceSystem().catch((error) => {
+  console.error('check-invoice-system failed.', error)
+  process.exitCode = 1
+})
