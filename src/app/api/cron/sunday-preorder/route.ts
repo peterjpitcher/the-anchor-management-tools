@@ -7,6 +7,7 @@ import { sendSMS } from '@/lib/twilio'
 import { createSundayPreorderToken } from '@/lib/table-bookings/sunday-preorder'
 import { recordAnalyticsEvent } from '@/lib/analytics/events'
 import { persistCronRunResult, recoverCronRunLock } from '@/lib/cron-run-results'
+import { getSmartFirstName } from '@/lib/sms/bulk'
 
 const TEMPLATE_REMINDER_48H = 'sunday_preorder_reminder_48h'
 const TEMPLATE_REMINDER_26H = 'sunday_preorder_reminder_26h'
@@ -634,7 +635,7 @@ export async function GET(request: NextRequest) {
         if (!sentTemplateSet.has(cancellationKey)) {
           if (totalSundaySmsSent(counters) < MAX_SUNDAY_PREORDER_SMS_PER_RUN) {
             const message = ensureReplyInstruction(
-              `The Anchor: Hi ${customer.first_name || 'there'}, your Sunday lunch booking ${booking.booking_reference || ''} has been cancelled because the required pre-order wasn't completed 24 hours before the booking. No charge has been applied.`,
+              `The Anchor: Hi ${getSmartFirstName(customer.first_name)}, your Sunday lunch booking ${booking.booking_reference || ''} has been cancelled because the required pre-order wasn't completed 24 hours before the booking. No charge has been applied.`,
               supportPhone
             )
 
@@ -725,8 +726,8 @@ export async function GET(request: NextRequest) {
         customer.mobile_number,
         ensureReplyInstruction(
           preorderUrl
-            ? `The Anchor: Hi ${customer.first_name || 'there'}, ${intro} Complete here: ${preorderUrl}`
-            : `The Anchor: Hi ${customer.first_name || 'there'}, please use the Sunday pre-order link from your original booking text. If you can't find it, reply to this message and we'll resend it.`,
+            ? `The Anchor: Hi ${getSmartFirstName(customer.first_name)}, ${intro} Complete here: ${preorderUrl}`
+            : `The Anchor: Hi ${getSmartFirstName(customer.first_name)}, please use the Sunday pre-order link from your original booking text. If you can't find it, reply to this message and we'll resend it.`,
           supportPhone
         ),
         {

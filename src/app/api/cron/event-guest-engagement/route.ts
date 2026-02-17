@@ -5,6 +5,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { logger } from '@/lib/logger'
 import { ensureReplyInstruction } from '@/lib/sms/support'
 import { sendSMS } from '@/lib/twilio'
+import { getSmartFirstName } from '@/lib/sms/bulk'
 import { createEventManageToken } from '@/lib/events/manage-booking'
 import { createGuestToken } from '@/lib/guest/tokens'
 import { getGoogleReviewLink } from '@/lib/events/review-link'
@@ -914,29 +915,29 @@ async function processInterestMarketing(
     const [pastBookings, pastWaitlist, existingBookings, manualRecipients] = await Promise.all([
       matchingBasis === 'category'
         ? supabase
-            .from('bookings')
-            .select('customer_id, event:events!inner(category_id, start_datetime)')
-            .not('customer_id', 'is', null)
-            .eq('event.category_id', eventCategoryId)
+          .from('bookings')
+          .select('customer_id, event:events!inner(category_id, start_datetime)')
+          .not('customer_id', 'is', null)
+          .eq('event.category_id', eventCategoryId)
         : matchingBasis === 'event_type'
           ? supabase
-              .from('bookings')
-              .select('customer_id, event:events!inner(event_type, start_datetime)')
-              .not('customer_id', 'is', null)
-              .eq('event.event_type', eventType)
+            .from('bookings')
+            .select('customer_id, event:events!inner(event_type, start_datetime)')
+            .not('customer_id', 'is', null)
+            .eq('event.event_type', eventType)
           : Promise.resolve({ data: [], error: null } as any),
       matchingBasis === 'category'
         ? supabase
-            .from('waitlist_entries')
-            .select('customer_id, event:events!inner(category_id, start_datetime)')
-            .not('customer_id', 'is', null)
-            .eq('event.category_id', eventCategoryId)
+          .from('waitlist_entries')
+          .select('customer_id, event:events!inner(category_id, start_datetime)')
+          .not('customer_id', 'is', null)
+          .eq('event.category_id', eventCategoryId)
         : matchingBasis === 'event_type'
           ? supabase
-              .from('waitlist_entries')
-              .select('customer_id, event:events!inner(event_type, start_datetime)')
-              .not('customer_id', 'is', null)
-              .eq('event.event_type', eventType)
+            .from('waitlist_entries')
+            .select('customer_id, event:events!inner(event_type, start_datetime)')
+            .not('customer_id', 'is', null)
+            .eq('event.event_type', eventType)
           : Promise.resolve({ data: [], error: null } as any),
       supabase
         .from('bookings')
@@ -1114,7 +1115,7 @@ async function processInterestMarketing(
               continue
             }
 
-            const firstName = customer.first_name || 'there'
+            const firstName = getSmartFirstName(customer.first_name)
             const eventDateText = formatEventDateText(eventRow.start_datetime)
             const destination = buildInterestEventDestination(eventRow)
             const body = ensureReplyInstruction(
@@ -1237,7 +1238,7 @@ async function processInterestMarketing(
           continue
         }
 
-        const firstName = customer.first_name || 'there'
+        const firstName = getSmartFirstName(customer.first_name)
         const eventDateText = formatEventDateText(eventRow.start_datetime)
         const destination = buildInterestEventDestination(eventRow)
         const baseBody = manualTemplateKey === TEMPLATE_INTEREST_REMINDER_1D
@@ -1429,7 +1430,7 @@ async function processReminders(
       manageLink = null
     }
 
-    const firstName = customer.first_name || 'there'
+    const firstName = getSmartFirstName(customer.first_name)
     const eventDateText = formatEventDateTime(eventStartIso)
     const baseBody = templateKey === TEMPLATE_REMINDER_1D
       ? `The Anchor: Hi ${firstName}, reminder: ${event.name} is tomorrow at ${eventDateText}.`
@@ -1559,7 +1560,7 @@ async function processReviewFollowups(
     })
 
     const redirectUrl = `${appBaseUrl}/r/${rawToken}`
-    const firstName = customer.first_name || 'there'
+    const firstName = getSmartFirstName(customer.first_name)
     const messageBody = ensureReplyInstruction(
       `The Anchor: Hi ${firstName}, thanks for booking ${event.name}. We'd love your feedback: ${redirectUrl}`,
       supportPhone
@@ -1767,7 +1768,7 @@ async function processTableReviewFollowups(
     })
 
     const redirectUrl = `${appBaseUrl}/r/${rawToken}`
-    const firstName = customer.first_name || 'there'
+    const firstName = getSmartFirstName(customer.first_name)
     const messageBody = ensureReplyInstruction(
       `The Anchor: Hi ${firstName}, thanks for visiting The Anchor. We'd love your feedback: ${redirectUrl}`,
       supportPhone

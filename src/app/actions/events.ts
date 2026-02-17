@@ -18,6 +18,7 @@ import {
 import { recordAnalyticsEvent } from '@/lib/analytics/events'
 import { sendSMS } from '@/lib/twilio'
 import { ensureReplyInstruction } from '@/lib/sms/support'
+import { getSmartFirstName } from '@/lib/sms/bulk'
 import { logger } from '@/lib/logger'
 
 type CreateEventResult = { error: string } | { success: true; data: Event }
@@ -26,10 +27,10 @@ type PreparedEventData = Partial<CreateEventInput> & { faqs: EventFaqInput[] }
 
 type SmsSafetyMeta =
   | {
-      success: boolean
-      code: string | null
-      logFailure: boolean
-    }
+    success: boolean
+    code: string | null
+    logFailure: boolean
+  }
   | null
 
 function getErrorMessage(error: unknown, fallback: string): string {
@@ -59,7 +60,7 @@ async function prepareEventDataFromFormData(formData: FormData, _existingEventId
 
   const categoryId = formData.get('category_id') as string || null;
   let categoryDefaults: Partial<CreateEventInput> = {};
-  
+
   if (categoryId) {
     const { data: category } = await supabase
       .from('event_categories')
@@ -88,7 +89,7 @@ async function prepareEventDataFromFormData(formData: FormData, _existingEventId
       `)
       .eq('id', categoryId)
       .single();
-    
+
     if (category) {
       categoryDefaults = {
         time: category.default_start_time,
@@ -166,7 +167,7 @@ async function prepareEventDataFromFormData(formData: FormData, _existingEventId
     if (faqsJson) {
       const parsed = JSON.parse(faqsJson);
       if (Array.isArray(parsed) && parsed.length > 0) {
-         faqs = parsed.filter(faq => faq.question && faq.answer);
+        faqs = parsed.filter(faq => faq.question && faq.answer);
       }
     }
   } catch (e) {
@@ -243,7 +244,7 @@ export async function updateEvent(id: string, formData: FormData) {
     }
 
     const rawData = await prepareEventDataFromFormData(formData, id); // Pass existingEventId if needed
-    
+
     // For updates, we allow partial data, but still validate if fields are present
     const validationResult = eventSchema.partial().safeParse(rawData);
     if (!validationResult.success) {
@@ -377,23 +378,23 @@ const createEventManualBookingSchema = z.object({
 
 type EventManualBookingResult =
   | {
-      error: string
-    }
+    error: string
+  }
   | {
-      success: true
-      data: {
-        state: 'confirmed' | 'pending_payment' | 'full_with_waitlist_option' | 'blocked'
-        reason: string | null
-        booking_id: string | null
-        manage_booking_url: string | null
-        next_step_url: string | null
-        table_booking_id: string | null
-        table_name: string | null
-      }
-      meta?: {
-        sms: SmsSafetyMeta
-      }
+    success: true
+    data: {
+      state: 'confirmed' | 'pending_payment' | 'full_with_waitlist_option' | 'blocked'
+      reason: string | null
+      booking_id: string | null
+      manage_booking_url: string | null
+      next_step_url: string | null
+      table_booking_id: string | null
+      table_name: string | null
     }
+    meta?: {
+      sms: SmsSafetyMeta
+    }
+  }
 
 type CreateEventBookingRpcResult = {
   state?: 'confirmed' | 'pending_payment' | 'full_with_waitlist_option' | 'blocked'
@@ -687,7 +688,7 @@ export async function createEventManualBooking(input: {
           const smsBody = ensureReplyInstruction(
             buildEventBookingCreatedSms({
               state,
-              firstName: parsed.data.firstName?.trim() || 'there',
+              firstName: getSmartFirstName(parsed.data.firstName),
               eventName: (eventRow as any).name || 'your event',
               seats: parsed.data.seats,
               eventStartText: formatEventDateTimeForSms({
@@ -809,44 +810,44 @@ const updateEventManualBookingSeatsSchema = z.object({
 
 type CancelEventManualBookingResult =
   | {
-      error: string
-    }
+    error: string
+  }
   | {
-      success: true
-      data: {
-        state: 'cancelled' | 'already_cancelled' | 'blocked'
-        reason: string | null
-        booking_id: string
-        sms_sent: boolean
-      }
-      meta?: {
-        sms: SmsSafetyMeta
-      }
+    success: true
+    data: {
+      state: 'cancelled' | 'already_cancelled' | 'blocked'
+      reason: string | null
+      booking_id: string
+      sms_sent: boolean
     }
+    meta?: {
+      sms: SmsSafetyMeta
+    }
+  }
 
 type UpdateEventManualBookingSeatsResult =
   | {
-      error: string
-    }
+    error: string
+  }
   | {
-      success: true
-      data: {
-        state: 'updated' | 'unchanged' | 'blocked'
-        reason: string | null
-        booking_id: string
-        old_seats: number
-        new_seats: number
-        delta: number
-        sms_sent: boolean
-      }
-      meta?: {
-        sms: SmsSafetyMeta
-        table_booking_sync?: {
-          success: boolean
-          error: string | null
-        }
+    success: true
+    data: {
+      state: 'updated' | 'unchanged' | 'blocked'
+      reason: string | null
+      booking_id: string
+      old_seats: number
+      new_seats: number
+      delta: number
+      sms_sent: boolean
+    }
+    meta?: {
+      sms: SmsSafetyMeta
+      table_booking_sync?: {
+        success: boolean
+        error: string | null
       }
     }
+  }
 
 function formatEventDateTimeForSms(input: {
   startDatetime?: string | null
@@ -993,22 +994,22 @@ export async function updateEventManualBookingSeats(input: {
     const analyticsPromise =
       delta !== 0 && bookingRow.event_id && updateResult.customer_id
         ? recordEventAnalyticsSafe(supabase, {
-            customerId: updateResult.customer_id,
-            eventBookingId: updateResult.booking_id,
-            eventType: 'event_booking_updated',
-            metadata: {
-              event_id: bookingRow.event_id,
-              source: 'admin',
-              old_seats: oldSeats,
-              new_seats: newSeats,
-              delta
-            }
-          }, {
-            customerId: updateResult.customer_id,
-            eventId: bookingRow.event_id,
-            eventBookingId: updateResult.booking_id,
-            eventType: 'event_booking_updated'
-          })
+          customerId: updateResult.customer_id,
+          eventBookingId: updateResult.booking_id,
+          eventType: 'event_booking_updated',
+          metadata: {
+            event_id: bookingRow.event_id,
+            source: 'admin',
+            old_seats: oldSeats,
+            new_seats: newSeats,
+            delta
+          }
+        }, {
+          customerId: updateResult.customer_id,
+          eventId: bookingRow.event_id,
+          eventBookingId: updateResult.booking_id,
+          eventType: 'event_booking_updated'
+        })
         : Promise.resolve()
 
     const [tableSyncOutcome, analyticsOutcome] = await Promise.allSettled([
@@ -1371,7 +1372,7 @@ export async function cancelEventManualBooking(input: {
     ) {
       const smsBody = ensureReplyInstruction(
         buildEventBookingCancelledSms({
-          firstName: customerRecord.first_name || 'there',
+          firstName: getSmartFirstName(customerRecord.first_name),
           eventName: eventRecord?.name || 'your event',
           eventStartText: formatEventDateTimeForSms({
             startDatetime: eventRecord?.start_datetime ?? null,

@@ -19,8 +19,8 @@ import { Input } from '@/components/ui-v2/forms/Input'
 import { Textarea } from '@/components/ui-v2/forms/Textarea'
 import { Checkbox } from '@/components/ui-v2/forms/Checkbox'
 import { Alert } from '@/components/ui-v2/feedback/Alert'
-import { 
-  UserGroupIcon, 
+import {
+  UserGroupIcon,
   FunnelIcon,
   PaperAirplaneIcon,
   CheckCircleIcon,
@@ -71,7 +71,7 @@ interface FilterOptions {
   eventAttendance: 'all' | 'attending' | 'not_attending'
   bookingType: 'all' | 'bookings_only' | 'reminders_only'
   categoryId: string
-  categoryAttendance: 'all' | 'regulars' | 'never_attended'
+  categoryAttendance: 'all' | 'regulars' | 'reminders_only' | 'never_attended'
 }
 
 export default function BulkMessagePage() {
@@ -279,7 +279,7 @@ export default function BulkMessagePage() {
     let content = getMessageContent()
     const selectedEvent = events.find(e => e.id === filters.eventId)
     const selectedCategory = categories.find(c => c.id === filters.categoryId)
-    
+
     // Replace variables with sample data for preview
     content = content.replace(/{{customer_name}}/g, 'John Smith')
     content = content.replace(/{{first_name}}/g, 'John')
@@ -311,16 +311,16 @@ export default function BulkMessagePage() {
     try {
       const selectedCustomersList = customers.filter(c => selectedCustomers.has(c.id))
       const selectedCustomerIds = selectedCustomersList.map(c => c.id)
-      
+
       // Updated threshold from 50 to 100 for better performance
       if (selectedCustomerIds.length > 100) {
         const result = await enqueueBulkSMSJob(
-          selectedCustomerIds, 
+          selectedCustomerIds,
           messageContent,
           filters.eventId,
           filters.categoryId
         )
-        
+
         if (result.success && result.jobId) {
           toast.success(`Bulk SMS job queued successfully. Your ${selectedCustomerIds.length} messages will be sent within the next few minutes.`)
           setSelectedCustomers(new Set())
@@ -337,7 +337,7 @@ export default function BulkMessagePage() {
           filters.eventId,
           filters.categoryId
         )
-        
+
         if (result && 'error' in result) {
           toast.error(result.error || 'Failed to send messages')
         } else if (result && 'success' in result && result.success) {
@@ -345,7 +345,7 @@ export default function BulkMessagePage() {
           if ('sent' in result && result.sent !== undefined) {
             const sent = result.sent || 0
             const failed = 'failed' in result ? (result.failed || 0) : 0
-            
+
             if (sent > 0 && failed === 0) {
               toast.success(`Successfully sent ${sent} messages`)
             } else if (failed > 0 && sent === 0) {
@@ -358,7 +358,7 @@ export default function BulkMessagePage() {
           } else {
             toast.success(`Messages sent successfully`)
           }
-          
+
           // Clear selection and message after sending
           setSelectedCustomers(new Set())
           setCustomMessage('')
@@ -406,7 +406,7 @@ export default function BulkMessagePage() {
         {/* Filters */}
         <div className="space-y-6">
           {/* Filters */}
-          <Section 
+          <Section
             id="filters"
             title="Filters"
             icon={<FunnelIcon className="h-5 w-5" />}
@@ -455,7 +455,15 @@ export default function BulkMessagePage() {
                   <FormGroup label="Category Filter">
                     <Select
                       value={filters.categoryId}
-                      onChange={(e) => setFilters({ ...filters, categoryId: e.target.value })}
+                      onChange={(e) => {
+                        const newCategoryId = e.target.value
+                        setFilters({
+                          ...filters,
+                          categoryId: newCategoryId,
+                          // Auto-select 'regulars' if a category is chosen, otherwise reset to 'all'
+                          categoryAttendance: newCategoryId ? 'regulars' : 'all'
+                        })
+                      }}
                     >
                       <option value="">All Categories</option>
                       {categories.map(category => (
@@ -471,10 +479,11 @@ export default function BulkMessagePage() {
                   <FormGroup label="Category Attendance">
                     <Select
                       value={filters.categoryAttendance}
-                      onChange={(e) => setFilters({ ...filters, categoryAttendance: e.target.value as 'all' | 'regulars' | 'never_attended' })}
+                      onChange={(e) => setFilters({ ...filters, categoryAttendance: e.target.value as 'all' | 'regulars' | 'reminders_only' | 'never_attended' })}
                     >
                       <option value="all">All Customers</option>
-                      <option value="regulars">Category Regulars</option>
+                      <option value="regulars">Booked (Regulars)</option>
+                      <option value="reminders_only">Reminders Only (0 Seats)</option>
                       <option value="never_attended">Never Attended Category</option>
                     </Select>
                   </FormGroup>
@@ -484,7 +493,15 @@ export default function BulkMessagePage() {
                   <FormGroup label="Event Filter">
                     <Select
                       value={filters.eventId}
-                      onChange={(e) => setFilters({ ...filters, eventId: e.target.value })}
+                      onChange={(e) => {
+                        const newEventId = e.target.value
+                        setFilters({
+                          ...filters,
+                          eventId: newEventId,
+                          // Auto-select 'attending' if an event is chosen, otherwise reset to 'all'
+                          eventAttendance: newEventId ? 'attending' : 'all'
+                        })
+                      }}
                     >
                       <option value="">All Events</option>
                       {events.map(event => (
@@ -545,7 +562,7 @@ export default function BulkMessagePage() {
           <Section id="compose" title="Compose Message">
             <Card>
               <div className="space-y-4">
-                <FormGroup 
+                <FormGroup
                   label="Message Content"
                   help={`${customMessage.length} chars, ~${Math.ceil(customMessage.length / 160)} segments`}
                 >
@@ -607,7 +624,7 @@ export default function BulkMessagePage() {
         </div>
 
         <div className="space-y-6">
-          <Section 
+          <Section
             id="select-recipients"
             title={`Select Recipients (${customers.length}${hasMore ? '+' : ''} loaded)`}
             icon={<UserGroupIcon className="h-5 w-5" />}
@@ -636,6 +653,7 @@ export default function BulkMessagePage() {
                       <Badge variant="info" size="sm" icon={<TagIcon className="h-3 w-3" />}>
                         {categories.find(c => c.id === filters.categoryId)?.name}
                         {filters.categoryAttendance === 'regulars' && ' - Regulars'}
+                        {filters.categoryAttendance === 'reminders_only' && ' - Reminders Only'}
                         {filters.categoryAttendance === 'never_attended' && ' - Never Attended'}
                       </Badge>
                     )}
@@ -694,36 +712,55 @@ export default function BulkMessagePage() {
                             {customer.sms_opt_in === false && (
                               <XCircleIcon className="h-5 w-5 text-red-500" title="SMS Opted Out" />
                             )}
-                    {filters.categoryId && customer.category_preferences?.some(p => p.category_id === filters.categoryId) && (
-                      <Badge
-                        variant="info"
-                        size="sm"
-                        icon={<TagIcon className="h-3 w-3" />}
-                      >
-                        {(() => {
-                          const pref = customer.category_preferences?.find(
-                            p => p.category_id === filters.categoryId,
-                          )
-                          return pref ? `${pref.times_attended}x` : ''
-                        })()}
-                      </Badge>
-                    )}
-                    {filters.eventId && customer.event_bookings?.some(b => b.event_id === filters.eventId) && (
-                      <Badge
-                        variant="info"
-                        size="sm"
-                        icon={<CalendarIcon className="h-3 w-3" />}
-                      >
-                        {(() => {
-                          const booking = customer.event_bookings?.find(
-                            b => b.event_id === filters.eventId,
-                          )
-                          if (!booking) return ''
-                          const reminder = booking.is_reminder_only ?? ((booking.seats ?? 0) === 0)
-                          return reminder ? 'Reminder' : `${booking.seats ?? 0} tickets`
-                        })()}
-                      </Badge>
-                    )}
+                            {filters.categoryId && (
+                              <Badge
+                                variant="info"
+                                size="sm"
+                                icon={<TagIcon className="h-3 w-3" />}
+                              >
+                                {(() => {
+                                  // Prioritize showing actual attendance stats if they exist
+                                  const pref = customer.category_preferences?.find(
+                                    p => p.category_id === filters.categoryId,
+                                  )
+
+                                  if (pref && pref.times_attended > 0) {
+                                    return `${pref.times_attended}x`
+                                  }
+
+                                  // If no attendance, check for reminders in this category
+                                  const hasReminder = customer.event_bookings?.some(booking =>
+                                    // We need to check against category, but currently we only have event_id in the frontend
+                                    // However, since we filtered by categoryId in the API, if they are returned 
+                                    // and have no times_attended, it implies they matched via reminder
+                                    filters.categoryId && (booking.is_reminder_only || (booking.seats ?? 0) === 0)
+                                  )
+
+                                  // If we are in 'reminders_only' mode or they have no bookings but appear here, show 'Reminder'
+                                  if (hasReminder || filters.categoryAttendance === 'reminders_only') {
+                                    return 'Reminder'
+                                  }
+
+                                  return pref ? `${pref.times_attended}x` : ''
+                                })()}
+                              </Badge>
+                            )}
+                            {filters.eventId && customer.event_bookings?.some(b => b.event_id === filters.eventId) && (
+                              <Badge
+                                variant="info"
+                                size="sm"
+                                icon={<CalendarIcon className="h-3 w-3" />}
+                              >
+                                {(() => {
+                                  const booking = customer.event_bookings?.find(
+                                    b => b.event_id === filters.eventId,
+                                  )
+                                  if (!booking) return ''
+                                  const reminder = booking.is_reminder_only ?? ((booking.seats ?? 0) === 0)
+                                  return reminder ? 'Reminder' : `${booking.seats ?? 0} tickets`
+                                })()}
+                              </Badge>
+                            )}
                             {customer.total_bookings && customer.total_bookings > 0 && (
                               <Badge variant="info" size="sm">
                                 {customer.total_bookings} bookings

@@ -52,7 +52,15 @@ function normalizeNonNegativeInt(value: number | undefined, fallback: number, ma
   return Math.min(normalized, max)
 }
 
-function buildPersonalizedMessage(
+// Helper to get a smart first name (e.g., "there" for "Guest")
+export function getSmartFirstName(firstName: string | null | undefined): string {
+  const name = firstName || ''
+  const isPlaceholderName = /^(guest|unknown|customer|client|user|admin)$/i.test(name)
+  return isPlaceholderName ? 'there' : (name || 'there')
+}
+
+// Helper to build personalized message with smart greeting
+export function applySmartVariables(
   base: string,
   customer: { first_name: string; last_name: string | null },
   eventDetails?: { name: string; date: string; time: string | null },
@@ -61,8 +69,16 @@ function buildPersonalizedMessage(
 ) {
   const fullName = [customer.first_name, customer.last_name ?? ''].filter(Boolean).join(' ').trim()
   let personalized = base
-  personalized = personalized.replace(/{{customer_name}}/g, fullName || customer.first_name)
-  personalized = personalized.replace(/{{first_name}}/g, customer.first_name)
+
+  // Smart Greeting Logic
+  const smartFirstName = getSmartFirstName(customer.first_name)
+
+  // For full name, if it's a placeholder, use a generic term
+  const isPlaceholderName = smartFirstName === 'there'
+  const smartFullName = isPlaceholderName ? 'Customer' : (fullName || 'Customer')
+
+  personalized = personalized.replace(/{{customer_name}}/g, smartFullName)
+  personalized = personalized.replace(/{{first_name}}/g, smartFirstName)
   personalized = personalized.replace(/{{last_name}}/g, customer.last_name || '')
   personalized = personalized.replace(/{{venue_name}}/g, 'The Anchor')
   personalized = personalized.replace(/{{contact_phone}}/g, contactPhone || '')
@@ -296,7 +312,7 @@ export async function sendBulkSms(request: BulkSmsRequest): Promise<BulkSmsResul
                 return
               }
 
-              const personalized = buildPersonalizedMessage(
+              const personalized = applySmartVariables(
                 message,
                 { first_name: customer.first_name, last_name: customer.last_name },
                 eventDetails ?? undefined,

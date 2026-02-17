@@ -4,6 +4,7 @@ import { createStripeCheckoutSession, type StripeCheckoutSession } from '@/lib/p
 import { logger } from '@/lib/logger'
 import { ensureReplyInstruction } from '@/lib/sms/support'
 import { sendSMS } from '@/lib/twilio'
+import { getSmartFirstName } from '@/lib/sms/bulk'
 import { createEventManageToken } from '@/lib/events/manage-booking'
 
 export type EventPaymentTokenResult = {
@@ -14,31 +15,31 @@ export type EventPaymentTokenResult = {
 
 export type EventPaymentPreviewResult =
   | {
-      state: 'ready'
-      bookingId: string
-      customerId: string
-      eventId: string
-      eventName: string
-      seats: number
-      unitPrice: number
-      totalAmount: number
-      currency: string
-      holdExpiresAt: string
-      tokenHash: string
-    }
+    state: 'ready'
+    bookingId: string
+    customerId: string
+    eventId: string
+    eventName: string
+    seats: number
+    unitPrice: number
+    totalAmount: number
+    currency: string
+    holdExpiresAt: string
+    tokenHash: string
+  }
   | {
-      state: 'blocked'
-      reason:
-        | 'invalid_token'
-        | 'token_expired'
-        | 'token_used'
-        | 'booking_not_found'
-        | 'booking_not_pending_payment'
-        | 'hold_expired'
-        | 'event_not_found'
-        | 'invalid_amount'
-        | 'token_customer_mismatch'
-    }
+    state: 'blocked'
+    reason:
+    | 'invalid_token'
+    | 'token_expired'
+    | 'token_used'
+    | 'booking_not_found'
+    | 'booking_not_pending_payment'
+    | 'hold_expired'
+    | 'event_not_found'
+    | 'invalid_amount'
+    | 'token_customer_mismatch'
+  }
 
 function parseIsoDate(value: string | null | undefined): Date | null {
   if (!value) return null
@@ -239,15 +240,15 @@ export async function createEventCheckoutSessionByRawToken(
   }
 ): Promise<
   | {
-      state: 'created'
-      checkoutUrl: string
-      session: StripeCheckoutSession
-      bookingId: string
-    }
+    state: 'created'
+    checkoutUrl: string
+    session: StripeCheckoutSession
+    bookingId: string
+  }
   | {
-      state: 'blocked'
-      reason: EventPaymentPreviewResult extends { state: 'blocked'; reason: infer R } ? R : string
-    }
+    state: 'blocked'
+    reason: EventPaymentPreviewResult extends { state: 'blocked'; reason: infer R } ? R : string
+  }
 > {
   const preview = await getEventPaymentPreviewByRawToken(supabase, input.rawToken)
   if (preview.state !== 'ready') {
@@ -399,7 +400,7 @@ export async function sendEventPaymentConfirmationSms(
     return { success: false, code: null, logFailure: false }
   }
 
-  const firstName = customer.first_name || 'there'
+  const firstName = getSmartFirstName(customer.first_name)
   const seatWord = input.seats === 1 ? 'seat' : 'seats'
   const supportPhone = process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || process.env.TWILIO_PHONE_NUMBER || undefined
   let manageLink: string | null = null
@@ -550,7 +551,7 @@ export async function sendEventBookingSeatUpdateSms(
     return { success: false, code: null, logFailure: false }
   }
 
-  const firstName = customer.first_name || 'there'
+  const firstName = getSmartFirstName(customer.first_name)
   const supportPhone = process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || process.env.TWILIO_PHONE_NUMBER || undefined
   const eventName = input.eventName || 'your event'
   const oldLabel = formatSeatCount(Math.max(1, input.oldSeats))
@@ -719,7 +720,7 @@ export async function sendEventPaymentRetrySms(
     return { success: false, code: null, logFailure: false }
   }
 
-  const firstName = customer.first_name || 'there'
+  const firstName = getSmartFirstName(customer.first_name)
   const supportPhone = process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || process.env.TWILIO_PHONE_NUMBER || undefined
   const body = ensureReplyInstruction(
     `The Anchor: Hi ${firstName}, your event payment wasn't completed. Please try again here: ${paymentLink}`,

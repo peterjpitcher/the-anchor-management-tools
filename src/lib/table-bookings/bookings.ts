@@ -2,6 +2,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { createGuestToken, hashGuestToken } from '@/lib/guest/tokens'
 import { sendEmail } from '@/lib/email/emailService'
 import { sendSMS } from '@/lib/twilio'
+import { getSmartFirstName } from '@/lib/sms/bulk'
 import { ensureReplyInstruction } from '@/lib/sms/support'
 import { createTableManageToken } from '@/lib/table-bookings/manage-booking'
 import { createSundayPreorderToken } from '@/lib/table-bookings/sunday-preorder'
@@ -50,10 +51,10 @@ export type TableCardCapturePreview = {
 
 type SmsSafetyMeta =
   | {
-      success: boolean
-      code: string | null
-      logFailure: boolean
-    }
+    success: boolean
+    code: string | null
+    logFailure: boolean
+  }
   | null
 
 type TableBookingNotificationRow = {
@@ -392,7 +393,7 @@ export async function sendTableBookingCreatedSmsIfAllowed(
     return { sms: null }
   }
 
-  const firstName = customer.first_name || 'there'
+  const firstName = getSmartFirstName(customer.first_name)
   const bookingMoment = formatLondonDateTime(input.bookingResult.start_datetime)
   const partySize = Math.max(1, Number(input.bookingResult.party_size ?? 1))
   const seatWord = partySize === 1 ? 'person' : 'people'
@@ -527,7 +528,7 @@ export async function sendTableBookingConfirmedAfterCardCaptureSmsIfAllowed(
     return null
   }
 
-  const firstName = customer.first_name || 'there'
+  const firstName = getSmartFirstName(customer.first_name)
   const partySize = Math.max(1, Number(booking.party_size ?? 1))
   const seatWord = partySize === 1 ? 'person' : 'people'
   const supportPhone = process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || process.env.TWILIO_PHONE_NUMBER || undefined
@@ -674,7 +675,7 @@ export async function sendSundayPreorderLinkSmsIfAllowed(
   }
 
   const supportPhone = process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || process.env.TWILIO_PHONE_NUMBER || undefined
-  const firstName = customer.first_name || 'there'
+  const firstName = getSmartFirstName(customer.first_name)
   const referenceSnippet = input.bookingReference ? ` for booking ${input.bookingReference}` : ''
   const message = ensureReplyInstruction(
     `The Anchor: Hi ${firstName}, please complete your Sunday lunch pre-order${referenceSnippet}. Complete here: ${tokenUrl}`,
