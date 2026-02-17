@@ -99,6 +99,57 @@ function splitWalkInGuestName(fullName: string | null | undefined): {
   }
 }
 
+function isSundayIsoDate(dateIso: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateIso)) return false
+  const parsed = new Date(`${dateIso}T12:00:00Z`)
+  return Number.isFinite(parsed.getTime()) && parsed.getUTCDay() === 0
+}
+
+async function shouldAutoPromoteSundayLunchForFoh(input: {
+  supabase: any
+  bookingDate: string
+  bookingTime: string
+  purpose: 'food' | 'drinks'
+  sundayLunchExplicit: boolean
+  userId: string
+}): Promise<boolean> {
+  if (input.sundayLunchExplicit || input.purpose !== 'food' || !isSundayIsoDate(input.bookingDate)) {
+    return false
+  }
+
+  const [regularWindowResult, sundayWindowResult] = await Promise.all([
+    input.supabase.rpc('table_booking_matches_service_window_v05', {
+      p_booking_date: input.bookingDate,
+      p_booking_time: input.bookingTime,
+      p_booking_purpose: input.purpose,
+      p_sunday_lunch: false
+    }),
+    input.supabase.rpc('table_booking_matches_service_window_v05', {
+      p_booking_date: input.bookingDate,
+      p_booking_time: input.bookingTime,
+      p_booking_purpose: input.purpose,
+      p_sunday_lunch: true
+    })
+  ])
+
+  if (regularWindowResult.error || sundayWindowResult.error) {
+    logger.warn('Failed to evaluate FOH Sunday lunch auto-promotion window checks', {
+      metadata: {
+        userId: input.userId,
+        bookingDate: input.bookingDate,
+        bookingTime: input.bookingTime,
+        regularError: regularWindowResult.error?.message || null,
+        sundayError: sundayWindowResult.error?.message || null
+      }
+    })
+    return false
+  }
+
+  const regularMatches = regularWindowResult.data === true
+  const sundayMatches = sundayWindowResult.data === true
+  return !regularMatches && sundayMatches
+}
+
 async function createWalkInCustomer(
   supabase: any,
   input: {
@@ -769,6 +820,30 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Failed to resolve customer' }, { status: 500 })
   }
 
+  let effectiveSundayLunch = payload.sunday_lunch === true
+  if (!effectiveSundayLunch) {
+    try {
+      effectiveSundayLunch = await shouldAutoPromoteSundayLunchForFoh({
+        supabase: auth.supabase,
+        bookingDate: payload.date,
+        bookingTime,
+        purpose: payload.purpose,
+        sundayLunchExplicit: payload.sunday_lunch === true,
+        userId: auth.userId
+      })
+    } catch (promotionError) {
+      logger.warn('Failed to evaluate FOH Sunday lunch auto-promotion', {
+        metadata: {
+          userId: auth.userId,
+          bookingDate: payload.date,
+          bookingTime,
+          error: promotionError instanceof Error ? promotionError.message : String(promotionError)
+        }
+      })
+      effectiveSundayLunch = false
+    }
+  }
+
   const { data: rpcResultRaw, error: rpcError } = await auth.supabase.rpc('create_table_booking_v05', {
     p_customer_id: customerId,
     p_booking_date: payload.date,
@@ -776,7 +851,7 @@ export async function POST(request: NextRequest) {
     p_party_size: payload.party_size,
     p_booking_purpose: payload.purpose,
     p_notes: payload.notes || null,
-    p_sunday_lunch: payload.sunday_lunch === true,
+    p_sunday_lunch: effectiveSundayLunch,
     p_source: payload.walk_in === true ? 'walk-in' : 'admin'
   })
 
@@ -830,7 +905,7 @@ export async function POST(request: NextRequest) {
           party_size: payload.party_size,
           purpose: payload.purpose,
           notes: payload.notes,
-          sunday_lunch: payload.sunday_lunch
+          sunday_lunch: effectiveSundayLunch
         }
       })
       shouldSendBookingSms = false
@@ -933,7 +1008,7 @@ export async function POST(request: NextRequest) {
       metadata: {
         party_size: payload.party_size,
         booking_purpose: payload.purpose,
-        sunday_lunch: payload.sunday_lunch === true,
+        sunday_lunch: effectiveSundayLunch,
         status: bookingResult.status || bookingResult.state,
         table_name: bookingResult.table_name || null,
         source: 'foh'
@@ -982,12 +1057,14 @@ export async function POST(request: NextRequest) {
   }
 
   const shouldHandleSundayPreorder =
-    payload.sunday_lunch === true &&
+    effectiveSundayLunch &&
     (bookingResult.state === 'confirmed' || bookingResult.state === 'pending_card_capture') &&
     Boolean(bookingResult.table_booking_id)
 
   if (shouldHandleSundayPreorder && bookingResult.table_booking_id) {
-    const mode = payload.sunday_preorder_mode || 'send_link'
+    const mode = payload.sunday_lunch === true
+      ? payload.sunday_preorder_mode || 'send_link'
+      : 'send_link'
 
     if (mode === 'capture_now') {
       let captureResult: Awaited<ReturnType<typeof saveSundayPreorderByBookingId>> | null = null

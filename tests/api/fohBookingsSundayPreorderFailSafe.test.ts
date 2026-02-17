@@ -137,5 +137,101 @@ describe('FOH bookings Sunday preorder fail-safe guards', () => {
       expect.any(Object)
     )
   })
-})
 
+  it('auto-promotes Sunday lunch slot bookings so 13:30 Sunday food bookings do not fail as outside hours', async () => {
+    ;(ensureCustomerForPhone as unknown as vi.Mock).mockResolvedValue({
+      customerId: 'customer-2',
+      resolutionError: undefined,
+    })
+
+    ;(sendTableBookingCreatedSmsIfAllowed as unknown as vi.Mock).mockResolvedValue({
+      sms: null,
+    })
+
+    ;(sendManagerTableBookingCreatedEmailIfAllowed as unknown as vi.Mock).mockResolvedValue({
+      sent: true,
+    })
+
+    ;(sendSundayPreorderLinkSmsIfAllowed as unknown as vi.Mock).mockResolvedValueOnce({
+      sent: true,
+      scheduledFor: undefined,
+      url: 'http://localhost/preorder',
+      sms: null,
+    })
+
+    const supabase = {
+      rpc: vi.fn((fn: string, args: Record<string, unknown>) => {
+        if (fn === 'table_booking_matches_service_window_v05') {
+          return Promise.resolve({
+            data: args.p_sunday_lunch === true,
+            error: null,
+          })
+        }
+
+        if (fn === 'create_table_booking_v05') {
+          expect(args).toEqual(
+            expect.objectContaining({
+              p_sunday_lunch: true,
+            })
+          )
+
+          return Promise.resolve({
+            data: {
+              state: 'confirmed',
+              table_booking_id: 'tb-2',
+              booking_reference: 'TB-2',
+              start_datetime: '2026-06-28T12:30:00.000Z',
+              party_size: 2,
+              table_name: 'B',
+            },
+            error: null,
+          })
+        }
+
+        throw new Error(`Unexpected rpc: ${fn}`)
+      }),
+    }
+
+    ;(requireFohPermission as unknown as vi.Mock).mockResolvedValue({
+      ok: true,
+      userId: 'user-2',
+      supabase,
+    })
+
+    const request = new Request('http://localhost/api/foh/bookings', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        phone: '+447700900222',
+        date: '2026-06-28',
+        time: '13:30',
+        party_size: 2,
+        purpose: 'food',
+      }),
+    })
+
+    const nextRequestLike = Object.assign(request, { nextUrl: new URL(request.url) })
+    const response = await POST(nextRequestLike as any)
+    const payload = await response.json()
+
+    expect(response.status).toBe(201)
+    expect(payload).toEqual(
+      expect.objectContaining({
+        success: true,
+        data: expect.objectContaining({
+          state: 'confirmed',
+          table_booking_id: 'tb-2',
+          sunday_preorder_state: 'link_sent',
+        }),
+      })
+    )
+
+    const serviceWindowChecks = (supabase.rpc as unknown as vi.Mock).mock.calls.filter(
+      ([fn]) => fn === 'table_booking_matches_service_window_v05'
+    )
+    expect(serviceWindowChecks).toHaveLength(2)
+    expect(sendSundayPreorderLinkSmsIfAllowed).toHaveBeenCalledTimes(1)
+  })
+})
