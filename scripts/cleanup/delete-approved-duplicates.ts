@@ -4,6 +4,8 @@
  * delete-approved-duplicates (safe by default)
  *
  * Deletes a curated list of approved duplicate customer records.
+ * NOTE: This script is for a fixed historical ID list. For current duplicate
+ * cleanup runs, prefer `scripts/cleanup/merge-duplicate-customers.ts`.
  *
  * Dry-run (default):
  *   tsx scripts/cleanup/delete-approved-duplicates.ts
@@ -249,4 +251,3 @@ run().catch((error) => {
   console.error('delete-approved-duplicates failed:', error)
   process.exitCode = 1
 })
-

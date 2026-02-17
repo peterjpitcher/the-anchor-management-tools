@@ -270,6 +270,10 @@ export class PrivateBookingService {
       resolvedCustomerId = ensured.customerId;
     }
 
+    if (!resolvedCustomerId) {
+      throw new Error('Private booking must include a linked customer (customer_id or contact_phone)');
+    }
+
     const bookingPayload = {
       ...input,
       contact_phone: normalizedContactPhone,

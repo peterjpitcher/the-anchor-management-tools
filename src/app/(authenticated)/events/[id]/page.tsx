@@ -1,7 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import { notFound } from 'next/navigation'
 import { getEventMarketingLinks } from '@/app/actions/event-marketing-links'
-import { getEventInterestAudience } from '@/app/actions/event-interest-audience'
 import EventDetailClient from './EventDetailClient'
 import { Event } from '@/types/database'
 import { EventCategory } from '@/types/event-categories'
@@ -40,14 +39,13 @@ export default async function EventViewPage({
   const { id: eventId } = await params
   const supabase = await createClient()
 
-  const [eventResult, marketingLinksResult, interestAudienceResult] = await Promise.all([
+  const [eventResult, marketingLinksResult] = await Promise.all([
     supabase
       .from('events')
       .select('*, category:event_categories(*)')
       .eq('id', eventId)
       .single(),
-    getEventMarketingLinks(eventId),
-    getEventInterestAudience(eventId)
+    getEventMarketingLinks(eventId)
   ])
 
   const { data: eventData, error: eventError } = eventResult
@@ -63,7 +61,6 @@ export default async function EventViewPage({
   const event = eventData as EventWithCategory
 
   const marketingLinks = marketingLinksResult.success ? (marketingLinksResult.links || []) : []
-  const interestAudience = interestAudienceResult.success ? (interestAudienceResult.data || null) : null
   const { data: eventBookingsRaw, error: bookingsError } = await supabase
     .from('bookings')
     .select(
@@ -111,7 +108,6 @@ export default async function EventViewPage({
       event={event}
       initialMarketingLinks={marketingLinks}
       initialBookings={eventBookings}
-      initialInterestAudience={interestAudience}
     />
   )
 }

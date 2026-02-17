@@ -144,7 +144,7 @@ describe('event guest engagement route error payloads', () => {
         logFailure: true,
       })
 
-      const eventStartIso = new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString()
+      const eventStartIso = new Date(Date.now() + 12 * 60 * 60 * 1000).toISOString()
 
       const supabase = {
         from: vi.fn((table: string) => {
@@ -267,7 +267,7 @@ describe('event guest engagement route error payloads', () => {
       expect(payload.abortReason).toBe('logging_failed')
       expect(payload.abortStage).toBe('reminders:send_sms')
       expect(payload.abortBookingId).toBe('booking-1')
-      expect(payload.abortTemplateKey).toBe('event_reminder_7d')
+      expect(payload.abortTemplateKey).toBe('event_reminder_1d')
       expect(payload.safetyAborts).toHaveLength(1)
 
       expect(sendSMS).toHaveBeenCalledTimes(1)

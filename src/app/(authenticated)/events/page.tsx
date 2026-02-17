@@ -7,6 +7,7 @@ import {
 import KPIHeader from '@/components/events/command-center/KPIHeader'
 import CommandCenterShell from '@/components/events/command-center/CommandCenterShell'
 import { DATE_TBD_NOTE, PrivateBookingService } from '@/services/private-bookings'
+import { PageLayout } from '@/components/ui-v2/layout/PageLayout'
 
 export const metadata = {
   title: 'Events Command Center',
@@ -55,28 +56,34 @@ export default async function EventsPage() {
 
   if (data.error) {
     return (
-      <div className="p-8 text-center text-red-600 bg-red-50 rounded-lg border border-red-200 m-8">
-        <h2 className="text-lg font-semibold">Error Loading Events</h2>
-        <p>{data.error}</p>
-      </div>
+      <PageLayout
+        title="Events Command Center"
+        subtitle="Manage upcoming events and clear tasks."
+        error={data.error}
+      />
     )
   }
 
   return (
-    <div className="flex flex-col h-[calc(100vh-64px)] overflow-hidden bg-gray-50/50 p-4 md:p-8">
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900 tracking-tight">Events Command Center</h1>
-        <p className="text-sm text-gray-500">Manage upcoming events and clear tasks.</p>
+    <PageLayout
+      title="Events Command Center"
+      subtitle="Manage upcoming events and clear tasks."
+      className="bg-gray-50/50"
+      padded={false}
+      contentClassName="px-4 py-4 md:px-8 md:py-6"
+    >
+      <div className="flex min-h-[65vh] flex-col gap-6 overflow-hidden">
+        <KPIHeader kpis={data.kpis} />
+
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+          <CommandCenterShell
+            initialData={{
+              ...data,
+              privateBookingsForCalendar,
+            }}
+          />
+        </div>
       </div>
-
-      <KPIHeader kpis={data.kpis} />
-
-      <CommandCenterShell
-        initialData={{
-          ...data,
-          privateBookingsForCalendar,
-        }}
-      />
-    </div>
+    </PageLayout>
   )
 }

@@ -14,7 +14,6 @@ import { Badge } from '@/components/ui-v2/display/Badge'
 import { Alert } from '@/components/ui-v2/feedback/Alert'
 import { toast } from '@/components/ui-v2/feedback/Toast'
 import { EmptyState } from '@/components/ui-v2/display/EmptyState'
-import type { HeaderNavItem } from '@/components/ui-v2/navigation/HeaderNav'
 import SendBirthdayRemindersButton from '@/components/features/employees/SendBirthdayRemindersButton'
 
 export const dynamic = 'force-dynamic'
@@ -100,11 +99,6 @@ export default async function EmployeeBirthdaysPage() {
       return aIndex - bIndex;
     });
 
-  const navItems: HeaderNavItem[] = [
-    { label: 'Overview', href: '#overview' },
-    { label: 'Birthdays', href: '#birthdays' },
-  ];
-
   const headerActions = canManage ? <SendBirthdayRemindersButton /> : undefined;
 
   return (
@@ -112,7 +106,6 @@ export default async function EmployeeBirthdaysPage() {
       title="Employee Birthdays"
       subtitle="All employee birthdays throughout the year"
       backButton={{ label: 'Back to Employees', href: '/employees' }}
-      navItems={navItems}
       headerActions={headerActions}
     >
       <section id="overview" className="space-y-4">

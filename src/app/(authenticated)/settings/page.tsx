@@ -203,16 +203,10 @@ export default async function SettingsPage() {
     },
   ].filter((group) => group.items.length > 0);
 
-  const navItems = sectionGroups.map((group) => ({
-    label: group.label,
-    href: `#${group.id}`,
-  }));
-
   return (
     <PageLayout
       title="Settings"
       subtitle="Manage application settings and configurations"
-      navItems={navItems}
     >
       <div className="space-y-6">
         {sectionGroups.map((group) => (

@@ -1,9 +1,6 @@
-import Link from 'next/link';
 import { getCustomerLabels } from '@/app/actions/customer-labels';
 import { checkUserPermission } from '@/app/actions/rbac';
-import { Page } from '@/components/ui-v2/layout/Page';
-import { Card } from '@/components/ui-v2/layout/Card';
-import { Alert } from '@/components/ui-v2/feedback/Alert';
+import { PageLayout } from '@/components/ui-v2/layout/PageLayout';
 import CustomerLabelsClient from './CustomerLabelsClient';
 import { redirect } from 'next/navigation';
 
@@ -21,22 +18,12 @@ export default async function CustomerLabelsPage() {
 
   if (labelsResult.error) {
     return (
-      <Page
+      <PageLayout
         title="Customer Labels"
-        actions={(
-          <Link href="/settings" className="text-sm font-medium text-blue-600 hover:text-blue-500">
-            Back to Settings
-          </Link>
-        )}
-      >
-        <Card>
-          <Alert
-            variant="error"
-            title="Error loading customer labels"
-            description={labelsResult.error}
-          />
-        </Card>
-      </Page>
+        subtitle="Organise customers with labels for better targeting and management"
+        backButton={{ label: 'Back to Settings', href: '/settings' }}
+        error={labelsResult.error}
+      />
     );
   }
 

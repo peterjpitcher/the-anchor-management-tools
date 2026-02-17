@@ -17,7 +17,6 @@ import { EmptyState } from '@/components/ui-v2/display/EmptyState'
 import { Spinner } from '@/components/ui-v2/feedback/Spinner'
 import { Alert } from '@/components/ui-v2/feedback/Alert'
 import { Pagination } from '@/components/ui-v2/navigation/Pagination'
-import type { HeaderNavItem } from '@/components/ui-v2/navigation/HeaderNav'
 
 type FiltersState = {
   operationType: string
@@ -172,18 +171,12 @@ export default function AuditLogsClient({
     { label: 'Audit Logs' },
   ]
 
-  const navItems: HeaderNavItem[] = [
-    { label: 'Filters', href: '#filters' },
-    { label: 'Logs', href: '#logs' },
-  ]
-
   return (
     <PageLayout
       title="Audit Logs"
       subtitle="View system activity and security events"
       breadcrumbs={breadcrumbs}
       backButton={{ label: 'Back to Settings', href: '/settings' }}
-      navItems={navItems}
     >
       <div className="space-y-6">
         {error && <Alert variant="error" title="Error" description={error} />}

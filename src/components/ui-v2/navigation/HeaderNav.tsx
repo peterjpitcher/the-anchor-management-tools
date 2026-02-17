@@ -71,13 +71,15 @@ export function HeaderNav({
       return { item, active }
     })
     
-    // Original logic: force first item active if nothing else matches.
-    // For underline tabs, this might be confusing if we are truly on a different page.
-    // But preserving behavior for now to avoid regression.
+    // Only default-select the first item when this is a local in-page nav.
     if (!computed.some(({ active }) => active) && computed.length > 0) {
-       // Only force active if the items are purely local hash navigations?
-       // For now, let's stick to existing behavior but be careful.
-       computed[0].active = true
+      const allLocalAnchors = computed.every(
+        ({ item }) => !item.href || item.href.startsWith('#'),
+      )
+
+      if (allLocalAnchors) {
+        computed[0].active = true
+      }
     }
 
     return computed

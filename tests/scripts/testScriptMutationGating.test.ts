@@ -55,6 +55,18 @@ describe('mutation script gating', () => {
     expect(script).toContain('process.exitCode = 1')
   })
 
+  it('merge-duplicate-customers defaults to dry-run and requires explicit multi-gating + caps', () => {
+    const script = readScript('scripts/cleanup/merge-duplicate-customers.ts')
+
+    expect(script).toContain('isMergeDuplicateCustomersMutationEnabled')
+    expect(script).toContain('RUN_MERGE_DUPLICATE_CUSTOMERS_MUTATION')
+    expect(script).toContain('ALLOW_MERGE_DUPLICATE_CUSTOMERS_MUTATION_SCRIPT')
+    expect(script).toContain('assertMergeDuplicateCustomersLimit')
+    expect(script).toContain('--limit')
+    expect(script).toContain('--confirm')
+    expect(script).toContain('process.exitCode = 1')
+  })
+
   it('fix-table-booking-api-permissions defaults to dry-run and requires explicit multi-gating + key hash', () => {
     const script = readScript('scripts/fixes/fix-table-booking-api-permissions.ts')
 
