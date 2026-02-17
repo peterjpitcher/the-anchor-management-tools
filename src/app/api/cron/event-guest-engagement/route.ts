@@ -10,20 +10,14 @@ import { createEventManageToken } from '@/lib/events/manage-booking'
 import { createGuestToken } from '@/lib/guest/tokens'
 import { getGoogleReviewLink } from '@/lib/events/review-link'
 import { recordAnalyticsEvent } from '@/lib/analytics/events'
-import { buildEventBaseUrl } from '@/lib/event-marketing-links'
 import { persistCronRunResult, recoverCronRunLock } from '@/lib/cron-run-results'
 
 export const maxDuration = 300
 
 const LONDON_TIMEZONE = 'Europe/London'
-const TEMPLATE_REMINDER_7D = 'event_reminder_7d'
 const TEMPLATE_REMINDER_1D = 'event_reminder_1d'
 const TEMPLATE_REVIEW_FOLLOWUP = 'event_review_followup'
 const TEMPLATE_TABLE_REVIEW_FOLLOWUP = 'table_review_followup'
-const TEMPLATE_INTEREST_MARKETING_14D = 'event_interest_marketing_14d'
-const TEMPLATE_INTEREST_REMINDER_14D = 'event_interest_reminder_14d'
-const TEMPLATE_INTEREST_REMINDER_7D = 'event_interest_reminder_7d'
-const TEMPLATE_INTEREST_REMINDER_1D = 'event_interest_reminder_1d'
 const JOB_NAME = 'event-guest-engagement'
 const STALE_RUN_WINDOW_MINUTES = 20
 const RUN_KEY_INTERVAL_MINUTES = 15
@@ -33,7 +27,6 @@ const TABLE_ENGAGEMENT_LOOKBACK_DAYS = 7
 const TABLE_ENGAGEMENT_LOOKAHEAD_DAYS = 1
 const MAX_EVENT_REVIEW_FOLLOWUPS_PER_RUN = 50
 const MAX_TABLE_REVIEW_FOLLOWUPS_PER_RUN = 50
-const MAX_INTEREST_MARKETING_SMS_PER_RUN = 50
 const EVENT_ENGAGEMENT_SEND_GUARD_WINDOW_MINUTES = parsePositiveIntEnv(
   'EVENT_ENGAGEMENT_SEND_GUARD_WINDOW_MINUTES',
   60
@@ -47,14 +40,9 @@ const EVENT_ENGAGEMENT_UPCOMING_SMS_ENABLED = parseBooleanEnv(
   process.env.NODE_ENV !== 'production'
 )
 const EVENT_ENGAGEMENT_TEMPLATE_KEYS = [
-  TEMPLATE_REMINDER_7D,
   TEMPLATE_REMINDER_1D,
   TEMPLATE_REVIEW_FOLLOWUP,
-  TEMPLATE_TABLE_REVIEW_FOLLOWUP,
-  TEMPLATE_INTEREST_MARKETING_14D,
-  TEMPLATE_INTEREST_REMINDER_14D,
-  TEMPLATE_INTEREST_REMINDER_7D,
-  TEMPLATE_INTEREST_REMINDER_1D
+  TEMPLATE_TABLE_REVIEW_FOLLOWUP
 ]
 
 type BookingWithRelations = {
@@ -80,25 +68,6 @@ type BookingWithRelations = {
     mobile_number: string | null
     sms_status: string | null
   } | null
-}
-
-type MarketingEventRow = {
-  id: string
-  name: string
-  slug: string | null
-  start_datetime: string | null
-  event_type: string | null
-  category_id: string | null
-  booking_open: boolean | null
-  event_status: string | null
-}
-
-type ManualInterestRecipientRow = {
-  id: string | null
-  customer_id: string | null
-  reminder_14d_sent_at: string | null
-  reminder_7d_sent_at: string | null
-  reminder_1d_sent_at: string | null
 }
 
 type TableBookingWithCustomer = {
@@ -481,10 +450,6 @@ async function recordAnalyticsEventSafe(
   }
 }
 
-function isUndefinedTableError(error: any): boolean {
-  return error?.code === '42P01'
-}
-
 function resolveEventStartIso(event: BookingWithRelations['event']): string | null {
   if (!event) return null
   if (event.start_datetime) return event.start_datetime
@@ -579,65 +544,6 @@ async function loadSentTableTemplateSet(
       const templateKey = (row as any).template_key
       if (typeof bookingId === 'string' && typeof templateKey === 'string') {
         sent.add(`${bookingId}:${templateKey}`)
-      }
-    }
-  }
-
-  return sent
-}
-
-async function loadSentEventInterestCustomerSet(
-  supabase: ReturnType<typeof createAdminClient>,
-  customerIds: string[],
-  templateKeys: string[],
-  eventId: string
-): Promise<Set<string>> {
-  const sent = new Set<string>()
-  if (customerIds.length === 0 || templateKeys.length === 0) {
-    return sent
-  }
-
-  for (const customerChunk of chunkArray(customerIds)) {
-    const { data, error } = await (supabase.from('messages') as any)
-      .select('customer_id')
-      .in('customer_id', customerChunk)
-      .in('template_key', templateKeys)
-      .contains('metadata', { event_id: eventId })
-      .not('customer_id', 'is', null)
-      .limit(10000)
-
-    if (!error) {
-      for (const row of (data || []) as Array<{ customer_id: string | null }>) {
-        if (typeof row.customer_id === 'string') {
-          sent.add(row.customer_id)
-        }
-      }
-      continue
-    }
-
-    logger.warn('Failed loading event-interest dedupe rows via metadata; attempting body fallback', {
-      metadata: {
-        eventId,
-        templateKeys,
-        error: error.message
-      }
-    })
-
-    const { data: fallbackRows, error: fallbackError } = await (supabase.from('messages') as any)
-      .select('customer_id')
-      .in('customer_id', customerChunk)
-      .in('template_key', templateKeys)
-      .like('body', `%event_id=${eventId}%`)
-      .not('customer_id', 'is', null)
-      .limit(10000)
-
-    if (fallbackError) {
-      throw fallbackError
-    }
-
-    for (const row of (fallbackRows || []) as Array<{ customer_id: string | null }>) {
-      if (typeof row.customer_id === 'string') {
-        sent.add(row.customer_id)
       }
     }
   }
@@ -773,572 +679,19 @@ async function loadTableBookingsForEngagement(
   })) as TableBookingWithCustomer[]
 }
 
-async function loadEventsForInterestMarketing(
-  supabase: ReturnType<typeof createAdminClient>
-): Promise<MarketingEventRow[]> {
-  const { data, error } = await supabase
-    .from('events')
-    .select('id, name, slug, start_datetime, event_type, category_id, booking_open, event_status')
-    .not('start_datetime', 'is', null)
-    .eq('booking_open', true)
-    .limit(500)
-
-  if (error) {
-    throw error
-  }
-
-  return ((data || []) as MarketingEventRow[]).filter((eventRow) => {
-    if (!eventRow.start_datetime) return false
-    if (eventRow.event_status && ['cancelled', 'draft'].includes(eventRow.event_status)) return false
-    return true
-  })
-}
-
-function buildInterestEventDestination(eventRow: MarketingEventRow): string {
-  const slug = typeof eventRow.slug === 'string' ? eventRow.slug.trim() : ''
-  if (slug.length > 0) {
-    return buildEventBaseUrl(slug)
-  }
-
-  return 'https://www.the-anchor.pub/events'
-}
-
-function formatEventDateText(isoDateTime: string): string {
-  return new Intl.DateTimeFormat('en-GB', {
-    timeZone: LONDON_TIMEZONE,
-    weekday: 'short',
-    day: 'numeric',
-    month: 'short',
-    hour: 'numeric',
-    minute: '2-digit',
-    hour12: true
-  }).format(new Date(isoDateTime))
-}
-
-function resolveRelatedEventStart(value: any): string | null {
-  const eventRecord = Array.isArray(value) ? value[0] : value
-  return typeof eventRecord?.start_datetime === 'string' ? eventRecord.start_datetime : null
-}
-
-type InterestReminderTemplateKey =
-  | typeof TEMPLATE_INTEREST_REMINDER_14D
-  | typeof TEMPLATE_INTEREST_REMINDER_7D
-  | typeof TEMPLATE_INTEREST_REMINDER_1D
-
-function resolveInterestReminderTemplate(
-  nowMs: number,
-  eventStartMs: number
-): InterestReminderTemplateKey | null {
-  const dueAt14d = eventStartMs - 14 * 24 * 60 * 60 * 1000
-  const dueAt7d = eventStartMs - 7 * 24 * 60 * 60 * 1000
-  const dueAt1d = eventStartMs - 24 * 60 * 60 * 1000
-
-  if (nowMs >= dueAt1d) return TEMPLATE_INTEREST_REMINDER_1D
-  if (nowMs >= dueAt7d) return TEMPLATE_INTEREST_REMINDER_7D
-  if (nowMs >= dueAt14d) return TEMPLATE_INTEREST_REMINDER_14D
-  return null
-}
-
-function hasSentInterestReminder(
-  row: ManualInterestRecipientRow,
-  templateKey: InterestReminderTemplateKey
-): boolean {
-  if (templateKey === TEMPLATE_INTEREST_REMINDER_14D) {
-    return typeof row.reminder_14d_sent_at === 'string'
-  }
-  if (templateKey === TEMPLATE_INTEREST_REMINDER_7D) {
-    return typeof row.reminder_7d_sent_at === 'string'
-  }
-  return typeof row.reminder_1d_sent_at === 'string'
-}
-
-function interestReminderUpdatePayload(
-  templateKey: InterestReminderTemplateKey,
-  sentAt: string
-): Record<string, string> {
-  if (templateKey === TEMPLATE_INTEREST_REMINDER_14D) {
-    return { reminder_14d_sent_at: sentAt }
-  }
-  if (templateKey === TEMPLATE_INTEREST_REMINDER_7D) {
-    return { reminder_7d_sent_at: sentAt }
-  }
-  return { reminder_1d_sent_at: sentAt }
-}
-
-async function processInterestMarketing(
-  supabase: ReturnType<typeof createAdminClient>,
-  safety: EventEngagementCronSafetyState
-): Promise<{ sent: number; skipped: number; eventsProcessed: number }> {
-  const nowMs = Date.now()
-  const supportPhone = process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || process.env.TWILIO_PHONE_NUMBER || undefined
-  const events = await loadEventsForInterestMarketing(supabase)
-
-  const result = {
-    sent: 0,
-    skipped: 0,
-    eventsProcessed: 0
-  }
-
-  for (const eventRow of events) {
-    if (result.sent >= MAX_INTEREST_MARKETING_SMS_PER_RUN) {
-      break
-    }
-
-    if (!eventRow.start_datetime) {
-      result.skipped += 1
-      continue
-    }
-
-    const eventStartMs = Date.parse(eventRow.start_datetime)
-    if (!Number.isFinite(eventStartMs) || eventStartMs <= nowMs) {
-      result.skipped += 1
-      continue
-    }
-
-    const manualTemplateKey = resolveInterestReminderTemplate(nowMs, eventStartMs)
-    if (!manualTemplateKey) {
-      result.skipped += 1
-      continue
-    }
-
-    result.eventsProcessed += 1
-    const eventCategoryId =
-      typeof eventRow.category_id === 'string' && eventRow.category_id.trim().length > 0
-        ? eventRow.category_id
-        : null
-    const eventType =
-      typeof eventRow.event_type === 'string' && eventRow.event_type.trim().length > 0
-        ? eventRow.event_type
-        : null
-    const matchingBasis: 'category' | 'event_type' | null = eventCategoryId ? 'category' : eventType ? 'event_type' : null
-
-    const [pastBookings, pastWaitlist, existingBookings, manualRecipients] = await Promise.all([
-      matchingBasis === 'category'
-        ? supabase
-          .from('bookings')
-          .select('customer_id, event:events!inner(category_id, start_datetime)')
-          .not('customer_id', 'is', null)
-          .eq('event.category_id', eventCategoryId)
-        : matchingBasis === 'event_type'
-          ? supabase
-            .from('bookings')
-            .select('customer_id, event:events!inner(event_type, start_datetime)')
-            .not('customer_id', 'is', null)
-            .eq('event.event_type', eventType)
-          : Promise.resolve({ data: [], error: null } as any),
-      matchingBasis === 'category'
-        ? supabase
-          .from('waitlist_entries')
-          .select('customer_id, event:events!inner(category_id, start_datetime)')
-          .not('customer_id', 'is', null)
-          .eq('event.category_id', eventCategoryId)
-        : matchingBasis === 'event_type'
-          ? supabase
-            .from('waitlist_entries')
-            .select('customer_id, event:events!inner(event_type, start_datetime)')
-            .not('customer_id', 'is', null)
-            .eq('event.event_type', eventType)
-          : Promise.resolve({ data: [], error: null } as any),
-      supabase
-        .from('bookings')
-        .select('customer_id, is_reminder_only')
-        .eq('event_id', eventRow.id)
-        .in('status', ['confirmed', 'pending_payment'])
-        .not('customer_id', 'is', null),
-      (supabase.from('event_interest_manual_recipients') as any)
-        .select('id, customer_id, reminder_14d_sent_at, reminder_7d_sent_at, reminder_1d_sent_at')
-        .eq('event_id', eventRow.id)
-    ])
-
-    let manualRecipientsData = (manualRecipients.data || []) as ManualInterestRecipientRow[]
-    let manualRecipientsErrorMessage: string | undefined
-
-    if (manualRecipients.error) {
-      if (isUndefinedTableError(manualRecipients.error)) {
-        const fallbackManualRecipients = await supabase
-          .from('bookings')
-          .select('customer_id')
-          .eq('event_id', eventRow.id)
-          .eq('is_reminder_only', true)
-          .in('status', ['confirmed', 'pending_payment'])
-          .not('customer_id', 'is', null)
-
-        if (fallbackManualRecipients.error) {
-          manualRecipientsErrorMessage = fallbackManualRecipients.error.message
-        } else {
-          manualRecipientsData = ((fallbackManualRecipients.data || []) as Array<{ customer_id: string | null }>)
-            .map((row) => ({
-              id: null,
-              customer_id: row.customer_id,
-              reminder_14d_sent_at: null,
-              reminder_7d_sent_at: null,
-              reminder_1d_sent_at: null
-            }))
-        }
-      } else if (manualRecipients.error?.code === '42703') {
-        const fallbackManualRecipients = await (supabase.from('event_interest_manual_recipients') as any)
-          .select('id, customer_id')
-          .eq('event_id', eventRow.id)
-
-        if (fallbackManualRecipients.error) {
-          manualRecipientsErrorMessage = fallbackManualRecipients.error.message
-        } else {
-          manualRecipientsData = ((fallbackManualRecipients.data || []) as Array<{ customer_id: string | null }>)
-            .map((row) => ({
-              id: null,
-              customer_id: row.customer_id,
-              reminder_14d_sent_at: null,
-              reminder_7d_sent_at: null,
-              reminder_1d_sent_at: null
-            }))
-        }
-      } else {
-        manualRecipientsErrorMessage = manualRecipients.error.message
-      }
-    }
-
-    if (pastBookings.error || pastWaitlist.error || existingBookings.error || manualRecipientsErrorMessage) {
-      logger.warn('Failed loading event interest marketing segments', {
-        metadata: {
-          eventId: eventRow.id,
-          matchingBasis,
-          bookingError: pastBookings.error?.message,
-          waitlistError: pastWaitlist.error?.message,
-          existingError: existingBookings.error?.message,
-          manualError: manualRecipientsErrorMessage
-        }
-      })
-      continue
-    }
-
-    const interestedCustomerIds = new Set<string>()
-    for (const row of (pastBookings.data || []) as any[]) {
-      const customerId = row.customer_id
-      const eventStartIso = resolveRelatedEventStart(row?.event)
-      if (typeof customerId === 'string' && typeof eventStartIso === 'string' && Date.parse(eventStartIso) < nowMs) {
-        interestedCustomerIds.add(customerId)
-      }
-    }
-    for (const row of (pastWaitlist.data || []) as any[]) {
-      const customerId = row.customer_id
-      const eventStartIso = resolveRelatedEventStart(row?.event)
-      if (typeof customerId === 'string' && typeof eventStartIso === 'string' && Date.parse(eventStartIso) < nowMs) {
-        interestedCustomerIds.add(customerId)
-      }
-    }
-    for (const row of manualRecipientsData) {
-      const customerId = row?.customer_id
-      if (typeof customerId === 'string') {
-        interestedCustomerIds.add(customerId)
-      }
-    }
-
-    if (interestedCustomerIds.size === 0) {
-      continue
-    }
-
-    const alreadyBooked = new Set<string>(
-      ((existingBookings.data || []) as any[])
-        .filter((row) => row?.is_reminder_only !== true)
-        .map((row) => row?.customer_id)
-        .filter((value): value is string => typeof value === 'string')
-    )
-
-    const manualRecipientsByCustomer = new Map<string, ManualInterestRecipientRow>()
-    for (const row of manualRecipientsData) {
-      if (typeof row.customer_id !== 'string') continue
-      manualRecipientsByCustomer.set(row.customer_id, row)
-    }
-
-    const manualCandidateIds = Array.from(manualRecipientsByCustomer.keys()).filter(
-      (customerId) => !alreadyBooked.has(customerId)
-    )
-    const behaviorCandidateIds = Array.from(interestedCustomerIds).filter(
-      (customerId) => !alreadyBooked.has(customerId) && !manualRecipientsByCustomer.has(customerId)
-    )
-
-    if (behaviorCandidateIds.length > 0) {
-      let alreadyMessaged: Set<string>
-
-      try {
-        alreadyMessaged = await loadSentEventInterestCustomerSet(
-          supabase,
-          behaviorCandidateIds,
-          [TEMPLATE_INTEREST_MARKETING_14D],
-          eventRow.id
-        )
-      } catch (error) {
-        logger.error('Failed loading event-interest dedupe set for interest marketing', {
-          error: error instanceof Error ? error : new Error(String(error)),
-          metadata: {
-            eventId: eventRow.id,
-            templateKey: TEMPLATE_INTEREST_MARKETING_14D,
-            customerCount: behaviorCandidateIds.length,
-          },
-        })
-        safety.recordSafetyAbort({
-          stage: 'interest_marketing:dedupe',
-          bookingId: null,
-          tableBookingId: null,
-          customerId: null,
-          eventId: eventRow.id,
-          templateKey: TEMPLATE_INTEREST_MARKETING_14D,
-          code: 'dedupe_unavailable',
-          logFailure: false,
-        })
-        safety.throwSafetyAbort()
-      }
-      const candidateIds = behaviorCandidateIds.filter((customerId) => !alreadyMessaged.has(customerId))
-
-      if (candidateIds.length > 0) {
-        const { data: customers, error: customerError } = await supabase
-          .from('customers')
-          .select('id, first_name, mobile_number, sms_status, marketing_sms_opt_in')
-          .in('id', candidateIds)
-          .eq('sms_status', 'active')
-          .eq('marketing_sms_opt_in', true)
-
-        if (customerError) {
-          logger.warn('Failed loading customers for interest marketing', {
-            metadata: {
-              eventId: eventRow.id,
-              error: customerError.message
-            }
-          })
-        } else {
-          for (const customer of (customers || []) as any[]) {
-            if (result.sent >= MAX_INTEREST_MARKETING_SMS_PER_RUN) {
-              break
-            }
-
-            if (!customer?.mobile_number || !customer?.id) {
-              continue
-            }
-
-            const firstName = getSmartFirstName(customer.first_name)
-            const eventDateText = formatEventDateText(eventRow.start_datetime)
-            const destination = buildInterestEventDestination(eventRow)
-            const body = ensureReplyInstruction(
-              `The Anchor: Hi ${firstName}, reminder: ${eventRow.name} is coming up on ${eventDateText}. Book here: ${destination} Reply STOP to opt out.`,
-              supportPhone
-            )
-
-            const smsResult = await sendSmsSafe(customer.mobile_number, body, {
-              customerId: customer.id,
-              metadata: {
-                event_id: eventRow.id,
-                event_type: eventType,
-                category_id: eventCategoryId,
-                matching_basis: matchingBasis,
-                template_key: TEMPLATE_INTEREST_MARKETING_14D,
-                marketing: true
-              }
-            }, {
-              customerId: customer.id,
-              eventId: eventRow.id,
-              templateKey: TEMPLATE_INTEREST_MARKETING_14D
-            })
-
-            maybeRecordFatalSmsSafetyAbort(safety, smsResult, {
-              stage: 'interest_marketing:send_sms',
-              bookingId: null,
-              tableBookingId: null,
-              customerId: customer.id,
-              eventId: eventRow.id,
-              templateKey: TEMPLATE_INTEREST_MARKETING_14D,
-            })
-            if (safety.primaryAbort) {
-              safety.throwSafetyAbort()
-            }
-
-            if (!smsResult.success) {
-              result.skipped += 1
-              continue
-            }
-
-            result.sent += 1
-          }
-        }
-      }
-    }
-
-    if (result.sent >= MAX_INTEREST_MARKETING_SMS_PER_RUN) {
-      break
-    }
-
-    if (manualCandidateIds.length > 0) {
-      let alreadyMessagedManualTemplate: Set<string>
-
-      try {
-        alreadyMessagedManualTemplate = await loadSentEventInterestCustomerSet(
-          supabase,
-          manualCandidateIds,
-          [manualTemplateKey],
-          eventRow.id
-        )
-      } catch (error) {
-        logger.error('Failed loading event-interest dedupe set for manual-interest marketing', {
-          error: error instanceof Error ? error : new Error(String(error)),
-          metadata: {
-            eventId: eventRow.id,
-            templateKey: manualTemplateKey,
-            customerCount: manualCandidateIds.length,
-          },
-        })
-        safety.recordSafetyAbort({
-          stage: 'interest_marketing:dedupe',
-          bookingId: null,
-          tableBookingId: null,
-          customerId: null,
-          eventId: eventRow.id,
-          templateKey: manualTemplateKey,
-          code: 'dedupe_unavailable',
-          logFailure: false,
-        })
-        safety.throwSafetyAbort()
-      }
-
-      const { data: manualCustomers, error: manualCustomerError } = await supabase
-        .from('customers')
-        .select('id, first_name, mobile_number, sms_status, marketing_sms_opt_in')
-        .in('id', manualCandidateIds)
-        .eq('sms_status', 'active')
-        .eq('marketing_sms_opt_in', true)
-
-      if (manualCustomerError) {
-        logger.warn('Failed loading manual-interest recipients', {
-          metadata: {
-            eventId: eventRow.id,
-            error: manualCustomerError.message
-          }
-        })
-        continue
-      }
-
-      for (const customer of (manualCustomers || []) as any[]) {
-        if (result.sent >= MAX_INTEREST_MARKETING_SMS_PER_RUN) {
-          break
-        }
-
-        if (!customer?.mobile_number || !customer?.id) {
-          continue
-        }
-
-        const manualRecipient = manualRecipientsByCustomer.get(customer.id)
-        if (!manualRecipient) {
-          result.skipped += 1
-          continue
-        }
-
-        const alreadySentForTemplate = typeof manualRecipient.id === 'string'
-          ? hasSentInterestReminder(manualRecipient, manualTemplateKey)
-          : alreadyMessagedManualTemplate.has(customer.id)
-        if (alreadySentForTemplate) {
-          result.skipped += 1
-          continue
-        }
-
-        const firstName = getSmartFirstName(customer.first_name)
-        const eventDateText = formatEventDateText(eventRow.start_datetime)
-        const destination = buildInterestEventDestination(eventRow)
-        const baseBody = manualTemplateKey === TEMPLATE_INTEREST_REMINDER_1D
-          ? `The Anchor: Hi ${firstName}, reminder: ${eventRow.name} is tomorrow at ${eventDateText}.`
-          : `The Anchor: Hi ${firstName}, reminder: ${eventRow.name} is coming up on ${eventDateText}.`
-        const body = ensureReplyInstruction(
-          `${baseBody} Book here: ${destination}`,
-          supportPhone
-        )
-
-        const smsResult = await sendSmsSafe(customer.mobile_number, body, {
-          customerId: customer.id,
-          metadata: {
-            event_id: eventRow.id,
-            event_type: eventType,
-            category_id: eventCategoryId,
-            matching_basis: matchingBasis,
-            template_key: manualTemplateKey,
-            marketing: true,
-            manual_interest: true
-          }
-        }, {
-          customerId: customer.id,
-          eventId: eventRow.id,
-          templateKey: manualTemplateKey
-        })
-
-        maybeRecordFatalSmsSafetyAbort(safety, smsResult, {
-          stage: 'interest_marketing:send_sms',
-          bookingId: null,
-          tableBookingId: null,
-          customerId: customer.id,
-          eventId: eventRow.id,
-          templateKey: manualTemplateKey,
-        })
-
-        if (!smsResult.success) {
-          result.skipped += 1
-          if (safety.primaryAbort) {
-            safety.throwSafetyAbort()
-          }
-          continue
-        }
-
-        const sentAt = smsResult.scheduledFor || new Date().toISOString()
-        if (typeof manualRecipient.id === 'string') {
-          const { data: updatedManualRecipient, error: updateError } = await (supabase.from('event_interest_manual_recipients') as any)
-            .update(interestReminderUpdatePayload(manualTemplateKey, sentAt))
-            .eq('id', manualRecipient.id)
-            .eq('event_id', eventRow.id)
-            .eq('customer_id', customer.id)
-            .select('id')
-            .maybeSingle()
-
-          if (updateError) {
-            logger.warn('Failed updating manual-interest reminder cadence state', {
-              metadata: {
-                eventId: eventRow.id,
-                customerId: customer.id,
-                templateKey: manualTemplateKey,
-                error: updateError.message
-              }
-            })
-          } else if (!updatedManualRecipient) {
-            logger.warn('Manual-interest reminder cadence state update affected no rows', {
-              metadata: {
-                eventId: eventRow.id,
-                customerId: customer.id,
-                templateKey: manualTemplateKey
-              }
-            })
-          }
-        } else {
-          alreadyMessagedManualTemplate.add(customer.id)
-        }
-
-        result.sent += 1
-        if (safety.primaryAbort) {
-          safety.throwSafetyAbort()
-        }
-      }
-    }
-  }
-
-  return result
-}
-
 async function processReminders(
   supabase: ReturnType<typeof createAdminClient>,
   bookings: BookingWithRelations[],
   appBaseUrl: string,
   safety: EventEngagementCronSafetyState
-): Promise<{ sent7d: number; sent1d: number; skipped: number }> {
+): Promise<{ sent1d: number; skipped: number }> {
   const now = new Date()
   const supportPhone = process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || process.env.TWILIO_PHONE_NUMBER || undefined
   const bookingIds = bookings.map((b) => b.id)
   let sentSet: Set<string>
 
   try {
-    sentSet = await loadSentTemplateSet(supabase, bookingIds, [TEMPLATE_REMINDER_7D, TEMPLATE_REMINDER_1D])
+    sentSet = await loadSentTemplateSet(supabase, bookingIds, [TEMPLATE_REMINDER_1D])
   } catch (error) {
     logger.error('Failed loading event engagement reminder dedupe set', {
       error: error instanceof Error ? error : new Error(String(error)),
@@ -1360,21 +713,17 @@ async function processReminders(
   }
 
   const result = {
-    sent7d: 0,
     sent1d: 0,
     skipped: 0
   }
-  const bookedCustomerEventKeys = new Set(
-    bookings
-      .filter((booking) => booking.is_reminder_only !== true)
-      .map((booking) => `${booking.event_id}:${booking.customer_id}`)
-  )
 
   for (const booking of bookings) {
-    if (
-      booking.is_reminder_only === true &&
-      bookedCustomerEventKeys.has(`${booking.event_id}:${booking.customer_id}`)
-    ) {
+    if (booking.is_reminder_only === true) {
+      result.skipped += 1
+      continue
+    }
+
+    if (Math.max(0, Number(booking.seats || 0)) <= 0) {
       result.skipped += 1
       continue
     }
@@ -1398,21 +747,13 @@ async function processReminders(
       continue
     }
 
-    const dueAt7d = eventStart.getTime() - 7 * 24 * 60 * 60 * 1000
     const dueAt1d = eventStart.getTime() - 24 * 60 * 60 * 1000
-    const shouldSend1d = now.getTime() >= dueAt1d
-    const shouldSend7d = now.getTime() >= dueAt7d && now.getTime() < dueAt1d
-
-    let templateKey: string | null = null
-    if (shouldSend1d) templateKey = TEMPLATE_REMINDER_1D
-    else if (shouldSend7d) templateKey = TEMPLATE_REMINDER_7D
-
-    if (!templateKey) {
+    if (now.getTime() < dueAt1d) {
       result.skipped += 1
       continue
     }
 
-    if (sentSet.has(`${booking.id}:${templateKey}`)) {
+    if (sentSet.has(`${booking.id}:${TEMPLATE_REMINDER_1D}`)) {
       result.skipped += 1
       continue
     }
@@ -1432,9 +773,7 @@ async function processReminders(
 
     const firstName = getSmartFirstName(customer.first_name)
     const eventDateText = formatEventDateTime(eventStartIso)
-    const baseBody = templateKey === TEMPLATE_REMINDER_1D
-      ? `The Anchor: Hi ${firstName}, reminder: ${event.name} is tomorrow at ${eventDateText}.`
-      : `The Anchor: Hi ${firstName}, reminder: ${event.name} is coming up on ${eventDateText}.`
+    const baseBody = `The Anchor: Hi ${firstName}, reminder: ${event.name} is tomorrow at ${eventDateText}.`
     const messageBody = ensureReplyInstruction(
       manageLink ? `${baseBody} Manage booking: ${manageLink}` : baseBody,
       supportPhone
@@ -1445,13 +784,13 @@ async function processReminders(
       metadata: {
         event_booking_id: booking.id,
         event_id: event.id,
-        template_key: templateKey
+        template_key: TEMPLATE_REMINDER_1D
       }
     }, {
       customerId: customer.id,
       bookingId: booking.id,
       eventId: event.id,
-      templateKey: templateKey
+      templateKey: TEMPLATE_REMINDER_1D
     })
 
     maybeRecordFatalSmsSafetyAbort(safety, smsResult, {
@@ -1460,7 +799,7 @@ async function processReminders(
       tableBookingId: null,
       customerId: customer.id,
       eventId: event.id,
-      templateKey: templateKey,
+      templateKey: TEMPLATE_REMINDER_1D,
     })
     if (safety.primaryAbort) {
       safety.throwSafetyAbort()
@@ -1471,9 +810,8 @@ async function processReminders(
       continue
     }
 
-    sentSet.add(`${booking.id}:${templateKey}`)
-    if (templateKey === TEMPLATE_REMINDER_1D) result.sent1d += 1
-    else result.sent7d += 1
+    sentSet.add(`${booking.id}:${TEMPLATE_REMINDER_1D}`)
+    result.sent1d += 1
   }
 
   return result
@@ -2115,19 +1453,23 @@ export async function GET(request: NextRequest) {
     ])
 
     if (!EVENT_ENGAGEMENT_UPCOMING_SMS_ENABLED) {
-      logger.info('Event guest engagement upcoming-event SMS sends are disabled; skipping reminders + interest marketing', {
+      logger.info('Event guest engagement upcoming-event SMS sends are disabled; skipping reminders', {
         metadata: { runKey }
       })
     }
 
     const reminders = EVENT_ENGAGEMENT_UPCOMING_SMS_ENABLED
       ? await processReminders(supabase, bookings, appBaseUrl, safetyState)
-      : { sent7d: 0, sent1d: 0, skipped: bookings.length }
+      : { sent1d: 0, skipped: bookings.length }
     const reviews = await processReviewFollowups(supabase, bookings, appBaseUrl, safetyState)
     const completion = await processReviewWindowCompletion(supabase)
-    const marketing = EVENT_ENGAGEMENT_UPCOMING_SMS_ENABLED
-      ? await processInterestMarketing(supabase, safetyState)
-      : { sent: 0, skipped: 0, eventsProcessed: 0 }
+    const marketing = {
+      sent: 0,
+      skipped: 0,
+      eventsProcessed: 0,
+      disabled: true as const,
+      reason: 'interest_marketing_removed' as const,
+    }
     const tableReviews = await processTableReviewFollowups(supabase, tableBookings, appBaseUrl, safetyState)
     const tableCompletion = await processTableReviewWindowCompletion(supabase)
 

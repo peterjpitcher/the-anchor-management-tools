@@ -123,7 +123,9 @@ export function PageLayout({
   hideMobileMenuButton = false,
   compactHeader = false,
 }: PageLayoutProps) {
-  const hasNavRow = (navItems && navItems.length > 0) || Boolean(navActions)
+  const showMobileHeaderActionsInNavRow = Boolean(headerActions) && !showHeaderActionsOnMobile
+  const hasNavRow =
+    (navItems && navItems.length > 0) || Boolean(navActions) || showMobileHeaderActionsInNavRow
 
   const headerActionsNode = headerActions ? (
     <div className="flex flex-wrap items-center justify-end gap-2">
@@ -131,18 +133,28 @@ export function PageLayout({
     </div>
   ) : undefined
 
+  const navRowActionsNode =
+    navActions || showMobileHeaderActionsInNavRow ? (
+      <div
+        className={cn(
+          'flex flex-wrap items-center gap-2',
+          navItems && navItems.length > 0 ? '' : 'sm:ml-auto',
+          !navActions && 'md:hidden',
+        )}
+      >
+        {navActions}
+        {showMobileHeaderActionsInNavRow && headerActions && (
+          <div className="flex flex-wrap items-center gap-2 md:hidden">
+            {headerActions}
+          </div>
+        )}
+      </div>
+    ) : null
+
   const navRow = hasNavRow ? (
     <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between w-full">
-      {navItems && navItems.length > 0 ? (
-        <HeaderNav items={navItems} />
-      ) : (
-        <span className="sr-only">Navigation</span>
-      )}
-      {navActions && (
-        <div className="flex flex-wrap items-center gap-2 mt-2 sm:mt-0">
-          {navActions}
-        </div>
-      )}
+      {navItems && navItems.length > 0 ? <HeaderNav items={navItems} /> : null}
+      {navRowActionsNode}
     </div>
   ) : null
 

@@ -492,6 +492,69 @@ describe('twilio webhook mutation guards', () => {
     expect(payload).toEqual({ error: 'Webhook processing failed' })
   })
 
+  it('fails closed when inbound sender number cannot be normalized', async () => {
+    ;(twilio.validateRequest as unknown as vi.Mock).mockReturnValue(true)
+
+    const webhookLogInsert = vi.fn().mockResolvedValue({ error: null })
+    ;(createClient as unknown as vi.Mock).mockReturnValue({
+      from: vi.fn((table: string) => {
+        if (table === 'webhook_logs') {
+          return { insert: webhookLogInsert }
+        }
+        throw new Error(`Unexpected public table: ${table}`)
+      }),
+    })
+
+    const existingMessageMaybeSingle = vi.fn().mockResolvedValue({
+      data: null,
+      error: null,
+    })
+    const existingMessageLimit = vi.fn().mockReturnValue({ maybeSingle: existingMessageMaybeSingle })
+    const existingMessageOrder = vi.fn().mockReturnValue({ limit: existingMessageLimit })
+    const existingMessageEq = vi.fn().mockReturnValue({ order: existingMessageOrder })
+    const existingMessageSelect = vi.fn().mockReturnValue({ eq: existingMessageEq })
+
+    const customerSelect = vi.fn()
+    const adminFrom = vi.fn((table: string) => {
+      if (table === 'messages') {
+        return { select: existingMessageSelect }
+      }
+      if (table === 'customers') {
+        return { select: customerSelect }
+      }
+      throw new Error(`Unexpected admin table: ${table}`)
+    })
+
+    ;(createAdminClient as unknown as vi.Mock).mockReturnValue({
+      from: adminFrom,
+    })
+
+    const requestBody = new URLSearchParams({
+      MessageSid: 'SM_INBOUND_BAD_NUMBER_1',
+      From: 'not-a-phone',
+      To: '+447700900124',
+      Body: 'hello',
+    })
+
+    const request = new Request('http://localhost/api/webhooks/twilio', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/x-www-form-urlencoded',
+        'x-twilio-signature': 'sig_test',
+      },
+      body: requestBody.toString(),
+    })
+
+    const nextRequestLike = Object.assign(request, { nextUrl: new URL(request.url) })
+    const response = await POST(nextRequestLike as any)
+    const payload = await response.json()
+
+    expect(response.status).toBe(500)
+    expect(payload).toEqual({ error: 'Webhook processing failed' })
+    expect(customerSelect).not.toHaveBeenCalled()
+    expect(adminFrom.mock.calls.some(([table]) => table === 'customers')).toBe(false)
+  })
+
   it('fails closed when inbound opt-out keyword cannot persist the customer preference update', async () => {
     ;(twilio.validateRequest as unknown as vi.Mock).mockReturnValue(true)
 

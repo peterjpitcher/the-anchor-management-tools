@@ -38,6 +38,28 @@ describe('PrivateBookingService mutation row-effect guards', () => {
     vi.clearAllMocks()
   })
 
+  it('createBooking fails closed when customer cannot be resolved', async () => {
+    const rpc = vi.fn()
+
+    mockedCreateClient.mockResolvedValue({
+      rpc,
+    })
+
+    await expect(
+      PrivateBookingService.createBooking({
+        customer_first_name: 'Alex',
+        customer_last_name: 'Smith',
+        event_date: '2026-03-10',
+        start_time: '18:00',
+        guest_count: 40,
+        event_type: 'party',
+        source: 'manual',
+      })
+    ).rejects.toThrow('Private booking must include a linked customer (customer_id or contact_phone)')
+
+    expect(rpc).not.toHaveBeenCalled()
+  })
+
   it('updateBookingItem throws not-found when update affects no rows', async () => {
     const fetchSingle = vi.fn().mockResolvedValue({
       data: { booking_id: 'booking-1' },

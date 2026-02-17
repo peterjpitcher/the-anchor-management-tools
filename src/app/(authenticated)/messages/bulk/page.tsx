@@ -32,7 +32,6 @@ import {
 } from '@heroicons/react/24/outline'
 import { EventCategory } from '@/types/event-categories'
 import { Spinner } from '@/components/ui-v2/feedback/Spinner'
-import type { HeaderNavItem } from '@/components/ui-v2/navigation/HeaderNav'
 
 interface Customer {
   id: string
@@ -111,13 +110,8 @@ export default function BulkMessagePage() {
       : `${customers.length}${hasMore ? '+' : ''} loaded`
   const selectionSummary = `${selectedCustomers.size} selected • ${matchesLabel}`
   const allLoadedSelected = customers.length > 0 && customers.every(customer => selectedCustomers.has(customer.id))
-  const navItems: HeaderNavItem[] = [
-    { label: 'Filters', href: '#filters' },
-    { label: 'Select', href: '#select-recipients' },
-    { label: 'Compose', href: '#compose' },
-  ]
   const headerActions = (
-    <div className="text-sm text-white/80">
+    <div className="text-sm text-gray-600">
       {selectionSummary}
     </div>
   )
@@ -377,7 +371,6 @@ export default function BulkMessagePage() {
     return (
       <PageLayout
         title="Bulk Message"
-        navItems={navItems}
         headerActions={headerActions}
         breadcrumbs={[
           { label: 'Messages', href: '/messages' },
@@ -399,7 +392,6 @@ export default function BulkMessagePage() {
         { label: 'Messages', href: '/messages' },
         { label: 'Bulk Message', href: '/messages/bulk' },
       ]}
-      navItems={navItems}
       headerActions={headerActions}
     >
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)]">

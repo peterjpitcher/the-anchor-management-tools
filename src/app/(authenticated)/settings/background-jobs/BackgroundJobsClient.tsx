@@ -29,7 +29,6 @@ import { Pagination } from '@/components/ui-v2/navigation/Pagination'
 import { Stat } from '@/components/ui-v2/display/Stat'
 import { Spinner } from '@/components/ui-v2/feedback/Spinner'
 import { Alert } from '@/components/ui-v2/feedback/Alert'
-import type { HeaderNavItem } from '@/components/ui-v2/navigation/HeaderNav'
 
 const jobTypeLabels: Record<string, string> = {
   send_sms: 'Send SMS',
@@ -167,17 +166,17 @@ export default function BackgroundJobsClient({
     runCronJob('event-guest-engagement')
       .then((result) => {
         if (!result.success) {
-          const message = result.error ?? 'Failed to process event guest engagement'
+          const message = result.error ?? 'Failed to process event messaging'
           setError(message)
           toast.error(message)
           return
         }
-        toast.success('Event guest engagement triggered')
+        toast.success('Event messaging triggered')
         fetchJobs()
       })
       .catch((err) => {
-        console.error('Error processing event guest engagement:', err)
-        const message = err instanceof Error ? err.message : 'Failed to process event guest engagement'
+        console.error('Error processing event messaging:', err)
+        const message = err instanceof Error ? err.message : 'Failed to process event messaging'
         setError(message)
         toast.error(message)
       })
@@ -300,12 +299,6 @@ export default function BackgroundJobsClient({
     { label: 'Background Jobs' },
   ]
 
-  const navItems: HeaderNavItem[] = [
-    { label: 'Summary', href: '#summary' },
-    { label: 'Jobs', href: '#jobs' },
-    { label: 'Details', href: '#job-details' },
-  ]
-
   const navActions = canManage ? (
     <div className="flex items-center gap-2">
       <Button
@@ -317,7 +310,7 @@ export default function BackgroundJobsClient({
         leftIcon={!isProcessingEngagement && <PlayIcon />}
         title={!canManage ? 'You need settings manage permission to process jobs.' : undefined}
       >
-        {isProcessingEngagement ? 'Running Engagement...' : 'Run Engagement'}
+        {isProcessingEngagement ? 'Running Event Messaging...' : 'Run Event Messaging'}
       </Button>
       <Button
         variant="primary"
@@ -341,7 +334,6 @@ export default function BackgroundJobsClient({
       subtitle="Monitor and manage background job processing"
       breadcrumbs={breadcrumbs}
       backButton={{ label: 'Back to Settings', href: '/settings' }}
-      navItems={navItems}
       navActions={navActions}
     >
       <div className="space-y-6">

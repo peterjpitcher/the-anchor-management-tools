@@ -475,15 +475,13 @@ async function handleInboundSMS(
       return NextResponse.json({ success: true, messageId: existingInboundMessage.id, duplicate: true });
     }
 
-    let normalizedFromNumber = fromNumber;
-    let canonicalFromNumber: string | null = null;
-
+    let canonicalFromNumber: string;
     try {
       canonicalFromNumber = formatPhoneForStorage(fromNumber);
-      normalizedFromNumber = canonicalFromNumber;
     } catch {
-      // Fall back to raw value from Twilio if normalization fails.
+      throw new Error('Failed to normalize inbound sender phone number');
     }
+    const normalizedFromNumber = canonicalFromNumber;
     
     // Look up or create customer
     let customer;
@@ -492,7 +490,7 @@ async function handleInboundSMS(
     const phoneVariants = generatePhoneVariants(normalizedFromNumber);
 
     const orClauses = [
-      ...(canonicalFromNumber ? [`mobile_e164.eq.${canonicalFromNumber}`] : []),
+      `mobile_e164.eq.${canonicalFromNumber}`,
       ...phoneVariants.map(variant => `mobile_number.eq.${variant}`)
     ];
 
@@ -570,7 +568,7 @@ async function handleInboundSMS(
     } else {
       customer = customers[0];
 
-      if (!customer.mobile_e164 && canonicalFromNumber) {
+      if (!customer.mobile_e164) {
         const { data: syncedCustomer, error: mobileSyncError } = await adminClient
           .from('customers')
           .update({

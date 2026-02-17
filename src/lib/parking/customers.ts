@@ -16,31 +16,97 @@ export interface ResolvedCustomer {
   email?: string
 }
 
+type CustomerLookupRow = {
+  id: string
+  first_name: string | null
+  last_name: string | null
+  mobile_number: string | null
+  mobile_e164: string | null
+  email: string | null
+}
+
+function sanitizeEmail(email?: string): string | undefined {
+  if (!email) return undefined
+  const normalized = email.trim().toLowerCase()
+  return normalized.length > 0 ? normalized : undefined
+}
+
+function sanitizeLastName(lastName?: string): string | undefined {
+  if (!lastName) return undefined
+  const normalized = lastName.trim()
+  return normalized.length > 0 ? normalized : undefined
+}
+
+async function lookupCustomerByPhone(
+  supabase: SupabaseClient<any, 'public', any>,
+  standardizedPhone: string,
+  variants: string[]
+): Promise<CustomerLookupRow | null> {
+  const { data: canonicalMatches, error: canonicalLookupError } = await supabase
+    .from('customers')
+    .select('*')
+    .eq('mobile_e164', standardizedPhone)
+    .order('created_at', { ascending: true })
+    .limit(1)
+
+  if (canonicalLookupError) {
+    console.error('Failed to lookup customer by canonical phone', canonicalLookupError)
+    throw new Error('Failed to lookup customer')
+  }
+
+  if (canonicalMatches && canonicalMatches.length > 0) {
+    return canonicalMatches[0] as CustomerLookupRow
+  }
+
+  const { data: legacyMatches, error: legacyLookupError } = await supabase
+    .from('customers')
+    .select('*')
+    .in('mobile_number', variants)
+    .order('created_at', { ascending: true })
+    .limit(1)
+
+  if (legacyLookupError) {
+    console.error('Failed to lookup customer by legacy phone variants', legacyLookupError)
+    throw new Error('Failed to lookup customer')
+  }
+
+  return legacyMatches && legacyMatches.length > 0 ? (legacyMatches[0] as CustomerLookupRow) : null
+}
+
 export async function resolveCustomerByPhone(
   supabase: SupabaseClient<any, 'public', any>,
   params: CustomerResolutionParams
 ): Promise<ResolvedCustomer> {
   const standardizedPhone = formatPhoneForStorage(params.phone)
   const variants = generatePhoneVariants(standardizedPhone)
-  const phoneLookupOr = variants.map((v) => `mobile_number.eq.${v}`).join(',')
-
-  const { data: existingCustomer, error: lookupError } = await supabase
-    .from('customers')
-    .select('*')
-    .or(phoneLookupOr)
-    .maybeSingle()
-
-  if (lookupError) {
-    console.error('Failed to lookup customer by phone', lookupError)
-    throw new Error('Failed to lookup customer')
-  }
-
-  const emailLower = params.email ? params.email.toLowerCase() : undefined
+  const emailLower = sanitizeEmail(params.email)
+  const lastNameTrimmed = sanitizeLastName(params.lastName)
+  const existingCustomer = await lookupCustomerByPhone(supabase, standardizedPhone, variants)
 
   if (existingCustomer) {
-    const customer = existingCustomer as any
+    const customer = existingCustomer
     let resolvedEmail = (customer.email as string | null) || undefined
     let resolvedLastName = (customer.last_name as string | null) || undefined
+
+    if (!customer.mobile_e164) {
+      const { data: updatedPhoneRow, error: phoneUpdateError } = await supabase
+        .from('customers')
+        .update({ mobile_e164: standardizedPhone })
+        .eq('id', customer.id)
+        .select('id')
+        .maybeSingle()
+
+      if (phoneUpdateError) {
+        console.warn('Failed to enrich customer canonical phone during parking customer resolution', {
+          customerId: customer.id,
+          error: phoneUpdateError.message
+        })
+      } else if (!updatedPhoneRow) {
+        console.warn('Customer canonical-phone enrichment affected no rows during parking customer resolution', {
+          customerId: customer.id
+        })
+      }
+    }
 
     if (!customer.email && emailLower) {
       const { data: updatedEmailRow, error: emailUpdateError } = await supabase
@@ -64,7 +130,6 @@ export async function resolveCustomerByPhone(
       }
     }
 
-    const lastNameTrimmed = params.lastName?.trim()
     if (lastNameTrimmed && (!customer.last_name || customer.last_name !== lastNameTrimmed)) {
       const { data: updatedLastNameRow, error: lastNameUpdateError } = await supabase
         .from('customers')
@@ -91,7 +156,7 @@ export async function resolveCustomerByPhone(
       id: customer.id as string,
       first_name: customer.first_name as string,
       last_name: resolvedLastName,
-      mobile_number: customer.mobile_number as string,
+      mobile_number: customer.mobile_number || standardizedPhone,
       email: resolvedEmail
     }
   }
@@ -100,8 +165,9 @@ export async function resolveCustomerByPhone(
     .from('customers')
     .insert({
       first_name: params.firstName,
-      last_name: params.lastName ?? null,
+      last_name: lastNameTrimmed ?? null,
       mobile_number: standardizedPhone,
+      mobile_e164: standardizedPhone,
       email: emailLower ?? null,
       sms_opt_in: true
     })
@@ -111,21 +177,39 @@ export async function resolveCustomerByPhone(
   if (insertError) {
     const pgError = insertError as { code?: string; message?: string }
     if (pgError?.code === '23505') {
-      const { data: concurrentCustomer, error: concurrentLookupError } = await supabase
+      try {
+        const concurrentCustomer = await lookupCustomerByPhone(supabase, standardizedPhone, variants)
+        if (concurrentCustomer?.id) {
+          return {
+            id: concurrentCustomer.id as string,
+            first_name: concurrentCustomer.first_name as string,
+            last_name: (concurrentCustomer.last_name as string | null) ?? undefined,
+            mobile_number:
+              (concurrentCustomer.mobile_number as string | null) || standardizedPhone,
+            email: (concurrentCustomer.email as string | null) ?? undefined
+          }
+        }
+      } catch (concurrentLookupError) {
+        console.error('Failed to load concurrently-created customer', concurrentLookupError)
+      }
+
+      const fallbackLookup = await supabase
         .from('customers')
         .select('*')
-        .or(phoneLookupOr)
-        .maybeSingle()
+        .in('mobile_number', variants)
+        .order('created_at', { ascending: true })
+        .limit(1)
 
-      if (concurrentLookupError) {
-        console.error('Failed to load concurrently-created customer', concurrentLookupError)
-      } else if (concurrentCustomer?.id) {
+      if (fallbackLookup.error) {
+        console.error('Failed fallback lookup for concurrently-created customer', fallbackLookup.error)
+      } else if (fallbackLookup.data && fallbackLookup.data.length > 0) {
+        const fallbackCustomer = fallbackLookup.data[0] as CustomerLookupRow
         return {
-          id: concurrentCustomer.id as string,
-          first_name: concurrentCustomer.first_name as string,
-          last_name: (concurrentCustomer.last_name as string | null) ?? undefined,
-          mobile_number: concurrentCustomer.mobile_number as string,
-          email: (concurrentCustomer.email as string | null) ?? undefined
+          id: fallbackCustomer.id as string,
+          first_name: fallbackCustomer.first_name as string,
+          last_name: (fallbackCustomer.last_name as string | null) ?? undefined,
+          mobile_number: (fallbackCustomer.mobile_number as string | null) || standardizedPhone,
+          email: (fallbackCustomer.email as string | null) ?? undefined
         }
       }
     }
@@ -138,7 +222,7 @@ export async function resolveCustomerByPhone(
     id: newCustomer!.id as string,
     first_name: newCustomer!.first_name as string,
     last_name: (newCustomer!.last_name as string | null) ?? undefined,
-    mobile_number: newCustomer!.mobile_number as string,
+    mobile_number: (newCustomer!.mobile_number as string | null) || standardizedPhone,
     email: (newCustomer!.email as string | null) ?? undefined
   }
 }

@@ -35,7 +35,6 @@ import {
   getParkingRateConfig
 } from '@/app/actions/parking'
 import type { ParkingRateConfig } from '@/lib/parking/pricing'
-import type { HeaderNavItem } from '@/components/ui-v2/navigation/HeaderNav'
 
 interface ParkingPermissions {
   canCreate: boolean
@@ -347,12 +346,6 @@ export default function ParkingClient({ permissions, initialError }: Props) {
   const upcomingCount = useMemo(() => bookings.filter((b) => new Date(b.start_at) > new Date() && ['pending_payment', 'confirmed'].includes(b.status)).length, [bookings])
   const pendingPaymentCount = useMemo(() => bookings.filter((b) => b.payment_status === 'pending').length, [bookings])
 
-  const navItems: HeaderNavItem[] = [
-    { label: 'Overview', href: '#overview' },
-    { label: 'Bookings', href: '#bookings' },
-    { label: 'Notifications', href: '#notifications' },
-  ]
-
   const navActions = permissions.canCreate ? (
     <Button size="sm" onClick={() => setShowCreateModal(true)}>
       New booking
@@ -509,7 +502,6 @@ export default function ParkingClient({ permissions, initialError }: Props) {
     <PageLayout
       title="Parking bookings"
       subtitle="Manage onsite car park reservations, monitor payments, and keep customer details up to date."
-      navItems={navItems}
       navActions={navActions}
       loading={showInitialLoading}
       loadingLabel="Loading bookings..."
