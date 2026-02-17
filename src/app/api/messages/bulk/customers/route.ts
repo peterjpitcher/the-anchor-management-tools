@@ -7,7 +7,7 @@ type SmsOptInFilter = 'all' | 'opted_in' | 'not_opted_out'
 type BookingPresenceFilter = 'all' | 'with_bookings' | 'without_bookings'
 type EventAttendanceFilter = 'all' | 'attending' | 'not_attending'
 type BookingTypeFilter = 'all' | 'bookings_only' | 'reminders_only'
-type CategoryAttendanceFilter = 'all' | 'regulars' | 'never_attended'
+type CategoryAttendanceFilter = 'all' | 'regulars' | 'reminders_only' | 'never_attended'
 
 interface FilterOptions {
   smsOptIn: SmsOptInFilter
@@ -43,6 +43,15 @@ interface RawCustomerRow {
   }>
 }
 
+interface EventBookingWithCategory {
+  event_id: string
+  seats: number | null
+  is_reminder_only: boolean
+  events?: {
+    category_id: string | null
+  }
+}
+
 interface NormalizedCustomer {
   id: string
   first_name: string
@@ -57,6 +66,7 @@ interface NormalizedCustomer {
     event_id: string
     seats: number | null
     is_reminder_only: boolean
+    category_id: string | null
   }>
   category_preferences: Array<{
     category_id: string
@@ -124,12 +134,13 @@ function endOfDayIso(date: string): string {
 function normalizeCustomer(row: RawCustomerRow): NormalizedCustomer {
   const totalBookings = row.bookings?.[0]?.count ?? 0
   const eventBookings =
-    row.event_bookings?.map((booking) => ({
+    row.event_bookings?.map((booking: any) => ({
       event_id: booking.event_id ?? '',
       seats: booking.seats,
       is_reminder_only:
         booking.is_reminder_only ??
         ((booking.seats ?? 0) === 0),
+      category_id: booking.events?.category_id ?? null,
     })) ?? []
 
   return {
@@ -206,13 +217,41 @@ function customerMatchesFilters(customer: NormalizedCustomer, filters: FilterOpt
     )
 
     if (filters.categoryAttendance === 'regulars') {
+      // Must have actual attendance stats (seats > 0)
       if (!preference || preference.times_attended <= 0) {
         return false
       }
     }
 
-    if (filters.categoryAttendance === 'never_attended') {
+    if (filters.categoryAttendance === 'reminders_only') {
+      // Must NOT have actual attendance stats
       if (preference && preference.times_attended > 0) {
+        return false
+      }
+
+      // But MUST have a reminder for an event in this category
+      const hasReminder = customer.event_bookings.some(booking =>
+        booking.category_id === filters.categoryId &&
+        (booking.is_reminder_only || (booking.seats ?? 0) === 0)
+      )
+
+      if (!hasReminder) {
+        return false
+      }
+    }
+
+    if (filters.categoryAttendance === 'never_attended') {
+      // Must not have attended
+      if (preference && preference.times_attended > 0) {
+        return false
+      }
+
+      // And also must not have any reminders for this category
+      const hasReminder = customer.event_bookings.some(booking =>
+        booking.category_id === filters.categoryId
+      )
+
+      if (hasReminder) {
         return false
       }
     }
@@ -236,17 +275,17 @@ function applyBaseFilters(
     sms_status,
     created_at,
     bookings(count),
-    event_bookings:bookings(event_id, seats, is_reminder_only),
+    event_bookings:bookings(event_id, seats, is_reminder_only, events(category_id)),
     category_preferences:customer_category_stats(category_id, times_attended)
   `
 
   const builder = includeCount
     ? admin
-        .from('customers')
-        .select(selectClause, { count: 'estimated' })
+      .from('customers')
+      .select(selectClause, { count: 'estimated' })
     : admin
-        .from('customers')
-        .select(selectClause)
+      .from('customers')
+      .select(selectClause)
 
   let query = builder
     .order('first_name', { ascending: true })
@@ -327,7 +366,12 @@ export async function POST(request: NextRequest) {
       }
 
       if (batchIndex === 0 && typeof count === 'number') {
-        approximateMatches = count
+        // Only set approximate matches if we are NOT doing in-memory filtering.
+        // If we filter by category or event, the DB count is the superset, which is misleading.
+        const hasInMemoryFilters = Boolean(filters.categoryId || filters.eventId || filters.hasBookings !== 'all')
+        if (!hasInMemoryFilters) {
+          approximateMatches = count
+        }
       }
 
       if (!data || data.length === 0) {

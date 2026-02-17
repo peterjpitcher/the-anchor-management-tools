@@ -8,6 +8,7 @@ import { createEventPaymentToken } from '@/lib/events/event-payments'
 import { createEventManageToken } from '@/lib/events/manage-booking'
 import { ensureReplyInstruction } from '@/lib/sms/support'
 import { sendSMS } from '@/lib/twilio'
+import { getSmartFirstName } from '@/lib/sms/bulk'
 import { recordAnalyticsEvent } from '@/lib/analytics/events'
 import { sendManagerTableBookingCreatedEmailIfAllowed } from '@/lib/table-bookings/bookings'
 import { logger } from '@/lib/logger'
@@ -77,10 +78,10 @@ type FohEventBookingResponseData = {
 
 type SmsSafetyMeta =
   | {
-      success: boolean
-      code: string | null
-      logFailure: boolean
-    }
+    success: boolean
+    code: string | null
+    logFailure: boolean
+  }
   | null
 
 async function recordFohEventBookingAnalyticsSafe(
@@ -256,7 +257,7 @@ async function sendBookingSmsIfAllowed(
   const supportPhone = process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || process.env.TWILIO_PHONE_NUMBER || undefined
   const eventName = bookingResult.event_name || 'your event'
   const eventStart = formatLondonDateTime(bookingResult.event_start_datetime)
-  const firstName = customer.first_name || 'there'
+  const firstName = getSmartFirstName(customer.first_name)
 
   const smsBody = ensureReplyInstruction(
     buildEventBookingSms(bookingResult.state, {

@@ -1,6 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { ensureReplyInstruction } from '@/lib/sms/support'
 import { sendSMS } from '@/lib/twilio'
+import { getSmartFirstName } from '@/lib/sms/bulk'
 import { createGuestToken, hashGuestToken } from '@/lib/guest/tokens'
 import { logger } from '@/lib/logger'
 import { recordAnalyticsEvent } from '@/lib/analytics/events'
@@ -238,7 +239,7 @@ export async function sendWaitlistOfferSms(
   const eventName = eventRow?.name || 'your event'
   const eventStart = formatLondonDateTime(eventStartDateTimeIso)
 
-  const firstName = customer.first_name || 'there'
+  const firstName = getSmartFirstName(customer.first_name)
   const supportPhone = process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || process.env.TWILIO_PHONE_NUMBER || undefined
 
   const messageBody = ensureReplyInstruction(
