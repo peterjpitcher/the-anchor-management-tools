@@ -13,6 +13,7 @@ import {
 import { formatPhoneForStorage } from '@/lib/utils'
 import { createRateLimiter } from '@/lib/rate-limit'
 import { logger } from '@/lib/logger'
+import { sendManagerPrivateBookingCreatedEmail } from '@/lib/private-bookings/manager-notifications'
 
 const EnquirySchema = z.object({
   phone: z.string().min(5),
@@ -206,6 +207,29 @@ export async function POST(request: NextRequest) {
         }, {
           privateBookingId: (booking as any).id,
           customerId: (booking as any).customer_id
+        })
+      }
+
+      try {
+        const managerEmailResult = await sendManagerPrivateBookingCreatedEmail({
+          booking: booking as any,
+          createdVia: 'api_private_booking_enquiry'
+        })
+
+        if (!managerEmailResult.sent && managerEmailResult.error) {
+          logger.warn('Failed to send manager private booking created email (enquiry endpoint)', {
+            metadata: {
+              privateBookingId: (booking as any)?.id || null,
+              error: managerEmailResult.error
+            }
+          })
+        }
+      } catch (managerEmailError) {
+        logger.warn('Manager private booking created email task rejected unexpectedly (enquiry endpoint)', {
+          metadata: {
+            privateBookingId: (booking as any)?.id || null,
+            error: managerEmailError instanceof Error ? managerEmailError.message : String(managerEmailError)
+          }
         })
       }
 
