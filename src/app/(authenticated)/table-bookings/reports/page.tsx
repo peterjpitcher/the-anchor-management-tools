@@ -33,7 +33,7 @@ function describeCoverTrend(granularity: 'hour' | 'day' | 'week' | 'month'): str
     case 'day':
       return 'Last 7 days'
     case 'week':
-      return 'Weekly buckets over the last 30 days'
+      return 'Weekly buckets for the current month'
     case 'month':
       return 'Monthly buckets over the last 12 months'
   }

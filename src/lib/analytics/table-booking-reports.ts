@@ -1,4 +1,5 @@
 import { createAdminClient } from '@/lib/supabase/admin'
+import { formatInTimeZone, fromZonedTime } from 'date-fns-tz'
 
 const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000
 const NINETY_DAYS_MS = 90 * 24 * 60 * 60 * 1000
@@ -6,7 +7,10 @@ const THREE_SIXTY_FIVE_DAYS_MS = 365 * 24 * 60 * 60 * 1000
 const ONE_DAY_MS = 24 * 60 * 60 * 1000
 const ONE_HOUR_MS = 60 * 60 * 1000
 const ONE_WEEK_MS = 7 * ONE_DAY_MS
+const LONDON_TIMEZONE = 'Europe/London'
+const SUPABASE_PAGE_SIZE = 1000
 const NON_PRODUCTION_MARKERS = ['api_test', 'test', 'dummy', 'demo', 'sample', 'seed', 'sandbox', 'staging']
+const CONFIRMED_PRIVATE_BOOKING_STATUS = 'confirmed'
 
 const EVENT_BOOKING_ALLOWED_SOURCES = new Set([
   'direct_booking',
@@ -196,10 +200,57 @@ export function resolveTableBookingReportsWindow(value: string | null | undefine
 
 function formatShortLondonDate(iso: string): string {
   return new Intl.DateTimeFormat('en-GB', {
-    timeZone: 'Europe/London',
+    timeZone: LONDON_TIMEZONE,
     day: 'numeric',
     month: 'short'
   }).format(new Date(iso))
+}
+
+function getLondonMonthStartMs(now: Date): number {
+  const monthPrefix = formatInTimeZone(now, LONDON_TIMEZONE, 'yyyy-MM')
+  return fromZonedTime(`${monthPrefix}-01T00:00:00`, LONDON_TIMEZONE).getTime()
+}
+
+function resolveSelectedWindowRange(now: Date, window: TableBookingReportsWindow): { sinceMs: number; days: number } {
+  if (window === 'month') {
+    const sinceMs = getLondonMonthStartMs(now)
+    const days = Math.max(1, Math.floor((now.getTime() - sinceMs) / ONE_DAY_MS) + 1)
+    return { sinceMs, days }
+  }
+
+  const days = REPORT_WINDOW_DAYS[window]
+  return {
+    sinceMs: now.getTime() - days * ONE_DAY_MS,
+    days
+  }
+}
+
+type PagedQueryResult<T> = {
+  data: T[] | null
+  error: { message: string } | null
+}
+
+async function fetchAllRows<T>(
+  buildQuery: (from: number, to: number) => PromiseLike<PagedQueryResult<T>>
+): Promise<{ data: T[]; error: { message: string } | null }> {
+  const rows: T[] = []
+
+  for (let from = 0; ; from += SUPABASE_PAGE_SIZE) {
+    const to = from + SUPABASE_PAGE_SIZE - 1
+    const { data, error } = await buildQuery(from, to)
+    if (error) {
+      return { data: [], error }
+    }
+
+    const pageRows = data || []
+    rows.push(...pageRows)
+
+    if (pageRows.length < SUPABASE_PAGE_SIZE) {
+      break
+    }
+  }
+
+  return { data: rows, error: null }
 }
 
 function buildCoverTrendBuckets(window: TableBookingReportsWindow, now: Date): CoverTrendBucket[] {
@@ -215,7 +266,7 @@ function buildCoverTrendBuckets(window: TableBookingReportsWindow, now: Date): C
           ? nowMs
           : bucketStartMs + ONE_HOUR_MS
       const label = new Intl.DateTimeFormat('en-GB', {
-        timeZone: 'Europe/London',
+        timeZone: LONDON_TIMEZONE,
         hour: '2-digit',
         minute: '2-digit',
         hour12: false
@@ -235,7 +286,7 @@ function buildCoverTrendBuckets(window: TableBookingReportsWindow, now: Date): C
       const bucketStartMs = startMs + index * ONE_DAY_MS
       const bucketEndMs = index === 6 ? nowMs : bucketStartMs + ONE_DAY_MS
       const label = new Intl.DateTimeFormat('en-GB', {
-        timeZone: 'Europe/London',
+        timeZone: LONDON_TIMEZONE,
         weekday: 'short',
         day: 'numeric'
       }).format(new Date(bucketStartMs))
@@ -249,19 +300,25 @@ function buildCoverTrendBuckets(window: TableBookingReportsWindow, now: Date): C
   }
 
   if (window === 'month') {
-    const startMs = nowMs - THIRTY_DAYS_MS
-    return Array.from({ length: 5 }, (_, index) => {
-      const bucketStartMs = startMs + index * ONE_WEEK_MS
-      const bucketEndMs = index === 4 ? nowMs : Math.min(nowMs, bucketStartMs + ONE_WEEK_MS)
+    const startMs = getLondonMonthStartMs(now)
+    const monthBuckets: CoverTrendBucket[] = []
+    let bucketStartMs = startMs
+
+    while (bucketStartMs < nowMs) {
+      const bucketEndMs = Math.min(nowMs, bucketStartMs + ONE_WEEK_MS)
       const endLabelMs = Math.max(bucketStartMs, bucketEndMs - 1)
       const label = `${formatShortLondonDate(new Date(bucketStartMs).toISOString())} - ${formatShortLondonDate(new Date(endLabelMs).toISOString())}`
 
-      return {
+      monthBuckets.push({
         label,
         startMs: bucketStartMs,
         endMs: bucketEndMs
-      }
-    }).filter((bucket) => bucket.endMs > bucket.startMs)
+      })
+
+      bucketStartMs = bucketEndMs
+    }
+
+    return monthBuckets.filter((bucket) => bucket.endMs > bucket.startMs)
   }
 
   const firstMonthStartUtcMs = Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 11, 1, 0, 0, 0, 0)
@@ -289,7 +346,7 @@ function buildCoverTrendBuckets(window: TableBookingReportsWindow, now: Date): C
     if (bucketEndMs <= bucketStartMs) continue
 
     const label = new Intl.DateTimeFormat('en-GB', {
-      timeZone: 'Europe/London',
+      timeZone: LONDON_TIMEZONE,
       month: 'short'
     }).format(new Date(bucketStartMs))
 
@@ -453,8 +510,7 @@ export async function loadTableBookingReportsSnapshot(input: {
   const supabase = createAdminClient()
   const now = new Date()
   const selectedWindowKey = resolveTableBookingReportsWindow(input.window)
-  const selectedWindowDays = REPORT_WINDOW_DAYS[selectedWindowKey]
-  const selectedWindowSinceMs = now.getTime() - selectedWindowDays * ONE_DAY_MS
+  const { sinceMs: selectedWindowSinceMs, days: selectedWindowDays } = resolveSelectedWindowRange(now, selectedWindowKey)
   const sinceSelectedWindow = new Date(selectedWindowSinceMs).toISOString()
   const coverTrendBuckets = buildCoverTrendBuckets(selectedWindowKey, now)
   const coverTrendSinceIso =
@@ -506,6 +562,7 @@ export async function loadTableBookingReportsSnapshot(input: {
     supabase
       .from('private_bookings')
       .select('id', { count: 'exact', head: true })
+      .eq('status', CONFIRMED_PRIVATE_BOOKING_STATUS)
       .or(privateBookingSourceFilter),
     supabase
       .from('bookings')
@@ -521,6 +578,7 @@ export async function loadTableBookingReportsSnapshot(input: {
       .from('private_bookings')
       .select('id', { count: 'exact', head: true })
       .gte('created_at', sinceSelectedWindow)
+      .eq('status', CONFIRMED_PRIVATE_BOOKING_STATUS)
       .or(privateBookingSourceFilter),
     supabase
       .from('bookings')
@@ -536,14 +594,33 @@ export async function loadTableBookingReportsSnapshot(input: {
       .from('private_bookings')
       .select('id', { count: 'exact', head: true })
       .gte('created_at', since30)
+      .eq('status', CONFIRMED_PRIVATE_BOOKING_STATUS)
       .or(privateBookingSourceFilter),
-    supabase
-      .from('bookings')
-      .select('id, status, booking_source')
-      .or(eventBookingSourceFilter),
-    supabase.from('waitlist_entries').select('id, status'),
-    supabase.from('waitlist_offers').select('id, status'),
-    supabase.from('charge_requests').select('amount, manager_decision, charge_status'),
+    fetchAllRows((from, to) =>
+      supabase
+        .from('bookings')
+        .select('id, status, booking_source')
+        .or(eventBookingSourceFilter)
+        .range(from, to)
+    ),
+    fetchAllRows((from, to) =>
+      supabase
+        .from('waitlist_entries')
+        .select('id, status')
+        .range(from, to)
+    ),
+    fetchAllRows((from, to) =>
+      supabase
+        .from('waitlist_offers')
+        .select('id, status')
+        .range(from, to)
+    ),
+    fetchAllRows((from, to) =>
+      supabase
+        .from('charge_requests')
+        .select('amount, manager_decision, charge_status')
+        .range(from, to)
+    ),
     supabase
       .from('bookings')
       .select('id', { count: 'exact', head: true })
@@ -580,51 +657,80 @@ export async function loadTableBookingReportsSnapshot(input: {
       )
       .order('total_score', { ascending: false })
       .limit(10),
-    supabase
-      .from('bookings')
-      .select('customer_id, event:events(event_type)')
-      .not('customer_id', 'is', null)
-      .not('event_id', 'is', null)
-      .or(eventBookingSourceFilter),
-    supabase
-      .from('waitlist_entries')
-      .select('customer_id, event:events(event_type)')
-      .not('customer_id', 'is', null)
-      .not('event_id', 'is', null),
-    supabase
-      .from('bookings')
-      .select('customer_id, created_at')
-      .not('customer_id', 'is', null)
-      .or(eventBookingSourceFilter),
-    supabase
-      .from('table_bookings')
-      .select('customer_id, created_at')
-      .not('customer_id', 'is', null)
-      .or(tableBookingSourceFilter),
-    supabase
-      .from('private_bookings')
-      .select('customer_id, created_at')
-      .not('customer_id', 'is', null)
-      .or(privateBookingSourceFilter),
-    supabase
-      .from('customers')
-      .select('id')
-      .or(NON_PRODUCTION_CUSTOMER_FILTER),
-    supabase
-      .from('bookings')
-      .select('customer_id, created_at, seats, booking_source')
-      .gte('created_at', coverTrendSinceIso)
-      .or(eventBookingSourceFilter),
-    supabase
-      .from('table_bookings')
-      .select('customer_id, created_at, party_size, source')
-      .gte('created_at', coverTrendSinceIso)
-      .or(tableBookingSourceFilter),
-    supabase
-      .from('private_bookings')
-      .select('customer_id, created_at, guest_count, source')
-      .gte('created_at', coverTrendSinceIso)
-      .or(privateBookingSourceFilter)
+    fetchAllRows((from, to) =>
+      supabase
+        .from('bookings')
+        .select('customer_id, event:events(event_type)')
+        .not('customer_id', 'is', null)
+        .not('event_id', 'is', null)
+        .or(eventBookingSourceFilter)
+        .range(from, to)
+    ),
+    fetchAllRows((from, to) =>
+      supabase
+        .from('waitlist_entries')
+        .select('customer_id, event:events(event_type)')
+        .not('customer_id', 'is', null)
+        .not('event_id', 'is', null)
+        .range(from, to)
+    ),
+    fetchAllRows((from, to) =>
+      supabase
+        .from('bookings')
+        .select('customer_id, created_at')
+        .not('customer_id', 'is', null)
+        .or(eventBookingSourceFilter)
+        .range(from, to)
+    ),
+    fetchAllRows((from, to) =>
+      supabase
+        .from('table_bookings')
+        .select('customer_id, created_at')
+        .not('customer_id', 'is', null)
+        .or(tableBookingSourceFilter)
+        .range(from, to)
+    ),
+    fetchAllRows((from, to) =>
+      supabase
+        .from('private_bookings')
+        .select('customer_id, created_at')
+        .not('customer_id', 'is', null)
+        .eq('status', CONFIRMED_PRIVATE_BOOKING_STATUS)
+        .or(privateBookingSourceFilter)
+        .range(from, to)
+    ),
+    fetchAllRows((from, to) =>
+      supabase
+        .from('customers')
+        .select('id')
+        .or(NON_PRODUCTION_CUSTOMER_FILTER)
+        .range(from, to)
+    ),
+    fetchAllRows((from, to) =>
+      supabase
+        .from('bookings')
+        .select('customer_id, created_at, seats, booking_source')
+        .gte('created_at', coverTrendSinceIso)
+        .or(eventBookingSourceFilter)
+        .range(from, to)
+    ),
+    fetchAllRows((from, to) =>
+      supabase
+        .from('table_bookings')
+        .select('customer_id, created_at, party_size, source')
+        .gte('created_at', coverTrendSinceIso)
+        .or(tableBookingSourceFilter)
+        .range(from, to)
+    ),
+    fetchAllRows((from, to) =>
+      supabase
+        .from('private_bookings')
+        .select('customer_id, created_at, guest_count, source')
+        .gte('created_at', coverTrendSinceIso)
+        .eq('status', CONFIRMED_PRIVATE_BOOKING_STATUS)
+        .or(privateBookingSourceFilter)
+        .range(from, to)
+    )
   ])
 
   const errors: string[] = []
@@ -841,10 +947,7 @@ export async function loadTableBookingReportsSnapshot(input: {
   }
 
   const last30GuestSplit = splitGuests(activeLast30Customers, now.getTime() - THIRTY_DAYS_MS)
-  const selectedWindowGuestSplit =
-    selectedWindowDays === 30
-      ? last30GuestSplit
-      : splitGuests(activeSelectedWindowCustomers, selectedWindowSinceMs)
+  const selectedWindowGuestSplit = splitGuests(activeSelectedWindowCustomers, selectedWindowSinceMs)
 
   const selectedWindowLabel = REPORT_WINDOW_LABELS[selectedWindowKey]
   const eventCoverRows = (eventCoverRowsResult.data || []) as EventCoverRow[]
