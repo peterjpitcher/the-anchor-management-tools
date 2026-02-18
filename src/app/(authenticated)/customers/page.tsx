@@ -535,14 +535,17 @@ export default function CustomersPage() {
     )
   }
 
-  const navItems: HeaderNavItem[] = canManageCustomers
-    ? [
-      { label: 'Manage Labels', href: '/settings/customer-labels' },
-      { label: 'Import', onClick: openImportCustomers },
-    ]
-    : []
+  const navItems: HeaderNavItem[] = [
+    { label: 'Overview', href: '/customers', active: true },
+    { label: 'Insights', href: '/customers/insights' },
+  ]
 
-  const navActions = null
+  if (canManageCustomers) {
+    navItems.push(
+      { label: 'Manage Labels', href: '/settings/customer-labels' },
+      { label: 'Import', onClick: openImportCustomers }
+    )
+  }
 
   const headerActions = canManageCustomers ? (
     <Button onClick={openCreateCustomer} variant="primary" leftIcon={<PlusIcon className="h-5 w-5" />}>
