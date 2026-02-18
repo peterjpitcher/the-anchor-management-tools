@@ -148,7 +148,7 @@ export default function OJProjectsDashboardPage() {
   const [projectId, setProjectId] = useState('')
   const [entryDate, setEntryDate] = useState(getTodayIsoDate())
   const [startTime, setStartTime] = useState('09:00')
-  const [durationHours, setDurationHours] = useState<number>(1.0)
+  const [durationHoursInput, setDurationHoursInput] = useState('1')
   const [workTypeId, setWorkTypeId] = useState('')
   const [miles, setMiles] = useState<number>(0)
   const [description, setDescription] = useState('')
@@ -578,6 +578,12 @@ export default function OJProjectsDashboardPage() {
       return
     }
 
+    const parsedDurationHours = Number.parseFloat(durationHoursInput.trim())
+    if (entryType === 'time' && (!Number.isFinite(parsedDurationHours) || parsedDurationHours <= 0)) {
+      toast.error('Duration must be greater than 0')
+      return
+    }
+
     setSaving(true)
     try {
       const fd = new FormData()
@@ -591,7 +597,7 @@ export default function OJProjectsDashboardPage() {
       let res: any
       if (entryType === 'time') {
         fd.append('start_time', startTime)
-        fd.append('duration_minutes', String(durationHours * 60))
+        fd.append('duration_minutes', String(parsedDurationHours * 60))
         if (workTypeId) fd.append('work_type_id', workTypeId)
         res = await createTimeEntry(fd)
       } else {
@@ -1009,11 +1015,10 @@ export default function OJProjectsDashboardPage() {
                             </FormGroup>
                             <FormGroup label="Duration" required className="flex-1">
                               <Input
-                                type="number"
-                                min="0.25"
-                                step="0.25"
-                                value={durationHours}
-                                onChange={(e) => setDurationHours(parseFloat(e.target.value) || 0)}
+                                type="text"
+                                inputMode="decimal"
+                                value={durationHoursInput}
+                                onChange={(e) => setDurationHoursInput(e.target.value)}
                                 required
                                 rightElement={<span className="text-gray-500 text-xs mr-3">h</span>}
                               />
