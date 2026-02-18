@@ -13,6 +13,7 @@ import {
 } from '@/lib/api/idempotency';
 import { createRateLimiter } from '@/lib/rate-limit';
 import { logger } from '@/lib/logger';
+import { sendManagerPrivateBookingCreatedEmail } from '@/lib/private-bookings/manager-notifications';
 
 // Schema for public booking requests
 // Simplified version of the internal types but stricter validation could be added here
@@ -165,6 +166,29 @@ export async function POST(request: NextRequest) {
 
             const booking = await PrivateBookingService.createBooking(bookingPayload);
             createdBookingId = typeof booking?.id === 'string' ? booking.id : null;
+
+            try {
+                const managerEmailResult = await sendManagerPrivateBookingCreatedEmail({
+                    booking: booking as any,
+                    createdVia: 'api_public_private_booking'
+                });
+
+                if (!managerEmailResult.sent && managerEmailResult.error) {
+                    logger.warn('Failed to send manager private booking created email (public endpoint)', {
+                        metadata: {
+                            privateBookingId: createdBookingId,
+                            error: managerEmailResult.error
+                        }
+                    });
+                }
+            } catch (managerEmailError) {
+                logger.warn('Manager private booking created email task rejected unexpectedly (public endpoint)', {
+                    metadata: {
+                        privateBookingId: createdBookingId,
+                        error: managerEmailError instanceof Error ? managerEmailError.message : String(managerEmailError)
+                    }
+                });
+            }
 
             if ((booking as any)?.customer_id) {
                 await recordPublicPrivateBookingAnalyticsSafe(supabase, {

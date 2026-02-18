@@ -13,6 +13,7 @@ import {
 import { formatPhoneForStorage } from '@/lib/utils';
 import { PrivateBookingService } from '@/services/private-bookings';
 import { logger } from '@/lib/logger';
+import { sendManagerPrivateBookingCreatedEmail } from '@/lib/private-bookings/manager-notifications';
 
 export const dynamic = 'force-dynamic';
 
@@ -140,6 +141,30 @@ export async function POST(request: NextRequest) {
 
         const booking = await PrivateBookingService.createBooking(input);
         createdBookingId = typeof booking?.id === 'string' ? booking.id : null;
+
+        try {
+          const managerEmailResult = await sendManagerPrivateBookingCreatedEmail({
+            booking: booking as any,
+            createdVia: 'api_external_create_booking',
+          });
+
+          if (!managerEmailResult.sent && managerEmailResult.error) {
+            logger.warn('Failed to send manager private booking created email (external create-booking endpoint)', {
+              metadata: {
+                privateBookingId: createdBookingId,
+                error: managerEmailResult.error,
+              },
+            });
+          }
+        } catch (managerEmailError) {
+          logger.warn('Manager private booking created email task rejected unexpectedly (external create-booking endpoint)', {
+            metadata: {
+              privateBookingId: createdBookingId,
+              error: managerEmailError instanceof Error ? managerEmailError.message : String(managerEmailError),
+            },
+          });
+        }
+
         const responsePayload = {
           success: true,
           id: booking.id,
