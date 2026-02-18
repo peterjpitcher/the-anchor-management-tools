@@ -2,6 +2,8 @@ import { type NextRequest, NextResponse } from 'next/server'
 import { createServerClient, type CookieOptions } from '@supabase/ssr'
 import { isShortLinkHost, isShortLinkPath } from '@/lib/short-links/routing'
 
+const LOGIN_REDIRECT_COOKIE = 'post_login_redirect'
+
 const PUBLIC_PATH_PREFIXES = [
   '/_next',     // Next.js internal
   '/static',    // Static files directory
@@ -54,6 +56,25 @@ function sanitizeRedirectTarget(url: URL) {
   }
 }
 
+function sanitizeRedirectFromParam(raw: string | null) {
+  if (!raw) return '/dashboard'
+
+  try {
+    const trimmed = raw.trim().replace(/\s+/g, '')
+    if (!trimmed.startsWith('/')) return '/dashboard'
+    if (trimmed.startsWith('//')) return '/dashboard'
+    if (trimmed.toLowerCase().startsWith('/auth/')) return '/dashboard'
+    return trimmed
+  } catch {
+    return '/dashboard'
+  }
+}
+
+function applyNoIndexHeader(response: NextResponse) {
+  response.headers.set('X-Robots-Tag', 'noindex, nofollow, noarchive, nosnippet')
+  return response
+}
+
 export async function middleware(request: NextRequest) {
   const hostname = request.headers.get('host') || ''
   if (isShortLinkHost(hostname) && isShortLinkPath(request.nextUrl.pathname)) {
@@ -92,15 +113,50 @@ export async function middleware(request: NextRequest) {
 
   // 2. Refresh session if expired - required for Server Components
   const { data: { user } } = await supabase.auth.getUser()
+  const isGetOrHead = request.method === 'GET' || request.method === 'HEAD'
+
+  // Normalize legacy login URLs with redirectedFrom query into a clean login URL
+  if (
+    isGetOrHead &&
+    request.nextUrl.pathname === '/auth/login' &&
+    request.nextUrl.searchParams.has('redirectedFrom')
+  ) {
+    const redirectedFrom = request.nextUrl.searchParams.get('redirectedFrom')
+    const cleanLoginUrl = request.nextUrl.clone()
+    cleanLoginUrl.search = ''
+
+    const cleanupResponse = NextResponse.redirect(cleanLoginUrl, 308)
+    if (redirectedFrom) {
+      cleanupResponse.cookies.set(LOGIN_REDIRECT_COOKIE, sanitizeRedirectFromParam(redirectedFrom), {
+        path: '/',
+        maxAge: 60 * 15,
+        sameSite: 'lax',
+        secure: process.env.NODE_ENV === 'production',
+      })
+    }
+
+    const setCookieHeader = response.headers.get('set-cookie')
+    if (setCookieHeader) {
+      cleanupResponse.headers.set('set-cookie', setCookieHeader)
+    }
+
+    return applyNoIndexHeader(cleanupResponse)
+  }
 
   // 3. Protect routes
   if (!isPublicPath(request.nextUrl.pathname) && !user) {
     const redirectUrl = request.nextUrl.clone()
     redirectUrl.pathname = '/auth/login'
-    redirectUrl.searchParams.set('redirectedFrom', sanitizeRedirectTarget(request.nextUrl))
+    redirectUrl.search = ''
 
     // Redirect while maintaining the session
     const redirectResponse = NextResponse.redirect(redirectUrl)
+    redirectResponse.cookies.set(LOGIN_REDIRECT_COOKIE, sanitizeRedirectTarget(request.nextUrl), {
+      path: '/',
+      maxAge: 60 * 15,
+      sameSite: 'lax',
+      secure: process.env.NODE_ENV === 'production',
+    })
     
     // IMPORTANT: Copy over the cookies from the response object to the redirect response
     // so that any session refresh that happened above is not lost.
@@ -109,10 +165,10 @@ export async function middleware(request: NextRequest) {
       redirectResponse.headers.set('set-cookie', setCookieHeader)
     }
 
-    return redirectResponse
+    return applyNoIndexHeader(redirectResponse)
   }
 
-  return response
+  return applyNoIndexHeader(response)
 }
 
 export const config = {
