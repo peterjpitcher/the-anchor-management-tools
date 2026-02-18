@@ -13,6 +13,8 @@ import { Button } from '@/components/ui-v2/forms/Button'
 import { LinkButton } from '@/components/ui-v2/navigation/LinkButton'
 import { toast } from '@/components/ui-v2/feedback/Toast'
 
+const LOGIN_REDIRECT_COOKIE = 'post_login_redirect'
+
 function sanitizeRedirectTarget(raw: string | null) {
   if (!raw) return '/dashboard'
 
@@ -29,6 +31,24 @@ function sanitizeRedirectTarget(raw: string | null) {
   }
 }
 
+function getCookie(name: string): string | null {
+  if (typeof document === 'undefined') return null
+
+  const namePrefix = `${name}=`
+  const cookieEntry = document.cookie
+    .split(';')
+    .map((entry) => entry.trim())
+    .find((entry) => entry.startsWith(namePrefix))
+
+  if (!cookieEntry) return null
+  return decodeURIComponent(cookieEntry.slice(namePrefix.length))
+}
+
+function clearCookie(name: string) {
+  if (typeof document === 'undefined') return
+  document.cookie = `${name}=; Max-Age=0; Path=/; SameSite=Lax`
+}
+
 export default function LoginForm() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -36,7 +56,10 @@ export default function LoginForm() {
   const searchParams = useSearchParams()
 
   const redirectedFrom = searchParams.get('redirectedFrom')
-  const redirectTo = useMemo(() => sanitizeRedirectTarget(redirectedFrom), [redirectedFrom])
+  const redirectTo = useMemo(() => {
+    const cookieRedirectTarget = getCookie(LOGIN_REDIRECT_COOKIE)
+    return sanitizeRedirectTarget(redirectedFrom || cookieRedirectTarget)
+  }, [redirectedFrom])
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
@@ -57,6 +80,7 @@ export default function LoginForm() {
     }
 
     toast.success('Signed in')
+    clearCookie(LOGIN_REDIRECT_COOKIE)
     router.replace(redirectTo)
     router.refresh()
   }
