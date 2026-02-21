@@ -1,5 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+vi.hoisted(() => {
+  process.env.TWILIO_ACCOUNT_SID = process.env.TWILIO_ACCOUNT_SID || 'AC_TEST'
+  process.env.TWILIO_AUTH_TOKEN = process.env.TWILIO_AUTH_TOKEN || 'auth_test'
+  process.env.TWILIO_PHONE_NUMBER = process.env.TWILIO_PHONE_NUMBER || '+15555555555'
+})
+
 vi.mock('@/lib/supabase/admin', () => ({
   createAdminClient: vi.fn(),
 }))
@@ -145,6 +151,43 @@ describe('sendSMS customer safety guards', () => {
       error: 'This number is not eligible to receive SMS messages',
     })
     expect(twilio as unknown as vi.Mock).not.toHaveBeenCalled()
+  })
+
+  it('allows critical transactional sends when override is enabled', async () => {
+    const create = vi.fn().mockResolvedValue({
+      sid: 'SM-override',
+      from: '+15555555555',
+      status: 'queued',
+    })
+    ;(twilio as unknown as vi.Mock).mockReturnValue({
+      messages: { create }
+    })
+
+    mockCustomerLookup({
+      data: {
+        sms_status: 'opted_out',
+        sms_opt_in: false,
+        mobile_e164: '+447700900123',
+        mobile_number: '+447700900123',
+      },
+      error: null,
+    })
+
+    const result = await sendSMS('+447700900123', 'hello', {
+      customerId: 'customer-override',
+      createCustomerIfMissing: false,
+      skipSafetyGuards: true,
+      skipQuietHours: true,
+      skipMessageLogging: true,
+      allowTransactionalOverride: true,
+    })
+
+    expect(result).toEqual(expect.objectContaining({
+      success: true,
+      sid: 'SM-override',
+      customerId: 'customer-override',
+    }))
+    expect(create).toHaveBeenCalledTimes(1)
   })
 
   it('fails closed when provided customerId does not match the destination phone', async () => {

@@ -47,7 +47,7 @@ describe('Sunday pre-order SMS safety meta', () => {
         id: 'customer-1',
         first_name: 'Pat',
         mobile_number: '+447700900123',
-        sms_status: 'active',
+        sms_status: 'opted_out',
       },
       error: null,
     })
@@ -85,6 +85,13 @@ describe('Sunday pre-order SMS safety meta', () => {
       'Sunday pre-order link SMS sent but outbound message logging failed',
       expect.any(Object)
     )
+    expect(sendSMS).toHaveBeenCalledWith(
+      '+447700900123',
+      expect.any(String),
+      expect.objectContaining({
+        allowTransactionalOverride: true,
+      })
+    )
   })
 
   it('propagates thrown idempotency_conflict metadata from sendSMS', async () => {
@@ -99,7 +106,7 @@ describe('Sunday pre-order SMS safety meta', () => {
         id: 'customer-1',
         first_name: 'Pat',
         mobile_number: '+447700900123',
-        sms_status: 'active',
+        sms_status: 'opted_out',
       },
       error: null,
     })

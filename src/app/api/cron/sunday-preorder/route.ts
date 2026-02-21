@@ -328,6 +328,7 @@ async function sendSmsSafe(
   body: string,
   options: {
     customerId: string
+    allowTransactionalOverride?: boolean
     metadata?: Record<string, unknown>
   },
   context: {
@@ -337,7 +338,10 @@ async function sendSmsSafe(
   }
 ): Promise<Awaited<ReturnType<typeof sendSMS>>> {
   try {
-    return await sendSMS(to, body, options)
+    return await sendSMS(to, body, {
+      ...options,
+      allowTransactionalOverride: options.allowTransactionalOverride === true
+    })
   } catch (smsError) {
     logger.warn('Failed sending Sunday pre-order SMS', {
       metadata: {
@@ -579,10 +583,11 @@ export async function GET(request: NextRequest) {
       const customer = booking.customer
       const startIso = booking.start_datetime
 
-      if (!customer || !startIso || !customer.mobile_number || customer.sms_status !== 'active') {
+      if (!customer || !startIso) {
         counters.skipped += 1
         continue
       }
+      const mobileNumber = customer.mobile_number || null
 
       if (booking.sunday_preorder_completed_at) {
         counters.skipped += 1
@@ -632,15 +637,16 @@ export async function GET(request: NextRequest) {
         })
 
         const cancellationKey = `${booking.id}:${TEMPLATE_CANCELLED_24H}`
-        if (!sentTemplateSet.has(cancellationKey)) {
+        if (mobileNumber && !sentTemplateSet.has(cancellationKey)) {
           if (totalSundaySmsSent(counters) < MAX_SUNDAY_PREORDER_SMS_PER_RUN) {
             const message = ensureReplyInstruction(
               `The Anchor: Hi ${getSmartFirstName(customer.first_name)}, your Sunday lunch booking ${booking.booking_reference || ''} has been cancelled because the required pre-order wasn't completed 24 hours before the booking. No charge has been applied.`,
               supportPhone
             )
 
-            const smsResult = await sendSmsSafe(customer.mobile_number, message, {
+            const smsResult = await sendSmsSafe(mobileNumber, message, {
               customerId: customer.id,
+              allowTransactionalOverride: true,
               metadata: {
                 table_booking_id: booking.id,
                 template_key: TEMPLATE_CANCELLED_24H
@@ -679,6 +685,11 @@ export async function GET(request: NextRequest) {
           }
         }
 
+        continue
+      }
+
+      if (!mobileNumber) {
+        counters.skipped += 1
         continue
       }
 
@@ -723,7 +734,7 @@ export async function GET(request: NextRequest) {
         : 'please complete your Sunday lunch pre-order.'
 
       const smsResult = await sendSmsSafe(
-        customer.mobile_number,
+        mobileNumber,
         ensureReplyInstruction(
           preorderUrl
             ? `The Anchor: Hi ${getSmartFirstName(customer.first_name)}, ${intro} Complete here: ${preorderUrl}`
@@ -732,6 +743,7 @@ export async function GET(request: NextRequest) {
         ),
         {
           customerId: customer.id,
+          allowTransactionalOverride: true,
           metadata: {
             table_booking_id: booking.id,
             template_key: templateKey
