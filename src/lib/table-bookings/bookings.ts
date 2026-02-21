@@ -657,7 +657,7 @@ export async function sendSundayPreorderLinkSmsIfAllowed(
     .eq('id', input.customerId)
     .maybeSingle()
 
-  if (!customer || customer.sms_status !== 'active' || !customer.mobile_number) {
+  if (!customer || !customer.mobile_number) {
     return { sent: false, sms: null }
   }
 
@@ -686,6 +686,7 @@ export async function sendSundayPreorderLinkSmsIfAllowed(
   try {
     result = await sendSMS(customer.mobile_number, message, {
       customerId: customer.id,
+      allowTransactionalOverride: true,
       metadata: {
         table_booking_id: input.tableBookingId,
         template_key: 'sunday_preorder_request'

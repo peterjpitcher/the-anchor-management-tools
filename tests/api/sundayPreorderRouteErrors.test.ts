@@ -172,7 +172,7 @@ describe('sunday preorder route error payloads', () => {
             id: 'cust-1',
             first_name: 'A',
             mobile_number: '07111111111',
-            sms_status: 'active',
+            sms_status: 'opted_out',
           },
         },
         {
@@ -272,6 +272,13 @@ describe('sunday preorder route error payloads', () => {
       expect(payload.safetyAborts).toBe(1)
 
       expect(sendSMS).toHaveBeenCalledTimes(1)
+      expect(sendSMS).toHaveBeenCalledWith(
+        '07111111111',
+        expect.any(String),
+        expect.objectContaining({
+          allowTransactionalOverride: true,
+        })
+      )
       expect(persistCronRunResult).toHaveBeenCalledWith(
         supabase,
         expect.objectContaining({ runId: 'run-1', status: 'failed', errorMessage: 'logging_failed' })

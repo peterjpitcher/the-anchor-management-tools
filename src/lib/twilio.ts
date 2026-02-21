@@ -42,6 +42,8 @@ export type SendSMSOptions = {
   skipQuietHours?: boolean;
   skipSafetyGuards?: boolean;
   skipMessageLogging?: boolean;
+  // Use only for critical operational SMS. Phone ownership checks still apply.
+  allowTransactionalOverride?: boolean;
   customerFallback?: {
     firstName?: string;
     lastName?: string;
@@ -106,7 +108,11 @@ function doesCustomerPhoneMatchTo(params: {
   return toNumbersToMatch.some(value => customerVariants.has(value));
 }
 
-async function isCustomerSmsSendAllowed(customerId: string, to: string): Promise<SmsSendEligibility> {
+async function isCustomerSmsSendAllowed(
+  customerId: string,
+  to: string,
+  options?: { allowTransactionalOverride?: boolean }
+): Promise<SmsSendEligibility> {
   try {
     const supabase = createAdminClient();
     const { data: customer, error } = await supabase
@@ -157,6 +163,10 @@ async function isCustomerSmsSendAllowed(customerId: string, to: string): Promise
         metadata: { customerId, to }
       })
       return { allowed: false, reason: 'customer_phone_mismatch' };
+    }
+
+    if (options?.allowTransactionalOverride === true) {
+      return { allowed: true };
     }
 
     if ((customer as any).sms_opt_in === false) {
@@ -216,7 +226,9 @@ export const sendSMS = async (to: string, body: string, options: SendSMSOptions 
     }
 
     if (resolvedCustomerId) {
-      const eligibility = await isCustomerSmsSendAllowed(resolvedCustomerId, to);
+      const eligibility = await isCustomerSmsSendAllowed(resolvedCustomerId, to, {
+        allowTransactionalOverride: options.allowTransactionalOverride === true
+      });
       if (!eligibility.allowed) {
         if (eligibility.reason === 'customer_lookup_failed' || eligibility.reason === 'customer_phone_mismatch') {
           return {
