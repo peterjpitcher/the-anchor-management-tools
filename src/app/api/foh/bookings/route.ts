@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { randomBytes } from 'crypto'
 import { fromZonedTime } from 'date-fns-tz'
 import { requireFohPermission } from '@/lib/foh/api-auth'
+import { createClient } from '@/lib/supabase/server'
 import { formatPhoneForStorage } from '@/lib/utils'
 import { ensureCustomerForPhone } from '@/lib/sms/customers'
 import { logger } from '@/lib/logger'
@@ -17,6 +18,8 @@ import {
   type TableBookingRpcResult
 } from '@/lib/table-bookings/bookings'
 import { saveSundayPreorderByBookingId } from '@/lib/table-bookings/sunday-preorder'
+
+const STRICT_SUNDAY_LUNCH_OPERATOR_EMAIL = 'manager@the-anchor.pub'
 
 const SundayPreorderItemSchema = z.object({
   menu_dish_id: z.string().uuid(),
@@ -103,6 +106,25 @@ function isSundayIsoDate(dateIso: string): boolean {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(dateIso)) return false
   const parsed = new Date(`${dateIso}T12:00:00Z`)
   return Number.isFinite(parsed.getTime()) && parsed.getUTCDay() === 0
+}
+
+function hasManagerSundayLunchCutoffPassed(bookingDateIso: string, now = new Date()): boolean {
+  if (!isSundayIsoDate(bookingDateIso)) return false
+
+  const sundayMiddayUtc = new Date(`${bookingDateIso}T12:00:00Z`)
+  if (!Number.isFinite(sundayMiddayUtc.getTime())) return false
+
+  const saturdayMiddayUtc = new Date(sundayMiddayUtc)
+  saturdayMiddayUtc.setUTCDate(saturdayMiddayUtc.getUTCDate() - 1)
+  const saturdayDateIso = saturdayMiddayUtc.toISOString().slice(0, 10)
+  const cutoffDateTime = fromZonedTime(`${saturdayDateIso}T13:00:00`, 'Europe/London')
+
+  if (!Number.isFinite(cutoffDateTime.getTime())) return false
+  return now.getTime() >= cutoffDateTime.getTime()
+}
+
+function isStrictSundayLunchOperator(email: string | null | undefined): boolean {
+  return (email || '').trim().toLowerCase() === STRICT_SUNDAY_LUNCH_OPERATOR_EMAIL
 }
 
 async function shouldAutoPromoteSundayLunchForFoh(input: {
@@ -713,6 +735,15 @@ export async function POST(request: NextRequest) {
     return auth.response
   }
 
+  let operatorEmail: string | null = null
+  try {
+    const supabase = await createClient()
+    const userResult = await supabase.auth.getUser()
+    operatorEmail = userResult.data.user?.email?.trim().toLowerCase() || null
+  } catch {
+    operatorEmail = null
+  }
+
   let body: unknown
   try {
     body = await request.json()
@@ -842,6 +873,19 @@ export async function POST(request: NextRequest) {
       })
       effectiveSundayLunch = false
     }
+  }
+
+  if (
+    effectiveSundayLunch
+    && isStrictSundayLunchOperator(operatorEmail)
+    && hasManagerSundayLunchCutoffPassed(payload.date)
+  ) {
+    return NextResponse.json(
+      {
+        error: 'Sunday lunch bookings are closed after 1:00pm on Saturday for this account.'
+      },
+      { status: 403 }
+    )
   }
 
   const { data: rpcResultRaw, error: rpcError } = await auth.supabase.rpc('create_table_booking_v05', {

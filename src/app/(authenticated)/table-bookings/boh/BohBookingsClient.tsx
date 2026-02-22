@@ -108,6 +108,9 @@ type MoveTableAvailabilityResponse = {
   }
 }
 
+const BOH_AUTO_RETURN_IDLE_MS = 5 * 60 * 1000
+const BOH_AUTO_RETURN_POLL_MS = 30 * 1000
+
 const STATUS_OPTIONS: Array<{ value: StatusFilter; label: string }> = [
   { value: 'all', label: 'All statuses' },
   { value: 'confirmed', label: 'Confirmed' },
@@ -122,21 +125,34 @@ const STATUS_OPTIONS: Array<{ value: StatusFilter; label: string }> = [
 ]
 
 function getTodayIsoDate(): string {
-  const now = new Date()
-  const formatter = new Intl.DateTimeFormat('en-CA', {
+  const parts = new Intl.DateTimeFormat('en-GB', {
     timeZone: 'Europe/London',
     year: 'numeric',
     month: '2-digit',
     day: '2-digit'
   })
+    .formatToParts(new Date())
+    .reduce<Record<string, string>>((acc, part) => {
+      if (part.type !== 'literal') {
+        acc[part.type] = part.value
+      }
+      return acc
+    }, {})
 
-  return formatter.format(now)
+  const year = parts.year || '1970'
+  const month = parts.month || '01'
+  const day = parts.day || '01'
+  return `${year}-${month}-${day}`
 }
 
 function toDateMidday(dateIso: string): Date {
   const date = new Date(`${dateIso}T12:00:00Z`)
   if (!Number.isFinite(date.getTime())) {
-    return new Date(`${getTodayIsoDate()}T12:00:00Z`)
+    const fallback = new Date(`${getTodayIsoDate()}T12:00:00Z`)
+    if (Number.isFinite(fallback.getTime())) {
+      return fallback
+    }
+    return new Date(Date.UTC(1970, 0, 1, 12, 0, 0))
   }
   return date
 }
@@ -388,6 +404,13 @@ export function BohBookingsClient({
   const [sortColumn, setSortColumn] = useState<SortColumn>('datetime')
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc')
   const [actionLoadingKey, setActionLoadingKey] = useState<string | null>(null)
+  const [lastInteractionAtMs, setLastInteractionAtMs] = useState<number>(() => Date.now())
+
+  const closeSelectedBookingModal = useCallback(() => {
+    setSelectedBookingId(null)
+    setMoveTableId('')
+    setSmsBody('')
+  }, [])
 
   const loadBookings = useCallback(async () => {
     setLoading(true)
@@ -455,6 +478,61 @@ export function BohBookingsClient({
   useEffect(() => {
     void loadBookings()
   }, [loadBookings])
+
+  useEffect(() => {
+    const markInteraction = () => {
+      setLastInteractionAtMs(Date.now())
+    }
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        markInteraction()
+      }
+    }
+
+    window.addEventListener('pointerdown', markInteraction, { passive: true })
+    window.addEventListener('wheel', markInteraction, { passive: true })
+    window.addEventListener('keydown', markInteraction)
+    window.addEventListener('touchstart', markInteraction, { passive: true })
+    window.addEventListener('focus', markInteraction)
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+
+    return () => {
+      window.removeEventListener('pointerdown', markInteraction)
+      window.removeEventListener('wheel', markInteraction)
+      window.removeEventListener('keydown', markInteraction)
+      window.removeEventListener('touchstart', markInteraction)
+      window.removeEventListener('focus', markInteraction)
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+    }
+  }, [])
+
+  useEffect(() => {
+    const intervalId = window.setInterval(() => {
+      const todayDate = getTodayIsoDate()
+      if (focusDate === todayDate) return
+      if (selectedBookingId || actionLoadingKey) return
+      if (document.visibilityState !== 'visible') return
+
+      const activeElement = document.activeElement
+      const isEditing =
+        activeElement instanceof HTMLInputElement
+        || activeElement instanceof HTMLTextAreaElement
+        || activeElement instanceof HTMLSelectElement
+        || activeElement?.getAttribute('contenteditable') === 'true'
+
+      if (isEditing) return
+      if (Date.now() - lastInteractionAtMs < BOH_AUTO_RETURN_IDLE_MS) return
+
+      setFocusDate(todayDate)
+      setLastInteractionAtMs(Date.now())
+      toast('Returned to today after inactivity')
+    }, BOH_AUTO_RETURN_POLL_MS)
+
+    return () => {
+      window.clearInterval(intervalId)
+    }
+  }, [actionLoadingKey, focusDate, lastInteractionAtMs, selectedBookingId])
 
   useEffect(() => {
     if (!selectedBookingId) return
@@ -766,25 +844,40 @@ export function BohBookingsClient({
 
   async function handleDeleteBooking() {
     if (!selectedBooking) return
+    const bookingId = selectedBooking.id
 
     const confirmed = window.confirm('Delete this booking permanently? This cannot be undone.')
     if (!confirmed) {
       return
     }
 
+    closeSelectedBookingModal()
+
     await runAction(
       'delete-booking',
       async () => {
-        const response = await fetch(`/api/boh/table-bookings/${selectedBooking.id}`, {
-          method: 'DELETE'
-        })
+        const controller = new AbortController()
+        const timeoutId = window.setTimeout(() => controller.abort(), 15_000)
+        let response: Response
 
-        const payload = (await response.json()) as { error?: string }
+        try {
+          response = await fetch(`/api/boh/table-bookings/${bookingId}`, {
+            method: 'DELETE',
+            signal: controller.signal
+          })
+        } catch (error) {
+          if (error instanceof DOMException && error.name === 'AbortError') {
+            throw new Error('Delete request timed out. Please try again.')
+          }
+          throw error
+        } finally {
+          window.clearTimeout(timeoutId)
+        }
+
+        const payload = (await response.json().catch(() => ({}))) as { error?: string }
         if (!response.ok) {
           throw new Error(payload.error || 'Failed to delete booking')
         }
-
-        setSelectedBookingId(null)
       },
       'Booking deleted'
     )
@@ -1005,6 +1098,7 @@ export function BohBookingsClient({
                           setSelectedBookingId(booking.id)
                           setMoveTableId('')
                           setSmsBody('')
+                          setLastInteractionAtMs(Date.now())
                         }}
                       >
                         Manage
@@ -1020,11 +1114,7 @@ export function BohBookingsClient({
 
       <Modal
         open={Boolean(selectedBooking)}
-        onClose={() => {
-          setSelectedBookingId(null)
-          setMoveTableId('')
-          setSmsBody('')
-        }}
+        onClose={closeSelectedBookingModal}
         title={selectedBooking?.guest_name || selectedBooking?.booking_reference || 'Booking details'}
         description={selectedBooking ? `${selectedBooking.booking_reference || 'No reference'} · ${formatBookingDateTime(selectedBooking)}` : undefined}
         size="lg"
@@ -1033,11 +1123,7 @@ export function BohBookingsClient({
             <Button
               variant="secondary"
               size="sm"
-              onClick={() => {
-                setSelectedBookingId(null)
-                setMoveTableId('')
-                setSmsBody('')
-              }}
+              onClick={closeSelectedBookingModal}
             >
               Close
             </Button>

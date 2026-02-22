@@ -7,6 +7,15 @@ type EventFaqRow = {
   sort_order: number | null;
 };
 
+type EventCategoryRow = {
+  id: string
+  name: string | null
+  description: string | null
+  color: string | null
+  icon: string | null
+  slug: string | null
+}
+
 type EventMessageTemplateRow = {
   template_type: string;
   custom_content: string | null;
@@ -18,6 +27,16 @@ type EventCapacityRow = {
   is_full: boolean
 }
 
+type EventShortLinkRow = {
+  short_code: string
+  updated_at: string | null
+  metadata: {
+    channel?: string | null
+  } | null
+}
+
+const SHORT_LINK_BASE_URL = process.env.NEXT_PUBLIC_SHORT_LINK_BASE_URL || 'https://vip-club.uk';
+
 export async function GET(
   _request: NextRequest,
   context: { params: Promise<{ id: string }> }
@@ -25,54 +44,94 @@ export async function GET(
   return withApiAuth(async (_req, _apiKey) => {
     const params = await context.params;
     const supabase = createAdminClient();
-    
+
     // Check if id is a UUID pattern
     const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(params.id);
-    
-    // Build query
-    let query = supabase
-      .from('events')
-      .select(`
-        *,
-        category:event_categories(
-          id,
-          name,
-          description,
-          color,
-          icon,
-          slug
-        ),
-        event_faqs(
-          id,
-          question,
-          answer,
-          sort_order
-        ),
-        event_message_templates(
-          template_type,
-          custom_content
-        )
-      `);
-    
-    // Query by ID or slug
-    if (isUUID) {
-      query = query.eq('id', params.id);
-    } else {
-      query = query.eq('slug', params.id);
-    }
-    
-    const { data: event, error } = await query.single();
+    const lookupById = async (id: string) =>
+      supabase.from('events').select('*').eq('id', id).maybeSingle();
+    const lookupBySlug = async (slug: string) =>
+      supabase.from('events').select('*').eq('slug', slug).maybeSingle();
 
-    if (error || !event) {
+    let event: Record<string, any> | null = null;
+
+    if (isUUID) {
+      const { data, error } = await lookupById(params.id);
+      if (error) {
+        return createErrorResponse('Failed to load event details', 'DATABASE_ERROR', 500);
+      }
+      event = (data as Record<string, any> | null) ?? null;
+    } else {
+      const { data: slugData, error: slugError } = await lookupBySlug(params.id);
+      if (slugError) {
+        return createErrorResponse('Failed to load event details', 'DATABASE_ERROR', 500);
+      }
+      event = (slugData as Record<string, any> | null) ?? null;
+
+      // Legacy fallback: if this is not a UUID and slug lookup missed, try id directly.
+      if (!event) {
+        const { data: idData, error: idError } = await lookupById(params.id);
+        if (idError) {
+          return createErrorResponse('Failed to load event details', 'DATABASE_ERROR', 500);
+        }
+        event = (idData as Record<string, any> | null) ?? null;
+      }
+    }
+
+    if (!event) {
       return createErrorResponse('Event not found', 'NOT_FOUND', 404);
     }
-    
-    // Sort FAQs by sort_order
-    const faqs = [...(event.event_faqs || [])].sort(
+
+    let category: EventCategoryRow | null = null;
+    if (event.category_id) {
+      const { data: categoryRow, error: categoryError } = await supabase
+        .from('event_categories')
+        .select('id, name, description, color, icon, slug')
+        .eq('id', event.category_id)
+        .maybeSingle<EventCategoryRow>();
+
+      if (categoryError) {
+        return createErrorResponse('Failed to load event category', 'DATABASE_ERROR', 500);
+      }
+
+      category = categoryRow ?? null;
+    }
+
+    const { data: faqs, error: faqsError } = await supabase
+      .from('event_faqs')
+      .select('id, question, answer, sort_order')
+      .eq('event_id', event.id)
+      .order('sort_order', { ascending: true });
+
+    if (faqsError) {
+      return createErrorResponse('Failed to load event FAQs', 'DATABASE_ERROR', 500);
+    }
+
+    const { data: messageTemplatesRows, error: messageTemplatesError } = await supabase
+      .from('event_message_templates')
+      .select('template_type, custom_content')
+      .eq('event_id', event.id);
+
+    if (messageTemplatesError) {
+      return createErrorResponse('Failed to load event message templates', 'DATABASE_ERROR', 500);
+    }
+
+    let marketingShortLinks: EventShortLinkRow[] = [];
+    const { data: shortLinksRows, error: shortLinksError } = await supabase
+      .from('short_links')
+      .select('short_code, updated_at, metadata')
+      .contains('metadata', { event_id: event.id });
+
+    if (shortLinksError) {
+      console.error('[events:id] failed to load marketing short links', shortLinksError);
+    } else if (Array.isArray(shortLinksRows)) {
+      marketingShortLinks = shortLinksRows as EventShortLinkRow[];
+    }
+
+    const sortedFaqs = [...(faqs || [])].sort(
       (a: EventFaqRow, b: EventFaqRow) => (a.sort_order || 0) - (b.sort_order || 0)
     );
 
-    const messageTemplates = (event.event_message_templates || []) as EventMessageTemplateRow[];
+    const messageTemplates = (messageTemplatesRows || []) as EventMessageTemplateRow[];
     const customMessages = messageTemplates.reduce(
       (acc, template) => {
         acc[template.template_type] = template.custom_content;
@@ -104,6 +163,8 @@ export async function GET(
       event.payment_mode ||
       ((event.is_free === true || Number(event.price || 0) === 0) ? 'free' : 'cash_only')
     const price = event.price_per_seat ?? event.price ?? 0
+    const facebookShortLink = resolveMarketingShortLink(marketingShortLinks, 'facebook');
+    const linkInBioShortLink = resolveMarketingShortLink(marketingShortLinks, 'lnk_bio');
 
     // Add extended details with all SEO fields
     const extendedEvent = {
@@ -120,6 +181,10 @@ export async function GET(
       event_status: event.event_status,
       bookingUrl: event.booking_url || null,
       booking_url: event.booking_url || null,
+      facebookShortLink: facebookShortLink,
+      facebook_short_link: facebookShortLink,
+      linkInBioShortLink: linkInBioShortLink,
+      link_in_bio_short_link: linkInBioShortLink,
       booking_mode: ['table', 'general', 'mixed'].includes(String(event.booking_mode))
         ? event.booking_mode
         : 'table',
@@ -155,14 +220,14 @@ export async function GET(
       promoVideoUrl: event.promo_video_url,
       highlightVideos: event.highlight_video_urls || [],
       lastEntryTime: event.last_entry_time,
-      category: event.category ? {
-        id: event.category.id,
-        name: event.category.name,
-        slug: event.category.slug,
-        color: event.category.color,
-        icon: event.category.icon
+      category: category ? {
+        id: category.id,
+        name: category.name,
+        slug: category.slug,
+        color: category.color,
+        icon: category.icon
       } : null,
-      ...eventToSchema(event, faqs),
+      ...eventToSchema(event, sortedFaqs),
       custom_messages: customMessages,
       _meta: {
         lastUpdated,
@@ -175,4 +240,28 @@ export async function GET(
 
 export async function OPTIONS(request: NextRequest) {
   return createApiResponse({}, 200);
+}
+
+function resolveMarketingShortLink(rows: EventShortLinkRow[], channel: string): string | null {
+  const candidate = rows
+    .filter((row) => {
+      if (!row || typeof row.short_code !== 'string' || !row.short_code.trim()) {
+        return false;
+      }
+      if (!row.metadata || typeof row.metadata !== 'object') {
+        return false;
+      }
+      return row.metadata.channel === channel;
+    })
+    .sort((left, right) => {
+      const leftTime = left.updated_at ? Date.parse(left.updated_at) : 0;
+      const rightTime = right.updated_at ? Date.parse(right.updated_at) : 0;
+      return rightTime - leftTime;
+    })[0];
+
+  if (!candidate) {
+    return null;
+  }
+
+  return `${SHORT_LINK_BASE_URL.replace(/\/$/, '')}/${candidate.short_code}`;
 }
