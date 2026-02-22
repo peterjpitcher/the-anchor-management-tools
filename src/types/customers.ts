@@ -8,6 +8,7 @@ export type CreateCustomerInput = {
   first_name: string;
   last_name?: string;
   mobile_number?: string;
+  default_country_code?: string;
   email?: string;
   sms_opt_in: boolean;
 };

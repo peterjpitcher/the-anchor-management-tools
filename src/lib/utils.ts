@@ -1,5 +1,9 @@
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
+import {
+  formatPhoneForStorage as normalizePhoneForStorage,
+  generatePhoneVariants as buildPhoneVariants
+} from '@/lib/phone';
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -17,116 +21,18 @@ export function formatBytes(bytes: number, decimals = 2): string {
   return `${parseFloat((bytes / Math.pow(k, i)).toFixed(dm))} ${sizes[i]}`;
 }
 
-const DEFAULT_COUNTRY_CODE = '44';
-const E164_MIN_DIGITS = 8;
-const E164_MAX_DIGITS = 15;
-
-function sanitizePhoneInput(phone: string): string {
-  const trimmed = phone.trim();
-  if (!trimmed) return '';
-
-  let normalized = trimmed.replace(/[^\d+]/g, '');
-  normalized = normalized.replace(/(?!^)\+/g, '');
-
-  if (normalized.startsWith('00')) {
-    normalized = `+${normalized.slice(2)}`;
-  }
-
-  return normalized;
-}
-
-function sanitizeCountryCode(defaultCountryCode?: string): string {
-  const digitsOnly = (defaultCountryCode ?? DEFAULT_COUNTRY_CODE).replace(/\D/g, '');
-  return digitsOnly || DEFAULT_COUNTRY_CODE;
-}
-
-function assertE164Digits(digits: string): void {
-  if (!/^\d+$/.test(digits)) {
-    throw new Error('Invalid phone number format');
-  }
-
-  if (digits.startsWith('0')) {
-    throw new Error('Invalid phone number format');
-  }
-
-  if (digits.length < E164_MIN_DIGITS || digits.length > E164_MAX_DIGITS) {
-    throw new Error('Invalid phone number format');
-  }
-}
-
 export function formatPhoneForStorage(
   phone: string,
   options: { defaultCountryCode?: string } = {}
 ): string {
-  const cleaned = sanitizePhoneInput(phone);
-  if (!cleaned) {
-    throw new Error('Invalid phone number format');
-  }
-
-  const defaultCountryCode = sanitizeCountryCode(options.defaultCountryCode);
-  let digits = '';
-
-  if (cleaned.startsWith('+')) {
-    digits = cleaned.slice(1);
-  } else {
-    const localDigits = cleaned.replace(/\D/g, '');
-    if (!localDigits) {
-      throw new Error('Invalid phone number format');
-    }
-
-    if (localDigits.startsWith(defaultCountryCode)) {
-      digits = localDigits;
-    } else if (localDigits.startsWith('0')) {
-      digits = `${defaultCountryCode}${localDigits.replace(/^0+/, '')}`;
-    } else {
-      digits = `${defaultCountryCode}${localDigits}`;
-    }
-  }
-
-  assertE164Digits(digits);
-  return `+${digits}`;
+  return normalizePhoneForStorage(phone, options);
 }
 
 export function generatePhoneVariants(
   phone: string,
   options: { defaultCountryCode?: string } = {}
 ): string[] {
-  const variants = new Set<string>();
-  const raw = phone.trim();
-  const cleaned = sanitizePhoneInput(phone);
-
-  if (raw) {
-    variants.add(raw);
-  }
-
-  if (cleaned) {
-    variants.add(cleaned);
-    const cleanedDigits = cleaned.replace(/^\+/, '');
-    if (cleanedDigits) {
-      variants.add(cleanedDigits);
-      variants.add(`+${cleanedDigits}`);
-      variants.add(`00${cleanedDigits}`);
-    }
-  }
-
-  try {
-    const canonical = formatPhoneForStorage(phone, options);
-    variants.add(canonical);
-
-    const canonicalDigits = canonical.slice(1);
-    variants.add(canonicalDigits);
-    variants.add(`00${canonicalDigits}`);
-
-    if (canonical.startsWith('+44')) {
-      const ukNational = canonical.slice(3);
-      variants.add(`44${ukNational}`);
-      variants.add(`0${ukNational}`);
-    }
-  } catch {
-    // Keep whatever variants we can infer from raw input when normalization fails.
-  }
-
-  return [...variants];
+  return buildPhoneVariants(phone, options);
 }
 
 export function generateSlug(text: string): string {

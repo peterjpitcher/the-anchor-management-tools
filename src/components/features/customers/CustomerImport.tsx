@@ -4,6 +4,7 @@ import { CloudArrowUpIcon, ArrowDownTrayIcon } from '@heroicons/react/24/outline
 import { Customer } from '@/types/database'
 import { toast } from '@/components/ui-v2/feedback/Toast'
 import { Button } from '@/components/ui-v2/forms/Button'
+import { formatPhoneForStorage } from '@/lib/utils'
 
 interface CustomerImportProps {
   onImportComplete: (customers: Omit<Customer, 'id' | 'created_at'>[]) => Promise<void>
@@ -44,23 +45,10 @@ export function CustomerImport({ onImportComplete, onCancel, existingCustomers }
     document.body.removeChild(link)
   }
 
-  const formatPhoneNumber = (number: string): string => {
-    // Remove any non-digit characters
-    const cleaned = number.replace(/\D/g, '')
-    
-    // Handle different UK number formats
-    if (cleaned.startsWith('44')) {
-      return '+' + cleaned
-    } else if (cleaned.startsWith('0')) {
-      return '+44' + cleaned.substring(1)
-    }
-    return cleaned
-  }
-
-  const validatePhoneNumber = (number: string): boolean => {
-    const formatted = formatPhoneNumber(number)
-    // Check if it's a valid UK mobile number in E.164 format
-    return /^\+447\d{9}$/.test(formatted)
+  const normalizePhoneNumber = (number: string): string => {
+    return formatPhoneForStorage(number, {
+      defaultCountryCode: '44'
+    })
   }
 
   const validateCustomer = (customer: Partial<Customer>, allCustomersInFile: Partial<Customer>[]): { errors: string[], customer: ParsedCustomer } => {
@@ -71,15 +59,35 @@ export function CustomerImport({ onImportComplete, onCancel, existingCustomers }
       errors.push('First name is required')
     }
 
-    const formattedNumber = customer.mobile_number ? formatPhoneNumber(customer.mobile_number) : ''
+    let formattedNumber = ''
+    if (customer.mobile_number) {
+      try {
+        formattedNumber = normalizePhoneNumber(customer.mobile_number)
+      } catch {
+        errors.push('Invalid phone number format')
+      }
+    }
     if (!formattedNumber) {
       errors.push('Mobile number is required')
-    } else if (!validatePhoneNumber(formattedNumber)) {
-      errors.push('Invalid UK mobile number format')
     } else {
-      const isDuplicateInFile = allCustomersInFile.filter(c => c.mobile_number && formatPhoneNumber(c.mobile_number) === formattedNumber).length > 1
-      const isDuplicateInDb = existingCustomers.some(c => c.mobile_number && formatPhoneNumber(c.mobile_number) === formattedNumber)
-      
+      const isDuplicateInFile =
+        allCustomersInFile.filter((c) => {
+          if (!c.mobile_number) return false
+          try {
+            return normalizePhoneNumber(c.mobile_number) === formattedNumber
+          } catch {
+            return false
+          }
+        }).length > 1
+      const isDuplicateInDb = existingCustomers.some((c) => {
+        if (!c.mobile_number) return false
+        try {
+          return normalizePhoneNumber(c.mobile_number) === formattedNumber
+        } catch {
+          return false
+        }
+      })
+
       if (isDuplicateInFile) {
         errors.push('Duplicate mobile number within this file')
         isDuplicate = true

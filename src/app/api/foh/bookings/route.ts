@@ -10,7 +10,9 @@ import { logger } from '@/lib/logger'
 import { recordAnalyticsEvent } from '@/lib/analytics/events'
 import {
   alignTableCardCaptureHoldToScheduledSend,
+  alignTablePaymentHoldToScheduledSend,
   createTableCardCaptureToken,
+  createTablePaymentToken,
   mapTableBookingBlockedReason,
   sendManagerTableBookingCreatedEmailIfAllowed,
   sendSundayPreorderLinkSmsIfAllowed,
@@ -45,6 +47,7 @@ const CreateFohTableBookingSchema = z.object({
   purpose: z.enum(['food', 'drinks']),
   notes: z.string().trim().max(500).optional(),
   sunday_lunch: z.boolean().optional(),
+  sunday_deposit_method: z.enum(['cash', 'payment_link']).optional(),
   sunday_preorder_mode: z.enum(['send_link', 'capture_now']).optional(),
   sunday_preorder_items: z.array(SundayPreorderItemSchema).optional(),
   default_country_code: z.string().regex(/^\d{1,4}$/).optional()
@@ -71,6 +74,13 @@ const CreateFohTableBookingSchema = z.object({
         message: 'Add at least one Sunday lunch item or choose send link'
       })
     }
+  }
+
+  if (value.sunday_lunch === true && value.sunday_deposit_method == null) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'Choose cash or payment link for Sunday lunch deposit'
+    })
   }
 })
 
@@ -676,7 +686,7 @@ async function markWalkInBookingAsSeated(
 }
 
 type FohCreateBookingResponseData = {
-  state: 'confirmed' | 'pending_card_capture' | 'blocked'
+  state: 'confirmed' | 'pending_card_capture' | 'pending_payment' | 'blocked'
   table_booking_id: string | null
   booking_reference: string | null
   reason: string | null
@@ -888,6 +898,18 @@ export async function POST(request: NextRequest) {
     )
   }
 
+  const sundayDepositMethod =
+    effectiveSundayLunch && payload.purpose === 'food'
+      ? payload.sunday_deposit_method || null
+      : null
+
+  if (effectiveSundayLunch && payload.purpose === 'food' && !sundayDepositMethod) {
+    return NextResponse.json(
+      { error: 'Choose whether the Sunday lunch deposit was paid in cash or should be sent by payment link.' },
+      { status: 400 }
+    )
+  }
+
   const { data: rpcResultRaw, error: rpcError } = await auth.supabase.rpc('create_table_booking_v05', {
     p_customer_id: customerId,
     p_booking_date: payload.date,
@@ -980,6 +1002,63 @@ export async function POST(request: NextRequest) {
   }
 
   if (
+    bookingResult.state === 'pending_payment' &&
+    bookingResult.table_booking_id &&
+    effectiveSundayLunch &&
+    sundayDepositMethod === 'cash'
+  ) {
+    const { data: cashConfirmRaw, error: cashConfirmError } = await auth.supabase.rpc('record_table_cash_deposit_v05', {
+      p_table_booking_id: bookingResult.table_booking_id,
+      p_amount: Number((Math.max(1, Number(payload.party_size || 1)) * 10).toFixed(2)),
+      p_currency: 'GBP',
+    })
+
+    if (cashConfirmError) {
+      logger.error('record_table_cash_deposit_v05 RPC failed for FOH create', {
+        error: new Error(cashConfirmError.message),
+        metadata: {
+          userId: auth.userId,
+          customerId,
+          tableBookingId: bookingResult.table_booking_id,
+        },
+      })
+      return NextResponse.json(
+        { error: 'Booking was created but cash deposit confirmation failed. Please reopen the booking and retry.' },
+        { status: 500 }
+      )
+    }
+
+    const cashConfirm = (cashConfirmRaw ?? {}) as {
+      state?: 'confirmed' | 'already_confirmed' | 'blocked'
+      reason?: string
+    }
+
+    if (cashConfirm.state === 'blocked') {
+      logger.warn('Cash deposit confirmation returned blocked for FOH create', {
+        metadata: {
+          userId: auth.userId,
+          customerId,
+          tableBookingId: bookingResult.table_booking_id,
+          reason: cashConfirm.reason || null,
+        },
+      })
+      return NextResponse.json(
+        { error: 'Booking was created but cash deposit could not be confirmed.' },
+        { status: 409 }
+      )
+    }
+
+    bookingResult = {
+      ...bookingResult,
+      state: 'confirmed',
+      status: 'confirmed',
+      hold_expires_at: undefined,
+    }
+    holdExpiresAt = null
+    nextStepUrl = null
+  }
+
+  if (
     payload.walk_in === true &&
     bookingResult.table_booking_id &&
     (bookingResult.state === 'confirmed' || bookingResult.state === 'pending_card_capture')
@@ -1021,9 +1100,37 @@ export async function POST(request: NextRequest) {
   }
 
   if (
+    bookingResult.state === 'pending_payment' &&
+    bookingResult.table_booking_id &&
+    bookingResult.hold_expires_at &&
+    sundayDepositMethod === 'payment_link'
+  ) {
+    try {
+      const token = await createTablePaymentToken(auth.supabase, {
+        customerId,
+        tableBookingId: bookingResult.table_booking_id,
+        holdExpiresAt: bookingResult.hold_expires_at,
+        appBaseUrl,
+      })
+      nextStepUrl = token.url
+    } catch (tokenError) {
+      logger.warn('Failed to create table payment token for FOH create', {
+        metadata: {
+          tableBookingId: bookingResult.table_booking_id,
+          error: tokenError instanceof Error ? tokenError.message : String(tokenError),
+        },
+      })
+    }
+  }
+
+  if (
     shouldSendBookingSms &&
     normalizedPhone &&
-    (bookingResult.state === 'confirmed' || bookingResult.state === 'pending_card_capture')
+    (
+      bookingResult.state === 'confirmed' ||
+      bookingResult.state === 'pending_card_capture' ||
+      bookingResult.state === 'pending_payment'
+    )
   ) {
     const smsSendResult = await sendTableBookingCreatedSmsIfAllowed(auth.supabase, {
       customerId,
@@ -1042,6 +1149,19 @@ export async function POST(request: NextRequest) {
           tableBookingId: bookingResult.table_booking_id,
           scheduledSendIso: smsSendResult.scheduledFor,
           bookingStartIso: bookingResult.start_datetime || null
+        })) || holdExpiresAt
+    }
+
+    if (
+      bookingResult.state === 'pending_payment' &&
+      bookingResult.table_booking_id &&
+      smsSendResult.scheduledFor
+    ) {
+      holdExpiresAt =
+        (await alignTablePaymentHoldToScheduledSend(auth.supabase, {
+          tableBookingId: bookingResult.table_booking_id,
+          scheduledSendIso: smsSendResult.scheduledFor,
+          bookingStartIso: bookingResult.start_datetime || null,
         })) || holdExpiresAt
     }
 
@@ -1081,9 +1201,33 @@ export async function POST(request: NextRequest) {
         eventType: 'card_capture_started'
       })
     }
+
+    if (bookingResult.state === 'pending_payment') {
+      await recordFohTableBookingAnalyticsSafe(auth.supabase, {
+        customerId,
+        tableBookingId: bookingResult.table_booking_id,
+        eventType: 'table_deposit_started',
+        metadata: {
+          hold_expires_at: holdExpiresAt,
+          next_step_url_provided: Boolean(nextStepUrl),
+          deposit_amount: Number((Math.max(1, Number(payload.party_size || 1)) * 10).toFixed(2)),
+          deposit_per_person: 10,
+          source: 'foh',
+        },
+      }, {
+        userId: auth.userId,
+        customerId,
+        tableBookingId: bookingResult.table_booking_id,
+        eventType: 'table_deposit_started',
+      })
+    }
   }
 
-  if (bookingResult.state === 'confirmed' || bookingResult.state === 'pending_card_capture') {
+  if (
+    bookingResult.state === 'confirmed' ||
+    bookingResult.state === 'pending_card_capture' ||
+    bookingResult.state === 'pending_payment'
+  ) {
     const managerEmailResult = await sendManagerTableBookingCreatedEmailIfAllowed(auth.supabase, {
       tableBookingId: bookingResult.table_booking_id || null,
       fallbackCustomerId: customerId,
@@ -1192,7 +1336,11 @@ export async function POST(request: NextRequest) {
   }
 
   const responseState: FohCreateBookingResponseData['state'] =
-    bookingResult.state === 'confirmed' || bookingResult.state === 'pending_card_capture'
+    (
+      bookingResult.state === 'confirmed' ||
+      bookingResult.state === 'pending_card_capture' ||
+      bookingResult.state === 'pending_payment'
+    )
       ? bookingResult.state
       : 'blocked'
 
@@ -1208,8 +1356,8 @@ export async function POST(request: NextRequest) {
         reason: bookingResult.reason || null,
         blocked_reason:
           responseState === 'blocked' ? mapTableBookingBlockedReason(bookingResult.reason) : null,
-        next_step_url: responseState === 'pending_card_capture' ? nextStepUrl : null,
-        hold_expires_at: responseState === 'pending_card_capture' ? holdExpiresAt : null,
+        next_step_url: responseState === 'pending_card_capture' || responseState === 'pending_payment' ? nextStepUrl : null,
+        hold_expires_at: responseState === 'pending_card_capture' || responseState === 'pending_payment' ? holdExpiresAt : null,
         table_name: bookingResult.table_name || null,
         sunday_preorder_state: sundayPreorderState,
         sunday_preorder_reason: sundayPreorderReason

@@ -4,6 +4,7 @@ import { Customer } from '@/types/database'
 import { useState } from 'react'
 import { Input } from '@/components/ui-v2/forms/Input'
 import { Button } from '@/components/ui-v2/forms/Button'
+import { formatPhoneForStorage } from '@/lib/utils'
 
 interface CustomerFormProps {
   customer?: Customer
@@ -16,38 +17,26 @@ export function CustomerForm({ customer, onSubmit, onCancel }: CustomerFormProps
   const [lastName, setLastName] = useState(customer?.last_name ?? '')
   const [email, setEmail] = useState(customer?.email ?? '')
   const [mobileNumber, setMobileNumber] = useState(customer?.mobile_number ?? '')
+  const [phoneError, setPhoneError] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
-
-  const formatPhoneNumber = (number: string): string => {
-    // Remove all non-numeric characters
-    const cleaned = number.replace(/\D/g, '')
-
-    // Check if it starts with a UK country code
-    if (cleaned.startsWith('44')) {
-      return '+44' + cleaned.slice(2)
-    }
-
-    // Check if it starts with a 0
-    if (cleaned.startsWith('0')) {
-      return '+44' + cleaned.slice(1)
-    }
-
-    // If no country code and no leading 0, add +44
-    if (cleaned.length > 0) {
-      return '+44' + cleaned
-    }
-
-    return cleaned
-  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setIsSubmitting(true)
+    setPhoneError(null)
     try {
       const trimmedFirstName = firstName.trim()
       const trimmedLastName = lastName.trim()
       const trimmedEmail = email.trim()
-      const formattedNumber = formatPhoneNumber(mobileNumber)
+      let formattedNumber: string
+      try {
+        formattedNumber = formatPhoneForStorage(mobileNumber, {
+          defaultCountryCode: '44'
+        })
+      } catch {
+        setPhoneError('Please enter a valid phone number')
+        return
+      }
       await onSubmit({
         first_name: trimmedFirstName,
         last_name: trimmedLastName === '' ? null : trimmedLastName,
@@ -110,18 +99,17 @@ export function CustomerForm({ customer, onSubmit, onCancel }: CustomerFormProps
             name="mobile_number"
             value={mobileNumber}
             onChange={(e) => setMobileNumber(e.target.value)}
-            placeholder="07700 900000"
+            placeholder="+1 415 555 2671 or 07700 900123"
             required
-            pattern="^(\+?44|0)?[0-9]{10,11}$"
             autoComplete="tel"
             inputMode="tel"
-            rightElement={
-              <span className="text-gray-500 sm:text-sm pr-3">UK</span>
-            }
           />
           <p className="mt-2 text-sm text-gray-500">
-            Enter a UK mobile number (starting with 07 or +44)
+            Enter an international number (e.g. +1...) or a local number (defaults to +44)
           </p>
+          {phoneError && (
+            <p className="mt-2 text-sm text-red-600">{phoneError}</p>
+          )}
         </div>
 
         <div>

@@ -37,6 +37,21 @@ type CreateStripeCheckoutSessionInput = {
   metadata?: Record<string, string>
 }
 
+type CreateStripeTableDepositCheckoutSessionInput = {
+  idempotencyKey: string
+  successUrl: string
+  cancelUrl: string
+  tableBookingId: string
+  customerId: string
+  quantity: number
+  unitAmountMinor: number
+  currency: string
+  productName: string
+  tokenHash: string
+  expiresAtUnix?: number
+  metadata?: Record<string, string>
+}
+
 type CreateStripeSetupCheckoutSessionInput = {
   idempotencyKey: string
   successUrl: string
@@ -133,6 +148,88 @@ export async function createStripeCheckoutSession(
   const metadata = {
     event_booking_id: input.bookingId,
     event_id: input.eventId,
+    token_hash: input.tokenHash,
+    ...(input.metadata || {})
+  }
+
+  for (const [key, value] of Object.entries(metadata)) {
+    params.set(`metadata[${key}]`, value)
+  }
+
+  if (input.expiresAtUnix && Number.isFinite(input.expiresAtUnix)) {
+    params.set('expires_at', String(Math.trunc(input.expiresAtUnix)))
+  }
+
+  const response = await fetch(`${STRIPE_API_BASE_URL}/checkout/sessions`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${secretKey}`,
+      'Content-Type': 'application/x-www-form-urlencoded',
+      'Idempotency-Key': input.idempotencyKey
+    },
+    body: params.toString()
+  })
+
+  const rawText = await response.text()
+  let payload: any = null
+
+  try {
+    payload = rawText ? JSON.parse(rawText) : null
+  } catch {
+    payload = null
+  }
+
+  if (!response.ok) {
+    const details = payload?.error?.message || rawText || `Stripe API error (${response.status})`
+    throw new Error(details)
+  }
+
+  if (!payload?.id || typeof payload.id !== 'string') {
+    throw new Error('Stripe checkout session response missing id')
+  }
+
+  return {
+    id: payload.id,
+    url: typeof payload.url === 'string' ? payload.url : null,
+    payment_intent: typeof payload.payment_intent === 'string' ? payload.payment_intent : null,
+    setup_intent: typeof payload.setup_intent === 'string' ? payload.setup_intent : null,
+    status: typeof payload.status === 'string' ? payload.status : null,
+    payment_status: typeof payload.payment_status === 'string' ? payload.payment_status : null,
+    amount_total: typeof payload.amount_total === 'number' ? payload.amount_total : null,
+    currency: typeof payload.currency === 'string' ? payload.currency : null,
+    metadata: typeof payload.metadata === 'object' && payload.metadata !== null ? payload.metadata : undefined
+  }
+}
+
+export async function createStripeTableDepositCheckoutSession(
+  input: CreateStripeTableDepositCheckoutSessionInput
+): Promise<StripeCheckoutSession> {
+  const secretKey = getStripeSecretKey()
+
+  if (!Number.isFinite(input.unitAmountMinor) || input.unitAmountMinor <= 0) {
+    throw new Error('Stripe unit amount must be a positive integer')
+  }
+
+  if (!Number.isFinite(input.quantity) || input.quantity < 1) {
+    throw new Error('Stripe quantity must be at least 1')
+  }
+
+  const params = new URLSearchParams()
+  params.set('mode', 'payment')
+  params.set('payment_method_types[0]', 'card')
+  params.set('success_url', input.successUrl)
+  params.set('cancel_url', input.cancelUrl)
+  params.set('client_reference_id', input.tableBookingId)
+
+  params.set('line_items[0][price_data][currency]', normalizeCurrency(input.currency))
+  params.set('line_items[0][price_data][unit_amount]', String(Math.trunc(input.unitAmountMinor)))
+  params.set('line_items[0][price_data][product_data][name]', sanitizeProductName(input.productName))
+  params.set('line_items[0][quantity]', String(Math.trunc(input.quantity)))
+
+  const metadata = {
+    payment_kind: 'table_deposit',
+    table_booking_id: input.tableBookingId,
+    customer_id: input.customerId,
     token_hash: input.tokenHash,
     ...(input.metadata || {})
   }

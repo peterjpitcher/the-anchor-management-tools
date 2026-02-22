@@ -5,7 +5,8 @@ import { requireFohPermission } from '@/lib/foh/api-auth'
 import {
   createChargeRequestForBooking,
   getFeePerHead,
-  getTableBookingForFoh
+  getTableBookingForFoh,
+  hasUnpaidSundayLunchDeposit
 } from '@/lib/foh/bookings'
 
 const UpdateStatusSchema = z.object({
@@ -59,8 +60,16 @@ export async function POST(
   }
 
   const nowIso = new Date().toISOString()
+  const blockUnpaidSundayLunchDeposit = hasUnpaidSundayLunchDeposit(booking)
 
   if (parsed.data.action === 'seated') {
+    if (blockUnpaidSundayLunchDeposit) {
+      return NextResponse.json(
+        { error: 'Sunday lunch booking cannot be seated until the GBP 10 per person deposit is paid.' },
+        { status: 409 }
+      )
+    }
+
     if (['cancelled', 'no_show'].includes(booking.status)) {
       return NextResponse.json(
         { error: 'Cannot mark booking as seated from current status' },
@@ -149,6 +158,13 @@ export async function POST(
   }
 
   if (parsed.data.action === 'confirmed') {
+    if (blockUnpaidSundayLunchDeposit) {
+      return NextResponse.json(
+        { error: 'Sunday lunch booking cannot be confirmed until the GBP 10 per person deposit is paid.' },
+        { status: 409 }
+      )
+    }
+
     const { data, error } = await (auth.supabase.from('table_bookings') as any)
       .update({
         status: 'confirmed',

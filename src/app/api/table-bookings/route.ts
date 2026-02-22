@@ -18,7 +18,9 @@ import { ensureCustomerForPhone } from '@/lib/sms/customers'
 import { recordAnalyticsEvent } from '@/lib/analytics/events'
 import {
   alignTableCardCaptureHoldToScheduledSend,
+  alignTablePaymentHoldToScheduledSend,
   createTableCardCaptureToken,
+  createTablePaymentToken,
   mapTableBookingBlockedReason,
   sendManagerTableBookingCreatedEmailIfAllowed,
   sendTableBookingCreatedSmsIfAllowed,
@@ -46,7 +48,7 @@ const CreateTableBookingSchema = z.object({
 })
 
 type TableBookingResponseData = {
-  state: 'confirmed' | 'pending_card_capture' | 'blocked'
+  state: 'confirmed' | 'pending_card_capture' | 'pending_payment' | 'blocked'
   table_booking_id: string | null
   booking_reference: string | null
   reason: string | null
@@ -247,7 +249,34 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      if (bookingResult.state === 'confirmed' || bookingResult.state === 'pending_card_capture') {
+      if (
+        bookingResult.state === 'pending_payment' &&
+        bookingResult.table_booking_id &&
+        bookingResult.hold_expires_at
+      ) {
+        try {
+          const token = await createTablePaymentToken(supabase, {
+            customerId: customerResolution.customerId,
+            tableBookingId: bookingResult.table_booking_id,
+            holdExpiresAt: bookingResult.hold_expires_at,
+            appBaseUrl,
+          })
+          nextStepUrl = token.url
+        } catch (tokenError) {
+          logger.warn('Failed to create table payment token', {
+            metadata: {
+              tableBookingId: bookingResult.table_booking_id,
+              error: tokenError instanceof Error ? tokenError.message : String(tokenError),
+            },
+          })
+        }
+      }
+
+      if (
+        bookingResult.state === 'confirmed' ||
+        bookingResult.state === 'pending_card_capture' ||
+        bookingResult.state === 'pending_payment'
+      ) {
         let smsSendResult: Awaited<ReturnType<typeof sendTableBookingCreatedSmsIfAllowed>> | null = null
 
         try {
@@ -315,6 +344,28 @@ export async function POST(request: NextRequest) {
           }
         }
 
+        if (
+          bookingResult.state === 'pending_payment' &&
+          bookingResult.table_booking_id &&
+          smsSendResult?.scheduledFor
+        ) {
+          try {
+            holdExpiresAt =
+              (await alignTablePaymentHoldToScheduledSend(supabase, {
+                tableBookingId: bookingResult.table_booking_id,
+                scheduledSendIso: smsSendResult.scheduledFor,
+                bookingStartIso: bookingResult.start_datetime || null,
+              })) || holdExpiresAt
+          } catch (alignmentError) {
+            logger.warn('Failed to align payment hold with scheduled SMS send', {
+              metadata: {
+                tableBookingId: bookingResult.table_booking_id,
+                error: alignmentError instanceof Error ? alignmentError.message : String(alignmentError),
+              },
+            })
+          }
+        }
+
         await recordTableBookingAnalyticsSafe(supabase, {
           customerId: customerResolution.customerId,
           tableBookingId: bookingResult.table_booking_id,
@@ -342,15 +393,33 @@ export async function POST(request: NextRequest) {
               next_step_url_provided: Boolean(nextStepUrl)
             }
           }, {
+              tableBookingId: bookingResult.table_booking_id,
+              customerId: customerResolution.customerId,
+              eventType: 'card_capture_started'
+            })
+        }
+
+        if (bookingResult.state === 'pending_payment') {
+          await recordTableBookingAnalyticsSafe(supabase, {
+            customerId: customerResolution.customerId,
+            tableBookingId: bookingResult.table_booking_id,
+            eventType: 'table_deposit_started',
+            metadata: {
+              hold_expires_at: holdExpiresAt,
+              next_step_url_provided: Boolean(nextStepUrl),
+              deposit_amount: Number((Math.max(1, Number(payload.party_size || 1)) * 10).toFixed(2)),
+              deposit_per_person: 10,
+            },
+          }, {
             tableBookingId: bookingResult.table_booking_id,
             customerId: customerResolution.customerId,
-            eventType: 'card_capture_started'
+            eventType: 'table_deposit_started',
           })
         }
       }
 
       const responseState: TableBookingResponseData['state'] =
-        bookingResult.state === 'confirmed' || bookingResult.state === 'pending_card_capture'
+        bookingResult.state === 'confirmed' || bookingResult.state === 'pending_card_capture' || bookingResult.state === 'pending_payment'
           ? bookingResult.state
           : 'blocked'
 
@@ -365,8 +434,8 @@ export async function POST(request: NextRequest) {
           reason: bookingResult.reason || null,
           blocked_reason:
             responseState === 'blocked' ? mapTableBookingBlockedReason(bookingResult.reason) : null,
-          next_step_url: responseState === 'pending_card_capture' ? nextStepUrl : null,
-          hold_expires_at: responseState === 'pending_card_capture' ? holdExpiresAt : null,
+          next_step_url: responseState === 'pending_card_capture' || responseState === 'pending_payment' ? nextStepUrl : null,
+          hold_expires_at: responseState === 'pending_card_capture' || responseState === 'pending_payment' ? holdExpiresAt : null,
           table_name: bookingResult.table_name || null
         } satisfies TableBookingResponseData,
         meta: {

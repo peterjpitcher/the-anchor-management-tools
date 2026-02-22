@@ -66,7 +66,7 @@ type FohScheduleResponse = {
 type FohCreateBookingResponse = {
   success: boolean
   data?: {
-    state: 'confirmed' | 'pending_card_capture' | 'blocked'
+    state: 'confirmed' | 'pending_card_capture' | 'pending_payment' | 'blocked'
     table_booking_id: string | null
     booking_reference: string | null
     reason: string | null
@@ -126,6 +126,8 @@ type FohEventOption = {
   is_full: boolean
   booking_mode: 'table' | 'general' | 'mixed'
 }
+
+const DEFAULT_COUNTRY_CODE = '44'
 
 type FohUpcomingEvent = {
   id: string
@@ -1016,6 +1018,7 @@ export function FohScheduleClient({
     party_size: '2',
     purpose: 'food' as 'food' | 'drinks' | 'event',
     sunday_lunch: false,
+    sunday_deposit_method: 'payment_link' as 'payment_link' | 'cash',
     sunday_preorder_mode: 'send_link' as 'send_link' | 'capture_now',
     notes: ''
   })
@@ -1301,7 +1304,10 @@ export function FohScheduleClient({
       setSearchingCustomers(true)
 
       try {
-        const params = new URLSearchParams({ q: query })
+        const params = new URLSearchParams({
+          q: query,
+          default_country_code: DEFAULT_COUNTRY_CODE
+        })
 
         const response = await fetch(`/api/foh/customers/search?${params.toString()}`, {
           cache: 'no-store'
@@ -1339,6 +1345,7 @@ export function FohScheduleClient({
     setCreateForm((current) => ({
       ...current,
       sunday_lunch: false,
+      sunday_deposit_method: 'payment_link',
       sunday_preorder_mode: 'send_link'
     }))
     setSundayPreorderQuantities({})
@@ -1741,6 +1748,7 @@ export function FohScheduleClient({
       party_size: current.party_size || '2',
       purpose: 'food',
       sunday_lunch: false,
+      sunday_deposit_method: 'payment_link',
       sunday_preorder_mode: 'send_link',
       notes: ''
     }))
@@ -1796,7 +1804,8 @@ export function FohScheduleClient({
         purpose: nextPurpose,
         event_id: nextEventId,
         time: nextTime,
-        sunday_lunch: false
+        sunday_lunch: false,
+        sunday_deposit_method: 'payment_link'
       }
     })
   }, [
@@ -1846,6 +1855,7 @@ export function FohScheduleClient({
         ? options?.prefill?.event_id ?? walkInDefaults?.eventId ?? ''
         : options?.prefill?.event_id ?? current.event_id,
       sunday_lunch: walkInMode ? false : current.sunday_lunch,
+      sunday_deposit_method: walkInMode ? 'payment_link' : current.sunday_deposit_method,
       phone: walkInMode ? '' : current.phone,
       customer_name: walkInMode ? '' : current.customer_name,
       first_name: walkInMode ? '' : current.first_name,
@@ -1972,6 +1982,7 @@ export function FohScheduleClient({
             last_name: lastName,
             walk_in: isWalkIn || undefined,
             walk_in_guest_name: isWalkIn ? createForm.customer_name.trim() || undefined : undefined,
+            default_country_code: DEFAULT_COUNTRY_CODE,
             event_id: createForm.event_id,
             seats
           })
@@ -2057,6 +2068,11 @@ export function FohScheduleClient({
       return
     }
 
+    if (createForm.sunday_lunch && !createForm.sunday_deposit_method) {
+      setErrorMessage('Choose whether the Sunday lunch deposit was taken in cash or should be sent by payment link.')
+      return
+    }
+
     let sundayPreorderItems: Array<{ menu_dish_id: string; quantity: number }> = []
     if (createForm.sunday_lunch && createForm.sunday_preorder_mode === 'capture_now') {
       if (sundayMenuItems.length === 0) {
@@ -2096,12 +2112,14 @@ export function FohScheduleClient({
           last_name: lastName,
           walk_in: isWalkIn || undefined,
           walk_in_guest_name: isWalkIn ? createForm.customer_name.trim() || undefined : undefined,
+          default_country_code: DEFAULT_COUNTRY_CODE,
           date: bookingDate,
           time: effectiveBookingTime,
           party_size: partySize,
           purpose: createForm.purpose === 'drinks' ? 'drinks' : 'food',
           notes: createForm.notes || undefined,
           sunday_lunch: createForm.sunday_lunch,
+          sunday_deposit_method: createForm.sunday_lunch ? createForm.sunday_deposit_method : undefined,
           sunday_preorder_mode: createForm.sunday_lunch ? createForm.sunday_preorder_mode : undefined,
           sunday_preorder_items: sundayPreorderItems.length > 0 ? sundayPreorderItems : undefined
         })
@@ -2123,7 +2141,9 @@ export function FohScheduleClient({
 
       const bookingRef = payload.data.booking_reference || payload.data.table_booking_id || 'booking'
       const outcome =
-        payload.data.state === 'pending_card_capture'
+        payload.data.state === 'pending_payment'
+          ? 'reserved and awaiting deposit payment'
+          : payload.data.state === 'pending_card_capture'
           ? 'created and awaiting card capture'
           : isWalkIn
             ? 'created, confirmed and seated'
@@ -2156,9 +2176,14 @@ export function FohScheduleClient({
         }
       }
 
+      const paymentLinkText =
+        payload.data.state === 'pending_payment' && payload.data.next_step_url
+          ? ` Deposit link: ${payload.data.next_step_url}`
+          : ''
+
       await reloadSchedule()
       const bookingLabel = isWalkIn ? 'Walk-in booking' : 'Table booking'
-      setStatusMessage(`${bookingLabel} ${bookingRef}${tableText}${walkInTableMoveText} was ${outcome}.${sundayPreorderText}`)
+      setStatusMessage(`${bookingLabel} ${bookingRef}${tableText}${walkInTableMoveText} was ${outcome}.${paymentLinkText}${sundayPreorderText}`)
       closeCreateModal()
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : 'Failed to create booking')
@@ -3035,6 +3060,7 @@ export function FohScheduleClient({
                     ...current,
                     purpose: nextPurpose,
                     sunday_lunch: nextPurpose === 'event' ? false : current.sunday_lunch,
+                    sunday_deposit_method: nextPurpose === 'event' ? 'payment_link' : current.sunday_deposit_method,
                     event_id:
                       nextPurpose === 'event'
                         ? current.event_id || eventOptions.find((item) => !item.is_full)?.id || eventOptions[0]?.id || ''
@@ -3148,6 +3174,7 @@ export function FohScheduleClient({
                       setCreateForm((current) => ({
                         ...current,
                         sunday_lunch: event.target.checked,
+                        sunday_deposit_method: event.target.checked ? current.sunday_deposit_method : 'payment_link',
                         sunday_preorder_mode: event.target.checked ? current.sunday_preorder_mode : 'send_link'
                       }))
                     }
@@ -3158,6 +3185,36 @@ export function FohScheduleClient({
 
                 {createForm.sunday_lunch && sundaySelected && (
                   <div className="rounded-md border border-gray-200 bg-gray-50 p-3">
+                    <p className="text-xs font-medium text-gray-800">Sunday lunch deposit</p>
+                    <div className="mt-2 flex flex-wrap gap-4">
+                      <label className="flex items-center gap-2 text-xs text-gray-700">
+                        <input
+                          type="radio"
+                          name="foh-sunday-deposit-method"
+                          value="payment_link"
+                          checked={createForm.sunday_deposit_method === 'payment_link'}
+                          onChange={() =>
+                            setCreateForm((current) => ({ ...current, sunday_deposit_method: 'payment_link' }))
+                          }
+                        />
+                        <span>Send payment link by text</span>
+                      </label>
+                      <label className="flex items-center gap-2 text-xs text-gray-700">
+                        <input
+                          type="radio"
+                          name="foh-sunday-deposit-method"
+                          value="cash"
+                          checked={createForm.sunday_deposit_method === 'cash'}
+                          onChange={() =>
+                            setCreateForm((current) => ({ ...current, sunday_deposit_method: 'cash' }))
+                          }
+                        />
+                        <span>Cash taken and put in till</span>
+                      </label>
+                    </div>
+                    <p className="mt-2 text-xs text-gray-600">Deposit amount: GBP 10 per person.</p>
+
+                    <div className="my-3 border-t border-gray-200" />
                     <p className="text-xs font-medium text-gray-800">Sunday pre-order</p>
                     <div className="mt-2 flex flex-wrap gap-4">
                       <label className="flex items-center gap-2 text-xs text-gray-700">
@@ -3277,7 +3334,7 @@ export function FohScheduleClient({
               {createMode === 'walk_in'
                 ? 'Walk-ins require covers. Guest name and phone are optional.'
                 : createForm.purpose !== 'event'
-                ? 'Party sizes over 6 will be created as pending card capture based on policy.'
+                ? 'Sunday lunch requires a GBP 10 per person deposit for every booking.'
                 : 'Event booking status depends on event payment mode and capacity.'}
             </p>
             <div className="flex items-center gap-2">
