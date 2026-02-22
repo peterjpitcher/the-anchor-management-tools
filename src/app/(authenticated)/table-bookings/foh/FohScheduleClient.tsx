@@ -213,6 +213,9 @@ type BookingVisualState =
   | 'review_clicked'
   | 'unknown'
 
+const FOH_AUTO_RETURN_IDLE_MS = 5 * 60 * 1000
+const FOH_AUTO_RETURN_POLL_MS = 30 * 1000
+
 function formatBookingWindow(start?: string | null, end?: string | null, fallbackTime?: string | null): string {
   if (start && end) {
     try {
@@ -1000,6 +1003,7 @@ export function FohScheduleClient({
   const [clockNow, setClockNow] = useState(() => new Date())
   const [upcomingEvents, setUpcomingEvents] = useState<FohUpcomingEvent[]>([])
   const [upcomingEventsLoaded, setUpcomingEventsLoaded] = useState(false)
+  const [lastInteractionAtMs, setLastInteractionAtMs] = useState(() => Date.now())
 
   const [createForm, setCreateForm] = useState({
     booking_date: initialDate,
@@ -1190,6 +1194,34 @@ export function FohScheduleClient({
   }, [])
 
   useEffect(() => {
+    const markInteraction = () => {
+      setLastInteractionAtMs(Date.now())
+    }
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        markInteraction()
+      }
+    }
+
+    window.addEventListener('pointerdown', markInteraction, { passive: true })
+    window.addEventListener('wheel', markInteraction, { passive: true })
+    window.addEventListener('keydown', markInteraction)
+    window.addEventListener('touchstart', markInteraction, { passive: true })
+    window.addEventListener('focus', markInteraction)
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+
+    return () => {
+      window.removeEventListener('pointerdown', markInteraction)
+      window.removeEventListener('wheel', markInteraction)
+      window.removeEventListener('keydown', markInteraction)
+      window.removeEventListener('touchstart', markInteraction)
+      window.removeEventListener('focus', markInteraction)
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+    }
+  }, [])
+
+  useEffect(() => {
     let cancelled = false
 
     const loadUpcomingEvents = async () => {
@@ -1215,6 +1247,42 @@ export function FohScheduleClient({
       cancelled = true
     }
   }, [clockNow, fetchUpcomingEvents])
+
+  const hasActiveFohWork = Boolean(
+    bookingActionInFlight
+    || submittingBooking
+    || submittingFoodOrderAlert
+    || isCreateModalOpen
+    || selectedBookingContext
+    || showCancelBookingConfirmation
+  )
+
+  useEffect(() => {
+    const intervalId = window.setInterval(() => {
+      const todayIso = getLondonDateIso()
+      if (date === todayIso) return
+      if (hasActiveFohWork) return
+      if (document.visibilityState !== 'visible') return
+
+      const activeElement = document.activeElement
+      const isEditing =
+        activeElement instanceof HTMLInputElement
+        || activeElement instanceof HTMLTextAreaElement
+        || activeElement instanceof HTMLSelectElement
+        || activeElement?.getAttribute('contenteditable') === 'true'
+      if (isEditing) return
+      if (Date.now() - lastInteractionAtMs < FOH_AUTO_RETURN_IDLE_MS) return
+
+      setDate(todayIso)
+      setStatusMessage('Returned to today after inactivity.')
+      setErrorMessage(null)
+      setLastInteractionAtMs(Date.now())
+    }, FOH_AUTO_RETURN_POLL_MS)
+
+    return () => {
+      window.clearInterval(intervalId)
+    }
+  }, [date, hasActiveFohWork, lastInteractionAtMs])
 
   useEffect(() => {
     if (selectedCustomer) {
@@ -2100,6 +2168,8 @@ export function FohScheduleClient({
   }
 
   const timelineDuration = Math.max(1, timeline.endMin - timeline.startMin)
+  const londonTodayIso = useMemo(() => getLondonDateIso(clockNow), [clockNow])
+  const viewingToday = date === londonTodayIso
   const currentTimelineLeftPct = useMemo(() => {
     const serviceDateIso = schedule?.date || date
     const nowMinute = minutesFromServiceDate(clockNow.toISOString(), serviceDateIso)
@@ -2253,7 +2323,10 @@ export function FohScheduleClient({
             <div className={serviceDateControlsClass}>
               <button
                 type="button"
-                onClick={() => setDate((current) => shiftIsoDate(current, -1))}
+                onClick={() => {
+                  setDate((current) => shiftIsoDate(current, -1))
+                  setLastInteractionAtMs(Date.now())
+                }}
                 className={daySwitchButtonClass}
                 aria-label="Previous day"
               >
@@ -2263,16 +2336,32 @@ export function FohScheduleClient({
                 id="foh-date"
                 type="date"
                 value={date}
-                onChange={(event) => setDate(event.target.value)}
+                onChange={(event) => {
+                  setDate(event.target.value)
+                  setLastInteractionAtMs(Date.now())
+                }}
                 className={dateInputClass}
               />
               <button
                 type="button"
-                onClick={() => setDate((current) => shiftIsoDate(current, 1))}
+                onClick={() => {
+                  setDate((current) => shiftIsoDate(current, 1))
+                  setLastInteractionAtMs(Date.now())
+                }}
                 className={daySwitchButtonClass}
                 aria-label="Next day"
               >
                 Next
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setDate(getLondonDateIso())
+                  setLastInteractionAtMs(Date.now())
+                }}
+                className={daySwitchButtonClass}
+              >
+                Today
               </button>
               <span className={totalsBadgeClass}>Total bookings: {totals.bookings}</span>
               <span className={totalsBadgeClass}>Total covers: {totals.covers}</span>
@@ -2316,6 +2405,13 @@ export function FohScheduleClient({
             </div>
           )}
         </div>
+
+        {!viewingToday && (
+          <div className={cn('rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900', isManagerKioskStyle ? 'mt-2' : 'mt-3')}>
+            Viewing <span className="font-semibold">{date}</span>. This screen returns to{' '}
+            <span className="font-semibold">{londonTodayIso}</span> after 5 minutes of inactivity.
+          </div>
+        )}
 
         {statusMessage && (
           <div className={cn('rounded-md border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-800', isManagerKioskStyle ? 'mt-2' : 'mt-3')}>
