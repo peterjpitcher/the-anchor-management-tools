@@ -1,7 +1,6 @@
 import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { formatPhoneForStorage } from '@/lib/validation';
-import { generatePhoneVariants } from '@/lib/utils';
+import { formatPhoneForStorage, generatePhoneVariants } from '@/lib/utils';
 import type { 
   CreateCustomerInput, 
   UpdateCustomerInput, 
@@ -123,9 +122,11 @@ export class CustomerService {
 
     let mobileNumber: string;
     try {
-      mobileNumber = formatPhoneForStorage(input.mobile_number);
+      mobileNumber = formatPhoneForStorage(input.mobile_number, {
+        defaultCountryCode: input.default_country_code
+      });
     } catch (e) {
-      throw new Error('Invalid UK phone number format');
+      throw new Error('Invalid phone number format');
     }
 
     const existing = await findExistingCustomerByPhone(supabase, mobileNumber);
@@ -170,9 +171,11 @@ export class CustomerService {
     let mobileNumber = input.mobile_number;
     if (mobileNumber) {
       try {
-        mobileNumber = formatPhoneForStorage(mobileNumber);
+        mobileNumber = formatPhoneForStorage(mobileNumber, {
+          defaultCountryCode: input.default_country_code
+        });
       } catch (e) {
-        throw new Error('Invalid UK phone number format');
+        throw new Error('Invalid phone number format');
       }
 
       const existing = await findExistingCustomerByPhone(supabase, mobileNumber, id);
@@ -182,6 +185,7 @@ export class CustomerService {
     }
 
     const payload: Record<string, unknown> = { ...input };
+    delete payload.default_country_code;
     if (mobileNumber !== undefined) {
       payload.mobile_number = mobileNumber;
       payload.mobile_e164 = mobileNumber;
@@ -275,7 +279,9 @@ export class CustomerService {
 
       let formattedPhone;
       try {
-        formattedPhone = formatPhoneForStorage(c.mobile_number);
+        formattedPhone = formatPhoneForStorage(c.mobile_number, {
+          defaultCountryCode: c.default_country_code
+        });
       } catch {
         invalidCount++;
         continue;

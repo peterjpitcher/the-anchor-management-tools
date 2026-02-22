@@ -66,6 +66,8 @@ interface EventDetailClientProps {
   initialBookings: EventBookingSummary[]
 }
 
+const DEFAULT_COUNTRY_CODE = '44'
+
 function resolveStatusLabel(status: string | null): string {
   if (!status) return 'Scheduled'
   switch (status) {
@@ -284,7 +286,10 @@ export default function EventDetailClient({
       setSearchingCustomers(true)
 
       try {
-        const params = new URLSearchParams({ q: query })
+        const params = new URLSearchParams({
+          q: query,
+          default_country_code: DEFAULT_COUNTRY_CODE
+        })
 
         const response = await fetch(`/api/events/customers/search?${params.toString()}`, {
           cache: 'no-store'
@@ -442,7 +447,8 @@ export default function EventDetailClient({
         phone: bookingForm.phone.trim(),
         firstName,
         lastName,
-        seats
+        seats,
+        defaultCountryCode: DEFAULT_COUNTRY_CODE
       })
 
       if ('error' in result) {

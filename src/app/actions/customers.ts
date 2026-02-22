@@ -43,6 +43,9 @@ export async function createCustomer(formData: FormData) {
     }
     const { user } = context
 
+    const defaultCountryCode =
+      (formData.get('default_country_code') as string | null)?.trim() || undefined
+
     const rawData = {
       first_name: (formData.get('first_name') as string | null) ?? '',
       last_name: (formData.get('last_name') as string | null)?.trim() || undefined,
@@ -58,7 +61,8 @@ export async function createCustomer(formData: FormData) {
 
     const customer = await CustomerService.createCustomer({
       ...validationResult.data,
-      mobile_number: validationResult.data.mobile_number! // Schema ensures this if valid
+      mobile_number: validationResult.data.mobile_number!, // Schema ensures this if valid
+      default_country_code: defaultCountryCode
     })
 
     await logAuditEvent({
@@ -90,6 +94,9 @@ export async function updateCustomer(id: string, formData: FormData) {
     }
     const { user } = context
 
+    const defaultCountryCode =
+      (formData.get('default_country_code') as string | null)?.trim() || undefined
+
     const rawData = {
       first_name: (formData.get('first_name') as string | null) ?? '',
       last_name: (formData.get('last_name') as string | null)?.trim() || undefined,
@@ -105,7 +112,8 @@ export async function updateCustomer(id: string, formData: FormData) {
 
     const customer = await CustomerService.updateCustomer(id, {
       ...validationResult.data,
-      mobile_number: validationResult.data.mobile_number!
+      mobile_number: validationResult.data.mobile_number!,
+      default_country_code: defaultCountryCode
     })
 
     await logAuditEvent({

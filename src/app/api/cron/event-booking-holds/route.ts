@@ -26,6 +26,9 @@ export async function GET(request: NextRequest) {
       expiredPendingBookings: 0,
       expiredPaymentHolds: 0,
       cancelledEventTableBookings: 0,
+      expiredPendingTablePaymentBookings: 0,
+      expiredTablePaymentHolds: 0,
+      failedTableDepositPayments: 0,
       expiredWaitlistOffers: 0,
       expiredWaitlistEntries: 0,
       expiredWaitlistHolds: 0,
@@ -106,6 +109,126 @@ export async function GET(request: NextRequest) {
       }
 
       result.cancelledEventTableBookings += (cancelledTables || []).length
+    }
+
+    const { data: pendingTablePaymentRows, error: pendingTablePaymentError } = await supabase
+      .from('table_bookings')
+      .select('id, customer_id, booking_type')
+      .eq('status', 'pending_payment')
+      .not('hold_expires_at', 'is', null)
+      .lte('hold_expires_at', nowIso)
+      .limit(1000)
+
+    if (pendingTablePaymentError) {
+      throw pendingTablePaymentError
+    }
+
+    const pendingTablePaymentIds = (pendingTablePaymentRows || []).map((row: any) => row.id)
+    const pendingTablePaymentById = new Map<
+      string,
+      { customer_id: string | null; booking_type: string | null }
+    >()
+    for (const row of (pendingTablePaymentRows || []) as any[]) {
+      if (row?.id) {
+        pendingTablePaymentById.set(row.id, {
+          customer_id: row.customer_id ?? null,
+          booking_type: row.booking_type ?? null,
+        })
+      }
+    }
+
+    for (const ids of chunkIds(pendingTablePaymentIds)) {
+      const { data: expiredTablePayments, error: expireTablePaymentsError } = await supabase
+        .from('table_bookings')
+        .update({
+          status: 'cancelled',
+          cancellation_reason: 'payment_hold_expired',
+          cancelled_at: nowIso,
+          updated_at: nowIso,
+          hold_expires_at: null,
+        })
+        .in('id', ids)
+        .eq('status', 'pending_payment')
+        .select('id, customer_id, booking_type')
+
+      if (expireTablePaymentsError) {
+        throw expireTablePaymentsError
+      }
+
+      result.expiredPendingTablePaymentBookings += (expiredTablePayments || []).length
+      const expiredTablePaymentIds = (expiredTablePayments || []).map((row: any) => row.id).filter(Boolean)
+      if (expiredTablePaymentIds.length === 0) {
+        continue
+      }
+
+      for (const row of (expiredTablePayments || []) as any[]) {
+        const bookingId = row?.id
+        const customerId = row?.customer_id || pendingTablePaymentById.get(bookingId)?.customer_id || null
+        const bookingType = row?.booking_type || pendingTablePaymentById.get(bookingId)?.booking_type || null
+        if (!bookingId || !customerId) {
+          continue
+        }
+
+        try {
+          await recordAnalyticsEvent(supabase, {
+            customerId,
+            tableBookingId: bookingId,
+            eventType: 'payment_failed',
+            metadata: {
+              payment_kind: 'table_deposit',
+              booking_type: bookingType || 'table',
+              reason: 'hold_expired',
+            }
+          })
+        } catch (analyticsError) {
+          logger.warn('Failed recording table-deposit expiry analytics event', {
+            metadata: {
+              bookingId,
+              customerId,
+              error: analyticsError instanceof Error ? analyticsError.message : String(analyticsError),
+            }
+          })
+        }
+      }
+
+      const { data: expiredTablePaymentHolds, error: expireTablePaymentHoldsError } = await supabase
+        .from('booking_holds')
+        .update({
+          status: 'expired',
+          released_at: nowIso,
+          updated_at: nowIso,
+        })
+        .eq('hold_type', 'payment_hold')
+        .eq('status', 'active')
+        .in('table_booking_id', expiredTablePaymentIds)
+        .select('id')
+
+      if (expireTablePaymentHoldsError) {
+        throw expireTablePaymentHoldsError
+      }
+
+      result.expiredTablePaymentHolds += (expiredTablePaymentHolds || []).length
+
+      const { data: failedPayments, error: failPaymentsError } = await supabase
+        .from('payments')
+        .update({
+          status: 'failed',
+          metadata: {
+            payment_kind: 'table_deposit',
+            reason: 'hold_expired',
+            updated_at: nowIso,
+          },
+        })
+        .in('table_booking_id', expiredTablePaymentIds)
+        .eq('charge_type', 'table_deposit')
+        .eq('status', 'pending')
+        .select('id')
+
+      if (failPaymentsError) {
+        throw failPaymentsError
+      }
+
+      result.failedTableDepositPayments += (failedPayments || []).length
     }
 
     const { data: expiredOffers, error: expiredOffersError } = await supabase

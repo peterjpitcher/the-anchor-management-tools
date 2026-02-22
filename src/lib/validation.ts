@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { formatPhoneForStorage as normalizePhoneForStorage } from '@/lib/utils';
+import { parsePhoneNumberFromString } from 'libphonenumber-js';
 
 // Phone number validation
 export const ukPhoneRegex = /^(?:\+44|0)\d{10}$/;
@@ -72,6 +73,7 @@ export const customerSchema = z.object({
   first_name: nameSchema,
   last_name: nameSchema.optional(),
   mobile_number: phoneSchema,
+  default_country_code: z.string().regex(/^\d{1,4}$/, 'Invalid default country code').optional(),
   email: optionalEmailSchema,
   sms_opt_in: z.boolean().default(false),
 });
@@ -93,12 +95,25 @@ export const bookingSchema = z.object({
 // Helper functions
 export function formatPhoneForDisplay(phone: string | null): string {
   if (!phone) return '';
-  // Convert +447700900123 to 07700 900123
-  if (phone.startsWith('+44')) {
-    const number = phone.slice(3);
-    return `0${number.slice(0, 4)} ${number.slice(4)}`;
+
+  try {
+    const canonical = normalizePhoneForStorage(phone);
+    const parsed = parsePhoneNumberFromString(canonical);
+    if (!parsed) {
+      return phone;
+    }
+
+    if (parsed.countryCallingCode === '44') {
+      const national = parsed.nationalNumber;
+      if (national.length === 10) {
+        return `0${national.slice(0, 4)} ${national.slice(4)}`;
+      }
+    }
+
+    return parsed.formatInternational();
+  } catch {
+    return phone;
   }
-  return phone;
 }
 
 export function formatPhoneForStorage(phone: string): string {

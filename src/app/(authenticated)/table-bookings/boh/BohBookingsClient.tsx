@@ -9,6 +9,7 @@ type BohViewMode = 'day' | 'week' | 'month'
 type StatusFilter =
   | 'all'
   | 'confirmed'
+  | 'pending_payment'
   | 'pending_card_capture'
   | 'seated'
   | 'left'
@@ -114,6 +115,7 @@ const BOH_AUTO_RETURN_POLL_MS = 30 * 1000
 const STATUS_OPTIONS: Array<{ value: StatusFilter; label: string }> = [
   { value: 'all', label: 'All statuses' },
   { value: 'confirmed', label: 'Confirmed' },
+  { value: 'pending_payment', label: 'Pending payment' },
   { value: 'pending_card_capture', label: 'Pending card capture' },
   { value: 'seated', label: 'Seated' },
   { value: 'left', label: 'Left' },
@@ -238,6 +240,8 @@ function formatLifecycleTime(value: string | null): string | null {
 
 function getStatusBadgeClasses(status: string): string {
   switch (status) {
+    case 'pending_payment':
+      return 'bg-amber-100 text-amber-900 border-amber-200'
     case 'pending_card_capture':
       return 'bg-amber-100 text-amber-900 border-amber-200'
     case 'seated':
@@ -262,6 +266,8 @@ function getStatusBadgeClasses(status: string): string {
 
 function getStatusLabel(status: string): string {
   switch (status) {
+    case 'pending_payment':
+      return 'Pending payment'
     case 'pending_card_capture':
       return 'Pending card'
     case 'no_show':

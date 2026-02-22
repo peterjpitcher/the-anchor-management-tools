@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireFohPermission } from '@/lib/foh/api-auth'
-import { getTableBookingForFoh } from '@/lib/foh/bookings'
+import { getTableBookingForFoh, hasUnpaidSundayLunchDeposit } from '@/lib/foh/bookings'
 
 export async function POST(
   _request: NextRequest,
@@ -16,6 +16,13 @@ export async function POST(
 
   if (!booking) {
     return NextResponse.json({ error: 'Booking not found' }, { status: 404 })
+  }
+
+  if (hasUnpaidSundayLunchDeposit(booking)) {
+    return NextResponse.json(
+      { error: 'Sunday lunch booking cannot be seated until the GBP 10 per person deposit is paid.' },
+      { status: 409 }
+    )
   }
 
   if (['cancelled', 'no_show'].includes(booking.status)) {

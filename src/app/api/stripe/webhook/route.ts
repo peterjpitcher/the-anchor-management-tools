@@ -18,7 +18,10 @@ import {
   sendEventPaymentConfirmationSms,
   sendEventPaymentRetrySms
 } from '@/lib/events/event-payments'
-import { sendTableBookingConfirmedAfterCardCaptureSmsIfAllowed } from '@/lib/table-bookings/bookings'
+import {
+  sendTableBookingConfirmedAfterCardCaptureSmsIfAllowed,
+  sendTableBookingConfirmedAfterDepositSmsIfAllowed,
+} from '@/lib/table-bookings/bookings'
 
 export const runtime = 'nodejs'
 
@@ -118,6 +121,15 @@ type TableCardCaptureCompletedResult = {
   customer_id?: string
   booking_reference?: string
   status?: string
+}
+
+type TableDepositCompletedResult = {
+  state: 'confirmed' | 'already_confirmed' | 'blocked'
+  reason?: string
+  table_booking_id?: string
+  customer_id?: string
+  booking_reference?: string
+  party_size?: number
 }
 
 function mapRefundStatus(status: string | null): 'refunded' | 'pending' | 'failed' {
@@ -733,6 +745,152 @@ async function handleCheckoutSessionCompleted(
     return
   }
 
+  if (paymentKind === 'table_deposit') {
+    const tableBookingId = typeof metadata.table_booking_id === 'string'
+      ? metadata.table_booking_id
+      : typeof stripeSession?.client_reference_id === 'string'
+        ? stripeSession.client_reference_id
+        : null
+
+    if (!tableBookingId) {
+      return
+    }
+
+    const paymentIntentId = typeof stripeSession?.payment_intent === 'string'
+      ? stripeSession.payment_intent
+      : ''
+    const amount = typeof stripeSession?.amount_total === 'number'
+      ? Number((stripeSession.amount_total / 100).toFixed(2))
+      : null
+    const currency = typeof stripeSession?.currency === 'string'
+      ? stripeSession.currency.toUpperCase()
+      : 'GBP'
+
+    const { data: rpcResultRaw, error: rpcError } = await supabase.rpc('confirm_table_payment_v05', {
+      p_table_booking_id: tableBookingId,
+      p_checkout_session_id: checkoutSessionId,
+      p_payment_intent_id: paymentIntentId || null,
+      p_amount: amount,
+      p_currency: currency,
+    })
+
+    if (rpcError) {
+      throw rpcError
+    }
+
+    const rpcResult = (rpcResultRaw ?? {}) as TableDepositCompletedResult
+
+    if (rpcResult.state === 'confirmed' && rpcResult.table_booking_id && rpcResult.customer_id) {
+      const [analyticsOutcome, smsOutcome] = await Promise.allSettled([
+        recordAnalyticsEventSafe(supabase, {
+          customerId: rpcResult.customer_id,
+          tableBookingId: rpcResult.table_booking_id,
+          eventType: 'payment_succeeded',
+          metadata: {
+            payment_kind: 'table_deposit',
+            stripe_checkout_session_id: checkoutSessionId,
+            stripe_payment_intent_id: paymentIntentId || null,
+            amount,
+            currency,
+            booking_reference: rpcResult.booking_reference || null,
+            party_size: rpcResult.party_size ?? null,
+          }
+        }, 'table_deposit_payment_succeeded'),
+        sendTableBookingConfirmedAfterDepositSmsIfAllowed(supabase, rpcResult.table_booking_id),
+      ])
+
+      if (analyticsOutcome.status === 'rejected') {
+        const reason = analyticsOutcome.reason instanceof Error
+          ? analyticsOutcome.reason.message
+          : String(analyticsOutcome.reason)
+        logger.warn('Table deposit payment analytics task rejected unexpectedly', {
+          metadata: {
+            tableBookingId: rpcResult.table_booking_id,
+            customerId: rpcResult.customer_id,
+            checkoutSessionId,
+            error: reason,
+          }
+        })
+      }
+
+      if (smsOutcome.status === 'rejected') {
+        const reason = smsOutcome.reason instanceof Error ? smsOutcome.reason.message : String(smsOutcome.reason)
+        logger.error('Table deposit confirmation SMS task rejected unexpectedly', {
+          error: smsOutcome.reason instanceof Error ? smsOutcome.reason : new Error(String(smsOutcome.reason)),
+          metadata: {
+            tableBookingId: rpcResult.table_booking_id,
+            checkoutSessionId,
+            error: reason,
+          }
+        })
+      } else {
+        const smsResult = smsOutcome.value as {
+          success?: boolean
+          code?: string | null
+          logFailure?: boolean
+          error?: string | null
+        } | null
+        const smsCode = typeof smsResult?.code === 'string' ? smsResult.code : null
+        const smsLogFailure = smsResult?.logFailure === true || smsCode === 'logging_failed'
+        if (smsResult && smsResult.success !== true) {
+          if (smsLogFailure) {
+            logger.error('Table deposit confirmation SMS reported logging failure', {
+              metadata: {
+                tableBookingId: rpcResult.table_booking_id,
+                checkoutSessionId,
+                code: smsCode,
+                logFailure: smsLogFailure,
+                error: typeof smsResult.error === 'string' ? smsResult.error : null,
+              }
+            })
+          } else {
+            logger.warn('Table deposit confirmation SMS send returned non-success', {
+              metadata: {
+                tableBookingId: rpcResult.table_booking_id,
+                checkoutSessionId,
+                code: smsCode,
+                logFailure: smsLogFailure,
+                error: typeof smsResult.error === 'string' ? smsResult.error : null,
+              }
+            })
+          }
+        }
+      }
+      return
+    }
+
+    if (rpcResult.state === 'blocked') {
+      const candidateCustomerId =
+        typeof rpcResult.customer_id === 'string' && rpcResult.customer_id.length > 0
+          ? rpcResult.customer_id
+          : null
+      const customerId = candidateCustomerId || (
+        await (async () => {
+          const { data: booking } = await (supabase.from('table_bookings') as any)
+            .select('customer_id')
+            .eq('id', tableBookingId)
+            .maybeSingle()
+          return typeof booking?.customer_id === 'string' ? booking.customer_id : null
+        })()
+      )
+
+      if (customerId) {
+        await recordAnalyticsEventSafe(supabase, {
+          customerId,
+          tableBookingId,
+          eventType: 'payment_failed',
+          metadata: {
+            payment_kind: 'table_deposit',
+            stripe_checkout_session_id: checkoutSessionId,
+            reason: rpcResult.reason || 'blocked',
+          }
+        }, 'table_deposit_payment_blocked')
+      }
+    }
+
+    return
+  }
+
   if (paymentKind === 'seat_increase') {
     await handleSeatIncreaseCheckoutCompleted(supabase, stripeSession, appBaseUrl)
     return
@@ -1045,6 +1203,107 @@ async function handleCheckoutSessionFailure(
   const paymentKind = metadata.payment_kind || 'prepaid_event'
 
   if (paymentKind === 'table_card_capture') {
+    return
+  }
+
+  if (paymentKind === 'table_deposit') {
+    const nowIso = new Date().toISOString()
+    const { data: rows, error } = await supabase
+      .from('payments')
+      .update({
+        status: 'failed',
+        metadata: {
+          payment_kind: paymentKind,
+          stripe_failure_type: failureType,
+          updated_at: nowIso
+        }
+      })
+      .eq('stripe_checkout_session_id', checkoutSessionId)
+      .eq('charge_type', 'table_deposit')
+      .eq('status', 'pending')
+      .select('table_booking_id')
+
+    if (error) {
+      throw error
+    }
+
+    let tableBookingId = rows?.[0]?.table_booking_id as string | undefined
+
+    if (!Array.isArray(rows) || rows.length === 0) {
+      const { data: existingPayment, error: existingPaymentLookupError } = await supabase
+        .from('payments')
+        .select('id, status, table_booking_id')
+        .eq('stripe_checkout_session_id', checkoutSessionId)
+        .eq('charge_type', 'table_deposit')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+
+      if (existingPaymentLookupError) {
+        throw new Error(
+          `Failed to verify existing table-deposit payment after checkout failure webhook: ${existingPaymentLookupError.message}`
+        )
+      }
+
+      if (!existingPayment) {
+        throw new Error(`Checkout failure webhook missing table-deposit payment row: ${checkoutSessionId}`)
+      }
+
+      const existingStatus =
+        typeof (existingPayment as any)?.status === 'string'
+          ? ((existingPayment as any).status as string)
+          : null
+
+      if (
+        existingStatus !== 'failed' &&
+        existingStatus !== 'succeeded' &&
+        existingStatus !== 'refunded' &&
+        existingStatus !== 'partially_refunded'
+      ) {
+        throw new Error(
+          `Checkout failure webhook table-deposit payment row was not transitioned to failed: ${checkoutSessionId}`
+        )
+      }
+
+      tableBookingId =
+        typeof (existingPayment as any)?.table_booking_id === 'string'
+          ? ((existingPayment as any).table_booking_id as string)
+          : undefined
+    }
+
+    if (!tableBookingId) {
+      return
+    }
+
+    const { data: booking, error: bookingLookupError } = await (supabase.from('table_bookings') as any)
+      .select('id, customer_id')
+      .eq('id', tableBookingId)
+      .maybeSingle()
+
+    if (bookingLookupError) {
+      logger.warn('Checkout failure webhook could not load table booking for analytics', {
+        metadata: {
+          tableBookingId,
+          checkoutSessionId,
+          error: bookingLookupError.message,
+        }
+      })
+      return
+    }
+
+    if (booking?.customer_id) {
+      await recordAnalyticsEventSafe(supabase, {
+        customerId: booking.customer_id,
+        tableBookingId,
+        eventType: 'payment_failed',
+        metadata: {
+          payment_kind: paymentKind,
+          stripe_checkout_session_id: checkoutSessionId,
+          failure_type: failureType,
+        }
+      }, 'table_deposit_checkout_failure')
+    }
+
     return
   }
 

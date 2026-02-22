@@ -49,6 +49,8 @@ export type TableBookingForFoh = {
   customer_id: string | null
   booking_reference: string | null
   status: string
+  booking_type: string | null
+  payment_status: string | null
   party_size: number | null
   committed_party_size: number | null
   booking_date: string
@@ -64,7 +66,7 @@ export async function getTableBookingForFoh(
 ): Promise<TableBookingForFoh | null> {
   const { data, error } = await (supabase.from('table_bookings') as any)
     .select(
-      'id, customer_id, booking_reference, status, party_size, committed_party_size, booking_date, booking_time, duration_minutes, start_datetime, end_datetime'
+      'id, customer_id, booking_reference, status, booking_type, payment_status, party_size, committed_party_size, booking_date, booking_time, duration_minutes, start_datetime, end_datetime'
     )
     .eq('id', bookingId)
     .maybeSingle()
@@ -74,6 +76,16 @@ export async function getTableBookingForFoh(
   }
 
   return data as TableBookingForFoh
+}
+
+export function hasUnpaidSundayLunchDeposit(
+  booking: Pick<TableBookingForFoh, 'status' | 'booking_type' | 'payment_status'>
+): boolean {
+  return (
+    booking.status === 'pending_payment'
+    && booking.booking_type === 'sunday_lunch'
+    && booking.payment_status !== 'completed'
+  )
 }
 
 export async function createChargeRequestForBooking(

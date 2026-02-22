@@ -14,7 +14,7 @@ export function getConstraintErrorMessage(error: PostgrestError): string {
     if (message.includes('chk_customer_phone_format') || 
         message.includes('chk_employee_phone_format') || 
         message.includes('chk_emergency_phone_format')) {
-      return 'Please enter a valid UK phone number (e.g., 07700900123 or +447700900123)';
+      return 'Please enter a valid phone number (for example, +14155552671)';
     }
     if (message.includes('chk_employment_dates')) {
       return 'Employment end date must be after the start date';

@@ -6,9 +6,13 @@ import { getSmartFirstName } from '@/lib/sms/bulk'
 import { ensureReplyInstruction } from '@/lib/sms/support'
 import { createTableManageToken } from '@/lib/table-bookings/manage-booking'
 import { createSundayPreorderToken } from '@/lib/table-bookings/sunday-preorder'
+import {
+  createStripeTableDepositCheckoutSession,
+  type StripeCheckoutSession,
+} from '@/lib/payments/stripe'
 import { logger } from '@/lib/logger'
 
-export type TableBookingState = 'confirmed' | 'pending_card_capture' | 'blocked'
+export type TableBookingState = 'confirmed' | 'pending_card_capture' | 'pending_payment' | 'blocked'
 
 export type TableBookingRpcResult = {
   state: TableBookingState
@@ -48,6 +52,41 @@ export type TableCardCapturePreview = {
   start_datetime?: string
   end_datetime?: string
 }
+
+export type TablePaymentTokenResult = {
+  rawToken: string
+  url: string
+  expiresAt: string
+}
+
+export type TablePaymentPreviewResult =
+  | {
+    state: 'ready'
+    tableBookingId: string
+    customerId: string
+    bookingReference: string
+    partySize: number
+    totalAmount: number
+    currency: string
+    holdExpiresAt: string
+    bookingDate: string | null
+    bookingTime: string | null
+    startDateTime: string | null
+    bookingType: string | null
+    tokenHash: string
+  }
+  | {
+    state: 'blocked'
+    reason:
+      | 'invalid_token'
+      | 'token_expired'
+      | 'token_used'
+      | 'booking_not_found'
+      | 'booking_not_pending_payment'
+      | 'hold_expired'
+      | 'invalid_amount'
+      | 'token_customer_mismatch'
+  }
 
 type SmsSafetyMeta =
   | {
@@ -105,6 +144,38 @@ function normalizeThrownSmsSafety(error: unknown): { code: string; logFailure: b
     code: 'safety_unavailable',
     logFailure: false
   }
+}
+
+function parseIsoDate(value: string | null | undefined): Date | null {
+  if (!value) return null
+  const date = new Date(value)
+  return Number.isFinite(date.getTime()) ? date : null
+}
+
+function resolveBaseUrl(appBaseUrl?: string | null): string {
+  const fromEnv = process.env.NEXT_PUBLIC_APP_URL
+  const chosen = (appBaseUrl || fromEnv || 'http://localhost:3000').replace(/\/+$/, '')
+  return chosen
+}
+
+function formatPence(amount: number): number {
+  return Math.round(amount * 100)
+}
+
+function computeStripeSessionExpiryUnix(holdExpiresAtIso: string): number | undefined {
+  const holdExpiry = parseIsoDate(holdExpiresAtIso)
+  if (!holdExpiry) {
+    return undefined
+  }
+
+  const now = Date.now()
+  const holdExpiryMs = holdExpiry.getTime()
+  const minimumWindowMs = 31 * 60 * 1000
+  if (holdExpiryMs - now < minimumWindowMs) {
+    return undefined
+  }
+
+  return Math.floor(holdExpiryMs / 1000)
 }
 
 export function mapTableBookingBlockedReason(reason?: string | null):
@@ -374,6 +445,268 @@ export async function getTableCardCapturePreviewByRawToken(
   return ((data ?? {}) as TableCardCapturePreview)
 }
 
+export async function createTablePaymentToken(
+  supabase: SupabaseClient<any, 'public', any>,
+  input: {
+    customerId: string
+    tableBookingId: string
+    holdExpiresAt: string
+    appBaseUrl?: string | null
+  }
+): Promise<TablePaymentTokenResult> {
+  const holdExpiry = parseIsoDate(input.holdExpiresAt)
+  if (!holdExpiry || holdExpiry.getTime() <= Date.now()) {
+    throw new Error('Table payment hold has already expired')
+  }
+
+  const { rawToken } = await createGuestToken(supabase, {
+    customerId: input.customerId,
+    actionType: 'payment',
+    tableBookingId: input.tableBookingId,
+    expiresAt: holdExpiry.toISOString(),
+  })
+
+  const baseUrl = resolveBaseUrl(input.appBaseUrl)
+
+  return {
+    rawToken,
+    url: `${baseUrl}/g/${rawToken}/table-payment`,
+    expiresAt: holdExpiry.toISOString(),
+  }
+}
+
+export async function getTablePaymentPreviewByRawToken(
+  supabase: SupabaseClient<any, 'public', any>,
+  rawToken: string
+): Promise<TablePaymentPreviewResult> {
+  const tokenHash = hashGuestToken(rawToken)
+
+  const { data: token, error: tokenError } = await supabase
+    .from('guest_tokens')
+    .select('id, customer_id, table_booking_id, expires_at, consumed_at')
+    .eq('hashed_token', tokenHash)
+    .eq('action_type', 'payment')
+    .maybeSingle()
+
+  if (tokenError) {
+    throw tokenError
+  }
+
+  if (!token) {
+    return { state: 'blocked', reason: 'invalid_token' }
+  }
+
+  if (token.consumed_at) {
+    return { state: 'blocked', reason: 'token_used' }
+  }
+
+  const tokenExpiry = parseIsoDate(token.expires_at)
+  if (!tokenExpiry || tokenExpiry.getTime() <= Date.now()) {
+    return { state: 'blocked', reason: 'token_expired' }
+  }
+
+  if (!token.table_booking_id) {
+    return { state: 'blocked', reason: 'booking_not_found' }
+  }
+
+  const { data: booking, error: bookingError } = await (supabase.from('table_bookings') as any)
+    .select(`
+      id,
+      customer_id,
+      status,
+      hold_expires_at,
+      party_size,
+      committed_party_size,
+      booking_reference,
+      booking_date,
+      booking_time,
+      start_datetime,
+      booking_type
+    `)
+    .eq('id', token.table_booking_id)
+    .maybeSingle()
+
+  if (bookingError) {
+    throw bookingError
+  }
+
+  if (!booking) {
+    return { state: 'blocked', reason: 'booking_not_found' }
+  }
+
+  if (booking.customer_id !== token.customer_id) {
+    return { state: 'blocked', reason: 'token_customer_mismatch' }
+  }
+
+  if (booking.status !== 'pending_payment') {
+    return { state: 'blocked', reason: 'booking_not_pending_payment' }
+  }
+
+  const holdExpiry = parseIsoDate(booking.hold_expires_at)
+  if (!holdExpiry || holdExpiry.getTime() <= Date.now()) {
+    return { state: 'blocked', reason: 'hold_expired' }
+  }
+
+  const partySize = Math.max(1, Number(booking.committed_party_size ?? booking.party_size ?? 1))
+  const totalAmount = Number((partySize * 10).toFixed(2))
+  if (!Number.isFinite(totalAmount) || totalAmount <= 0) {
+    return { state: 'blocked', reason: 'invalid_amount' }
+  }
+
+  return {
+    state: 'ready',
+    tableBookingId: booking.id,
+    customerId: booking.customer_id,
+    bookingReference: booking.booking_reference || booking.id,
+    partySize,
+    totalAmount,
+    currency: 'GBP',
+    holdExpiresAt: holdExpiry.toISOString(),
+    bookingDate: booking.booking_date || null,
+    bookingTime: booking.booking_time || null,
+    startDateTime: booking.start_datetime || null,
+    bookingType: booking.booking_type || null,
+    tokenHash,
+  }
+}
+
+export async function createTableCheckoutSessionByRawToken(
+  supabase: SupabaseClient<any, 'public', any>,
+  input: {
+    rawToken: string
+    appBaseUrl?: string | null
+  }
+): Promise<
+  | {
+    state: 'created'
+    checkoutUrl: string
+    session: StripeCheckoutSession
+    tableBookingId: string
+  }
+  | {
+    state: 'blocked'
+    reason: TablePaymentPreviewResult extends { state: 'blocked'; reason: infer R } ? R : string
+  }
+> {
+  const preview = await getTablePaymentPreviewByRawToken(supabase, input.rawToken)
+  if (preview.state !== 'ready') {
+    return preview
+  }
+
+  const baseUrl = resolveBaseUrl(input.appBaseUrl)
+  const tokenEncoded = encodeURIComponent(input.rawToken)
+  const successUrl = `${baseUrl}/g/${tokenEncoded}/table-payment?state=success&session_id={CHECKOUT_SESSION_ID}`
+  const cancelUrl = `${baseUrl}/g/${tokenEncoded}/table-payment?state=cancelled`
+
+  const session = await createStripeTableDepositCheckoutSession({
+    idempotencyKey: `table_booking_deposit_${preview.tableBookingId}_${preview.tokenHash.slice(0, 24)}`,
+    successUrl,
+    cancelUrl,
+    tableBookingId: preview.tableBookingId,
+    customerId: preview.customerId,
+    quantity: 1,
+    unitAmountMinor: formatPence(preview.totalAmount),
+    currency: preview.currency,
+    productName: `Sunday lunch deposit (${preview.partySize} ${preview.partySize === 1 ? 'person' : 'people'})`,
+    tokenHash: preview.tokenHash,
+    expiresAtUnix: computeStripeSessionExpiryUnix(preview.holdExpiresAt),
+    metadata: {
+      booking_reference: preview.bookingReference,
+      deposit_per_person_gbp: '10',
+      party_size: String(preview.partySize),
+    },
+  })
+
+  if (!session.url) {
+    throw new Error('Stripe checkout session did not return a URL')
+  }
+
+  const nowIso = new Date().toISOString()
+
+  const { data: existingSessionRow, error: existingSessionLookupError } = await supabase
+    .from('payments')
+    .select('id')
+    .eq('stripe_checkout_session_id', session.id)
+    .limit(1)
+    .maybeSingle()
+
+  if (existingSessionLookupError) {
+    throw new Error(
+      `Failed to verify existing table-deposit payment row before checkout persistence: ${existingSessionLookupError.message}`
+    )
+  }
+
+  if (!existingSessionRow) {
+    const { data: pendingRow, error: pendingLookupError } = await supabase
+      .from('payments')
+      .select('id')
+      .eq('table_booking_id', preview.tableBookingId)
+      .eq('charge_type', 'table_deposit')
+      .eq('status', 'pending')
+      .is('stripe_checkout_session_id', null)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+
+    if (pendingLookupError) {
+      throw new Error(`Failed to locate pending table-deposit row: ${pendingLookupError.message}`)
+    }
+
+    if (pendingRow?.id) {
+      const { error: pendingUpdateError } = await supabase
+        .from('payments')
+        .update({
+          stripe_checkout_session_id: session.id,
+          stripe_payment_intent_id: session.payment_intent ?? null,
+          amount: preview.totalAmount,
+          currency: preview.currency,
+          metadata: {
+            source: 'guest_token',
+            token_hash: preview.tokenHash,
+            checkout_url: session.url,
+            party_size: preview.partySize,
+            deposit_per_person: 10,
+            updated_at: nowIso,
+          },
+        })
+        .eq('id', pendingRow.id)
+
+      if (pendingUpdateError) {
+        throw new Error(`Failed to update pending table-deposit payment row: ${pendingUpdateError.message}`)
+      }
+    } else {
+      const { error: insertError } = await supabase.from('payments').insert({
+        table_booking_id: preview.tableBookingId,
+        charge_type: 'table_deposit',
+        stripe_checkout_session_id: session.id,
+        stripe_payment_intent_id: session.payment_intent ?? null,
+        amount: preview.totalAmount,
+        currency: preview.currency,
+        status: 'pending',
+        metadata: {
+          source: 'guest_token',
+          token_hash: preview.tokenHash,
+          checkout_url: session.url,
+          party_size: preview.partySize,
+          deposit_per_person: 10,
+          created_at: nowIso,
+        },
+      })
+
+      if (insertError) {
+        throw new Error(`Failed to insert pending table-deposit payment row: ${insertError.message}`)
+      }
+    }
+  }
+
+  return {
+    state: 'created',
+    checkoutUrl: session.url,
+    session,
+    tableBookingId: preview.tableBookingId,
+  }
+}
+
 export async function sendTableBookingCreatedSmsIfAllowed(
   supabase: SupabaseClient<any, 'public', any>,
   input: {
@@ -397,6 +730,11 @@ export async function sendTableBookingCreatedSmsIfAllowed(
   const bookingMoment = formatLondonDateTime(input.bookingResult.start_datetime)
   const partySize = Math.max(1, Number(input.bookingResult.party_size ?? 1))
   const seatWord = partySize === 1 ? 'person' : 'people'
+  const depositAmount = Number((partySize * 10).toFixed(2))
+  const depositLabel = new Intl.NumberFormat('en-GB', {
+    style: 'currency',
+    currency: 'GBP',
+  }).format(depositAmount)
   const supportPhone = process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || process.env.TWILIO_PHONE_NUMBER || undefined
   let manageLink: string | null = null
 
@@ -419,6 +757,10 @@ export async function sendTableBookingCreatedSmsIfAllowed(
     const base = `The Anchor: Hi ${firstName}, please add card details to hold your table booking for ${partySize} ${seatWord} on ${bookingMoment}. No charge now.`
     const cta = input.nextStepUrl ? `Complete here: ${input.nextStepUrl}` : 'We will text your card details link shortly.'
     smsBody = `${base} ${cta}`
+  } else if (input.bookingResult.state === 'pending_payment') {
+    const base = `The Anchor: Hi ${firstName}, please pay your Sunday lunch deposit of ${depositLabel} (${partySize} x GBP 10) to secure your table for ${partySize} ${seatWord} on ${bookingMoment}.`
+    const cta = input.nextStepUrl ? `Pay now: ${input.nextStepUrl}` : 'We will text your payment link shortly.'
+    smsBody = `${base} ${cta}`
   } else {
     smsBody = `The Anchor: Hi ${firstName}, your table booking for ${partySize} ${seatWord} on ${bookingMoment} is confirmed.${manageLink ? ` Manage booking: ${manageLink}` : ''}`
   }
@@ -435,6 +777,8 @@ export async function sendTableBookingCreatedSmsIfAllowed(
           template_key:
             input.bookingResult.state === 'pending_card_capture'
               ? 'table_booking_pending_card_capture'
+              : input.bookingResult.state === 'pending_payment'
+                ? 'table_booking_pending_payment'
               : 'table_booking_confirmed'
         }
       }
@@ -631,6 +975,146 @@ export async function sendTableBookingConfirmedAfterCardCaptureSmsIfAllowed(
         code: thrownSafety.code,
         logFailure: thrownSafety.logFailure,
       }
+    })
+
+    return {
+      success: false,
+      code: thrownSafety.code,
+      logFailure: thrownSafety.logFailure,
+    }
+  }
+}
+
+export async function sendTableBookingConfirmedAfterDepositSmsIfAllowed(
+  supabase: SupabaseClient<any, 'public', any>,
+  tableBookingId: string
+): Promise<SmsSafetyMeta> {
+  const { data: booking, error: bookingError } = await supabase
+    .from('table_bookings')
+    .select('id, customer_id, party_size, booking_date, booking_time, start_datetime, status, booking_type')
+    .eq('id', tableBookingId)
+    .maybeSingle()
+
+  if (bookingError) {
+    throw new Error(`Failed to load table booking for post-deposit SMS: ${bookingError.message}`)
+  }
+
+  if (!booking || booking.status !== 'confirmed' || !booking.customer_id) {
+    return null
+  }
+
+  const { data: customer, error: customerError } = await supabase
+    .from('customers')
+    .select('id, first_name, mobile_number, sms_status')
+    .eq('id', booking.customer_id)
+    .maybeSingle()
+
+  if (customerError) {
+    throw new Error(`Failed to load customer for post-deposit SMS: ${customerError.message}`)
+  }
+
+  if (!customer || customer.sms_status !== 'active' || !customer.mobile_number) {
+    return null
+  }
+
+  const firstName = getSmartFirstName(customer.first_name)
+  const partySize = Math.max(1, Number(booking.party_size ?? 1))
+  const seatWord = partySize === 1 ? 'person' : 'people'
+  const supportPhone = process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || process.env.TWILIO_PHONE_NUMBER || undefined
+  const bookingMoment = formatLondonDateTime(booking.start_datetime)
+  let manageLink: string | null = null
+
+  try {
+    const token = await createTableManageToken(supabase, {
+      customerId: customer.id,
+      tableBookingId,
+      bookingStartIso: booking.start_datetime || null,
+      appBaseUrl: process.env.NEXT_PUBLIC_APP_URL,
+    })
+    manageLink = token.url
+  } catch {
+    manageLink = null
+  }
+
+  let sundayPreorderLink: string | null = null
+  if (booking.booking_type === 'sunday_lunch') {
+    try {
+      const token = await createSundayPreorderToken(supabase, {
+        customerId: customer.id,
+        tableBookingId,
+        bookingStartIso: booking.start_datetime || null,
+        appBaseUrl: process.env.NEXT_PUBLIC_APP_URL,
+      })
+      sundayPreorderLink = token.url
+    } catch {
+      sundayPreorderLink = null
+    }
+  }
+
+  let composedMessage = `The Anchor: Hi ${firstName}, your Sunday lunch deposit is received and your table booking for ${partySize} ${seatWord} on ${bookingMoment} is confirmed.${manageLink ? ` Manage booking: ${manageLink}` : ''}`
+  let templateKey = 'table_booking_deposit_confirmed'
+
+  if (sundayPreorderLink) {
+    templateKey = resolveSundayPreorderTemplateKey(booking.start_datetime)
+    const preorderIntro =
+      templateKey === 'sunday_preorder_reminder_26h'
+        ? 'Final reminder: please complete your Sunday lunch pre-order.'
+        : 'Please complete your Sunday lunch pre-order.'
+    composedMessage = `${composedMessage} ${preorderIntro} Complete here: ${sundayPreorderLink}`
+  }
+
+  const body = ensureReplyInstruction(composedMessage, supportPhone)
+
+  try {
+    const smsResult = await sendSMS(customer.mobile_number, body, {
+      customerId: customer.id,
+      metadata: {
+        table_booking_id: tableBookingId,
+        template_key: templateKey,
+      },
+    })
+
+    const smsCode = typeof smsResult.code === 'string' ? smsResult.code : null
+    const smsLogFailure = smsResult.logFailure === true || smsCode === 'logging_failed'
+    const smsDeliveredOrUnknown = smsResult.success === true || smsLogFailure
+
+    if (smsLogFailure) {
+      logger.error('Table booking post-deposit SMS sent but outbound message logging failed', {
+        metadata: {
+          tableBookingId,
+          customerId: customer.id,
+          code: smsCode,
+          logFailure: smsLogFailure,
+        },
+      })
+    }
+
+    if (!smsResult.success) {
+      logger.warn('Table booking post-deposit SMS send returned non-success', {
+        metadata: {
+          tableBookingId,
+          customerId: customer.id,
+          error: smsResult.error,
+          code: smsCode,
+        },
+      })
+    }
+
+    return {
+      success: smsDeliveredOrUnknown,
+      code: smsCode,
+      logFailure: smsLogFailure,
+    }
+  } catch (smsError) {
+    const thrownSafety = normalizeThrownSmsSafety(smsError)
+    logger.warn('Table booking post-deposit SMS threw unexpectedly', {
+      metadata: {
+        tableBookingId,
+        customerId: customer.id,
+        error: smsError instanceof Error ? smsError.message : String(smsError),
+        code: thrownSafety.code,
+        logFailure: thrownSafety.logFailure,
+      },
     })
 
     return {
@@ -914,6 +1398,98 @@ export async function alignTableCardCaptureHoldToScheduledSend(
   if (alignmentFailures.length > 0) {
     throw new Error(
       `Failed to align table card-capture hold state to scheduled SMS send time: ${alignmentFailures.join('; ')}`
+    )
+  }
+
+  return expiresAt
+}
+
+export async function alignTablePaymentHoldToScheduledSend(
+  supabase: SupabaseClient<any, 'public', any>,
+  input: {
+    tableBookingId: string
+    scheduledSendIso: string
+    bookingStartIso?: string | null
+  }
+): Promise<string | null> {
+  if (!input.scheduledSendIso || !input.tableBookingId) {
+    return null
+  }
+
+  const scheduledMs = Date.parse(input.scheduledSendIso)
+  if (!Number.isFinite(scheduledMs)) {
+    return null
+  }
+
+  const bookingStartMs = input.bookingStartIso ? Date.parse(input.bookingStartIso) : NaN
+  const defaultExpiryMs = scheduledMs + 24 * 60 * 60 * 1000
+  const nextExpiryMs = Number.isFinite(bookingStartMs)
+    ? Math.min(defaultExpiryMs, bookingStartMs)
+    : defaultExpiryMs
+  const expiresAt = new Date(nextExpiryMs).toISOString()
+
+  const [bookingSyncResult, holdSyncResult] = await Promise.allSettled([
+    (async () => {
+      const { data, error } = await supabase
+        .from('table_bookings')
+        .update({ hold_expires_at: expiresAt, updated_at: new Date().toISOString() })
+        .eq('id', input.tableBookingId)
+        .eq('status', 'pending_payment')
+        .select('id')
+        .maybeSingle()
+
+      if (error) {
+        throw error
+      }
+
+      return Boolean(data)
+    })(),
+    (async () => {
+      const { data, error } = await supabase
+        .from('booking_holds')
+        .update({
+          scheduled_sms_send_time: input.scheduledSendIso,
+          expires_at: expiresAt,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('table_booking_id', input.tableBookingId)
+        .eq('hold_type', 'payment_hold')
+        .eq('status', 'active')
+        .select('id')
+
+      if (error) {
+        throw error
+      }
+
+      return (data || []).length
+    })(),
+  ])
+
+  const alignmentFailures: string[] = []
+
+  if (bookingSyncResult.status === 'rejected') {
+    alignmentFailures.push(
+      `table_bookings_update_failed:${bookingSyncResult.reason instanceof Error
+        ? bookingSyncResult.reason.message
+        : String(bookingSyncResult.reason)}`
+    )
+  } else if (!bookingSyncResult.value) {
+    alignmentFailures.push('table_bookings_update_no_rows')
+  }
+
+  if (holdSyncResult.status === 'rejected') {
+    alignmentFailures.push(
+      `booking_holds_update_failed:${holdSyncResult.reason instanceof Error
+        ? holdSyncResult.reason.message
+        : String(holdSyncResult.reason)}`
+    )
+  } else if (holdSyncResult.value === 0) {
+    alignmentFailures.push('booking_holds_update_no_rows')
+  }
+
+  if (alignmentFailures.length > 0) {
+    throw new Error(
+      `Failed to align table payment hold state to scheduled SMS send time: ${alignmentFailures.join('; ')}`
     )
   }
 
