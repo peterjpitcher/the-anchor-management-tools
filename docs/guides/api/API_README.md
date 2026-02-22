@@ -26,6 +26,7 @@ The Anchor Management Tools exposes a set of authenticated API routes under `/ap
 All endpoints live in `src/app/api/`. Consult the corresponding route file for request/response handling, required permissions, and server runtime.
 
 ## Response Conventions (Website Integrations)
+- `GET /events` supports optional `search` (or `q`) for text matching across event name, description, slug, and performer.
 - `GET /events/{id}` returns the event object as `data` (no nested `event` wrapper); `_meta.lastUpdated` is included for cache diagnostics.
 - `POST /events/{id}/check-availability` includes both legacy fields (`available_seats`, `requested_seats`) and normalized capacity fields (`capacity`, `remaining`, `percentage_full`).
 - `GET /event-categories` includes `event_count` for upcoming active events (scheduled/draft/rescheduled/postponed).

@@ -4,6 +4,7 @@ import { withApiAuth, createApiResponse, createErrorResponse } from '@/lib/api/a
 import { eventToSchema } from '@/lib/api/schema';
 import { getTodayIsoDate } from '@/lib/dateUtils';
 import { resolveStatusFilters } from '@/lib/events/status-filters';
+import { buildEventSearchOrFilter } from '@/lib/events/api-search';
 import { logger } from '@/lib/logger';
 // Removed unused date-fns imports
 
@@ -38,6 +39,7 @@ export async function GET(_request: NextRequest) {
     const categoryId = searchParams.get('category_id');
     const status = searchParams.get('status');
     const availableOnly = searchParams.get('available_only') === 'true';
+    const eventSearch = searchParams.get('search') ?? searchParams.get('q');
     const rawLimit = parseInt(searchParams.get('limit') || '20', 10);
     const limit = Number.isNaN(rawLimit) ? 20 : Math.min(Math.max(rawLimit, 1), 100);
     const rawOffset = parseInt(searchParams.get('offset') || '0', 10);
@@ -104,6 +106,11 @@ export async function GET(_request: NextRequest) {
 
     if (categoryId) {
       query = query.eq('category_id', categoryId);
+    }
+
+    const searchFilter = buildEventSearchOrFilter(eventSearch);
+    if (searchFilter) {
+      query = query.or(searchFilter);
     }
 
     const { data: events, error, count } = await query;
