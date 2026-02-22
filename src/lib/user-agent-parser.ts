@@ -5,6 +5,50 @@ export interface ParsedUserAgent {
   os: string;
 }
 
+const KNOWN_BOT_PATTERNS: RegExp[] = [
+  /facebookexternalhit/i,
+  /facebot/i,
+  /twitterbot/i,
+  /linkedinbot/i,
+  /slackbot(?:-linkexpanding)?/i,
+  /discordbot/i,
+  /whatsapp/i,
+  /telegrambot/i,
+  /skypeuripreview/i,
+  /googlebot/i,
+  /adsbot-google/i,
+  /bingbot/i,
+  /bingpreview/i,
+  /applebot/i,
+  /duckduckbot/i,
+  /baiduspider/i,
+  /yandexbot/i,
+  /petalbot/i,
+  /semrushbot/i,
+  /ahrefsbot/i,
+  /mj12bot/i,
+  /dotbot/i,
+  /bytespider/i,
+  /headlesschrome/i,
+];
+
+const GENERIC_BOT_PATTERN = /(^|[^a-z])(bot|crawler|spider)([^a-z]|$)/i;
+
+export function isKnownBotUserAgent(
+  userAgent: string | null,
+  currentDeviceType?: string | null
+): boolean {
+  if (currentDeviceType?.toLowerCase() === 'bot') {
+    return true;
+  }
+
+  if (!userAgent) {
+    return false;
+  }
+
+  return KNOWN_BOT_PATTERNS.some((pattern) => pattern.test(userAgent)) || GENERIC_BOT_PATTERN.test(userAgent);
+}
+
 export function parseUserAgent(userAgent: string | null): ParsedUserAgent {
   if (!userAgent) {
     return { deviceType: 'unknown', browser: 'Unknown', os: 'Unknown' };
@@ -14,7 +58,7 @@ export function parseUserAgent(userAgent: string | null): ParsedUserAgent {
 
   // Detect device type
   let deviceType: ParsedUserAgent['deviceType'] = 'desktop';
-  if (/bot|crawler|spider|crawling/i.test(ua)) {
+  if (isKnownBotUserAgent(userAgent)) {
     deviceType = 'bot';
   } else if (/mobile|android|iphone|ipod|windows phone/i.test(ua) && !/ipad|tablet/i.test(ua)) {
     deviceType = 'mobile';

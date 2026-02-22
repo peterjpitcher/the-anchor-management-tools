@@ -13,6 +13,7 @@ interface LineChartProps {
   color?: string;
   showGrid?: boolean;
   label?: string;
+  xAxisFormatter?: (date: string, index: number) => string;
 }
 
 export function LineChart({ 
@@ -20,7 +21,8 @@ export function LineChart({
   height = 300, 
   color = '#3B82F6',
   showGrid = true,
-  label = 'Clicks'
+  label = 'Clicks',
+  xAxisFormatter
 }: LineChartProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
@@ -49,6 +51,13 @@ export function LineChart({
     const values = data.map(d => d.value);
     const maxValue = Math.max(...values, 1);
     const minValue = 0;
+    const valueRange = Math.max(maxValue - minValue, 1);
+    const getXPosition = (index: number) => {
+      if (data.length === 1) {
+        return padding.left + chartWidth / 2;
+      }
+      return padding.left + (chartWidth * index) / (data.length - 1);
+    };
 
     // Draw grid
     if (showGrid) {
@@ -65,9 +74,9 @@ export function LineChart({
       }
 
       // Vertical grid lines
-      const step = Math.ceil(data.length / 7);
+      const step = Math.max(1, Math.ceil(data.length / 7));
       for (let i = 0; i < data.length; i += step) {
-        const x = padding.left + (chartWidth * i) / (data.length - 1);
+        const x = getXPosition(i);
         ctx.beginPath();
         ctx.moveTo(x, padding.top);
         ctx.lineTo(x, padding.top + chartHeight);
@@ -99,12 +108,13 @@ export function LineChart({
     // Draw X-axis labels
     ctx.textAlign = 'center';
     ctx.textBaseline = 'top';
-    const labelStep = Math.ceil(data.length / 7);
+    const labelStep = Math.max(1, Math.ceil(data.length / 7));
     
     for (let i = 0; i < data.length; i += labelStep) {
-      const x = padding.left + (chartWidth * i) / (data.length - 1);
-      const date = new Date(data[i].date);
-      const label = `${date.getMonth() + 1}/${date.getDate()}`;
+      const x = getXPosition(i);
+      const defaultDate = new Date(data[i].date);
+      const defaultLabel = `${defaultDate.getMonth() + 1}/${defaultDate.getDate()}`;
+      const label = xAxisFormatter ? xAxisFormatter(data[i].date, i) : defaultLabel;
       ctx.fillText(label, x, padding.top + chartHeight + 10);
     }
 
@@ -116,8 +126,8 @@ export function LineChart({
 
     ctx.beginPath();
     data.forEach((point, index) => {
-      const x = padding.left + (chartWidth * index) / (data.length - 1);
-      const y = padding.top + chartHeight - ((point.value - minValue) / (maxValue - minValue)) * chartHeight;
+      const x = getXPosition(index);
+      const y = padding.top + chartHeight - ((point.value - minValue) / valueRange) * chartHeight;
 
       if (index === 0) {
         ctx.moveTo(x, y);
@@ -130,8 +140,8 @@ export function LineChart({
     // Draw points
     ctx.fillStyle = color;
     data.forEach((point, index) => {
-      const x = padding.left + (chartWidth * index) / (data.length - 1);
-      const y = padding.top + chartHeight - ((point.value - minValue) / (maxValue - minValue)) * chartHeight;
+      const x = getXPosition(index);
+      const y = padding.top + chartHeight - ((point.value - minValue) / valueRange) * chartHeight;
 
       ctx.beginPath();
       ctx.arc(x, y, 3, 0, 2 * Math.PI);
@@ -146,7 +156,7 @@ export function LineChart({
       ctx.textBaseline = 'top';
       ctx.fillText(label, padding.left, 5);
     }
-  }, [data, color, showGrid, label]);
+  }, [data, color, showGrid, label, xAxisFormatter]);
 
   return (
     <canvas

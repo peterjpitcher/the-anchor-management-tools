@@ -157,11 +157,13 @@ export async function GET(
         throw clickInsertError;
       }
 
-      const { error: incrementError } = await (supabase as any).rpc('increment_short_link_clicks', {
-        p_short_link_id: resolvedLink.id
-      });
-      if (incrementError) {
-        throw incrementError;
+      if (deviceType !== 'bot') {
+        const { error: incrementError } = await (supabase as any).rpc('increment_short_link_clicks', {
+          p_short_link_id: resolvedLink.id
+        });
+        if (incrementError) {
+          throw incrementError;
+        }
       }
     } catch (err) {
       console.error('Error tracking click:', err);

@@ -2,6 +2,11 @@ import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { z } from 'zod';
 import { buildShortLinkUrl } from '@/lib/short-links/base-url';
+import {
+  SHORT_LINK_INSIGHTS_TIMEZONE,
+  type ShortLinkInsightsGranularity,
+  validateInsightsRange,
+} from '@/lib/short-link-insights-timeframes';
 
 // Validation schemas
 const CustomCodeSchema = z
@@ -33,9 +38,34 @@ export const ResolveShortLinkSchema = z.object({
   short_code: z.string().min(1, 'Short code is required')
 });
 
+export const ShortLinkVolumeGranularitySchema = z.enum(['hour', 'day', 'week', 'month']);
+
+export const GetShortLinkVolumeAdvancedSchema = z.object({
+  start_at: z.string().datetime({ offset: true }),
+  end_at: z.string().datetime({ offset: true }),
+  granularity: ShortLinkVolumeGranularitySchema,
+  include_bots: z.boolean().optional().default(false),
+  timezone: z.string().trim().min(1).max(64).optional().default(SHORT_LINK_INSIGHTS_TIMEZONE),
+}).superRefine((value, context) => {
+  const validation = validateInsightsRange(
+    new Date(value.start_at),
+    new Date(value.end_at),
+    value.granularity as ShortLinkInsightsGranularity
+  );
+
+  if (!validation.valid) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: validation.error,
+      path: ['start_at'],
+    });
+  }
+});
+
 export type CreateShortLinkInput = z.infer<typeof CreateShortLinkSchema>;
 export type UpdateShortLinkInput = z.infer<typeof UpdateShortLinkSchema>;
 export type ResolveShortLinkInput = z.infer<typeof ResolveShortLinkSchema>;
+export type GetShortLinkVolumeAdvancedInput = z.infer<typeof GetShortLinkVolumeAdvancedSchema>;
 
 export class ShortLinkService {
   private static async findShortLinkByDestinationUrl(
@@ -338,6 +368,23 @@ export class ShortLinkService {
     const { data, error } = await (supabase as any)
       .rpc('get_all_links_analytics', {
         p_days: days
+      });
+
+    if (error) throw new Error('Failed to load analytics');
+
+    return data;
+  }
+
+  static async getShortLinkVolumeAdvanced(input: GetShortLinkVolumeAdvancedInput) {
+    const supabase = await createClient();
+
+    const { data, error } = await (supabase as any)
+      .rpc('get_all_links_analytics_v2', {
+        p_start_at: input.start_at,
+        p_end_at: input.end_at,
+        p_granularity: input.granularity,
+        p_include_bots: input.include_bots ?? false,
+        p_timezone: input.timezone ?? SHORT_LINK_INSIGHTS_TIMEZONE,
       });
 
     if (error) throw new Error('Failed to load analytics');
