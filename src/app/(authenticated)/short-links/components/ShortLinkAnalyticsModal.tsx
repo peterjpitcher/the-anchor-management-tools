@@ -155,7 +155,7 @@ export function ShortLinkAnalyticsModal({ link, open, onClose }: Props) {
 
           <div className="grid grid-cols-2 gap-4">
             <Card variant="bordered" padding="sm" className="bg-blue-50">
-              <p className="text-sm text-blue-600">Total Clicks</p>
+              <p className="text-sm text-blue-600">Human Clicks</p>
               <p className="text-2xl font-bold text-blue-900">
                 {analytics.click_count ?? 0}
               </p>
@@ -172,8 +172,8 @@ export function ShortLinkAnalyticsModal({ link, open, onClose }: Props) {
           </div>
 
           {analytics.chartData && analytics.chartData.length > 0 && (
-            <Section title="Click Trends (Last 30 Days)" variant="gray" padding="sm">
-              <LineChart data={analytics.chartData} height={200} color="#3B82F6" label="Daily Clicks" />
+            <Section title="Human Click Trends (Last 30 Days)" variant="gray" padding="sm">
+              <LineChart data={analytics.chartData} height={200} color="#3B82F6" label="Daily Human Clicks" />
             </Section>
           )}
 

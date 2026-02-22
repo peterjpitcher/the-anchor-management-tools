@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ArrowPathIcon,
   ArrowTopRightOnSquareIcon,
@@ -12,6 +12,7 @@ import {
 } from '@heroicons/react/24/outline'
 import { PageLayout } from '@/components/ui-v2/layout/PageLayout'
 import { Select } from '@/components/ui-v2/forms/Select'
+import { Input } from '@/components/ui-v2/forms/Input'
 import { Button, IconButton } from '@/components/ui-v2/forms/Button'
 import { EmptyState } from '@/components/ui-v2/display/EmptyState'
 import { BarChart } from '@/components/charts/BarChart'
@@ -21,9 +22,20 @@ import { Card } from '@/components/ui-v2/layout/Card'
 import { Stat, StatGroup } from '@/components/ui-v2/display/Stat'
 import { SearchInput } from '@/components/ui-v2/forms/SearchInput'
 import { DataTable } from '@/components/ui-v2/display/DataTable'
-import { getShortLinkVolume } from '@/app/actions/short-links'
+import { getShortLinkVolumeAdvanced } from '@/app/actions/short-links'
 import type { HeaderNavItem } from '@/components/ui-v2/navigation/HeaderNav'
 import { buildShortLinkUrl } from '@/lib/short-links/base-url'
+import {
+  SHORT_LINK_INSIGHTS_TIMEZONE,
+  buildRangeFromPreset,
+  formatBucketLabel,
+  getDefaultInsightsTimeframe,
+  getTimeframePresets,
+  parseDateTimeLocalValue,
+  toDateTimeLocalValue,
+  type ShortLinkInsightsGranularity,
+  validateInsightsRange,
+} from '@/lib/short-link-insights-timeframes'
 import toast from 'react-hot-toast'
 import { useShortLinkClickToasts } from '@/hooks/useShortLinkClickToasts'
 
@@ -44,12 +56,11 @@ type SortOption =
   | 'code_asc'
   | 'code_desc'
 
-const PERIOD_OPTIONS = [
-  { value: '3', label: 'Last 3 days' },
-  { value: '7', label: 'Last 7 days' },
-  { value: '30', label: 'Last 30 days' },
-  { value: '60', label: 'Last 60 days' },
-  { value: '90', label: 'Last 90 days' },
+const GRANULARITY_OPTIONS: Array<{ value: ShortLinkInsightsGranularity; label: string }> = [
+  { value: 'hour', label: 'Hour' },
+  { value: 'day', label: 'Day' },
+  { value: 'week', label: 'Week' },
+  { value: 'month', label: 'Month' },
 ]
 
 const SORT_OPTIONS: Array<{ value: SortOption; label: string }> = [
@@ -60,6 +71,13 @@ const SORT_OPTIONS: Array<{ value: SortOption; label: string }> = [
   { value: 'code_asc', label: 'Code A-Z' },
   { value: 'code_desc', label: 'Code Z-A' },
 ]
+
+const GRANULARITY_LABELS: Record<ShortLinkInsightsGranularity, string> = {
+  hour: 'Hourly',
+  day: 'Daily',
+  week: 'Weekly',
+  month: 'Monthly',
+}
 
 function toNumber(value: unknown) {
   const parsed = Number(value)
@@ -73,8 +91,17 @@ function formatNumber(value: number) {
 export function InsightsClient() {
   useShortLinkClickToasts({ playSound: true })
 
+  const defaultTimeframeRef = useRef(getDefaultInsightsTimeframe())
+  const defaultTimeframe = defaultTimeframeRef.current
+
   const [volumeData, setVolumeData] = useState<VolumeDataResponse[]>([])
-  const [volumePeriod, setVolumePeriod] = useState('30')
+  const [granularity, setGranularity] = useState<ShortLinkInsightsGranularity>(defaultTimeframe.granularity)
+  const [preset, setPreset] = useState(defaultTimeframe.preset)
+  const [startAt, setStartAt] = useState(defaultTimeframe.startAt.toISOString())
+  const [endAt, setEndAt] = useState(defaultTimeframe.endAt.toISOString())
+  const [startInput, setStartInput] = useState(toDateTimeLocalValue(defaultTimeframe.startAt))
+  const [endInput, setEndInput] = useState(toDateTimeLocalValue(defaultTimeframe.endAt))
+  const [includeBots, setIncludeBots] = useState(defaultTimeframe.includeBots)
   const [loadingVolume, setLoadingVolume] = useState(false)
   const [hasLoaded, setHasLoaded] = useState(false)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
@@ -95,12 +122,48 @@ export function InsightsClient() {
     },
   ]
 
-  const loadVolumeData = useCallback(async (days: string) => {
+  const presetOptions = useMemo(() => getTimeframePresets(granularity), [granularity])
+
+  const rangeValidation = useMemo(
+    () => validateInsightsRange(new Date(startAt), new Date(endAt), granularity),
+    [startAt, endAt, granularity]
+  )
+
+  const applyPreset = useCallback(
+    (nextGranularity: ShortLinkInsightsGranularity, nextPreset: string) => {
+      const range = buildRangeFromPreset(nextGranularity, nextPreset)
+      const nextStartIso = range.startAt.toISOString()
+      const nextEndIso = range.endAt.toISOString()
+
+      setPreset(nextPreset)
+      setStartAt(nextStartIso)
+      setEndAt(nextEndIso)
+      setStartInput(toDateTimeLocalValue(range.startAt))
+      setEndInput(toDateTimeLocalValue(range.endAt))
+    },
+    []
+  )
+
+  const loadVolumeData = useCallback(async () => {
+    const validation = validateInsightsRange(new Date(startAt), new Date(endAt), granularity)
+    if (!validation.valid) {
+      setErrorMessage(validation.error)
+      setHasLoaded(true)
+      return
+    }
+
     setLoadingVolume(true)
     setErrorMessage(null)
 
     try {
-      const result = await getShortLinkVolume(Number(days))
+      const result = await getShortLinkVolumeAdvanced({
+        start_at: startAt,
+        end_at: endAt,
+        granularity,
+        include_bots: includeBots,
+        timezone: SHORT_LINK_INSIGHTS_TIMEZONE,
+      })
+
       if (!result || 'error' in result) {
         const message = result?.error || 'Failed to load analytics data'
         setErrorMessage(message)
@@ -137,11 +200,11 @@ export function InsightsClient() {
     } finally {
       setLoadingVolume(false)
     }
-  }, [])
+  }, [startAt, endAt, granularity, includeBots])
 
   useEffect(() => {
-    void loadVolumeData(volumePeriod)
-  }, [loadVolumeData, volumePeriod])
+    void loadVolumeData()
+  }, [loadVolumeData])
 
   const filteredData = useMemo(() => {
     const query = searchTerm.trim().toLowerCase()
@@ -217,6 +280,27 @@ export function InsightsClient() {
     }).format(lastUpdated)
   }, [lastUpdated])
 
+  const selectedRangeLabel = useMemo(() => {
+    const startDate = new Date(startAt)
+    const endDate = new Date(endAt)
+    if (!Number.isFinite(startDate.getTime()) || !Number.isFinite(endDate.getTime())) {
+      return 'Invalid range'
+    }
+
+    const formatter = new Intl.DateTimeFormat('en-GB', {
+      timeZone: SHORT_LINK_INSIGHTS_TIMEZONE,
+      dateStyle: 'medium',
+      timeStyle: 'short',
+    })
+
+    return `${formatter.format(startDate)} to ${formatter.format(endDate)}`
+  }, [startAt, endAt])
+
+  const trendXAxisFormatter = useCallback(
+    (bucketDate: string) => formatBucketLabel(bucketDate, granularity, SHORT_LINK_INSIGHTS_TIMEZONE),
+    [granularity]
+  )
+
   const handleCopyLink = useCallback(async (shortCode: string) => {
     const fullUrl = buildShortLinkUrl(shortCode)
     try {
@@ -238,12 +322,48 @@ export function InsightsClient() {
     setSortBy('clicks_desc')
   }, [])
 
+  const handleGranularityChange = useCallback((nextGranularity: ShortLinkInsightsGranularity) => {
+    setGranularity(nextGranularity)
+    const defaultPreset = getTimeframePresets(nextGranularity)[0]
+    applyPreset(nextGranularity, defaultPreset.value)
+  }, [applyPreset])
+
+  const handlePresetChange = useCallback((nextPreset: string) => {
+    if (nextPreset === 'custom') {
+      setPreset('custom')
+      return
+    }
+    applyPreset(granularity, nextPreset)
+  }, [applyPreset, granularity])
+
+  const handleStartInputChange = useCallback((value: string) => {
+    setPreset('custom')
+    setStartInput(value)
+    const parsed = parseDateTimeLocalValue(value)
+    if (parsed) {
+      setStartAt(parsed.toISOString())
+    }
+  }, [])
+
+  const handleEndInputChange = useCallback((value: string) => {
+    setPreset('custom')
+    setEndInput(value)
+    const parsed = parseDateTimeLocalValue(value)
+    if (parsed) {
+      setEndAt(parsed.toISOString())
+    }
+  }, [])
+
   const showInitialLoading = loadingVolume && !hasLoaded
   const showEmptyState = hasLoaded && !loadingVolume && volumeData.length === 0 && !errorMessage
   const showErrorState = hasLoaded && !loadingVolume && volumeData.length === 0 && !!errorMessage
   const showInlineError = !!errorMessage && volumeData.length > 0
   const isRefreshing = loadingVolume && hasLoaded
-  const metricLabel = volumeChartType === 'clicks' ? 'clicks' : 'unique visitors'
+  const metricLabel = volumeChartType === 'clicks' ? (includeBots ? 'clicks' : 'human clicks') : 'unique visitors'
+  const clickLabel = includeBots ? 'Total Clicks' : 'Human Clicks'
+  const averageClickLabel = includeBots ? 'Avg Clicks / Link' : 'Avg Human Clicks / Link'
+  const trendTitle = `${GRANULARITY_LABELS[granularity]} Click Trend`
+  const trendLabel = `${GRANULARITY_LABELS[granularity]} ${includeBots ? 'Clicks' : 'Human Clicks'}`
 
   return (
     <PageLayout
@@ -258,69 +378,140 @@ export function InsightsClient() {
       <div className="space-y-6">
         <Card variant="bordered">
           <div className="p-4 sm:p-6 space-y-4">
-            <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
-              <div className="grid gap-3 sm:grid-cols-2">
-                <div className="space-y-1">
-                  <label htmlFor="period-select" className="text-xs font-semibold uppercase tracking-wide text-gray-500">
-                    Time period
-                  </label>
-                  <Select
-                    id="period-select"
-                    value={volumePeriod}
-                    onChange={(e) => setVolumePeriod(e.target.value)}
-                    className="sm:w-48"
-                  >
-                    {PERIOD_OPTIONS.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </Select>
-                </div>
-
-                <div className="space-y-1">
-                  <label htmlFor="sort-select" className="text-xs font-semibold uppercase tracking-wide text-gray-500">
-                    Sort links
-                  </label>
-                  <Select
-                    id="sort-select"
-                    value={sortBy}
-                    onChange={(e) => setSortBy(e.target.value as SortOption)}
-                    className="sm:w-64"
-                  >
-                    {SORT_OPTIONS.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </Select>
-                </div>
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+              <div className="space-y-1">
+                <label htmlFor="granularity-select" className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                  Granularity
+                </label>
+                <Select
+                  id="granularity-select"
+                  value={granularity}
+                  onChange={(e) => handleGranularityChange(e.target.value as ShortLinkInsightsGranularity)}
+                >
+                  {GRANULARITY_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </Select>
               </div>
 
-              <div className="flex flex-wrap items-center gap-2">
-                <div className="flex gap-1 rounded-lg bg-gray-100 p-1">
-                  <Button
-                    size="sm"
-                    variant={volumeChartType === 'clicks' ? 'primary' : 'ghost'}
-                    onClick={() => setVolumeChartType('clicks')}
-                    className={volumeChartType === 'clicks' ? 'shadow-sm' : ''}
-                  >
-                    Total Clicks
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant={volumeChartType === 'unique' ? 'primary' : 'ghost'}
-                    onClick={() => setVolumeChartType('unique')}
-                    className={volumeChartType === 'unique' ? 'shadow-sm' : ''}
-                  >
-                    Unique Visitors
-                  </Button>
+              <div className="space-y-1">
+                <label htmlFor="preset-select" className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                  Preset
+                </label>
+                <Select
+                  id="preset-select"
+                  value={preset}
+                  onChange={(e) => handlePresetChange(e.target.value)}
+                >
+                  {presetOptions.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                  <option value="custom">Custom range</option>
+                </Select>
+              </div>
+
+              <div className="space-y-1">
+                <label htmlFor="custom-start" className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                  Custom Start
+                </label>
+                <Input
+                  id="custom-start"
+                  type="datetime-local"
+                  value={startInput}
+                  onChange={(e) => handleStartInputChange(e.target.value)}
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label htmlFor="custom-end" className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                  Custom End
+                </label>
+                <Input
+                  id="custom-end"
+                  type="datetime-local"
+                  value={endInput}
+                  onChange={(e) => handleEndInputChange(e.target.value)}
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label htmlFor="sort-select" className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                  Sort Links
+                </label>
+                <Select
+                  id="sort-select"
+                  value={sortBy}
+                  onChange={(e) => setSortBy(e.target.value as SortOption)}
+                >
+                  {SORT_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </Select>
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+              <div className="space-y-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  <div className="flex gap-1 rounded-lg bg-gray-100 p-1">
+                    <Button
+                      size="sm"
+                      variant={!includeBots ? 'primary' : 'ghost'}
+                      onClick={() => setIncludeBots(false)}
+                      className={!includeBots ? 'shadow-sm' : ''}
+                    >
+                      Human only
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant={includeBots ? 'primary' : 'ghost'}
+                      onClick={() => setIncludeBots(true)}
+                      className={includeBots ? 'shadow-sm' : ''}
+                    >
+                      Include bots
+                    </Button>
+                  </div>
+
+                  <div className="flex gap-1 rounded-lg bg-gray-100 p-1">
+                    <Button
+                      size="sm"
+                      variant={volumeChartType === 'clicks' ? 'primary' : 'ghost'}
+                      onClick={() => setVolumeChartType('clicks')}
+                      className={volumeChartType === 'clicks' ? 'shadow-sm' : ''}
+                    >
+                      {clickLabel}
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant={volumeChartType === 'unique' ? 'primary' : 'ghost'}
+                      onClick={() => setVolumeChartType('unique')}
+                      className={volumeChartType === 'unique' ? 'shadow-sm' : ''}
+                    >
+                      Unique Visitors
+                    </Button>
+                  </div>
                 </div>
 
+                <p className="text-xs text-gray-500">
+                  Bucket timezone: {SHORT_LINK_INSIGHTS_TIMEZONE} | Selected range: {selectedRangeLabel}
+                </p>
+
+                {!rangeValidation.valid ? (
+                  <p className="text-xs text-red-600">{rangeValidation.error}</p>
+                ) : null}
+              </div>
+
+              <div className="flex items-center gap-2">
                 <Button
                   variant="secondary"
                   size="sm"
-                  onClick={() => void loadVolumeData(volumePeriod)}
+                  onClick={() => void loadVolumeData()}
                   loading={isRefreshing}
                   leftIcon={<ArrowPathIcon className="h-4 w-4" />}
                 >
@@ -368,7 +559,7 @@ export function InsightsClient() {
                 title="Could not load insights"
                 description={errorMessage || "We couldn't fetch short link analytics right now."}
                 action={
-                  <Button variant="primary" onClick={() => void loadVolumeData(volumePeriod)}>
+                  <Button variant="primary" onClick={() => void loadVolumeData()}>
                     Try again
                   </Button>
                 }
@@ -381,7 +572,9 @@ export function InsightsClient() {
               <EmptyState
                 icon="chart"
                 title="No analytics data for this period"
-                description="No tracked clicks were found in the selected time range. Try a longer period."
+                description={includeBots
+                  ? 'No tracked clicks were found in the selected time range. Try a different range.'
+                  : 'No tracked human clicks were found in the selected time range. Try including bots or widening the range.'}
               />
             </div>
           </Card>
@@ -402,7 +595,7 @@ export function InsightsClient() {
                   variant="bordered"
                 />
                 <Stat
-                  label="Total Clicks"
+                  label={clickLabel}
                   value={formatNumber(totals.totalClicks)}
                   icon={<CursorArrowRaysIcon className="h-5 w-5 text-indigo-500" />}
                   variant="bordered"
@@ -414,7 +607,7 @@ export function InsightsClient() {
                   variant="bordered"
                 />
                 <Stat
-                  label="Avg Clicks / Link"
+                  label={averageClickLabel}
                   value={formatNumber(totals.averageClicks)}
                   description={totals.topLink ? `Top link: /${totals.topLink.shortCode}` : undefined}
                   icon={<ChartBarIcon className="h-5 w-5 text-amber-500" />}
@@ -426,19 +619,25 @@ export function InsightsClient() {
             <div className="grid gap-6 lg:grid-cols-3">
               <Card variant="bordered" className="lg:col-span-2">
                 <Section
-                  title="Daily Click Trend"
-                  description="Combined clicks across filtered links."
+                  title={trendTitle}
+                  description={`${includeBots ? 'Combined clicks' : 'Combined human clicks'} across filtered links. Buckets shown in ${SHORT_LINK_INSIGHTS_TIMEZONE}.`}
                   padding="sm"
                 >
                   {trendData.length > 0 ? (
-                    <LineChart data={trendData} height={280} color="#2563EB" label="Daily Clicks" />
+                    <LineChart
+                      data={trendData}
+                      height={280}
+                      color="#2563EB"
+                      label={trendLabel}
+                      xAxisFormatter={trendXAxisFormatter}
+                    />
                   ) : (
                     <EmptyState
                       size="sm"
                       variant="minimal"
                       icon="chart"
                       title="No trend data"
-                      description="Try adjusting your search or time period."
+                      description="Try adjusting your search, timeframe, or traffic filter."
                     />
                   )}
                 </Section>
@@ -472,7 +671,7 @@ export function InsightsClient() {
 
             <Section
               title="Link Performance Breakdown"
-              description="Search, sort, and compare individual short link performance."
+              description="Search, sort, and compare individual short link performance for the selected timeframe."
               actions={
                 searchTerm ? (
                   <Button variant="ghost" size="sm" onClick={clearFilters}>
@@ -494,7 +693,7 @@ export function InsightsClient() {
                   emptyDescription={
                     searchTerm
                       ? 'Try a broader search term or clear filters.'
-                      : 'Try selecting a longer time period.'
+                      : 'Try selecting a different timeframe or traffic filter.'
                   }
                   emptyAction={
                     searchTerm ? (
@@ -542,7 +741,7 @@ export function InsightsClient() {
                     },
                     {
                       key: 'totalClicks',
-                      header: 'Clicks',
+                      header: clickLabel,
                       align: 'right',
                       sortable: true,
                       sortFn: (a, b) => a.totalClicks - b.totalClicks,
@@ -612,7 +811,7 @@ export function InsightsClient() {
 
                         <div className="grid grid-cols-3 gap-3 text-xs">
                           <div>
-                            <p className="text-gray-500">Clicks</p>
+                            <p className="text-gray-500">{clickLabel}</p>
                             <p className="font-semibold text-gray-900">{formatNumber(item.totalClicks)}</p>
                           </div>
                           <div>

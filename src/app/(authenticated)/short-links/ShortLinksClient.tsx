@@ -238,7 +238,7 @@ export default function ShortLinksClient({ initialLinks, canManage }: Props) {
               },
               {
                 key: 'click_count',
-                header: 'Clicks',
+                header: 'Human Clicks',
                 cell: (link) => link.click_count ?? 0,
                 sortable: true
               },
@@ -318,7 +318,7 @@ export default function ShortLinksClient({ initialLinks, canManage }: Props) {
                 </div>
 
                 <div className="flex justify-between items-center text-sm text-gray-500 mb-3">
-                  <span>{link.click_count ?? 0} clicks</span>
+                  <span>{link.click_count ?? 0} human clicks</span>
                   <span>{new Date(link.created_at).toLocaleDateString()}</span>
                 </div>
 

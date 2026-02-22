@@ -11,7 +11,7 @@ vi.mock('@/lib/supabase/admin', () => ({
 
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { ShortLinkService } from '@/services/short-links'
+import { GetShortLinkVolumeAdvancedSchema, ShortLinkService } from '@/services/short-links'
 
 const mockSelect = vi.fn()
 const mockEq = vi.fn()
@@ -263,5 +263,48 @@ describe('ShortLinkService', () => {
         metadata: { alias_code: 'old123' },
       })
     )
+  })
+
+  it('getShortLinkVolumeAdvanced calls v2 analytics RPC with validated payload fields', async () => {
+    mockRpc.mockResolvedValueOnce({
+      data: [{ short_code: 'abc123', click_counts: [1, 2] }],
+      error: null,
+    })
+
+    await ShortLinkService.getShortLinkVolumeAdvanced({
+      start_at: '2026-02-20T00:00:00.000Z',
+      end_at: '2026-02-22T00:00:00.000Z',
+      granularity: 'hour',
+      include_bots: true,
+      timezone: 'Europe/London',
+    })
+
+    expect(mockRpc).toHaveBeenCalledWith('get_all_links_analytics_v2', {
+      p_start_at: '2026-02-20T00:00:00.000Z',
+      p_end_at: '2026-02-22T00:00:00.000Z',
+      p_granularity: 'hour',
+      p_include_bots: true,
+      p_timezone: 'Europe/London',
+    })
+  })
+
+  it('advanced analytics schema rejects inverted ranges', () => {
+    expect(() =>
+      GetShortLinkVolumeAdvancedSchema.parse({
+        start_at: '2026-02-22T12:00:00.000Z',
+        end_at: '2026-02-21T12:00:00.000Z',
+        granularity: 'hour',
+      })
+    ).toThrow(/start time must be before end time/i)
+  })
+
+  it('advanced analytics schema enforces hourly bucket guardrails', () => {
+    expect(() =>
+      GetShortLinkVolumeAdvancedSchema.parse({
+        start_at: '2025-12-01T00:00:00.000Z',
+        end_at: '2026-02-22T00:00:00.000Z',
+        granularity: 'hour',
+      })
+    ).toThrow(/too large/i)
   })
 })

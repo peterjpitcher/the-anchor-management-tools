@@ -18,7 +18,7 @@ type EventCategoryRow = {
 
 type EventMessageTemplateRow = {
   template_type: string;
-  custom_content: string | null;
+  content: string | null;
 };
 
 type EventCapacityRow = {
@@ -96,23 +96,29 @@ export async function GET(
       category = categoryRow ?? null;
     }
 
-    const { data: faqs, error: faqsError } = await supabase
+    let faqs: EventFaqRow[] = [];
+    const { data: faqRows, error: faqsError } = await supabase
       .from('event_faqs')
       .select('id, question, answer, sort_order')
       .eq('event_id', event.id)
       .order('sort_order', { ascending: true });
 
     if (faqsError) {
-      return createErrorResponse('Failed to load event FAQs', 'DATABASE_ERROR', 500);
+      console.error('[events:id] failed to load event FAQs', faqsError);
+    } else if (Array.isArray(faqRows)) {
+      faqs = faqRows as EventFaqRow[];
     }
 
-    const { data: messageTemplatesRows, error: messageTemplatesError } = await supabase
+    let messageTemplatesRows: EventMessageTemplateRow[] = [];
+    const { data: rawMessageTemplatesRows, error: messageTemplatesError } = await supabase
       .from('event_message_templates')
-      .select('template_type, custom_content')
+      .select('template_type, content')
       .eq('event_id', event.id);
 
     if (messageTemplatesError) {
-      return createErrorResponse('Failed to load event message templates', 'DATABASE_ERROR', 500);
+      console.error('[events:id] failed to load event message templates', messageTemplatesError);
+    } else if (Array.isArray(rawMessageTemplatesRows)) {
+      messageTemplatesRows = rawMessageTemplatesRows as EventMessageTemplateRow[];
     }
 
     let marketingShortLinks: EventShortLinkRow[] = [];
@@ -127,14 +133,13 @@ export async function GET(
       marketingShortLinks = shortLinksRows as EventShortLinkRow[];
     }
 
-    const sortedFaqs = [...(faqs || [])].sort(
+    const sortedFaqs = [...faqs].sort(
       (a: EventFaqRow, b: EventFaqRow) => (a.sort_order || 0) - (b.sort_order || 0)
     );
 
-    const messageTemplates = (messageTemplatesRows || []) as EventMessageTemplateRow[];
-    const customMessages = messageTemplates.reduce(
+    const customMessages = messageTemplatesRows.reduce(
       (acc, template) => {
-        acc[template.template_type] = template.custom_content;
+        acc[template.template_type] = template.content;
         return acc;
       },
       {} as Record<string, string | null>

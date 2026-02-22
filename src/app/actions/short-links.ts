@@ -5,7 +5,13 @@ import { revalidatePath, revalidateTag } from 'next/cache';
 import { z } from 'zod';
 import { checkUserPermission } from './rbac';
 import { logAuditEvent } from './audit';
-import { ShortLinkService, CreateShortLinkSchema, UpdateShortLinkSchema, ResolveShortLinkSchema } from '@/services/short-links';
+import {
+  ShortLinkService,
+  CreateShortLinkSchema,
+  UpdateShortLinkSchema,
+  ResolveShortLinkSchema,
+  GetShortLinkVolumeAdvancedSchema,
+} from '@/services/short-links';
 
 // Create a short link
 export async function createShortLink(data: z.infer<typeof CreateShortLinkSchema>) {
@@ -241,6 +247,27 @@ export async function getShortLinkVolume(days: number = 30) {
     return { success: true, data };
   } catch (error: any) {
     console.error('Short link volume error:', error);
+    return { error: error.message || 'Failed to load analytics' };
+  }
+}
+
+export async function getShortLinkVolumeAdvanced(
+  input: z.input<typeof GetShortLinkVolumeAdvancedSchema>
+) {
+  try {
+    const canView = await checkUserPermission('short_links', 'view');
+    if (!canView) {
+      return { error: 'You do not have permission to view short link analytics' };
+    }
+
+    const validated = GetShortLinkVolumeAdvancedSchema.parse(input);
+    const data = await ShortLinkService.getShortLinkVolumeAdvanced(validated);
+    return { success: true, data };
+  } catch (error: any) {
+    console.error('Short link advanced volume error:', error);
+    if (error instanceof z.ZodError) {
+      return { error: error.errors[0]?.message || 'Invalid analytics range' };
+    }
     return { error: error.message || 'Failed to load analytics' };
   }
 }
