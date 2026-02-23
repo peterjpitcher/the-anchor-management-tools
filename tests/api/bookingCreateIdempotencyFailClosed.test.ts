@@ -57,8 +57,11 @@ import {
   releaseIdempotencyClaim,
 } from '@/lib/api/idempotency'
 import { PrivateBookingService } from '@/services/private-bookings'
+import { formatPhoneForStorage } from '@/lib/utils'
 import { POST as publicPrivateBookingPost } from '@/app/api/public/private-booking/route'
 import { POST as externalCreateBookingPost } from '@/app/api/external/create-booking/route'
+
+const mockedFormatPhoneForStorage = formatPhoneForStorage as unknown as vi.Mock
 
 describe('booking-create routes idempotency fail-closed guards', () => {
   beforeEach(() => {
@@ -136,5 +139,33 @@ describe('booking-create routes idempotency fail-closed guards', () => {
     expect(persistIdempotencyResponse).toHaveBeenCalledTimes(1)
     expect(releaseIdempotencyClaim).not.toHaveBeenCalled()
   })
-})
 
+  it('passes default_country_code when normalizing external create-booking phone numbers', async () => {
+    ;(getIdempotencyKey as unknown as vi.Mock).mockReturnValue('idem-3')
+    ;(persistIdempotencyResponse as unknown as vi.Mock).mockResolvedValue(undefined)
+    ;(PrivateBookingService as unknown as { createBooking: vi.Mock }).createBooking.mockResolvedValue({
+      id: 'external-booking-2',
+      booking_reference: 'EXT-2',
+    })
+
+    const request = new Request('http://localhost/api/external/create-booking', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'Idempotency-Key': 'idem-3',
+      },
+      body: JSON.stringify({
+        name: 'Jean Example',
+        email: 'jean@example.com',
+        phone: '06 12 34 56 78',
+        default_country_code: '33',
+      }),
+    })
+
+    const response = await externalCreateBookingPost(request as any)
+    expect(response.status).toBe(201)
+    expect(mockedFormatPhoneForStorage).toHaveBeenCalledWith('06 12 34 56 78', {
+      defaultCountryCode: '33',
+    })
+  })
+})

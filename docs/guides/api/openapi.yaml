@@ -138,7 +138,8 @@ components:
           format: email
         mobile_number:
           type: string
-          pattern: '^\+44[1-9]\d{9}$'
+          pattern: '^\+[1-9]\d{7,14}$'
+          description: E.164 phone number (for example, +14155552671)
         sms_opt_in:
           type: boolean
         created_at:

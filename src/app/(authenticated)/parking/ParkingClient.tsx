@@ -210,6 +210,7 @@ export default function ParkingClient({ permissions, initialError }: Props) {
     formData.append('customer_first_name', createForm.customer_first_name)
     if (createForm.customer_last_name) formData.append('customer_last_name', createForm.customer_last_name)
     formData.append('customer_mobile', createForm.customer_mobile)
+    formData.append('default_country_code', '44')
     if (createForm.customer_email) formData.append('customer_email', createForm.customer_email)
     formData.append('vehicle_registration', createForm.vehicle_registration)
     if (createForm.vehicle_make) formData.append('vehicle_make', createForm.vehicle_make)

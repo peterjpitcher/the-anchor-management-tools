@@ -16,6 +16,7 @@ const CreateParkingBookingSchema = z.object({
   customer_first_name: z.string().min(1, 'First name is required'),
   customer_last_name: z.string().optional().transform((value) => value?.trim() || undefined),
   customer_mobile: z.string().min(1, 'Mobile number is required'),
+  default_country_code: z.string().regex(/^\d{1,4}$/).optional(),
   customer_email: z
     .union([z.string(), z.undefined()])
     .optional()
@@ -87,7 +88,8 @@ export async function createParkingBooking(formData: FormData) {
           firstName: data.customer_first_name,
           lastName: data.customer_last_name,
           email: data.customer_email,
-          mobile: data.customer_mobile
+          mobile: data.customer_mobile,
+          defaultCountryCode: data.default_country_code
         },
         vehicle: {
           registration: data.vehicle_registration,

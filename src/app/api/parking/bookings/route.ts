@@ -19,7 +19,8 @@ const CreateBookingSchema = z.object({
     first_name: z.string().min(1),
     last_name: z.string().optional(),
     email: z.string().email().optional(),
-    mobile_number: z.string().min(1)
+    mobile_number: z.string().min(1),
+    default_country_code: z.string().regex(/^\d{1,4}$/).optional()
   }),
   vehicle: z.object({
     registration: z.string().min(1),
@@ -147,7 +148,8 @@ export async function POST(request: NextRequest) {
                 firstName: payload.customer.first_name,
                 lastName: payload.customer.last_name,
                 email: payload.customer.email,
-                mobile: payload.customer.mobile_number
+                mobile: payload.customer.mobile_number,
+                defaultCountryCode: payload.customer.default_country_code
               },
               vehicle: {
                 registration: payload.vehicle.registration,

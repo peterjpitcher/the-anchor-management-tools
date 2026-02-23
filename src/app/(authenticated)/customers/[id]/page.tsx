@@ -555,6 +555,7 @@ export default function CustomerViewPage() {
       if (data.last_name) formData.append('last_name', data.last_name)
       if (data.email) formData.append('email', data.email)
       if (data.mobile_number) formData.append('mobile_number', data.mobile_number)
+      formData.append('default_country_code', '44')
       if (customer.sms_opt_in) formData.append('sms_opt_in', 'on')
 
       const result = await updateCustomerAction(customer.id, formData)

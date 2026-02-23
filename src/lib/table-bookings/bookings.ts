@@ -509,7 +509,10 @@ export async function getTablePaymentPreviewByRawToken(
     return { state: 'blocked', reason: 'booking_not_found' }
   }
 
-  const { data: booking, error: bookingError } = await (supabase.from('table_bookings') as any)
+  let booking: any = null
+  let bookingError: any = null
+
+  ;({ data: booking, error: bookingError } = await (supabase.from('table_bookings') as any)
     .select(`
       id,
       customer_id,
@@ -524,7 +527,26 @@ export async function getTablePaymentPreviewByRawToken(
       booking_type
     `)
     .eq('id', token.table_booking_id)
-    .maybeSingle()
+    .maybeSingle())
+
+  // Compatibility fallback for environments that have not yet applied committed_party_size.
+  if (bookingError && /committed_party_size/i.test(String(bookingError.message || ''))) {
+    ;({ data: booking, error: bookingError } = await (supabase.from('table_bookings') as any)
+      .select(`
+        id,
+        customer_id,
+        status,
+        hold_expires_at,
+        party_size,
+        booking_reference,
+        booking_date,
+        booking_time,
+        start_datetime,
+        booking_type
+      `)
+      .eq('id', token.table_booking_id)
+      .maybeSingle())
+  }
 
   if (bookingError) {
     throw bookingError
@@ -621,82 +643,94 @@ export async function createTableCheckoutSessionByRawToken(
     throw new Error('Stripe checkout session did not return a URL')
   }
 
-  const nowIso = new Date().toISOString()
+  try {
+    const nowIso = new Date().toISOString()
 
-  const { data: existingSessionRow, error: existingSessionLookupError } = await supabase
-    .from('payments')
-    .select('id')
-    .eq('stripe_checkout_session_id', session.id)
-    .limit(1)
-    .maybeSingle()
-
-  if (existingSessionLookupError) {
-    throw new Error(
-      `Failed to verify existing table-deposit payment row before checkout persistence: ${existingSessionLookupError.message}`
-    )
-  }
-
-  if (!existingSessionRow) {
-    const { data: pendingRow, error: pendingLookupError } = await supabase
+    const { data: existingSessionRow, error: existingSessionLookupError } = await supabase
       .from('payments')
       .select('id')
-      .eq('table_booking_id', preview.tableBookingId)
-      .eq('charge_type', 'table_deposit')
-      .eq('status', 'pending')
-      .is('stripe_checkout_session_id', null)
-      .order('created_at', { ascending: false })
+      .eq('stripe_checkout_session_id', session.id)
       .limit(1)
       .maybeSingle()
 
-    if (pendingLookupError) {
-      throw new Error(`Failed to locate pending table-deposit row: ${pendingLookupError.message}`)
+    if (existingSessionLookupError) {
+      throw new Error(
+        `Failed to verify existing table-deposit payment row before checkout persistence: ${existingSessionLookupError.message}`
+      )
     }
 
-    if (pendingRow?.id) {
-      const { error: pendingUpdateError } = await supabase
+    if (!existingSessionRow) {
+      const { data: pendingRow, error: pendingLookupError } = await supabase
         .from('payments')
-        .update({
+        .select('id')
+        .eq('table_booking_id', preview.tableBookingId)
+        .eq('charge_type', 'table_deposit')
+        .eq('status', 'pending')
+        .is('stripe_checkout_session_id', null)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+
+      if (pendingLookupError) {
+        throw new Error(`Failed to locate pending table-deposit row: ${pendingLookupError.message}`)
+      }
+
+      if (pendingRow?.id) {
+        const { error: pendingUpdateError } = await supabase
+          .from('payments')
+          .update({
+            stripe_checkout_session_id: session.id,
+            stripe_payment_intent_id: session.payment_intent ?? null,
+            amount: preview.totalAmount,
+            currency: preview.currency,
+            metadata: {
+              source: 'guest_token',
+              token_hash: preview.tokenHash,
+              checkout_url: session.url,
+              party_size: preview.partySize,
+              deposit_per_person: 10,
+              updated_at: nowIso,
+            },
+          })
+          .eq('id', pendingRow.id)
+
+        if (pendingUpdateError) {
+          throw new Error(`Failed to update pending table-deposit payment row: ${pendingUpdateError.message}`)
+        }
+      } else {
+        const { error: insertError } = await supabase.from('payments').insert({
+          table_booking_id: preview.tableBookingId,
+          charge_type: 'table_deposit',
           stripe_checkout_session_id: session.id,
           stripe_payment_intent_id: session.payment_intent ?? null,
           amount: preview.totalAmount,
           currency: preview.currency,
+          status: 'pending',
           metadata: {
             source: 'guest_token',
             token_hash: preview.tokenHash,
             checkout_url: session.url,
             party_size: preview.partySize,
             deposit_per_person: 10,
-            updated_at: nowIso,
+            created_at: nowIso,
           },
         })
-        .eq('id', pendingRow.id)
 
-      if (pendingUpdateError) {
-        throw new Error(`Failed to update pending table-deposit payment row: ${pendingUpdateError.message}`)
-      }
-    } else {
-      const { error: insertError } = await supabase.from('payments').insert({
-        table_booking_id: preview.tableBookingId,
-        charge_type: 'table_deposit',
-        stripe_checkout_session_id: session.id,
-        stripe_payment_intent_id: session.payment_intent ?? null,
-        amount: preview.totalAmount,
-        currency: preview.currency,
-        status: 'pending',
-        metadata: {
-          source: 'guest_token',
-          token_hash: preview.tokenHash,
-          checkout_url: session.url,
-          party_size: preview.partySize,
-          deposit_per_person: 10,
-          created_at: nowIso,
-        },
-      })
-
-      if (insertError) {
-        throw new Error(`Failed to insert pending table-deposit payment row: ${insertError.message}`)
+        if (insertError) {
+          throw new Error(`Failed to insert pending table-deposit payment row: ${insertError.message}`)
+        }
       }
     }
+  } catch (persistenceError) {
+    // Do not block guest checkout if payment-row persistence fails after Stripe session creation.
+    // Webhook confirmation can still upsert payment state by checkout session metadata.
+    logger.error('Failed to persist pending table-deposit payment row after Stripe checkout session creation', {
+      error: persistenceError instanceof Error ? persistenceError : new Error(String(persistenceError)),
+      metadata: {
+        tableBookingId: preview.tableBookingId,
+        checkoutSessionId: session.id,
+      },
+    })
   }
 
   return {

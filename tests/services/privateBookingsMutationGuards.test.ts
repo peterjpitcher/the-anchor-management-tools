@@ -19,6 +19,10 @@ vi.mock('@/services/sms-queue', () => ({
   },
 }))
 
+vi.mock('@/lib/sms/customers', () => ({
+  ensureCustomerForPhone: vi.fn(),
+}))
+
 vi.mock('@/lib/google-calendar', () => ({
   syncCalendarEvent: vi.fn(),
   deleteCalendarEvent: vi.fn(),
@@ -29,13 +33,19 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { SmsQueueService } from '@/services/sms-queue'
 import { PrivateBookingService } from '@/services/private-bookings'
+import { ensureCustomerForPhone } from '@/lib/sms/customers'
 
 const mockedCreateClient = createClient as unknown as Mock
 const mockedCreateAdminClient = createAdminClient as unknown as Mock
+const mockedEnsureCustomerForPhone = ensureCustomerForPhone as unknown as Mock
 
 describe('PrivateBookingService mutation row-effect guards', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    mockedEnsureCustomerForPhone.mockResolvedValue({
+      customerId: 'customer-1',
+      resolutionError: undefined,
+    })
   })
 
   it('createBooking fails closed when customer cannot be resolved', async () => {
@@ -58,6 +68,44 @@ describe('PrivateBookingService mutation row-effect guards', () => {
     ).rejects.toThrow('Private booking must include a linked customer (customer_id or contact_phone)')
 
     expect(rpc).not.toHaveBeenCalled()
+  })
+
+  it('createBooking accepts non-UK international numbers', async () => {
+    const rpc = vi.fn().mockResolvedValue({
+      data: {
+        id: 'booking-1',
+        customer_id: 'customer-1',
+      },
+      error: null,
+    })
+
+    mockedCreateClient.mockResolvedValue({
+      rpc,
+    })
+
+    const result = await PrivateBookingService.createBooking({
+      customer_first_name: 'Jean',
+      customer_last_name: 'Dupont',
+      contact_phone: '+33 6 12 34 56 78',
+      default_country_code: '33',
+      event_date: '2026-03-10',
+      start_time: '18:00',
+      guest_count: 40,
+      event_type: 'party',
+      source: 'manual',
+    })
+
+    expect(result).toMatchObject({
+      id: 'booking-1',
+    })
+    expect(rpc).toHaveBeenCalledWith(
+      'create_private_booking_transaction',
+      expect.objectContaining({
+        p_booking_data: expect.objectContaining({
+          contact_phone: '+33612345678',
+        }),
+      }),
+    )
   })
 
   it('updateBookingItem throws not-found when update affects no rows', async () => {

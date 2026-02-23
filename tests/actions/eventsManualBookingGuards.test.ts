@@ -78,6 +78,7 @@ import { ensureCustomerForPhone } from '@/lib/sms/customers'
 import { createEventManageToken, updateEventBookingSeatsById } from '@/lib/events/manage-booking'
 import { sendEventBookingSeatUpdateSms } from '@/lib/events/event-payments'
 import { sendSMS } from '@/lib/twilio'
+import { formatPhoneForStorage } from '@/lib/utils'
 
 const mockedPermission = checkUserPermission as unknown as Mock
 const mockedCreateAdminClient = createAdminClient as unknown as Mock
@@ -85,6 +86,7 @@ const mockedEnsureCustomerForPhone = ensureCustomerForPhone as unknown as Mock
 const mockedCreateEventManageToken = createEventManageToken as unknown as Mock
 const mockedUpdateEventBookingSeatsById = updateEventBookingSeatsById as unknown as Mock
 const mockedSendEventBookingSeatUpdateSms = sendEventBookingSeatUpdateSms as unknown as Mock
+const mockedFormatPhoneForStorage = formatPhoneForStorage as unknown as Mock
 
 describe('Event manual booking seat-update guards', () => {
   beforeEach(() => {
@@ -1147,5 +1149,75 @@ describe('Event manual booking table-reservation rollback guards', () => {
         }),
       })
     )
+  })
+})
+
+describe('Event manual booking phone normalization', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockedPermission.mockResolvedValue(true)
+    mockedEnsureCustomerForPhone.mockResolvedValue({
+      customerId: '550e8400-e29b-41d4-a716-446655440011',
+      resolutionError: undefined,
+    })
+  })
+
+  it('passes defaultCountryCode to phone normalization when provided', async () => {
+    mockedFormatPhoneForStorage.mockReturnValueOnce('+33612345678')
+
+    const eventMaybeSingle = vi.fn().mockResolvedValue({
+      data: {
+        id: '550e8400-e29b-41d4-a716-446655440001',
+        name: 'Test Event',
+        booking_mode: 'general',
+      },
+      error: null,
+    })
+    const eventEq = vi.fn().mockReturnValue({ maybeSingle: eventMaybeSingle })
+    const eventSelect = vi.fn().mockReturnValue({ eq: eventEq })
+
+    const rpc = vi.fn(async (fnName: string) => {
+      if (fnName === 'create_event_booking_v05') {
+        return {
+          data: {
+            state: 'blocked',
+            reason: 'customer_conflict',
+            booking_id: null,
+          },
+          error: null,
+        }
+      }
+      throw new Error(`Unexpected rpc: ${fnName}`)
+    })
+
+    mockedCreateAdminClient.mockReturnValue({
+      rpc,
+      from: vi.fn((table: string) => {
+        if (table === 'events') {
+          return { select: eventSelect }
+        }
+
+        throw new Error(`Unexpected table: ${table}`)
+      }),
+    })
+
+    const result = await createEventManualBooking({
+      eventId: '550e8400-e29b-41d4-a716-446655440001',
+      phone: '06 12 34 56 78',
+      defaultCountryCode: '33',
+      firstName: 'Jean',
+      seats: 2,
+    })
+
+    expect(result).toMatchObject({
+      success: true,
+      data: {
+        state: 'blocked',
+      },
+    })
+
+    expect(mockedFormatPhoneForStorage).toHaveBeenCalledWith('06 12 34 56 78', {
+      defaultCountryCode: '33',
+    })
   })
 })

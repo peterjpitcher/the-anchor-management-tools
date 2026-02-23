@@ -6,6 +6,7 @@ export interface CustomerResolutionParams {
   lastName?: string
   email?: string
   phone: string
+  defaultCountryCode?: string
 }
 
 export interface ResolvedCustomer {
@@ -77,7 +78,9 @@ export async function resolveCustomerByPhone(
   supabase: SupabaseClient<any, 'public', any>,
   params: CustomerResolutionParams
 ): Promise<ResolvedCustomer> {
-  const standardizedPhone = formatPhoneForStorage(params.phone)
+  const standardizedPhone = formatPhoneForStorage(params.phone, {
+    defaultCountryCode: params.defaultCountryCode
+  })
   const variants = generatePhoneVariants(standardizedPhone)
   const emailLower = sanitizeEmail(params.email)
   const lastNameTrimmed = sanitizeLastName(params.lastName)

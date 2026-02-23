@@ -77,7 +77,7 @@ The application will be available at http://localhost:3000
 2. **Permissions**: Always check permissions with `checkUserPermission()`
 3. **Audit Logging**: Log sensitive operations with `logAuditEvent()`
 4. **Supabase Context**: Never create new clients, use `SupabaseProvider`
-5. **Phone Numbers**: Always convert to E.164 format (+44...)
+5. **Phone Numbers**: Normalize to E.164 (`+<country><number>`). Local input defaults to country code `44` unless a country code is explicitly provided.
 
 ### Essential Commands
 

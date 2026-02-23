@@ -158,6 +158,7 @@ describe('additional route idempotency persist fail-closed guards', () => {
           last_name: 'Example',
           email: 'pat@example.com',
           mobile_number: '+447700900123',
+          default_country_code: '44',
         },
         vehicle: {
           registration: 'ab12 cde',
@@ -183,6 +184,14 @@ describe('additional route idempotency persist fail-closed guards', () => {
     })
     expect(persistIdempotencyResponse).toHaveBeenCalledTimes(1)
     expect(releaseIdempotencyClaim).not.toHaveBeenCalled()
+    expect(createPendingParkingBooking).toHaveBeenCalledWith(
+      expect.objectContaining({
+        customer: expect.objectContaining({
+          defaultCountryCode: '44',
+        }),
+      }),
+      expect.any(Object)
+    )
   })
 
   it('surfaces logging_failed SMS meta for parking booking create responses', async () => {

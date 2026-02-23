@@ -13,6 +13,7 @@ export type ParkingBookingCustomerInput = {
   lastName?: string
   email?: string
   mobile: string
+  defaultCountryCode?: string
 }
 
 export type ParkingBookingVehicleInput = {
@@ -92,7 +93,8 @@ export async function createPendingParkingBooking(
     firstName: input.customer.firstName,
     lastName: input.customer.lastName,
     email: input.customer.email?.toLowerCase(),
-    phone: input.customer.mobile
+    phone: input.customer.mobile,
+    defaultCountryCode: input.customer.defaultCountryCode
   })
 
   const paymentDueAt = new Date()

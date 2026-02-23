@@ -224,6 +224,7 @@ export default function EditPrivateBookingPage({
 
           <form action={formAction} className="space-y-6">
           {dateTbd && <input type="hidden" name="date_tbd" value="true" />}
+          <input type="hidden" name="default_country_code" value="44" />
           {/* Customer Information */}
           <Section title="Customer Information">
             <div className="space-y-4">
