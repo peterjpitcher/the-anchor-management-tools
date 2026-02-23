@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('@/lib/payments/stripe', () => ({
+  computeStripeCheckoutExpiresAtUnix: vi.fn(() => 1_900_000_000),
   createStripeCheckoutSession: vi.fn(),
 }))
 

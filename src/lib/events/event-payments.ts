@@ -1,6 +1,10 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { createGuestToken, hashGuestToken } from '@/lib/guest/tokens'
-import { createStripeCheckoutSession, type StripeCheckoutSession } from '@/lib/payments/stripe'
+import {
+  computeStripeCheckoutExpiresAtUnix,
+  createStripeCheckoutSession,
+  type StripeCheckoutSession,
+} from '@/lib/payments/stripe'
 import { logger } from '@/lib/logger'
 import { ensureReplyInstruction } from '@/lib/sms/support'
 import { sendSMS } from '@/lib/twilio'
@@ -216,22 +220,6 @@ export async function getEventPaymentPreviewByRawToken(
   }
 }
 
-function computeStripeSessionExpiryUnix(holdExpiresAtIso: string): number | undefined {
-  const holdExpiry = parseIsoDate(holdExpiresAtIso)
-  if (!holdExpiry) {
-    return undefined
-  }
-
-  const now = Date.now()
-  const holdExpiryMs = holdExpiry.getTime()
-  const minimumWindowMs = 31 * 60 * 1000
-  if (holdExpiryMs - now < minimumWindowMs) {
-    return undefined
-  }
-
-  return Math.floor(holdExpiryMs / 1000)
-}
-
 export async function createEventCheckoutSessionByRawToken(
   supabase: SupabaseClient<any, 'public', any>,
   input: {
@@ -272,7 +260,7 @@ export async function createEventCheckoutSessionByRawToken(
     currency: preview.currency,
     productName: `${preview.eventName} (${preview.seats} seat${preview.seats === 1 ? '' : 's'})`,
     tokenHash: preview.tokenHash,
-    expiresAtUnix: computeStripeSessionExpiryUnix(preview.holdExpiresAt)
+    expiresAtUnix: computeStripeCheckoutExpiresAtUnix(preview.holdExpiresAt)
   })
 
   if (!session.url) {

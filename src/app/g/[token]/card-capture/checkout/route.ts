@@ -3,6 +3,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { hashGuestToken } from '@/lib/guest/tokens'
 import { checkGuestTokenThrottle } from '@/lib/guest/token-throttle'
 import {
+  computeStripeCheckoutExpiresAtUnix,
   createStripeCustomer,
   createStripeSetupCheckoutSession,
   isStripeConfigured
@@ -48,9 +49,7 @@ export async function POST(
   const successUrl = `${appBaseUrl}/g/${token}/card-capture?status=return`
   const cancelUrl = `${appBaseUrl}/g/${token}/card-capture?status=cancelled`
 
-  const expiresAtUnix = preview.hold_expires_at
-    ? Math.floor(Date.parse(preview.hold_expires_at) / 1000)
-    : undefined
+  const expiresAtUnix = computeStripeCheckoutExpiresAtUnix(preview.hold_expires_at)
 
   try {
     const { data: customerRecord, error: customerLookupError } = await (supabase.from('customers') as any)
@@ -116,7 +115,7 @@ export async function POST(
       customerId: preview.customer_id,
       stripeCustomerId,
       tokenHash,
-      expiresAtUnix: Number.isFinite(expiresAtUnix) ? expiresAtUnix : undefined,
+      expiresAtUnix,
       metadata: {
         booking_reference: preview.booking_reference || ''
       }

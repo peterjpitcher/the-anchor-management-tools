@@ -7,6 +7,7 @@ import { ensureReplyInstruction } from '@/lib/sms/support'
 import { createTableManageToken } from '@/lib/table-bookings/manage-booking'
 import { createSundayPreorderToken } from '@/lib/table-bookings/sunday-preorder'
 import {
+  computeStripeCheckoutExpiresAtUnix,
   createStripeTableDepositCheckoutSession,
   type StripeCheckoutSession,
 } from '@/lib/payments/stripe'
@@ -160,22 +161,6 @@ function resolveBaseUrl(appBaseUrl?: string | null): string {
 
 function formatPence(amount: number): number {
   return Math.round(amount * 100)
-}
-
-function computeStripeSessionExpiryUnix(holdExpiresAtIso: string): number | undefined {
-  const holdExpiry = parseIsoDate(holdExpiresAtIso)
-  if (!holdExpiry) {
-    return undefined
-  }
-
-  const now = Date.now()
-  const holdExpiryMs = holdExpiry.getTime()
-  const minimumWindowMs = 31 * 60 * 1000
-  if (holdExpiryMs - now < minimumWindowMs) {
-    return undefined
-  }
-
-  return Math.floor(holdExpiryMs / 1000)
 }
 
 export function mapTableBookingBlockedReason(reason?: string | null):
@@ -631,7 +616,7 @@ export async function createTableCheckoutSessionByRawToken(
     currency: preview.currency,
     productName: `Sunday lunch deposit (${preview.partySize} ${preview.partySize === 1 ? 'person' : 'people'})`,
     tokenHash: preview.tokenHash,
-    expiresAtUnix: computeStripeSessionExpiryUnix(preview.holdExpiresAt),
+    expiresAtUnix: computeStripeCheckoutExpiresAtUnix(preview.holdExpiresAt),
     metadata: {
       booking_reference: preview.bookingReference,
       deposit_per_person_gbp: '10',
