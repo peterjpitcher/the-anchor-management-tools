@@ -14,7 +14,9 @@ function deriveBlockedReasonFromError(error: unknown): string {
   if (
     message.includes('stripe_secret_key is not configured') ||
     message.includes('stripe api error') ||
-    message.includes('stripe checkout session')
+    message.includes('stripe checkout session') ||
+    (message.includes('expires_at') && message.includes('less than 24 hours')) ||
+    (message.includes('timestamp') && message.includes('less than 24 hours'))
   ) {
     return 'stripe_unavailable'
   }
@@ -71,10 +73,18 @@ export async function POST(request: NextRequest, context: RouteContext) {
     return NextResponse.redirect(checkoutResult.checkoutUrl, { status: 303 })
   } catch (error) {
     const blockedReason = deriveBlockedReasonFromError(error)
+    const errorMessage = error instanceof Error ? error.message : String(error)
+    const errorName = error instanceof Error ? error.name : 'UnknownError'
+    const errorStackPreview = error instanceof Error && typeof error.stack === 'string'
+      ? error.stack.split('\n').slice(0, 4).join('\n')
+      : null
     logger.error('Failed to create Stripe checkout for table payment token', {
       error: error instanceof Error ? error : new Error(String(error)),
       metadata: {
         blockedReason,
+        error_message: errorMessage,
+        error_name: errorName,
+        error_stack_preview: errorStackPreview,
       },
     })
 

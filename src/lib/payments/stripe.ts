@@ -1,6 +1,9 @@
 import crypto from 'crypto'
 
 const STRIPE_API_BASE_URL = 'https://api.stripe.com/v1'
+const STRIPE_CHECKOUT_MINIMUM_WINDOW_MS = 31 * 60 * 1000
+const STRIPE_CHECKOUT_MAX_WINDOW_MS = 24 * 60 * 60 * 1000
+const STRIPE_CHECKOUT_MAX_SAFETY_BUFFER_MS = 60 * 1000
 
 export type StripeCheckoutSession = {
   id: string
@@ -81,6 +84,34 @@ export type StripePaymentIntent = {
   amount: number | null
   currency: string | null
   errorMessage?: string | null
+}
+
+type StripeCheckoutExpiryOptions = {
+  nowMs?: number
+}
+
+export function computeStripeCheckoutExpiresAtUnix(
+  holdExpiresAtIso: string | null | undefined,
+  options: StripeCheckoutExpiryOptions = {}
+): number | undefined {
+  if (!holdExpiresAtIso) {
+    return undefined
+  }
+
+  const holdExpiryMs = Date.parse(holdExpiresAtIso)
+  if (!Number.isFinite(holdExpiryMs)) {
+    return undefined
+  }
+
+  const nowMs = Number.isFinite(options.nowMs) ? Number(options.nowMs) : Date.now()
+  const maxAllowedExpiryMs = nowMs + STRIPE_CHECKOUT_MAX_WINDOW_MS - STRIPE_CHECKOUT_MAX_SAFETY_BUFFER_MS
+  const effectiveExpiryMs = Math.min(holdExpiryMs, maxAllowedExpiryMs)
+
+  if (effectiveExpiryMs - nowMs < STRIPE_CHECKOUT_MINIMUM_WINDOW_MS) {
+    return undefined
+  }
+
+  return Math.floor(effectiveExpiryMs / 1000)
 }
 
 function getStripeSecretKey(): string {
