@@ -106,6 +106,7 @@ describe('FOH bookings Sunday preorder fail-safe guards', () => {
         party_size: 2,
         purpose: 'food',
         sunday_lunch: true,
+        sunday_deposit_method: 'payment_link',
         sunday_preorder_mode: 'capture_now',
         sunday_preorder_items: [
           { menu_dish_id: '123e4567-e89b-12d3-a456-426614174000', quantity: 1 },
@@ -209,6 +210,7 @@ describe('FOH bookings Sunday preorder fail-safe guards', () => {
         time: '13:30',
         party_size: 2,
         purpose: 'food',
+        sunday_deposit_method: 'payment_link',
       }),
     })
 

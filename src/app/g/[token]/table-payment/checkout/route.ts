@@ -26,10 +26,14 @@ function deriveBlockedReasonFromError(error: unknown): string {
 
 function blockedReasonToQuery(reason: string): string {
   switch (reason) {
+    case 'invalid_token':
     case 'token_used':
     case 'token_expired':
+    case 'booking_not_found':
     case 'booking_not_pending_payment':
     case 'hold_expired':
+    case 'token_customer_mismatch':
+    case 'invalid_amount':
     case 'stripe_unavailable':
       return reason
     default:

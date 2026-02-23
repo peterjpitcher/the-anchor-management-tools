@@ -2,7 +2,8 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import { PNL_METRICS, PNL_TIMEFRAMES, type PnlTimeframeKey, MANUAL_METRIC_KEYS, EXPENSE_METRIC_KEYS } from '@/lib/pnl/constants';
 import type { PLManualActual, PLTarget, PLTimeframe, ReceiptExpenseCategory } from '@/types/database';
 
-const INCLUDED_STATUSES = ['pending', 'completed', 'auto_completed', 'no_receipt_required'] as const;
+const INCLUDED_STATUSES = ['pending', 'completed', 'auto_completed', 'no_receipt_required', 'cant_find'] as const;
+const RECEIPT_PAGE_SIZE = 1000;
 
 type TargetMap = Record<string, Partial<Record<PLTimeframe, number | null>>>;
 type ManualActualMap = Record<string, Partial<Record<PLTimeframe, number | null>>>;
@@ -28,6 +29,12 @@ type DeletionPair = {
   timeframe: PLTimeframe;
 };
 
+type ReceiptExpenseRow = {
+  transaction_date: string | null;
+  expense_category: ReceiptExpenseCategory | null;
+  amount_out: number | null;
+};
+
 function timeframeStartDate(timeframe: PnlTimeframeKey): string {
   const config = PNL_TIMEFRAMES.find((item) => item.key === timeframe);
   if (!config) return new Date().toISOString().slice(0, 10);
@@ -39,6 +46,11 @@ function timeframeStartDate(timeframe: PnlTimeframeKey): string {
 
 function roundCurrency(value: number): number {
   return Number(value.toFixed(2));
+}
+
+function isExpenseOutgoingAmount(value: number | null): value is number {
+  if (typeof value !== 'number') return false;
+  return Number.isFinite(value);
 }
 
 function dedupeDeletionPairs(entries: SaveEntry[]): DeletionPair[] {
@@ -72,6 +84,40 @@ async function deleteFinancialRowsByPair(
       throw new Error(error.message || fallbackErrorMessage);
     }
   }
+}
+
+async function fetchReceiptExpenseRows(
+  supabase: ReturnType<typeof createAdminClient>,
+  startDate: string
+): Promise<ReceiptExpenseRow[]> {
+  const rows: ReceiptExpenseRow[] = [];
+
+  for (let from = 0; ; from += RECEIPT_PAGE_SIZE) {
+    const to = from + RECEIPT_PAGE_SIZE - 1;
+    const { data, error } = await (supabase.from('receipt_transactions') as any)
+      .select('id, transaction_date, expense_category, amount_out')
+      .gte('transaction_date', startDate)
+      .in('status', INCLUDED_STATUSES)
+      .order('transaction_date', { ascending: false })
+      .order('id', { ascending: false })
+      .range(from, to);
+
+    if (error) {
+      throw new Error(error.message || 'Failed to aggregate receipts for P&L dashboard');
+    }
+
+    if (!data?.length) {
+      break;
+    }
+
+    rows.push(...(data as ReceiptExpenseRow[]));
+
+    if (data.length < RECEIPT_PAGE_SIZE) {
+      break;
+    }
+  }
+
+  return rows;
 }
 
 export class FinancialService {
@@ -115,30 +161,46 @@ export class FinancialService {
       expenseMetricMap.set(metric.expenseCategory as ReceiptExpenseCategory, metric.key);
     });
 
-    for (const timeframe of PNL_TIMEFRAMES) {
-      const startDate = timeframeStartDate(timeframe.key);
+    const timeframeStartMap: Record<PnlTimeframeKey, string> = {
+      '1m': timeframeStartDate('1m'),
+      '3m': timeframeStartDate('3m'),
+      '12m': timeframeStartDate('12m'),
+    };
+    const oldestStartDate = Object.values(timeframeStartMap).sort()[0] ?? timeframeStartDate('12m');
 
-      const { data, error } = await (supabase.from('receipt_transactions') as any)
-        .select('expense_category, amount_out, status')
-        .gte('transaction_date', startDate)
-        .in('status', INCLUDED_STATUSES);
+    const expenseSumsByTimeframe: Record<PnlTimeframeKey, Record<string, number>> = {
+      '1m': {},
+      '3m': {},
+      '12m': {},
+    };
 
-      if (error) {
-        console.error('Failed to aggregate receipts for P&L dashboard:', error);
-        continue;
-      }
+    try {
+      const rows = await fetchReceiptExpenseRows(supabase, oldestStartDate);
 
-      const sums: Record<string, number> = {};
-
-      data?.forEach((row: { expense_category: ReceiptExpenseCategory | null; amount_out: number | null }) => {
+      rows.forEach((row) => {
+        const transactionDate = row.transaction_date;
         const category = row.expense_category;
-        if (!category) return;
+        if (!transactionDate || !category) return;
+
         const key = expenseMetricMap.get(category);
         if (!key) return;
-        const amount = typeof row.amount_out === 'number' ? row.amount_out : Number(row.amount_out ?? 0);
-        if (!Number.isFinite(amount)) return;
-        sums[key] = (sums[key] ?? 0) + amount;
+
+        if (!isExpenseOutgoingAmount(row.amount_out)) return;
+        const amount = row.amount_out;
+
+        PNL_TIMEFRAMES.forEach((timeframe) => {
+          if (transactionDate >= timeframeStartMap[timeframe.key]) {
+            const timeframeSums = expenseSumsByTimeframe[timeframe.key];
+            timeframeSums[key] = (timeframeSums[key] ?? 0) + amount;
+          }
+        });
       });
+    } catch (error) {
+      console.error('Failed to aggregate receipts for P&L dashboard:', error);
+    }
+
+    for (const timeframe of PNL_TIMEFRAMES) {
+      const sums = expenseSumsByTimeframe[timeframe.key];
 
       expenseTotals[timeframe.key] = roundCurrency(
         EXPENSE_METRIC_KEYS.reduce((sum, key) => sum + (sums[key] ?? 0), 0)

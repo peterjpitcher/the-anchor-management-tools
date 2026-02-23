@@ -4,6 +4,7 @@ import { headers } from 'next/headers'
 import { checkGuestTokenThrottle } from '@/lib/guest/token-throttle'
 import { formatGuestGreeting, getCustomerFirstNameById } from '@/lib/guest/names'
 import { getTablePaymentPreviewByRawToken } from '@/lib/table-bookings/bookings'
+import { tablePaymentBlockedReasonMessage } from '@/lib/table-bookings/table-payment-blocked-reason'
 import { GuestPageShell } from '@/components/features/shared/GuestPageShell'
 
 type TablePaymentPageProps = {
@@ -37,27 +38,6 @@ function formatMoney(amount: number, currency = 'GBP'): string {
     style: 'currency',
     currency,
   }).format(amount)
-}
-
-function blockedReasonMessage(reason: string | undefined): string {
-  switch (reason) {
-    case 'token_used':
-      return 'This payment link has already been used.'
-    case 'token_expired':
-      return 'This payment link has expired.'
-    case 'hold_expired':
-      return 'The payment window for this booking has expired.'
-    case 'booking_not_pending_payment':
-      return 'This booking is no longer awaiting payment.'
-    case 'stripe_unavailable':
-      return 'Our secure payment service is temporarily unavailable. Please try again shortly.'
-    case 'internal_error':
-      return 'We hit an internal error while opening this payment link.'
-    case 'rate_limited':
-      return 'Too many attempts were made with this payment link. Please wait a few minutes and try again.'
-    default:
-      return 'This payment link is no longer available.'
-  }
 }
 
 export default async function TablePaymentPage({ params, searchParams }: TablePaymentPageProps) {
@@ -99,7 +79,7 @@ export default async function TablePaymentPage({ params, searchParams }: TablePa
           <p className="mt-2 text-sm text-slate-700">
             {formatGuestGreeting(null, 'we could not open your payment link.')}
           </p>
-          <p className="mt-3 text-sm text-slate-700">{blockedReasonMessage(reason)}</p>
+          <p className="mt-3 text-sm text-slate-700">{tablePaymentBlockedReasonMessage(reason)}</p>
           <p className="mt-3 text-sm text-slate-700">Please call {contactPhone} for help.</p>
           <div className="mt-6">
             <Link className="text-sm font-medium text-slate-900 underline underline-offset-4" href="https://www.the-anchor.pub/book-table">
@@ -127,7 +107,7 @@ export default async function TablePaymentPage({ params, searchParams }: TablePa
           <p className="mt-2 text-sm text-slate-700">
             {formatGuestGreeting(null, 'we could not open your payment link.')}
           </p>
-          <p className="mt-3 text-sm text-slate-700">{blockedReasonMessage('rate_limited')}</p>
+          <p className="mt-3 text-sm text-slate-700">{tablePaymentBlockedReasonMessage('rate_limited')}</p>
           <p className="mt-3 text-sm text-slate-700">Please call {contactPhone} for help.</p>
         </div>
       </GuestPageShell>
@@ -145,7 +125,7 @@ export default async function TablePaymentPage({ params, searchParams }: TablePa
           <p className="mt-2 text-sm text-slate-700">
             {formatGuestGreeting(null, 'we could not open your payment link.')}
           </p>
-          <p className="mt-3 text-sm text-slate-700">{blockedReasonMessage(preview.reason)}</p>
+          <p className="mt-3 text-sm text-slate-700">{tablePaymentBlockedReasonMessage(preview.reason)}</p>
           <p className="mt-3 text-sm text-slate-700">Please call {contactPhone} for help.</p>
         </div>
       </GuestPageShell>

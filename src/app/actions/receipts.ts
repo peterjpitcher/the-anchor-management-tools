@@ -579,6 +579,12 @@ function getTransactionDirection(tx: ParsedTransactionRow | ReceiptTransaction):
   return 'out'
 }
 
+function isIncomingOnlyTransaction(tx: { amount_in: number | null; amount_out: number | null }): boolean {
+  const hasIncoming = typeof tx.amount_in === 'number' && tx.amount_in > 0
+  const hasOutgoing = typeof tx.amount_out === 'number' && tx.amount_out > 0
+  return hasIncoming && !hasOutgoing
+}
+
 function guessAmountValue(tx: ParsedTransactionRow | ReceiptTransaction): number {
   const amountIn = isParsedTransactionRow(tx) ? tx.amountIn : tx.amount_in
   const amountOut = isParsedTransactionRow(tx) ? tx.amountOut : tx.amount_out
@@ -790,6 +796,7 @@ async function applyAutomationRules(
 
     const shouldUpdateExpense = Boolean(
       matchingRule.set_expense_category &&
+        direction === 'out' &&
         !expenseLocked &&
         (
           transaction.expense_category !== matchingRule.set_expense_category ||
@@ -1488,6 +1495,10 @@ export async function updateReceiptClassification(input: {
     return { error: 'Transaction not found' }
   }
 
+  if (hasExpenseField && expenseCategory && isIncomingOnlyTransaction(transaction)) {
+    return { error: 'Expense categories can only be set on outgoing transactions' }
+  }
+
   const updatePayload: Record<string, unknown> = {}
   const changeNotes: string[] = []
   const now = new Date().toISOString()
@@ -1896,6 +1907,9 @@ export async function createReceiptRule(formData: FormData): Promise<RuleMutatio
   if (!parsed.success) {
     return { error: parsed.error.issues[0]?.message ?? 'Invalid rule details' }
   }
+  if (parsed.data.set_expense_category && parsed.data.match_direction !== 'out') {
+    return { error: 'Expense auto-tagging rules must use outgoing direction' }
+  }
 
   const supabase = createAdminClient()
   const { user_id } = await getCurrentUser()
@@ -1957,6 +1971,9 @@ export async function updateReceiptRule(ruleId: string, formData: FormData): Pro
   const parsed = receiptRuleSchema.safeParse(rawData)
   if (!parsed.success) {
     return { error: parsed.error.issues[0]?.message ?? 'Invalid rule details' }
+  }
+  if (parsed.data.set_expense_category && parsed.data.match_direction !== 'out') {
+    return { error: 'Expense auto-tagging rules must use outgoing direction' }
   }
 
   const supabase = createAdminClient()
@@ -2402,7 +2419,7 @@ export async function applyReceiptGroupClassification(input: {
 
   const selection = supabase
     .from('receipt_transactions')
-    .select('id, status')
+    .select('id, status, amount_in, amount_out')
     .eq('details', parsed.data.details)
     .in('status', statuses)
 
@@ -2413,40 +2430,73 @@ export async function applyReceiptGroupClassification(input: {
     return { error: 'Failed to load matching transactions' }
   }
 
-  if (!matches?.length) {
-    return { success: true, updated: 0 }
+  const matchRows = (matches ?? []) as Array<Pick<ReceiptTransaction, 'id' | 'status' | 'amount_in' | 'amount_out'>>
+
+  if (!matchRows.length) {
+    return { success: true, updated: 0, skippedIncomingCount: 0 }
   }
 
   const now = new Date().toISOString()
+  const allIds = matchRows.map((row) => row.id)
+  const incomingOnlyIds = new Set(
+    matchRows
+      .filter((row) => isIncomingOnlyTransaction(row))
+      .map((row) => row.id)
+  )
+  const skippedIncomingCount = expenseProvided
+    ? Array.from(incomingOnlyIds).length
+    : 0
 
-  const updatePayload: Record<string, unknown> = {
-    updated_at: now,
-  }
+  const updatedIdSet = new Set<string>()
 
   if (vendorProvided) {
-    updatePayload.vendor_name = normalizedVendor
-    updatePayload.vendor_source = normalizedVendor ? 'manual' : null
-    updatePayload.vendor_rule_id = null
-    updatePayload.vendor_updated_at = now
+    const vendorPayload: Record<string, unknown> = {
+      updated_at: now,
+      vendor_name: normalizedVendor,
+      vendor_source: normalizedVendor ? 'manual' : null,
+      vendor_rule_id: null,
+      vendor_updated_at: now,
+    }
+
+    const { error: vendorUpdateError } = await supabase
+      .from('receipt_transactions')
+      .update(vendorPayload)
+      .in('id', allIds)
+
+    if (vendorUpdateError) {
+      console.error('Failed to apply vendor bulk classification', vendorUpdateError)
+      return { error: 'Failed to apply changes' }
+    }
+
+    allIds.forEach((id) => updatedIdSet.add(id))
   }
 
   if (expenseProvided) {
-    updatePayload.expense_category = normalizedExpense ?? null
-    updatePayload.expense_category_source = normalizedExpense ? 'manual' : null
-    updatePayload.expense_rule_id = null
-    updatePayload.expense_updated_at = now
-  }
+    const expenseEligibleIds = matchRows
+      .filter((row) => !incomingOnlyIds.has(row.id))
+      .map((row) => row.id)
 
-  const ids = matches.map((row) => row.id)
+    if (expenseEligibleIds.length > 0) {
+      const expensePayload: Record<string, unknown> = {
+        updated_at: now,
+        expense_category: normalizedExpense ?? null,
+        expense_category_source: normalizedExpense ? 'manual' : null,
+        expense_rule_id: null,
+        expense_updated_at: now,
+      }
 
-  const { error: updateError } = await supabase
-    .from('receipt_transactions')
-    .update(updatePayload)
-    .in('id', ids)
+      const { error: expenseUpdateError } = await supabase
+        .from('receipt_transactions')
+        .update(expensePayload)
+        .in('id', expenseEligibleIds)
 
-  if (updateError) {
-    console.error('Failed to apply bulk classification', updateError)
-    return { error: 'Failed to apply changes' }
+      if (expenseUpdateError) {
+        console.error('Failed to apply expense bulk classification', expenseUpdateError)
+        return { error: 'Failed to apply changes' }
+      }
+
+      expenseEligibleIds.forEach((id) => updatedIdSet.add(id))
+    }
   }
 
   const summaryParts: string[] = []
@@ -2455,12 +2505,16 @@ export async function applyReceiptGroupClassification(input: {
   }
   if (expenseProvided) {
     summaryParts.push(normalizedExpense ? `Expense → ${normalizedExpense}` : 'Expense cleared')
+    if (skippedIncomingCount > 0) {
+      summaryParts.push(`Skipped incoming-only rows: ${skippedIncomingCount}`)
+    }
   }
 
   const note = `Bulk classification: ${summaryParts.join(' | ')}`
-  const statusMap = new Map(matches.map((row) => [row.id, row.status]))
+  const statusMap = new Map(matchRows.map((row) => [row.id, row.status]))
+  const updatedIds = Array.from(updatedIdSet)
 
-  const logs = ids.map((id) => ({
+  const logs = updatedIds.map((id) => ({
     transaction_id: id,
     previous_status: statusMap.get(id) ?? 'pending',
     new_status: statusMap.get(id) ?? 'pending',
@@ -2490,7 +2544,8 @@ export async function applyReceiptGroupClassification(input: {
       vendor_value: normalizedVendor,
       expense_value: normalizedExpense,
       statuses,
-      count: ids.length,
+      count: updatedIds.length,
+      skipped_incoming_count: skippedIncomingCount,
     },
   })
 
@@ -2499,7 +2554,7 @@ export async function applyReceiptGroupClassification(input: {
   revalidateTag('dashboard')
   revalidatePath('/dashboard')
 
-  return { success: true, updated: ids.length }
+  return { success: true, updated: updatedIds.length, skippedIncomingCount }
 }
 
 export async function createReceiptRuleFromGroup(input: {
