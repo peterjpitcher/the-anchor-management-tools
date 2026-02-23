@@ -9,6 +9,7 @@ import { Input } from '@/components/ui-v2/forms/Input'
 import { toast } from '@/components/ui-v2/feedback/Toast'
 import { Spinner } from '@/components/ui-v2/feedback/Spinner'
 import { Card } from '@/components/ui-v2/layout/Card'
+import { DocumentArrowDownIcon } from '@heroicons/react/24/outline'
 import clsx from 'clsx'
 
 const GROUP_LABELS: Record<string, string> = {
@@ -38,6 +39,7 @@ type EditableMap = Record<string, Record<string, string>>
 
 type Props = {
   initialData: PnlDashboardData
+  canExport?: boolean
 }
 
 function normaliseNumericInput(value: string): number | null {
@@ -92,7 +94,7 @@ function deriveTargetValue(
   return Number((annualValue * ratio).toFixed(2))
 }
 
-export default function PnlClient({ initialData }: Props) {
+export default function PnlClient({ initialData, canExport = false }: Props) {
   const [selectedTimeframe, setSelectedTimeframe] = useState<PnlTimeframeKey>('12m')
   const [isSavingManual, startSavingManual] = useTransition()
   const [isSavingTargets, startSavingTargets] = useTransition()
@@ -163,6 +165,11 @@ export default function PnlClient({ initialData }: Props) {
       .filter((metric) => metric.group === 'sales')
       .reduce((sum, metric) => sum + (derivedTargetValues[metric.key] ?? 0), 0)
   ), [derivedTargetValues, initialData.metrics])
+  const salesAnnualTargetTotal = useMemo(() => (
+    initialData.metrics
+      .filter((metric) => metric.group === 'sales')
+      .reduce((sum, metric) => sum + (annualTargetValues[metric.key] ?? 0), 0)
+  ), [annualTargetValues, initialData.metrics])
 
   const expenseActualTotal = useMemo(() => {
     const automaticExpenses = initialData.expenseTotals[selectedTimeframe] ?? 0
@@ -181,6 +188,15 @@ export default function PnlClient({ initialData }: Props) {
       .reduce((sum, metric) => sum + (derivedTargetValues[metric.key] ?? 0), 0)
     return Number((automaticTarget + occupancyTarget).toFixed(2))
   }, [initialData.metrics, derivedTargetValues])
+  const expenseAnnualTargetTotal = useMemo(() => {
+    const automaticAnnualTarget = initialData.metrics
+      .filter((metric) => metric.type === 'expense')
+      .reduce((sum, metric) => sum + (annualTargetValues[metric.key] ?? 0), 0)
+    const occupancyAnnualTarget = initialData.metrics
+      .filter((metric) => metric.group === 'occupancy')
+      .reduce((sum, metric) => sum + (annualTargetValues[metric.key] ?? 0), 0)
+    return Number((automaticAnnualTarget + occupancyAnnualTarget).toFixed(2))
+  }, [initialData.metrics, annualTargetValues])
 
   const operatingProfitActual = Number((salesActualTotal - expenseActualTotal).toFixed(2))
   const operatingProfitTarget = Number((salesTargetTotal - expenseTargetTotal).toFixed(2))
@@ -266,6 +282,12 @@ export default function PnlClient({ initialData }: Props) {
   }
 
   const timeframeLabel = PNL_TIMEFRAMES.find((tf) => tf.key === selectedTimeframe)?.label ?? ''
+  const timeframeVsShadowLabel = `${timeframeLabel.toUpperCase()} VS. SHADOW P&L`
+  const exportUrl = `/api/receipts/pnl/export?timeframe=${encodeURIComponent(selectedTimeframe)}`
+
+  const downloadReport = () => {
+    window.location.assign(exportUrl)
+  }
 
   const renderTimeframeSelector = () => (
     <div className="flex flex-wrap items-center gap-3">
@@ -345,97 +367,161 @@ const renderPeriodTargetCell = (
       <div className="flex flex-wrap items-center justify-between gap-3">
         {renderTimeframeSelector()}
         <div className="flex flex-wrap items-center gap-2">
+          {canExport && (
+            <Button variant="secondary" onClick={downloadReport} data-export-url={exportUrl}>
+              <DocumentArrowDownIcon className="mr-2 h-4 w-4" />
+              Download P&L report (PDF)
+            </Button>
+          )}
           <Button onClick={saveManualValues} disabled={isSavingManual}>
             {isSavingManual && <Spinner className="mr-2 h-4 w-4" />}Save manual inputs
           </Button>
           <Button onClick={saveTargetValues} disabled={isSavingTargets}>
-            {isSavingTargets && <Spinner className="mr-2 h-4 w-4" />}Save annual targets
+            {isSavingTargets && <Spinner className="mr-2 h-4 w-4" />}Save Shadow P&L targets
           </Button>
         </div>
       </div>
+      <p className="text-sm text-gray-600">
+        Targets in this dashboard are set from your Shadow P&amp;L target values.
+      </p>
 
-      {Object.entries(groupedMetrics).map(([group, metrics]) => (
-        <section key={group} className="space-y-3">
-          <h2 className="text-lg font-semibold text-gray-900">{GROUP_LABELS[group] ?? group}</h2>
-          <div className="overflow-x-auto rounded-lg border border-gray-200">
-            <table className="min-w-full divide-y divide-gray-200 text-sm">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="px-4 py-3 text-left font-semibold text-gray-600">Metric</th>
-                  <th className="px-4 py-3 text-right font-semibold text-gray-600">Actual ({timeframeLabel})</th>
-                  <th className="px-4 py-3 text-right font-semibold text-gray-600">Annual target</th>
-                  <th className="px-4 py-3 text-right font-semibold text-gray-600">Target ({timeframeLabel})</th>
-                  <th className="px-4 py-3 text-right font-semibold text-gray-600">Variance</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {metrics.map((metric) => {
-                  const actualValue = actualValues[metric.key] ?? 0
-                  const annualTarget = annualTargetValues[metric.key] ?? null
-                  const periodTarget = derivedTargetValues[metric.key] ?? null
+      {Object.entries(groupedMetrics).map(([group, metrics]) => {
+        const sectionTitle = (group === 'sales' || group === 'expenses')
+          ? `${GROUP_LABELS[group] ?? group} - ${timeframeVsShadowLabel}`
+          : GROUP_LABELS[group] ?? group
+        const sectionSubtotal = group === 'sales'
+          ? {
+              label: 'Total sales',
+              actual: salesActualTotal,
+              annualTarget: salesAnnualTargetTotal,
+              periodTarget: salesTargetTotal,
+              variance: Number((salesActualTotal - salesTargetTotal).toFixed(2)),
+              invertVariance: false,
+            }
+          : group === 'expenses'
+            ? {
+                label: 'Total expenses (incl occupancy)',
+                actual: expenseActualTotal,
+                annualTarget: expenseAnnualTargetTotal,
+                periodTarget: expenseTargetTotal,
+                variance: Number((expenseActualTotal - expenseTargetTotal).toFixed(2)),
+                invertVariance: true,
+              }
+            : null
 
-                  const detailLines: string[] = []
+        return (
+          <section key={group} className="space-y-3">
+            <h2 className="text-lg font-semibold text-gray-900">{sectionTitle}</h2>
+            <div className="overflow-x-auto rounded-lg border border-gray-200">
+              <table className="min-w-full divide-y divide-gray-200 text-sm">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-4 py-3 text-left font-semibold text-gray-600">Metric</th>
+                    <th className="px-4 py-3 text-right font-semibold text-gray-600">Actual</th>
+                    <th className="px-4 py-3 text-right font-semibold text-gray-600">Annual</th>
+                    <th className="px-4 py-3 text-right font-semibold text-gray-600">P&L Target</th>
+                    <th className="px-4 py-3 text-right font-semibold text-gray-600">Var</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {metrics.map((metric) => {
+                    const actualValue = actualValues[metric.key] ?? 0
+                    const annualTarget = annualTargetValues[metric.key] ?? null
+                    const periodTarget = derivedTargetValues[metric.key] ?? null
 
-                  if (metric.baseMetricKey) {
-                    const baseActual = actualValues[metric.baseMetricKey] ?? 0
-                    const baseTarget = derivedTargetValues[metric.baseMetricKey] ?? null
+                    const detailLines: string[] = []
 
-                    if (metric.group === 'sales_mix') {
-                      const actualCurrency = Number((baseActual * (actualValue / 100)).toFixed(2))
-                      const targetCurrency = baseTarget !== null && periodTarget !== null
-                        ? Number((baseTarget * (periodTarget / 100)).toFixed(2))
-                        : null
-                      detailLines.push(`Actual ${formatValue(actualCurrency)}`)
-                      if (targetCurrency !== null) {
-                        detailLines.push(`Target ${formatValue(targetCurrency)}`)
+                    if (metric.baseMetricKey) {
+                      const baseActual = actualValues[metric.baseMetricKey] ?? 0
+                      const baseTarget = derivedTargetValues[metric.baseMetricKey] ?? null
+
+                      if (metric.group === 'sales_mix') {
+                        const actualCurrency = Number((baseActual * (actualValue / 100)).toFixed(2))
+                        const targetCurrency = baseTarget !== null && periodTarget !== null
+                          ? Number((baseTarget * (periodTarget / 100)).toFixed(2))
+                          : null
+                        detailLines.push(`Actual ${formatValue(actualCurrency)}`)
+                        if (targetCurrency !== null) {
+                          detailLines.push(`P&L Target ${formatValue(targetCurrency)}`)
+                        }
+                      }
+
+                      if (metric.group === 'sales_totals') {
+                        const gpActual = Number((baseActual * (actualValue / 100)).toFixed(2))
+                        const costActual = Number((baseActual - gpActual).toFixed(2))
+                        const gpTarget = baseTarget !== null && periodTarget !== null
+                          ? Number((baseTarget * (periodTarget / 100)).toFixed(2))
+                          : null
+                        const costTarget = gpTarget !== null && baseTarget !== null
+                          ? Number((baseTarget - gpTarget).toFixed(2))
+                          : null
+                        detailLines.push(`Actual GP ${formatValue(gpActual)} · Cost ${formatValue(costActual)}`)
+                        if (gpTarget !== null && costTarget !== null) {
+                          detailLines.push(`P&L Target GP ${formatValue(gpTarget)} · Cost ${formatValue(costTarget)}`)
+                        }
                       }
                     }
 
-                    if (metric.group === 'sales_totals') {
-                      const gpActual = Number((baseActual * (actualValue / 100)).toFixed(2))
-                      const costActual = Number((baseActual - gpActual).toFixed(2))
-                      const gpTarget = baseTarget !== null && periodTarget !== null
-                        ? Number((baseTarget * (periodTarget / 100)).toFixed(2))
-                        : null
-                      const costTarget = gpTarget !== null && baseTarget !== null
-                        ? Number((baseTarget - gpTarget).toFixed(2))
-                        : null
-                      detailLines.push(`Actual GP ${formatValue(gpActual)} · Cost ${formatValue(costActual)}`)
-                      if (gpTarget !== null && costTarget !== null) {
-                        detailLines.push(`Target GP ${formatValue(gpTarget)} · Cost ${formatValue(costTarget)}`)
-                      }
-                    }
-                  }
-
-                  return (
-                    <tr key={metric.key} className="align-top">
-                      <td className="px-4 py-3 text-sm font-medium text-gray-900">{metric.label}</td>
+                    return (
+                      <tr key={metric.key} className="align-top">
+                        <td className="px-4 py-3 text-sm font-medium text-gray-900">{metric.label}</td>
+                        <td className="px-4 py-3 min-w-[140px] text-right text-gray-900">
+                          {renderActualCell(metric.key, metric.format, metric.type === 'manual')}
+                        </td>
+                        <td className="px-4 py-3 min-w-[140px] text-right">
+                          <Input
+                            type="number"
+                            step={metric.format === 'percent' ? '0.1' : '0.01'}
+                            value={targetValues[metric.key]?.[TARGET_TIMEFRAME] ?? ''}
+                            onChange={(event) => handleTargetChange(metric.key, event.target.value)}
+                            className="w-full text-right"
+                          />
+                        </td>
+                        <td className="px-4 py-3 min-w-[180px] text-right text-gray-900">
+                          {renderPeriodTargetCell(metric.format, periodTarget, detailLines)}
+                        </td>
+                        <td className="px-4 py-3 min-w-[140px] text-right text-gray-900">
+                          {renderVarianceCell(metric.key, metric.format, periodTarget)}
+                        </td>
+                      </tr>
+                    )
+                  })}
+                  {sectionSubtotal && (
+                    <tr className="bg-indigo-50/60">
+                      <td className="px-4 py-3 text-sm font-semibold text-gray-900">{sectionSubtotal.label}</td>
+                      <td className="px-4 py-3 min-w-[140px] text-right font-semibold text-gray-900">
+                        {formatValue(sectionSubtotal.actual)}
+                      </td>
+                      <td className="px-4 py-3 min-w-[140px] text-right font-semibold text-gray-900">
+                        {formatValue(sectionSubtotal.annualTarget)}
+                      </td>
+                      <td className="px-4 py-3 min-w-[180px] text-right font-semibold text-gray-900">
+                        {formatValue(sectionSubtotal.periodTarget)}
+                      </td>
                       <td className="px-4 py-3 min-w-[140px] text-right text-gray-900">
-                        {renderActualCell(metric.key, metric.format, metric.type === 'manual')}
-                      </td>
-                      <td className="px-4 py-3 min-w-[140px] text-right">
-                        <Input
-                          type="number"
-                          step={metric.format === 'percent' ? '0.1' : '0.01'}
-                          value={targetValues[metric.key]?.[TARGET_TIMEFRAME] ?? ''}
-                          onChange={(event) => handleTargetChange(metric.key, event.target.value)}
-                          className="w-full text-right"
-                        />
-                      </td>
-                      <td className="px-4 py-3 min-w-[180px] text-right text-gray-900">
-                        {renderPeriodTargetCell(metric.format, periodTarget, detailLines)}
-                      </td>
-                      <td className="px-4 py-3 min-w-[140px] text-right text-gray-900">
-                        {renderVarianceCell(metric.key, metric.format, periodTarget)}
+                        <span
+                          className={clsx(
+                            'inline-flex rounded px-2 py-0.5 text-xs font-semibold',
+                            sectionSubtotal.invertVariance
+                              ? sectionSubtotal.variance <= 0
+                                ? 'bg-emerald-50 text-emerald-700'
+                                : 'bg-rose-50 text-rose-700'
+                              : sectionSubtotal.variance >= 0
+                                ? 'bg-emerald-50 text-emerald-700'
+                                : 'bg-rose-50 text-rose-700'
+                          )}
+                        >
+                          {formatValue(sectionSubtotal.variance)}
+                        </span>
                       </td>
                     </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
-        </section>
-      ))}
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        )
+      })}
 
       <Card variant="bordered">
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -462,18 +548,18 @@ const renderPeriodTargetCell = (
             </div>
           </div>
           <div className="rounded-md border border-gray-200 p-4">
-            <p className="text-xs uppercase tracking-wide text-gray-500">{timeframeLabel} targets</p>
+            <p className="text-xs uppercase tracking-wide text-gray-500">{timeframeLabel} targets (Shadow P&L)</p>
             <div className="mt-2 space-y-2 text-sm text-gray-700">
               <div className="flex items-center justify-between">
-                <span>Revenue target</span>
+                <span>Revenue P&L Target</span>
                 <span className="font-semibold text-gray-900">{formatValue(salesTargetTotal)}</span>
               </div>
               <div className="flex items-center justify-between">
-                <span>Expense target</span>
+                <span>Expense P&L Target</span>
                 <span className="font-semibold text-gray-900">{formatValue(expenseTargetTotal)}</span>
               </div>
               <div className="flex items-center justify-between">
-                <span>Profit target</span>
+                <span>Profit P&L Target</span>
                 <span className={clsx(
                   'font-semibold',
                   operatingProfitTarget >= 0 ? 'text-emerald-700' : 'text-rose-700'

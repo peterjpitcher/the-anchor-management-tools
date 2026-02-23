@@ -9,7 +9,11 @@ import { getReceiptsNavItems } from '../receiptsNavItems'
 export const runtime = 'nodejs'
 
 export default async function ReceiptsPnlPage() {
-  const canView = await checkUserPermission('receipts', 'view')
+  const [canView, canExport] = await Promise.all([
+    checkUserPermission('receipts', 'view'),
+    checkUserPermission('receipts', 'export'),
+  ])
+
   if (!canView) {
     redirect('/unauthorized')
   }
@@ -19,12 +23,12 @@ export default async function ReceiptsPnlPage() {
   return (
     <PageLayout
       title="P&L Targets"
-      subtitle="Compare actual results to your targets across key timeframes."
+      subtitle="Compare actual results to Shadow P&L targets across key timeframes."
       backButton={{ label: 'Back to Receipts', href: '/receipts' }}
       navItems={getReceiptsNavItems({ view: 'pnl' })}
     >
       <Card>
-        <PnlClient initialData={data} />
+        <PnlClient initialData={data} canExport={canExport} />
       </Card>
     </PageLayout>
   )

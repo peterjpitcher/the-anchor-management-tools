@@ -25,21 +25,39 @@ export async function DELETE(
     return NextResponse.json({ error: 'Booking not found' }, { status: 404 })
   }
 
-  const { error: deleteError } = await (auth.supabase.from('table_bookings') as any)
-    .delete()
+  const nowIso = new Date().toISOString()
+  const cancellationReason = 'boh_soft_delete'
+  const { data: cancelledBooking, error: cancelError } = await (auth.supabase.from('table_bookings') as any)
+    .update({
+      status: 'cancelled',
+      cancelled_at: nowIso,
+      cancelled_by: 'staff',
+      cancellation_reason: cancellationReason,
+      updated_at: nowIso
+    })
     .eq('id', id)
+    .select('id, booking_reference, status, cancelled_at, cancelled_by, cancellation_reason')
+    .maybeSingle()
 
-  if (deleteError) {
+  if (cancelError) {
     return NextResponse.json({ error: 'Failed to delete booking' }, { status: 500 })
+  }
+
+  if (!cancelledBooking) {
+    return NextResponse.json({ error: 'Booking not found' }, { status: 404 })
   }
 
   return NextResponse.json({
     success: true,
     data: {
       id,
-      booking_reference: existing.booking_reference || null,
-      status: existing.status || null,
-      deleted_at: new Date().toISOString()
+      booking_reference: cancelledBooking.booking_reference || existing.booking_reference || null,
+      status: cancelledBooking.status || existing.status || null,
+      deleted_at: nowIso,
+      cancelled_at: cancelledBooking.cancelled_at || nowIso,
+      cancelled_by: cancelledBooking.cancelled_by || 'staff',
+      cancellation_reason: cancelledBooking.cancellation_reason || cancellationReason,
+      soft_deleted: true
     }
   })
 }

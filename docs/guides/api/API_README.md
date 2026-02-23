@@ -16,7 +16,7 @@ The Anchor Management Tools exposes a set of authenticated API routes under `/ap
   - Bulk operations: 5 requests/minute.
 
 ## Key Domains
-- `/bookings`, `/table-bookings`, `/events`, `/private-bookings` – booking workflows (creation, confirmation, cancellation).
+- `/bookings`, `/table-bookings`, `/events`, `/private-bookings` – booking workflows (public creation and internal lifecycle actions).
 - `/messages` – outbound SMS and message logs.
 - `/invoices`, `/quotes`, `/receipts` – billing and financial documents.
 - `/parking` – car park bookings and notification flags.
@@ -30,8 +30,8 @@ All endpoints live in `src/app/api/`. Consult the corresponding route file for r
 - `GET /events/{id}` returns the event object as `data` (no nested `event` wrapper); `_meta.lastUpdated` is included for cache diagnostics.
 - `POST /events/{id}/check-availability` includes both legacy fields (`available_seats`, `requested_seats`) and normalized capacity fields (`capacity`, `remaining`, `percentage_full`).
 - `GET /event-categories` includes `event_count` for upcoming active events (scheduled/draft/rescheduled/postponed).
-- `GET /table-bookings/availability` includes `message` as an alias for `special_notes` when present.
-- `POST /table-bookings/{reference}/cancel` requires `customer_email` and a non-empty `reason`.
+- `POST /table-bookings` is the only public table-booking endpoint. It requires `Idempotency-Key` and returns `data.state` as one of: `confirmed`, `pending_card_capture`, `pending_payment`, or `blocked`.
+- `POST /table-bookings` next-step behavior: when state is `pending_card_capture` or `pending_payment`, `next_step_url` and `hold_expires_at` are returned; when state is `blocked`, `blocked_reason` is returned.
 
 ## OpenAPI Specification
 - `docs/guides/api/openapi.yaml` contains the full OpenAPI 3.0 spec. Import it into Postman/Insomnia/Swagger UI for schema validation, example payloads, and response codes.

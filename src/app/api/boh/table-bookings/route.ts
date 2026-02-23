@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { fromZonedTime } from 'date-fns-tz'
 import { getLondonDateIso, requireFohPermission } from '@/lib/foh/api-auth'
+import { logger } from '@/lib/logger'
 
 type BohViewMode = 'day' | 'week' | 'month'
 
@@ -285,12 +286,28 @@ export async function GET(request: NextRequest) {
   ])
 
   if (bookingsLoad.error) {
-    console.error('[boh/table-bookings] failed to load bookings', bookingsLoad.error)
+    logger.error('[boh/table-bookings] failed to load bookings', {
+      error: bookingsLoad.error instanceof Error
+        ? bookingsLoad.error
+        : new Error(String((bookingsLoad.error as { message?: string } | null)?.message || bookingsLoad.error)),
+      metadata: {
+        rangeStart: range.startDate,
+        rangeEnd: range.endDate
+      }
+    })
     return NextResponse.json({ error: 'Failed to load table bookings' }, { status: 500 })
   }
 
   if (tablesLoad.error) {
-    console.error('[boh/table-bookings] failed to load tables', tablesLoad.error)
+    logger.error('[boh/table-bookings] failed to load tables', {
+      error: tablesLoad.error instanceof Error
+        ? tablesLoad.error
+        : new Error(String((tablesLoad.error as { message?: string } | null)?.message || tablesLoad.error)),
+      metadata: {
+        rangeStart: range.startDate,
+        rangeEnd: range.endDate
+      }
+    })
     return NextResponse.json({ error: 'Failed to load tables' }, { status: 500 })
   }
 
@@ -307,7 +324,12 @@ export async function GET(request: NextRequest) {
       .in('table_booking_id', bookingIds)
 
     if (assignmentError) {
-      console.warn('[boh/table-bookings] assignments unavailable; continuing without assignments', assignmentError)
+      logger.warn('[boh/table-bookings] assignments unavailable; continuing without assignments', {
+        metadata: {
+          bookingIdsCount: bookingIds.length,
+          error: assignmentError.message
+        }
+      })
     } else {
       for (const row of (assignmentRows || []) as any[]) {
         const bookingId = row?.table_booking_id

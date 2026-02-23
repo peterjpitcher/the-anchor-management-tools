@@ -392,40 +392,104 @@ components:
           type: integer
         is_active:
           type: boolean
-    TableBookingAvailability:
+    TableBookingCreateRequest:
+      type: object
+      required:
+        - phone
+        - date
+        - time
+        - party_size
+        - purpose
+      properties:
+        phone:
+          type: string
+          minLength: 7
+          maxLength: 32
+        first_name:
+          type: string
+          maxLength: 100
+        last_name:
+          type: string
+          maxLength: 100
+        email:
+          type: string
+          format: email
+        date:
+          type: string
+          pattern: '^\d{4}-\d{2}-\d{2}$'
+        time:
+          type: string
+          pattern: '^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$'
+        party_size:
+          type: integer
+          minimum: 1
+          maximum: 50
+        purpose:
+          type: string
+          enum: [food, drinks]
+        notes:
+          type: string
+          maxLength: 500
+        sunday_lunch:
+          type: boolean
+        default_country_code:
+          type: string
+          pattern: '^\d{1,4}$'
+    TableBookingCreateResponseData:
       type: object
       properties:
-        available:
+        state:
+          type: string
+          enum: [confirmed, pending_card_capture, pending_payment, blocked]
+        table_booking_id:
+          type: string
+          format: uuid
+          nullable: true
+        booking_reference:
+          type: string
+          nullable: true
+        reason:
+          type: string
+          nullable: true
+        blocked_reason:
+          type: string
+          nullable: true
+          enum:
+            - outside_hours
+            - cut_off
+            - no_table
+            - private_booking_blocked
+            - too_large_party
+            - customer_conflict
+            - in_past
+            - blocked
+        next_step_url:
+          type: string
+          format: uri
+          nullable: true
+        hold_expires_at:
+          type: string
+          format: date-time
+          nullable: true
+        table_name:
+          type: string
+          nullable: true
+    TableBookingCreateResponse:
+      type: object
+      properties:
+        success:
           type: boolean
-        time_slots:
-          type: array
-          items:
-            type: object
-            properties:
-              time:
-                type: string
-              available_capacity:
-                type: integer
-              booking_type:
-                type: string
-              requires_prepayment:
-                type: boolean
-        kitchen_hours:
+        data:
+          $ref: '#/components/schemas/TableBookingCreateResponseData'
+        meta:
           type: object
-          nullable: true
           properties:
-            opens:
-              type: string
-            closes:
-              type: string
-            source:
-              type: string
-        message:
-          type: string
-          nullable: true
-        special_notes:
-          type: string
-          nullable: true
+            status_code:
+              type: integer
+            sms:
+              type: object
+              nullable: true
+              additionalProperties: true
 paths:
   # Webhook Endpoints
   /webhooks/twilio:
@@ -730,90 +794,52 @@ paths:
                             type: string
                             format: date-time
 
-  /table-bookings/availability:
-    get:
-      tags:
-        - Bookings
-      summary: Check table availability
-      security:
-        - bearerAuth: []
-      parameters:
-        - in: query
-          name: date
-          required: true
-          schema:
-            type: string
-            format: date
-        - in: query
-          name: party_size
-          required: true
-          schema:
-            type: integer
-            minimum: 1
-            maximum: 20
-        - in: query
-          name: booking_type
-          required: false
-          schema:
-            type: string
-            enum: [regular, sunday_lunch]
-      responses:
-        '200':
-          description: Availability slots
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  success:
-                    type: boolean
-                  data:
-                    $ref: '#/components/schemas/TableBookingAvailability'
-        '400':
-          description: Validation error
-
-  /table-bookings/{booking_reference}/cancel:
+  /table-bookings:
     post:
       tags:
         - Bookings
-      summary: Cancel a table booking
+      summary: Create a table booking
+      description: Public table-booking create flow with idempotency and stateful next-step guidance.
       security:
         - bearerAuth: []
       parameters:
-        - in: path
-          name: booking_reference
+        - in: header
+          name: Idempotency-Key
           required: true
           schema:
             type: string
+          description: Client-generated idempotency key for safe retries.
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              type: object
-              required:
-                - customer_email
-                - reason
-              properties:
-                customer_email:
-                  type: string
-                  format: email
-                reason:
-                  type: string
+              $ref: '#/components/schemas/TableBookingCreateRequest'
       responses:
-        '200':
-          description: Cancellation result
+        '201':
+          description: Booking created (`confirmed`, `pending_card_capture`, or `pending_payment`).
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  success:
-                    type: boolean
-                  data:
-                    type: object
-                    additionalProperties: true
+                $ref: '#/components/schemas/TableBookingCreateResponse'
+        '200':
+          description: Request handled but booking blocked (`state=blocked`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TableBookingCreateResponse'
         '400':
-          description: Validation error
-        '403':
+          description: Validation error (including missing `Idempotency-Key`).
+        '401':
           description: Unauthorized
+        '409':
+          description: Idempotency conflict or key already in progress.
+        '500':
+          description: Internal server error
+    options:
+      tags:
+        - Bookings
+      summary: CORS preflight for table-bookings create
+      responses:
+        '200':
+          description: Preflight accepted

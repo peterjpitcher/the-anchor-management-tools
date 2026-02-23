@@ -124,12 +124,12 @@ jobs:
 
           # 7. Table Booking Reminders (Every 4 hours)
           if [ "${{ github.event.schedule }}" == "0 */4 * * *" ] || [ "${{ inputs.job }}" == "table-booking-reminders" ] || [ "${{ inputs.job }}" == "all" ]; then
-            run_job "/api/cron/table-booking-reminders" "Table Booking Reminders"
+            run_job "/api/cron/sunday-preorder" "Table Booking Reminders"
           fi
 
           # 8. Table Booking Monitoring & Reconcile SMS (Hourly)
           if [ "${{ github.event.schedule }}" == "0 * * * *" ] || [ "${{ inputs.job }}" == "table-booking-monitoring" ] || [ "${{ inputs.job }}" == "reconcile-sms" ] || [ "${{ inputs.job }}" == "all" ]; then
-            run_job "/api/cron/table-booking-monitoring" "Table Booking Monitoring"
+            run_job "/api/cron/event-booking-holds" "Table Booking Monitoring"
             run_job "/api/cron/reconcile-sms" "Reconcile SMS"
           fi
 

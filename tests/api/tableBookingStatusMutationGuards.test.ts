@@ -37,6 +37,21 @@ function buildUpdateNoRowSupabase() {
   }
 }
 
+function buildUpdateSuccessSupabase(data: Record<string, unknown>) {
+  const maybeSingle = vi.fn().mockResolvedValue({ data, error: null })
+  const select = vi.fn().mockReturnValue({ maybeSingle })
+  const eq = vi.fn().mockReturnValue({ select })
+  const update = vi.fn().mockReturnValue({ eq })
+
+  return {
+    supabase: {
+      from: vi.fn().mockReturnValue({ update }),
+    },
+    update,
+    eq,
+  }
+}
+
 describe('Table-booking mutation row-effect guards', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -127,6 +142,166 @@ describe('Table-booking mutation row-effect guards', () => {
 
     expect(response.status).toBe(404)
     expect(payload).toEqual({ error: 'Booking not found' })
+    expect(createChargeRequestForBooking).not.toHaveBeenCalled()
+  })
+
+  it('clears no-show markers and normalizes pending_card_capture when seating via FOH', async () => {
+    const { supabase, update } = buildUpdateSuccessSupabase({
+      id: 'booking-1',
+      status: 'confirmed',
+      seated_at: '2026-02-23T10:00:00.000Z',
+      left_at: null,
+      no_show_at: null,
+      no_show_marked_at: null,
+      no_show_marked_by: null,
+    })
+
+    ;(requireFohPermission as unknown as vi.Mock).mockResolvedValue({
+      ok: true,
+      userId: 'user-1',
+      supabase,
+    })
+    ;(getTableBookingForFoh as unknown as vi.Mock).mockResolvedValue({
+      id: 'booking-1',
+      status: 'pending_card_capture',
+    })
+
+    const response = await postFohSeated({} as any, {
+      params: Promise.resolve({ id: 'booking-1' }),
+    })
+
+    expect(response.status).toBe(200)
+    expect(update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: 'confirmed',
+        left_at: null,
+        no_show_at: null,
+        no_show_marked_at: null,
+        no_show_marked_by: null,
+      })
+    )
+  })
+
+  it('clears no-show markers and normalizes pending_card_capture when seating via BOH', async () => {
+    const { supabase, update } = buildUpdateSuccessSupabase({
+      id: 'booking-1',
+      status: 'confirmed',
+      seated_at: '2026-02-23T10:00:00.000Z',
+      left_at: null,
+      no_show_at: null,
+      no_show_marked_at: null,
+      no_show_marked_by: null,
+    })
+
+    ;(requireFohPermission as unknown as vi.Mock).mockResolvedValue({
+      ok: true,
+      userId: 'user-1',
+      supabase,
+    })
+    ;(getTableBookingForFoh as unknown as vi.Mock).mockResolvedValue({
+      id: 'booking-1',
+      status: 'pending_card_capture',
+    })
+
+    const request = new Request('http://localhost/api/boh/table-bookings/booking-1/status', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ action: 'seated' }),
+    })
+
+    const response = await postBohStatus(request as any, {
+      params: Promise.resolve({ id: 'booking-1' }),
+    })
+
+    expect(response.status).toBe(200)
+    expect(update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: 'confirmed',
+        left_at: null,
+        no_show_at: null,
+        no_show_marked_at: null,
+        no_show_marked_by: null,
+      })
+    )
+  })
+
+  it('returns 409 consistently for invalid seated transitions in FOH and BOH', async () => {
+    const { supabase, update } = buildUpdateNoRowSupabase()
+
+    ;(requireFohPermission as unknown as vi.Mock).mockResolvedValue({
+      ok: true,
+      userId: 'user-1',
+      supabase,
+    })
+    ;(getTableBookingForFoh as unknown as vi.Mock).mockResolvedValue({
+      id: 'booking-1',
+      status: 'completed',
+      booking_date: '2026-02-23',
+      booking_time: '12:00:00',
+      start_datetime: null,
+    })
+
+    const fohResponse = await postFohSeated({} as any, {
+      params: Promise.resolve({ id: 'booking-1' }),
+    })
+    const fohPayload = await fohResponse.json()
+
+    const bohRequest = new Request('http://localhost/api/boh/table-bookings/booking-1/status', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ action: 'seated' }),
+    })
+    const bohResponse = await postBohStatus(bohRequest as any, {
+      params: Promise.resolve({ id: 'booking-1' }),
+    })
+    const bohPayload = await bohResponse.json()
+
+    expect(fohResponse.status).toBe(409)
+    expect(bohResponse.status).toBe(409)
+    expect(fohPayload).toEqual({ error: 'Cannot mark booking as seated from current status' })
+    expect(bohPayload).toEqual({ error: 'Cannot mark booking as seated from current status' })
+    expect(update).not.toHaveBeenCalled()
+  })
+
+  it('returns 409 consistently for invalid no-show transitions in FOH and BOH', async () => {
+    const { supabase, update } = buildUpdateNoRowSupabase()
+    ;(requireFohPermission as unknown as vi.Mock).mockResolvedValue({
+      ok: true,
+      userId: 'user-1',
+      supabase,
+    })
+    ;(getTableBookingForFoh as unknown as vi.Mock).mockResolvedValue({
+      id: 'booking-1',
+      customer_id: 'customer-1',
+      status: 'completed',
+      party_size: 2,
+      committed_party_size: 2,
+      booking_date: '2026-02-23',
+      booking_time: '12:00:00',
+      start_datetime: null,
+      end_datetime: null,
+    })
+
+    const fohResponse = await postFohNoShow({} as any, {
+      params: Promise.resolve({ id: 'booking-1' }),
+    })
+    const fohPayload = await fohResponse.json()
+
+    const bohRequest = new Request('http://localhost/api/boh/table-bookings/booking-1/status', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ action: 'no_show' }),
+    })
+    const bohResponse = await postBohStatus(bohRequest as any, {
+      params: Promise.resolve({ id: 'booking-1' }),
+    })
+    const bohPayload = await bohResponse.json()
+
+    expect(fohResponse.status).toBe(409)
+    expect(bohResponse.status).toBe(409)
+    expect(fohPayload).toEqual({ error: 'Cannot mark booking as no-show from current status' })
+    expect(bohPayload).toEqual({ error: 'Cannot mark booking as no-show from current status' })
+    expect(update).not.toHaveBeenCalled()
     expect(createChargeRequestForBooking).not.toHaveBeenCalled()
   })
 

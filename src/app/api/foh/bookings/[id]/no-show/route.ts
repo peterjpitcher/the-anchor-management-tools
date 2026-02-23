@@ -1,24 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { fromZonedTime } from 'date-fns-tz'
 import { requireFohPermission } from '@/lib/foh/api-auth'
 import {
   createChargeRequestForBooking,
   getFeePerHead,
   getTableBookingForFoh
 } from '@/lib/foh/bookings'
-
-function getBookingStartIso(booking: {
-  start_datetime: string | null
-  booking_date: string
-  booking_time: string
-}): string {
-  if (booking.start_datetime) {
-    return booking.start_datetime
-  }
-
-  const local = `${booking.booking_date}T${booking.booking_time}`
-  return fromZonedTime(local, 'Europe/London').toISOString()
-}
+import { buildStaffStatusTransitionPlan } from '@/lib/table-bookings/staff-status-actions'
 
 export async function POST(
   _request: NextRequest,
@@ -36,22 +23,18 @@ export async function POST(
     return NextResponse.json({ error: 'Booking not found' }, { status: 404 })
   }
 
-  if (['cancelled', 'no_show'].includes(booking.status)) {
-    return NextResponse.json(
-      { error: 'Booking cannot be marked no-show from current status' },
-      { status: 409 }
-    )
-  }
-
-  const bookingStartIso = getBookingStartIso(booking)
-  if (Date.parse(bookingStartIso) > Date.now()) {
-    return NextResponse.json(
-      { error: 'Booking cannot be marked no-show before start time' },
-      { status: 409 }
-    )
-  }
-
   const nowIso = new Date().toISOString()
+  const transition = buildStaffStatusTransitionPlan({
+    action: 'no_show',
+    booking,
+    nowIso,
+    noShowMarkedBy: auth.userId
+  })
+
+  if (!transition.ok) {
+    return NextResponse.json({ error: transition.error }, { status: transition.status })
+  }
+
   const committedPartySize = Math.max(
     1,
     Number(booking.committed_party_size || booking.party_size || 1)
@@ -60,13 +43,7 @@ export async function POST(
   const suggestedAmount = committedPartySize * feePerHead
 
   const { data: noShowRow, error: updateError } = await (auth.supabase.from('table_bookings') as any)
-    .update({
-      status: 'no_show',
-      no_show_at: nowIso,
-      no_show_marked_at: nowIso,
-      no_show_marked_by: auth.userId,
-      updated_at: nowIso
-    })
+    .update(transition.plan.update)
     .eq('id', id)
     .select('id')
     .maybeSingle()
