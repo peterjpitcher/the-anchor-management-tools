@@ -107,6 +107,7 @@ export default function NewPrivateBookingPage() {
         <Card>
           <form onSubmit={handleSubmit} className="space-y-6">
           {dateTbd && <input type="hidden" name="date_tbd" value="true" />}
+          <input type="hidden" name="default_country_code" value="44" />
           {/* Customer Information */}
           <Section 
             title="Customer Information"
@@ -166,7 +167,7 @@ export default function NewPrivateBookingPage() {
                     name="contact_phone"
                     value={contactPhone}
                     onChange={(e) => setContactPhone(e.target.value)}
-                    placeholder="07700 900000"
+                    placeholder="+1 415 555 2671 or local format"
                     autoComplete="tel"
                     inputMode="tel"
                   />

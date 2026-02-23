@@ -90,6 +90,7 @@ export const privateBookingSchema = z.object({
   customer_first_name: z.string().min(1, 'First name is required'),
   customer_last_name: z.string().optional(),
   customer_id: z.string().uuid().optional().nullable(),
+  default_country_code: z.string().regex(/^\d{1,4}$/).optional(),
   contact_phone: z.string().optional(),
   contact_email: z.string().email('Invalid email format').optional().or(z.literal('')),
   event_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must be in YYYY-MM-DD format').optional(),
@@ -133,6 +134,7 @@ export type CreatePrivateBookingInput = {
   customer_first_name: string;
   customer_last_name?: string;
   customer_id?: string | null;
+  default_country_code?: string;
   contact_phone?: string;
   contact_email?: string;
   event_date?: string;
@@ -250,7 +252,9 @@ export class PrivateBookingService {
 
     const normalizedContactPhone =
       input.contact_phone && input.contact_phone.trim() !== ''
-        ? formatPhoneForStorage(input.contact_phone.trim())
+        ? formatPhoneForStorage(input.contact_phone.trim(), {
+            defaultCountryCode: input.default_country_code
+          })
         : null;
 
     const normalizedContactEmail =
@@ -463,7 +467,9 @@ export class PrivateBookingService {
         ? undefined
         : input.contact_phone.trim() === ''
           ? null
-          : formatPhoneForStorage(input.contact_phone.trim());
+          : formatPhoneForStorage(input.contact_phone.trim(), {
+              defaultCountryCode: input.default_country_code
+            });
 
     const normalizedContactEmail =
       input.contact_email === undefined
@@ -509,6 +515,7 @@ export class PrivateBookingService {
     // Remove non-column fields
     delete updatePayload.date_tbd;
     delete updatePayload.items;
+    delete updatePayload.default_country_code;
 
     if (input.date_tbd) {
       updatePayload.balance_due_date = null;

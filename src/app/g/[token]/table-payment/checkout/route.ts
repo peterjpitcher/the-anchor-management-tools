@@ -8,12 +8,27 @@ type RouteContext = {
   params: Promise<{ token: string }>
 }
 
+function deriveBlockedReasonFromError(error: unknown): string {
+  const message = (error instanceof Error ? error.message : String(error)).toLowerCase()
+
+  if (
+    message.includes('stripe_secret_key is not configured') ||
+    message.includes('stripe api error') ||
+    message.includes('stripe checkout session')
+  ) {
+    return 'stripe_unavailable'
+  }
+
+  return 'internal_error'
+}
+
 function blockedReasonToQuery(reason: string): string {
   switch (reason) {
     case 'token_used':
     case 'token_expired':
     case 'booking_not_pending_payment':
     case 'hold_expired':
+    case 'stripe_unavailable':
       return reason
     default:
       return 'unavailable'
@@ -55,12 +70,16 @@ export async function POST(request: NextRequest, context: RouteContext) {
 
     return NextResponse.redirect(checkoutResult.checkoutUrl, { status: 303 })
   } catch (error) {
+    const blockedReason = deriveBlockedReasonFromError(error)
     logger.error('Failed to create Stripe checkout for table payment token', {
       error: error instanceof Error ? error : new Error(String(error)),
+      metadata: {
+        blockedReason,
+      },
     })
 
     return NextResponse.redirect(
-      new URL(`/g/${token}/table-payment?state=blocked&reason=internal_error`, request.url),
+      new URL(`/g/${token}/table-payment?state=blocked&reason=${blockedReason}`, request.url),
       { status: 303 }
     )
   }

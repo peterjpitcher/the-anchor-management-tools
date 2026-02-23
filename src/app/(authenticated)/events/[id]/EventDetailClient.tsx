@@ -896,7 +896,7 @@ export default function EventDetailClient({
 
                   {!selectedCustomer && (
                     <label className="text-xs font-semibold uppercase tracking-wide text-gray-600">
-                      Phone (07... or +...)
+                      Phone (+... or local)
                       <input
                         type="tel"
                         value={bookingForm.phone}
@@ -907,7 +907,7 @@ export default function EventDetailClient({
                           }))
                         }
                         className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
-                        placeholder="07... or +..."
+                        placeholder="+1 415 555 2671 or local format"
                       />
                     </label>
                   )}

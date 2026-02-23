@@ -49,6 +49,10 @@ function blockedReasonMessage(reason: string | undefined): string {
       return 'The payment window for this booking has expired.'
     case 'booking_not_pending_payment':
       return 'This booking is no longer awaiting payment.'
+    case 'stripe_unavailable':
+      return 'Our secure payment service is temporarily unavailable. Please try again shortly.'
+    case 'internal_error':
+      return 'We hit an internal error while opening this payment link.'
     case 'rate_limited':
       return 'Too many attempts were made with this payment link. Please wait a few minutes and try again.'
     default:

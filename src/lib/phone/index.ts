@@ -53,7 +53,7 @@ function toE164Candidate(cleaned: string, defaultCountryCode: string): string {
 
 function validateAndFormatE164(candidate: string): string {
   const parsed = parsePhoneNumberFromString(candidate)
-  if (!parsed || !parsed.isValid()) {
+  if (!parsed || !parsed.isPossible()) {
     throw new Error('Invalid phone number format')
   }
 
@@ -124,4 +124,3 @@ export function generatePhoneVariants(
 
   return [...variants]
 }
-

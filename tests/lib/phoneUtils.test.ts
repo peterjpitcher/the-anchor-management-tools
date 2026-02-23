@@ -10,8 +10,20 @@ describe('formatPhoneForStorage', () => {
     expect(formatPhoneForStorage('+1 (415) 555-2671')).toBe('+14155552671')
   })
 
+  it('normalizes explicit European numbers in E.164 format', () => {
+    expect(formatPhoneForStorage('+33 6 12 34 56 78')).toBe('+33612345678')
+  })
+
   it('converts 00-prefixed international numbers to E.164', () => {
     expect(formatPhoneForStorage('0049 1512 3456789')).toBe('+4915123456789')
+  })
+
+  it('uses provided default country code for local numbers', () => {
+    expect(
+      formatPhoneForStorage('06 12 34 56 78', {
+        defaultCountryCode: '33'
+      })
+    ).toBe('+33612345678')
   })
 
   it('throws for malformed input', () => {

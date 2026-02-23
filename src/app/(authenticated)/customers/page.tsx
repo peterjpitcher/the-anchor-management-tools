@@ -228,6 +228,7 @@ export default function CustomersPage() {
       formData.append('first_name', customerData.first_name)
       formData.append('last_name', customerData.last_name ?? '')
       formData.append('mobile_number', customerData.mobile_number ?? '')
+      formData.append('default_country_code', '44')
       if (customerData.email) {
         formData.append('email', customerData.email)
       }
@@ -263,6 +264,7 @@ export default function CustomersPage() {
       formData.append('first_name', customerData.first_name)
       formData.append('last_name', customerData.last_name ?? '')
       formData.append('mobile_number', customerData.mobile_number ?? '')
+      formData.append('default_country_code', '44')
       if (customerData.email) {
         formData.append('email', customerData.email)
       }

@@ -2900,7 +2900,7 @@ export function FohScheduleClient({
             </label>
 
             <p className="mt-2 text-xs text-gray-500">
-              Assumes +44 unless the number starts with + (or 00).
+              Accepts international +... numbers; local numbers default to +44.
             </p>
 
             {searchingCustomers && <p className="mt-2 text-xs text-gray-500">Searching customers…</p>}
@@ -3027,7 +3027,7 @@ export function FohScheduleClient({
                   type="tel"
                   value={createForm.phone}
                   onChange={(event) => setCreateForm((current) => ({ ...current, phone: event.target.value }))}
-                  placeholder="07... or +..."
+                  placeholder="+1 415 555 2671 or local format"
                   className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
                 />
               </label>

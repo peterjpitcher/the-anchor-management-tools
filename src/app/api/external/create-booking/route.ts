@@ -21,6 +21,7 @@ const ExternalBookingSchema = z.object({
   name: z.string().trim().min(1).max(160),
   email: z.string().trim().email().max(320).optional(),
   phone: z.string().trim().min(5).max(32),
+  default_country_code: z.string().regex(/^\d{1,4}$/).optional(),
   partySize: z.preprocess(
     (value) => (typeof value === 'string' ? Number.parseInt(value, 10) : value),
     z.number().int().min(1).max(500)
@@ -53,7 +54,9 @@ export async function POST(request: NextRequest) {
       const payload = parsed.data;
       let normalizedPhone: string;
       try {
-        normalizedPhone = formatPhoneForStorage(payload.phone);
+        normalizedPhone = formatPhoneForStorage(payload.phone, {
+          defaultCountryCode: payload.default_country_code
+        });
       } catch {
         return NextResponse.json({ success: false, error: 'Please enter a valid phone number' }, { status: 400 });
       }
