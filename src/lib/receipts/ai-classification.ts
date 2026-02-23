@@ -15,6 +15,10 @@ function getTransactionDirection(tx: ReceiptTransaction): 'in' | 'out' {
   return 'out'
 }
 
+function canAssignExpenseCategory(tx: ReceiptTransaction): boolean {
+  return typeof tx.amount_out === 'number' && tx.amount_out > 0
+}
+
 export async function recordAIUsage(
   supabase: AdminClient,
   usage: ClassificationUsage | undefined,
@@ -74,7 +78,7 @@ export async function classifyReceiptTransactionsWithAI(
     const expenseLocked = transaction.expense_category_source === 'manual'
 
     const needsVendor = !vendorLocked && !transaction.vendor_name
-    const needsExpense = !expenseLocked && !transaction.expense_category
+    const needsExpense = !expenseLocked && !transaction.expense_category && canAssignExpenseCategory(transaction)
 
     if (!needsVendor && !needsExpense) {
       continue

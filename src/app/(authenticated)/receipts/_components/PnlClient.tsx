@@ -385,9 +385,9 @@ const renderPeriodTargetCell = (
                       const targetCurrency = baseTarget !== null && periodTarget !== null
                         ? Number((baseTarget * (periodTarget / 100)).toFixed(2))
                         : null
-                      detailLines.push(`Actual £${formatValue(actualCurrency)}`)
+                      detailLines.push(`Actual ${formatValue(actualCurrency)}`)
                       if (targetCurrency !== null) {
-                        detailLines.push(`Target £${formatValue(targetCurrency)}`)
+                        detailLines.push(`Target ${formatValue(targetCurrency)}`)
                       }
                     }
 
@@ -400,9 +400,9 @@ const renderPeriodTargetCell = (
                       const costTarget = gpTarget !== null && baseTarget !== null
                         ? Number((baseTarget - gpTarget).toFixed(2))
                         : null
-                      detailLines.push(`Actual GP £${formatValue(gpActual)} · Cost £${formatValue(costActual)}`)
+                      detailLines.push(`Actual GP ${formatValue(gpActual)} · Cost ${formatValue(costActual)}`)
                       if (gpTarget !== null && costTarget !== null) {
-                        detailLines.push(`Target GP £${formatValue(gpTarget)} · Cost £${formatValue(costTarget)}`)
+                        detailLines.push(`Target GP ${formatValue(gpTarget)} · Cost ${formatValue(costTarget)}`)
                       }
                     }
                   }

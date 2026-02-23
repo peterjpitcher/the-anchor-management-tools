@@ -9,6 +9,8 @@ import { logger } from '@/lib/logger'
 import { ensureReplyInstruction } from '@/lib/sms/support'
 import { ensureCustomerForPhone, resolveCustomerIdForSms } from '@/lib/sms/customers'
 import { sendBulkSms } from '@/lib/sms/bulk'
+import { parseTablePaymentLinkFromUrl } from '@/lib/table-bookings/payment-link'
+import { getTablePaymentPreviewByRawToken } from '@/lib/table-bookings/bookings'
 import {
   buildBulkSmsDispatchKey,
   normalizeBulkRecipientIds,
@@ -24,9 +26,129 @@ type SendSmsParams = SendSmsMetadataInput & {
   customerId?: string
 }
 
+const URL_TOKEN_REGEX = /https?:\/\/\S+/gi
+const TRAILING_PUNCTUATION = new Set(['.', ',', '!', '?', ';', ':', ')', ']', '}', '"', "'", '>'])
+
+type TablePaymentLinkInMessage = {
+  url: string
+  rawToken: string
+}
+
 function extractBulkSafetyAbortCode(errorMessage: string): string | null {
   const match = errorMessage.match(/Bulk SMS aborted due to safety failure \(([^)]+)\):/)
   return match?.[1] ?? null
+}
+
+function splitUrlToken(rawToken: string): string {
+  let cleanUrl = rawToken
+
+  while (cleanUrl.length > 0) {
+    const char = cleanUrl[cleanUrl.length - 1]
+    if (!TRAILING_PUNCTUATION.has(char)) {
+      break
+    }
+
+    if (char === ')') {
+      const opens = (cleanUrl.match(/\(/g) || []).length
+      const closes = (cleanUrl.match(/\)/g) || []).length
+      if (closes <= opens) {
+        break
+      }
+    }
+
+    cleanUrl = cleanUrl.slice(0, -1)
+  }
+
+  return cleanUrl
+}
+
+function parseHttpUrl(value: string): URL | null {
+  try {
+    const parsed = new URL(value)
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+      return null
+    }
+    return parsed
+  } catch {
+    return null
+  }
+}
+
+function extractTablePaymentLinksFromMessage(body: string): TablePaymentLinkInMessage[] {
+  if (!body) {
+    return []
+  }
+
+  const rawMatches = Array.from(body.matchAll(URL_TOKEN_REGEX)).map((match) => match[0])
+  if (rawMatches.length === 0) {
+    return []
+  }
+
+  const dedupe = new Set<string>()
+  const links: TablePaymentLinkInMessage[] = []
+
+  for (const rawMatch of rawMatches) {
+    const cleanUrl = splitUrlToken(rawMatch)
+    const parsed = parseHttpUrl(cleanUrl)
+    if (!parsed) {
+      continue
+    }
+
+    const tablePaymentLink = parseTablePaymentLinkFromUrl(parsed)
+    if (!tablePaymentLink) {
+      continue
+    }
+
+    const dedupeKey = `${cleanUrl}::${tablePaymentLink.rawToken}`
+    if (dedupe.has(dedupeKey)) {
+      continue
+    }
+    dedupe.add(dedupeKey)
+
+    links.push({
+      url: cleanUrl,
+      rawToken: tablePaymentLink.rawToken
+    })
+  }
+
+  return links
+}
+
+async function findBlockedManualTablePaymentLink(
+  supabase: ReturnType<typeof createAdminClient>,
+  body: string
+): Promise<{ url: string; reason: string } | null> {
+  const links = extractTablePaymentLinksFromMessage(body)
+  if (links.length === 0) {
+    return null
+  }
+
+  for (const link of links) {
+    try {
+      const preview = await getTablePaymentPreviewByRawToken(supabase, link.rawToken)
+      if (preview.state === 'ready') {
+        continue
+      }
+      return {
+        url: link.url,
+        reason: preview.reason || 'invalid_token'
+      }
+    } catch (error) {
+      logger.warn('manual_sms_blocked_invalid_payment_link', {
+        error: error instanceof Error ? error : new Error(String(error)),
+        metadata: {
+          payment_link_url: link.url,
+          reason_code: 'validation_unavailable',
+        }
+      })
+      return {
+        url: link.url,
+        reason: 'validation_unavailable'
+      }
+    }
+  }
+
+  return null
 }
 
 async function ensureBulkRateLimitNotExceeded() {
@@ -174,6 +296,20 @@ export async function sendSms(params: SendSmsParams) {
     }
     if (metadata.stage === undefined) {
       metadata.stage = createHash('sha256').update(messageBody).digest('hex').slice(0, 16)
+    }
+
+    const blockedPaymentLink = await findBlockedManualTablePaymentLink(supabase, params.body)
+    if (blockedPaymentLink) {
+      logger.warn('manual_sms_blocked_invalid_payment_link', {
+        metadata: {
+          to: params.to,
+          bookingId: params.bookingId ?? null,
+          customerId: customerId ?? params.customerId ?? null,
+          payment_link_url: blockedPaymentLink.url,
+          reason_code: blockedPaymentLink.reason,
+        }
+      })
+      return { error: `Cannot send SMS because a payment link is unavailable (${blockedPaymentLink.reason}).` }
     }
 
     // Use the enhanced sendSMS which handles logging automatically

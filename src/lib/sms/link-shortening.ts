@@ -1,4 +1,7 @@
 import { isShortLinkHost, isShortLinkPath } from '@/lib/short-links/routing'
+import { logger } from '@/lib/logger'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { getTablePaymentGuestTokenByRawToken, parseTablePaymentLinkFromUrl } from '@/lib/table-bookings/payment-link'
 import { ShortLinkService } from '@/services/short-links'
 
 const URL_TOKEN_REGEX = /https?:\/\/\S+/gi
@@ -87,6 +90,7 @@ export async function shortenUrlsInSmsBody(body: string): Promise<string> {
   )
 
   const replacementByCleanUrl = new Map<string, string>()
+  const supabase = createAdminClient()
 
   await Promise.all(
     uniqueCleanUrls.map(async (cleanUrl) => {
@@ -101,13 +105,49 @@ export async function shortenUrlsInSmsBody(body: string): Promise<string> {
         return
       }
 
+      const metadata: Record<string, unknown> = {
+        source: 'sms_auto_shortener'
+      }
+      const tablePaymentLink = parseTablePaymentLinkFromUrl(parsed)
+      if (tablePaymentLink) {
+        try {
+          const tokenRow = await getTablePaymentGuestTokenByRawToken(supabase, tablePaymentLink.rawToken)
+          if (!tokenRow) {
+            logger.warn('Skipped short-link creation for invalid table payment token URL', {
+              metadata: {
+                reason_code: 'invalid_token',
+                destination_url: cleanUrl,
+                guest_token_hash: tablePaymentLink.tokenHash,
+              }
+            })
+            replacementByCleanUrl.set(cleanUrl, cleanUrl)
+            return
+          }
+
+          metadata.guest_link_kind = 'table_payment'
+          metadata.guest_action_type = 'payment'
+          metadata.guest_token_hash = tablePaymentLink.tokenHash
+          metadata.table_booking_id = tokenRow.table_booking_id || null
+          metadata.customer_id = tokenRow.customer_id || null
+        } catch (error) {
+          logger.warn('Skipped short-link creation for table payment URL due to token lookup failure', {
+            error: error instanceof Error ? error : new Error(String(error)),
+            metadata: {
+              reason_code: 'token_lookup_failed',
+              destination_url: cleanUrl,
+              guest_token_hash: tablePaymentLink.tokenHash,
+            }
+          })
+          replacementByCleanUrl.set(cleanUrl, cleanUrl)
+          return
+        }
+      }
+
       try {
         const result = await ShortLinkService.createShortLinkInternal({
           destination_url: cleanUrl,
           link_type: 'custom',
-          metadata: {
-            source: 'sms_auto_shortener'
-          }
+          metadata
         })
         replacementByCleanUrl.set(cleanUrl, result.full_url)
       } catch {
@@ -129,4 +169,3 @@ export async function shortenUrlsInSmsBody(body: string): Promise<string> {
 
   return body.replace(URL_TOKEN_REGEX, (rawToken) => replacementByRawToken.get(rawToken) || rawToken)
 }
-

@@ -8,6 +8,7 @@ vi.mock('@/lib/foh/bookings', () => ({
   getTableBookingForFoh: vi.fn(),
   getFeePerHead: vi.fn(),
   createChargeRequestForBooking: vi.fn(),
+  hasUnpaidSundayLunchDeposit: vi.fn(() => false),
 }))
 
 import { requireFohPermission } from '@/lib/foh/api-auth'

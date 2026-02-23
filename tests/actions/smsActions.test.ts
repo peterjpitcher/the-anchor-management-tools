@@ -28,6 +28,10 @@ vi.mock('@/lib/sms/customers', () => ({
   resolveCustomerIdForSms: vi.fn(),
 }))
 
+vi.mock('@/lib/table-bookings/bookings', () => ({
+  getTablePaymentPreviewByRawToken: vi.fn(),
+}))
+
 vi.mock('@/lib/twilio', () => ({
   sendSMS: vi.fn(),
 }))
@@ -38,6 +42,7 @@ import { rateLimiters } from '@/lib/rate-limit'
 import { sendBulkSms } from '@/lib/sms/bulk'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { ensureCustomerForPhone, resolveCustomerIdForSms } from '@/lib/sms/customers'
+import { getTablePaymentPreviewByRawToken } from '@/lib/table-bookings/bookings'
 import { sendSMS } from '@/lib/twilio'
 import { sendBulkSMSAsync, sendOTPMessage, sendSms } from '@/app/actions/sms'
 
@@ -258,6 +263,21 @@ describe('sms action recipient safety guards', () => {
       customerId: 'customer-1',
       resolutionError: undefined
     })
+    ;(getTablePaymentPreviewByRawToken as unknown as vi.Mock).mockResolvedValue({
+      state: 'ready',
+      tableBookingId: 'booking-preview-1',
+      customerId: 'customer-1',
+      bookingReference: 'BK-1',
+      partySize: 2,
+      totalAmount: 20,
+      currency: 'GBP',
+      holdExpiresAt: '2099-02-01T10:00:00.000Z',
+      bookingDate: '2099-02-01',
+      bookingTime: '12:30',
+      startDateTime: '2099-02-01T12:30:00.000Z',
+      bookingType: 'sunday_lunch',
+      tokenHash: 'token-hash-preview',
+    })
     ;(sendSMS as unknown as vi.Mock).mockResolvedValue({
       success: true,
       sid: 'SM-1',
@@ -295,6 +315,57 @@ describe('sms action recipient safety guards', () => {
 
     expect(result).toEqual({ error: 'Failed SMS recipient safety check' })
     expect(sendSMS).not.toHaveBeenCalled()
+  })
+
+  it('blocks manual send when body contains an invalid table-payment token link', async () => {
+    ;(getTablePaymentPreviewByRawToken as unknown as vi.Mock).mockResolvedValue({
+      state: 'blocked',
+      reason: 'invalid_token',
+    })
+
+    const result = await sendSms({
+      to: '+447700900111',
+      body: 'Please pay here: https://management.orangejelly.co.uk/g/bad-token/table-payment',
+      bookingId: 'booking-1'
+    })
+
+    expect(result).toEqual({
+      error: 'Cannot send SMS because a payment link is unavailable (invalid_token).'
+    })
+    expect(sendSMS).not.toHaveBeenCalled()
+  })
+
+  it('allows manual send when body contains a valid table-payment token link', async () => {
+    ;(getTablePaymentPreviewByRawToken as unknown as vi.Mock).mockResolvedValue({
+      state: 'ready',
+      tableBookingId: 'booking-preview-2',
+      customerId: 'customer-1',
+      bookingReference: 'BK-2',
+      partySize: 3,
+      totalAmount: 30,
+      currency: 'GBP',
+      holdExpiresAt: '2099-02-01T10:00:00.000Z',
+      bookingDate: '2099-02-01',
+      bookingTime: '13:00',
+      startDateTime: '2099-02-01T13:00:00.000Z',
+      bookingType: 'sunday_lunch',
+      tokenHash: 'token-hash-preview-2',
+    })
+
+    const result = await sendSms({
+      to: '+447700900112',
+      body: 'Pay link: https://management.orangejelly.co.uk/g/good-token/table-payment',
+      bookingId: 'booking-2'
+    })
+
+    expect(result).toEqual(
+      expect.objectContaining({
+        success: true,
+        sid: 'SM-1',
+        customerId: 'customer-1'
+      })
+    )
+    expect(sendSMS).toHaveBeenCalledTimes(1)
   })
 
   it('sends SMS when recipient context lookup succeeds', async () => {
