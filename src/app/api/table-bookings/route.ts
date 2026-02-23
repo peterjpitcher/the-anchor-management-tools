@@ -94,6 +94,10 @@ async function recordTableBookingAnalyticsSafe(
   }
 }
 
+export async function OPTIONS(_request: NextRequest) {
+  return createApiResponse({}, 200)
+}
+
 export async function POST(request: NextRequest) {
   return withApiAuth(async (req) => {
     const idempotencyKey = getIdempotencyKey(req)

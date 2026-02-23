@@ -324,13 +324,16 @@ From the booking view page, users can:
   - Monday: Closed
 - Holiday overrides supported
 
-**API Endpoints**:
+**Public API Endpoint**:
 ```
-GET  /api/table-bookings/availability
-POST /api/table-bookings/create
-GET  /api/table-bookings/menu/sunday-lunch
-POST /api/table-bookings/confirm-payment
+POST /api/table-bookings
 ```
+
+**Public create states and next steps**:
+- `confirmed`: booking is accepted immediately.
+- `pending_card_capture`: customer must complete card capture via `next_step_url` before `hold_expires_at`.
+- `pending_payment`: customer must complete deposit payment via `next_step_url` before `hold_expires_at`.
+- `blocked`: booking is not accepted; `blocked_reason` explains why.
 
 **Notifications**:
 - Immediate booking confirmation

@@ -22,9 +22,9 @@ jobs:
           VERCEL_URL="https://management.orangejelly.co.uk"
           
           echo "Monitoring table bookings at: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
-          echo "Making request to: ${VERCEL_URL}/api/cron/table-booking-monitoring"
+          echo "Making request to: ${VERCEL_URL}/api/cron/event-booking-holds"
 
-          response=$(curl -X GET "${VERCEL_URL}/api/cron/table-booking-monitoring" \
+          response=$(curl -X GET "${VERCEL_URL}/api/cron/event-booking-holds" \
             -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
             -H "Content-Type: application/json" \
             -w "\n%{http_code}" \

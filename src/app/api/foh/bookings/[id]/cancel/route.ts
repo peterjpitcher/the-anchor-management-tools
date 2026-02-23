@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireFohPermission } from '@/lib/foh/api-auth'
 import { getTableBookingForFoh } from '@/lib/foh/bookings'
+import { buildStaffStatusTransitionPlan } from '@/lib/table-bookings/staff-status-actions'
 
 export async function POST(
   _request: NextRequest,
@@ -18,23 +19,22 @@ export async function POST(
     return NextResponse.json({ error: 'Booking not found' }, { status: 404 })
   }
 
-  if (['cancelled', 'no_show'].includes(booking.status)) {
-    return NextResponse.json(
-      { error: 'Booking cannot be cancelled from current status' },
-      { status: 409 }
-    )
+  const nowIso = new Date().toISOString()
+  const transition = buildStaffStatusTransitionPlan({
+    action: 'cancelled',
+    booking,
+    nowIso,
+    cancelledBy: 'staff'
+  })
+
+  if (!transition.ok) {
+    return NextResponse.json({ error: transition.error }, { status: transition.status })
   }
 
-  const nowIso = new Date().toISOString()
   const { data, error } = await (auth.supabase.from('table_bookings') as any)
-    .update({
-      status: 'cancelled',
-      cancelled_at: nowIso,
-      cancelled_by: 'staff',
-      updated_at: nowIso
-    })
+    .update(transition.plan.update)
     .eq('id', id)
-    .select('id, status, cancelled_at, cancelled_by')
+    .select(transition.plan.select)
     .maybeSingle()
 
   if (error) {

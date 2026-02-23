@@ -141,7 +141,7 @@ export function createApiResponse(
       'Cache-Control': 'public, max-age=60, stale-while-revalidate=120',
       'Access-Control-Allow-Origin': '*', // Allow all origins for public API
       'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-API-Key',
+      'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-API-Key, Idempotency-Key',
       'X-Powered-By': 'The Anchor API',
       'ETag': etag,
       ...headers,

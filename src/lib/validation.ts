@@ -209,3 +209,7 @@ export const receiptQuarterExportSchema = z.object({
   year: z.number().int().min(2020, 'Select a realistic year').max(2100),
   quarter: z.number().int().min(1).max(4),
 });
+
+export const pnlExportSchema = z.object({
+  timeframe: z.enum(['1m', '3m', '12m']).default('12m'),
+});

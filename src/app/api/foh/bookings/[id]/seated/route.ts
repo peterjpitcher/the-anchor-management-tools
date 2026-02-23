@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireFohPermission } from '@/lib/foh/api-auth'
 import { getTableBookingForFoh, hasUnpaidSundayLunchDeposit } from '@/lib/foh/bookings'
+import { buildStaffStatusTransitionPlan } from '@/lib/table-bookings/staff-status-actions'
 
 export async function POST(
   _request: NextRequest,
@@ -25,18 +26,21 @@ export async function POST(
     )
   }
 
-  if (['cancelled', 'no_show'].includes(booking.status)) {
-    return NextResponse.json(
-      { error: 'Booking cannot be marked seated from current status' },
-      { status: 409 }
-    )
+  const nowIso = new Date().toISOString()
+  const transition = buildStaffStatusTransitionPlan({
+    action: 'seated',
+    booking,
+    nowIso
+  })
+
+  if (!transition.ok) {
+    return NextResponse.json({ error: transition.error }, { status: transition.status })
   }
 
-  const nowIso = new Date().toISOString()
   const { data, error } = await (auth.supabase.from('table_bookings') as any)
-    .update({ seated_at: nowIso, left_at: null, updated_at: nowIso })
+    .update(transition.plan.update)
     .eq('id', id)
-    .select('id, status, seated_at, left_at')
+    .select(transition.plan.select)
     .maybeSingle()
 
   if (error) {
