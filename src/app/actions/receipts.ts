@@ -1128,8 +1128,10 @@ export async function finalizeReceiptRuleRetroRun(input: {
   })
 
   revalidatePath('/receipts')
+  revalidatePath('/receipts/bulk')
   revalidatePath('/receipts/vendors')
   revalidatePath('/receipts/monthly')
+  revalidatePath('/receipts/pnl')
   revalidateTag('dashboard')
   revalidatePath('/dashboard')
 
@@ -1342,6 +1344,7 @@ export async function importReceiptStatement(formData: FormData) {
   revalidatePath('/receipts')
   revalidatePath('/receipts/vendors')
   revalidatePath('/receipts/monthly')
+  revalidatePath('/receipts/pnl')
   revalidateTag('dashboard')
   revalidatePath('/dashboard')
 
@@ -1449,6 +1452,8 @@ export async function markReceiptTransaction(input: {
   })
 
   revalidatePath('/receipts')
+  revalidatePath('/receipts/monthly')
+  revalidatePath('/receipts/pnl')
   revalidateTag('dashboard')
   revalidatePath('/dashboard')
 
@@ -1586,6 +1591,10 @@ export async function updateReceiptClassification(input: {
   })
 
   revalidatePath('/receipts')
+  revalidatePath('/receipts/monthly')
+  revalidatePath('/receipts/missing-expense')
+  revalidatePath('/receipts/vendors')
+  revalidatePath('/receipts/pnl')
   revalidateTag('dashboard')
   revalidatePath('/dashboard')
 
@@ -2557,6 +2566,10 @@ export async function applyReceiptGroupClassification(input: {
 
   revalidatePath('/receipts')
   revalidatePath('/receipts/bulk')
+  revalidatePath('/receipts/monthly')
+  revalidatePath('/receipts/missing-expense')
+  revalidatePath('/receipts/vendors')
+  revalidatePath('/receipts/pnl')
   revalidateTag('dashboard')
   revalidatePath('/dashboard')
 

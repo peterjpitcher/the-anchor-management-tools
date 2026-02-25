@@ -20,6 +20,7 @@ import { Button } from '@/components/ui-v2/forms/Button'
 
 interface ReceiptsClientProps {
   initialData: ReceiptWorkspaceData
+  canExport?: boolean
   initialFilters: {
     status: ReceiptWorkspaceFilters['status'] | 'all'
     direction: 'in' | 'out' | 'all'
@@ -61,7 +62,7 @@ function updateSummaryForStatusChange(
   }))
 }
 
-export default function ReceiptsClient({ initialData, initialFilters }: ReceiptsClientProps) {
+export default function ReceiptsClient({ initialData, canExport = false, initialFilters }: ReceiptsClientProps) {
   const router = useRouter()
   const searchParams = useSearchParams()
   const { hasPermission } = usePermissions()
@@ -155,9 +156,9 @@ export default function ReceiptsClient({ initialData, initialFilters }: Receipts
     <div className="space-y-6">
       <ReceiptStats summary={summary} />
 
-      <div className="hidden md:grid md:gap-4 md:grid-cols-5">
+      <div className={`hidden md:grid md:gap-4 ${canExport ? 'md:grid-cols-5' : 'md:block'}`}>
         <ReceiptUpload lastImport={summary.lastImport} />
-        <ReceiptExport />
+        <ReceiptExport canExport={canExport} />
       </div>
 
       <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">

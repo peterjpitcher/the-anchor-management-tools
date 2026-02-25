@@ -17,7 +17,7 @@ export const statusToneClasses: Record<ReceiptTransaction['status'], string> = {
 }
 
 export function formatCurrency(value: number | null) {
-  if (!value) return ''
+  if (value === null || value === undefined) return ''
   return new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP' }).format(value)
 }
 
