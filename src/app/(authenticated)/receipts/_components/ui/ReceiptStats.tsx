@@ -62,16 +62,6 @@ function CostSummaryCard({ cost, breakdown }: { cost: number; breakdown?: AIUsag
                 <span className="font-medium text-gray-700">{formatCurrencyStrict(avgPerTx)}</span>
               </div>
             )}
-            {breakdown.model_breakdown && breakdown.model_breakdown.length > 0 && (
-              <div className="pt-1 border-t border-gray-100">
-                {breakdown.model_breakdown.map((m) => (
-                  <div key={m.model} className="flex justify-between">
-                    <span className="truncate max-w-[120px]" title={m.model}>{m.model}</span>
-                    <span className="font-medium text-gray-700">{formatCurrencyStrict(m.total_cost)}</span>
-                  </div>
-                ))}
-              </div>
-            )}
           </div>
         )}
       </div>
