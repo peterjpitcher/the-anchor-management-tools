@@ -15,6 +15,7 @@ import { ReceiptExport } from './ui/ReceiptExport'
 import { ReceiptFilters } from './ui/ReceiptFilters'
 import { ReceiptList } from './ui/ReceiptList'
 import { ReceiptRules } from './ui/ReceiptRules'
+import { ReceiptReclassify } from './ui/ReceiptReclassify'
 import { usePermissions } from '@/contexts/PermissionContext'
 import { Button } from '@/components/ui-v2/forms/Button'
 
@@ -156,9 +157,10 @@ export default function ReceiptsClient({ initialData, canExport = false, initial
     <div className="space-y-6">
       <ReceiptStats summary={summary} />
 
-      <div className={`hidden md:grid md:gap-4 ${canExport ? 'md:grid-cols-5' : 'md:block'}`}>
+      <div className={`hidden md:flex md:flex-wrap md:items-center md:gap-3`}>
         <ReceiptUpload lastImport={summary.lastImport} />
         <ReceiptExport canExport={canExport} />
+        <ReceiptReclassify />
       </div>
 
       <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">

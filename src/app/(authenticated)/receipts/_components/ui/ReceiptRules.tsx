@@ -16,11 +16,12 @@ import {
   createReceiptRule,
   updateReceiptRule,
   deleteReceiptRule,
-  runReceiptRuleRetroactivelyStep,
-  finalizeReceiptRuleRetroRun,
+  previewReceiptRule,
   type ClassificationRuleSuggestion,
+  type RulePreviewResult,
 } from '@/app/actions/receipts'
 import { receiptExpenseCategorySchema } from '@/lib/validation'
+import { useRetroRuleRunner } from '@/hooks/useRetroRuleRunner'
 import { usePermissions } from '@/contexts/PermissionContext'
 import type { ReceiptRule, ReceiptTransaction } from '@/types/database'
 
@@ -40,23 +41,75 @@ const statusLabels: Record<ReceiptTransaction['status'], string> = {
   cant_find: "Can't find",
 }
 
+function MatchDescriptionTokenPreview({ value }: { value: string }) {
+  if (!value.trim()) return null
+  const tokens = value.split(',').map((t) => t.trim()).filter(Boolean)
+  const hasEmpty = value.split(',').some((t) => t.trim() === '' && value.includes(','))
+  return (
+    <div className="mt-1 flex flex-wrap gap-1">
+      {tokens.map((token, index) => (
+        <span
+          key={index}
+          className="inline-flex items-center rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700 ring-1 ring-inset ring-blue-200"
+        >
+          {token}
+        </span>
+      ))}
+      {hasEmpty && (
+        <span className="inline-flex items-center rounded-full bg-rose-50 px-2 py-0.5 text-xs font-medium text-rose-700 ring-1 ring-inset ring-rose-200">
+          empty token — remove double commas
+        </span>
+      )}
+    </div>
+  )
+}
+
+function RulePreviewPanel({ preview }: { preview: RulePreviewResult }) {
+  return (
+    <div className="rounded-md border border-blue-200 bg-blue-50 p-3 text-xs text-blue-800 space-y-2">
+      <p className="font-semibold">Rule preview (sample of up to 2000 transactions)</p>
+      <div className="grid grid-cols-2 gap-x-4 gap-y-1">
+        <span>Total matching</span><span className="font-medium">{preview.totalMatching}</span>
+        <span>Pending matching</span><span className="font-medium">{preview.pendingMatching}</span>
+        <span>Would change status</span><span className="font-medium">{preview.wouldChangeStatus}</span>
+        <span>Would change vendor</span><span className="font-medium">{preview.wouldChangeVendor}</span>
+        <span>Would change expense</span><span className="font-medium">{preview.wouldChangeExpense}</span>
+      </div>
+      {preview.overlappingRules.length > 0 && (
+        <div>
+          <p className="font-medium text-amber-700">Overlapping rules:</p>
+          {preview.overlappingRules.map((r) => (
+            <p key={r.id} className="text-amber-700">
+              {r.name} — {r.overlapCount} overlap{r.overlapCount !== 1 ? 's' : ''}
+            </p>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 export function ReceiptRules({ rules, pendingSuggestion, onApplySuggestion, onDismissSuggestion }: ReceiptRulesProps) {
   const router = useRouter()
   const { hasPermission } = usePermissions()
   const canManageReceipts = hasPermission('receipts', 'manage')
-  
+  const { runRetro, isRunning: isRetroPending, activeRuleId: retroRuleId } = useRetroRuleRunner()
+
   const [isSectionOpen, setIsSectionOpen] = useState(false)
   const [activeRuleId, setActiveRuleId] = useState<string | null>(null)
   const [editingRuleId, setEditingRuleId] = useState<string | null>(null)
-  const [retroRuleId, setRetroRuleId] = useState<string | null>(null)
   const [isRulePending, startRuleTransition] = useTransition()
-  const [isRetroPending, startRetroTransition] = useTransition()
+  const [isPreviewPending, startPreviewTransition] = useTransition()
   const [retroPrompt, setRetroPrompt] = useState<{ id: string; name: string } | null>(null)
   const [retroScope, setRetroScope] = useState<'pending' | 'all'>('all')
   const [retroConfirmRuleId, setRetroConfirmRuleId] = useState<string | null>(null)
   const [retroConfirmScope, setRetroConfirmScope] = useState<'pending' | 'all'>('all')
   const [ruleSearch, setRuleSearch] = useState('')
   const [expandedRuleKeys, setExpandedRuleKeys] = useState<string[]>([])
+  const [newMatchDescription, setNewMatchDescription] = useState('')
+  const [editMatchDescription, setEditMatchDescription] = useState('')
+  const [rulePreview, setRulePreview] = useState<RulePreviewResult | null>(null)
+  const [isPreviewVisible, setIsPreviewVisible] = useState(false)
   const newRuleFormRef = useRef<HTMLFormElement | null>(null)
 
   useEffect(() => {
@@ -170,93 +223,23 @@ export function ReceiptRules({ rules, pendingSuggestion, onApplySuggestion, onDi
       toast.error('You do not have permission to manage receipts.')
       return
     }
-    setRetroRuleId(ruleId)
-    startRetroTransition(async () => {
-      try {
-        const CHUNK_SIZE = 100
-        const MAX_ITERATIONS = 300
+    setRetroPrompt(null)
+    setRetroScope('pending')
+    runRetro({ ruleId, scope })
+  }
 
-        let offset = 0
-        let iterations = 0
-        let lastSamples: Array<Record<string, unknown>> = []
-        const totals = {
-          reviewed: 0,
-          matched: 0,
-          statusAutoUpdated: 0,
-          classificationUpdated: 0,
-          vendorIntended: 0,
-          expenseIntended: 0,
-        }
-
-        while (iterations < MAX_ITERATIONS) {
-          const step = await runReceiptRuleRetroactivelyStep({
-            ruleId,
-            scope,
-            offset,
-            chunkSize: CHUNK_SIZE,
-          })
-
-          if (!step.success) {
-            toast.error(step.error)
-            break
-          }
-
-          totals.reviewed += step.reviewed
-          totals.matched += step.matched
-          totals.statusAutoUpdated += step.statusAutoUpdated
-          totals.classificationUpdated += step.classificationUpdated
-          totals.vendorIntended += step.vendorIntended
-          totals.expenseIntended += step.expenseIntended
-
-          if (step.samples.length) {
-            lastSamples = step.samples
-          }
-
-          offset = step.nextOffset
-          iterations += 1
-
-          if (step.done) {
-            await finalizeReceiptRuleRetroRun({
-              ruleId,
-              scope,
-              reviewed: totals.reviewed,
-              statusAutoUpdated: totals.statusAutoUpdated,
-              classificationUpdated: totals.classificationUpdated,
-              matched: totals.matched,
-              vendorIntended: totals.vendorIntended,
-              expenseIntended: totals.expenseIntended,
-            })
-            
-            const scopeLabel = scope === 'all' ? 'transactions' : 'pending transactions'
-            toast.success(
-              `Rule processed ${totals.matched} / ${totals.reviewed} ${scopeLabel} · ${totals.statusAutoUpdated} status updates · ${totals.classificationUpdated} classifications`
-            )
-
-            if (lastSamples.length) {
-              console.groupCollapsed(`Receipt rule analysis (${lastSamples.length} sample transactions)`)
-              console.table(lastSamples)
-              console.groupEnd()
-            }
-
-            setRetroPrompt(null)
-            setRetroScope('pending')
-            router.refresh()
-            return
-          }
-
-          if (step.reviewed === 0) {
-            break
-          }
-        }
-
-        toast.error('Stopped before completion. Please run again to continue.')
-      } catch (error) {
-        console.error('Failed to run receipt rule retroactively', error)
-        toast.error('Failed to run the rule. Please try again.')
-      } finally {
-        setRetroPrompt(null)
-        setRetroRuleId(null)
+  function handlePreviewRule(formRef: React.RefObject<HTMLFormElement | null>) {
+    const form = formRef.current
+    if (!form) return
+    startPreviewTransition(async () => {
+      const formData = new FormData(form)
+      const result = await previewReceiptRule(formData)
+      if (!result.success || !result.preview) {
+        toast.error(result.error ?? 'Failed to preview rule')
+        return
       }
+      setRulePreview(result.preview)
+      setIsPreviewVisible(true)
     })
   }
 
@@ -420,7 +403,15 @@ export function ReceiptRules({ rules, pendingSuggestion, onApplySuggestion, onDi
                 )}
                 <form ref={newRuleFormRef} onSubmit={(event) => handleRuleSubmit(event)} className="space-y-3">
                   <Input name="name" placeholder="Rule name" required />
-                  <Input name="match_description" placeholder="Match description (comma separated keywords)" />
+                  <div>
+                    <Input
+                      name="match_description"
+                      placeholder="Match description (comma separated keywords)"
+                      value={newMatchDescription}
+                      onChange={(e) => { setNewMatchDescription(e.target.value); setIsPreviewVisible(false) }}
+                    />
+                    <MatchDescriptionTokenPreview value={newMatchDescription} />
+                  </div>
                   <Input name="match_transaction_type" placeholder="Match transaction type" />
                   <div className="grid grid-cols-2 gap-2">
                     <Input name="match_min_amount" placeholder="Min amount" type="number" step="0.01" />
@@ -444,9 +435,22 @@ export function ReceiptRules({ rules, pendingSuggestion, onApplySuggestion, onDi
                       <option key={option} value={option}>{option}</option>
                     ))}
                   </Select>
-                  <Button type="submit" disabled={!canManageReceipts || (isRulePending && activeRuleId === 'new')}>
-                    {isRulePending && activeRuleId === 'new' && <Spinner className="mr-2 h-4 w-4" />}Create rule
-                  </Button>
+                  {isPreviewVisible && rulePreview && (
+                    <RulePreviewPanel preview={rulePreview} />
+                  )}
+                  <div className="flex items-center gap-2">
+                    <Button type="submit" disabled={!canManageReceipts || (isRulePending && activeRuleId === 'new')}>
+                      {isRulePending && activeRuleId === 'new' && <Spinner className="mr-2 h-4 w-4" />}Create rule
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      disabled={isPreviewPending || !canManageReceipts}
+                      onClick={() => handlePreviewRule(newRuleFormRef)}
+                    >
+                      {isPreviewPending ? <><Spinner className="mr-2 h-4 w-4" />Previewing…</> : 'Preview'}
+                    </Button>
+                  </div>
                 </form>
               </Card>
 

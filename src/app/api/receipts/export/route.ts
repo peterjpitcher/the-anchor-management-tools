@@ -176,7 +176,10 @@ async function buildSummaryCsv(
     'Details',
     'Transaction type',
     'Vendor',
+    'Vendor source',
     'Expense category',
+    'Expense category source',
+    'AI confidence',
     'Amount in (GBP)',
     'Amount out (GBP)',
     'Status',
@@ -193,7 +196,10 @@ async function buildSummaryCsv(
       tx.details ?? '',
       tx.transaction_type ?? '',
       tx.vendor_name ?? '',
+      friendlySource(tx.vendor_source),
       tx.expense_category ?? '',
+      friendlySource(tx.expense_category_source),
+      tx.ai_confidence != null ? String(tx.ai_confidence) : '',
       amountIn,
       amountOut,
       friendlyStatus(tx.status),
@@ -219,6 +225,16 @@ function deriveQuarterRange(year: number, quarter: number): QuarterRange {
   const endDateIso = endDate.toISOString().slice(0, 10)
 
   return { startDate, endDate: endDateIso }
+}
+
+function friendlySource(source: string | null | undefined): string {
+  switch (source) {
+    case 'ai': return 'AI'
+    case 'manual': return 'Manual'
+    case 'rule': return 'Rule'
+    case 'import': return 'Import'
+    default: return ''
+  }
 }
 
 function friendlyStatus(status: ReceiptTransaction['status']) {

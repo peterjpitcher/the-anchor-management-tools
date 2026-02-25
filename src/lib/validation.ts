@@ -180,7 +180,13 @@ export const receiptRuleDirectionSchema = z.enum(['in', 'out', 'both']);
 export const receiptRuleSchema = z.object({
   name: z.string().min(1, 'Rule name is required').max(120, 'Keep the name under 120 characters'),
   description: z.string().trim().max(500).optional(),
-  match_description: z.string().trim().max(300).optional(),
+  match_description: z.string().trim().max(300).refine(
+    (val) => {
+      if (!val) return true
+      return val.split(',').map((t) => t.trim()).every((t) => t.length > 0)
+    },
+    { message: 'Match description must not contain empty tokens (check for double commas)' }
+  ).optional(),
   match_transaction_type: z.string().trim().max(120).optional(),
   match_direction: receiptRuleDirectionSchema.default('both'),
   match_min_amount: z.number().nonnegative().optional(),

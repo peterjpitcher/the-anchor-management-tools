@@ -24,6 +24,8 @@ import {
   updateRecurringCharge,
 } from '@/app/actions/oj-projects/recurring-charges'
 import { createVendorContact, deleteVendorContact, getVendorContacts, updateVendorContact } from '@/app/actions/vendor-contacts'
+import { getClientBalance } from '@/app/actions/oj-projects/client-balance'
+import type { ClientBalance } from '@/app/actions/oj-projects/client-balance'
 import type { InvoiceVendor } from '@/types/invoices'
 import {
   AlertCircle,
@@ -31,6 +33,7 @@ import {
   Building2,
   Check,
   CreditCard,
+  FileText,
   LayoutDashboard,
   List,
   Mail,
@@ -39,6 +42,7 @@ import {
   Save,
   Settings,
   Trash2,
+  TrendingUp,
   User,
   Users
 } from 'lucide-react'
@@ -173,6 +177,9 @@ export default function OJProjectsClientsPage() {
     receive_invoice_copy: false,
   })
 
+  const [balance, setBalance] = useState<ClientBalance | null>(null)
+  const [balanceLoading, setBalanceLoading] = useState(false)
+
   const [vendorModalOpen, setVendorModalOpen] = useState(false)
   const [vendorSaving, setVendorSaving] = useState(false)
   const [vendorForm, setVendorForm] = useState({
@@ -230,6 +237,8 @@ export default function OJProjectsClientsPage() {
     setLoading(true)
     setError(null)
     try {
+      setBalance(null)
+      setBalanceLoading(true)
       const [settingsRes, chargesRes, contactsRes] = await Promise.all([
         getVendorBillingSettings(id),
         getRecurringCharges(id),
@@ -258,8 +267,14 @@ export default function OJProjectsClientsPage() {
       setContacts((contactsRes.contacts as VendorContact[]) || [])
       setChargeForm({ description: '', amount_ex_vat: '', vat_rate: '20', is_active: true, sort_order: '0' })
       setContactForm({ name: '', email: '', phone: '', role: '', is_primary: false, receive_invoice_copy: false })
+
+      // Load balance separately so it doesn't block the settings from rendering
+      getClientBalance(id).then((res) => {
+        if (!res.error && res.balance) setBalance(res.balance)
+      }).finally(() => setBalanceLoading(false))
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load client settings')
+      setBalanceLoading(false)
     } finally {
       setLoading(false)
     }
@@ -533,12 +548,116 @@ export default function OJProjectsClientsPage() {
         </div>
       </Card>
 
-	      {!selectedVendor ? (
-	        <div className="text-center py-12 text-gray-500">
-	          Select a client above or create a new one to get started.
-	        </div>
-	      ) : (
-	        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      {!selectedVendor ? (
+        <div className="text-center py-12 text-gray-500">
+          Select a client above or create a new one to get started.
+        </div>
+      ) : (
+        <>
+        {/* Account Balance Summary */}
+        <Card className="mb-6" header={
+          <div className="flex items-center gap-2">
+            <TrendingUp className="w-5 h-5 text-gray-400" />
+            <CardTitle>Account Balance</CardTitle>
+          </div>
+        }>
+          {balanceLoading ? (
+            <div className="text-sm text-gray-400 py-2">Loading balance…</div>
+          ) : balance ? (
+            <div className="space-y-4">
+              {/* Stat row */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div className="rounded-lg bg-red-50 border border-red-100 p-4">
+                  <div className="text-xs text-red-600 font-medium uppercase tracking-wide mb-1">Unpaid Invoices</div>
+                  <div className="text-2xl font-bold text-red-700">£{balance.unpaidInvoiceBalance.toFixed(2)}</div>
+                  <div className="text-xs text-red-500 mt-0.5">Outstanding on sent invoices</div>
+                </div>
+                <div className="rounded-lg bg-amber-50 border border-amber-100 p-4">
+                  <div className="text-xs text-amber-700 font-medium uppercase tracking-wide mb-1">Unbilled Work</div>
+                  <div className="text-2xl font-bold text-amber-800">£{balance.unbilledTotal.toFixed(2)}</div>
+                  <div className="text-xs text-amber-600 mt-0.5">
+                    {balance.unbilledTimeTotal > 0 && `Time £${balance.unbilledTimeTotal.toFixed(2)}`}
+                    {balance.unbilledTimeTotal > 0 && (balance.unbilledMileageTotal > 0 || balance.unbilledRecurringTotal > 0) && ' · '}
+                    {balance.unbilledMileageTotal > 0 && `Mileage £${balance.unbilledMileageTotal.toFixed(2)}`}
+                    {balance.unbilledMileageTotal > 0 && balance.unbilledRecurringTotal > 0 && ' · '}
+                    {balance.unbilledRecurringTotal > 0 && `Recurring £${balance.unbilledRecurringTotal.toFixed(2)}`}
+                    {balance.unbilledTotal === 0 && 'Nothing pending'}
+                  </div>
+                </div>
+                <div className={`rounded-lg border p-4 ${balance.totalOutstanding > 0 ? 'bg-orange-50 border-orange-100' : 'bg-green-50 border-green-100'}`}>
+                  <div className={`text-xs font-medium uppercase tracking-wide mb-1 ${balance.totalOutstanding > 0 ? 'text-orange-700' : 'text-green-700'}`}>Total Outstanding</div>
+                  <div className={`text-2xl font-bold ${balance.totalOutstanding > 0 ? 'text-orange-800' : 'text-green-700'}`}>£{balance.totalOutstanding.toFixed(2)}</div>
+                  <div className={`text-xs mt-0.5 ${balance.totalOutstanding > 0 ? 'text-orange-600' : 'text-green-600'}`}>Invoiced + unbilled (inc VAT)</div>
+                </div>
+              </div>
+
+              {/* Invoice history table */}
+              {balance.invoices.length > 0 && (
+                <div>
+                  <div className="flex items-center gap-2 mb-2">
+                    <FileText className="w-4 h-4 text-gray-400" />
+                    <span className="text-sm font-medium text-gray-700">Invoice History</span>
+                  </div>
+                  <div className="overflow-x-auto rounded-lg border border-gray-200">
+                    <table className="min-w-full text-sm">
+                      <thead className="bg-gray-50">
+                        <tr>
+                          <th className="text-left px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wide">Invoice</th>
+                          <th className="text-left px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wide">Period</th>
+                          <th className="text-left px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wide">Date</th>
+                          <th className="text-right px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wide">Total</th>
+                          <th className="text-right px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wide">Paid</th>
+                          <th className="text-right px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wide">Outstanding</th>
+                          <th className="text-left px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wide">Status</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100">
+                        {balance.invoices.map((inv) => {
+                          const period = inv.reference.replace(/^OJ Projects\s*/i, '')
+                          const statusColors: Record<string, string> = {
+                            paid: 'bg-green-100 text-green-700',
+                            sent: 'bg-blue-100 text-blue-700',
+                            partially_paid: 'bg-amber-100 text-amber-700',
+                            overdue: 'bg-red-100 text-red-700',
+                            draft: 'bg-gray-100 text-gray-600',
+                            void: 'bg-gray-100 text-gray-400',
+                            written_off: 'bg-gray-100 text-gray-400',
+                          }
+                          const statusColor = statusColors[inv.status] || 'bg-gray-100 text-gray-600'
+                          return (
+                            <tr key={inv.id} className="hover:bg-gray-50 transition-colors">
+                              <td className="px-3 py-2 font-mono text-xs text-gray-700">{inv.invoice_number}</td>
+                              <td className="px-3 py-2 text-gray-700">{period || '—'}</td>
+                              <td className="px-3 py-2 text-gray-500">{inv.invoice_date}</td>
+                              <td className="px-3 py-2 text-right font-medium text-gray-900">£{inv.total_amount.toFixed(2)}</td>
+                              <td className="px-3 py-2 text-right text-green-700">£{inv.paid_amount.toFixed(2)}</td>
+                              <td className="px-3 py-2 text-right font-medium text-red-600">
+                                {inv.outstanding > 0 ? `£${inv.outstanding.toFixed(2)}` : '—'}
+                              </td>
+                              <td className="px-3 py-2">
+                                <span className={`px-2 py-0.5 rounded text-xs font-medium ${statusColor}`}>
+                                  {inv.status.replace('_', ' ')}
+                                </span>
+                              </td>
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              {balance.invoices.length === 0 && (
+                <div className="text-sm text-gray-400">No invoices found for this client yet.</div>
+              )}
+            </div>
+          ) : (
+            <div className="text-sm text-gray-400 py-2">Balance unavailable.</div>
+          )}
+        </Card>
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
 
 	          {/* Billing Settings */}
 	          <Card
@@ -889,6 +1008,7 @@ export default function OJProjectsClientsPage() {
             </Card>
           </div>
         </div>
+        </>
       )}
 
       <Modal
