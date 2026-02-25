@@ -87,16 +87,64 @@
       "schedule": "* * * * *"
     },
     {
+      "path": "/api/cron/event-booking-holds",
+      "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/cron/event-waitlist-offers",
+      "schedule": "*/5 * * * *"
+    },
+    {
       "path": "/api/cron/event-guest-engagement",
       "schedule": "*/15 * * * *"
     },
     {
-      "path": "/api/cron/hiring-stage-reminders",
+      "path": "/api/cron/parking-notifications",
+      "schedule": "*/15 * * * *"
+    },
+    {
+      "path": "/api/cron/sunday-preorder",
+      "schedule": "*/15 * * * *"
+    },
+    {
+      "path": "/api/cron/reconcile-sms",
+      "schedule": "*/15 * * * *"
+    },
+    {
+      "path": "/api/cron/private-booking-monitor",
+      "schedule": "0 9 * * *"
+    },
+    {
+      "path": "/api/cron/invoice-reminders",
+      "schedule": "0 9 * * *"
+    },
+    {
+      "path": "/api/cron/birthday-reminders",
       "schedule": "0 9 * * *"
     },
     {
       "path": "/api/cron/oj-projects-billing-reminders",
       "schedule": "0 9 * * *"
+    },
+    {
+      "path": "/api/cron/event-checklist-reminders",
+      "schedule": "0 8 * * *"
+    },
+    {
+      "path": "/api/cron/auto-send-invoices",
+      "schedule": "0 7 * * *"
+    },
+    {
+      "path": "/api/cron/apply-customer-labels",
+      "schedule": "0 2 * * *"
+    },
+    {
+      "path": "/api/cron/engagement-scoring",
+      "schedule": "0 3 * * *"
+    },
+    {
+      "path": "/api/cron/cleanup-rate-limits",
+      "schedule": "0 3 * * *"
     },
     {
       "path": "/api/cron/oj-projects-retainer-projects",
@@ -113,6 +161,10 @@
     {
       "path": "/api/cron/private-bookings-daily-summary",
       "schedule": "0 * * * *"
+    },
+    {
+      "path": "/api/cron/generate-slots",
+      "schedule": "0 0 * * 1"
     }
   ]
 }
