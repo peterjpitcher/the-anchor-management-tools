@@ -157,10 +157,14 @@ export default function ReceiptsClient({ initialData, canExport = false, initial
     <div className="space-y-6">
       <ReceiptStats summary={summary} />
 
-      <div className={`hidden md:flex md:flex-wrap md:items-center md:gap-3`}>
-        <ReceiptUpload lastImport={summary.lastImport} />
-        <ReceiptExport canExport={canExport} />
-        <ReceiptReclassify />
+      <div className="hidden md:block space-y-3">
+        <div className="grid grid-cols-2 gap-4">
+          <ReceiptUpload lastImport={summary.lastImport} />
+          <ReceiptExport canExport={canExport} />
+        </div>
+        <div>
+          <ReceiptReclassify />
+        </div>
       </div>
 
       <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
