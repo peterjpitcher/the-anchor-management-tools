@@ -1188,6 +1188,55 @@ async function handleApprovedChargePaymentIntentEvent(
   }
 }
 
+async function handleChargeRefunded(
+  supabase: ReturnType<typeof createAdminClient>,
+  charge: any
+): Promise<void> {
+  const paymentIntentId = typeof charge?.payment_intent === 'string' ? charge.payment_intent : null
+  if (!paymentIntentId) {
+    return
+  }
+
+  const fullyRefunded = charge?.refunded === true
+  const newStatus = fullyRefunded ? 'refunded' : 'partial_refund'
+
+  const { data: payments, error: lookupError } = await (supabase.from('payments') as any)
+    .select('id, table_booking_id, event_booking_id, customer_id')
+    .eq('stripe_payment_intent_id', paymentIntentId)
+
+  if (lookupError) {
+    throw lookupError
+  }
+
+  if (!Array.isArray(payments) || payments.length === 0) {
+    return
+  }
+
+  const { error: updateError } = await (supabase.from('payments') as any)
+    .update({ status: newStatus })
+    .eq('stripe_payment_intent_id', paymentIntentId)
+
+  if (updateError) {
+    throw updateError
+  }
+
+  const payment = payments[0] as { table_booking_id?: string; event_booking_id?: string; customer_id?: string }
+  const customerId = payment.customer_id
+
+  if (customerId) {
+    await recordAnalyticsEventSafe(supabase, {
+      customerId,
+      tableBookingId: payment.table_booking_id,
+      eventBookingId: payment.event_booking_id,
+      eventType: fullyRefunded ? 'payment_refunded' : 'payment_partially_refunded',
+      metadata: {
+        stripe_payment_intent_id: paymentIntentId,
+        refund_status: newStatus
+      }
+    }, 'handleChargeRefunded')
+  }
+}
+
 async function handleCheckoutSessionFailure(
   supabase: ReturnType<typeof createAdminClient>,
   stripeSession: any,
@@ -1515,6 +1564,8 @@ export async function POST(request: NextRequest) {
       await handleCheckoutSessionFailure(supabase, event.data?.object, 'checkout_session_async_failed', appBaseUrl)
     } else if (event.type === 'payment_intent.succeeded' || event.type === 'payment_intent.payment_failed') {
       await handleApprovedChargePaymentIntentEvent(supabase, event.data?.object, event.type)
+    } else if (event.type === 'charge.refunded') {
+      await handleChargeRefunded(supabase, event.data?.object)
     }
 
     try {

@@ -447,6 +447,46 @@ export class SmsQueueService {
       return { error: insertError.message };
     }
 
+    // Post-insert duplicate safety net: cancel all but the oldest matching row
+    try {
+      const { data: duplicateRows } = await supabase
+        .from('private_booking_sms_queue')
+        .select('id, created_at')
+        .eq('booking_id', data.booking_id)
+        .eq('trigger_type', data.trigger_type)
+        .eq('template_key', data.template_key)
+        .eq('recipient_phone', resolvedPhone)
+        .eq('message_body', data.message_body)
+        .in('status', ['pending', 'approved'])
+        .order('created_at', { ascending: true });
+
+      if (Array.isArray(duplicateRows) && duplicateRows.length > 1) {
+        const oldestId = duplicateRows[0].id;
+        const idsToCancel = duplicateRows.slice(1).map((r: { id: string }) => r.id);
+        await supabase
+          .from('private_booking_sms_queue')
+          .update({ status: 'cancelled', error_message: 'duplicate_race_condition' })
+          .in('id', idsToCancel);
+
+        if (idsToCancel.includes(smsRecord.id)) {
+          if (lockClaimed) {
+            try {
+              await releaseIdempotencyClaim(supabase as any, lockKey, lockHash);
+            } catch (releaseError) {
+              console.error('[SmsQueueService] Failed to release SMS queue lock after insert:', releaseError);
+            }
+          }
+          return {
+            suppressed: true,
+            suppressionReason: 'duplicate_race_condition',
+            queueId: oldestId
+          };
+        }
+      }
+    } catch (dedupError) {
+      console.error('[SmsQueueService] Post-insert dedup check failed (non-fatal):', dedupError);
+    }
+
     if (lockClaimed) {
       try {
         await releaseIdempotencyClaim(supabase as any, lockKey, lockHash);
