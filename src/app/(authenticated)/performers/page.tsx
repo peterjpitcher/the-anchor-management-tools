@@ -92,6 +92,7 @@ export default function PerformersPage() {
     totalCount,
     pageSize,
     isLoading,
+    error,
     setPage,
     refresh,
   } = usePagination<PerformerSubmission>(
@@ -302,6 +303,15 @@ export default function PerformersPage() {
           </div>
         </div>
       </Card>
+
+      {error && (
+        <Alert
+          variant="error"
+          title="Failed to load submissions"
+          description={error.message}
+          className="mt-4"
+        />
+      )}
 
       <Card className="mt-4" padding="none">
         <DataTable<PerformerSubmission>
