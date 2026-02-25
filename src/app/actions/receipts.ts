@@ -5,7 +5,7 @@ import { checkUserPermission } from './rbac'
 import { logAuditEvent } from '@/app/actions/audit'
 import { getCurrentUser } from '@/lib/audit-helpers'
 import { recordAIUsage } from '@/lib/receipts/ai-classification'
-import { selectBestReceiptRule } from '@/lib/receipts/rule-matching'
+import { selectBestReceiptRule, getRuleMatch } from '@/lib/receipts/rule-matching'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { jobQueue } from '@/lib/unified-job-queue'
 import {
@@ -101,6 +101,30 @@ export type ReceiptWorkspaceFilters = {
   sortDirection?: 'asc' | 'desc'
 }
 
+export type AIModelBreakdown = {
+  model: string
+  total_cost: number
+  total_tokens: number
+  call_count: number
+}
+
+export type AIUsageBreakdown = {
+  total_cost: number
+  this_month_cost: number
+  total_classifications: number
+  this_month_classifications: number
+  model_breakdown: AIModelBreakdown[] | null
+}
+
+export type RulePreviewResult = {
+  totalMatching: number
+  pendingMatching: number
+  wouldChangeStatus: number
+  wouldChangeVendor: number
+  wouldChangeExpense: number
+  overlappingRules: Array<{ id: string; name: string; overlapCount: number }>
+}
+
 export type ReceiptWorkspaceSummary = {
   totals: {
     pending: number
@@ -112,6 +136,7 @@ export type ReceiptWorkspaceSummary = {
   needsAttentionValue: number
   lastImport?: ReceiptBatch | null
   openAICost: number
+  aiUsageBreakdown?: AIUsageBreakdown | null
 }
 
 export type ReceiptWorkspaceData = {
@@ -225,6 +250,7 @@ export type ReceiptBulkReviewData = {
     statuses: ReceiptTransaction['status'][]
     onlyUnclassified: boolean
     openAIEnabled: boolean
+    useFuzzyGrouping: boolean
   }
 }
 
@@ -1156,6 +1182,7 @@ function buildRuleSuggestion(
   updates: {
     vendorName?: string | null
     expenseCategory?: ReceiptExpenseCategory | null
+    suggestedRuleKeywords?: string | null
   }
 ): RuleSuggestion | null {
   if (!updates.vendorName && !updates.expenseCategory) {
@@ -1166,13 +1193,20 @@ function buildRuleSuggestion(
   const amountValue = guessAmountValue(transaction)
   const details = transaction.details?.trim() ?? ''
 
-  const keywords = details
-    .split(/\s+/)
-    .map((token) => token.replace(/[^a-zA-Z0-9]/g, '').toLowerCase())
-    .filter((token) => token.length >= 4)
-    .slice(0, 3)
+  let matchDescription: string | null = null
 
-  const matchDescription = keywords.join(',') || null
+  if (updates.suggestedRuleKeywords) {
+    // Prefer AI-suggested keywords
+    matchDescription = updates.suggestedRuleKeywords
+  } else {
+    // Fall back to heuristic: first 3 tokens of 4+ chars
+    const keywords = details
+      .split(/\s+/)
+      .map((token) => token.replace(/[^a-zA-Z0-9]/g, '').toLowerCase())
+      .filter((token) => token.length >= 4)
+      .slice(0, 3)
+    matchDescription = keywords.join(',') || null
+  }
 
   const suggestedNameBase = updates.vendorName ?? updates.expenseCategory ?? 'Receipt rule'
   const suggestedName = `${suggestedNameBase} auto-tag`
@@ -2322,6 +2356,7 @@ export async function getReceiptBulkReviewData(options: {
   limit?: number
   statuses?: BulkStatus[]
   onlyUnclassified?: boolean
+  useFuzzyGrouping?: boolean
 } = {}): Promise<ReceiptBulkReviewData> {
   const canManage = await checkUserPermission('receipts', 'manage')
   if (!canManage) {
@@ -2338,6 +2373,7 @@ export async function getReceiptBulkReviewData(options: {
     ? (Array.from(new Set(parsed.data.statuses)) as BulkStatus[])
     : (['pending'] as BulkStatus[])
   const onlyUnclassified = parsed.data.onlyUnclassified ?? true
+  const useFuzzyGrouping = options.useFuzzyGrouping ?? false
 
   const supabase = createAdminClient()
 
@@ -2345,6 +2381,7 @@ export async function getReceiptBulkReviewData(options: {
     limit_groups: limit,
     include_statuses: statuses,
     only_unclassified: onlyUnclassified,
+    use_fuzzy_grouping: useFuzzyGrouping,
   })
 
   if (error) {
@@ -2387,6 +2424,7 @@ export async function getReceiptBulkReviewData(options: {
       statuses,
       onlyUnclassified,
       openAIEnabled,
+      useFuzzyGrouping,
     },
   }
 }
@@ -2629,7 +2667,7 @@ export async function createReceiptRuleFromGroup(input: {
 
 async function fetchSummary(): Promise<ReceiptWorkspaceSummary> {
   const supabase = createAdminClient()
-  const [{ data: statusCounts }, { data: lastBatch }, { data: costData, error: costError }] = await Promise.all([
+  const [{ data: statusCounts }, { data: lastBatch }, { data: costData, error: costError }, { data: breakdownData, error: breakdownError }] = await Promise.all([
     supabase.rpc('count_receipt_statuses'),
     supabase
       .from('receipt_batches')
@@ -2638,6 +2676,7 @@ async function fetchSummary(): Promise<ReceiptWorkspaceSummary> {
       .limit(1)
       .maybeSingle(),
     supabase.rpc('get_openai_usage_total'),
+    supabase.rpc('get_ai_usage_breakdown'),
   ])
 
   const counts = Array.isArray(statusCounts) ? statusCounts[0] : statusCounts
@@ -2646,12 +2685,28 @@ async function fetchSummary(): Promise<ReceiptWorkspaceSummary> {
     console.error('Failed to fetch OpenAI usage total', costError)
   }
 
+  if (breakdownError) {
+    console.error('Failed to fetch AI usage breakdown', breakdownError)
+  }
+
   const pending = Number(counts?.pending ?? 0)
   const completed = Number(counts?.completed ?? 0)
   const autoCompleted = Number(counts?.auto_completed ?? 0)
   const noReceiptRequired = Number(counts?.no_receipt_required ?? 0)
   const cantFind = Number(counts?.cant_find ?? 0)
   const openAICost = costError ? 0 : Number(costData ?? 0)
+
+  let aiUsageBreakdown: AIUsageBreakdown | null = null
+  if (!breakdownError && breakdownData && typeof breakdownData === 'object') {
+    const bd = breakdownData as Record<string, unknown>
+    aiUsageBreakdown = {
+      total_cost: Number(bd.total_cost ?? 0),
+      this_month_cost: Number(bd.this_month_cost ?? 0),
+      total_classifications: Number(bd.total_classifications ?? 0),
+      this_month_classifications: Number(bd.this_month_classifications ?? 0),
+      model_breakdown: Array.isArray(bd.model_breakdown) ? (bd.model_breakdown as AIModelBreakdown[]) : null,
+    }
+  }
 
   return {
     totals: {
@@ -2664,6 +2719,7 @@ async function fetchSummary(): Promise<ReceiptWorkspaceSummary> {
     needsAttentionValue: pending,
     lastImport: lastBatch ?? null,
     openAICost,
+    aiUsageBreakdown,
   }
 }
 
@@ -3171,4 +3227,191 @@ export async function getReceiptMissingExpenseSummary(): Promise<ReceiptMissingE
     }
     return b.transactionCount - a.transactionCount
   })
+}
+
+// ============================================================
+// Re-queue unclassified transactions for AI classification
+// ============================================================
+export async function requeueUnclassifiedTransactions(): Promise<{ success: boolean; queued?: number; error?: string }> {
+  const canManage = await checkUserPermission('receipts', 'manage')
+  if (!canManage) {
+    return { success: false, error: 'Insufficient permissions' }
+  }
+
+  const supabase = createAdminClient()
+
+  const { data, error } = await supabase
+    .from('receipt_transactions')
+    .select('id, batch_id')
+    .is('vendor_name', null)
+    .is('vendor_source', null)
+
+  if (error) {
+    console.error('Failed to load unclassified transactions for requeue', error)
+    return { success: false, error: 'Failed to load transactions' }
+  }
+
+  const rows = data ?? []
+  if (!rows.length) {
+    return { success: true, queued: 0 }
+  }
+
+  const ids = rows.map((row) => row.id)
+  const batchId = rows[0]?.batch_id ?? 'requeue'
+
+  try {
+    const result = await enqueueReceiptAiClassificationJobs(ids, batchId)
+    return { success: true, queued: result.queued }
+  } catch (err) {
+    console.error('Failed to enqueue requeue jobs', err)
+    return { success: false, error: 'Failed to queue classification jobs' }
+  }
+}
+
+// ============================================================
+// Preview a receipt rule before creating it
+// ============================================================
+export async function previewReceiptRule(formData: FormData): Promise<{ success: boolean; preview?: RulePreviewResult; error?: string }> {
+  const canManage = await checkUserPermission('receipts', 'manage')
+  if (!canManage) {
+    return { success: false, error: 'Insufficient permissions' }
+  }
+
+  const parsed = receiptRuleSchema.safeParse({
+    name: formData.get('name') ?? '',
+    description: formData.get('description') ?? undefined,
+    match_description: formData.get('match_description') ?? undefined,
+    match_transaction_type: formData.get('match_transaction_type') ?? undefined,
+    match_direction: formData.get('match_direction') ?? 'both',
+    match_min_amount: formData.get('match_min_amount') ? Number(formData.get('match_min_amount')) : undefined,
+    match_max_amount: formData.get('match_max_amount') ? Number(formData.get('match_max_amount')) : undefined,
+    auto_status: formData.get('auto_status') ?? 'no_receipt_required',
+    set_vendor_name: formData.get('set_vendor_name') ?? undefined,
+    set_expense_category: formData.get('set_expense_category') ?? undefined,
+  })
+
+  if (!parsed.success) {
+    return { success: false, error: parsed.error.issues[0]?.message ?? 'Invalid rule' }
+  }
+
+  const rule = parsed.data
+
+  const supabase = createAdminClient()
+
+  // Load all active rules for overlap detection
+  const { data: activeRules } = await supabase
+    .from('receipt_rules')
+    .select('*')
+    .eq('is_active', true)
+
+  const rules = (activeRules ?? []) as ReceiptRule[]
+
+  // Sample transactions to preview against
+  const { data: transactions } = await supabase
+    .from('receipt_transactions')
+    .select('id, details, transaction_type, amount_in, amount_out, status, vendor_name, expense_category')
+    .limit(2000)
+
+  const txRows = (transactions ?? []) as Array<Pick<ReceiptTransaction, 'id' | 'details' | 'transaction_type' | 'amount_in' | 'amount_out' | 'status' | 'vendor_name' | 'expense_category'>>
+
+  const candidateRule = {
+    id: '__preview__',
+    match_description: rule.match_description ?? null,
+    match_transaction_type: rule.match_transaction_type ?? null,
+    match_direction: rule.match_direction,
+    match_min_amount: rule.match_min_amount ?? null,
+    match_max_amount: rule.match_max_amount ?? null,
+    auto_status: rule.auto_status,
+    set_vendor_name: rule.set_vendor_name ?? null,
+    set_expense_category: rule.set_expense_category ?? null,
+    is_active: true,
+    name: rule.name,
+  } as ReceiptRule
+
+  let totalMatching = 0
+  let pendingMatching = 0
+  let wouldChangeStatus = 0
+  let wouldChangeVendor = 0
+  let wouldChangeExpense = 0
+
+  const overlapMap = new Map<string, number>()
+
+  for (const tx of txRows) {
+    const direction = getTransactionDirection(tx as ReceiptTransaction)
+    const amountValue = guessAmountValue(tx as ReceiptTransaction)
+    const matchContext = { direction, amountValue }
+
+    const match = getRuleMatch(candidateRule, tx, matchContext)
+    if (!match.matched) continue
+
+    totalMatching++
+    if (tx.status === 'pending') pendingMatching++
+
+    if (rule.auto_status && tx.status !== rule.auto_status) wouldChangeStatus++
+    if (rule.set_vendor_name && tx.vendor_name !== rule.set_vendor_name) wouldChangeVendor++
+    if (rule.set_expense_category && tx.expense_category !== rule.set_expense_category) wouldChangeExpense++
+
+    // Check which existing rules also match (overlap detection)
+    for (const existingRule of rules) {
+      const existingMatch = getRuleMatch(existingRule, tx, matchContext)
+      if (existingMatch.matched) {
+        overlapMap.set(existingRule.id, (overlapMap.get(existingRule.id) ?? 0) + 1)
+      }
+    }
+  }
+
+  const overlappingRules = Array.from(overlapMap.entries())
+    .map(([id, count]) => {
+      const ruleRecord = rules.find((r) => r.id === id)
+      return { id, name: ruleRecord?.name ?? id, overlapCount: count }
+    })
+    .filter((entry) => entry.overlapCount > 0)
+    .sort((a, b) => b.overlapCount - a.overlapCount)
+    .slice(0, 5)
+
+  return {
+    success: true,
+    preview: {
+      totalMatching,
+      pendingMatching,
+      wouldChangeStatus,
+      wouldChangeVendor,
+      wouldChangeExpense,
+      overlappingRules,
+    },
+  }
+}
+
+// ============================================================
+// Get AI usage breakdown
+// ============================================================
+export async function getAIUsageBreakdown(): Promise<{ success: boolean; breakdown?: AIUsageBreakdown; error?: string }> {
+  const canView = await checkUserPermission('receipts', 'view')
+  if (!canView) {
+    return { success: false, error: 'Insufficient permissions' }
+  }
+
+  const supabase = createAdminClient()
+  const { data, error } = await supabase.rpc('get_ai_usage_breakdown')
+
+  if (error) {
+    console.error('Failed to fetch AI usage breakdown', error)
+    return { success: false, error: 'Failed to load AI usage data' }
+  }
+
+  if (!data || typeof data !== 'object') {
+    return { success: true, breakdown: { total_cost: 0, this_month_cost: 0, total_classifications: 0, this_month_classifications: 0, model_breakdown: null } }
+  }
+
+  const bd = data as Record<string, unknown>
+  return {
+    success: true,
+    breakdown: {
+      total_cost: Number(bd.total_cost ?? 0),
+      this_month_cost: Number(bd.this_month_cost ?? 0),
+      total_classifications: Number(bd.total_classifications ?? 0),
+      this_month_classifications: Number(bd.this_month_classifications ?? 0),
+      model_breakdown: Array.isArray(bd.model_breakdown) ? (bd.model_breakdown as AIModelBreakdown[]) : null,
+    },
+  }
 }

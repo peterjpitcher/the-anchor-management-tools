@@ -34,11 +34,13 @@ export default async function ReceiptsBulkPage({ searchParams }: PageProps) {
     : undefined
 
   const onlyUnclassified = resolvedParams?.all === '1' ? false : true
+  const useFuzzyGrouping = resolvedParams?.fuzzy === '1'
 
   const data = await getReceiptBulkReviewData({
     limit,
     statuses,
     onlyUnclassified,
+    useFuzzyGrouping,
   })
 
   const filters = {

@@ -63,6 +63,12 @@ export function usePagination<T>(
     setCurrentPage(1)
   }, [searchTerm])
 
+  // Stable string keys prevent new object/array references on each render from
+  // causing fetchData to be recreated and triggering an infinite fetch loop.
+  const queryKey = JSON.stringify(query)
+  const searchColumnsKey = searchColumns.join(',')
+
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   const fetchData = useCallback(async () => {
     setIsLoading(true)
     setError(null)
@@ -178,7 +184,8 @@ export function usePagination<T>(
     } finally {
       setIsLoading(false)
     }
-  }, [supabase, tableName, query, currentPage, pageSize, searchTerm, searchColumns, countMode])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [supabase, tableName, queryKey, currentPage, pageSize, searchTerm, searchColumnsKey, countMode])
 
   useEffect(() => {
     fetchData()

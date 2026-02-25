@@ -44,7 +44,7 @@ function matchesNeedle(haystackLower: string, needleLower: string): boolean {
   return haystackLower.includes(needleLower)
 }
 
-function getRuleMatch(
+export function getRuleMatch(
   rule: ReceiptRuleMatchable,
   transaction: ReceiptTransactionMatchable,
   context: MatchContext

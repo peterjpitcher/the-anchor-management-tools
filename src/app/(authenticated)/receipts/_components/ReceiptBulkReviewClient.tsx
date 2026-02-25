@@ -15,9 +15,8 @@ import type { ReceiptBulkReviewData } from '@/app/actions/receipts'
 import {
   applyReceiptGroupClassification,
   createReceiptRuleFromGroup,
-  runReceiptRuleRetroactivelyStep,
-  finalizeReceiptRuleRetroRun,
 } from '@/app/actions/receipts'
+import { useRetroRuleRunner } from '@/hooks/useRetroRuleRunner'
 import { receiptExpenseCategorySchema, receiptTransactionStatusSchema } from '@/lib/validation'
 import type { ReceiptExpenseCategory, ReceiptTransaction } from '@/types/database'
 import { usePermissions } from '@/contexts/PermissionContext'
@@ -94,11 +93,10 @@ export default function ReceiptBulkReviewClient({ initialData, initialFilters }:
   const managePermissionMessage = 'You do not have permission to manage receipts.'
   const [isApplying, startApply] = useTransition()
   const [isCreatingRule, startCreateRule] = useTransition()
-  const [isRunningRetro, startRunRetro] = useTransition()
+  const { runRetro, isRunning: isRunningRetro, activeRuleId: retroRunningRuleId } = useRetroRuleRunner()
 
   const [activeApplyGroup, setActiveApplyGroup] = useState<string | null>(null)
   const [activeRuleGroup, setActiveRuleGroup] = useState<string | null>(null)
-  const [retroGroupId, setRetroGroupId] = useState<string | null>(null)
 
   const [vendorDrafts, setVendorDrafts] = useState<Record<string, string>>(() => {
     const map: Record<string, string> = {}
@@ -222,6 +220,12 @@ export default function ReceiptBulkReviewClient({ initialData, initialFilters }:
   const handleOnlyUnclassifiedToggle = (checked: boolean) => {
     updateQuery({ all: checked ? null : '1' })
   }
+
+  const handleFuzzyToggle = (checked: boolean) => {
+    updateQuery({ fuzzy: checked ? '1' : null })
+  }
+
+  const isFuzzyGrouping = initialData.config.useFuzzyGrouping
 
   const statusesLabel = initialFilters.statuses.map((status) => STATUS_LABELS[status]).join(', ')
 
@@ -349,100 +353,7 @@ export default function ReceiptBulkReviewClient({ initialData, initialFilters }:
     }
     const rule = createdRules[details]
     if (!rule) return
-    console.log('[retro-ui] bulk handleRunRetro', { ruleId: rule.id, details })
-    setRetroGroupId(details)
-    startRunRetro(async () => {
-      try {
-        const scope: 'pending' | 'all' = 'pending'
-        const CHUNK_SIZE = 100
-        const MAX_ITERATIONS = 300
-
-        let offset = 0
-        let iterations = 0
-        let lastSamples: Array<Record<string, unknown>> = []
-        const totals = {
-          reviewed: 0,
-          matched: 0,
-          statusAutoUpdated: 0,
-          classificationUpdated: 0,
-          vendorIntended: 0,
-          expenseIntended: 0,
-        }
-
-        while (iterations < MAX_ITERATIONS) {
-          const step = await runReceiptRuleRetroactivelyStep({
-            ruleId: rule.id,
-            scope,
-            offset,
-            chunkSize: CHUNK_SIZE,
-          })
-
-          if (!step.success) {
-            toast.error(step.error)
-            console.error('[retro-ui] bulk step failed', { ruleId: rule.id, details, error: step.error })
-            setRetroGroupId(null)
-            return
-          }
-
-          totals.reviewed += step.reviewed
-          totals.matched += step.matched
-          totals.statusAutoUpdated += step.statusAutoUpdated
-          totals.classificationUpdated += step.classificationUpdated
-          totals.vendorIntended += step.vendorIntended
-          totals.expenseIntended += step.expenseIntended
-
-          if (step.samples.length) {
-            lastSamples = step.samples
-          }
-
-          offset = step.nextOffset
-          iterations += 1
-
-          if (step.done) {
-            const finalizeResult = await finalizeReceiptRuleRetroRun({
-              ruleId: rule.id,
-              scope,
-              reviewed: totals.reviewed,
-              statusAutoUpdated: totals.statusAutoUpdated,
-              classificationUpdated: totals.classificationUpdated,
-              matched: totals.matched,
-              vendorIntended: totals.vendorIntended,
-              expenseIntended: totals.expenseIntended,
-            })
-            if (finalizeResult && 'error' in finalizeResult && finalizeResult.error) {
-              toast.error(finalizeResult.error)
-            } else {
-              toast.success(
-                `Rule reviewed ${totals.matched}/${totals.reviewed} transactions · ${totals.statusAutoUpdated} status updates · ${totals.classificationUpdated} classifications · vendor intents ${totals.vendorIntended} · expense intents ${totals.expenseIntended}`
-              )
-            }
-
-            if (lastSamples.length) {
-              console.groupCollapsed(`Bulk rule analysis (${lastSamples.length} sample transactions)`)
-              console.table(lastSamples)
-              console.groupEnd()
-            }
-
-            router.refresh()
-            setRetroGroupId(null)
-            return
-          }
-
-          if (step.reviewed === 0) {
-            console.warn('[retro-ui] bulk step reviewed zero transactions', { ruleId: rule.id, details, offset })
-            break
-          }
-        }
-
-        toast.error('Stopped before completion. Please run again to continue.')
-        console.warn('[retro-ui] bulk retro run incomplete', { ruleId: rule.id, details, offset, totals })
-      } catch (error) {
-        console.error('Failed to run bulk retro rule', error)
-        toast.error('Failed to run the rule. Please try again.')
-      } finally {
-        setRetroGroupId(null)
-      }
-    })
+    runRetro({ ruleId: rule.id, scope: 'pending' })
   }
 
   return (
@@ -492,6 +403,13 @@ export default function ReceiptBulkReviewClient({ initialData, initialFilters }:
               />
               Only show transactions missing vendor and expense tags
             </div>
+            <div className="mt-2 flex items-center gap-2 text-sm text-gray-700">
+              <Checkbox
+                checked={isFuzzyGrouping}
+                onChange={(event) => handleFuzzyToggle(event.target.checked)}
+              />
+              Fuzzy group similar transactions
+            </div>
             <p className="mt-2 text-xs text-gray-500">Currently reviewing: {statusesLabel || 'pending transactions'}.</p>
           </div>
         </div>
@@ -513,7 +431,7 @@ export default function ReceiptBulkReviewClient({ initialData, initialFilters }:
             const suggestion = group.suggestion
             const isApplyingGroup = isApplying && activeApplyGroup === group.details
             const isCreatingForGroup = isCreatingRule && activeRuleGroup === group.details
-            const isRetroPending = isRunningRetro && retroGroupId === group.details
+            const isRetroPending = isRunningRetro && retroRunningRuleId === createdRules[group.details]?.id
             const createdRule = createdRules[group.details]
             const sample = group.sampleTransaction
 

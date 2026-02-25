@@ -185,6 +185,8 @@ export interface ReceiptTransaction {
   expense_rule_id: string | null;
   expense_updated_at: string | null;
   notes: string | null;
+  ai_confidence: number | null;
+  ai_suggested_keywords: string | null;
   created_at: string;
   updated_at: string;
 }
