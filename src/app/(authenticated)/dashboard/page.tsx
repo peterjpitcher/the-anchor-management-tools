@@ -18,6 +18,7 @@ import { formatDate, getLocalIsoDateDaysAhead, getTodayIsoDate } from '@/lib/dat
 import { refreshDashboard } from './actions'
 import UpcomingScheduleCalendar from './UpcomingScheduleCalendar'
 import { loadDashboardSnapshot } from './dashboard-data'
+import { checkUserPermission } from '@/app/actions/rbac'
 
 const LONDON_TIMEZONE = 'Europe/London'
 
@@ -84,7 +85,10 @@ function formatNoteDateRange(startDate: string, endDate: string): string {
 }
 
 export default async function DashboardPage() {
-  const snapshot = await loadDashboardSnapshot()
+  const [snapshot, canManageCalendarNotes] = await Promise.all([
+    loadDashboardSnapshot(),
+    checkUserPermission('settings', 'manage'),
+  ])
 
   const lastUpdatedAt = new Date(snapshot.generatedAt)
   const subtitle = `${londonLongDateFormatter.format(new Date())} • Updated ${londonTimeFormatter.format(lastUpdatedAt)}`
@@ -427,6 +431,7 @@ export default async function DashboardPage() {
                 calendarNotes={calendarNotesForSchedule}
                 privateBookings={calendarPrivateBookings}
                 parkingBookings={calendarParkingBookings}
+                canCreateCalendarNote={canManageCalendarNotes}
               />
             </Card>
           </div>

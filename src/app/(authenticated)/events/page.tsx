@@ -14,10 +14,11 @@ export const metadata = {
 }
 
 export default async function EventsPage() {
-  const [canViewEvents, canViewPrivateBookings, canManagePrivateBookings] = await Promise.all([
+  const [canViewEvents, canViewPrivateBookings, canManagePrivateBookings, canManageCalendarNotes] = await Promise.all([
     checkUserPermission('events', 'view'),
     checkUserPermission('private_bookings', 'view'),
     checkUserPermission('private_bookings', 'manage'),
+    checkUserPermission('settings', 'manage'),
   ])
 
   if (!canViewEvents) {
@@ -81,6 +82,7 @@ export default async function EventsPage() {
               ...data,
               privateBookingsForCalendar,
             }}
+            canCreateCalendarNote={canManageCalendarNotes}
           />
         </div>
       </div>
