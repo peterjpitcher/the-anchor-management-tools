@@ -17,9 +17,10 @@ import { usePermissions } from '@/contexts/PermissionContext'
 
 interface CommandCenterShellProps {
     initialData: EventsOverviewResult
+    canCreateCalendarNote?: boolean
 }
 
-export default function CommandCenterShell({ initialData }: CommandCenterShellProps) {
+export default function CommandCenterShell({ initialData, canCreateCalendarNote }: CommandCenterShellProps) {
     const [viewMode, setViewMode] = useState<ViewMode>('calendar')
     const [filter, setFilter] = useState<FilterType>('all')
     const [searchQuery, setSearchQuery] = useState('')
@@ -94,6 +95,7 @@ export default function CommandCenterShell({ initialData }: CommandCenterShellPr
                                 events={filteredAllEvents}
                                 privateBookings={initialData.privateBookingsForCalendar}
                                 calendarNotes={filteredCalendarNotes}
+                                canCreateCalendarNote={canCreateCalendarNote}
                             />
                         ) : viewMode === 'grid' ? (
                             <EventGrid events={filteredAllEvents} />

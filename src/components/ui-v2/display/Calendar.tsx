@@ -323,10 +323,11 @@ export function Calendar({
   
   // Handle date selection
   const handleDateClick = (date: Date) => {
-    if (!isDisabled(date) && selectable) {
+    if (isDisabled(date)) return
+    if (selectable) {
       onChange?.(date)
-      onDateClick?.(date)
     }
+    onDateClick?.(date)
   }
   
   // Render month view

@@ -141,6 +141,121 @@ function parseIsoDateToUtc(date: string): Date {
   return new Date(`${date}T00:00:00.000Z`)
 }
 
+/**
+ * Compute Easter Sunday for a given year using the Anonymous Gregorian algorithm.
+ * Returns the date as a YYYY-MM-DD string.
+ */
+function computeEasterSunday(year: number): string {
+  const a = year % 19
+  const b = Math.floor(year / 100)
+  const c = year % 100
+  const d = Math.floor(b / 4)
+  const e = b % 4
+  const f = Math.floor((b + 8) / 25)
+  const g = Math.floor((b - f + 1) / 3)
+  const h = (19 * a + b - d - g + 15) % 30
+  const i = Math.floor(c / 4)
+  const k = c % 4
+  const l = (32 + 2 * e + 2 * i - h - k) % 7
+  const m = Math.floor((a + 11 * h + 22 * l) / 451)
+  const month = Math.floor((h + l - 7 * m + 114) / 31)
+  const day = ((h + l - 7 * m + 114) % 31) + 1
+  return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+}
+
+/** Add days to a YYYY-MM-DD string, returning a new YYYY-MM-DD string. */
+function addDaysToIso(dateIso: string, days: number): string {
+  const [y, m, d] = dateIso.split('-').map(Number)
+  const date = new Date(y, (m as number) - 1, (d as number) + days)
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+}
+
+/** Return the Nth weekday (0=Sun…6=Sat) on or after the given YYYY-MM-DD. */
+function nextWeekday(dateIso: string, weekday: number): string {
+  const [y, m, d] = dateIso.split('-').map(Number)
+  const date = new Date(y, (m as number) - 1, d as number)
+  const diff = (weekday - date.getDay() + 7) % 7
+  return addDaysToIso(dateIso, diff)
+}
+
+/** Return the last occurrence of a weekday in a given month/year. */
+function lastWeekdayOfMonth(year: number, month: number, weekday: number): string {
+  // Start from the last day of the month and work back
+  const lastDay = new Date(year, month, 0) // month is 1-based here; new Date(y, m, 0) = last day of month m-1
+  const lastDayStr = `${year}-${String(month).padStart(2, '0')}-${String(lastDay.getDate()).padStart(2, '0')}`
+  const [y, mo, d] = lastDayStr.split('-').map(Number)
+  const date = new Date(y, (mo as number) - 1, d as number)
+  const diff = (date.getDay() - weekday + 7) % 7
+  return addDaysToIso(lastDayStr, -diff)
+}
+
+/** Return the Nth weekday (1-indexed) of a given month/year. */
+function nthWeekdayOfMonth(year: number, month: number, weekday: number, n: number): string {
+  // Find the first occurrence, then add (n-1) weeks
+  const firstDay = `${year}-${String(month).padStart(2, '0')}-01`
+  const firstOccurrence = nextWeekday(firstDay, weekday)
+  return addDaysToIso(firstOccurrence, (n - 1) * 7)
+}
+
+/**
+ * Build a list of confirmed UK hospitality-relevant dates for all years covered
+ * by the requested range. These must be injected into the AI prompt verbatim
+ * so the AI never recalculates moveable feasts incorrectly.
+ */
+function buildConfirmedUKDates(startDateIso: string, endDateIso: string): string {
+  const startYear = Number(startDateIso.slice(0, 4))
+  const endYear = Number(endDateIso.slice(0, 4))
+  const lines: string[] = []
+
+  for (let year = startYear; year <= endYear; year++) {
+    const easter = computeEasterSunday(year)
+    const goodFriday = addDaysToIso(easter, -2)
+    const easterSaturday = addDaysToIso(easter, -1)
+    const easterMonday = addDaysToIso(easter, 1)
+    const motheringSunday = addDaysToIso(easter, -21)
+    // Early May Bank Holiday: first Monday of May
+    const earlyMayBH = nthWeekdayOfMonth(year, 5, 1, 1)
+    // Spring Bank Holiday: last Monday of May
+    const springBH = lastWeekdayOfMonth(year, 5, 1)
+    // Father's Day: third Sunday of June
+    const fathersDay = nthWeekdayOfMonth(year, 6, 0, 3)
+    // World Gin Day: second Saturday of June
+    const worldGinDay = nthWeekdayOfMonth(year, 6, 6, 2)
+    // Late Summer Bank Holiday: last Monday of August
+    const lateSummerBH = lastWeekdayOfMonth(year, 8, 1)
+    // Oktoberfest: Saturday nearest to 17 September
+    const sep17 = nextWeekday(`${year}-09-17`, 6)
+    // (nextWeekday gives the Saturday on or after Sep 17; if Sep 17 IS Saturday that day is returned)
+    const oktoberfestStart = sep17
+
+    lines.push(
+      `${year}:`,
+      `  New Year's Day: ${year}-01-01`,
+      `  Dry January Ends: ${year}-01-31`,
+      `  Valentine's Day: ${year}-02-14`,
+      `  St. Patrick's Day: ${year}-03-17`,
+      `  Mothering Sunday: ${motheringSunday}`,
+      `  Good Friday: ${goodFriday}`,
+      `  Easter Saturday: ${easterSaturday}`,
+      `  Easter Sunday: ${easter}`,
+      `  Easter Monday: ${easterMonday}`,
+      `  Early May Bank Holiday: ${earlyMayBH}`,
+      `  Spring Bank Holiday: ${springBH}`,
+      `  Father's Day: ${fathersDay}`,
+      `  World Gin Day: ${worldGinDay}`,
+      `  Late Summer Bank Holiday: ${lateSummerBH}`,
+      `  Oktoberfest Start: ${oktoberfestStart}`,
+      `  Halloween: ${year}-10-31`,
+      `  Bonfire Night: ${year}-11-05`,
+      `  Christmas Day: ${year}-12-25`,
+      `  Boxing Day: ${year}-12-26`,
+      `  New Year's Eve: ${year}-12-31`,
+    )
+  }
+
+  return lines.join('\n')
+}
+
 function revalidateCalendarSurfaces() {
   revalidatePath('/settings')
   revalidatePath('/settings/calendar-notes')
@@ -526,8 +641,11 @@ export async function generateCalendarNotesWithAI(
             `Start date: ${parsedInput.data.start_date}`,
             `End date: ${parsedInput.data.end_date}`,
             '',
-            'Include key moments such as major UK bank holidays and hospitality-relevant observances when they fall in range.',
-            'Examples to consider: St Patrick\'s Day, Christmas Day, Boxing Day, New Year\'s Eve, Valentine\'s Day, Mothering Sunday, Father\'s Day, World Gin Day, Halloween, Bonfire Night.',
+            'CRITICAL: The following dates have been pre-calculated for you and are correct. You MUST use these exact dates — do not recalculate or alter them:',
+            '',
+            buildConfirmedUKDates(parsedInput.data.start_date, parsedInput.data.end_date),
+            '',
+            'Include key moments from the confirmed dates above when they fall in the requested range, plus any additional hospitality-relevant seasonal reminders.',
             'Add useful seasonal reminders where appropriate.',
             'Keep titles short and operational notes concise.',
             'Use end_date for multi-day notes; for single-day notes set end_date equal to note_date.',
