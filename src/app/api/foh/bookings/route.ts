@@ -76,10 +76,13 @@ const CreateFohTableBookingSchema = z.object({
     }
   }
 
-  if (value.sunday_lunch === true && value.sunday_deposit_method == null) {
+  if (
+    (value.sunday_lunch === true || (value.party_size != null && value.party_size >= 7)) &&
+    value.sunday_deposit_method == null
+  ) {
     context.addIssue({
       code: z.ZodIssueCode.custom,
-      message: 'Choose cash or payment link for Sunday lunch deposit'
+      message: 'Choose cash or payment link for the table deposit'
     })
   }
 })
@@ -898,14 +901,14 @@ export async function POST(request: NextRequest) {
     )
   }
 
-  const sundayDepositMethod =
-    effectiveSundayLunch && payload.purpose === 'food'
-      ? payload.sunday_deposit_method || null
-      : null
+  const requiresDeposit = effectiveSundayLunch || payload.party_size >= 7
+  const depositMethod = requiresDeposit
+    ? payload.sunday_deposit_method || null
+    : null
 
-  if (effectiveSundayLunch && payload.purpose === 'food' && !sundayDepositMethod) {
+  if (requiresDeposit && !depositMethod) {
     return NextResponse.json(
-      { error: 'Choose whether the Sunday lunch deposit was paid in cash or should be sent by payment link.' },
+      { error: 'Choose whether the deposit was paid in cash or should be sent by payment link.' },
       { status: 400 }
     )
   }
@@ -1004,8 +1007,7 @@ export async function POST(request: NextRequest) {
   if (
     bookingResult.state === 'pending_payment' &&
     bookingResult.table_booking_id &&
-    effectiveSundayLunch &&
-    sundayDepositMethod === 'cash'
+    depositMethod === 'cash'
   ) {
     const { data: cashConfirmRaw, error: cashConfirmError } = await auth.supabase.rpc('record_table_cash_deposit_v05', {
       p_table_booking_id: bookingResult.table_booking_id,
@@ -1103,7 +1105,7 @@ export async function POST(request: NextRequest) {
     bookingResult.state === 'pending_payment' &&
     bookingResult.table_booking_id &&
     bookingResult.hold_expires_at &&
-    sundayDepositMethod === 'payment_link'
+    depositMethod === 'payment_link'
   ) {
     try {
       const token = await createTablePaymentToken(auth.supabase, {

@@ -13,6 +13,8 @@ import {
 } from '@/lib/payments/stripe'
 import { logger } from '@/lib/logger'
 
+const DEPOSIT_PER_PERSON_GBP = 10
+
 export type TableBookingState = 'confirmed' | 'pending_card_capture' | 'pending_payment' | 'blocked'
 
 export type TableBookingRpcResult = {
@@ -555,7 +557,7 @@ export async function getTablePaymentPreviewByRawToken(
   }
 
   const partySize = Math.max(1, Number(booking.committed_party_size ?? booking.party_size ?? 1))
-  const totalAmount = Number((partySize * 10).toFixed(2))
+  const totalAmount = Number((partySize * DEPOSIT_PER_PERSON_GBP).toFixed(2))
   if (!Number.isFinite(totalAmount) || totalAmount <= 0) {
     return { state: 'blocked', reason: 'invalid_amount' }
   }
@@ -614,12 +616,12 @@ export async function createTableCheckoutSessionByRawToken(
     quantity: 1,
     unitAmountMinor: formatPence(preview.totalAmount),
     currency: preview.currency,
-    productName: `Sunday lunch deposit (${preview.partySize} ${preview.partySize === 1 ? 'person' : 'people'})`,
+    productName: `${preview.bookingType === 'sunday_lunch' ? 'Sunday lunch deposit' : 'Table deposit'} (${preview.partySize} ${preview.partySize === 1 ? 'person' : 'people'})`,
     tokenHash: preview.tokenHash,
     expiresAtUnix: computeStripeCheckoutExpiresAtUnix(preview.holdExpiresAt),
     metadata: {
       booking_reference: preview.bookingReference,
-      deposit_per_person_gbp: '10',
+      deposit_per_person_gbp: String(DEPOSIT_PER_PERSON_GBP),
       party_size: String(preview.partySize),
     },
   })
@@ -673,7 +675,7 @@ export async function createTableCheckoutSessionByRawToken(
               token_hash: preview.tokenHash,
               checkout_url: session.url,
               party_size: preview.partySize,
-              deposit_per_person: 10,
+              deposit_per_person: DEPOSIT_PER_PERSON_GBP,
               updated_at: nowIso,
             },
           })
@@ -696,7 +698,7 @@ export async function createTableCheckoutSessionByRawToken(
             token_hash: preview.tokenHash,
             checkout_url: session.url,
             party_size: preview.partySize,
-            deposit_per_person: 10,
+            deposit_per_person: DEPOSIT_PER_PERSON_GBP,
             created_at: nowIso,
           },
         })
@@ -749,7 +751,7 @@ export async function sendTableBookingCreatedSmsIfAllowed(
   const bookingMoment = formatLondonDateTime(input.bookingResult.start_datetime)
   const partySize = Math.max(1, Number(input.bookingResult.party_size ?? 1))
   const seatWord = partySize === 1 ? 'person' : 'people'
-  const depositAmount = Number((partySize * 10).toFixed(2))
+  const depositAmount = Number((partySize * DEPOSIT_PER_PERSON_GBP).toFixed(2))
   const depositLabel = new Intl.NumberFormat('en-GB', {
     style: 'currency',
     currency: 'GBP',
@@ -777,7 +779,8 @@ export async function sendTableBookingCreatedSmsIfAllowed(
     const cta = input.nextStepUrl ? `Complete here: ${input.nextStepUrl}` : 'We will text your card details link shortly.'
     smsBody = `${base} ${cta}`
   } else if (input.bookingResult.state === 'pending_payment') {
-    const base = `The Anchor: Hi ${firstName}, please pay your Sunday lunch deposit of ${depositLabel} (${partySize} x GBP 10) to secure your table for ${partySize} ${seatWord} on ${bookingMoment}.`
+    const depositKindLabel = input.bookingResult.sunday_lunch ? 'Sunday lunch deposit' : 'table deposit'
+    const base = `The Anchor: Hi ${firstName}, please pay your ${depositKindLabel} of ${depositLabel} (${partySize} x GBP ${DEPOSIT_PER_PERSON_GBP}) to secure your table for ${partySize} ${seatWord} on ${bookingMoment}.`
     const cta = input.nextStepUrl ? `Pay now: ${input.nextStepUrl}` : 'We will text your payment link shortly.'
     smsBody = `${base} ${cta}`
   } else {
@@ -1070,7 +1073,8 @@ export async function sendTableBookingConfirmedAfterDepositSmsIfAllowed(
     }
   }
 
-  let composedMessage = `The Anchor: Hi ${firstName}, your Sunday lunch deposit is received and your table booking for ${partySize} ${seatWord} on ${bookingMoment} is confirmed.${manageLink ? ` Manage booking: ${manageLink}` : ''}`
+  const depositPhrase = booking.booking_type === 'sunday_lunch' ? 'Sunday lunch deposit' : 'table deposit'
+  let composedMessage = `The Anchor: Hi ${firstName}, your ${depositPhrase} is received and your table booking for ${partySize} ${seatWord} on ${bookingMoment} is confirmed.${manageLink ? ` Manage booking: ${manageLink}` : ''}`
   let templateKey = 'table_booking_deposit_confirmed'
 
   if (sundayPreorderLink) {

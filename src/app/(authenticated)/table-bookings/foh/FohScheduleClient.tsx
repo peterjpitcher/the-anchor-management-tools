@@ -1543,6 +1543,9 @@ export function FohScheduleClient({
   const nextUpcomingEvent = useMemo(() => upcomingEvents[0] || null, [upcomingEvents])
 
   const sundaySelected = isSundayDate(createForm.booking_date)
+  const formRequiresDeposit =
+    (createForm.sunday_lunch && sundaySelected) ||
+    (createMode !== 'walk_in' && Number(createForm.party_size) >= 7)
   const sundayMenuByCategory = useMemo(() => {
     return sundayMenuItems.reduce<Record<string, SundayMenuItem[]>>((acc, item) => {
       const category = item.category_name || 'Other'
@@ -2119,7 +2122,7 @@ export function FohScheduleClient({
           purpose: createForm.purpose === 'drinks' ? 'drinks' : 'food',
           notes: createForm.notes || undefined,
           sunday_lunch: createForm.sunday_lunch,
-          sunday_deposit_method: createForm.sunday_lunch ? createForm.sunday_deposit_method : undefined,
+          sunday_deposit_method: (!isWalkIn && (createForm.sunday_lunch || partySize >= 7)) ? createForm.sunday_deposit_method : undefined,
           sunday_preorder_mode: createForm.sunday_lunch ? createForm.sunday_preorder_mode : undefined,
           sunday_preorder_items: sundayPreorderItems.length > 0 ? sundayPreorderItems : undefined
         })
@@ -3183,9 +3186,11 @@ export function FohScheduleClient({
                   <span>Sunday lunch</span>
                 </label>
 
-                {createForm.sunday_lunch && sundaySelected && (
+                {formRequiresDeposit && (
                   <div className="rounded-md border border-gray-200 bg-gray-50 p-3">
-                    <p className="text-xs font-medium text-gray-800">Sunday lunch deposit</p>
+                    <p className="text-xs font-medium text-gray-800">
+                      {createForm.sunday_lunch ? 'Sunday lunch deposit' : 'Table deposit'}
+                    </p>
                     <div className="mt-2 flex flex-wrap gap-4">
                       <label className="flex items-center gap-2 text-xs text-gray-700">
                         <input
@@ -3213,8 +3218,11 @@ export function FohScheduleClient({
                       </label>
                     </div>
                     <p className="mt-2 text-xs text-gray-600">Deposit amount: GBP 10 per person.</p>
+                  </div>
+                )}
 
-                    <div className="my-3 border-t border-gray-200" />
+                {createForm.sunday_lunch && sundaySelected && (
+                  <div className="rounded-md border border-gray-200 bg-gray-50 p-3">
                     <p className="text-xs font-medium text-gray-800">Sunday pre-order</p>
                     <div className="mt-2 flex flex-wrap gap-4">
                       <label className="flex items-center gap-2 text-xs text-gray-700">
@@ -3334,7 +3342,7 @@ export function FohScheduleClient({
               {createMode === 'walk_in'
                 ? 'Walk-ins require covers. Guest name and phone are optional.'
                 : createForm.purpose !== 'event'
-                ? 'Sunday lunch requires a GBP 10 per person deposit for every booking.'
+                ? 'Sunday lunch and bookings of 7+ people require a GBP 10 per person deposit.'
                 : 'Event booking status depends on event payment mode and capacity.'}
             </p>
             <div className="flex items-center gap-2">
