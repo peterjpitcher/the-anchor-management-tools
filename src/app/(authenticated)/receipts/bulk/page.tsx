@@ -1,6 +1,7 @@
 import ReceiptBulkReviewClient from '@/app/(authenticated)/receipts/_components/ReceiptBulkReviewClient'
 import { getReceiptBulkReviewData } from '@/app/actions/receipts'
 import { PageLayout } from '@/components/ui-v2/layout/PageLayout'
+import { Alert } from '@/components/ui-v2/feedback/Alert'
 import { redirect } from 'next/navigation'
 import { checkUserPermission } from '@/app/actions/rbac'
 import { receiptTransactionStatusSchema } from '@/lib/validation'
@@ -36,12 +37,37 @@ export default async function ReceiptsBulkPage({ searchParams }: PageProps) {
   const onlyUnclassified = resolvedParams?.all === '1' ? false : true
   const useFuzzyGrouping = resolvedParams?.fuzzy === '1'
 
-  const data = await getReceiptBulkReviewData({
-    limit,
-    statuses,
-    onlyUnclassified,
-    useFuzzyGrouping,
-  })
+  let data
+  let loadError: string | null = null
+
+  try {
+    data = await getReceiptBulkReviewData({
+      limit,
+      statuses,
+      onlyUnclassified,
+      useFuzzyGrouping,
+    })
+  } catch (err) {
+    console.error('Bulk review data load failed', err)
+    loadError = err instanceof Error ? err.message : 'Failed to load bulk review data'
+  }
+
+  if (loadError || !data) {
+    return (
+      <PageLayout
+        title="Bulk classification"
+        subtitle="Group similar transactions, confirm AI suggestions, and roll out rules in one sweep."
+        backButton={{ label: 'Back to receipts', href: '/receipts' }}
+        navItems={getReceiptsNavItems({ view: 'bulk' })}
+      >
+        <Alert
+          variant="error"
+          title="Failed to load bulk review"
+          description={loadError ?? 'An unexpected error occurred. Please try again.'}
+        />
+      </PageLayout>
+    )
+  }
 
   const filters = {
     limit: data.config.limit,

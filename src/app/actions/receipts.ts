@@ -331,16 +331,22 @@ async function buildGroupSuggestion(
   const amountOut = sample?.amountOut && sample.amountOut > 0 ? sample.amountOut : averageOut || null
   const direction = deriveDirection(amountIn, amountOut)
 
-  const outcome = await classifyReceiptTransaction({
-    details: group.details,
-    amountIn,
-    amountOut,
-    transactionType: sample?.transactionType ?? null,
-    categories: EXPENSE_CATEGORY_OPTIONS,
-    direction,
-    existingVendor: existingVendor ?? undefined,
-    existingExpenseCategory: existingExpense ?? undefined,
-  })
+  let outcome
+  try {
+    outcome = await classifyReceiptTransaction({
+      details: group.details,
+      amountIn,
+      amountOut,
+      transactionType: sample?.transactionType ?? null,
+      categories: EXPENSE_CATEGORY_OPTIONS,
+      direction,
+      existingVendor: existingVendor ?? undefined,
+      existingExpenseCategory: existingExpense ?? undefined,
+    })
+  } catch (aiError) {
+    console.error('AI classification failed for group, falling back to existing data', aiError)
+    return suggestion
+  }
 
   if (outcome?.result) {
     const vendorName = normalizeVendorInput(outcome.result.vendorName) ?? existingVendor ?? null
