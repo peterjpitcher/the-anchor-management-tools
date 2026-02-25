@@ -850,6 +850,12 @@ async function applyAutomationRules(
       classificationNotes.push(`Expense → ${matchingRule.set_expense_category}`)
     }
 
+    // Ensure rule_applied_id is always set when the rule causes any change,
+    // even if the status doesn't change (e.g. auto_status='pending' classification-only rules)
+    if ((shouldUpdateVendor || shouldUpdateExpense) && !('rule_applied_id' in updatePayload)) {
+      updatePayload.rule_applied_id = matchingRule.id
+    }
+
     if (!Object.keys(updatePayload).length && classificationNotes.length === 0) {
       continue
     }

@@ -51,7 +51,7 @@ export function ScheduleConfigEditor({ config, onChange }: ScheduleConfigEditorP
       </div>
 
       {items.length === 0 ? (
-        <div className="text-sm text-gray-500 italic">No services configured. Venue will be effectively closed.</div>
+        <div className="text-sm text-gray-500 italic">No service windows configured. Bookings will be validated against pub and kitchen hours only.</div>
       ) : (
         <div className="space-y-3">
           {items.map((item, index) => (

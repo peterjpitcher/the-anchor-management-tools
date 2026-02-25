@@ -102,7 +102,14 @@ const businessHoursSchema = z
         const kitchenOpens = toMinutes(value.kitchen_opens);
         const kitchenCloses = toMinutes(value.kitchen_closes);
 
-        if (kitchenCloses <= kitchenOpens) {
+        // Allow kitchen_closes = 00:00 as midnight (end of service day),
+        // mirroring the same exception already applied to pub closes.
+        const kitchenClosesAdjusted =
+          value.kitchen_closes === '00:00' || value.kitchen_closes === '00:00:00'
+            ? 24 * 60
+            : kitchenCloses;
+
+        if (kitchenClosesAdjusted <= kitchenOpens) {
           ctx.addIssue({
             code: 'custom',
             message: 'Kitchen closing time must be after kitchen opening time',
@@ -119,7 +126,7 @@ const businessHoursSchema = z
             closes = 24 * 60;
           }
 
-          if (kitchenOpens < opens || kitchenCloses > closes) {
+          if (kitchenOpens < opens || kitchenClosesAdjusted > closes) {
             ctx.addIssue({
               code: 'custom',
               message: 'Kitchen hours must sit inside the main business hours',

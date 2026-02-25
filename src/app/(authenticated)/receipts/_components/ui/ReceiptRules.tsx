@@ -53,6 +53,8 @@ export function ReceiptRules({ rules, pendingSuggestion, onApplySuggestion, onDi
   const [isRetroPending, startRetroTransition] = useTransition()
   const [retroPrompt, setRetroPrompt] = useState<{ id: string; name: string } | null>(null)
   const [retroScope, setRetroScope] = useState<'pending' | 'all'>('all')
+  const [retroConfirmRuleId, setRetroConfirmRuleId] = useState<string | null>(null)
+  const [retroConfirmScope, setRetroConfirmScope] = useState<'pending' | 'all'>('all')
   const [ruleSearch, setRuleSearch] = useState('')
   const [expandedRuleKeys, setExpandedRuleKeys] = useState<string[]>([])
   const newRuleFormRef = useRef<HTMLFormElement | null>(null)
@@ -524,23 +526,38 @@ export function ReceiptRules({ rules, pendingSuggestion, onApplySuggestion, onDi
                             >
                               {editingRuleId === rule.id ? 'Close editor' : 'Edit'}
                             </Button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => handleRetroRun(rule.id, 'all')}
-                              disabled={!rule.is_active || isRetroPending || !canManageReceipts}
-                              title={rule.is_active ? 'Run this rule across all historical transactions' : 'Enable the rule before running it'}
-                              className="flex items-center gap-1"
-                            >
-                              {isRetroPending && retroRuleId === rule.id ? (
-                                <>
-                                  <Spinner className="h-4 w-4" />
-                                  <span>Running…</span>
-                                </>
-                              ) : (
-                                'Run historical'
-                              )}
-                            </Button>
+                            {retroConfirmRuleId === rule.id ? (
+                              <div className="flex flex-wrap items-center gap-2">
+                                <Select
+                                  value={retroConfirmScope}
+                                  onChange={(e) => setRetroConfirmScope(e.target.value as 'pending' | 'all')}
+                                  selectSize="sm"
+                                  className="w-40"
+                                >
+                                  <option value="pending">Pending only</option>
+                                  <option value="all">All historical</option>
+                                </Select>
+                                <Button
+                                  size="sm"
+                                  variant="secondary"
+                                  onClick={() => { setRetroConfirmRuleId(null); handleRetroRun(rule.id, retroConfirmScope) }}
+                                  disabled={isRetroPending}
+                                >
+                                  {isRetroPending && retroRuleId === rule.id ? <><Spinner className="mr-1 h-4 w-4" />Running…</> : 'Run now'}
+                                </Button>
+                                <Button size="sm" variant="ghost" onClick={() => setRetroConfirmRuleId(null)}>Cancel</Button>
+                              </div>
+                            ) : (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => { setRetroConfirmRuleId(rule.id); setRetroConfirmScope('all') }}
+                                disabled={!rule.is_active || isRetroPending || !canManageReceipts}
+                                title={rule.is_active ? 'Run this rule across historical transactions' : 'Enable the rule before running it'}
+                              >
+                                Run historical
+                              </Button>
+                            )}
                             <Button
                               variant={rule.is_active ? 'success' : 'ghost'}
                               size="sm"
