@@ -25,7 +25,10 @@ type ReceiptsPageProps = {
 }
 
 export default async function ReceiptsPage({ searchParams }: ReceiptsPageProps) {
-  const canView = await checkUserPermission('receipts', 'view')
+  const [canView, canExport] = await Promise.all([
+    checkUserPermission('receipts', 'view'),
+    checkUserPermission('receipts', 'export'),
+  ])
   if (!canView) {
     redirect('/unauthorized')
   }
@@ -109,6 +112,7 @@ export default async function ReceiptsPage({ searchParams }: ReceiptsPageProps) 
     >
       <ReceiptsClient
         initialData={data}
+        canExport={canExport}
         initialFilters={{
           status,
           direction,

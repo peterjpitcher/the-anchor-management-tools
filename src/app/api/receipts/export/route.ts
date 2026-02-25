@@ -21,7 +21,10 @@ type QuarterRange = { startDate: string; endDate: string }
 
 export async function GET(request: NextRequest) {
   try {
-    await checkUserPermission('receipts', 'export')
+    const canExport = await checkUserPermission('receipts', 'export')
+    if (!canExport) {
+      return NextResponse.json({ error: 'Permission denied' }, { status: 403 })
+    }
 
     const url = new URL(request.url)
     const year = Number(url.searchParams.get('year'))

@@ -7,7 +7,8 @@ import { Select } from '@/components/ui-v2/forms/Select'
 import { Card } from '@/components/ui-v2/layout/Card'
 import { DocumentArrowDownIcon } from '@heroicons/react/24/outline'
 
-export function ReceiptExport() {
+export function ReceiptExport({ canExport = false }: { canExport?: boolean }) {
+  if (!canExport) return null
   const currentYear = new Date().getUTCFullYear()
   const exportYears = [currentYear, currentYear - 1, currentYear - 2]
 

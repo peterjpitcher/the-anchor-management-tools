@@ -184,7 +184,7 @@ export default async function ReceiptsMonthlyPage() {
     insightItems.push({
       tone: 'negative',
       title: `Spending up on ${notableSpendIncrease.label}`,
-      detail: `Up ${diffLabel(notableSpendIncrease.delta)} vs last month.`,
+      detail: `Up ${formatCurrencyCompact(notableSpendIncrease.delta)} vs last month.`,
     })
   }
 
@@ -192,7 +192,7 @@ export default async function ReceiptsMonthlyPage() {
     insightItems.push({
       tone: 'positive',
       title: `Income boost from ${notableIncomeIncrease.label}`,
-      detail: `Up ${diffLabel(notableIncomeIncrease.delta)} vs last month.`,
+      detail: `Up ${formatCurrencyCompact(notableIncomeIncrease.delta)} vs last month.`,
     })
   }
 
@@ -200,7 +200,7 @@ export default async function ReceiptsMonthlyPage() {
     insightItems.push({
       tone: 'positive',
       title: `Reduced spend on ${notableSpendReduction.label}`,
-      detail: `Down ${diffLabel(notableSpendReduction.delta)} vs last month.`,
+      detail: `Down ${formatCurrencyCompact(Math.abs(notableSpendReduction.delta))} vs last month.`,
     })
   }
 
