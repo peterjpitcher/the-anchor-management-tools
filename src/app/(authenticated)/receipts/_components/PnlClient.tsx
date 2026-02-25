@@ -132,12 +132,6 @@ export default function PnlClient({ initialData, canExport = false }: Props) {
       }
     })
 
-    initialData.metrics
-      .filter((metric) => metric.group === 'expenses')
-      .forEach((metric) => {
-        map[metric.key] = initialData.actuals[selectedTimeframe]?.[metric.key] ?? 0
-      })
-
     return map
   }, [manualValues, initialData.actuals, initialData.metrics, selectedTimeframe])
 
@@ -344,17 +338,18 @@ const renderPeriodTargetCell = (
   const renderVarianceCell = (
     metricKey: string,
     metricFormat: 'currency' | 'percent' | undefined,
-    periodTarget: number | null
+    periodTarget: number | null,
+    invertVariance = false
   ) => {
-    const actual = metricFormat === 'percent' ? actualValues[metricKey] ?? null : actualValues[metricKey] ?? null
+    const actual = actualValues[metricKey] ?? null
     const diff = variance(actual, periodTarget)
     if (diff === null) return <span>—</span>
-    const positive = diff >= 0
+    const favourable = invertVariance ? diff <= 0 : diff >= 0
     return (
       <span
         className={clsx(
           'inline-flex rounded px-2 py-0.5 text-xs font-semibold',
-          positive ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'
+          favourable ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'
         )}
       >
         {formatValue(diff, metricFormat ?? 'currency')}
@@ -481,7 +476,7 @@ const renderPeriodTargetCell = (
                           {renderPeriodTargetCell(metric.format, periodTarget, detailLines)}
                         </td>
                         <td className="px-4 py-3 min-w-[140px] text-right text-gray-900">
-                          {renderVarianceCell(metric.key, metric.format, periodTarget)}
+                          {renderVarianceCell(metric.key, metric.format, periodTarget, metric.group === 'expenses' || metric.group === 'occupancy')}
                         </td>
                       </tr>
                     )

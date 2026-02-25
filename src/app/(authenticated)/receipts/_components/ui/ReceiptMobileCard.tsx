@@ -93,20 +93,25 @@ export function ReceiptMobileCard({
     formData.append('receipt', file)
 
     startTransition(async () => {
-      const result = await uploadReceiptForTransaction(formData)
-      if (result?.error || !result?.receipt) {
-        toast.error(result?.error ?? 'Upload failed')
-        return
+      try {
+        const result = await uploadReceiptForTransaction(formData)
+        if (result?.error || !result?.receipt) {
+          toast.error(result?.error ?? 'Upload failed')
+          return
+        }
+        onUpdate({
+          ...transaction,
+          status: 'completed',
+          receipt_required: false,
+          files: [...transaction.files, result.receipt as ReceiptFile]
+        }, transaction.status)
+        toast.success('Receipt uploaded')
+      } catch (error) {
+        console.error('Receipt upload failed', error)
+        const message = error instanceof Error ? error.message.toLowerCase() : ''
+        const tooLarge = (message.includes('body') && message.includes('limit')) || message.includes('too large')
+        toast.error(tooLarge ? 'File is too large. Please keep receipts under 15MB.' : 'Upload failed')
       }
-      
-      onUpdate({
-        ...transaction,
-        status: 'completed',
-        receipt_required: false,
-        files: [...transaction.files, result.receipt as ReceiptFile]
-      }, transaction.status)
-      
-      toast.success('Receipt uploaded')
     })
   }
 
@@ -313,7 +318,7 @@ export function ReceiptMobileCard({
                     </div>
                 ) : (
                     <button onClick={startNoteEdit} className="text-left hover:text-emerald-600 w-full" disabled={!canManageReceipts}>
-                        {transaction.notes ? transaction.notes.split(' — ').pop() : <span className="text-gray-400 italic">Add note</span>}
+                        {transaction.notes ? transaction.notes.split(' — ').slice(1).join(' — ') || transaction.notes : <span className="text-gray-400 italic">Add note</span>}
                         <PencilSquareIcon className="inline h-3 w-3 ml-1 text-gray-400" />
                     </button>
                 )}
@@ -334,6 +339,8 @@ export function ReceiptMobileCard({
              <div className="ml-auto flex gap-1">
                  {transaction.status !== 'completed' && <Button variant="success" size="xs" onClick={() => handleStatusUpdate('completed')} disabled={isPending || !canManageReceipts}>Done</Button>}
                  {transaction.status === 'pending' && <Button variant="secondary" size="xs" onClick={() => handleStatusUpdate('no_receipt_required')} disabled={isPending || !canManageReceipts}>Skip</Button>}
+                 {transaction.status === 'pending' && <Button variant="secondary" size="xs" onClick={() => handleStatusUpdate('cant_find')} className="border border-rose-200 text-rose-700" disabled={isPending || !canManageReceipts}>Missing</Button>}
+                 {transaction.status !== 'pending' && <Button variant="ghost" size="xs" onClick={() => handleStatusUpdate('pending')} disabled={isPending || !canManageReceipts}>Reopen</Button>}
              </div>
         </div>
     </div>

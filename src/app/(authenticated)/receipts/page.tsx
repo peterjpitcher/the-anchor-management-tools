@@ -56,8 +56,6 @@ export default async function ReceiptsPage({ searchParams }: ReceiptsPageProps) 
   let month: string | undefined
   if (rawMonth) {
     month = resolveMonthParam(rawMonth)
-  } else if (!showOnlyOutstanding) {
-    month = resolveMonthParam(undefined)
   }
 
   const defaultSortBy: ReceiptWorkspaceFilters['sortBy'] = !month ? 'amount_total' : 'transaction_date'
