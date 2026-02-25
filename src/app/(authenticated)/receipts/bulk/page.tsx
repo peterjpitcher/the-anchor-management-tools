@@ -49,7 +49,13 @@ export default async function ReceiptsBulkPage({ searchParams }: PageProps) {
     })
   } catch (err) {
     console.error('Bulk review data load failed', err)
-    loadError = err instanceof Error ? err.message : 'Failed to load bulk review data'
+    if (err instanceof Error) {
+      loadError = err.message
+    } else if (err !== null && typeof err === 'object' && 'message' in err) {
+      loadError = String((err as Record<string, unknown>).message)
+    } else {
+      loadError = 'Failed to load bulk review data'
+    }
   }
 
   if (loadError || !data) {
