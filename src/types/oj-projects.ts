@@ -1,6 +1,6 @@
 export type OJBillingMode = 'full' | 'cap'
 export type OJProjectStatus = 'active' | 'paused' | 'completed' | 'archived'
-export type OJEntryType = 'time' | 'mileage'
+export type OJEntryType = 'time' | 'mileage' | 'one_off'
 export type OJEntryStatus = 'unbilled' | 'billing_pending' | 'billed' | 'paid'
 
 export type OJWorkType = {
@@ -86,6 +86,7 @@ export type OJEntry = {
   hourly_rate_ex_vat_snapshot: number | null
   vat_rate_snapshot: number | null
   mileage_rate_snapshot: number | null
+  amount_ex_vat_snapshot: number | null
   created_at: string
   updated_at: string
 }

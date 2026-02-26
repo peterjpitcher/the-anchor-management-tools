@@ -29,15 +29,26 @@ const MileageEntrySchema = z.object({
   billable: z.coerce.boolean().optional(),
 })
 
+const OneOffChargeSchema = z.object({
+  vendor_id: z.string().uuid('Invalid vendor ID'),
+  project_id: z.string().uuid('Invalid project ID'),
+  entry_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must be YYYY-MM-DD'),
+  amount_ex_vat: z.coerce.number().positive('Amount must be greater than 0'),
+  description: z.string().max(5000).optional(),
+  internal_notes: z.string().max(10000).optional(),
+  billable: z.coerce.boolean().optional(),
+})
+
 const UpdateEntrySchema = z.object({
   id: z.string().uuid('Invalid entry ID'),
-  entry_type: z.enum(['time', 'mileage'] as const),
+  entry_type: z.enum(['time', 'mileage', 'one_off'] as const),
   vendor_id: z.string().uuid('Invalid vendor ID'),
   project_id: z.string().uuid('Invalid project ID'),
   entry_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must be YYYY-MM-DD'),
   start_time: z.string().regex(/^\d{2}:\d{2}$/).optional(),
   duration_minutes: z.coerce.number().min(1).optional(),
   miles: z.coerce.number().optional(),
+  amount_ex_vat: z.coerce.number().positive().optional(),
   work_type_id: z.string().uuid().optional().or(z.literal('')).optional(),
   description: z.string().max(5000).optional(),
   internal_notes: z.string().max(10000).optional(),
@@ -290,6 +301,57 @@ export async function createMileageEntry(formData: FormData) {
   return { entry: data, success: true as const }
 }
 
+export async function createOneOffCharge(formData: FormData) {
+  const hasPermission = await checkUserPermission('oj_projects', 'create')
+  if (!hasPermission) return { error: 'You do not have permission to create entries' }
+
+  const parsed = OneOffChargeSchema.safeParse({
+    vendor_id: formData.get('vendor_id'),
+    project_id: formData.get('project_id'),
+    entry_date: formData.get('entry_date'),
+    amount_ex_vat: formData.get('amount_ex_vat'),
+    description: formData.get('description') || undefined,
+    internal_notes: formData.get('internal_notes') || undefined,
+    billable: formData.get('billable') ?? undefined,
+  })
+  if (!parsed.success) return { error: parsed.error.errors[0].message }
+
+  const supabase = await createClient()
+  const match = await ensureProjectMatchesVendor(supabase, parsed.data.project_id, parsed.data.vendor_id)
+  if ('error' in match) return { error: match.error }
+
+  const settings = await getVendorSettingsOrDefault(supabase, parsed.data.vendor_id)
+
+  const { data, error } = await supabase
+    .from('oj_entries')
+    .insert({
+      vendor_id: parsed.data.vendor_id,
+      project_id: parsed.data.project_id,
+      entry_type: 'one_off',
+      entry_date: parsed.data.entry_date,
+      start_at: null,
+      end_at: null,
+      duration_minutes_raw: null,
+      duration_minutes_rounded: null,
+      miles: null,
+      work_type_id: null,
+      work_type_name_snapshot: null,
+      description: parsed.data.description || null,
+      internal_notes: parsed.data.internal_notes || null,
+      billable: parsed.data.billable ?? true,
+      status: 'unbilled',
+      hourly_rate_ex_vat_snapshot: null,
+      vat_rate_snapshot: settings.vat_rate,
+      mileage_rate_snapshot: null,
+      amount_ex_vat_snapshot: parsed.data.amount_ex_vat,
+    })
+    .select('*')
+    .single()
+
+  if (error) return { error: error.message }
+  return { entry: data, success: true as const }
+}
+
 export async function updateEntry(formData: FormData) {
   const hasPermission = await checkUserPermission('oj_projects', 'edit')
   if (!hasPermission) return { error: 'You do not have permission to edit entries' }
@@ -303,6 +365,7 @@ export async function updateEntry(formData: FormData) {
     start_time: formData.get('start_time') || undefined,
     duration_minutes: formData.get('duration_minutes') || undefined,
     miles: formData.get('miles') ?? undefined,
+    amount_ex_vat: formData.get('amount_ex_vat') || undefined,
     work_type_id: formData.get('work_type_id') || undefined,
     description: formData.get('description') || undefined,
     internal_notes: formData.get('internal_notes') || undefined,
@@ -389,6 +452,34 @@ export async function updateEntry(formData: FormData) {
     } catch { }
 
     return { entry: data, success: true as const, warning }
+  }
+
+  // one_off
+  if (parsed.data.entry_type === 'one_off') {
+    if (typeof parsed.data.amount_ex_vat !== 'number' || !Number.isFinite(parsed.data.amount_ex_vat) || parsed.data.amount_ex_vat <= 0) {
+      return { error: 'Amount must be greater than 0' }
+    }
+
+    const { data, error } = await supabase
+      .from('oj_entries')
+      .update({
+        vendor_id: parsed.data.vendor_id,
+        project_id: parsed.data.project_id,
+        entry_date: parsed.data.entry_date,
+        amount_ex_vat_snapshot: parsed.data.amount_ex_vat,
+        description: parsed.data.description ?? null,
+        internal_notes: parsed.data.internal_notes ?? null,
+        billable: parsed.data.billable ?? true,
+        vat_rate_snapshot: settings.vat_rate,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', parsed.data.id)
+      .select('*')
+      .maybeSingle()
+
+    if (error) return { error: error.message }
+    if (!data) return { error: 'Entry not found' }
+    return { entry: data, success: true as const }
   }
 
   // mileage
