@@ -19,7 +19,7 @@ import { getProjects } from '@/app/actions/oj-projects/projects'
 import { getRecurringCharges } from '@/app/actions/oj-projects/recurring-charges'
 import { getVendorBillingSettings } from '@/app/actions/oj-projects/vendor-settings'
 import { getWorkTypes } from '@/app/actions/oj-projects/work-types'
-import { createMileageEntry, createTimeEntry, deleteEntry, getEntries, updateEntry } from '@/app/actions/oj-projects/entries'
+import { createMileageEntry, createOneOffCharge, createTimeEntry, deleteEntry, getEntries, updateEntry } from '@/app/actions/oj-projects/entries'
 import { getOjProjectsEmailStatus } from '@/app/actions/oj-projects/system'
 import type { InvoiceVendor } from '@/types/invoices'
 import { BarChart } from '@/components/charts/BarChart'
@@ -65,13 +65,14 @@ function monthRange(date: Date) {
 
 type EntryFormState = {
   id?: string
-  entry_type: 'time' | 'mileage'
+  entry_type: 'time' | 'mileage' | 'one_off'
   vendor_id: string
   project_id: string
   entry_date: string
   start_time: string
   duration_hours: number
   miles: string
+  amount_ex_vat: string
   work_type_id: string
   description: string
   internal_notes: string
@@ -143,7 +144,7 @@ export default function OJProjectsDashboardPage() {
   const [vendorSettings, setVendorSettings] = useState<any | null>(null)
   const [vendorRecurringCharges, setVendorRecurringCharges] = useState<any[]>([])
 
-  const [entryType, setEntryType] = useState<'time' | 'mileage'>('time')
+  const [entryType, setEntryType] = useState<'time' | 'mileage' | 'one_off'>('time')
   const [vendorId, setVendorId] = useState('')
   const [projectId, setProjectId] = useState('')
   const [entryDate, setEntryDate] = useState(getTodayIsoDate())
@@ -151,6 +152,7 @@ export default function OJProjectsDashboardPage() {
   const [durationHoursInput, setDurationHoursInput] = useState('1')
   const [workTypeId, setWorkTypeId] = useState('')
   const [miles, setMiles] = useState<number>(0)
+  const [amountExVat, setAmountExVat] = useState('')
   const [description, setDescription] = useState('')
   const [internalNotes, setInternalNotes] = useState('')
   const [billable, setBillable] = useState(true)
@@ -165,6 +167,7 @@ export default function OJProjectsDashboardPage() {
     start_time: '09:00',
     duration_hours: 1.0,
     miles: '',
+    amount_ex_vat: '',
     work_type_id: '',
     description: '',
     internal_notes: '',
@@ -295,6 +298,10 @@ export default function OJProjectsDashboardPage() {
         const milesVal = Number(entry.miles || 0)
         const rate = Number(entry.mileage_rate_snapshot || 0.42)
         incVat = milesVal * rate
+      } else if (entry.entry_type === 'one_off') {
+        const exVat = Number(entry.amount_ex_vat_snapshot || 0)
+        const vatRate = Number(entry.vat_rate_snapshot || 0)
+        incVat = exVat + exVat * (vatRate / 100)
       }
 
       incVat = roundCurrency(incVat)
@@ -321,6 +328,7 @@ export default function OJProjectsDashboardPage() {
     let hours = 0
     let timeIncVat = 0
     let mileageIncVat = 0
+    let oneOffIncVat = 0
 
     for (const entry of billableEntries) {
       if (entry.entry_type === 'time') {
@@ -336,6 +344,10 @@ export default function OJProjectsDashboardPage() {
         const milesVal = Number(entry.miles || 0)
         const rate = Number(entry.mileage_rate_snapshot || 0.42)
         mileageIncVat += milesVal * rate
+      } else if (entry.entry_type === 'one_off') {
+        const exVat = Number(entry.amount_ex_vat_snapshot || 0)
+        const vatRate = Number(entry.vat_rate_snapshot || 0)
+        oneOffIncVat += exVat + exVat * (vatRate / 100)
       }
     }
 
@@ -346,7 +358,7 @@ export default function OJProjectsDashboardPage() {
       return acc + exVat + exVat * (vatRate / 100)
     }, 0)
 
-    const totalIncVat = timeIncVat + mileageIncVat + recurringIncVat
+    const totalIncVat = timeIncVat + mileageIncVat + oneOffIncVat + recurringIncVat
 
     const billingMode = vendorSettings?.billing_mode === 'cap' ? 'cap' : 'full'
     const cap = billingMode === 'cap' && typeof vendorSettings?.monthly_cap_inc_vat === 'number'
@@ -364,6 +376,7 @@ export default function OJProjectsDashboardPage() {
       hours: roundCurrency(hours),
       time_inc_vat: roundCurrency(timeIncVat),
       mileage_inc_vat: roundCurrency(mileageIncVat),
+      one_off_inc_vat: roundCurrency(oneOffIncVat),
       recurring_inc_vat: roundCurrency(recurringIncVat),
       total_inc_vat: roundCurrency(totalIncVat),
     }
@@ -584,6 +597,12 @@ export default function OJProjectsDashboardPage() {
       return
     }
 
+    const parsedAmountExVat = Number.parseFloat(amountExVat.trim())
+    if (entryType === 'one_off' && (!Number.isFinite(parsedAmountExVat) || parsedAmountExVat <= 0)) {
+      toast.error('Amount must be greater than 0')
+      return
+    }
+
     setSaving(true)
     try {
       const fd = new FormData()
@@ -600,6 +619,9 @@ export default function OJProjectsDashboardPage() {
         fd.append('duration_minutes', String(parsedDurationHours * 60))
         if (workTypeId) fd.append('work_type_id', workTypeId)
         res = await createTimeEntry(fd)
+      } else if (entryType === 'one_off') {
+        fd.append('amount_ex_vat', String(parsedAmountExVat))
+        res = await createOneOffCharge(fd)
       } else {
         fd.append('miles', String(miles))
         res = await createMileageEntry(fd)
@@ -614,6 +636,7 @@ export default function OJProjectsDashboardPage() {
       setDescription('')
       setInternalNotes('')
       setMiles(0)
+      setAmountExVat('')
       await load()
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to add entry')
@@ -644,6 +667,7 @@ export default function OJProjectsDashboardPage() {
       start_time: toLondonTimeHm(entry.start_at) || '09:00',
       duration_hours: durationHoursValue,
       miles: entry.miles != null ? String(entry.miles) : '',
+      amount_ex_vat: entry.amount_ex_vat_snapshot != null ? String(entry.amount_ex_vat_snapshot) : '',
       work_type_id: entry.work_type_id || '',
       description: entry.description || '',
       internal_notes: entry.internal_notes || '',
@@ -673,6 +697,8 @@ export default function OJProjectsDashboardPage() {
         fd.append('start_time', editForm.start_time)
         fd.append('duration_minutes', String(editForm.duration_hours * 60))
         fd.append('work_type_id', editForm.work_type_id || '')
+      } else if (editForm.entry_type === 'one_off') {
+        fd.append('amount_ex_vat', editForm.amount_ex_vat)
       } else {
         fd.append('miles', editForm.miles)
       }
@@ -907,6 +933,16 @@ export default function OJProjectsDashboardPage() {
                   >
                     Mileage
                   </button>
+                  <button
+                    type="button"
+                    onClick={() => setEntryType('one_off')}
+                    className={cn(
+                      "px-3 py-1.5 text-xs font-medium rounded-md transition-all",
+                      entryType === 'one_off' ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"
+                    )}
+                  >
+                    One-off
+                  </button>
                 </div>
               </div>
 
@@ -1036,6 +1072,18 @@ export default function OJProjectsDashboardPage() {
                             </Select>
                           </FormGroup>
                         </>
+                      ) : entryType === 'one_off' ? (
+                        <FormGroup label="Amount (ex VAT)" required>
+                          <Input
+                            type="number"
+                            min="0.01"
+                            step="0.01"
+                            value={amountExVat}
+                            onChange={(e) => setAmountExVat(e.target.value)}
+                            required
+                            leftElement={<span className="text-gray-500 text-xs ml-3">£</span>}
+                          />
+                        </FormGroup>
                       ) : (
                         <FormGroup label="Miles" required>
                           <Input
@@ -1123,8 +1171,8 @@ export default function OJProjectsDashboardPage() {
                           </td>
                           <td className="px-4 py-3 text-sm text-gray-900">
                             <div className="flex items-center gap-1.5">
-                              {entry.entry_type === 'time' ? <Clock className="w-3.5 h-3.5 text-gray-400" /> : <MapPin className="w-3.5 h-3.5 text-gray-400" />}
-                              {entry.entry_type === 'time' ? `${(entry.duration_minutes_rounded || 0) / 60}h` : `${entry.miles} mi`}
+                              {entry.entry_type === 'time' ? <Clock className="w-3.5 h-3.5 text-gray-400" /> : entry.entry_type === 'one_off' ? <CreditCard className="w-3.5 h-3.5 text-gray-400" /> : <MapPin className="w-3.5 h-3.5 text-gray-400" />}
+                              {entry.entry_type === 'time' ? `${(entry.duration_minutes_rounded || 0) / 60}h` : entry.entry_type === 'one_off' ? `£${Number(entry.amount_ex_vat_snapshot || 0).toFixed(2)} ex VAT` : `${entry.miles} mi`}
                             </div>
                             <div className="text-xs text-gray-500 mt-0.5">{entry.description || '-'}</div>
                           </td>
@@ -1214,6 +1262,12 @@ export default function OJProjectsDashboardPage() {
                       <span className="text-gray-500">Mileage</span>
                       <span className="font-medium text-gray-900">{formatCurrency(selectedVendorSummary.mileage_inc_vat)}</span>
                     </div>
+                    {(selectedVendorSummary.one_off_inc_vat ?? 0) > 0 && (
+                      <div className="flex justify-between text-xs">
+                        <span className="text-gray-500">One-off</span>
+                        <span className="font-medium text-gray-900">{formatCurrency(selectedVendorSummary.one_off_inc_vat ?? 0)}</span>
+                      </div>
+                    )}
                     <div className="flex justify-between text-xs">
                       <span className="text-gray-500">Recurring</span>
                       <span className="font-medium text-gray-900">{formatCurrency(selectedVendorSummary.recurring_inc_vat)}</span>
@@ -1443,6 +1497,7 @@ export default function OJProjectsDashboardPage() {
               >
                 <option value="time">Time</option>
                 <option value="mileage">Mileage</option>
+                <option value="one_off">One-off</option>
               </Select>
             </FormGroup>
 
@@ -1525,6 +1580,17 @@ export default function OJProjectsDashboardPage() {
                   </Select>
                 </FormGroup>
               </>
+            ) : editForm.entry_type === 'one_off' ? (
+              <FormGroup label="Amount (ex VAT)" required>
+                <Input
+                  type="number"
+                  min="0.01"
+                  step="0.01"
+                  value={editForm.amount_ex_vat}
+                  onChange={(e) => setEditForm({ ...editForm, amount_ex_vat: e.target.value })}
+                  required
+                />
+              </FormGroup>
             ) : (
               <FormGroup label="Miles" required>
                 <Input

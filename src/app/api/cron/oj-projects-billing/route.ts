@@ -237,6 +237,7 @@ function buildInvoiceNotes(input: {
   period_end: string
   selectedTimeEntries: any[]
   selectedMileageEntries: any[]
+  selectedOneOffEntries?: any[]
   includeEntryDetails: boolean
   billingMode: 'full' | 'cap'
   capIncVat: number | null
@@ -244,6 +245,7 @@ function buildInvoiceNotes(input: {
   carriedForwardRecurringInstances?: any[]
   carriedForwardMileageEntries?: any[]
   carriedForwardTimeEntries?: any[]
+  carriedForwardOneOffEntries?: any[]
 }) {
   const lines: string[] = []
   lines.push(`OJ Projects timesheet`)
@@ -352,6 +354,19 @@ function buildInvoiceNotes(input: {
     }
   }
 
+  if ((input.selectedOneOffEntries?.length ?? 0) > 0) {
+    lines.push('')
+    lines.push('One-off charges')
+    for (const e of input.selectedOneOffEntries!) {
+      const exVat = Number(e.amount_ex_vat_snapshot || 0)
+      const projectLabel = e?.project?.project_code
+        ? `${e.project.project_code} — ${e.project.project_name || 'Project'}`
+        : e?.project?.project_name || 'Project'
+      const desc = e.description ? String(e.description).replace(/\s+/g, ' ').trim() : ''
+      lines.push(`- ${e.entry_date} • ${projectLabel} • £${exVat.toFixed(2)} ex VAT${desc ? ` • ${desc}` : ''}`)
+    }
+  }
+
   if (input.billingMode === 'cap') {
     lines.push('')
     lines.push(`Billing mode: Monthly cap`)
@@ -365,8 +380,9 @@ function buildInvoiceNotes(input: {
       const cfRecurring = input.carriedForwardRecurringInstances || []
       const cfMileage = input.carriedForwardMileageEntries || []
       const cfTime = input.carriedForwardTimeEntries || []
+      const cfOneOff = input.carriedForwardOneOffEntries || []
 
-      if (cfRecurring.length + cfMileage.length + cfTime.length > 0) {
+      if (cfRecurring.length + cfMileage.length + cfTime.length + cfOneOff.length > 0) {
         const recurringIncVat = cfRecurring.reduce((acc: number, c: any) => {
           const exVat = roundMoney(Number(c.amount_ex_vat_snapshot || 0))
           const vatRate = Number(c.vat_rate_snapshot || 0)
@@ -389,7 +405,14 @@ function buildInvoiceNotes(input: {
           return acc + moneyIncVat(roundMoney(hours * rate), vatRate)
         }, 0)
 
+        const oneOffIncVat = cfOneOff.reduce((acc: number, e: any) => {
+          const exVat = roundMoney(Number(e.amount_ex_vat_snapshot || 0))
+          const vatRate = Number(e.vat_rate_snapshot || 0)
+          return acc + moneyIncVat(exVat, vatRate)
+        }, 0)
+
         if (cfRecurring.length > 0) lines.push(`- Recurring charges: £${roundMoney(recurringIncVat).toFixed(2)} (${cfRecurring.length} items)`)
+        if (cfOneOff.length > 0) lines.push(`- One-off charges: £${roundMoney(oneOffIncVat).toFixed(2)} (${cfOneOff.length} items)`)
         if (cfMileage.length > 0) lines.push(`- Mileage: £${roundMoney(mileageIncVat).toFixed(2)} (${mileageMiles.toFixed(2)} miles)`)
         if (cfTime.length > 0) lines.push(`- Time: £${roundMoney(timeIncVat).toFixed(2)} (${(timeMinutes / 60).toFixed(2)} hours)`)
       }
@@ -407,6 +430,13 @@ function getEntryCharge(entry: any, settings: any) {
     const exVat = roundMoney(miles * rate)
     const vatRate = 0
     const incVat = roundMoney(exVat)
+    return { exVat, vatRate, incVat }
+  }
+
+  if (entryType === 'one_off') {
+    const exVat = roundMoney(Number(entry.amount_ex_vat_snapshot || 0))
+    const vatRate = Number(entry.vat_rate_snapshot ?? settings?.vat_rate ?? 20)
+    const incVat = moneyIncVat(exVat, vatRate)
     return { exVat, vatRate, incVat }
   }
 
@@ -951,12 +981,16 @@ async function computeStatementBalanceBefore(input: {
   skippedMileageEntries: any[]
   selectedTimeEntries: any[]
   skippedTimeEntries: any[]
+  selectedOneOffEntries?: any[]
+  skippedOneOffEntries?: any[]
 }) {
   const unbilledEntries = [
     ...(input.selectedTimeEntries || []),
     ...(input.selectedMileageEntries || []),
+    ...(input.selectedOneOffEntries || []),
     ...(input.skippedTimeEntries || []),
     ...(input.skippedMileageEntries || []),
+    ...(input.skippedOneOffEntries || []),
   ]
 
   const unbilledRecurring = [
@@ -1079,6 +1113,7 @@ function buildStatementLineItems(input: {
   selectedRecurringInstances: any[]
   selectedMileageEntries: any[]
   selectedTimeEntries: any[]
+  selectedOneOffEntries?: any[]
   settings: any
 }) {
   const vatGroups = new Map<number, number>()
@@ -1090,6 +1125,11 @@ function buildStatementLineItems(input: {
 
   for (const c of input.selectedRecurringInstances || []) {
     const charge = getRecurringCharge(c)
+    addGroup(charge.vatRate, charge.exVat)
+  }
+
+  for (const e of input.selectedOneOffEntries || []) {
+    const charge = getEntryCharge(e, input.settings)
     addGroup(charge.vatRate, charge.exVat)
   }
 
@@ -1137,6 +1177,7 @@ function buildDetailedLineItems(input: {
   selectedRecurringInstances: any[]
   selectedMileageEntries: any[]
   selectedTimeEntries: any[]
+  selectedOneOffEntries?: any[]
   settings: any
   periodYyyymm: string
 }) {
@@ -1163,6 +1204,23 @@ function buildDetailedLineItems(input: {
       unit_price: Number(c.amount_ex_vat_snapshot || 0),
       discount_percentage: 0,
       vat_rate: Number(c.vat_rate_snapshot || 0),
+    })
+  }
+
+  for (const e of input.selectedOneOffEntries || []) {
+    const exVat = roundMoney(Number(e.amount_ex_vat_snapshot || 0))
+    const vatRate = Number(e.vat_rate_snapshot || 0)
+    const projectLabel = e?.project?.project_code
+      ? `${e.project.project_code} — ${e.project.project_name || 'Project'}`
+      : e?.project?.project_name || 'Project'
+    const desc = e.description ? ` — ${String(e.description).replace(/\s+/g, ' ').trim()}` : ''
+    lineItems.push({
+      catalog_item_id: null,
+      description: `${projectLabel}${desc}`,
+      quantity: 1,
+      unit_price: exVat,
+      discount_percentage: 0,
+      vat_rate: vatRate,
     })
   }
 
@@ -1341,13 +1399,16 @@ async function buildDryRunPreview(input: {
     .limit(10000)
   if (entriesError) throw new Error(entriesError.message)
 
+  const oneOffEntries = (eligibleEntries || []).filter((e: any) => e.entry_type === 'one_off')
   const mileageEntries = (eligibleEntries || []).filter((e: any) => e.entry_type === 'mileage')
   const timeEntries = (eligibleEntries || []).filter((e: any) => e.entry_type === 'time')
 
   const selectedRecurringInstances: any[] = []
+  const selectedOneOff: any[] = []
   const selectedMileage: any[] = []
   const selectedTime: any[] = []
   const skippedRecurringInstances: any[] = []
+  const skippedOneOff: any[] = []
   const skippedMileage: any[] = []
   const skippedTime: any[] = []
 
@@ -1369,6 +1430,12 @@ async function buildDryRunPreview(input: {
     const charge = getRecurringCharge(c)
     if (includeItem(charge.incVat)) selectedRecurringInstances.push(c)
     else skippedRecurringInstances.push(c)
+  }
+
+  for (const e of oneOffEntries) {
+    const charge = getEntryCharge(e, settings)
+    if (includeItem(charge.incVat)) selectedOneOff.push(e)
+    else skippedOneOff.push(e)
   }
 
   for (const e of mileageEntries) {
@@ -1414,6 +1481,8 @@ async function buildDryRunPreview(input: {
       skippedMileageEntries: skippedMileage,
       selectedTimeEntries: selectedTime,
       skippedTimeEntries: skippedTime,
+      selectedOneOffEntries: selectedOneOff,
+      skippedOneOffEntries: skippedOneOff,
     })
     statementBalanceBefore = summary.balanceBefore
   }
@@ -1423,6 +1492,10 @@ async function buildDryRunPreview(input: {
       ? roundMoney(
         (skippedRecurringInstances || []).reduce((acc: number, item: any) => {
           const charge = getRecurringCharge(item)
+          return acc + charge.incVat
+        }, 0) +
+        (skippedOneOff || []).reduce((acc: number, item: any) => {
+          const charge = getEntryCharge(item, settings)
           return acc + charge.incVat
         }, 0) +
         (skippedMileage || []).reduce((acc: number, item: any) => {
@@ -1437,7 +1510,7 @@ async function buildDryRunPreview(input: {
       : null
 
   const hasAnyEligible = (eligibleRecurringInstances?.length || 0) > 0 || (eligibleEntries?.length || 0) > 0
-  const hasAnySelected = selectedRecurringInstances.length + selectedMileage.length + selectedTime.length > 0
+  const hasAnySelected = selectedRecurringInstances.length + selectedOneOff.length + selectedMileage.length + selectedTime.length > 0
 
   if (!hasAnySelected) {
     return {
@@ -1455,12 +1528,14 @@ async function buildDryRunPreview(input: {
   let lineItems = statementMode
     ? buildStatementLineItems({
         selectedRecurringInstances,
+        selectedOneOffEntries: selectedOneOff,
         selectedMileageEntries: selectedMileage,
         selectedTimeEntries: selectedTime,
         settings,
       })
     : buildDetailedLineItems({
         selectedRecurringInstances,
+        selectedOneOffEntries: selectedOneOff,
         selectedMileageEntries: selectedMileage,
         selectedTimeEntries: selectedTime,
         settings,
@@ -1518,6 +1593,7 @@ async function buildDryRunPreview(input: {
       period_end: period.period_end,
       selectedTimeEntries: selectedTime,
       selectedMileageEntries: selectedMileage,
+      selectedOneOffEntries: selectedOneOff,
       includeEntryDetails: true,
       billingMode,
       capIncVat,
@@ -1525,12 +1601,14 @@ async function buildDryRunPreview(input: {
       carriedForwardRecurringInstances: skippedRecurringInstances,
       carriedForwardMileageEntries: skippedMileage,
       carriedForwardTimeEntries: skippedTime,
+      carriedForwardOneOffEntries: skippedOneOff,
     })
     const notesCompact = buildInvoiceNotes({
       period_start: period.period_start,
       period_end: period.period_end,
       selectedTimeEntries: selectedTime,
       selectedMileageEntries: selectedMileage,
+      selectedOneOffEntries: selectedOneOff,
       includeEntryDetails: false,
       billingMode,
       capIncVat,
@@ -1538,6 +1616,7 @@ async function buildDryRunPreview(input: {
       carriedForwardRecurringInstances: skippedRecurringInstances,
       carriedForwardMileageEntries: skippedMileage,
       carriedForwardTimeEntries: skippedTime,
+      carriedForwardOneOffEntries: skippedOneOff,
     })
     attachTimesheet = notesFull.length > OJ_INVOICE_NOTES_MAX_CHARS
     notes = attachTimesheet ? `${notesCompact}\n\nFull breakdown attached as Timesheet PDF.` : notesFull
@@ -1561,11 +1640,13 @@ async function buildDryRunPreview(input: {
       carried_forward_inc_vat: carriedForwardIncVat,
       selected_counts: {
         recurring: selectedRecurringInstances.length,
+        one_off: selectedOneOff.length,
         mileage: selectedMileage.length,
         time: selectedTime.length,
       },
       skipped_counts: {
         recurring: skippedRecurringInstances.length,
+        one_off: skippedOneOff.length,
         mileage: skippedMileage.length,
         time: skippedTime.length,
       },
@@ -2194,6 +2275,7 @@ export async function GET(request: Request) {
 
           if (runEntriesError) throw new Error(runEntriesError.message)
 
+          const selectedOneOffEntries = (runEntries || []).filter((e: any) => e.entry_type === 'one_off')
           const selectedMileageEntries = (runEntries || []).filter((e: any) => e.entry_type === 'mileage')
           const selectedTimeEntries = (runEntries || []).filter((e: any) => e.entry_type === 'time')
 
@@ -2202,6 +2284,7 @@ export async function GET(request: Request) {
             period_end: String(billingRun.period_end),
             selectedTimeEntries,
             selectedMileageEntries,
+            selectedOneOffEntries,
             includeEntryDetails: true,
             billingMode,
             capIncVat,
@@ -2209,6 +2292,7 @@ export async function GET(request: Request) {
             carriedForwardRecurringInstances: [],
             carriedForwardMileageEntries: [],
             carriedForwardTimeEntries: [],
+            carriedForwardOneOffEntries: [],
           })
 
           const timesheetPdf = await generateOjTimesheetPDF({
@@ -2628,14 +2712,17 @@ export async function GET(request: Request) {
         .limit(10000)
       if (entriesError) throw new Error(entriesError.message)
 
+      const oneOffEntries = (eligibleEntries || []).filter((e: any) => e.entry_type === 'one_off')
       const mileageEntries = (eligibleEntries || []).filter((e: any) => e.entry_type === 'mileage')
       const timeEntries = (eligibleEntries || []).filter((e: any) => e.entry_type === 'time')
 
       const selectedRecurringInstances: any[] = []
+      const selectedOneOff: any[] = []
       const selectedMileage: any[] = []
       const selectedTime: any[] = []
 
       const skippedRecurringInstances: any[] = []
+      const skippedOneOff: any[] = []
       const skippedMileage: any[] = []
       const skippedTime: any[] = []
 
@@ -2660,6 +2747,12 @@ export async function GET(request: Request) {
         const incVat = moneyIncVat(exVat, vatRate)
         if (includeItem(incVat)) selectedRecurringInstances.push(c)
         else skippedRecurringInstances.push(c)
+      }
+
+      for (const e of oneOffEntries) {
+        const charge = getEntryCharge(e, settings)
+        if (includeItem(charge.incVat)) selectedOneOff.push(e)
+        else skippedOneOff.push(e)
       }
 
       for (const e of mileageEntries) {
@@ -2713,6 +2806,8 @@ export async function GET(request: Request) {
           skippedMileageEntries: skippedMileage,
           selectedTimeEntries: selectedTime,
           skippedTimeEntries: skippedTime,
+          selectedOneOffEntries: selectedOneOff,
+          skippedOneOffEntries: skippedOneOff,
         })
         statementBalanceBefore = summary.balanceBefore
       }
@@ -2724,6 +2819,10 @@ export async function GET(request: Request) {
               const exVat = roundMoney(Number(item.amount_ex_vat_snapshot || 0))
               const vatRate = Number(item.vat_rate_snapshot || 0)
               return acc + moneyIncVat(exVat, vatRate)
+            }, 0) +
+            (skippedOneOff || []).reduce((acc: number, item: any) => {
+              const charge = getEntryCharge(item, settings)
+              return acc + charge.incVat
             }, 0) +
             (skippedMileage || []).reduce((acc: number, item: any) => {
               const miles = Number(item.miles || 0)
@@ -2741,7 +2840,7 @@ export async function GET(request: Request) {
           : null
 
       const selectedEntryIds = Array.from(
-        new Set([...selectedMileage, ...selectedTime].map((e: any) => String(e.id)))
+        new Set([...selectedOneOff, ...selectedMileage, ...selectedTime].map((e: any) => String(e.id)))
       )
       const selectedRecurringInstanceIds = Array.from(
         new Set((selectedRecurringInstances || []).map((c: any) => String(c.id)))
@@ -2755,7 +2854,7 @@ export async function GET(request: Request) {
 
       // If nothing selected and nothing eligible, mark run sent (no invoice).
       const hasAnyEligible = (eligibleRecurringInstances?.length || 0) > 0 || (eligibleEntries?.length || 0) > 0
-      const hasAnySelected = selectedRecurringInstances.length + selectedMileage.length + selectedTime.length > 0
+      const hasAnySelected = selectedRecurringInstances.length + selectedOneOff.length + selectedMileage.length + selectedTime.length > 0
 
       if (!hasAnySelected) {
         if (hasAnyEligible && billingMode === 'cap') {
@@ -2814,6 +2913,7 @@ export async function GET(request: Request) {
         lineItems.push(
           ...buildStatementLineItems({
             selectedRecurringInstances,
+            selectedOneOffEntries: selectedOneOff,
             selectedMileageEntries: selectedMileage,
             selectedTimeEntries: selectedTime,
             settings,
@@ -2823,6 +2923,7 @@ export async function GET(request: Request) {
         lineItems.push(
           ...buildDetailedLineItems({
             selectedRecurringInstances,
+            selectedOneOffEntries: selectedOneOff,
             selectedMileageEntries: selectedMileage,
             selectedTimeEntries: selectedTime,
             settings,
@@ -2866,6 +2967,7 @@ export async function GET(request: Request) {
         period_end: period.period_end,
         selectedTimeEntries: selectedTime,
         selectedMileageEntries: selectedMileage,
+        selectedOneOffEntries: selectedOneOff,
         includeEntryDetails: true,
         billingMode,
         capIncVat,
@@ -2873,6 +2975,7 @@ export async function GET(request: Request) {
         carriedForwardRecurringInstances: skippedRecurringInstances,
         carriedForwardMileageEntries: skippedMileage,
         carriedForwardTimeEntries: skippedTime,
+        carriedForwardOneOffEntries: skippedOneOff,
       })
 
       const notesCompact = buildInvoiceNotes({
@@ -2880,6 +2983,7 @@ export async function GET(request: Request) {
         period_end: period.period_end,
         selectedTimeEntries: selectedTime,
         selectedMileageEntries: selectedMileage,
+        selectedOneOffEntries: selectedOneOff,
         includeEntryDetails: false,
         billingMode,
         capIncVat,
@@ -2887,6 +2991,7 @@ export async function GET(request: Request) {
         carriedForwardRecurringInstances: skippedRecurringInstances,
         carriedForwardMileageEntries: skippedMileage,
         carriedForwardTimeEntries: skippedTime,
+        carriedForwardOneOffEntries: skippedOneOff,
       })
 
       let notes = ''
