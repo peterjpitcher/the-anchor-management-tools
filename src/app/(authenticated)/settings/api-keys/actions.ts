@@ -141,6 +141,74 @@ export async function generateApiKey(
   }
 }
 
+interface UpdateApiKeyData {
+  id: string;
+  name: string;
+  description: string;
+  permissions: string[];
+  rate_limit: number;
+}
+
+export async function updateApiKey(
+  data: UpdateApiKeyData,
+): Promise<{ success: true } | { error: string }> {
+  const permission = await requireSettingsPermission('manage')
+  if ('error' in permission) {
+    return { error: permission.error }
+  }
+
+  const { admin, user } = permission
+
+  try {
+    const { data: existing, error: fetchError } = await admin
+      .from('api_keys')
+      .select('*')
+      .eq('id', data.id)
+      .maybeSingle()
+
+    if (fetchError) throw fetchError
+    if (!existing) return { error: 'API key not found' }
+
+    const { error: updateError } = await admin
+      .from('api_keys')
+      .update({
+        name: data.name,
+        description: data.description || null,
+        permissions: data.permissions,
+        rate_limit: data.rate_limit,
+      })
+      .eq('id', data.id)
+
+    if (updateError) throw updateError
+
+    await logAuditEvent({
+      user_id: user.id,
+      ...(user.email && { user_email: user.email }),
+      operation_type: 'update',
+      resource_type: 'api_key',
+      resource_id: data.id,
+      operation_status: 'success',
+      old_values: {
+        name: existing.name,
+        description: existing.description,
+        permissions: existing.permissions,
+        rate_limit: existing.rate_limit,
+      },
+      new_values: {
+        name: data.name,
+        description: data.description || null,
+        permissions: data.permissions,
+        rate_limit: data.rate_limit,
+      },
+    })
+
+    return { success: true }
+  } catch (error) {
+    console.error('Error updating API key:', error)
+    return { error: 'Failed to update API key' }
+  }
+}
+
 export async function revokeApiKey(
   keyId: string,
 ): Promise<{ success: true } | { error: string }> {

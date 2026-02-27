@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { DocumentDuplicateIcon, PlusIcon } from '@heroicons/react/24/outline';
+import { DocumentDuplicateIcon, PlusIcon, PencilIcon } from '@heroicons/react/24/outline';
 import { Button, IconButton } from '@/components/ui-v2/forms/Button';
 import { Input } from '@/components/ui-v2/forms/Input';
 import { Checkbox } from '@/components/ui-v2/forms/Checkbox';
@@ -9,7 +9,7 @@ import { Card } from '@/components/ui-v2/layout/Card';
 import { Badge } from '@/components/ui-v2/display/Badge';
 import { DataTable } from '@/components/ui-v2/display/DataTable';
 import toast from 'react-hot-toast';
-import { generateApiKey } from './actions';
+import { generateApiKey, updateApiKey } from './actions';
 import { format } from 'date-fns';
 import type { ApiKey } from '@/types/api';
 import { Alert } from '@/components/ui-v2/feedback/Alert';
@@ -29,49 +29,156 @@ const PERMISSION_OPTIONS = [
   { value: '*', label: 'All Permissions' },
 ];
 
+type KeyFormData = {
+  name: string;
+  description: string;
+  permissions: string[];
+  rate_limit: number;
+};
+
+function KeyForm({
+  initial,
+  onSubmit,
+  onCancel,
+  isSaving,
+  submitLabel,
+}: {
+  initial: KeyFormData;
+  onSubmit: (data: KeyFormData) => void;
+  onCancel: () => void;
+  isSaving: boolean;
+  submitLabel: string;
+}) {
+  const [formData, setFormData] = useState<KeyFormData>(initial);
+
+  const handleTogglePermission = (permission: string) => {
+    if (permission === '*') {
+      setFormData({ ...formData, permissions: ['*'] });
+    } else {
+      const next = formData.permissions.includes(permission)
+        ? formData.permissions.filter(p => p !== permission)
+        : [...formData.permissions.filter(p => p !== '*'), permission];
+      setFormData({ ...formData, permissions: next });
+    }
+  };
+
+  return (
+    <form
+      onSubmit={(e) => { e.preventDefault(); onSubmit(formData); }}
+      className="space-y-4"
+    >
+      <div>
+        <label htmlFor="key-name" className="block text-sm font-medium text-gray-700">Name *</label>
+        <Input
+          type="text"
+          id="key-name"
+          required
+          placeholder="e.g., Website Integration"
+          value={formData.name}
+          onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+          fullWidth
+        />
+      </div>
+
+      <div>
+        <label htmlFor="key-description" className="block text-sm font-medium text-gray-700">Description</label>
+        <Input
+          type="text"
+          id="key-description"
+          placeholder="Optional description"
+          value={formData.description}
+          onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+          fullWidth
+        />
+      </div>
+
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-2">Permissions</label>
+        <div className="space-y-2">
+          {PERMISSION_OPTIONS.map(option => (
+            <Checkbox
+              key={option.value}
+              label={option.label}
+              checked={formData.permissions.includes(option.value)}
+              onChange={() => handleTogglePermission(option.value)}
+            />
+          ))}
+        </div>
+      </div>
+
+      <div>
+        <label htmlFor="key-rate-limit" className="block text-sm font-medium text-gray-700">
+          Rate Limit (requests per hour)
+        </label>
+        <Input
+          type="number"
+          id="key-rate-limit"
+          value={formData.rate_limit}
+          onChange={(e) => setFormData({ ...formData, rate_limit: parseInt(e.target.value) || 1000 })}
+          fullWidth
+        />
+      </div>
+
+      <div className="flex gap-3">
+        <Button type="submit" loading={isSaving} disabled={!formData.name}>
+          {isSaving ? 'Saving…' : submitLabel}
+        </Button>
+        <Button type="button" variant="secondary" onClick={onCancel}>
+          Cancel
+        </Button>
+      </div>
+    </form>
+  );
+}
+
 export default function ApiKeysManager({ initialKeys, canManage }: ApiKeysManagerProps) {
   const [keys, setKeys] = useState(initialKeys);
   const [showKey, setShowKey] = useState<string | null>(null);
   const [isCreating, setIsCreating] = useState(false);
   const [showCreateForm, setShowCreateForm] = useState(false);
-  const [newKeyData, setNewKeyData] = useState({
-    name: '',
-    description: '',
-    permissions: ['read:events'],
-    rate_limit: 1000,
-  });
+  const [editingKeyId, setEditingKeyId] = useState<string | null>(null);
+  const [isSavingEdit, setIsSavingEdit] = useState(false);
 
-  const handleCreateKey = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleCreateKey = async (data: KeyFormData) => {
     if (!canManage) {
       toast.error('You do not have permission to create API keys');
       return;
     }
-
     setIsCreating(true);
     try {
-      const result = await generateApiKey(newKeyData);
-      
-      if ('error' in result) {
-        throw new Error(result.error);
-      }
-
+      const result = await generateApiKey(data);
+      if ('error' in result) throw new Error(result.error);
       setKeys([result.apiKey, ...keys]);
       setShowKey(result.plainKey);
       toast.success('API key created successfully');
-      
-      // Reset form
-      setNewKeyData({
-        name: '',
-        description: '',
-        permissions: ['read:events'],
-        rate_limit: 1000,
-      });
       setShowCreateForm(false);
-  } catch {
+    } catch {
       toast.error('Failed to create API key');
     } finally {
       setIsCreating(false);
+    }
+  };
+
+  const handleUpdateKey = async (keyId: string, data: KeyFormData) => {
+    if (!canManage) {
+      toast.error('You do not have permission to update API keys');
+      return;
+    }
+    setIsSavingEdit(true);
+    try {
+      const result = await updateApiKey({ id: keyId, ...data });
+      if ('error' in result) throw new Error(result.error);
+      setKeys(keys.map(k =>
+        k.id === keyId
+          ? { ...k, name: data.name, description: data.description || null, permissions: data.permissions, rate_limit: data.rate_limit }
+          : k
+      ));
+      toast.success('API key updated');
+      setEditingKeyId(null);
+    } catch {
+      toast.error('Failed to update API key');
+    } finally {
+      setIsSavingEdit(false);
     }
   };
 
@@ -80,16 +187,7 @@ export default function ApiKeysManager({ initialKeys, canManage }: ApiKeysManage
     toast.success('API key copied to clipboard');
   };
 
-  const handleTogglePermission = (permission: string) => {
-    if (permission === '*') {
-      setNewKeyData({ ...newKeyData, permissions: ['*'] });
-    } else {
-      const newPermissions = newKeyData.permissions.includes(permission)
-        ? newKeyData.permissions.filter(p => p !== permission)
-        : [...newKeyData.permissions.filter(p => p !== '*'), permission];
-      setNewKeyData({ ...newKeyData, permissions: newPermissions });
-    }
-  };
+  const editingKey = editingKeyId ? keys.find(k => k.id === editingKeyId) : null;
 
   return (
     <div className="space-y-6">
@@ -102,7 +200,7 @@ export default function ApiKeysManager({ initialKeys, canManage }: ApiKeysManage
       )}
 
       {/* Create Button */}
-      {canManage && !showCreateForm && (
+      {canManage && !showCreateForm && !editingKeyId && (
         <Button onClick={() => setShowCreateForm(true)} leftIcon={<PlusIcon className="h-4 w-4" />}>
           Create API Key
         </Button>
@@ -112,78 +210,35 @@ export default function ApiKeysManager({ initialKeys, canManage }: ApiKeysManage
       {canManage && showCreateForm && (
         <Card variant="default" padding="md">
           <h3 className="text-lg font-semibold mb-4">Create New API Key</h3>
-          <form onSubmit={handleCreateKey} className="space-y-4">
-            <div>
-              <label htmlFor="name" className="block text-sm font-medium text-gray-700">
-                Name *
-              </label>
-              <Input
-                type="text"
-                id="name"
-                required
-                placeholder="e.g., Website Integration"
-                value={newKeyData.name}
-                onChange={(e) => setNewKeyData({ ...newKeyData, name: e.target.value })}
-                fullWidth
-              />
-            </div>
-            
-            <div>
-              <label htmlFor="description" className="block text-sm font-medium text-gray-700">
-                Description
-              </label>
-              <Input
-                type="text"
-                id="description"
-                placeholder="Optional description"
-                value={newKeyData.description}
-                onChange={(e) => setNewKeyData({ ...newKeyData, description: e.target.value })}
-                fullWidth
-              />
-            </div>
-            
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Permissions
-              </label>
-              <div className="space-y-2">
-                {PERMISSION_OPTIONS.map(option => (
-                  <Checkbox
-                    key={option.value}
-                    label={option.label}
-                    checked={newKeyData.permissions.includes(option.value)}
-                    onChange={(_e) => handleTogglePermission(option.value)}
-                  />
-                ))}
-              </div>
-            </div>
-            
-            <div>
-              <label htmlFor="rate_limit" className="block text-sm font-medium text-gray-700">
-                Rate Limit (requests per hour)
-              </label>
-              <Input
-                type="number"
-                id="rate_limit"
-                value={newKeyData.rate_limit}
-                onChange={(e) => setNewKeyData({ ...newKeyData, rate_limit: parseInt(e.target.value) || 1000 })}
-                fullWidth
-              />
-            </div>
-            
-            <div className="flex gap-3">
-              <Button type="submit" loading={isCreating} disabled={!newKeyData.name}>
-                {isCreating ? 'Creating...' : 'Create Key'}
-              </Button>
-              <Button 
-                type="button"
-                variant="secondary" 
-                onClick={() => setShowCreateForm(false)}
-              >
-                Cancel
-              </Button>
-            </div>
-          </form>
+          <KeyForm
+            initial={{ name: '', description: '', permissions: ['read:events'], rate_limit: 1000 }}
+            onSubmit={handleCreateKey}
+            onCancel={() => setShowCreateForm(false)}
+            isSaving={isCreating}
+            submitLabel="Create Key"
+          />
+        </Card>
+      )}
+
+      {/* Edit Form */}
+      {canManage && editingKey && (
+        <Card variant="default" padding="md">
+          <h3 className="text-lg font-semibold mb-1">Edit API Key</h3>
+          <p className="text-sm text-gray-500 mb-4">
+            The key value itself cannot be changed. Only the name, description, permissions and rate limit can be updated.
+          </p>
+          <KeyForm
+            initial={{
+              name: editingKey.name,
+              description: editingKey.description ?? '',
+              permissions: editingKey.permissions,
+              rate_limit: editingKey.rate_limit,
+            }}
+            onSubmit={(data) => handleUpdateKey(editingKey.id, data)}
+            onCancel={() => setEditingKeyId(null)}
+            isSaving={isSavingEdit}
+            submitLabel="Save Changes"
+          />
         </Card>
       )}
 
@@ -219,7 +274,7 @@ export default function ApiKeysManager({ initialKeys, canManage }: ApiKeysManage
             { key: 'name', header: 'Name', cell: (k: ApiKey) => (
               <div>
                 <div className="text-sm font-medium text-gray-900">{k.name}</div>
-                {k.description && (<div className="text-sm text-gray-500">{k.description}</div>)}
+                {k.description && <div className="text-sm text-gray-500">{k.description}</div>}
               </div>
             ) },
             { key: 'permissions', header: 'Permissions', cell: (k: ApiKey) => (
@@ -228,6 +283,20 @@ export default function ApiKeysManager({ initialKeys, canManage }: ApiKeysManage
             { key: 'rate', header: 'Rate Limit', align: 'right', cell: (k: ApiKey) => <span className="text-sm text-gray-900">{k.rate_limit}/hour</span> },
             { key: 'last', header: 'Last Used', cell: (k: ApiKey) => <span className="text-sm text-gray-500">{k.last_used_at ? format(new Date(k.last_used_at), 'MMM d, yyyy HH:mm') : 'Never'}</span> },
             { key: 'status', header: 'Status', cell: (k: ApiKey) => <Badge variant={k.is_active ? 'success' : 'error'}>{k.is_active ? 'Active' : 'Inactive'}</Badge> },
+            ...(canManage ? [{
+              key: 'actions',
+              header: '',
+              align: 'right' as const,
+              cell: (k: ApiKey) => (
+                <IconButton
+                  variant="ghost"
+                  onClick={() => { setEditingKeyId(k.id); setShowCreateForm(false); }}
+                  title="Edit key details"
+                >
+                  <PencilIcon className="h-4 w-4" />
+                </IconButton>
+              ),
+            }] : []),
           ]}
         />
       </Card>
@@ -245,7 +314,7 @@ export default function ApiKeysManager({ initialKeys, canManage }: ApiKeysManage
               Authorization: Bearer YOUR_API_KEY
             </code>
           </div>
-          
+
           <div>
             <h4 className="font-medium mb-1">Example Request</h4>
             <code className="block bg-gray-900 text-gray-100 p-3 rounded text-sm whitespace-pre">
@@ -253,7 +322,7 @@ export default function ApiKeysManager({ initialKeys, canManage }: ApiKeysManage
   ${process.env.NEXT_PUBLIC_APP_URL || 'https://management.orangejelly.co.uk'}/api/events`}
             </code>
           </div>
-          
+
           <div>
             <h4 className="font-medium mb-1">Available Endpoints</h4>
             <ul className="text-sm text-gray-600 space-y-1">
