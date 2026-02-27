@@ -30,13 +30,8 @@ export default function DeleteEmployeeButton({ employeeId, employeeName }: Delet
   const [state, dispatch] = useActionState(deleteEmployee, initialState);
 
   useEffect(() => {
-    if (state?.type === 'error') {
-      // If there was an error (e.g. RLS, network), close modal and alert user.
-      // The redirect in the action handles success.
-      setIsOpen(false);
-      alert(`Error: ${state.message}`); // Simple alert for now, consider a toast notification
-    }
-    // Success case is handled by redirect in server action, so no client-side redirect needed here.
+    // Success is handled by redirect in the server action.
+    // Error is displayed inline inside the modal; no alert needed.
   }, [state]);
 
   return (

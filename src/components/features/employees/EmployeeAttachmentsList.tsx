@@ -7,6 +7,7 @@ import type { EmployeeAttachment } from '@/types/database'
 import { deleteEmployeeAttachment, getAttachmentSignedUrl } from '@/app/actions/employeeActions'
 import { PaperClipIcon, ArrowDownTrayIcon, TrashIcon, ExclamationTriangleIcon, EyeIcon } from '@heroicons/react/24/outline'
 import { formatBytes } from '@/lib/utils'
+import { toast } from '@/components/ui-v2/feedback/Toast'
 
 interface EmployeeAttachmentsListProps {
   employeeId: string
@@ -36,8 +37,7 @@ function DeleteAttachmentButton({
       setIsOpen(false)
       onDeleted()
     } else if (state?.type === 'error') {
-      setIsOpen(false)
-      alert(`Error: ${state.message}`)
+      // error is shown inline; no alert needed
     }
   }, [state, onDeleted])
 
@@ -136,7 +136,7 @@ export default function EmployeeAttachmentsList({
       const result = await getAttachmentSignedUrl(attachment.storage_path)
 
       if (result.error) {
-        alert(`Error: ${result.error}`)
+        toast.error(result.error)
         return
       }
 
@@ -148,11 +148,11 @@ export default function EmployeeAttachmentsList({
         link.click()
         document.body.removeChild(link)
       } else {
-        alert('Could not generate download link. Please try again.')
+        toast.error('Could not generate download link. Please try again.')
       }
     } catch (error) {
       console.error('Download error:', error)
-      alert('An error occurred while downloading the file. Please try again.')
+      toast.error('An error occurred while downloading the file. Please try again.')
     } finally {
       setDownloading(null)
     }
@@ -165,18 +165,18 @@ export default function EmployeeAttachmentsList({
       const result = await getAttachmentSignedUrl(attachment.storage_path)
 
       if (result.error) {
-        alert(`Error: ${result.error}`)
+        toast.error(result.error)
         return
       }
 
       if (result.url) {
         window.open(result.url, '_blank')
       } else {
-        alert('Could not generate view link. Please try again.')
+        toast.error('Could not generate view link. Please try again.')
       }
     } catch (error) {
       console.error('View error:', error)
-      alert('An error occurred while viewing the file. Please try again.')
+      toast.error('An error occurred while viewing the file. Please try again.')
     } finally {
       setViewing(null)
     }

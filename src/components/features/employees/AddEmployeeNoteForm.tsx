@@ -7,6 +7,7 @@ import { addEmployeeNote } from '@/app/actions/employeeActions'
 import type { NoteFormState } from '@/types/actions'
 import { Button } from '@/components/ui-v2/forms/Button'
 import { Textarea } from '@/components/ui-v2/forms/Textarea'
+import { toast } from '@/components/ui-v2/feedback/Toast'
 
 interface AddEmployeeNoteFormProps {
   employeeId: string
@@ -34,7 +35,7 @@ export default function AddEmployeeNoteForm({ employeeId }: AddEmployeeNoteFormP
     }
 
     if (state?.type === 'error' && state.message && !state.errors?.note_text) {
-      alert(`Error: ${state.message}`)
+      toast.error(state.message)
     }
   }, [state, router])
 

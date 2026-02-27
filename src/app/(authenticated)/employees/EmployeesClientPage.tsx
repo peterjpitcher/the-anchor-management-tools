@@ -252,11 +252,10 @@ export default function EmployeesClientPage({ initialData, permissions }: Employ
                   key: 'mobile_number',
                   header: 'Mobile',
                   cell: (employee: Employee) => {
-                    const value = employee.mobile_number || employee.phone_number
-                    if (!value) return 'N/A'
+                    if (!employee.mobile_number) return 'N/A'
                     return (
-                      <a href={`tel:${value}`} className="text-blue-600 hover:text-blue-700">
-                        {value}
+                      <a href={`tel:${employee.mobile_number}`} className="text-blue-600 hover:text-blue-700">
+                        {employee.mobile_number}
                       </a>
                     )
                   }
