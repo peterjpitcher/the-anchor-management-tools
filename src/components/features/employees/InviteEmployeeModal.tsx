@@ -48,6 +48,19 @@ export default function InviteEmployeeModal({ onClose, onSuccess }: InviteEmploy
               />
             </div>
 
+            <div>
+              <label htmlFor="invite-job-title" className="block text-sm font-medium text-gray-700 mb-1">
+                Job title
+              </label>
+              <input
+                id="invite-job-title"
+                name="job_title"
+                type="text"
+                className="block w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-green-500 focus:outline-none focus:ring-1 focus:ring-green-500"
+                placeholder="e.g. Bar Staff"
+              />
+            </div>
+
             {state?.type === 'error' && (
               <p className="text-sm text-red-600">{state.message}</p>
             )}

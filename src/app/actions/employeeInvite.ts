@@ -30,6 +30,7 @@ export async function inviteEmployee(prevState: any, formData: FormData) {
   }
 
   const email = (formData.get('email') as string | null)?.trim().toLowerCase() ?? '';
+  const jobTitle = (formData.get('job_title') as string | null)?.trim() || null;
 
   const emailSchema = z.string().email('Please enter a valid email address.');
   const emailResult = emailSchema.safeParse(email);
@@ -42,6 +43,7 @@ export async function inviteEmployee(prevState: any, formData: FormData) {
   try {
     const { data, error } = await adminClient.rpc('create_employee_invite', {
       p_email: email,
+      p_job_title: jobTitle,
     });
 
     if (error) {
@@ -80,7 +82,7 @@ export async function inviteEmployee(prevState: any, formData: FormData) {
         resource_type: 'employee',
         resource_id: result.employee_id,
         operation_status: 'success',
-        new_values: { email, status: 'Onboarding' },
+        new_values: { email, job_title: jobTitle, status: 'Onboarding' },
       });
     } catch (auditError) {
       console.error('[inviteEmployee] Audit log failed:', auditError);
