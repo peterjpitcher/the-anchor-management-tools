@@ -910,6 +910,87 @@ export async function addEmergencyContact(
   }
 }
 
+export async function updateEmergencyContact(
+  prevState: ActionFormState | null,
+  formData: FormData
+): Promise<ActionFormState | null> {
+  const hasPermission = await checkUserPermission('employees', 'edit');
+  if (!hasPermission) {
+    return { type: 'error', message: 'Insufficient permissions to update emergency contacts.' };
+  }
+
+  const contactId = formData.get('contact_id') as string;
+  if (!contactId) {
+    return { type: 'error', message: 'Contact ID is required.' };
+  }
+
+  const cleanedData = cleanFormDataForEmployee(formData);
+  const validatedFields = EmergencyContactSchema.safeParse(cleanedData);
+  if (!validatedFields.success) {
+    return { type: 'error', message: 'Validation failed.', errors: validatedFields.error.flatten().fieldErrors };
+  }
+
+  try {
+    await EmployeeService.updateEmergencyContact(contactId, validatedFields.data);
+
+    const userInfo = await getCurrentUser();
+    await logAuditEvent({
+      ...(userInfo.user_id && { user_id: userInfo.user_id }),
+      ...(userInfo.user_email && { user_email: userInfo.user_email }),
+      operation_type: 'update',
+      resource_type: 'employee',
+      resource_id: validatedFields.data.employee_id,
+      operation_status: 'success',
+      additional_info: { action: 'update_emergency_contact', contact_id: contactId, contact_name: validatedFields.data.name },
+    });
+
+    revalidatePath(`/employees/${validatedFields.data.employee_id}`);
+    return { type: 'success', message: 'Emergency contact updated successfully.' };
+  } catch (error: any) {
+    console.error('Error updating emergency contact:', error);
+    const message = isPostgrestError(error) ? getConstraintErrorMessage(error) : 'Database error: Could not update emergency contact.';
+    return { type: 'error', message };
+  }
+}
+
+export async function deleteEmergencyContact(
+  prevState: ActionFormState | null,
+  formData: FormData
+): Promise<ActionFormState | null> {
+  const hasPermission = await checkUserPermission('employees', 'edit');
+  if (!hasPermission) {
+    return { type: 'error', message: 'Insufficient permissions to delete emergency contacts.' };
+  }
+
+  const contactId = formData.get('contact_id') as string;
+  const employeeId = formData.get('employee_id') as string;
+  if (!contactId || !employeeId) {
+    return { type: 'error', message: 'Contact ID and Employee ID are required.' };
+  }
+
+  try {
+    await EmployeeService.deleteEmergencyContact(contactId);
+
+    const userInfo = await getCurrentUser();
+    await logAuditEvent({
+      ...(userInfo.user_id && { user_id: userInfo.user_id }),
+      ...(userInfo.user_email && { user_email: userInfo.user_email }),
+      operation_type: 'delete',
+      resource_type: 'employee',
+      resource_id: employeeId,
+      operation_status: 'success',
+      additional_info: { action: 'delete_emergency_contact', contact_id: contactId },
+    });
+
+    revalidatePath(`/employees/${employeeId}`);
+    return { type: 'success', message: 'Emergency contact deleted.' };
+  } catch (error: any) {
+    console.error('Error deleting emergency contact:', error);
+    const message = isPostgrestError(error) ? getConstraintErrorMessage(error) : 'Database error: Could not delete emergency contact.';
+    return { type: 'error', message };
+  }
+}
+
 export async function upsertFinancialDetails(
   prevState: ActionFormState | null,
   formData: FormData

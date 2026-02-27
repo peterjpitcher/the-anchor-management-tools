@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { updateOnboardingChecklist, getOnboardingProgress } from '@/app/actions/employeeActions'
 import { CheckCircle2, Circle, Loader2 } from 'lucide-react'
+import { toast } from '@/components/ui-v2/feedback/Toast'
 
 interface OnboardingChecklistTabProps {
   employeeId: string
@@ -63,7 +64,7 @@ export default function OnboardingChecklistTab({ employeeId, canEdit }: Onboardi
       await loadProgress()
     } else {
       // Show error
-      alert(result.error || 'Failed to update checklist')
+      toast.error(result.error || 'Failed to update checklist')
     }
     
     setUpdating(null)

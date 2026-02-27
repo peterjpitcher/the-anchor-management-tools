@@ -625,6 +625,30 @@ export class EmployeeService {
     return contactData;
   }
 
+  static async updateEmergencyContact(contactId: string, updates: Omit<z.infer<typeof EmergencyContactSchema>, 'employee_id'> & { employee_id: string }) {
+    const adminClient = createAdminClient();
+    const { error } = await adminClient
+      .from('employee_emergency_contacts')
+      .update(updates)
+      .eq('id', contactId);
+    if (error) {
+      console.error('Error updating emergency contact:', error);
+      throw error;
+    }
+  }
+
+  static async deleteEmergencyContact(contactId: string) {
+    const adminClient = createAdminClient();
+    const { error } = await adminClient
+      .from('employee_emergency_contacts')
+      .delete()
+      .eq('id', contactId);
+    if (error) {
+      console.error('Error deleting emergency contact:', error);
+      throw error;
+    }
+  }
+
   static async upsertFinancialDetails(financialData: z.infer<typeof FinancialDetailsSchema>) {
     const adminClient = createAdminClient();
     
