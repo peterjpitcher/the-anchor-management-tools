@@ -136,6 +136,15 @@ export default function OJProjectsClientsPage() {
     return Boolean(primaryContactEmail || vendorEmails[0] || anyContactEmail)
   }, [selectedVendor?.email, contacts])
 
+  const recurringChargesExVat = useMemo(() => {
+    return (charges || [])
+      .filter((c: any) => c?.is_active !== false)
+      .reduce((acc: number, c: any) => {
+        return acc + Number(c.amount_ex_vat || 0)
+      }, 0)
+  }, [charges])
+
+  // Keep inc-VAT total for billing cap comparison only (cap is stored inc-VAT)
   const recurringChargesIncVat = useMemo(() => {
     return (charges || [])
       .filter((c: any) => c?.is_active !== false)
@@ -520,7 +529,7 @@ export default function OJProjectsClientsPage() {
           variant="warning"
           className="mb-6"
           title="Monthly cap is smaller than recurring charges"
-          description={`Active recurring charges total £${recurringChargesIncVat.toFixed(2)} inc VAT, which exceeds the monthly cap of £${Number.parseFloat(settings.monthly_cap_inc_vat).toFixed(2)}. Billing will fail until the cap is increased or charges are reduced.`}
+          description={`Active recurring charges total £${recurringChargesExVat.toFixed(2)} ex VAT (£${recurringChargesIncVat.toFixed(2)} inc VAT), which exceeds the monthly billing cap of £${Number.parseFloat(settings.monthly_cap_inc_vat).toFixed(2)}. Billing will fail until the cap is increased or charges are reduced.`}
         />
       )}
 
@@ -587,7 +596,7 @@ export default function OJProjectsClientsPage() {
                 <div className={`rounded-lg border p-4 ${balance.totalOutstanding > 0 ? 'bg-orange-50 border-orange-100' : 'bg-green-50 border-green-100'}`}>
                   <div className={`text-xs font-medium uppercase tracking-wide mb-1 ${balance.totalOutstanding > 0 ? 'text-orange-700' : 'text-green-700'}`}>Total Outstanding</div>
                   <div className={`text-2xl font-bold ${balance.totalOutstanding > 0 ? 'text-orange-800' : 'text-green-700'}`}>£{balance.totalOutstanding.toFixed(2)}</div>
-                  <div className={`text-xs mt-0.5 ${balance.totalOutstanding > 0 ? 'text-orange-600' : 'text-green-600'}`}>Invoiced + unbilled (inc VAT)</div>
+                  <div className={`text-xs mt-0.5 ${balance.totalOutstanding > 0 ? 'text-orange-600' : 'text-green-600'}`}>Invoiced + unbilled work (ex VAT)</div>
                 </div>
               </div>
 
@@ -1052,19 +1061,12 @@ export default function OJProjectsClientsPage() {
               </div>
 
               <div className="border rounded-md p-3">
-                <div className="text-xs text-gray-500 mb-2">Totals (inc VAT)</div>
-                <div className="flex justify-between text-sm">
+                <div className="text-xs text-gray-500 mb-2">Totals (ex VAT)</div>
+                <div className="flex justify-between text-sm font-semibold">
                   <span>Subtotal</span>
                   <span>£{Number(previewInvoice.totals?.subtotalBeforeInvoiceDiscount || 0).toFixed(2)}</span>
                 </div>
-                <div className="flex justify-between text-sm">
-                  <span>VAT</span>
-                  <span>£{Number(previewInvoice.totals?.vatAmount || 0).toFixed(2)}</span>
-                </div>
-                <div className="flex justify-between text-sm font-semibold">
-                  <span>Total</span>
-                  <span>£{Number(previewInvoice.totals?.totalAmount || 0).toFixed(2)}</span>
-                </div>
+                <div className="text-xs text-gray-400 mt-1">VAT will be added when the invoice is sent.</div>
               </div>
 
               <div>
@@ -1073,13 +1075,12 @@ export default function OJProjectsClientsPage() {
                   {(previewInvoice.line_items || []).map((item: any, idx: number) => {
                     const qty = Number(item.quantity || 0)
                     const unit = Number(item.unit_price || 0)
-                    const vatRate = Number(item.vat_rate || 0)
-                    const total = qty * unit * (1 + vatRate / 100)
+                    const total = qty * unit
                     return (
                       <div key={`${item.description}-${idx}`} className="border rounded-md p-2">
                         <div className="font-medium">{item.description}</div>
                         <div className="text-xs text-gray-500">
-                          Qty {qty} · £{unit.toFixed(2)} · VAT {vatRate}%
+                          Qty {qty} · £{unit.toFixed(2)} ex VAT
                         </div>
                         <div className="text-sm font-semibold">£{total.toFixed(2)}</div>
                       </div>

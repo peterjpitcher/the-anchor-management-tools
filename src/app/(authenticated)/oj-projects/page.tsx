@@ -222,23 +222,19 @@ export default function OJProjectsDashboardPage() {
     relevantEntries.forEach(e => {
       const date = new Date(e.entry_date)
       const key = getSortKey(date)
-      let incVat = 0
+      let exVat = 0
       if (e.entry_type === 'time') {
         const hours = Number(e.duration_minutes_rounded || 0) / 60
         const rate = Number(e.hourly_rate_ex_vat_snapshot || 0)
-        const vatRate = Number(e.vat_rate_snapshot || 0)
-        const exVat = hours * rate
-        incVat = exVat + exVat * (vatRate / 100)
+        exVat = hours * rate
       } else if (e.entry_type === 'mileage') {
         const miles = Number(e.miles || 0)
         const rate = Number(e.mileage_rate_snapshot || 0.42)
-        incVat = miles * rate
+        exVat = miles * rate
       } else if (e.entry_type === 'one_off') {
-        const exVat = Number(e.amount_ex_vat_snapshot || 0)
-        const vatRate = Number(e.vat_rate_snapshot || 0)
-        incVat = exVat + exVat * (vatRate / 100)
+        exVat = Number(e.amount_ex_vat_snapshot || 0)
       }
-      dataMap.set(key, (dataMap.get(key) || 0) + incVat)
+      dataMap.set(key, (dataMap.get(key) || 0) + exVat)
     })
 
     const chartData: { key: string; label: string; value: number; color: string }[] = []
@@ -291,43 +287,39 @@ export default function OJProjectsDashboardPage() {
   const monthTotals = useMemo(() => {
     const totals = {
       hours: 0,
-      unbilled_inc_vat: 0,
-      billed_inc_vat: 0,
-      paid_inc_vat: 0,
+      unbilled_ex_vat: 0,
+      billed_ex_vat: 0,
+      paid_ex_vat: 0,
     }
 
     for (const entry of monthEntries) {
       if (!entry?.entry_date) continue
       if (vendorId && entry.vendor_id !== vendorId) continue
 
-      let incVat = 0
+      let exVat = 0
       if (entry.entry_type === 'time') {
         const minutes = Number(entry.duration_minutes_rounded || 0)
         const hours = minutes / 60
         const rate = Number(entry.hourly_rate_ex_vat_snapshot || 0)
-        const vatRate = Number(entry.vat_rate_snapshot || 0)
-        const exVat = hours * rate
-        incVat = exVat + exVat * (vatRate / 100)
+        exVat = hours * rate
         totals.hours += hours
       } else if (entry.entry_type === 'mileage') {
         const milesVal = Number(entry.miles || 0)
         const rate = Number(entry.mileage_rate_snapshot || 0.42)
-        incVat = milesVal * rate
+        exVat = milesVal * rate
       } else if (entry.entry_type === 'one_off') {
-        const exVat = Number(entry.amount_ex_vat_snapshot || 0)
-        const vatRate = Number(entry.vat_rate_snapshot || 0)
-        incVat = exVat + exVat * (vatRate / 100)
+        exVat = Number(entry.amount_ex_vat_snapshot || 0)
       }
 
-      incVat = roundCurrency(incVat)
-      if (entry.status === 'paid') totals.paid_inc_vat += incVat
-      else if (entry.status === 'billed') totals.billed_inc_vat += incVat
-      else totals.unbilled_inc_vat += incVat
+      exVat = roundCurrency(exVat)
+      if (entry.status === 'paid') totals.paid_ex_vat += exVat
+      else if (entry.status === 'billed') totals.billed_ex_vat += exVat
+      else totals.unbilled_ex_vat += exVat
     }
 
-    totals.unbilled_inc_vat = roundCurrency(totals.unbilled_inc_vat)
-    totals.billed_inc_vat = roundCurrency(totals.billed_inc_vat)
-    totals.paid_inc_vat = roundCurrency(totals.paid_inc_vat)
+    totals.unbilled_ex_vat = roundCurrency(totals.unbilled_ex_vat)
+    totals.billed_ex_vat = roundCurrency(totals.billed_ex_vat)
+    totals.paid_ex_vat = roundCurrency(totals.paid_ex_vat)
     totals.hours = roundCurrency(totals.hours)
 
     return totals
@@ -341,39 +333,38 @@ export default function OJProjectsDashboardPage() {
     const billableEntries = monthEntries.filter((e) => e.vendor_id === vendorId && e.billable !== false)
 
     let hours = 0
-    let timeIncVat = 0
-    let mileageIncVat = 0
-    let oneOffIncVat = 0
+    let timeExVat = 0
+    let mileageExVat = 0
+    let oneOffExVat = 0
 
     for (const entry of billableEntries) {
       if (entry.entry_type === 'time') {
         const minutes = Number(entry.duration_minutes_rounded || 0)
         const entryHours = minutes / 60
         const rate = Number(entry.hourly_rate_ex_vat_snapshot || 0)
-        const vatRate = Number(entry.vat_rate_snapshot || 0)
-        const exVat = entryHours * rate
-        const incVat = exVat + exVat * (vatRate / 100)
         hours += entryHours
-        timeIncVat += incVat
+        timeExVat += entryHours * rate
       } else if (entry.entry_type === 'mileage') {
         const milesVal = Number(entry.miles || 0)
         const rate = Number(entry.mileage_rate_snapshot || 0.42)
-        mileageIncVat += milesVal * rate
+        mileageExVat += milesVal * rate
       } else if (entry.entry_type === 'one_off') {
-        const exVat = Number(entry.amount_ex_vat_snapshot || 0)
-        const vatRate = Number(entry.vat_rate_snapshot || 0)
-        oneOffIncVat += exVat + exVat * (vatRate / 100)
+        oneOffExVat += Number(entry.amount_ex_vat_snapshot || 0)
       }
     }
 
     const activeCharges = vendorRecurringCharges.filter((c) => c.is_active !== false)
+    const recurringExVat = activeCharges.reduce((acc, c) => {
+      return acc + Number(c.amount_ex_vat || 0)
+    }, 0)
+    // Keep inc-VAT total only for billing cap comparison (cap is stored inc-VAT)
     const recurringIncVat = activeCharges.reduce((acc, c) => {
       const exVat = Number(c.amount_ex_vat || 0)
       const vatRate = Number(c.vat_rate || 0)
       return acc + exVat + exVat * (vatRate / 100)
     }, 0)
 
-    const totalIncVat = timeIncVat + mileageIncVat + oneOffIncVat + recurringIncVat
+    const totalExVat = timeExVat + mileageExVat + oneOffExVat + recurringExVat
 
     const billingMode = vendorSettings?.billing_mode === 'cap' ? 'cap' : 'full'
     const cap = billingMode === 'cap' && typeof vendorSettings?.monthly_cap_inc_vat === 'number'
@@ -389,11 +380,12 @@ export default function OJProjectsDashboardPage() {
       cap_inc_vat: cap != null ? roundCurrency(cap) : null,
       retainer_hours: retainerHours != null ? roundCurrency(retainerHours) : null,
       hours: roundCurrency(hours),
-      time_inc_vat: roundCurrency(timeIncVat),
-      mileage_inc_vat: roundCurrency(mileageIncVat),
-      one_off_inc_vat: roundCurrency(oneOffIncVat),
+      time_ex_vat: roundCurrency(timeExVat),
+      mileage_ex_vat: roundCurrency(mileageExVat),
+      one_off_ex_vat: roundCurrency(oneOffExVat),
+      recurring_ex_vat: roundCurrency(recurringExVat),
       recurring_inc_vat: roundCurrency(recurringIncVat),
-      total_inc_vat: roundCurrency(totalIncVat),
+      total_ex_vat: roundCurrency(totalExVat),
     }
   }, [monthEntries, vendorId, vendorRecurringCharges, vendorSettings])
 
@@ -835,22 +827,22 @@ export default function OJProjectsDashboardPage() {
             bgClass="bg-blue-50"
           />
           <StatCard
-            label="Unbilled"
-            value={formatCurrency(monthTotals.unbilled_inc_vat)}
+            label="Unbilled (ex VAT)"
+            value={formatCurrency(monthTotals.unbilled_ex_vat)}
             icon={Hourglass}
             colorClass="text-amber-600"
             bgClass="bg-amber-50"
           />
           <StatCard
-            label="Billed"
-            value={formatCurrency(monthTotals.billed_inc_vat)}
+            label="Billed (ex VAT)"
+            value={formatCurrency(monthTotals.billed_ex_vat)}
             icon={CheckCircle2}
             colorClass="text-green-600"
             bgClass="bg-green-50"
           />
           <StatCard
-            label="Paid"
-            value={formatCurrency(monthTotals.paid_inc_vat)}
+            label="Paid (ex VAT)"
+            value={formatCurrency(monthTotals.paid_ex_vat)}
             icon={Wallet}
             colorClass="text-purple-600"
             bgClass="bg-purple-50"
@@ -1252,7 +1244,7 @@ export default function OJProjectsDashboardPage() {
                   <h3 className="font-semibold text-gray-900">{selectedVendorName}</h3>
                   <div className="text-xs text-gray-500 mt-1">
                     Billing: {selectedVendorSummary.billingMode === 'cap' ? 'Monthly Cap' : 'Full'}
-                    {selectedVendorSummary.cap_inc_vat != null && ` • £${selectedVendorSummary.cap_inc_vat}`}
+                    {selectedVendorSummary.cap_inc_vat != null && ` • Cap £${selectedVendorSummary.cap_inc_vat}`}
                   </div>
                 </div>
                 <div className="p-4 space-y-4">
@@ -1263,29 +1255,29 @@ export default function OJProjectsDashboardPage() {
                       <div className="text-lg font-semibold text-gray-900">{selectedVendorSummary.hours.toFixed(2)}</div>
                     </div>
                     <div className="bg-white p-2.5 rounded-lg ring-1 ring-gray-100">
-                      <div className="text-xs text-gray-500 mb-1">Total (Inc VAT)</div>
-                      <div className="text-lg font-semibold text-gray-900">{formatCurrency(selectedVendorSummary.total_inc_vat)}</div>
+                      <div className="text-xs text-gray-500 mb-1">Total (ex VAT)</div>
+                      <div className="text-lg font-semibold text-gray-900">{formatCurrency(selectedVendorSummary.total_ex_vat)}</div>
                     </div>
                   </div>
 
                   <div className="space-y-2 pt-2 border-t border-gray-100">
                     <div className="flex justify-between text-xs">
                       <span className="text-gray-500">Time</span>
-                      <span className="font-medium text-gray-900">{formatCurrency(selectedVendorSummary.time_inc_vat)}</span>
+                      <span className="font-medium text-gray-900">{formatCurrency(selectedVendorSummary.time_ex_vat)}</span>
                     </div>
                     <div className="flex justify-between text-xs">
                       <span className="text-gray-500">Mileage</span>
-                      <span className="font-medium text-gray-900">{formatCurrency(selectedVendorSummary.mileage_inc_vat)}</span>
+                      <span className="font-medium text-gray-900">{formatCurrency(selectedVendorSummary.mileage_ex_vat)}</span>
                     </div>
-                    {(selectedVendorSummary.one_off_inc_vat ?? 0) > 0 && (
+                    {(selectedVendorSummary.one_off_ex_vat ?? 0) > 0 && (
                       <div className="flex justify-between text-xs">
                         <span className="text-gray-500">One-off</span>
-                        <span className="font-medium text-gray-900">{formatCurrency(selectedVendorSummary.one_off_inc_vat ?? 0)}</span>
+                        <span className="font-medium text-gray-900">{formatCurrency(selectedVendorSummary.one_off_ex_vat ?? 0)}</span>
                       </div>
                     )}
                     <div className="flex justify-between text-xs">
                       <span className="text-gray-500">Recurring</span>
-                      <span className="font-medium text-gray-900">{formatCurrency(selectedVendorSummary.recurring_inc_vat)}</span>
+                      <span className="font-medium text-gray-900">{formatCurrency(selectedVendorSummary.recurring_ex_vat)}</span>
                     </div>
                   </div>
 
@@ -1317,35 +1309,19 @@ export default function OJProjectsDashboardPage() {
                   {selectedVendorSummary.billingMode === 'cap' && selectedVendorSummary.cap_inc_vat != null &&
                     (() => {
                       const cap = selectedVendorSummary.cap_inc_vat as number
-                      const usage = cap > 0 ? selectedVendorSummary.total_inc_vat / cap : 0
+                      const recurringIncVat = selectedVendorSummary.recurring_inc_vat
 
-                      if (selectedVendorSummary.total_inc_vat > cap) {
+                      if (recurringIncVat > cap) {
                         return (
                           <div className="bg-red-50 text-red-800 text-xs p-3 rounded-md border border-red-100">
-                            <strong>Cap Exceeded:</strong> Total £{selectedVendorSummary.total_inc_vat.toFixed(2)} vs Cap £{cap.toFixed(2)}
-                          </div>
-                        )
-                      }
-
-                      if (usage >= 0.9) {
-                        return (
-                          <div className="bg-orange-50 text-orange-800 text-xs p-3 rounded-md border border-orange-100">
-                            <strong>Approaching Cap:</strong> £{selectedVendorSummary.total_inc_vat.toFixed(2)} ({Math.round(usage * 100)}% of £{cap.toFixed(2)})
-                          </div>
-                        )
-                      }
-
-                      if (usage >= 0.8) {
-                        return (
-                          <div className="bg-amber-50 text-amber-800 text-xs p-3 rounded-md border border-amber-100">
-                            <strong>Cap Usage:</strong> £{selectedVendorSummary.total_inc_vat.toFixed(2)} ({Math.round(usage * 100)}% of £{cap.toFixed(2)})
+                            <strong>Cap Exceeded:</strong> Recurring charges exceed billing cap of £{cap.toFixed(2)}
                           </div>
                         )
                       }
 
                       return (
                         <div className="text-xs text-gray-600">
-                          Cap headroom: {formatCurrency(roundCurrency(cap - selectedVendorSummary.total_inc_vat))}
+                          Billing cap: £{cap.toFixed(2)}
                         </div>
                       )
                     })()}

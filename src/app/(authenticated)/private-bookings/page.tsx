@@ -19,6 +19,7 @@ export default async function PrivateBookingsPage() {
   const actions = new Set(permissionsResult.actions)
   const canView = actions.has('view') || actions.has('manage')
   const canCreate = actions.has('create') || actions.has('manage')
+  const canEdit = actions.has('edit') || actions.has('manage')
   const canDelete = actions.has('delete')
 
   if (!canView) {
@@ -27,6 +28,7 @@ export default async function PrivateBookingsPage() {
 
   const permissions = {
     hasCreatePermission: canCreate,
+    hasEditPermission: canEdit,
     hasDeletePermission: canDelete
   }
 
