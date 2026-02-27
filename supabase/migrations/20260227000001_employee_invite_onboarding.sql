@@ -72,7 +72,7 @@ CREATE POLICY "Service role full access" ON employee_invite_tokens
 -- -> insert empty onboarding_checklists row -> return employee_id + token
 
 CREATE OR REPLACE FUNCTION create_employee_invite(p_email TEXT)
-RETURNS TABLE(employee_id UUID, token TEXT)
+RETURNS TABLE(out_employee_id UUID, out_token TEXT)
 LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = public
@@ -82,7 +82,7 @@ DECLARE
   v_token TEXT;
 BEGIN
   -- Check email uniqueness
-  IF EXISTS (SELECT 1 FROM employees WHERE email_address = p_email) THEN
+  IF EXISTS (SELECT 1 FROM employees e WHERE e.email_address = p_email) THEN
     RAISE EXCEPTION 'An employee with this email address already exists';
   END IF;
 
@@ -112,6 +112,6 @@ BEGIN
   VALUES (v_employee_id, NOW(), NOW())
   ON CONFLICT (employee_id) DO NOTHING;
 
-  RETURN QUERY SELECT v_employee_id, v_token;
+  RETURN QUERY SELECT v_employee_id AS out_employee_id, v_token AS out_token;
 END;
 $$;
