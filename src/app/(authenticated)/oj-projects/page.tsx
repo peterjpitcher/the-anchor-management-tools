@@ -189,7 +189,7 @@ export default function OJProjectsDashboardPage() {
     const relevantEntries = recentEntries.filter(e => {
       const entryDate = new Date(e.entry_date)
       if (vendorId && e.vendor_id !== vendorId) return false
-      return entryDate >= cutoffDate && entryDate <= now && e.entry_type === 'time'
+      return entryDate >= cutoffDate && entryDate <= now
     })
 
     const dataMap = new Map<string, number>()
@@ -222,8 +222,23 @@ export default function OJProjectsDashboardPage() {
     relevantEntries.forEach(e => {
       const date = new Date(e.entry_date)
       const key = getSortKey(date)
-      const hours = Number(e.duration_minutes_rounded || 0) / 60
-      dataMap.set(key, (dataMap.get(key) || 0) + hours)
+      let incVat = 0
+      if (e.entry_type === 'time') {
+        const hours = Number(e.duration_minutes_rounded || 0) / 60
+        const rate = Number(e.hourly_rate_ex_vat_snapshot || 0)
+        const vatRate = Number(e.vat_rate_snapshot || 0)
+        const exVat = hours * rate
+        incVat = exVat + exVat * (vatRate / 100)
+      } else if (e.entry_type === 'mileage') {
+        const miles = Number(e.miles || 0)
+        const rate = Number(e.mileage_rate_snapshot || 0.42)
+        incVat = miles * rate
+      } else if (e.entry_type === 'one_off') {
+        const exVat = Number(e.amount_ex_vat_snapshot || 0)
+        const vatRate = Number(e.vat_rate_snapshot || 0)
+        incVat = exVat + exVat * (vatRate / 100)
+      }
+      dataMap.set(key, (dataMap.get(key) || 0) + incVat)
     })
 
     const chartData: { key: string; label: string; value: number; color: string }[] = []
@@ -898,8 +913,8 @@ export default function OJProjectsDashboardPage() {
                     data={historyData}
                     height={300}
                     color="#3B82F6"
-                    showValues={historyRange === 30} // Only show values if not too crowded, or rely on component auto-hide
-                    formatType="number"
+                    showValues={true}
+                    formatType="shorthandCurrency"
                   />
                 </div>
               )}
