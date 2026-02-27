@@ -188,7 +188,7 @@ export function BarChart({
     }
 
     // Auto-hide values if too dense to be readable
-    const shouldShowValues = showValues && data.length < 30;
+    const shouldShowValues = showValues && data.length <= 31;
 
     data.forEach((item, index) => {
       // Draw bars
