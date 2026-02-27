@@ -6,7 +6,7 @@ import { syncBirthdayCalendarEvent, deleteBirthdayCalendarEvent } from '@/lib/go
 import type { AuditLogEntry } from '@/app/actions/employeeDetails';
 import type { Employee, EmployeeAttachment, EmployeeFinancialDetails, EmployeeHealthRecord, EmployeeEmergencyContact, EmployeeRightToWork, AttachmentCategory, EmployeeNote, AuditLog } from '@/types/database';
 
-export type EmployeeStatus = 'all' | 'Active' | 'Former' | 'Prospective';
+export type EmployeeStatus = 'all' | 'Active' | 'Former' | 'Onboarding' | 'Started Separation';
 
 export interface ExportOptions {
   format: 'csv' | 'json';
@@ -93,7 +93,7 @@ export const employeeSchema = z.object({
   email_address: z.string().email('Invalid email address'),
   job_title: z.string().min(1, 'Job title is required'),
   employment_start_date: z.string().min(1, 'Start date is required'),
-  status: z.enum(['Active', 'Former', 'Prospective']),
+  status: z.enum(['Onboarding', 'Active', 'Former', 'Started Separation']),
   date_of_birth: z.union([z.string().min(1), z.null()]).optional(),
   address: z.union([z.string().min(1), z.null()]).optional(),
   post_code: z.union([z.string().min(1), z.null()]).optional(),
@@ -251,7 +251,7 @@ export type CreateEmployeeInput = {
   email_address: string;
   job_title: string;
   employment_start_date: string;
-  status: 'Active' | 'Former' | 'Prospective';
+  status: 'Onboarding' | 'Active' | 'Former' | 'Started Separation';
   date_of_birth?: string | null;
   address?: string | null;
   post_code?: string | null;
@@ -1020,7 +1020,7 @@ export class EmployeeService {
       page?: number;
       pageSize?: number;
       searchTerm?: string;
-      statusFilter?: 'all' | 'Active' | 'Former' | 'Prospective';
+      statusFilter?: 'all' | 'Active' | 'Former' | 'Onboarding' | 'Started Separation';
     } = {}
   ) {
     const adminClient = createAdminClient();
@@ -1028,7 +1028,7 @@ export class EmployeeService {
     const pageSize = typeof request.pageSize === 'number' && request.pageSize > 0 ? request.pageSize : 50;
     const requestedPage = typeof request.page === 'number' && request.page > 0 ? request.page : 1;
     const rawStatus = request.statusFilter ?? 'Active';
-    const statusFilter: 'all' | 'Active' | 'Former' | 'Prospective' = rawStatus === 'all' ? 'all' : (['Active', 'Former', 'Prospective'].includes(rawStatus) ? rawStatus : 'Active');
+    const statusFilter: 'all' | 'Active' | 'Former' | 'Onboarding' | 'Started Separation' = rawStatus === 'all' ? 'all' : (['Active', 'Former', 'Onboarding', 'Started Separation'].includes(rawStatus) ? rawStatus as any : 'Active');
     const searchTerm = sanitizeEmployeeSearchTerm(request.searchTerm ?? '');
 
     const applyFilters = <T>(query: T) => {
@@ -1053,15 +1053,16 @@ export class EmployeeService {
       return builder;
     };
 
-    const [allCountRes, activeCountRes, formerCountRes, prospectiveCountRes] = await Promise.all([
+    const [allCountRes, activeCountRes, formerCountRes, onboardingCountRes, startedSeparationCountRes] = await Promise.all([
       adminClient.from('employees').select('*', { count: 'exact', head: true }),
       adminClient.from('employees').select('*', { count: 'exact', head: true }).eq('status', 'Active'),
       adminClient.from('employees').select('*', { count: 'exact', head: true }).eq('status', 'Former'),
-      adminClient.from('employees').select('*', { count: 'exact', head: true }).eq('status', 'Prospective')
+      adminClient.from('employees').select('*', { count: 'exact', head: true }).eq('status', 'Onboarding'),
+      adminClient.from('employees').select('*', { count: 'exact', head: true }).eq('status', 'Started Separation')
     ]);
 
-    if (allCountRes.error || activeCountRes.error || formerCountRes.error || prospectiveCountRes.error) {
-      throw allCountRes.error || activeCountRes.error || formerCountRes.error || prospectiveCountRes.error;
+    if (allCountRes.error || activeCountRes.error || formerCountRes.error || onboardingCountRes.error || startedSeparationCountRes.error) {
+      throw allCountRes.error || activeCountRes.error || formerCountRes.error || onboardingCountRes.error || startedSeparationCountRes.error;
     }
 
     const { count, error: countError } = await applyFilters(
@@ -1103,7 +1104,8 @@ export class EmployeeService {
         all: allCountRes.count ?? 0,
         active: activeCountRes.count ?? 0,
         former: formerCountRes.count ?? 0,
-        prospective: prospectiveCountRes.count ?? 0
+        onboarding: onboardingCountRes.count ?? 0,
+        startedSeparation: startedSeparationCountRes.count ?? 0
       },
       filters: {
         statusFilter,

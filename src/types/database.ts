@@ -285,23 +285,38 @@ export interface BookingReminder {
 
 export interface Employee {
   employee_id: string; // UUID
-  first_name: string;
-  last_name: string;
+  first_name: string | null; // NULL for Onboarding employees
+  last_name: string | null; // NULL for Onboarding employees
   date_of_birth?: string | null; // Date
   address?: string | null;
   post_code?: string | null;
   phone_number?: string | null;
   mobile_number?: string | null;
   email_address: string;
-  job_title: string;
-  employment_start_date: string; // Date
+  job_title: string | null; // NULL for Onboarding employees
+  employment_start_date: string | null; // NULL for Onboarding employees
   employment_end_date?: string | null; // Date
   first_shift_date?: string | null; // Date
-  status: string; // e.g., 'Active', 'Former', 'Prospective'
+  status: string; // 'Onboarding' | 'Active' | 'Started Separation' | 'Former'
   uniform_preference?: string | null;
   keyholder_status?: boolean | null;
+  auth_user_id?: string | null; // Linked Supabase auth user
+  invited_at?: string | null; // Timestamp
+  onboarding_completed_at?: string | null; // Timestamp
   created_at: string; // Timestamp
   updated_at: string; // Timestamp
+}
+
+export interface EmployeeInviteToken {
+  id: string; // UUID
+  employee_id: string; // UUID
+  email: string;
+  token: string;
+  expires_at: string; // Timestamp
+  completed_at: string | null; // Timestamp
+  day3_chase_sent_at: string | null; // Timestamp
+  day6_chase_sent_at: string | null; // Timestamp
+  created_at: string; // Timestamp
 }
 
 export interface EmployeeFinancialDetails {

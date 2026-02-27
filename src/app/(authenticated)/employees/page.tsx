@@ -9,7 +9,7 @@ interface PageProps {
   searchParams: Promise<{ [key: string]: string | string[] | undefined }>
 }
 
-type EmployeeStatus = 'all' | 'Active' | 'Former' | 'Prospective'
+type EmployeeStatus = 'all' | 'Active' | 'Former' | 'Onboarding' | 'Started Separation'
 
 export default async function EmployeesPage({ searchParams }: PageProps) {
   const [canView, canCreate, canExport] = await Promise.all([
@@ -29,7 +29,7 @@ export default async function EmployeesPage({ searchParams }: PageProps) {
   const statusParam = typeof resolvedParams.status === 'string' ? resolvedParams.status : 'Active'
   
   let statusFilter: EmployeeStatus = 'Active'
-  if (['all', 'Active', 'Former', 'Prospective'].includes(statusParam)) {
+  if (['all', 'Active', 'Former', 'Onboarding', 'Started Separation'].includes(statusParam)) {
     statusFilter = statusParam as EmployeeStatus
   }
 

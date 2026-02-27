@@ -10,7 +10,7 @@ import { EmployeeService } from '@/services/employees'
 interface ExportOptions {
   format: 'csv' | 'json'
   includeFields?: string[]
-  statusFilter?: 'all' | 'Active' | 'Former' | 'Prospective'
+  statusFilter?: 'all' | 'Active' | 'Former' | 'Onboarding' | 'Started Separation'
 }
 
 export async function exportEmployees(options: ExportOptions): Promise<{ data?: string; error?: string; filename?: string }> {

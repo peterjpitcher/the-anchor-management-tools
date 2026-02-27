@@ -1,12 +1,11 @@
 import { notFound, redirect } from 'next/navigation'
 import { formatDate } from '@/lib/dateUtils'
 import { calculateLengthOfService } from '@/lib/employeeUtils'
-import { StatusBadge } from '@/components/ui-v2/display/Badge'
+import { Badge } from '@/components/ui-v2/display/Badge'
 import { PageLayout } from '@/components/ui-v2/layout/PageLayout'
 import { Card } from '@/components/ui-v2/layout/Card'
 import { Section } from '@/components/ui-v2/layout/Section'
 import { Tabs } from '@/components/ui-v2/navigation/Tabs'
-import { Badge } from '@/components/ui-v2/display/Badge'
 import { Alert } from '@/components/ui-v2/feedback/Alert'
 import DeleteEmployeeButton from '@/components/features/employees/DeleteEmployeeButton'
 import EmployeeNotesList from '@/components/features/employees/EmployeeNotesList'
@@ -20,6 +19,7 @@ import RightToWorkTab from '@/components/features/employees/RightToWorkTab'
 import OnboardingChecklistTab from '@/components/features/employees/OnboardingChecklistTab'
 import { EmployeeAuditTrail } from '@/components/features/employees/EmployeeAuditTrail'
 import { EmployeeRecentChanges } from '@/components/features/employees/EmployeeRecentChanges'
+import EmployeeStatusActions from '@/components/features/employees/EmployeeStatusActions'
 import { getEmployeeDetailData } from '@/app/actions/employeeDetails'
 import { LinkButton } from '@/components/ui-v2/navigation/LinkButton'
 import { ArrowDownTrayIcon } from '@heroicons/react/24/outline'
@@ -30,6 +30,16 @@ interface EmployeeDetailPageProps {
   params: Promise<{
     employee_id: string
   }>
+}
+
+function statusBadgeVariant(status: string): 'success' | 'info' | 'warning' | 'error' | 'default' {
+  switch (status) {
+    case 'Active': return 'success'
+    case 'Onboarding': return 'info'
+    case 'Started Separation': return 'warning'
+    case 'Former': return 'error'
+    default: return 'default'
+  }
 }
 
 export default async function EmployeeDetailPage({ params }: EmployeeDetailPageProps) {
@@ -72,10 +82,15 @@ export default async function EmployeeDetailPage({ params }: EmployeeDetailPageP
     return acc
   }, {})
 
+  const isOnboarding = employee.status === 'Onboarding'
+  const displayName = employee.first_name && employee.last_name
+    ? `${employee.first_name} ${employee.last_name}`
+    : employee.email_address
+
   const displayFields = [
-    { label: 'Full Name', value: `${employee.first_name} ${employee.last_name}` },
+    { label: 'Full Name', value: employee.first_name && employee.last_name ? `${employee.first_name} ${employee.last_name}` : '—' },
     { label: 'Email Address', value: employee.email_address, isEmail: true },
-    { label: 'Job Title', value: employee.job_title },
+    { label: 'Job Title', value: employee.job_title ?? '—' },
     { label: 'Employment Status', value: employee.status, isBadge: true },
     { label: 'First Shift Date', value: employee.first_shift_date ? formatDate(employee.first_shift_date) : 'N/A' },
     { label: 'Start Date', value: employee.employment_start_date ? formatDate(employee.employment_start_date) : 'N/A' },
@@ -89,7 +104,7 @@ export default async function EmployeeDetailPage({ params }: EmployeeDetailPageP
     { label: 'Address', value: employee.address || 'N/A', isFullWidth: true },
   ]
 
-  const setupMissingItems = [
+  const setupMissingItems = isOnboarding ? [] : [
     ...(emergencyContacts.length === 0 ? ['Emergency contacts'] : []),
     ...(!financialDetails ? ['Bank details'] : []),
     ...(!healthRecord ? ['Health information'] : []),
@@ -112,15 +127,7 @@ export default async function EmployeeDetailPage({ params }: EmployeeDetailPageP
               <dt className="text-sm font-medium text-gray-500 mb-1 sm:mb-0">{field.label}</dt>
               <dd className={`text-sm text-gray-900 ${field.isFullWidth ? '' : 'sm:col-span-3'}`}>
                 {field.isBadge ? (
-                  <Badge
-                    variant={
-                      employee.status === 'Active'
-                        ? 'success'
-                        : employee.status === 'Prospective'
-                          ? 'info'
-                          : 'error'
-                    }
-                  >
+                  <Badge variant={statusBadgeVariant(employee.status)}>
                     {employee.status}
                   </Badge>
                 ) : field.isEmail ? (
@@ -191,27 +198,37 @@ export default async function EmployeeDetailPage({ params }: EmployeeDetailPageP
 
   const headerActions = (
     <>
-      <LinkButton
-        href={`/api/employees/${employee.employee_id}/starter-pack`}
-        size="sm"
-        variant="secondary"
-        target="_blank"
-        leftIcon={<ArrowDownTrayIcon className="h-4 w-4" />}
-      >
-        <span className="hidden sm:inline">New Starter PDF</span>
-        <span className="sm:hidden">Starter PDF</span>
-      </LinkButton>
+      {!isOnboarding && (
+        <>
+          <LinkButton
+            href={`/api/employees/${employee.employee_id}/starter-pack`}
+            size="sm"
+            variant="secondary"
+            target="_blank"
+            leftIcon={<ArrowDownTrayIcon className="h-4 w-4" />}
+          >
+            <span className="hidden sm:inline">New Starter PDF</span>
+            <span className="sm:hidden">Starter PDF</span>
+          </LinkButton>
 
-      <LinkButton
-        href={`/api/employees/${employee.employee_id}/employment-contract`}
-        size="sm"
-        variant="secondary"
-        target="_blank"
-        leftIcon={<ArrowDownTrayIcon className="h-4 w-4" />}
-      >
-        <span className="hidden sm:inline">Casual Worker Agreement</span>
-        <span className="sm:hidden">Agreement</span>
-      </LinkButton>
+          <LinkButton
+            href={`/api/employees/${employee.employee_id}/employment-contract`}
+            size="sm"
+            variant="secondary"
+            target="_blank"
+            leftIcon={<ArrowDownTrayIcon className="h-4 w-4" />}
+          >
+            <span className="hidden sm:inline">Casual Worker Agreement</span>
+            <span className="sm:hidden">Agreement</span>
+          </LinkButton>
+        </>
+      )}
+
+      <EmployeeStatusActions
+        employeeId={employee.employee_id}
+        status={employee.status}
+        canEdit={permissions.canEdit}
+      />
 
       {permissions.canEdit && (
         <LinkButton href={`/employees/${employee.employee_id}/edit`} size="sm" variant="primary">
@@ -222,7 +239,7 @@ export default async function EmployeeDetailPage({ params }: EmployeeDetailPageP
       {permissions.canDelete && (
         <DeleteEmployeeButton
           employeeId={employee.employee_id}
-          employeeName={`${employee.first_name} ${employee.last_name}`}
+          employeeName={displayName}
         />
       )}
     </>
@@ -230,8 +247,8 @@ export default async function EmployeeDetailPage({ params }: EmployeeDetailPageP
 
   return (
     <PageLayout
-      title={`${employee.first_name} ${employee.last_name}`}
-      subtitle={employee.job_title}
+      title={displayName}
+      subtitle={isOnboarding ? 'Onboarding — profile not yet complete' : (employee.job_title ?? undefined)}
       backButton={{ label: 'Back to Employees', href: '/employees' }}
       headerActions={headerActions}
     >
@@ -243,26 +260,26 @@ export default async function EmployeeDetailPage({ params }: EmployeeDetailPageP
                 <div>
                   <p className="text-sm text-gray-500">Employment</p>
                   <p className="text-xl font-semibold text-gray-900">
-                    {employee.status} • Started {employee.employment_start_date ? formatDate(employee.employment_start_date) : 'N/A'}
+                    {employee.status}{employee.employment_start_date ? ` • Started ${formatDate(employee.employment_start_date)}` : ''}
                   </p>
-                  <p className="text-sm text-gray-500">
-                    {calculateLengthOfService(employee.employment_start_date)}
-                  </p>
+                  {employee.employment_start_date && (
+                    <p className="text-sm text-gray-500">
+                      {calculateLengthOfService(employee.employment_start_date)}
+                    </p>
+                  )}
                 </div>
-                <StatusBadge
-                  status={
-                    employee.status === 'Active'
-                      ? 'success'
-                      : employee.status === 'Prospective'
-                        ? 'pending'
-                        : 'inactive'
-                  }
-                >
+                <Badge variant={statusBadgeVariant(employee.status)} dot>
                   {employee.status}
-                </StatusBadge>
+                </Badge>
               </div>
             </Card>
           </section>
+
+          {isOnboarding && (
+            <Alert variant="info" title="Onboarding in progress">
+              This employee has been invited but has not yet completed their profile. Use the &ldquo;Resend Invite&rdquo; button to send them a new invite link.
+            </Alert>
+          )}
 
           {setupMissingItems.length > 0 && (
             <Alert variant="warning" title="Setup incomplete">
@@ -338,7 +355,7 @@ export default async function EmployeeDetailPage({ params }: EmployeeDetailPageP
             <Card>
               <EmployeeAuditTrail
                 employeeId={employee.employee_id}
-                employeeName={`${employee.first_name} ${employee.last_name}`}
+                employeeName={displayName}
                 auditLogs={auditLogs}
                 notes={notes}
                 canViewAudit={permissions.canView}

@@ -165,6 +165,10 @@
     {
       "path": "/api/cron/generate-slots",
       "schedule": "0 0 * * 1"
+    },
+    {
+      "path": "/api/cron/employee-invite-chase",
+      "schedule": "0 9 * * *"
     }
   ]
 }

@@ -4,7 +4,7 @@ import { checkUserPermission } from './rbac'
 import { EmployeeService } from '@/services/employees'
 import type { Employee } from '@/types/database'
 
-type EmployeeStatus = 'all' | 'Active' | 'Former' | 'Prospective'
+type EmployeeStatus = 'all' | 'Active' | 'Former' | 'Onboarding' | 'Started Separation'
 
 interface EmployeeRosterRequest {
   page?: number
@@ -24,7 +24,8 @@ interface EmployeeStatusCounts {
   all: number
   active: number
   former: number
-  prospective: number
+  onboarding: number
+  startedSeparation: number
 }
 
 interface EmployeeRosterFilters {
@@ -48,7 +49,7 @@ export async function getEmployeesRoster(
   const pageSize = typeof request.pageSize === 'number' && request.pageSize > 0 ? request.pageSize : 50
   const requestedPage = typeof request.page === 'number' && request.page > 0 ? request.page : 1
   const rawStatus = request.statusFilter ?? 'Active'
-  const statusFilter: EmployeeStatus = rawStatus === 'all' ? 'all' : (['Active', 'Former', 'Prospective'].includes(rawStatus) ? rawStatus : 'Active')
+  const statusFilter: EmployeeStatus = rawStatus === 'all' ? 'all' : (['Active', 'Former', 'Onboarding', 'Started Separation'].includes(rawStatus) ? rawStatus : 'Active')
   const searchTerm = (request.searchTerm ?? '').trim()
 
   const emptyResult = {
@@ -63,7 +64,8 @@ export async function getEmployeesRoster(
       all: 0,
       active: 0,
       former: 0,
-      prospective: 0
+      onboarding: 0,
+      startedSeparation: 0
     },
     filters: {
       statusFilter,
