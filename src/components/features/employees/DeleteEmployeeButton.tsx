@@ -44,7 +44,7 @@ export default function DeleteEmployeeButton({ employeeId, employeeName }: Delet
       <button
         onClick={() => setIsOpen(true)}
         type="button"
-        className="inline-flex items-center rounded-md px-3 py-2 text-sm font-semibold text-white hover:text-white/80 hover:bg-white/10 transition-colors"
+        className="inline-flex items-center rounded-md px-3 py-2 text-sm font-semibold text-red-600 ring-1 ring-inset ring-red-300 bg-white hover:bg-red-50 transition-colors"
       >
         <TrashIcon className="-ml-0.5 mr-1.5 h-5 w-5" aria-hidden="true" />
         Delete Employee

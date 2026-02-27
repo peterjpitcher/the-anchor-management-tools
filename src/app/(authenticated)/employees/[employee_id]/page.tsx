@@ -192,6 +192,17 @@ export default async function EmployeeDetailPage({ params }: EmployeeDetailPageP
   const headerActions = (
     <>
       <LinkButton
+        href={`/api/employees/${employee.employee_id}/starter-pack`}
+        size="sm"
+        variant="secondary"
+        target="_blank"
+        leftIcon={<ArrowDownTrayIcon className="h-4 w-4" />}
+      >
+        <span className="hidden sm:inline">New Starter PDF</span>
+        <span className="sm:hidden">Starter PDF</span>
+      </LinkButton>
+
+      <LinkButton
         href={`/api/employees/${employee.employee_id}/employment-contract`}
         size="sm"
         variant="secondary"
