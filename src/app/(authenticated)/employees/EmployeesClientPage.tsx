@@ -1,9 +1,9 @@
 'use client'
 
-import { useCallback, useTransition } from 'react'
+import { useCallback, useState, useTransition } from 'react'
 import Link from 'next/link'
 import { useRouter, usePathname, useSearchParams } from 'next/navigation'
-import { ArrowDownTrayIcon, PlusIcon } from '@heroicons/react/24/outline'
+import { ArrowDownTrayIcon, PlusIcon, EnvelopeIcon } from '@heroicons/react/24/outline'
 import { toast } from '@/components/ui-v2/feedback/Toast'
 import { PageLayout } from '@/components/ui-v2/layout/PageLayout'
 import { Card } from '@/components/ui-v2/layout/Card'
@@ -11,7 +11,7 @@ import { Dropdown } from '@/components/ui-v2/navigation/Dropdown'
 import { SearchInput } from '@/components/ui-v2/forms/SearchInput'
 import { TabNav } from '@/components/ui-v2/navigation/TabNav'
 import { DataTable } from '@/components/ui-v2/display/DataTable'
-import { StatusBadge } from '@/components/ui-v2/display/Badge'
+import { Badge } from '@/components/ui-v2/display/Badge'
 import { Pagination as PaginationV2 } from '@/components/ui-v2/navigation/Pagination'
 import { LinkButton } from '@/components/ui-v2/navigation/LinkButton'
 import { exportEmployees } from '@/app/actions/employeeExport'
@@ -19,8 +19,9 @@ import type { EmployeeRosterResult } from '@/app/actions/employeeQueries'
 import type { Employee } from '@/types/database'
 import { formatDate } from '@/lib/dateUtils'
 import { calculateLengthOfService } from '@/lib/employeeUtils'
+import InviteEmployeeModal from '@/components/features/employees/InviteEmployeeModal'
 
-type EmployeeStatus = 'all' | 'Active' | 'Former' | 'Prospective'
+type EmployeeStatus = 'all' | 'Active' | 'Former' | 'Onboarding' | 'Started Separation'
 
 interface EmployeesClientPageProps {
   initialData: EmployeeRosterResult
@@ -30,11 +31,28 @@ interface EmployeesClientPageProps {
   }
 }
 
+function statusBadgeVariant(status: string): 'success' | 'info' | 'warning' | 'default' {
+  switch (status) {
+    case 'Active': return 'success'
+    case 'Onboarding': return 'info'
+    case 'Started Separation': return 'warning'
+    default: return 'default'
+  }
+}
+
+function employeeDisplayName(employee: Employee): string {
+  if (employee.first_name && employee.last_name) {
+    return `${employee.first_name} ${employee.last_name}`
+  }
+  return employee.email_address
+}
+
 export default function EmployeesClientPage({ initialData, permissions }: EmployeesClientPageProps) {
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
   const [isPending, startTransition] = useTransition()
+  const [showInviteModal, setShowInviteModal] = useState(false)
 
   // Derive state directly from server data
   const roster = initialData
@@ -42,31 +60,29 @@ export default function EmployeesClientPage({ initialData, permissions }: Employ
   const searchTerm = initialData.filters.searchTerm
   const currentPage = initialData.pagination.page
   const pageSize = initialData.pagination.pageSize
-  
+
   const isLoading = isPending
 
   const updateFilters = useCallback((updates: { status?: EmployeeStatus; search?: string; page?: number }) => {
     const params = new URLSearchParams(searchParams.toString())
     let hasChanges = false
-    
+
     if (updates.status !== undefined && updates.status !== selectedStatus) {
       params.set('status', updates.status)
-      // Reset to page 1 when filter changes, unless page is explicitly provided
       if (updates.page === undefined) params.set('page', '1')
       hasChanges = true
     }
-    
+
     if (updates.search !== undefined && updates.search !== searchTerm) {
       if (updates.search) {
         params.set('search', updates.search)
       } else {
         params.delete('search')
       }
-      // Reset to page 1 when search changes
       if (updates.page === undefined) params.set('page', '1')
       hasChanges = true
     }
-    
+
     if (updates.page !== undefined && updates.page !== currentPage) {
       params.set('page', updates.page.toString())
       hasChanges = true
@@ -157,166 +173,184 @@ export default function EmployeesClientPage({ initialData, permissions }: Employ
       )}
 
       {permissions.canCreate && (
-        <LinkButton
-          href="/employees/new"
-          size="md"
-          variant="primary"
-          leftIcon={<PlusIcon className="h-5 w-5" />}
-        >
-          Add Employee
-        </LinkButton>
+        <>
+          <button
+            type="button"
+            onClick={() => setShowInviteModal(true)}
+            className="inline-flex items-center gap-1.5 rounded-md px-3 py-2 text-sm font-semibold text-gray-700 ring-1 ring-inset ring-gray-300 bg-white hover:bg-gray-50"
+          >
+            <EnvelopeIcon className="h-4 w-4" />
+            Invite Employee
+          </button>
+          <LinkButton
+            href="/employees/new"
+            size="md"
+            variant="primary"
+            leftIcon={<PlusIcon className="h-5 w-5" />}
+          >
+            Add Employee
+          </LinkButton>
+        </>
       )}
     </>
   )
 
   return (
-    <PageLayout
-      title="Employees"
-      subtitle="Manage your staff and their information"
-      headerActions={headerActions}
-    >
-      <section id="filters">
-        <Card>
-          <div className="space-y-4">
-            <SearchInput
-              placeholder="Search by name, email, job title, phone, or post code..."
-              defaultValue={searchTerm}
-              onSearch={(value) => updateFilters({ search: value })}
-              loading={isLoading}
-            />
-
-            <TabNav
-              tabs={[
-                { key: 'all', label: 'All', mobileLabel: 'All', badge: roster.statusCounts.all },
-                { key: 'Active', label: 'Active', mobileLabel: 'Active', badge: roster.statusCounts.active },
-                { key: 'Prospective', label: 'Prospective', mobileLabel: 'Prosp.', badge: roster.statusCounts.prospective },
-                { key: 'Former', label: 'Former', mobileLabel: 'Former', badge: roster.statusCounts.former }
-              ]}
-              activeKey={selectedStatus}
-              onChange={(tab) => updateFilters({ status: tab as EmployeeStatus })}
-            />
-
-            {showSearchResultMessage && (
-              <div className="mt-2 text-sm text-gray-500">
-                Found {currentEmployees.length} employee{currentEmployees.length !== 1 ? 's' : ''} matching &quot;{searchTerm}&quot;
-              </div>
-            )}
-          </div>
-        </Card>
-
-      </section>
-
-      <section id="roster" className="space-y-6">
-        {currentEmployees.length === 0 ? (
+    <>
+      <PageLayout
+        title="Employees"
+        subtitle="Manage your staff and their information"
+        headerActions={headerActions}
+      >
+        <section id="filters">
           <Card>
-            <div className="text-center py-12">
-              <h3 className="text-lg font-medium text-gray-900">No employees found</h3>
-              <p className="mt-1 text-sm text-gray-500">
-                {searchTerm
-                  ? <>No employees match your search for &quot;{searchTerm}&quot;</>
-                  : 'Get started by adding a new employee.'}
-              </p>
+            <div className="space-y-4">
+              <SearchInput
+                placeholder="Search by name, email, job title, phone, or post code..."
+                defaultValue={searchTerm}
+                onSearch={(value) => updateFilters({ search: value })}
+                loading={isLoading}
+              />
+
+              <TabNav
+                tabs={[
+                  { key: 'all', label: 'All', mobileLabel: 'All', badge: roster.statusCounts.all },
+                  { key: 'Active', label: 'Active', mobileLabel: 'Active', badge: roster.statusCounts.active },
+                  { key: 'Onboarding', label: 'Onboarding', mobileLabel: 'Onboard.', badge: roster.statusCounts.onboarding },
+                  { key: 'Started Separation', label: 'Separating', mobileLabel: 'Sep.', badge: roster.statusCounts.startedSeparation },
+                  { key: 'Former', label: 'Former', mobileLabel: 'Former', badge: roster.statusCounts.former }
+                ]}
+                activeKey={selectedStatus}
+                onChange={(tab) => updateFilters({ status: tab as EmployeeStatus })}
+              />
+
+              {showSearchResultMessage && (
+                <div className="mt-2 text-sm text-gray-500">
+                  Found {currentEmployees.length} employee{currentEmployees.length !== 1 ? 's' : ''} matching &quot;{searchTerm}&quot;
+                </div>
+              )}
             </div>
           </Card>
-        ) : (
-          <Card>
-            <DataTable
-              data={currentEmployees}
-              getRowKey={(employee) => employee.employee_id}
-              loading={isLoading}
-              columns={[
-                {
-                  key: 'name',
-                  header: 'Name',
-                  cell: (employee: Employee) => (
-                    <Link href={`/employees/${employee.employee_id}`} className="text-blue-600 hover:text-blue-700 font-medium">
-                      {employee.first_name} {employee.last_name}
-                    </Link>
-                  )
-                },
-                {
-                  key: 'job_title',
-                  header: 'Job Title',
-                  cell: (employee: Employee) => employee.job_title
-                },
-                {
-                  key: 'email_address',
-                  header: 'Email',
-                  cell: (employee: Employee) => (
-                    <a href={`mailto:${employee.email_address}`} className="text-blue-600 hover:text-blue-700">
-                      {employee.email_address}
-                    </a>
-                  )
-                },
-                {
-                  key: 'mobile_number',
-                  header: 'Mobile',
-                  cell: (employee: Employee) => {
-                    if (!employee.mobile_number) return 'N/A'
-                    return (
-                      <a href={`tel:${employee.mobile_number}`} className="text-blue-600 hover:text-blue-700">
-                        {employee.mobile_number}
+
+        </section>
+
+        <section id="roster" className="space-y-6">
+          {currentEmployees.length === 0 ? (
+            <Card>
+              <div className="text-center py-12">
+                <h3 className="text-lg font-medium text-gray-900">No employees found</h3>
+                <p className="mt-1 text-sm text-gray-500">
+                  {searchTerm
+                    ? <>No employees match your search for &quot;{searchTerm}&quot;</>
+                    : 'Get started by adding a new employee.'}
+                </p>
+              </div>
+            </Card>
+          ) : (
+            <Card>
+              <DataTable
+                data={currentEmployees}
+                getRowKey={(employee) => employee.employee_id}
+                loading={isLoading}
+                columns={[
+                  {
+                    key: 'name',
+                    header: 'Name',
+                    cell: (employee: Employee) => (
+                      <Link href={`/employees/${employee.employee_id}`} className="text-blue-600 hover:text-blue-700 font-medium">
+                        {employeeDisplayName(employee)}
+                        {!employee.first_name && (
+                          <span className="ml-1.5 text-xs text-gray-400">(pending profile)</span>
+                        )}
+                      </Link>
+                    )
+                  },
+                  {
+                    key: 'job_title',
+                    header: 'Job Title',
+                    cell: (employee: Employee) => employee.job_title ?? <span className="text-gray-400 italic">Not set</span>
+                  },
+                  {
+                    key: 'email_address',
+                    header: 'Email',
+                    cell: (employee: Employee) => (
+                      <a href={`mailto:${employee.email_address}`} className="text-blue-600 hover:text-blue-700">
+                        {employee.email_address}
                       </a>
                     )
-                  }
-                },
-                {
-                  key: 'date_of_birth',
-                  header: 'Birthday',
-                  cell: (employee: Employee) => (
-                    <div className="text-sm text-gray-900">
-                      {employee.date_of_birth ? formatDate(employee.date_of_birth) : 'N/A'}
-                    </div>
-                  )
-                },
-                {
-                  key: 'employment_start_date',
-                  header: 'Start Date',
-                  cell: (employee: Employee) => (
-                    <div>
+                  },
+                  {
+                    key: 'mobile_number',
+                    header: 'Mobile',
+                    cell: (employee: Employee) => {
+                      if (!employee.mobile_number) return 'N/A'
+                      return (
+                        <a href={`tel:${employee.mobile_number}`} className="text-blue-600 hover:text-blue-700">
+                          {employee.mobile_number}
+                        </a>
+                      )
+                    }
+                  },
+                  {
+                    key: 'date_of_birth',
+                    header: 'Birthday',
+                    cell: (employee: Employee) => (
+                      <div className="text-sm text-gray-900">
+                        {employee.date_of_birth ? formatDate(employee.date_of_birth) : 'N/A'}
+                      </div>
+                    )
+                  },
+                  {
+                    key: 'employment_start_date',
+                    header: 'Start Date',
+                    cell: (employee: Employee) => (
                       <div>
-                        {employee.employment_start_date
-                          ? formatDate(employee.employment_start_date)
-                          : 'N/A'}
+                        <div>
+                          {employee.employment_start_date
+                            ? formatDate(employee.employment_start_date)
+                            : 'N/A'}
+                        </div>
+                        <div className="text-xs text-gray-400">
+                          {calculateLengthOfService(employee.employment_start_date)}
+                        </div>
                       </div>
-                      <div className="text-xs text-gray-400">
-                        {calculateLengthOfService(employee.employment_start_date)}
-                      </div>
-                    </div>
-                  )
-                },
-                {
-                  key: 'status',
-                  header: 'Status',
-                  cell: (employee: Employee) => (
-                    <StatusBadge
-                      status={
-                        employee.status === 'Active'
-                          ? 'success'
-                          : employee.status === 'Prospective'
-                            ? 'pending'
-                            : 'inactive'
-                      }
-                    >
-                      {employee.status}
-                    </StatusBadge>
-                  )
-                }
-              ]}
-            />
-
-            {roster.pagination.totalPages > 1 && (
-              <PaginationV2
-                currentPage={currentPage}
-                totalPages={roster.pagination.totalPages}
-                totalItems={roster.pagination.totalCount}
-                itemsPerPage={pageSize}
-                onPageChange={(page) => updateFilters({ page })}
+                    )
+                  },
+                  {
+                    key: 'status',
+                    header: 'Status',
+                    cell: (employee: Employee) => (
+                      <Badge variant={statusBadgeVariant(employee.status)} dot>
+                        {employee.status}
+                      </Badge>
+                    )
+                  }
+                ]}
               />
-            )}
-          </Card>
-        )}
-      </section>
-    </PageLayout>
+
+              {roster.pagination.totalPages > 1 && (
+                <PaginationV2
+                  currentPage={currentPage}
+                  totalPages={roster.pagination.totalPages}
+                  totalItems={roster.pagination.totalCount}
+                  itemsPerPage={pageSize}
+                  onPageChange={(page) => updateFilters({ page })}
+                />
+              )}
+            </Card>
+          )}
+        </section>
+      </PageLayout>
+
+      {showInviteModal && (
+        <InviteEmployeeModal
+          onClose={() => setShowInviteModal(false)}
+          onSuccess={() => {
+            setShowInviteModal(false)
+            router.refresh()
+          }}
+        />
+      )}
+    </>
   )
 }
