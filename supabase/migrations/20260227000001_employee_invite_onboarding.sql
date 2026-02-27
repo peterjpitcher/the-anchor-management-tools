@@ -72,7 +72,7 @@ CREATE POLICY "Service role full access" ON employee_invite_tokens
 -- -> insert empty onboarding_checklists row -> return employee_id + token
 
 CREATE OR REPLACE FUNCTION create_employee_invite(p_email TEXT)
-RETURNS TABLE(out_employee_id UUID, out_token TEXT)
+RETURNS JSONB
 LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = public
@@ -112,6 +112,6 @@ BEGIN
   VALUES (v_employee_id, NOW(), NOW())
   ON CONFLICT (employee_id) DO NOTHING;
 
-  RETURN QUERY SELECT v_employee_id AS out_employee_id, v_token AS out_token;
+  RETURN jsonb_build_object('employee_id', v_employee_id, 'token', v_token);
 END;
 $$;

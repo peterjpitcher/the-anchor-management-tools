@@ -52,8 +52,8 @@ export async function inviteEmployee(prevState: any, formData: FormData) {
       return { type: 'error', message: 'Failed to create invite. Please try again.' };
     }
 
-    const row = Array.isArray(data) ? data[0] : data;
-    if (!row?.out_employee_id || !row?.out_token) {
+    const result = data as { employee_id: string; token: string } | null;
+    if (!result?.employee_id || !result?.token) {
       return { type: 'error', message: 'Invite created but token was not returned.' };
     }
 
@@ -61,11 +61,11 @@ export async function inviteEmployee(prevState: any, formData: FormData) {
     await adminClient
       .from('employees')
       .update({ invited_at: new Date().toISOString() })
-      .eq('employee_id', row.out_employee_id);
+      .eq('employee_id', result.employee_id);
 
     // Send welcome email (best-effort)
     try {
-      await sendWelcomeEmail(email, buildOnboardingUrl(row.out_token));
+      await sendWelcomeEmail(email, buildOnboardingUrl(result.token));
     } catch (emailError) {
       console.error('[inviteEmployee] Failed to send welcome email:', emailError);
     }
@@ -78,7 +78,7 @@ export async function inviteEmployee(prevState: any, formData: FormData) {
         user_email: user?.user_email ?? undefined,
         operation_type: 'invite',
         resource_type: 'employee',
-        resource_id: row.out_employee_id,
+        resource_id: result.employee_id,
         operation_status: 'success',
         new_values: { email, status: 'Onboarding' },
       });
@@ -87,7 +87,7 @@ export async function inviteEmployee(prevState: any, formData: FormData) {
     }
 
     revalidatePath('/employees');
-    return { type: 'success', message: `Invite sent to ${email}.`, employeeId: row.out_employee_id };
+    return { type: 'success', message: `Invite sent to ${email}.`, employeeId: result.employee_id };
   } catch (err: any) {
     console.error('[inviteEmployee] Unexpected error:', err);
     return { type: 'error', message: err.message || 'An unexpected error occurred.' };
