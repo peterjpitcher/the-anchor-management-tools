@@ -15,13 +15,12 @@ ALTER TABLE employees ALTER COLUMN job_title DROP NOT NULL;
 ALTER TABLE employees ALTER COLUMN employment_start_date DROP NOT NULL;
 
 -- Enforce required fields for non-Onboarding employees
+-- job_title and employment_start_date are manager-filled and excluded from this constraint
 ALTER TABLE employees ADD CONSTRAINT chk_employee_active_fields
   CHECK (
     status = 'Onboarding' OR (
       first_name IS NOT NULL AND first_name != '' AND
-      last_name IS NOT NULL AND last_name != '' AND
-      job_title IS NOT NULL AND
-      employment_start_date IS NOT NULL
+      last_name IS NOT NULL AND last_name != ''
     )
   );
 
