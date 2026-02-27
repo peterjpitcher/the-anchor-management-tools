@@ -633,6 +633,26 @@ export async function cancelPrivateBooking(bookingId: string, reason?: string) {
   }
 }
 
+export async function extendBookingHold(bookingId: string, days: 7 | 14 | 30) {
+  const canEdit = await checkUserPermission('private_bookings', 'edit')
+  if (!canEdit) {
+    return { error: 'You do not have permission to extend booking holds' }
+  }
+
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+
+  try {
+    const result = await PrivateBookingService.extendHold(bookingId, days, user?.id)
+    revalidatePath('/private-bookings')
+    revalidatePath(`/private-bookings/${bookingId}`)
+    return result
+  } catch (error: any) {
+    logPrivateBookingActionError('Error extending booking hold', error, { bookingId, days })
+    return { error: error.message || 'Failed to extend booking hold' }
+  }
+}
+
 // Apply booking-level discount
 export async function applyBookingDiscount(bookingId: string, data: {
   discount_type: 'percent' | 'fixed'

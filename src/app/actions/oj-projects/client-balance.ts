@@ -78,8 +78,7 @@ export async function getClientBalance(
     if (entry.entry_type === 'time') {
       const mins = Number(entry.duration_minutes_rounded || 0)
       const rate = Number(entry.hourly_rate_ex_vat_snapshot || 75)
-      const vat = Number(entry.vat_rate_snapshot || 20)
-      unbilledTimeTotal = roundMoney(unbilledTimeTotal + (mins / 60) * rate * (1 + vat / 100))
+      unbilledTimeTotal = roundMoney(unbilledTimeTotal + (mins / 60) * rate)
     } else if (entry.entry_type === 'mileage') {
       const miles = Number(entry.miles || 0)
       const mileageRate = Number(entry.mileage_rate_snapshot || 0.42)
@@ -99,8 +98,7 @@ export async function getClientBalance(
   const unbilledRecurringTotal = roundMoney(
     (instances || []).reduce((acc, inst) => {
       const exVat = Number(inst.amount_ex_vat_snapshot || 0)
-      const vat = Number(inst.vat_rate_snapshot || 0)
-      return acc + exVat * (1 + vat / 100)
+      return acc + exVat
     }, 0)
   )
 

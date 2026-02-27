@@ -1130,6 +1130,94 @@ export class PrivateBookingService {
     return { success: true, smsSent, smsCode, smsLogFailure };
   }
 
+  static async extendHold(
+    id: string,
+    days: 7 | 14 | 30,
+    extendedBy?: string
+  ) {
+    const supabase = await createClient();
+    const nowIso = new Date().toISOString();
+
+    // 1. Fetch booking
+    const { data: booking, error: fetchError } = await supabase
+      .from('private_bookings')
+      .select('id, status, event_date, hold_expiry, customer_first_name, customer_name, contact_phone, customer_id')
+      .eq('id', id)
+      .single();
+
+    if (fetchError || !booking) throw new Error('Booking not found');
+    if (booking.status !== 'draft') throw new Error('Only draft bookings can have their hold extended');
+
+    // 2. Calculate new hold_expiry: extend from current expiry (or now if already expired)
+    const baseDate = booking.hold_expiry && new Date(booking.hold_expiry) > new Date()
+      ? new Date(booking.hold_expiry)
+      : new Date();
+    const newExpiry = new Date(baseDate);
+    newExpiry.setDate(newExpiry.getDate() + days);
+
+    // Cap at 7 days before the event (matching creation logic)
+    if (booking.event_date) {
+      const eventDate = new Date(booking.event_date);
+      const sevenDaysBeforeEvent = new Date(eventDate);
+      sevenDaysBeforeEvent.setDate(sevenDaysBeforeEvent.getDate() - 7);
+      if (newExpiry > sevenDaysBeforeEvent) {
+        newExpiry.setTime(sevenDaysBeforeEvent.getTime());
+      }
+    }
+
+    const newExpiryIso = newExpiry.toISOString();
+
+    // 3. Update hold_expiry
+    const { error: updateError } = await supabase
+      .from('private_bookings')
+      .update({ hold_expiry: newExpiryIso, updated_at: nowIso })
+      .eq('id', id);
+
+    if (updateError) throw new Error('Failed to extend booking hold');
+
+    // 4. Send SMS
+    let smsSent = false;
+    if (booking.contact_phone || booking.customer_id) {
+      const expiryReadable = newExpiry.toLocaleDateString('en-GB', {
+        day: 'numeric', month: 'long', year: 'numeric'
+      });
+      const eventDateReadable = booking.event_date
+        ? new Date(booking.event_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })
+        : 'your event';
+
+      const smsMessage = `The Anchor: Hi ${booking.customer_first_name}, we've extended your date hold for ${eventDateReadable}. Your deposit is now due by ${expiryReadable}. Please call us if you have any questions.`;
+
+      let smsResult: any;
+      try {
+        smsResult = await SmsQueueService.queueAndSend({
+          booking_id: id,
+          trigger_type: 'hold_extended',
+          template_key: 'private_booking_hold_extended',
+          message_body: smsMessage,
+          customer_phone: booking.contact_phone,
+          customer_name: booking.customer_name,
+          customer_id: booking.customer_id,
+          created_by: extendedBy,
+          priority: 2,
+          metadata: {
+            template: 'private_booking_hold_extended',
+            event_date: eventDateReadable,
+            new_expiry: expiryReadable,
+            extended_days: days,
+          }
+        });
+      } catch (error) {
+        console.error('Failed to queue hold extension SMS:', error);
+        smsResult = { error: 'Failed to queue SMS' };
+      }
+
+      const smsSafety = normalizeSmsSafetyMeta(smsResult);
+      smsSent = Boolean(!smsResult?.error && 'sent' in smsResult && smsResult.sent);
+    }
+
+    return { success: true, newExpiry: newExpiryIso, smsSent };
+  }
+
   static async deletePrivateBooking(id: string) {
     const supabase = await createClient();
 

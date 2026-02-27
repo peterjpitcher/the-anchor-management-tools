@@ -28,7 +28,7 @@ import { Pagination } from '@/components/ui-v2/navigation/Pagination'
 import { FormGroup } from '@/components/ui-v2/forms/FormGroup'
 import { formatCurrency } from '@/components/ui-v2/utils/format'
 import { formatDateFull, formatTime12Hour } from '@/lib/dateUtils'
-import { deletePrivateBooking, cancelPrivateBooking } from '@/app/actions/privateBookingActions'
+import { deletePrivateBooking, cancelPrivateBooking, extendBookingHold } from '@/app/actions/privateBookingActions'
 import DeleteBookingButton from '@/components/private-bookings/DeleteBookingButton'
 import {
   fetchPrivateBookings,
@@ -60,6 +60,7 @@ interface PrivateBookingsClientProps {
   permissions: {
     hasCreatePermission: boolean
     hasDeletePermission: boolean
+    hasEditPermission: boolean
   }
   initialBookings: PrivateBookingDashboardItem[]
   initialTotalCount: number
@@ -287,6 +288,24 @@ export default function PrivateBookingsClient({
     toast.success('Booking cancelled and customer notified')
     invalidateCache()
     fetchWithState({ page: currentPage })
+  }
+
+  const [extendingHoldId, setExtendingHoldId] = useState<string | null>(null)
+
+  const handleExtendHold = async (bookingId: string, days: 7 | 14 | 30) => {
+    setExtendingHoldId(bookingId)
+    try {
+      const result = await extendBookingHold(bookingId, days)
+      if ('error' in result && result.error) {
+        toast.error(result.error)
+        return
+      }
+      toast.success(`Hold extended by ${days} days${'smsSent' in result && result.smsSent ? ' — customer notified by SMS' : ''}`)
+      invalidateCache()
+      fetchWithState({ page: currentPage })
+    } finally {
+      setExtendingHoldId(null)
+    }
   }
 
   const loading = isPending
@@ -532,13 +551,35 @@ export default function PrivateBookingsClient({
                   key: 'actions',
                   header: 'Actions',
                   cell: (booking) => (
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
                       <Link
                         href={`/private-bookings/${booking.id}`}
                         className="text-blue-600 hover:text-blue-900 text-sm font-medium"
                       >
                         View
                       </Link>
+                      {booking.status === 'draft' && permissions.hasEditPermission && (
+                        <select
+                          disabled={extendingHoldId === booking.id}
+                          defaultValue=""
+                          onClick={(e) => e.stopPropagation()}
+                          onChange={(e) => {
+                            const days = Number(e.target.value) as 7 | 14 | 30
+                            if (days) {
+                              handleExtendHold(booking.id, days)
+                              e.target.value = ''
+                            }
+                          }}
+                          className="text-xs border border-gray-300 rounded px-1.5 py-0.5 text-gray-700 bg-white focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:opacity-50 cursor-pointer"
+                          title="Extend hold"
+                        >
+                          <option value="" disabled>Extend hold…</option>
+                          <option value="7">+7 days</option>
+                          <option value="14">+14 days</option>
+                          <option value="30">+30 days</option>
+                        </select>
+                      )}
+                      {extendingHoldId === booking.id && <Spinner size="sm" />}
                       {booking.status === 'confirmed' && (
                         <Button
                           variant="ghost"
@@ -639,13 +680,36 @@ export default function PrivateBookingsClient({
                     </div>
                   )}
 
-                  <div className="flex justify-end items-center gap-2 pt-2 border-t">
+                  <div className="flex justify-end items-center gap-2 pt-2 border-t flex-wrap">
                     <Link
                       href={`/private-bookings/${booking.id}`}
                       className="text-blue-600 hover:text-blue-900 text-sm font-medium px-3 py-1"
                     >
                       View Details
                     </Link>
+                    {booking.status === 'draft' && permissions.hasEditPermission && (
+                      <div className="flex items-center gap-1">
+                        <select
+                          disabled={extendingHoldId === booking.id}
+                          defaultValue=""
+                          onClick={(e) => e.stopPropagation()}
+                          onChange={(e) => {
+                            const days = Number(e.target.value) as 7 | 14 | 30
+                            if (days) {
+                              handleExtendHold(booking.id, days)
+                              e.target.value = ''
+                            }
+                          }}
+                          className="text-xs border border-gray-300 rounded px-1.5 py-0.5 text-gray-700 bg-white focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:opacity-50 cursor-pointer"
+                        >
+                          <option value="" disabled>Extend hold…</option>
+                          <option value="7">+7 days</option>
+                          <option value="14">+14 days</option>
+                          <option value="30">+30 days</option>
+                        </select>
+                        {extendingHoldId === booking.id && <Spinner size="sm" />}
+                      </div>
+                    )}
                     {permissions.hasDeletePermission && (booking.status === 'draft' || booking.status === 'cancelled') && (
                       <DeleteBookingButton
                         bookingId={booking.id}

@@ -37,6 +37,7 @@ const PRIVATE_BOOKING_SMS_AUTO_SEND_TRIGGERS = new Set<string>([
   'date_changed',
   'booking_cancelled',
   'booking_expired',
+  'hold_extended',
   'deposit_reminder_7day',
   'deposit_reminder_1day',
   'balance_reminder_14day',
