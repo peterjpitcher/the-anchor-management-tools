@@ -268,7 +268,7 @@ export default function CustomersPage() {
       if (customerData.email) {
         formData.append('email', customerData.email)
       }
-      formData.append('sms_opt_in', 'on')
+      formData.append('sms_opt_in', editingCustomer.sms_opt_in !== false ? 'on' : 'off')
 
       const result = await updateCustomerAction(editingCustomer.id, formData)
 
@@ -566,7 +566,7 @@ export default function CustomersPage() {
         <div className="space-y-4">
           <div className="flex flex-col gap-4">
             <SearchInput
-              placeholder="Search customers by name or phone..."
+              placeholder="Search customers by name, phone or email..."
               onSearch={setSearchTerm}
               debounceDelay={300}
               className="w-full"
@@ -574,7 +574,7 @@ export default function CustomersPage() {
             <div className="flex flex-col sm:flex-row gap-2 sm:gap-4 sm:items-center sm:justify-between">
               <div className="text-sm text-gray-600">
                 {searchTerm && (
-                  <span>Searching for &quot;{searchTerm}&quot; - Found {visibleCustomers.length} customers</span>
+                  <span>Searching for &quot;{searchTerm}&quot; - Found {totalCount} customers</span>
                 )}
                 {!searchTerm && totalCount > 0 && (
                   <span>

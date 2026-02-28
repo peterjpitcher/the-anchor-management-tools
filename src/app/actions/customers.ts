@@ -47,7 +47,7 @@ export async function createCustomer(formData: FormData) {
       (formData.get('default_country_code') as string | null)?.trim() || undefined
 
     const rawData = {
-      first_name: (formData.get('first_name') as string | null) ?? '',
+      first_name: (formData.get('first_name') as string | null)?.trim() || undefined,
       last_name: (formData.get('last_name') as string | null)?.trim() || undefined,
       mobile_number: (formData.get('mobile_number') as string | null)?.trim() || undefined,
       email: (formData.get('email') as string | null)?.trim() || undefined,
@@ -98,7 +98,7 @@ export async function updateCustomer(id: string, formData: FormData) {
       (formData.get('default_country_code') as string | null)?.trim() || undefined
 
     const rawData = {
-      first_name: (formData.get('first_name') as string | null) ?? '',
+      first_name: (formData.get('first_name') as string | null)?.trim() || undefined,
       last_name: (formData.get('last_name') as string | null)?.trim() || undefined,
       mobile_number: (formData.get('mobile_number') as string | null)?.trim() || undefined,
       email: (formData.get('email') as string | null)?.trim() || undefined,
@@ -229,6 +229,32 @@ export async function importCustomers(entries: ImportCustomerInput[]) {
     console.error('Unexpected error importing customers:', error)
     const message = error instanceof Error ? error.message : 'An unexpected error occurred'
     return { error: message }
+  }
+}
+
+export async function updateCustomerNotes(id: string, notes: string) {
+  try {
+    const context = await requireCustomerManageContext()
+    if ('error' in context) {
+      return { error: context.error }
+    }
+
+    const supabase = await createClient()
+    const { error } = await supabase
+      .from('customers')
+      .update({ internal_notes: notes.trim() || null })
+      .eq('id', id)
+
+    if (error) {
+      console.error('Error updating customer notes:', error)
+      return { error: 'Failed to save notes' }
+    }
+
+    revalidatePath(`/customers/${id}`)
+    return { success: true }
+  } catch (error) {
+    console.error('Unexpected error updating customer notes:', error)
+    return { error: 'Failed to save notes' }
   }
 }
 

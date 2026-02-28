@@ -68,15 +68,28 @@ export const nameSchema = z.string()
   .max(100, 'Name is too long')
   .regex(/^[a-zA-Z\s\-']+$/, 'Name contains invalid characters');
 
+// Optional name field — allows empty string or undefined, validates characters if provided
+const optionalNameField = z
+  .string()
+  .max(100, 'Name is too long')
+  .regex(/^[a-zA-Z\s\-']*$/, 'Name contains invalid characters')
+  .optional()
+  .transform(v => v?.trim() ?? '');
+
 // Common schemas
-export const customerSchema = z.object({
-  first_name: nameSchema,
-  last_name: nameSchema.optional(),
-  mobile_number: phoneSchema,
-  default_country_code: z.string().regex(/^\d{1,4}$/, 'Invalid default country code').optional(),
-  email: optionalEmailSchema,
-  sms_opt_in: z.boolean().default(false),
-});
+export const customerSchema = z
+  .object({
+    first_name: optionalNameField,
+    last_name: optionalNameField,
+    mobile_number: phoneSchema,
+    default_country_code: z.string().regex(/^\d{1,4}$/, 'Invalid default country code').optional(),
+    email: optionalEmailSchema,
+    sms_opt_in: z.boolean().default(false),
+  })
+  .refine(
+    data => !!(data.first_name || data.last_name),
+    { message: 'At least one of first name or last name is required', path: ['first_name'] }
+  );
 
 export const eventSchema = z.object({
   name: z.string().min(1, 'Event name is required'),

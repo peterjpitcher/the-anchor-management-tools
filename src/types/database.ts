@@ -245,6 +245,7 @@ export interface Customer {
   id: string;
   first_name: string;
   last_name: string | null;
+  internal_notes?: string | null;
   mobile_number: string;
   email?: string | null;
   created_at: string;

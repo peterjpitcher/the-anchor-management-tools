@@ -18,16 +18,24 @@ export function CustomerForm({ customer, onSubmit, onCancel }: CustomerFormProps
   const [email, setEmail] = useState(customer?.email ?? '')
   const [mobileNumber, setMobileNumber] = useState(customer?.mobile_number ?? '')
   const [phoneError, setPhoneError] = useState<string | null>(null)
+  const [nameError, setNameError] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setIsSubmitting(true)
     setPhoneError(null)
+    setNameError(null)
     try {
       const trimmedFirstName = firstName.trim()
       const trimmedLastName = lastName.trim()
       const trimmedEmail = email.trim()
+
+      if (!trimmedFirstName && !trimmedLastName) {
+        setNameError('At least one of first name or last name is required')
+        return
+      }
+
       let formattedNumber: string
       try {
         formattedNumber = formatPhoneForStorage(mobileNumber, {
@@ -64,9 +72,11 @@ export function CustomerForm({ customer, onSubmit, onCancel }: CustomerFormProps
             name="first_name"
             autoComplete="given-name"
             value={firstName}
-            onChange={(e) => setFirstName(e.target.value)}
-            required
+            onChange={(e) => { setFirstName(e.target.value); setNameError(null) }}
           />
+          {nameError && (
+            <p className="mt-2 text-sm text-red-600">{nameError}</p>
+          )}
         </div>
 
         <div>
