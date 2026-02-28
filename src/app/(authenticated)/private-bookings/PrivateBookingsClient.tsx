@@ -339,31 +339,66 @@ export default function PrivateBookingsClient({
     fetchWithState({ search: trimmed, page: 1 })
   }, [debouncedSearch, searchTerm, fetchWithState])
 
-  const canToggleCancelled = dateFilter === 'upcoming' && statusFilter === 'all'
-
   const handleToggleCancelledVisibility = () => {
     const next = !includeCancelled
     setIncludeCancelled(next)
     fetchWithState({ includeCancelled: next, page: 1 })
   }
 
-  const sectionActions = canToggleCancelled || loading
-    ? (
-        <div className="flex items-center gap-2">
-          {canToggleCancelled && (
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={handleToggleCancelledVisibility}
-              disabled={loading}
-            >
-              {includeCancelled ? 'Hide cancelled' : 'Show cancelled'}
-            </Button>
-          )}
-          {loading && <Spinner size="sm" />}
-        </div>
-      )
-    : null
+  const HIDDEN_KEY = 'pb_hidden_cancelled_ids'
+
+  const [hiddenIds, setHiddenIds] = useState<Set<string>>(() => {
+    if (typeof window === 'undefined') return new Set()
+    try {
+      const stored = localStorage.getItem(HIDDEN_KEY)
+      return stored ? new Set(JSON.parse(stored)) : new Set()
+    } catch {
+      return new Set()
+    }
+  })
+
+  const hideBooking = (id: string) => {
+    setHiddenIds((prev) => {
+      const next = new Set(prev)
+      next.add(id)
+      try { localStorage.setItem(HIDDEN_KEY, JSON.stringify([...next])) } catch {}
+      return next
+    })
+  }
+
+  const restoreHidden = () => {
+    setHiddenIds(new Set())
+    try { localStorage.removeItem(HIDDEN_KEY) } catch {}
+  }
+
+  const visibleBookings = bookings.filter((b) => !hiddenIds.has(b.id))
+  const hiddenCount = bookings.filter((b) => hiddenIds.has(b.id)).length
+
+  const canToggleCancelled = dateFilter === 'upcoming' && statusFilter === 'all'
+
+  const sectionActions = (
+    <div className="flex items-center gap-2">
+      {hiddenCount > 0 && (
+        <button
+          onClick={restoreHidden}
+          className="text-xs text-gray-500 hover:text-gray-700 underline"
+        >
+          {hiddenCount} hidden · Restore
+        </button>
+      )}
+      {canToggleCancelled && (
+        <Button
+          variant="secondary"
+          size="sm"
+          onClick={handleToggleCancelledVisibility}
+          disabled={loading}
+        >
+          {includeCancelled ? 'Hide cancelled' : 'Show cancelled'}
+        </Button>
+      )}
+      {loading && <Spinner size="sm" />}
+    </div>
+  )
 
   return (
     <PageLayout
@@ -443,7 +478,7 @@ export default function PrivateBookingsClient({
         >
           <Card>
             <DataTable<PrivateBookingDashboardItem>
-              data={bookings}
+              data={visibleBookings}
               getRowKey={(booking) => booking.id}
               loading={loading}
               emptyMessage="No bookings found"
@@ -539,6 +574,13 @@ export default function PrivateBookingsClient({
                   cell: (booking) => (
                     <div className="text-sm text-gray-900">
                       <div>Total: {formatCurrency(toNumber(booking.calculated_total ?? booking.total_amount))}</div>
+                      {booking.final_payment_date ? (
+                        <div className="text-xs text-green-600 font-medium">Fully paid</div>
+                      ) : booking.balance_remaining != null && booking.balance_remaining > 0 ? (
+                        <div className="text-xs text-orange-600 font-medium">
+                          Balance: {formatCurrency(booking.balance_remaining)}
+                        </div>
+                      ) : null}
                       {booking.deposit_paid_date && (
                         <div className="text-xs text-gray-500">
                           Deposit paid {formatDateFull(booking.deposit_paid_date)}
@@ -588,6 +630,15 @@ export default function PrivateBookingsClient({
                         >
                           Cancel
                         </Button>
+                      )}
+                      {booking.status === 'cancelled' && (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); hideBooking(booking.id) }}
+                          className="text-xs text-gray-400 hover:text-gray-600 px-1.5 py-0.5 rounded hover:bg-gray-100"
+                          title="Hide this booking from view"
+                        >
+                          Hide
+                        </button>
                       )}
                       {permissions.hasDeletePermission && (booking.status === 'draft' || booking.status === 'cancelled') && (
                         <DeleteBookingButton
@@ -662,6 +713,13 @@ export default function PrivateBookingsClient({
                       <span className="font-medium">
                         {formatCurrency(toNumber(booking.calculated_total ?? booking.total_amount))}
                       </span>
+                      {booking.final_payment_date ? (
+                        <div className="text-xs text-green-600 font-medium">Fully paid</div>
+                      ) : booking.balance_remaining != null && booking.balance_remaining > 0 ? (
+                        <div className="text-xs text-orange-600 font-medium">
+                          Balance: {formatCurrency(booking.balance_remaining)}
+                        </div>
+                      ) : null}
                     </div>
                   </div>
 
@@ -709,6 +767,14 @@ export default function PrivateBookingsClient({
                         </select>
                         {extendingHoldId === booking.id && <Spinner size="sm" />}
                       </div>
+                    )}
+                    {booking.status === 'cancelled' && (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); hideBooking(booking.id) }}
+                        className="text-xs text-gray-400 hover:text-gray-600 px-2 py-1 rounded hover:bg-gray-100"
+                      >
+                        Hide
+                      </button>
                     )}
                     {permissions.hasDeletePermission && (booking.status === 'draft' || booking.status === 'cancelled') && (
                       <DeleteBookingButton

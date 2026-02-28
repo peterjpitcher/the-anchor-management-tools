@@ -210,6 +210,16 @@ export interface PrivateBookingAuditWithUser extends PrivateBookingAudit {
   }
 }
 
+export interface PrivateBookingPayment {
+  id: string
+  booking_id: string
+  amount: number
+  method: PaymentMethod
+  notes?: string
+  recorded_by?: string
+  created_at: string
+}
+
 // Extended types with relations
 export interface PrivateBookingWithDetails extends PrivateBooking {
   items?: PrivateBookingItem[]
@@ -226,6 +236,7 @@ export interface PrivateBookingWithDetails extends PrivateBooking {
   sms_queue?: PrivateBookingSmsQueue[]
   documents?: PrivateBookingDocument[]
   audit_trail?: PrivateBookingAuditWithUser[]
+  payments?: PrivateBookingPayment[]
 }
 
 // Form types for creating/updating

@@ -70,6 +70,7 @@ import type {
   VenueSpace,
   Vendor,
   PrivateBookingItem,
+  PrivateBookingPayment,
 } from "@/types/private-bookings";
 // New UI components
 import { PageLayout } from "@/components/ui-v2/layout/PageLayout";
@@ -227,6 +228,7 @@ interface PaymentModalProps {
   bookingId: string;
   type: "deposit" | "final";
   amount: number;
+  maxAmount?: number;
   onSuccess: () => void;
 }
 
@@ -236,6 +238,7 @@ function PaymentModal({
   bookingId,
   type,
   amount,
+  maxAmount,
   onSuccess,
 }: PaymentModalProps) {
   const [paymentMethod, setPaymentMethod] = useState<
@@ -243,21 +246,39 @@ function PaymentModal({
   >("card");
   const [customAmount, setCustomAmount] = useState(amount.toFixed(2));
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [amountError, setAmountError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!isOpen) return;
     setCustomAmount(Number.isFinite(amount) ? amount.toFixed(2) : "0.00");
+    setAmountError(null);
   }, [amount, isOpen]);
+
+  const handleAmountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setCustomAmount(e.target.value);
+    setAmountError(null);
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    if (type === "final") {
+      const parsed = parseFloat(customAmount);
+      if (!Number.isFinite(parsed) || parsed <= 0) {
+        setAmountError("Please enter a valid amount greater than £0.");
+        return;
+      }
+      if (maxAmount !== undefined && parsed > maxAmount + 0.005) {
+        setAmountError(`Amount cannot exceed the remaining balance of £${maxAmount.toFixed(2)}.`);
+        return;
+      }
+    }
+
     setIsSubmitting(true);
 
     const formData = new FormData();
     formData.set("payment_method", paymentMethod);
-    if (type === "deposit") {
-      formData.set("amount", customAmount);
-    }
+    formData.set("amount", customAmount);
 
     const result =
       type === "deposit"
@@ -275,22 +296,25 @@ function PaymentModal({
     <Modal
       open={isOpen}
       onClose={onClose}
-      title={`Record ${type === "deposit" ? "Deposit" : "Final"} Payment`}
+      title={type === "deposit" ? "Record Deposit Payment" : "Record Payment"}
     >
       <Form onSubmit={handleSubmit} className="space-y-4">
-        <FormGroup label={type === "deposit" ? "Payment Amount (£)" : "Balance Due (£)"}>
+        <FormGroup label="Payment Amount (£)">
           <Input
             type="number"
             value={customAmount}
-            onChange={type === "deposit" ? (e) => setCustomAmount(e.target.value) : undefined}
+            onChange={type === "deposit" ? (e) => setCustomAmount(e.target.value) : handleAmountChange}
             step="0.01"
-            min="0"
-            required={type === "deposit"}
-            disabled={type === "final"}
+            min="0.01"
+            max={type === "final" && maxAmount !== undefined ? maxAmount.toFixed(2) : undefined}
+            required
           />
-          {type === "final" && (
+          {amountError && (
+            <p className="mt-1 text-xs text-red-600">{amountError}</p>
+          )}
+          {type === "final" && maxAmount !== undefined && (
             <p className="mt-2 text-xs text-gray-500">
-              Amount is based on the current balance due for this booking.
+              Remaining balance: £{maxAmount.toFixed(2)}. You may record a partial payment.
             </p>
           )}
         </FormGroup>
@@ -2188,47 +2212,81 @@ export default function PrivateBookingDetailClient({
                   </p>
                 </div>
 
-                <div className="flex justify-between items-start">
-                  <div className="flex-1">
-                    <p className="text-sm font-medium text-gray-700">
-                      Balance Due
-                    </p>
-                    <p className="text-xs text-gray-500">
-                      For booking items only
-                    </p>
-                    {booking.balance_due_date && (
-                      <p className="text-xs text-gray-500">
-                        Due by {formatDateFull(booking.balance_due_date)}
-                      </p>
-                    )}
-                  </div>
-                  <div className="text-right">
-                    <p className="text-sm font-medium text-gray-900">
-                      {isDateTbd ? 'To be confirmed' : formatMoney(calculateTotal())}
-                    </p>
-                    {!isDateTbd && !booking.final_payment_date && calculateTotal() > 0 && canManageDeposits && (
-                      <button
-                        onClick={() => setShowFinalModal(true)}
-                        className="mt-1 text-xs px-2 py-1 bg-green-600 text-white rounded hover:bg-green-700"
-                      >
-                        Record Payment
-                      </button>
-                    )}
-                  </div>
-                </div>
+                {(() => {
+                  const payments: PrivateBookingPayment[] = booking.payments ?? [];
+                  const totalPaid = payments.reduce((sum, p) => sum + (p.amount ?? 0), 0);
+                  const bookingTotal = calculateTotal();
+                  // Security deposit is a returnable bond — not deducted from the event cost
+                  const remaining = Math.max(0, bookingTotal - totalPaid);
+                  return (
+                    <>
+                      <div className="flex justify-between items-start">
+                        <div className="flex-1">
+                          <p className="text-sm font-medium text-gray-700">
+                            Balance Due
+                          </p>
+                          <p className="text-xs text-gray-500">
+                            For booking items only
+                          </p>
+                          {booking.balance_due_date && (
+                            <p className="text-xs text-gray-500">
+                              Due by {formatDateFull(booking.balance_due_date)}
+                            </p>
+                          )}
+                        </div>
+                        <div className="text-right">
+                          {isDateTbd ? (
+                            <p className="text-sm font-medium text-gray-900">To be confirmed</p>
+                          ) : (
+                            <>
+                              {totalPaid > 0 && !booking.final_payment_date && (
+                                <p className="text-xs text-gray-500 mb-0.5">
+                                  {formatMoney(totalPaid)} of {formatMoney(bookingTotal)} paid
+                                </p>
+                              )}
+                              <p className="text-sm font-medium text-gray-900">
+                                {booking.final_payment_date ? formatMoney(0) : formatMoney(remaining)}
+                              </p>
+                            </>
+                          )}
+                          {!isDateTbd && !booking.final_payment_date && remaining > 0 && canManageDeposits && (
+                            <button
+                              onClick={() => setShowFinalModal(true)}
+                              className="mt-1 text-xs px-2 py-1 bg-green-600 text-white rounded hover:bg-green-700"
+                            >
+                              Record Payment
+                            </button>
+                          )}
+                        </div>
+                      </div>
 
-                {booking.final_payment_date && (
-                  <div className="pt-3 border-t">
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm text-green-600 font-medium">
-                        ✓ Fully Paid
-                      </span>
-                      <span className="text-xs text-gray-500">
-                        {formatDateFull(booking.final_payment_date)}
-                      </span>
-                    </div>
-                  </div>
-                )}
+                      {payments.length > 0 && (
+                        <div className="mt-3 pt-3 border-t space-y-1">
+                          <p className="text-xs font-medium text-gray-500 mb-1">Payment history</p>
+                          {payments.map((p) => (
+                            <div key={p.id} className="flex items-center justify-between text-xs text-gray-600">
+                              <span>{formatDateFull(p.created_at)} — {p.method}</span>
+                              <span className="font-medium">{formatMoney(p.amount)}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {booking.final_payment_date && (
+                        <div className="pt-3 border-t">
+                          <div className="flex items-center justify-between">
+                            <span className="text-sm text-green-600 font-medium">
+                              ✓ Fully Paid
+                            </span>
+                            <span className="text-xs text-gray-500">
+                              {formatDateFull(booking.final_payment_date)}
+                            </span>
+                          </div>
+                        </div>
+                      )}
+                    </>
+                  );
+                })()}
               </div>
             </Card>
           </Section>
@@ -2342,16 +2400,23 @@ export default function PrivateBookingDetailClient({
         />
       )}
 
-      {canManageDeposits && (
-        <PaymentModal
-          open={showFinalModal}
-          onClose={() => setShowFinalModal(false)}
-          bookingId={bookingId}
-          type="final"
-          amount={calculateTotal()}
-          onSuccess={refreshBooking}
-        />
-      )}
+      {canManageDeposits && (() => {
+        const payments: PrivateBookingPayment[] = booking?.payments ?? [];
+        const totalPaid = payments.reduce((sum, p) => sum + (p.amount ?? 0), 0);
+        // Security deposit is a returnable bond — not deducted from the event cost
+        const remaining = Math.max(0, calculateTotal() - totalPaid);
+        return (
+          <PaymentModal
+            open={showFinalModal}
+            onClose={() => setShowFinalModal(false)}
+            bookingId={bookingId}
+            type="final"
+            amount={remaining}
+            maxAmount={remaining}
+            onSuccess={refreshBooking}
+          />
+        );
+      })()}
 
       {canEdit && (
         <StatusModal
