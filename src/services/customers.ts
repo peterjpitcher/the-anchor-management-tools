@@ -21,9 +21,20 @@ function sanitizeEmail(email: string | undefined): string | null {
   return normalized.length > 0 ? normalized : null;
 }
 
+// Capitalise first letter of each word (handles hyphens and apostrophes).
+// Does not force-lowercase existing letters so abbreviations like "JR" are preserved.
+function capitaliseName(name: string): string {
+  return name.replace(/(?:^|[\s\-'])(\S)/g, c => c.toUpperCase());
+}
+
+function sanitizeFirstName(firstName: string | undefined): string {
+  const trimmed = firstName?.trim() || '';
+  return capitaliseName(trimmed);
+}
+
 function sanitizeLastName(lastName: string | undefined): string {
-  const normalized = lastName?.trim() || '';
-  return normalized.length > 0 ? normalized : 'Guest';
+  const trimmed = lastName?.trim() || '';
+  return capitaliseName(trimmed);
 }
 
 function toCanonicalPhoneSetFromRows(rows: CustomerPhoneLookupRow[]): Set<string> {
@@ -135,7 +146,7 @@ export class CustomerService {
     }
 
     const payload = {
-      first_name: input.first_name,
+      first_name: sanitizeFirstName(input.first_name),
       last_name: sanitizeLastName(input.last_name),
       mobile_number: mobileNumber,
       mobile_e164: mobileNumber,
@@ -192,6 +203,9 @@ export class CustomerService {
     }
     if (input.email !== undefined) {
       payload.email = sanitizeEmail(input.email);
+    }
+    if (input.first_name !== undefined) {
+      payload.first_name = sanitizeFirstName(input.first_name);
     }
     if (input.last_name !== undefined) {
       payload.last_name = sanitizeLastName(input.last_name);
@@ -272,7 +286,7 @@ export class CustomerService {
     let duplicateInFileCount = 0;
 
     for (const c of customers) {
-      if (!c.first_name || !c.mobile_number) {
+      if ((!c.first_name && !c.last_name) || !c.mobile_number) {
         invalidCount++;
         continue;
       }
@@ -340,7 +354,7 @@ export class CustomerService {
 
     // Batch Insert
     const insertPayload = newCustomers.map((customer) => ({
-      first_name: customer.first_name,
+      first_name: sanitizeFirstName(customer.first_name),
       last_name: sanitizeLastName(customer.last_name),
       mobile_number: customer.mobile_number,
       mobile_e164: customer.mobile_number,

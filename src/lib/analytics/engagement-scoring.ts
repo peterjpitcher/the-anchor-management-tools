@@ -20,9 +20,9 @@ type EventRelationRecord = {
 
 type EventRelation = EventRelationRecord | EventRelationRecord[] | null
 
-function normalizeEventType(input?: string | null): string {
+function normalizeEventType(input?: string | null): string | null {
   const trimmed = input?.trim()
-  return trimmed && trimmed.length > 0 ? trimmed : 'Uncategorized'
+  return trimmed && trimmed.length > 0 ? trimmed : null
 }
 
 function chunkArray<T>(input: T[], size: number): T[][] {
@@ -40,7 +40,7 @@ function parseTimestampMs(value: string | null): number | null {
   return Number.isFinite(parsed) ? parsed : null
 }
 
-function resolveEventType(relation: EventRelation): string {
+function resolveEventType(relation: EventRelation): string | null {
   const eventRecord = Array.isArray(relation) ? relation[0] : relation
   return normalizeEventType(eventRecord?.event_type)
 }
@@ -225,7 +225,8 @@ export async function recalculateEngagementScoresAndLabels(
       bucket.scoredBookingTimestampsMs.push(createdAtMs)
     }
 
-    bucket.interestEventTypes.add(resolveEventType(row.event || null))
+    const eventType = resolveEventType(row.event || null)
+    if (eventType) bucket.interestEventTypes.add(eventType)
   }
 
   const tableBookingRows = (tableBookingsResult.data || []) as Array<{
@@ -271,7 +272,8 @@ export async function recalculateEngagementScoresAndLabels(
   for (const row of waitlistRows) {
     if (!row.customer_id) continue
     const bucket = getOrCreateBucket(bucketByCustomer, row.customer_id)
-    bucket.interestEventTypes.add(resolveEventType(row.event || null))
+    const eventType = resolveEventType(row.event || null)
+    if (eventType) bucket.interestEventTypes.add(eventType)
   }
 
   const scoreRows: Array<{
@@ -361,12 +363,25 @@ export async function recalculateEngagementScoresAndLabels(
     .map((name) => labelIdByName.get(name))
     .filter((id): id is string => Boolean(id))
 
-  if (managedLabelIds.length > 0) {
+  // Delete ALL auto-assigned analytics labels (not just labels in the current run),
+  // so stale labels from previous runs (e.g. "Interested: Uncategorized") are also cleaned up.
+  const { data: allSystemLabels, error: systemLabelsError } = await supabase
+    .from('customer_labels')
+    .select('id')
+    .contains('auto_apply_rules', { system: 'v05_analytics_scoring' })
+
+  if (systemLabelsError) {
+    throw systemLabelsError
+  }
+
+  const allSystemLabelIds = (allSystemLabels || []).map((l: any) => l.id)
+
+  if (allSystemLabelIds.length > 0) {
     const { error: deleteError } = await supabase
       .from('customer_label_assignments')
       .delete()
       .eq('auto_assigned', true)
-      .in('label_id', managedLabelIds)
+      .in('label_id', allSystemLabelIds)
 
     if (deleteError) {
       throw deleteError

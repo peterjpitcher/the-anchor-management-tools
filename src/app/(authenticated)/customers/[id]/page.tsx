@@ -9,7 +9,7 @@ import { usePermissions } from '@/contexts/PermissionContext'
 import type { Customer, Message } from '@/types/database'
 import { toggleCustomerSmsOptIn, getCustomerMessages, getCustomerSmsStats } from '@/app/actions/customerSmsActions'
 import { markMessagesAsRead } from '@/app/actions/messageActions'
-import { updateCustomer as updateCustomerAction } from '@/app/actions/customers'
+import { updateCustomer as updateCustomerAction, updateCustomerNotes } from '@/app/actions/customers'
 import { getCustomerLabelAssignments, getCustomerLabels, type CustomerLabel, type CustomerLabelAssignment } from '@/app/actions/customer-labels'
 import { PageLayout } from '@/components/ui-v2/layout/PageLayout'
 import { Card, CardDescription, CardTitle } from '@/components/ui-v2/layout/Card'
@@ -37,7 +37,8 @@ const CUSTOMER_DETAIL_SELECT = `
   last_sms_failure_reason,
   last_successful_sms_at,
   sms_deactivated_at,
-  sms_deactivation_reason
+  sms_deactivation_reason,
+  internal_notes
 `
 
 type BookingSource = 'event' | 'table' | 'private' | 'parking'
@@ -244,6 +245,9 @@ export default function CustomerViewPage() {
   const [availableLabels, setAvailableLabels] = useState<CustomerLabel[]>([])
   const [customerLabelAssignments, setCustomerLabelAssignments] = useState<CustomerLabelAssignment[]>([])
   const [isEditingCustomer, setIsEditingCustomer] = useState(false)
+  const [notesValue, setNotesValue] = useState('')
+  const [isEditingNotes, setIsEditingNotes] = useState(false)
+  const [isSavingNotes, setIsSavingNotes] = useState(false)
   const [bookingSearch, setBookingSearch] = useState('')
   const [bookingTypeFilter, setBookingTypeFilter] = useState<BookingSource | 'all'>('all')
   const [bookingStatusFilter, setBookingStatusFilter] = useState('all')
@@ -296,7 +300,7 @@ export default function CustomerViewPage() {
         customerLabelsResult,
         customerAssignmentsResult,
       ] = await Promise.all([
-        supabase
+        (supabase as any)
           .from('customers')
           .select(CUSTOMER_DETAIL_SELECT)
           .eq('id', customerId)
@@ -368,7 +372,9 @@ export default function CustomerViewPage() {
       if (!customerData) {
         throw new Error('Customer not found')
       }
-      setCustomer(customerData)
+      const typedCustomer = customerData as Customer
+      setCustomer(typedCustomer)
+      setNotesValue(typedCustomer.internal_notes ?? '')
 
       if (tableBookingsError) {
         console.error('Failed to load customer table bookings:', tableBookingsError)
@@ -571,6 +577,25 @@ export default function CustomerViewPage() {
     } catch (error) {
       console.error('Error updating customer:', error)
       toast.error('Failed to update customer')
+    }
+  }
+
+  const handleSaveNotes = async () => {
+    if (!customer) return
+    setIsSavingNotes(true)
+    try {
+      const result = await updateCustomerNotes(customer.id, notesValue)
+      if (result.error) {
+        toast.error(result.error)
+        return
+      }
+      setCustomer({ ...customer, internal_notes: notesValue.trim() || null })
+      setIsEditingNotes(false)
+      toast.success('Notes saved')
+    } catch {
+      toast.error('Failed to save notes')
+    } finally {
+      setIsSavingNotes(false)
     }
   }
 
@@ -1034,6 +1059,59 @@ export default function CustomerViewPage() {
                     setCustomerLabelAssignments(updatedAssignments)
                   }}
                 />
+              </Card>
+            )}
+
+            {canManageCustomers && (
+              <Card
+                header={
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <CardTitle>Internal Notes</CardTitle>
+                      <CardDescription>Visible to staff only, not shared with the customer.</CardDescription>
+                    </div>
+                    {!isEditingNotes && (
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        onClick={() => setIsEditingNotes(true)}
+                      >
+                        Edit
+                      </Button>
+                    )}
+                  </div>
+                }
+              >
+                {isEditingNotes ? (
+                  <div className="space-y-3">
+                    <textarea
+                      className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 placeholder-gray-400 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                      rows={4}
+                      value={notesValue}
+                      onChange={(e) => setNotesValue(e.target.value)}
+                      placeholder="Add internal notes about this customer..."
+                    />
+                    <div className="flex gap-2">
+                      <Button size="sm" onClick={handleSaveNotes} disabled={isSavingNotes}>
+                        {isSavingNotes ? 'Saving...' : 'Save'}
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        onClick={() => {
+                          setNotesValue(customer.internal_notes ?? '')
+                          setIsEditingNotes(false)
+                        }}
+                      >
+                        Cancel
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-sm text-gray-700 whitespace-pre-wrap">
+                    {customer.internal_notes || <span className="text-gray-400 italic">No notes added</span>}
+                  </p>
+                )}
               </Card>
             )}
 
