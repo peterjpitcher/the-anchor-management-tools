@@ -12,7 +12,8 @@ import type {
   BookingStatus,
   BookingItemFormData,
   PrivateBookingWithDetails,
-  PrivateBookingAuditWithUser
+  PrivateBookingAuditWithUser,
+  PrivateBookingPayment
 } from '@/types/private-bookings';
 import { z } from 'zod'; // Import z for schemas
 
@@ -1405,30 +1406,71 @@ export class PrivateBookingService {
     return smsSideEffects.length > 0 ? { success: true, smsSideEffects } : { success: true };
   }
 
-  static async recordFinalPayment(bookingId: string, method: string, performedByUserId?: string) {
+  static async recordBalancePayment(bookingId: string, amount: number, method: string, performedByUserId?: string) {
     const supabase = await createClient();
 
     const { data: booking, error: fetchError } = await supabase
       .from('private_bookings')
-      .select('id, customer_first_name, customer_last_name, customer_name, event_date, start_time, end_time, end_time_next_day, contact_phone, customer_id, calendar_event_id, status, guest_count, event_type, deposit_paid_date')
+      .select('id, customer_first_name, customer_last_name, customer_name, event_date, start_time, end_time, end_time_next_day, contact_phone, customer_id, calendar_event_id, status, guest_count, event_type, deposit_paid_date, deposit_amount, total_amount')
       .eq('id', bookingId)
       .single();
 
     if (fetchError || !booking) throw new Error('Booking not found');
 
-    const { data: updatedBooking, error } = await supabase
-      .from('private_bookings')
-      .update({
-        final_payment_date: new Date().toISOString(),
-        final_payment_method: method,
-        updated_at: new Date().toISOString()
-      })
-      .eq('id', bookingId)
-      .select()
-      .maybeSingle();
+    // Insert the payment record
+    const { error: insertError } = await supabase
+      .from('private_booking_payments')
+      .insert({
+        booking_id: bookingId,
+        amount,
+        method,
+        recorded_by: performedByUserId ?? null,
+      });
 
-    if (error) throw new Error('Failed to record final payment');
-    if (!updatedBooking) throw new Error('Booking not found');
+    if (insertError) throw new Error('Failed to record payment');
+
+    // Calculate total paid so far (sum of all balance payments)
+    const { data: paymentsSum, error: sumError } = await supabase
+      .from('private_booking_payments')
+      .select('amount')
+      .eq('booking_id', bookingId);
+
+    if (sumError) throw new Error('Failed to calculate payments total');
+
+    const totalBalancePaid = (paymentsSum ?? []).reduce((sum, p) => sum + toNumber(p.amount), 0);
+
+    // Determine the booking total from items
+    const { data: itemsData } = await supabase
+      .from('private_booking_items')
+      .select('line_total')
+      .eq('booking_id', bookingId);
+
+    // Security deposit is a returnable bond — it does NOT reduce the event cost
+    const itemsTotal = (itemsData ?? []).reduce((sum, item) => sum + toNumber(item.line_total), 0);
+    const remainingBalance = itemsTotal - totalBalancePaid;
+
+    const isFullyPaid = remainingBalance <= 0;
+
+    let updatedBooking: typeof booking | null = null;
+    if (isFullyPaid) {
+      const { data, error } = await supabase
+        .from('private_bookings')
+        .update({
+          final_payment_date: new Date().toISOString(),
+          final_payment_method: method,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', bookingId)
+        .select()
+        .maybeSingle();
+
+      if (error) throw new Error('Failed to update booking payment status');
+      updatedBooking = data;
+    }
+
+    if (!isFullyPaid) {
+      return { success: true };
+    }
 
     const smsSideEffects: PrivateBookingSmsSideEffectSummary[] = []
 
@@ -1713,27 +1755,46 @@ export class PrivateBookingService {
 
     const bookingIds = (data || []).map((booking) => booking.id).filter(Boolean);
     const holdExpiryById = new Map<string, string | null>();
+    const paymentSumById = new Map<string, number>();
 
     if (bookingIds.length > 0) {
-      const { data: holdExpiryRows, error: holdExpiryError } = await supabase
-        .from('private_bookings')
-        .select('id, hold_expiry')
-        .in('id', bookingIds);
+      const [holdExpiryResult, paymentsResult] = await Promise.all([
+        supabase
+          .from('private_bookings')
+          .select('id, hold_expiry')
+          .in('id', bookingIds),
+        supabase
+          .from('private_booking_payments')
+          .select('booking_id, amount')
+          .in('booking_id', bookingIds),
+      ]);
 
-      if (holdExpiryError) {
-        console.error('Error fetching hold expiry dates for private bookings:', holdExpiryError);
-      } else if (holdExpiryRows) {
-        for (const row of holdExpiryRows) {
+      if (holdExpiryResult.error) {
+        console.error('Error fetching hold expiry dates for private bookings:', holdExpiryResult.error);
+      } else if (holdExpiryResult.data) {
+        for (const row of holdExpiryResult.data) {
           holdExpiryById.set(row.id, row.hold_expiry ?? null);
+        }
+      }
+
+      if (paymentsResult.data) {
+        for (const row of paymentsResult.data) {
+          paymentSumById.set(row.booking_id, (paymentSumById.get(row.booking_id) ?? 0) + toNumber(row.amount));
         }
       }
     }
 
-    const enriched = (data || []).map((booking) => ({
-      ...booking,
-      hold_expiry: holdExpiryById.get(booking.id) ?? undefined,
-      is_date_tbd: Boolean(booking.internal_notes?.includes(DATE_TBD_NOTE)),
-    }));
+    const enriched = (data || []).map((booking) => {
+      const bookingTotal = toNumber(booking.calculated_total ?? booking.total_amount);
+      const paymentSum = paymentSumById.get(booking.id) ?? 0;
+      const balanceRemaining = booking.final_payment_date ? 0 : Math.max(0, bookingTotal - paymentSum);
+      return {
+        ...booking,
+        hold_expiry: holdExpiryById.get(booking.id) ?? undefined,
+        is_date_tbd: Boolean(booking.internal_notes?.includes(DATE_TBD_NOTE)),
+        balance_remaining: balanceRemaining,
+      };
+    });
 
     return { data: enriched as PrivateBookingWithDetails[], totalCount };
   }
@@ -1791,6 +1852,7 @@ export class PrivateBookingService {
         ),
         documents:private_booking_documents(*),
         sms_queue:private_booking_sms_queue(*),
+        payments:private_booking_payments(*),
         audits:private_booking_audit(
           id,
           booking_id,
@@ -1809,6 +1871,7 @@ export class PrivateBookingService {
         )
       `)
       .order('display_order', { ascending: true, foreignTable: 'private_booking_items' })
+      .order('created_at', { ascending: true, foreignTable: 'private_booking_payments' })
       .order('performed_at', { ascending: false, foreignTable: 'private_booking_audit' })
       .eq('id', id)
       .maybeSingle();
@@ -1824,9 +1887,11 @@ export class PrivateBookingService {
 
     const {
       audits: auditsData,
+      payments: paymentsData,
       ...bookingCore
     } = data as typeof data & {
       audits?: PrivateBookingAuditWithUser[];
+      payments?: PrivateBookingPayment[];
     };
 
     const items = bookingCore.items ?? [];
@@ -1853,7 +1918,8 @@ export class PrivateBookingService {
       calculated_total: calculatedTotal,
       deposit_status: depositStatus,
       days_until_event: daysUntilEvent,
-      audit_trail: auditTrail
+      audit_trail: auditTrail,
+      payments: (paymentsData ?? []) as PrivateBookingPayment[]
     };
 
     return bookingWithDetails;

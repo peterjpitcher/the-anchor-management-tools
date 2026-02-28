@@ -17,6 +17,7 @@ interface FetchOptions {
 export type PrivateBookingDashboardItem = PrivateBookingWithDetails & {
   is_date_tbd?: boolean
   internal_notes?: string
+  balance_remaining?: number
 }
 
 type CalendarBooking = {

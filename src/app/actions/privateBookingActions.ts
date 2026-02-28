@@ -567,7 +567,7 @@ export async function recordDepositPayment(bookingId: string, formData: FormData
   }
 }
 
-// Record final payment
+// Record a balance payment (partial or full)
 export async function recordFinalPayment(bookingId: string, formData: FormData) {
   const supabase = await createClient()
 
@@ -577,13 +577,20 @@ export async function recordFinalPayment(bookingId: string, formData: FormData) 
   }
 
   const paymentMethod = getString(formData, 'payment_method') as string
+  const amountRaw = getString(formData, 'amount')
+  const amount = amountRaw ? parseFloat(amountRaw) : NaN
+
+  if (!Number.isFinite(amount) || amount <= 0) {
+    return { success: false, error: 'Invalid payment amount' }
+  }
 
   // Get current user
   const { data: { user } } = await supabase.auth.getUser()
 
   try {
-    const result = await PrivateBookingService.recordFinalPayment(
+    const result = await PrivateBookingService.recordBalancePayment(
       bookingId,
+      amount,
       paymentMethod,
       user?.id || undefined
     )
@@ -593,7 +600,7 @@ export async function recordFinalPayment(bookingId: string, formData: FormData) 
     revalidatePath('/dashboard')
     return result
   } catch (error: any) {
-    logger.error('Error recording final payment', {
+    logger.error('Error recording balance payment', {
       error: error instanceof Error ? error : new Error(String(error)),
       metadata: { bookingId }
     })
