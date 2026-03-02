@@ -193,7 +193,7 @@ type SelectedBookingContext = {
 }
 
 type FohStyleVariant = 'default' | 'manager_kiosk'
-type FohCreateMode = 'booking' | 'walk_in'
+type FohCreateMode = 'booking' | 'walk_in' | 'management'
 type WalkInBookingPurpose = 'food' | 'drinks' | 'event'
 
 type WalkInTargetTable = {
@@ -960,10 +960,12 @@ function splitName(fullName: string): { firstName?: string; lastName?: string } 
 export function FohScheduleClient({
   initialDate,
   canEdit,
+  isSuperAdmin = false,
   styleVariant = 'default'
 }: {
   initialDate: string
   canEdit: boolean
+  isSuperAdmin?: boolean
   styleVariant?: FohStyleVariant
 }) {
   const supabase = useMemo(() => createSupabaseClient(), [])
@@ -1542,8 +1544,10 @@ export function FohScheduleClient({
 
   const sundaySelected = isSundayDate(createForm.booking_date)
   const formRequiresDeposit =
-    (createForm.sunday_lunch && sundaySelected) ||
-    (createMode !== 'walk_in' && Number(createForm.party_size) >= 7)
+    createMode !== 'management' && (
+      (createForm.sunday_lunch && sundaySelected) ||
+      (createMode !== 'walk_in' && Number(createForm.party_size) >= 7)
+    )
   const sundayMenuByCategory = useMemo(() => {
     return sundayMenuItems.reduce<Record<string, SundayMenuItem[]>>((acc, item) => {
       const category = item.category_name || 'Other'
@@ -1924,6 +1928,7 @@ export function FohScheduleClient({
     setErrorMessage(null)
     setStatusMessage(null)
     const isWalkIn = createMode === 'walk_in'
+    const isManagement = createMode === 'management'
 
     const bookingDate = createForm.booking_date
     if (!/^\d{4}-\d{2}-\d{2}$/.test(bookingDate)) {
@@ -1949,7 +1954,12 @@ export function FohScheduleClient({
       }))
     }
 
-    if (!isWalkIn && !selectedCustomer && !createForm.phone.trim()) {
+    if (isManagement && !selectedCustomer) {
+      setErrorMessage('Select a customer for management booking')
+      return
+    }
+
+    if (!isWalkIn && !isManagement && !selectedCustomer && !createForm.phone.trim()) {
       setErrorMessage('Select a customer or provide a phone number')
       return
     }
@@ -2108,21 +2118,22 @@ export function FohScheduleClient({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           customer_id: selectedCustomer?.id || undefined,
-          phone: createForm.phone.trim() || undefined,
-          first_name: firstName,
-          last_name: lastName,
+          phone: isManagement ? undefined : createForm.phone.trim() || undefined,
+          first_name: isManagement ? undefined : firstName,
+          last_name: isManagement ? undefined : lastName,
           walk_in: isWalkIn || undefined,
           walk_in_guest_name: isWalkIn ? createForm.customer_name.trim() || undefined : undefined,
+          management_override: isManagement || undefined,
           default_country_code: DEFAULT_COUNTRY_CODE,
           date: bookingDate,
           time: effectiveBookingTime,
           party_size: partySize,
           purpose: createForm.purpose === 'drinks' ? 'drinks' : 'food',
           notes: createForm.notes || undefined,
-          sunday_lunch: createForm.sunday_lunch,
-          sunday_deposit_method: (!isWalkIn && (createForm.sunday_lunch || partySize >= 7)) ? createForm.sunday_deposit_method : undefined,
-          sunday_preorder_mode: createForm.sunday_lunch ? createForm.sunday_preorder_mode : undefined,
-          sunday_preorder_items: sundayPreorderItems.length > 0 ? sundayPreorderItems : undefined
+          sunday_lunch: isManagement ? undefined : createForm.sunday_lunch,
+          sunday_deposit_method: (!isWalkIn && !isManagement && (createForm.sunday_lunch || partySize >= 7)) ? createForm.sunday_deposit_method : undefined,
+          sunday_preorder_mode: (!isManagement && createForm.sunday_lunch) ? createForm.sunday_preorder_mode : undefined,
+          sunday_preorder_items: (!isManagement && sundayPreorderItems.length > 0) ? sundayPreorderItems : undefined
         })
       })
 
@@ -2183,7 +2194,7 @@ export function FohScheduleClient({
           : ''
 
       await reloadSchedule()
-      const bookingLabel = isWalkIn ? 'Walk-in booking' : 'Table booking'
+      const bookingLabel = isManagement ? 'Management booking' : isWalkIn ? 'Walk-in booking' : 'Table booking'
       setStatusMessage(`${bookingLabel} ${bookingRef}${tableText}${walkInTableMoveText} was ${outcome}.${paymentLinkText}${sundayPreorderText}`)
       closeCreateModal()
     } catch (error) {
@@ -2878,11 +2889,47 @@ export function FohScheduleClient({
       <Modal
         open={isCreateModalOpen}
         onClose={closeCreateModal}
-        title={createMode === 'walk_in' ? 'Add walk-in' : 'Add booking'}
+        title={createMode === 'management' ? 'Management booking' : createMode === 'walk_in' ? 'Add walk-in' : 'Add booking'}
         description="Search existing customer by name or phone first. If not found, enter phone details to create a new customer."
         size="lg"
       >
         <form onSubmit={handleCreateBooking} className="space-y-4">
+          {isSuperAdmin && createMode !== 'walk_in' && (
+            <div className="flex items-center gap-2 rounded-md border border-gray-200 bg-gray-50 px-3 py-2">
+              <span className="text-xs font-medium text-gray-700">Mode:</span>
+              <button
+                type="button"
+                onClick={() => setCreateMode('booking')}
+                className={cn(
+                  'rounded px-2.5 py-1 text-xs font-medium',
+                  createMode === 'booking'
+                    ? 'bg-sidebar text-white'
+                    : 'border border-gray-300 text-gray-700 hover:bg-gray-100'
+                )}
+              >
+                Standard
+              </button>
+              <button
+                type="button"
+                onClick={() => setCreateMode('management')}
+                className={cn(
+                  'rounded px-2.5 py-1 text-xs font-medium',
+                  createMode === 'management'
+                    ? 'bg-amber-600 text-white'
+                    : 'border border-gray-300 text-gray-700 hover:bg-gray-100'
+                )}
+              >
+                Management override
+              </button>
+            </div>
+          )}
+
+          {createMode === 'management' && (
+            <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+              Hours, service windows, card capture, and deposit requirements are all bypassed. A customer must be selected. The booking will be confirmed immediately.
+            </div>
+          )}
+
           <div className="rounded-md border border-gray-200 bg-gray-50 p-3">
             <label className="block text-xs font-medium text-gray-700">
               Find existing customer
@@ -2982,7 +3029,7 @@ export function FohScheduleClient({
               </label>
             )}
 
-            {createMode !== 'walk_in' && createForm.purpose !== 'event' && overlappingEventForTable && (
+            {createMode !== 'walk_in' && createMode !== 'management' && createForm.purpose !== 'event' && overlappingEventForTable && (
               <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900 md:col-span-2">
                 <p className="font-semibold">
                   This booking overlaps {overlappingEventForTable.name}.
@@ -3165,7 +3212,7 @@ export function FohScheduleClient({
               </label>
             )}
 
-            {createMode !== 'walk_in' && createForm.purpose !== 'event' && (
+            {createMode !== 'walk_in' && createMode !== 'management' && createForm.purpose !== 'event' && (
               <div className="space-y-2 md:col-span-2">
                 <label className="flex items-center gap-2 text-xs font-medium text-gray-700">
                   <input
@@ -3337,7 +3384,9 @@ export function FohScheduleClient({
 
           <div className="flex flex-wrap items-center justify-between gap-3 border-t border-gray-200 pt-3">
             <p className="text-xs text-gray-500">
-              {createMode === 'walk_in'
+              {createMode === 'management'
+                ? 'Management bookings bypass all restrictions. Recorded as source: management.'
+                : createMode === 'walk_in'
                 ? 'Walk-ins require covers. Guest name and phone are optional.'
                 : createForm.purpose !== 'event'
                 ? 'Sunday lunch and bookings of 7+ people require a GBP 10 per person deposit.'
@@ -3356,7 +3405,7 @@ export function FohScheduleClient({
                 disabled={submittingBooking}
                 className="rounded-md bg-sidebar px-4 py-2 text-sm font-medium text-white hover:bg-sidebar/90 disabled:cursor-not-allowed disabled:opacity-50"
               >
-                {submittingBooking ? 'Creating…' : createMode === 'walk_in' ? 'Create walk-in' : 'Create booking'}
+                {submittingBooking ? 'Creating…' : createMode === 'management' ? 'Create management booking' : createMode === 'walk_in' ? 'Create walk-in' : 'Create booking'}
               </button>
             </div>
           </div>

@@ -50,12 +50,20 @@ const CreateFohTableBookingSchema = z.object({
   sunday_deposit_method: z.enum(['cash', 'payment_link']).optional(),
   sunday_preorder_mode: z.enum(['send_link', 'capture_now']).optional(),
   sunday_preorder_items: z.array(SundayPreorderItemSchema).optional(),
-  default_country_code: z.string().regex(/^\d{1,4}$/).optional()
+  default_country_code: z.string().regex(/^\d{1,4}$/).optional(),
+  management_override: z.boolean().optional()
 }).superRefine((value, context) => {
-  if (!value.customer_id && !value.phone && value.walk_in !== true) {
+  if (!value.customer_id && !value.phone && value.walk_in !== true && value.management_override !== true) {
     context.addIssue({
       code: z.ZodIssueCode.custom,
       message: 'Provide a customer or phone number'
+    })
+  }
+
+  if (value.management_override === true && !value.customer_id) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'Management override requires a selected customer'
     })
   }
 
@@ -76,7 +84,9 @@ const CreateFohTableBookingSchema = z.object({
     }
   }
 
+  // Deposit not required for management overrides — they bypass all booking restrictions
   if (
+    value.management_override !== true &&
     (value.sunday_lunch === true || (value.party_size != null && value.party_size >= 7)) &&
     value.sunday_deposit_method == null
   ) {
@@ -245,6 +255,8 @@ function getWalkInDurationMinutes(input: {
 async function createManualWalkInBookingOverride(params: {
   supabase: any
   customerId: string
+  source?: string   // default: 'walk-in'
+  seatNow?: boolean // default: true
   payload: {
     date: string
     time: string
@@ -513,6 +525,8 @@ async function createManualWalkInBookingOverride(params: {
 
   for (let attempt = 0; attempt < 8; attempt += 1) {
     const bookingReference = buildWalkInBookingReference()
+    const bookingSource = params.source ?? 'walk-in'
+    const seatNow = params.seatNow ?? true
     const { data, error } = await (params.supabase.from('table_bookings') as any)
       .insert({
         customer_id: params.customerId,
@@ -524,12 +538,12 @@ async function createManualWalkInBookingOverride(params: {
         party_size: params.payload.party_size,
         special_requirements: params.payload.notes || null,
         duration_minutes: durationMinutes,
-        source: 'walk-in',
+        source: bookingSource,
         confirmed_at: nowIso,
         booking_purpose: params.payload.purpose,
         committed_party_size: params.payload.party_size,
         card_capture_required: false,
-        seated_at: nowIso,
+        seated_at: seatNow ? nowIso : null,
         start_datetime: startIso,
         end_datetime: endIso,
         created_at: nowIso,
@@ -776,6 +790,63 @@ export async function POST(request: NextRequest) {
   }
 
   const payload = parsed.data
+
+  // Management override: verify caller is super_admin, then bypass all booking rules.
+  if (payload.management_override === true) {
+    const { data: roleRows } = await auth.supabase
+      .from('user_roles')
+      .select('roles(name)')
+      .eq('user_id', auth.userId)
+    const isSuperAdmin = (roleRows as Array<{ roles: { name: string } | null }> | null)
+      ?.some((r) => r.roles?.name === 'super_admin') ?? false
+    if (!isSuperAdmin) {
+      return NextResponse.json({ error: 'Management override requires super_admin role' }, { status: 403 })
+    }
+
+    // Customer must already be resolved (schema enforces customer_id is set)
+    const mgmtCustomerId = payload.customer_id!
+    const bookingTime = payload.time.length === 5 ? `${payload.time}:00` : payload.time
+
+    let mgmtResult: TableBookingRpcResult
+    try {
+      mgmtResult = await createManualWalkInBookingOverride({
+        supabase: auth.supabase,
+        customerId: mgmtCustomerId,
+        source: 'management',
+        seatNow: false,
+        payload: {
+          date: payload.date,
+          time: bookingTime,
+          party_size: payload.party_size,
+          purpose: payload.purpose,
+          notes: payload.notes,
+          sunday_lunch: payload.sunday_lunch
+        }
+      })
+    } catch (mgmtError) {
+      logger.error('Management booking override failed', {
+        error: mgmtError instanceof Error ? mgmtError : new Error('Unknown error'),
+        metadata: { userId: auth.userId, customerId: mgmtCustomerId, bookingDate: payload.date }
+      })
+      return NextResponse.json({ error: 'Failed to create management booking' }, { status: 500 })
+    }
+
+    const responseData: FohCreateBookingResponseData = {
+      state: mgmtResult.state as FohCreateBookingResponseData['state'],
+      table_booking_id: mgmtResult.table_booking_id ?? null,
+      booking_reference: mgmtResult.booking_reference ?? null,
+      reason: mgmtResult.reason ?? null,
+      blocked_reason: mgmtResult.state === 'blocked'
+        ? (mgmtResult.reason as FohCreateBookingResponseData['blocked_reason'] ?? 'blocked')
+        : null,
+      next_step_url: null,
+      hold_expires_at: null,
+      table_name: mgmtResult.table_name ?? null,
+      sunday_preorder_state: 'not_applicable',
+      sunday_preorder_reason: null
+    }
+    return NextResponse.json({ success: true, data: responseData })
+  }
 
   let normalizedPhone: string | null = null
   let customerId: string | null = null
