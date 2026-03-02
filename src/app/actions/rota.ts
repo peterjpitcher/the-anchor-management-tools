@@ -1,6 +1,7 @@
 'use server';
 
 import { createClient } from '@/lib/supabase/server';
+import { createAdminClient } from '@/lib/supabase/admin';
 import { checkUserPermission } from '@/app/actions/rbac';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
@@ -766,12 +767,15 @@ export async function publishRotaWeek(weekId: string): Promise<
     .eq('week_id', weekId)
     .neq('status', 'cancelled');
 
-  // Replace the snapshot for this week atomically
-  await supabase.from('rota_published_shifts').delete().eq('week_id', weekId);
+  // Replace the snapshot for this week atomically.
+  // Must use the admin client — rota_published_shifts has no write RLS policies
+  // for regular users (intentional: only the system should write to this table).
+  const admin = createAdminClient();
+  await admin.from('rota_published_shifts').delete().eq('week_id', weekId);
 
   if (currentShifts?.length) {
     const now = new Date().toISOString();
-    await supabase.from('rota_published_shifts').insert(
+    await admin.from('rota_published_shifts').insert(
       currentShifts.map(s => ({ ...s, published_at: now })),
     );
   }
