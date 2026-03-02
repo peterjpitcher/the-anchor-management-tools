@@ -329,12 +329,14 @@ export async function createTimeclockSession(
   }
 
   const clockInUtc = fromZonedTime(new Date(`${workDate}T${clockInTime}:00`), TIMEZONE);
-  const clockOutUtc = clockOutTime
+  let clockOutUtc = clockOutTime
     ? fromZonedTime(new Date(`${workDate}T${clockOutTime}:00`), TIMEZONE)
     : null;
 
+  // Automatically handle overnight shifts — if clock-out appears to be before
+  // clock-in, assume it crossed midnight and advance by one day.
   if (clockOutUtc && clockOutUtc <= clockInUtc) {
-    return { success: false, error: 'Clock-out must be after clock-in' };
+    clockOutUtc = new Date(clockOutUtc.getTime() + 24 * 60 * 60 * 1000);
   }
 
   const supabase = createAdminClient();
@@ -405,12 +407,14 @@ export async function updateTimeclockSession(
   }
 
   const clockInUtc = fromZonedTime(new Date(`${workDate}T${clockInTime}:00`), TIMEZONE);
-  const clockOutUtc = clockOutTime
+  let clockOutUtc = clockOutTime
     ? fromZonedTime(new Date(`${workDate}T${clockOutTime}:00`), TIMEZONE)
     : null;
 
+  // Automatically handle overnight shifts — if clock-out appears to be before
+  // clock-in, assume it crossed midnight and advance by one day.
   if (clockOutUtc && clockOutUtc <= clockInUtc) {
-    return { success: false, error: 'Clock-out must be after clock-in' };
+    clockOutUtc = new Date(clockOutUtc.getTime() + 24 * 60 * 60 * 1000);
   }
 
   const supabase = createAdminClient();

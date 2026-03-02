@@ -27,10 +27,9 @@ export default async function PayrollPage({ searchParams }: PayrollPageProps) {
   const params = resolvedParams as { year?: string; month?: string };
 
   const today = new Date();
-  // Default to previous month
-  const defaultDate = new Date(today.getFullYear(), today.getMonth() - 1, 1);
-  const year = params.year ? parseInt(params.year) : defaultDate.getFullYear();
-  const month = params.month ? parseInt(params.month) : defaultDate.getMonth() + 1;
+  // Default to current month
+  const year = params.year ? parseInt(params.year) : today.getFullYear();
+  const month = params.month ? parseInt(params.month) : today.getMonth() + 1;
 
   const supabase = await createClient();
 

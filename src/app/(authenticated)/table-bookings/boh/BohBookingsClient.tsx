@@ -889,6 +889,22 @@ export function BohBookingsClient({
     )
   }
 
+  async function handleCopyDepositLink() {
+    if (!selectedBooking) return
+    setActionLoadingKey('copy-deposit-link')
+    try {
+      const response = await fetch(`/api/boh/table-bookings/${selectedBooking.id}/deposit-link`)
+      const data = (await response.json()) as { url?: string; error?: string }
+      if (!response.ok) throw new Error(data.error || 'Failed to generate deposit link')
+      await navigator.clipboard.writeText(data.url!)
+      toast.success('Deposit link copied to clipboard')
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to copy deposit link')
+    } finally {
+      setActionLoadingKey(null)
+    }
+  }
+
   function handleSort(column: SortColumn) {
     setSortColumn((currentColumn) => {
       if (currentColumn === column) {
@@ -1237,6 +1253,16 @@ export function BohBookingsClient({
                   >
                     Cancel Booking
                   </Button>
+                  {selectedBooking.status === 'pending_payment' && (
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      loading={actionLoadingKey === 'copy-deposit-link'}
+                      onClick={() => void handleCopyDepositLink()}
+                    >
+                      Copy deposit link
+                    </Button>
+                  )}
                 </div>
               </div>
             )}
