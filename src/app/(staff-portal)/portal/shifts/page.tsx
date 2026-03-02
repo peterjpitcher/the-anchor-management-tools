@@ -3,6 +3,8 @@ import { redirect } from 'next/navigation';
 import { getEmployeeShifts, getOpenShiftsForPortal } from '@/app/actions/rota';
 import type { RotaShift } from '@/app/actions/rota';
 import { formatTime12Hour } from '@/lib/dateUtils';
+import { generateCalendarToken } from '@/lib/portal/calendar-token';
+import CalendarSubscribeButton from './CalendarSubscribeButton';
 
 export const dynamic = 'force-dynamic';
 
@@ -98,6 +100,10 @@ export default async function MyShiftsPage() {
 
   const empName = [employee.first_name, employee.last_name].filter(Boolean).join(' ') || 'there';
 
+  const baseUrl = (process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000').replace(/\/+$/, '');
+  const calToken = generateCalendarToken(employee.employee_id);
+  const feedUrl = `${baseUrl}/api/portal/calendar-feed?employee_id=${employee.employee_id}&token=${calToken}`;
+
   return (
     <div className="space-y-5">
       <div>
@@ -106,6 +112,8 @@ export default async function MyShiftsPage() {
           Hi {empName} — here are your upcoming published shifts.
         </p>
       </div>
+
+      <CalendarSubscribeButton feedUrl={feedUrl} />
 
       {dates.length === 0 ? (
         <div className="bg-white rounded-xl border border-gray-200 p-6 text-center">

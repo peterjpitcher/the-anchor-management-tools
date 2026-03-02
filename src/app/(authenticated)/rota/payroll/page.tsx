@@ -6,6 +6,7 @@ import { Section } from '@/components/ui-v2/layout/Section';
 import { createClient } from '@/lib/supabase/server';
 import { getPayrollMonthData, getOrCreatePayrollPeriod } from '@/app/actions/payroll';
 import type { PayrollMonthApproval, PayrollPeriod } from '@/app/actions/payroll';
+import { getRotaWeekDayInfo } from '@/app/actions/rota-day-info';
 import PayrollClient from './PayrollClient';
 
 export const dynamic = 'force-dynamic';
@@ -33,6 +34,7 @@ export default async function PayrollPage({ searchParams }: PayrollPageProps) {
 
   const supabase = await createClient();
 
+  // Fetch period first — its start/end dates define the range for day info
   const [payrollResult, approvalResult, period] = await Promise.all([
     getPayrollMonthData(year, month),
     supabase
@@ -43,6 +45,9 @@ export default async function PayrollPage({ searchParams }: PayrollPageProps) {
       .single(),
     getOrCreatePayrollPeriod(year, month),
   ]);
+
+  const payrollPeriod = period as PayrollPeriod;
+  const dayInfo = await getRotaWeekDayInfo(payrollPeriod.period_start, payrollPeriod.period_end);
 
   const monthLabel = new Date(year, month - 1, 1).toLocaleDateString('en-GB', {
     month: 'long', year: 'numeric',
@@ -62,7 +67,6 @@ export default async function PayrollPage({ searchParams }: PayrollPageProps) {
   }
 
   const approval = approvalResult.data as PayrollMonthApproval | null;
-  const payrollPeriod = period as PayrollPeriod;
 
   return (
     <PageLayout
@@ -92,6 +96,7 @@ export default async function PayrollPage({ searchParams }: PayrollPageProps) {
               canApprove={canApprove}
               canSend={canSend}
               monthOptions={monthOptions}
+              dayInfo={dayInfo}
             />
           ) : (
             <p className="text-sm text-red-600">{payrollResult.error}</p>

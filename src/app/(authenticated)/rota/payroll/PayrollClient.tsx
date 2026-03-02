@@ -11,6 +11,7 @@ import { approvePayrollMonth, sendPayrollEmail, updatePayrollPeriod, upsertShift
 import type { PayrollRow } from '@/lib/rota/excel-export';
 import type { PayrollEmployeeSummary } from '@/lib/rota/email-templates';
 import type { PayrollMonthApproval, PayrollPeriod } from '@/app/actions/payroll';
+import type { RotaDayInfo } from '@/app/actions/rota-day-info';
 
 interface PayrollClientProps {
   year: number;
@@ -22,6 +23,55 @@ interface PayrollClientProps {
   canApprove: boolean;
   canSend: boolean;
   monthOptions: { label: string; value: string }[];
+  dayInfo?: Record<string, RotaDayInfo>;
+}
+
+function DayInfoChips({ info }: { info?: RotaDayInfo }) {
+  if (!info) return null;
+  const items: React.ReactNode[] = [];
+
+  for (const note of info.calendarNotes) {
+    items.push(
+      <span key={`note-${note.title}`} className="inline-flex items-center gap-0.5 text-[10px] font-medium" style={{ color: note.color }}>
+        <span className="w-1 h-1 rounded-sm inline-block shrink-0" style={{ backgroundColor: note.color }} />
+        {note.title}
+      </span>
+    );
+  }
+
+  for (const event of info.events) {
+    items.push(
+      <span key={`ev-${event.name}`} className="inline-flex items-center gap-0.5 text-[10px] text-purple-600">
+        <span className="w-1 h-1 rounded-full bg-purple-400 inline-block shrink-0" />
+        {event.name}
+      </span>
+    );
+  }
+
+  for (const pb of info.privateBookings) {
+    items.push(
+      <span key={`pb-${pb.customer_name}`} className="inline-flex items-center gap-0.5 text-[10px] text-rose-600">
+        <span className="w-1 h-1 rounded-full bg-rose-400 inline-block shrink-0" />
+        {pb.customer_name}
+      </span>
+    );
+  }
+
+  if (info.tableCovers > 0) {
+    items.push(
+      <span key="covers" className="inline-flex items-center gap-0.5 text-[10px] text-teal-600">
+        <span className="w-1 h-1 rounded-full bg-teal-400 inline-block shrink-0" />
+        {info.tableCovers} covers
+      </span>
+    );
+  }
+
+  if (!items.length) return null;
+  return (
+    <span className="ml-3 inline-flex flex-wrap items-center gap-x-2 gap-y-0">
+      {items}
+    </span>
+  );
 }
 
 function formatDate(iso: string) {
@@ -84,6 +134,7 @@ export default function PayrollClient({
   canApprove,
   canSend,
   monthOptions,
+  dayInfo,
 }: PayrollClientProps) {
   const router = useRouter();
   const [approval, setApproval] = useState(initialApproval);
@@ -378,6 +429,7 @@ export default function PayrollClient({
                       <td className="px-3 py-2 font-semibold text-gray-800">
                         {formatDate(date)}
                         <span className="ml-2 text-xs font-normal text-gray-400">{dayRows.length} shift{dayRows.length !== 1 ? 's' : ''}</span>
+                        <DayInfoChips info={dayInfo?.[date]} />
                       </td>
                       <td className="px-3 py-2 text-right text-gray-700 font-medium">{dayPlanned.toFixed(1)}h</td>
                       <td className="px-3 py-2 text-right text-gray-700 font-medium">{dayActual > 0 ? `${dayActual.toFixed(1)}h` : '—'}</td>

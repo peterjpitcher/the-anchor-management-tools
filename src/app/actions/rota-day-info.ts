@@ -55,9 +55,11 @@ export async function getRotaWeekDayInfo(
 
   const result: Record<string, RotaDayInfo> = {};
 
-  // Initialise empty entries for each day
+  // Initialise empty entries for each day in the range
   const start = new Date(weekStart + 'T00:00:00');
-  for (let i = 0; i < 7; i++) {
+  const end = new Date(weekEnd + 'T00:00:00');
+  const totalDays = Math.round((end.getTime() - start.getTime()) / (24 * 60 * 60 * 1000)) + 1;
+  for (let i = 0; i < totalDays; i++) {
     const d = new Date(start);
     d.setDate(d.getDate() + i);
     const iso = d.toISOString().split('T')[0];

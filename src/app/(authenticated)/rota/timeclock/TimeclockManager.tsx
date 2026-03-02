@@ -4,8 +4,6 @@ import { useState, useTransition } from 'react';
 import toast from 'react-hot-toast';
 import { useRouter } from 'next/navigation';
 import {
-  ChevronLeftIcon,
-  ChevronRightIcon,
   PencilSquareIcon,
   CheckIcon,
   CheckCircleIcon,
@@ -23,23 +21,11 @@ import { formatTime12Hour } from '@/lib/dateUtils';
 interface TimeclockManagerProps {
   sessions: TimeclockSessionWithEmployee[];
   employees: RotaEmployee[];
-  weekStart: string;
-  weekEnd: string;
-}
-
-function addWeeks(iso: string, n: number): string {
-  const d = new Date(iso + 'T12:00:00Z');
-  d.setUTCDate(d.getUTCDate() + n * 7);
-  return d.toISOString().split('T')[0];
-}
-
-function getMondayOfWeek(date: Date): string {
-  const d = new Date(date);
-  const day = d.getDay();
-  const diff = day === 0 ? -6 : 1 - day;
-  d.setDate(d.getDate() + diff);
-  d.setHours(0, 0, 0, 0);
-  return d.toISOString().split('T')[0];
+  periodStart: string;
+  periodEnd: string;
+  year: number;
+  month: number;
+  monthOptions: { label: string; value: string }[];
 }
 
 function formatDayHeader(iso: string): string {
@@ -48,37 +34,11 @@ function formatDayHeader(iso: string): string {
   });
 }
 
-function formatWeekRange(startIso: string): string {
-  const start = new Date(startIso + 'T00:00:00');
-  const end = new Date(startIso + 'T00:00:00');
-  end.setDate(end.getDate() + 6);
-  const fmt = (d: Date) => d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+function formatPeriodRange(start: string, end: string): string {
+  const fmt = (iso: string) => new Date(iso + 'T00:00:00').toLocaleDateString('en-GB', {
+    day: 'numeric', month: 'short',
+  });
   return `${fmt(start)} – ${fmt(end)}`;
-}
-
-function generateWeekOptions(currentWeekStart: string): Array<{ value: string; label: string }> {
-  const thisMonday = getMondayOfWeek(new Date());
-  const namedSet = new Set([thisMonday, addWeeks(thisMonday, 1), addWeeks(thisMonday, -1)]);
-
-  const options: Array<{ value: string; label: string }> = [
-    { value: thisMonday, label: 'This week' },
-    { value: addWeeks(thisMonday, 1), label: 'Next week' },
-    { value: addWeeks(thisMonday, -1), label: 'Last week' },
-  ];
-
-  // Past weeks going back ~52 weeks, listed by date
-  for (let i = 2; i <= 52; i++) {
-    const mon = addWeeks(thisMonday, -i);
-    options.push({ value: mon, label: formatWeekRange(mon) });
-    namedSet.add(mon);
-  }
-
-  // If the selected week isn't in the list (e.g. far future), insert it after Next week
-  if (!namedSet.has(currentWeekStart)) {
-    options.splice(2, 0, { value: currentWeekStart, label: formatWeekRange(currentWeekStart) });
-  }
-
-  return options;
 }
 
 function durationHours(clockIn: string, clockOut: string | null): string {
@@ -92,7 +52,15 @@ function empName(emp: RotaEmployee): string {
   return [emp.first_name, emp.last_name].filter(Boolean).join(' ') || 'Unknown';
 }
 
-export default function TimeclockManager({ sessions: initialSessions, employees, weekStart, weekEnd }: TimeclockManagerProps) {
+export default function TimeclockManager({
+  sessions: initialSessions,
+  employees,
+  periodStart,
+  periodEnd,
+  year,
+  month,
+  monthOptions,
+}: TimeclockManagerProps) {
   const router = useRouter();
   const [sessions, setSessions] = useState(initialSessions);
   const [showApproved, setShowApproved] = useState(false);
@@ -139,12 +107,11 @@ export default function TimeclockManager({ sessions: initialSessions, employees,
   // Add entry state
   const [showAddForm, setShowAddForm] = useState(false);
   const [addEmployeeId, setAddEmployeeId] = useState('');
-  const [addDate, setAddDate] = useState(weekStart);
+  const [addDate, setAddDate] = useState(periodStart);
   const [addIn, setAddIn] = useState('');
   const [addOut, setAddOut] = useState('');
   const [addNotes, setAddNotes] = useState('');
   const [addPending, startAddTransition] = useTransition();
-
 
   // --- Edit handlers ---
 
@@ -186,7 +153,7 @@ export default function TimeclockManager({ sessions: initialSessions, employees,
       ));
       setShowAddForm(false);
       setAddEmployeeId('');
-      setAddDate(weekStart);
+      setAddDate(periodStart);
       setAddIn('');
       setAddOut('');
       setAddNotes('');
@@ -195,32 +162,19 @@ export default function TimeclockManager({ sessions: initialSessions, employees,
 
   return (
     <div className="space-y-4">
-      {/* Week navigation */}
-      <div className="flex items-center justify-between gap-2">
-        <div className="flex items-center gap-1">
-          <button
-            type="button"
-            onClick={() => router.push(`/rota/timeclock?week=${addWeeks(weekStart, -1)}`)}
-            className="p-1.5 rounded-md text-gray-500 hover:bg-gray-100"
-          >
-            <ChevronLeftIcon className="h-4 w-4" />
-          </button>
+      {/* Pay cycle selector */}
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        <div className="flex items-center gap-2">
           <select
-            value={weekStart}
-            onChange={e => router.push(`/rota/timeclock?week=${e.target.value}`)}
-            className="text-sm font-medium text-gray-700 border border-gray-300 rounded-md px-2 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500"
+            className="text-sm border border-gray-200 rounded-lg px-3 py-1.5 text-gray-700 bg-white"
+            value={`?year=${year}&month=${month}`}
+            onChange={e => { if (e.target.value) router.push(`/rota/timeclock${e.target.value}`); }}
           >
-            {generateWeekOptions(weekStart).map(opt => (
+            {monthOptions.map(opt => (
               <option key={opt.value} value={opt.value}>{opt.label}</option>
             ))}
           </select>
-          <button
-            type="button"
-            onClick={() => router.push(`/rota/timeclock?week=${addWeeks(weekStart, 1)}`)}
-            className="p-1.5 rounded-md text-gray-500 hover:bg-gray-100"
-          >
-            <ChevronRightIcon className="h-4 w-4" />
-          </button>
+          <span className="text-xs text-gray-400">{formatPeriodRange(periodStart, periodEnd)}</span>
         </div>
         <div className="flex items-center gap-3">
           {approvedCount > 0 && (
@@ -239,7 +193,7 @@ export default function TimeclockManager({ sessions: initialSessions, employees,
             size="sm"
             variant="secondary"
             leftIcon={<PlusIcon className="h-4 w-4" />}
-            onClick={() => { setShowAddForm(v => !v); setAddDate(weekStart); }}
+            onClick={() => { setShowAddForm(v => !v); setAddDate(periodStart); }}
           >
             Add entry
           </Button>
@@ -269,6 +223,8 @@ export default function TimeclockManager({ sessions: initialSessions, employees,
               <input
                 type="date"
                 value={addDate}
+                min={periodStart}
+                max={periodEnd}
                 onChange={e => setAddDate(e.target.value)}
                 className="w-full text-sm border border-gray-300 rounded-lg px-2.5 py-1.5 bg-white"
               />
@@ -317,7 +273,7 @@ export default function TimeclockManager({ sessions: initialSessions, employees,
       {visibleSessions.length === 0 ? (
         <p className="text-sm text-gray-400 italic py-6 text-center">
           {sessions.length === 0
-            ? 'No timeclock sessions for this week.'
+            ? 'No timeclock sessions for this pay cycle.'
             : 'All sessions approved. Check "Show approved" to view them.'}
         </p>
       ) : (
@@ -351,165 +307,165 @@ export default function TimeclockManager({ sessions: initialSessions, employees,
                       </td>
                     </tr>,
                     ...rows.map(s => {
-                const isEditing = editingId === s.id;
-                return (
-                  <tr key={s.id} className={`hover:bg-gray-50 ${s.is_reviewed ? 'bg-blue-50/30' : ''}`}>
-                    <td className="px-3 py-2 font-medium text-gray-900">{s.employee_name}</td>
+                      const isEditing = editingId === s.id;
+                      return (
+                        <tr key={s.id} className={`hover:bg-gray-50 ${s.is_reviewed ? 'bg-blue-50/30' : ''}`}>
+                          <td className="px-3 py-2 font-medium text-gray-900">{s.employee_name}</td>
 
-                    {/* Clock In */}
-                    <td className="px-3 py-2">
-                      {isEditing ? (
-                        <input
-                          type="time"
-                          value={editIn}
-                          onChange={e => setEditIn(e.target.value)}
-                          className="border border-gray-300 rounded px-1.5 py-0.5 text-xs w-24"
-                        />
-                      ) : (
-                        <>
-                          <span className="text-gray-800">{formatTime12Hour(s.clock_in_local)}</span>
-                          {s.planned_start && (
-                            <div className="text-[10px] text-gray-400 tabular-nums">
-                              planned {formatTime12Hour(s.planned_start)}
+                          {/* Clock In */}
+                          <td className="px-3 py-2">
+                            {isEditing ? (
+                              <input
+                                type="time"
+                                value={editIn}
+                                onChange={e => setEditIn(e.target.value)}
+                                className="border border-gray-300 rounded px-1.5 py-0.5 text-xs w-24"
+                              />
+                            ) : (
+                              <>
+                                <span className="text-gray-800">{formatTime12Hour(s.clock_in_local)}</span>
+                                {s.planned_start && (
+                                  <div className="text-[10px] text-gray-400 tabular-nums">
+                                    planned {formatTime12Hour(s.planned_start)}
+                                  </div>
+                                )}
+                              </>
+                            )}
+                          </td>
+
+                          {/* Clock Out */}
+                          <td className="px-3 py-2">
+                            {isEditing ? (
+                              <input
+                                type="time"
+                                value={editOut}
+                                onChange={e => setEditOut(e.target.value)}
+                                className="border border-gray-300 rounded px-1.5 py-0.5 text-xs w-24"
+                              />
+                            ) : (
+                              <>
+                                <span className={s.clock_out_at ? 'text-gray-800' : 'text-amber-600 font-medium'}>
+                                  {s.clock_out_local ? formatTime12Hour(s.clock_out_local) : 'Still in'}
+                                </span>
+                                {s.planned_end && (
+                                  <div className="text-[10px] text-gray-400 tabular-nums">
+                                    planned {formatTime12Hour(s.planned_end)}
+                                  </div>
+                                )}
+                              </>
+                            )}
+                          </td>
+
+                          <td className="px-3 py-2 text-right text-gray-600">
+                            {durationHours(s.clock_in_at, s.clock_out_at)}
+                          </td>
+
+                          {/* Flags */}
+                          <td className="px-3 py-2">
+                            <div className="flex flex-wrap gap-1">
+                              {s.is_auto_close && <Badge variant="warning" size="sm">auto-close</Badge>}
+                              {s.is_unscheduled && <Badge variant="error" size="sm">unscheduled</Badge>}
+                              {s.is_reviewed && <Badge variant="success" size="sm">approved</Badge>}
                             </div>
-                          )}
-                        </>
-                      )}
-                    </td>
+                          </td>
 
-                    {/* Clock Out */}
-                    <td className="px-3 py-2">
-                      {isEditing ? (
-                        <input
-                          type="time"
-                          value={editOut}
-                          onChange={e => setEditOut(e.target.value)}
-                          className="border border-gray-300 rounded px-1.5 py-0.5 text-xs w-24"
-                        />
-                      ) : (
-                        <>
-                          <span className={s.clock_out_at ? 'text-gray-800' : 'text-amber-600 font-medium'}>
-                            {s.clock_out_local ? formatTime12Hour(s.clock_out_local) : 'Still in'}
-                          </span>
-                          {s.planned_end && (
-                            <div className="text-[10px] text-gray-400 tabular-nums">
-                              planned {formatTime12Hour(s.planned_end)}
-                            </div>
-                          )}
-                        </>
-                      )}
-                    </td>
+                          {/* Notes */}
+                          <td className="px-3 py-2 max-w-[220px]">
+                            {isEditing ? (
+                              <input
+                                type="text"
+                                value={editNotes}
+                                onChange={e => setEditNotes(e.target.value)}
+                                placeholder="Add a note…"
+                                className="w-full border border-gray-300 rounded px-1.5 py-0.5 text-xs text-gray-700 placeholder-gray-400"
+                              />
+                            ) : (
+                              <span className="text-xs text-gray-500 italic">{s.notes ?? ''}</span>
+                            )}
+                            {s.manager_note && (
+                              <p className="text-[10px] text-gray-400 mt-0.5">
+                                <span className="not-italic font-medium">Imported: </span>{s.manager_note}
+                              </p>
+                            )}
+                          </td>
 
-                    <td className="px-3 py-2 text-right text-gray-600">
-                      {durationHours(s.clock_in_at, s.clock_out_at)}
-                    </td>
-
-                    {/* Flags */}
-                    <td className="px-3 py-2">
-                      <div className="flex flex-wrap gap-1">
-                        {s.is_auto_close && <Badge variant="warning" size="sm">auto-close</Badge>}
-                        {s.is_unscheduled && <Badge variant="error" size="sm">unscheduled</Badge>}
-                        {s.is_reviewed && <Badge variant="success" size="sm">approved</Badge>}
-                      </div>
-                    </td>
-
-                    {/* Notes */}
-                    <td className="px-3 py-2 max-w-[220px]">
-                      {isEditing ? (
-                        <input
-                          type="text"
-                          value={editNotes}
-                          onChange={e => setEditNotes(e.target.value)}
-                          placeholder="Add a note…"
-                          className="w-full border border-gray-300 rounded px-1.5 py-0.5 text-xs text-gray-700 placeholder-gray-400"
-                        />
-                      ) : (
-                        <span className="text-xs text-gray-500 italic">{s.notes ?? ''}</span>
-                      )}
-                      {s.manager_note && (
-                        <p className="text-[10px] text-gray-400 mt-0.5">
-                          <span className="not-italic font-medium">Imported: </span>{s.manager_note}
-                        </p>
-                      )}
-                    </td>
-
-                    {/* Actions */}
-                    <td className="px-3 py-2">
-                      {deletingId === s.id ? (
-                        <div className="flex items-center gap-1.5">
-                          <span className="text-xs text-red-600 font-medium">Delete?</span>
-                          <button
-                            type="button"
-                            onClick={() => handleDelete(s.id)}
-                            disabled={deletePending}
-                            className="p-1 rounded text-red-600 hover:bg-red-50"
-                            title="Confirm delete"
-                          >
-                            <CheckIcon className="h-4 w-4" />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={cancelDelete}
-                            className="p-1 rounded text-gray-400 hover:bg-gray-100"
-                            title="Cancel"
-                          >
-                            <XMarkIcon className="h-4 w-4" />
-                          </button>
-                        </div>
-                      ) : isEditing ? (
-                        <div className="flex gap-1">
-                          <button
-                            type="button"
-                            onClick={() => saveEdit(s)}
-                            disabled={savePending}
-                            className="p-1 rounded text-green-600 hover:bg-green-50"
-                            title="Save"
-                          >
-                            <CheckIcon className="h-4 w-4" />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={cancelEdit}
-                            className="p-1 rounded text-gray-400 hover:bg-gray-100"
-                            title="Cancel"
-                          >
-                            <XMarkIcon className="h-4 w-4" />
-                          </button>
-                        </div>
-                      ) : (
-                        <div className="flex gap-1">
-                          <button
-                            type="button"
-                            onClick={() => startEdit(s)}
-                            className="p-1 rounded text-gray-400 hover:text-gray-600 hover:bg-gray-100"
-                            title="Edit"
-                          >
-                            <PencilSquareIcon className="h-4 w-4" />
-                          </button>
-                          {!s.is_reviewed && (
-                            <button
-                              type="button"
-                              onClick={() => handleApprove(s.id)}
-                              disabled={approvingId === s.id}
-                              className="p-1 rounded text-gray-400 hover:text-green-600 hover:bg-green-50 disabled:opacity-50"
-                              title="Approve"
-                            >
-                              <CheckCircleIcon className="h-4 w-4" />
-                            </button>
-                          )}
-                          <button
-                            type="button"
-                            onClick={() => confirmDelete(s.id)}
-                            className="p-1 rounded text-gray-400 hover:text-red-600 hover:bg-red-50"
-                            title="Delete"
-                          >
-                            <TrashIcon className="h-4 w-4" />
-                          </button>
-                        </div>
-                      )}
-                    </td>
-                  </tr>
-                );
+                          {/* Actions */}
+                          <td className="px-3 py-2">
+                            {deletingId === s.id ? (
+                              <div className="flex items-center gap-1.5">
+                                <span className="text-xs text-red-600 font-medium">Delete?</span>
+                                <button
+                                  type="button"
+                                  onClick={() => handleDelete(s.id)}
+                                  disabled={deletePending}
+                                  className="p-1 rounded text-red-600 hover:bg-red-50"
+                                  title="Confirm delete"
+                                >
+                                  <CheckIcon className="h-4 w-4" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={cancelDelete}
+                                  className="p-1 rounded text-gray-400 hover:bg-gray-100"
+                                  title="Cancel"
+                                >
+                                  <XMarkIcon className="h-4 w-4" />
+                                </button>
+                              </div>
+                            ) : isEditing ? (
+                              <div className="flex gap-1">
+                                <button
+                                  type="button"
+                                  onClick={() => saveEdit(s)}
+                                  disabled={savePending}
+                                  className="p-1 rounded text-green-600 hover:bg-green-50"
+                                  title="Save"
+                                >
+                                  <CheckIcon className="h-4 w-4" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={cancelEdit}
+                                  className="p-1 rounded text-gray-400 hover:bg-gray-100"
+                                  title="Cancel"
+                                >
+                                  <XMarkIcon className="h-4 w-4" />
+                                </button>
+                              </div>
+                            ) : (
+                              <div className="flex gap-1">
+                                <button
+                                  type="button"
+                                  onClick={() => startEdit(s)}
+                                  className="p-1 rounded text-gray-400 hover:text-gray-600 hover:bg-gray-100"
+                                  title="Edit"
+                                >
+                                  <PencilSquareIcon className="h-4 w-4" />
+                                </button>
+                                {!s.is_reviewed && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleApprove(s.id)}
+                                    disabled={approvingId === s.id}
+                                    className="p-1 rounded text-gray-400 hover:text-green-600 hover:bg-green-50 disabled:opacity-50"
+                                    title="Approve"
+                                  >
+                                    <CheckCircleIcon className="h-4 w-4" />
+                                  </button>
+                                )}
+                                <button
+                                  type="button"
+                                  onClick={() => confirmDelete(s.id)}
+                                  className="p-1 rounded text-gray-400 hover:text-red-600 hover:bg-red-50"
+                                  title="Delete"
+                                >
+                                  <TrashIcon className="h-4 w-4" />
+                                </button>
+                              </div>
+                            )}
+                          </td>
+                        </tr>
+                      );
                     }),
                   ];
                 });

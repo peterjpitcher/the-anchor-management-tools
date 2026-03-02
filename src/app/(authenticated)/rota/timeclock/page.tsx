@@ -5,21 +5,13 @@ import { Card } from '@/components/ui-v2/layout/Card';
 import { Section } from '@/components/ui-v2/layout/Section';
 import { getTimeclockSessionsForWeek } from '@/app/actions/timeclock';
 import { getActiveEmployeesForRota } from '@/app/actions/rota';
+import { getOrCreatePayrollPeriod } from '@/app/actions/payroll';
 import TimeclockManager from './TimeclockManager';
 
 export const dynamic = 'force-dynamic';
 
-function getMondayOfWeek(date: Date): string {
-  const d = new Date(date);
-  const day = d.getDay();
-  const diff = day === 0 ? -6 : 1 - day;
-  d.setDate(d.getDate() + diff);
-  d.setHours(0, 0, 0, 0);
-  return d.toISOString().split('T')[0];
-}
-
 interface PageProps {
-  searchParams: Promise<{ week?: string }>;
+  searchParams: Promise<{ year?: string; month?: string }>;
 }
 
 export default async function TimeclockPage({ searchParams }: PageProps) {
@@ -27,17 +19,32 @@ export default async function TimeclockPage({ searchParams }: PageProps) {
   if (!canView) redirect('/');
 
   const params = await searchParams;
-  const weekStart = params.week ?? getMondayOfWeek(new Date());
-  const weekEndDate = new Date(weekStart + 'T00:00:00');
-  weekEndDate.setDate(weekEndDate.getDate() + 6);
-  const weekEnd = weekEndDate.toISOString().split('T')[0];
+  const today = new Date();
+  const year = params.year ? parseInt(params.year) : today.getFullYear();
+  const month = params.month ? parseInt(params.month) : today.getMonth() + 1;
 
-  const [result, employeesResult] = await Promise.all([
-    getTimeclockSessionsForWeek(weekStart, weekEnd),
+  // Fetch the pay period and employees in parallel, then sessions using period dates
+  const [period, employeesResult] = await Promise.all([
+    getOrCreatePayrollPeriod(year, month),
     getActiveEmployeesForRota(),
   ]);
+
+  const result = await getTimeclockSessionsForWeek(period.period_start, period.period_end);
   const sessions = result.success ? result.data : [];
   const employees = employeesResult.success ? employeesResult.data : [];
+
+  // Build month selector options (current year + last year, newest first)
+  const monthOptions: { label: string; value: string }[] = [];
+  for (let y = today.getFullYear(); y >= today.getFullYear() - 1; y--) {
+    for (let m = 12; m >= 1; m--) {
+      const d = new Date(y, m - 1, 1);
+      if (d > today) continue;
+      monthOptions.push({
+        label: d.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' }),
+        value: `?year=${y}&month=${m}`,
+      });
+    }
+  }
 
   return (
     <PageLayout
@@ -56,7 +63,16 @@ export default async function TimeclockPage({ searchParams }: PageProps) {
         description="Edit times to correct mistakes or fill in missed clock-outs before payroll is run."
       >
         <Card>
-          <TimeclockManager key={weekStart} sessions={sessions} employees={employees} weekStart={weekStart} weekEnd={weekEnd} />
+          <TimeclockManager
+            key={`${year}-${month}`}
+            sessions={sessions}
+            employees={employees}
+            periodStart={period.period_start}
+            periodEnd={period.period_end}
+            year={year}
+            month={month}
+            monthOptions={monthOptions}
+          />
         </Card>
       </Section>
     </PageLayout>
