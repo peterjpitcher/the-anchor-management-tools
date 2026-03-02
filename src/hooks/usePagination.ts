@@ -68,7 +68,6 @@ export function usePagination<T>(
   const queryKey = JSON.stringify(query)
   const searchColumnsKey = searchColumns.join(',')
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   const fetchData = useCallback(async () => {
     setIsLoading(true)
     setError(null)
@@ -184,7 +183,6 @@ export function usePagination<T>(
     } finally {
       setIsLoading(false)
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [supabase, tableName, queryKey, currentPage, pageSize, searchTerm, searchColumnsKey, countMode])
 
   useEffect(() => {
