@@ -257,6 +257,94 @@ export async function reviewLeaveRequest(
 }
 
 // ---------------------------------------------------------------------------
+// Book approved holiday directly (manager flow — skips pending review)
+// ---------------------------------------------------------------------------
+
+export async function bookApprovedHoliday(input: {
+  employeeId: string;
+  startDate: string;
+  endDate: string;
+  note?: string | null;
+}): Promise<
+  { success: true; leaveDays: { employee_id: string; leave_date: string; request_id: string; status: 'approved' }[] } |
+  { success: false; error: string }
+> {
+  const parsed = SubmitLeaveSchema.safeParse(input);
+  if (!parsed.success) return { success: false, error: parsed.error.message };
+
+  const canCreate = await checkUserPermission('leave', 'create');
+  if (!canCreate) return { success: false, error: 'Permission denied' };
+
+  const { startDate, endDate, employeeId, note } = parsed.data;
+
+  if (new Date(endDate) < new Date(startDate)) {
+    return { success: false, error: 'End date must be on or after start date' };
+  }
+
+  const supabase = await createClient();
+
+  // Check for overlapping non-declined requests
+  const { data: overlapping } = await supabase
+    .from('leave_requests')
+    .select('id')
+    .eq('employee_id', employeeId)
+    .neq('status', 'declined')
+    .lte('start_date', endDate)
+    .gte('end_date', startDate);
+  if (overlapping && overlapping.length > 0) {
+    return { success: false, error: 'Employee already has leave covering some of these dates' };
+  }
+
+  const { holidayYearStartMonth, holidayYearStartDay } = await getRotaSettings();
+  const holidayYear = getHolidayYear(parseISO(startDate), holidayYearStartMonth, holidayYearStartDay);
+  const { data: { user } } = await supabase.auth.getUser();
+
+  const { data: request, error: reqError } = await supabase
+    .from('leave_requests')
+    .insert({
+      employee_id: employeeId,
+      start_date: startDate,
+      end_date: endDate,
+      note: note ?? null,
+      holiday_year: holidayYear,
+      status: 'approved',
+      reviewed_by: user?.id ?? null,
+      reviewed_at: new Date().toISOString(),
+      created_by: user?.id ?? null,
+    })
+    .select('*')
+    .single();
+
+  if (reqError) return { success: false, error: reqError.message };
+
+  const days = eachDayOfInterval({ start: parseISO(startDate), end: parseISO(endDate) });
+  const dayRows = days.map(d => ({
+    request_id: request.id,
+    employee_id: employeeId,
+    leave_date: d.toISOString().split('T')[0],
+  }));
+
+  await supabase.from('leave_days').upsert(dayRows, { onConflict: 'employee_id,leave_date', ignoreDuplicates: true });
+
+  void logAuditEvent({
+    user_id: user?.id,
+    operation_type: 'create',
+    resource_type: 'leave_request',
+    resource_id: request.id,
+    operation_status: 'success',
+    new_values: { employee_id: employeeId, start_date: startDate, end_date: endDate, status: 'approved' },
+  });
+
+  revalidatePath('/rota');
+  revalidatePath('/rota/leave');
+
+  return {
+    success: true,
+    leaveDays: dayRows.map(r => ({ ...r, status: 'approved' as const })),
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Get leave requests for a manager view
 // ---------------------------------------------------------------------------
 

@@ -1,0 +1,50 @@
+import { NextRequest, NextResponse } from 'next/server'
+import { requireFohPermission } from '@/lib/foh/api-auth'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { createGuestToken } from '@/lib/guest/tokens'
+
+export async function GET(
+  _request: NextRequest,
+  context: { params: Promise<{ id: string }> }
+) {
+  const auth = await requireFohPermission('edit')
+  if (!auth.ok) return auth.response
+
+  const { id } = await context.params
+  const admin = createAdminClient()
+
+  const { data: booking } = await (admin.from('table_bookings') as any)
+    .select('id, customer_id, status, hold_expires_at')
+    .eq('id', id)
+    .maybeSingle()
+
+  if (!booking) {
+    return NextResponse.json({ error: 'Booking not found' }, { status: 404 })
+  }
+
+  if (!booking.customer_id) {
+    return NextResponse.json({ error: 'Booking has no customer' }, { status: 422 })
+  }
+
+  if (booking.status !== 'pending_payment') {
+    return NextResponse.json({ error: 'Booking is not awaiting payment' }, { status: 422 })
+  }
+
+  // Use hold_expires_at if still in the future, otherwise give 24 hours from now
+  const holdExpiry =
+    booking.hold_expires_at && new Date(booking.hold_expires_at) > new Date()
+      ? new Date(booking.hold_expires_at)
+      : new Date(Date.now() + 24 * 60 * 60 * 1000)
+
+  const { rawToken } = await createGuestToken(admin, {
+    customerId: booking.customer_id,
+    actionType: 'payment',
+    tableBookingId: id,
+    expiresAt: holdExpiry.toISOString(),
+  })
+
+  const baseUrl = (process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000').replace(/\/+$/, '')
+  const url = `${baseUrl}/g/${rawToken}/table-payment`
+
+  return NextResponse.json({ url })
+}

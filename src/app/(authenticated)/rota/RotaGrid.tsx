@@ -20,6 +20,7 @@ import {
   CheckCircleIcon,
   ExclamationTriangleIcon,
   PlusIcon,
+  CalendarDaysIcon,
 } from '@heroicons/react/24/outline';
 import { Button } from '@/components/ui-v2/forms/Button';
 import { Badge } from '@/components/ui-v2/display/Badge';
@@ -31,6 +32,7 @@ import type { DepartmentBudget, Department } from '@/app/actions/budgets';
 import type { RotaDayInfo } from '@/app/actions/rota-day-info';
 import ShiftDetailModal from './ShiftDetailModal';
 import CreateShiftModal from './CreateShiftModal';
+import BookHolidayModal from './BookHolidayModal';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -182,6 +184,7 @@ function DroppableCell({
   leaveStatus,
   disabled,
   onAdd,
+  onBookHoliday,
 }: {
   employeeId: string;
   date: string;
@@ -189,6 +192,7 @@ function DroppableCell({
   leaveStatus?: 'approved' | 'pending';
   disabled: boolean;
   onAdd?: () => void;
+  onBookHoliday?: () => void;
 }) {
   const { setNodeRef, isOver } = useDroppable({
     id: `cell:${employeeId}:${date}`,
@@ -210,15 +214,29 @@ function DroppableCell({
         </div>
       )}
       <div className="space-y-0.5 relative z-10">{children}</div>
-      {onAdd && (
-        <button
-          type="button"
-          onClick={onAdd}
-          className="absolute bottom-0.5 right-0.5 p-0.5 rounded text-gray-300 opacity-0 group-hover:opacity-100 hover:!text-gray-600 hover:bg-gray-100 transition-opacity"
-          title="Add shift"
-        >
-          <PlusIcon className="h-3 w-3" />
-        </button>
+      {(onAdd || onBookHoliday) && (
+        <div className="absolute bottom-0.5 right-0.5 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+          {onBookHoliday && (
+            <button
+              type="button"
+              onClick={e => { e.stopPropagation(); onBookHoliday(); }}
+              className="p-0.5 rounded text-gray-300 hover:!text-green-600 hover:bg-green-50"
+              title="Book holiday"
+            >
+              <CalendarDaysIcon className="h-3 w-3" />
+            </button>
+          )}
+          {onAdd && (
+            <button
+              type="button"
+              onClick={e => { e.stopPropagation(); onAdd(); }}
+              className="p-0.5 rounded text-gray-300 hover:!text-gray-600 hover:bg-gray-100"
+              title="Add shift"
+            >
+              <PlusIcon className="h-3 w-3" />
+            </button>
+          )}
+        </div>
       )}
     </div>
   );
@@ -276,9 +294,11 @@ export default function RotaGrid({
 }: RotaGridProps) {
   const router = useRouter();
   const [shifts, setShifts] = useState<RotaShift[]>(initialShifts);
+  const [activeLeaveDays, setActiveLeaveDays] = useState<LeaveDayWithRequest[]>(leaveDays);
   const [activeItem, setActiveItem] = useState<ActiveItem | null>(null);
   const [selectedShift, setSelectedShift] = useState<RotaShift | null>(null);
   const [createTarget, setCreateTarget] = useState<{ employeeId: string; date: string } | null>(null);
+  const [holidayTarget, setHolidayTarget] = useState<{ employeeId: string; date: string } | null>(null);
   const [publishPending, startPublishTransition] = useTransition();
   const [dndPending, startDndTransition] = useTransition();
 
@@ -288,7 +308,7 @@ export default function RotaGrid({
 
   // Build lookup map: "employeeId:date" → leave status (approved or pending only)
   const leaveMap = new Map<string, 'approved' | 'pending'>(
-    leaveDays
+    activeLeaveDays
       .filter(l => l.status !== 'declined')
       .map(l => [`${l.employee_id}:${l.leave_date}`, l.status as 'approved' | 'pending']),
   );
@@ -615,6 +635,7 @@ export default function RotaGrid({
                               leaveStatus={leaveStatus}
                               disabled={!canEdit || isPending}
                               onAdd={canEdit && !isPending ? () => setCreateTarget({ employeeId: emp.employee_id, date: d }) : undefined}
+                              onBookHoliday={canEdit && !isPending ? () => setHolidayTarget({ employeeId: emp.employee_id, date: d }) : undefined}
                             >
                               {cellShifts.map(s => (
                                 <DraggableShiftBlock
@@ -652,7 +673,7 @@ export default function RotaGrid({
         <span className="flex items-center gap-1"><span className="inline-block w-3 h-3 rounded-sm bg-red-100 border border-red-300" /> Sick</span>
         <span className="flex items-center gap-1"><span className="inline-block w-3 h-3 rounded-sm bg-green-100 border border-green-300" /> Holiday (approved)</span>
         <span className="flex items-center gap-1"><span className="inline-block w-3 h-3 rounded-sm bg-amber-100 border border-amber-300" /> Holiday (pending)</span>
-        {canEdit && <span className="text-gray-400">Drag shifts to move them · Click + to add a shift</span>}
+        {canEdit && <span className="text-gray-400">Drag shifts to move them · Hover a cell to add a shift (+) or book holiday (calendar icon)</span>}
       </div>
 
       {/* Shift detail modal */}
@@ -693,6 +714,20 @@ export default function RotaGrid({
               toast.success(shift.is_open_shift ? 'Open shift added' : 'Shift created');
             }
             setCreateTarget(null);
+          }}
+        />
+      )}
+
+      {/* Book holiday modal */}
+      {holidayTarget && (
+        <BookHolidayModal
+          employeeId={holidayTarget.employeeId}
+          employeeName={empDisplayName(employees.find(e => e.employee_id === holidayTarget.employeeId) ?? { employee_id: '', first_name: null, last_name: null, job_title: null, max_weekly_hours: null, is_active: true })}
+          initialDate={holidayTarget.date}
+          onClose={() => setHolidayTarget(null)}
+          onBooked={(days) => {
+            setActiveLeaveDays(prev => [...prev, ...days]);
+            setHolidayTarget(null);
           }}
         />
       )}
