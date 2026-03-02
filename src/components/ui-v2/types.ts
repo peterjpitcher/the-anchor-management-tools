@@ -2,7 +2,7 @@
  * Common types for the component library
  */
 
-import { ReactNode, HTMLAttributes, ButtonHTMLAttributes } from 'react'
+import type { ReactNode, HTMLAttributes, ButtonHTMLAttributes, JSX } from 'react'
 
 // Base component props that all components should extend
 export interface BaseComponentProps {

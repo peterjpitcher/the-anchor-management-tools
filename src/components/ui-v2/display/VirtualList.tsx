@@ -152,7 +152,7 @@ export function VirtualList<T>({
   const scrollElementRef = useRef<HTMLDivElement>(null)
   const [scrollTop, setScrollTop] = useState(0)
   const [isScrolling, setIsScrolling] = useState(false)
-  const scrollTimeoutRef = useRef<NodeJS.Timeout>()
+  const scrollTimeoutRef = useRef<NodeJS.Timeout | undefined>(undefined)
   const lastScrollTopRef = useRef(0)
   const endReachedRef = useRef(false)
   

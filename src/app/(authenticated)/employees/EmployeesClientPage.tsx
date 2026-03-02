@@ -307,6 +307,13 @@ export default function EmployeesClientPage({ initialData, permissions }: Employ
                     cell: (employee: Employee) => employee.job_title ?? <span className="text-gray-400 italic">Not set</span>
                   },
                   {
+                    key: 'portal_account',
+                    header: 'Portal Account',
+                    cell: (employee: Employee) => employee.auth_user_id
+                      ? <Badge variant="success" size="sm">Set up</Badge>
+                      : <Badge variant="default" size="sm">Not set up</Badge>
+                  },
+                  {
                     key: 'email_address',
                     header: 'Email',
                     cell: (employee: Employee) => (
