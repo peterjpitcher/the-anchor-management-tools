@@ -52,6 +52,7 @@ export type TimeclockSession = {
   auto_close_reason: string | null;
   is_reviewed: boolean;
   notes: string | null;
+  manager_note: string | null;
   created_at: string;
   updated_at: string;
 };
