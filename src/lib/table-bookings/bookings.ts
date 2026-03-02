@@ -504,6 +504,7 @@ export async function getTablePaymentPreviewByRawToken(
       id,
       customer_id,
       status,
+      payment_status,
       hold_expires_at,
       party_size,
       committed_party_size,
@@ -523,6 +524,7 @@ export async function getTablePaymentPreviewByRawToken(
         id,
         customer_id,
         status,
+        payment_status,
         hold_expires_at,
         party_size,
         booking_reference,
@@ -547,11 +549,18 @@ export async function getTablePaymentPreviewByRawToken(
     return { state: 'blocked', reason: 'token_customer_mismatch' }
   }
 
-  if (booking.status !== 'pending_payment') {
+  const awaitingPayment =
+    booking.status === 'pending_payment' || booking.payment_status === 'pending'
+  if (!awaitingPayment) {
     return { state: 'blocked', reason: 'booking_not_pending_payment' }
   }
 
-  const holdExpiry = parseIsoDate(booking.hold_expires_at)
+  // For pending_payment bookings use hold_expires_at; for confirmed bookings with pending
+  // payment use end-of-booking-day as a fallback (the booking is already secured).
+  let holdExpiry = parseIsoDate(booking.hold_expires_at)
+  if (!holdExpiry && booking.booking_date) {
+    holdExpiry = new Date(`${booking.booking_date}T23:59:59`)
+  }
   if (!holdExpiry || holdExpiry.getTime() <= Date.now()) {
     return { state: 'blocked', reason: 'hold_expired' }
   }
