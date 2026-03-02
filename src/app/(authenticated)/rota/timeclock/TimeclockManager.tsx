@@ -426,6 +426,11 @@ export default function TimeclockManager({ sessions: initialSessions, employees,
                       ) : (
                         <span className="text-xs text-gray-500 italic">{s.notes ?? ''}</span>
                       )}
+                      {s.manager_note && (
+                        <p className="text-[10px] text-gray-400 mt-0.5">
+                          <span className="not-italic font-medium">Imported: </span>{s.manager_note}
+                        </p>
+                      )}
                     </td>
 
                     {/* Actions */}

@@ -368,7 +368,7 @@ export async function getPayrollMonthData(year: number, month: number): Promise<
       shiftId: shift.id,
       sessionId: (session?.id as string | undefined) ?? null,
       note: null, // populated after note fetch below
-      sessionNote: (session?.notes as string | null) ?? null,
+      sessionNote: [session?.notes, session?.manager_note].filter(Boolean).join(' · ') || null,
     });
   }
 
@@ -420,7 +420,7 @@ export async function getPayrollMonthData(year: number, month: number): Promise<
       shiftId: null,
       sessionId: sessionId,
       note: null,
-      sessionNote: (session.notes as string | null) ?? null,
+      sessionNote: [session.notes, session.manager_note].filter(Boolean).join(' · ') || null,
     });
   }
 

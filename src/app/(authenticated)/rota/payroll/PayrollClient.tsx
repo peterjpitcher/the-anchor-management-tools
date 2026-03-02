@@ -3,7 +3,7 @@
 import { useEffect, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import toast from 'react-hot-toast';
-import { CheckCircleIcon, ArrowDownTrayIcon, EnvelopeIcon, ChevronDownIcon, ChevronRightIcon, PencilSquareIcon, TrashIcon } from '@heroicons/react/24/outline';
+import { CheckCircleIcon, ArrowDownTrayIcon, EnvelopeIcon, ChevronDownIcon, ChevronRightIcon, PencilSquareIcon, TrashIcon, ChatBubbleBottomCenterTextIcon } from '@heroicons/react/24/outline';
 import { Button } from '@/components/ui-v2/forms/Button';
 import { Badge } from '@/components/ui-v2/display/Badge';
 import { Alert } from '@/components/ui-v2/feedback/Alert';
@@ -73,79 +73,6 @@ function FlagChips({ flags }: { flags: string }) {
   );
 }
 
-function ShiftNoteEditor({ shiftId, initialNote }: { shiftId: string; initialNote: string | null }) {
-  const [editing, setEditing] = useState(false);
-  const [value, setValue] = useState(initialNote ?? '');
-  const [saving, setSaving] = useState(false);
-
-  const handleSave = async () => {
-    setSaving(true);
-    const result = await upsertShiftNote(shiftId, value);
-    setSaving(false);
-    if (!result.success) { toast.error(result.error); return; }
-    setEditing(false);
-  };
-
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSave(); }
-    if (e.key === 'Escape') { setValue(initialNote ?? ''); setEditing(false); }
-  };
-
-  if (editing) {
-    return (
-      <div className="mt-1 flex items-start gap-1">
-        <textarea
-          autoFocus
-          rows={2}
-          value={value}
-          onChange={e => setValue(e.target.value)}
-          onKeyDown={handleKeyDown}
-          placeholder="Add a note…"
-          className="text-[10px] border border-gray-300 rounded px-1.5 py-1 w-48 resize-none focus:outline-none focus:ring-1 focus:ring-blue-400"
-        />
-        <div className="flex flex-col gap-0.5">
-          <button
-            type="button"
-            onClick={handleSave}
-            disabled={saving}
-            className="text-[10px] px-1.5 py-0.5 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
-          >
-            {saving ? '…' : 'Save'}
-          </button>
-          <button
-            type="button"
-            onClick={() => { setValue(initialNote ?? ''); setEditing(false); }}
-            className="text-[10px] px-1.5 py-0.5 text-gray-500 hover:text-gray-700"
-          >
-            Cancel
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="mt-1">
-      {value ? (
-        <button
-          type="button"
-          onClick={() => setEditing(true)}
-          className="text-[10px] text-gray-500 italic text-left hover:text-gray-700 max-w-xs block"
-        >
-          {value}
-        </button>
-      ) : (
-        <button
-          type="button"
-          onClick={() => setEditing(true)}
-          className="text-[10px] text-gray-400 hover:text-blue-500 italic"
-        >
-          + add note
-        </button>
-      )}
-    </div>
-  );
-}
 
 export default function PayrollClient({
   year,
@@ -202,6 +129,27 @@ export default function PayrollClient({
     router.refresh();
   };
 
+  // Note editing
+  const [editingNoteKey, setEditingNoteKey] = useState<string | null>(null);
+  const [editNoteValue, setEditNoteValue] = useState('');
+  const [notePending, startNoteTransition] = useTransition();
+
+  const startEditNote = (key: string, currentNote: string | null) => {
+    setEditingNoteKey(key);
+    setEditNoteValue(currentNote ?? '');
+    setEditingKey(null);
+    setConfirmDeleteKey(null);
+  };
+
+  const handleSaveNote = (shiftId: string) => {
+    startNoteTransition(async () => {
+      const result = await upsertShiftNote(shiftId, editNoteValue);
+      if (!result.success) { toast.error(result.error); return; }
+      setEditingNoteKey(null);
+      router.refresh();
+    });
+  };
+
   // Period editing
   const [editingPeriod, setEditingPeriod] = useState(false);
   const [periodStart, setPeriodStart] = useState(initialPeriod.period_start);
@@ -214,8 +162,7 @@ export default function PayrollClient({
       if (!result.success) { toast.error(result.error); return; }
       toast.success('Payroll period updated');
       setEditingPeriod(false);
-      // Reload to refresh data for the new period range
-      window.location.reload();
+      router.refresh();
     });
   };
 
@@ -265,7 +212,7 @@ export default function PayrollClient({
       <select
         className="text-sm border border-gray-200 rounded-lg px-3 py-1.5 text-gray-700 bg-white"
         value={`?year=${year}&month=${month}`}
-        onChange={e => { if (e.target.value) window.location.href = `/rota/payroll${e.target.value}`; }}
+        onChange={e => { if (e.target.value) router.push(`/rota/payroll${e.target.value}`); }}
       >
         {monthOptions.map(opt => (
           <option key={opt.value} value={opt.value}>{opt.label}</option>
@@ -478,8 +425,11 @@ export default function PayrollClient({
                                 {row.sessionNote}
                               </p>
                             )}
-                            {row.shiftId && (
-                              <ShiftNoteEditor shiftId={row.shiftId} initialNote={row.note} />
+                            {row.note && (
+                              <p className="mt-1 text-[10px] text-blue-700 italic">
+                                <span className="not-italic font-medium text-blue-400">Note: </span>
+                                {row.note}
+                              </p>
                             )}
                           </td>
                           <td className="px-3 py-2">
@@ -511,9 +461,19 @@ export default function PayrollClient({
                                 >
                                   <PencilSquareIcon className="h-3.5 w-3.5" />
                                 </button>
+                                {row.shiftId && (
+                                  <button
+                                    type="button"
+                                    onClick={() => startEditNote(rowKey, row.note)}
+                                    className={`p-1 rounded ${row.note ? 'text-blue-400 hover:text-blue-600' : 'text-gray-400 hover:text-gray-600'}`}
+                                    title={row.note ? 'Edit note' : 'Add note'}
+                                  >
+                                    <ChatBubbleBottomCenterTextIcon className="h-3.5 w-3.5" />
+                                  </button>
+                                )}
                                 <button
                                   type="button"
-                                  onClick={() => { setConfirmDeleteKey(rowKey); setEditingKey(null); }}
+                                  onClick={() => { setConfirmDeleteKey(rowKey); setEditingKey(null); setEditingNoteKey(null); }}
                                   className="p-1 text-gray-400 hover:text-red-600 rounded"
                                   title="Delete row"
                                 >
@@ -574,7 +534,47 @@ export default function PayrollClient({
                         </tr>
                       ) : null;
 
-                      return [dataRow, editRow].filter(Boolean);
+                      const noteEditRow = editingNoteKey === rowKey && row.shiftId ? (
+                        <tr key={`note-${rowKey}`} className="border-t border-amber-100 bg-amber-50">
+                          <td className="px-3 py-2" />
+                          <td className="px-3 py-2 pl-8 text-xs text-gray-500" colSpan={4}>
+                            <div className="flex items-center gap-2">
+                              <span className="text-gray-500 shrink-0">Payroll note for <span className="font-medium text-gray-700">{row.employeeName}</span>:</span>
+                              <input
+                                autoFocus
+                                type="text"
+                                value={editNoteValue}
+                                onChange={e => setEditNoteValue(e.target.value)}
+                                onKeyDown={e => { if (e.key === 'Enter') handleSaveNote(row.shiftId!); if (e.key === 'Escape') setEditingNoteKey(null); }}
+                                placeholder="Add a note for this shift…"
+                                className="flex-1 text-xs border border-gray-300 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-amber-400"
+                              />
+                            </div>
+                          </td>
+                          <td className="px-3 py-2" />
+                          <td className="px-3 py-2">
+                            <div className="flex items-center gap-1">
+                              <button
+                                type="button"
+                                onClick={() => handleSaveNote(row.shiftId!)}
+                                disabled={notePending}
+                                className="text-[10px] px-1.5 py-0.5 bg-amber-600 text-white rounded hover:bg-amber-700 disabled:opacity-50"
+                              >
+                                {notePending ? '…' : 'Save'}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setEditingNoteKey(null)}
+                                className="text-[10px] text-gray-400 hover:text-gray-600"
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ) : null;
+
+                      return [dataRow, editRow, noteEditRow].filter(Boolean);
                     }) : []),
                   ];
                 })}

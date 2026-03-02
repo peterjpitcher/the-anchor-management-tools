@@ -1,5 +1,7 @@
 import { format, parseISO } from 'date-fns';
 
+const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? '';
+
 export type ShiftSummary = {
   date: string;       // ISO date
   startTime: string;  // "HH:mm"
@@ -61,7 +63,7 @@ export function buildStaffRotaEmailHtml(
       ` : shiftsHtml}
       <p style="color:#666;font-size:14px">
         View your full schedule and manage holiday requests in the
-        <a href="${process.env.NEXT_PUBLIC_APP_URL}/portal/shifts">staff portal</a>.
+        <a href="${APP_URL}/portal/shifts">staff portal</a>.
       </p>
       <p style="color:#aaa;font-size:12px">The Anchor</p>
     </div>
@@ -86,7 +88,7 @@ export function buildManagerAlertEmailHtml(
       <p>${message}</p>
       <p>Staff emails are scheduled for 21:00. Please publish the rota before then.</p>
       <p>
-        <a href="${process.env.NEXT_PUBLIC_APP_URL}/rota"
+        <a href="${APP_URL}/rota"
            style="background:#1F5C2E;color:#fff;padding:10px 20px;border-radius:4px;text-decoration:none">
           Open Rota
         </a>
@@ -114,7 +116,7 @@ export function buildHolidaySubmittedEmailHtml(
       <p>Your holiday request for <strong>${start} – ${end}</strong> has been submitted and is pending approval.</p>
       <p>You'll receive an email once it has been reviewed.</p>
       <p>
-        <a href="${process.env.NEXT_PUBLIC_APP_URL}/portal/leave">View your requests</a>
+        <a href="${APP_URL}/portal/leave">View your requests</a>
       </p>
       <p style="color:#aaa;font-size:12px">The Anchor</p>
     </div>
@@ -147,7 +149,7 @@ export function buildHolidayDecisionEmailHtml(
       </p>
       ${managerNote ? `<p><em>${managerNote}</em></p>` : ''}
       <p>
-        <a href="${process.env.NEXT_PUBLIC_APP_URL}/portal/leave">View your holiday requests</a>
+        <a href="${APP_URL}/portal/leave">View your holiday requests</a>
       </p>
       <p style="color:#aaa;font-size:12px">The Anchor</p>
     </div>

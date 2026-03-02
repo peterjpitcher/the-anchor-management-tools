@@ -75,9 +75,8 @@ export async function GET(request: Request) {
       clockOutAt = shiftEndUtc.toISOString();
       reason = 'scheduled_end';
     } else {
-      // Fallback: 05:00 local on work_date
-      const fallbackLocal = new Date(session.work_date + 'T05:00:00');
-      clockOutAt = fromZonedTime(fallbackLocal, TIMEZONE).toISOString();
+      // Fallback: 05:00 local on work_date (pass string directly to avoid double-conversion)
+      clockOutAt = fromZonedTime(`${session.work_date}T05:00:00`, TIMEZONE).toISOString();
       reason = 'fallback_0500';
     }
 

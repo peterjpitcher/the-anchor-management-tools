@@ -82,6 +82,19 @@ export async function submitLeaveRequest(input: z.infer<typeof SubmitLeaveSchema
     return { success: false, error: 'Leave requests cannot be submitted for past dates' };
   }
 
+  // Check for overlapping non-declined requests
+  const supabaseCheck = await createClient();
+  const { data: overlapping } = await supabaseCheck
+    .from('leave_requests')
+    .select('id')
+    .eq('employee_id', employeeId)
+    .neq('status', 'declined')
+    .lte('start_date', endDate)
+    .gte('end_date', startDate);
+  if (overlapping && overlapping.length > 0) {
+    return { success: false, error: 'You already have a leave request covering some of these dates' };
+  }
+
   const { holidayYearStartMonth, holidayYearStartDay } = await getRotaSettings();
   const holidayYear = getHolidayYear(parseISO(startDate), holidayYearStartMonth, holidayYearStartDay);
   const supabase = await createClient();
