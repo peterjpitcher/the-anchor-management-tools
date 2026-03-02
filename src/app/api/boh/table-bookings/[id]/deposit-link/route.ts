@@ -14,7 +14,7 @@ export async function GET(
   const admin = createAdminClient()
 
   const { data: booking } = await (admin.from('table_bookings') as any)
-    .select('id, customer_id, status, hold_expires_at')
+    .select('id, customer_id, status, payment_status, hold_expires_at')
     .eq('id', id)
     .maybeSingle()
 
@@ -26,7 +26,9 @@ export async function GET(
     return NextResponse.json({ error: 'Booking has no customer' }, { status: 422 })
   }
 
-  if (booking.status !== 'pending_payment') {
+  const awaitingPayment =
+    booking.status === 'pending_payment' || booking.payment_status === 'pending'
+  if (!awaitingPayment) {
     return NextResponse.json({ error: 'Booking is not awaiting payment' }, { status: 422 })
   }
 
