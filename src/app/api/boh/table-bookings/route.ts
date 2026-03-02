@@ -200,8 +200,8 @@ async function loadBookingsRows(
   input: { startDate: string; endDate: string }
 ): Promise<{ data: any[]; error: unknown | null }> {
   const attempts = [
-    'id, booking_reference, booking_date, booking_time, party_size, committed_party_size, booking_type, booking_purpose, status, special_requirements, seated_at, left_at, no_show_at, cancelled_at, cancelled_by, start_datetime, end_datetime, duration_minutes, hold_expires_at, created_at, updated_at, customer_id, event_id, customer:customers!table_bookings_customer_id_fkey(id,first_name,last_name,mobile_number,sms_status)',
-    'id, booking_reference, booking_date, booking_time, party_size, booking_type, status, special_requirements, seated_at, left_at, no_show_at, cancelled_at, start_datetime, end_datetime, duration_minutes, created_at, updated_at, customer_id, event_id, customer:customers!table_bookings_customer_id_fkey(id,first_name,last_name,mobile_number,sms_status)',
+    'id, booking_reference, booking_date, booking_time, party_size, committed_party_size, booking_type, booking_purpose, status, payment_status, special_requirements, seated_at, left_at, no_show_at, cancelled_at, cancelled_by, start_datetime, end_datetime, duration_minutes, hold_expires_at, created_at, updated_at, customer_id, event_id, customer:customers!table_bookings_customer_id_fkey(id,first_name,last_name,mobile_number,sms_status)',
+    'id, booking_reference, booking_date, booking_time, party_size, booking_type, status, payment_status, special_requirements, seated_at, left_at, no_show_at, cancelled_at, start_datetime, end_datetime, duration_minutes, created_at, updated_at, customer_id, event_id, customer:customers!table_bookings_customer_id_fkey(id,first_name,last_name,mobile_number,sms_status)',
     'id, booking_reference, booking_date, booking_time, party_size, booking_type, status, special_requirements, duration_minutes, no_show_at, cancelled_at, created_at, updated_at, customer_id, customer:customers!table_bookings_customer_id_fkey(id,first_name,last_name,mobile_number,sms_status)',
     'id, booking_reference, booking_date, booking_time, party_size, booking_type, status, special_requirements, duration_minutes, no_show_at, cancelled_at, created_at, updated_at, customer_id, customer:customers!table_bookings_customer_id_fkey(id,first_name,last_name,mobile_number)'
   ]
@@ -492,6 +492,7 @@ export async function GET(request: NextRequest) {
         cancelled_at: row.cancelled_at || null,
         cancelled_by: row.cancelled_by || null,
         hold_expires_at: row.hold_expires_at || null,
+        payment_status: row.payment_status || null,
         created_at: row.created_at || null,
         updated_at: row.updated_at || null,
         customer,

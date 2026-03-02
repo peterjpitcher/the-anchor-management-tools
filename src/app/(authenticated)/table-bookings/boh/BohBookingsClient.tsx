@@ -50,6 +50,7 @@ type BohBooking = {
   cancelled_at: string | null
   cancelled_by: string | null
   hold_expires_at: string | null
+  payment_status: string | null
   created_at: string | null
   updated_at: string | null
   customer: {
@@ -1253,7 +1254,7 @@ export function BohBookingsClient({
                   >
                     Cancel Booking
                   </Button>
-                  {selectedBooking.status === 'pending_payment' && (
+                  {(selectedBooking.status === 'pending_payment' || selectedBooking.payment_status === 'pending') && (
                     <Button
                       variant="secondary"
                       size="sm"
