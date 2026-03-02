@@ -7,6 +7,14 @@ import AuthenticatedLayout from './AuthenticatedLayout';
 export const dynamic = 'force-dynamic';
 
 export default async function Layout({ children }: { children: React.ReactNode }) {
+  // Guard: ensure user is authenticated before any permissions check.
+  // (Middleware is temporarily disabled due to Vercel incident — restored at layout level.)
+  const supabaseAuth = await createClient();
+  const { data: { user: authUser } } = await supabaseAuth.auth.getUser();
+  if (!authUser) {
+    redirect('/auth/login');
+  }
+
   const permissionsResult = await getUserPermissions();
 
   const initialPermissions = permissionsResult.success && permissionsResult.data
