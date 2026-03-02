@@ -23,6 +23,9 @@ import EmployeeStatusActions from '@/components/features/employees/EmployeeStatu
 import { getEmployeeDetailData } from '@/app/actions/employeeDetails'
 import { LinkButton } from '@/components/ui-v2/navigation/LinkButton'
 import { ArrowDownTrayIcon } from '@heroicons/react/24/outline'
+import EmployeePayTab from '@/components/features/employees/EmployeePayTab'
+import { getEmployeePaySettings, getEmployeeRateOverrides } from '@/app/actions/pay-bands'
+import { getHourlyRate } from '@/lib/rota/pay-calculator'
 
 export const dynamic = 'force-dynamic'
 
@@ -50,7 +53,11 @@ export default async function EmployeeDetailPage({ params }: EmployeeDetailPageP
     notFound()
   }
 
-  const result = await getEmployeeDetailData(employeeId)
+  const [result, paySettingsResult, rateOverridesResult] = await Promise.all([
+    getEmployeeDetailData(employeeId),
+    getEmployeePaySettings(employeeId),
+    getEmployeeRateOverrides(employeeId),
+  ])
 
   if (result.unauthorized) {
     redirect('/unauthorized')
@@ -76,6 +83,13 @@ export default async function EmployeeDetailPage({ params }: EmployeeDetailPageP
     auditLogs,
     permissions
   } = result.data
+
+  const paySettings = paySettingsResult.success ? paySettingsResult.data : null
+  const rateOverrides = rateOverridesResult.success ? rateOverridesResult.data : []
+
+  // Resolve current rate for display (today's date)
+  const today = new Date().toISOString().split('T')[0]
+  const currentRate = await getHourlyRate(employeeId, today)
 
   const attachmentCategoryMap = attachmentCategories.reduce<Record<string, string>>((acc, category) => {
     acc[category.category_id] = category.category_name
@@ -191,6 +205,19 @@ export default async function EmployeeDetailPage({ params }: EmployeeDetailPageP
         <OnboardingChecklistTab
           employeeId={employee.employee_id}
           canEdit={permissions.canEdit}
+        />
+      )
+    },
+    {
+      key: 'pay',
+      label: 'Pay',
+      content: (
+        <EmployeePayTab
+          employeeId={employee.employee_id}
+          canEdit={permissions.canEdit}
+          initialPaySettings={paySettings}
+          initialOverrides={rateOverrides}
+          currentRate={currentRate}
         />
       )
     }

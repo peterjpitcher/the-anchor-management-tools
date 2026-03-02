@@ -1,10 +1,28 @@
 'use server'
 
 import { AuthService } from '@/services/auth';
+import { createAdminClient } from '@/lib/supabase/admin';
 
 export async function signIn(email: string, password: string) {
   try {
-    return await AuthService.signIn(email, password);
+    const result = await AuthService.signIn(email, password);
+
+    if (result.success && result.userId) {
+      // Portal-only employees have no RBAC roles. Route them to the portal
+      // rather than /dashboard which they cannot use.
+      const admin = createAdminClient();
+      const { data: roles } = await admin
+        .from('user_roles')
+        .select('role_id')
+        .eq('user_id', result.userId)
+        .limit(1);
+
+      if (!roles || roles.length === 0) {
+        return { success: true as const, redirectTo: '/portal/shifts' };
+      }
+    }
+
+    return { success: true as const };
   } catch (error: any) {
     if (error.message.includes('Too many requests')) {
       return { error: 'Too many login attempts. Please try again later.' };

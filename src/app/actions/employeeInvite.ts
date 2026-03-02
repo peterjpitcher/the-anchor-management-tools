@@ -10,6 +10,7 @@ import {
   sendWelcomeEmail,
   sendChaseEmail,
   sendOnboardingCompleteEmail,
+  sendPortalInviteEmail,
 } from '@/lib/email/employee-invite-emails';
 import { FinancialDetailsSchema, HealthRecordSchema, EmergencyContactSchema } from '@/services/employees';
 
@@ -94,6 +95,65 @@ export async function inviteEmployee(prevState: any, formData: FormData) {
     console.error('[inviteEmployee] Unexpected error:', err);
     return { type: 'error', message: err.message || 'An unexpected error occurred.' };
   }
+}
+
+export async function sendPortalInvite(employeeId: string) {
+  const canEdit = await checkUserPermission('employees', 'edit');
+  if (!canEdit) {
+    return { type: 'error', message: 'You do not have permission to send portal invites.' };
+  }
+
+  const adminClient = createAdminClient();
+
+  const { data: employee, error: empError } = await adminClient
+    .from('employees')
+    .select('email_address, auth_user_id')
+    .eq('employee_id', employeeId)
+    .maybeSingle();
+
+  if (empError || !employee) {
+    return { type: 'error', message: 'Employee not found.' };
+  }
+  if (employee.auth_user_id) {
+    return { type: 'error', message: 'This employee already has a portal login.' };
+  }
+  if (!employee.email_address) {
+    return { type: 'error', message: 'This employee has no email address on file.' };
+  }
+
+  const { data: tokenData, error: tokenError } = await adminClient
+    .from('employee_invite_tokens')
+    .insert({ employee_id: employeeId, email: employee.email_address })
+    .select('token')
+    .single();
+
+  if (tokenError || !tokenData?.token) {
+    return { type: 'error', message: 'Failed to create invite token.' };
+  }
+
+  try {
+    await sendPortalInviteEmail(employee.email_address, buildOnboardingUrl(tokenData.token));
+  } catch (emailError) {
+    console.error('[sendPortalInvite] Failed to send email:', emailError);
+    return { type: 'error', message: 'Token created but email could not be sent.' };
+  }
+
+  try {
+    const user = await getCurrentUser();
+    await logAuditEvent({
+      user_id: user?.user_id ?? undefined,
+      user_email: user?.user_email ?? undefined,
+      operation_type: 'invite',
+      resource_type: 'employee',
+      resource_id: employeeId,
+      operation_status: 'success',
+      new_values: { portal_invite_sent: true },
+    });
+  } catch (auditError) {
+    console.error('[sendPortalInvite] Audit log failed:', auditError);
+  }
+
+  return { type: 'success', message: `Portal invite sent to ${employee.email_address}.` };
 }
 
 export async function resendInvite(employeeId: string) {
@@ -572,6 +632,12 @@ export async function revokeEmployeeAccess(employeeId: string): Promise<{ succes
     console.error('[revokeEmployeeAccess] Error updating status:', updateError);
     return { success: false, error: 'Failed to update employee status.' };
   }
+
+  // Clear this employee's pre-assignment from any shift templates
+  await adminClient
+    .from('rota_shift_templates')
+    .update({ employee_id: null })
+    .eq('employee_id', employeeId);
 
   // Delete all user_roles if auth user exists
   if (employee?.auth_user_id) {

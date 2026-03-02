@@ -2,6 +2,7 @@
 
 import { z } from 'zod';
 import { createClient } from '@/lib/supabase/server';
+import { createAdminClient } from '@/lib/supabase/admin';
 import { EventService } from '@/services/events';
 import { PrivateBookingService } from '@/services/private-bookings';
 
@@ -20,14 +21,24 @@ export async function getDailySummaryAction(date: string) {
   }
 
   try {
-    const [events, privateBookings] = await Promise.all([
+    const adminClient = createAdminClient();
+
+    const [events, privateBookings, tableBookingsResult] = await Promise.all([
       EventService.getEventsByDate(parsed.data),
       PrivateBookingService.getBookings({ fromDate: parsed.data, toDate: parsed.data }),
+      adminClient
+        .from('table_bookings')
+        .select('id, booking_time, booking_type, party_size, status')
+        .eq('booking_date', parsed.data)
+        .neq('status', 'cancelled')
+        .order('booking_time', { ascending: true }),
     ]);
 
     const activePrivateBookings = privateBookings?.data?.filter(
       (b: { status: string }) => b.status !== 'cancelled'
     ) || [];
+
+    const tableBookings = tableBookingsResult.data || [];
 
     const summaryParts: string[] = [];
 
@@ -47,12 +58,21 @@ export async function getDailySummaryAction(date: string) {
       summaryParts.push('');
     }
 
+    if (tableBookings.length > 0) {
+      const totalCovers = tableBookings.reduce((sum: number, b: { party_size: number }) => sum + b.party_size, 0);
+      const noShows = tableBookings.filter((b: { status: string }) => b.status === 'no_show').length;
+      summaryParts.push('TABLE BOOKINGS:');
+      summaryParts.push(`${tableBookings.length} booking${tableBookings.length !== 1 ? 's' : ''} (${totalCovers} covers)${noShows > 0 ? `, ${noShows} no-show${noShows !== 1 ? 's' : ''}` : ''}`);
+      summaryParts.push('');
+    }
+
     return {
       success: true,
       summary: summaryParts.join('\n').trim(),
       data: {
         events: events || [],
         privateBookings: activePrivateBookings,
+        tableBookings,
       }
     };
   } catch (error) {

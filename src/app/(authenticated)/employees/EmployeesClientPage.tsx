@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useState, useTransition } from 'react'
+import React, { useCallback, useState, useTransition } from 'react'
 import Link from 'next/link'
 import { useRouter, usePathname, useSearchParams } from 'next/navigation'
 import { ArrowDownTrayIcon, PlusIcon, EnvelopeIcon } from '@heroicons/react/24/outline'
@@ -15,6 +15,7 @@ import { Badge } from '@/components/ui-v2/display/Badge'
 import { Pagination as PaginationV2 } from '@/components/ui-v2/navigation/Pagination'
 import { LinkButton } from '@/components/ui-v2/navigation/LinkButton'
 import { exportEmployees } from '@/app/actions/employeeExport'
+import { sendPortalInvite } from '@/app/actions/employeeInvite'
 import type { EmployeeRosterResult } from '@/app/actions/employeeQueries'
 import type { Employee } from '@/types/database'
 import { formatDate } from '@/lib/dateUtils'
@@ -28,7 +29,43 @@ interface EmployeesClientPageProps {
   permissions: {
     canCreate: boolean
     canExport: boolean
+    canEdit: boolean
   }
+}
+
+function PortalInviteButton({ employeeId }: { employeeId: string }) {
+  const [pending, setPending] = useState(false)
+  const [sent, setSent] = useState(false)
+
+  const handleClick = async (e: React.MouseEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    if (pending || sent) return
+    setPending(true)
+    const result = await sendPortalInvite(employeeId)
+    setPending(false)
+    if (result.type === 'success') {
+      setSent(true)
+      toast.success(result.message)
+    } else {
+      toast.error(result.message)
+    }
+  }
+
+  if (sent) {
+    return <span className="text-xs text-green-600">Invite sent</span>
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={handleClick}
+      disabled={pending}
+      className="text-xs text-blue-600 hover:text-blue-800 disabled:opacity-50"
+    >
+      {pending ? 'Sending…' : 'Send portal invite'}
+    </button>
+  )
 }
 
 function statusBadgeVariant(status: string): 'success' | 'info' | 'warning' | 'default' {
@@ -217,7 +254,6 @@ export default function EmployeesClientPage({ initialData, permissions }: Employ
                   { key: 'all', label: 'All', mobileLabel: 'All', badge: roster.statusCounts.all },
                   { key: 'Active', label: 'Active', mobileLabel: 'Active', badge: roster.statusCounts.active },
                   { key: 'Onboarding', label: 'Onboarding', mobileLabel: 'Onboard.', badge: roster.statusCounts.onboarding },
-                  { key: 'Started Separation', label: 'Separating', mobileLabel: 'Sep.', badge: roster.statusCounts.startedSeparation },
                   { key: 'Former', label: 'Former', mobileLabel: 'Former', badge: roster.statusCounts.former }
                 ]}
                 activeKey={selectedStatus}
@@ -320,9 +356,14 @@ export default function EmployeesClientPage({ initialData, permissions }: Employ
                     key: 'status',
                     header: 'Status',
                     cell: (employee: Employee) => (
-                      <Badge variant={statusBadgeVariant(employee.status)} dot>
-                        {employee.status}
-                      </Badge>
+                      <div className="space-y-1">
+                        <Badge variant={statusBadgeVariant(employee.status)} dot>
+                          {employee.status}
+                        </Badge>
+                        {!employee.auth_user_id && permissions.canEdit && (
+                          <PortalInviteButton employeeId={employee.employee_id} />
+                        )}
+                      </div>
                     )
                   }
                 ]}

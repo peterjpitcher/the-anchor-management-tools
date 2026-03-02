@@ -20,6 +20,7 @@ const PUBLIC_PATH_PREFIXES = [
   '/table-booking',
   '/parking/guest',
   '/onboarding',
+  '/timeclock',
   '/g',
   '/r',
 ];

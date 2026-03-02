@@ -31,12 +31,11 @@ export async function DELETE(
     .update({
       status: 'cancelled',
       cancelled_at: nowIso,
-      cancelled_by: 'staff',
       cancellation_reason: cancellationReason,
       updated_at: nowIso
     })
     .eq('id', id)
-    .select('id, booking_reference, status, cancelled_at, cancelled_by, cancellation_reason')
+    .select('id, booking_reference, status, cancelled_at, cancellation_reason')
     .maybeSingle()
 
   if (cancelError) {
@@ -55,7 +54,6 @@ export async function DELETE(
       status: cancelledBooking.status || existing.status || null,
       deleted_at: nowIso,
       cancelled_at: cancelledBooking.cancelled_at || nowIso,
-      cancelled_by: cancelledBooking.cancelled_by || 'staff',
       cancellation_reason: cancelledBooking.cancellation_reason || cancellationReason,
       soft_deleted: true
     }

@@ -5,7 +5,10 @@ import { getLondonDateIso } from '@/lib/foh/api-auth'
 import { FohScheduleClient } from './FohScheduleClient'
 import { isFohOnlyUser } from '@/lib/foh/user-mode'
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { getOpenSessions } from '@/app/actions/timeclock'
 import Image from 'next/image'
+import FohClockWidget from './FohClockWidget'
 
 const MANAGER_IPAD_EMAIL = 'manager@the-anchor.pub'
 
@@ -48,16 +51,35 @@ export default async function TableBookingsFohPage() {
     : undefined
   const contentClassName = useManagerKioskStyle ? '!px-2 sm:!px-3 lg:!px-4 !pt-1' : undefined
   const subtitle = useManagerKioskStyle ? undefined : 'Live swimlane view for table bookings and floor actions'
+
+  // Fetch clock widget data for manager kiosk
+  type ClockEmployee = { employee_id: string; first_name: string | null; last_name: string | null }
+  type ClockSession = import('@/app/actions/timeclock').TimeclockSession & { employee_name: string }
+  let clockWidgetEmployees: ClockEmployee[] = []
+  let clockWidgetSessions: ClockSession[] = []
+  if (useManagerKioskStyle) {
+    const admin = createAdminClient()
+    const [{ data: emps }, sessionsResult] = await Promise.all([
+      admin.from('employees').select('employee_id, first_name, last_name').eq('status', 'Active').order('first_name').order('last_name'),
+      getOpenSessions(),
+    ])
+    clockWidgetEmployees = (emps ?? []) as ClockEmployee[]
+    if (sessionsResult.success) clockWidgetSessions = sessionsResult.data as ClockSession[]
+  }
+
   const headerActions = useManagerKioskStyle
     ? (
-        <Image
-          src="/logo.png"
-          alt="The Anchor logo"
-          width={320}
-          height={110}
-          className="h-8 w-auto md:h-10"
-          priority
-        />
+        <div className="flex items-center gap-2">
+          <FohClockWidget employees={clockWidgetEmployees} initialSessions={clockWidgetSessions} />
+          <Image
+            src="/logo.png"
+            alt="The Anchor logo"
+            width={320}
+            height={110}
+            className="h-8 w-auto md:h-10"
+            priority
+          />
+        </div>
       )
     : undefined
 
