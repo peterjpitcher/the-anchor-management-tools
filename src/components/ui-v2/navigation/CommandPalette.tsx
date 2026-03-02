@@ -196,8 +196,8 @@ export function CommandPalette({
   }, [filteredCommands, showCategories])
   
   // Handle command selection
-  const handleSelect = async (command: CommandItem) => {
-    if (command.disabled) return
+  const handleSelect = async (command: CommandItem | null) => {
+    if (!command || command.disabled) return
     
     // Update recent commands
     if (onRecentSelect && !navigationStack.length) {
