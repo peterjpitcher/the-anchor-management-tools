@@ -16,6 +16,7 @@ const nextConfig = {
     },
   },
   serverExternalPackages: [
+    'exceljs',
     'puppeteer',
     'puppeteer-core',
     '@tootallnate/quickjs-emscripten',
