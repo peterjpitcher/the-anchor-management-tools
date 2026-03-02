@@ -23,6 +23,18 @@ export default async function TableBookingsFohPage() {
     getUserPermissions()
   ])
 
+  const userId = authResult.data.user?.id
+  let isSuperAdmin = false
+  if (userId) {
+    const admin = createAdminClient()
+    const { data: roleRows } = await admin
+      .from('user_roles')
+      .select('roles(name)')
+      .eq('user_id', userId)
+    isSuperAdmin = (roleRows as Array<{ roles: { name: string } | null }> | null)
+      ?.some((r) => r.roles?.name === 'super_admin') ?? false
+  }
+
   if (!canView) {
     redirect('/unauthorized')
   }
@@ -101,6 +113,7 @@ export default async function TableBookingsFohPage() {
       <FohScheduleClient
         initialDate={getLondonDateIso()}
         canEdit={canEdit}
+        isSuperAdmin={isSuperAdmin}
         styleVariant={useManagerKioskStyle ? 'manager_kiosk' : 'default'}
       />
     </PageLayout>
