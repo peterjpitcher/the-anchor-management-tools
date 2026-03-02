@@ -1,7 +1,7 @@
 'use client'
 
 import { usePathname } from 'next/navigation'
-import { CalendarIcon, UserGroupIcon, HomeIcon, IdentificationIcon, PencilSquareIcon, CogIcon, EnvelopeIcon, BuildingOfficeIcon, DocumentTextIcon, LinkIcon, ReceiptRefundIcon, TruckIcon, Squares2X2Icon, BanknotesIcon, MicrophoneIcon, BriefcaseIcon } from '@heroicons/react/24/outline'
+import { CalendarIcon, UserGroupIcon, HomeIcon, IdentificationIcon, PencilSquareIcon, CogIcon, EnvelopeIcon, BuildingOfficeIcon, DocumentTextIcon, LinkIcon, ReceiptRefundIcon, TruckIcon, Squares2X2Icon, BanknotesIcon, MicrophoneIcon, BriefcaseIcon, CalendarDaysIcon } from '@heroicons/react/24/outline'
 import { useMemo } from 'react'
 import { usePermissions } from '@/contexts/PermissionContext'
 import { Badge } from '@/components/ui-v2/display/Badge'
@@ -35,7 +35,8 @@ const secondaryNavigation: NavigationItemWithPermission[] = [
 
 const tertiaryNavigation: NavigationItemWithPermission[] = [
   { name: 'Employees', href: '/employees', icon: IdentificationIcon, permission: { module: 'employees', action: 'view' } },
-  { name: 'Quick Add Note', href: '#', icon: PencilSquareIcon, action: true },
+  { name: 'Rota', href: '/rota', icon: CalendarDaysIcon, permission: { module: 'rota', action: 'view' } },
+  { name: 'Quick Add Note', href: '#', icon: PencilSquareIcon, action: true, permission: { module: 'settings', action: 'manage' } },
 ];
 
 const quaternaryNavigation: NavigationItemWithPermission[] = [
@@ -43,7 +44,7 @@ const quaternaryNavigation: NavigationItemWithPermission[] = [
   { name: 'Invoices', href: '/invoices', icon: DocumentTextIcon, permission: { module: 'invoices', action: 'view' } },
   { name: 'OJ Projects', href: '/oj-projects', icon: BriefcaseIcon, permission: { module: 'oj_projects', action: 'view' } },
   { name: 'Receipts', href: '/receipts', icon: ReceiptRefundIcon, permission: { module: 'receipts', action: 'view' } },
-  { name: 'Short Links', href: '/short-links', icon: LinkIcon },
+  { name: 'Short Links', href: '/short-links', icon: LinkIcon, permission: { module: 'short_links', action: 'view' } },
   { name: 'Settings', href: '/settings', icon: CogIcon, permission: { module: 'settings', action: 'view' } },
 ];
 

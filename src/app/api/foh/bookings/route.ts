@@ -921,7 +921,8 @@ export async function POST(request: NextRequest) {
     p_booking_purpose: payload.purpose,
     p_notes: payload.notes || null,
     p_sunday_lunch: effectiveSundayLunch,
-    p_source: payload.walk_in === true ? 'walk-in' : 'admin'
+    p_source: payload.walk_in === true ? 'walk-in' : 'admin',
+    p_bypass_cutoff: true
   })
 
   let bookingResult: TableBookingRpcResult

@@ -1,6 +1,6 @@
 'use client'
 
-import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react'
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { RealtimeChannel } from '@supabase/supabase-js'
 import { fromZonedTime } from 'date-fns-tz'
 import Image from 'next/image'
@@ -1005,7 +1005,7 @@ export function FohScheduleClient({
   const [clockNow, setClockNow] = useState(() => new Date())
   const [upcomingEvents, setUpcomingEvents] = useState<FohUpcomingEvent[]>([])
   const [upcomingEventsLoaded, setUpcomingEventsLoaded] = useState(false)
-  const [lastInteractionAtMs, setLastInteractionAtMs] = useState(() => Date.now())
+  const lastInteractionAtMsRef = useRef(Date.now())
 
   const [createForm, setCreateForm] = useState({
     booking_date: initialDate,
@@ -1198,7 +1198,7 @@ export function FohScheduleClient({
 
   useEffect(() => {
     const markInteraction = () => {
-      setLastInteractionAtMs(Date.now())
+      lastInteractionAtMsRef.current = Date.now()
     }
 
     const handleVisibilityChange = () => {
@@ -1211,7 +1211,6 @@ export function FohScheduleClient({
     window.addEventListener('wheel', markInteraction, { passive: true })
     window.addEventListener('keydown', markInteraction)
     window.addEventListener('touchstart', markInteraction, { passive: true })
-    window.addEventListener('focus', markInteraction)
     document.addEventListener('visibilitychange', handleVisibilityChange)
 
     return () => {
@@ -1219,7 +1218,6 @@ export function FohScheduleClient({
       window.removeEventListener('wheel', markInteraction)
       window.removeEventListener('keydown', markInteraction)
       window.removeEventListener('touchstart', markInteraction)
-      window.removeEventListener('focus', markInteraction)
       document.removeEventListener('visibilitychange', handleVisibilityChange)
     }
   }, [])
@@ -1274,18 +1272,18 @@ export function FohScheduleClient({
         || activeElement instanceof HTMLSelectElement
         || activeElement?.getAttribute('contenteditable') === 'true'
       if (isEditing) return
-      if (Date.now() - lastInteractionAtMs < FOH_AUTO_RETURN_IDLE_MS) return
+      if (Date.now() - lastInteractionAtMsRef.current < FOH_AUTO_RETURN_IDLE_MS) return
 
       setDate(todayIso)
       setStatusMessage('Returned to today after inactivity.')
       setErrorMessage(null)
-      setLastInteractionAtMs(Date.now())
+      lastInteractionAtMsRef.current = Date.now()
     }, FOH_AUTO_RETURN_POLL_MS)
 
     return () => {
       window.clearInterval(intervalId)
     }
-  }, [date, hasActiveFohWork, lastInteractionAtMs])
+  }, [date, hasActiveFohWork])
 
   useEffect(() => {
     if (selectedCustomer) {
@@ -2353,7 +2351,7 @@ export function FohScheduleClient({
                 type="button"
                 onClick={() => {
                   setDate((current) => shiftIsoDate(current, -1))
-                  setLastInteractionAtMs(Date.now())
+                  lastInteractionAtMsRef.current = Date.now()
                 }}
                 className={daySwitchButtonClass}
                 aria-label="Previous day"
@@ -2366,7 +2364,7 @@ export function FohScheduleClient({
                 value={date}
                 onChange={(event) => {
                   setDate(event.target.value)
-                  setLastInteractionAtMs(Date.now())
+                  lastInteractionAtMsRef.current = Date.now()
                 }}
                 className={dateInputClass}
               />
@@ -2374,7 +2372,7 @@ export function FohScheduleClient({
                 type="button"
                 onClick={() => {
                   setDate((current) => shiftIsoDate(current, 1))
-                  setLastInteractionAtMs(Date.now())
+                  lastInteractionAtMsRef.current = Date.now()
                 }}
                 className={daySwitchButtonClass}
                 aria-label="Next day"
@@ -2385,7 +2383,7 @@ export function FohScheduleClient({
                 type="button"
                 onClick={() => {
                   setDate(getLondonDateIso())
-                  setLastInteractionAtMs(Date.now())
+                  lastInteractionAtMsRef.current = Date.now()
                 }}
                 className={daySwitchButtonClass}
               >

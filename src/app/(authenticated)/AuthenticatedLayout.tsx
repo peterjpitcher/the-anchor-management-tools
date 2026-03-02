@@ -25,10 +25,7 @@ function AuthenticatedLayoutContent({ children }: { children: React.ReactNode })
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
   const [isSigningOut, setIsSigningOut] = useState(false)
   const fohOnlyMode = useMemo(() => {
-    if (permissionsLoading) {
-      return false
-    }
-
+    if (permissionsLoading) return false
     return isFohOnlyUser(permissions)
   }, [permissions, permissionsLoading])
   const isFohPath = pathname.startsWith('/table-bookings/foh')
@@ -112,7 +109,7 @@ function AuthenticatedLayoutContent({ children }: { children: React.ReactNode })
     }
   }, [loading, user, permissionsLoading, fohOnlyMode, isFohPath, router])
 
-  if (loading || !user) {
+if (loading || !user) {
     return (
       <div className="flex items-center justify-center h-screen bg-gray-100">
         <p className="text-gray-500">Loading...</p>
@@ -128,7 +125,7 @@ function AuthenticatedLayoutContent({ children }: { children: React.ReactNode })
     )
   }
 
-  async function handleSignOut() {
+async function handleSignOut() {
     if (isSigningOut) {
       return
     }

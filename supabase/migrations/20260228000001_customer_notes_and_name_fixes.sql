@@ -148,9 +148,15 @@ SET mobile_e164 = '+447555366156',
 WHERE id = '37219b95-b34f-4a70-b5b1-18e1d48c8760';
 
 -- 13. Backfill mobile_e164 for any records where it is null but mobile_number is a valid E.164
---     This closes the gap that allowed duplicate phone records to slip through
+--     This closes the gap that allowed duplicate phone records to slip through.
+--     Skip rows where another customer already holds that number in mobile_e164 to avoid
+--     violating the unique constraint (those duplicates need separate resolution).
 UPDATE customers
 SET mobile_e164 = mobile_number
 WHERE mobile_e164 IS NULL
   AND mobile_number IS NOT NULL
-  AND mobile_number ~ '^\+[1-9]\d{7,14}$';
+  AND mobile_number ~ '^\+[1-9]\d{7,14}$'
+  AND NOT EXISTS (
+    SELECT 1 FROM customers c2
+    WHERE c2.mobile_e164 = customers.mobile_number
+  );

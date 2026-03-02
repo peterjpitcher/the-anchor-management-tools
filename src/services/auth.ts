@@ -67,7 +67,7 @@ export class AuthService {
       });
     }
 
-    return { success: true };
+    return { success: true, userId: data.user.id };
   }
 
   static async signUp(email: string, password: string, firstName: string, lastName: string) {

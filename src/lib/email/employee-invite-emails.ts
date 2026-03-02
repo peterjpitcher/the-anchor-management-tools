@@ -39,6 +39,23 @@ export function buildOnboardingCompleteEmail(employeeName: string, employeeEmail
   return { subject, text };
 }
 
+export function buildPortalInviteEmail(email: string, onboardingUrl: string) {
+  const subject = 'Set Up Your Staff Portal Access -- The Anchor';
+  const text =
+    `Hi there,\n\n` +
+    `We've launched a new staff portal and you've been invited to set up your access.\n\n` +
+    `Click the link below to create a password and complete your profile:\n${onboardingUrl}\n\n` +
+    `This link will expire in 7 days. If you have any questions, please speak to your manager.\n\n` +
+    `Kind regards,\nThe Anchor Management Team`;
+
+  return { subject, text, cc: [MANAGER_EMAIL] };
+}
+
+export async function sendPortalInviteEmail(email: string, onboardingUrl: string) {
+  const { subject, text, cc } = buildPortalInviteEmail(email, onboardingUrl);
+  return sendEmail({ to: email, subject, text, cc });
+}
+
 export async function sendWelcomeEmail(email: string, onboardingUrl: string) {
   const { subject, text, cc } = buildWelcomeEmail(email, onboardingUrl);
   return sendEmail({ to: email, subject, text, cc });

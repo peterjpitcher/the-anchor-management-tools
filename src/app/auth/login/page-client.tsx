@@ -81,7 +81,9 @@ export default function LoginForm() {
 
     toast.success('Signed in')
     clearCookie(LOGIN_REDIRECT_COOKIE)
-    router.replace(redirectTo)
+    // Server may return an explicit redirect (e.g. portal employees → /portal/shifts)
+    const destination = ('redirectTo' in res && res.redirectTo) ? res.redirectTo : redirectTo
+    router.replace(destination)
     router.refresh()
   }
 

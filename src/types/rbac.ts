@@ -51,6 +51,10 @@ export type ModuleName =
   | 'short_links'
   | 'menu_management'
   | 'cashing_up'
+  | 'rota'
+  | 'leave'
+  | 'timeclock'
+  | 'payroll'
 ;
 
 export type ActionType = 
@@ -83,7 +87,10 @@ export type ActionType =
   | 'submit'
   | 'approve'
   | 'lock'
-  | 'unlock';
+  | 'unlock'
+  | 'publish'
+  | 'request'
+  | 'clock';
 
 export type UserPermission = {
   module_name: ModuleName;

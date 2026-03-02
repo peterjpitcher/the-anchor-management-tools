@@ -13,6 +13,8 @@ import {
   LinkIcon,
   ChartBarIcon,
   TableCellsIcon,
+  BanknotesIcon,
+  UserGroupIcon,
 } from '@heroicons/react/24/outline';
 import { checkUserPermission } from '@/app/actions/rbac';
 import type { ModuleName, ActionType } from '@/types/rbac';
@@ -43,6 +45,28 @@ const settingsSections = [
     href: '/roles',
     icon: KeyIcon,
     permission: { module: 'roles', action: 'view' },
+  },
+  // Rota / Staff Operations
+  {
+    name: 'Rota Settings',
+    description: 'Holiday year, default allowance, and notification email addresses',
+    href: '/settings/rota',
+    icon: UserGroupIcon,
+    permission: { module: 'settings', action: 'manage' },
+  },
+  {
+    name: 'Pay Bands',
+    description: 'Manage age-based hourly pay rates with effective dates',
+    href: '/settings/pay-bands',
+    icon: BanknotesIcon,
+    permission: { module: 'settings', action: 'manage' },
+  },
+  {
+    name: 'Budgets',
+    description: 'Set annual hours budgets per department for rota planning',
+    href: '/settings/budgets',
+    icon: ChartBarIcon,
+    permission: { module: 'settings', action: 'manage' },
   },
   // System Settings Section
   {
@@ -177,11 +201,24 @@ export default async function SettingsPage() {
       ),
     },
     {
+      id: 'rota',
+      label: 'Staff Operations',
+      items: visibleSections.filter(
+        (section) =>
+          section.href === '/settings/rota' ||
+          section.href === '/settings/pay-bands' ||
+          section.href === '/settings/budgets'
+      ),
+    },
+    {
       id: 'system-settings',
       label: 'System Settings',
       items: visibleSections.filter(
         (section) =>
           section.href.includes('/settings/') &&
+          section.href !== '/settings/rota' &&
+          section.href !== '/settings/pay-bands' &&
+          section.href !== '/settings/budgets' &&
           !section.name.includes('SMS') &&
           !section.name.includes('Audit') &&
           !section.name.includes('API Keys') &&

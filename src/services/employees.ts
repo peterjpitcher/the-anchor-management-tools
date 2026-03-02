@@ -1034,7 +1034,11 @@ export class EmployeeService {
     const applyFilters = <T>(query: T) => {
       let builder: any = query;
       if (statusFilter !== 'all') {
-        builder = builder.eq('status', statusFilter);
+        if (statusFilter === 'Active') {
+          builder = builder.in('status', ['Active', 'Started Separation']);
+        } else {
+          builder = builder.eq('status', statusFilter);
+        }
       }
       if (searchTerm) {
         const searchPattern = `%${searchTerm}%`;
@@ -1053,16 +1057,15 @@ export class EmployeeService {
       return builder;
     };
 
-    const [allCountRes, activeCountRes, formerCountRes, onboardingCountRes, startedSeparationCountRes] = await Promise.all([
+    const [allCountRes, activeCountRes, formerCountRes, onboardingCountRes] = await Promise.all([
       adminClient.from('employees').select('*', { count: 'exact', head: true }),
-      adminClient.from('employees').select('*', { count: 'exact', head: true }).eq('status', 'Active'),
+      adminClient.from('employees').select('*', { count: 'exact', head: true }).in('status', ['Active', 'Started Separation']),
       adminClient.from('employees').select('*', { count: 'exact', head: true }).eq('status', 'Former'),
       adminClient.from('employees').select('*', { count: 'exact', head: true }).eq('status', 'Onboarding'),
-      adminClient.from('employees').select('*', { count: 'exact', head: true }).eq('status', 'Started Separation')
     ]);
 
-    if (allCountRes.error || activeCountRes.error || formerCountRes.error || onboardingCountRes.error || startedSeparationCountRes.error) {
-      throw allCountRes.error || activeCountRes.error || formerCountRes.error || onboardingCountRes.error || startedSeparationCountRes.error;
+    if (allCountRes.error || activeCountRes.error || formerCountRes.error || onboardingCountRes.error) {
+      throw allCountRes.error || activeCountRes.error || formerCountRes.error || onboardingCountRes.error;
     }
 
     const { count, error: countError } = await applyFilters(
@@ -1105,7 +1108,7 @@ export class EmployeeService {
         active: activeCountRes.count ?? 0,
         former: formerCountRes.count ?? 0,
         onboarding: onboardingCountRes.count ?? 0,
-        startedSeparation: startedSeparationCountRes.count ?? 0
+        startedSeparation: 0,
       },
       filters: {
         statusFilter,
@@ -1120,7 +1123,11 @@ export class EmployeeService {
     let query = adminClient.from('employees').select('*').order('last_name').order('first_name');
     
     if (options.statusFilter && options.statusFilter !== 'all') {
-      query = query.eq('status', options.statusFilter);
+      if (options.statusFilter === 'Active') {
+        query = query.in('status', ['Active', 'Started Separation']);
+      } else {
+        query = query.eq('status', options.statusFilter);
+      }
     }
 
     const { data: employees, error } = await query;

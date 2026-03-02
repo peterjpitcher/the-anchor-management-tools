@@ -415,6 +415,8 @@ export async function GET(request: NextRequest) {
       )
     : null
 
+  const showingCancelledExplicitly = parsedStatusFilters !== null && parsedStatusFilters.has('cancelled')
+
   const mappedBookings = bookingRows
     .map((row) => {
       const customer = normalizeCustomer(row.customer)
@@ -521,6 +523,10 @@ export async function GET(request: NextRequest) {
         const status = (booking.status || '').toLowerCase()
         const visualStatus = booking.visual_status.toLowerCase()
         if (!parsedStatusFilters.has(status) && !parsedStatusFilters.has(visualStatus)) {
+          return false
+        }
+      } else if (!showingCancelledExplicitly) {
+        if ((booking.status || '').toLowerCase() === 'cancelled') {
           return false
         }
       }

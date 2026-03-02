@@ -169,6 +169,18 @@
     {
       "path": "/api/cron/employee-invite-chase",
       "schedule": "0 9 * * *"
+    },
+    {
+      "path": "/api/cron/rota-auto-close",
+      "schedule": "0 5 * * *"
+    },
+    {
+      "path": "/api/cron/rota-manager-alert",
+      "schedule": "0 18 * * 0"
+    },
+    {
+      "path": "/api/cron/rota-staff-email",
+      "schedule": "0 21 * * 0"
     }
   ]
 }

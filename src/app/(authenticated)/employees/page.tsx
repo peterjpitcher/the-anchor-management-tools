@@ -12,10 +12,11 @@ interface PageProps {
 type EmployeeStatus = 'all' | 'Active' | 'Former' | 'Onboarding' | 'Started Separation'
 
 export default async function EmployeesPage({ searchParams }: PageProps) {
-  const [canView, canCreate, canExport] = await Promise.all([
+  const [canView, canCreate, canExport, canEdit] = await Promise.all([
     checkUserPermission('employees', 'view'),
     checkUserPermission('employees', 'create'),
-    checkUserPermission('employees', 'export')
+    checkUserPermission('employees', 'export'),
+    checkUserPermission('employees', 'edit'),
   ])
 
   if (!canView) {
@@ -49,7 +50,8 @@ export default async function EmployeesPage({ searchParams }: PageProps) {
       initialData={initialData}
       permissions={{
         canCreate,
-        canExport
+        canExport,
+        canEdit,
       }}
     />
   )

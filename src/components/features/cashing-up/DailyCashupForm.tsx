@@ -85,6 +85,7 @@ export function DailyCashupForm({ site, sessionDate, initialSessionData, isBill 
   const [dailyData, setDailyData] = useState<{
     events: any[];
     privateBookings: any[];
+    tableBookings: any[];
   } | null>(null);
 
   const [missingDates, setMissingDates] = useState<string[]>([]);
@@ -735,6 +736,42 @@ export function DailyCashupForm({ site, sessionDate, initialSessionData, isBill 
                               <div className="text-xs text-amber-700">{pb.event_type || 'Private Event'} • {pb.guest_count || 0} guests</div>
                             </li>
                           ))}
+                        </ul>
+                      )}
+                    </div>
+
+                    {/* Table Bookings */}
+                    <div className="bg-teal-50 p-4 rounded border border-teal-100">
+                      <h4 className="font-bold text-teal-800 text-sm mb-3 uppercase">
+                        Table Bookings ({dailyData.tableBookings.length})
+                        {dailyData.tableBookings.length > 0 && (
+                          <span className="ml-2 font-normal normal-case text-teal-600">
+                            {dailyData.tableBookings.reduce((sum: number, b: any) => sum + b.party_size, 0)} covers
+                          </span>
+                        )}
+                      </h4>
+                      {dailyData.tableBookings.length === 0 ? (
+                        <p className="text-gray-500 text-sm italic">No table bookings</p>
+                      ) : (
+                        <ul className="space-y-2">
+                          {dailyData.tableBookings.map((tb: any) => {
+                            const isNoShow = tb.status === 'no_show';
+                            const isVisited = tb.status === 'visited_waiting_for_review';
+                            const isCompleted = tb.status === 'completed';
+                            return (
+                              <li key={tb.id} className="text-sm border-b border-teal-200 last:border-0 pb-1 last:pb-0">
+                                <div className={`font-medium ${isNoShow ? 'text-red-700 line-through' : 'text-teal-900'}`}>
+                                  {tb.booking_time?.slice(0, 5)} • {tb.party_size} {tb.party_size === 1 ? 'cover' : 'covers'}
+                                </div>
+                                <div className="text-xs text-teal-700 flex items-center gap-1">
+                                  <span>{tb.booking_type === 'sunday_lunch' ? 'Sunday Lunch' : 'Regular'}</span>
+                                  {isNoShow && <span className="text-red-600 font-medium">• No show</span>}
+                                  {isVisited && <span className="text-yellow-600 font-medium">• Visited (pending review)</span>}
+                                  {isCompleted && <span className="text-green-600 font-medium">• Completed</span>}
+                                </div>
+                              </li>
+                            );
+                          })}
                         </ul>
                       )}
                     </div>

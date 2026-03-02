@@ -99,7 +99,7 @@ export default function EmployeeForm({
       title: 'Employment Details',
       fields: [
         { name: 'job_title', label: 'Job Title', type: 'text', required: true, defaultValue: employee?.job_title },
-        { name: 'status', label: 'Status', type: 'select', required: true, options: ['Active', 'Former', 'Prospective'], defaultValue: employee?.status || 'Active' },
+        { name: 'status', label: 'Status', type: 'select', required: true, options: ['Active', 'Started Separation', 'Former'], defaultValue: employee?.status || 'Active' },
         { name: 'employment_start_date', label: 'Employment Start Date', type: 'date', required: true, defaultValue: employee?.employment_start_date?.split('T')[0] },
         { name: 'employment_end_date', label: 'Employment End Date', type: 'date', defaultValue: employee?.employment_end_date?.split('T')[0] },
         { name: 'first_shift_date', label: 'First Shift Date', type: 'date', defaultValue: employee?.first_shift_date?.split('T')[0] },
