@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { useRouter, usePathname, useSearchParams } from 'next/navigation'
 import { ArrowDownTrayIcon, PlusIcon, EnvelopeIcon } from '@heroicons/react/24/outline'
 import { toast } from '@/components/ui-v2/feedback/Toast'
+import { usePermissions } from '@/contexts/PermissionContext'
 import { PageLayout } from '@/components/ui-v2/layout/PageLayout'
 import { Card } from '@/components/ui-v2/layout/Card'
 import { Dropdown } from '@/components/ui-v2/navigation/Dropdown'
@@ -90,6 +91,8 @@ export default function EmployeesClientPage({ initialData, permissions }: Employ
   const searchParams = useSearchParams()
   const [isPending, startTransition] = useTransition()
   const [showInviteModal, setShowInviteModal] = useState(false)
+  const { hasPermission } = usePermissions()
+  const canManageSettings = hasPermission('settings', 'manage')
 
   // Derive state directly from server data
   const roster = initialData
@@ -181,10 +184,6 @@ export default function EmployeesClientPage({ initialData, permissions }: Employ
 
   const headerActions = (
     <>
-      <LinkButton href="/employees/birthdays" size="md" variant="secondary">
-        Birthdays
-      </LinkButton>
-
       {permissions.canExport && (
         <Dropdown
           label="Export"
@@ -229,6 +228,17 @@ export default function EmployeesClientPage({ initialData, permissions }: Employ
           </LinkButton>
         </>
       )}
+
+      {canManageSettings && (
+        <>
+          <LinkButton href="/settings/pay-bands" variant="secondary" size="sm">
+            Pay Bands
+          </LinkButton>
+          <LinkButton href="/settings/categories" variant="secondary" size="sm">
+            Categories
+          </LinkButton>
+        </>
+      )}
     </>
   )
 
@@ -237,6 +247,10 @@ export default function EmployeesClientPage({ initialData, permissions }: Employ
       <PageLayout
         title="Employees"
         subtitle="Manage your staff and their information"
+        navItems={[
+          { label: 'Employees', href: '/employees' },
+          { label: 'Birthdays', href: '/employees/birthdays' },
+        ]}
         headerActions={headerActions}
       >
         <section id="filters">

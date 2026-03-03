@@ -6,8 +6,6 @@ import { PageLayout } from '@/components/ui-v2/layout/PageLayout';
 import { Section } from '@/components/ui-v2/layout/Section';
 import { Card } from '@/components/ui-v2/layout/Card';
 import { Button } from '@/components/ui-v2/forms/Button';
-import { NavGroup } from '@/components/ui-v2/navigation/NavGroup';
-import { NavLink } from '@/components/ui-v2/navigation/NavLink';
 import { DataTable, type Column } from '@/components/ui-v2/display/DataTable';
 import { Badge } from '@/components/ui-v2/display/Badge';
 import { Input } from '@/components/ui-v2/forms/Input';
@@ -21,6 +19,7 @@ import { Alert } from '@/components/ui-v2/feedback/Alert';
 import { toast } from '@/components/ui-v2/feedback/Toast';
 import { usePermissions } from '@/contexts/PermissionContext';
 import { SmartImportModal } from '@/components/features/menu/SmartImportModal';
+import { LinkButton } from '@/components/ui-v2/navigation/LinkButton';
 import { reviewIngredientWithAI, type ReviewResult, type ReviewSuggestion } from '@/app/actions/ai-menu-parsing';
 
 const UNITS = [
@@ -594,16 +593,21 @@ export default function MenuIngredientsPage() {
     setShowModal(true);
   }
 
-  const navActions = canManage ? (
-    <NavGroup variant="light">
-      <NavLink variant="light" onClick={() => setShowImportModal(true)}>
-        Smart Import
-      </NavLink>
-      <NavLink variant="light" onClick={openCreateModal} className="font-semibold">
-        Add Ingredient
-      </NavLink>
-    </NavGroup>
-  ) : undefined;
+  const headerActions = (
+    <div className="flex items-center gap-2">
+      {canManage && (
+        <>
+          <Button variant="secondary" onClick={() => setShowImportModal(true)}>Smart Import</Button>
+          <Button onClick={openCreateModal}>Add Ingredient</Button>
+        </>
+      )}
+      {canManage && (
+        <LinkButton href="/settings/menu-target" variant="secondary" size="sm">
+          Menu Target
+        </LinkButton>
+      )}
+    </div>
+  );
 
   const rows = useMemo(() => {
     const term = quickFilter.trim().toLowerCase();
@@ -799,7 +803,7 @@ export default function MenuIngredientsPage() {
         { label: 'Recipes', href: '/menu-management/recipes' },
         { label: 'Ingredients', href: '/menu-management/ingredients' },
       ]}
-      navActions={navActions}
+      headerActions={headerActions}
       loading={loading}
       loadingLabel="Loading ingredients..."
       error={error}

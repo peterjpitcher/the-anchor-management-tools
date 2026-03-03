@@ -15,6 +15,7 @@ import {
   TableCellsIcon,
   BanknotesIcon,
   UserGroupIcon,
+  BuildingOfficeIcon,
 } from '@heroicons/react/24/outline';
 import { checkUserPermission } from '@/app/actions/rbac';
 import type { ModuleName, ActionType } from '@/types/rbac';
@@ -23,20 +24,39 @@ import { PageLayout } from '@/components/ui-v2/layout/PageLayout';
 import { Section } from '@/components/ui-v2/layout/Section';
 import { SimpleList } from '@/components/ui-v2/display/List';
 
-const settingsSections = [
-  // User Management Section
+type SettingsGroup =
+  | 'user-access'
+  | 'staff-ops'
+  | 'events-bookings'
+  | 'customers-comms'
+  | 'finance'
+  | 'monitoring';
+
+interface SettingsItem {
+  name: string;
+  description: string;
+  href: string;
+  icon: React.ElementType;
+  group: SettingsGroup;
+  permission: { module: ModuleName; action: ActionType } | null;
+}
+
+const settingsSections: SettingsItem[] = [
+  // ── User & Access ──────────────────────────────────────────────────────────
   {
     name: 'My Profile',
     description: 'View and edit your personal profile information',
     href: '/profile',
     icon: UserCircleIcon,
-    permission: null, // Everyone can access their profile
+    group: 'user-access',
+    permission: null,
   },
   {
     name: 'User Management',
     description: 'Manage users and their role assignments',
     href: '/users',
     icon: UsersIcon,
+    group: 'user-access',
     permission: { module: 'users', action: 'view' },
   },
   {
@@ -44,14 +64,17 @@ const settingsSections = [
     description: 'Create and manage roles and permissions',
     href: '/roles',
     icon: KeyIcon,
+    group: 'user-access',
     permission: { module: 'roles', action: 'view' },
   },
-  // Rota / Staff Operations
+
+  // ── Staff Operations ───────────────────────────────────────────────────────
   {
     name: 'Rota Settings',
     description: 'Holiday year, default allowance, and notification email addresses',
     href: '/settings/rota',
     icon: UserGroupIcon,
+    group: 'staff-ops',
     permission: { module: 'settings', action: 'manage' },
   },
   {
@@ -59,6 +82,7 @@ const settingsSections = [
     description: 'Manage age-based hourly pay rates with effective dates',
     href: '/settings/pay-bands',
     icon: BanknotesIcon,
+    group: 'staff-ops',
     permission: { module: 'settings', action: 'manage' },
   },
   {
@@ -66,14 +90,25 @@ const settingsSections = [
     description: 'Set annual hours budgets per department for rota planning',
     href: '/settings/budgets',
     icon: ChartBarIcon,
+    group: 'staff-ops',
     permission: { module: 'settings', action: 'manage' },
   },
-  // System Settings Section
+  {
+    name: 'Attachment Categories',
+    description: 'Manage categories for employee file attachments',
+    href: '/settings/categories',
+    icon: TagIcon,
+    group: 'staff-ops',
+    permission: { module: 'settings', action: 'manage' },
+  },
+
+  // ── Events & Bookings ──────────────────────────────────────────────────────
   {
     name: 'Event Categories',
     description: 'Manage event categories and standardize event types',
     href: '/settings/event-categories',
     icon: CalendarDaysIcon,
+    group: 'events-bookings',
     permission: { module: 'events', action: 'manage' },
   },
   {
@@ -81,6 +116,7 @@ const settingsSections = [
     description: 'Add and generate important calendar dates with AI',
     href: '/settings/calendar-notes',
     icon: CalendarDaysIcon,
+    group: 'events-bookings',
     permission: { module: 'settings', action: 'manage' },
   },
   {
@@ -88,6 +124,7 @@ const settingsSections = [
     description: 'Manage regular opening hours and special dates',
     href: '/settings/business-hours',
     icon: ClockIcon,
+    group: 'events-bookings',
     permission: { module: 'settings', action: 'manage' },
   },
   {
@@ -95,27 +132,25 @@ const settingsSections = [
     description: 'Manage table names, numbers, capacities and joined-table rules',
     href: '/settings/table-bookings',
     icon: TableCellsIcon,
+    group: 'events-bookings',
     permission: { module: 'settings', action: 'manage' },
   },
   {
-    name: 'Menu GP Target',
-    description: 'Set the standard GP% target applied to all dishes',
-    href: '/settings/menu-target',
-    icon: ChartBarIcon,
-    permission: { module: 'menu_management', action: 'manage' },
+    name: 'Private Booking Settings',
+    description: 'Configure catering options, vendors, spaces and general defaults',
+    href: '/private-bookings/settings',
+    icon: BuildingOfficeIcon,
+    group: 'events-bookings',
+    permission: { module: 'private_bookings', action: 'manage' },
   },
-  {
-    name: 'Attachment Categories',
-    description: 'Manage categories for employee file attachments',
-    href: '/settings/categories',
-    icon: TagIcon,
-    permission: { module: 'settings', action: 'manage' },
-  },
+
+  // ── Customers & Communications ─────────────────────────────────────────────
   {
     name: 'Customer Labels',
     description: 'Manage labels for customer segmentation and targeting',
     href: '/settings/customer-labels',
     icon: TagIcon,
+    group: 'customers-comms',
     permission: { module: 'customers', action: 'manage' },
   },
   {
@@ -123,6 +158,7 @@ const settingsSections = [
     description: 'Manage SMS message templates and customize content',
     href: '/settings/message-templates',
     icon: DocumentTextIcon,
+    group: 'customers-comms',
     permission: { module: 'messages', action: 'manage_templates' },
   },
   {
@@ -130,14 +166,27 @@ const settingsSections = [
     description: 'Import historical SMS messages from your Twilio account',
     href: '/settings/import-messages',
     icon: ArrowDownTrayIcon,
+    group: 'customers-comms',
     permission: { module: 'messages', action: 'manage' },
   },
-  // Monitoring Section
+
+  // ── Finance ────────────────────────────────────────────────────────────────
+  {
+    name: 'Menu GP Target',
+    description: 'Set the standard GP% target applied to all dishes',
+    href: '/settings/menu-target',
+    icon: ChartBarIcon,
+    group: 'finance',
+    permission: { module: 'menu_management', action: 'manage' },
+  },
+
+  // ── Monitoring & Admin ─────────────────────────────────────────────────────
   {
     name: 'Audit Logs',
     description: 'View system audit logs for security and compliance',
     href: '/settings/audit-logs',
     icon: ShieldCheckIcon,
+    group: 'monitoring',
     permission: { module: 'settings', action: 'manage' },
   },
   {
@@ -145,6 +194,7 @@ const settingsSections = [
     description: 'Monitor and manage background job processing',
     href: '/settings/background-jobs',
     icon: CpuChipIcon,
+    group: 'monitoring',
     permission: { module: 'settings', action: 'manage' },
   },
   {
@@ -152,6 +202,7 @@ const settingsSections = [
     description: 'Manage API keys for external integrations',
     href: '/settings/api-keys',
     icon: CommandLineIcon,
+    group: 'monitoring',
     permission: { module: 'settings', action: 'manage' },
   },
   {
@@ -159,6 +210,7 @@ const settingsSections = [
     description: 'Create and manage vip-club.uk short links',
     href: '/short-links',
     icon: LinkIcon,
+    group: 'monitoring',
     permission: { module: 'short_links', action: 'view' },
   },
   {
@@ -166,23 +218,31 @@ const settingsSections = [
     description: 'Export your data or manage privacy settings',
     href: '/settings/gdpr',
     icon: ShieldCheckIcon,
-    permission: null, // Everyone can access their own data
+    group: 'monitoring',
+    permission: null,
   },
+];
+
+const GROUP_CONFIG: Array<{ id: SettingsGroup; label: string }> = [
+  { id: 'user-access', label: 'User & Access' },
+  { id: 'staff-ops', label: 'Staff Operations' },
+  { id: 'events-bookings', label: 'Events & Bookings' },
+  { id: 'customers-comms', label: 'Customers & Communications' },
+  { id: 'finance', label: 'Finance' },
+  { id: 'monitoring', label: 'Monitoring & Admin' },
 ];
 
 export default async function SettingsPage() {
   // Filter sections based on user permissions
-  const visibleSections = [];
-  
+  const visibleSections: SettingsItem[] = [];
+
   for (const section of settingsSections) {
     if (!section.permission) {
-      // No permission required (like profile)
       visibleSections.push(section);
     } else {
-      // Check if user has permission
       const hasPermission = await checkUserPermission(
-        section.permission.module as ModuleName,
-        section.permission.action as ActionType
+        section.permission.module,
+        section.permission.action
       );
       if (hasPermission) {
         visibleSections.push(section);
@@ -190,55 +250,12 @@ export default async function SettingsPage() {
     }
   }
 
-  // Group sections by category for rendering and navigation
-  const sectionGroups = [
-    {
-      id: 'user-management',
-      label: 'User Management',
-      items: visibleSections.filter(
-        (section) =>
-          section.href === '/profile' || section.href === '/users' || section.href === '/roles'
-      ),
-    },
-    {
-      id: 'rota',
-      label: 'Staff Operations',
-      items: visibleSections.filter(
-        (section) =>
-          section.href === '/settings/rota' ||
-          section.href === '/settings/pay-bands' ||
-          section.href === '/settings/budgets'
-      ),
-    },
-    {
-      id: 'system-settings',
-      label: 'System Settings',
-      items: visibleSections.filter(
-        (section) =>
-          section.href.includes('/settings/') &&
-          section.href !== '/settings/rota' &&
-          section.href !== '/settings/pay-bands' &&
-          section.href !== '/settings/budgets' &&
-          !section.name.includes('SMS') &&
-          !section.name.includes('Audit') &&
-          !section.name.includes('API Keys') &&
-          !section.name.includes('Twilio') &&
-          !section.name.includes('Cron')
-      ),
-    },
-    {
-      id: 'monitoring',
-      label: 'Monitoring & Logs',
-      items: visibleSections.filter(
-        (section) =>
-          section.name.includes('SMS') ||
-          section.name.includes('Audit') ||
-          section.name.includes('API Keys') ||
-          section.name.includes('Twilio') ||
-          section.name.includes('Cron')
-      ),
-    },
-  ].filter((group) => group.items.length > 0);
+  // Build groups using explicit group field (no fragile string matching)
+  const sectionGroups = GROUP_CONFIG.map((groupConfig) => ({
+    id: groupConfig.id,
+    label: groupConfig.label,
+    items: visibleSections.filter((s) => s.group === groupConfig.id),
+  })).filter((g) => g.items.length > 0);
 
   return (
     <PageLayout

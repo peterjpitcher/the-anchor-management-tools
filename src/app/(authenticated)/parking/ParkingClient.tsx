@@ -347,7 +347,7 @@ export default function ParkingClient({ permissions, initialError }: Props) {
   const upcomingCount = useMemo(() => bookings.filter((b) => new Date(b.start_at) > new Date() && ['pending_payment', 'confirmed'].includes(b.status)).length, [bookings])
   const pendingPaymentCount = useMemo(() => bookings.filter((b) => b.payment_status === 'pending').length, [bookings])
 
-  const navActions = permissions.canCreate ? (
+  const headerActions = permissions.canCreate ? (
     <Button size="sm" onClick={() => setShowCreateModal(true)}>
       New booking
     </Button>
@@ -503,7 +503,7 @@ export default function ParkingClient({ permissions, initialError }: Props) {
     <PageLayout
       title="Parking bookings"
       subtitle="Manage onsite car park reservations, monitor payments, and keep customer details up to date."
-      navActions={navActions}
+      headerActions={headerActions}
       loading={showInitialLoading}
       loadingLabel="Loading bookings..."
     >

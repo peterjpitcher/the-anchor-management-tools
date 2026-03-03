@@ -7,8 +7,6 @@ import { Section } from '@/components/ui-v2/layout/Section';
 import { Card } from '@/components/ui-v2/layout/Card';
 import { DataTable } from '@/components/ui-v2/display/DataTable';
 import { Button } from '@/components/ui-v2/forms/Button';
-import { NavGroup } from '@/components/ui-v2/navigation/NavGroup';
-import { NavLink } from '@/components/ui-v2/navigation/NavLink';
 import { Badge } from '@/components/ui-v2/display/Badge';
 import { Input } from '@/components/ui-v2/forms/Input';
 import { Select } from '@/components/ui-v2/forms/Select';
@@ -20,6 +18,7 @@ import { ConfirmDialog } from '@/components/ui-v2/overlay/ConfirmDialog';
 import { Alert } from '@/components/ui-v2/feedback/Alert';
 import { toast } from '@/components/ui-v2/feedback/Toast';
 import { usePermissions } from '@/contexts/PermissionContext';
+import { LinkButton } from '@/components/ui-v2/navigation/LinkButton';
 
 const UNITS = [
   { value: 'each', label: 'Each' },
@@ -383,13 +382,18 @@ export default function MenuRecipesPage() {
   const yieldQuantityNumber = parseFloat(formState.yield_quantity || '1') || 1;
   const computedPortionCost = yieldQuantityNumber > 0 ? computedTotalCost / yieldQuantityNumber : computedTotalCost;
 
-  const navActions = canManage ? (
-    <NavGroup variant="light">
-      <NavLink variant="light" onClick={openCreateModal} className="font-semibold">
-        Add Recipe
-      </NavLink>
-    </NavGroup>
-  ) : undefined;
+  const headerActions = (
+    <div className="flex items-center gap-2">
+      {canManage && (
+        <Button onClick={openCreateModal}>Add Recipe</Button>
+      )}
+      {canManage && (
+        <LinkButton href="/settings/menu-target" variant="secondary" size="sm">
+          Menu Target
+        </LinkButton>
+      )}
+    </div>
+  );
 
   const columns = [
     {
@@ -530,7 +534,7 @@ export default function MenuRecipesPage() {
         { label: 'Recipes', href: '/menu-management/recipes' },
         { label: 'Ingredients', href: '/menu-management/ingredients' },
       ]}
-      navActions={navActions}
+      headerActions={headerActions}
     >
       <Section>
         <Alert variant="info">

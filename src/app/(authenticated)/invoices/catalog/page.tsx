@@ -4,8 +4,6 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { PageLayout } from '@/components/ui-v2/layout/PageLayout'
 import { Button } from '@/components/ui-v2/forms/Button'
-import { NavGroup } from '@/components/ui-v2/navigation/NavGroup'
-import { NavLink } from '@/components/ui-v2/navigation/NavLink'
 import { Modal, ModalActions } from '@/components/ui-v2/overlay/Modal'
 import { Input } from '@/components/ui-v2/forms/Input'
 import { Textarea } from '@/components/ui-v2/forms/Textarea'
@@ -180,6 +178,11 @@ export default function LineItemCatalogPage() {
         title="Line Item Catalog"
         subtitle="Manage reusable line items for invoices and quotes"
         backButton={{ label: 'Back to Invoices', href: '/invoices' }}
+        navItems={[
+          { label: 'Catalog', href: '/invoices/catalog' },
+          { label: 'Vendors', href: '/invoices/vendors' },
+          { label: 'Recurring', href: '/invoices/recurring' },
+        ]}
         loading
         loadingLabel="Loading catalog..."
       />
@@ -195,18 +198,21 @@ export default function LineItemCatalogPage() {
       title="Line Item Catalog"
       subtitle="Manage reusable line items for invoices and quotes"
       backButton={{ label: 'Back to Invoices', href: '/invoices' }}
-      navActions={
-        <NavGroup>
-          <NavLink
-            onClick={canManage ? () => openForm() : undefined}
-            disabled={!canManage}
-            title={!canManage ? 'You need invoice manage permission to add catalog items.' : undefined}
-            className="font-semibold"
+      navItems={[
+        { label: 'Catalog', href: '/invoices/catalog' },
+        { label: 'Vendors', href: '/invoices/vendors' },
+        { label: 'Recurring', href: '/invoices/recurring' },
+      ]}
+      headerActions={
+        canManage ? (
+          <Button
+            variant="primary"
+            onClick={() => openForm()}
+            leftIcon={<Plus className="h-4 w-4" />}
           >
-            <Plus className="h-4 w-4" />
             Add Item
-          </NavLink>
-        </NavGroup>
+          </Button>
+        ) : undefined
       }
     >
       <div className="space-y-6">

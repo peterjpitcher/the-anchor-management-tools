@@ -118,7 +118,6 @@ export function InsightsClient() {
     {
       label: 'Insights',
       href: '/short-links/insights',
-      active: true,
     },
   ]
 

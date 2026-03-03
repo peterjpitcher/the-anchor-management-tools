@@ -29,7 +29,7 @@ export default async function ShiftTemplatesPage() {
       title="Shift Templates"
       subtitle="Create reusable shift blocks for the rota palette"
       navItems={[
-        { label: 'Rota', href: '/rota', active: false },
+        { label: 'Rota', href: '/rota' },
         { label: 'Leave', href: '/rota/leave' },
         { label: 'Timeclock', href: '/rota/timeclock' },
         { label: 'Labour Costs', href: '/rota/dashboard' },

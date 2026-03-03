@@ -161,7 +161,6 @@ export default function ShortLinksClient({ initialLinks, canManage }: Props) {
     {
       label: 'Overview',
       href: '/short-links',
-      active: true,
     },
     {
       label: 'Insights',

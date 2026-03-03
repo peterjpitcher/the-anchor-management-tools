@@ -35,8 +35,6 @@ import { FormGroup } from '@/components/ui-v2/forms/FormGroup'
 import { Modal } from '@/components/ui-v2/overlay/Modal'
 import { EmptyState } from '@/components/ui-v2/display/EmptyState'
 import { Spinner } from '@/components/ui-v2/feedback/Spinner'
-import { NavGroup } from '@/components/ui-v2/navigation/NavGroup'
-import { NavLink } from '@/components/ui-v2/navigation/NavLink'
 import { ConfirmDialog } from '@/components/ui-v2/overlay/ConfirmDialog'
 import { toast } from '@/components/ui-v2/feedback/Toast'
 
@@ -798,24 +796,24 @@ export default function ItemsPage() {
     ? `${customerLabel} - ${booking.event_date ? formatDateFull(booking.event_date) : 'Date TBD'}`
     : 'Booking details'
 
-  const navActions = (
-    <NavGroup>
-      <NavLink href={`/private-bookings/${bookingId}`}>
-        View Booking
-      </NavLink>
-      <NavLink onClick={() => setShowAddModal(true)} className="font-semibold">
-        <PlusIcon className="h-4 w-4" />
-        Add Item
-      </NavLink>
-    </NavGroup>
-  )
+  const navItems = [
+    { label: 'Overview', href: `/private-bookings/${bookingId}` },
+    { label: 'Items', href: `/private-bookings/${bookingId}/items` },
+    { label: 'Messages', href: `/private-bookings/${bookingId}/messages` },
+    { label: 'Contract', href: `/private-bookings/${bookingId}/contract` },
+  ];
 
   return (
     <PageLayout
       title="Booking Items"
       subtitle={subtitle}
       backButton={{ label: 'Back to Booking', href: `/private-bookings/${bookingId}` }}
-      navActions={navActions}
+      navItems={navItems}
+      headerActions={
+        <Button onClick={() => setShowAddModal(true)} leftIcon={<PlusIcon className="h-4 w-4" />}>
+          Add Item
+        </Button>
+      }
     >
       <div className="space-y-6">
         <Card>

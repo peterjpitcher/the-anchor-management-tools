@@ -492,7 +492,7 @@ export default function OJProjectsClientsPage() {
     { label: 'Dashboard', href: '/oj-projects', icon: <LayoutDashboard className="w-4 h-4" /> },
     { label: 'Projects', href: '/oj-projects/projects', icon: <Briefcase className="w-4 h-4" /> },
     { label: 'Entries', href: '/oj-projects/entries', icon: <List className="w-4 h-4" /> },
-    { label: 'Clients', href: '/oj-projects/clients', active: true, icon: <Users className="w-4 h-4" /> },
+    { label: 'Clients', href: '/oj-projects/clients', icon: <Users className="w-4 h-4" /> },
     { label: 'Work Types', href: '/oj-projects/work-types', icon: <List className="w-4 h-4" /> },
   ]
 

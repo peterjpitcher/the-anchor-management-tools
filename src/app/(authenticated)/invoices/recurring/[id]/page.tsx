@@ -6,8 +6,6 @@ import { getRecurringInvoice, deleteRecurringInvoice, toggleRecurringInvoiceStat
 import { PageLayout } from '@/components/ui-v2/layout/PageLayout'
 import { Card } from '@/components/ui-v2/layout/Card'
 import { Button } from '@/components/ui-v2/forms/Button'
-import { NavGroup } from '@/components/ui-v2/navigation/NavGroup'
-import { NavLink } from '@/components/ui-v2/navigation/NavLink'
 import { Alert } from '@/components/ui-v2/feedback/Alert'
 import { Badge } from '@/components/ui-v2/display/Badge'
 import { toast } from '@/components/ui-v2/feedback/Toast'
@@ -193,6 +191,11 @@ export default function RecurringInvoiceDetailPage() {
         title="Recurring Invoice"
         subtitle="View recurring invoice template"
         backButton={{ label: 'Back to Recurring Invoices', href: '/invoices/recurring' }}
+        navItems={[
+          { label: 'Catalog', href: '/invoices/catalog' },
+          { label: 'Vendors', href: '/invoices/vendors' },
+          { label: 'Recurring', href: '/invoices/recurring' },
+        ]}
         loading
         loadingLabel="Loading recurring invoice..."
       />
@@ -209,6 +212,11 @@ export default function RecurringInvoiceDetailPage() {
         title="Recurring Invoice"
         subtitle="View recurring invoice template"
         backButton={{ label: 'Back to Recurring Invoices', href: '/invoices/recurring' }}
+        navItems={[
+          { label: 'Catalog', href: '/invoices/catalog' },
+          { label: 'Vendors', href: '/invoices/vendors' },
+          { label: 'Recurring', href: '/invoices/recurring' },
+        ]}
         error={error || 'Recurring invoice not found'}
       />
     )
@@ -231,41 +239,47 @@ export default function RecurringInvoiceDetailPage() {
   const finalSubtotal = totals.subtotal - invoiceDiscountAmount
   const finalTotal = finalSubtotal + totals.vat
 
-  const navActions = (
-    <NavGroup>
-      <NavLink
-        href={`/invoices/recurring/${recurringInvoice.id}/edit`}
-        disabled={!canEdit}
-        title={!canEdit ? 'You need invoice edit permission to update recurring invoices.' : undefined}
-      >
-        <Edit2 className="h-4 w-4" />
-        Edit
-      </NavLink>
-      <NavLink
-        onClick={actionLoading || !canEdit ? undefined : handleToggleStatus}
-        disabled={actionLoading || !canEdit}
-        title={!canEdit ? 'You need invoice edit permission to change status.' : undefined}
-        className={recurringInvoice.is_active ? 'text-amber-200' : 'text-green-200'}
-      >
-        {recurringInvoice.is_active ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
-        {recurringInvoice.is_active ? 'Deactivate' : 'Activate'}
-      </NavLink>
-      <NavLink
-        onClick={!recurringInvoice.is_active || actionLoading || !canCreate ? undefined : handleGenerateNow}
-        disabled={!recurringInvoice.is_active || actionLoading || !canCreate}
-        title={
-          !canCreate
-            ? 'You need invoice create permission to generate invoices.'
-            : !recurringInvoice.is_active
+  const headerActions = (
+    <div className="flex flex-wrap items-center gap-2">
+      {canEdit && (
+        <Button
+          variant="secondary"
+          size="sm"
+          onClick={() => router.push(`/invoices/recurring/${recurringInvoice.id}/edit`)}
+          leftIcon={<Edit2 className="h-4 w-4" />}
+        >
+          Edit
+        </Button>
+      )}
+      {canEdit && (
+        <Button
+          variant="secondary"
+          size="sm"
+          onClick={handleToggleStatus}
+          disabled={actionLoading}
+          leftIcon={recurringInvoice.is_active ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
+        >
+          {recurringInvoice.is_active ? 'Deactivate' : 'Activate'}
+        </Button>
+      )}
+      {canCreate && (
+        <Button
+          variant="primary"
+          size="sm"
+          onClick={handleGenerateNow}
+          disabled={!recurringInvoice.is_active || actionLoading}
+          loading={actionLoading}
+          leftIcon={<FileText className="h-4 w-4" />}
+          title={
+            !recurringInvoice.is_active
               ? 'Activate this template before generating.'
               : undefined
-        }
-        className="font-semibold"
-      >
-        <FileText className="h-4 w-4" />
-        {actionLoading ? 'Generating...' : 'Generate Now'}
-      </NavLink>
-    </NavGroup>
+          }
+        >
+          Generate Now
+        </Button>
+      )}
+    </div>
   )
 
   return (
@@ -273,7 +287,12 @@ export default function RecurringInvoiceDetailPage() {
       title="Recurring Invoice Details"
       subtitle={`Template for ${recurringInvoice.vendor?.name || 'Unknown Vendor'}`}
       backButton={{ label: 'Back to Recurring Invoices', href: '/invoices/recurring' }}
-      navActions={navActions}
+      navItems={[
+        { label: 'Catalog', href: '/invoices/catalog' },
+        { label: 'Vendors', href: '/invoices/vendors' },
+        { label: 'Recurring', href: '/invoices/recurring' },
+      ]}
+      headerActions={headerActions}
     >
       {isReadOnly && (
         <Alert

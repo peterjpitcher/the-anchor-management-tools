@@ -104,7 +104,10 @@ export default async function EmployeeBirthdaysPage() {
     <PageLayout
       title="Employee Birthdays"
       subtitle="All employee birthdays throughout the year"
-      backButton={{ label: 'Back to Employees', href: '/employees' }}
+      navItems={[
+        { label: 'Employees', href: '/employees' },
+        { label: 'Birthdays', href: '/employees/birthdays' },
+      ]}
       headerActions={headerActions}
     >
       <section id="overview" className="space-y-4">

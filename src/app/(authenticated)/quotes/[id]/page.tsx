@@ -12,8 +12,7 @@ import { PageLayout } from '@/components/ui-v2/layout/PageLayout'
 import { Card } from '@/components/ui-v2/layout/Card'
 import { Section } from '@/components/ui-v2/layout/Section'
 import { Button } from '@/components/ui-v2/forms/Button'
-import { NavGroup } from '@/components/ui-v2/navigation/NavGroup'
-import { NavLink } from '@/components/ui-v2/navigation/NavLink'
+import { LinkButton } from '@/components/ui-v2/navigation/LinkButton'
 import { Badge } from '@/components/ui-v2/display/Badge'
 import { Alert } from '@/components/ui-v2/feedback/Alert'
 import { toast } from '@/components/ui-v2/feedback/Toast'
@@ -284,107 +283,117 @@ export default function QuoteDetailPage({ params }: { params: Promise<{ id: stri
     return acc + (itemAfterQuoteDiscount * (item.vat_rate / 100))
   }, 0) || 0
 
-  const navActions = (
-    <NavGroup>
+  const headerActions = (
+    <div className="flex items-center gap-2 flex-wrap">
       {quote.status === 'draft' && (
-        <NavLink
-          onClick={processing || !canEdit ? undefined : () => handleStatusChange('sent')}
+        <Button
+          variant="secondary"
+          size="sm"
+          onClick={() => handleStatusChange('sent')}
           disabled={processing || !canEdit}
           title={!canEdit ? 'You need invoice edit permission to update quotes.' : undefined}
+          leftIcon={<Mail className="h-4 w-4" />}
         >
-          <Mail className="h-4 w-4" />
           <span className="hidden sm:inline">Mark as Sent</span>
           <span className="sm:hidden">Send</span>
-        </NavLink>
+        </Button>
       )}
 
       {quote.status === 'draft' && (
-        <NavLink
+        <LinkButton
           href={`/quotes/${quote.id}/edit`}
-          disabled={processing || !canEdit}
-          title={!canEdit ? 'You need invoice edit permission to edit quotes.' : undefined}
+          variant="secondary"
+          size="sm"
+          leftIcon={<Edit className="h-4 w-4" />}
         >
-          <Edit className="h-4 w-4" />
           Edit
-        </NavLink>
+        </LinkButton>
       )}
 
       {quote.status === 'sent' && !isExpired && (
-        <NavLink
-          onClick={processing || !canEdit ? undefined : () => handleStatusChange('accepted')}
+        <Button
+          variant="secondary"
+          size="sm"
+          onClick={() => handleStatusChange('accepted')}
           disabled={processing || !canEdit}
           title={!canEdit ? 'You need invoice edit permission to update quotes.' : undefined}
-          className="text-green-200"
+          leftIcon={<CheckCircle className="h-4 w-4" />}
         >
-          <CheckCircle className="h-4 w-4" />
           <span className="hidden sm:inline">Mark as Accepted</span>
           <span className="sm:hidden">Accept</span>
-        </NavLink>
+        </Button>
       )}
 
       {quote.status === 'sent' && !isExpired && (
-        <NavLink
-          onClick={processing || !canEdit ? undefined : () => handleStatusChange('rejected')}
+        <Button
+          variant="secondary"
+          size="sm"
+          onClick={() => handleStatusChange('rejected')}
           disabled={processing || !canEdit}
           title={!canEdit ? 'You need invoice edit permission to update quotes.' : undefined}
-          className="text-red-200"
+          leftIcon={<XCircle className="h-4 w-4" />}
         >
-          <XCircle className="h-4 w-4" />
           <span className="hidden sm:inline">Mark as Rejected</span>
           <span className="sm:hidden">Reject</span>
-        </NavLink>
+        </Button>
       )}
 
       {quote.status === 'accepted' && !quote.converted_to_invoice_id && (
-        <NavLink
-          onClick={processing || !canCreate ? undefined : handleConvertToInvoice}
+        <Button
+          variant="primary"
+          size="sm"
+          onClick={handleConvertToInvoice}
           disabled={processing || !canCreate}
           title={!canCreate ? 'You need invoice create permission to convert quotes.' : undefined}
-          className="font-semibold"
+          leftIcon={<FileText className="h-4 w-4" />}
         >
-          <FileText className="h-4 w-4" />
           <span className="hidden sm:inline">Convert to Invoice</span>
           <span className="sm:hidden">Convert</span>
-        </NavLink>
+        </Button>
       )}
 
       {emailConfigured && (
-        <NavLink
-          onClick={processing || !canEdit ? undefined : () => setShowEmailModal(true)}
+        <Button
+          variant="secondary"
+          size="sm"
+          onClick={() => setShowEmailModal(true)}
           disabled={processing || !canEdit}
           title={!canEdit ? 'You need invoice edit permission to email quotes.' : undefined}
+          leftIcon={<Mail className="h-4 w-4" />}
         >
-          <Mail className="h-4 w-4" />
           <span className="hidden sm:inline">Send Email</span>
           <span className="sm:hidden">Email</span>
-        </NavLink>
+        </Button>
       )}
 
-      <NavLink
-        onClick={processing ? undefined : () => window.open(`/api/quotes/${quote.id}/pdf`, '_blank')}
+      <Button
+        variant="secondary"
+        size="sm"
+        onClick={() => window.open(`/api/quotes/${quote.id}/pdf`, '_blank')}
         disabled={processing}
+        leftIcon={<Download className="h-4 w-4" />}
       >
-        <Download className="h-4 w-4" />
         <span className="hidden sm:inline">Download PDF</span>
         <span className="sm:hidden">PDF</span>
-      </NavLink>
+      </Button>
 
       {quote.status === 'draft' && (
-        <NavLink
-          onClick={processing || !canDelete ? undefined : () => setShowDeleteDialog(true)}
+        <Button
+          variant="danger"
+          size="sm"
+          onClick={() => setShowDeleteDialog(true)}
           disabled={processing || !canDelete}
           title={!canDelete ? 'You need invoice delete permission to delete quotes.' : undefined}
-          className="text-red-200"
+          leftIcon={<Trash2 className="h-4 w-4" />}
         >
-          <Trash2 className="h-4 w-4" />
           Delete
-        </NavLink>
+        </Button>
       )}
-    </NavGroup>
+    </div>
   )
 
   return (
-    <PageLayout {...layoutProps} navActions={navActions}>
+    <PageLayout {...layoutProps} headerActions={headerActions}>
       <div className="mb-2">
         <Badge variant={getStatusVariant(quote.status)}>
           {getStatusIcon(quote.status)}

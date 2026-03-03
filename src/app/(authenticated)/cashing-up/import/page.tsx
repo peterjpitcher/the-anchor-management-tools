@@ -194,7 +194,7 @@ export default function ImportPage() {
     { label: 'Daily Entry', href: '/cashing-up/daily' },
     { label: 'Weekly Breakdown', href: '/cashing-up/weekly' },
     { label: 'Insights', href: '/cashing-up/insights' },
-    { label: 'Import History', href: '/cashing-up/import', active: true },
+    { label: 'Import History', href: '/cashing-up/import' },
   ];
 
   return (

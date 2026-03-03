@@ -159,7 +159,7 @@ export default async function RotaDashboardPage() {
       title="Labour Cost Dashboard"
       subtitle={`Week of ${weekStart} · ${monthLabel}`}
       navItems={[
-        { label: 'Rota', href: '/rota', active: false },
+        { label: 'Rota', href: '/rota' },
         { label: 'Leave', href: '/rota/leave' },
         { label: 'Timeclock', href: '/rota/timeclock' },
         { label: 'Labour Costs', href: '/rota/dashboard' },

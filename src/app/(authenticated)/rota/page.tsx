@@ -41,10 +41,11 @@ interface RotaPageProps {
 }
 
 export default async function RotaPage({ searchParams }: RotaPageProps) {
-  const [canView, canEdit, canPublish] = await Promise.all([
+  const [canView, canEdit, canPublish, canManageSettings] = await Promise.all([
     checkUserPermission('rota', 'view'),
     checkUserPermission('rota', 'edit'),
     checkUserPermission('rota', 'publish'),
+    checkUserPermission('settings', 'manage'),
   ]);
   if (!canView) redirect('/');
 
@@ -81,7 +82,7 @@ export default async function RotaPage({ searchParams }: RotaPageProps) {
     ]);
 
   const rotaNavItems = [
-    { label: 'Rota', href: '/rota', active: true },
+    { label: 'Rota', href: '/rota' },
     { label: 'Leave', href: '/rota/leave' },
     { label: 'Timeclock', href: '/rota/timeclock' },
     { label: 'Labour Costs', href: '/rota/dashboard' },
@@ -122,6 +123,13 @@ export default async function RotaPage({ searchParams }: RotaPageProps) {
           <LinkButton href="/rota/templates" size="sm" variant="secondary" leftIcon={<Cog6ToothIcon className="h-4 w-4" />}>
             Templates
           </LinkButton>
+          {canManageSettings && (
+            <>
+              <LinkButton href="/settings/rota" variant="secondary" size="sm">Rota Settings</LinkButton>
+              <LinkButton href="/settings/pay-bands" variant="secondary" size="sm">Pay Bands</LinkButton>
+              <LinkButton href="/settings/budgets" variant="secondary" size="sm">Budgets</LinkButton>
+            </>
+          )}
         </div>
       }
     >

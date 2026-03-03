@@ -323,17 +323,22 @@ export default function InvoicesClient({
       items.push({ label: 'Recurring', href: '/invoices/recurring' })
     }
 
-    if (resolvedPermissions.canExport) {
-      items.push({ label: 'Export', href: '/invoices/export' })
-    }
-
     return items
-  }, [resolvedPermissions, canManageVendors, canAccessRecurring])
+  }, [resolvedPermissions.canManageCatalog, canManageVendors, canAccessRecurring])
 
-  const headerActions = resolvedPermissions.canCreate ? (
-    <LinkButton href="/invoices/new" variant="primary" leftIcon={<Plus className="h-4 w-4" />}>
-      New Invoice
-    </LinkButton>
+  const headerActions = (resolvedPermissions.canExport || resolvedPermissions.canCreate) ? (
+    <div className="flex items-center gap-2">
+      {resolvedPermissions.canExport && (
+        <LinkButton href="/invoices/export" variant="secondary" leftIcon={<Download className="h-4 w-4" />}>
+          Export
+        </LinkButton>
+      )}
+      {resolvedPermissions.canCreate && (
+        <LinkButton href="/invoices/new" variant="primary" leftIcon={<Plus className="h-4 w-4" />}>
+          New Invoice
+        </LinkButton>
+      )}
+    </div>
   ) : null
 
   // Pagination Logic

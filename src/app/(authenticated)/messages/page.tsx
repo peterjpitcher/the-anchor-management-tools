@@ -67,6 +67,7 @@ export default function MessagesPage() {
   const { hasPermission } = usePermissions()
   const canSendMessages =
     hasPermission('messages', 'send') || hasPermission('messages', 'manage')
+  const canManageTemplates = hasPermission('messages', 'manage_templates')
 
   const [conversations, setConversations] = useState<ConversationSummary[]>([])
   const [listLoading, setListLoading] = useState(true)
@@ -345,7 +346,7 @@ export default function MessagesPage() {
     await loadConversations()
   }
 
-  const navActions = (
+  const headerActions = (
     <div className="flex flex-wrap items-center gap-2">
       {canSendMessages && (
         <LinkButton href="/messages/bulk" variant="primary" size="sm">
@@ -373,6 +374,11 @@ export default function MessagesPage() {
           {markingAll ? 'Marking…' : 'Mark all as read'}
         </Button>
       )}
+      {canManageTemplates && (
+        <LinkButton href="/settings/message-templates" variant="secondary" size="sm">
+          Message Templates
+        </LinkButton>
+      )}
     </div>
   )
 
@@ -387,7 +393,7 @@ export default function MessagesPage() {
       <PageLayout
         title="Messages Inbox"
         subtitle="Review and respond to customer conversations"
-        navActions={navActions}
+        headerActions={headerActions}
       >
         <Card>
           <div className="space-y-3 p-4">
@@ -408,7 +414,7 @@ export default function MessagesPage() {
           ? `${totalUnreadCount} unread message${totalUnreadCount === 1 ? '' : 's'}`
           : 'All caught up'
       }
-      navActions={navActions}
+      headerActions={headerActions}
     >
       {hasMoreUnread && (
         <Alert variant="warning" className="mb-4">

@@ -89,7 +89,7 @@ export default async function TableBookingReportsPage({ searchParams }: TableBoo
       navItems={[
         { label: 'Back of House', href: '/table-bookings/boh' },
         { label: 'Front of House', href: '/table-bookings/foh' },
-        { label: 'Reports', href: '/table-bookings/reports', active: true }
+        { label: 'Reports', href: '/table-bookings/reports' }
       ]}
       backButton={{
         label: 'Back to Dashboard',

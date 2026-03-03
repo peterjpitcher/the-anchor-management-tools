@@ -21,8 +21,6 @@ import { Button } from '@/components/ui-v2/forms/Button'
 import { Textarea } from '@/components/ui-v2/forms/Textarea'
 import { FormGroup } from '@/components/ui-v2/forms/FormGroup'
 import { Alert } from '@/components/ui-v2/feedback/Alert'
-import { NavGroup } from '@/components/ui-v2/navigation/NavGroup'
-import { NavLink } from '@/components/ui-v2/navigation/NavLink'
 import { Spinner } from '@/components/ui-v2/feedback/Spinner'
 import { Badge } from '@/components/ui-v2/display/Badge'
 import { toast } from '@/components/ui-v2/feedback/Toast'
@@ -262,23 +260,19 @@ export default function PrivateBookingMessagesClient({
   const isDraft = booking.status === 'draft'
   const canSend = canSendSms && booking.contact_phone
 
-  const navActions = (
-    <NavGroup>
-      <NavLink href={`/private-bookings/${bookingId}`}>
-        View Booking
-      </NavLink>
-      <NavLink href="/private-bookings">
-        All Bookings
-      </NavLink>
-    </NavGroup>
-  )
+  const navItems = [
+    { label: 'Overview', href: `/private-bookings/${bookingId}` },
+    { label: 'Items', href: `/private-bookings/${bookingId}/items` },
+    { label: 'Messages', href: `/private-bookings/${bookingId}/messages` },
+    { label: 'Contract', href: `/private-bookings/${bookingId}/contract` },
+  ];
 
   return (
     <PageLayout
       title="Private Booking Messages"
       subtitle={`Manage SMS communication for ${booking.customer_full_name || booking.customer_name}`}
       backButton={{ label: 'Back to Booking', href: `/private-bookings/${bookingId}` }}
-      navActions={navActions}
+      navItems={navItems}
     >
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 space-y-6">

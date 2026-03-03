@@ -18,8 +18,6 @@ import { Input } from '@/components/ui-v2/forms/Input'
 import { Select } from '@/components/ui-v2/forms/Select'
 import { Textarea } from '@/components/ui-v2/forms/Textarea'
 import { FormGroup } from '@/components/ui-v2/forms/FormGroup'
-import { NavGroup } from '@/components/ui-v2/navigation/NavGroup'
-import { NavLink } from '@/components/ui-v2/navigation/NavLink'
 import { Badge } from '@/components/ui-v2/display/Badge'
 import { EmptyState } from '@/components/ui-v2/display/EmptyState'
 import { Alert } from '@/components/ui-v2/feedback/Alert'
@@ -110,16 +108,19 @@ export default async function VenueSpacesPage({
   const spacesResult = await getVenueSpacesForManagement()
 
   if ('error' in spacesResult) {
+    const navItems = [
+      { label: 'General', href: '/private-bookings/settings' },
+      { label: 'Catering', href: '/private-bookings/settings/catering' },
+      { label: 'Vendors', href: '/private-bookings/settings/vendors' },
+      { label: 'Spaces', href: '/private-bookings/settings/spaces' },
+    ];
+
     return (
       <PageLayout
         title="Venue Spaces"
         subtitle="Manage available spaces for private hire"
         backButton={{ label: 'Back to Private Bookings', href: '/private-bookings' }}
-        navActions={
-          <NavGroup>
-            <NavLink href="/private-bookings/settings">Settings Home</NavLink>
-          </NavGroup>
-        }
+        navItems={navItems}
         error={spacesResult.error}
       />
     )
@@ -135,18 +136,19 @@ export default async function VenueSpacesPage({
     { value: 'false', label: 'Inactive' }
   ]
 
+  const navItems = [
+    { label: 'General', href: '/private-bookings/settings' },
+    { label: 'Catering', href: '/private-bookings/settings/catering' },
+    { label: 'Vendors', href: '/private-bookings/settings/vendors' },
+    { label: 'Spaces', href: '/private-bookings/settings/spaces' },
+  ];
+
   return (
     <PageLayout
       title="Venue Spaces"
       subtitle="Manage available spaces for private hire"
       backButton={{ label: 'Back to Private Bookings', href: '/private-bookings' }}
-      navActions={
-        <NavGroup>
-          <NavLink href="/private-bookings/settings">
-            Settings Home
-          </NavLink>
-        </NavGroup>
-      }
+      navItems={navItems}
     >
       <div className="space-y-6">
         {errorMessage && (

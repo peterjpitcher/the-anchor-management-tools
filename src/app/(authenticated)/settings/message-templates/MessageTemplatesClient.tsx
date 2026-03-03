@@ -14,8 +14,6 @@ import { PageLayout } from '@/components/ui-v2/layout/PageLayout'
 import { Card } from '@/components/ui-v2/layout/Card'
 import { Section } from '@/components/ui-v2/layout/Section'
 import { Button } from '@/components/ui-v2/forms/Button'
-import { NavGroup } from '@/components/ui-v2/navigation/NavGroup'
-import { NavLink } from '@/components/ui-v2/navigation/NavLink'
 import { Modal } from '@/components/ui-v2/overlay/Modal'
 import { Form } from '@/components/ui-v2/forms/Form'
 import { FormGroup } from '@/components/ui-v2/forms/FormGroup'
@@ -281,14 +279,16 @@ export default function MessageTemplatesClient({ initialTemplates, canManage, in
     { label: 'Message Templates' },
   ]
 
-  const navActions = canManage ? (
-    <NavGroup>
-      <NavLink onClick={openNewTemplateModal} className="font-semibold">
-        <PlusIcon className="h-4 w-4" />
-        New Template
-      </NavLink>
-    </NavGroup>
-  ) : null
+  const headerActions = canManage ? (
+    <Button
+      variant="primary"
+      size="sm"
+      onClick={openNewTemplateModal}
+      leftIcon={<PlusIcon className="h-4 w-4" />}
+    >
+      New Template
+    </Button>
+  ) : undefined
 
   return (
     <PageLayout
@@ -296,7 +296,7 @@ export default function MessageTemplatesClient({ initialTemplates, canManage, in
       subtitle="Manage SMS templates for automated messages"
       breadcrumbs={breadcrumbs}
       backButton={{ label: 'Back to Settings', href: '/settings' }}
-      navActions={navActions}
+      headerActions={headerActions}
     >
       <div className="space-y-6">
         {error && <Alert variant="error" title="Error" description={error} />}

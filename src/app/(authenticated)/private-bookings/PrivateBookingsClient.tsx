@@ -17,8 +17,6 @@ import { Card } from '@/components/ui-v2/layout/Card'
 import { Section } from '@/components/ui-v2/layout/Section'
 import { Button } from '@/components/ui-v2/forms/Button'
 import { LinkButton } from '@/components/ui-v2/navigation/LinkButton'
-import { NavGroup } from '@/components/ui-v2/navigation/NavGroup'
-import { NavLink } from '@/components/ui-v2/navigation/NavLink'
 import { Input } from '@/components/ui-v2/forms/Input'
 import { Select } from '@/components/ui-v2/forms/Select'
 import { Badge } from '@/components/ui-v2/display/Badge'
@@ -36,6 +34,7 @@ import {
 } from '@/app/actions/private-bookings-dashboard'
 import type { BookingStatus } from '@/types/private-bookings'
 import { formatDistanceToNowStrict } from 'date-fns'
+import { usePermissions } from '@/contexts/PermissionContext'
 
 const DEFAULT_PAGE_SIZE = 20
 const CACHE_TTL_MS = 30_000
@@ -128,6 +127,8 @@ export default function PrivateBookingsClient({
   initialError
 }: PrivateBookingsClientProps) {
   const router = useRouter()
+  const { hasPermission } = usePermissions()
+  const canManageSettings = hasPermission('private_bookings', 'manage')
   const cacheRef = useRef<Map<string, CacheEntry>>(new Map())
   const [bookings, setBookings] = useState<PrivateBookingDashboardItem[]>(initialBookings)
   const [totalCount, setTotalCount] = useState(initialTotalCount)
@@ -309,25 +310,25 @@ export default function PrivateBookingsClient({
   }
 
   const loading = isPending
-  const navActions = (
-    <NavGroup>
-      <NavLink href="/private-bookings/sms-queue">
-        SMS Queue
-      </NavLink>
-      <NavLink href="/private-bookings/calendar">
-        Calendar View
-      </NavLink>
-    </NavGroup>
-  )
 
-  const headerActions = permissions.hasCreatePermission ? (
-    <LinkButton
-      href="/private-bookings/new"
-      variant="primary"
-      leftIcon={<PlusIcon className="h-5 w-5" />}
-    >
-      New Booking
-    </LinkButton>
+  const hasHeaderActions = permissions.hasCreatePermission || canManageSettings
+  const headerActions = hasHeaderActions ? (
+    <div className="flex items-center gap-2">
+      {permissions.hasCreatePermission && (
+        <LinkButton
+          href="/private-bookings/new"
+          variant="primary"
+          leftIcon={<PlusIcon className="h-5 w-5" />}
+        >
+          New Booking
+        </LinkButton>
+      )}
+      {canManageSettings && (
+        <LinkButton href="/private-bookings/settings" variant="secondary" size="sm">
+          PB Settings
+        </LinkButton>
+      )}
+    </div>
   ) : null
 
   useEffect(() => {
@@ -404,7 +405,11 @@ export default function PrivateBookingsClient({
     <PageLayout
       title="Private Bookings"
       subtitle="Manage private venue bookings and events"
-      navActions={navActions}
+      navItems={[
+        { label: 'Bookings', href: '/private-bookings' },
+        { label: 'Calendar', href: '/private-bookings/calendar' },
+        { label: 'SMS Queue', href: '/private-bookings/sms-queue' },
+      ]}
       headerActions={headerActions}
       error={loadError}
       onRetry={

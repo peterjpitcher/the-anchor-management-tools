@@ -5,8 +5,6 @@ import { useRouter } from 'next/navigation'
 import { getVendors, createVendor, updateVendor, deleteVendor } from '@/app/actions/vendors'
 import { PageLayout } from '@/components/ui-v2/layout/PageLayout'
 import { Button } from '@/components/ui-v2/forms/Button'
-import { NavGroup } from '@/components/ui-v2/navigation/NavGroup'
-import { NavLink } from '@/components/ui-v2/navigation/NavLink'
 import { Modal, ModalActions } from '@/components/ui-v2/overlay/Modal'
 import { Input } from '@/components/ui-v2/forms/Input'
 import { Textarea } from '@/components/ui-v2/forms/Textarea'
@@ -341,6 +339,11 @@ export default function VendorsPage() {
         title="Vendors"
         subtitle="Manage your invoice vendors"
         backButton={{ label: 'Back to Invoices', href: '/invoices' }}
+        navItems={[
+          { label: 'Catalog', href: '/invoices/catalog' },
+          { label: 'Vendors', href: '/invoices/vendors' },
+          { label: 'Recurring', href: '/invoices/recurring' },
+        ]}
         loading
         loadingLabel="Loading vendors..."
       />
@@ -356,18 +359,21 @@ export default function VendorsPage() {
       title="Vendors"
       subtitle="Manage your invoice vendors"
       backButton={{ label: 'Back to Invoices', href: '/invoices' }}
-      navActions={
-        <NavGroup>
-          <NavLink
-            onClick={canCreate ? () => openForm() : undefined}
-            disabled={!canCreate}
-            title={!canCreate ? 'You need invoice create permission to add vendors.' : undefined}
-            className="font-semibold"
+      navItems={[
+        { label: 'Catalog', href: '/invoices/catalog' },
+        { label: 'Vendors', href: '/invoices/vendors' },
+        { label: 'Recurring', href: '/invoices/recurring' },
+      ]}
+      headerActions={
+        canCreate ? (
+          <Button
+            variant="primary"
+            onClick={() => openForm()}
+            leftIcon={<Plus className="h-4 w-4" />}
           >
-            <Plus className="h-4 w-4" />
             Add Vendor
-          </NavLink>
-        </NavGroup>
+          </Button>
+        ) : undefined
       }
     >
       <div className="space-y-6">

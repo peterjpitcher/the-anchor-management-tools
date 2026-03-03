@@ -51,7 +51,7 @@ export default async function TimeclockPage({ searchParams }: PageProps) {
       title="Timeclock"
       subtitle="Review and correct clock-in/out times"
       navItems={[
-        { label: 'Rota', href: '/rota', active: false },
+        { label: 'Rota', href: '/rota' },
         { label: 'Leave', href: '/rota/leave' },
         { label: 'Timeclock', href: '/rota/timeclock' },
         { label: 'Labour Costs', href: '/rota/dashboard' },

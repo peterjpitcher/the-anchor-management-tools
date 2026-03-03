@@ -299,7 +299,7 @@ export default function BackgroundJobsClient({
     { label: 'Background Jobs' },
   ]
 
-  const navActions = canManage ? (
+  const headerActions = canManage ? (
     <div className="flex items-center gap-2">
       <Button
         variant="secondary"
@@ -334,7 +334,7 @@ export default function BackgroundJobsClient({
       subtitle="Monitor and manage background job processing"
       breadcrumbs={breadcrumbs}
       backButton={{ label: 'Back to Settings', href: '/settings' }}
-      navActions={navActions}
+      headerActions={headerActions}
     >
       <div className="space-y-6">
         {error && <Alert variant="error" title="Error" description={error} />}

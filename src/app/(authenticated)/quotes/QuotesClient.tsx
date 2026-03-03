@@ -11,8 +11,6 @@ import { Card } from '@/components/ui-v2/layout/Card'
 import { Section } from '@/components/ui-v2/layout/Section'
 import { Button } from '@/components/ui-v2/forms/Button'
 import { LinkButton } from '@/components/ui-v2/navigation/LinkButton'
-import { NavGroup } from '@/components/ui-v2/navigation/NavGroup'
-import { NavLink } from '@/components/ui-v2/navigation/NavLink'
 import { Input } from '@/components/ui-v2/forms/Input'
 import { Select } from '@/components/ui-v2/forms/Select'
 import { Stat, StatGroup } from '@/components/ui-v2/display/Stat'
@@ -100,16 +98,6 @@ export default function QuotesClient({
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(initialError)
 
-  const navActions = (
-    <NavGroup>
-      <NavLink href="/invoices">
-        <FileText className="h-4 w-4" />
-        <span className="hidden sm:inline">Invoices</span>
-        <span className="sm:hidden">Inv</span>
-      </NavLink>
-    </NavGroup>
-  )
-
   const headerActions = resolvedPermissions.canCreate ? (
     <LinkButton href="/quotes/new" variant="primary" leftIcon={<Plus className="h-4 w-4" />}>
       New Quote
@@ -171,7 +159,6 @@ export default function QuotesClient({
           <PageLayout
             title="Quotes"
             subtitle="Manage quotes and estimates for your vendors"
-            navActions={navActions}
             headerActions={headerActions}
             loading
             loadingLabel="Loading quotes..."
@@ -183,7 +170,6 @@ export default function QuotesClient({
           <PageLayout
             title="Quotes"
             subtitle="Manage quotes and estimates for your vendors"
-            navActions={navActions}
             headerActions={headerActions}
           >
             <div className="space-y-6">        {isReadOnly && (

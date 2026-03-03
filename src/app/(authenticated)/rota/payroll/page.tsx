@@ -73,7 +73,7 @@ export default async function PayrollPage({ searchParams }: PayrollPageProps) {
       title="Payroll"
       subtitle={monthLabel}
       navItems={[
-        { label: 'Rota', href: '/rota', active: false },
+        { label: 'Rota', href: '/rota' },
         { label: 'Leave', href: '/rota/leave' },
         { label: 'Timeclock', href: '/rota/timeclock' },
         { label: 'Labour Costs', href: '/rota/dashboard' },

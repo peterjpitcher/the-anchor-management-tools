@@ -18,8 +18,6 @@ import { Button } from '@/components/ui-v2/forms/Button'
 import { SearchInput } from '@/components/ui-v2/forms/SearchInput'
 import { DataTable } from '@/components/ui-v2/display/DataTable'
 import { Modal } from '@/components/ui-v2/overlay/Modal'
-import { NavGroup } from '@/components/ui-v2/navigation/NavGroup'
-import { NavLink } from '@/components/ui-v2/navigation/NavLink'
 import { MessageThread } from '@/components/features/messages/MessageThread'
 import { CustomerForm } from '@/components/features/customers/CustomerForm'
 import { CustomerLabelSelector } from '@/components/features/customers/CustomerLabelSelector'
@@ -971,22 +969,18 @@ export default function CustomerViewPage() {
 
   const customerName = `${customer.first_name} ${customer.last_name || ''}`.trim()
 
-  const navActions = (
-    <NavGroup>
-      {canManageCustomers && (
-        <NavLink onClick={() => setIsEditingCustomer(true)}>
-          Edit Details
-        </NavLink>
-      )}
-    </NavGroup>
-  )
-
   return (
     <PageLayout
       title={customerName}
       subtitle={customer.mobile_number || 'No mobile number'}
       backButton={{ label: 'Back to Customers', href: '/customers' }}
-      navActions={navActions}
+      headerActions={
+        canManageCustomers ? (
+          <Button variant="secondary" onClick={() => setIsEditingCustomer(true)}>
+            Edit Details
+          </Button>
+        ) : undefined
+      }
     >
       <div className="space-y-6">
         <Modal

@@ -6,8 +6,6 @@ import { getRecurringInvoices, deleteRecurringInvoice, generateInvoiceFromRecurr
 import { PageLayout } from '@/components/ui-v2/layout/PageLayout'
 import { Card } from '@/components/ui-v2/layout/Card'
 import { Button } from '@/components/ui-v2/forms/Button'
-import { NavGroup } from '@/components/ui-v2/navigation/NavGroup'
-import { NavLink } from '@/components/ui-v2/navigation/NavLink'
 import { EmptyState } from '@/components/ui-v2/display/EmptyState'
 import { DataTable } from '@/components/ui-v2/display/DataTable'
 import { toast } from '@/components/ui-v2/feedback/Toast'
@@ -196,18 +194,21 @@ export default function RecurringInvoicesPage() {
       title="Recurring Invoices"
       subtitle="Manage automated invoice generation"
       breadcrumbs={[{ label: 'Invoices', href: '/invoices' }]}
-      navActions={
-        <NavGroup>
-          <NavLink
-            href="/invoices/recurring/new"
-            disabled={!canCreate}
-            title={!canCreate ? 'You need invoice create permission to add recurring invoices.' : undefined}
-            className="font-semibold"
+      navItems={[
+        { label: 'Catalog', href: '/invoices/catalog' },
+        { label: 'Vendors', href: '/invoices/vendors' },
+        { label: 'Recurring', href: '/invoices/recurring' },
+      ]}
+      headerActions={
+        canCreate ? (
+          <Button
+            variant="primary"
+            onClick={() => router.push('/invoices/recurring/new')}
+            leftIcon={<Plus className="h-4 w-4" />}
           >
-            <Plus className="h-4 w-4" />
             New Recurring Invoice
-          </NavLink>
-        </NavGroup>
+          </Button>
+        ) : undefined
       }
     >
       <div className="space-y-6">

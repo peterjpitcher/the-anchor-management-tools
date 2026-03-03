@@ -29,6 +29,7 @@ import { usePagination } from '@/hooks/usePagination'
 import { Skeleton } from '@/components/ui-v2/feedback/Skeleton'
 import { EmptyState } from '@/components/ui-v2/display/EmptyState'
 import type { HeaderNavItem } from '@/components/ui-v2/navigation/HeaderNav'
+import { LinkButton } from '@/components/ui-v2/navigation/LinkButton'
 
 interface CustomerCategoryStats {
   customer_id: string
@@ -538,21 +539,20 @@ export default function CustomersPage() {
   }
 
   const navItems: HeaderNavItem[] = [
-    { label: 'Overview', href: '/customers', active: true },
+    { label: 'Overview', href: '/customers' },
     { label: 'Insights', href: '/customers/insights' },
   ]
 
-  if (canManageCustomers) {
-    navItems.push(
-      { label: 'Manage Labels', href: '/settings/customer-labels' },
-      { label: 'Import', onClick: openImportCustomers }
-    )
-  }
-
   const headerActions = canManageCustomers ? (
-    <Button onClick={openCreateCustomer} variant="primary" leftIcon={<PlusIcon className="h-5 w-5" />}>
-      Add Customer
-    </Button>
+    <div className="flex items-center gap-2">
+      <LinkButton href="/settings/customer-labels" variant="secondary" size="sm">Customer Labels</LinkButton>
+      <Button onClick={openImportCustomers} variant="secondary">
+        Import
+      </Button>
+      <Button onClick={openCreateCustomer} variant="primary" leftIcon={<PlusIcon className="h-5 w-5" />}>
+        Add Customer
+      </Button>
+    </div>
   ) : null
 
   return (
