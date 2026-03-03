@@ -1155,8 +1155,6 @@ export default function EventDetailClient({
               facebookDescription={event.facebook_event_description ?? null}
               googleTitle={event.gbp_event_title ?? null}
               googleDescription={event.gbp_event_description ?? null}
-              opentableTitle={event.opentable_experience_title ?? null}
-              opentableDescription={event.opentable_experience_description ?? null}
             />
           </div>
 
