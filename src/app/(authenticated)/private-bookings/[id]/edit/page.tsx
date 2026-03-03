@@ -16,8 +16,6 @@ import { Textarea } from '@/components/ui-v2/forms/Textarea'
 import { FormGroup } from '@/components/ui-v2/forms/FormGroup'
 import { Alert } from '@/components/ui-v2/feedback/Alert'
 import { LinkButton } from '@/components/ui-v2/navigation/LinkButton'
-import { NavGroup } from '@/components/ui-v2/navigation/NavGroup'
-import { NavLink } from '@/components/ui-v2/navigation/NavLink'
 import { Spinner } from '@/components/ui-v2/feedback/Spinner'
 import { toast } from '@/components/ui-v2/feedback/Toast'
 import { formatDateFull } from '@/lib/dateUtils'
@@ -192,27 +190,11 @@ export default function EditPrivateBookingPage({
 
   const subtitle = `${customerLabel} - ${booking && booking.event_date ? formatDateFull(booking.event_date) : 'Date TBD'}`
 
-  const navActions = (
-    <NavGroup>
-      <NavLink href={`/private-bookings/${id}`}>
-        View Booking
-      </NavLink>
-      <NavLink href={`/private-bookings/${id}/items`}>
-        Manage Items
-      </NavLink>
-      <NavLink href={`/private-bookings/${id}/messages`}>
-        View Messages
-      </NavLink>
-    </NavGroup>
-  )
-
-
   return (
     <PageLayout
       title="Edit Private Booking"
       subtitle={subtitle}
       backButton={{ label: 'Back to Booking', href: `/private-bookings/${id}` }}
-      navActions={navActions}
     >
       <div className="space-y-6">
         <Card>

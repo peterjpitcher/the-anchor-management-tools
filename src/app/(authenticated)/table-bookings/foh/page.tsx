@@ -9,17 +9,19 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { getOpenSessions } from '@/app/actions/timeclock'
 import Image from 'next/image'
 import FohClockWidget from './FohClockWidget'
+import { LinkButton } from '@/components/ui-v2/navigation/LinkButton'
 
 const MANAGER_IPAD_EMAIL = 'manager@the-anchor.pub'
 
 export default async function TableBookingsFohPage() {
   const supabase = await createClient()
 
-  const [authResult, canView, canEdit, canViewReports, permissionsResult] = await Promise.all([
+  const [authResult, canView, canEdit, canViewReports, canManageSettings, permissionsResult] = await Promise.all([
     supabase.auth.getUser(),
     checkUserPermission('table_bookings', 'view'),
     checkUserPermission('table_bookings', 'edit'),
     checkUserPermission('reports', 'view'),
+    checkUserPermission('settings', 'manage'),
     getUserPermissions()
   ])
 
@@ -47,7 +49,7 @@ export default async function TableBookingsFohPage() {
     ? undefined
     : [
         { label: 'Back of House', href: '/table-bookings/boh' },
-        { label: 'Front of House', href: '/table-bookings/foh', active: true },
+        { label: 'Front of House', href: '/table-bookings/foh' },
         ...(canViewReports ? [{ label: 'Reports', href: '/table-bookings/reports' }] : [])
       ]
   const backButton = fohOnlyMode
@@ -93,7 +95,13 @@ export default async function TableBookingsFohPage() {
           />
         </div>
       )
-    : undefined
+    : canManageSettings ? (
+        <div className="flex items-center gap-2">
+          <LinkButton href="/settings/table-bookings" variant="secondary" size="sm">
+            Table Setup
+          </LinkButton>
+        </div>
+      ) : undefined
 
   return (
     <PageLayout

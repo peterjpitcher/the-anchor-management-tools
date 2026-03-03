@@ -96,7 +96,7 @@ export default async function CustomersInsightsPage({ searchParams }: CustomerIn
 
   const navItems = [
     { label: 'Overview', href: '/customers' },
-    { label: 'Insights', href: '/customers/insights', active: true }
+    { label: 'Insights', href: '/customers/insights' },
   ]
 
   if (!snapshot) {

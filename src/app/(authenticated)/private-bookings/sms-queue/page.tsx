@@ -15,8 +15,6 @@ import { approveSms, rejectSms, sendApprovedSms } from '@/app/actions/privateBoo
 import { SmsQueueService } from '@/services/sms-queue'
 import { formatDateFull, formatDateTime12Hour } from '@/lib/dateUtils'
 import { PageLayout } from '@/components/ui-v2/layout/PageLayout'
-import { NavGroup } from '@/components/ui-v2/navigation/NavGroup'
-import { NavLink } from '@/components/ui-v2/navigation/NavLink'
 import { Card } from '@/components/ui-v2/layout/Card'
 import { Section } from '@/components/ui-v2/layout/Section'
 import { Alert } from '@/components/ui-v2/feedback/Alert'
@@ -140,14 +138,11 @@ export default async function SmsQueuePage() {
     <PageLayout
       title="SMS Queue"
       subtitle="Review and approve SMS messages for private bookings"
-      backButton={{ label: 'Back to Private Bookings', href: '/private-bookings' }}
-      navActions={
-        <NavGroup>
-          <NavLink href="/private-bookings/settings">
-            Settings Home
-          </NavLink>
-        </NavGroup>
-      }
+      navItems={[
+        { label: 'Bookings', href: '/private-bookings' },
+        { label: 'Calendar', href: '/private-bookings/calendar' },
+        { label: 'SMS Queue', href: '/private-bookings/sms-queue' },
+      ]}
     >
       <div className="space-y-6">
       {!canApproveSms && !canSendSms && (

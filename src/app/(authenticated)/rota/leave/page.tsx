@@ -58,7 +58,7 @@ export default async function LeaveManagementPage() {
       title="Leave Requests"
       subtitle={pendingCount > 0 ? `${pendingCount} pending approval` : 'All holiday requests'}
       navItems={[
-        { label: 'Rota', href: '/rota', active: false },
+        { label: 'Rota', href: '/rota' },
         { label: 'Leave', href: '/rota/leave' },
         { label: 'Timeclock', href: '/rota/timeclock' },
         { label: 'Labour Costs', href: '/rota/dashboard' },

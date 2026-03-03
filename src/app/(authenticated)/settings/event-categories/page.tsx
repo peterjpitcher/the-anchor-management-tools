@@ -17,8 +17,6 @@ import { PageLayout } from '@/components/ui-v2/layout/PageLayout'
 import { Card } from '@/components/ui-v2/layout/Card'
 // import { Section } from '@/components/ui-v2/layout/Section'
 import { Button } from '@/components/ui-v2/forms/Button'
-import { NavLink } from '@/components/ui-v2/navigation/NavLink'
-import { NavGroup } from '@/components/ui-v2/navigation/NavGroup'
 import { Badge } from '@/components/ui-v2/display/Badge'
 import { toast } from '@/components/ui-v2/feedback/Toast'
 import { EmptyState } from '@/components/ui-v2/display/EmptyState'
@@ -312,24 +310,32 @@ const [categories, setCategories] = useState<EventCategory[]>([])
     },
   ]
 
-  const navActions = (
-    <NavGroup>
-      <NavLink
+  const headerActions = (
+    <div className="flex items-center gap-2">
+      <Button
+        variant="secondary"
+        size="sm"
         onClick={() => setAnalyzeConfirm(true)}
-        className={isAnalyzing ? 'cursor-not-allowed opacity-50' : ''}
+        disabled={isAnalyzing}
+        loading={isAnalyzing}
       >
         {isAnalyzing ? 'Analyzing...' : 'Analyze History'}
-      </NavLink>
-      <NavLink onClick={() => handleOpenForm()}>
+      </Button>
+      <Button
+        variant="primary"
+        size="sm"
+        onClick={() => handleOpenForm()}
+        leftIcon={<PlusIcon className="h-4 w-4" />}
+      >
         Add Category
-      </NavLink>
-    </NavGroup>
+      </Button>
+    </div>
   )
 
   return (
     <PageLayout
       {...layoutProps}
-      navActions={navActions}
+      headerActions={headerActions}
     >
       <div className="space-y-6">
         <ConfirmDialog

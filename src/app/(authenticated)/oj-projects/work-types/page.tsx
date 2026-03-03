@@ -108,7 +108,7 @@ export default function OJWorkTypesPage() {
     { label: 'Projects', href: '/oj-projects/projects', icon: <Briefcase className="w-4 h-4" /> },
     { label: 'Entries', href: '/oj-projects/entries', icon: <List className="w-4 h-4" /> },
     { label: 'Clients', href: '/oj-projects/clients', icon: <Users className="w-4 h-4" /> },
-    { label: 'Work Types', href: '/oj-projects/work-types', active: true, icon: <List className="w-4 h-4" /> },
+    { label: 'Work Types', href: '/oj-projects/work-types', icon: <List className="w-4 h-4" /> },
   ]
 
   return (

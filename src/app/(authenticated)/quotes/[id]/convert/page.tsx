@@ -10,9 +10,6 @@ import { PageLayout } from '@/components/ui-v2/layout/PageLayout'
 import { Card } from '@/components/ui-v2/layout/Card'
 import { Section } from '@/components/ui-v2/layout/Section'
 import { Button } from '@/components/ui-v2/forms/Button'
-import { LinkButton } from '@/components/ui-v2/navigation/LinkButton'
-import { NavGroup } from '@/components/ui-v2/navigation/NavGroup'
-import { NavLink } from '@/components/ui-v2/navigation/NavLink'
 import { Alert } from '@/components/ui-v2/feedback/Alert'
 import { Spinner } from '@/components/ui-v2/feedback/Spinner'
 import { toast } from '@/components/ui-v2/feedback/Toast'
@@ -155,13 +152,6 @@ export default function ConvertQuotePage({ params }: { params: Promise<{ id: str
       title="Convert Quote to Invoice"
       subtitle="Review the quote details before converting"
       backButton={{ label: 'Back to Quote', href: `/quotes/${quoteId}` }}
-      navActions={
-        <NavGroup>
-          <NavLink href="/quotes">
-            All Quotes
-          </NavLink>
-        </NavGroup>
-      }
     >
       <div className="space-y-6">
       {error && (

@@ -8,22 +8,30 @@ import KPIHeader from '@/components/events/command-center/KPIHeader'
 import CommandCenterShell from '@/components/events/command-center/CommandCenterShell'
 import { DATE_TBD_NOTE, PrivateBookingService } from '@/services/private-bookings'
 import { PageLayout } from '@/components/ui-v2/layout/PageLayout'
+import { LinkButton } from '@/components/ui-v2/navigation/LinkButton'
+import type { HeaderNavItem } from '@/components/ui-v2/navigation/HeaderNav'
 
 export const metadata = {
   title: 'Events Command Center',
 }
 
 export default async function EventsPage() {
-  const [canViewEvents, canViewPrivateBookings, canManagePrivateBookings, canManageCalendarNotes] = await Promise.all([
+  const [canViewEvents, canViewPrivateBookings, canManagePrivateBookings, canManageCalendarNotes, canManageEvents] = await Promise.all([
     checkUserPermission('events', 'view'),
     checkUserPermission('private_bookings', 'view'),
     checkUserPermission('private_bookings', 'manage'),
     checkUserPermission('settings', 'manage'),
+    checkUserPermission('events', 'manage'),
   ])
 
   if (!canViewEvents) {
     redirect('/unauthorized')
   }
+
+  const navItems: HeaderNavItem[] = [
+    { label: 'Overview', href: '/events' },
+    { label: 'Checklist Todo', href: '/events/todo' },
+  ]
 
   const data = await getEventsCommandCenterData()
   let privateBookingsForCalendar: PrivateBookingCalendarOverview[] = []
@@ -55,11 +63,22 @@ export default async function EventsPage() {
     }
   }
 
+  const headerActions = canManageEvents ? (
+    <div className="flex items-center gap-2">
+      <LinkButton href="/settings/event-categories" variant="secondary" size="sm">Event Categories</LinkButton>
+      <LinkButton href="/events/new" variant="primary">
+        Create Event
+      </LinkButton>
+    </div>
+  ) : null
+
   if (data.error) {
     return (
       <PageLayout
         title="Events Command Center"
         subtitle="Manage upcoming events and clear tasks."
+        navItems={navItems}
+        headerActions={headerActions}
         error={data.error}
       />
     )
@@ -69,6 +88,8 @@ export default async function EventsPage() {
     <PageLayout
       title="Events Command Center"
       subtitle="Manage upcoming events and clear tasks."
+      navItems={navItems}
+      headerActions={headerActions}
       className="bg-gray-50/50"
       padded={false}
       contentClassName="px-4 py-4 md:px-8 md:py-6"

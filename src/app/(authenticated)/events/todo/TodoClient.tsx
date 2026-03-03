@@ -8,6 +8,7 @@ import { Card } from '@/components/ui-v2/layout/Card'
 import { Badge } from '@/components/ui-v2/display/Badge'
 import { DataTable, type Column } from '@/components/ui-v2/display/DataTable'
 import { Button } from '@/components/ui-v2/forms/Button'
+import { LinkButton } from '@/components/ui-v2/navigation/LinkButton'
 import { toast } from '@/components/ui-v2/feedback/Toast'
 import { EmptyState } from '@/components/ui-v2/display/EmptyState'
 import { Alert } from '@/components/ui-v2/feedback/Alert'
@@ -36,12 +37,10 @@ export default function TodoClient({ initialItems, initialError }: TodoClientPro
     return { overdue, dueToday }
   }, [items])
 
-  const navItems = ([
+  const navItems: HeaderNavItem[] = [
     { label: 'Overview', href: '/events' },
     { label: 'Checklist Todo', href: '/events/todo' },
-    canManageEvents ? { label: 'Manage Categories', href: '/settings/event-categories' } : null,
-    canManageEvents ? { label: 'Create Event', href: '/events/new' } : null,
-  ] as Array<HeaderNavItem | null>).filter((item): item is HeaderNavItem => Boolean(item))
+  ]
 
   const sortedItems = useMemo(() => {
     return [...items].sort((a, b) => {
@@ -155,14 +154,21 @@ export default function TodoClient({ initialItems, initialError }: TodoClientPro
       navItems={navItems}
       className="bg-gray-50/50"
       headerActions={
-        <Button
-          size="sm"
-          variant="secondary"
-          onClick={handleRefresh}
-          loading={refreshing}
-        >
-          Refresh
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={handleRefresh}
+            loading={refreshing}
+          >
+            Refresh
+          </Button>
+          {canManageEvents && (
+            <LinkButton href="/events/new" variant="primary" size="sm">
+              Create Event
+            </LinkButton>
+          )}
+        </div>
       }
     >
       <div className="space-y-6">

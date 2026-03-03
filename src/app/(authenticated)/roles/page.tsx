@@ -2,8 +2,7 @@ import { getAllRoles, getAllPermissions, checkUserPermission } from '@/app/actio
 import RoleList from './components/RoleList'
 import { PageLayout } from '@/components/ui-v2/layout/PageLayout'
 import { Alert } from '@/components/ui-v2/feedback/Alert'
-import { NavGroup } from '@/components/ui-v2/navigation/NavGroup'
-import { NavLink } from '@/components/ui-v2/navigation/NavLink'
+import { LinkButton } from '@/components/ui-v2/navigation/LinkButton'
 import { redirect } from 'next/navigation'
 
 export default async function RolesPage() {
@@ -40,13 +39,11 @@ export default async function RolesPage() {
       title="Role Management"
       subtitle="Manage roles and permissions for your organization"
       backButton={{ label: 'Back to Settings', href: '/settings' }}
-      navActions={
+      headerActions={
         canManage ? (
-          <NavGroup>
-            <NavLink href="/roles/new" className="font-semibold">
-              New Role
-            </NavLink>
-          </NavGroup>
+          <LinkButton href="/roles/new" variant="primary" size="sm">
+            New Role
+          </LinkButton>
         ) : undefined
       }
     >

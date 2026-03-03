@@ -77,8 +77,7 @@ import { PageLayout } from "@/components/ui-v2/layout/PageLayout";
 import { Card } from "@/components/ui-v2/layout/Card";
 import { Section } from "@/components/ui-v2/layout/Section";
 import { Button } from "@/components/ui-v2/forms/Button";
-import { NavGroup } from "@/components/ui-v2/navigation/NavGroup";
-import { NavLink } from "@/components/ui-v2/navigation/NavLink";
+import { LinkButton } from "@/components/ui-v2/navigation/LinkButton";
 import { Input } from "@/components/ui-v2/forms/Input";
 import { Select } from "@/components/ui-v2/forms/Select";
 import { Textarea } from "@/components/ui-v2/forms/Textarea";
@@ -1354,18 +1353,12 @@ export default function PrivateBookingDetailClient({
     canManageVendors
   } = permissions;
 
-  const navActions = canEdit
-    ? (
-        <NavGroup>
-          <NavLink onClick={() => setShowStatusModal(true)}>
-            Change Status
-          </NavLink>
-          <NavLink href={`/private-bookings/${bookingId}/edit`} className="font-semibold">
-            Edit Details
-          </NavLink>
-        </NavGroup>
-      )
-    : undefined;
+  const navItems = [
+    { label: 'Overview', href: `/private-bookings/${bookingId}` },
+    { label: 'Items', href: `/private-bookings/${bookingId}/items` },
+    { label: 'Messages', href: `/private-bookings/${bookingId}/messages` },
+    { label: 'Contract', href: `/private-bookings/${bookingId}/contract` },
+  ];
 
   const loadBooking = useCallback(
     async (id: string) => {
@@ -1728,7 +1721,15 @@ export default function PrivateBookingDetailClient({
         { label: booking.customer_full_name || booking.customer_name, href: "" },
       ]}
       backButton={{ label: "Back to Private Bookings", href: "/private-bookings" }}
-      navActions={navActions}
+      navItems={navItems}
+      headerActions={
+        canEdit ? (
+          <div className="flex items-center gap-2">
+            <Button variant="secondary" onClick={() => setShowStatusModal(true)}>Update Status</Button>
+            <LinkButton variant="primary" href={`/private-bookings/${bookingId}/edit`}>Edit Booking</LinkButton>
+          </div>
+        ) : undefined
+      }
     >
       {pageError && (
         <Alert

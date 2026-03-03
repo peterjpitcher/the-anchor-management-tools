@@ -31,11 +31,19 @@ export default async function PrivateBookingsSettingsPage() {
     redirect('/unauthorized')
   }
 
+  const navItems = [
+    { label: 'General', href: '/private-bookings/settings' },
+    { label: 'Catering', href: '/private-bookings/settings/catering' },
+    { label: 'Vendors', href: '/private-bookings/settings/vendors' },
+    { label: 'Spaces', href: '/private-bookings/settings/spaces' },
+  ];
+
   return (
     <PageLayout
       title="Private Bookings Settings"
       subtitle="Manage spaces, catering, vendors, and SMS approvals"
       backButton={{ label: 'Back to Private Bookings', href: '/private-bookings' }}
+      navItems={navItems}
     >
       <div className="space-y-6">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

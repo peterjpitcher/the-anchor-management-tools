@@ -5,7 +5,6 @@ import { use } from 'react'
 import { PageLayout } from '@/components/ui-v2/layout/PageLayout'
 import { Spinner } from '@/components/ui-v2/feedback/Spinner'
 
-import { BackButton } from '@/components/ui-v2/navigation/BackButton';
 import { useRouter } from 'next/navigation';
 
 export default function ContractPage({
@@ -15,6 +14,13 @@ export default function ContractPage({
 }) {
   const router = useRouter();
   const { id } = use(params)
+
+  const navItems = [
+    { label: 'Overview', href: `/private-bookings/${id}` },
+    { label: 'Items', href: `/private-bookings/${id}/items` },
+    { label: 'Messages', href: `/private-bookings/${id}/messages` },
+    { label: 'Contract', href: `/private-bookings/${id}/contract` },
+  ];
 
   useEffect(() => {
     // Redirect to the contract API endpoint
@@ -26,6 +32,7 @@ export default function ContractPage({
       title="Generating Contract"
       subtitle="We'll redirect you once the contract is ready"
       backButton={{ label: 'Back to Booking', onBack: () => router.back() }}
+      navItems={navItems}
       loading
       loadingLabel="Generating contract..."
     >
