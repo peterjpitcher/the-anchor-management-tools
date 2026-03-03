@@ -63,7 +63,6 @@ type EventPromotionContentResult = {
 export type EventPromotionContentType =
   | 'facebook_event'
   | 'google_business_profile_event'
-  | 'opentable_experience'
 
 function buildEventSummary(input: EventSeoContentInput): string {
   const payload = {
@@ -452,52 +451,6 @@ export async function generateEventPromotionContent({
             },
           ],
         }
-      case 'opentable_experience':
-        return {
-          schemaName: 'opentable_experience_copy',
-          schema: {
-            type: 'object',
-            properties: {
-              title: { type: 'string' },
-              description: { type: 'string' },
-            },
-            required: ['title', 'description'],
-            additionalProperties: false,
-          },
-          temperature: 0.7,
-          maxTokens: 900,
-          messages: [
-            {
-              role: 'system',
-              content:
-                'You are an expert hospitality marketer. Write an OpenTable Experience title and description in UK English that sells the experience clearly and elegantly.',
-            },
-            {
-              role: 'user',
-              content: [
-                'Write ONE OpenTable Experience title and ONE OpenTable Experience description for the event details below.',
-                '',
-                'Best practices to follow:',
-                '- Keep the title simple and clear (no hype, no ALL CAPS).',
-                '- The description should read like premium hospitality copy: sensory, specific, and benefit-led.',
-                '- Use paragraph format only (no bullet points, no headings).',
-                '- Build a natural arc: hook → what to expect → key practical info → call to action.',
-                '',
-                'Hard constraints:',
-                '- Output must be plain text (no markdown).',
-                '- Do not include raw URLs anywhere.',
-                '- Do not invent missing details.',
-                '- Title: aim 3–7 words and < 60 characters.',
-                '- Description: paragraph format, around 1500 characters (target 1400–1600).',
-                '',
-                'Event details:',
-                detailLines.join('\n'),
-                '',
-                'Return JSON with keys { title, description }.',
-              ].join('\n'),
-            },
-          ],
-        }
     }
   })()
 
@@ -549,7 +502,6 @@ export async function generateEventPromotionContent({
           description: normalizeString(parsed.description),
         }
       case 'google_business_profile_event':
-      case 'opentable_experience':
         return {
           title: normalizeString(parsed.title),
           description: normalizeString(parsed.description),

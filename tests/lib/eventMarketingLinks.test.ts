@@ -3,8 +3,8 @@ import { describe, expect, it } from 'vitest'
 import { EVENT_MARKETING_CHANNELS, buildEventMarketingLinkPayload } from '@/lib/event-marketing-links'
 
 describe('event marketing links', () => {
-  it('builds OpenTable UTMs for events', () => {
-    const channel = EVENT_MARKETING_CHANNELS.find((item) => item.key === 'opentable')
+  it('builds Facebook UTMs for events', () => {
+    const channel = EVENT_MARKETING_CHANNELS.find((item) => item.key === 'facebook')
     expect(channel).toBeTruthy()
 
     const payload = buildEventMarketingLinkPayload(
@@ -18,25 +18,25 @@ describe('event marketing links', () => {
     )
 
     expect(payload.utm).toEqual({
-      utm_source: 'opentable',
-      utm_medium: 'reservation_platform',
+      utm_source: 'facebook',
+      utm_medium: 'social',
       utm_campaign: 'event-spring-wine-tasting',
-      utm_content: 'opentable_experience',
-      utm_term: 'opentable',
+      utm_content: 'facebook_main',
+      utm_term: 'facebook',
     })
 
     const url = new URL(payload.destinationUrl)
     expect(url.origin).toBe('https://www.the-anchor.pub')
     expect(url.pathname).toBe('/events/spring-wine-tasting')
-    expect(url.searchParams.get('utm_source')).toBe('opentable')
-    expect(url.searchParams.get('utm_medium')).toBe('reservation_platform')
+    expect(url.searchParams.get('utm_source')).toBe('facebook')
+    expect(url.searchParams.get('utm_medium')).toBe('social')
     expect(url.searchParams.get('utm_campaign')).toBe('event-spring-wine-tasting')
-    expect(url.searchParams.get('utm_content')).toBe('opentable_experience')
-    expect(url.searchParams.get('utm_term')).toBe('opentable')
+    expect(url.searchParams.get('utm_content')).toBe('facebook_main')
+    expect(url.searchParams.get('utm_term')).toBe('facebook')
   })
 
   it('ignores event booking_url for marketing destinations', () => {
-    const channel = EVENT_MARKETING_CHANNELS.find((item) => item.key === 'opentable')
+    const channel = EVENT_MARKETING_CHANNELS.find((item) => item.key === 'facebook')
     expect(channel).toBeTruthy()
 
     const payload = buildEventMarketingLinkPayload(
@@ -54,10 +54,10 @@ describe('event marketing links', () => {
     expect(url.origin).toBe('https://www.the-anchor.pub')
     expect(url.pathname).toBe('/events/spring-wine-tasting')
     expect(url.searchParams.get('foo')).toBe(null)
-    expect(url.searchParams.get('utm_source')).toBe('opentable')
-    expect(url.searchParams.get('utm_medium')).toBe('reservation_platform')
+    expect(url.searchParams.get('utm_source')).toBe('facebook')
+    expect(url.searchParams.get('utm_medium')).toBe('social')
     expect(url.searchParams.get('utm_campaign')).toBe('event-spring-wine-tasting')
-    expect(url.searchParams.get('utm_content')).toBe('opentable_experience')
-    expect(url.searchParams.get('utm_term')).toBe('opentable')
+    expect(url.searchParams.get('utm_content')).toBe('facebook_main')
+    expect(url.searchParams.get('utm_term')).toBe('facebook')
   })
 })

@@ -25,7 +25,6 @@ type TitleDescriptionContent = {
 type PromotionResultsByType = {
   facebook_event?: FacebookEventContent
   google_business_profile_event?: TitleDescriptionContent
-  opentable_experience?: TitleDescriptionContent
 }
 
 type CtaLinkState = {
@@ -46,24 +45,17 @@ const CONTENT_TYPES: Array<{ value: EventPromotionContentType; label: string; he
     label: 'Google Business Profile Event',
     help: 'Title + description optimised for GBP Event posts.',
   },
-  {
-    value: 'opentable_experience',
-    label: 'OpenTable Experience',
-    help: 'Simple title + paragraph description (target ~1500 characters).',
-  },
 ]
 
 const PREFERRED_CHANNEL_BY_TYPE: Record<EventPromotionContentType, EventMarketingLink['channel']> = {
   facebook_event: 'facebook',
   google_business_profile_event: 'google_business_profile',
-  opentable_experience: 'opentable',
 }
 
 function buildInitialCtaState(initialUrl: string): CtaLinkStateByType {
   return {
     facebook_event: { selectedLinkId: '', customUrl: initialUrl },
     google_business_profile_event: { selectedLinkId: '', customUrl: initialUrl },
-    opentable_experience: { selectedLinkId: '', customUrl: initialUrl },
   }
 }
 
@@ -73,8 +65,6 @@ function resolveCtaLabel(contentType: EventPromotionContentType): string {
       return 'Paste into the Facebook Event link field'
     case 'google_business_profile_event':
       return 'Paste into the GBP post button link field'
-    case 'opentable_experience':
-      return 'Paste into the OpenTable website link field'
   }
 }
 
@@ -88,8 +78,6 @@ interface EventPromotionContentCardProps {
   facebookDescription?: string | null
   googleTitle?: string | null
   googleDescription?: string | null
-  opentableTitle?: string | null
-  opentableDescription?: string | null
 }
 
 export function EventPromotionContentCard({
@@ -102,8 +90,6 @@ export function EventPromotionContentCard({
   facebookDescription,
   googleTitle,
   googleDescription,
-  opentableTitle,
-  opentableDescription,
 }: EventPromotionContentCardProps) {
   const digitalLinks = useMemo(
     () => marketingLinks.filter((link) => link.type === 'digital'),
@@ -132,14 +118,8 @@ export function EventPromotionContentCard({
         description: googleDescription ?? '',
       }
     }
-    if (opentableTitle || opentableDescription) {
-      saved.opentable_experience = {
-        title: opentableTitle ?? '',
-        description: opentableDescription ?? '',
-      }
-    }
     return saved
-  }, [facebookDescription, facebookName, googleDescription, googleTitle, opentableDescription, opentableTitle])
+  }, [facebookDescription, facebookName, googleDescription, googleTitle])
 
   useEffect(() => {
     setResultsByType((previous) => {
@@ -154,11 +134,6 @@ export function EventPromotionContentCard({
         next.google_business_profile_event = existingSavedResults.google_business_profile_event
         changed = true
       }
-      if (!previous.opentable_experience && existingSavedResults.opentable_experience) {
-        next.opentable_experience = existingSavedResults.opentable_experience
-        changed = true
-      }
-
       return changed ? next : previous
     })
   }, [existingSavedResults])
@@ -252,9 +227,6 @@ export function EventPromotionContentCard({
             ...previous,
             google_business_profile_event: data.content as TitleDescriptionContent,
           }))
-          break
-        case 'opentable_experience':
-          setResultsByType((previous) => ({ ...previous, opentable_experience: data.content as TitleDescriptionContent }))
           break
       }
 
@@ -493,8 +465,8 @@ export function EventPromotionContentCard({
           ) : (
             (() => {
               const content = currentResult as TitleDescriptionContent
-              const titleLabel = contentType === 'opentable_experience' ? 'OpenTable Experience' : 'Google Business Profile'
-              const copyLabel = contentType === 'opentable_experience' ? 'OpenTable copy' : 'GBP copy'
+              const titleLabel = 'Google Business Profile'
+              const copyLabel = 'GBP copy'
               return (
                 <section className="space-y-3">
                   <div className="flex items-center justify-between">
@@ -546,7 +518,7 @@ export function EventPromotionContentCard({
                       <Textarea
                         value={content.description}
                         readOnly
-                        rows={contentType === 'opentable_experience' ? 10 : 8}
+                        rows={8}
                         fullWidth
                       />
                     </div>
