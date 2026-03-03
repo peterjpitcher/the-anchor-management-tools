@@ -2,7 +2,7 @@ import { createClient } from '@/lib/supabase/server';
 import { redirect } from 'next/navigation';
 import { getEmployeeShifts, getOpenShiftsForPortal } from '@/app/actions/rota';
 import type { RotaShift } from '@/app/actions/rota';
-import { formatTime12Hour } from '@/lib/dateUtils';
+import { formatTime12Hour, getTodayIsoDate } from '@/lib/dateUtils';
 import { generateCalendarToken } from '@/lib/portal/calendar-token';
 import CalendarSubscribeButton from './CalendarSubscribeButton';
 
@@ -21,13 +21,14 @@ function formatShortDate(iso: string): string {
 }
 
 function isToday(iso: string): boolean {
-  return iso === new Date().toISOString().split('T')[0];
+  return iso === getTodayIsoDate();
 }
 
 function isTomorrow(iso: string): boolean {
-  const tom = new Date();
-  tom.setDate(tom.getDate() + 1);
-  return iso === tom.toISOString().split('T')[0];
+  const todayStr = getTodayIsoDate();
+  const d = new Date(todayStr + 'T00:00:00Z');
+  d.setUTCDate(d.getUTCDate() + 1);
+  return iso === d.toISOString().split('T')[0];
 }
 
 function paidHours(start: string, end: string, breakMins: number, overnight: boolean): number {
@@ -74,7 +75,7 @@ export default async function MyShiftsPage() {
   }
 
   // Show shifts for today + 5 weeks ahead
-  const today = new Date().toISOString().split('T')[0];
+  const today = getTodayIsoDate();
   const fiveWeeksAhead = new Date();
   fiveWeeksAhead.setDate(fiveWeeksAhead.getDate() + 35);
   const toDate = fiveWeeksAhead.toISOString().split('T')[0];

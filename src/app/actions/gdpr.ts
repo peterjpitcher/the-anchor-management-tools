@@ -2,10 +2,8 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { logAuditEvent } from './audit'
-import { getTodayIsoDate } from '@/lib/dateUtils'
 import { GdprService } from '@/services/gdpr'
-import { createAdminClient } from '@/lib/supabase/admin' // Needed for admin client creation if not used directly
-import type { User as SupabaseUser } from '@supabase/supabase-js'
+import { createAdminClient } from '@/lib/supabase/admin'
 
 /**
  * Export all user data for GDPR compliance
@@ -69,61 +67,63 @@ export async function exportUserData(userId?: string) {
  * Delete all user data (right to be forgotten)
  * Note: This is a destructive operation and should be carefully considered
  */
-export async function deleteUserData(userId: string, confirmEmail: string) {
+export async function deleteUserData(confirmEmail: string) {
   try {
     const supabase = await createClient()
-    const adminClient = createAdminClient(); // Use admin client
-    
+    const adminClient = createAdminClient()
+
     // Get current user
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) {
       return { error: 'User not authenticated' }
     }
-    
+
     // Only super admins can delete user data
     const { data: profile } = await adminClient
       .from('profiles')
       .select('system_role')
       .eq('id', user.id)
       .single()
-    
+
     if (profile?.system_role !== 'super_admin') {
       return { error: 'Insufficient permissions' }
     }
-    
-    // Verify the user to be deleted
+
+    // Look up target user by email instead of a caller-supplied userId (C17 fix)
     const { data: targetProfile } = await adminClient
       .from('profiles')
-      .select('email')
-      .eq('id', userId)
+      .select('id, email')
+      .eq('email', confirmEmail)
       .single()
-    
-    if (!targetProfile || targetProfile.email !== confirmEmail) {
-      return { error: 'Email confirmation does not match' }
+
+    if (!targetProfile) {
+      return { error: 'No user found with that email' }
     }
-    
-    // Log the deletion request first
+
+    const targetUserId = targetProfile.id
+
+    // Execute deletion first, then write audit log on success (H6 fix)
+    const result = await GdprService.deleteUserData(targetUserId)
+
     await logAuditEvent({
       user_id: user.id,
       user_email: user.email || undefined,
       operation_type: 'delete',
       resource_type: 'user_data',
-      resource_id: userId,
+      resource_id: targetUserId,
       operation_status: 'success',
       additional_info: {
         deleted_by: user.id,
         email: confirmEmail,
-        status: 'initiated'
+        status: 'completed'
       }
     })
-    
-    const result = await GdprService.deleteUserData(userId);
-    
+
     return {
       success: true,
       message: result.message
     }
-    
+
   } catch (error: any) {
     console.error('Error deleting user data:', error)
     return { error: error.message || 'Failed to process deletion request' }

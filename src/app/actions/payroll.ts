@@ -26,19 +26,6 @@ export type PayrollPeriod = {
   period_end: string;   // YYYY-MM-DD
 };
 
-/** Default: 25th of previous month → 24th of close month */
-function defaultPeriodDates(year: number, month: number): { period_start: string; period_end: string } {
-  // period_end = 24th of the close month
-  const end = new Date(Date.UTC(year, month - 1, 24));
-  // period_start = 25th of the previous month (handles Jan → Dec of prior year correctly)
-  const start = new Date(Date.UTC(year, month - 2, 25));
-  return {
-    period_start: end.toISOString().split('T')[0].replace(/-\d{2}$/, m => m).replace(/^(\d{4})-(\d{2})-(\d{2})$/, (_, y, mo, d) => `${y}-${mo}-${d}`),
-    period_end:   end.toISOString().split('T')[0],
-  };
-}
-
-// Use simpler implementation
 function isoDate(d: Date): string {
   return d.toISOString().split('T')[0];
 }
@@ -66,7 +53,7 @@ export async function getOrCreatePayrollPeriod(year: number, month: number): Pro
 
   const { data: existing } = await supabase
     .from('payroll_periods')
-    .select('*')
+    .select('id, year, month, period_start, period_end')
     .eq('year', year)
     .eq('month', month)
     .single();
@@ -79,7 +66,7 @@ export async function getOrCreatePayrollPeriod(year: number, month: number): Pro
   const { data: created, error } = await supabase
     .from('payroll_periods')
     .insert({ year, month, period_start: isoDate(start), period_end: isoDate(end) })
-    .select('*')
+    .select('id, year, month, period_start, period_end')
     .single();
 
   if (error) throw new Error(error.message);
@@ -103,7 +90,7 @@ export async function updatePayrollPeriod(
       { year, month, period_start: periodStart, period_end: periodEnd },
       { onConflict: 'year,month' },
     )
-    .select('*')
+    .select('id, year, month, period_start, period_end')
     .single();
 
   if (error) return { success: false, error: error.message };
@@ -491,7 +478,7 @@ export async function approvePayrollMonth(year: number, month: number): Promise<
   const { data, error } = await supabase
     .from('payroll_month_approvals')
     .upsert({ year, month, approved_by: user!.id, snapshot }, { onConflict: 'year,month' })
-    .select('*')
+    .select('id, year, month, approved_at, approved_by, snapshot, email_sent_at, email_sent_by')
     .single();
 
   if (error) return { success: false, error: error.message };
@@ -528,7 +515,7 @@ export async function sendPayrollEmail(year: number, month: number): Promise<
   // Load approved snapshot
   const { data: approval } = await supabase
     .from('payroll_month_approvals')
-    .select('*')
+    .select('id, year, month, approved_at, approved_by, snapshot, email_sent_at, email_sent_by')
     .eq('year', year)
     .eq('month', month)
     .single();
@@ -626,7 +613,6 @@ export async function sendPayrollEmail(year: number, month: number): Promise<
 
   if (overThreshold.length > 0 && MANAGER_EMAIL) {
     const alertHtml = buildEarningsAlertEmailHtml(year, month, overThreshold);
-    const monthLabel = format(new Date(year, month - 1, 1), 'MMMM yyyy');
     await sendEmail({
       to: MANAGER_EMAIL,
       subject: `URGENT: Earnings alert — ${overThreshold.length === 1 ? overThreshold[0].name : `${overThreshold.length} employees`} over £${EARNINGS_THRESHOLD} in ${monthLabel}`,

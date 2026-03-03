@@ -12,6 +12,7 @@ import { Textarea } from '@/components/ui-v2/forms/Textarea'
 import { Checkbox } from '@/components/ui-v2/forms/Checkbox'
 import { Alert } from '@/components/ui-v2/feedback/Alert'
 import { toast } from '@/components/ui-v2/feedback/Toast'
+import { EmptyState } from '@/components/ui-v2/display/EmptyState'
 import { Modal, ModalActions } from '@/components/ui-v2/overlay/Modal'
 import { usePermissions } from '@/contexts/PermissionContext'
 import { createVendor, getVendors } from '@/app/actions/vendors'
@@ -558,9 +559,11 @@ export default function OJProjectsClientsPage() {
       </Card>
 
       {!selectedVendor ? (
-        <div className="text-center py-12 text-gray-500">
-          Select a client above or create a new one to get started.
-        </div>
+        <EmptyState
+          title="No client selected"
+          description="Select a client above or create a new one to get started."
+          icon="users"
+        />
       ) : (
         <>
         {/* Account Balance Summary */}

@@ -1,4 +1,6 @@
 import Link from 'next/link';
+import { redirect } from 'next/navigation';
+import { checkUserPermission } from '@/app/actions/rbac';
 import { PageLayout } from '@/components/ui-v2/layout/PageLayout';
 import { Section } from '@/components/ui-v2/layout/Section';
 import { Card } from '@/components/ui-v2/layout/Card';
@@ -30,6 +32,9 @@ const navigationCards = [
 ];
 
 export default async function MenuManagementHomePage() {
+  const canView = await checkUserPermission('menu_management', 'view');
+  if (!canView) redirect('/unauthorized');
+
   const dishesResult = await listMenuDishes();
   const loadError = dishesResult.error ?? null;
   const dishes = loadError ? [] : Array.isArray(dishesResult.data) ? dishesResult.data : [];

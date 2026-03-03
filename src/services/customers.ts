@@ -427,33 +427,36 @@ export class CustomerService {
       return { success: true, deletedCount: 0, message: 'No test customers found' };
     }
 
-    const deletedCustomers: { id: string; name: string }[] = [];
-    const failedDeletions: { id: string; name: string; error: string }[] = [];
+    // Batch delete all test customers in one query
+    const ids = testCustomers.map(c => c.id);
+    const { data: deletedRows, error: deleteError } = await supabase
+      .from('customers')
+      .delete()
+      .in('id', ids)
+      .select('id');
 
-    // Delete each test customer one by one to allow partial success and tracking
-    for (const customer of testCustomers) {
-      const { data: deletedCustomer, error: deleteError } = await supabase
-        .from('customers')
-        .delete()
-        .eq('id', customer.id)
-        .select('id')
-        .maybeSingle();
-
-      const name = `${customer.first_name} ${customer.last_name || ''}`.trim();
-
-      if (deleteError || !deletedCustomer) {
-        failedDeletions.push({
-          id: customer.id,
-          name,
-          error: deleteError?.message || 'Customer was already removed'
-        });
-      } else {
-        deletedCustomers.push({
-          id: customer.id,
-          name
-        });
-      }
+    if (deleteError) {
+      return {
+        success: false,
+        deletedCount: 0,
+        failedCount: testCustomers.length,
+        deletedCustomers: [],
+        failedDeletions: testCustomers.map(c => ({
+          id: c.id,
+          name: `${c.first_name} ${c.last_name || ''}`.trim(),
+          error: deleteError.message,
+        })),
+        message: `Failed to delete test customers: ${deleteError.message}`,
+      };
     }
+
+    const deletedIds = new Set((deletedRows ?? []).map(r => r.id));
+    const deletedCustomers = testCustomers
+      .filter(c => deletedIds.has(c.id))
+      .map(c => ({ id: c.id, name: `${c.first_name} ${c.last_name || ''}`.trim() }));
+    const failedDeletions = testCustomers
+      .filter(c => !deletedIds.has(c.id))
+      .map(c => ({ id: c.id, name: `${c.first_name} ${c.last_name || ''}`.trim(), error: 'Customer was already removed' }));
 
     if (failedDeletions.length > 0) {
       return {

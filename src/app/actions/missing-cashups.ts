@@ -7,6 +7,8 @@ import { eachDayOfInterval, subDays, format, isSameDay } from 'date-fns';
 
 export async function getMissingCashupDatesAction(siteId: string, daysBack = 365) {
   const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { success: false, error: 'Unauthorized' };
   const today = new Date();
   const fromDate = subDays(today, daysBack);
   

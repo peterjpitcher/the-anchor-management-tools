@@ -43,6 +43,17 @@ export default function NewPrivateBookingPage() {
   const [error, setError] = useState('')
   const [dateTbd, setDateTbd] = useState(false)
 
+  useEffect(() => {
+    async function checkPermission() {
+      const { checkUserPermission } = await import('@/app/actions/rbac')
+      const canCreate = await checkUserPermission('private_bookings', 'create')
+      if (!canCreate) {
+        router.replace('/private-bookings')
+      }
+    }
+    void checkPermission()
+  }, [router])
+
   // Update form when customer is selected
   useEffect(() => {
     if (selectedCustomer) {

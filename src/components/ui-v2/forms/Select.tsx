@@ -26,10 +26,10 @@ export interface SelectProps extends SelectHTMLAttributes<HTMLSelectElement> {
   selectSize?: 'sm' | 'md' | 'lg'
   
   /**
-   * Whether the select has an error
-   * @default false
+   * Error state. Pass a string to display a message below the select; pass `true` for red
+   * border only (backwards-compatible with boolean usage). Also triggers aria-invalid.
    */
-  error?: boolean
+  error?: string | boolean
   
   /**
    * Icon to display on the left side
@@ -71,7 +71,7 @@ export interface SelectProps extends SelectHTMLAttributes<HTMLSelectElement> {
 export const Select = forwardRef<HTMLSelectElement, SelectProps>(({
   variant = 'default',
   selectSize = 'md',
-  error = false,
+  error,
   leftIcon,
   loading = false,
   fullWidth = true,
@@ -87,21 +87,27 @@ export const Select = forwardRef<HTMLSelectElement, SelectProps>(({
   const sizeClasses = {
     sm: {
       select: 'px-3 py-2.5 sm:py-1.5 pr-8 text-sm',
+      selectWithError: 'px-3 py-2.5 sm:py-1.5 pr-14 text-sm',
       icon: 'h-4 w-4',
       iconPadding: 'pl-8',
       chevron: 'right-2',
+      errorIcon: 'right-7',
     },
     md: {
       select: 'px-3 py-2.5 sm:py-2 pr-10 text-sm',
+      selectWithError: 'px-3 py-2.5 sm:py-2 pr-16 text-sm',
       icon: 'h-5 w-5',
       iconPadding: 'pl-10',
       chevron: 'right-3',
+      errorIcon: 'right-9',
     },
     lg: {
       select: 'px-4 py-3 pr-12 text-base',
+      selectWithError: 'px-4 py-3 pr-20 text-base',
       icon: 'h-6 w-6',
       iconPadding: 'pl-12',
       chevron: 'right-4',
+      errorIcon: 'right-11',
     },
   }
   
@@ -138,8 +144,8 @@ export const Select = forwardRef<HTMLSelectElement, SelectProps>(({
     selectSize === 'md' && 'min-h-[44px] sm:min-h-[40px]',
     selectSize === 'lg' && 'min-h-[48px] sm:min-h-[44px]',
     
-    // Size classes
-    sizeClasses[selectSize].select,
+    // Size classes (extra right padding when error icon + chevron both shown)
+    error && !loading ? sizeClasses[selectSize].selectWithError : sizeClasses[selectSize].select,
     
     // Variant classes
     variantClasses[variant],
@@ -177,63 +183,84 @@ export const Select = forwardRef<HTMLSelectElement, SelectProps>(({
     sizeClasses[selectSize].chevron,
     error ? 'text-red-400' : 'text-gray-400'
   )
-  
+
+  const errorIconClasses = cn(
+    iconClasses,
+    sizeClasses[selectSize].errorIcon,
+    'text-red-400'
+  )
+
+  const errorId = props.id ? `${props.id}-error` : 'select-error'
+
   return (
-    <div className={wrapperClasses}>
-      {/* Left icon */}
-      {leftIcon && (
-        <div className={leftIconClasses}>
-          {leftIcon}
-        </div>
-      )}
-      
-      {/* Select */}
-      <select
-        ref={ref}
-        className={selectClasses}
-        disabled={disabled || loading}
-        aria-invalid={error}
-        aria-describedby={
-          error && props['aria-describedby']
-            ? `${props['aria-describedby']} ${props.id}-error`
-            : props['aria-describedby']
-        }
-        {...props}
-      >
-        {placeholder && (
-          <option value="" disabled={props.required}>
-            {placeholder}
-          </option>
+    <>
+      <div className={wrapperClasses}>
+        {/* Left icon */}
+        {leftIcon && (
+          <div className={leftIconClasses}>
+            {leftIcon}
+          </div>
         )}
-        
-        {options?.map((option) => (
-          <option
-            key={option.value}
-            value={option.value}
-            disabled={option.disabled}
-          >
-            {option.label}
-          </option>
-        ))}
-        
-        {children}
-      </select>
-      
-      {/* Chevron/Error/Loading icon */}
-      {loading ? (
-        <div className={cn(chevronClasses, 'pointer-events-auto')}>
-          <Spinner size="sm" />
-        </div>
-      ) : error ? (
-        <div className={chevronClasses}>
-          <ExclamationCircleIcon />
-        </div>
-      ) : (
-        <div className={chevronClasses}>
-          <ChevronDownIcon />
-        </div>
+
+        {/* Select */}
+        <select
+          ref={ref}
+          className={selectClasses}
+          disabled={disabled || loading}
+          aria-invalid={!!error || undefined}
+          aria-describedby={
+            typeof error === 'string' && error
+              ? props['aria-describedby']
+                ? `${props['aria-describedby']} ${errorId}`
+                : errorId
+              : props['aria-describedby']
+          }
+          {...props}
+        >
+          {placeholder && (
+            <option value="" disabled={props.required}>
+              {placeholder}
+            </option>
+          )}
+
+          {options?.map((option) => (
+            <option
+              key={option.value}
+              value={option.value}
+              disabled={option.disabled}
+            >
+              {option.label}
+            </option>
+          ))}
+
+          {children}
+        </select>
+
+        {/* Chevron/Error/Loading icon */}
+        {loading ? (
+          <div className={cn(chevronClasses, 'pointer-events-auto')}>
+            <Spinner size="sm" />
+          </div>
+        ) : (
+          <>
+            {error && (
+              <div className={errorIconClasses}>
+                <ExclamationCircleIcon />
+              </div>
+            )}
+            <div className={chevronClasses}>
+              <ChevronDownIcon />
+            </div>
+          </>
+        )}
+      </div>
+
+      {typeof error === 'string' && error && (
+        <p id={errorId} className="mt-1 text-sm text-red-600">
+          {error}
+        </p>
       )}
-    </div>
+    </>
   )
 })
 

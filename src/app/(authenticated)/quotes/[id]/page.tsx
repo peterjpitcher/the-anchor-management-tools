@@ -57,7 +57,7 @@ export default function QuoteDetailPage({ params }: { params: Promise<{ id: stri
       return
     }
 
-    async function loadQuote(currentId: string) {
+    async function fetchAndSetQuote(currentId: string) {
       try {
         const result = await getQuote(currentId)
         if (result.error || !result.quote) {
@@ -71,7 +71,7 @@ export default function QuoteDetailPage({ params }: { params: Promise<{ id: stri
       }
     }
 
-    void loadQuote(id)
+    void fetchAndSetQuote(id)
     if (canEdit) {
       void checkEmailConfig()
     }

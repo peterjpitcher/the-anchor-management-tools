@@ -20,6 +20,7 @@ import type { LineItemCatalogItem, InvoiceLineItemInput } from '@/types/invoices
 import { usePermissions } from '@/contexts/PermissionContext'
 import { calculateInvoiceTotals } from '@/lib/invoiceCalculations'
 import { Modal } from '@/components/ui-v2/overlay/Modal'
+import { EmptyState } from '@/components/ui-v2/display/EmptyState'
 
 type CreateInvoiceActionResult = Awaited<ReturnType<typeof createInvoice>>
 
@@ -316,9 +317,10 @@ export default function NewInvoicePage() {
           </div>
 
           {lineItems.length === 0 ? (
-            <div className="text-center py-8 text-gray-500">
-              No line items added yet. Click &quot;Add Line Item&quot; to begin.
-            </div>
+            <EmptyState
+              title="No line items yet"
+              description='Click "Add Line Item" to begin.'
+            />
           ) : (
             <div className="space-y-4">
               {lineItems.map((item, index) => {
@@ -327,8 +329,8 @@ export default function NewInvoicePage() {
 
                 return (
                   <div key={item.id} className="border rounded-lg p-4">
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-3">
-                    <div className="sm:col-span-2 lg:col-span-5">
+                  <div className="grid grid-cols-1 lg:grid-cols-12 gap-3">
+                    <div className="lg:col-span-5">
                       <label className="block text-sm font-medium mb-1">
                         Description
                       </label>
@@ -341,7 +343,7 @@ export default function NewInvoicePage() {
                       />
                     </div>
 
-                    <div className="sm:col-span-1 lg:col-span-2">
+                    <div className="lg:col-span-2">
                       <label className="block text-sm font-medium mb-1">
                         Quantity
                       </label>
@@ -355,7 +357,7 @@ export default function NewInvoicePage() {
                       />
                     </div>
 
-                    <div className="sm:col-span-1 lg:col-span-2">
+                    <div className="lg:col-span-2">
                       <label className="block text-sm font-medium mb-1">
                         Unit Price (£)
                       </label>
@@ -369,7 +371,7 @@ export default function NewInvoicePage() {
                       />
                     </div>
 
-                    <div className="sm:col-span-1 lg:col-span-1">
+                    <div className="lg:col-span-1">
                       <label className="block text-sm font-medium mb-1">
                         Disc %
                       </label>
@@ -383,7 +385,7 @@ export default function NewInvoicePage() {
                       />
                     </div>
 
-                    <div className="sm:col-span-1 lg:col-span-1">
+                    <div className="lg:col-span-1">
                       <label className="block text-sm font-medium mb-1">
                         VAT %
                       </label>
@@ -396,7 +398,7 @@ export default function NewInvoicePage() {
                       />
                     </div>
 
-                    <div className="sm:col-span-2 lg:col-span-1 flex items-end">
+                    <div className="lg:col-span-1 flex items-end">
                       <Button
                         type="button"
                         onClick={() => removeLineItem(item.id)}
@@ -466,7 +468,7 @@ export default function NewInvoicePage() {
                 </div>
                 {invoiceTotals.invoiceDiscountAmount > 0 && (
                   <div className="flex justify-between text-green-600">
-                    <span>Invoice Discount:</span>
+                    <span>Discount:</span>
                     <span>-£{invoiceTotals.invoiceDiscountAmount.toFixed(2)}</span>
                   </div>
                 )}

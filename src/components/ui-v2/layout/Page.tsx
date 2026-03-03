@@ -88,6 +88,10 @@ export interface PageProps extends BaseComponentProps, PageRootProps {
   header?: ReactNode
 }
 
+/**
+ * @deprecated Use `PageLayout` from './PageLayout' instead.
+ * This component will be removed in a future version.
+ */
 export function Page({
   title,
   description,

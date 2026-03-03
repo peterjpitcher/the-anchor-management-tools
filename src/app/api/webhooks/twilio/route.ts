@@ -501,7 +501,7 @@ async function handleInboundSMS(
     const orConditions = orClauses.join(',');
     const { data: customers, error: customerError } = await adminClient
       .from('customers')
-      .select('*')
+      .select('id, mobile_e164')
       .or(orConditions)
       .limit(1);
     
@@ -542,7 +542,7 @@ async function handleInboundSMS(
         if (createErrorCode === '23505') {
           const { data: concurrentCustomers, error: concurrentLookupError } = await adminClient
             .from('customers')
-            .select('*')
+            .select('id, mobile_e164')
             .or(orConditions)
             .limit(1)
 

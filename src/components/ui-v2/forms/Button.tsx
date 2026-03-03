@@ -269,7 +269,9 @@ export function ButtonGroup({
       )}
       role="group"
     >
-      {/* TODO: Clone children and modify classes for proper grouping */}
+      {/* NOTE: Button group support is not yet implemented.
+           For grouped buttons, wrap in a flex container with divide-x and rounded corner overrides.
+           Example: <div className="flex divide-x rounded-md overflow-hidden">...</div> */}
       {children}
     </div>
   )

@@ -77,7 +77,6 @@ export async function createCustomer(formData: FormData) {
 
     revalidatePath('/customers')
     revalidateTag('dashboard')
-    revalidatePath('/dashboard')
     return { success: true, data: customer }
   } catch (error) {
     console.error('Unexpected error creating customer:', error)
@@ -129,7 +128,6 @@ export async function updateCustomer(id: string, formData: FormData) {
     revalidatePath('/customers')
     revalidatePath(`/customers/${id}`)
     revalidateTag('dashboard')
-    revalidatePath('/dashboard')
     return { success: true, data: customer }
   } catch (error) {
     console.error('Unexpected error updating customer:', error)
@@ -162,7 +160,6 @@ export async function deleteCustomer(id: string) {
 
     revalidatePath('/customers')
     revalidateTag('dashboard')
-    revalidatePath('/dashboard')
     return { success: true }
   } catch (error) {
     console.error('Unexpected error deleting customer:', error)
@@ -216,7 +213,6 @@ export async function importCustomers(entries: ImportCustomerInput[]) {
 
     revalidatePath('/customers')
     revalidateTag('dashboard')
-    revalidatePath('/dashboard')
 
     return {
       success: true,
@@ -232,14 +228,15 @@ export async function importCustomers(entries: ImportCustomerInput[]) {
   }
 }
 
+// L3 fix: destructure supabase from context instead of creating a second client with createClient()
 export async function updateCustomerNotes(id: string, notes: string) {
   try {
     const context = await requireCustomerManageContext()
     if ('error' in context) {
       return { error: context.error }
     }
+    const { supabase, user } = context
 
-    const supabase = await createClient()
     const { error } = await supabase
       .from('customers')
       .update({ internal_notes: notes.trim() || null })
@@ -249,6 +246,15 @@ export async function updateCustomerNotes(id: string, notes: string) {
       console.error('Error updating customer notes:', error)
       return { error: 'Failed to save notes' }
     }
+
+    await logAuditEvent({
+      user_id: user.id,
+      user_email: user.email,
+      operation_type: 'update',
+      resource_type: 'customer',
+      resource_id: id,
+      operation_status: 'success',
+    })
 
     revalidatePath(`/customers/${id}`)
     return { success: true }
@@ -282,15 +288,14 @@ export async function deleteTestCustomers() {
           message: result.message
         }
       })
-      
+
       // We don't log individual audits here to avoid spamming the log if thousands are deleted,
-      // relying on the single bulk audit event. 
+      // relying on the single bulk audit event.
       // If individual audits were needed, the service could return the list of deleted items to loop over.
     }
 
     revalidatePath('/customers')
     revalidateTag('dashboard')
-    revalidatePath('/dashboard')
 
     return result
   } catch (error) {

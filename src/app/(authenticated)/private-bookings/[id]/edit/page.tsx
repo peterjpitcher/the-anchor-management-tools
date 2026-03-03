@@ -3,7 +3,6 @@
 import { useEffect, useState, use } from 'react'
 import { useRouter } from 'next/navigation'
 import { useActionState } from 'react'
-import { notFound } from 'next/navigation'
 import { getPrivateBooking, updatePrivateBooking } from '@/app/actions/privateBookingActions'
 import type { PrivateBookingWithDetails } from '@/types/private-bookings'
 import CustomerSearchInput from '@/components/features/customers/CustomerSearchInput'
@@ -113,7 +112,8 @@ export default function EditPrivateBookingPage({
           })
         }
       } else {
-        notFound()
+        router.push('/private-bookings')
+        return
       }
       setLoading(false)
     }

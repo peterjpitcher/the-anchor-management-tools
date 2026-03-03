@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useTransition, useCallback } from 'react';
+import { useState, useTransition, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   DndContext,
@@ -307,18 +307,25 @@ export default function RotaGrid({
   );
 
   // Build lookup map: "employeeId:date" → leave status (approved or pending only)
-  const leaveMap = new Map<string, 'approved' | 'pending'>(
-    activeLeaveDays
-      .filter(l => l.status !== 'declined')
-      .map(l => [`${l.employee_id}:${l.leave_date}`, l.status as 'approved' | 'pending']),
+  const leaveMap = useMemo(
+    () =>
+      new Map<string, 'approved' | 'pending'>(
+        activeLeaveDays
+          .filter(l => l.status !== 'declined')
+          .map(l => [`${l.employee_id}:${l.leave_date}`, l.status as 'approved' | 'pending']),
+      ),
+    [activeLeaveDays],
   );
 
   // Separate open shifts from employee shifts
-  const openShifts = shifts.filter(s => s.is_open_shift);
+  const openShifts = useMemo(() => shifts.filter(s => s.is_open_shift), [shifts]);
 
   // Budget data
   const currentYear = parseInt(weekStart.slice(0, 4), 10);
-  const currentYearBudgets = budgets.filter(b => b.budget_year === currentYear);
+  const currentYearBudgets = useMemo(
+    () => budgets.filter(b => b.budget_year === currentYear),
+    [budgets, currentYear],
+  );
 
   // DnD handlers
   const handleDragStart = useCallback((event: DragStartEvent) => {
@@ -363,11 +370,23 @@ export default function RotaGrid({
     }
   }, [week.id]);
 
-  const hasScheduledTemplates = templates.some(t => t.day_of_week !== null);
+  const hasScheduledTemplates = useMemo(
+    () => templates.some(t => t.day_of_week !== null),
+    [templates],
+  );
+
+  // Pre-compute hours per employee so empWeekHours isn't called N times per render
+  const empHoursMap = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const emp of employees) {
+      map.set(emp.employee_id, empWeekHours(emp.employee_id, shifts));
+    }
+    return map;
+  }, [employees, shifts]);
 
   const handleApplyTemplates = () => {
     startDndTransition(async () => {
-      const result = await autoPopulateWeekFromTemplates(week.id, days);
+      const result = await autoPopulateWeekFromTemplates(week.id);
       if (!result.success) { toast.error(result.error); return; }
       if (result.created === 0) {
         toast('All scheduled shifts already exist for this week', { icon: 'ℹ️' });
@@ -598,7 +617,7 @@ export default function RotaGrid({
                 </div>
               ) : (
                 employees.map(emp => {
-                  const weekHrs = empWeekHours(emp.employee_id, shifts);
+                  const weekHrs = empHoursMap.get(emp.employee_id) ?? 0;
                   const overHours = emp.max_weekly_hours !== null && weekHrs > emp.max_weekly_hours;
 
                   return (

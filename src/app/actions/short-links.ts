@@ -17,14 +17,16 @@ import {
 export async function createShortLink(data: z.infer<typeof CreateShortLinkSchema>) {
   try {
     const supabase = await createClient();
-    
+
     // Check permissions for staff users (for now, any authenticated user can create)
-    const { data: { user } } = await supabase.auth.getUser();
+    const [{ data: { user } }, canManage] = await Promise.all([
+      supabase.auth.getUser(),
+      checkUserPermission('short_links', 'manage'),
+    ]);
     if (!user) {
       return { error: 'Authentication required' };
     }
 
-    const canManage = await checkUserPermission('short_links', 'manage');
     if (!canManage) {
       return { error: 'You do not have permission to manage short links' };
     }
@@ -53,7 +55,6 @@ export async function createShortLink(data: z.infer<typeof CreateShortLinkSchema
 
     revalidatePath('/short-links');
     revalidateTag('dashboard')
-    revalidatePath('/dashboard')
 
     return { 
       success: true, 
@@ -90,12 +91,14 @@ export async function getShortLinks() {
 export async function updateShortLink(input: z.infer<typeof UpdateShortLinkSchema>) {
   try {
     const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
+    const [{ data: { user } }, canManage] = await Promise.all([
+      supabase.auth.getUser(),
+      checkUserPermission('short_links', 'manage'),
+    ]);
     if (!user) {
       return { error: 'Authentication required' };
     }
 
-    const canManage = await checkUserPermission('short_links', 'manage');
     if (!canManage) {
       return { error: 'You do not have permission to manage short links' };
     }
@@ -118,7 +121,6 @@ export async function updateShortLink(input: z.infer<typeof UpdateShortLinkSchem
 
     revalidatePath('/short-links');
     revalidateTag('dashboard')
-    revalidatePath('/dashboard')
 
     return { success: true, data: updated };
   } catch (error: any) {
@@ -133,12 +135,14 @@ export async function updateShortLink(input: z.infer<typeof UpdateShortLinkSchem
 export async function deleteShortLink(id: string) {
   try {
     const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
+    const [{ data: { user } }, canManage] = await Promise.all([
+      supabase.auth.getUser(),
+      checkUserPermission('short_links', 'manage'),
+    ]);
     if (!user) {
       return { error: 'Authentication required' };
     }
 
-    const canManage = await checkUserPermission('short_links', 'manage');
     if (!canManage) {
       return { error: 'You do not have permission to manage short links' };
     }
@@ -159,7 +163,6 @@ export async function deleteShortLink(id: string) {
 
     revalidatePath('/short-links');
     revalidateTag('dashboard')
-    revalidatePath('/dashboard')
 
     return { success: true };
   } catch (error: any) {
@@ -203,12 +206,14 @@ export async function resolveShortLink(data: z.infer<typeof ResolveShortLinkSche
 export async function getShortLinkAnalytics(shortCode: string) {
   try {
     const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
+    const [{ data: { user } }, canView] = await Promise.all([
+      supabase.auth.getUser(),
+      checkUserPermission('short_links', 'view'),
+    ]);
     if (!user) {
       return { error: 'Authentication required' };
     }
 
-    const canView = await checkUserPermission('short_links', 'view');
     if (!canView) {
       return { error: 'You do not have permission to view short link analytics' };
     }

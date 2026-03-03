@@ -52,7 +52,6 @@ export async function markMessagesAsRead(customerId: string) {
     revalidatePath(`/customers/${customerId}`)
     revalidatePath('/', 'layout') // This revalidates the navigation with unread counts
     revalidateTag('dashboard')
-    revalidatePath('/dashboard')
     
     return { success: true }
   } catch (error: any) {
@@ -66,9 +65,11 @@ export async function markMessagesAsRead(customerId: string) {
 
 export async function sendSmsReply(customerId: string, message: string) {
   try {
-    const hasSendPermission =
-      (await checkUserPermission('messages', 'send')) ||
-      (await checkUserPermission('messages', 'manage'))
+    const [canSend, canManage] = await Promise.all([
+      checkUserPermission('messages', 'send'),
+      checkUserPermission('messages', 'manage'),
+    ])
+    const hasSendPermission = canSend || canManage
 
     if (!hasSendPermission) {
       return { error: 'Insufficient permissions' }

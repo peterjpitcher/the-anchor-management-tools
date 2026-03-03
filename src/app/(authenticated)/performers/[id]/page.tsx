@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
-import { notFound } from 'next/navigation'
+import { notFound, redirect } from 'next/navigation'
+import { checkUserPermission } from '@/app/actions/rbac'
 
 import PerformerSubmissionClient from './performer-submission-client'
 import type { PerformerSubmission } from '@/types/database'
@@ -11,6 +12,9 @@ export default async function PerformerSubmissionPage({
 }: {
   params: Promise<{ id: string }>
 }) {
+  const canView = await checkUserPermission('performers', 'view')
+  if (!canView) redirect('/unauthorized')
+
   const { id } = await params
   const supabase = await createClient()
 

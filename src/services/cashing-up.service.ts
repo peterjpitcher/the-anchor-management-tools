@@ -329,49 +329,86 @@ export class CashingUpService {
   }
 
   static async getWeeklyData(supabase: SupabaseClient, siteId: string, weekStartDate: string) {
-    // Using the view
-    const { data, error } = await supabase
-      .from('cashup_weekly_view')
-      .select('*')
-      .eq('site_id', siteId)
-      .eq('week_start_date', weekStartDate)
-      .order('session_date', { ascending: true });
+    // Compute the week end date
+    const weekEndDate = (() => {
+      const d = new Date(weekStartDate + 'T00:00:00');
+      d.setDate(d.getDate() + 6);
+      return d.toISOString().split('T')[0];
+    })();
 
-    if (error) throw error;
+    // Fetch view rows and targets in parallel (N+1 fix: one targets query instead of per-row)
+    const [viewRes, targetsRes] = await Promise.all([
+      supabase
+        .from('cashup_weekly_view')
+        .select('*')
+        .eq('site_id', siteId)
+        .eq('week_start_date', weekStartDate)
+        .order('session_date', { ascending: true }),
+      supabase
+        .from('cashup_targets')
+        .select('day_of_week, target_amount, effective_from')
+        .eq('site_id', siteId)
+        .lte('effective_from', weekEndDate)
+        .order('effective_from', { ascending: false }),
+    ]);
 
-    // Augment with target data
-    const augmentedData = await Promise.all(data.map(async (row) => {
-      const target = await this.getDailyTarget(supabase, siteId, row.session_date);
+    if (viewRes.error) throw viewRes.error;
+
+    const targetRows = targetsRes.data ?? [];
+    const getTargetAmount = (sessionDate: string): number => {
+      const dow = new Date(sessionDate).getDay();
+      const match = targetRows.find(t => t.day_of_week === dow && t.effective_from <= sessionDate);
+      return match?.target_amount ?? 0;
+    };
+
+    return (viewRes.data ?? []).map((row) => {
+      const target = getTargetAmount(row.session_date);
       return {
         ...row,
         target_amount: target,
-        variance_vs_target: (row.total_counted_amount || 0) - target
+        variance_vs_target: (row.total_counted_amount || 0) - target,
       };
-    }));
-
-    return augmentedData;
+    });
   }
 
   static async getDashboardData(supabase: SupabaseClient, siteId?: string, fromDate?: string, toDate?: string): Promise<CashupDashboardData> {
     // This would be complex SQL or multiple queries.
     // For Foundation/Discovery, returning mock structure or basic aggregations.
-    
-    // Example: Total Takings
-    let query = supabase.from('cashup_sessions').select('total_counted_amount, total_variance_amount, session_date, site_id, status, notes, cashup_payment_breakdowns(payment_type_code, counted_amount)');
-    
-    if (siteId) query = query.eq('site_id', siteId);
-    if (fromDate) query = query.gte('session_date', fromDate);
-    if (toDate) query = query.lte('session_date', toDate);
-    
-    const { data, error } = await query.order('session_date', { ascending: false });
-    
+
+    // Build sessions and targets queries
+    let sessionQuery = supabase.from('cashup_sessions').select('total_counted_amount, total_variance_amount, session_date, site_id, status, notes, cashup_payment_breakdowns(payment_type_code, counted_amount)');
+    if (siteId) sessionQuery = sessionQuery.eq('site_id', siteId);
+    if (fromDate) sessionQuery = sessionQuery.gte('session_date', fromDate);
+    if (toDate) sessionQuery = sessionQuery.lte('session_date', toDate);
+
+    let targetQuery = supabase
+      .from('cashup_targets')
+      .select('site_id, day_of_week, target_amount, effective_from')
+      .order('effective_from', { ascending: false });
+    if (siteId) targetQuery = targetQuery.eq('site_id', siteId);
+
+    // Fetch sessions and targets in parallel (N+1 fix)
+    const [{ data, error }, { data: allTargets }] = await Promise.all([
+      sessionQuery.order('session_date', { ascending: false }),
+      targetQuery,
+    ]);
+
     if (error) throw error;
 
     const sessions = data || [];
-    
-    // Augment sessions with Target data
-    const sessionsWithTarget = await Promise.all(sessions.map(async (s) => {
-      const target = await this.getDailyTarget(supabase, s.site_id, s.session_date);
+    const targetRows = allTargets ?? [];
+
+    const getTargetAmountForSession = (sessionSiteId: string, sessionDate: string): number => {
+      const dow = new Date(sessionDate).getDay();
+      const match = targetRows.find(
+        t => t.site_id === sessionSiteId && t.day_of_week === dow && t.effective_from <= sessionDate
+      );
+      return match?.target_amount ?? 0;
+    };
+
+    // Augment sessions with Target data (no more per-session DB calls)
+    const sessionsWithTarget = sessions.map((s) => {
+      const target = getTargetAmountForSession(s.site_id, s.session_date);
       const varianceVsTarget = (s.total_counted_amount || 0) - target;
 
       // Calculate breakdown totals
@@ -388,7 +425,7 @@ export class CashingUpService {
         cardTotal,
         stripeTotal
       };
-    }));
+    });
 
     const totalTakings = sessionsWithTarget.reduce((sum, s) => sum + (s.total_counted_amount || 0), 0);
     const totalTarget = sessionsWithTarget.reduce((sum, s) => sum + (s.target || 0), 0);
@@ -516,32 +553,53 @@ export class CashingUpService {
     // Generate dates from Monday to the latest completed date for this week
     const dates: string[] = [];
     const d = new Date(weekStart);
-    
+
     while (d <= targetDate) {
       dates.push(d.toISOString().split('T')[0]);
       d.setDate(d.getDate() + 1);
     }
 
-    const progress = [];
+    const fromStr = dates[0];
+    const toStr = dates[dates.length - 1];
+    const weekEndDate = toStr.split('T')[0];
 
-    for (const dStr of dates) {
-      // Get Target
-      const target = await this.getDailyTarget(supabase, siteId, dStr);
-
-      // Get Actual
-      const { data: session } = await supabase
-        .from('cashup_sessions')
-        .select('total_counted_amount')
+    // Parallelise: fetch all targets and all sessions in one query each
+    const dayOfWeeks = dates.map(ds => new Date(ds).getDay());
+    const [targetsData, sessionsData] = await Promise.all([
+      supabase
+        .from('cashup_targets')
+        .select('day_of_week, target_amount, effective_from')
         .eq('site_id', siteId)
-        .eq('session_date', dStr)
-        .maybeSingle();
+        .in('day_of_week', [...new Set(dayOfWeeks)])
+        .lte('effective_from', toStr)
+        .order('effective_from', { ascending: false }),
+      supabase
+        .from('cashup_sessions')
+        .select('session_date, total_counted_amount')
+        .eq('site_id', siteId)
+        .gte('session_date', fromStr)
+        .lte('session_date', weekEndDate),
+    ]);
 
-      progress.push({
-        date: dStr,
-        target,
-        actual: session?.total_counted_amount ?? null
-      });
+    // Build a map of session_date -> total_counted_amount
+    const sessionMap = new Map<string, number | null>();
+    for (const s of sessionsData.data ?? []) {
+      sessionMap.set(s.session_date, s.total_counted_amount ?? null);
     }
+
+    // For each date, pick the most-recent target effective on or before that date
+    const targetRows = targetsData.data ?? [];
+    const getTargetAmount = (ds: string): number => {
+      const dow = new Date(ds).getDay();
+      const match = targetRows.find(t => t.day_of_week === dow && t.effective_from <= ds);
+      return match?.target_amount ?? 0;
+    };
+
+    const progress = dates.map(dStr => ({
+      date: dStr,
+      target: getTargetAmount(dStr),
+      actual: sessionMap.has(dStr) ? (sessionMap.get(dStr) ?? null) : null,
+    }));
 
     return { weekStart: weekStartStr, dailyProgress: progress };
   }
@@ -556,141 +614,96 @@ export class CashingUpService {
       dates.push(d.toISOString().split('T')[0]);
     }
     const endDate = dates[6];
-    
-    // 2. Fetch sessions for the week
-    const { data: sessions, error } = await supabase
-      .from('cashup_sessions')
-      .select(`
-        session_date,
-        status,
-        notes,
-        total_expected_amount,
-        total_counted_amount,
-        total_variance_amount,
-        cashup_payment_breakdowns (
-          payment_type_code,
-          expected_amount,
-          counted_amount,
-          variance_amount
-        ),
-        cashup_cash_counts (
-          denomination,
-          quantity,
-          total_amount
-        )
-      `)
-      .eq('site_id', siteId)
-      .gte('session_date', weekStartDate)
-      .lte('session_date', endDate)
-      .order('session_date', { ascending: true });
 
-    if (error) throw error;
+    // 2. Fetch sessions and targets in parallel — one query each instead of N getDailyTarget() calls
+    const dayOfWeeks = dates.map(ds => new Date(ds).getDay());
+    const [sessionsRes, targetsRes] = await Promise.all([
+      supabase
+        .from('cashup_sessions')
+        .select(`
+          session_date,
+          status,
+          notes,
+          total_expected_amount,
+          total_counted_amount,
+          total_variance_amount,
+          cashup_payment_breakdowns (
+            payment_type_code,
+            expected_amount,
+            counted_amount,
+            variance_amount
+          ),
+          cashup_cash_counts (
+            denomination,
+            quantity,
+            total_amount
+          )
+        `)
+        .eq('site_id', siteId)
+        .gte('session_date', weekStartDate)
+        .lte('session_date', endDate)
+        .order('session_date', { ascending: true }),
+      supabase
+        .from('cashup_targets')
+        .select('day_of_week, target_amount, effective_from')
+        .eq('site_id', siteId)
+        .in('day_of_week', [...new Set(dayOfWeeks)])
+        .lte('effective_from', endDate)
+        .order('effective_from', { ascending: false }),
+    ]);
 
-    let accumulatedTarget = 0;
-    let accumulatedRevenue = 0;
+    if (sessionsRes.error) throw sessionsRes.error;
 
-    // 3. Process each day
-    const reportRows = await Promise.all(dates.map(async (date) => {
-      const session = sessions?.find(s => s.session_date === date);
-      
-      // Get Target
-      const dailyTarget = await this.getDailyTarget(supabase, siteId, date);
-      
-      // Values
-      const cash = session?.cashup_payment_breakdowns.find(b => b.payment_type_code === 'CASH');
-      const card = session?.cashup_payment_breakdowns.find(b => b.payment_type_code === 'CARD');
-      const stripe = session?.cashup_payment_breakdowns.find(b => b.payment_type_code === 'STRIPE');
+    const sessions = sessionsRes.data ?? [];
+    const targetRows = targetsRes.data ?? [];
 
-      const totalActual = session?.total_counted_amount || 0;
-      
-      // Accumulate (only if day has passed? Or target accumulates regardless? 
-      // The image shows accumulation for future days? No, image dates are July 2025 (past). 
-      // Let's accumulate everything.)
-      accumulatedTarget += dailyTarget;
-      accumulatedRevenue += totalActual;
+    // Pick the most-recent target effective on or before each date
+    const getTargetAmount = (ds: string): number => {
+      const dow = new Date(ds).getDay();
+      const match = targetRows.find(t => t.day_of_week === dow && t.effective_from <= ds);
+      return match?.target_amount ?? 0;
+    };
 
-      return {
-        date,
-        status: session?.status || 'missing',
-        notes: session?.notes || null,
-        
-        // Cash
-        cash_expected: cash?.expected_amount || 0,
-        cash_actual: cash?.counted_amount || 0,
-        
-        // Card
-        card_expected: card?.expected_amount || 0,
-        card_actual: card?.counted_amount || 0,
-        
-        // Stripe
-        stripe_actual: stripe?.counted_amount || 0,
-        
-        // Totals
-        total_expected: session?.total_expected_amount || 0,
-        total_actual: totalActual,
-        total_variance: session?.total_variance_amount || 0,
-        
-        // Targets
-        daily_target: dailyTarget,
-        accumulated_target: accumulatedTarget,
-        accumulated_revenue: accumulatedRevenue,
-        
-        // Breakdowns
-        cash_counts: session?.cashup_cash_counts.map(c => ({
-          denomination: c.denomination,
-          total: c.total_amount
-        })) || []
-      };
-    }));
+    // 3. Build targets array first so accumulation is deterministic
+    const targets = dates.map(getTargetAmount);
 
-    // Re-calculate accumulation sequentially because Promise.all runs in parallel and order of completion isn't guaranteed, 
-    // BUT map maintains order of result array. 
-    // HOWEVER, the `accumulatedTarget +=` inside the callback is dangerous in Promise.all because of race conditions on the variable 
-    // if not careful? Actually JS is single threaded so `await` yields.
-    // Correct approach: Fetch targets first, then map synchronously to accumulate.
-    
-    // Revised Logic below:
-    
-    // A. Fetch all targets first to avoid async issues in loop or slow sequential awaits
-    const targets = await Promise.all(dates.map(d => this.getDailyTarget(supabase, siteId, d)));
-    
     let runningTarget = 0;
     let runningRevenue = 0;
-    
+
     return dates.map((date, index) => {
       const session = sessions?.find(s => s.session_date === date);
       const dailyTarget = targets[index];
-      
+
       const cash = session?.cashup_payment_breakdowns.find(b => b.payment_type_code === 'CASH');
       const card = session?.cashup_payment_breakdowns.find(b => b.payment_type_code === 'CARD');
       const stripe = session?.cashup_payment_breakdowns.find(b => b.payment_type_code === 'STRIPE');
-      
+
       const totalActual = session?.total_counted_amount || 0;
-      
+
       runningTarget += dailyTarget;
       runningRevenue += totalActual;
-      
+
       return {
         date,
         status: session?.status || 'missing',
         notes: session?.notes || null,
-        
+
         cash_expected: cash?.expected_amount || 0,
         cash_actual: cash?.counted_amount || 0,
-        
+
         card_expected: card?.expected_amount || 0,
         card_actual: card?.counted_amount || 0,
-        
+
         stripe_actual: stripe?.counted_amount || 0,
-        
+
         total_expected: session?.total_expected_amount || 0,
         total_actual: totalActual,
         total_variance: session?.total_variance_amount || 0,
-        
+
         daily_target: dailyTarget,
         accumulated_target: runningTarget,
         accumulated_revenue: runningRevenue,
-        
+
         cash_counts: session?.cashup_cash_counts.map(c => ({
           denomination: c.denomination,
           total: c.total_amount

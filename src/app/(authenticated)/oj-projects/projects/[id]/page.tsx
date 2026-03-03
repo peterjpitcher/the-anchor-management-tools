@@ -9,6 +9,7 @@ import { FormGroup } from '@/components/ui-v2/forms/FormGroup'
 import { Select } from '@/components/ui-v2/forms/Select'
 import { Alert } from '@/components/ui-v2/feedback/Alert'
 import { toast } from '@/components/ui-v2/feedback/Toast'
+import { EmptyState } from '@/components/ui-v2/display/EmptyState'
 import { usePermissions } from '@/contexts/PermissionContext'
 import { deleteProject, getProject, updateProjectStatus } from '@/app/actions/oj-projects/projects'
 import { addProjectContact, removeProjectContact } from '@/app/actions/oj-projects/project-contacts'
@@ -395,7 +396,12 @@ export default function OJProjectDetailPage() {
             padding="none"
           >
             {entries.length === 0 ? (
-              <div className="text-center py-12 text-gray-500">No entries recorded yet.</div>
+              <EmptyState
+                title="No entries recorded yet"
+                description="Time, mileage, and one-off charges will appear here once added."
+                icon="document"
+                variant="minimal"
+              />
             ) : (
               <div className="overflow-x-auto">
                 <table className="min-w-full divide-y divide-gray-200">
@@ -414,7 +420,9 @@ export default function OJProjectDetailPage() {
                           {formatDateDdMmmmYyyy(entry.entry_date)}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                          {entry.entry_type === 'time' ? (
+                          {!entry.billable ? (
+                            <span className="text-xs text-gray-400 italic">Non-billable</span>
+                          ) : entry.entry_type === 'time' ? (
                             <div className="flex flex-col">
                               <span className="font-medium">{formatCurrency((Number(entry.duration_minutes_rounded || 0) / 60) * Number(entry.hourly_rate_ex_vat_snapshot || 0))}</span>
                               <span className="text-xs text-gray-500">{(Number(entry.duration_minutes_rounded || 0) / 60)} hours</span>

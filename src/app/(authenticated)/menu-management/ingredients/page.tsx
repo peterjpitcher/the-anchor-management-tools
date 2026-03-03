@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState, useRef } from 'react';
+import { useRouter } from 'next/navigation';
 import { PageLayout } from '@/components/ui-v2/layout/PageLayout';
 import { Section } from '@/components/ui-v2/layout/Section';
 import { Card } from '@/components/ui-v2/layout/Card';
@@ -226,7 +227,8 @@ const createDefaultFormState = (): IngredientFormState => ({
 });
 
 export default function MenuIngredientsPage() {
-  const { hasPermission } = usePermissions();
+  const router = useRouter();
+  const { hasPermission, loading: permissionsLoading } = usePermissions();
   const [ingredients, setIngredients] = useState<Ingredient[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -255,8 +257,13 @@ export default function MenuIngredientsPage() {
   const modalTopRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    if (permissionsLoading) return;
+    if (!hasPermission('menu_management', 'view')) {
+      router.replace('/unauthorized');
+      return;
+    }
     loadIngredients();
-  }, []);
+  }, [permissionsLoading]);
 
   async function loadIngredients() {
     try {

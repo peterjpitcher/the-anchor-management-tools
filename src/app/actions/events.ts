@@ -184,13 +184,15 @@ async function prepareEventDataFromFormData(formData: FormData, _existingEventId
 
 export async function createEvent(formData: FormData): Promise<CreateEventResult> {
   try {
-    const canManageEvents = await checkUserPermission('events', 'manage');
+    const supabase = await createClient();
+    const [canManageEvents, { data: { user }, error: authError }] = await Promise.all([
+      checkUserPermission('events', 'manage'),
+      supabase.auth.getUser(),
+    ]);
+
     if (!canManageEvents) {
       return { error: 'Insufficient permissions to create events' };
     }
-
-    const supabase = await createClient();
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
     if (authError || !user) {
       return { error: 'Unauthorized' };
     }
@@ -220,7 +222,6 @@ export async function createEvent(formData: FormData): Promise<CreateEventResult
 
     revalidatePath('/events');
     revalidateTag('dashboard')
-    revalidatePath('/dashboard')
     return { success: true, data: event as Event };
   } catch (error: unknown) {
     logger.error('Unexpected error creating event', {
@@ -232,13 +233,15 @@ export async function createEvent(formData: FormData): Promise<CreateEventResult
 
 export async function updateEvent(id: string, formData: FormData) {
   try {
-    const canManageEvents = await checkUserPermission('events', 'manage');
+    const supabase = await createClient();
+    const [canManageEvents, { data: { user }, error: authError }] = await Promise.all([
+      checkUserPermission('events', 'manage'),
+      supabase.auth.getUser(),
+    ]);
+
     if (!canManageEvents) {
       return { error: 'Insufficient permissions to update events' };
     }
-
-    const supabase = await createClient();
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
     if (authError || !user) {
       return { error: 'Unauthorized' };
     }
@@ -270,7 +273,6 @@ export async function updateEvent(id: string, formData: FormData) {
     revalidatePath('/events');
     revalidatePath(`/events/${id}`);
     revalidateTag('dashboard')
-    revalidatePath('/dashboard')
     return { success: true, data: event as Event };
   } catch (error: unknown) {
     logger.error('Unexpected error updating event', {
@@ -283,13 +285,15 @@ export async function updateEvent(id: string, formData: FormData) {
 
 export async function deleteEvent(id: string) {
   try {
-    const canManageEvents = await checkUserPermission('events', 'manage');
+    const supabase = await createClient();
+    const [canManageEvents, { data: { user }, error: authError }] = await Promise.all([
+      checkUserPermission('events', 'manage'),
+      supabase.auth.getUser(),
+    ]);
+
     if (!canManageEvents) {
       return { error: 'Insufficient permissions to delete events' };
     }
-
-    const supabase = await createClient();
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
     if (authError || !user) {
       return { error: 'Unauthorized' };
     }
@@ -311,7 +315,6 @@ export async function deleteEvent(id: string) {
 
     revalidatePath('/events');
     revalidateTag('dashboard')
-    revalidatePath('/dashboard')
     return { success: true };
   } catch (error: unknown) {
     logger.error('Unexpected error deleting event', {

@@ -562,6 +562,7 @@ export async function submitOnboardingProfile(token: string): Promise<{ success:
 // Status transition actions
 // ---------------------------------------------------------------------------
 
+// H13 fix: added count check — returns error when 0 rows updated (employee not in Active status)
 export async function beginSeparation(employeeId: string): Promise<{ success: boolean; error?: string }> {
   const canEdit = await checkUserPermission('employees', 'edit');
   if (!canEdit) {
@@ -570,15 +571,20 @@ export async function beginSeparation(employeeId: string): Promise<{ success: bo
 
   const adminClient = createAdminClient();
 
-  const { error } = await adminClient
+  const { data: updated, error } = await adminClient
     .from('employees')
     .update({ status: 'Started Separation', updated_at: new Date().toISOString() })
     .eq('employee_id', employeeId)
-    .eq('status', 'Active');
+    .eq('status', 'Active')
+    .select('employee_id');
 
   if (error) {
     console.error('[beginSeparation] Error:', error);
     return { success: false, error: 'Failed to update employee status.' };
+  }
+
+  if (!updated || updated.length === 0) {
+    return { success: false, error: 'Employee status could not be updated. They may not be in Active status.' };
   }
 
   try {

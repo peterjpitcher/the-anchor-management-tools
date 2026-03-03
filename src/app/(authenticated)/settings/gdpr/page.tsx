@@ -59,7 +59,7 @@ export default function GDPRSettingsPage() {
 
     setIsDeleting(true)
     try {
-      const result = await deleteUserData('current-user', deleteEmail)
+      const result = await deleteUserData(deleteEmail)
       
       if (result.error) {
         toast.error(result.error)
@@ -147,7 +147,6 @@ export default function GDPRSettingsPage() {
                     value={deleteEmail}
                     onChange={(e) => setDeleteEmail(e.target.value)}
                     placeholder="your@email.com"
-                    error={false}
                   />
                   <div className="flex gap-3">
                     <Button

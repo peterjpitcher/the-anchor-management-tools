@@ -1,9 +1,13 @@
 'use server'
 
-import { revalidatePath, revalidateTag } from 'next/cache'
+import { revalidateTag } from 'next/cache'
+import { createClient } from '@/lib/supabase/server'
 
 export async function refreshDashboard() {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return
+
   revalidateTag('dashboard')
-  revalidatePath('/dashboard')
 }
 

@@ -5,6 +5,7 @@ import { createAdminClient } from '@/lib/supabase/admin';
 // Vercel Cron: runs at 05:00 UTC daily (cron: "0 5 * * *")
 const TIMEZONE = 'Europe/London';
 
+// Uses UTC arithmetic throughout so the result is server-timezone-independent.
 function addDaysIso(isoDate: string, days: number): string {
   const d = new Date(isoDate + 'T00:00:00Z');
   d.setUTCDate(d.getUTCDate() + days);
@@ -35,7 +36,7 @@ export async function GET(request: Request) {
   // Find all open sessions (no clock-out)
   const { data: openSessions, error: fetchError } = await supabase
     .from('timeclock_sessions')
-    .select('*, rota_shifts(start_time, end_time, shift_date, is_overnight)')
+    .select('id, employee_id, work_date, linked_shift_id, rota_shifts(start_time, end_time, shift_date, is_overnight)')
     .is('clock_out_at', null);
 
   if (fetchError) {
@@ -75,9 +76,9 @@ export async function GET(request: Request) {
       clockOutAt = shiftEndUtc.toISOString();
       reason = 'scheduled_end';
     } else {
-      // Fallback: 05:00 local on work_date (pass string directly to avoid double-conversion)
-      clockOutAt = fromZonedTime(`${session.work_date}T05:00:00`, TIMEZONE).toISOString();
-      reason = 'fallback_0500';
+      // Fallback: use the actual cron execution time
+      clockOutAt = nowUtc.toISOString();
+      reason = 'fallback_now';
     }
 
     const { error: updateError } = await supabase

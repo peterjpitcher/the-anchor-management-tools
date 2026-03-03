@@ -27,7 +27,7 @@ export async function GET(
   }
 
   const awaitingPayment =
-    booking.status === 'pending_payment' || booking.payment_status === 'pending'
+    booking.status === 'pending_payment' || (booking.status === 'confirmed' && booking.payment_status === 'pending')
   if (!awaitingPayment) {
     return NextResponse.json({ error: 'Booking is not awaiting payment' }, { status: 422 })
   }

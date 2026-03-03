@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useState, useTransition } from 'react'
-import { format } from 'date-fns'
+import { formatDateTime } from '@/lib/dateUtils'
 
 import { PageLayout } from '@/components/ui-v2/layout/PageLayout'
 import { Card } from '@/components/ui-v2/layout/Card'
@@ -115,7 +115,7 @@ export default function PerformerSubmissionClient({ submission }: { submission: 
               <div className="min-w-0">
                 <div className="text-sm text-gray-500">Received</div>
                 <div className="text-base font-semibold text-gray-900">
-                  {format(new Date(submission.created_at), 'MMM d, yyyy HH:mm')}
+                  {formatDateTime(submission.created_at)}
                 </div>
               </div>
               <Badge variant={getStatusBadgeVariant(status)}>

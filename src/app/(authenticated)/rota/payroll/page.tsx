@@ -34,8 +34,11 @@ export default async function PayrollPage({ searchParams }: PayrollPageProps) {
 
   const supabase = await createClient();
 
-  // Fetch period first — its start/end dates define the range for day info
-  const [payrollResult, approvalResult, period] = await Promise.all([
+  // Fetch period first — its start/end dates define the range for day info.
+  // getOrCreatePayrollPeriod may insert a row so it runs sequentially first.
+  const payrollPeriod = await getOrCreatePayrollPeriod(year, month) as PayrollPeriod;
+
+  const [payrollResult, approvalResult] = await Promise.all([
     getPayrollMonthData(year, month),
     supabase
       .from('payroll_month_approvals')
@@ -43,10 +46,7 @@ export default async function PayrollPage({ searchParams }: PayrollPageProps) {
       .eq('year', year)
       .eq('month', month)
       .single(),
-    getOrCreatePayrollPeriod(year, month),
   ]);
-
-  const payrollPeriod = period as PayrollPeriod;
   const dayInfo = await getRotaWeekDayInfo(payrollPeriod.period_start, payrollPeriod.period_end);
 
   const monthLabel = new Date(year, month - 1, 1).toLocaleDateString('en-GB', {
@@ -95,6 +95,7 @@ export default async function PayrollPage({ searchParams }: PayrollPageProps) {
               period={payrollPeriod}
               canApprove={canApprove}
               canSend={canSend}
+              canExport={canExport}
               monthOptions={monthOptions}
               dayInfo={dayInfo}
             />

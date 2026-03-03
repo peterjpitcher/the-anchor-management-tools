@@ -12,7 +12,7 @@ import { checkUserPermission } from './rbac';
 import { sendEmail } from '@/lib/email/emailService';
 import { formatDateInLondon } from '@/lib/dateUtils';
 // Import services and schemas
-import { 
+import {
   EmployeeService,
   employeeSchema,
   noteSchema,
@@ -270,11 +270,11 @@ export async function addEmployee(prevState: ActionFormState, formData: FormData
     const cleanedData = cleanFormDataForEmployee(formData);
 
     const financialFields = ['ni_number', 'payee_name', 'bank_name', 'bank_sort_code', 'bank_account_number', 'branch_address'];
-    const healthFields = ['doctor_name', 'doctor_address', 'allergies', 'has_allergies', 'had_absence_over_2_weeks_last_3_years', 'had_outpatient_treatment_over_3_months_last_3_years', 'absence_or_treatment_details', 'illness_history', 'recent_treatment', 
-        'has_diabetes', 'has_epilepsy', 'has_skin_condition', 'has_depressive_illness', 'has_bowel_problems', 
-        'has_ear_problems', 'is_registered_disabled', 'disability_reg_number', 'disability_reg_expiry_date', 
+    const healthFields = ['doctor_name', 'doctor_address', 'allergies', 'has_allergies', 'had_absence_over_2_weeks_last_3_years', 'had_outpatient_treatment_over_3_months_last_3_years', 'absence_or_treatment_details', 'illness_history', 'recent_treatment',
+        'has_diabetes', 'has_epilepsy', 'has_skin_condition', 'has_depressive_illness', 'has_bowel_problems',
+        'has_ear_problems', 'is_registered_disabled', 'disability_reg_number', 'disability_reg_expiry_date',
         'disability_details'];
-    
+
     const employeeMainData: Record<string, any> = {};
     const financialData: Record<string, any> = {};
     const healthData: Record<string, any> = {};
@@ -297,14 +297,14 @@ export async function addEmployee(prevState: ActionFormState, formData: FormData
     }
 
     const userInfo = await getCurrentUser();
-    
+
     try {
       const newEmployee = await EmployeeService.createEmployee({
         ...result.data,
         financial: Object.keys(financialData).length > 0 ? financialData : undefined,
         health: Object.keys(healthData).length > 0 ? healthData : undefined,
       });
-      
+
       await logAuditEvent({
           ...(userInfo.user_id && { user_id: userInfo.user_id }),
           ...(userInfo.user_email && { user_email: userInfo.user_email }),
@@ -321,7 +321,7 @@ export async function addEmployee(prevState: ActionFormState, formData: FormData
               has_health_record: Object.values(healthData).some(val => val !== null)
           }
       });
-      
+
       revalidatePath('/employees');
       return { type: 'success', message: 'Employee created successfully.', employeeId: newEmployee.employee_id };
     } catch (error: any) {
@@ -346,22 +346,22 @@ export async function updateEmployee(prevState: ActionFormState, formData: FormD
     }
 
     const employeeId = formData.get('employee_id') as string;
-    
+
     const cleanedData = cleanFormDataForEmployee(formData);
     const { employee_id, ...dataToValidate } = cleanedData;
-    
+
     const result = employeeSchema.safeParse(dataToValidate);
-    
+
     if (!result.success) {
         console.error('Validation errors:', result.error.flatten());
         return { type: 'error', message: 'Invalid data provided. Please check your input and try again.', errors: result.error.flatten().fieldErrors };
     }
 
     const userInfo = await getCurrentUser();
-    
+
     try {
       const { updatedEmployee, oldEmployee } = await EmployeeService.updateEmployee(employeeId, result.data);
-      
+
       const changedFields: string[] = [];
       if (oldEmployee) {
           Object.keys(updatedEmployee).forEach(key => {
@@ -370,7 +370,7 @@ export async function updateEmployee(prevState: ActionFormState, formData: FormD
               }
           });
       }
-      
+
       await logAuditEvent({
           ...(userInfo.user_id && { user_id: userInfo.user_id }),
           ...(userInfo.user_email && { user_email: userInfo.user_email }),
@@ -415,10 +415,10 @@ export async function deleteEmployee(prevState: DeleteState, formData: FormData)
     if (!employeeId) return { type: 'error', message: 'Employee ID is missing.' };
 
     const userInfo = await getCurrentUser();
-    
+
     try {
       const deletedEmployee = await EmployeeService.deleteEmployee(employeeId);
-      
+
       await logAuditEvent({
           ...(userInfo.user_id && { user_id: userInfo.user_id }),
           ...(userInfo.user_email && { user_email: userInfo.user_email }),
@@ -433,7 +433,7 @@ export async function deleteEmployee(prevState: DeleteState, formData: FormData)
               status: deletedEmployee?.status
           }
       });
-      
+
       revalidatePath('/employees');
       return { type: 'success', message: 'Employee deleted successfully' };
     } catch (error: any) {
@@ -452,11 +452,10 @@ export async function deleteEmployee(prevState: DeleteState, formData: FormData)
     }
 }
 
+// C15 fix: permission check restored (was commented out)
 export async function getEmployeeList(): Promise<{ id: string; name: string; }[] | null> {
-  // Permission check might be optional for a simple dropdown list,
-  // but let's keep it consistent with other actions if needed for security
-  // const hasPermission = await checkUserPermission('employees', 'view');
-  // if (!hasPermission) { return null; } // Or return error if strict
+  const hasPermission = await checkUserPermission('employees', 'view');
+  if (!hasPermission) { return null; }
 
   try {
     return await EmployeeService.getEmployeeList();
@@ -478,13 +477,13 @@ export async function addEmployeeNote(prevState: NoteFormState, formData: FormDa
     if (!result.success) {
         return { type: 'error', message: 'Invalid data', errors: result.error.flatten().fieldErrors };
     }
-    
+
     const userInfo = await getCurrentUser();
     const notePayload = {
         ...result.data,
         created_by_user_id: result.data.created_by_user_id ?? userInfo.user_id ?? undefined
     };
-    
+
     try {
       await EmployeeService.addEmployeeNote(notePayload);
 
@@ -508,12 +507,18 @@ export async function addEmployeeNote(prevState: NoteFormState, formData: FormDa
 }
 
 // Attachment Actions
+// L2 fix: permission check moved before rate-limit check
 export async function createEmployeeAttachmentUploadUrl(
   employeeId: string,
   fileName: string,
   fileType: string,
   fileSize: number
 ): Promise<{ type: 'success'; path: string; token: string } | { type: 'error'; message: string }> {
+  const hasPermission = await checkUserPermission('employees', 'upload_documents')
+  if (!hasPermission) {
+    return { type: 'error', message: 'Insufficient permissions to upload employee documents.' }
+  }
+
   try {
     const { checkRateLimit } = await import('@/lib/rate-limit-server')
     await checkRateLimit('api', 10) // 10 uploads per minute
@@ -521,11 +526,6 @@ export async function createEmployeeAttachmentUploadUrl(
     if (error instanceof Error && error.message.includes('Too many requests')) {
       return { type: 'error', message: 'Too many file uploads. Please try again later.' }
     }
-  }
-
-  const hasPermission = await checkUserPermission('employees', 'upload_documents')
-  if (!hasPermission) {
-    return { type: 'error', message: 'Insufficient permissions to upload employee documents.' }
   }
 
   const employeeIdResult = z.string().uuid().safeParse(employeeId)
@@ -746,7 +746,7 @@ export async function addEmployeeAttachment(
 
   try {
     const attachment = await EmployeeService.addEmployeeAttachment(employee_id, attachment_file, category_id, description);
-    
+
     const userInfo = await getCurrentUser();
     await logAuditEvent({
       ...(userInfo.user_id && { user_id: userInfo.user_id }),
@@ -778,7 +778,7 @@ export async function addEmployeeAttachment(
         console.error('Employee attachment email failed:', emailResult.error);
       }
     }
-    
+
     revalidatePath(`/employees/${employee_id}`);
     return { type: 'success', message: 'Attachment uploaded successfully!' };
   } catch (error: any) {
@@ -827,7 +827,7 @@ export async function deleteEmployeeAttachment(prevState: DeleteState, formData:
     }
 
     const { employee_id, attachment_id } = result.data;
-    
+
     try {
       const deletedAttachment = await EmployeeService.deleteEmployeeAttachment(attachment_id, employee_id);
 
@@ -1084,7 +1084,7 @@ export async function upsertHealthRecord(
   if (!data.had_absence_over_2_weeks_last_3_years && !data.had_outpatient_treatment_over_3_months_last_3_years) {
     data.absence_or_treatment_details = null;
   }
-  
+
   const optionalTextFields = [
     'doctor_name',
     'doctor_address',
@@ -1100,7 +1100,7 @@ export async function upsertHealthRecord(
       data[field] = null;
     }
   });
-  
+
   if (data.disability_reg_expiry_date === '') {
       data.disability_reg_expiry_date = null;
   }
@@ -1164,7 +1164,7 @@ export async function upsertRightToWork(
 	    typeof photoStoragePathValue === 'string' && photoStoragePathValue.trim().length > 0 ? photoStoragePathValue.trim() : null
 
 	  const cleanedData = cleanFormDataForEmployee(formData, true); // Include files for this one
-	  
+
 	  // Handle file field - if it's an empty file, remove it from data before validation
 	  if (cleanedData.document_photo && cleanedData.document_photo instanceof File && cleanedData.document_photo.size === 0) {
     delete cleanedData.document_photo;
@@ -1250,7 +1250,7 @@ export async function deleteRightToWorkPhoto(employeeId: string): Promise<{ erro
 
   try {
     await EmployeeService.deleteRightToWorkPhoto(employeeId);
-    
+
     const userInfo = await getCurrentUser();
     await logAuditEvent({
       ...(userInfo.user_id && { user_id: userInfo.user_id }),
@@ -1264,7 +1264,7 @@ export async function deleteRightToWorkPhoto(employeeId: string): Promise<{ erro
         file_path: 'deleted' // Path is not available from service after delete
       }
     });
-    
+
     revalidatePath(`/employees/${employeeId}`);
     return { success: true };
   } catch (error: any) {
