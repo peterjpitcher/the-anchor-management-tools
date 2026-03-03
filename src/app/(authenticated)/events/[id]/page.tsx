@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
-import { notFound } from 'next/navigation'
+import { notFound, redirect } from 'next/navigation'
+import { checkUserPermission } from '@/app/actions/rbac'
 import { getEventMarketingLinks } from '@/app/actions/event-marketing-links'
 import EventDetailClient from './EventDetailClient'
 import { Event } from '@/types/database'
@@ -36,6 +37,9 @@ export default async function EventViewPage({
 }: {
   params: Promise<{ id: string }>
 }) {
+  const canView = await checkUserPermission('events', 'view')
+  if (!canView) redirect('/unauthorized')
+
   const { id: eventId } = await params
   const supabase = await createClient()
 

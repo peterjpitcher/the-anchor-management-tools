@@ -1,6 +1,8 @@
 'use server';
 
 import { createAdminClient } from '@/lib/supabase/admin';
+import { createClient } from '@/lib/supabase/server';
+import { checkUserPermission } from '@/app/actions/rbac';
 
 export type RotaDayInfo = {
   date: string;
@@ -18,6 +20,12 @@ export async function getRotaWeekDayInfo(
   weekStart: string,
   weekEnd: string,
 ): Promise<Record<string, RotaDayInfo>> {
+  const authClient = await createClient();
+  const { data: { user } } = await authClient.auth.getUser();
+  if (!user) return {};
+  const canView = await checkUserPermission('rota', 'view');
+  if (!canView) return {};
+
   const supabase = createAdminClient();
 
   const [eventsRes, pbRes, tbRes, notesRes] = await Promise.all([

@@ -143,11 +143,6 @@ export async function createPrivateBooking(formData: FormData) {
     const supabase = await createClient()
     const isDateTbd = formData.get('date_tbd') === 'true'
 
-    const canCreate = await checkUserPermission('private_bookings', 'create')
-    if (!canCreate) {
-      return { error: 'You do not have permission to create private bookings' }
-    }
-
     const rawData = {
       customer_first_name: (getString(formData, 'customer_first_name') || '').trim(),
       customer_last_name: getString(formData, 'customer_last_name'),
@@ -179,7 +174,7 @@ export async function createPrivateBooking(formData: FormData) {
       hold_expiry: getString(formData, 'deposit_due_date'),
     }
 
-    // Validate data
+    // Validate data and fetch auth/permission in parallel
     const validationResult = privateBookingSchema.safeParse(rawData)
     if (!validationResult.success) {
       return { error: validationResult.error.errors[0].message }
@@ -187,8 +182,14 @@ export async function createPrivateBooking(formData: FormData) {
 
     const bookingData = validationResult.data
 
-    // Get current user
-    const { data: { user } } = await supabase.auth.getUser()
+    const [{ data: { user } }, canCreate] = await Promise.all([
+      supabase.auth.getUser(),
+      checkUserPermission('private_bookings', 'create'),
+    ])
+
+    if (!canCreate) {
+      return { error: 'You do not have permission to create private bookings' }
+    }
 
     // Call Service
     const booking = await PrivateBookingService.createBooking({
@@ -218,9 +219,16 @@ export async function createPrivateBooking(formData: FormData) {
       date_tbd: isDateTbd
     } as CreatePrivateBookingInput);
 
+    await logAuditEvent({
+      user_id: user?.id,
+      operation_type: 'create',
+      resource_type: 'private_booking',
+      resource_id: booking.id,
+      operation_status: 'success',
+    })
+
     revalidatePath('/private-bookings')
     revalidateTag('dashboard')
-    revalidatePath('/dashboard')
     return { success: true, data: booking }
   } catch (error: any) {
     logPrivateBookingActionError('Error creating private booking:', error)
@@ -303,7 +311,6 @@ export async function updatePrivateBooking(id: string, formData: FormData) {
     revalidatePath('/private-bookings')
     revalidatePath(`/private-bookings/${id}`)
     revalidateTag('dashboard')
-    revalidatePath('/dashboard')
     return { success: true, data: booking }
   } catch (error: any) {
     logPrivateBookingActionError('Error updating private booking:', error)
@@ -333,7 +340,6 @@ export async function updateBookingStatus(id: string, status: BookingStatus) {
     revalidatePath('/private-bookings')
     revalidatePath(`/private-bookings/${id}`)
     revalidateTag('dashboard')
-    revalidatePath('/dashboard')
     return { success: true }
   } catch (error: any) {
     logPrivateBookingActionError('Error updating booking status:', error)
@@ -348,18 +354,17 @@ export async function addPrivateBookingNote(bookingId: string, note: string) {
   }
 
   const supabase = await createClient()
-
-  const canEdit = await checkUserPermission('private_bookings', 'edit')
-  if (!canEdit) {
-    return { error: 'You do not have permission to add notes to private bookings' }
-  }
-
-  const {
-    data: { user }
-  } = await supabase.auth.getUser()
+  const [{ data: { user } }, canEdit] = await Promise.all([
+    supabase.auth.getUser(),
+    checkUserPermission('private_bookings', 'edit'),
+  ])
 
   if (!user) {
     return { error: 'You must be signed in to add a note' }
+  }
+
+  if (!canEdit) {
+    return { error: 'You do not have permission to add notes to private bookings' }
   }
 
   const trimmedNote = validation.data.note
@@ -368,7 +373,6 @@ export async function addPrivateBookingNote(bookingId: string, note: string) {
     await PrivateBookingService.addNote(bookingId, trimmedNote, user.id, user.email || undefined)
     revalidatePath(`/private-bookings/${bookingId}`)
     revalidateTag('dashboard')
-    revalidatePath('/dashboard')
     return { success: true }
   } catch (error: any) {
     logPrivateBookingActionError('Error recording booking note:', error)
@@ -379,19 +383,29 @@ export async function addPrivateBookingNote(bookingId: string, note: string) {
 // Delete private booking
 export async function deletePrivateBooking(id: string) {
   const supabase = await createClient()
+  const [{ data: { user } }, canDelete] = await Promise.all([
+    supabase.auth.getUser(),
+    checkUserPermission('private_bookings', 'delete'),
+  ])
 
-  const canDelete = await checkUserPermission('private_bookings', 'delete')
   if (!canDelete) {
     return { error: 'You do not have permission to delete private bookings' }
   }
 
   try {
-    const { deletedBooking } = await PrivateBookingService.deletePrivateBooking(id);
+    await PrivateBookingService.deletePrivateBooking(id);
+
+    await logAuditEvent({
+      user_id: user?.id,
+      operation_type: 'delete',
+      resource_type: 'private_booking',
+      resource_id: id,
+      operation_status: 'success',
+    })
 
     revalidatePath('/private-bookings')
     revalidatePath(`/private-bookings/${id}`)
     revalidateTag('dashboard')
-    revalidatePath('/dashboard')
     return { success: true }
   } catch (error: any) {
     logPrivateBookingActionError('Error deleting private booking:', error)
@@ -534,17 +548,17 @@ export async function getVendorRate(vendorId: string) {
 // Record deposit payment
 export async function recordDepositPayment(bookingId: string, formData: FormData) {
   const supabase = await createClient()
+  const [{ data: { user } }, canManageDeposits] = await Promise.all([
+    supabase.auth.getUser(),
+    checkUserPermission('private_bookings', 'manage_deposits'),
+  ])
 
-  const canManageDeposits = await checkUserPermission('private_bookings', 'manage_deposits')
   if (!canManageDeposits) {
     return { error: 'You do not have permission to record deposits' }
   }
 
   const paymentMethod = getString(formData, 'payment_method') as string
   const amount = parseFloat(getString(formData, 'amount') as string)
-
-  // Get current user
-  const { data: { user } } = await supabase.auth.getUser()
 
   try {
     const result = await PrivateBookingService.recordDeposit(
@@ -556,7 +570,6 @@ export async function recordDepositPayment(bookingId: string, formData: FormData
 
     revalidatePath(`/private-bookings/${bookingId}`)
     revalidateTag('dashboard')
-    revalidatePath('/dashboard')
     return result
   } catch (error: any) {
     logger.error('Error recording deposit payment', {
@@ -570,8 +583,11 @@ export async function recordDepositPayment(bookingId: string, formData: FormData
 // Record a balance payment (partial or full)
 export async function recordFinalPayment(bookingId: string, formData: FormData) {
   const supabase = await createClient()
+  const [{ data: { user } }, canManageDeposits] = await Promise.all([
+    supabase.auth.getUser(),
+    checkUserPermission('private_bookings', 'manage_deposits'),
+  ])
 
-  const canManageDeposits = await checkUserPermission('private_bookings', 'manage_deposits')
   if (!canManageDeposits) {
     return { error: 'You do not have permission to record payments' }
   }
@@ -584,9 +600,6 @@ export async function recordFinalPayment(bookingId: string, formData: FormData) 
     return { success: false, error: 'Invalid payment amount' }
   }
 
-  // Get current user
-  const { data: { user } } = await supabase.auth.getUser()
-
   try {
     const result = await PrivateBookingService.recordBalancePayment(
       bookingId,
@@ -597,7 +610,6 @@ export async function recordFinalPayment(bookingId: string, formData: FormData) 
 
     revalidatePath(`/private-bookings/${bookingId}`)
     revalidateTag('dashboard')
-    revalidatePath('/dashboard')
     return result
   } catch (error: any) {
     logger.error('Error recording balance payment', {
@@ -629,7 +641,6 @@ export async function cancelPrivateBooking(bookingId: string, reason?: string) {
     revalidatePath('/private-bookings')
     revalidatePath(`/private-bookings/${bookingId}`)
     revalidateTag('dashboard')
-    revalidatePath('/dashboard')
     return result
   } catch (error: any) {
     logger.error('Error cancelling private booking', {
@@ -676,7 +687,6 @@ export async function applyBookingDiscount(bookingId: string, data: {
 
     revalidatePath(`/private-bookings/${bookingId}`)
     revalidateTag('dashboard')
-    revalidatePath('/dashboard')
     return { success: true }
   } catch (error: any) {
     logPrivateBookingActionError('Error applying discount: ', error)
@@ -687,15 +697,15 @@ export async function applyBookingDiscount(bookingId: string, data: {
 // SMS Queue Management (already using SmsQueueService directly, so no change needed here)
 export async function getPrivateBookingSmsQueue(statusFilter?: string[]) {
   const supabase = await createClient()
-  const {
-    data: { user }
-  } = await supabase.auth.getUser()
+  const [{ data: { user } }, canView] = await Promise.all([
+    supabase.auth.getUser(),
+    checkUserPermission('private_bookings', 'view_sms_queue'),
+  ])
 
   if (!user) {
     return { error: 'Not authenticated' }
   }
 
-  const canView = await checkUserPermission('private_bookings', 'view_sms_queue')
   if (!canView) {
     return { error: 'Insufficient permissions' }
   }
@@ -713,15 +723,15 @@ export async function getPrivateBookingSmsQueue(statusFilter?: string[]) {
 
 export async function approveSms(smsId: string) {
   const supabase = await createClient()
-  const {
-    data: { user }
-  } = await supabase.auth.getUser()
+  const [{ data: { user } }, canApprove] = await Promise.all([
+    supabase.auth.getUser(),
+    checkUserPermission('private_bookings', 'approve_sms'),
+  ])
 
   if (!user) {
     return { error: 'Not authenticated' }
   }
 
-  const canApprove = await checkUserPermission('private_bookings', 'approve_sms')
   if (!canApprove) {
     return { error: 'Insufficient permissions' }
   }
@@ -741,15 +751,15 @@ export async function approveSms(smsId: string) {
 
 export async function rejectSms(smsId: string) {
   const supabase = await createClient()
-  const {
-    data: { user }
-  } = await supabase.auth.getUser()
+  const [{ data: { user } }, canApprove] = await Promise.all([
+    supabase.auth.getUser(),
+    checkUserPermission('private_bookings', 'approve_sms'),
+  ])
 
   if (!user) {
     return { error: 'Not authenticated' }
   }
 
-  const canApprove = await checkUserPermission('private_bookings', 'approve_sms')
   if (!canApprove) {
     return { error: 'Insufficient permissions' }
   }
@@ -769,15 +779,15 @@ export async function rejectSms(smsId: string) {
 
 export async function sendApprovedSms(smsId: string) {
   const supabase = await createClient()
-  const {
-    data: { user }
-  } = await supabase.auth.getUser()
+  const [{ data: { user } }, canSend] = await Promise.all([
+    supabase.auth.getUser(),
+    checkUserPermission('private_bookings', 'send'),
+  ])
 
   if (!user) {
     return { error: 'Not authenticated' }
   }
 
-  const canSend = await checkUserPermission('private_bookings', 'send')
   if (!canSend) {
     return { error: 'Insufficient permissions' }
   }
@@ -949,6 +959,11 @@ export async function deleteCateringPackage(id: string) {
 
 // Booking Items Management
 export async function getBookingItems(bookingId: string) {
+  const canView = await checkUserPermission('private_bookings', 'view')
+  if (!canView) {
+    return { error: 'You do not have permission to view private bookings' }
+  }
+
   const supabase = await createClient()
 
   const { data, error } = await supabase
@@ -983,8 +998,6 @@ export async function addBookingItem(data: {
   discount_type?: 'percent' | 'fixed'
   notes?: string | null
 }) {
-  const supabase = await createClient()
-
   const canEdit = await checkUserPermission('private_bookings', 'edit')
   if (!canEdit) {
     return { error: 'You do not have permission to modify private bookings' }
@@ -1008,7 +1021,6 @@ export async function addBookingItem(data: {
     revalidatePath(`/private-bookings/${data.booking_id}`)
     revalidatePath(`/private-bookings/${data.booking_id}/items`)
     revalidateTag('dashboard')
-    revalidatePath('/dashboard')
     return { success: true }
   } catch (error: any) {
     logPrivateBookingActionError('Error adding booking item:', error)
@@ -1023,8 +1035,6 @@ export async function updateBookingItem(itemId: string, data: {
   discount_type?: 'percent' | 'fixed'
   notes?: string | null
 }) {
-  const supabase = await createClient()
-
   const canEdit = await checkUserPermission('private_bookings', 'edit')
   if (!canEdit) {
     return { error: 'You do not have permission to modify private bookings' }
@@ -1038,7 +1048,6 @@ export async function updateBookingItem(itemId: string, data: {
     revalidatePath(`/private-bookings/${bookingId}`)
     revalidatePath(`/private-bookings/${bookingId}/items`)
     revalidateTag('dashboard')
-    revalidatePath('/dashboard')
     return { success: true }
   } catch (error: any) {
     logPrivateBookingActionError('Error updating booking item:', error)
@@ -1047,8 +1056,6 @@ export async function updateBookingItem(itemId: string, data: {
 }
 
 export async function deleteBookingItem(itemId: string) {
-  const supabase = await createClient()
-
   const canEdit = await checkUserPermission('private_bookings', 'edit')
   if (!canEdit) {
     return { error: 'You do not have permission to modify private bookings' }
@@ -1060,7 +1067,6 @@ export async function deleteBookingItem(itemId: string) {
     revalidatePath(`/private-bookings/${result.bookingId}`)
     revalidatePath(`/private-bookings/${result.bookingId}/items`)
     revalidateTag('dashboard')
-    revalidatePath('/dashboard')
     return { success: true }
   } catch (error: any) {
     logPrivateBookingActionError('Error deleting booking item:', error)
@@ -1069,8 +1075,6 @@ export async function deleteBookingItem(itemId: string) {
 }
 
 export async function reorderBookingItems(bookingId: string, orderedIds: string[]) {
-  const supabase = await createClient()
-
   const canEdit = await checkUserPermission('private_bookings', 'edit')
   if (!canEdit) {
     return { error: 'You do not have permission to modify private bookings' }
@@ -1082,7 +1086,6 @@ export async function reorderBookingItems(bookingId: string, orderedIds: string[
     revalidatePath(`/private-bookings/${bookingId}`)
     revalidatePath(`/private-bookings/${bookingId}/items`)
     revalidateTag('dashboard')
-    revalidatePath('/dashboard')
     return { success: true }
   } catch (error: any) {
     logPrivateBookingActionError('Error updating booking item order:', error)

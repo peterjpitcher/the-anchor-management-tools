@@ -125,12 +125,12 @@ export class FinancialService {
     const supabase = createAdminClient();
 
     const [targetRows, manualRows] = await Promise.all([
-      supabase.from('pl_targets').select('*'),
-      supabase.from('pl_manual_actuals').select('*'),
+      supabase.from('pl_targets').select('metric_key, timeframe, target_value'),
+      supabase.from('pl_manual_actuals').select('metric_key, timeframe, value'),
     ]);
 
     const targetMap: TargetMap = {};
-    targetRows.data?.forEach((row: PLTarget) => {
+    (targetRows.data as unknown as PLTarget[])?.forEach((row) => {
       if (!targetMap[row.metric_key]) {
         targetMap[row.metric_key] = {};
       }
@@ -138,7 +138,7 @@ export class FinancialService {
     });
 
     const manualMap: ManualActualMap = {};
-    manualRows.data?.forEach((row: PLManualActual) => {
+    (manualRows.data as unknown as PLManualActual[])?.forEach((row) => {
       if (!manualMap[row.metric_key]) {
         manualMap[row.metric_key] = {};
       }

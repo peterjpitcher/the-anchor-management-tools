@@ -2,6 +2,7 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { checkUserPermission } from '@/app/actions/rbac'
+import { logAuditEvent } from '@/app/actions/audit'
 import { z } from 'zod'
 import crypto from 'crypto'
 
@@ -119,7 +120,7 @@ export async function getProjects(options?: { vendorId?: string; status?: string
   if (projectIds.length > 0) {
     const { data: stats } = await supabase
       .from('oj_project_stats')
-      .select('*')
+      .select('project_id, total_hours_used, total_spend_ex_vat')
       .in('project_id', projectIds)
 
     if (stats) {
@@ -175,6 +176,7 @@ export async function createProject(formData: FormData) {
   if (!parsed.success) return { error: parsed.error.errors[0].message }
 
   const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
   const projectCode = await generateProjectCode(supabase, parsed.data.vendor_id)
 
   const { data, error } = await supabase
@@ -194,6 +196,17 @@ export async function createProject(formData: FormData) {
     .single()
 
   if (error) return { error: error.message }
+
+  await logAuditEvent({
+    user_id: user?.id,
+    user_email: user?.email,
+    operation_type: 'create',
+    resource_type: 'oj_project',
+    resource_id: data.id,
+    operation_status: 'success',
+    new_values: { project_code: data.project_code, project_name: data.project_name, vendor_id: data.vendor_id },
+  })
+
   return { project: data, success: true as const }
 }
 
@@ -215,6 +228,8 @@ export async function updateProject(formData: FormData) {
   if (!parsed.success) return { error: parsed.error.errors[0].message }
 
   const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+
   const { data, error } = await supabase
     .from('oj_projects')
     .update({
@@ -234,6 +249,17 @@ export async function updateProject(formData: FormData) {
 
   if (error) return { error: error.message }
   if (!data) return { error: 'Project not found' }
+
+  await logAuditEvent({
+    user_id: user?.id,
+    user_email: user?.email,
+    operation_type: 'update',
+    resource_type: 'oj_project',
+    resource_id: parsed.data.id,
+    operation_status: 'success',
+    new_values: { project_name: data.project_name, status: data.status },
+  })
+
   return { project: data, success: true as const }
 }
 
@@ -245,6 +271,8 @@ export async function deleteProject(formData: FormData) {
   if (!projectId) return { error: 'Project ID is required' }
 
   const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+
   const { count, error: countError } = await supabase
     .from('oj_entries')
     .select('id', { count: 'exact', head: true })
@@ -264,6 +292,16 @@ export async function deleteProject(formData: FormData) {
 
   if (error) return { error: error.message }
   if (!deletedProject) return { error: 'Project not found' }
+
+  await logAuditEvent({
+    user_id: user?.id,
+    user_email: user?.email,
+    operation_type: 'delete',
+    resource_type: 'oj_project',
+    resource_id: projectId,
+    operation_status: 'success',
+  })
+
   return { success: true as const }
 }
 
@@ -280,6 +318,8 @@ export async function updateProjectStatus(formData: FormData) {
   }
 
   const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+
   const { data: updatedProject, error } = await supabase
     .from('oj_projects')
     .update({
@@ -292,5 +332,16 @@ export async function updateProjectStatus(formData: FormData) {
 
   if (error) return { error: error.message }
   if (!updatedProject) return { error: 'Project not found' }
+
+  await logAuditEvent({
+    user_id: user?.id,
+    user_email: user?.email,
+    operation_type: 'update',
+    resource_type: 'oj_project',
+    resource_id: id,
+    operation_status: 'success',
+    additional_info: { status },
+  })
+
   return { success: true as const }
 }

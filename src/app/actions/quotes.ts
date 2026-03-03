@@ -6,7 +6,7 @@ import { checkUserPermission } from '@/app/actions/rbac'
 import { logAuditEvent } from './audit'
 import { z } from 'zod'
 import { revalidatePath, revalidateTag } from 'next/cache'
-import { getTodayIsoDate, getLocalIsoDateDaysAhead, toLocalIsoDate } from '@/lib/dateUtils'
+import { getTodayIsoDate, getLocalIsoDateDaysAhead } from '@/lib/dateUtils'
 import { calculateInvoiceTotals } from '@/lib/invoiceCalculations'
 import { QuoteService, isQuoteStatusTransitionAllowed } from '@/services/quotes'
 import type { 
@@ -78,7 +78,7 @@ export async function getQuoteSummary() {
     const today = new Date()
     today.setHours(0, 0, 0, 0)
 
-    const visibleQuotes = (quotes || []).filter((quote: any) => !isSoftDeletedRecord(quote as Record<string, unknown>))
+    const visibleQuotes = quotes || []
 
     visibleQuotes.forEach(quote => {
       if (quote.status === 'draft') {
@@ -118,6 +118,7 @@ export async function getQuotes(status?: QuoteStatus) {
         vendor:invoice_vendors(*),
         converted_invoice:invoices(id, invoice_number)
       `)
+      .is('deleted_at', null)
       .order('quote_date', { ascending: false })
 
     if (status) {
@@ -131,7 +132,7 @@ export async function getQuotes(status?: QuoteStatus) {
       return { error: 'Failed to fetch quotes' }
     }
 
-    const visibleQuotes = (quotes || []).filter((quote: any) => !isSoftDeletedRecord(quote as Record<string, unknown>))
+    const visibleQuotes = quotes || []
 
     // Update expired status for sent quotes
     const today = getTodayIsoDate()
@@ -165,6 +166,7 @@ export async function getQuote(quoteId: string) {
         converted_invoice:invoices(id, invoice_number)
       `)
       .eq('id', quoteId)
+      .is('deleted_at', null)
       .single()
 
     if (error) {
@@ -172,7 +174,7 @@ export async function getQuote(quoteId: string) {
       return { error: 'Failed to fetch quote' }
     }
 
-    if (isSoftDeletedRecord(quote as Record<string, unknown>)) {
+    if (!quote) {
       return { error: 'Quote not found' }
     }
 
@@ -249,7 +251,6 @@ export async function createQuote(formData: FormData) {
 
     revalidatePath('/quotes')
     revalidateTag('dashboard')
-    revalidatePath('/dashboard')
     
     return { quote, success: true }
   } catch (error) {
@@ -334,7 +335,6 @@ export async function updateQuoteStatus(formData: FormData) {
     revalidatePath('/quotes')
     revalidatePath(`/quotes/${quoteId}`)
     revalidateTag('dashboard')
-    revalidatePath('/dashboard')
     
     return { success: true }
   } catch (error) {
@@ -361,8 +361,29 @@ export async function updateQuote(formData: FormData) {
     const { data: currentQuote, error: fetchError } = await supabase
       .from('quotes')
       .select(`
-        *,
-        line_items:quote_line_items(*)
+        id,
+        status,
+        vendor_id,
+        quote_date,
+        valid_until,
+        reference,
+        quote_discount_percentage,
+        subtotal_amount,
+        discount_amount,
+        vat_amount,
+        total_amount,
+        notes,
+        internal_notes,
+        line_items:quote_line_items(
+          id,
+          quote_id,
+          catalog_item_id,
+          description,
+          quantity,
+          unit_price,
+          discount_percentage,
+          vat_rate
+        )
       `)
       .eq('id', quoteId)
       .single()
@@ -556,7 +577,6 @@ export async function updateQuote(formData: FormData) {
     revalidatePath('/quotes')
     revalidatePath(`/quotes/${quoteId}`)
     revalidateTag('dashboard')
-    revalidatePath('/dashboard')
     
     return { success: true }
   } catch (error) {
@@ -572,9 +592,11 @@ export async function updateQuote(formData: FormData) {
 export async function deleteQuote(formData: FormData) {
   try {
     const supabase = await createClient()
-    const { data: { user } } = await supabase.auth.getUser()
-    
-    const hasPermission = await checkUserPermission('invoices', 'delete')
+    const [{ data: { user } }, hasPermission] = await Promise.all([
+      supabase.auth.getUser(),
+      checkUserPermission('invoices', 'delete'),
+    ])
+
     if (!hasPermission) {
       return { error: 'You do not have permission to delete quotes' }
     }
@@ -587,7 +609,7 @@ export async function deleteQuote(formData: FormData) {
     // Check if quote can be deleted (only draft quotes)
     const { data: quote, error: fetchError } = await supabase
       .from('quotes')
-      .select('*')
+      .select('id, status, deleted_at')
       .eq('id', quoteId)
       .single()
 
@@ -668,7 +690,6 @@ export async function deleteQuote(formData: FormData) {
 
     revalidatePath('/quotes')
     revalidateTag('dashboard')
-    revalidatePath('/dashboard')
     
     return { success: true }
   } catch (error) {
@@ -690,8 +711,29 @@ export async function convertQuoteToInvoice(quoteId: string) {
     const { data: quote, error: quoteError } = await supabase
       .from('quotes')
       .select(`
-        *,
-        line_items:quote_line_items(*)
+        id,
+        status,
+        deleted_at,
+        converted_to_invoice_id,
+        vendor_id,
+        reference,
+        quote_discount_percentage,
+        subtotal_amount,
+        discount_amount,
+        vat_amount,
+        total_amount,
+        notes,
+        internal_notes,
+        quote_number,
+        line_items:quote_line_items(
+          id,
+          catalog_item_id,
+          description,
+          quantity,
+          unit_price,
+          discount_percentage,
+          vat_rate
+        )
       `)
       .eq('id', quoteId)
       .single()
@@ -718,7 +760,7 @@ export async function convertQuoteToInvoice(quoteId: string) {
     }
 
     // Get next invoice number
-    const adminClient = await createAdminClient()
+    const adminClient = createAdminClient()
     const rollbackCreatedInvoice = async (invoiceId: string) => {
       const { error: lineItemsDeleteError } = await adminClient
         .from('invoice_line_items')
@@ -828,7 +870,6 @@ export async function convertQuoteToInvoice(quoteId: string) {
     revalidatePath('/quotes')
     revalidatePath('/invoices')
     revalidateTag('dashboard')
-    revalidatePath('/dashboard')
     
     return { invoice, success: true }
   } catch (error) {

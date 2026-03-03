@@ -189,7 +189,7 @@ export function DailyCashupForm({ site, sessionDate, initialSessionData, isBill 
         }
       });
     }
-  }, [siteId, date, dailyTarget]); // Added dailyTarget to dependencies
+  }, [siteId, date]);
 
   // Calculate total cash from values
   const cashCountedTotal = useMemo(() => {
@@ -303,7 +303,7 @@ export function DailyCashupForm({ site, sessionDate, initialSessionData, isBill 
     const dto = getDTO();
     
     // Warn if saving a non-draft status
-    if (initialSessionData && initialSessionData.status !== 'draft' && !confirm(`This session is currently '${initialSessionData.status}'. Saving will modify a processed record. Are you sure?`)) {
+    if (isFormLocked && initialSessionData && initialSessionData.status !== 'draft' && !confirm(`This session is currently '${initialSessionData.status}'. Saving will modify a processed record. Are you sure?`)) {
         return null; // User cancelled
     }
 
@@ -415,6 +415,7 @@ export function DailyCashupForm({ site, sessionDate, initialSessionData, isBill 
           onSave={refreshData} 
         />
       )}
+      {/* Safe: dangerouslySetInnerHTML contains only hardcoded CSS — no user input is interpolated */}
       <style dangerouslySetInnerHTML={{__html: `
         input::-webkit-outer-spin-button,
         input::-webkit-inner-spin-button {

@@ -1030,6 +1030,15 @@ export class PrivateBookingService {
       }
     }
 
+    await logAuditEvent({
+      user_id: performedByUserId,
+      operation_type: 'update',
+      resource_type: 'private_booking',
+      resource_id: id,
+      operation_status: 'success',
+      additional_info: { action: 'cancellation', reason: reason || 'staff_cancelled' },
+    })
+
     return smsSideEffects.length > 0 ? { success: true, smsSideEffects } : { success: true };
   }
 

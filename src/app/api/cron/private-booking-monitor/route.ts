@@ -456,6 +456,22 @@ export async function GET(request: Request) {
     // Removed .not('contact_phone', 'is', null) to support fallback to customer record
 
     if (drafts) {
+      // Batch-fetch mobile numbers for bookings that lack a contact_phone to avoid N+1 queries
+      const missingPhoneCustomerIds = drafts
+        .filter((b) => !b.contact_phone && b.customer_id)
+        .map((b) => b.customer_id as string)
+
+      const customerMobileById = new Map<string, string | null>()
+      if (missingPhoneCustomerIds.length > 0) {
+        const { data: customerRows } = await supabase
+          .from('customers')
+          .select('id, mobile_number')
+          .in('id', missingPhoneCustomerIds)
+        for (const row of customerRows ?? []) {
+          customerMobileById.set(row.id, row.mobile_number ?? null)
+        }
+      }
+
       for (const booking of drafts) {
         if (!canSendMoreSms()) {
           stats.smsCapReached = true
@@ -463,16 +479,8 @@ export async function GET(request: Request) {
         }
         if (!booking.hold_expiry) continue
 
-        // Resolve phone number (fallback to customer record)
-        let contactPhone = booking.contact_phone
-        if (!contactPhone && booking.customer_id) {
-          const { data: customer } = await supabase
-            .from('customers')
-            .select('mobile_number')
-            .eq('id', booking.customer_id)
-            .single()
-          contactPhone = customer?.mobile_number
-        }
+        // Resolve phone number (fallback to pre-fetched customer mobile map)
+        const contactPhone = booking.contact_phone || (booking.customer_id ? customerMobileById.get(booking.customer_id) ?? null : null)
 
         if (!contactPhone) continue
 
@@ -496,7 +504,7 @@ export async function GET(request: Request) {
           const triggerType = 'deposit_reminder_7day'
           const { count, error: duplicateCheckError } = await supabase
             .from('private_booking_sms_queue')
-            .select('*', { count: 'exact', head: true })
+            .select('id', { count: 'exact', head: true })
             .eq('booking_id', booking.id)
             .eq('trigger_type', triggerType)
             .in('status', ['pending', 'approved', 'sent'])
@@ -556,7 +564,7 @@ export async function GET(request: Request) {
           const triggerType = 'deposit_reminder_1day'
           const { count, error: duplicateCheckError } = await supabase
             .from('private_booking_sms_queue')
-            .select('*', { count: 'exact', head: true })
+            .select('id', { count: 'exact', head: true })
             .eq('booking_id', booking.id)
             .eq('trigger_type', triggerType)
             .in('status', ['pending', 'approved', 'sent'])
@@ -708,7 +716,7 @@ export async function GET(request: Request) {
             // Check duplicate
             const { count, error: duplicateCheckError } = await supabase
               .from('private_booking_sms_queue')
-              .select('*', { count: 'exact', head: true })
+              .select('id', { count: 'exact', head: true })
               .eq('booking_id', booking.id)
               .eq('trigger_type', triggerType)
               .in('status', ['pending', 'approved', 'sent']);
@@ -805,7 +813,7 @@ export async function GET(request: Request) {
 
           const { count, error: duplicateCheckError } = await supabase
             .from('private_booking_sms_queue')
-            .select('*', { count: 'exact', head: true })
+            .select('id', { count: 'exact', head: true })
             .eq('booking_id', booking.id)
             .eq('trigger_type', triggerType)
             .in('status', ['pending', 'approved', 'sent'])

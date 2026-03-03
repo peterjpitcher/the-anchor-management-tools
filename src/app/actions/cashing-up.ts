@@ -5,6 +5,7 @@ import { PermissionService } from '@/services/permission';
 import { CashingUpService } from '@/services/cashing-up.service';
 import { UpsertCashupSessionDTO } from '@/types/cashing-up';
 import { revalidatePath, revalidateTag } from 'next/cache';
+import { checkUserPermission } from '@/app/actions/rbac';
 
 export async function getSessionByIdAction(id: string) {
   const supabase = await createClient();
@@ -30,7 +31,7 @@ export async function getSessionByIdAction(id: string) {
 export async function upsertSessionAction(data: UpsertCashupSessionDTO, existingId?: string) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
-  
+
   if (!user) {
     return { success: false, error: 'Unauthorized' };
   }
@@ -43,9 +44,8 @@ export async function upsertSessionAction(data: UpsertCashupSessionDTO, existing
 
   try {
     const result = await CashingUpService.upsertSession(supabase, data, user.id, existingId);
-    revalidatePath('/cashing-up'); // Revalidate relevant paths
+    revalidatePath('/cashing-up');
     revalidateTag('dashboard')
-    revalidatePath('/dashboard')
     return { success: true, data: result };
   } catch (error: any) {
     console.error('Upsert error:', error);
@@ -66,7 +66,6 @@ export async function submitSessionAction(id: string) {
     const result = await CashingUpService.submitSession(supabase, id, user.id);
     revalidatePath('/cashing-up');
     revalidateTag('dashboard')
-    revalidatePath('/dashboard')
     return { success: true, data: result };
   } catch (error: any) {
     return { success: false, error: error.message };
@@ -86,7 +85,6 @@ export async function approveSessionAction(id: string) {
     const result = await CashingUpService.approveSession(supabase, id, user.id);
     revalidatePath('/cashing-up');
     revalidateTag('dashboard')
-    revalidatePath('/dashboard')
     return { success: true, data: result };
   } catch (error: any) {
     return { success: false, error: error.message };
@@ -106,7 +104,6 @@ export async function lockSessionAction(id: string) {
     const result = await CashingUpService.lockSession(supabase, id, user.id);
     revalidatePath('/cashing-up');
     revalidateTag('dashboard')
-    revalidatePath('/dashboard')
     return { success: true, data: result };
   } catch (error: any) {
     return { success: false, error: error.message };
@@ -126,7 +123,6 @@ export async function unlockSessionAction(id: string) {
     const result = await CashingUpService.unlockSession(supabase, id, user.id);
     revalidatePath('/cashing-up');
     revalidateTag('dashboard')
-    revalidatePath('/dashboard')
     return { success: true, data: result };
   } catch (error: any) {
     return { success: false, error: error.message };
@@ -198,6 +194,8 @@ export async function getInsightsDataAction(siteId?: string, year?: number) {
 
 export async function getDailyTargetAction(siteId: string, date: string) {
   const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { success: false, error: 'Unauthorized' };
   try {
     const target = await CashingUpService.getDailyTarget(supabase, siteId, date);
     return { success: true, data: target };
@@ -211,6 +209,9 @@ export async function setDailyTargetAction(siteId: string, date: string, amount:
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { success: false, error: 'Unauthorized' };
+
+  const canManage = await checkUserPermission('receipts', 'edit');
+  if (!canManage) return { success: false, error: 'Insufficient permissions' };
 
   try {
     await CashingUpService.setDailyTarget(supabase, siteId, date, amount, user.id);
@@ -242,6 +243,8 @@ export async function updateWeeklyTargetsAction(siteId: string, targets: Record<
 
 export async function getWeeklyProgressAction(siteId: string, date: string) {
   const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { success: false, error: 'Unauthorized' };
   try {
     const data = await CashingUpService.getWeeklyProgress(supabase, siteId, date);
     return { success: true, data };

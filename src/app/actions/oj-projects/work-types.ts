@@ -2,6 +2,7 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { checkUserPermission } from '@/app/actions/rbac'
+import { logAuditEvent } from '@/app/actions/audit'
 import { z } from 'zod'
 
 const WorkTypeSchema = z.object({
@@ -17,7 +18,7 @@ export async function getWorkTypes() {
   const supabase = await createClient()
   const { data, error } = await supabase
     .from('oj_work_types')
-    .select('*')
+    .select('id, name, sort_order, is_active, created_at, updated_at')
     .order('sort_order', { ascending: true })
     .order('name', { ascending: true })
 
@@ -37,6 +38,8 @@ export async function createWorkType(formData: FormData) {
   if (!parsed.success) return { error: parsed.error.errors[0].message }
 
   const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+
   const { data, error } = await supabase
     .from('oj_work_types')
     .insert({
@@ -48,6 +51,17 @@ export async function createWorkType(formData: FormData) {
     .single()
 
   if (error) return { error: error.message }
+
+  await logAuditEvent({
+    user_id: user?.id,
+    user_email: user?.email,
+    operation_type: 'create',
+    resource_type: 'oj_work_type',
+    resource_id: data.id,
+    operation_status: 'success',
+    new_values: data,
+  })
+
   return { workType: data, success: true as const }
 }
 
@@ -66,6 +80,8 @@ export async function updateWorkType(formData: FormData) {
   if (!parsed.success) return { error: parsed.error.errors[0].message }
 
   const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+
   const { data, error } = await supabase
     .from('oj_work_types')
     .update({
@@ -80,6 +96,17 @@ export async function updateWorkType(formData: FormData) {
 
   if (error) return { error: error.message }
   if (!data) return { error: 'Work type not found' }
+
+  await logAuditEvent({
+    user_id: user?.id,
+    user_email: user?.email,
+    operation_type: 'update',
+    resource_type: 'oj_work_type',
+    resource_id: id,
+    operation_status: 'success',
+    new_values: data,
+  })
+
   return { workType: data, success: true as const }
 }
 
@@ -91,6 +118,8 @@ export async function disableWorkType(formData: FormData) {
   if (!id) return { error: 'Work type ID is required' }
 
   const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+
   const { data: updatedWorkType, error } = await supabase
     .from('oj_work_types')
     .update({
@@ -103,5 +132,16 @@ export async function disableWorkType(formData: FormData) {
 
   if (error) return { error: error.message }
   if (!updatedWorkType) return { error: 'Work type not found' }
+
+  await logAuditEvent({
+    user_id: user?.id,
+    user_email: user?.email,
+    operation_type: 'update',
+    resource_type: 'oj_work_type',
+    resource_id: id,
+    operation_status: 'success',
+    additional_info: { action: 'disable' },
+  })
+
   return { success: true as const }
 }

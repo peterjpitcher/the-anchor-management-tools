@@ -62,13 +62,15 @@ const CreateParkingBookingSchema = z.object({
 export async function createParkingBooking(formData: FormData) {
   try {
     const supabase = await createClient()
-    const { data: { user } } = await supabase.auth.getUser()
+    const [{ data: { user } }, hasPermission] = await Promise.all([
+      supabase.auth.getUser(),
+      checkUserPermission('parking', 'manage'),
+    ])
 
     if (!user) {
       return { error: 'You need to be signed in to create a parking booking' }
     }
 
-    const hasPermission = await checkUserPermission('parking', 'manage', user.id)
     if (!hasPermission) {
       return { error: 'You do not have permission to create parking bookings' }
     }
@@ -141,7 +143,6 @@ export async function createParkingBooking(formData: FormData) {
 
     revalidatePath('/parking')
     revalidateTag('dashboard')
-    revalidatePath('/dashboard')
 
     return {
       success: true,
@@ -176,12 +177,14 @@ export async function listParkingBookings(options?: {
 }) {
   try {
     const supabase = await createClient()
-    const { data: { user } } = await supabase.auth.getUser()
+    const [{ data: { user } }, canView] = await Promise.all([
+      supabase.auth.getUser(),
+      checkUserPermission('parking', 'view'),
+    ])
     if (!user) {
       return { error: 'Authentication required' }
     }
 
-    const canView = await checkUserPermission('parking', 'view', user.id)
     if (!canView) {
       return { error: 'You do not have permission to view parking bookings' }
     }
@@ -229,12 +232,14 @@ export async function listParkingBookings(options?: {
 export async function getParkingBookingNotifications(bookingId: string) {
   try {
     const supabase = await createClient()
-    const { data: { user } } = await supabase.auth.getUser()
+    const [{ data: { user } }, canView] = await Promise.all([
+      supabase.auth.getUser(),
+      checkUserPermission('parking', 'view'),
+    ])
     if (!user) {
       return { error: 'Authentication required' }
     }
 
-    const canView = await checkUserPermission('parking', 'view', user.id)
     if (!canView) {
       return { error: 'You do not have permission to view parking bookings' }
     }
@@ -260,12 +265,14 @@ export async function getParkingBookingNotifications(bookingId: string) {
 export async function getParkingRateConfig(): Promise<{ success: true; data: ParkingRateConfig } | { error: string }> {
   try {
     const supabase = await createClient()
-    const { data: { user } } = await supabase.auth.getUser()
+    const [{ data: { user } }, canManage] = await Promise.all([
+      supabase.auth.getUser(),
+      checkUserPermission('parking', 'manage'),
+    ])
     if (!user) {
       return { error: 'Authentication required' }
     }
 
-    const canManage = await checkUserPermission('parking', 'manage', user.id)
     if (!canManage) {
       return { error: 'You do not have permission to manage parking bookings' }
     }
@@ -417,7 +424,6 @@ export async function updateParkingBookingStatus(
 
     revalidatePath('/parking')
     revalidateTag('dashboard')
-    revalidatePath('/dashboard')
 
     return { success: true, booking }
   } catch (error) {
@@ -429,12 +435,14 @@ export async function updateParkingBookingStatus(
 export async function generateParkingPaymentLink(bookingId: string) {
   try {
     const supabase = await createClient()
-    const { data: { user } } = await supabase.auth.getUser()
+    const [{ data: { user } }, hasPermission] = await Promise.all([
+      supabase.auth.getUser(),
+      checkUserPermission('parking', 'manage'),
+    ])
     if (!user) {
       return { error: 'Unauthorized' }
     }
 
-    const hasPermission = await checkUserPermission('parking', 'manage', user.id)
     if (!hasPermission) {
       return { error: 'You do not have permission to manage parking payments' }
     }
@@ -497,7 +505,6 @@ export async function generateParkingPaymentLink(bookingId: string) {
 
     revalidatePath('/parking')
     revalidateTag('dashboard')
-    revalidatePath('/dashboard')
 
     return { success: true, approveUrl }
   } catch (error) {
@@ -509,12 +516,14 @@ export async function generateParkingPaymentLink(bookingId: string) {
 export async function markParkingBookingPaid(bookingId: string) {
   try {
     const supabase = await createClient()
-    const { data: { user } } = await supabase.auth.getUser()
+    const [{ data: { user } }, hasPermission] = await Promise.all([
+      supabase.auth.getUser(),
+      checkUserPermission('parking', 'manage'),
+    ])
     if (!user) {
       return { error: 'Unauthorized' }
     }
 
-    const hasPermission = await checkUserPermission('parking', 'manage', user.id)
     if (!hasPermission) {
       return { error: 'You do not have permission to update parking bookings' }
     }
@@ -614,7 +623,6 @@ export async function markParkingBookingPaid(bookingId: string) {
 
     revalidatePath('/parking')
     revalidateTag('dashboard')
-    revalidatePath('/dashboard')
 
     return { success: true, booking: updated }
   } catch (error) {

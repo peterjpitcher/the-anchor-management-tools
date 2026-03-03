@@ -426,8 +426,8 @@ const fetchDashboardSnapshot = unstable_cache(
            const { data: site } = await supabase.from('sites').select('id').limit(1).single()
            if (!site) return
 
-          const today = new Date()
-          const todayStr = format(today, 'yyyy-MM-dd')
+          const today = new Date(todayIso)
+          const todayStr = todayIso
           const weekStart = startOfWeek(today, { weekStartsOn: 1 }) // Monday
           
           // Pull this week's sessions up to today to find the latest completed cash-up
@@ -518,7 +518,7 @@ const fetchDashboardSnapshot = unstable_cache(
 
       tableBookings.permitted ? (async () => {
         try {
-          const today = new Date()
+          const today = new Date(todayIso)
           const thisWeekStart = startOfWeek(today, { weekStartsOn: 1 })
           const dayOffsetInWeek = Math.max(0, differenceInCalendarDays(today, thisWeekStart))
 

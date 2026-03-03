@@ -261,19 +261,18 @@ function revalidateCalendarSurfaces() {
   revalidatePath('/settings/calendar-notes')
   revalidatePath('/events')
   revalidateTag('dashboard')
-  revalidatePath('/dashboard')
 }
 
 async function requireSettingsManagePermission(): Promise<PermissionContext> {
-  const hasPermission = await checkUserPermission('settings', 'manage')
+  const supabase = await createClient()
+  const [hasPermission, { data: { user } }] = await Promise.all([
+    checkUserPermission('settings', 'manage'),
+    supabase.auth.getUser(),
+  ])
+
   if (!hasPermission) {
     return { error: 'You do not have permission to manage calendar notes.' }
   }
-
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
 
   if (!user) {
     return { error: 'Not authenticated' }
@@ -301,6 +300,7 @@ export async function listCalendarNotes(): Promise<{ data?: CalendarNote[]; erro
       .order('end_date', { ascending: true })
       .order('start_time', { ascending: true, nullsFirst: true })
       .order('title', { ascending: true })
+      .limit(1000)
 
     if (error) {
       console.error('Failed to load calendar notes:', error)

@@ -1,5 +1,3 @@
-'use client'
-
 import { TagIcon } from '@heroicons/react/24/outline'
 import { CustomerLabel, CustomerLabelAssignment } from '@/app/actions/customer-labels'
 

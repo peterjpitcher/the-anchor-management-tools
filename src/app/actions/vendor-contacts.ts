@@ -16,10 +16,13 @@ const ContactSchema = z.object({
 })
 
 export async function getVendorContacts(vendorId: string) {
+  const hasPermission = await checkUserPermission('invoices', 'view')
+  if (!hasPermission) return { error: 'Insufficient permissions' }
+
   const supabase = await createClient()
   const { data, error } = await supabase
     .from('invoice_vendor_contacts')
-    .select('*')
+    .select('id, vendor_id, name, email, phone, role, is_primary, receive_invoice_copy, created_at')
     .eq('vendor_id', vendorId)
     .order('is_primary', { ascending: false })
     .order('created_at', { ascending: true })

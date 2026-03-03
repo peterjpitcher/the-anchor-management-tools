@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { PageLayout } from '@/components/ui-v2/layout/PageLayout';
 import { Section } from '@/components/ui-v2/layout/Section';
 import { Card } from '@/components/ui-v2/layout/Card';
@@ -133,7 +134,8 @@ const defaultIngredientRow: RecipeIngredientFormRow = {
 };
 
 export default function MenuRecipesPage() {
-  const { hasPermission } = usePermissions();
+  const router = useRouter();
+  const { hasPermission, loading: permissionsLoading } = usePermissions();
   const [recipes, setRecipes] = useState<RecipeListItem[]>([]);
   const [ingredients, setIngredients] = useState<IngredientSummary[]>([]);
   const [loading, setLoading] = useState(true);
@@ -147,10 +149,15 @@ export default function MenuRecipesPage() {
   const canManage = hasPermission('menu_management', 'manage');
 
   useEffect(() => {
+    if (permissionsLoading) return;
+    if (!hasPermission('menu_management', 'view')) {
+      router.replace('/unauthorized');
+      return;
+    }
     Promise.all([loadIngredients(), loadRecipes()]).catch(err => {
       console.error('initial recipe load error:', err);
     });
-  }, []);
+  }, [permissionsLoading]);
 
   async function loadRecipes() {
     try {

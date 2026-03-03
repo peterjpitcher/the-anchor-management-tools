@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter, useParams } from 'next/navigation'
+import { usePermissions } from '@/contexts/PermissionContext'
 import { getRecurringInvoice, updateRecurringInvoice } from '@/app/actions/recurring-invoices'
 import { getVendors } from '@/app/actions/vendors'
 import { getLineItemCatalog } from '@/app/actions/invoices'
@@ -22,7 +23,9 @@ export default function EditRecurringInvoicePage() {
   const params = useParams()
   const rawId = params?.id
   const recurringInvoiceId = Array.isArray(rawId) ? rawId[0] : rawId ?? null
-  
+  const { hasPermission, loading: permissionsLoading } = usePermissions()
+  const canEdit = hasPermission('invoices', 'edit')
+
   const [recurringInvoice, setRecurringInvoice] = useState<RecurringInvoiceWithDetails | null>(null)
   const [vendors, setVendors] = useState<InvoiceVendor[]>([])
   const [catalogItems, setCatalogItems] = useState<LineItemCatalogItem[]>([])
@@ -47,6 +50,12 @@ export default function EditRecurringInvoicePage() {
   const [lineItems, setLineItems] = useState<InvoiceLineItemInput[]>([])
 
   useEffect(() => {
+    if (permissionsLoading) return
+    if (!canEdit) {
+      router.replace('/unauthorized')
+      return
+    }
+
     if (!recurringInvoiceId) {
       setError('Recurring invoice not found')
       setLoading(false)
@@ -108,7 +117,7 @@ export default function EditRecurringInvoicePage() {
       }
     }
     loadData()
-  }, [recurringInvoiceId])
+  }, [recurringInvoiceId, permissionsLoading, canEdit, router])
 
   function addLineItem() {
     setLineItems([...lineItems, {
@@ -208,7 +217,7 @@ export default function EditRecurringInvoicePage() {
     }
   }
 
-  if (loading) {
+  if (permissionsLoading || (loading && canEdit)) {
     return (
       <PageLayout
         title="Edit Recurring Invoice"
@@ -218,6 +227,10 @@ export default function EditRecurringInvoicePage() {
         loadingLabel="Loading recurring invoice..."
       />
     )
+  }
+
+  if (!canEdit) {
+    return null
   }
 
   if (error && !recurringInvoice) {

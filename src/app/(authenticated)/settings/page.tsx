@@ -159,7 +159,7 @@ const settingsSections = [
     description: 'Create and manage vip-club.uk short links',
     href: '/short-links',
     icon: LinkIcon,
-    permission: null, // Allow all authenticated users
+    permission: { module: 'short_links', action: 'view' },
   },
   {
     name: 'GDPR & Privacy',

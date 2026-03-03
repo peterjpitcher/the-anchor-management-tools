@@ -1,4 +1,6 @@
 import { createClient } from '@/lib/supabase/server';
+import { redirect } from 'next/navigation';
+import { checkUserPermission } from '@/app/actions/rbac';
 import { DailyCashupForm } from '@/components/features/cashing-up/DailyCashupForm';
 import { PageLayout } from '@/components/ui-v2/layout/PageLayout';
 import { CashingUpService } from '@/services/cashing-up.service'; // Import CashingUpService
@@ -9,6 +11,9 @@ export default async function DailyCashupPage(props: { searchParams: Promise<{ d
   const siteIdParam = searchParams.siteId;
 
   const supabase = await createClient();
+  const canView = await checkUserPermission('cashing_up', 'view');
+  if (!canView) redirect('/unauthorized');
+
   const { data: { user } } = await supabase.auth.getUser();
   const isBill = user?.email?.toLowerCase() === 'billy@orangejelly.co.uk';
   let defaultSiteId: string | undefined;

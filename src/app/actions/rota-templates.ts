@@ -52,14 +52,15 @@ export async function getShiftTemplates(): Promise<
 export async function createShiftTemplate(input: z.infer<typeof TemplateSchema>): Promise<
   { success: true; data: ShiftTemplate } | { success: false; error: string }
 > {
-  const canCreate = await checkUserPermission('rota', 'create');
-  if (!canCreate) return { success: false, error: 'Permission denied' };
-
   const parsed = TemplateSchema.safeParse(input);
   if (!parsed.success) return { success: false, error: parsed.error.message };
 
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const [canCreate, { data: { user } }] = await Promise.all([
+    checkUserPermission('rota', 'create'),
+    supabase.auth.getUser(),
+  ]);
+  if (!canCreate) return { success: false, error: 'Permission denied' };
 
   const { data, error } = await supabase
     .from('rota_shift_templates')

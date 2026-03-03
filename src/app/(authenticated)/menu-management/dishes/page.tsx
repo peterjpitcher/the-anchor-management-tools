@@ -208,7 +208,7 @@ const defaultAssignmentRow: DishAssignmentFormRow = {
 };
 
 export default function MenuDishesPage() {
-  const { hasPermission } = usePermissions();
+  const { hasPermission, loading: permissionsLoading } = usePermissions();
   const [dishes, setDishes] = useState<DishListItem[]>([]);
   const [ingredients, setIngredients] = useState<IngredientSummary[]>([]);
   const [recipes, setRecipes] = useState<RecipeSummary[]>([]);
@@ -237,6 +237,11 @@ export default function MenuDishesPage() {
   const [targetGpPct, setTargetGpPct] = useState(0.7);
 
   useEffect(() => {
+    if (permissionsLoading) return;
+    if (!hasPermission('menu_management', 'view')) {
+      router.replace('/unauthorized');
+      return;
+    }
     Promise.all([
       loadMenus(),
       loadIngredients(),
@@ -244,7 +249,7 @@ export default function MenuDishesPage() {
     ]).catch((err) => {
       console.error('Initial load error:', err);
     });
-  }, []);
+  }, [permissionsLoading]);
 
   useEffect(() => {
     loadDishes().catch((err) => {

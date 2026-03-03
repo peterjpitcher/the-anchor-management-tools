@@ -2,6 +2,7 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { checkUserPermission } from '@/app/actions/rbac'
+import { logAuditEvent } from '@/app/actions/audit'
 import { z } from 'zod'
 
 const RecurringChargeSchema = z.object({
@@ -20,7 +21,7 @@ export async function getRecurringCharges(vendorId: string) {
   const supabase = await createClient()
   const { data, error } = await supabase
     .from('oj_vendor_recurring_charges')
-    .select('*')
+    .select('id, vendor_id, description, amount_ex_vat, vat_rate, is_active, sort_order, created_at, updated_at')
     .eq('vendor_id', vendorId)
     .order('sort_order', { ascending: true })
     .order('created_at', { ascending: true })
@@ -44,6 +45,8 @@ export async function createRecurringCharge(formData: FormData) {
   if (!parsed.success) return { error: parsed.error.errors[0].message }
 
   const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+
   const { data, error } = await supabase
     .from('oj_vendor_recurring_charges')
     .insert({
@@ -58,6 +61,17 @@ export async function createRecurringCharge(formData: FormData) {
     .single()
 
   if (error) return { error: error.message }
+
+  await logAuditEvent({
+    user_id: user?.id,
+    user_email: user?.email,
+    operation_type: 'create',
+    resource_type: 'oj_recurring_charge',
+    resource_id: data.id,
+    operation_status: 'success',
+    new_values: { vendor_id: data.vendor_id, description: data.description, amount_ex_vat: data.amount_ex_vat },
+  })
+
   return { charge: data, success: true as const }
 }
 
@@ -79,6 +93,8 @@ export async function updateRecurringCharge(formData: FormData) {
   if (!parsed.success) return { error: parsed.error.errors[0].message }
 
   const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+
   const { data, error } = await supabase
     .from('oj_vendor_recurring_charges')
     .update({
@@ -95,6 +111,17 @@ export async function updateRecurringCharge(formData: FormData) {
 
   if (error) return { error: error.message }
   if (!data) return { error: 'Charge not found' }
+
+  await logAuditEvent({
+    user_id: user?.id,
+    user_email: user?.email,
+    operation_type: 'update',
+    resource_type: 'oj_recurring_charge',
+    resource_id: id,
+    operation_status: 'success',
+    new_values: { description: data.description, amount_ex_vat: data.amount_ex_vat, is_active: data.is_active },
+  })
+
   return { charge: data, success: true as const }
 }
 
@@ -106,6 +133,8 @@ export async function disableRecurringCharge(formData: FormData) {
   if (!id) return { error: 'Charge ID is required' }
 
   const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+
   const { data: updatedCharge, error } = await supabase
     .from('oj_vendor_recurring_charges')
     .update({
@@ -118,5 +147,16 @@ export async function disableRecurringCharge(formData: FormData) {
 
   if (error) return { error: error.message }
   if (!updatedCharge) return { error: 'Charge not found' }
+
+  await logAuditEvent({
+    user_id: user?.id,
+    user_email: user?.email,
+    operation_type: 'update',
+    resource_type: 'oj_recurring_charge',
+    resource_id: id,
+    operation_status: 'success',
+    additional_info: { action: 'disable' },
+  })
+
   return { success: true as const }
 }

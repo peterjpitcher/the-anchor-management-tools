@@ -307,7 +307,7 @@ async function handlePaymentCompleted(supabase: ReturnType<typeof createAdminCli
 
   const { data: booking, error: bookingLookupError } = await supabase
     .from('parking_bookings')
-    .select('*')
+    .select('id, payment_status, status, reference')
     .eq('id', bookingId)
     .maybeSingle()
 
@@ -545,7 +545,7 @@ async function handleRefundCompleted(supabase: ReturnType<typeof createAdminClie
 
   const { data: payment, error: paymentLookupError } = await supabase
     .from('parking_booking_payments')
-    .select('*')
+    .select('id, booking_id, metadata')
     .eq('transaction_id', captureId)
     .maybeSingle()
 

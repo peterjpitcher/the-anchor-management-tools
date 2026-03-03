@@ -2,8 +2,8 @@
 
 import { useCallback, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { format } from 'date-fns'
 import { ArrowDownTrayIcon } from '@heroicons/react/24/outline'
+import { formatDateTime } from '@/lib/dateUtils'
 
 import { useSupabase } from '@/components/providers/SupabaseProvider'
 import { usePermissions } from '@/contexts/PermissionContext'
@@ -199,7 +199,7 @@ export default function PerformersPage() {
         header: 'Received',
         cell: (row: PerformerSubmission) => (
           <div className="text-sm text-gray-900">
-            {format(new Date(row.created_at), 'MMM d, yyyy HH:mm')}
+            {formatDateTime(row.created_at)}
           </div>
         ),
       },

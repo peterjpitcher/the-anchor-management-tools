@@ -83,16 +83,20 @@ export async function getOrCreateRotaWeek(weekStart: string): Promise<
 
   const { data: existing } = await supabase
     .from('rota_weeks')
-    .select('*')
+    .select('id, week_start, status, published_at, published_by, has_unpublished_changes, created_at, updated_at')
     .eq('week_start', weekStart)
     .single();
 
   if (existing) return { success: true, data: existing as RotaWeek };
 
+  // Need to insert a new row — require edit permission
+  const canCreate = await checkUserPermission('rota', 'edit');
+  if (!canCreate) return { success: false, error: 'Permission denied' };
+
   const { data: created, error } = await supabase
     .from('rota_weeks')
     .insert({ week_start: weekStart })
-    .select('*')
+    .select('id, week_start, status, published_at, published_by, has_unpublished_changes, created_at, updated_at')
     .single();
 
   if (error) return { success: false, error: error.message };
@@ -204,6 +208,7 @@ export async function createShift(input: z.infer<typeof CreateShiftSchema>): Pro
     .eq('id', parsed.data.weekId)
     .eq('status', 'published');
 
+  // Fire-and-forget: audit logging failure should not block the operation
   void logAuditEvent({
     user_id: user?.id,
     operation_type: 'create',
@@ -247,6 +252,7 @@ export async function updateShift(
     .eq('id', data.week_id)
     .eq('status', 'published');
 
+  // Fire-and-forget: audit logging failure should not block the operation
   void logAuditEvent({
     user_id: user?.id,
     operation_type: 'update',
@@ -295,6 +301,7 @@ export async function deleteShift(shiftId: string): Promise<
       .eq('status', 'published');
   }
 
+  // Fire-and-forget: audit logging failure should not block the operation
   void logAuditEvent({
     user_id: user?.id,
     operation_type: 'delete',
@@ -364,6 +371,7 @@ export async function reassignShift(
     .eq('id', current.week_id)
     .eq('status', 'published');
 
+  // Fire-and-forget: audit logging failure should not block the operation
   void logAuditEvent({
     user_id: user?.id,
     operation_type: 'reassign',
@@ -389,6 +397,20 @@ export async function getEmployeeShifts(
 ): Promise<{ success: true; data: RotaShift[] } | { success: false; error: string }> {
   const supabase = await createClient();
 
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { success: false, error: 'Unauthorized' };
+
+  const canView = await checkUserPermission('rota', 'view');
+  if (!canView) {
+    const { data: ownRecord } = await supabase
+      .from('employees')
+      .select('employee_id')
+      .eq('employee_id', employeeId)
+      .eq('auth_user_id', user.id)
+      .maybeSingle();
+    if (!ownRecord) return { success: false, error: 'Permission denied' };
+  }
+
   // Read from the published snapshot — only what was explicitly published is visible to staff
   const { data, error } = await supabase
     .from('rota_published_shifts')
@@ -412,6 +434,9 @@ export async function getOpenShiftsForPortal(
   toDate: string,
 ): Promise<{ success: true; data: RotaShift[] } | { success: false; error: string }> {
   const supabase = await createClient();
+
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { success: false, error: 'Unauthorized' };
 
   // Read from the published snapshot — only what was explicitly published is visible to staff
   const { data, error } = await supabase
@@ -483,6 +508,7 @@ export async function moveShift(
     .eq('id', (data as RotaShift).week_id)
     .eq('status', 'published');
 
+  // Fire-and-forget: audit logging failure should not block the operation
   void logAuditEvent({
     user_id: user?.id,
     operation_type: 'move',
@@ -504,38 +530,30 @@ export async function moveShift(
 
 export async function autoPopulateWeekFromTemplates(
   weekId: string,
-  _days: string[], // 7 ISO dates, index 0=Monday … 6=Sunday
 ): Promise<{ success: true; created: number; shifts: RotaShift[] } | { success: false; error: string }> {
   const canEdit = await checkUserPermission('rota', 'edit');
   if (!canEdit) return { success: false, error: 'Permission denied' };
 
   const supabase = await createClient();
 
-  const { data: week, error: weekError } = await supabase
-    .from('rota_weeks')
-    .select('week_start')
-    .eq('id', weekId)
-    .single();
+  // Parallelise: week, templates, existing shifts, and user auth all at once
+  const [
+    { data: week, error: weekError },
+    { data: templates, error: tErr },
+    { data: existing },
+    { data: { user } },
+  ] = await Promise.all([
+    supabase.from('rota_weeks').select('week_start').eq('id', weekId).single(),
+    supabase.from('rota_shift_templates').select('*').eq('is_active', true).not('day_of_week', 'is', null),
+    supabase.from('rota_shifts').select('template_id, shift_date').eq('week_id', weekId),
+    supabase.auth.getUser(),
+  ]);
 
   if (weekError || !week) return { success: false, error: 'Rota week not found' };
-
-  const canonicalDays = Array.from({ length: 7 }, (_, i) => addDaysIso(week.week_start as string, i));
-  const dayList = canonicalDays;
-
-  const { data: templates, error: tErr } = await supabase
-    .from('rota_shift_templates')
-    .select('*')
-    .eq('is_active', true)
-    .not('day_of_week', 'is', null);
-
   if (tErr) return { success: false, error: tErr.message };
   if (!templates?.length) return { success: true, created: 0, shifts: [] };
 
-  // Existing shifts for this week (to avoid duplicates per template+date)
-  const { data: existing } = await supabase
-    .from('rota_shifts')
-    .select('template_id, shift_date')
-    .eq('week_id', weekId);
+  const dayList = Array.from({ length: 7 }, (_, i) => addDaysIso(week.week_start as string, i));
 
   const existingSet = new Set(
     (existing ?? []).map((s: { template_id: string | null; shift_date: string }) =>
@@ -543,9 +561,8 @@ export async function autoPopulateWeekFromTemplates(
     ),
   );
 
-  const { data: { user } } = await supabase.auth.getUser();
-  const newShifts: RotaShift[] = [];
-
+  // Build all inserts first, then batch insert in one round-trip (fixes N+1)
+  const insertPayload: object[] = [];
   for (const t of templates) {
     if (t.day_of_week === null || t.day_of_week === undefined) continue;
     const dayIndex = t.day_of_week as number;
@@ -554,7 +571,7 @@ export async function autoPopulateWeekFromTemplates(
     if (!date) continue;
     if (existingSet.has(`${t.id}:${date}`)) continue;
 
-    const { data, error } = await supabase.from('rota_shifts').insert({
+    insertPayload.push({
       week_id: weekId,
       employee_id: t.employee_id ?? null,
       is_open_shift: !t.employee_id,
@@ -567,10 +584,21 @@ export async function autoPopulateWeekFromTemplates(
       department: t.department,
       is_overnight: false,
       created_by: user?.id,
-    }).select('*').single();
-
-    if (!error && data) newShifts.push(data as RotaShift);
+    });
   }
+
+  if (insertPayload.length === 0) {
+    return { success: true, created: 0, shifts: [] };
+  }
+
+  const { data: inserted, error: insertError } = await supabase
+    .from('rota_shifts')
+    .insert(insertPayload)
+    .select('*');
+
+  if (insertError) return { success: false, error: insertError.message };
+
+  const newShifts = (inserted ?? []) as RotaShift[];
 
   if (newShifts.length > 0) {
     await supabase
@@ -747,18 +775,6 @@ export async function publishRotaWeek(weekId: string): Promise<
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
 
-  const { error } = await supabase
-    .from('rota_weeks')
-    .update({
-      status: 'published',
-      published_at: new Date().toISOString(),
-      published_by: user?.id,
-      has_unpublished_changes: false,
-    })
-    .eq('id', weekId);
-
-  if (error) return { success: false, error: error.message };
-
   // Snapshot current shifts into rota_published_shifts so staff only see
   // what was published, not in-progress edits.
   const { data: currentShifts } = await supabase
@@ -771,15 +787,31 @@ export async function publishRotaWeek(weekId: string): Promise<
   // Must use the admin client — rota_published_shifts has no write RLS policies
   // for regular users (intentional: only the system should write to this table).
   const admin = createAdminClient();
-  await admin.from('rota_published_shifts').delete().eq('week_id', weekId);
+  const { error: deleteError } = await admin.from('rota_published_shifts').delete().eq('week_id', weekId);
+  if (deleteError) return { success: false, error: deleteError.message };
 
   if (currentShifts?.length) {
     const now = new Date().toISOString();
-    await admin.from('rota_published_shifts').insert(
+    const { error: insertError } = await admin.from('rota_published_shifts').insert(
       currentShifts.map(s => ({ ...s, published_at: now })),
     );
+    if (insertError) return { success: false, error: insertError.message };
   }
 
+  // Only update status after snapshot succeeds
+  const { error } = await supabase
+    .from('rota_weeks')
+    .update({
+      status: 'published',
+      published_at: new Date().toISOString(),
+      published_by: user?.id,
+      has_unpublished_changes: false,
+    })
+    .eq('id', weekId);
+
+  if (error) return { success: false, error: error.message };
+
+  // Fire-and-forget: audit logging failure should not block the operation
   void logAuditEvent({
     user_id: user?.id,
     operation_type: 'publish',

@@ -60,17 +60,18 @@ export async function POST(request: NextRequest) {
     
     // Get GitHub configuration from environment
     const githubToken = process.env.GITHUB_BUG_REPORTER_TOKEN;
-    const githubOwner = process.env.GITHUB_OWNER || 'peterjpitcher';
-    const githubRepo = process.env.GITHUB_REPO || 'the-anchor-management-tools';
-    
+    const githubOwner = process.env.GITHUB_OWNER;
+    const githubRepo = process.env.GITHUB_REPO;
+
+    if (!githubOwner || !githubRepo) {
+      console.error('GITHUB_OWNER or GITHUB_REPO not configured');
+      return NextResponse.json({ error: 'Bug reporting not configured' }, { status: 503 });
+    }
+
     if (!githubToken) {
       console.error('GITHUB_BUG_REPORTER_TOKEN not configured');
       return NextResponse.json(
-        { 
-          error: 'Bug reporting is not configured',
-          message: 'The GitHub token for bug reporting has not been set up. Please contact your administrator.',
-          details: 'Missing environment variable: GITHUB_BUG_REPORTER_TOKEN'
-        },
+        { message: 'Bug report service unavailable' },
         { status: 500 }
       );
     }

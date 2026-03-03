@@ -1,6 +1,7 @@
 'use server'
 
 import { checkUserPermission } from './rbac'
+import { logAuditEvent } from './audit'
 import { revalidatePath } from 'next/cache'
 import { FinancialService, type PnlDashboardData } from '@/services/financials'
 import { type PLTimeframe } from '@/types/database'
@@ -11,7 +12,8 @@ import { PNL_TIMEFRAMES, type PnlTimeframeKey } from '@/lib/pnl/constants' // Ex
 export type { PnlDashboardData, PnlTimeframeKey }
 
 export async function getPlDashboardData(): Promise<PnlDashboardData> {
-  await checkUserPermission('receipts', 'view')
+  const canView = await checkUserPermission('receipts', 'view')
+  if (!canView) throw new Error('Insufficient permissions')
   return await FinancialService.getPlDashboardData();
 }
 
@@ -26,19 +28,30 @@ function parseSavePayload(formData: FormData) {
   if (typeof raw !== 'string') {
     throw new Error('Invalid payload')
   }
-  const parsed = JSON.parse(raw) as SaveEntry[]
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(raw) as SaveEntry[]
+  } catch {
+    throw new Error('Invalid data format')
+  }
   if (!Array.isArray(parsed)) {
     throw new Error('Invalid payload structure')
   }
-  return parsed
+  return parsed as SaveEntry[]
 }
 
 export async function savePlTargetsAction(formData: FormData) {
-  await checkUserPermission('receipts', 'manage')
+  const canManage = await checkUserPermission('receipts', 'manage')
+  if (!canManage) return { error: 'Insufficient permissions' }
   try {
     const entries = parseSavePayload(formData)
     await FinancialService.savePlTargets(entries);
     revalidatePath('/receipts/pnl')
+    await logAuditEvent({
+      operation_type: 'update',
+      resource_type: 'pl_targets',
+      operation_status: 'success',
+    })
     return { success: true }
   } catch (error: any) {
     console.error('Failed to save P&L targets:', error)
@@ -47,11 +60,17 @@ export async function savePlTargetsAction(formData: FormData) {
 }
 
 export async function savePlManualActualsAction(formData: FormData) {
-  await checkUserPermission('receipts', 'manage')
+  const canManage = await checkUserPermission('receipts', 'manage')
+  if (!canManage) return { error: 'Insufficient permissions' }
   try {
     const entries = parseSavePayload(formData)
     await FinancialService.savePlManualActuals(entries);
     revalidatePath('/receipts/pnl')
+    await logAuditEvent({
+      operation_type: 'update',
+      resource_type: 'pl_manual_actuals',
+      operation_status: 'success',
+    })
     return { success: true }
   } catch (error: any) {
     console.error('Failed to save manual P&L inputs:', error)

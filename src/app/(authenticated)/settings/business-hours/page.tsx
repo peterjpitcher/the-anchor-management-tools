@@ -16,6 +16,10 @@ import { Alert } from '@/components/ui-v2/feedback/Alert'
 export default async function BusinessHoursPage() {
   const canManage = await checkUserPermission('settings', 'manage')
 
+  if (!canManage) {
+    redirect('/unauthorized')
+  }
+
   const [
     businessHoursResult,
     serviceStatusOverridesResult, // Still fetch for calendar to display legacy overrides
@@ -31,10 +35,6 @@ export default async function BusinessHoursPage() {
   const serviceStatusOverrides = serviceStatusOverridesResult.data ?? []
   const specialHours = specialHoursResult.data ?? []
   const specialHoursError = specialHoursResult.error
-
-  if (!canManage) {
-    redirect('/unauthorized')
-  }
 
   return (
     <PageLayout

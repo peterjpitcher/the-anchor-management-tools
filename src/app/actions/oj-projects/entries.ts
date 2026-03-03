@@ -2,6 +2,7 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { checkUserPermission } from '@/app/actions/rbac'
+import { logAuditEvent } from '@/app/actions/audit'
 import { z } from 'zod'
 import { fromZonedTime } from 'date-fns-tz'
 
@@ -189,6 +190,8 @@ export async function createTimeEntry(formData: FormData) {
   if (startMin === null) return { error: 'Invalid start time' }
 
   const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+
   const match = await ensureProjectMatchesVendor(supabase, parsed.data.project_id, parsed.data.vendor_id)
   if ('error' in match) return { error: match.error }
 
@@ -201,9 +204,11 @@ export async function createTimeEntry(formData: FormData) {
   const roundedMinutes = Math.ceil(rawMinutes / 15) * 15
   if (roundedMinutes <= 0) return { error: 'Invalid duration after rounding' }
 
-  const settings = await getVendorSettingsOrDefault(supabase, parsed.data.vendor_id)
   const workTypeId = parsed.data.work_type_id ? String(parsed.data.work_type_id) : null
-  const workTypeName = await getWorkTypeName(supabase, workTypeId)
+  const [settings, workTypeName] = await Promise.all([
+    getVendorSettingsOrDefault(supabase, parsed.data.vendor_id),
+    getWorkTypeName(supabase, workTypeId),
+  ])
 
   const { data, error } = await supabase
     .from('oj_entries')
@@ -231,6 +236,16 @@ export async function createTimeEntry(formData: FormData) {
     .single()
 
   if (error) return { error: error.message }
+
+  await logAuditEvent({
+    user_id: user?.id,
+    user_email: user?.email,
+    operation_type: 'create',
+    resource_type: 'oj_entry',
+    resource_id: data.id,
+    operation_status: 'success',
+    new_values: { entry_type: 'time', project_id: data.project_id, entry_date: data.entry_date, duration_minutes_rounded: data.duration_minutes_rounded },
+  })
 
   let warning: string | undefined
   try {
@@ -267,6 +282,8 @@ export async function createMileageEntry(formData: FormData) {
   if (!parsed.success) return { error: parsed.error.errors[0].message }
 
   const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+
   const match = await ensureProjectMatchesVendor(supabase, parsed.data.project_id, parsed.data.vendor_id)
   if ('error' in match) return { error: match.error }
 
@@ -298,6 +315,17 @@ export async function createMileageEntry(formData: FormData) {
     .single()
 
   if (error) return { error: error.message }
+
+  await logAuditEvent({
+    user_id: user?.id,
+    user_email: user?.email,
+    operation_type: 'create',
+    resource_type: 'oj_entry',
+    resource_id: data.id,
+    operation_status: 'success',
+    new_values: { entry_type: 'mileage', project_id: data.project_id, entry_date: data.entry_date, miles: data.miles },
+  })
+
   return { entry: data, success: true as const }
 }
 
@@ -317,6 +345,8 @@ export async function createOneOffCharge(formData: FormData) {
   if (!parsed.success) return { error: parsed.error.errors[0].message }
 
   const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+
   const match = await ensureProjectMatchesVendor(supabase, parsed.data.project_id, parsed.data.vendor_id)
   if ('error' in match) return { error: match.error }
 
@@ -349,6 +379,17 @@ export async function createOneOffCharge(formData: FormData) {
     .single()
 
   if (error) return { error: error.message }
+
+  await logAuditEvent({
+    user_id: user?.id,
+    user_email: user?.email,
+    operation_type: 'create',
+    resource_type: 'oj_entry',
+    resource_id: data.id,
+    operation_status: 'success',
+    new_values: { entry_type: 'one_off', project_id: data.project_id, entry_date: data.entry_date, amount_ex_vat_snapshot: data.amount_ex_vat_snapshot },
+  })
+
   return { entry: data, success: true as const }
 }
 
@@ -374,10 +415,11 @@ export async function updateEntry(formData: FormData) {
   if (!parsed.success) return { error: parsed.error.errors[0].message }
 
   const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
 
   const { data: existing, error: fetchError } = await supabase
     .from('oj_entries')
-    .select('*')
+    .select('id, status')
     .eq('id', parsed.data.id)
     .single()
 
@@ -387,7 +429,13 @@ export async function updateEntry(formData: FormData) {
   const match = await ensureProjectMatchesVendor(supabase, parsed.data.project_id, parsed.data.vendor_id)
   if ('error' in match) return { error: match.error }
 
-  const settings = await getVendorSettingsOrDefault(supabase, parsed.data.vendor_id)
+  const entryWorkTypeId = parsed.data.entry_type === 'time' && parsed.data.work_type_id
+    ? String(parsed.data.work_type_id)
+    : null
+  const [settings, preloadedWorkTypeName] = await Promise.all([
+    getVendorSettingsOrDefault(supabase, parsed.data.vendor_id),
+    parsed.data.entry_type === 'time' ? getWorkTypeName(supabase, entryWorkTypeId) : Promise.resolve(null),
+  ])
 
   if (parsed.data.entry_type === 'time') {
     if (!parsed.data.start_time || !parsed.data.duration_minutes) {
@@ -406,8 +454,8 @@ export async function updateEntry(formData: FormData) {
     const roundedMinutes = Math.ceil(rawMinutes / 15) * 15
     if (roundedMinutes <= 0) return { error: 'Invalid duration after rounding' }
 
-    const workTypeId = parsed.data.work_type_id ? String(parsed.data.work_type_id) : null
-    const workTypeName = await getWorkTypeName(supabase, workTypeId)
+    const workTypeId = entryWorkTypeId
+    const workTypeName = preloadedWorkTypeName
 
     const { data, error } = await supabase
       .from('oj_entries')
@@ -434,6 +482,16 @@ export async function updateEntry(formData: FormData) {
 
     if (error) return { error: error.message }
     if (!data) return { error: 'Entry not found' }
+
+    await logAuditEvent({
+      user_id: user?.id,
+      user_email: user?.email,
+      operation_type: 'update',
+      resource_type: 'oj_entry',
+      resource_id: parsed.data.id,
+      operation_status: 'success',
+      new_values: { entry_type: 'time', duration_minutes_rounded: roundedMinutes },
+    })
 
     let warning: string | undefined
     try {
@@ -479,6 +537,17 @@ export async function updateEntry(formData: FormData) {
 
     if (error) return { error: error.message }
     if (!data) return { error: 'Entry not found' }
+
+    await logAuditEvent({
+      user_id: user?.id,
+      user_email: user?.email,
+      operation_type: 'update',
+      resource_type: 'oj_entry',
+      resource_id: parsed.data.id,
+      operation_status: 'success',
+      new_values: { entry_type: 'one_off', amount_ex_vat_snapshot: parsed.data.amount_ex_vat },
+    })
+
     return { entry: data, success: true as const }
   }
 
@@ -507,6 +576,17 @@ export async function updateEntry(formData: FormData) {
 
   if (error) return { error: error.message }
   if (!data) return { error: 'Entry not found' }
+
+  await logAuditEvent({
+    user_id: user?.id,
+    user_email: user?.email,
+    operation_type: 'update',
+    resource_type: 'oj_entry',
+    resource_id: parsed.data.id,
+    operation_status: 'success',
+    new_values: { entry_type: 'mileage', miles: parsed.data.miles },
+  })
+
   return { entry: data, success: true as const }
 }
 
@@ -517,7 +597,12 @@ export async function deleteEntry(formData: FormData) {
   const id = String(formData.get('id') || '')
   if (!id) return { error: 'Entry ID is required' }
 
+  // L16: Validate UUID format before using in DB query
+  if (!z.string().uuid().safeParse(id).success) return { error: 'Invalid entry ID' }
+
   const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+
   const { data: entry, error: fetchError } = await supabase
     .from('oj_entries')
     .select('id, status')
@@ -536,5 +621,15 @@ export async function deleteEntry(formData: FormData) {
 
   if (error) return { error: error.message }
   if (!deletedEntry) return { error: 'Entry not found' }
+
+  await logAuditEvent({
+    user_id: user?.id,
+    user_email: user?.email,
+    operation_type: 'delete',
+    resource_type: 'oj_entry',
+    resource_id: id,
+    operation_status: 'success',
+  })
+
   return { success: true as const }
 }

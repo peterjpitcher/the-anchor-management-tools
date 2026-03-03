@@ -332,6 +332,10 @@ export async function createInvoice(formData: FormData): Promise<CreateInvoiceRe
       return { error: 'You do not have permission to create invoices' }
     }
 
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return { error: 'Unauthorized' }
+
     // Parse and validate form data
     const validatedData = CreateInvoiceSchema.parse({
       vendor_id: formData.get('vendor_id'),
@@ -373,11 +377,13 @@ export async function createInvoice(formData: FormData): Promise<CreateInvoiceRe
     });
 
     await logAuditEvent({
+      user_id: user.id,
+      user_email: user.email,
       operation_type: 'create',
       resource_type: 'invoice',
       resource_id: invoice.id,
       operation_status: 'success',
-      new_values: { 
+      new_values: {
         invoice_number: invoice.invoice_number,
         vendor_id: invoice.vendor_id,
         total_amount: invoice.total_amount
@@ -386,8 +392,7 @@ export async function createInvoice(formData: FormData): Promise<CreateInvoiceRe
 
     revalidatePath('/invoices')
     revalidateTag('dashboard')
-    revalidatePath('/dashboard')
-    
+
     return { success: true, invoice }
   } catch (error: any) {
     console.error('Error in createInvoice:', error)
@@ -418,19 +423,23 @@ export async function updateInvoiceStatus(formData: FormData) {
     if (newStatus === 'void' && !force) {
       const adminClient = createAdminClient()
 
-      const { count: entryCount, error: entryError } = await adminClient
-        .from('oj_entries')
-        .select('id', { count: 'exact', head: true })
-        .eq('invoice_id', invoiceId)
+      const [
+        { count: entryCount, error: entryError },
+        { count: recurringCount, error: recurringError },
+      ] = await Promise.all([
+        adminClient
+          .from('oj_entries')
+          .select('id', { count: 'exact', head: true })
+          .eq('invoice_id', invoiceId),
+        adminClient
+          .from('oj_recurring_charge_instances')
+          .select('id', { count: 'exact', head: true })
+          .eq('invoice_id', invoiceId),
+      ])
 
       if (entryError) {
         return { error: entryError.message || 'Failed to check linked OJ Projects entries' }
       }
-
-      const { count: recurringCount, error: recurringError } = await adminClient
-        .from('oj_recurring_charge_instances')
-        .select('id', { count: 'exact', head: true })
-        .eq('invoice_id', invoiceId)
 
       if (recurringError) {
         return { error: recurringError.message || 'Failed to check linked OJ Projects recurring charges' }
@@ -445,8 +454,10 @@ export async function updateInvoiceStatus(formData: FormData) {
       }
     }
 
-    const { updatedInvoice, oldStatus } = await InvoiceService.updateInvoiceStatus(invoiceId, newStatus)
-    const { data: { user } } = await supabase.auth.getUser()
+    const [{ data: { user } }, { updatedInvoice, oldStatus }] = await Promise.all([
+      supabase.auth.getUser(),
+      InvoiceService.updateInvoiceStatus(invoiceId, newStatus),
+    ])
 
     await logAuditEvent({
       operation_type: 'update',
@@ -466,7 +477,6 @@ export async function updateInvoiceStatus(formData: FormData) {
     revalidatePath('/invoices')
     revalidatePath(`/invoices/${invoiceId}`)
     revalidateTag('dashboard')
-    revalidatePath('/dashboard')
     
     return { success: true, remittanceAdvice }
   } catch (error: any) {
@@ -502,7 +512,6 @@ export async function deleteInvoice(formData: FormData) {
 
     revalidatePath('/invoices')
     revalidateTag('dashboard')
-    revalidatePath('/dashboard')
     
     return { success: true }
   } catch (error: any) {
@@ -681,15 +690,17 @@ export async function recordPayment(formData: FormData) {
       return { error: invoiceBeforeError?.message || 'Invoice not found' }
     }
 
-    const payment = await InvoiceService.recordPayment({
-      invoice_id: invoiceId,
-      amount,
-      payment_date: paymentDate,
-      payment_method: paymentMethod,
-      reference: reference || undefined,
-      notes: notes || undefined
-    });
-    const { data: { user } } = await supabase.auth.getUser()
+    const [payment, { data: { user } }] = await Promise.all([
+      InvoiceService.recordPayment({
+        invoice_id: invoiceId,
+        amount,
+        payment_date: paymentDate,
+        payment_method: paymentMethod,
+        reference: reference || undefined,
+        notes: notes || undefined
+      }),
+      supabase.auth.getUser()
+    ])
 
     await logAuditEvent({
       operation_type: 'create',
@@ -743,13 +754,17 @@ export async function updateInvoice(formData: FormData) {
     }
 
     // Check if invoice exists and is draft
-    const supabase = await createClient() // Needed for existingInvoice check
-    const { data: existingInvoice, error: fetchError } = await supabase
-      .from('invoices')
-      .select('*')
-      .eq('id', invoiceId)
-      .is('deleted_at', null)
-      .single()
+    const supabase = await createClient()
+    const [{ data: { user } }, { data: existingInvoice, error: fetchError }] = await Promise.all([
+      supabase.auth.getUser(),
+      supabase
+        .from('invoices')
+        .select('id, status')
+        .eq('id', invoiceId)
+        .is('deleted_at', null)
+        .single()
+    ])
+    if (!user) return { error: 'Unauthorized' }
 
     if (fetchError || !existingInvoice) {
       return { error: 'Invoice not found' }
@@ -797,11 +812,13 @@ export async function updateInvoice(formData: FormData) {
     });
 
     await logAuditEvent({
+      user_id: user.id,
+      user_email: user.email,
       operation_type: 'update',
       resource_type: 'invoice',
       resource_id: invoiceId,
       operation_status: 'success',
-      new_values: { 
+      new_values: {
         invoice_number: updatedInvoice.invoice_number,
         total: updatedInvoice.total_amount
       }

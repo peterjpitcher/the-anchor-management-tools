@@ -2,7 +2,7 @@ import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { getAllBirthdays } from '@/app/actions/employee-birthdays'
 import { checkUserPermission } from '@/app/actions/rbac'
-import { 
+import {
   CakeIcon,
   ExclamationTriangleIcon,
   CalendarIcon
@@ -12,7 +12,6 @@ import { PageLayout } from '@/components/ui-v2/layout/PageLayout'
 import { Card } from '@/components/ui-v2/layout/Card'
 import { Badge } from '@/components/ui-v2/display/Badge'
 import { Alert } from '@/components/ui-v2/feedback/Alert'
-import { toast } from '@/components/ui-v2/feedback/Toast'
 import { EmptyState } from '@/components/ui-v2/display/EmptyState'
 import SendBirthdayRemindersButton from '@/components/features/employees/SendBirthdayRemindersButton'
 
@@ -45,13 +44,13 @@ export default async function EmployeeBirthdaysPage() {
   }
 
   const result = await getAllBirthdays()
-  
+
   if (result.error) {
     // In a server component we can't use toast directly.
     // We'll just render the empty state or an error message.
     console.error('[EmployeeBirthdaysPage] Error:', result.error)
   }
-  
+
   const birthdays = result.birthdays || []
 
   const getUpcomingBirthdayDate = (daysUntil: number) => {
@@ -78,14 +77,14 @@ export default async function EmployeeBirthdaysPage() {
     const birthdayDate = getUpcomingBirthdayDate(birthday.days_until_birthday);
     const monthIndex = getMonth(birthdayDate);
     const monthName = monthNames[monthIndex];
-    
+
     if (!acc[monthName]) {
       acc[monthName] = {
         monthIndex,
         birthdays: []
       };
     }
-    
+
     acc[monthName].birthdays.push(birthday);
     return acc;
   }, {} as Record<string, { monthIndex: number; birthdays: EmployeeBirthday[] }>);
@@ -162,7 +161,7 @@ export default async function EmployeeBirthdaysPage() {
                             <span className="text-xs sm:text-sm font-medium text-gray-900">
                               {format(new Date(birthday.date_of_birth), 'MMM d')}
                             </span>
-                            <Badge 
+                            <Badge
                               variant={getCountdownBadgeVariant(birthday.days_until_birthday) as 'default' | 'info' | 'warning' | 'error'}
                               className="text-xs px-1.5 py-0.5 sm:px-2 sm:py-1"
                             >

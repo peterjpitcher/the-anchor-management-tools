@@ -276,7 +276,7 @@ export async function GET(
 
     const { data: link, error } = await supabase
       .from('short_links')
-      .select('*')
+      .select('id, short_code, destination_url, metadata, expires_at')
       .eq('short_code', shortCode)
       .maybeSingle()
 
@@ -313,7 +313,7 @@ export async function GET(
 
       const { data: targetLink, error: targetError } = await supabase
         .from('short_links')
-        .select('*')
+        .select('id, short_code, destination_url, metadata, expires_at')
         .eq('id', alias.short_link_id)
         .maybeSingle()
 

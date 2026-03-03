@@ -56,7 +56,7 @@ export function SidebarItem({
 
   if (href && !disabled) {
     return (
-      <Link href={href} {...commonProps}>
+      <Link href={href} onClick={onClick} {...commonProps}>
         {content}
       </Link>
     );

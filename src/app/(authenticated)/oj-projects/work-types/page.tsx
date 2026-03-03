@@ -9,6 +9,7 @@ import { FormGroup } from '@/components/ui-v2/forms/FormGroup'
 import { Input } from '@/components/ui-v2/forms/Input'
 import { Alert } from '@/components/ui-v2/feedback/Alert'
 import { toast } from '@/components/ui-v2/feedback/Toast'
+import { EmptyState } from '@/components/ui-v2/display/EmptyState'
 import { usePermissions } from '@/contexts/PermissionContext'
 import { createWorkType, disableWorkType, getWorkTypes, updateWorkType } from '@/app/actions/oj-projects/work-types'
 import {
@@ -130,7 +131,12 @@ export default function OJWorkTypesPage() {
             }
           >
             {workTypes.length === 0 ? (
-              <div className="text-center py-6 text-gray-500">No work types found.</div>
+              <EmptyState
+                title="No work types found"
+                description="Add a work type below to get started."
+                variant="minimal"
+                size="sm"
+              />
             ) : (
               <div className="space-y-3">
                 {workTypes.map((wt) => (

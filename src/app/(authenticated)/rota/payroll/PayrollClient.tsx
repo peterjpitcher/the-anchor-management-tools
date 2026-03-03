@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useTransition } from 'react';
+import { useEffect, useState, useTransition, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import toast from 'react-hot-toast';
 import { CheckCircleIcon, ArrowDownTrayIcon, EnvelopeIcon, ChevronDownIcon, ChevronRightIcon, PencilSquareIcon, TrashIcon, ChatBubbleBottomCenterTextIcon } from '@heroicons/react/24/outline';
@@ -22,6 +22,7 @@ interface PayrollClientProps {
   period: PayrollPeriod;
   canApprove: boolean;
   canSend: boolean;
+  canExport: boolean;
   monthOptions: { label: string; value: string }[];
   dayInfo?: Record<string, RotaDayInfo>;
 }
@@ -133,6 +134,7 @@ export default function PayrollClient({
   period: initialPeriod,
   canApprove,
   canSend,
+  canExport,
   monthOptions,
   dayInfo,
 }: PayrollClientProps) {
@@ -228,16 +230,20 @@ export default function PayrollClient({
   const collapseAll = () => setExpandedDates(new Set());
 
   // Group rows by date in chronological order
-  const byDate = new Map<string, PayrollRow[]>();
-  for (const row of initialRows) {
-    if (!byDate.has(row.date)) byDate.set(row.date, []);
-    byDate.get(row.date)!.push(row);
-  }
-  const sortedDates = [...byDate.keys()].sort();
+  const { byDate, sortedDates } = useMemo(() => {
+    const map = new Map<string, PayrollRow[]>();
+    for (const row of initialRows) {
+      if (!map.has(row.date)) map.set(row.date, []);
+      map.get(row.date)!.push(row);
+    }
+    return { byDate: map, sortedDates: [...map.keys()].sort() };
+  }, [initialRows]);
 
-  const totalPay = employees.reduce((s, e) => s + (e.totalPay ?? 0), 0);
-  const totalActual = employees.reduce((s, e) => s + e.actualHours, 0);
-  const totalPlanned = employees.reduce((s, e) => s + e.plannedHours, 0);
+  const { totalPay, totalActual, totalPlanned } = useMemo(() => ({
+    totalPay: employees.reduce((s, e) => s + (e.totalPay ?? 0), 0),
+    totalActual: employees.reduce((s, e) => s + e.actualHours, 0),
+    totalPlanned: employees.reduce((s, e) => s + e.plannedHours, 0),
+  }), [employees]);
 
   const handleApprove = () => {
     startApproveTransition(async () => {
@@ -333,7 +339,7 @@ export default function PayrollClient({
           )}
         </div>
         <div className="flex gap-2">
-          {approval && (
+          {canExport && approval && (
             <a
               href={`/api/rota/export?year=${year}&month=${month}`}
               className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-gray-200 text-sm text-gray-700 hover:bg-gray-50 font-medium"

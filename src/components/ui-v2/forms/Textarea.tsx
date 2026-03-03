@@ -9,7 +9,7 @@
  * Optimized for mobile with proper touch targets.
  */
 
-import { TextareaHTMLAttributes, forwardRef, useEffect, useRef, useState } from 'react'
+import { TextareaHTMLAttributes, forwardRef, useCallback, useEffect, useRef, useState } from 'react'
 import { cn } from '@/lib/utils'
 import { ExclamationCircleIcon } from '@heroicons/react/20/solid'
 
@@ -27,10 +27,10 @@ export interface TextareaProps extends TextareaHTMLAttributes<HTMLTextAreaElemen
   textareaSize?: 'sm' | 'md' | 'lg'
   
   /**
-   * Whether the textarea has an error
-   * @default false
+   * Error state. Pass a string to display a message below the textarea; pass `true` for red
+   * border only (backwards-compatible with boolean usage). Also triggers aria-invalid.
    */
-  error?: boolean
+  error?: string | boolean
   
   /**
    * Whether to auto-resize based on content
@@ -71,7 +71,7 @@ export interface TextareaProps extends TextareaHTMLAttributes<HTMLTextAreaElemen
 export const Textarea = forwardRef<HTMLTextAreaElement, TextareaProps>(({
   variant = 'default',
   textareaSize = 'md',
-  error = false,
+  error,
   autoResize = false,
   minRows = 3,
   maxRows = 10,
@@ -142,28 +142,28 @@ export const Textarea = forwardRef<HTMLTextAreaElement, TextareaProps>(({
   )
   
   // Handle auto-resize
-  const adjustHeight = () => {
+  const adjustHeight = useCallback(() => {
     const textarea = textareaRef.current
     if (!textarea || !autoResize) return
-    
+
     // Reset height to get accurate scrollHeight
     textarea.style.height = 'auto'
-    
+
     // Calculate new height
     const lineHeight = parseInt(window.getComputedStyle(textarea).lineHeight)
     const minHeight = minRows * lineHeight
     const maxHeight = maxRows * lineHeight
     const scrollHeight = textarea.scrollHeight
-    
+
     // Set new height within bounds
     const newHeight = Math.min(Math.max(scrollHeight, minHeight), maxHeight)
     textarea.style.height = `${newHeight}px`
-  }
-  
+  }, [autoResize, minRows, maxRows])
+
   // Update character count
-  const updateCharCount = (text: string) => {
+  const updateCharCount = useCallback((text: string) => {
     setCharCount(text.length)
-  }
+  }, [])
   
   // Handle change
   const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
@@ -195,54 +195,66 @@ export const Textarea = forwardRef<HTMLTextAreaElement, TextareaProps>(({
     if (autoResize) {
       adjustHeight()
     }
-  }, [value, defaultValue, showCount, autoResize])
-  
+  }, [value, defaultValue, showCount, autoResize, adjustHeight, updateCharCount])
+
   // Adjust height when value changes externally
   useEffect(() => {
     if (autoResize) {
       adjustHeight()
     }
-  }, [value, autoResize])
+  }, [value, autoResize, adjustHeight])
   
+  const errorId = props.id ? `${props.id}-error` : 'textarea-error'
+
   return (
-    <div className={wrapperClasses}>
-      <textarea
-        ref={setRefs}
-        className={textareaClasses}
-        onChange={handleChange}
-        value={value}
-        defaultValue={defaultValue}
-        maxLength={maxLength}
-        rows={autoResize ? minRows : props.rows}
-        aria-invalid={error}
-        aria-describedby={
-          error && props['aria-describedby']
-            ? `${props['aria-describedby']} ${props.id}-error`
-            : props['aria-describedby']
-        }
-        {...props}
-      />
-      
-      {/* Error icon */}
-      {error && (
-        <div className="absolute top-2 right-2 pointer-events-none">
-          <ExclamationCircleIcon className="h-5 w-5 text-red-500" />
-        </div>
+    <>
+      <div className={wrapperClasses}>
+        <textarea
+          ref={setRefs}
+          className={textareaClasses}
+          onChange={handleChange}
+          value={value}
+          defaultValue={defaultValue}
+          maxLength={maxLength}
+          rows={autoResize ? minRows : props.rows}
+          aria-invalid={!!error || undefined}
+          aria-describedby={
+            typeof error === 'string' && error
+              ? props['aria-describedby']
+                ? `${props['aria-describedby']} ${errorId}`
+                : errorId
+              : props['aria-describedby']
+          }
+          {...props}
+        />
+
+        {/* Error icon */}
+        {error && (
+          <div className="absolute top-2 right-2 pointer-events-none">
+            <ExclamationCircleIcon className="h-5 w-5 text-red-500" />
+          </div>
+        )}
+
+        {/* Character count */}
+        {showCount && (
+          <div className={cn(
+            'absolute bottom-2 right-2 text-xs pointer-events-none',
+            charCount > (maxLength || Infinity) * 0.9
+              ? 'text-red-600'
+              : 'text-gray-400'
+          )}>
+            {charCount}
+            {maxLength && `/${maxLength}`}
+          </div>
+        )}
+      </div>
+
+      {typeof error === 'string' && error && (
+        <p id={errorId} className="mt-1 text-sm text-red-600">
+          {error}
+        </p>
       )}
-      
-      {/* Character count */}
-      {showCount && (
-        <div className={cn(
-          'absolute bottom-2 right-2 text-xs pointer-events-none',
-          charCount > (maxLength || Infinity) * 0.9
-            ? 'text-red-600'
-            : 'text-gray-400'
-        )}>
-          {charCount}
-          {maxLength && `/${maxLength}`}
-        </div>
-      )}
-    </div>
+    </>
   )
 })
 

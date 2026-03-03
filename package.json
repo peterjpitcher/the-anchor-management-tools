@@ -12,7 +12,8 @@
     "start": "next start",
     "lint": "eslint src --max-warnings=0",
     "postinstall": "patch-package",
-    "test": "VITE_CJS_IGNORE_WARNING=true vitest run"
+    "test": "VITE_CJS_IGNORE_WARNING=true vitest run",
+    "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
     "@azure/identity": "^4.10.2",

@@ -200,6 +200,12 @@ export function PageLayout({
           className,
         )}
       >
+        <a
+          href="#main-content"
+          className="sr-only focus:not-sr-only focus:absolute focus:top-4 focus:left-4 focus:z-50 focus:bg-white focus:px-4 focus:py-2 focus:rounded-md focus:shadow-lg focus:text-sm focus:font-medium"
+        >
+          Skip to main content
+        </a>
         <PageHeader
           title={title}
           subtitle={subtitle}
@@ -220,7 +226,7 @@ export function PageLayout({
           headerActions={headerActionsNode}
         />
 
-        <main className={cn('flex-1', padded && 'pb-4 sm:pb-6 md:pb-8')}>
+        <main id="main-content" className={cn('flex-1', padded && 'pb-4 sm:pb-6 md:pb-8')}>
           <Container
             size={containerSize}
             className={cn(

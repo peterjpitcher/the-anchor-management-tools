@@ -72,7 +72,7 @@ export default async function TableBookingReportsPage({ searchParams }: TableBoo
     getUserPermissions()
   ])
 
-  if (!canViewTableBookings && !canViewReports) {
+  if (!canViewReports) {
     redirect('/unauthorized')
   }
 

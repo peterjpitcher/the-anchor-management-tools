@@ -12,6 +12,7 @@ import {
 } from '@heroicons/react/24/outline'
 import { PageLayout } from '@/components/ui-v2/layout/PageLayout'
 import { Card, CardTitle } from '@/components/ui-v2/layout/Card'
+import { EmptyState } from '@/components/ui-v2/display/EmptyState'
 import { Badge } from '@/components/ui-v2/display/Badge'
 import { Button } from '@/components/ui-v2/forms/Button'
 import { formatDate, getLocalIsoDateDaysAhead, getTodayIsoDate } from '@/lib/dateUtils'
@@ -448,10 +449,12 @@ export default async function DashboardPage() {
               }
             >
               {todayItemCount === 0 ? (
-                <div className="text-center py-8 text-gray-500">
-                  <CalendarIcon className="h-12 w-12 mx-auto text-gray-300 mb-2" />
-                  <p>Nothing scheduled for today.</p>
-                </div>
+                <EmptyState
+                  icon="calendar"
+                  title="Nothing scheduled for today"
+                  variant="minimal"
+                  size="sm"
+                />
               ) : (
                 <div className="divide-y divide-gray-100">
                   {/* Overdue Invoices - High Priority */}

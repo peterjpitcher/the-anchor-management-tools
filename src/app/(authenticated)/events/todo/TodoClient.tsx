@@ -130,7 +130,7 @@ export default function TodoClient({ initialItems, initialError }: TodoClientPro
       key: 'actions',
       header: '',
       width: '120px',
-      cell: (item: ChecklistTodoItem) => (
+      cell: (item: ChecklistTodoItem) => canManageEvents ? (
         <Button
           size="sm"
           variant="success"
@@ -139,7 +139,7 @@ export default function TodoClient({ initialItems, initialError }: TodoClientPro
         >
           Mark done
         </Button>
-      ),
+      ) : null,
       align: 'right' as const,
     }
   ]

@@ -82,22 +82,27 @@ export async function submitLeaveRequest(input: z.infer<typeof SubmitLeaveSchema
     return { success: false, error: 'Leave requests cannot be submitted for past dates' };
   }
 
-  // Check for overlapping non-declined requests
-  const supabaseCheck = await createClient();
-  const { data: overlapping } = await supabaseCheck
-    .from('leave_requests')
-    .select('id')
-    .eq('employee_id', employeeId)
-    .neq('status', 'declined')
-    .lte('start_date', endDate)
-    .gte('end_date', startDate);
+  const supabase = await createClient();
+
+  // Check for overlapping non-declined requests and fetch rota settings in parallel
+  const [overlappingRes, rotaSettings] = await Promise.all([
+    supabase
+      .from('leave_requests')
+      .select('id')
+      .eq('employee_id', employeeId)
+      .neq('status', 'declined')
+      .lte('start_date', endDate)
+      .gte('end_date', startDate),
+    getRotaSettings(),
+  ]);
+
+  const { data: overlapping } = overlappingRes;
   if (overlapping && overlapping.length > 0) {
     return { success: false, error: 'You already have a leave request covering some of these dates' };
   }
 
-  const { holidayYearStartMonth, holidayYearStartDay } = await getRotaSettings();
+  const { holidayYearStartMonth, holidayYearStartDay } = rotaSettings;
   const holidayYear = getHolidayYear(parseISO(startDate), holidayYearStartMonth, holidayYearStartDay);
-  const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
 
   // Insert request
@@ -189,7 +194,7 @@ export async function reviewLeaveRequest(
 
   const { data: request, error: fetchError } = await supabase
     .from('leave_requests')
-    .select('*, employees(email_address, first_name)')
+    .select('id, status, start_date, end_date, employee_id, employees(email_address, first_name)')
     .eq('id', requestId)
     .single();
 
@@ -214,7 +219,7 @@ export async function reviewLeaveRequest(
   }
 
   // Send decision email to employee
-  const employee = (request as { employees: { email_address: string; first_name: string } | null }).employees;
+  const employee = (request as unknown as { employees: { email_address: string; first_name: string } | null }).employees;
   if (employee?.email_address) {
     const decisionSubject = `Holiday Request ${decision === 'approved' ? 'Approved' : 'Declined'}`;
     const decisionResult = await sendEmail({
@@ -384,23 +389,26 @@ export async function getHolidayUsage(employeeId: string, holidayYear: number): 
 > {
   const supabase = await createClient();
 
-  // Fetch the employee's personal allowance (falls back to default if no pay settings row)
-  const { data: paySetting } = await supabase
-    .from('employee_pay_settings')
-    .select('holiday_allowance_days')
-    .eq('employee_id', employeeId)
-    .single();
+  // Parallelise three independent fetches
+  const [paySettingRes, rotaSettings, requestsRes] = await Promise.all([
+    supabase
+      .from('employee_pay_settings')
+      .select('holiday_allowance_days')
+      .eq('employee_id', employeeId)
+      .single(),
+    getRotaSettings(),
+    supabase
+      .from('leave_requests')
+      .select('id')
+      .eq('employee_id', employeeId)
+      .eq('holiday_year', holidayYear)
+      .eq('status', 'approved'),
+  ]);
 
-  const { defaultHolidayDays } = await getRotaSettings();
+  const { data: paySetting } = paySettingRes;
+  const { defaultHolidayDays } = rotaSettings;
   const allowance = paySetting?.holiday_allowance_days ?? defaultHolidayDays;
-
-  // Fetch approved/pending request IDs for this employee and year
-  const { data: requests } = await supabase
-    .from('leave_requests')
-    .select('id')
-    .eq('employee_id', employeeId)
-    .eq('holiday_year', holidayYear)
-    .neq('status', 'declined');
+  const { data: requests } = requestsRes;
 
   const requestIds = (requests ?? []).map(r => r.id);
 

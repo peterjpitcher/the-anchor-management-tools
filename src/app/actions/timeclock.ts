@@ -31,13 +31,18 @@ async function invalidatePayrollApprovalsForDate(
     .lte('period_start', workDate)
     .gte('period_end', workDate);
 
-  for (const period of periods ?? []) {
-    await supabase
-      .from('payroll_month_approvals')
-      .delete()
-      .eq('year', period.year)
-      .eq('month', period.month);
-  }
+  if (!periods?.length) return;
+
+  // Parallelise deletes across periods instead of awaiting them serially
+  await Promise.all(
+    periods.map(period =>
+      supabase
+        .from('payroll_month_approvals')
+        .delete()
+        .eq('year', period.year)
+        .eq('month', period.month),
+    ),
+  );
 }
 
 export type TimeclockSession = {
@@ -67,6 +72,14 @@ export async function clockIn(employeeId: string): Promise<
 > {
   // Use service-role or anon client — FOH page is open access
   const supabase = await createClient();
+
+  const { data: employee } = await supabase
+    .from('employees')
+    .select('employee_id, status')
+    .eq('employee_id', employeeId)
+    .single();
+  if (!employee) return { success: false, error: 'Employee not found' };
+  if (employee.status !== 'Active') return { success: false, error: 'Employee is not active' };
 
   // Prevent double clock-in
   const { data: openSession } = await supabase
@@ -124,7 +137,7 @@ export async function clockOut(employeeId: string): Promise<
 
   const { data: openSession, error: findError } = await supabase
     .from('timeclock_sessions')
-    .select('*')
+    .select('id, work_date')
     .eq('employee_id', employeeId)
     .is('clock_out_at', null)
     .single();

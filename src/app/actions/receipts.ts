@@ -691,7 +691,7 @@ async function applyAutomationRules(
     rulesQuery = rulesQuery.eq('id', targetRuleId)
   }
 
-  const [{ data: rules, error: rulesError }] = await Promise.all([rulesQuery])
+  const { data: rules, error: rulesError } = await rulesQuery
 
   const chunkSize = 100
   const idChunks: string[][] = []
@@ -1165,7 +1165,6 @@ export async function finalizeReceiptRuleRetroRun(input: {
   revalidatePath('/receipts/monthly')
   revalidatePath('/receipts/pnl')
   revalidateTag('dashboard')
-  revalidatePath('/dashboard')
 
   return { success: true }
 }
@@ -1386,7 +1385,6 @@ export async function importReceiptStatement(formData: FormData) {
   revalidatePath('/receipts/monthly')
   revalidatePath('/receipts/pnl')
   revalidateTag('dashboard')
-  revalidatePath('/dashboard')
 
   return {
     success: true,
@@ -1423,23 +1421,24 @@ export async function markReceiptTransaction(input: {
   const supabase = createAdminClient()
   const { user_id, user_email } = await getCurrentUser()
 
-  const { data: existing, error: existingError } = await supabase
-    .from('receipt_transactions')
-    .select('*')
-    .eq('id', input.transactionId)
-    .single()
+  const [{ data: existing, error: existingError }, { data: profile }] = await Promise.all([
+    supabase
+      .from('receipt_transactions')
+      .select('id, status')
+      .eq('id', input.transactionId)
+      .single(),
+    supabase
+      .from('profiles')
+      .select('full_name')
+      .eq('id', user_id)
+      .single(),
+  ])
 
   if (existingError || !existing) {
     return { error: 'Transaction not found' }
   }
 
   const now = new Date().toISOString()
-
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('full_name')
-    .eq('id', user_id)
-    .single()
 
   const updatePayload = {
     status: validation.data.status,
@@ -1495,7 +1494,6 @@ export async function markReceiptTransaction(input: {
   revalidatePath('/receipts/monthly')
   revalidatePath('/receipts/pnl')
   revalidateTag('dashboard')
-  revalidatePath('/dashboard')
 
   return { success: true, transaction: updated }
 }
@@ -1636,7 +1634,6 @@ export async function updateReceiptClassification(input: {
   revalidatePath('/receipts/vendors')
   revalidatePath('/receipts/pnl')
   revalidateTag('dashboard')
-  revalidatePath('/dashboard')
 
   return {
     success: true,
@@ -1665,11 +1662,18 @@ export async function uploadReceiptForTransaction(formData: FormData) {
   const supabase = createAdminClient()
   const { user_id, user_email } = await getCurrentUser()
 
-  const { data: transaction, error: txError } = await supabase
-    .from('receipt_transactions')
-    .select('*')
-    .eq('id', transactionId)
-    .single()
+  const [{ data: transaction, error: txError }, { data: profile }] = await Promise.all([
+    supabase
+      .from('receipt_transactions')
+      .select('id, transaction_date, details, amount_in, amount_out, status')
+      .eq('id', transactionId)
+      .single(),
+    supabase
+      .from('profiles')
+      .select('full_name')
+      .eq('id', user_id)
+      .single(),
+  ])
 
   if (txError || !transaction) {
     return { error: 'Transaction not found' }
@@ -1680,7 +1684,7 @@ export async function uploadReceiptForTransaction(formData: FormData) {
 
   const extension = file.name.includes('.') ? file.name.split('.').pop() || 'pdf' : 'pdf'
   const amount = transaction.amount_out ?? transaction.amount_in ?? 0
-  const { friendlyName, storagePath } = composeReceiptFileArtifacts(transaction, amount, extension)
+  const { friendlyName, storagePath } = composeReceiptFileArtifacts(transaction as ReceiptTransaction, amount, extension)
 
   const { error: uploadError } = await supabase.storage
     .from(RECEIPT_BUCKET)
@@ -1720,12 +1724,6 @@ export async function uploadReceiptForTransaction(formData: FormData) {
 
     return { error: 'Failed to store receipt metadata.' }
   }
-
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('full_name')
-    .eq('id', user_id)
-    .single()
 
   const updatePayload = {
     status: 'completed' satisfies ReceiptTransaction['status'],
@@ -1796,7 +1794,6 @@ export async function uploadReceiptForTransaction(formData: FormData) {
 
   revalidatePath('/receipts')
   revalidateTag('dashboard')
-  revalidatePath('/dashboard')
 
   return { success: true, receipt }
 }
@@ -1822,7 +1819,7 @@ export async function deleteReceiptFile(fileId: string) {
 
   const { data: transaction, error: transactionError } = await supabase
     .from('receipt_transactions')
-    .select('*')
+    .select('id, status')
     .eq('id', receipt.transaction_id)
     .single()
 
@@ -1925,7 +1922,6 @@ export async function deleteReceiptFile(fileId: string) {
 
   revalidatePath('/receipts')
   revalidateTag('dashboard')
-  revalidatePath('/dashboard')
 
   return { success: true }
 }
@@ -1994,7 +1990,6 @@ export async function createReceiptRule(formData: FormData): Promise<RuleMutatio
 
   revalidatePath('/receipts')
   revalidateTag('dashboard')
-  revalidatePath('/dashboard')
 
   return { success: true, rule, canPromptRetro: true }
 }
@@ -2061,7 +2056,6 @@ export async function updateReceiptRule(ruleId: string, formData: FormData): Pro
 
   revalidatePath('/receipts')
   revalidateTag('dashboard')
-  revalidatePath('/dashboard')
 
   return { success: true, rule: updated, canPromptRetro: true }
 }
@@ -2101,7 +2095,6 @@ export async function toggleReceiptRule(ruleId: string, isActive: boolean) {
 
   revalidatePath('/receipts')
   revalidateTag('dashboard')
-  revalidatePath('/dashboard')
 
   return { success: true, rule: updated }
 }
@@ -2131,7 +2124,6 @@ export async function deleteReceiptRule(ruleId: string) {
 
   revalidatePath('/receipts')
   revalidateTag('dashboard')
-  revalidatePath('/dashboard')
 
   return { success: true }
 }
@@ -2196,7 +2188,7 @@ export async function getReceiptWorkspaceData(filters: ReceiptWorkspaceFilters =
 
   let baseQuery = supabase
     .from('receipt_transactions')
-    .select('*, receipt_files(*), receipt_rules!receipt_transactions_rule_applied_id_fkey(id, name)', { count: 'exact' })
+    .select('*, receipt_files(*), receipt_rules!receipt_transactions_rule_applied_id_fkey(id,name)', { count: 'exact' })
 
   orderDefinitions.forEach((order) => {
     baseQuery = baseQuery.order(order.column, { ascending: order.ascending, nullsFirst: order.nullsFirst })
@@ -2615,7 +2607,6 @@ export async function applyReceiptGroupClassification(input: {
   revalidatePath('/receipts/vendors')
   revalidatePath('/receipts/pnl')
   revalidateTag('dashboard')
-  revalidatePath('/dashboard')
 
   return { success: true, updated: updatedIds.length, skippedIncomingCount }
 }
@@ -2665,7 +2656,6 @@ export async function createReceiptRuleFromGroup(input: {
   if ('success' in result) {
     revalidatePath('/receipts/bulk')
     revalidateTag('dashboard')
-    revalidatePath('/dashboard')
   }
 
   return result
@@ -2677,7 +2667,7 @@ async function fetchSummary(): Promise<ReceiptWorkspaceSummary> {
     supabase.rpc('count_receipt_statuses'),
     supabase
       .from('receipt_batches')
-      .select('*')
+      .select('id, uploaded_at, uploaded_by, original_filename, source_hash, row_count, notes, created_at')
       .order('uploaded_at', { ascending: false })
       .limit(1)
       .maybeSingle(),
@@ -3154,6 +3144,7 @@ export async function getReceiptVendorMonthTransactions(input: {
   const { data, error } = await supabase
     .from('receipt_transactions')
     .select('id, transaction_date, details, amount_in, amount_out, status, vendor_name, transaction_type')
+    .eq('vendor_name', normalizedVendor)
     .gte('transaction_date', start.toISOString())
     .lt('transaction_date', end.toISOString())
     .order('transaction_date', { ascending: true })
@@ -3166,10 +3157,8 @@ export async function getReceiptVendorMonthTransactions(input: {
 
   const rows = Array.isArray(data) ? data : []
 
-  const filtered = rows.filter((row) => normalizeVendorInput(row?.vendor_name) === normalizedVendor)
-
   return {
-    transactions: filtered.map((row) => ({
+    transactions: rows.map((row) => ({
       id: row.id,
       transaction_date: row.transaction_date,
       details: row.details,
@@ -3195,6 +3184,7 @@ export async function getReceiptMissingExpenseSummary(): Promise<ReceiptMissingE
     .select('vendor_name, amount_out, amount_in, transaction_date')
     .is('expense_category', null)
     .not('amount_out', 'is', null)
+    .limit(5000)
 
   if (error) {
     console.error('Failed to load missing expense summary', error)
@@ -3251,6 +3241,7 @@ export async function requeueUnclassifiedTransactions(): Promise<{ success: bool
     .select('id, batch_id')
     .is('vendor_name', null)
     .is('vendor_source', null)
+    .limit(5000)
 
   if (error) {
     console.error('Failed to load unclassified transactions for requeue', error)
@@ -3304,19 +3295,19 @@ export async function previewReceiptRule(formData: FormData): Promise<{ success:
 
   const supabase = createAdminClient()
 
-  // Load all active rules for overlap detection
-  const { data: activeRules } = await supabase
-    .from('receipt_rules')
-    .select('*')
-    .eq('is_active', true)
+  // Load active rules and sample transactions in parallel
+  const [{ data: activeRules }, { data: transactions }] = await Promise.all([
+    supabase
+      .from('receipt_rules')
+      .select('*')
+      .eq('is_active', true),
+    supabase
+      .from('receipt_transactions')
+      .select('id, details, transaction_type, amount_in, amount_out, status, vendor_name, expense_category')
+      .limit(2000),
+  ])
 
   const rules = (activeRules ?? []) as ReceiptRule[]
-
-  // Sample transactions to preview against
-  const { data: transactions } = await supabase
-    .from('receipt_transactions')
-    .select('id, details, transaction_type, amount_in, amount_out, status, vendor_name, expense_category')
-    .limit(2000)
 
   const txRows = (transactions ?? []) as Array<Pick<ReceiptTransaction, 'id' | 'details' | 'transaction_type' | 'amount_in' | 'amount_out' | 'status' | 'vendor_name' | 'expense_category'>>
 

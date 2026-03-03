@@ -73,7 +73,7 @@ export default async function WeeklyCashupPage({ searchParams }: { searchParams:
           </thead>
           <tbody>
             {weeklyData.length === 0 ? (
-              <tr><td colSpan={5} className="px-6 py-4 text-center">No data found for this week</td></tr>
+              <tr><td colSpan={4} className="px-6 py-4 text-center">No data found for this week</td></tr>
             ) : (
               weeklyData.map((row: any) => (
                 <tr key={row.session_date} className="bg-white border-b hover:bg-gray-50">

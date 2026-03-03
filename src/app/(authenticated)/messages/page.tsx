@@ -347,9 +347,11 @@ export default function MessagesPage() {
 
   const navActions = (
     <div className="flex flex-wrap items-center gap-2">
-      <LinkButton href="/messages/bulk" variant="primary" size="sm">
-        Send Bulk Message
-      </LinkButton>
+      {canSendMessages && (
+        <LinkButton href="/messages/bulk" variant="primary" size="sm">
+          Send Bulk Message
+        </LinkButton>
+      )}
       <Button
         variant="secondary"
         size="sm"

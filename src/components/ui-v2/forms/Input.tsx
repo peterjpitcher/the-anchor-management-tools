@@ -26,10 +26,10 @@ export interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
   inputSize?: 'sm' | 'md' | 'lg'
   
   /**
-   * Whether the input has an error
-   * @default false
+   * Error state. Pass a string to display a message below the input; pass `true` for red
+   * border only (backwards-compatible with boolean usage). Also triggers aria-invalid.
    */
-  error?: boolean
+  error?: string | boolean
   
   /**
    * Icon to display on the left side
@@ -72,7 +72,7 @@ export interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
 export const Input = forwardRef<HTMLInputElement, InputProps>(({
   variant = 'default',
   inputSize = 'md',
-  error = false,
+  error,
   leftIcon,
   rightIcon,
   leftElement,
@@ -187,56 +187,68 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(({
     inputSize === 'lg' && 'right-4'
   )
   
+  const errorId = props.id ? `${props.id}-error` : 'input-error'
+
   return (
-    <div className={wrapperClasses}>
-      {/* Left icon/element */}
-      {leftIcon && (
-        <div className={leftIconClasses}>
-          {leftIcon}
-        </div>
+    <>
+      <div className={wrapperClasses}>
+        {/* Left icon/element */}
+        {leftIcon && (
+          <div className={leftIconClasses}>
+            {leftIcon}
+          </div>
+        )}
+        {leftElement && (
+          <div className="absolute inset-y-0 left-0 flex items-center">
+            {leftElement}
+          </div>
+        )}
+
+        {/* Input */}
+        <input
+          ref={ref}
+          className={inputClasses}
+          disabled={disabled || loading}
+          aria-invalid={!!error || undefined}
+          aria-describedby={
+            typeof error === 'string' && error
+              ? props['aria-describedby']
+                ? `${props['aria-describedby']} ${errorId}`
+                : errorId
+              : props['aria-describedby']
+          }
+          {...props}
+        />
+
+        {/* Right icon/element/error/loading */}
+        {loading && (
+          <div className={cn(rightIconClasses, 'pointer-events-auto')}>
+            <Spinner size="sm" />
+          </div>
+        )}
+        {!loading && error && (
+          <div className={cn(rightIconClasses, 'text-red-500')}>
+            <ExclamationCircleIcon />
+          </div>
+        )}
+        {!loading && !error && rightIcon && (
+          <div className={cn(rightIconClasses, 'text-gray-400', 'pointer-events-auto')}>
+            {rightIcon}
+          </div>
+        )}
+        {rightElement && (
+          <div className="absolute inset-y-0 right-0 flex items-center">
+            {rightElement}
+          </div>
+        )}
+      </div>
+
+      {typeof error === 'string' && error && (
+        <p id={errorId} className="mt-1 text-sm text-red-600">
+          {error}
+        </p>
       )}
-      {leftElement && (
-        <div className="absolute inset-y-0 left-0 flex items-center">
-          {leftElement}
-        </div>
-      )}
-      
-      {/* Input */}
-      <input
-        ref={ref}
-        className={inputClasses}
-        disabled={disabled || loading}
-        aria-invalid={error}
-        aria-describedby={
-          error && props['aria-describedby']
-            ? `${props['aria-describedby']} ${props.id}-error`
-            : props['aria-describedby']
-        }
-        {...props}
-      />
-      
-      {/* Right icon/element/error/loading */}
-      {loading && (
-        <div className={cn(rightIconClasses, 'pointer-events-auto')}>
-          <Spinner size="sm" />
-        </div>
-      )}
-      {!loading && error && (
-        <div className={cn(rightIconClasses, 'text-red-500')}>
-          <ExclamationCircleIcon />
-        </div>
-      )}
-      {!loading && !error && rightIcon && (
-        <div className={cn(rightIconClasses, 'text-gray-400', 'pointer-events-auto')}>
-          {rightIcon}
-        </div>
-      )}
-      {rightElement && (
-        <div className="absolute inset-y-0 right-0 flex items-center">
-          {rightElement}
-        </div>
-      )}
-    </div>
+    </>
   )
 })
 

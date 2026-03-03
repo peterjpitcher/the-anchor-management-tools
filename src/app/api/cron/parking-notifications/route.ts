@@ -489,7 +489,7 @@ async function processPendingPaymentLifecycle(
 ) {
   const { data: bookings, error } = await supabase
     .from('parking_bookings')
-    .select('*')
+    .select('id, customer_id, customer_mobile, customer_email, payment_due_at, expires_at, unpaid_day_before_sms_sent, unpaid_week_before_sms_sent')
     .eq('status', 'pending_payment')
     .eq('payment_status', 'pending')
     .not('payment_due_at', 'is', null)
@@ -670,7 +670,7 @@ async function processPaidSessionReminders(
 ) {
   const { data: bookings, error } = await supabase
     .from('parking_bookings')
-    .select('*')
+    .select('id, customer_id, customer_mobile, customer_email, start_at, end_at, paid_start_three_day_sms_sent, paid_end_three_day_sms_sent')
     .eq('status', 'confirmed')
     .eq('payment_status', 'paid')
 
