@@ -3,6 +3,7 @@ import { headers } from 'next/headers'
 import { checkGuestTokenThrottle } from '@/lib/guest/token-throttle'
 import { formatGuestGreeting, normalizeGuestFirstName } from '@/lib/guest/names'
 import { GuestPageShell } from '@/components/features/shared/GuestPageShell'
+import { GuestSubmitButton } from '@/components/features/shared/GuestSubmitButton'
 import {
   formatChargeRequestType,
   getChargeApprovalPreviewByRawToken,
@@ -260,23 +261,23 @@ export default async function ChargeRequestApprovalPage({
               )}
 
               <div className="flex flex-col gap-3 sm:flex-row">
-                <button
-                  type="submit"
-                  className="inline-flex items-center justify-center rounded-md bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700"
+                <GuestSubmitButton
+                  className="inline-flex items-center justify-center rounded-md bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-50"
+                  loadingText="Processing..."
                 >
                   Approve and attempt charge
-                </button>
+                </GuestSubmitButton>
               </div>
             </form>
 
             <form method="post" action={`/m/${token}/charge-request/action`} className="mt-3">
               <input type="hidden" name="decision" value="waive" />
-              <button
-                type="submit"
-                className="inline-flex items-center justify-center rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+              <GuestSubmitButton
+                className="inline-flex items-center justify-center rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                loadingText="Processing..."
               >
                 Waive charge request
-              </button>
+              </GuestSubmitButton>
             </form>
           </>
         )}

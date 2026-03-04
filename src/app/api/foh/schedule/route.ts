@@ -296,7 +296,6 @@ export async function GET(request: NextRequest) {
   const visibleTableIds = new Set(tables.map((table) => table.id))
 
   const bookings = (bookingsResult.data || []) as any[]
-  const eventNameById = new Map<string, string>()
   const eventIds = Array.from(
     new Set(
       bookings
@@ -304,52 +303,52 @@ export async function GET(request: NextRequest) {
         .filter((value): value is string => Boolean(value))
     )
   )
+  const bookingIds = bookings.map((booking) => booking.id)
+  const privateRangeStart = shiftIsoDate(date, -1)
+  const privateRangeEnd = shiftIsoDate(date, 1)
 
-  if (eventIds.length > 0) {
-    const { data: eventRows, error: eventRowsError } = await (supabase.from('events') as any)
-      .select('id, name')
-      .in('id', eventIds)
+  // Run all three follow-up queries in parallel (they only depend on the initial results, not each other)
+  const [eventsResult, assignmentsResult, privateBookingsResult] = await Promise.all([
+    eventIds.length > 0
+      ? (supabase.from('events') as any).select('id, name').in('id', eventIds)
+      : { data: [], error: null },
+    bookingIds.length > 0
+      ? (supabase.from('booking_table_assignments') as any)
+          .select('table_booking_id, table_id, start_datetime, end_datetime')
+          .in('table_booking_id', bookingIds)
+      : { data: [], error: null },
+    (supabase.from('private_bookings') as any)
+      .select(
+        'id, customer_name, customer_first_name, customer_last_name, event_type, status, event_date, start_time, end_time, setup_date, setup_time'
+      )
+      .in('status', ['draft', 'confirmed'])
+      .gte('event_date', privateRangeStart)
+      .lte('event_date', privateRangeEnd)
+  ])
 
-    if (!eventRowsError) {
-      for (const row of (eventRows || []) as any[]) {
-        if (typeof row?.id === 'string' && typeof row?.name === 'string' && row.name.trim().length > 0) {
-          eventNameById.set(row.id, row.name.trim())
-        }
+  const eventNameById = new Map<string, string>()
+  if (!eventsResult.error) {
+    for (const row of (eventsResult.data || []) as any[]) {
+      if (typeof row?.id === 'string' && typeof row?.name === 'string' && row.name.trim().length > 0) {
+        eventNameById.set(row.id, row.name.trim())
       }
     }
   }
 
-  const bookingIds = bookings.map((booking) => booking.id)
+  if (assignmentsResult.error) {
+    return NextResponse.json({ error: 'Failed to load table assignments' }, { status: 500 })
+  }
 
-  let assignmentsByBooking = new Map<string, any[]>()
-  if (bookingIds.length > 0) {
-    const { data: assignmentRows, error: assignmentsError } = await (supabase.from('booking_table_assignments') as any)
-      .select('table_booking_id, table_id, start_datetime, end_datetime')
-      .in('table_booking_id', bookingIds)
-
-    if (assignmentsError) {
-      return NextResponse.json({ error: 'Failed to load table assignments' }, { status: 500 })
-    }
-
-    assignmentsByBooking = new Map<string, any[]>()
-    for (const row of (assignmentRows || []) as any[]) {
-      const current = assignmentsByBooking.get(row.table_booking_id) || []
-      current.push(row)
-      assignmentsByBooking.set(row.table_booking_id, current)
-    }
+  const assignmentsByBooking = new Map<string, any[]>()
+  for (const row of (assignmentsResult.data || []) as any[]) {
+    const current = assignmentsByBooking.get(row.table_booking_id) || []
+    current.push(row)
+    assignmentsByBooking.set(row.table_booking_id, current)
   }
 
   const privateBlocksByTableId = new Map<string, PrivateBlockForTable['block'][]>()
-  const privateRangeStart = shiftIsoDate(date, -1)
-  const privateRangeEnd = shiftIsoDate(date, 1)
-
-  const { data: privateBookingsRows, error: privateBookingsError } = await (supabase.from('private_bookings') as any)
-    .select(
-      'id, customer_name, customer_first_name, customer_last_name, event_type, status, event_date, start_time, end_time, setup_date, setup_time'
-    )
-    .in('status', ['draft', 'confirmed'])
-    .gte('event_date', privateRangeStart)
-    .lte('event_date', privateRangeEnd)
+  const privateBookingsRows = privateBookingsResult.data as any[] | null
+  const privateBookingsError = privateBookingsResult.error
 
   if (!privateBookingsError && Array.isArray(privateBookingsRows) && privateBookingsRows.length > 0) {
     const privateBookingIds = privateBookingsRows.map((row: any) => row.id).filter(Boolean)

@@ -6,6 +6,7 @@ import { formatGuestGreeting, getCustomerFirstNameById } from '@/lib/guest/names
 import { getTablePaymentPreviewByRawToken } from '@/lib/table-bookings/bookings'
 import { tablePaymentBlockedReasonMessage } from '@/lib/table-bookings/table-payment-blocked-reason'
 import { GuestPageShell } from '@/components/features/shared/GuestPageShell'
+import { GuestSubmitButton } from '@/components/features/shared/GuestSubmitButton'
 
 type TablePaymentPageProps = {
   params: Promise<{ token: string }>
@@ -143,7 +144,7 @@ export default async function TablePaymentPage({ params, searchParams }: TablePa
           {formatGuestGreeting(guestFirstName, 'your booking and deposit details are below.')}
         </p>
         {state === 'cancelled' && (
-          <div className="mt-3 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+          <div role="alert" className="mt-3 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">
             Payment was not completed. Your table is still reserved if you pay before the hold expiry time below.
           </div>
         )}
@@ -164,12 +165,12 @@ export default async function TablePaymentPage({ params, searchParams }: TablePa
         </p>
 
         <form method="post" action={`/g/${token}/table-payment/checkout`} className="mt-6">
-          <button
-            type="submit"
-            className="inline-flex w-full items-center justify-center rounded-md bg-sidebar px-4 py-2 text-sm font-semibold text-white transition hover:bg-sidebar/90"
+          <GuestSubmitButton
+            className="inline-flex w-full items-center justify-center rounded-md bg-sidebar px-4 py-2 text-sm font-semibold text-white transition hover:bg-sidebar/90 disabled:opacity-50"
+            loadingText="Redirecting to payment..."
           >
             Pay deposit now
-          </button>
+          </GuestSubmitButton>
         </form>
       </div>
     </GuestPageShell>

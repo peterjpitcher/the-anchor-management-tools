@@ -22,6 +22,7 @@ export type TableManagePreviewResult = {
   start_datetime?: string | null
   end_datetime?: string | null
   table_id?: string | null
+  table_ids?: string[]
   table_name?: string | null
   table_capacity?: number | null
   can_cancel?: boolean
@@ -75,25 +76,31 @@ function getLateCancelCutoff(startAt: Date): Date {
 async function findTableAssignment(
   supabase: SupabaseClient<any, 'public', any>,
   bookingId: string
-): Promise<{ table_id: string; table_name: string | null; table_capacity: number | null } | null> {
-  const { data: assignment } = await (supabase.from('booking_table_assignments') as any)
+): Promise<{ table_id: string; table_ids: string[]; table_name: string | null; table_capacity: number | null } | null> {
+  const { data: assignments } = await (supabase.from('booking_table_assignments') as any)
     .select('table_id, table:tables!booking_table_assignments_table_id_fkey(id, table_number, name, capacity)')
     .eq('table_booking_id', bookingId)
-    .maybeSingle()
 
-  if (!assignment?.table_id) {
-    return null
-  }
+  const rows = (assignments || []) as any[]
+  if (rows.length === 0) return null
 
-  const table = Array.isArray(assignment.table) ? assignment.table[0] : assignment.table
-  if (!table) {
-    return null
-  }
+  const tables = rows
+    .map((row) => {
+      const t = Array.isArray(row.table) ? row.table[0] : row.table
+      return t ? { id: t.id as string, name: (t.name || t.table_number || null) as string | null, capacity: Number(t.capacity || 0) } : null
+    })
+    .filter((t): t is { id: string; name: string | null; capacity: number } => t !== null)
+
+  if (tables.length === 0) return null
+
+  const totalCapacity = tables.reduce((sum, t) => sum + t.capacity, 0)
+  const names = tables.map((t) => t.name).filter(Boolean)
 
   return {
-    table_id: table.id,
-    table_name: table.name || table.table_number || null,
-    table_capacity: table.capacity || null
+    table_id: tables[0].id,
+    table_ids: tables.map((t) => t.id),
+    table_name: names.length > 0 ? names.join(' + ') : null,
+    table_capacity: totalCapacity > 0 ? totalCapacity : null
   }
 }
 
@@ -132,13 +139,18 @@ async function maybeMoveTableForPartySizeIncrease(
   supabase: SupabaseClient<any, 'public', any>,
   input: {
     bookingId: string
+    currentTableIds?: string[]
     currentTableId?: string | null
     startIso: string
     endIso: string
     requiredPartySize: number
   }
 ): Promise<{ moved: boolean; tableId: string | null }> {
-  const { bookingId, currentTableId, startIso, endIso, requiredPartySize } = input
+  const { bookingId, currentTableIds, currentTableId, startIso, endIso, requiredPartySize } = input
+  const currentIds = new Set([
+    ...(currentTableIds || []),
+    ...(currentTableId ? [currentTableId] : [])
+  ])
 
   const { data: candidateTables } = await (supabase.from('tables') as any)
     .select('id, capacity, is_bookable')
@@ -150,10 +162,12 @@ async function maybeMoveTableForPartySizeIncrease(
 
   for (const table of tableRows) {
     if (!table?.id) continue
-    if (currentTableId && table.id === currentTableId) {
+    if (currentIds.has(table.id)) {
+      // Current tables already accommodate the new size (caller checked capacity).
+      // Return the first current table ID as the representative.
       return {
         moved: false,
-        tableId: currentTableId
+        tableId: currentTableId || table.id
       }
     }
 
@@ -170,10 +184,15 @@ async function maybeMoveTableForPartySizeIncrease(
 
     if (overlapIds.length > 0) {
       const { data: overlappingBookings } = await (supabase.from('table_bookings') as any)
-        .select('id, status')
+        .select('id, status, left_at')
         .in('id', overlapIds)
 
-      const hasActiveOverlap = ((overlappingBookings || []) as any[]).some((row) => row.status !== 'cancelled')
+      // A table is only truly blocked by bookings that are still active:
+      // - not cancelled, not a no-show, and the party hasn't left yet.
+      // This matches the DB trigger logic in enforce_booking_table_assignment_integrity_v05.
+      const hasActiveOverlap = ((overlappingBookings || []) as any[]).some(
+        (row) => row.status !== 'cancelled' && row.status !== 'no_show' && !row.left_at
+      )
       if (hasActiveOverlap) {
         continue
       }
@@ -414,6 +433,7 @@ export async function getTableManagePreviewByRawToken(
     start_datetime: booking.start_datetime,
     end_datetime: booking.end_datetime,
     table_id: assignment?.table_id || null,
+    table_ids: assignment?.table_ids || [],
     table_name: assignment?.table_name || null,
     table_capacity: assignment?.table_capacity || null,
     can_cancel: canCancel,
@@ -623,6 +643,7 @@ export async function updateTableBookingByRawToken(
 
       const moveResult = await maybeMoveTableForPartySizeIncrease(supabase, {
         bookingId,
+        currentTableIds: preview.table_ids || [],
         currentTableId: preview.table_id,
         startIso: preview.start_datetime,
         endIso: preview.end_datetime,

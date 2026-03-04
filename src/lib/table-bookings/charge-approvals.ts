@@ -5,7 +5,7 @@ import { logger } from '@/lib/logger'
 import { recordAnalyticsEvent } from '@/lib/analytics/events'
 import { createStripeOffSessionCharge, isStripeConfigured } from '@/lib/payments/stripe'
 
-export const MANAGER_APPROVAL_EMAIL = 'manager@the-anchor.pub'
+export const MANAGER_APPROVAL_EMAIL = process.env.MANAGER_APPROVAL_EMAIL || 'manager@the-anchor.pub'
 
 type ChargeRequestType = 'late_cancel' | 'no_show' | 'reduction_fee' | 'walkout'
 
@@ -55,6 +55,7 @@ export type ChargeApprovalDecisionResult = {
   stripe_payment_intent_id?: string | null
   stripe_customer_id?: string | null
   stripe_payment_method_id?: string | null
+  metadata?: Record<string, unknown> | null
 }
 
 export type ApprovedChargeAttemptResult = {
@@ -349,7 +350,7 @@ export async function attemptApprovedChargeFromDecision(
         charge_status: 'failed',
         updated_at: nowIso,
         metadata: {
-          ...(decisionResult as any).metadata,
+          ...((decisionResult.metadata ?? {}) as Record<string, unknown>),
           charge_attempt_error: errorMessage
         }
       })
@@ -408,7 +409,7 @@ export async function attemptApprovedChargeFromDecision(
         charge_status: 'failed',
         updated_at: nowIso,
         metadata: {
-          ...(decisionResult as any).metadata,
+          ...((decisionResult.metadata ?? {}) as Record<string, unknown>),
           charge_attempt_error: errorMessage,
           missing_stripe_customer: !stripeCustomerId,
           missing_stripe_payment_method: !stripePaymentMethodId
@@ -487,7 +488,7 @@ export async function attemptApprovedChargeFromDecision(
         stripe_payment_intent_id: stripeResult.id,
         updated_at: new Date().toISOString(),
         metadata: {
-          ...(decisionResult as any).metadata,
+          ...((decisionResult.metadata ?? {}) as Record<string, unknown>),
           stripe_payment_intent_status: stripeResult.status,
           charge_attempt_error: stripeResult.errorMessage || null
         }
@@ -571,7 +572,7 @@ export async function attemptApprovedChargeFromDecision(
         stripe_payment_intent_id: attemptedStripeIntent?.id ?? null,
         updated_at: new Date().toISOString(),
         metadata: {
-          ...(decisionResult as any).metadata,
+          ...((decisionResult.metadata ?? {}) as Record<string, unknown>),
           charge_attempt_error: message,
           persistence_gap: attemptedStripeIntent ? true : undefined
         }

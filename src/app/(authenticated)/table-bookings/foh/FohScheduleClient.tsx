@@ -2315,7 +2315,7 @@ export function FohScheduleClient({
     isManagerKioskStyle ? 'px-2 text-[10px]' : 'px-3 text-xs'
   )
   const bookingBlockBaseClass = isManagerKioskStyle
-    ? 'absolute top-1 h-10 overflow-hidden rounded-md border px-1 py-0.5 text-left text-[9px] shadow-sm transition hover:brightness-105 focus:outline-none focus:ring-2 focus:ring-sidebar/40'
+    ? 'absolute top-0.5 h-11 overflow-hidden rounded-md border px-1 py-0.5 text-left text-[9px] shadow-sm transition hover:brightness-105 focus:outline-none focus:ring-2 focus:ring-sidebar/40'
     : 'absolute top-1 h-12 overflow-hidden rounded-md border px-1.5 py-0.5 text-left text-[10px] shadow-sm transition hover:brightness-105 focus:outline-none focus:ring-2 focus:ring-sidebar/40'
   const timelineTickLabelClass = cn(
     'absolute -translate-x-1/2 font-medium text-gray-500',
@@ -2652,7 +2652,7 @@ export function FohScheduleClient({
         open={Boolean(selectedBookingContext)}
         onClose={closeBookingDetails}
         title="Booking details"
-        description="Click a booking block in the swimlane to open this panel."
+        description={selectedBooking ? `${selectedBooking.booking_reference || selectedBooking.id.slice(0, 8)} · ${getBookingVisualLabel(selectedBooking)}` : undefined}
         size="md"
       >
         {selectedBooking && (
@@ -2711,7 +2711,7 @@ export function FohScheduleClient({
                         if (ok) closeBookingDetails()
                       })()
                     }}
-                    className="rounded-md border border-gray-300 px-2 py-2.5 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
+                    className="rounded-md border border-gray-300 px-2 py-2.5 text-xs font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-gray-400 disabled:cursor-not-allowed disabled:opacity-60"
                   >
                     {bookingActionInFlight === 'seated' ? 'Marking…' : 'Mark seated'}
                   </button>
@@ -2728,7 +2728,7 @@ export function FohScheduleClient({
                         if (ok) closeBookingDetails()
                       })()
                     }}
-                    className="rounded-md border border-gray-300 px-2 py-2.5 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
+                    className="rounded-md border border-gray-300 px-2 py-2.5 text-xs font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-gray-400 disabled:cursor-not-allowed disabled:opacity-60"
                   >
                     {bookingActionInFlight === 'left' ? 'Marking…' : 'Mark left'}
                   </button>
@@ -2739,7 +2739,7 @@ export function FohScheduleClient({
                       setShowNoShowConfirmation((current) => !current)
                     }}
                     className={cn(
-                      'rounded-md border px-2 py-2.5 text-xs font-medium disabled:cursor-not-allowed disabled:opacity-60',
+                      'rounded-md border px-2 py-2.5 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-red-300 disabled:cursor-not-allowed disabled:opacity-60',
                       showNoShowConfirmation
                         ? 'border-red-400 bg-red-100 text-red-800'
                         : 'border-red-300 text-red-700 hover:bg-red-50'
@@ -2756,7 +2756,7 @@ export function FohScheduleClient({
                       setPartySizeEditValue(String(currentSize))
                       setPartySizeEditOpen(true)
                     }}
-                    className="rounded-md border border-gray-300 px-2 py-2.5 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
+                    className="rounded-md border border-gray-300 px-2 py-2.5 text-xs font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-gray-400 disabled:cursor-not-allowed disabled:opacity-60"
                   >
                     {bookingActionInFlight === 'party_size' ? 'Saving…' : 'Edit party size'}
                   </button>
@@ -2768,7 +2768,7 @@ export function FohScheduleClient({
                       setShowCancelBookingConfirmation((current) => !current)
                     }}
                     className={cn(
-                      'rounded-md border px-2 py-2.5 text-xs font-medium disabled:cursor-not-allowed disabled:opacity-60',
+                      'rounded-md border px-2 py-2.5 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-red-300 disabled:cursor-not-allowed disabled:opacity-60',
                       showCancelBookingConfirmation
                         ? 'border-red-400 bg-red-100 text-red-800'
                         : 'border-red-300 text-red-700 hover:bg-red-50'
@@ -2784,7 +2784,7 @@ export function FohScheduleClient({
                       setWalkoutAmountValue('')
                       setWalkoutModalOpen(true)
                     }}
-                    className="rounded-md border border-red-300 px-2 py-2.5 text-xs font-medium text-red-700 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60"
+                    className="rounded-md border border-red-300 px-2 py-2.5 text-xs font-medium text-red-700 hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-red-300 disabled:cursor-not-allowed disabled:opacity-60"
                   >
                     {bookingActionInFlight === 'walkout' ? 'Saving…' : 'Flag walkout'}
                   </button>

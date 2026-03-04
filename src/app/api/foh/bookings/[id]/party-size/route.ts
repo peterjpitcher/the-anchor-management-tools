@@ -25,6 +25,9 @@ export async function POST(
   }
 
   const { id } = await context.params
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) {
+    return NextResponse.json({ error: 'Invalid booking ID' }, { status: 400 })
+  }
 
   let body: unknown
   try {
