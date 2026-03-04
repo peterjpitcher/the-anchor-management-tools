@@ -3029,7 +3029,7 @@ export function FohScheduleClient({
               </label>
             )}
 
-            {createMode !== 'walk_in' && createMode !== 'management' && createForm.purpose !== 'event' && overlappingEventForTable && (
+            {createMode !== 'walk_in' && createForm.purpose !== 'event' && overlappingEventForTable && (
               <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900 md:col-span-2">
                 <p className="font-semibold">
                   This booking overlaps {overlappingEventForTable.name}.
