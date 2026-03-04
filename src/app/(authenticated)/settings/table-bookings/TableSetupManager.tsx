@@ -216,6 +216,38 @@ export function TableSetupManager() {
     return pairs
   }, [sortedTables])
 
+  const joinPairsByArea = useMemo(() => {
+    const groups: Array<{
+      areaName: string
+      pairs: Array<{ key: string; left: TableSetupRow; right: TableSetupRow }>
+    }> = []
+    const groupMap = new Map<string, typeof groups[number]>()
+
+    for (const pair of joinPairs) {
+      const leftArea = pair.left.area?.trim() || ''
+      const rightArea = pair.right.area?.trim() || ''
+      const groupName =
+        leftArea && leftArea === rightArea ? leftArea : 'Other combinations'
+
+      let group = groupMap.get(groupName)
+      if (!group) {
+        group = { areaName: groupName, pairs: [] }
+        groupMap.set(groupName, group)
+        groups.push(group)
+      }
+      group.pairs.push(pair)
+    }
+
+    // Sort: named areas first (alphabetically), then 'Other combinations'
+    groups.sort((a, b) => {
+      if (a.areaName === 'Other combinations') return 1
+      if (b.areaName === 'Other combinations') return -1
+      return a.areaName.localeCompare(b.areaName)
+    })
+
+    return groups
+  }, [joinPairs])
+
   const tableById = useMemo(() => {
     return new Map(tables.map((table) => [table.id, table]))
   }, [tables])
@@ -377,6 +409,21 @@ export function TableSetupManager() {
         next.delete(key)
       } else {
         next.add(key)
+      }
+      return next
+    })
+  }
+
+  function toggleAllPairsInGroup(
+    pairs: Array<{ key: string; left: TableSetupRow; right: TableSetupRow }>
+  ) {
+    const allChecked = pairs.every((pair) => joinLinkKeys.has(pair.key))
+    setJoinLinkKeys((current) => {
+      const next = new Set(current)
+      if (allChecked) {
+        for (const pair of pairs) next.delete(pair.key)
+      } else {
+        for (const pair of pairs) next.add(pair.key)
       }
       return next
     })
@@ -724,21 +771,44 @@ export function TableSetupManager() {
             Add at least two tables before configuring joined-table rules.
           </p>
         ) : (
-          <div className="mt-3 grid gap-2 md:grid-cols-2">
-            {joinPairs.map((pair) => (
-              <label key={pair.key} className="flex items-start gap-2 rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-700">
-                <input
-                  type="checkbox"
-                  checked={joinLinkKeys.has(pair.key)}
-                  onChange={() => toggleJoinLink(pair.key)}
-                />
-                <span>
-                  <span className="font-medium">{pair.left.name || pair.left.table_number}</span>
-                  {' + '}
-                  <span className="font-medium">{pair.right.name || pair.right.table_number}</span>
-                </span>
-              </label>
-            ))}
+          <div className="mt-3 space-y-4">
+            {joinPairsByArea.map((group) => {
+              const allChecked = group.pairs.every((pair) => joinLinkKeys.has(pair.key))
+              const someChecked = group.pairs.some((pair) => joinLinkKeys.has(pair.key))
+              return (
+                <div key={group.areaName}>
+                  <div className="mb-2 flex items-center justify-between">
+                    <span className="text-xs font-semibold text-gray-700">{group.areaName}</span>
+                    <button
+                      type="button"
+                      onClick={() => toggleAllPairsInGroup(group.pairs)}
+                      className="text-xs font-medium text-indigo-600 hover:text-indigo-800"
+                    >
+                      {allChecked ? 'Deselect all' : someChecked ? 'Select all' : 'Select all'}
+                    </button>
+                  </div>
+                  <div className="grid gap-2 md:grid-cols-2">
+                    {group.pairs.map((pair) => (
+                      <label
+                        key={pair.key}
+                        className="flex items-start gap-2 rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-700"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={joinLinkKeys.has(pair.key)}
+                          onChange={() => toggleJoinLink(pair.key)}
+                        />
+                        <span>
+                          <span className="font-medium">{pair.left.name || pair.left.table_number}</span>
+                          {' + '}
+                          <span className="font-medium">{pair.right.name || pair.right.table_number}</span>
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              )
+            })}
           </div>
         )}
 
