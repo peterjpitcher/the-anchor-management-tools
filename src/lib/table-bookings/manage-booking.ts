@@ -77,7 +77,7 @@ async function findTableAssignment(
   bookingId: string
 ): Promise<{ table_id: string; table_name: string | null; table_capacity: number | null } | null> {
   const { data: assignment } = await (supabase.from('booking_table_assignments') as any)
-    .select('table_id')
+    .select('table_id, table:tables!booking_table_assignments_table_id_fkey(id, table_number, name, capacity)')
     .eq('table_booking_id', bookingId)
     .maybeSingle()
 
@@ -85,11 +85,7 @@ async function findTableAssignment(
     return null
   }
 
-  const { data: table } = await (supabase.from('tables') as any)
-    .select('id, table_number, name, capacity')
-    .eq('id', assignment.table_id)
-    .maybeSingle()
-
+  const table = Array.isArray(assignment.table) ? assignment.table[0] : assignment.table
   if (!table) {
     return null
   }

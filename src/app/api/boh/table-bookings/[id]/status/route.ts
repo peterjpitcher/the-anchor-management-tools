@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { requireFohPermission } from '@/lib/foh/api-auth'
+
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 import {
   createChargeRequestForBooking,
   getFeePerHead,
@@ -11,6 +13,7 @@ import {
   buildStaffStatusTransitionPlan,
   type StaffStatusAction
 } from '@/lib/table-bookings/staff-status-actions'
+import { logAuditEvent } from '@/app/actions/audit'
 
 const UpdateStatusSchema = z.object({
   action: z.enum(['seated', 'left', 'no_show', 'cancelled', 'confirmed', 'completed'])
@@ -35,6 +38,9 @@ export async function POST(
   }
 
   const { id } = await context.params
+  if (!UUID_REGEX.test(id)) {
+    return NextResponse.json({ error: 'Invalid booking ID' }, { status: 400 })
+  }
   const booking = await getTableBookingForFoh(auth.supabase, id)
 
   if (!booking) {
@@ -110,6 +116,20 @@ export async function POST(
   if (!updatedRow) {
     return NextResponse.json({ error: 'Booking not found' }, { status: 404 })
   }
+
+  // Audit log the status transition (fire-and-forget)
+  logAuditEvent({
+    user_id: auth.userId,
+    operation_type: 'update',
+    resource_type: 'table_booking',
+    resource_id: id,
+    operation_status: 'success',
+    additional_info: {
+      status_from: booking.status,
+      status_to: action === 'seated' ? booking.status : action,
+      action
+    }
+  }).catch(() => {})
 
   if (action !== 'no_show') {
     return NextResponse.json({ success: true, data: updatedRow })

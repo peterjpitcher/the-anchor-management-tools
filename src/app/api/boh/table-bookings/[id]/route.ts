@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireFohPermission } from '@/lib/foh/api-auth'
 
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
 export async function DELETE(
   _request: NextRequest,
   context: { params: Promise<{ id: string }> }
@@ -11,6 +13,9 @@ export async function DELETE(
   }
 
   const { id } = await context.params
+  if (!UUID_REGEX.test(id)) {
+    return NextResponse.json({ error: 'Invalid booking ID' }, { status: 400 })
+  }
 
   const { data: existing, error: loadError } = await (auth.supabase.from('table_bookings') as any)
     .select('id, booking_reference, status')
@@ -23,6 +28,14 @@ export async function DELETE(
 
   if (!existing) {
     return NextResponse.json({ error: 'Booking not found' }, { status: 404 })
+  }
+
+  const closedStatuses = ['completed', 'no_show', 'cancelled']
+  if (closedStatuses.includes(existing.status)) {
+    return NextResponse.json(
+      { error: `Booking cannot be cancelled because it is already ${existing.status.replace('_', ' ')}` },
+      { status: 409 }
+    )
   }
 
   const nowIso = new Date().toISOString()

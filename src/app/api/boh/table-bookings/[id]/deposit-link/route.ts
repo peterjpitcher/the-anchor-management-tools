@@ -3,6 +3,8 @@ import { requireFohPermission } from '@/lib/foh/api-auth'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createGuestToken } from '@/lib/guest/tokens'
 
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
 export async function GET(
   _request: NextRequest,
   context: { params: Promise<{ id: string }> }
@@ -11,9 +13,11 @@ export async function GET(
   if (!auth.ok) return auth.response
 
   const { id } = await context.params
-  const admin = createAdminClient()
+  if (!UUID_REGEX.test(id)) {
+    return NextResponse.json({ error: 'Invalid booking ID' }, { status: 400 })
+  }
 
-  const { data: booking } = await (admin.from('table_bookings') as any)
+  const { data: booking } = await (auth.supabase.from('table_bookings') as any)
     .select('id, customer_id, status, payment_status, hold_expires_at')
     .eq('id', id)
     .maybeSingle()
@@ -38,6 +42,8 @@ export async function GET(
       ? new Date(booking.hold_expires_at)
       : new Date(Date.now() + 24 * 60 * 60 * 1000)
 
+  // Guest token creation requires admin client to bypass RLS
+  const admin = createAdminClient()
   const { rawToken } = await createGuestToken(admin, {
     customerId: booking.customer_id,
     actionType: 'payment',

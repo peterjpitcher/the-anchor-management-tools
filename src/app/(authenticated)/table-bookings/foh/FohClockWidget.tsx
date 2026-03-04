@@ -75,7 +75,7 @@ export default function FohClockWidget({ employees, initialSessions }: FohClockW
           key={s.id}
           type="button"
           onClick={() => setConfirmSession(s)}
-          className="inline-flex items-center gap-1.5 rounded-full border border-white/30 bg-white/20 px-3 py-1 text-xs font-medium !text-white transition hover:bg-white/30 hover:!bg-white/30"
+          className="inline-flex items-center gap-1.5 rounded-full border border-white/30 bg-white/20 px-3 py-1 text-xs font-medium text-white transition hover:bg-white/30"
           title={`Clocked in at ${formatClockInTime(s.clock_in_at)} — click to clock out`}
         >
           <span className="h-1.5 w-1.5 rounded-full bg-green-300" />
@@ -87,7 +87,7 @@ export default function FohClockWidget({ employees, initialSessions }: FohClockW
       <button
         type="button"
         onClick={() => { setSelectedId(''); setShowClockInModal(true); }}
-        className="inline-flex items-center gap-1.5 rounded-md border border-white/40 bg-white/15 px-3 py-1.5 text-xs font-semibold !text-white shadow-sm transition hover:bg-white/25 hover:!bg-white/25"
+        className="inline-flex items-center gap-1.5 rounded-md border border-white/40 bg-white/15 px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition hover:bg-white/25"
       >
         Clock In
       </button>
