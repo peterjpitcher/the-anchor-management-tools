@@ -3382,6 +3382,40 @@ export function FohScheduleClient({
             </label>
           )}
 
+          {createMode !== 'walk_in' && createForm.purpose !== 'event' && overlappingEventForTable && tableEventPromptAcknowledgedEventId !== overlappingEventForTable.id && (
+            <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+              <p className="font-semibold">Confirm: this booking overlaps {overlappingEventForTable.name}.</p>
+              <div className="mt-2 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCreateForm((current) => ({
+                      ...current,
+                      purpose: 'event',
+                      event_id: overlappingEventForTable.id,
+                      sunday_lunch: false
+                    }))
+                    setTableEventPromptAcknowledgedEventId(null)
+                    setErrorMessage(null)
+                  }}
+                  className="rounded border border-amber-400 bg-white px-2.5 py-1 text-xs font-medium text-amber-900 hover:bg-amber-100"
+                >
+                  Yes, book for event
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setTableEventPromptAcknowledgedEventId(overlappingEventForTable.id)
+                    setErrorMessage(null)
+                  }}
+                  className="rounded border border-amber-300 bg-transparent px-2.5 py-1 text-xs font-medium text-amber-900 hover:bg-amber-100/60"
+                >
+                  No, keep table booking
+                </button>
+              </div>
+            </div>
+          )}
+
           <div className="flex flex-wrap items-center justify-between gap-3 border-t border-gray-200 pt-3">
             <p className="text-xs text-gray-500">
               {createMode === 'management'
