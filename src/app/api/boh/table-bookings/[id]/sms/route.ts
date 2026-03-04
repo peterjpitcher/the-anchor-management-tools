@@ -6,6 +6,8 @@ import { ensureReplyInstruction } from '@/lib/sms/support'
 import { sendSMS } from '@/lib/twilio'
 import { logger } from '@/lib/logger'
 
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
 const SendBookingSmsSchema = z.object({
   message: z.string().trim().min(1).max(640)
 })
@@ -39,6 +41,9 @@ export async function POST(
   }
 
   const { id } = await context.params
+  if (!UUID_REGEX.test(id)) {
+    return NextResponse.json({ error: 'Invalid booking ID' }, { status: 400 })
+  }
 
   let body: unknown
   try {
@@ -55,6 +60,21 @@ export async function POST(
         issues: parsed.error.issues
       },
       { status: 400 }
+    )
+  }
+
+  // Per-booking SMS cooldown: max 3 messages per hour
+  const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString()
+  const { count: recentSmsCount, error: countError } = await (auth.supabase.from('messages') as any)
+    .select('id', { count: 'exact', head: true })
+    .eq('table_booking_id', id)
+    .eq('direction', 'outbound')
+    .gte('created_at', oneHourAgo)
+
+  if (!countError && (recentSmsCount ?? 0) >= 3) {
+    return NextResponse.json(
+      { error: 'Too many SMS messages sent for this booking recently. Please wait before sending another.' },
+      { status: 429 }
     )
   }
 

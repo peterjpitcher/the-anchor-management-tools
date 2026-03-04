@@ -9,6 +9,8 @@ import {
   resolveMoveTableTarget
 } from '@/lib/table-bookings/move-table'
 
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
 const MoveTableSchema = z.object({
   table_id: z.string().uuid()
 })
@@ -23,6 +25,9 @@ export async function GET(
   }
 
   const { id } = await context.params
+  if (!UUID_REGEX.test(id)) {
+    return NextResponse.json({ error: 'Invalid booking ID' }, { status: 400 })
+  }
   const booking = await getTableBookingForFoh(auth.supabase, id)
 
   if (!booking) {
@@ -80,6 +85,9 @@ export async function POST(
   }
 
   const { id } = await context.params
+  if (!UUID_REGEX.test(id)) {
+    return NextResponse.json({ error: 'Invalid booking ID' }, { status: 400 })
+  }
   const booking = await getTableBookingForFoh(auth.supabase, id)
 
   if (!booking) {

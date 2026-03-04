@@ -400,11 +400,15 @@ export async function PUT(request: NextRequest) {
     }
   }
 
-  for (const row of toDelete) {
+  if (toDelete.length > 0) {
+    // Build composite key filter using OR conditions for batch deletion
+    const orFilter = toDelete
+      .map((row) => `and(table_id.eq.${row.table_id},join_table_id.eq.${row.join_table_id})`)
+      .join(',')
+
     const { error: deleteError } = await (auth.supabase.from('table_join_links') as any)
       .delete()
-      .eq('table_id', row.table_id)
-      .eq('join_table_id', row.join_table_id)
+      .or(orFilter)
 
     if (deleteError) {
       return NextResponse.json({ error: 'Failed to remove join links' }, { status: 500 })
