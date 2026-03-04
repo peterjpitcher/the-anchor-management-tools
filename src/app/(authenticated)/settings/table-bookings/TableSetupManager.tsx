@@ -17,9 +17,16 @@ type AreaOption = {
   name: string
 }
 
-type JoinLink = {
-  table_id: string
-  join_table_id: string
+type JoinGroup = {
+  id: string
+  name: string
+  table_ids: string[]
+}
+
+type EditingGroup = {
+  id: string | null
+  name: string
+  table_ids: string[]
 }
 
 type SpaceAreaLink = {
@@ -37,9 +44,15 @@ type TableSetupResponse = {
   success: boolean
   data?: {
     tables: TableSetupRow[]
-    join_links: JoinLink[]
+    join_links: { table_id: string; join_table_id: string }[]
     areas: AreaOption[]
   }
+  error?: string
+}
+
+type JoinGroupsResponse = {
+  success: boolean
+  data?: { groups: JoinGroup[] }
   error?: string
 }
 
@@ -61,21 +74,6 @@ type TableDraft = {
   is_bookable: boolean
 }
 
-function pairKey(tableId: string, joinTableId: string): string {
-  return tableId < joinTableId ? `${tableId}:${joinTableId}` : `${joinTableId}:${tableId}`
-}
-
-function parsePairKey(key: string): { table_id: string; join_table_id: string } | null {
-  const [table_id, join_table_id] = key.split(':')
-  if (!table_id || !join_table_id || table_id === join_table_id) {
-    return null
-  }
-
-  return table_id < join_table_id
-    ? { table_id, join_table_id }
-    : { table_id: join_table_id, join_table_id: table_id }
-}
-
 function spaceAreaKey(spaceId: string, areaId: string): string {
   return `${spaceId}:${areaId}`
 }
@@ -92,14 +90,18 @@ export function TableSetupManager() {
   const [tables, setTables] = useState<TableSetupRow[]>([])
   const [areas, setAreas] = useState<AreaOption[]>([])
   const [drafts, setDrafts] = useState<Record<string, TableDraft>>({})
-  const [joinLinkKeys, setJoinLinkKeys] = useState<Set<string>>(new Set())
+  const [joinGroups, setJoinGroups] = useState<JoinGroup[]>([])
+  const [editingGroup, setEditingGroup] = useState<EditingGroup | null>(null)
   const [spaceAreaLinkKeys, setSpaceAreaLinkKeys] = useState<Set<string>>(new Set())
   const [venueSpaces, setVenueSpaces] = useState<VenueSpace[]>([])
   const [loading, setLoading] = useState(true)
+  const [loadingGroups, setLoadingGroups] = useState(true)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [statusMessage, setStatusMessage] = useState<string | null>(null)
   const [savingTables, setSavingTables] = useState(false)
-  const [savingJoinLinks, setSavingJoinLinks] = useState(false)
+  const [savingGroup, setSavingGroup] = useState(false)
+  const [deletingGroupId, setDeletingGroupId] = useState<string | null>(null)
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
   const [savingSpaceAreaLinks, setSavingSpaceAreaLinks] = useState(false)
   const [creatingTable, setCreatingTable] = useState(false)
   const [newTable, setNewTable] = useState<TableDraft>({
@@ -131,7 +133,6 @@ export function TableSetupManager() {
       }
 
       const incomingTables = tablePayload.data.tables || []
-      const incomingJoinLinks = tablePayload.data.join_links || []
       const incomingAreas = tablePayload.data.areas || []
 
       setTables(incomingTables)
@@ -150,12 +151,6 @@ export function TableSetupManager() {
         return next
       })
 
-      setJoinLinkKeys(
-        new Set(
-          incomingJoinLinks.map((row) => pairKey(row.table_id, row.join_table_id))
-        )
-      )
-
       setVenueSpaces(spaceAreaPayload.data.venue_spaces || [])
       setSpaceAreaLinkKeys(
         new Set(
@@ -171,8 +166,25 @@ export function TableSetupManager() {
     }
   }
 
+  async function loadJoinGroups() {
+    setLoadingGroups(true)
+    try {
+      const response = await fetch('/api/settings/table-bookings/join-groups', { cache: 'no-store' })
+      const payload = (await response.json()) as JoinGroupsResponse
+      if (!response.ok || !payload.success || !payload.data) {
+        throw new Error(payload.error || 'Failed to load join groups')
+      }
+      setJoinGroups(payload.data.groups)
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : 'Failed to load join groups')
+    } finally {
+      setLoadingGroups(false)
+    }
+  }
+
   useEffect(() => {
     void loadSetup()
+    void loadJoinGroups()
   }, [])
 
   const sortedTables = useMemo(() => {
@@ -197,56 +209,6 @@ export function TableSetupManager() {
       (a.name || '').localeCompare(b.name || '', undefined, { sensitivity: 'base' })
     )
   }, [venueSpaces])
-
-  const joinPairs = useMemo(() => {
-    const pairs: Array<{ key: string; left: TableSetupRow; right: TableSetupRow }> = []
-
-    for (let index = 0; index < sortedTables.length; index += 1) {
-      const left = sortedTables[index]
-      for (let secondIndex = index + 1; secondIndex < sortedTables.length; secondIndex += 1) {
-        const right = sortedTables[secondIndex]
-        pairs.push({
-          key: pairKey(left.id, right.id),
-          left,
-          right
-        })
-      }
-    }
-
-    return pairs
-  }, [sortedTables])
-
-  const joinPairsByArea = useMemo(() => {
-    const groups: Array<{
-      areaName: string
-      pairs: Array<{ key: string; left: TableSetupRow; right: TableSetupRow }>
-    }> = []
-    const groupMap = new Map<string, typeof groups[number]>()
-
-    for (const pair of joinPairs) {
-      const leftArea = pair.left.area?.trim() || ''
-      const rightArea = pair.right.area?.trim() || ''
-      const groupName =
-        leftArea && leftArea === rightArea ? leftArea : 'Other combinations'
-
-      let group = groupMap.get(groupName)
-      if (!group) {
-        group = { areaName: groupName, pairs: [] }
-        groupMap.set(groupName, group)
-        groups.push(group)
-      }
-      group.pairs.push(pair)
-    }
-
-    // Sort: named areas first (alphabetically), then 'Other combinations'
-    groups.sort((a, b) => {
-      if (a.areaName === 'Other combinations') return 1
-      if (b.areaName === 'Other combinations') return -1
-      return a.areaName.localeCompare(b.areaName)
-    })
-
-    return groups
-  }, [joinPairs])
 
   const tableById = useMemo(() => {
     return new Map(tables.map((table) => [table.id, table]))
@@ -402,60 +364,74 @@ export function TableSetupManager() {
     }
   }
 
-  function toggleJoinLink(key: string) {
-    setJoinLinkKeys((current) => {
-      const next = new Set(current)
-      if (next.has(key)) {
-        next.delete(key)
-      } else {
-        next.add(key)
-      }
-      return next
-    })
-  }
+  async function saveGroup() {
+    if (!editingGroup) return
 
-  function toggleAllPairsInGroup(
-    pairs: Array<{ key: string; left: TableSetupRow; right: TableSetupRow }>
-  ) {
-    const allChecked = pairs.every((pair) => joinLinkKeys.has(pair.key))
-    setJoinLinkKeys((current) => {
-      const next = new Set(current)
-      if (allChecked) {
-        for (const pair of pairs) next.delete(pair.key)
-      } else {
-        for (const pair of pairs) next.add(pair.key)
-      }
-      return next
-    })
-  }
+    const name = editingGroup.name.trim()
+    if (!name) {
+      setErrorMessage('Group name is required')
+      return
+    }
 
-  async function saveJoinLinks() {
-    setSavingJoinLinks(true)
+    setSavingGroup(true)
     setErrorMessage(null)
     setStatusMessage(null)
 
     try {
-      const join_links = Array.from(joinLinkKeys)
-        .map((key) => parsePairKey(key))
-        .filter((value): value is { table_id: string; join_table_id: string } => Boolean(value))
-
-      const response = await fetch('/api/settings/table-bookings/tables', {
-        method: 'PUT',
+      const isNew = editingGroup.id === null
+      const response = await fetch('/api/settings/table-bookings/join-groups', {
+        method: isNew ? 'POST' : 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ join_links })
+        body: JSON.stringify({
+          ...(editingGroup.id ? { id: editingGroup.id } : {}),
+          name,
+          table_ids: editingGroup.table_ids
+        })
       })
 
-      const payload = await response.json().catch(() => null)
+      const payload = (await response.json().catch(() => null)) as JoinGroupsResponse | null
       if (!response.ok) {
-        throw new Error((payload && payload.error) || 'Failed to update joinable-table rules')
+        throw new Error((payload && payload.error) || 'Failed to save group')
       }
 
-      await loadSetup()
-      setStatusMessage('Joinable-table rules saved')
+      if (payload?.data?.groups) {
+        setJoinGroups(payload.data.groups)
+      }
+      setEditingGroup(null)
+      setStatusMessage(isNew ? 'Join group created' : 'Join group updated')
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : 'Failed to update joinable-table rules')
+      setErrorMessage(error instanceof Error ? error.message : 'Failed to save group')
     } finally {
-      setSavingJoinLinks(false)
+      setSavingGroup(false)
+    }
+  }
+
+  async function deleteGroup(id: string) {
+    setDeletingGroupId(id)
+    setErrorMessage(null)
+    setStatusMessage(null)
+
+    try {
+      const response = await fetch('/api/settings/table-bookings/join-groups', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id })
+      })
+
+      const payload = (await response.json().catch(() => null)) as JoinGroupsResponse | null
+      if (!response.ok) {
+        throw new Error((payload && payload.error) || 'Failed to delete group')
+      }
+
+      if (payload?.data?.groups) {
+        setJoinGroups(payload.data.groups)
+      }
+      setConfirmDeleteId(null)
+      setStatusMessage('Join group deleted')
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : 'Failed to delete group')
+    } finally {
+      setDeletingGroupId(null)
     }
   }
 
@@ -524,6 +500,7 @@ export function TableSetupManager() {
         ))}
       </datalist>
 
+      {/* Existing tables */}
       <div className="rounded-lg border border-gray-200 bg-white p-4">
         <h3 className="text-sm font-semibold text-gray-900">Existing tables</h3>
         <p className="mt-1 text-xs text-gray-500">
@@ -558,10 +535,7 @@ export function TableSetupManager() {
                         onChange={(event) =>
                           setDrafts((current) => ({
                             ...current,
-                            [table.id]: {
-                              ...current[table.id],
-                              name: event.target.value
-                            }
+                            [table.id]: { ...current[table.id], name: event.target.value }
                           }))
                         }
                         className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
@@ -576,10 +550,7 @@ export function TableSetupManager() {
                         onChange={(event) =>
                           setDrafts((current) => ({
                             ...current,
-                            [table.id]: {
-                              ...current[table.id],
-                              table_number: event.target.value
-                            }
+                            [table.id]: { ...current[table.id], table_number: event.target.value }
                           }))
                         }
                         className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
@@ -596,10 +567,7 @@ export function TableSetupManager() {
                         onChange={(event) =>
                           setDrafts((current) => ({
                             ...current,
-                            [table.id]: {
-                              ...current[table.id],
-                              capacity: event.target.value
-                            }
+                            [table.id]: { ...current[table.id], capacity: event.target.value }
                           }))
                         }
                         className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
@@ -615,10 +583,7 @@ export function TableSetupManager() {
                         onChange={(event) =>
                           setDrafts((current) => ({
                             ...current,
-                            [table.id]: {
-                              ...current[table.id],
-                              area: event.target.value
-                            }
+                            [table.id]: { ...current[table.id], area: event.target.value }
                           }))
                         }
                         placeholder="Main Bar"
@@ -633,10 +598,7 @@ export function TableSetupManager() {
                         onChange={(event) =>
                           setDrafts((current) => ({
                             ...current,
-                            [table.id]: {
-                              ...current[table.id],
-                              is_bookable: event.target.checked
-                            }
+                            [table.id]: { ...current[table.id], is_bookable: event.target.checked }
                           }))
                         }
                       />
@@ -649,9 +611,7 @@ export function TableSetupManager() {
             <div className="flex justify-end">
               <button
                 type="button"
-                onClick={() => {
-                  void saveAllTableChanges()
-                }}
+                onClick={() => { void saveAllTableChanges() }}
                 disabled={savingTables || changedTableIds.length === 0}
                 className="rounded-md bg-sidebar px-4 py-2 text-sm font-medium text-white hover:bg-sidebar/90 disabled:cursor-not-allowed disabled:opacity-50"
               >
@@ -662,6 +622,7 @@ export function TableSetupManager() {
         )}
       </div>
 
+      {/* Add table */}
       <div className="rounded-lg border border-gray-200 bg-white p-4">
         <h3 className="text-sm font-semibold text-gray-900">Add table</h3>
         <form onSubmit={createTable} className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
@@ -671,12 +632,7 @@ export function TableSetupManager() {
               type="text"
               required
               value={newTable.name}
-              onChange={(event) =>
-                setNewTable((current) => ({
-                  ...current,
-                  name: event.target.value
-                }))
-              }
+              onChange={(event) => setNewTable((c) => ({ ...c, name: event.target.value }))}
               className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
             />
           </label>
@@ -687,12 +643,7 @@ export function TableSetupManager() {
               type="text"
               required
               value={newTable.table_number}
-              onChange={(event) =>
-                setNewTable((current) => ({
-                  ...current,
-                  table_number: event.target.value
-                }))
-              }
+              onChange={(event) => setNewTable((c) => ({ ...c, table_number: event.target.value }))}
               className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
             />
           </label>
@@ -705,12 +656,7 @@ export function TableSetupManager() {
               max={100}
               required
               value={newTable.capacity}
-              onChange={(event) =>
-                setNewTable((current) => ({
-                  ...current,
-                  capacity: event.target.value
-                }))
-              }
+              onChange={(event) => setNewTable((c) => ({ ...c, capacity: event.target.value }))}
               className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
             />
           </label>
@@ -721,12 +667,7 @@ export function TableSetupManager() {
               type="text"
               list="table-area-options"
               value={newTable.area}
-              onChange={(event) =>
-                setNewTable((current) => ({
-                  ...current,
-                  area: event.target.value
-                }))
-              }
+              onChange={(event) => setNewTable((c) => ({ ...c, area: event.target.value }))}
               placeholder="Main Bar"
               className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
             />
@@ -736,12 +677,7 @@ export function TableSetupManager() {
             <input
               type="checkbox"
               checked={newTable.is_bookable}
-              onChange={(event) =>
-                setNewTable((current) => ({
-                  ...current,
-                  is_bookable: event.target.checked
-                }))
-              }
+              onChange={(event) => setNewTable((c) => ({ ...c, is_bookable: event.target.checked }))}
             />
             <span>Bookable</span>
           </label>
@@ -758,74 +694,205 @@ export function TableSetupManager() {
         </form>
       </div>
 
+      {/* Join groups */}
       <div className="rounded-lg border border-gray-200 bg-white p-4">
-        <h3 className="text-sm font-semibold text-gray-900">Joinable tables</h3>
-        <p className="mt-1 text-xs text-gray-500">
-          Choose table pairs that can be joined for larger bookings.
-        </p>
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h3 className="text-sm font-semibold text-gray-900">Table join groups</h3>
+            <p className="mt-1 text-xs text-gray-500">
+              Tables in the same group can be booked together in any combination. The system
+              automatically generates all valid multi-table options from each group.
+            </p>
+          </div>
+          {!editingGroup && (
+            <button
+              type="button"
+              onClick={() => {
+                setEditingGroup({ id: null, name: '', table_ids: [] })
+                setErrorMessage(null)
+              }}
+              className="shrink-0 rounded-md bg-sidebar px-3 py-1.5 text-sm font-medium text-white hover:bg-sidebar/90"
+            >
+              + New group
+            </button>
+          )}
+        </div>
 
-        {loading ? (
-          <p className="mt-3 text-sm text-gray-500">Loading joinable-table rules…</p>
-        ) : joinPairs.length === 0 ? (
-          <p className="mt-3 rounded-md border border-dashed border-gray-200 bg-gray-50 px-3 py-3 text-sm text-gray-600">
-            Add at least two tables before configuring joined-table rules.
+        {/* Edit / create form */}
+        {editingGroup && (
+          <div className="mt-4 rounded-md border border-blue-200 bg-blue-50 p-4">
+            <h4 className="mb-3 text-sm font-semibold text-blue-900">
+              {editingGroup.id ? 'Edit group' : 'New group'}
+            </h4>
+
+            <label className="block text-xs font-medium text-gray-700">
+              Group name
+              <input
+                type="text"
+                value={editingGroup.name}
+                onChange={(event) =>
+                  setEditingGroup((current) =>
+                    current ? { ...current, name: event.target.value } : null
+                  )
+                }
+                placeholder="e.g. Dining Room"
+                className="mt-1 w-full max-w-xs rounded-md border border-gray-300 px-3 py-2 text-sm"
+              />
+            </label>
+
+            <p className="mt-3 text-xs font-medium text-gray-700">Tables in this group</p>
+            {loading ? (
+              <p className="mt-2 text-xs text-gray-500">Loading tables…</p>
+            ) : (
+              <div className="mt-2 grid gap-2 sm:grid-cols-2 md:grid-cols-3">
+                {sortedTables.map((table) => {
+                  const checked = editingGroup.table_ids.includes(table.id)
+                  return (
+                    <label
+                      key={table.id}
+                      className="flex items-center gap-2 rounded-md border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={() =>
+                          setEditingGroup((current) => {
+                            if (!current) return null
+                            return {
+                              ...current,
+                              table_ids: checked
+                                ? current.table_ids.filter((id) => id !== table.id)
+                                : [...current.table_ids, table.id]
+                            }
+                          })
+                        }
+                      />
+                      <span>
+                        <span className="font-medium">{table.name || table.table_number}</span>
+                        {table.area && (
+                          <span className="ml-1 text-xs text-gray-400">({table.area})</span>
+                        )}
+                      </span>
+                    </label>
+                  )
+                })}
+              </div>
+            )}
+
+            <div className="mt-4 flex gap-2">
+              <button
+                type="button"
+                onClick={() => { void saveGroup() }}
+                disabled={savingGroup}
+                className="rounded-md bg-sidebar px-4 py-2 text-sm font-medium text-white hover:bg-sidebar/90 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {savingGroup ? 'Saving…' : 'Save group'}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setEditingGroup(null)
+                  setErrorMessage(null)
+                }}
+                disabled={savingGroup}
+                className="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Group list */}
+        {loadingGroups ? (
+          <p className="mt-4 text-sm text-gray-500">Loading join groups…</p>
+        ) : joinGroups.length === 0 && !editingGroup ? (
+          <p className="mt-4 rounded-md border border-dashed border-gray-200 bg-gray-50 px-3 py-3 text-sm text-gray-600">
+            No join groups yet. Create one to allow tables to be booked together.
           </p>
         ) : (
-          <div className="mt-3 space-y-4">
-            {joinPairsByArea.map((group) => {
-              const allChecked = group.pairs.every((pair) => joinLinkKeys.has(pair.key))
-              const someChecked = group.pairs.some((pair) => joinLinkKeys.has(pair.key))
+          <div className="mt-4 space-y-3">
+            {joinGroups.map((group) => {
+              const groupTables = sortedTables.filter((t) => group.table_ids.includes(t.id))
+              const pairCount = (group.table_ids.length * (group.table_ids.length - 1)) / 2
+              const isConfirmingDelete = confirmDeleteId === group.id
+
               return (
-                <div key={group.areaName}>
-                  <div className="mb-2 flex items-center justify-between">
-                    <span className="text-xs font-semibold text-gray-700">{group.areaName}</span>
-                    <button
-                      type="button"
-                      onClick={() => toggleAllPairsInGroup(group.pairs)}
-                      className="text-xs font-medium text-indigo-600 hover:text-indigo-800"
-                    >
-                      {allChecked ? 'Deselect all' : someChecked ? 'Select all' : 'Select all'}
-                    </button>
-                  </div>
-                  <div className="grid gap-2 md:grid-cols-2">
-                    {group.pairs.map((pair) => (
-                      <label
-                        key={pair.key}
-                        className="flex items-start gap-2 rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-700"
-                      >
-                        <input
-                          type="checkbox"
-                          checked={joinLinkKeys.has(pair.key)}
-                          onChange={() => toggleJoinLink(pair.key)}
-                        />
-                        <span>
-                          <span className="font-medium">{pair.left.name || pair.left.table_number}</span>
-                          {' + '}
-                          <span className="font-medium">{pair.right.name || pair.right.table_number}</span>
-                        </span>
-                      </label>
-                    ))}
+                <div
+                  key={group.id}
+                  className="rounded-md border border-gray-200 bg-gray-50 px-4 py-3"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold text-gray-900">{group.name}</p>
+                      <p className="mt-0.5 text-xs text-gray-600">
+                        {groupTables.length > 0
+                          ? groupTables.map((t) => t.name || t.table_number).join(' · ')
+                          : 'No tables assigned'}
+                      </p>
+                      {group.table_ids.length >= 2 && (
+                        <p className="mt-0.5 text-xs text-gray-400">
+                          {group.table_ids.length} tables · {pairCount} pairs ·{' '}
+                          {2 ** group.table_ids.length - group.table_ids.length - 1} multi-table combinations
+                        </p>
+                      )}
+                    </div>
+
+                    {!isConfirmingDelete ? (
+                      <div className="flex shrink-0 gap-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEditingGroup({
+                              id: group.id,
+                              name: group.name,
+                              table_ids: [...group.table_ids]
+                            })
+                            setErrorMessage(null)
+                          }}
+                          disabled={!!editingGroup}
+                          className="rounded border border-gray-300 px-2.5 py-1 text-xs font-medium text-gray-700 hover:bg-white disabled:cursor-not-allowed disabled:opacity-40"
+                        >
+                          Edit
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setConfirmDeleteId(group.id)}
+                          disabled={!!editingGroup}
+                          className="rounded border border-red-200 px-2.5 py-1 text-xs font-medium text-red-600 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-40"
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="flex shrink-0 items-center gap-2">
+                        <span className="text-xs text-gray-600">Delete this group?</span>
+                        <button
+                          type="button"
+                          onClick={() => { void deleteGroup(group.id) }}
+                          disabled={deletingGroupId === group.id}
+                          className="rounded border border-red-400 bg-red-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-red-700 disabled:opacity-50"
+                        >
+                          {deletingGroupId === group.id ? 'Deleting…' : 'Yes, delete'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setConfirmDeleteId(null)}
+                          className="rounded border border-gray-300 px-2.5 py-1 text-xs font-medium text-gray-700 hover:bg-white"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    )}
                   </div>
                 </div>
               )
             })}
           </div>
         )}
-
-        <div className="mt-4">
-          <button
-            type="button"
-            disabled={savingJoinLinks || loading || joinPairs.length === 0}
-            onClick={() => {
-              void saveJoinLinks()
-            }}
-            className="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {savingJoinLinks ? 'Saving…' : 'Save joinable tables'}
-          </button>
-        </div>
       </div>
 
+      {/* Private booking area mapping */}
       <div className="rounded-lg border border-gray-200 bg-white p-4">
         <h3 className="text-sm font-semibold text-gray-900">Private booking area mapping</h3>
         <p className="mt-1 text-xs text-gray-500">
@@ -881,9 +948,7 @@ export function TableSetupManager() {
           <button
             type="button"
             disabled={savingSpaceAreaLinks || loading || sortedAreas.length === 0 || sortedVenueSpaces.length === 0}
-            onClick={() => {
-              void saveSpaceAreaLinks()
-            }}
+            onClick={() => { void saveSpaceAreaLinks() }}
             className="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {savingSpaceAreaLinks ? 'Saving…' : 'Save private-booking area mapping'}
