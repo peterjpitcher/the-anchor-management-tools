@@ -121,7 +121,8 @@ export async function logApiUsage(
 export function createApiResponse(
   data: any,
   status: number = 200,
-  headers: Record<string, string> = {}
+  headers: Record<string, string> = {},
+  method?: string
 ) {
   // Normalise payload so consumers always see a success/data envelope
   const payload =
@@ -129,23 +130,35 @@ export function createApiResponse(
       ? data
       : { success: true, data };
 
-  // Generate ETag for caching
-  const etag = `"${Buffer.from(JSON.stringify(payload))
-    .toString('base64')
-    .slice(0, 27)}"`;
-  
+  const isGet = !method || method.toUpperCase() === 'GET' || method.toUpperCase() === 'OPTIONS'
+  const cacheControl = isGet
+    ? 'public, max-age=60, stale-while-revalidate=120'
+    : 'no-store'
+
+  // SECURITY: Set CORS_ALLOWED_ORIGIN env var to restrict cross-origin access to known domains
+  // (e.g. 'https://www.the-anchor.pub' for the external booking widget).
+  // Defaults to '*' only as a fallback — operators should always configure this in production.
+  const corsOrigin = process.env.CORS_ALLOWED_ORIGIN ?? '*'
+
+  const responseHeaders: Record<string, string> = {
+    'Content-Type': 'application/json',
+    'Cache-Control': cacheControl,
+    'Access-Control-Allow-Origin': corsOrigin,
+    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-API-Key, Idempotency-Key',
+    ...headers,
+  }
+
+  // Only include ETag for cacheable responses
+  if (isGet) {
+    responseHeaders['ETag'] = `"${Buffer.from(JSON.stringify(payload))
+      .toString('base64')
+      .slice(0, 27)}"`
+  }
+
   return NextResponse.json(payload, {
     status,
-    headers: {
-      'Content-Type': 'application/json',
-      'Cache-Control': 'public, max-age=60, stale-while-revalidate=120',
-      'Access-Control-Allow-Origin': '*', // Allow all origins for public API
-      'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-API-Key, Idempotency-Key',
-      'X-Powered-By': 'The Anchor API',
-      'ETag': etag,
-      ...headers,
-    },
+    headers: responseHeaders,
   });
 }
 

@@ -283,32 +283,37 @@ export async function POST(request: NextRequest) {
       ) {
         let smsSendResult: Awaited<ReturnType<typeof sendTableBookingCreatedSmsIfAllowed>> | null = null
 
-        try {
-          smsSendResult = await sendTableBookingCreatedSmsIfAllowed(supabase, {
+        const [smsOutcome, emailOutcome] = await Promise.allSettled([
+          sendTableBookingCreatedSmsIfAllowed(supabase, {
             customerId: customerResolution.customerId,
             normalizedPhone,
             bookingResult,
             nextStepUrl
+          }),
+          sendManagerTableBookingCreatedEmailIfAllowed(supabase, {
+            tableBookingId: bookingResult.table_booking_id || null,
+            fallbackCustomerId: customerResolution.customerId,
+            createdVia: 'api'
           })
+        ])
+
+        if (smsOutcome.status === 'fulfilled') {
+          smsSendResult = smsOutcome.value
           smsMeta = smsSendResult.sms
-        } catch (smsError) {
+        } else {
           logger.warn('Table booking created SMS task rejected unexpectedly', {
             metadata: {
               tableBookingId: bookingResult.table_booking_id || null,
               customerId: customerResolution.customerId,
               state: bookingResult.state,
-              error: smsError instanceof Error ? smsError.message : String(smsError)
+              error: smsOutcome.reason instanceof Error ? smsOutcome.reason.message : String(smsOutcome.reason)
             }
           })
           smsMeta = { success: false, code: 'unexpected_exception', logFailure: false }
         }
 
-        try {
-          const managerEmailResult = await sendManagerTableBookingCreatedEmailIfAllowed(supabase, {
-            tableBookingId: bookingResult.table_booking_id || null,
-            fallbackCustomerId: customerResolution.customerId,
-            createdVia: 'api'
-          })
+        if (emailOutcome.status === 'fulfilled') {
+          const managerEmailResult = emailOutcome.value
           if (!managerEmailResult.sent && managerEmailResult.error) {
             logger.warn('Failed to send manager booking-created email', {
               metadata: {
@@ -317,11 +322,11 @@ export async function POST(request: NextRequest) {
               }
             })
           }
-        } catch (emailError) {
+        } else {
           logger.warn('Manager booking-created email task rejected unexpectedly', {
             metadata: {
               tableBookingId: bookingResult.table_booking_id || null,
-              error: emailError instanceof Error ? emailError.message : String(emailError)
+              error: emailOutcome.reason instanceof Error ? emailOutcome.reason.message : String(emailOutcome.reason)
             }
           })
         }
@@ -370,25 +375,27 @@ export async function POST(request: NextRequest) {
           }
         }
 
-        await recordTableBookingAnalyticsSafe(supabase, {
-          customerId: customerResolution.customerId,
-          tableBookingId: bookingResult.table_booking_id,
-          eventType: 'table_booking_created',
-          metadata: {
-            party_size: payload.party_size,
-            booking_purpose: payload.purpose,
-            sunday_lunch: payload.sunday_lunch === true,
-            status: bookingResult.status || bookingResult.state,
-            table_name: bookingResult.table_name || null
-          }
-        }, {
-          tableBookingId: bookingResult.table_booking_id,
-          customerId: customerResolution.customerId,
-          eventType: 'table_booking_created'
-        })
+        const analyticsPromises: Promise<void>[] = [
+          recordTableBookingAnalyticsSafe(supabase, {
+            customerId: customerResolution.customerId,
+            tableBookingId: bookingResult.table_booking_id,
+            eventType: 'table_booking_created',
+            metadata: {
+              party_size: payload.party_size,
+              booking_purpose: payload.purpose,
+              sunday_lunch: payload.sunday_lunch === true,
+              status: bookingResult.status || bookingResult.state,
+              table_name: bookingResult.table_name || null
+            }
+          }, {
+            tableBookingId: bookingResult.table_booking_id,
+            customerId: customerResolution.customerId,
+            eventType: 'table_booking_created'
+          })
+        ]
 
         if (bookingResult.state === 'pending_card_capture') {
-          await recordTableBookingAnalyticsSafe(supabase, {
+          analyticsPromises.push(recordTableBookingAnalyticsSafe(supabase, {
             customerId: customerResolution.customerId,
             tableBookingId: bookingResult.table_booking_id,
             eventType: 'card_capture_started',
@@ -397,14 +404,14 @@ export async function POST(request: NextRequest) {
               next_step_url_provided: Boolean(nextStepUrl)
             }
           }, {
-              tableBookingId: bookingResult.table_booking_id,
-              customerId: customerResolution.customerId,
-              eventType: 'card_capture_started'
-            })
+            tableBookingId: bookingResult.table_booking_id,
+            customerId: customerResolution.customerId,
+            eventType: 'card_capture_started'
+          }))
         }
 
         if (bookingResult.state === 'pending_payment') {
-          await recordTableBookingAnalyticsSafe(supabase, {
+          analyticsPromises.push(recordTableBookingAnalyticsSafe(supabase, {
             customerId: customerResolution.customerId,
             tableBookingId: bookingResult.table_booking_id,
             eventType: 'table_deposit_started',
@@ -418,8 +425,10 @@ export async function POST(request: NextRequest) {
             tableBookingId: bookingResult.table_booking_id,
             customerId: customerResolution.customerId,
             eventType: 'table_deposit_started',
-          })
+          }))
         }
+
+        await Promise.all(analyticsPromises)
       }
 
       const responseState: TableBookingResponseData['state'] =

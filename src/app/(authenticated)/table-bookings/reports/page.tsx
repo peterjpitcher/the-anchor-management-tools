@@ -114,10 +114,11 @@ export default async function TableBookingReportsPage({ searchParams }: TableBoo
                   <Link
                     key={option.key}
                     href={`/table-bookings/reports?window=${option.key}`}
-                    className={`rounded-md border px-3 py-1.5 text-xs font-medium transition ${
+                    aria-current={active ? 'page' : undefined}
+                    className={`rounded-md border px-3 py-1.5 text-xs transition ${
                       active
-                        ? 'border-blue-600 bg-blue-50 text-blue-700'
-                        : 'border-gray-300 bg-white text-gray-600 hover:border-gray-400 hover:text-gray-800'
+                        ? 'border-blue-600 bg-blue-50 font-semibold text-blue-700'
+                        : 'font-medium border-gray-300 bg-white text-gray-600 hover:border-gray-400 hover:text-gray-800'
                     }`}
                   >
                     {option.label}

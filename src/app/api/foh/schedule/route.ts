@@ -178,6 +178,14 @@ export async function GET(request: NextRequest) {
         'id, booking_reference, booking_date, booking_time, party_size, booking_type, booking_purpose, status, special_requirements, seated_at, left_at, no_show_at, start_datetime, end_datetime, event_id, customer:customers!table_bookings_customer_id_fkey(first_name,last_name)'
       )
       .eq('booking_date', date)
+      // Only show bookings that are actively occupying a table:
+      //   - not cancelled (table is free again)
+      //   - not no_show (guest never arrived, table was never used)
+      //   - left_at IS NULL (guest hasn't departed yet — this also excludes 'completed' since
+      //     the completed action always sets left_at, and 'left' action sets left_at too)
+      // Note: 'seated' is not a DB status — it is confirmed + seated_at IS NOT NULL.
+      .not('status', 'in', '("cancelled","no_show")')
+      .is('left_at', null)
       .order('booking_time', { ascending: true }),
     (supabase.from('business_hours') as any)
       .select('opens, closes, is_closed, kitchen_opens, kitchen_closes, is_kitchen_closed')

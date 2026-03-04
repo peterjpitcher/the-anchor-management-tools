@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireFohPermission } from '@/lib/foh/api-auth'
 import { getTableBookingForFoh } from '@/lib/foh/bookings'
 
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
 export async function POST(
   _request: NextRequest,
   context: { params: Promise<{ id: string }> }
@@ -12,13 +14,16 @@ export async function POST(
   }
 
   const { id } = await context.params
+  if (!UUID_REGEX.test(id)) {
+    return NextResponse.json({ error: 'Invalid booking ID' }, { status: 400 })
+  }
   const booking = await getTableBookingForFoh(auth.supabase, id)
 
   if (!booking) {
     return NextResponse.json({ error: 'Booking not found' }, { status: 404 })
   }
 
-  if (['cancelled', 'no_show'].includes(booking.status)) {
+  if (['cancelled', 'no_show', 'completed'].includes(booking.status)) {
     return NextResponse.json(
       { error: 'Booking cannot be marked left from current status' },
       { status: 409 }
