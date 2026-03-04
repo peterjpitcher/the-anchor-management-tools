@@ -178,11 +178,14 @@ export async function PUT(request: NextRequest) {
     }
   }
 
-  for (const row of toDelete) {
+  if (toDelete.length > 0) {
+    const orFilter = toDelete
+      .map((row) => `and(venue_space_id.eq.${row.venue_space_id},table_area_id.eq.${row.table_area_id})`)
+      .join(',')
+
     const { error: deleteError } = await (auth.supabase.from('venue_space_table_areas') as any)
       .delete()
-      .eq('venue_space_id', row.venue_space_id)
-      .eq('table_area_id', row.table_area_id)
+      .or(orFilter)
 
     if (deleteError) {
       return NextResponse.json({ error: 'Failed to remove space-area links' }, { status: 500 })

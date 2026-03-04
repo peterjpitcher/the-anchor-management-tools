@@ -7,6 +7,8 @@ import {
   updateTableBookingPartySizeWithLinkedEventSeats
 } from '@/lib/events/staff-seat-updates'
 
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
 const UpdatePartySizeSchema = z.object({
   party_size: z.preprocess(
     (value) => (typeof value === 'string' ? Number.parseInt(value, 10) : value),
@@ -25,6 +27,9 @@ export async function POST(
   }
 
   const { id } = await context.params
+  if (!UUID_REGEX.test(id)) {
+    return NextResponse.json({ error: 'Invalid booking ID' }, { status: 400 })
+  }
 
   let body: unknown
   try {

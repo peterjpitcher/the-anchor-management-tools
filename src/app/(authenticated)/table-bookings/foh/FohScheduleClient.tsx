@@ -4,7 +4,7 @@ import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 're
 import type { RealtimeChannel } from '@supabase/supabase-js'
 import { fromZonedTime } from 'date-fns-tz'
 import Image from 'next/image'
-import { Modal } from '@/components/ui-v2/overlay/Modal'
+import { Modal, ModalActions } from '@/components/ui-v2/overlay/Modal'
 import { createClient as createSupabaseClient } from '@/lib/supabase/client'
 import { cn } from '@/lib/utils'
 
@@ -243,19 +243,19 @@ function statusBadgeClass(status?: string | null): string {
     case 'seated':
       return 'bg-emerald-100 text-emerald-800 border-emerald-200'
     case 'left':
-      return 'bg-sky-100 text-sky-800 border-sky-200'
+    case 'completed':
+      return 'bg-gray-100 text-gray-600 border-gray-200'
     case 'confirmed':
+    case 'pending':
       return 'bg-green-100 text-green-800 border-green-200'
     case 'pending_payment':
       return 'bg-yellow-100 text-yellow-800 border-yellow-200'
     case 'pending_card_capture':
       return 'bg-yellow-100 text-yellow-800 border-yellow-200'
     case 'no_show':
-      return 'bg-red-100 text-red-800 border-red-200'
+      return 'bg-red-100 text-red-700 border-red-200'
     case 'cancelled':
-      return 'bg-gray-100 text-gray-700 border-gray-200'
-    case 'completed':
-      return 'bg-blue-100 text-blue-800 border-blue-200'
+      return 'bg-gray-100 text-gray-500 border-gray-200'
     case 'visited_waiting_for_review':
     case 'review_clicked':
       return 'bg-purple-100 text-purple-800 border-purple-200'
@@ -984,6 +984,13 @@ export function FohScheduleClient({
   const [loadingSelectedMoveOptions, setLoadingSelectedMoveOptions] = useState(false)
   const [selectedBookingContext, setSelectedBookingContext] = useState<SelectedBookingContext | null>(null)
   const [showCancelBookingConfirmation, setShowCancelBookingConfirmation] = useState(false)
+  const [showNoShowConfirmation, setShowNoShowConfirmation] = useState(false)
+  const [partySizeEditOpen, setPartySizeEditOpen] = useState(false)
+  const [partySizeEditValue, setPartySizeEditValue] = useState('')
+  const [partySizeEditBookingId, setPartySizeEditBookingId] = useState<string | null>(null)
+  const [walkoutModalOpen, setWalkoutModalOpen] = useState(false)
+  const [walkoutAmountValue, setWalkoutAmountValue] = useState('')
+  const [walkoutBookingId, setWalkoutBookingId] = useState<string | null>(null)
 
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false)
   const [createMode, setCreateMode] = useState<FohCreateMode>('booking')
@@ -1105,14 +1112,16 @@ export function FohScheduleClient({
 
     const queueRefresh = () => {
       if (cancelled) return
-      if (refreshTimeoutId != null) return
+      if (refreshTimeoutId != null) {
+        window.clearTimeout(refreshTimeoutId)
+      }
 
       refreshTimeoutId = window.setTimeout(() => {
         refreshTimeoutId = null
         void reloadSchedule({ requestedDate: date, surfaceError: false }).catch(() => {
           // Best-effort realtime refresh; date-based loader handles surfaced errors.
         })
-      }, 300)
+      }, 500)
     }
 
     channel = supabase
@@ -1258,6 +1267,8 @@ export function FohScheduleClient({
     || isCreateModalOpen
     || selectedBookingContext
     || showCancelBookingConfirmation
+    || partySizeEditOpen
+    || walkoutModalOpen
   )
 
   useEffect(() => {
@@ -1701,6 +1712,7 @@ export function FohScheduleClient({
       laneTableName: context.laneTableName
     })
     setShowCancelBookingConfirmation(false)
+    setShowNoShowConfirmation(false)
     setErrorMessage(null)
     setStatusMessage(null)
   }
@@ -1709,6 +1721,9 @@ export function FohScheduleClient({
     setSelectedBookingContext(null)
     setBookingActionInFlight(null)
     setShowCancelBookingConfirmation(false)
+    setShowNoShowConfirmation(false)
+    setPartySizeEditOpen(false)
+    setWalkoutModalOpen(false)
   }
 
   async function runAction(
@@ -1717,6 +1732,7 @@ export function FohScheduleClient({
     inFlightLabel?: string
   ): Promise<boolean> {
     setShowCancelBookingConfirmation(false)
+    setShowNoShowConfirmation(false)
     setErrorMessage(null)
     setStatusMessage(null)
     setBookingActionInFlight(inFlightLabel || successMessage)
@@ -2451,13 +2467,13 @@ export function FohScheduleClient({
         )}
 
         {statusMessage && (
-          <div className={cn('rounded-md border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-800', isManagerKioskStyle ? 'mt-2' : 'mt-3')}>
+          <div role="alert" className={cn('rounded-md border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-800', isManagerKioskStyle ? 'mt-2' : 'mt-3')}>
             {statusMessage}
           </div>
         )}
 
         {errorMessage && (
-          <div className={cn('rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800', isManagerKioskStyle ? 'mt-2' : 'mt-3')}>
+          <div role="alert" className={cn('rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800', isManagerKioskStyle ? 'mt-2' : 'mt-3')}>
             {errorMessage}
           </div>
         )}
@@ -2489,7 +2505,7 @@ export function FohScheduleClient({
         </div>
       )}
 
-      <div className={swimlaneCardClass}>
+      <div className={cn(swimlaneCardClass, 'relative')}>
         <div className={swimlaneHeaderRowClass}>
           <h3 className="text-sm font-semibold text-gray-900">Table availability swimlanes</h3>
           <p className={cn('text-gray-500', isManagerKioskStyle ? 'text-[10px]' : 'text-xs')}>
@@ -2498,10 +2514,16 @@ export function FohScheduleClient({
           </p>
         </div>
 
+        {loading && (
+          <div className="absolute inset-0 z-20 flex items-center justify-center rounded-lg bg-white/70">
+            <div className="h-8 w-8 animate-spin rounded-full border-2 border-gray-300 border-t-sidebar" />
+          </div>
+        )}
+
         <div className="overflow-x-auto">
           <div className="min-w-[980px] border border-gray-200">
             <div className="grid grid-cols-[220px_1fr] border-b border-gray-200 bg-gray-50">
-              <div className={tableHeaderCellClass}>Table</div>
+              <div className={cn(tableHeaderCellClass, 'sticky left-0 z-10 bg-gray-50')}>Table</div>
               <div className={timelineHeaderTrackClass}>
                 {timeline.ticks.map((minute) => {
                   const left = ((minute - timeline.startMin) / timelineDuration) * 100
@@ -2525,7 +2547,7 @@ export function FohScheduleClient({
 
             {(schedule?.lanes || []).map((lane) => (
               <div key={lane.table_id} className="grid grid-cols-[220px_1fr] border-b border-gray-200 last:border-b-0">
-                <div className={laneMetaCellClass}>
+                <div className={cn(laneMetaCellClass, 'sticky left-0 z-10')}>
                   <div>
                     <p className="text-xs font-semibold text-gray-900">
                       {lane.table_name}
@@ -2541,12 +2563,23 @@ export function FohScheduleClient({
 
                 <div
                   className={laneTimelineClass}
+                  role={canEdit ? 'button' : undefined}
+                  tabIndex={canEdit ? 0 : undefined}
                   onClick={() => {
                     openWalkInModalFromLane({
                       table_id: lane.table_id,
                       table_name: lane.table_name
                     })
                   }}
+                  onKeyDown={canEdit ? (e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault()
+                      openWalkInModalFromLane({
+                        table_id: lane.table_id,
+                        table_name: lane.table_name
+                      })
+                    }
+                  } : undefined}
                 >
                   {timeline.ticks.map((minute) => {
                     const left = ((minute - timeline.startMin) / timelineDuration) * 100
@@ -2678,7 +2711,7 @@ export function FohScheduleClient({
                         if (ok) closeBookingDetails()
                       })()
                     }}
-                    className="rounded-md border border-gray-300 px-2 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
+                    className="rounded-md border border-gray-300 px-2 py-2.5 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
                   >
                     {bookingActionInFlight === 'seated' ? 'Marking…' : 'Mark seated'}
                   </button>
@@ -2695,7 +2728,7 @@ export function FohScheduleClient({
                         if (ok) closeBookingDetails()
                       })()
                     }}
-                    className="rounded-md border border-gray-300 px-2 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
+                    className="rounded-md border border-gray-300 px-2 py-2.5 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
                   >
                     {bookingActionInFlight === 'left' ? 'Marking…' : 'Mark left'}
                   </button>
@@ -2703,47 +2736,27 @@ export function FohScheduleClient({
                     type="button"
                     disabled={Boolean(bookingActionInFlight)}
                     onClick={() => {
-                      void (async () => {
-                        const ok = await runAction(
-                          () => postBookingAction(`/api/foh/bookings/${selectedBooking.id}/no-show`),
-                          'No-show recorded',
-                          'no_show'
-                        )
-                        if (ok) closeBookingDetails()
-                      })()
+                      setShowNoShowConfirmation((current) => !current)
                     }}
-                    className="rounded-md border border-red-300 px-2 py-1.5 text-xs font-medium text-red-700 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60"
+                    className={cn(
+                      'rounded-md border px-2 py-2.5 text-xs font-medium disabled:cursor-not-allowed disabled:opacity-60',
+                      showNoShowConfirmation
+                        ? 'border-red-400 bg-red-100 text-red-800'
+                        : 'border-red-300 text-red-700 hover:bg-red-50'
+                    )}
                   >
-                    {bookingActionInFlight === 'no_show' ? 'Saving…' : 'Mark no-show'}
+                    {bookingActionInFlight === 'no_show' ? 'Saving…' : showNoShowConfirmation ? 'No-show selected' : 'Mark no-show'}
                   </button>
                   <button
                     type="button"
                     disabled={Boolean(bookingActionInFlight)}
                     onClick={() => {
                       const currentSize = Math.max(1, Number(selectedBooking.party_size || 1))
-                      const raw = window.prompt('New party size', String(currentSize))
-                      if (raw === null) return
-
-                      const nextSize = Number.parseInt(raw, 10)
-                      if (!Number.isFinite(nextSize) || nextSize < 1 || nextSize > 20) {
-                        setErrorMessage('Enter a party size between 1 and 20.')
-                        return
-                      }
-
-                      void (async () => {
-                        const ok = await runAction(
-                          () =>
-                            postBookingAction(`/api/foh/bookings/${selectedBooking.id}/party-size`, {
-                              party_size: nextSize,
-                              send_sms: true
-                            }),
-                          'Party size updated',
-                          'party_size'
-                        )
-                        if (ok) closeBookingDetails()
-                      })()
+                      setPartySizeEditBookingId(selectedBooking.id)
+                      setPartySizeEditValue(String(currentSize))
+                      setPartySizeEditOpen(true)
                     }}
-                    className="rounded-md border border-gray-300 px-2 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
+                    className="rounded-md border border-gray-300 px-2 py-2.5 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
                   >
                     {bookingActionInFlight === 'party_size' ? 'Saving…' : 'Edit party size'}
                   </button>
@@ -2755,7 +2768,7 @@ export function FohScheduleClient({
                       setShowCancelBookingConfirmation((current) => !current)
                     }}
                     className={cn(
-                      'rounded-md border px-2 py-1.5 text-xs font-medium disabled:cursor-not-allowed disabled:opacity-60',
+                      'rounded-md border px-2 py-2.5 text-xs font-medium disabled:cursor-not-allowed disabled:opacity-60',
                       showCancelBookingConfirmation
                         ? 'border-red-400 bg-red-100 text-red-800'
                         : 'border-red-300 text-red-700 hover:bg-red-50'
@@ -2767,28 +2780,51 @@ export function FohScheduleClient({
                     type="button"
                     disabled={Boolean(bookingActionInFlight)}
                     onClick={() => {
-                      const raw = window.prompt('Walkout amount (GBP)')
-                      if (!raw) return
-                      const amount = Number(raw)
-                      if (!Number.isFinite(amount) || amount <= 0) {
-                        setErrorMessage('Please enter a valid walkout amount')
-                        return
-                      }
-
-                      void (async () => {
-                        const ok = await runAction(
-                          () => postBookingAction(`/api/foh/bookings/${selectedBooking.id}/walkout`, { amount }),
-                          'Walkout charge request created',
-                          'walkout'
-                        )
-                        if (ok) closeBookingDetails()
-                      })()
+                      setWalkoutBookingId(selectedBooking.id)
+                      setWalkoutAmountValue('')
+                      setWalkoutModalOpen(true)
                     }}
-                    className="rounded-md border border-red-300 px-2 py-1.5 text-xs font-medium text-red-700 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60"
+                    className="rounded-md border border-red-300 px-2 py-2.5 text-xs font-medium text-red-700 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60"
                   >
                     {bookingActionInFlight === 'walkout' ? 'Saving…' : 'Flag walkout'}
                   </button>
                 </div>
+
+                {showNoShowConfirmation && (
+                  <div className="rounded-md border border-red-300 bg-red-50 px-3 py-2">
+                    <p className="text-xs font-semibold text-red-900">Confirm no-show</p>
+                    <p className="mt-1 text-xs text-red-800">
+                      This will mark the booking as no-show and may trigger a charge request.
+                    </p>
+                    <div className="mt-2 flex gap-2">
+                      <button
+                        type="button"
+                        disabled={Boolean(bookingActionInFlight)}
+                        onClick={() => setShowNoShowConfirmation(false)}
+                        className="rounded-md border border-gray-300 bg-white px-2.5 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        Go back
+                      </button>
+                      <button
+                        type="button"
+                        disabled={Boolean(bookingActionInFlight)}
+                        onClick={() => {
+                          void (async () => {
+                            const ok = await runAction(
+                              () => postBookingAction(`/api/foh/bookings/${selectedBooking.id}/no-show`),
+                              'No-show recorded',
+                              'no_show'
+                            )
+                            if (ok) closeBookingDetails()
+                          })()
+                        }}
+                        className="rounded-md border border-red-400 bg-red-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {bookingActionInFlight === 'no_show' ? 'Saving…' : 'Confirm no-show'}
+                      </button>
+                    </div>
+                  </div>
+                )}
 
                 {showCancelBookingConfirmation && selectedBookingCanBeCancelled && (
                   <div className="rounded-md border border-red-300 bg-red-50 px-3 py-2">
@@ -2953,6 +2989,10 @@ export function FohScheduleClient({
 
             {searchingCustomers && <p className="mt-2 text-xs text-gray-500">Searching customers…</p>}
 
+            {!selectedCustomer && !searchingCustomers && customerQuery.trim().length >= 2 && customerResults.length === 0 && (
+              <div className="mt-2 px-4 py-2 text-sm text-gray-500">No customers found</div>
+            )}
+
             {!selectedCustomer && customerResults.length > 0 && (
               <div className="mt-2 max-h-56 overflow-auto rounded-md border border-gray-200 bg-white">
                 {customerResults.map((customer) => (
@@ -3027,45 +3067,6 @@ export function FohScheduleClient({
                   className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
                 />
               </label>
-            )}
-
-            {createMode !== 'walk_in' && createForm.purpose !== 'event' && overlappingEventForTable && (
-              <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900 md:col-span-2">
-                <p className="font-semibold">
-                  This booking overlaps {overlappingEventForTable.name}.
-                </p>
-                <p className="mt-1">
-                  Event window is {eventPromptWindowLabel(overlappingEventForTable)} (from 15 minutes before start until finish).
-                </p>
-                <div className="mt-2 flex flex-wrap gap-2">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setCreateForm((current) => ({
-                        ...current,
-                        purpose: 'event',
-                        event_id: overlappingEventForTable.id,
-                        sunday_lunch: false
-                      }))
-                      setTableEventPromptAcknowledgedEventId(null)
-                      setErrorMessage(null)
-                    }}
-                    className="rounded border border-amber-400 bg-white px-2.5 py-1 text-xs font-medium text-amber-900 hover:bg-amber-100"
-                  >
-                    Yes, book for event
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setTableEventPromptAcknowledgedEventId(overlappingEventForTable.id)
-                      setErrorMessage(null)
-                    }}
-                    className="rounded border border-amber-300 bg-transparent px-2.5 py-1 text-xs font-medium text-amber-900 hover:bg-amber-100/60"
-                  >
-                    No, keep table booking
-                  </button>
-                </div>
-              </div>
             )}
 
             {!selectedCustomer && (
@@ -3444,6 +3445,128 @@ export function FohScheduleClient({
             </div>
           </div>
         </form>
+      </Modal>
+
+      <Modal
+        open={partySizeEditOpen}
+        onClose={() => setPartySizeEditOpen(false)}
+        title="Edit party size"
+        size="sm"
+        footer={
+          <ModalActions>
+            <button
+              type="button"
+              onClick={() => setPartySizeEditOpen(false)}
+              className="rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              disabled={Boolean(bookingActionInFlight)}
+              onClick={() => {
+                const nextSize = Number.parseInt(partySizeEditValue, 10)
+                if (!Number.isFinite(nextSize) || nextSize < 1 || nextSize > 50) {
+                  setErrorMessage('Enter a party size between 1 and 50.')
+                  return
+                }
+                const bookingId = partySizeEditBookingId
+                if (!bookingId) return
+                setPartySizeEditOpen(false)
+
+                void (async () => {
+                  const ok = await runAction(
+                    () =>
+                      postBookingAction(`/api/foh/bookings/${bookingId}/party-size`, {
+                        party_size: nextSize,
+                        send_sms: true
+                      }),
+                    'Party size updated',
+                    'party_size'
+                  )
+                  if (ok) closeBookingDetails()
+                })()
+              }}
+              className="rounded-md bg-sidebar px-4 py-2 text-sm font-medium text-white hover:bg-sidebar/90 disabled:opacity-50"
+            >
+              {bookingActionInFlight === 'party_size' ? 'Saving…' : 'Confirm'}
+            </button>
+          </ModalActions>
+        }
+      >
+        <label className="block text-sm font-medium text-gray-700">
+          New party size
+          <input
+            type="number"
+            min={1}
+            max={50}
+            value={partySizeEditValue}
+            onChange={(e) => setPartySizeEditValue(e.target.value)}
+            className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+            autoFocus
+          />
+        </label>
+      </Modal>
+
+      <Modal
+        open={walkoutModalOpen}
+        onClose={() => setWalkoutModalOpen(false)}
+        title="Flag walkout"
+        size="sm"
+        footer={
+          <ModalActions>
+            <button
+              type="button"
+              onClick={() => setWalkoutModalOpen(false)}
+              className="rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              disabled={Boolean(bookingActionInFlight)}
+              onClick={() => {
+                const amount = Number(walkoutAmountValue)
+                if (!Number.isFinite(amount) || amount <= 0) {
+                  setErrorMessage('Please enter a valid walkout amount.')
+                  return
+                }
+                const bookingId = walkoutBookingId
+                if (!bookingId) return
+                setWalkoutModalOpen(false)
+
+                void (async () => {
+                  const ok = await runAction(
+                    () => postBookingAction(`/api/foh/bookings/${bookingId}/walkout`, { amount }),
+                    'Walkout charge request created',
+                    'walkout'
+                  )
+                  if (ok) closeBookingDetails()
+                })()
+              }}
+              className="rounded-md bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50"
+            >
+              {bookingActionInFlight === 'walkout' ? 'Saving…' : 'Confirm'}
+            </button>
+          </ModalActions>
+        }
+      >
+        <label className="block text-sm font-medium text-gray-700">
+          Walkout amount
+          <div className="relative mt-1">
+            <span className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-sm text-gray-500">£</span>
+            <input
+              type="number"
+              min={0.01}
+              step={0.01}
+              value={walkoutAmountValue}
+              onChange={(e) => setWalkoutAmountValue(e.target.value)}
+              className="w-full rounded-md border border-gray-300 py-2 pl-7 pr-3 text-sm"
+              placeholder="0.00"
+              autoFocus
+            />
+          </div>
+        </label>
       </Modal>
     </div>
   )

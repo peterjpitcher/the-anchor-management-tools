@@ -1,8 +1,10 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Modal } from '@/components/ui-v2/overlay/Modal'
+import { ConfirmDialog } from '@/components/ui-v2/overlay/ConfirmDialog'
 import { Button } from '@/components/ui-v2/forms/Button'
+import { EmptyState } from '@/components/ui-v2/display/EmptyState'
 import toast from 'react-hot-toast'
 
 type BohViewMode = 'day' | 'week' | 'month'
@@ -241,25 +243,24 @@ function formatLifecycleTime(value: string | null): string | null {
 
 function getStatusBadgeClasses(status: string): string {
   switch (status) {
-    case 'pending_payment':
-      return 'bg-amber-100 text-amber-900 border-amber-200'
-    case 'pending_card_capture':
-      return 'bg-amber-100 text-amber-900 border-amber-200'
+    case 'confirmed':
+    case 'pending':
+      return 'bg-green-100 text-green-800 border-green-200'
     case 'seated':
-      return 'bg-indigo-100 text-indigo-900 border-indigo-200'
+      return 'bg-emerald-100 text-emerald-800 border-emerald-200'
+    case 'pending_payment':
+    case 'pending_card_capture':
+      return 'bg-yellow-100 text-yellow-800 border-yellow-200'
     case 'left':
-      return 'bg-sky-100 text-sky-900 border-sky-200'
-    case 'no_show':
-      return 'bg-red-100 text-red-900 border-red-200'
-    case 'cancelled':
-      return 'bg-gray-200 text-gray-800 border-gray-300'
     case 'completed':
-      return 'bg-blue-100 text-blue-900 border-blue-200'
+      return 'bg-gray-100 text-gray-600 border-gray-200'
+    case 'no_show':
+      return 'bg-red-100 text-red-700 border-red-200'
+    case 'cancelled':
+      return 'bg-gray-100 text-gray-500 border-gray-200'
     case 'visited_waiting_for_review':
     case 'review_clicked':
       return 'bg-purple-100 text-purple-900 border-purple-200'
-    case 'confirmed':
-      return 'bg-green-100 text-green-900 border-green-200'
     default:
       return 'bg-gray-100 text-gray-900 border-gray-200'
   }
@@ -413,13 +414,28 @@ export function BohBookingsClient({
   const [actionLoadingKey, setActionLoadingKey] = useState<string | null>(null)
   const [lastInteractionAtMs, setLastInteractionAtMs] = useState<number>(() => Date.now())
 
+  // Delete confirmation
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
+  const [deleteConfirmBookingId, setDeleteConfirmBookingId] = useState<string | null>(null)
+
+  // Party size edit modal
+  const [partySizeEditOpen, setPartySizeEditOpen] = useState(false)
+  const [partySizeEditValue, setPartySizeEditValue] = useState('')
+  const [partySizeEditSendSms, setPartySizeEditSendSms] = useState(true)
+
+  // No-show / cancel confirmation
+  const [noShowConfirmOpen, setNoShowConfirmOpen] = useState(false)
+  const [cancelConfirmOpen, setCancelConfirmOpen] = useState(false)
+
   const closeSelectedBookingModal = useCallback(() => {
     setSelectedBookingId(null)
     setMoveTableId('')
     setSmsBody('')
   }, [])
 
-  const loadBookings = useCallback(async () => {
+  const abortControllerRef = useRef<AbortController | null>(null)
+
+  const loadBookings = useCallback(async (options?: { signal?: AbortSignal }) => {
     setLoading(true)
     setError(null)
 
@@ -434,13 +450,11 @@ export function BohBookingsClient({
         view
       })
 
+      const fetchOptions: RequestInit = { cache: 'no-store', signal: options?.signal }
+
       const [response, previousResponse] = await Promise.all([
-        fetch(`/api/boh/table-bookings?${searchParams.toString()}`, {
-          cache: 'no-store'
-        }),
-        fetch(`/api/boh/table-bookings?${previousSearchParams.toString()}`, {
-          cache: 'no-store'
-        }).catch(() => null)
+        fetch(`/api/boh/table-bookings?${searchParams.toString()}`, fetchOptions),
+        fetch(`/api/boh/table-bookings?${previousSearchParams.toString()}`, fetchOptions).catch(() => null)
       ])
 
       const payload = (await response.json()) as BohBookingsResponse
@@ -448,6 +462,8 @@ export function BohBookingsClient({
       if (!response.ok || !payload.success || !payload.data) {
         throw new Error(payload.error || 'Failed to load BOH bookings')
       }
+
+      if (options?.signal?.aborted) return
 
       setBookings(payload.data.bookings || [])
       setRangeStartDate(payload.data.range_start_date || focusDate)
@@ -471,6 +487,7 @@ export function BohBookingsClient({
         setPreviousRangeEndDate('')
       }
     } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') return
       const message = err instanceof Error ? err.message : 'Failed to load BOH bookings'
       setError(message)
       setBookings([])
@@ -478,12 +495,18 @@ export function BohBookingsClient({
       setPreviousRangeStartDate('')
       setPreviousRangeEndDate('')
     } finally {
-      setLoading(false)
+      if (!options?.signal?.aborted) {
+        setLoading(false)
+      }
     }
   }, [focusDate, view])
 
   useEffect(() => {
-    void loadBookings()
+    abortControllerRef.current?.abort()
+    const controller = new AbortController()
+    abortControllerRef.current = controller
+    void loadBookings({ signal: controller.signal })
+    return () => controller.abort()
   }, [loadBookings])
 
   useEffect(() => {
@@ -603,7 +626,7 @@ export function BohBookingsClient({
     return () => {
       cancelled = true
     }
-  }, [canEdit, selectedBooking])
+  }, [canEdit, selectedBooking?.id])
 
   const filteredBookings = useMemo(() => {
     const normalizedSearch = searchTerm.trim().toLowerCase()
@@ -761,20 +784,24 @@ export function BohBookingsClient({
     )
   }
 
-  async function handleUpdatePartySize() {
+  function openPartySizeEdit() {
+    if (!selectedBooking) return
+    const currentSize = Math.max(1, Number(selectedBooking.party_size || 1))
+    setPartySizeEditValue(String(currentSize))
+    setPartySizeEditSendSms(true)
+    setPartySizeEditOpen(true)
+  }
+
+  async function handleSubmitPartySize() {
     if (!selectedBooking) return
 
-    const currentSize = Math.max(1, Number(selectedBooking.party_size || 1))
-    const raw = window.prompt('New party size', String(currentSize))
-    if (raw === null) {
+    const nextSize = Number.parseInt(partySizeEditValue, 10)
+    if (!Number.isFinite(nextSize) || nextSize < 1 || nextSize > 50) {
+      toast.error('Enter a party size between 1 and 50')
       return
     }
 
-    const nextSize = Number.parseInt(raw, 10)
-    if (!Number.isFinite(nextSize) || nextSize < 1 || nextSize > 20) {
-      toast.error('Enter a party size between 1 and 20')
-      return
-    }
+    setPartySizeEditOpen(false)
 
     await runAction(
       'party-size',
@@ -784,7 +811,7 @@ export function BohBookingsClient({
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             party_size: nextSize,
-            send_sms: true
+            send_sms: partySizeEditSendSms
           })
         })
 
@@ -849,15 +876,18 @@ export function BohBookingsClient({
     )
   }
 
-  async function handleDeleteBooking() {
+  function openDeleteConfirm() {
     if (!selectedBooking) return
-    const bookingId = selectedBooking.id
+    setDeleteConfirmBookingId(selectedBooking.id)
+    setDeleteConfirmOpen(true)
+  }
 
-    const confirmed = window.confirm('Delete this booking permanently? This cannot be undone.')
-    if (!confirmed) {
-      return
-    }
+  async function handleDeleteBooking() {
+    const bookingId = deleteConfirmBookingId
+    if (!bookingId) return
 
+    setDeleteConfirmOpen(false)
+    setDeleteConfirmBookingId(null)
     closeSelectedBookingModal()
 
     await runAction(
@@ -897,7 +927,8 @@ export function BohBookingsClient({
       const response = await fetch(`/api/boh/table-bookings/${selectedBooking.id}/deposit-link`)
       const data = (await response.json()) as { url?: string; error?: string }
       if (!response.ok) throw new Error(data.error || 'Failed to generate deposit link')
-      await navigator.clipboard.writeText(data.url!)
+      if (!data.url) throw new Error('No deposit link returned')
+      await navigator.clipboard.writeText(data.url)
       toast.success('Deposit link copied to clipboard')
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to copy deposit link')
@@ -907,15 +938,9 @@ export function BohBookingsClient({
   }
 
   function handleSort(column: SortColumn) {
-    setSortColumn((currentColumn) => {
-      if (currentColumn === column) {
-        setSortDirection((currentDirection) => (currentDirection === 'asc' ? 'desc' : 'asc'))
-        return currentColumn
-      }
-
-      setSortDirection('asc')
-      return column
-    })
+    const newDirection = sortColumn === column ? (sortDirection === 'asc' ? 'desc' : 'asc') : 'asc'
+    setSortColumn(column)
+    setSortDirection(newDirection)
   }
 
   function sortIndicator(column: SortColumn): string {
@@ -975,24 +1000,32 @@ export function BohBookingsClient({
         </div>
 
         <div className="mt-4 grid gap-3 md:grid-cols-[minmax(0,1fr)_180px]">
-          <input
-            type="search"
-            value={searchTerm}
-            onChange={(event) => setSearchTerm(event.target.value)}
-            placeholder="Search by guest, ref, table, phone, notes"
-            className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:border-gray-500 focus:outline-none focus:ring-2 focus:ring-gray-200"
-          />
-          <select
-            value={statusFilter}
-            onChange={(event) => setStatusFilter(event.target.value as StatusFilter)}
-            className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-gray-500 focus:outline-none focus:ring-2 focus:ring-gray-200"
-          >
+          <div>
+            <label htmlFor="boh-search" className="sr-only">Search bookings</label>
+            <input
+              id="boh-search"
+              type="search"
+              value={searchTerm}
+              onChange={(event) => setSearchTerm(event.target.value)}
+              placeholder="Search by guest, ref, table, phone, notes"
+              className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:border-gray-500 focus:outline-none focus:ring-2 focus:ring-gray-200"
+            />
+          </div>
+          <div>
+            <label htmlFor="boh-status-filter" className="sr-only">Filter by status</label>
+            <select
+              id="boh-status-filter"
+              value={statusFilter}
+              onChange={(event) => setStatusFilter(event.target.value as StatusFilter)}
+              className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-gray-500 focus:outline-none focus:ring-2 focus:ring-gray-200"
+            >
             {STATUS_OPTIONS.map((option) => (
               <option key={option.value} value={option.value}>
                 {option.label}
               </option>
             ))}
           </select>
+          </div>
         </div>
 
         {statusTotals.length > 0 && (
@@ -1037,11 +1070,17 @@ export function BohBookingsClient({
           <p className="text-xs text-gray-500">Click column headers to sort</p>
         </div>
 
-        <div className="max-h-[680px] overflow-auto">
+        <div className="max-h-[680px] overflow-auto overflow-x-auto">
           {loading && <p className="px-4 py-3 text-sm text-gray-500">Loading bookings…</p>}
           {!loading && error && <p className="px-4 py-3 text-sm text-red-600">{error}</p>}
           {!loading && !error && sortedBookings.length === 0 && (
-            <p className="px-4 py-3 text-sm text-gray-500">No bookings match the selected filters.</p>
+            <EmptyState
+              icon="calendar"
+              title="No bookings"
+              description={searchTerm || statusFilter !== 'all' ? 'No bookings match the selected filters.' : 'There are no bookings for this period.'}
+              size="sm"
+              variant="minimal"
+            />
           )}
 
           {!loading && !error && sortedBookings.length > 0 && (
@@ -1058,7 +1097,7 @@ export function BohBookingsClient({
                       Guest <span className="text-gray-400">{sortIndicator('guest')}</span>
                     </button>
                   </th>
-                  <th className="px-3 py-2 text-left font-semibold text-gray-700">
+                  <th className="hidden px-3 py-2 text-left font-semibold text-gray-700 lg:table-cell">
                     <button type="button" className="inline-flex items-center gap-1" onClick={() => handleSort('reference')}>
                       Ref <span className="text-gray-400">{sortIndicator('reference')}</span>
                     </button>
@@ -1078,7 +1117,7 @@ export function BohBookingsClient({
                       Status <span className="text-gray-400">{sortIndicator('status')}</span>
                     </button>
                   </th>
-                  <th className="px-3 py-2 text-left font-semibold text-gray-700">
+                  <th className="hidden px-3 py-2 text-left font-semibold text-gray-700 lg:table-cell">
                     <button type="button" className="inline-flex items-center gap-1" onClick={() => handleSort('phone')}>
                       Phone <span className="text-gray-400">{sortIndicator('phone')}</span>
                     </button>
@@ -1100,7 +1139,7 @@ export function BohBookingsClient({
                         </div>
                       )}
                     </td>
-                    <td className="px-3 py-2 text-gray-700 whitespace-nowrap">{booking.booking_reference || '—'}</td>
+                    <td className="hidden px-3 py-2 text-gray-700 whitespace-nowrap lg:table-cell">{booking.booking_reference || '—'}</td>
                     <td className="px-3 py-2 text-right text-gray-900 whitespace-nowrap">{booking.party_size || 0}</td>
                     <td className="px-3 py-2 text-gray-700">
                       <div className="max-w-[220px] truncate" title={booking.table_names.join(', ')}>
@@ -1112,11 +1151,12 @@ export function BohBookingsClient({
                         {getStatusLabel(booking.visual_status)}
                       </span>
                     </td>
-                    <td className="px-3 py-2 text-gray-700 whitespace-nowrap">{booking.customer?.mobile_number || '—'}</td>
+                    <td className="hidden px-3 py-2 text-gray-700 whitespace-nowrap lg:table-cell">{booking.customer?.mobile_number || '—'}</td>
                     <td className="px-3 py-2 text-right whitespace-nowrap">
                       <Button
                         variant="secondary"
                         size="sm"
+                        aria-label={`Manage booking for ${booking.guest_name || booking.booking_reference || 'unknown guest'}`}
                         onClick={() => {
                           setSelectedBookingId(booking.id)
                           setMoveTableId('')
@@ -1202,7 +1242,7 @@ export function BohBookingsClient({
                     variant="secondary"
                     size="sm"
                     loading={actionLoadingKey === 'party-size'}
-                    onClick={() => void handleUpdatePartySize()}
+                    onClick={openPartySizeEdit}
                   >
                     Edit party size
                   </Button>
@@ -1242,7 +1282,7 @@ export function BohBookingsClient({
                     variant="danger"
                     size="sm"
                     loading={actionLoadingKey === 'status:no_show'}
-                    onClick={() => handleStatusAction('no_show')}
+                    onClick={() => setNoShowConfirmOpen(true)}
                   >
                     Mark No-show
                   </Button>
@@ -1250,7 +1290,7 @@ export function BohBookingsClient({
                     variant="danger"
                     size="sm"
                     loading={actionLoadingKey === 'status:cancelled'}
-                    onClick={() => handleStatusAction('cancelled')}
+                    onClick={() => setCancelConfirmOpen(true)}
                   >
                     Cancel Booking
                   </Button>
@@ -1339,7 +1379,7 @@ export function BohBookingsClient({
                   variant="danger"
                   size="sm"
                   loading={actionLoadingKey === 'delete-booking'}
-                  onClick={() => void handleDeleteBooking()}
+                  onClick={openDeleteConfirm}
                 >
                   Delete Booking
                 </Button>
@@ -1347,6 +1387,99 @@ export function BohBookingsClient({
             )}
           </div>
         )}
+      </Modal>
+
+      {/* Delete confirmation dialog */}
+      <ConfirmDialog
+        open={deleteConfirmOpen}
+        onClose={() => {
+          setDeleteConfirmOpen(false)
+          setDeleteConfirmBookingId(null)
+        }}
+        onConfirm={() => void handleDeleteBooking()}
+        type="danger"
+        destructive
+        title="Delete this booking?"
+        message={`Delete booking ${selectedBooking?.booking_reference || ''} for ${selectedBooking?.guest_name || 'unknown guest'} permanently? This cannot be undone.`}
+        confirmText="Delete"
+      />
+
+      {/* No-show confirmation dialog */}
+      <ConfirmDialog
+        open={noShowConfirmOpen}
+        onClose={() => setNoShowConfirmOpen(false)}
+        onConfirm={async () => {
+          setNoShowConfirmOpen(false)
+          await handleStatusAction('no_show')
+        }}
+        type="warning"
+        title="Mark as no-show?"
+        message="This may trigger a charge request for the customer."
+        confirmText="Mark No-show"
+        closeOnConfirm={false}
+      />
+
+      {/* Cancel booking confirmation dialog */}
+      <ConfirmDialog
+        open={cancelConfirmOpen}
+        onClose={() => setCancelConfirmOpen(false)}
+        onConfirm={async () => {
+          setCancelConfirmOpen(false)
+          await handleStatusAction('cancelled')
+        }}
+        type="warning"
+        title="Cancel this booking?"
+        message="The customer will be notified."
+        confirmText="Cancel Booking"
+        confirmVariant="danger"
+        closeOnConfirm={false}
+      />
+
+      {/* Party size edit modal */}
+      <Modal
+        open={partySizeEditOpen}
+        onClose={() => setPartySizeEditOpen(false)}
+        title="Edit party size"
+        size="sm"
+      >
+        <div className="space-y-4">
+          <div>
+            <label htmlFor="party-size-input" className="block text-sm font-medium text-gray-700">
+              New party size
+            </label>
+            <input
+              id="party-size-input"
+              type="number"
+              min={1}
+              max={50}
+              value={partySizeEditValue}
+              onChange={(e) => setPartySizeEditValue(e.target.value)}
+              className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-gray-500 focus:outline-none focus:ring-2 focus:ring-gray-200"
+            />
+          </div>
+          <label className="flex items-center gap-2 text-sm text-gray-700">
+            <input
+              type="checkbox"
+              checked={partySizeEditSendSms}
+              onChange={(e) => setPartySizeEditSendSms(e.target.checked)}
+              className="rounded border-gray-300 text-green-600 focus:ring-green-500"
+            />
+            Notify guest by SMS
+          </label>
+          <div className="flex justify-end gap-2">
+            <Button variant="secondary" size="sm" onClick={() => setPartySizeEditOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              variant="primary"
+              size="sm"
+              onClick={() => void handleSubmitPartySize()}
+              disabled={!partySizeEditValue || Number.parseInt(partySizeEditValue, 10) < 1}
+            >
+              Save
+            </Button>
+          </div>
+        </div>
       </Modal>
     </div>
   )
