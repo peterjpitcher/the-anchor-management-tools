@@ -3,6 +3,8 @@ import { z } from 'zod'
 import { requireFohPermission } from '@/lib/foh/api-auth'
 import { createChargeRequestForBooking, getTableBookingForFoh } from '@/lib/foh/bookings'
 
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
 const WalkoutSchema = z.object({
   amount: z.preprocess(
     (value) => (typeof value === 'string' ? Number(value) : value),
@@ -21,6 +23,9 @@ export async function POST(
   }
 
   const { id } = await context.params
+  if (!UUID_REGEX.test(id)) {
+    return NextResponse.json({ error: 'Invalid booking ID' }, { status: 400 })
+  }
   const booking = await getTableBookingForFoh(auth.supabase, id)
 
   if (!booking) {

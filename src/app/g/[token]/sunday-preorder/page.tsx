@@ -128,25 +128,25 @@ export default async function SundayPreorderPage({
         </p>
 
         {query.status === 'saved' && (
-          <div className="mt-4 rounded-md border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800">
-            Pre-order saved.
+          <div role="alert" className="mt-4 rounded-md border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800">
+            Pre-order saved successfully.
           </div>
         )}
 
         {query.status === 'error' && (
-          <div className="mt-4 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+          <div role="alert" className="mt-4 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
             We could not save your pre-order. Please try again.
           </div>
         )}
 
         {query.status === 'cutoff' && (
-          <div className="mt-4 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          <div role="alert" className="mt-4 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
             Pre-order changes are now closed for this booking.
           </div>
         )}
 
         {query.status === 'rate_limited' && (
-          <div className="mt-4 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          <div role="alert" className="mt-4 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
             Too many attempts were made with this link. Please wait a few minutes and try again.
           </div>
         )}
@@ -197,7 +197,7 @@ export default async function SundayPreorderPage({
             {pageData.can_submit ? (
               <button
                 type="submit"
-                className="inline-flex items-center justify-center rounded-md bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700"
+                className="inline-flex w-full items-center justify-center rounded-md bg-green-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-green-700 sm:w-auto"
               >
                 Save pre-order
               </button>

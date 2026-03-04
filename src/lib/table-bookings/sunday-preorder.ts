@@ -90,7 +90,7 @@ function formatCategoryName(categoryCode?: string | null): string | null {
 }
 
 function sortSundayMenuItems(items: SundayMenuItem[]): SundayMenuItem[] {
-  return items.sort((a, b) => {
+  return [...items].sort((a, b) => {
     const categoryCompare = (a.category_name || '').localeCompare(b.category_name || '')
     if (categoryCompare !== 0) return categoryCompare
     if (a.sort_order !== b.sort_order) return a.sort_order - b.sort_order

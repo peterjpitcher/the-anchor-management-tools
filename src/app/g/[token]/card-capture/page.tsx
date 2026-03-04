@@ -4,6 +4,7 @@ import { checkGuestTokenThrottle } from '@/lib/guest/token-throttle'
 import { formatGuestGreeting, getCustomerFirstNameById } from '@/lib/guest/names'
 import { getTableCardCapturePreviewByRawToken } from '@/lib/table-bookings/bookings'
 import { GuestPageShell } from '@/components/features/shared/GuestPageShell'
+import { GuestSubmitButton } from '@/components/features/shared/GuestSubmitButton'
 
 function formatDateTime(dateIso?: string | null): string {
   if (!dateIso) return 'your booking time'
@@ -139,12 +140,12 @@ export default async function TableCardCapturePage({
             </div>
 
             <form method="post" action={`/g/${token}/card-capture/checkout`} className="mt-6">
-              <button
-                type="submit"
-                className="inline-flex w-full items-center justify-center rounded-md bg-green-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-green-700"
+              <GuestSubmitButton
+                className="inline-flex w-full items-center justify-center rounded-md bg-green-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-50"
+                loadingText="Redirecting..."
               >
-                Continue to secure card capture
-              </button>
+                Add card details
+              </GuestSubmitButton>
             </form>
           </>
         )}

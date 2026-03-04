@@ -496,10 +496,7 @@ export async function getTablePaymentPreviewByRawToken(
     return { state: 'blocked', reason: 'booking_not_found' }
   }
 
-  let booking: any = null
-  let bookingError: any = null
-
-  ;({ data: booking, error: bookingError } = await (supabase.from('table_bookings') as any)
+  const { data: booking, error: bookingError } = await (supabase.from('table_bookings') as any)
     .select(`
       id,
       customer_id,
@@ -515,27 +512,7 @@ export async function getTablePaymentPreviewByRawToken(
       booking_type
     `)
     .eq('id', token.table_booking_id)
-    .maybeSingle())
-
-  // Compatibility fallback for environments that have not yet applied committed_party_size.
-  if (bookingError && /committed_party_size/i.test(String(bookingError.message || ''))) {
-    ;({ data: booking, error: bookingError } = await (supabase.from('table_bookings') as any)
-      .select(`
-        id,
-        customer_id,
-        status,
-        payment_status,
-        hold_expires_at,
-        party_size,
-        booking_reference,
-        booking_date,
-        booking_time,
-        start_datetime,
-        booking_type
-      `)
-      .eq('id', token.table_booking_id)
-      .maybeSingle())
-  }
+    .maybeSingle()
 
   if (bookingError) {
     throw bookingError

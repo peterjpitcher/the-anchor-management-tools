@@ -5,6 +5,8 @@ import { formatGuestGreeting, getCustomerFirstNameById } from '@/lib/guest/names
 import { getTableManagePreviewByRawToken } from '@/lib/table-bookings/manage-booking'
 import { createSundayPreorderToken } from '@/lib/table-bookings/sunday-preorder'
 import { GuestPageShell } from '@/components/features/shared/GuestPageShell'
+import { GuestSubmitButton } from '@/components/features/shared/GuestSubmitButton'
+import { GuestCancelBooking } from '@/components/features/shared/GuestCancelBooking'
 
 function formatDateTime(value?: string | null): string {
   if (!value) return 'Unknown'
@@ -21,6 +23,27 @@ function formatDateTime(value?: string | null): string {
     }).format(new Date(value))
   } catch {
     return 'Unknown'
+  }
+}
+
+function humanizeStatus(status?: string | null): string {
+  switch (status) {
+    case 'confirmed':
+      return 'Confirmed'
+    case 'pending_deposit':
+      return 'Awaiting deposit'
+    case 'pending_card_capture':
+      return 'Awaiting card details'
+    case 'cancelled':
+      return 'Cancelled'
+    case 'no_show':
+      return 'No show'
+    case 'completed':
+      return 'Completed'
+    case 'seated':
+      return 'Seated'
+    default:
+      return status ? status.replace(/_/g, ' ').replace(/^\w/, c => c.toUpperCase()) : 'Unknown'
   }
 }
 
@@ -48,9 +71,9 @@ function statusMessage(status?: string): { tone: 'green' | 'amber' | 'red'; text
     case 'cancelled':
       return { tone: 'green', text: 'Booking cancelled.' }
     case 'charge_requested':
-      return { tone: 'amber', text: 'Booking updated. A manager approval request was created for a reduction fee.' }
+      return { tone: 'amber', text: 'Booking updated. A fee may apply for reducing your party size.' }
     case 'late_cancel_charge_requested':
-      return { tone: 'amber', text: 'Booking cancelled. A manager approval request was created for late cancellation.' }
+      return { tone: 'amber', text: 'Booking cancelled. A late-cancellation fee may apply.' }
     case 'error':
       return { tone: 'red', text: 'We could not process that request. Please try again.' }
     case 'rate_limited':
@@ -140,6 +163,7 @@ export default async function TableManageBookingPage({
 
         {banner && (
           <div
+            role="alert"
             className={`mt-4 rounded-md border px-4 py-3 text-sm ${
               banner.tone === 'green'
                 ? 'border-green-200 bg-green-50 text-green-800'
@@ -157,14 +181,14 @@ export default async function TableManageBookingPage({
           <p className="mt-1"><span className="font-medium text-gray-900">Time:</span> {formatDateTime(preview.start_datetime)}</p>
           <p className="mt-1"><span className="font-medium text-gray-900">Table:</span> {preview.table_name || 'Unassigned'}</p>
           <p className="mt-1"><span className="font-medium text-gray-900">Party size:</span> {preview.party_size || 1}</p>
-          <p className="mt-1"><span className="font-medium text-gray-900">Status:</span> {preview.status || 'unknown'}</p>
+          <p className="mt-1"><span className="font-medium text-gray-900">Status:</span> {humanizeStatus(preview.status)}</p>
         </div>
 
         {preview.booking_type === 'sunday_lunch' && (
           <div className="mt-4 rounded-md border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900">
             Sunday lunch booking: use your pre-order page to update menu selections.
             {sundayPreorderUrl ? (
-              <a href={sundayPreorderUrl} className="ml-1 underline">
+              <a href={sundayPreorderUrl} className="ml-1 inline-block rounded px-1 py-0.5 underline hover:bg-blue-100">
                 Open Sunday pre-order
               </a>
             ) : (
@@ -174,7 +198,9 @@ export default async function TableManageBookingPage({
         )}
 
         {!preview.can_edit ? (
-          <p className="mt-6 text-sm text-gray-600">Booking changes are no longer available.</p>
+          <p className="mt-6 text-sm text-gray-600">
+            Booking changes are no longer available. Please call to make any changes.
+          </p>
         ) : (
           <form method="post" action={`/g/${token}/table-manage/action`} className="mt-6 space-y-4">
             <input type="hidden" name="action" value="update" />
@@ -197,40 +223,32 @@ export default async function TableManageBookingPage({
 
             <div>
               <label htmlFor="notes" className="block text-sm font-medium text-gray-900">
-                Notes
+                Special requirements
               </label>
               <textarea
                 id="notes"
                 name="notes"
-                rows={4}
+                rows={3}
                 defaultValue={preview.special_requirements || ''}
+                placeholder="Allergies, dietary needs, accessibility requirements, highchairs, etc."
                 className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
               />
             </div>
 
-            <button
-              type="submit"
-              className="inline-flex items-center justify-center rounded-md bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700"
+            <GuestSubmitButton
+              className="inline-flex w-full items-center justify-center rounded-md bg-green-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-50 sm:w-auto"
+              loadingText="Saving..."
             >
               Save changes
-            </button>
+            </GuestSubmitButton>
           </form>
         )}
 
         {preview.can_cancel && (
-          <form method="post" action={`/g/${token}/table-manage/action`} className="mt-6 border-t border-gray-200 pt-4">
-            <input type="hidden" name="action" value="cancel" />
-            <input type="hidden" name="notes" value={preview.special_requirements || ''} />
-            <button
-              type="submit"
-              className="inline-flex items-center justify-center rounded-md border border-red-300 px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-50"
-            >
-              Cancel booking
-            </button>
-            <p className="mt-2 text-xs text-gray-500">
-              Cancelling inside 24 hours may create a manager approval request for a late-cancellation fee.
-            </p>
-          </form>
+          <GuestCancelBooking
+            actionUrl={`/g/${token}/table-manage/action`}
+            specialRequirements={preview.special_requirements || ''}
+          />
         )}
       </div>
     </GuestPageShell>

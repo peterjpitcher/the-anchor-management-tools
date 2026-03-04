@@ -42,7 +42,7 @@ const CreateFohTableBookingSchema = z.object({
   time: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$/),
   party_size: z.preprocess(
     (value) => (typeof value === 'string' ? Number.parseInt(value, 10) : value),
-    z.number().int().min(1).max(50)
+    z.number().int().min(1).max(20)
   ),
   purpose: z.enum(['food', 'drinks']),
   notes: z.string().trim().max(500).optional(),

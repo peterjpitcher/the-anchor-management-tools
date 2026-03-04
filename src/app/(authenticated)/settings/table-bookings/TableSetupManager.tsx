@@ -1,6 +1,8 @@
 'use client'
 
 import { FormEvent, useEffect, useMemo, useState } from 'react'
+import { Button } from '@/components/ui-v2/forms/Button'
+import { Alert } from '@/components/ui-v2/feedback/Alert'
 
 type TableSetupRow = {
   id: string
@@ -483,15 +485,11 @@ export function TableSetupManager() {
   return (
     <div className="space-y-6">
       {statusMessage && (
-        <div className="rounded-md border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-800">
-          {statusMessage}
-        </div>
+        <Alert variant="success" description={statusMessage} size="sm" closable onClose={() => setStatusMessage(null)} />
       )}
 
       {errorMessage && (
-        <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
-          {errorMessage}
-        </div>
+        <Alert variant="error" description={errorMessage} size="sm" closable onClose={() => setErrorMessage(null)} />
       )}
 
       <datalist id="table-area-options">
@@ -609,14 +607,14 @@ export function TableSetupManager() {
               )
             })}
             <div className="flex justify-end">
-              <button
-                type="button"
+              <Button
                 onClick={() => { void saveAllTableChanges() }}
                 disabled={savingTables || changedTableIds.length === 0}
-                className="rounded-md bg-sidebar px-4 py-2 text-sm font-medium text-white hover:bg-sidebar/90 disabled:cursor-not-allowed disabled:opacity-50"
+                loading={savingTables}
+                size="sm"
               >
-                {savingTables ? 'Saving…' : 'Save all table changes'}
-              </button>
+                Save all table changes
+              </Button>
             </div>
           </div>
         )}
@@ -683,13 +681,14 @@ export function TableSetupManager() {
           </label>
 
           <div className="md:col-span-2 xl:col-span-5">
-            <button
+            <Button
               type="submit"
               disabled={creatingTable}
-              className="rounded-md bg-sidebar px-4 py-2 text-sm font-medium text-white hover:bg-sidebar/90 disabled:cursor-not-allowed disabled:opacity-50"
+              loading={creatingTable}
+              size="sm"
             >
-              {creatingTable ? 'Creating…' : 'Create table'}
-            </button>
+              Create table
+            </Button>
           </div>
         </form>
       </div>
@@ -705,16 +704,15 @@ export function TableSetupManager() {
             </p>
           </div>
           {!editingGroup && (
-            <button
-              type="button"
+            <Button
+              size="sm"
               onClick={() => {
                 setEditingGroup({ id: null, name: '', table_ids: [] })
                 setErrorMessage(null)
               }}
-              className="shrink-0 rounded-md bg-sidebar px-3 py-1.5 text-sm font-medium text-white hover:bg-sidebar/90"
             >
               + New group
-            </button>
+            </Button>
           )}
         </div>
 
@@ -780,25 +778,25 @@ export function TableSetupManager() {
             )}
 
             <div className="mt-4 flex gap-2">
-              <button
-                type="button"
+              <Button
                 onClick={() => { void saveGroup() }}
                 disabled={savingGroup}
-                className="rounded-md bg-sidebar px-4 py-2 text-sm font-medium text-white hover:bg-sidebar/90 disabled:cursor-not-allowed disabled:opacity-50"
+                loading={savingGroup}
+                size="sm"
               >
-                {savingGroup ? 'Saving…' : 'Save group'}
-              </button>
-              <button
-                type="button"
+                Save group
+              </Button>
+              <Button
+                variant="secondary"
                 onClick={() => {
                   setEditingGroup(null)
                   setErrorMessage(null)
                 }}
                 disabled={savingGroup}
-                className="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                size="sm"
               >
                 Cancel
-              </button>
+              </Button>
             </div>
           </div>
         )}
@@ -840,8 +838,9 @@ export function TableSetupManager() {
 
                     {!isConfirmingDelete ? (
                       <div className="flex shrink-0 gap-2">
-                        <button
-                          type="button"
+                        <Button
+                          variant="secondary"
+                          size="xs"
                           onClick={() => {
                             setEditingGroup({
                               id: group.id,
@@ -851,37 +850,37 @@ export function TableSetupManager() {
                             setErrorMessage(null)
                           }}
                           disabled={!!editingGroup}
-                          className="rounded border border-gray-300 px-2.5 py-1 text-xs font-medium text-gray-700 hover:bg-white disabled:cursor-not-allowed disabled:opacity-40"
                         >
                           Edit
-                        </button>
-                        <button
-                          type="button"
+                        </Button>
+                        <Button
+                          variant="danger"
+                          size="xs"
                           onClick={() => setConfirmDeleteId(group.id)}
                           disabled={!!editingGroup}
-                          className="rounded border border-red-200 px-2.5 py-1 text-xs font-medium text-red-600 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-40"
                         >
                           Delete
-                        </button>
+                        </Button>
                       </div>
                     ) : (
                       <div className="flex shrink-0 items-center gap-2">
                         <span className="text-xs text-gray-600">Delete this group?</span>
-                        <button
-                          type="button"
+                        <Button
+                          variant="danger"
+                          size="xs"
                           onClick={() => { void deleteGroup(group.id) }}
                           disabled={deletingGroupId === group.id}
-                          className="rounded border border-red-400 bg-red-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-red-700 disabled:opacity-50"
+                          loading={deletingGroupId === group.id}
                         >
-                          {deletingGroupId === group.id ? 'Deleting…' : 'Yes, delete'}
-                        </button>
-                        <button
-                          type="button"
+                          Yes, delete
+                        </Button>
+                        <Button
+                          variant="secondary"
+                          size="xs"
                           onClick={() => setConfirmDeleteId(null)}
-                          className="rounded border border-gray-300 px-2.5 py-1 text-xs font-medium text-gray-700 hover:bg-white"
                         >
                           Cancel
-                        </button>
+                        </Button>
                       </div>
                     )}
                   </div>
@@ -945,14 +944,15 @@ export function TableSetupManager() {
         )}
 
         <div className="mt-4">
-          <button
-            type="button"
+          <Button
+            variant="secondary"
+            size="sm"
             disabled={savingSpaceAreaLinks || loading || sortedAreas.length === 0 || sortedVenueSpaces.length === 0}
             onClick={() => { void saveSpaceAreaLinks() }}
-            className="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+            loading={savingSpaceAreaLinks}
           >
-            {savingSpaceAreaLinks ? 'Saving…' : 'Save private-booking area mapping'}
-          </button>
+            Save private-booking area mapping
+          </Button>
         </div>
       </div>
     </div>

@@ -3,6 +3,8 @@ import { requireFohPermission } from '@/lib/foh/api-auth'
 import { getTableBookingForFoh, hasUnpaidSundayLunchDeposit } from '@/lib/foh/bookings'
 import { buildStaffStatusTransitionPlan } from '@/lib/table-bookings/staff-status-actions'
 
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
 export async function POST(
   _request: NextRequest,
   context: { params: Promise<{ id: string }> }
@@ -13,6 +15,9 @@ export async function POST(
   }
 
   const { id } = await context.params
+  if (!UUID_REGEX.test(id)) {
+    return NextResponse.json({ error: 'Invalid booking ID' }, { status: 400 })
+  }
   const booking = await getTableBookingForFoh(auth.supabase, id)
 
   if (!booking) {

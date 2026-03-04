@@ -1071,8 +1071,20 @@ export function BohBookingsClient({
         </div>
 
         <div className="max-h-[680px] overflow-auto overflow-x-auto">
-          {loading && <p className="px-4 py-3 text-sm text-gray-500">Loading bookings…</p>}
-          {!loading && error && <p className="px-4 py-3 text-sm text-red-600">{error}</p>}
+          {loading && (
+            <div className="flex items-center gap-2 px-4 py-3">
+              <div className="h-4 w-4 animate-spin rounded-full border-2 border-gray-300 border-t-gray-600" />
+              <p className="text-sm text-gray-500">Loading bookings…</p>
+            </div>
+          )}
+          {!loading && error && (
+            <div className="flex items-center justify-between px-4 py-3">
+              <p className="text-sm text-red-600">{error}</p>
+              <Button variant="secondary" size="sm" onClick={() => void loadBookings()}>
+                Retry
+              </Button>
+            </div>
+          )}
           {!loading && !error && sortedBookings.length === 0 && (
             <EmptyState
               icon="calendar"
@@ -1088,37 +1100,37 @@ export function BohBookingsClient({
               <thead className="sticky top-0 z-10 bg-gray-50">
                 <tr>
                   <th className="px-3 py-2 text-left font-semibold text-gray-700">
-                    <button type="button" className="inline-flex items-center gap-1" onClick={() => handleSort('datetime')}>
+                    <button type="button" className="inline-flex items-center gap-1 rounded focus:outline-none focus:ring-2 focus:ring-gray-400" onClick={() => handleSort('datetime')}>
                       Date/Time <span className="text-gray-400">{sortIndicator('datetime')}</span>
                     </button>
                   </th>
                   <th className="px-3 py-2 text-left font-semibold text-gray-700">
-                    <button type="button" className="inline-flex items-center gap-1" onClick={() => handleSort('guest')}>
+                    <button type="button" className="inline-flex items-center gap-1 rounded focus:outline-none focus:ring-2 focus:ring-gray-400" onClick={() => handleSort('guest')}>
                       Guest <span className="text-gray-400">{sortIndicator('guest')}</span>
                     </button>
                   </th>
                   <th className="hidden px-3 py-2 text-left font-semibold text-gray-700 lg:table-cell">
-                    <button type="button" className="inline-flex items-center gap-1" onClick={() => handleSort('reference')}>
+                    <button type="button" className="inline-flex items-center gap-1 rounded focus:outline-none focus:ring-2 focus:ring-gray-400" onClick={() => handleSort('reference')}>
                       Ref <span className="text-gray-400">{sortIndicator('reference')}</span>
                     </button>
                   </th>
                   <th className="px-3 py-2 text-right font-semibold text-gray-700">
-                    <button type="button" className="inline-flex items-center gap-1" onClick={() => handleSort('party_size')}>
+                    <button type="button" className="inline-flex items-center gap-1 rounded focus:outline-none focus:ring-2 focus:ring-gray-400" onClick={() => handleSort('party_size')}>
                       Party <span className="text-gray-400">{sortIndicator('party_size')}</span>
                     </button>
                   </th>
                   <th className="px-3 py-2 text-left font-semibold text-gray-700">
-                    <button type="button" className="inline-flex items-center gap-1" onClick={() => handleSort('tables')}>
+                    <button type="button" className="inline-flex items-center gap-1 rounded focus:outline-none focus:ring-2 focus:ring-gray-400" onClick={() => handleSort('tables')}>
                       Tables <span className="text-gray-400">{sortIndicator('tables')}</span>
                     </button>
                   </th>
                   <th className="px-3 py-2 text-left font-semibold text-gray-700">
-                    <button type="button" className="inline-flex items-center gap-1" onClick={() => handleSort('status')}>
+                    <button type="button" className="inline-flex items-center gap-1 rounded focus:outline-none focus:ring-2 focus:ring-gray-400" onClick={() => handleSort('status')}>
                       Status <span className="text-gray-400">{sortIndicator('status')}</span>
                     </button>
                   </th>
                   <th className="hidden px-3 py-2 text-left font-semibold text-gray-700 lg:table-cell">
-                    <button type="button" className="inline-flex items-center gap-1" onClick={() => handleSort('phone')}>
+                    <button type="button" className="inline-flex items-center gap-1 rounded focus:outline-none focus:ring-2 focus:ring-gray-400" onClick={() => handleSort('phone')}>
                       Phone <span className="text-gray-400">{sortIndicator('phone')}</span>
                     </button>
                   </th>
@@ -1128,9 +1140,9 @@ export function BohBookingsClient({
               <tbody className="divide-y divide-gray-100 bg-white">
                 {sortedBookings.map((booking) => (
                   <tr key={booking.id} className="hover:bg-gray-50">
-                    <td className="px-3 py-2 text-gray-900 whitespace-nowrap">{formatBookingDateTime(booking)}</td>
+                    <td className="px-3 py-2 font-medium text-gray-900 whitespace-nowrap">{formatBookingDateTime(booking)}</td>
                     <td className="px-3 py-2 text-gray-900">
-                      <div className="max-w-[220px] truncate" title={booking.guest_name || ''}>
+                      <div className="max-w-[220px] truncate font-medium" title={booking.guest_name || ''}>
                         {booking.guest_name || 'Unknown guest'}
                       </div>
                       {booking.event_name && (
@@ -1140,9 +1152,11 @@ export function BohBookingsClient({
                       )}
                     </td>
                     <td className="hidden px-3 py-2 text-gray-700 whitespace-nowrap lg:table-cell">{booking.booking_reference || '—'}</td>
-                    <td className="px-3 py-2 text-right text-gray-900 whitespace-nowrap">{booking.party_size || 0}</td>
+                    <td className="px-3 py-2 text-right whitespace-nowrap">
+                      <span className="text-base font-bold text-gray-900">{booking.party_size || 0}</span>
+                    </td>
                     <td className="px-3 py-2 text-gray-700">
-                      <div className="max-w-[220px] truncate" title={booking.table_names.join(', ')}>
+                      <div className="max-w-[220px] truncate font-medium" title={booking.table_names.join(', ')}>
                         {booking.table_names.length > 0 ? booking.table_names.join(', ') : 'Unassigned'}
                       </div>
                     </td>
@@ -1195,28 +1209,26 @@ export function BohBookingsClient({
       >
         {selectedBooking && (
           <div className="space-y-5">
+            {/* Key info strip: status, party size, table — scannable at a glance */}
+            <div className="flex flex-wrap items-center gap-3 rounded-md border border-gray-200 bg-gray-50 px-4 py-3">
+              <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${getStatusBadgeClasses(selectedBooking.visual_status)}`}>
+                {getStatusLabel(selectedBooking.visual_status)}
+              </span>
+              <span className="text-lg font-bold text-gray-900">{selectedBooking.party_size || 0} guests</span>
+              <span className="text-sm font-medium text-gray-700">
+                {selectedBooking.table_names.length > 0
+                  ? selectedBooking.table_names.join(', ')
+                  : 'Unassigned'}
+              </span>
+              <span className="text-sm text-gray-500">{selectedBooking.booking_type || 'table'}</span>
+            </div>
+
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="rounded-md border border-gray-200 bg-gray-50 p-3">
-                <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Booking</p>
-                <p className="mt-1 text-sm text-gray-900">{formatBookingDateTime(selectedBooking)}</p>
-                <p className="text-sm text-gray-700">Party size: {selectedBooking.party_size || 0}</p>
-                <p className="text-sm text-gray-700">Type: {selectedBooking.booking_type || 'table'}</p>
-              </div>
-
-              <div className="rounded-md border border-gray-200 bg-gray-50 p-3">
                 <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Guest</p>
-                <p className="mt-1 text-sm text-gray-900">{selectedBooking.guest_name || 'Unknown guest'}</p>
+                <p className="mt-1 text-sm font-medium text-gray-900">{selectedBooking.guest_name || 'Unknown guest'}</p>
                 <p className="text-sm text-gray-700">{selectedBooking.customer?.mobile_number || 'No mobile number'}</p>
-                <p className="text-sm text-gray-700">SMS status: {selectedBooking.customer?.sms_status || 'unknown'}</p>
-              </div>
-
-              <div className="rounded-md border border-gray-200 bg-gray-50 p-3">
-                <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Tables</p>
-                <p className="mt-1 text-sm text-gray-900">
-                  {selectedBooking.table_names.length > 0
-                    ? selectedBooking.table_names.join(', ')
-                    : 'Unassigned'}
-                </p>
+                <p className="text-sm text-gray-500">SMS: {selectedBooking.customer?.sms_status || 'unknown'}</p>
               </div>
 
               <div className="rounded-md border border-gray-200 bg-gray-50 p-3">
@@ -1228,20 +1240,42 @@ export function BohBookingsClient({
             </div>
 
             {selectedBooking.special_requirements && (
-              <div className="rounded-md border border-gray-200 bg-white p-3">
-                <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Notes</p>
-                <p className="mt-1 whitespace-pre-wrap text-sm text-gray-800">{selectedBooking.special_requirements}</p>
+              <div className="rounded-md border border-amber-200 bg-amber-50 p-3">
+                <p className="text-xs font-semibold uppercase tracking-wide text-amber-700">Special requirements</p>
+                <p className="mt-1 whitespace-pre-wrap text-sm font-medium text-amber-900">{selectedBooking.special_requirements}</p>
               </div>
             )}
 
             {canEdit && (
               <div className="rounded-md border border-gray-200 bg-white p-3 space-y-3">
-                <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Status actions</p>
+                <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Quick actions</p>
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    loading={actionLoadingKey === 'status:seated'}
+                    disabled={Boolean(actionLoadingKey)}
+                    onClick={() => handleStatusAction('seated')}
+                  >
+                    Seat guest
+                  </Button>
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    loading={actionLoadingKey === 'status:left'}
+                    disabled={Boolean(actionLoadingKey)}
+                    onClick={() => handleStatusAction('left')}
+                  >
+                    Mark left
+                  </Button>
+                </div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 pt-1">Other status</p>
                 <div className="flex flex-wrap gap-2">
                   <Button
                     variant="secondary"
                     size="sm"
                     loading={actionLoadingKey === 'party-size'}
+                    disabled={Boolean(actionLoadingKey)}
                     onClick={openPartySizeEdit}
                   >
                     Edit party size
@@ -1250,6 +1284,7 @@ export function BohBookingsClient({
                     variant="secondary"
                     size="sm"
                     loading={actionLoadingKey === 'status:confirmed'}
+                    disabled={Boolean(actionLoadingKey)}
                     onClick={() => handleStatusAction('confirmed')}
                   >
                     Mark Confirmed
@@ -1257,23 +1292,8 @@ export function BohBookingsClient({
                   <Button
                     variant="secondary"
                     size="sm"
-                    loading={actionLoadingKey === 'status:seated'}
-                    onClick={() => handleStatusAction('seated')}
-                  >
-                    Mark Seated
-                  </Button>
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    loading={actionLoadingKey === 'status:left'}
-                    onClick={() => handleStatusAction('left')}
-                  >
-                    Mark Left
-                  </Button>
-                  <Button
-                    variant="secondary"
-                    size="sm"
                     loading={actionLoadingKey === 'status:completed'}
+                    disabled={Boolean(actionLoadingKey)}
                     onClick={() => handleStatusAction('completed')}
                   >
                     Mark Completed
@@ -1282,6 +1302,7 @@ export function BohBookingsClient({
                     variant="danger"
                     size="sm"
                     loading={actionLoadingKey === 'status:no_show'}
+                    disabled={Boolean(actionLoadingKey)}
                     onClick={() => setNoShowConfirmOpen(true)}
                   >
                     Mark No-show
@@ -1290,6 +1311,7 @@ export function BohBookingsClient({
                     variant="danger"
                     size="sm"
                     loading={actionLoadingKey === 'status:cancelled'}
+                    disabled={Boolean(actionLoadingKey)}
                     onClick={() => setCancelConfirmOpen(true)}
                   >
                     Cancel Booking
@@ -1299,6 +1321,7 @@ export function BohBookingsClient({
                       variant="secondary"
                       size="sm"
                       loading={actionLoadingKey === 'copy-deposit-link'}
+                      disabled={Boolean(actionLoadingKey)}
                       onClick={() => void handleCopyDepositLink()}
                     >
                       Copy deposit link
@@ -1337,7 +1360,7 @@ export function BohBookingsClient({
                     variant="secondary"
                     size="sm"
                     loading={actionLoadingKey === 'move-table'}
-                    disabled={loadingMoveTables || availableMoveTables.length === 0}
+                    disabled={loadingMoveTables || availableMoveTables.length === 0 || Boolean(actionLoadingKey)}
                     onClick={() => void handleMoveTable()}
                   >
                     Move
@@ -1363,6 +1386,7 @@ export function BohBookingsClient({
                     variant="secondary"
                     size="sm"
                     loading={actionLoadingKey === 'send-sms'}
+                    disabled={Boolean(actionLoadingKey)}
                     onClick={() => void handleSendSms()}
                   >
                     Send SMS
@@ -1379,6 +1403,7 @@ export function BohBookingsClient({
                   variant="danger"
                   size="sm"
                   loading={actionLoadingKey === 'delete-booking'}
+                  disabled={Boolean(actionLoadingKey)}
                   onClick={openDeleteConfirm}
                 >
                   Delete Booking

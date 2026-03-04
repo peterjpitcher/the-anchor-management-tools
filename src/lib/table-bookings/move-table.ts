@@ -1,3 +1,4 @@
+import type { SupabaseClient } from '@supabase/supabase-js'
 import { fromZonedTime } from 'date-fns-tz'
 
 export type MoveTableBooking = {
@@ -55,7 +56,7 @@ function computeBookingWindow(booking: MoveTableBooking) {
 }
 
 export async function getMoveTableAvailability(
-  supabase: any,
+  supabase: SupabaseClient<any, 'public', any>,
   booking: MoveTableBooking
 ): Promise<MoveTableAvailability> {
   const { startIso, endIso } = computeBookingWindow(booking)
@@ -131,7 +132,7 @@ export async function getMoveTableAvailability(
   const activeOverlappingBookingIds = new Set<string>()
   if (overlappingBookingIds.length > 0) {
     const { data: overlappingBookings, error: overlappingBookingsError } = await (supabase.from('table_bookings') as any)
-      .select('id, status')
+      .select('id, status, left_at')
       .in('id', overlappingBookingIds)
 
     if (overlappingBookingsError) {
@@ -139,7 +140,14 @@ export async function getMoveTableAvailability(
     }
 
     for (const row of (overlappingBookings || []) as any[]) {
-      if (typeof row?.id === 'string' && row.status !== 'cancelled') {
+      // Match DB trigger logic: only count bookings that are still genuinely active
+      // (not cancelled, not no-show, and the party hasn't departed).
+      if (
+        typeof row?.id === 'string'
+        && row.status !== 'cancelled'
+        && row.status !== 'no_show'
+        && !row.left_at
+      ) {
         activeOverlappingBookingIds.add(row.id)
       }
     }
@@ -208,7 +216,7 @@ export async function getMoveTableAvailability(
 }
 
 export async function resolveMoveTableTarget(
-  supabase: any,
+  supabase: SupabaseClient<any, 'public', any>,
   availability: MoveTableAvailability,
   tableId: string
 ): Promise<ResolveMoveTableTargetResult> {
@@ -246,7 +254,7 @@ export async function resolveMoveTableTarget(
 }
 
 export async function moveBookingAssignmentToTable(
-  supabase: any,
+  supabase: SupabaseClient<any, 'public', any>,
   input: {
     bookingId: string
     targetTableId: string

@@ -317,31 +317,6 @@ export async function GET(request: NextRequest) {
     .map((row) => (typeof row.id === 'string' ? row.id : null))
     .filter((value): value is string => Boolean(value))
 
-  const assignmentsByBookingId = new Map<string, any[]>()
-  if (bookingIds.length > 0) {
-    const { data: assignmentRows, error: assignmentError } = await (auth.supabase.from('booking_table_assignments') as any)
-      .select('table_booking_id, table_id, start_datetime, end_datetime')
-      .in('table_booking_id', bookingIds)
-
-    if (assignmentError) {
-      logger.warn('[boh/table-bookings] assignments unavailable; continuing without assignments', {
-        metadata: {
-          bookingIdsCount: bookingIds.length,
-          error: assignmentError.message
-        }
-      })
-    } else {
-      for (const row of (assignmentRows || []) as any[]) {
-        const bookingId = row?.table_booking_id
-        if (typeof bookingId !== 'string') continue
-
-        const current = assignmentsByBookingId.get(bookingId) || []
-        current.push(row)
-        assignmentsByBookingId.set(bookingId, current)
-      }
-    }
-  }
-
   const eventIds = Array.from(
     new Set(
       bookingRows
@@ -350,17 +325,42 @@ export async function GET(request: NextRequest) {
     )
   )
 
-  const eventNameById = new Map<string, string>()
-  if (eventIds.length > 0) {
-    const { data: eventRows, error: eventError } = await (auth.supabase.from('events') as any)
-      .select('id, name')
-      .in('id', eventIds)
+  // Run assignments and events queries in parallel (they only depend on bookingRows, not each other)
+  const [assignmentsResult, eventsResult] = await Promise.all([
+    bookingIds.length > 0
+      ? (auth.supabase.from('booking_table_assignments') as any)
+          .select('table_booking_id, table_id, start_datetime, end_datetime')
+          .in('table_booking_id', bookingIds)
+      : { data: [], error: null },
+    eventIds.length > 0
+      ? (auth.supabase.from('events') as any).select('id, name').in('id', eventIds)
+      : { data: [], error: null }
+  ])
 
-    if (!eventError) {
-      for (const row of (eventRows || []) as any[]) {
-        if (typeof row?.id === 'string' && typeof row?.name === 'string' && row.name.trim().length > 0) {
-          eventNameById.set(row.id, row.name.trim())
-        }
+  const assignmentsByBookingId = new Map<string, any[]>()
+  if (assignmentsResult.error) {
+    logger.warn('[boh/table-bookings] assignments unavailable; continuing without assignments', {
+      metadata: {
+        bookingIdsCount: bookingIds.length,
+        error: assignmentsResult.error.message
+      }
+    })
+  } else {
+    for (const row of (assignmentsResult.data || []) as any[]) {
+      const bookingId = row?.table_booking_id
+      if (typeof bookingId !== 'string') continue
+
+      const current = assignmentsByBookingId.get(bookingId) || []
+      current.push(row)
+      assignmentsByBookingId.set(bookingId, current)
+    }
+  }
+
+  const eventNameById = new Map<string, string>()
+  if (!eventsResult.error) {
+    for (const row of (eventsResult.data || []) as any[]) {
+      if (typeof row?.id === 'string' && typeof row?.name === 'string' && row.name.trim().length > 0) {
+        eventNameById.set(row.id, row.name.trim())
       }
     }
   }
