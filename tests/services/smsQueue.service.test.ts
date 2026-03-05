@@ -262,6 +262,13 @@ describe('SmsQueueService queue persistence guards', () => {
       limit: vi.fn().mockResolvedValue({ data: [], error: null }),
     }
 
+    // Post-insert dedup check: returns empty list (no duplicates)
+    const postInsertDedupQuery: any = {
+      eq: vi.fn(() => postInsertDedupQuery),
+      in: vi.fn(() => postInsertDedupQuery),
+      order: vi.fn().mockResolvedValue({ data: [], error: null }),
+    }
+
     const insertSingle = vi.fn().mockResolvedValue({
       data: { id: 'sms-2', metadata: {} },
       error: null,
@@ -284,6 +291,7 @@ describe('SmsQueueService queue persistence guards', () => {
     const select = vi
       .fn()
       .mockImplementationOnce(() => duplicateQuery)
+      .mockImplementationOnce(() => postInsertDedupQuery)
       .mockImplementationOnce(failureStateSelect)
 
     mockedCreateAdminClient.mockReturnValue({

@@ -6,6 +6,7 @@ import {
   getTableBookingForFoh
 } from '@/lib/foh/bookings'
 import { buildStaffStatusTransitionPlan } from '@/lib/table-bookings/staff-status-actions'
+import { logger } from '@/lib/logger'
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
@@ -60,18 +61,42 @@ export async function POST(
     return NextResponse.json({ error: 'Booking not found' }, { status: 404 })
   }
 
-  const { chargeRequestId, amount: chargeAmount, capApplied } = await createChargeRequestForBooking(auth.supabase, {
-    bookingId: booking.id,
-    customerId: booking.customer_id,
-    type: 'no_show',
-    amount: suggestedAmount,
-    requestedByUserId: auth.userId,
-    metadata: {
-      committed_party_size: committedPartySize,
-      fee_per_head: feePerHead,
-      source: 'foh_no_show'
-    }
-  })
+  // Idempotency: skip charge creation if a non-failed/non-waived charge request already
+  // exists for this booking, so double-clicking "No show" does not create two charges.
+  const { data: existingChargeRequest } = await (auth.supabase.from('charge_requests') as any)
+    .select('id')
+    .eq('table_booking_id', booking.id)
+    .eq('type', 'no_show')
+    .not('charge_status', 'in', '("failed","waived")')
+    .maybeSingle()
+
+  let chargeRequestId: string | null = null
+  let chargeAmount: number = 0
+  let capApplied: boolean = false
+
+  if (existingChargeRequest) {
+    logger.warn('Charge request already exists for no-show booking, skipping creation', {
+      metadata: { bookingId: booking.id, existingChargeRequestId: existingChargeRequest.id }
+    })
+    chargeRequestId = existingChargeRequest.id
+    chargeAmount = suggestedAmount
+  } else {
+    const chargeResult = await createChargeRequestForBooking(auth.supabase, {
+      bookingId: booking.id,
+      customerId: booking.customer_id,
+      type: 'no_show',
+      amount: suggestedAmount,
+      requestedByUserId: auth.userId,
+      metadata: {
+        committed_party_size: committedPartySize,
+        fee_per_head: feePerHead,
+        source: 'foh_no_show'
+      }
+    })
+    chargeRequestId = chargeResult.chargeRequestId
+    chargeAmount = chargeResult.amount
+    capApplied = chargeResult.capApplied
+  }
 
   return NextResponse.json({
     success: true,

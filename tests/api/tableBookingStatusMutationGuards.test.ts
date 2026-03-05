@@ -22,6 +22,8 @@ import { POST as postFohNoShow } from '@/app/api/foh/bookings/[id]/no-show/route
 import { POST as postBohStatus } from '@/app/api/boh/table-bookings/[id]/status/route'
 import { POST as postFohMoveTable } from '@/app/api/foh/bookings/[id]/move-table/route'
 
+const BOOKING_UUID = '00000000-0000-4000-8000-000000000001'
+
 function buildUpdateNoRowSupabase() {
   const maybeSingle = vi.fn().mockResolvedValue({ data: null, error: null })
   const select = vi.fn().mockReturnValue({ maybeSingle })
@@ -65,16 +67,16 @@ describe('Table-booking mutation row-effect guards', () => {
       supabase,
     })
     ;(getTableBookingForFoh as unknown as vi.Mock).mockResolvedValue({
-      id: 'booking-1',
+      id: BOOKING_UUID,
       status: 'confirmed',
     })
 
     const response = await postFohSeated({} as any, {
-      params: Promise.resolve({ id: 'booking-1' }),
+      params: Promise.resolve({ id: BOOKING_UUID }),
     })
     const payload = await response.json()
 
-    expect(eq).toHaveBeenCalledWith('id', 'booking-1')
+    expect(eq).toHaveBeenCalledWith('id', BOOKING_UUID)
     expect(response.status).toBe(404)
     expect(payload).toEqual({ error: 'Booking not found' })
   })
@@ -87,7 +89,7 @@ describe('Table-booking mutation row-effect guards', () => {
       supabase,
     })
     ;(getTableBookingForFoh as unknown as vi.Mock).mockResolvedValue({
-      id: 'booking-1',
+      id: BOOKING_UUID,
       customer_id: 'customer-1',
       status: 'confirmed',
       party_size: 2,
@@ -100,7 +102,7 @@ describe('Table-booking mutation row-effect guards', () => {
     ;(getFeePerHead as unknown as vi.Mock).mockResolvedValue(15)
 
     const response = await postFohNoShow({} as any, {
-      params: Promise.resolve({ id: 'booking-1' }),
+      params: Promise.resolve({ id: BOOKING_UUID }),
     })
     const payload = await response.json()
 
@@ -117,7 +119,7 @@ describe('Table-booking mutation row-effect guards', () => {
       supabase,
     })
     ;(getTableBookingForFoh as unknown as vi.Mock).mockResolvedValue({
-      id: 'booking-1',
+      id: BOOKING_UUID,
       customer_id: 'customer-1',
       status: 'confirmed',
       party_size: 3,
@@ -136,7 +138,7 @@ describe('Table-booking mutation row-effect guards', () => {
     })
 
     const response = await postBohStatus(request as any, {
-      params: Promise.resolve({ id: 'booking-1' }),
+      params: Promise.resolve({ id: BOOKING_UUID }),
     })
     const payload = await response.json()
 
@@ -147,7 +149,7 @@ describe('Table-booking mutation row-effect guards', () => {
 
   it('clears no-show markers and normalizes pending_card_capture when seating via FOH', async () => {
     const { supabase, update } = buildUpdateSuccessSupabase({
-      id: 'booking-1',
+      id: BOOKING_UUID,
       status: 'confirmed',
       seated_at: '2026-02-23T10:00:00.000Z',
       left_at: null,
@@ -162,12 +164,12 @@ describe('Table-booking mutation row-effect guards', () => {
       supabase,
     })
     ;(getTableBookingForFoh as unknown as vi.Mock).mockResolvedValue({
-      id: 'booking-1',
+      id: BOOKING_UUID,
       status: 'pending_card_capture',
     })
 
     const response = await postFohSeated({} as any, {
-      params: Promise.resolve({ id: 'booking-1' }),
+      params: Promise.resolve({ id: BOOKING_UUID }),
     })
 
     expect(response.status).toBe(200)
@@ -184,7 +186,7 @@ describe('Table-booking mutation row-effect guards', () => {
 
   it('clears no-show markers and normalizes pending_card_capture when seating via BOH', async () => {
     const { supabase, update } = buildUpdateSuccessSupabase({
-      id: 'booking-1',
+      id: BOOKING_UUID,
       status: 'confirmed',
       seated_at: '2026-02-23T10:00:00.000Z',
       left_at: null,
@@ -199,7 +201,7 @@ describe('Table-booking mutation row-effect guards', () => {
       supabase,
     })
     ;(getTableBookingForFoh as unknown as vi.Mock).mockResolvedValue({
-      id: 'booking-1',
+      id: BOOKING_UUID,
       status: 'pending_card_capture',
     })
 
@@ -210,7 +212,7 @@ describe('Table-booking mutation row-effect guards', () => {
     })
 
     const response = await postBohStatus(request as any, {
-      params: Promise.resolve({ id: 'booking-1' }),
+      params: Promise.resolve({ id: BOOKING_UUID }),
     })
 
     expect(response.status).toBe(200)
@@ -234,7 +236,7 @@ describe('Table-booking mutation row-effect guards', () => {
       supabase,
     })
     ;(getTableBookingForFoh as unknown as vi.Mock).mockResolvedValue({
-      id: 'booking-1',
+      id: BOOKING_UUID,
       status: 'completed',
       booking_date: '2026-02-23',
       booking_time: '12:00:00',
@@ -242,7 +244,7 @@ describe('Table-booking mutation row-effect guards', () => {
     })
 
     const fohResponse = await postFohSeated({} as any, {
-      params: Promise.resolve({ id: 'booking-1' }),
+      params: Promise.resolve({ id: BOOKING_UUID }),
     })
     const fohPayload = await fohResponse.json()
 
@@ -252,7 +254,7 @@ describe('Table-booking mutation row-effect guards', () => {
       body: JSON.stringify({ action: 'seated' }),
     })
     const bohResponse = await postBohStatus(bohRequest as any, {
-      params: Promise.resolve({ id: 'booking-1' }),
+      params: Promise.resolve({ id: BOOKING_UUID }),
     })
     const bohPayload = await bohResponse.json()
 
@@ -271,7 +273,7 @@ describe('Table-booking mutation row-effect guards', () => {
       supabase,
     })
     ;(getTableBookingForFoh as unknown as vi.Mock).mockResolvedValue({
-      id: 'booking-1',
+      id: BOOKING_UUID,
       customer_id: 'customer-1',
       status: 'completed',
       party_size: 2,
@@ -283,7 +285,7 @@ describe('Table-booking mutation row-effect guards', () => {
     })
 
     const fohResponse = await postFohNoShow({} as any, {
-      params: Promise.resolve({ id: 'booking-1' }),
+      params: Promise.resolve({ id: BOOKING_UUID }),
     })
     const fohPayload = await fohResponse.json()
 
@@ -293,7 +295,7 @@ describe('Table-booking mutation row-effect guards', () => {
       body: JSON.stringify({ action: 'no_show' }),
     })
     const bohResponse = await postBohStatus(bohRequest as any, {
-      params: Promise.resolve({ id: 'booking-1' }),
+      params: Promise.resolve({ id: BOOKING_UUID }),
     })
     const bohPayload = await bohResponse.json()
 
@@ -329,8 +331,8 @@ describe('Table-booking mutation row-effect guards', () => {
     })
     const moveLookupEq = vi.fn().mockResolvedValue({
       data: [
-        { table_booking_id: 'booking-1', table_id: targetTableId },
-        { table_booking_id: 'booking-1', table_id: '22222222-2222-4222-8222-222222222222' },
+        { table_booking_id: BOOKING_UUID, table_id: targetTableId },
+        { table_booking_id: BOOKING_UUID, table_id: '22222222-2222-4222-8222-222222222222' },
       ],
       error: null,
     })
@@ -377,7 +379,7 @@ describe('Table-booking mutation row-effect guards', () => {
       supabase,
     })
     ;(getTableBookingForFoh as unknown as vi.Mock).mockResolvedValue({
-      id: 'booking-1',
+      id: BOOKING_UUID,
       status: 'confirmed',
       booking_date: '2024-01-01',
       booking_time: '12:00:00',
@@ -393,7 +395,7 @@ describe('Table-booking mutation row-effect guards', () => {
       body: JSON.stringify({ table_id: targetTableId }),
     })
     const response = await postFohMoveTable(request as any, {
-      params: Promise.resolve({ id: 'booking-1' }),
+      params: Promise.resolve({ id: BOOKING_UUID }),
     })
     const payload = await response.json()
 
