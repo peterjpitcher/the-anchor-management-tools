@@ -20,25 +20,30 @@ import { deleteEntry, updateEntry } from '@/app/actions/oj-projects/entries'
 const mockedPermission = checkUserPermission as unknown as Mock
 const mockedCreateClient = createClient as unknown as Mock
 
+const mockGetUser = vi.fn().mockResolvedValue({ data: { user: { id: 'mock-user', email: 'mock@test.com' } } })
+const mockAuth = { getUser: mockGetUser }
+
 describe('OJ project action mutation row-effect guards', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mockedPermission.mockResolvedValue(true)
+    mockGetUser.mockResolvedValue({ data: { user: { id: 'mock-user', email: 'mock@test.com' } } })
   })
 
   it('returns project-contact-not-found when contact delete affects no rows', async () => {
-    const maybeSingle = vi.fn().mockResolvedValue({ data: null, error: null })
-    const select = vi.fn().mockReturnValue({ maybeSingle })
-    const eq = vi.fn().mockReturnValue({ select })
+    const fetchSingle = vi.fn().mockResolvedValue({ data: null, error: null })
+    const fetchEq = vi.fn().mockReturnValue({ single: fetchSingle })
 
     mockedCreateClient.mockResolvedValue({
+      auth: mockAuth,
       from: vi.fn((table: string) => {
         if (table !== 'oj_project_contacts') {
           throw new Error(`Unexpected table: ${table}`)
         }
 
         return {
-          delete: vi.fn().mockReturnValue({ eq }),
+          select: vi.fn().mockReturnValue({ eq: fetchEq }),
+          delete: vi.fn(),
         }
       }),
     })
@@ -57,6 +62,7 @@ describe('OJ project action mutation row-effect guards', () => {
     const eq = vi.fn().mockReturnValue({ select })
 
     mockedCreateClient.mockResolvedValue({
+      auth: mockAuth,
       from: vi.fn((table: string) => {
         if (table !== 'oj_work_types') {
           throw new Error(`Unexpected table: ${table}`)
@@ -82,6 +88,7 @@ describe('OJ project action mutation row-effect guards', () => {
     const eq = vi.fn().mockReturnValue({ select })
 
     mockedCreateClient.mockResolvedValue({
+      auth: mockAuth,
       from: vi.fn((table: string) => {
         if (table !== 'oj_work_types') {
           throw new Error(`Unexpected table: ${table}`)
@@ -110,6 +117,7 @@ describe('OJ project action mutation row-effect guards', () => {
     const eq = vi.fn().mockReturnValue({ select })
 
     mockedCreateClient.mockResolvedValue({
+      auth: mockAuth,
       from: vi.fn((table: string) => {
         if (table !== 'oj_vendor_recurring_charges') {
           throw new Error(`Unexpected table: ${table}`)
@@ -135,6 +143,7 @@ describe('OJ project action mutation row-effect guards', () => {
     const eq = vi.fn().mockReturnValue({ select })
 
     mockedCreateClient.mockResolvedValue({
+      auth: mockAuth,
       from: vi.fn((table: string) => {
         if (table !== 'oj_vendor_recurring_charges') {
           throw new Error(`Unexpected table: ${table}`)
@@ -168,6 +177,7 @@ describe('OJ project action mutation row-effect guards', () => {
     const deleteEq = vi.fn().mockReturnValue({ select: deleteSelect })
 
     mockedCreateClient.mockResolvedValue({
+      auth: mockAuth,
       from: vi.fn((table: string) => {
         if (table === 'oj_entries') {
           return {
@@ -199,6 +209,7 @@ describe('OJ project action mutation row-effect guards', () => {
     const eq = vi.fn().mockReturnValue({ select })
 
     mockedCreateClient.mockResolvedValue({
+      auth: mockAuth,
       from: vi.fn((table: string) => {
         if (table !== 'oj_projects') {
           throw new Error(`Unexpected table: ${table}`)
@@ -225,6 +236,7 @@ describe('OJ project action mutation row-effect guards', () => {
     const eq = vi.fn().mockReturnValue({ select })
 
     mockedCreateClient.mockResolvedValue({
+      auth: mockAuth,
       from: vi.fn((table: string) => {
         if (table !== 'oj_projects') {
           throw new Error(`Unexpected table: ${table}`)
@@ -248,9 +260,11 @@ describe('OJ project action mutation row-effect guards', () => {
   })
 
   it('returns entry-not-found when deleteEntry delete affects no rows after prefetch', async () => {
+    const ENTRY_UUID = '550e8400-e29b-41d4-a716-446655440010'
+
     const prefetchSingle = vi.fn().mockResolvedValue({
       data: {
-        id: 'entry-1',
+        id: ENTRY_UUID,
         status: 'unbilled',
       },
       error: null,
@@ -262,6 +276,7 @@ describe('OJ project action mutation row-effect guards', () => {
     const deleteEq = vi.fn().mockReturnValue({ select: deleteSelect })
 
     mockedCreateClient.mockResolvedValue({
+      auth: mockAuth,
       from: vi.fn((table: string) => {
         if (table !== 'oj_entries') {
           throw new Error(`Unexpected table: ${table}`)
@@ -275,7 +290,7 @@ describe('OJ project action mutation row-effect guards', () => {
     })
 
     const formData = new FormData()
-    formData.set('id', 'entry-1')
+    formData.set('id', ENTRY_UUID)
 
     const result = await deleteEntry(formData)
 
@@ -306,6 +321,7 @@ describe('OJ project action mutation row-effect guards', () => {
     const settingsEq = vi.fn().mockReturnValue({ maybeSingle: settingsMaybeSingle })
 
     mockedCreateClient.mockResolvedValue({
+      auth: mockAuth,
       from: vi.fn((table: string) => {
         if (table === 'oj_entries') {
           return {

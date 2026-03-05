@@ -29,8 +29,8 @@ describe('BOH table booking SMS route safety signals', () => {
   })
 
   it('surfaces sendSMS code/logFailure in the response', async () => {
-    const bookingId = 'table-booking-1'
-    const customerId = 'customer-1'
+    const bookingId = '00000000-0000-4000-8000-000000000001'
+    const customerId = '00000000-0000-4000-8000-000000000011'
 
     const bookingMaybeSingle = vi.fn().mockResolvedValue({
       data: {
@@ -48,10 +48,18 @@ describe('BOH table booking SMS route safety signals', () => {
     const bookingEq = vi.fn().mockReturnValue({ maybeSingle: bookingMaybeSingle })
     const bookingSelect = vi.fn().mockReturnValue({ eq: bookingEq })
 
+    const messagesSelectGte = vi.fn().mockResolvedValue({ count: 0, error: null })
+    const messagesSelectEqDir = vi.fn().mockReturnValue({ gte: messagesSelectGte })
+    const messagesSelectEqId = vi.fn().mockReturnValue({ eq: messagesSelectEqDir })
+    const messagesSelect = vi.fn().mockReturnValue({ eq: messagesSelectEqId })
+
     const supabase = {
       from: vi.fn((table: string) => {
         if (table === 'table_bookings') {
           return { select: bookingSelect }
+        }
+        if (table === 'messages') {
+          return { select: messagesSelect }
         }
         throw new Error(`Unexpected table: ${table}`)
       }),
@@ -99,8 +107,8 @@ describe('BOH table booking SMS route safety signals', () => {
   })
 
   it('logs and fails closed when sendSMS throws unexpectedly', async () => {
-    const bookingId = 'table-booking-2'
-    const customerId = 'customer-2'
+    const bookingId = '00000000-0000-4000-8000-000000000002'
+    const customerId = '00000000-0000-4000-8000-000000000012'
 
     const bookingMaybeSingle = vi.fn().mockResolvedValue({
       data: {
@@ -118,10 +126,18 @@ describe('BOH table booking SMS route safety signals', () => {
     const bookingEq = vi.fn().mockReturnValue({ maybeSingle: bookingMaybeSingle })
     const bookingSelect = vi.fn().mockReturnValue({ eq: bookingEq })
 
+    const messagesSelectGte = vi.fn().mockResolvedValue({ count: 0, error: null })
+    const messagesSelectEqDir = vi.fn().mockReturnValue({ gte: messagesSelectGte })
+    const messagesSelectEqId = vi.fn().mockReturnValue({ eq: messagesSelectEqDir })
+    const messagesSelect = vi.fn().mockReturnValue({ eq: messagesSelectEqId })
+
     const supabase = {
       from: vi.fn((table: string) => {
         if (table === 'table_bookings') {
           return { select: bookingSelect }
+        }
+        if (table === 'messages') {
+          return { select: messagesSelect }
         }
         throw new Error(`Unexpected table: ${table}`)
       }),
@@ -159,8 +175,8 @@ describe('BOH table booking SMS route safety signals', () => {
   })
 
   it('fails safe when sendSMS reports logging_failed as non-success', async () => {
-    const bookingId = 'table-booking-3'
-    const customerId = 'customer-3'
+    const bookingId = '00000000-0000-4000-8000-000000000003'
+    const customerId = '00000000-0000-4000-8000-000000000013'
 
     const bookingMaybeSingle = vi.fn().mockResolvedValue({
       data: {
@@ -178,10 +194,18 @@ describe('BOH table booking SMS route safety signals', () => {
     const bookingEq = vi.fn().mockReturnValue({ maybeSingle: bookingMaybeSingle })
     const bookingSelect = vi.fn().mockReturnValue({ eq: bookingEq })
 
+    const messagesSelectGte = vi.fn().mockResolvedValue({ count: 0, error: null })
+    const messagesSelectEqDir = vi.fn().mockReturnValue({ gte: messagesSelectGte })
+    const messagesSelectEqId = vi.fn().mockReturnValue({ eq: messagesSelectEqDir })
+    const messagesSelect = vi.fn().mockReturnValue({ eq: messagesSelectEqId })
+
     const supabase = {
       from: vi.fn((table: string) => {
         if (table === 'table_bookings') {
           return { select: bookingSelect }
+        }
+        if (table === 'messages') {
+          return { select: messagesSelect }
         }
         throw new Error(`Unexpected table: ${table}`)
       }),

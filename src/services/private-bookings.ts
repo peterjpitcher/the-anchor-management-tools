@@ -1415,6 +1415,103 @@ export class PrivateBookingService {
     return smsSideEffects.length > 0 ? { success: true, smsSideEffects } : { success: true };
   }
 
+  static async recordFinalPayment(bookingId: string, method: string, performedByUserId?: string) {
+    const supabase = await createClient();
+
+    const { data: booking, error: fetchError } = await supabase
+      .from('private_bookings')
+      .select('id, customer_first_name, customer_last_name, customer_name, event_date, start_time, end_time, end_time_next_day, contact_phone, customer_id, calendar_event_id, status, guest_count, event_type, deposit_paid_date')
+      .eq('id', bookingId)
+      .single();
+
+    if (fetchError || !booking) throw new Error('Booking not found');
+
+    const { data: updatedBooking, error } = await supabase
+      .from('private_bookings')
+      .update({
+        final_payment_date: new Date().toISOString(),
+        final_payment_method: method,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', bookingId)
+      .select()
+      .maybeSingle();
+
+    if (error) throw new Error('Failed to record final payment');
+    if (!updatedBooking) throw new Error('Booking not found');
+
+    const smsSideEffects: PrivateBookingSmsSideEffectSummary[] = []
+
+    if (booking.contact_phone || booking.customer_id) {
+      const eventDate = new Date(booking.event_date).toLocaleDateString('en-GB', {
+        day: 'numeric', month: 'long', year: 'numeric'
+      });
+
+      const smsMessage = `The Anchor: Hi ${booking.customer_first_name}, thank you for your final payment. Your private booking on ${eventDate} is fully paid.`;
+
+      let smsResult: any
+      try {
+        smsResult = await SmsQueueService.queueAndSend({
+          booking_id: bookingId,
+          trigger_type: 'final_payment_received',
+          template_key: 'private_booking_final_payment',
+          message_body: smsMessage,
+          customer_phone: booking.contact_phone,
+          customer_name: booking.customer_name || `${booking.customer_first_name} ${booking.customer_last_name || ''}`.trim(),
+          customer_id: booking.customer_id,
+          created_by: performedByUserId,
+          priority: 1,
+          metadata: {
+            template: 'private_booking_final_payment',
+            first_name: booking.customer_first_name,
+            event_date: eventDate
+          }
+        });
+      } catch (smsError) {
+        smsResult = { error: smsError instanceof Error ? smsError.message : String(smsError) }
+      }
+
+      const smsSafety = normalizeSmsSafetyMeta(smsResult)
+      const smsSummary: PrivateBookingSmsSideEffectSummary = {
+        triggerType: 'final_payment_received',
+        templateKey: 'private_booking_final_payment',
+        queueId: typeof smsResult?.queueId === 'string' ? smsResult.queueId : undefined,
+        sent: smsResult?.sent === true,
+        suppressed: smsResult?.suppressed === true,
+        requiresApproval: smsResult?.requiresApproval === true,
+        code: smsSafety.code,
+        logFailure: smsSafety.logFailure,
+        error: typeof smsResult?.error === 'string' ? smsResult.error : undefined
+      }
+
+      smsSideEffects.push(smsSummary)
+
+      if (smsSummary.logFailure) {
+        logger.error('Private booking SMS logging failed', {
+          metadata: {
+            bookingId: bookingId,
+            triggerType: smsSummary.triggerType,
+            templateKey: smsSummary.templateKey,
+            code: smsSummary.code ?? null
+          }
+        })
+      }
+
+      if (smsSummary.error) {
+        logger.error('Private booking SMS queue/send failed', {
+          metadata: {
+            bookingId: bookingId,
+            triggerType: smsSummary.triggerType,
+            templateKey: smsSummary.templateKey,
+            error: smsSummary.error
+          }
+        })
+      }
+    }
+
+    return smsSideEffects.length > 0 ? { success: true, smsSideEffects } : { success: true };
+  }
+
   static async recordBalancePayment(bookingId: string, amount: number, method: string, performedByUserId?: string) {
     const supabase = await createClient();
 

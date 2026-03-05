@@ -10,7 +10,7 @@ import { DELETE as deleteBohTableBooking } from '@/app/api/boh/table-bookings/[i
 describe('BOH table-booking DELETE soft-cancel behavior', () => {
   it('soft-cancels booking and does not run hard delete', async () => {
     const loadMaybeSingle = vi.fn().mockResolvedValue({
-      data: { id: 'booking-1', booking_reference: 'TB-1', status: 'confirmed' },
+      data: { id: '00000000-0000-4000-8000-000000000001', booking_reference: 'TB-1', status: 'confirmed' },
       error: null,
     })
     const loadEq = vi.fn().mockReturnValue({ maybeSingle: loadMaybeSingle })
@@ -18,7 +18,7 @@ describe('BOH table-booking DELETE soft-cancel behavior', () => {
 
     const updateMaybeSingle = vi.fn().mockResolvedValue({
       data: {
-        id: 'booking-1',
+        id: '00000000-0000-4000-8000-000000000001',
         booking_reference: 'TB-1',
         status: 'cancelled',
         cancelled_at: '2026-02-23T11:00:00.000Z',
@@ -48,7 +48,7 @@ describe('BOH table-booking DELETE soft-cancel behavior', () => {
     })
 
     const response = await deleteBohTableBooking({} as any, {
-      params: Promise.resolve({ id: 'booking-1' }),
+      params: Promise.resolve({ id: '00000000-0000-4000-8000-000000000001' }),
     })
     const payload = await response.json()
 
@@ -65,7 +65,7 @@ describe('BOH table-booking DELETE soft-cancel behavior', () => {
     expect(payload).toMatchObject({
       success: true,
       data: {
-        id: 'booking-1',
+        id: '00000000-0000-4000-8000-000000000001',
         booking_reference: 'TB-1',
         status: 'cancelled',
         soft_deleted: true,
