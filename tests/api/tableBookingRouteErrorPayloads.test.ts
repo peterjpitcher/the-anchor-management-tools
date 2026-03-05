@@ -56,7 +56,7 @@ describe('table-booking route 500 payload sanitization', () => {
       supabase: buildAvailabilityLoadFailureSupabase(),
     })
     ;(getTableBookingForFoh as unknown as vi.Mock).mockResolvedValue({
-      id: 'booking-1',
+      id: '00000000-0000-4000-8000-000000000001',
       status: 'confirmed',
       booking_date: '2024-01-01',
       booking_time: '12:00:00',
@@ -67,7 +67,7 @@ describe('table-booking route 500 payload sanitization', () => {
     })
 
     const response = await getFohMoveTable({} as any, {
-      params: Promise.resolve({ id: 'booking-1' }),
+      params: Promise.resolve({ id: '00000000-0000-4000-8000-000000000001' }),
     })
     const payload = await response.json()
 
@@ -81,7 +81,7 @@ describe('table-booking route 500 payload sanitization', () => {
       supabase: buildAvailabilityLoadFailureSupabase(),
     })
     ;(getTableBookingForFoh as unknown as vi.Mock).mockResolvedValue({
-      id: 'booking-1',
+      id: '00000000-0000-4000-8000-000000000001',
       status: 'confirmed',
       booking_date: '2024-01-01',
       booking_time: '12:00:00',
@@ -98,7 +98,7 @@ describe('table-booking route 500 payload sanitization', () => {
     })
 
     const response = await postBohMoveTable(request as any, {
-      params: Promise.resolve({ id: 'booking-1' }),
+      params: Promise.resolve({ id: '00000000-0000-4000-8000-000000000001' }),
     })
     const payload = await response.json()
 
@@ -121,7 +121,7 @@ describe('table-booking route 500 payload sanitization', () => {
     }
 
     const response = await postFohPartySize(request as any, {
-      params: Promise.resolve({ id: 'booking-1' }),
+      params: Promise.resolve({ id: '00000000-0000-4000-8000-000000000001' }),
     })
     const payload = await response.json()
 
@@ -144,7 +144,7 @@ describe('table-booking route 500 payload sanitization', () => {
     }
 
     const response = await postBohPartySize(request as any, {
-      params: Promise.resolve({ id: 'booking-1' }),
+      params: Promise.resolve({ id: '00000000-0000-4000-8000-000000000001' }),
     })
     const payload = await response.json()
 

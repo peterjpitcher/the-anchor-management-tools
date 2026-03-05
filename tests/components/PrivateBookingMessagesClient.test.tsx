@@ -7,6 +7,7 @@ vi.mock('next/navigation', () => ({
     refresh: vi.fn(),
     push: vi.fn(),
   }),
+  usePathname: () => '/private-bookings/booking-1/messages',
 }))
 
 const toast = vi.hoisted(() => ({

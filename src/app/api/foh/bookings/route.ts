@@ -935,6 +935,54 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Failed to resolve customer' }, { status: 500 })
   }
 
+  // Deduplication: for bookings with a real (non-walk-in) customer, check for an identical
+  // booking created in the last 60 seconds and return it idempotently instead of creating a duplicate.
+  // Wrapped in try/catch so a query failure is non-fatal — we skip dedup and proceed normally.
+  if (payload.walk_in !== true && customerId) {
+    try {
+      const sixtySecondsAgo = new Date(Date.now() - 60 * 1000).toISOString()
+      const { data: recentDuplicate } = await (auth.supabase.from('table_bookings') as any)
+        .select('id, booking_reference, status, table_name')
+        .eq('customer_id', customerId)
+        .eq('booking_date', payload.date)
+        .eq('booking_time', bookingTime)
+        .not('status', 'in', '("cancelled","no_show")')
+        .gte('created_at', sixtySecondsAgo)
+        .maybeSingle()
+
+      if (recentDuplicate) {
+        const dupState: FohCreateBookingResponseData['state'] =
+          recentDuplicate.status === 'confirmed'
+            ? 'confirmed'
+            : recentDuplicate.status === 'pending_card_capture'
+              ? 'pending_card_capture'
+              : recentDuplicate.status === 'pending_payment'
+                ? 'pending_payment'
+                : 'confirmed'
+        return NextResponse.json(
+          {
+            success: true,
+            data: {
+              state: dupState,
+              table_booking_id: recentDuplicate.id,
+              booking_reference: recentDuplicate.booking_reference || null,
+              reason: null,
+              blocked_reason: null,
+              next_step_url: null,
+              hold_expires_at: null,
+              table_name: recentDuplicate.table_name || null,
+              sunday_preorder_state: 'not_applicable',
+              sunday_preorder_reason: null
+            } satisfies FohCreateBookingResponseData
+          },
+          { status: 200 }
+        )
+      }
+    } catch {
+      // Deduplication check failed non-fatally; proceed with normal booking creation.
+    }
+  }
+
   let effectiveSundayLunch = payload.sunday_lunch === true
   if (!effectiveSundayLunch) {
     try {

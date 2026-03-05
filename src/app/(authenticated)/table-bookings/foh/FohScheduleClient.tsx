@@ -3044,6 +3044,28 @@ export function FohScheduleClient({
             </div>
           )}
 
+          {eventOptions.length > 0 && createForm.purpose !== 'event' && (
+            <div className="rounded-md border border-blue-100 bg-blue-50 px-3 py-2 text-xs text-blue-800">
+              Booking for an upcoming event?{' '}
+              <button
+                type="button"
+                onClick={() => {
+                  setCreateForm((current) => ({
+                    ...current,
+                    purpose: 'event',
+                    sunday_lunch: false,
+                    sunday_deposit_method: 'payment_link',
+                    event_id: eventOptions.find((item) => !item.is_full)?.id || eventOptions[0]?.id || ''
+                  }))
+                  setTableEventPromptAcknowledgedEventId(null)
+                }}
+                className="font-semibold underline hover:text-blue-900"
+              >
+                Select event
+              </button>
+            </div>
+          )}
+
           <div className="grid gap-3 md:grid-cols-2">
             <label className="text-xs font-medium text-gray-700">
               Booking date
@@ -3414,6 +3436,12 @@ export function FohScheduleClient({
                   No, keep table booking
                 </button>
               </div>
+            </div>
+          )}
+
+          {errorMessage && isCreateModalOpen && (
+            <div role="alert" className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
+              {errorMessage}
             </div>
           )}
 

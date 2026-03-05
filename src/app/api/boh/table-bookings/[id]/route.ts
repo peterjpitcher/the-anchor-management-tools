@@ -44,6 +44,7 @@ export async function DELETE(
     .update({
       status: 'cancelled',
       cancelled_at: nowIso,
+      cancelled_by: 'staff',
       cancellation_reason: cancellationReason,
       updated_at: nowIso
     })

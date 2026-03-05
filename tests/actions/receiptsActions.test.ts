@@ -309,7 +309,7 @@ describe('deleteReceiptFile rollback safety', () => {
 
         if (table === 'profiles') {
           return {
-            select: vi.fn().mockReturnValue({ eq: vi.fn().mockReturnValue({ single: vi.fn() }) }),
+            select: vi.fn().mockReturnValue({ eq: vi.fn().mockReturnValue({ single: vi.fn().mockResolvedValue({ data: { full_name: 'Test User' }, error: null }) }) }),
           }
         }
 

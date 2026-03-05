@@ -22,7 +22,7 @@ import { getTableBookingForFoh } from '@/lib/foh/bookings'
 import { GET as getFohMoveTable, POST as postFohMoveTable } from '@/app/api/foh/bookings/[id]/move-table/route'
 import { GET as getBohMoveTable, POST as postBohMoveTable } from '@/app/api/boh/table-bookings/[id]/move-table/route'
 
-const BOOKING_ID = 'booking-1'
+const BOOKING_ID = '00000000-0000-4000-8000-000000000001'
 const TARGET_TABLE_ID = '11111111-1111-4111-8111-111111111111'
 const CURRENT_TABLE_ID = '22222222-2222-4222-8222-222222222222'
 
