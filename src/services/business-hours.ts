@@ -540,6 +540,7 @@ export class BusinessHoursService {
 
     if (endDate < startDate) throw new Error('End date cannot be before start date');
 
+    const scheduleConfigRaw = formData.get('schedule_config') as string | null;
     const rawData = {
       date: startDate,
       opens: (formData.get('opens') as string) || '',
@@ -548,7 +549,8 @@ export class BusinessHoursService {
       kitchen_closes: (formData.get('kitchen_closes') as string) || '',
       is_closed: formData.get('is_closed') === 'true',
       is_kitchen_closed: formData.get('is_kitchen_closed') === 'true',
-      note: (formData.get('note') as string) || ''
+      note: (formData.get('note') as string) || '',
+      schedule_config: scheduleConfigRaw ? JSON.parse(scheduleConfigRaw) : undefined,
     };
 
     const validationResult = specialHoursSchema.safeParse(rawData);
@@ -562,7 +564,8 @@ export class BusinessHoursService {
       kitchen_closes: validatedData.is_closed || validatedData.is_kitchen_closed ? null : validatedData.kitchen_closes,
       is_closed: validatedData.is_closed,
       is_kitchen_closed: validatedData.is_kitchen_closed,
-      note: validatedData.note
+      note: validatedData.note,
+      schedule_config: validatedData.schedule_config ?? null,
     };
 
     const formatDate = (dateObj: Date) => {
@@ -581,21 +584,13 @@ export class BusinessHoursService {
     }
 
     const supabase = createAdminClient();
-    const { data: existingDates, error: existingDatesError } = await supabase
-      .from('special_hours')
-      .select('date')
-      .in('date', datesToCreate);
-
-    if (existingDatesError) {
-      throw new Error('Failed to validate existing special hours');
-    }
-
-    if (existingDates && existingDates.length > 0) {
-      throw new Error(`Special hours already exist for ${existingDates.map(d => d.date).join(', ')}`);
-    }
-
+    // Upsert so that saving over an existing exception (e.g. stale UI state) works seamlessly
+    // rather than returning a confusing "already exists" error.
     const payloads = datesToCreate.map((date) => ({ ...basePayload, date }));
-    const { data, error } = await supabase.from('special_hours').insert(payloads).select();
+    const { data, error } = await supabase
+      .from('special_hours')
+      .upsert(payloads, { onConflict: 'date' })
+      .select();
 
     if (error) throw new Error('Failed to create special hours');
 
@@ -619,6 +614,7 @@ export class BusinessHoursService {
     if (loadError) throw new Error('Failed to load special hours');
     if (!oldData) throw new Error('Special hours not found');
 
+    const scheduleConfigRaw = formData.get('schedule_config') as string | null;
     const rawData = {
       date: formData.get('date') as string,
       opens: formData.get('opens') as string || '',
@@ -627,7 +623,8 @@ export class BusinessHoursService {
       kitchen_closes: formData.get('kitchen_closes') as string || '',
       is_closed: formData.get('is_closed') === 'true',
       is_kitchen_closed: formData.get('is_kitchen_closed') === 'true',
-      note: formData.get('note') as string || ''
+      note: formData.get('note') as string || '',
+      schedule_config: scheduleConfigRaw ? JSON.parse(scheduleConfigRaw) : undefined,
     };
 
     const validationResult = specialHoursSchema.safeParse(rawData);
@@ -640,6 +637,7 @@ export class BusinessHoursService {
       closes: validatedData.is_closed ? null : validatedData.closes,
       kitchen_opens: validatedData.is_closed || validatedData.is_kitchen_closed ? null : validatedData.kitchen_opens,
       kitchen_closes: validatedData.is_closed || validatedData.is_kitchen_closed ? null : validatedData.kitchen_closes,
+      schedule_config: validatedData.schedule_config ?? null,
       updated_at: new Date().toISOString()
     };
 
