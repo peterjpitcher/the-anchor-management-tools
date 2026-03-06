@@ -243,10 +243,10 @@ export class BusinessHoursService {
 
     if (error) throw new Error('Failed to update business hours');
 
-    // Trigger slot regeneration
+    // Trigger legacy slot regeneration (non-fatal — populates service_slots, not used for booking validation)
     const { error: regenerateSlotsError } = await supabase.rpc('auto_generate_weekly_slots');
     if (regenerateSlotsError) {
-      throw new Error('Failed to regenerate slots after creating special hours');
+      console.warn('auto_generate_weekly_slots failed after updateBusinessHours (non-fatal):', regenerateSlotsError);
     }
     
     return { success: true, updatedCount: updates.length };
@@ -504,7 +504,7 @@ export class BusinessHoursService {
 
         const { error: regenerateSlotsError } = await supabase.rpc('auto_generate_weekly_slots');
         if (regenerateSlotsError) {
-          throw new Error('Failed to regenerate slots after enabling service status');
+          console.warn('auto_generate_weekly_slots failed after updateServiceStatus (non-fatal):', regenerateSlotsError);
         }
       }
     }
@@ -594,10 +594,10 @@ export class BusinessHoursService {
 
     if (error) throw new Error('Failed to create special hours');
 
-    // Trigger slot regeneration
-    const { error: regenerateSlotsError } = await supabase.rpc('auto_generate_weekly_slots');
-    if (regenerateSlotsError) {
-      throw new Error('Failed to regenerate slots after updating special hours');
+    // Trigger legacy slot regeneration (non-fatal — populates service_slots, not used for booking validation)
+    const { error: regenCreateError } = await supabase.rpc('auto_generate_weekly_slots');
+    if (regenCreateError) {
+      console.warn('auto_generate_weekly_slots failed after createSpecialHours (non-fatal):', regenCreateError);
     }
 
     return { data: data || [], datesToCreate };
@@ -654,10 +654,10 @@ export class BusinessHoursService {
     }
     if (!data) throw new Error('Special hours not found');
 
-    // Trigger slot regeneration
+    // Trigger legacy slot regeneration (non-fatal — populates service_slots, not used for booking validation)
     const { error: regenerateSlotsError } = await supabase.rpc('auto_generate_weekly_slots');
     if (regenerateSlotsError) {
-      throw new Error('Failed to regenerate slots after updating special hours');
+      console.warn('auto_generate_weekly_slots failed (non-fatal):', regenerateSlotsError);
     }
 
     return { updated: data, oldData };
@@ -686,7 +686,7 @@ export class BusinessHoursService {
     // Trigger slot regeneration
     const { error: regenerateSlotsError } = await supabase.rpc('auto_generate_weekly_slots');
     if (regenerateSlotsError) {
-      throw new Error('Failed to regenerate slots after deleting special hours');
+      console.warn('auto_generate_weekly_slots failed after deleteSpecialHours (non-fatal):', regenerateSlotsError);
     }
 
     return deletedRows[0];
