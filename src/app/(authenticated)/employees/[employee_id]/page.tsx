@@ -24,8 +24,11 @@ import { getEmployeeDetailData } from '@/app/actions/employeeDetails'
 import { LinkButton } from '@/components/ui-v2/navigation/LinkButton'
 import { ArrowDownTrayIcon } from '@heroicons/react/24/outline'
 import EmployeePayTab from '@/components/features/employees/EmployeePayTab'
+import EmployeeHolidaysTab from '@/components/features/employees/EmployeeHolidaysTab'
 import { getEmployeePaySettings, getEmployeeRateOverrides } from '@/app/actions/pay-bands'
 import { getHourlyRate } from '@/lib/rota/pay-calculator'
+import { getLeaveRequests } from '@/app/actions/leave'
+import { getRotaSettings } from '@/app/actions/rota-settings'
 
 export const dynamic = 'force-dynamic'
 
@@ -53,10 +56,12 @@ export default async function EmployeeDetailPage({ params }: EmployeeDetailPageP
     notFound()
   }
 
-  const [result, paySettingsResult, rateOverridesResult] = await Promise.all([
+  const [result, paySettingsResult, rateOverridesResult, leaveRequestsResult, rotaSettings] = await Promise.all([
     getEmployeeDetailData(employeeId),
     getEmployeePaySettings(employeeId),
     getEmployeeRateOverrides(employeeId),
+    getLeaveRequests({ employeeId }),
+    getRotaSettings(),
   ])
 
   if (result.unauthorized) {
@@ -86,6 +91,7 @@ export default async function EmployeeDetailPage({ params }: EmployeeDetailPageP
 
   const paySettings = paySettingsResult.success ? paySettingsResult.data : null
   const rateOverrides = rateOverridesResult.success ? rateOverridesResult.data : []
+  const leaveRequests = leaveRequestsResult.success ? leaveRequestsResult.data : []
 
   // Resolve current rate for display (today's date)
   const today = new Date().toISOString().split('T')[0]
@@ -218,6 +224,19 @@ export default async function EmployeeDetailPage({ params }: EmployeeDetailPageP
           initialPaySettings={paySettings}
           initialOverrides={rateOverrides}
           currentRate={currentRate}
+        />
+      )
+    },
+    {
+      key: 'holidays',
+      label: 'Holidays',
+      content: (
+        <EmployeeHolidaysTab
+          employeeId={employee.employee_id}
+          canEdit={permissions.canEdit}
+          leaveRequests={leaveRequests}
+          paySettings={paySettings}
+          rotaSettings={rotaSettings}
         />
       )
     }

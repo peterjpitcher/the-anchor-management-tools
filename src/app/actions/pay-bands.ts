@@ -29,6 +29,7 @@ export type EmployeePaySettings = {
   employee_id: string;
   pay_type: 'hourly' | 'salaried';
   max_weekly_hours: number | null;
+  holiday_allowance_days: number | null;
   created_at: string;
   updated_at: string;
 };
