@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Modal, ModalActions } from '@/components/ui-v2/overlay/Modal'
+import { Modal, ModalActions, ConfirmModal } from '@/components/ui-v2/overlay/Modal'
 import { Button } from '@/components/ui-v2/forms/Button'
 import { Input } from '@/components/ui-v2/forms/Input'
 import { Checkbox } from '@/components/ui-v2/forms/Checkbox'
@@ -31,6 +31,7 @@ export function SpecialHoursModal({
 }: SpecialHoursModalProps) {
   const [loading, setLoading] = useState(false)
   const [fetchingDefaults, setFetchingDefaults] = useState(false)
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   
   // Form State
   const [isClosed, setIsClosed] = useState(false)
@@ -128,13 +129,13 @@ export function SpecialHoursModal({
     // However, for simplicity in this modal, we merge it on submit.
   }
 
-  const handleDelete = async () => {
+  const handleDeleteConfirmed = async () => {
     if (!initialData?.id) return
-    if (!confirm('Remove this exception and revert to regular hours?')) return
 
     setLoading(true)
     const result = await deleteSpecialHours(initialData.id)
     setLoading(false)
+    setShowDeleteConfirm(false)
 
     if (result.error) {
       toast.error(result.error)
@@ -221,6 +222,17 @@ export function SpecialHoursModal({
   const isSunday = date.getDay() === 0
 
   return (
+    <>
+    <ConfirmModal
+      open={showDeleteConfirm}
+      onClose={() => setShowDeleteConfirm(false)}
+      onConfirm={handleDeleteConfirmed}
+      title="Revert to Regular Hours"
+      message="Remove this exception and revert to regular hours for this date?"
+      confirmLabel="Remove Exception"
+      variant="danger"
+      loading={loading}
+    />
     <Modal
       open={isOpen}
       onClose={onClose}
@@ -233,7 +245,7 @@ export function SpecialHoursModal({
               <Button
                 type="button"
                 variant="danger"
-                onClick={handleDelete}
+                onClick={() => setShowDeleteConfirm(true)}
                 disabled={loading || !canManage}
               >
                 <TrashIcon className="w-4 h-4 mr-2" />
@@ -391,5 +403,6 @@ export function SpecialHoursModal({
         )}
       </div>
     </Modal>
+    </>
   )
 }
