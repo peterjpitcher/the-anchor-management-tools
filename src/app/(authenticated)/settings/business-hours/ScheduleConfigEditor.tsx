@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { ScheduleConfigItem } from '@/types/business-hours'
 import { Button } from '@/components/ui-v2/forms/Button'
 import { Input } from '@/components/ui-v2/forms/Input'
@@ -13,6 +13,10 @@ interface ScheduleConfigEditorProps {
 
 export function ScheduleConfigEditor({ config, onChange }: ScheduleConfigEditorProps) {
   const [items, setItems] = useState<ScheduleConfigItem[]>(config || [])
+
+  useEffect(() => {
+    setItems(config || [])
+  }, [config])
 
   const updateItem = (index: number, field: keyof ScheduleConfigItem, value: any) => {
     const newItems = [...items]
