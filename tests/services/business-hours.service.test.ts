@@ -19,8 +19,8 @@ describe('BusinessHoursService reliability guards', () => {
     vi.clearAllMocks()
   })
 
-  it('fails closed when existing special-hours lookup errors during range create', async () => {
-    const inQuery = vi.fn().mockResolvedValue({
+  it('fails closed when upsert errors during range create', async () => {
+    const upsertQuery = vi.fn().mockResolvedValue({
       data: null,
       error: { message: 'connection lost' },
     })
@@ -32,7 +32,7 @@ describe('BusinessHoursService reliability guards', () => {
         }
 
         return {
-          select: vi.fn().mockReturnValue({ in: inQuery }),
+          upsert: vi.fn().mockReturnValue({ select: vi.fn().mockResolvedValue({ data: null, error: { message: 'connection lost' } }) }),
         }
       }),
       rpc: vi.fn(),
@@ -51,7 +51,7 @@ describe('BusinessHoursService reliability guards', () => {
     formData.set('is_kitchen_closed', 'false')
 
     await expect(BusinessHoursService.createSpecialHours(formData)).rejects.toThrow(
-      'Failed to validate existing special hours'
+      'Failed to create special hours'
     )
   })
 
