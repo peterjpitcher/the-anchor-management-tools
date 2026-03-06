@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { getSpecialHours, getServiceStatusOverrides } from '@/app/actions/business-hours'
 import type { SpecialHours, ServiceStatusOverride } from '@/types/business-hours'
 import {
@@ -51,6 +52,7 @@ const normalizeOverrides = (items: ServiceStatusOverride[]) =>
   }))
 
 export function SpecialHoursCalendar({ canManage, initialSpecialHours, initialOverrides = [] }: SpecialHoursCalendarProps) {
+  const router = useRouter()
   const [currentMonth, setCurrentMonth] = useState(() => startOfMonth(new Date()))
   const [specialHours, setSpecialHours] = useState<SpecialHours[]>(() => normalizeSpecialHours(initialSpecialHours))
   const [overrides, setOverrides] = useState<ServiceStatusOverride[]>(() => normalizeOverrides(initialOverrides))
@@ -124,6 +126,7 @@ export function SpecialHoursCalendar({ canManage, initialSpecialHours, initialOv
 
   const handleModalSave = () => {
     loadMonthData(currentMonth)
+    router.refresh()
   }
 
   const calendarDays: CalendarDay[] = useMemo(() => {

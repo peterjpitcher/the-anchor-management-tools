@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { SpecialHours } from '@/types/business-hours'
 import { Button } from '@/components/ui-v2/forms/Button'
 import { Section } from '@/components/ui-v2/layout/Section'
@@ -25,16 +26,19 @@ export function SpecialHoursClientWrapper({
   specialHoursError,
   initialOverrides,
 }: SpecialHoursClientWrapperProps) {
+  const router = useRouter()
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [modalDate, setModalDate] = useState<Date | null>(null)
   const [modalInitialData, setModalInitialData] = useState<SpecialHours | null>(null)
-  const [refreshKey, setRefreshKey] = useState(0) // To trigger re-fetch in calendar/list
 
   const handleModalClose = () => {
     setIsModalOpen(false)
     setModalDate(null)
     setModalInitialData(null)
-    setRefreshKey(prev => prev + 1) // Trigger refresh
+  }
+
+  const handleModalSave = () => {
+    router.refresh()
   }
 
   const handleCreateNew = () => {
@@ -59,7 +63,6 @@ export function SpecialHoursClientWrapper({
         </Section>
       ) : (
         <SpecialHoursCalendar
-          key={refreshKey} // Force refresh when refreshKey changes
           canManage={canManage}
           initialSpecialHours={initialSpecialHours}
           initialOverrides={initialOverrides}
@@ -137,7 +140,7 @@ export function SpecialHoursClientWrapper({
           date={modalDate}
           initialData={modalInitialData}
           canManage={canManage}
-          onSave={handleModalClose} // onClose also triggers refresh, so this is fine
+          onSave={handleModalSave}
         />
       )}
     </>

@@ -149,7 +149,8 @@ const specialHoursSchema = z.object({
   note: z.preprocess(
     (val) => (val === '' || val === null || val === undefined) ? null : val,
     z.union([z.string().max(500), z.null()])
-  )
+  ),
+  schedule_config: z.array(z.any()).optional(),
 });
 
 const serviceStatusUpdateSchema = z.object({
@@ -557,13 +558,14 @@ export class BusinessHoursService {
     if (!validationResult.success) throw new Error(validationResult.error.errors[0].message);
 
     const validatedData = validationResult.data;
+    const effectiveIsKitchenClosed = validatedData.is_closed ? true : validatedData.is_kitchen_closed;
     const basePayload = {
       opens: validatedData.is_closed ? null : validatedData.opens,
       closes: validatedData.is_closed ? null : validatedData.closes,
-      kitchen_opens: validatedData.is_closed || validatedData.is_kitchen_closed ? null : validatedData.kitchen_opens,
-      kitchen_closes: validatedData.is_closed || validatedData.is_kitchen_closed ? null : validatedData.kitchen_closes,
+      kitchen_opens: validatedData.is_closed || effectiveIsKitchenClosed ? null : validatedData.kitchen_opens,
+      kitchen_closes: validatedData.is_closed || effectiveIsKitchenClosed ? null : validatedData.kitchen_closes,
       is_closed: validatedData.is_closed,
-      is_kitchen_closed: validatedData.is_kitchen_closed,
+      is_kitchen_closed: effectiveIsKitchenClosed,
       note: validatedData.note,
       schedule_config: validatedData.schedule_config ?? null,
     };
@@ -631,12 +633,14 @@ export class BusinessHoursService {
     if (!validationResult.success) throw new Error(validationResult.error.errors[0].message);
 
     const validatedData = validationResult.data;
+    const effectiveIsKitchenClosed = validatedData.is_closed ? true : validatedData.is_kitchen_closed;
     const payload = {
       ...validatedData,
       opens: validatedData.is_closed ? null : validatedData.opens,
       closes: validatedData.is_closed ? null : validatedData.closes,
-      kitchen_opens: validatedData.is_closed || validatedData.is_kitchen_closed ? null : validatedData.kitchen_opens,
-      kitchen_closes: validatedData.is_closed || validatedData.is_kitchen_closed ? null : validatedData.kitchen_closes,
+      kitchen_opens: validatedData.is_closed || effectiveIsKitchenClosed ? null : validatedData.kitchen_opens,
+      kitchen_closes: validatedData.is_closed || effectiveIsKitchenClosed ? null : validatedData.kitchen_closes,
+      is_kitchen_closed: effectiveIsKitchenClosed,
       schedule_config: validatedData.schedule_config ?? null,
       updated_at: new Date().toISOString()
     };
