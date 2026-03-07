@@ -75,13 +75,26 @@ interface ReceiptStatsProps {
 
 export function ReceiptStats({ summary }: ReceiptStatsProps) {
   return (
-    <div className="hidden md:grid md:grid-cols-2 md:gap-4 xl:grid-cols-6">
-      <CostSummaryCard cost={summary.openAICost} breakdown={summary.aiUsageBreakdown} />
-      <SummaryCard title="Pending" value={summary.totals.pending} tone="warning" />
-      <SummaryCard title="Completed" value={summary.totals.completed} tone="success" />
-      <SummaryCard title="Auto completed" value={summary.totals.autoCompleted} tone="info" />
-      <SummaryCard title="No receipt required" value={summary.totals.noReceiptRequired} tone="neutral" />
-      <SummaryCard title="Can't find" value={summary.totals.cantFind} tone="neutral" />
+    <div className="space-y-3">
+      {summary.failedAiJobCount > 0 && (
+        <div className="flex items-start gap-3 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          <span className="mt-0.5 shrink-0">&#9888;</span>
+          <span>
+            <strong>
+              {summary.failedAiJobCount} AI classification job{summary.failedAiJobCount !== 1 ? 's' : ''} failed
+            </strong>{' '}
+            and could not be retried automatically. Use the re-queue button to retry classification.
+          </span>
+        </div>
+      )}
+      <div className="hidden md:grid md:grid-cols-2 md:gap-4 xl:grid-cols-6">
+        <CostSummaryCard cost={summary.openAICost} breakdown={summary.aiUsageBreakdown} />
+        <SummaryCard title="Pending" value={summary.totals.pending} tone="warning" />
+        <SummaryCard title="Completed" value={summary.totals.completed} tone="success" />
+        <SummaryCard title="Auto completed" value={summary.totals.autoCompleted} tone="info" />
+        <SummaryCard title="No receipt required" value={summary.totals.noReceiptRequired} tone="neutral" />
+        <SummaryCard title="Can't find" value={summary.totals.cantFind} tone="neutral" />
+      </div>
     </div>
   )
 }
