@@ -11,14 +11,15 @@ import {
 import { getOpenAIConfig } from '@/lib/openai/config'
 import { receiptExpenseCategorySchema } from '@/lib/validation'
 import type { ReceiptTransaction, ReceiptTransactionLog, ReceiptExpenseCategory } from '@/types/database'
+import { getTransactionDirection as getCanonicalDirection } from './direction'
 
 type AdminClient = ReturnType<typeof createAdminClient>
 
 const EXPENSE_CATEGORY_OPTIONS = receiptExpenseCategorySchema.options
 
 function getTransactionDirection(tx: ReceiptTransaction): 'in' | 'out' {
-  if (tx.amount_in && tx.amount_in > 0) return 'in'
-  return 'out'
+  const dir = getCanonicalDirection(tx.amount_in, tx.amount_out)
+  return dir === 'in' ? 'in' : 'out'
 }
 
 function canAssignExpenseCategory(tx: ReceiptTransaction): boolean {
