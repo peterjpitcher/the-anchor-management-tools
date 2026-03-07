@@ -385,6 +385,7 @@ const ALLOWED_RECEIPT_MIME_TYPES = [
   'image/gif',
   'image/webp',
   'image/heic',
+  'image/heif', // iOS may report HEIC files as image/heif depending on OS version
 ]
 
 const receiptFileSchema = z.instanceof(File, { message: 'Please choose a receipt file' })
@@ -536,6 +537,9 @@ function parseCurrency(value: string | null | undefined): number | null {
   if (!cleaned) return null
   const result = Number.parseFloat(cleaned)
   if (!Number.isFinite(result)) return null
+  // Bank CSV exports should always use unsigned amounts in their respective column
+  // (positive values in 'In' for credits, positive values in 'Out' for debits).
+  // Negative values indicate a malformed or unexpected export format — reject them.
   if (result < 0) return null
   return Number(result.toFixed(2))
 }
@@ -1911,7 +1915,7 @@ export async function deleteReceiptFile(fileId: string) {
       // audit entry so the orphaned storage path can be tracked and recovered.
       try {
         await logAuditEvent({
-          operation_type: 'delete',
+          operation_type: 'delete_receipt',
           resource_type: 'receipt_file',
           resource_id: fileId,
           operation_status: 'failure',
@@ -1957,8 +1961,10 @@ export async function deleteReceiptFile(fileId: string) {
     return { error: 'Receipt was removed, but failed to verify remaining receipt files.' }
   }
 
-  // Determine the actual resulting status based on remaining files
-  const newStatus = remaining?.length ? 'completed' : 'pending'
+  // Determine the actual resulting status based on remaining files.
+  // When files remain, no status update is performed — use the transaction's current status.
+  // When no files remain, status is reset to 'pending'.
+  const newStatus = remaining?.length ? (transaction?.status ?? 'pending') : 'pending'
 
   if (!remaining?.length) {
     const { data: updatedTransaction, error: transactionUpdateError } = await supabase
@@ -2944,7 +2950,7 @@ export async function runReceiptRuleRetroactively(
       })
       // Finalize the partial run: revalidate paths and write a partial audit log entry
       // so staff can see that the retro-run only partially completed.
-      await finalizeReceiptRuleRetroRun({
+      const partialFinalizeResult = await finalizeReceiptRuleRetroRun({
         ruleId,
         scope,
         reviewed: totals.reviewed,
@@ -2954,6 +2960,9 @@ export async function runReceiptRuleRetroactively(
         vendorIntended: totals.vendorIntended,
         expenseIntended: totals.expenseIntended,
       })
+      if (partialFinalizeResult && 'error' in partialFinalizeResult && partialFinalizeResult.error) {
+        return { error: partialFinalizeResult.error }
+      }
       return {
         success: true,
         ruleId,
