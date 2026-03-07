@@ -308,6 +308,25 @@ export async function updatePrivateBooking(id: string, formData: FormData) {
       date_tbd: isDateTbd
     } as UpdatePrivateBookingInput, user.id);
 
+    try {
+      await logAuditEvent({
+        user_id: user.id,
+        operation_type: 'update',
+        resource_type: 'private_booking',
+        resource_id: id,
+        operation_status: 'success',
+        additional_info: {
+          action: 'update_private_booking',
+          status: bookingData.status ?? null,
+        },
+      })
+    } catch (auditError) {
+      logger.error('Failed to log audit event for updatePrivateBooking', {
+        error: auditError instanceof Error ? auditError : new Error(String(auditError)),
+        metadata: { bookingId: id },
+      })
+    }
+
     revalidatePath('/private-bookings')
     revalidatePath(`/private-bookings/${id}`)
     revalidateTag('dashboard')
@@ -578,6 +597,26 @@ export async function recordDepositPayment(bookingId: string, formData: FormData
       user?.id || undefined
     )
 
+    try {
+      await logAuditEvent({
+        user_id: user?.id,
+        operation_type: 'update',
+        resource_type: 'private_booking',
+        resource_id: bookingId,
+        operation_status: 'success',
+        additional_info: {
+          action: 'record_deposit_payment',
+          amount,
+          payment_method: paymentMethod,
+        },
+      })
+    } catch (auditError) {
+      logger.error('Failed to log audit event for recordDepositPayment', {
+        error: auditError instanceof Error ? auditError : new Error(String(auditError)),
+        metadata: { bookingId },
+      })
+    }
+
     revalidatePath(`/private-bookings/${bookingId}`)
     revalidateTag('dashboard')
     return result
@@ -621,6 +660,26 @@ export async function recordFinalPayment(bookingId: string, formData: FormData) 
       paymentMethod,
       user?.id || undefined
     )
+
+    try {
+      await logAuditEvent({
+        user_id: user?.id,
+        operation_type: 'update',
+        resource_type: 'private_booking',
+        resource_id: bookingId,
+        operation_status: 'success',
+        additional_info: {
+          action: 'record_final_payment',
+          amount,
+          payment_method: paymentMethod,
+        },
+      })
+    } catch (auditError) {
+      logger.error('Failed to log audit event for recordFinalPayment', {
+        error: auditError instanceof Error ? auditError : new Error(String(auditError)),
+        metadata: { bookingId },
+      })
+    }
 
     revalidatePath(`/private-bookings/${bookingId}`)
     revalidateTag('dashboard')
@@ -676,6 +735,26 @@ export async function extendBookingHold(bookingId: string, days: 7 | 14 | 30) {
 
   try {
     const result = await PrivateBookingService.extendHold(bookingId, days, user?.id)
+
+    try {
+      await logAuditEvent({
+        user_id: user?.id,
+        operation_type: 'update',
+        resource_type: 'private_booking',
+        resource_id: bookingId,
+        operation_status: 'success',
+        additional_info: {
+          action: 'extend_booking_hold',
+          days,
+        },
+      })
+    } catch (auditError) {
+      logger.error('Failed to log audit event for extendBookingHold', {
+        error: auditError instanceof Error ? auditError : new Error(String(auditError)),
+        metadata: { bookingId },
+      })
+    }
+
     revalidatePath('/private-bookings')
     revalidatePath(`/private-bookings/${bookingId}`)
     return result
@@ -691,13 +770,38 @@ export async function applyBookingDiscount(bookingId: string, data: {
   discount_amount: number
   discount_reason: string
 }) {
-  const canEdit = await checkUserPermission('private_bookings', 'edit')
+  const supabase = await createClient()
+  const [{ data: { user } }, canEdit] = await Promise.all([
+    supabase.auth.getUser(),
+    checkUserPermission('private_bookings', 'edit'),
+  ])
   if (!canEdit) {
     return { error: 'You do not have permission to update private bookings' }
   }
 
   try {
     await PrivateBookingService.applyBookingDiscount(bookingId, data)
+
+    try {
+      await logAuditEvent({
+        user_id: user?.id,
+        operation_type: 'update',
+        resource_type: 'private_booking',
+        resource_id: bookingId,
+        operation_status: 'success',
+        additional_info: {
+          action: 'apply_booking_discount',
+          discount_type: data.discount_type,
+          discount_amount: data.discount_amount,
+          discount_reason: data.discount_reason,
+        },
+      })
+    } catch (auditError) {
+      logger.error('Failed to log audit event for applyBookingDiscount', {
+        error: auditError instanceof Error ? auditError : new Error(String(auditError)),
+        metadata: { bookingId },
+      })
+    }
 
     revalidatePath(`/private-bookings/${bookingId}`)
     revalidateTag('dashboard')
