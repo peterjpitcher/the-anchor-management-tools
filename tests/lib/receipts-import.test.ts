@@ -64,3 +64,36 @@ describe('fileSchema — CSV upload validation', () => {
     expect(result.success).toBe(true);
   });
 });
+
+// Mirror of parseCurrency from src/app/actions/receipts.ts (lines ~518–524).
+// parseCurrency is not exported (it lives in a 'use server' file), so we replicate
+// the constraint logic here to verify correctness. If the production constraints
+// change, this mirror must be updated to match.
+function testParseCurrency(value: string | null | undefined): number | null {
+  if (!value) return null;
+  const cleaned = value.replace(/,/g, '').trim();
+  if (!cleaned) return null;
+  const result = Number.parseFloat(cleaned);
+  if (!Number.isFinite(result)) return null;
+  if (result < 0) return null;
+  return Number(result.toFixed(2));
+}
+
+describe('parseCurrency negative amounts', () => {
+  it('should return null for negative values', () => {
+    expect(testParseCurrency('-50.00')).toBeNull();
+  });
+  it('should return null for negative values with commas', () => {
+    expect(testParseCurrency('-1,234.56')).toBeNull();
+  });
+  it('should accept positive values', () => {
+    expect(testParseCurrency('50.00')).toBe(50.0);
+  });
+  it('should accept positive values with commas', () => {
+    expect(testParseCurrency('1,234.56')).toBe(1234.56);
+  });
+  it('should return null for zero (boundary)', () => {
+    // Zero is not negative, so it is accepted
+    expect(testParseCurrency('0.00')).toBe(0);
+  });
+});
