@@ -239,6 +239,16 @@ export async function classifyReceiptTransactionsWithAI(
     const needsExpense = !expenseLocked && !transaction.expense_category && canAssignExpenseCategory(transaction)
 
     if (!classificationResult) {
+      logs.push({
+        transaction_id: transaction.id,
+        previous_status: transaction.status,
+        new_status: transaction.status,
+        action_type: 'ai_classification_failed',
+        note: 'No classification result returned for transaction in batch',
+        performed_by: null,
+        rule_id: null,
+        performed_at: now,
+      })
       continue
     }
 
@@ -285,11 +295,31 @@ export async function classifyReceiptTransactionsWithAI(
 
     if (updateError) {
       console.error('Failed to persist AI classification', updateError)
+      logs.push({
+        transaction_id: transaction.id,
+        previous_status: transaction.status,
+        new_status: transaction.status,
+        action_type: 'ai_classification_failed',
+        note: `DB update failed: ${updateError.message}`,
+        performed_by: null,
+        rule_id: null,
+        performed_at: now,
+      })
       continue
     }
 
     if (!updatedTransaction) {
       console.error('Failed to persist AI classification: transaction not found', { transactionId: transaction.id })
+      logs.push({
+        transaction_id: transaction.id,
+        previous_status: transaction.status,
+        new_status: transaction.status,
+        action_type: 'ai_classification_failed',
+        note: 'Transaction not found during DB update',
+        performed_by: null,
+        rule_id: null,
+        performed_at: now,
+      })
       continue
     }
 
