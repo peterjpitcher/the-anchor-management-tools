@@ -1307,6 +1307,10 @@ export class PrivateBookingService {
       throw new Error('Cannot record a deposit on a cancelled booking');
     }
 
+    if (booking.deposit_paid_date) {
+      throw new Error('Deposit has already been recorded for this booking');
+    }
+
     // Only transition status to confirmed when the booking is still a draft.
     // For already-confirmed or completed bookings, leave status and
     // cancellation_reason untouched to avoid unnecessary churn.
