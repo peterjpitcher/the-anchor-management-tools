@@ -112,8 +112,11 @@ export function generateContractHTML(data: ContractData): string {
   const subtotal = calculateSubtotal()
   const discountAmount = calculateDiscountAmount()
   const total = calculateTotal()
-  // Balance due is the total event cost (deposit is separate and refundable)
-  const balanceDue = booking.final_payment_date ? 0 : total
+  // Sum all recorded payments to calculate true remaining balance
+  const totalPaid = booking.final_payment_date
+    ? total
+    : (booking.payments || []).reduce((sum, p) => sum + (Number.isFinite(p.amount) ? p.amount : 0), 0)
+  const balanceDue = Math.max(0, total - totalPaid)
   const contractNote = formatPlainText(booking.contract_note)
 
   // Pre-escaped variables for safe HTML interpolation
@@ -126,9 +129,13 @@ export function generateContractHTML(data: ContractData): string {
     ? escapeHtml(booking.accessibility_needs)
     : null
 
-  // Calculate balance due date (7 days before event)
+  // Calculate balance due date — prefer explicit field, fall back to 7 days before event
   let balanceDueDate = 'To be confirmed'
-  if (booking.event_date) {
+  if (booking.balance_due_date) {
+    // Use the explicitly set balance due date first
+    balanceDueDate = formatDate(booking.balance_due_date)
+  } else if (booking.event_date) {
+    // Fall back to 7 days before event
     const eventDateObj = new Date(booking.event_date)
     const dueDate = new Date(eventDateObj.getTime() - (7 * 24 * 60 * 60 * 1000))
     balanceDueDate = formatDate(dueDate.toISOString())
