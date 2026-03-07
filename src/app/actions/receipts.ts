@@ -2706,7 +2706,7 @@ export async function createReceiptRuleFromGroup(input: {
 
 async function fetchSummary(): Promise<ReceiptWorkspaceSummary> {
   const supabase = createAdminClient()
-  const [{ data: statusCounts }, { data: lastBatch }, { data: costData, error: costError }, { data: breakdownData, error: breakdownError }, { count: failedJobCount }] = await Promise.all([
+  const [{ data: statusCounts }, { data: lastBatch }, { data: costData, error: costError }, { data: breakdownData, error: breakdownError }, { count: failedJobCount, error: failedJobsError }] = await Promise.all([
     supabase.rpc('count_receipt_statuses'),
     supabase
       .from('receipt_batches')
@@ -2731,6 +2731,10 @@ async function fetchSummary(): Promise<ReceiptWorkspaceSummary> {
 
   if (breakdownError) {
     console.error('Failed to fetch AI usage breakdown', breakdownError)
+  }
+
+  if (failedJobsError) {
+    console.error('Failed to fetch failed AI job count:', failedJobsError)
   }
 
   const pending = Number(counts?.pending ?? 0)
