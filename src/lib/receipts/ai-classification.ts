@@ -227,8 +227,7 @@ export async function classifyReceiptTransactionsWithAI(
     return
   }
 
-  // Record usage once for the entire batch
-  await recordAIUsage(supabase, batchOutcome.usage, `receipt_classification_batch:${toClassify.length}`)
+  let actuallyUpdated = 0
 
   for (const transaction of toClassify) {
     const classificationResult = resultMap.get(transaction.id)
@@ -294,6 +293,8 @@ export async function classifyReceiptTransactionsWithAI(
       continue
     }
 
+    actuallyUpdated++
+
     if (changeNotes.length) {
       logs.push({
         transaction_id: transaction.id,
@@ -309,6 +310,10 @@ export async function classifyReceiptTransactionsWithAI(
       })
     }
   }
+
+  // Record usage after the update loop so the count reflects actually-updated
+  // transactions. Recording before the loop risked double-billing on job retries.
+  await recordAIUsage(supabase, batchOutcome.usage, `receipt_classification_batch:${actuallyUpdated}`)
 
   if (logs.length) {
     await client.from('receipt_transaction_logs').insert(logs)
