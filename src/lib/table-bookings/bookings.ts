@@ -39,23 +39,6 @@ export type TableBookingRpcResult = {
   sunday_preorder_cutoff_at?: string | null
 }
 
-export type TableCardCapturePreview = {
-  state: 'ready' | 'already_completed' | 'blocked'
-  reason?: string
-  table_booking_id?: string
-  customer_id?: string
-  booking_reference?: string
-  booking_date?: string
-  booking_time?: string
-  party_size?: number
-  booking_type?: string
-  booking_purpose?: string
-  status?: string
-  hold_expires_at?: string
-  start_datetime?: string
-  end_datetime?: string
-}
-
 export type TablePaymentTokenResult = {
   rawToken: string
   url: string
@@ -391,45 +374,6 @@ export async function sendManagerTableBookingCreatedEmailIfAllowed(
   return {
     sent: true
   }
-}
-
-export async function createTableCardCaptureToken(
-  supabase: SupabaseClient<any, 'public', any>,
-  input: {
-    customerId: string
-    tableBookingId: string
-    holdExpiresAt: string
-    appBaseUrl: string
-  }
-): Promise<{ rawToken: string; url: string; hashedToken: string }> {
-  const { rawToken, hashedToken } = await createGuestToken(supabase, {
-    customerId: input.customerId,
-    actionType: 'card_capture',
-    tableBookingId: input.tableBookingId,
-    expiresAt: input.holdExpiresAt
-  })
-
-  return {
-    rawToken,
-    url: `${input.appBaseUrl}/g/${rawToken}/card-capture`,
-    hashedToken
-  }
-}
-
-export async function getTableCardCapturePreviewByRawToken(
-  supabase: SupabaseClient<any, 'public', any>,
-  rawToken: string
-): Promise<TableCardCapturePreview> {
-  const tokenHash = hashGuestToken(rawToken)
-  const { data, error } = await supabase.rpc('get_table_card_capture_preview_v05', {
-    p_hashed_token: tokenHash
-  })
-
-  if (error) {
-    throw error
-  }
-
-  return ((data ?? {}) as TableCardCapturePreview)
 }
 
 export async function createTablePaymentToken(
