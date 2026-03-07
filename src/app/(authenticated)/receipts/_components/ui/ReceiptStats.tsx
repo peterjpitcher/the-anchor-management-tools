@@ -77,7 +77,7 @@ export function ReceiptStats({ summary }: ReceiptStatsProps) {
   return (
     <div className="space-y-3">
       {summary.failedAiJobCount > 0 && (
-        <div className="flex items-start gap-3 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+        <div role="alert" className="flex items-start gap-3 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
           <span className="mt-0.5 shrink-0">&#9888;</span>
           <span>
             <strong>
