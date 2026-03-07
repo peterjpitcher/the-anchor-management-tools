@@ -186,6 +186,10 @@
     {
       "path": "/api/cron/table-booking-deposit-timeout",
       "schedule": "0 * * * *"
+    },
+    {
+      "path": "/api/cron/private-bookings-expire-holds",
+      "schedule": "0 6 * * *"
     }
   ]
 }
