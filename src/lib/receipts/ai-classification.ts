@@ -213,7 +213,7 @@ export async function classifyReceiptTransactionsWithAI(
 
   if (!batchOutcome) {
     // Log failures for all items
-    await client.from('receipt_transaction_logs').insert(
+    const { error: logError } = await client.from('receipt_transaction_logs').insert(
       toClassify.map((transaction) => ({
         transaction_id: transaction.id,
         previous_status: transaction.status,
@@ -225,6 +225,7 @@ export async function classifyReceiptTransactionsWithAI(
         performed_at: now,
       }))
     )
+    if (logError) console.error('Failed to insert transaction log:', logError)
     return
   }
 
@@ -347,6 +348,7 @@ export async function classifyReceiptTransactionsWithAI(
   await recordAIUsage(supabase, batchOutcome.usage, `receipt_classification_batch:${actuallyUpdated}`)
 
   if (logs.length) {
-    await client.from('receipt_transaction_logs').insert(logs)
+    const { error: logError } = await client.from('receipt_transaction_logs').insert(logs)
+    if (logError) console.error('Failed to insert transaction log:', logError)
   }
 }
