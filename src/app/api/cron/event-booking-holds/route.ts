@@ -379,6 +379,54 @@ export async function GET(request: NextRequest) {
     }
 
     for (const ids of chunkIds(pendingCardCaptureIds)) {
+      // Before cancelling, check if any of these bookings already have a
+      // succeeded deposit payment (e.g. customer paid via a manually-sent link
+      // but the webhook couldn't confirm because the booking was still in
+      // pending_card_capture). Those should be confirmed, not cancelled.
+      const { data: succeededPayments } = await supabase
+        .from('payments')
+        .select('table_booking_id')
+        .in('table_booking_id', ids)
+        .eq('charge_type', 'table_deposit')
+        .eq('status', 'succeeded')
+
+      const alreadyPaidIds = new Set(
+        (succeededPayments || []).map((p: any) => p.table_booking_id).filter(Boolean)
+      )
+
+      // Confirm bookings that have a succeeded payment
+      if (alreadyPaidIds.size > 0) {
+        const idsToConfirm = ids.filter(id => alreadyPaidIds.has(id))
+        await supabase
+          .from('table_bookings')
+          .update({
+            status: 'confirmed',
+            payment_status: 'completed',
+            payment_method: 'payment_link',
+            confirmed_at: nowIso,
+            hold_expires_at: null,
+            card_capture_required: false,
+            updated_at: nowIso,
+          })
+          .in('id', idsToConfirm)
+          .eq('status', 'pending_card_capture')
+
+        await supabase
+          .from('guest_tokens')
+          .update({ consumed_at: nowIso })
+          .in('table_booking_id', idsToConfirm)
+          .eq('action_type', 'payment')
+          .is('consumed_at', null)
+
+        logger.warn('Confirmed pending_card_capture bookings with succeeded payments during hold expiry', {
+          metadata: { bookingIds: idsToConfirm }
+        })
+      }
+
+      // Only cancel bookings that have no succeeded payment
+      const idsToCancel = ids.filter(id => !alreadyPaidIds.has(id))
+      if (idsToCancel.length === 0) continue
+
       const { data: expiredTableBookings, error: expireTableBookingsError } = await supabase
         .from('table_bookings')
         .update({
@@ -387,7 +435,7 @@ export async function GET(request: NextRequest) {
           cancelled_at: nowIso,
           updated_at: nowIso
         })
-        .in('id', ids)
+        .in('id', idsToCancel)
         .eq('status', 'pending_card_capture')
         .select('id, customer_id, booking_type')
 
