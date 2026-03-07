@@ -1337,8 +1337,19 @@ export async function importReceiptStatement(formData: FormData) {
 
   const insertedIds = inserted?.map((row) => row.id) ?? []
 
-  const { statusAutoUpdated: autoApplied, classificationUpdated: autoClassified } =
-    await applyAutomationRules(insertedIds)
+  let autoApplied = 0
+  let autoClassified = 0
+  let automationWarning: string | undefined
+
+  try {
+    const automationResult = await applyAutomationRules(insertedIds)
+    autoApplied = automationResult.statusAutoUpdated ?? 0
+    autoClassified = automationResult.classificationUpdated ?? 0
+  } catch (automationError) {
+    console.error('applyAutomationRules failed during import:', automationError)
+    automationWarning =
+      'Automation rules could not be applied — you can re-run them manually from the rules page.'
+  }
 
   let aiJobsQueued = 0
   let aiJobsFailed = 0
@@ -1396,6 +1407,7 @@ export async function importReceiptStatement(formData: FormData) {
     autoApplied,
     autoClassified,
     batch,
+    warning: automationWarning,
   }
 }
 
