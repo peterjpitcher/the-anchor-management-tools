@@ -368,6 +368,9 @@ async function buildGroupSuggestion(
 
 const fileSchema = z.instanceof(File, { message: 'Please attach a CSV file' })
   .refine((file) => file.size > 0, { message: 'File is empty' })
+  .refine((file) => file.size <= MAX_RECEIPT_UPLOAD_SIZE, {
+    message: 'CSV file is too large. Please keep bank statements under 15 MB.',
+  })
   .refine((file) => file.type === 'text/csv' || file.name.endsWith('.csv'), {
     message: 'Only CSV bank statements are supported'
   })
