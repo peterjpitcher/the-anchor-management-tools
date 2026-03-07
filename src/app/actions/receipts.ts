@@ -1876,6 +1876,28 @@ export async function deleteReceiptFile(fileId: string) {
 
     if (rollbackError) {
       console.error('Failed to rollback receipt file record after storage delete failure:', rollbackError)
+
+      // Double-failure: storage delete failed AND DB record rollback failed.
+      // The storage file still exists but the DB record is gone — write a structured
+      // audit entry so the orphaned storage path can be tracked and recovered.
+      try {
+        await logAuditEvent({
+          operation_type: 'delete',
+          resource_type: 'receipt_file',
+          resource_id: fileId,
+          operation_status: 'failure',
+          additional_info: {
+            action: 'orphaned_storage_file',
+            storage_path: receipt.storage_path,
+            transaction_id: receipt.transaction_id,
+            reason: 'Storage delete failed and DB record rollback also failed — file exists in storage but DB record is missing',
+            storage_error: storageRemoveError?.message,
+            rollback_error: rollbackError?.message,
+          },
+        })
+      } catch {
+        // Swallow — audit write must not alter the error already being returned
+      }
     }
 
     return { error: 'Failed to remove stored receipt file.' }
