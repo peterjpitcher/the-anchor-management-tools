@@ -2543,6 +2543,12 @@ export async function applyReceiptGroupClassification(input: {
 
   const updatedIdSet = new Set<string>()
 
+  // NOTE: Vendor applies to allIds; expense applies to expenseEligibleIds (excludes incoming-only rows).
+  // Because the row sets differ, these cannot be merged into a single UPDATE call.
+  // True atomicity would require a DB-level transaction (RPC) — tracked as tech debt (DEF-007).
+  // To reduce partial-mutation risk, if the expense UPDATE fails after the vendor UPDATE succeeds,
+  // we attempt a best-effort revert of the vendor fields before returning an error.
+
   if (vendorProvided) {
     const vendorPayload: Record<string, unknown> = {
       updated_at: now,
@@ -2586,6 +2592,25 @@ export async function applyReceiptGroupClassification(input: {
 
       if (expenseUpdateError) {
         console.error('Failed to apply expense bulk classification', expenseUpdateError)
+
+        // Compensating revert: if vendor was already committed, attempt to roll it back.
+        // This is best-effort — not guaranteed atomic. True atomicity requires an RPC (DEF-007).
+        if (vendorProvided && allIds.length > 0) {
+          const { error: revertError } = await supabase
+            .from('receipt_transactions')
+            .update({
+              vendor_name: null,
+              vendor_source: null,
+              vendor_rule_id: null,
+              vendor_updated_at: now,
+              updated_at: now,
+            })
+            .in('id', allIds)
+          if (revertError) {
+            console.error('Failed to revert vendor update after expense failure — transactions may be in partial state', revertError)
+          }
+        }
+
         return { error: 'Failed to apply changes' }
       }
 
