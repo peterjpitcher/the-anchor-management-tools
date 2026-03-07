@@ -424,7 +424,7 @@ export function generateContractHTML(data: ContractData): string {
   <button class="print-button no-print" onclick="window.print()">Print Contract</button>
   
   <div class="header">
-    ${logoUrl ? `<img src="${logoUrl}" alt="The Anchor Logo" class="logo">` : ''}
+    ${logoUrl ? `<img src="${encodeURI(logoUrl)}" alt="The Anchor Logo" class="logo">` : ''}
     <h1>PRIVATE BOOKING CONTRACT</h1>
   </div>
 
@@ -437,8 +437,8 @@ export function generateContractHTML(data: ContractData): string {
     <div class="info-section">
       <h3>Customer Details</h3>
       <p><strong>Name:</strong> ${safeCustomerName}</p>
-      ${booking.contact_phone ? `<p><strong>Phone:</strong> ${booking.contact_phone}</p>` : ''}
-      ${booking.contact_email ? `<p><strong>Email:</strong> ${booking.contact_email}</p>` : ''}
+      ${booking.contact_phone ? `<p><strong>Phone:</strong> ${escapeHtml(booking.contact_phone)}</p>` : ''}
+      ${booking.contact_email ? `<p><strong>Email:</strong> ${escapeHtml(booking.contact_email)}</p>` : ''}
     </div>
     
     <div class="info-section">
@@ -632,7 +632,7 @@ export function generateContractHTML(data: ContractData): string {
           <td>
             <strong>✓ Booking Discount</strong>
             ${booking.discount_type === 'percent' ? ` (${booking.discount_amount}% off)` : ` (£${booking.discount_amount} off)`}
-            ${booking.discount_reason ? `<br/><small style="font-weight: normal; color: #059669;">Reason: ${booking.discount_reason}</small>` : ''}
+            ${booking.discount_reason ? `<br/><small style="font-weight: normal; color: #059669;">Reason: ${escapeHtml(booking.discount_reason)}</small>` : ''}
           </td>
           <td style="text-align: right; vertical-align: middle;">
             <strong>-${formatCurrency(discountAmount)}</strong>
@@ -847,13 +847,13 @@ export function generateContractHTML(data: ContractData): string {
   </div>
 
   <div class="footer">
-    <p><strong>${companyDetails?.name || 'Orange Jelly Limited'}</strong></p>
+    <p><strong>${escapeHtml(companyDetails?.name || 'Orange Jelly Limited')}</strong></p>
     <p>Trading as The Anchor Pub</p>
-    ${companyDetails?.registrationNumber ? `<p>Company Registration No: ${companyDetails.registrationNumber}</p>` : ''}
-    ${companyDetails?.vatNumber ? `<p>VAT Registration No: ${companyDetails.vatNumber}</p>` : ''}
-    <p>${companyDetails?.address || 'High Street, Location'}</p>
-    <p>Phone: ${companyDetails?.phone || process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || '01753 682 707'}</p>
-    <p>${companyDetails?.email || 'manager@the-anchor.pub'}</p>
+    ${companyDetails?.registrationNumber ? `<p>Company Registration No: ${escapeHtml(companyDetails.registrationNumber)}</p>` : ''}
+    ${companyDetails?.vatNumber ? `<p>VAT Registration No: ${escapeHtml(companyDetails.vatNumber)}</p>` : ''}
+    <p>${escapeHtml(companyDetails?.address || 'High Street, Location')}</p>
+    <p>Phone: ${escapeHtml(companyDetails?.phone || process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || '01753 682 707')}</p>
+    <p>${escapeHtml(companyDetails?.email || 'manager@the-anchor.pub')}</p>
     <p>Website: management.orangejelly.co.uk</p>
   </div>
 </body>
