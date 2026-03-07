@@ -10,6 +10,19 @@ import type { ReceiptTransaction, ReceiptFile } from '@/types/database'
 export const runtime = 'nodejs'
 export const maxDuration = 300
 
+/**
+ * Prefixes formula-injection trigger characters (=, +, -, @) with a tab
+ * so spreadsheet applications treat the cell as text rather than a formula.
+ * Only applied to free-text string columns — numbers and dates are left as-is.
+ */
+function escapeCsvCell(value: string): string {
+  if (!value || typeof value !== 'string') return value
+  if (['=', '+', '-', '@'].includes(value[0])) {
+    return '\t' + value
+  }
+  return value
+}
+
 const RECEIPT_BUCKET = 'receipts'
 const DOWNLOAD_CONCURRENCY = 4
 
@@ -193,17 +206,17 @@ async function buildSummaryCsv(
 
     return [
       formatDate(tx.transaction_date),
-      tx.details ?? '',
-      tx.transaction_type ?? '',
-      tx.vendor_name ?? '',
+      escapeCsvCell(tx.details ?? ''),
+      escapeCsvCell(tx.transaction_type ?? ''),
+      escapeCsvCell(tx.vendor_name ?? ''),
       friendlySource(tx.vendor_source),
-      tx.expense_category ?? '',
+      escapeCsvCell(tx.expense_category ?? ''),
       friendlySource(tx.expense_category_source),
       tx.ai_confidence != null ? String(tx.ai_confidence) : '',
       amountIn,
       amountOut,
       friendlyStatus(tx.status),
-      notes,
+      escapeCsvCell(notes),
     ]
   })
 
