@@ -95,7 +95,7 @@ export function calculatePaidHours(
   const startMinutes = startH * 60 + startM;
   let endMinutes = endH * 60 + endM;
 
-  if (isOvernight || endMinutes <= startMinutes) {
+  if (isOvernight || endMinutes < startMinutes) {
     endMinutes += 24 * 60; // add a day for overnight
   }
 

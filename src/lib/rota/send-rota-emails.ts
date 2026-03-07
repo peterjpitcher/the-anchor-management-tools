@@ -64,41 +64,49 @@ export async function sendRotaWeekEmails(
   let sent = 0;
   let errors = 0;
 
-  for (const emp of employees ?? []) {
-    if (!emp.email_address) continue;
+  const eligible = (employees ?? []).filter(
+    emp => emp.email_address && (shiftsByEmployee[emp.employee_id] ?? []).length > 0,
+  );
 
-    const empShifts = shiftsByEmployee[emp.employee_id] ?? [];
-    if (empShifts.length === 0) continue;
+  const subject = (weekEndStr: string) =>
+    `Your shifts: ${fmtDate(weekStart, false)} – ${fmtDate(weekEndStr, true)}`;
 
-    const empName = [emp.first_name, emp.last_name].filter(Boolean).join(' ') || 'there';
+  const results = await Promise.allSettled(
+    eligible.map(async emp => {
+      const empShifts = shiftsByEmployee[emp.employee_id]!;
+      const empName = [emp.first_name, emp.last_name].filter(Boolean).join(' ') || 'there';
 
-    const shiftSummaries: ShiftSummary[] = empShifts.map((s: ShiftRow) => ({
-      date: s.shift_date,
-      startTime: s.start_time,
-      endTime: s.end_time,
-      department: s.department,
-      templateName: s.name ?? '',
-    }));
+      const shiftSummaries: ShiftSummary[] = empShifts.map((s: ShiftRow) => ({
+        date: s.shift_date,
+        startTime: s.start_time,
+        endTime: s.end_time,
+        department: s.department,
+        templateName: s.name ?? '',
+      }));
 
-    const subject = `Your shifts: ${fmtDate(weekStart, false)} – ${fmtDate(weekEnd, true)}`;
+      const emailSubject = subject(weekEnd);
+      const emailResult = await sendEmail({
+        to: emp.email_address!,
+        subject: emailSubject,
+        html: buildStaffRotaEmailHtml(empName, weekStart, weekEnd, shiftSummaries),
+      });
 
-    const emailResult = await sendEmail({
-      to: emp.email_address,
-      subject,
-      html: buildStaffRotaEmailHtml(empName, weekStart, weekEnd, shiftSummaries),
-    });
+      await supabase.from('rota_email_log').insert({
+        email_type: 'staff_rota',
+        entity_type: 'rota_week',
+        entity_id: weekId,
+        to_addresses: [emp.email_address!],
+        subject: emailSubject,
+        status: emailResult.success ? 'sent' : 'failed',
+        error_message: emailResult.success ? null : ((emailResult as { success: false; error?: string }).error ?? null),
+      });
 
-    await supabase.from('rota_email_log').insert({
-      email_type: 'staff_rota',
-      entity_type: 'rota_week',
-      entity_id: weekId,
-      to_addresses: [emp.email_address],
-      subject,
-      status: emailResult.success ? 'sent' : 'failed',
-      error_message: emailResult.success ? null : ((emailResult as { success: false; error?: string }).error ?? null),
-    });
+      return emailResult.success;
+    }),
+  );
 
-    if (emailResult.success) sent++;
+  for (const result of results) {
+    if (result.status === 'fulfilled' && result.value) sent++;
     else errors++;
   }
 

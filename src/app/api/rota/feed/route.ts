@@ -4,7 +4,15 @@ import { NextRequest } from 'next/server';
 
 export const dynamic = 'force-dynamic';
 
+// Returns the expected feed token.
+// Prefer ROTA_FEED_SECRET (dedicated secret, easier to rotate without affecting Supabase).
+// Falls back to SHA-256(service role key) so existing calendar subscriptions continue to work
+// until operators set ROTA_FEED_SECRET and re-subscribe.
+// Migration path: set ROTA_FEED_SECRET=<random string>, update calendar subscriptions with new URL.
 function getFeedToken(): string {
+  if (process.env.ROTA_FEED_SECRET) {
+    return process.env.ROTA_FEED_SECRET;
+  }
   return createHash('sha256')
     .update(process.env.SUPABASE_SERVICE_ROLE_KEY ?? 'fallback-no-key')
     .digest('hex')

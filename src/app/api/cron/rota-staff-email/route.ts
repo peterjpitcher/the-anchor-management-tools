@@ -1,17 +1,17 @@
 import { NextResponse } from 'next/server';
-import { toZonedTime, format } from 'date-fns-tz';
+import { toZonedTime, format, formatInTimeZone } from 'date-fns-tz';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { sendRotaWeekEmails } from '@/lib/rota/send-rota-emails';
 
 // Vercel Cron: runs at 21:00 Europe/London every Sunday
 const TIMEZONE = 'Europe/London';
 
-function nextMonday(from: Date): string {
-  const d = new Date(from);
-  const day = d.getDay(); // 0=Sun
-  d.setUTCDate(d.getUTCDate() + (day === 0 ? 1 : 8 - day));
-  d.setUTCHours(0, 0, 0, 0);
-  return d.toISOString().split('T')[0];
+function getNextMondayIso(nowUtc: Date): string {
+  const nowLocal = toZonedTime(nowUtc, TIMEZONE);
+  const day = nowLocal.getDay(); // 0=Sun, 1=Mon...
+  const daysUntilMonday = day === 0 ? 1 : 8 - day;
+  const nextMon = new Date(nowLocal.getTime() + daysUntilMonday * 24 * 60 * 60 * 1000);
+  return formatInTimeZone(nextMon, TIMEZONE, 'yyyy-MM-dd');
 }
 
 export async function GET(request: Request) {
@@ -27,7 +27,7 @@ export async function GET(request: Request) {
     return NextResponse.json({ skipped: true, reason: 'Not Sunday' });
   }
 
-  const weekStart = nextMonday(nowLocal);
+  const weekStart = getNextMondayIso(nowUtc);
   const supabase = createAdminClient();
 
   const { data: week } = await supabase

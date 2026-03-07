@@ -52,10 +52,10 @@ export type RotaShift = {
 
 function getMondayOfWeek(date: Date): Date {
   const d = new Date(date);
-  const day = d.getDay(); // 0=Sun,1=Mon,...
+  const day = d.getUTCDay(); // 0=Sun,1=Mon,...
   const diff = day === 0 ? -6 : 1 - day; // adjust so Mon=0
-  d.setDate(d.getDate() + diff);
-  d.setHours(0, 0, 0, 0);
+  d.setUTCDate(d.getUTCDate() + diff);
+  d.setUTCHours(0, 0, 0, 0);
   return d;
 }
 
@@ -79,28 +79,44 @@ export async function getOrCreateRotaWeek(weekStart: string): Promise<
   const canView = await checkUserPermission('rota', 'view');
   if (!canView) return { success: false, error: 'Permission denied' };
 
+  // Validate that weekStart is a Monday (UTC day-of-week = 1)
+  const dayOfWeek = new Date(weekStart + 'T00:00:00Z').getUTCDay();
+  if (dayOfWeek !== 1) return { success: false, error: 'weekStart must be a Monday' };
+
   const supabase = await createClient();
 
-  const { data: existing } = await supabase
-    .from('rota_weeks')
-    .select('id, week_start, status, published_at, published_by, has_unpublished_changes, created_at, updated_at')
-    .eq('week_start', weekStart)
-    .single();
-
-  if (existing) return { success: true, data: existing as RotaWeek };
-
-  // Need to insert a new row — require edit permission
+  // Require edit permission before attempting insert
   const canCreate = await checkUserPermission('rota', 'edit');
-  if (!canCreate) return { success: false, error: 'Permission denied' };
 
-  const { data: created, error } = await supabase
-    .from('rota_weeks')
-    .insert({ week_start: weekStart })
-    .select('id, week_start, status, published_at, published_by, has_unpublished_changes, created_at, updated_at')
-    .single();
+  const WEEK_SELECT = 'id, week_start, status, published_at, published_by, has_unpublished_changes, created_at, updated_at';
 
-  if (error) return { success: false, error: error.message };
-  return { success: true, data: created as RotaWeek };
+  // Attempt insert first; if a unique violation occurs (concurrent insert), fall back to select
+  const { data: created, error: insertError } = canCreate
+    ? await supabase
+        .from('rota_weeks')
+        .insert({ week_start: weekStart })
+        .select(WEEK_SELECT)
+        .single()
+    : { data: null, error: { code: '', message: 'Permission denied' } as { code: string; message: string } };
+
+  if (!insertError) return { success: true, data: created as RotaWeek };
+
+  // code 23505 = unique_violation — week already exists (concurrent insert)
+  if (insertError.code === '23505' || insertError.code === '') {
+    const { data: existing, error: selectError } = await supabase
+      .from('rota_weeks')
+      .select(WEEK_SELECT)
+      .eq('week_start', weekStart)
+      .single();
+
+    if (selectError || !existing) {
+      if (!canCreate) return { success: false, error: 'Permission denied' };
+      return { success: false, error: selectError?.message ?? 'Rota week not found' };
+    }
+    return { success: true, data: existing as RotaWeek };
+  }
+
+  return { success: false, error: insertError.message };
 }
 
 // ---------------------------------------------------------------------------
@@ -115,15 +131,13 @@ export async function getWeekShifts(weekStart: string): Promise<
 
   const supabase = await createClient();
 
-  const monday = new Date(weekStart);
-  const sunday = new Date(weekStart);
-  sunday.setDate(sunday.getDate() + 6);
+  const sundayIso = addDaysIso(weekStart, 6);
 
   const { data, error } = await supabase
     .from('rota_shifts')
     .select('*')
-    .gte('shift_date', toIsoDate(monday))
-    .lte('shift_date', toIsoDate(sunday))
+    .gte('shift_date', weekStart)
+    .lte('shift_date', sundayIso)
     .order('shift_date')
     .order('start_time');
 
@@ -608,6 +622,16 @@ export async function autoPopulateWeekFromTemplates(
       .eq('status', 'published');
     revalidatePath('/rota');
   }
+
+  void logAuditEvent({
+    user_id: user?.id,
+    operation_type: 'create',
+    resource_type: 'rota_week',
+    resource_id: weekId,
+    operation_status: 'success',
+    additional_info: { action: 'auto_populate_from_templates', shifts_created: newShifts.length },
+  });
+
   return { success: true, created: newShifts.length, shifts: newShifts };
 }
 
@@ -783,20 +807,38 @@ export async function publishRotaWeek(weekId: string): Promise<
     .eq('week_id', weekId)
     .neq('status', 'cancelled');
 
-  // Replace the snapshot for this week atomically.
+  // Replace the snapshot safely: insert new rows first, then delete old ones not
+  // in the new set. This avoids the table ever being empty during the operation.
   // Must use the admin client — rota_published_shifts has no write RLS policies
   // for regular users (intentional: only the system should write to this table).
   const admin = createAdminClient();
-  const { error: deleteError } = await admin.from('rota_published_shifts').delete().eq('week_id', weekId);
-  if (deleteError) return { success: false, error: deleteError.message };
+  const now = new Date().toISOString();
+  const newShiftIds: string[] = [];
 
   if (currentShifts?.length) {
-    const now = new Date().toISOString();
-    const { error: insertError } = await admin.from('rota_published_shifts').insert(
+    const { data: inserted, error: insertError } = await admin.from('rota_published_shifts').insert(
       currentShifts.map(s => ({ ...s, published_at: now })),
-    );
+    ).select('id');
     if (insertError) return { success: false, error: insertError.message };
+    (inserted ?? []).forEach((r: { id: string }) => newShiftIds.push(r.id));
   }
+
+  // Delete all rows for this week that were NOT just inserted (the old snapshot).
+  // When there are no new shifts (empty week), delete everything for this week.
+  let deleteError: { message: string } | null = null;
+  if (newShiftIds.length > 0) {
+    ({ error: deleteError } = await admin
+      .from('rota_published_shifts')
+      .delete()
+      .eq('week_id', weekId)
+      .not('id', 'in', `(${newShiftIds.join(',')})`));
+  } else {
+    ({ error: deleteError } = await admin
+      .from('rota_published_shifts')
+      .delete()
+      .eq('week_id', weekId));
+  }
+  if (deleteError) return { success: false, error: deleteError.message };
 
   // Only update status after snapshot succeeds
   const { error } = await supabase
