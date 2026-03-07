@@ -649,41 +649,23 @@ export async function upsertShiftNote(
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
 
-  // Fetch existing note before deleting so we can restore it if the insert fails
-  const { data: existingNote } = await supabase
-    .from('reconciliation_notes')
-    .select('note, created_by')
-    .eq('entity_type', 'shift')
-    .eq('entity_id', shiftId)
-    .order('created_at', { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
-  const { error: deleteError } = await supabase
-    .from('reconciliation_notes')
-    .delete()
-    .eq('entity_type', 'shift')
-    .eq('entity_id', shiftId);
-
-  if (deleteError) return { success: false, error: deleteError.message };
-
   if (note.trim()) {
-    const { error: insertError } = await supabase
+    // Atomic upsert — unique constraint on (entity_type, entity_id) ensures one note per entity
+    const { error: upsertError } = await supabase
       .from('reconciliation_notes')
-      .insert({ entity_type: 'shift', entity_id: shiftId, note: note.trim(), created_by: user!.id });
-
-    if (insertError) {
-      // Restore the previous note so data is not silently lost
-      if (existingNote) {
-        await supabase.from('reconciliation_notes').insert({
-          entity_type: 'shift',
-          entity_id: shiftId,
-          note: existingNote.note,
-          created_by: existingNote.created_by,
-        });
-      }
-      return { success: false, error: insertError.message };
-    }
+      .upsert(
+        { entity_type: 'shift', entity_id: shiftId, note: note.trim(), created_by: user!.id, updated_at: new Date().toISOString() },
+        { onConflict: 'entity_type,entity_id' },
+      );
+    if (upsertError) return { success: false, error: upsertError.message };
+  } else {
+    // Empty note — delete any existing note for this entity
+    const { error: deleteError } = await supabase
+      .from('reconciliation_notes')
+      .delete()
+      .eq('entity_type', 'shift')
+      .eq('entity_id', shiftId);
+    if (deleteError) return { success: false, error: deleteError.message };
   }
 
   revalidatePath('/rota/payroll');
