@@ -32,8 +32,6 @@ function humanizeStatus(status?: string | null): string {
       return 'Confirmed'
     case 'pending_deposit':
       return 'Awaiting deposit'
-    case 'pending_card_capture':
-      return 'Awaiting card details'
     case 'cancelled':
       return 'Cancelled'
     case 'no_show':

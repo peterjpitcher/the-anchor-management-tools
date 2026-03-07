@@ -15,7 +15,7 @@ import { logger } from '@/lib/logger'
 
 const DEPOSIT_PER_PERSON_GBP = 10
 
-export type TableBookingState = 'confirmed' | 'pending_card_capture' | 'pending_payment' | 'blocked'
+export type TableBookingState = 'confirmed' | 'pending_payment' | 'blocked'
 
 export type TableBookingRpcResult = {
   state: TableBookingState
@@ -760,11 +760,7 @@ export async function sendTableBookingCreatedSmsIfAllowed(
   }
 
   let smsBody: string
-  if (input.bookingResult.state === 'pending_card_capture') {
-    const base = `The Anchor: Hi ${firstName}, please add card details to hold your table booking for ${partySize} ${seatWord} on ${bookingMoment}. No charge now.`
-    const cta = input.nextStepUrl ? `Complete here: ${input.nextStepUrl}` : 'We will text your card details link shortly.'
-    smsBody = `${base} ${cta}`
-  } else if (input.bookingResult.state === 'pending_payment') {
+  if (input.bookingResult.state === 'pending_payment') {
     const depositKindLabel = input.bookingResult.sunday_lunch ? 'Sunday lunch deposit' : 'table deposit'
     const base = `The Anchor: Hi ${firstName}, please pay your ${depositKindLabel} of ${depositLabel} (${partySize} x GBP ${DEPOSIT_PER_PERSON_GBP}) to secure your table for ${partySize} ${seatWord} on ${bookingMoment}.`
     const cta = input.nextStepUrl ? `Pay now: ${input.nextStepUrl}` : 'We will text your payment link shortly.'
@@ -783,10 +779,8 @@ export async function sendTableBookingCreatedSmsIfAllowed(
         metadata: {
           table_booking_id: input.bookingResult.table_booking_id,
           template_key:
-            input.bookingResult.state === 'pending_card_capture'
-              ? 'table_booking_pending_card_capture'
-              : input.bookingResult.state === 'pending_payment'
-                ? 'table_booking_pending_payment'
+            input.bookingResult.state === 'pending_payment'
+              ? 'table_booking_pending_payment'
               : 'table_booking_confirmed'
         }
       }
@@ -845,151 +839,6 @@ export async function sendTableBookingCreatedSmsIfAllowed(
       code: smsCode,
       logFailure: smsLogFailure,
     },
-  }
-}
-
-export async function sendTableBookingConfirmedAfterCardCaptureSmsIfAllowed(
-  supabase: SupabaseClient<any, 'public', any>,
-  tableBookingId: string
-): Promise<SmsSafetyMeta> {
-  const { data: booking, error: bookingError } = await supabase
-    .from('table_bookings')
-    .select('id, customer_id, party_size, booking_date, booking_time, start_datetime, status, booking_type')
-    .eq('id', tableBookingId)
-    .maybeSingle()
-
-  if (bookingError) {
-    throw new Error(`Failed to load table booking for post-card-capture SMS: ${bookingError.message}`)
-  }
-
-  if (!booking || booking.status !== 'confirmed' || !booking.customer_id) {
-    return null
-  }
-
-  const { data: customer, error: customerError } = await supabase
-    .from('customers')
-    .select('id, first_name, mobile_number, sms_status')
-    .eq('id', booking.customer_id)
-    .maybeSingle()
-
-  if (customerError) {
-    throw new Error(`Failed to load customer for post-card-capture SMS: ${customerError.message}`)
-  }
-
-  if (!customer || customer.sms_status !== 'active' || !customer.mobile_number) {
-    return null
-  }
-
-  const firstName = getSmartFirstName(customer.first_name)
-  const partySize = Math.max(1, Number(booking.party_size ?? 1))
-  const seatWord = partySize === 1 ? 'person' : 'people'
-  const supportPhone = process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || process.env.TWILIO_PHONE_NUMBER || undefined
-  const bookingMoment = formatLondonDateTime(booking.start_datetime)
-  let manageLink: string | null = null
-
-  try {
-    const token = await createTableManageToken(supabase, {
-      customerId: customer.id,
-      tableBookingId,
-      bookingStartIso: booking.start_datetime || null,
-      appBaseUrl: process.env.NEXT_PUBLIC_APP_URL
-    })
-    manageLink = token.url
-  } catch {
-    manageLink = null
-  }
-
-  let sundayPreorderLink: string | null = null
-  if (booking.booking_type === 'sunday_lunch') {
-    try {
-      const token = await createSundayPreorderToken(supabase, {
-        customerId: customer.id,
-        tableBookingId,
-        bookingStartIso: booking.start_datetime || null,
-        appBaseUrl: process.env.NEXT_PUBLIC_APP_URL
-      })
-      sundayPreorderLink = token.url
-    } catch {
-      sundayPreorderLink = null
-    }
-  }
-
-  let composedMessage = `The Anchor: Hi ${firstName}, card details are added and your table booking for ${partySize} ${seatWord} on ${bookingMoment} is confirmed.${manageLink ? ` Manage booking: ${manageLink}` : ''}`
-  const sundayPreorderTemplateKey =
-    booking.booking_type === 'sunday_lunch'
-      ? resolveSundayPreorderTemplateKey(booking.start_datetime)
-      : 'table_booking_card_capture_confirmed'
-
-  if (sundayPreorderLink) {
-    const preorderIntro =
-      sundayPreorderTemplateKey === 'sunday_preorder_reminder_26h'
-        ? 'Final reminder: please complete your Sunday lunch pre-order.'
-        : 'please complete your Sunday lunch pre-order.'
-    composedMessage = `${composedMessage} ${preorderIntro} Complete here: ${sundayPreorderLink}`
-  }
-
-  const body = ensureReplyInstruction(
-    composedMessage,
-    supportPhone
-  )
-
-  try {
-    const smsResult = await sendSMS(customer.mobile_number, body, {
-      customerId: customer.id,
-      metadata: {
-        table_booking_id: tableBookingId,
-        template_key: sundayPreorderTemplateKey
-      }
-    })
-
-    const smsCode = typeof smsResult.code === 'string' ? smsResult.code : null
-    const smsLogFailure = smsResult.logFailure === true || smsCode === 'logging_failed'
-    const smsDeliveredOrUnknown = smsResult.success === true || smsLogFailure
-
-    if (smsLogFailure) {
-      logger.error('Table booking post-card-capture SMS sent but outbound message logging failed', {
-        metadata: {
-          tableBookingId,
-          customerId: customer.id,
-          code: smsCode,
-          logFailure: smsLogFailure,
-        },
-      })
-    }
-
-    if (!smsResult.success) {
-      logger.warn('Table booking post-card-capture SMS send returned non-success', {
-        metadata: {
-          tableBookingId,
-          customerId: customer.id,
-          error: smsResult.error,
-          code: smsCode,
-        }
-      })
-    }
-
-    return {
-      success: smsDeliveredOrUnknown,
-      code: smsCode,
-      logFailure: smsLogFailure,
-    }
-  } catch (smsError) {
-    const thrownSafety = normalizeThrownSmsSafety(smsError)
-    logger.warn('Table booking post-card-capture SMS threw unexpectedly', {
-      metadata: {
-        tableBookingId,
-        customerId: customer.id,
-        error: smsError instanceof Error ? smsError.message : String(smsError),
-        code: thrownSafety.code,
-        logFailure: thrownSafety.logFailure,
-      }
-    })
-
-    return {
-      success: false,
-      code: thrownSafety.code,
-      logFailure: thrownSafety.logFailure,
-    }
   }
 }
 
