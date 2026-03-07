@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { requireFohPermission } from '@/lib/foh/api-auth'
+import { refundTableBookingDeposit } from '@/lib/table-bookings/refunds'
+import { sendTableBookingCancelledSmsIfAllowed } from '@/lib/table-bookings/bookings'
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 import {
@@ -115,6 +117,22 @@ export async function POST(
   }
   if (!updatedRow) {
     return NextResponse.json({ error: 'Booking not found' }, { status: 404 })
+  }
+
+  // Tiered deposit refund + cancellation SMS when staff cancel a booking (never fail the status change)
+  if (action === 'cancelled' && booking.booking_date && booking.customer_id) {
+    try {
+      const bookingDate = new Date(`${booking.booking_date}T12:00:00`)
+      const refundResult = await refundTableBookingDeposit(booking.id, bookingDate)
+      await sendTableBookingCancelledSmsIfAllowed(auth.supabase, {
+        customerId: booking.customer_id,
+        bookingReference: booking.booking_reference || booking.id,
+        bookingDate: booking.booking_date,
+        refundResult,
+      })
+    } catch (err) {
+      console.error('[table-booking-status] refund/SMS error:', err)
+    }
   }
 
   // Audit log the status transition (fire-and-forget)
