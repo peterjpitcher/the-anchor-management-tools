@@ -17,9 +17,7 @@ import { formatPhoneForStorage } from '@/lib/utils'
 import { ensureCustomerForPhone } from '@/lib/sms/customers'
 import { recordAnalyticsEvent } from '@/lib/analytics/events'
 import {
-  alignTableCardCaptureHoldToScheduledSend,
   alignTablePaymentHoldToScheduledSend,
-  createTableCardCaptureToken,
   createTablePaymentToken,
   mapTableBookingBlockedReason,
   sendManagerTableBookingCreatedEmailIfAllowed,
