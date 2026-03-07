@@ -2086,8 +2086,11 @@ export function FohScheduleClient({
       return
     }
 
-    if (createForm.sunday_lunch && !createForm.sunday_deposit_method) {
-      setErrorMessage('Choose whether the Sunday lunch deposit was taken in cash or should be sent by payment link.')
+    const requiresDepositValidation =
+      (!isWalkIn && !isManagement) &&
+      ((createForm.sunday_lunch && sundaySelected) || partySize >= 7)
+    if (requiresDepositValidation && !createForm.sunday_deposit_method) {
+      setErrorMessage('Choose whether the deposit was taken in cash or should be sent by payment link.')
       return
     }
 
