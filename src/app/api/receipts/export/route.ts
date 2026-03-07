@@ -257,7 +257,7 @@ function friendlyStatus(status: ReceiptTransaction['status']) {
     case 'auto_completed':
       return 'Auto completed'
     case 'no_receipt_required':
-      return 'No receipt req.'
+      return 'No receipt required'
     case 'cant_find':
       return "Can't find"
     default:
