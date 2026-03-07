@@ -89,7 +89,7 @@ export async function getOutstandingCounts(): Promise<OutstandingCounts> {
     // Table Bookings: unresolved booking states
     (supabase.from('table_bookings') as any)
       .select('*', { count: 'exact', head: true })
-      .in('status', ['pending_payment', 'pending_card_capture']),
+      .in('status', ['pending_payment']),
 
     // Table Bookings: manager approvals still pending for charge requests
     (supabase.from('charge_requests') as any)

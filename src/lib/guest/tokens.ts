@@ -4,7 +4,6 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 export type GuestTokenActionType =
   | 'manage'
   | 'sunday_preorder'
-  | 'card_capture'
   | 'payment'
   | 'review_redirect'
   | 'charge_approval'

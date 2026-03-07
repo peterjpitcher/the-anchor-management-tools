@@ -540,7 +540,6 @@ async function createManualWalkInBookingOverride(params: {
         confirmed_at: nowIso,
         booking_purpose: params.payload.purpose,
         committed_party_size: params.payload.party_size,
-        card_capture_required: false,
         seated_at: seatNow ? nowIso : null,
         start_datetime: startIso,
         end_datetime: endIso,
@@ -582,7 +581,6 @@ async function createManualWalkInBookingOverride(params: {
             start_datetime: startIso,
             end_datetime: endIso,
             hold_expires_at: undefined,
-            card_capture_required: false,
             sunday_lunch: params.payload.sunday_lunch === true
           }
         }
@@ -701,7 +699,7 @@ async function markWalkInBookingAsSeated(
 }
 
 type FohCreateBookingResponseData = {
-  state: 'confirmed' | 'pending_card_capture' | 'pending_payment' | 'blocked'
+  state: 'confirmed' | 'pending_payment' | 'blocked'
   table_booking_id: string | null
   booking_reference: string | null
   reason: string | null
@@ -952,11 +950,9 @@ export async function POST(request: NextRequest) {
         const dupState: FohCreateBookingResponseData['state'] =
           recentDuplicate.status === 'confirmed'
             ? 'confirmed'
-            : recentDuplicate.status === 'pending_card_capture'
-              ? 'pending_card_capture'
-              : recentDuplicate.status === 'pending_payment'
-                ? 'pending_payment'
-                : 'confirmed'
+            : recentDuplicate.status === 'pending_payment'
+              ? 'pending_payment'
+              : 'confirmed'
         return NextResponse.json(
           {
             success: true,

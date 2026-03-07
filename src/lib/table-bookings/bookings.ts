@@ -34,7 +34,6 @@ export type TableBookingRpcResult = {
   start_datetime?: string
   end_datetime?: string
   hold_expires_at?: string
-  card_capture_required?: boolean
   sunday_lunch?: boolean
   sunday_preorder_cutoff_at?: string | null
 }
