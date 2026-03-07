@@ -106,10 +106,14 @@ export default async function RotaPage({ searchParams }: RotaPageProps) {
   const departments = deptResult.success ? deptResult.data : [];
   const dayInfo: Record<string, RotaDayInfo> = dayInfoResult ?? {};
 
-  const feedToken = createHash('sha256')
-    .update(process.env.SUPABASE_SERVICE_ROLE_KEY ?? 'fallback-no-key')
-    .digest('hex')
-    .substring(0, 32);
+  // Mirror the token derivation in /api/rota/feed/route.ts:
+  // prefer ROTA_FEED_SECRET (dedicated env var) over SHA-256(service role key).
+  const feedToken = process.env.ROTA_FEED_SECRET
+    ? process.env.ROTA_FEED_SECRET
+    : createHash('sha256')
+        .update(process.env.SUPABASE_SERVICE_ROLE_KEY ?? 'fallback-no-key')
+        .digest('hex')
+        .substring(0, 32);
   const feedUrl = `${process.env.NEXT_PUBLIC_APP_URL}/api/rota/feed?token=${feedToken}`;
 
   return (

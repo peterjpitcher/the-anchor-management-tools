@@ -76,9 +76,12 @@ export async function GET(request: Request) {
       clockOutAt = shiftEndUtc.toISOString();
       reason = 'scheduled_end';
     } else {
-      // Fallback: use the actual cron execution time
-      clockOutAt = nowUtc.toISOString();
-      reason = 'fallback_now';
+      // Fallback: use 23:59 local time on the work_date — more honest than cron
+      // execution time (~05:00 UTC) which would inflate worked hours significantly.
+      const workDate = session.work_date;
+      const fallbackLocal = fromZonedTime(`${workDate}T23:59:00`, TIMEZONE);
+      clockOutAt = fallbackLocal.toISOString();
+      reason = 'fallback_end_of_day';
     }
 
     const { error: updateError } = await supabase
@@ -92,8 +95,29 @@ export async function GET(request: Request) {
 
     if (updateError) {
       errors.push(`Session ${session.id}: ${updateError.message}`);
-    } else {
-      closed++;
+      continue;
+    }
+
+    closed++;
+
+    // DEF-003: Invalidate any payroll approval that covers this work_date so the
+    // auto-close is reflected if the manager re-approves payroll.
+    const { data: periods } = await supabase
+      .from('payroll_periods')
+      .select('year, month')
+      .lte('period_start', session.work_date)
+      .gte('period_end', session.work_date);
+
+    if (periods?.length) {
+      await Promise.all(
+        periods.map(period =>
+          supabase
+            .from('payroll_month_approvals')
+            .delete()
+            .eq('year', period.year)
+            .eq('month', period.month),
+        ),
+      );
     }
   }
 

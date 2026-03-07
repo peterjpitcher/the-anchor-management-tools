@@ -5,7 +5,7 @@ import { checkUserPermission } from '@/app/actions/rbac';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { eachDayOfInterval, parseISO, getYear } from 'date-fns';
-import { toZonedTime } from 'date-fns-tz';
+import { formatInTimeZone } from 'date-fns-tz';
 import { sendEmail } from '@/lib/email/emailService';
 import {
   buildHolidaySubmittedEmailHtml,
@@ -77,7 +77,7 @@ export async function submitLeaveRequest(input: z.infer<typeof SubmitLeaveSchema
     return { success: false, error: 'End date must be on or after start date' };
   }
 
-  const todayLocal = toZonedTime(new Date(), 'Europe/London').toISOString().split('T')[0];
+  const todayLocal = formatInTimeZone(new Date(), 'Europe/London', 'yyyy-MM-dd');
   if (startDate < todayLocal) {
     return { success: false, error: 'Leave requests cannot be submitted for past dates' };
   }
@@ -130,7 +130,8 @@ export async function submitLeaveRequest(input: z.infer<typeof SubmitLeaveSchema
   }));
 
   // Use ON CONFLICT DO NOTHING — employee may already have a day from another request
-  await supabase.from('leave_days').upsert(dayRows, { onConflict: 'employee_id,leave_date', ignoreDuplicates: true });
+  const { error: leaveDaysError } = await supabase.from('leave_days').upsert(dayRows, { onConflict: 'employee_id,leave_date', ignoreDuplicates: true });
+  if (leaveDaysError) return { success: false, error: leaveDaysError.message };
 
   // Send confirmation email to employee
   const { data: employee } = await supabase
@@ -215,7 +216,8 @@ export async function reviewLeaveRequest(
 
   // If declined, remove the pending leave_days
   if (decision === 'declined') {
-    await supabase.from('leave_days').delete().eq('request_id', requestId);
+    const { error: deleteDaysError } = await supabase.from('leave_days').delete().eq('request_id', requestId);
+    if (deleteDaysError) return { success: false, error: deleteDaysError.message };
   }
 
   // Send decision email to employee
@@ -329,7 +331,8 @@ export async function bookApprovedHoliday(input: {
     leave_date: d.toISOString().split('T')[0],
   }));
 
-  await supabase.from('leave_days').upsert(dayRows, { onConflict: 'employee_id,leave_date', ignoreDuplicates: true });
+  const { error: leaveDaysApprovedError } = await supabase.from('leave_days').upsert(dayRows, { onConflict: 'employee_id,leave_date', ignoreDuplicates: true });
+  if (leaveDaysApprovedError) return { success: false, error: leaveDaysApprovedError.message };
 
   void logAuditEvent({
     user_id: user?.id,
@@ -385,12 +388,12 @@ export async function getLeaveRequests(filters?: {
 // ---------------------------------------------------------------------------
 
 export async function getHolidayUsage(employeeId: string, holidayYear: number): Promise<
-  { success: true; count: number; allowance: number; overThreshold: boolean } | { success: false; error: string }
+  { success: true; count: number; pendingCount: number; allowance: number; overThreshold: boolean } | { success: false; error: string }
 > {
   const supabase = await createClient();
 
-  // Parallelise three independent fetches
-  const [paySettingRes, rotaSettings, requestsRes] = await Promise.all([
+  // Parallelise four independent fetches
+  const [paySettingRes, rotaSettings, approvedRes, pendingRes] = await Promise.all([
     supabase
       .from('employee_pay_settings')
       .select('holiday_allowance_days')
@@ -403,24 +406,42 @@ export async function getHolidayUsage(employeeId: string, holidayYear: number): 
       .eq('employee_id', employeeId)
       .eq('holiday_year', holidayYear)
       .eq('status', 'approved'),
+    supabase
+      .from('leave_requests')
+      .select('id')
+      .eq('employee_id', employeeId)
+      .eq('holiday_year', holidayYear)
+      .eq('status', 'pending'),
   ]);
 
   const { data: paySetting } = paySettingRes;
   const { defaultHolidayDays } = rotaSettings;
   const allowance = paySetting?.holiday_allowance_days ?? defaultHolidayDays;
-  const { data: requests } = requestsRes;
 
-  const requestIds = (requests ?? []).map(r => r.id);
+  const approvedIds = (approvedRes.data ?? []).map(r => r.id);
+  const pendingIds = (pendingRes.data ?? []).map(r => r.id);
 
-  const { count, error } = requestIds.length === 0
-    ? { count: 0, error: null }
-    : await supabase
-        .from('leave_days')
-        .select('*', { count: 'exact', head: true })
-        .eq('employee_id', employeeId)
-        .in('request_id', requestIds);
+  const [approvedDaysResult, pendingDaysResult] = await Promise.all([
+    approvedIds.length === 0
+      ? Promise.resolve({ count: 0, error: null })
+      : supabase
+          .from('leave_days')
+          .select('*', { count: 'exact', head: true })
+          .eq('employee_id', employeeId)
+          .in('request_id', approvedIds),
+    pendingIds.length === 0
+      ? Promise.resolve({ count: 0, error: null })
+      : supabase
+          .from('leave_days')
+          .select('*', { count: 'exact', head: true })
+          .eq('employee_id', employeeId)
+          .in('request_id', pendingIds),
+  ]);
 
-  if (error) return { success: false, error: error.message };
-  const total = count ?? 0;
-  return { success: true, count: total, allowance, overThreshold: total >= allowance };
+  if (approvedDaysResult.error) return { success: false, error: approvedDaysResult.error.message };
+  if (pendingDaysResult.error) return { success: false, error: pendingDaysResult.error.message };
+
+  const total = approvedDaysResult.count ?? 0;
+  const pendingTotal = pendingDaysResult.count ?? 0;
+  return { success: true, count: total, pendingCount: pendingTotal, allowance, overThreshold: total >= allowance };
 }

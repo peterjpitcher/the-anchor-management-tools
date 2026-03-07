@@ -43,8 +43,11 @@ export default function TimeclockKiosk({ employees, openSessions: initialSession
   const selectedEmp = employees.find(e => e.employee_id === selectedId);
   const isAlreadyClockedIn = sessions.some(s => s.employee_id === selectedId);
 
+  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
   const handleClockIn = () => {
     if (!selectedId) { toast.error('Please select your name'); return; }
+    if (!UUID_RE.test(selectedId)) { toast.error('Invalid employee selection'); return; }
     if (isAlreadyClockedIn) { toast.error('You are already clocked in'); return; }
     startTransition(async () => {
       const result = await clockIn(selectedId);
@@ -58,6 +61,7 @@ export default function TimeclockKiosk({ employees, openSessions: initialSession
 
   const handleClockOut = () => {
     if (!selectedId) { toast.error('Please select your name'); return; }
+    if (!UUID_RE.test(selectedId)) { toast.error('Invalid employee selection'); return; }
     if (!isAlreadyClockedIn) { toast.error('You are not currently clocked in'); return; }
     startTransition(async () => {
       const result = await clockOut(selectedId);

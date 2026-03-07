@@ -51,26 +51,32 @@ async function invalidatePayrollApproval(
 export async function getOrCreatePayrollPeriod(year: number, month: number): Promise<PayrollPeriod> {
   const supabase = createAdminClient();
 
-  const { data: existing } = await supabase
-    .from('payroll_periods')
-    .select('id, year, month, period_start, period_end')
-    .eq('year', year)
-    .eq('month', month)
-    .single();
-
-  if (existing) return existing as PayrollPeriod;
-
   const end = new Date(Date.UTC(year, month - 1, 24));
   const start = new Date(Date.UTC(year, month - 2, 25));
 
-  const { data: created, error } = await supabase
+  // Attempt insert first; if a unique violation occurs (concurrent insert), fall back to select
+  const { data: created, error: insertError } = await supabase
     .from('payroll_periods')
     .insert({ year, month, period_start: isoDate(start), period_end: isoDate(end) })
     .select('id, year, month, period_start, period_end')
     .single();
 
-  if (error) throw new Error(error.message);
-  return created as PayrollPeriod;
+  if (!insertError) return created as PayrollPeriod;
+
+  // code 23505 = unique_violation — row already exists (race condition or prior insert)
+  if (insertError.code === '23505') {
+    const { data: existing, error: selectError } = await supabase
+      .from('payroll_periods')
+      .select('id, year, month, period_start, period_end')
+      .eq('year', year)
+      .eq('month', month)
+      .single();
+
+    if (selectError || !existing) throw new Error(selectError?.message ?? 'Failed to fetch existing payroll period');
+    return existing as PayrollPeriod;
+  }
+
+  throw new Error(insertError.message);
 }
 
 export async function updatePayrollPeriod(
@@ -464,6 +470,7 @@ export async function approvePayrollMonth(year: number, month: number): Promise<
 
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { success: false, error: 'Unauthorized' };
 
   // Build snapshot at approval time
   const reviewData = await getPayrollMonthData(year, month);
@@ -477,14 +484,14 @@ export async function approvePayrollMonth(year: number, month: number): Promise<
 
   const { data, error } = await supabase
     .from('payroll_month_approvals')
-    .upsert({ year, month, approved_by: user!.id, snapshot }, { onConflict: 'year,month' })
+    .upsert({ year, month, approved_by: user.id, snapshot }, { onConflict: 'year,month' })
     .select('id, year, month, approved_at, approved_by, snapshot, email_sent_at, email_sent_by')
     .single();
 
   if (error) return { success: false, error: error.message };
 
   void logAuditEvent({
-    user_id: user?.id,
+    user_id: user.id,
     operation_type: 'approve',
     resource_type: 'payroll_month',
     resource_id: `${year}-${String(month).padStart(2, '0')}`,
@@ -533,6 +540,7 @@ export async function sendPayrollEmail(year: number, month: number): Promise<
     .select('first_name, last_name, employment_end_date')
     .eq('status', 'Started Separation')
     .not('employment_end_date', 'is', null)
+    .gte('employment_end_date', period.period_start)
     .lte('employment_end_date', period.period_end);
 
   const leavingEmployees: LeavingEmployee[] = (leavingRaw ?? [])
@@ -590,11 +598,14 @@ export async function sendPayrollEmail(year: number, month: number): Promise<
 
   if (!result.success) return { success: false, error: 'Email send failed' };
 
-  // Record email sent timestamp on approval
-  await supabase
+  // Record email sent timestamp on approval — non-fatal if it fails
+  const { error: timestampError } = await supabase
     .from('payroll_month_approvals')
     .update({ email_sent_at: new Date().toISOString(), email_sent_by: user!.id })
     .eq('id', approval.id);
+  if (timestampError) {
+    console.error('[sendPayrollEmail] Failed to update email_sent_at:', timestampError.message);
+  }
 
   void logAuditEvent({
     user_id: user?.id,
@@ -638,19 +649,41 @@ export async function upsertShiftNote(
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
 
-  // Upsert: delete existing then insert, so we always have one note per shift
-  await supabase
+  // Fetch existing note before deleting so we can restore it if the insert fails
+  const { data: existingNote } = await supabase
+    .from('reconciliation_notes')
+    .select('note, created_by')
+    .eq('entity_type', 'shift')
+    .eq('entity_id', shiftId)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  const { error: deleteError } = await supabase
     .from('reconciliation_notes')
     .delete()
     .eq('entity_type', 'shift')
     .eq('entity_id', shiftId);
 
+  if (deleteError) return { success: false, error: deleteError.message };
+
   if (note.trim()) {
-    const { error } = await supabase
+    const { error: insertError } = await supabase
       .from('reconciliation_notes')
       .insert({ entity_type: 'shift', entity_id: shiftId, note: note.trim(), created_by: user!.id });
 
-    if (error) return { success: false, error: error.message };
+    if (insertError) {
+      // Restore the previous note so data is not silently lost
+      if (existingNote) {
+        await supabase.from('reconciliation_notes').insert({
+          entity_type: 'shift',
+          entity_id: shiftId,
+          note: existingNote.note,
+          created_by: existingNote.created_by,
+        });
+      }
+      return { success: false, error: insertError.message };
+    }
   }
 
   revalidatePath('/rota/payroll');

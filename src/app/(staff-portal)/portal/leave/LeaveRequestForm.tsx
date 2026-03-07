@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useTransition } from 'react';
+import { useState, useTransition, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import toast from 'react-hot-toast';
 import { Button } from '@/components/ui-v2/forms/Button';
@@ -26,6 +26,11 @@ export default function LeaveRequestForm({ employeeId }: LeaveRequestFormProps) 
   const [note, setNote] = useState('');
   const [error, setError] = useState('');
   const [isPending, startTransition] = useTransition();
+
+  // Compute today's London date client-side using Intl — avoids UTC offset bugs
+  const todayLocal = useMemo(() => {
+    return new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/London' }).format(new Date());
+  }, []);
 
   const days = daysBetween(startDate, endDate);
 
@@ -53,7 +58,7 @@ export default function LeaveRequestForm({ employeeId }: LeaveRequestFormProps) 
             id="lr-start"
             type="date"
             value={startDate}
-            min={new Date().toISOString().split('T')[0]}
+            min={todayLocal}
             onChange={e => setStartDate(e.target.value)}
           />
         </FormGroup>
@@ -62,7 +67,7 @@ export default function LeaveRequestForm({ employeeId }: LeaveRequestFormProps) 
             id="lr-end"
             type="date"
             value={endDate}
-            min={startDate || new Date().toISOString().split('T')[0]}
+            min={startDate || todayLocal}
             onChange={e => setEndDate(e.target.value)}
           />
         </FormGroup>

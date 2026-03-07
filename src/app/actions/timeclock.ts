@@ -1,7 +1,7 @@
 'use server';
 
 import { createAdminClient } from '@/lib/supabase/admin';
-import { toZonedTime, fromZonedTime } from 'date-fns-tz';
+import { toZonedTime, fromZonedTime, formatInTimeZone } from 'date-fns-tz';
 import { revalidatePath } from 'next/cache';
 import { logAuditEvent } from '@/app/actions/audit';
 import { checkUserPermission } from '@/app/actions/rbac';
@@ -94,8 +94,7 @@ export async function clockIn(employeeId: string): Promise<
   }
 
   const nowUtc = new Date();
-  const nowLocal = toZonedTime(nowUtc, TIMEZONE);
-  const workDate = nowLocal.toISOString().split('T')[0];
+  const workDate = formatInTimeZone(nowUtc, TIMEZONE, 'yyyy-MM-dd');
 
   const { data, error } = await supabase
     .from('timeclock_sessions')
@@ -304,7 +303,7 @@ export async function getTimeclockSessionsForWeek(
     const clockIn = new Date(row.clock_in_at as string);
     const clockOut = row.clock_out_at ? new Date(row.clock_out_at as string) : null;
 
-    const fmt = (d: Date) => toZonedTime(d, TIMEZONE).toISOString().split('T')[1].slice(0, 5);
+    const fmt = (d: Date) => formatInTimeZone(d, TIMEZONE, 'HH:mm');
 
     return {
       ...(row as TimeclockSession),
@@ -371,7 +370,7 @@ export async function createTimeclockSession(
 
   const row = data as Record<string, unknown>;
   const emp = row.employees as { first_name: string | null; last_name: string | null } | null;
-  const fmt = (d: Date) => toZonedTime(d, TIMEZONE).toISOString().split('T')[1].slice(0, 5);
+  const fmt = (d: Date) => formatInTimeZone(d, TIMEZONE, 'HH:mm');
 
   const session: TimeclockSessionWithEmployee = {
     ...(row as TimeclockSession),
