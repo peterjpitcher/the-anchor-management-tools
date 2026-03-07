@@ -304,7 +304,7 @@ export class PrivateBookingService {
     });
 
     if (error) {
-      console.error('Create private booking transaction error:', error);
+      logger.error('Create private booking transaction error:', { error: error instanceof Error ? error : new Error(String(error)) });
       throw new Error('Failed to create private booking');
     }
 
@@ -338,13 +338,13 @@ export class PrivateBookingService {
               .maybeSingle();
 
             if (calendarUpdateError) {
-              console.error('Failed to persist calendar_event_id after booking create:', calendarUpdateError);
+              logger.error('Failed to persist calendar_event_id after booking create:', { error: calendarUpdateError instanceof Error ? calendarUpdateError : new Error(String(calendarUpdateError)) });
             } else if (!updatedCalendarRow) {
-              console.error('Failed to persist calendar_event_id after booking create: booking row not found');
+              logger.error('Failed to persist calendar_event_id after booking create: booking row not found', { error: new Error('Failed to persist calendar_event_id after booking create: booking row not found') });
             }
           }
         } catch (e) {
-          console.error('Calendar sync failed:', e);
+          logger.error('Calendar sync failed:', { error: e instanceof Error ? e : new Error(String(e)) });
         }
       }
     }
@@ -381,7 +381,7 @@ export class PrivateBookingService {
         .in('status', ['pending', 'approved', 'sent']);
 
       if (duplicateCheckError) {
-        console.error('Failed to verify completed-booking SMS duplicate guard:', duplicateCheckError);
+        logger.error('Failed to verify completed-booking SMS duplicate guard:', { error: duplicateCheckError instanceof Error ? duplicateCheckError : new Error(String(duplicateCheckError)) });
         throw new Error('Failed completed-booking SMS duplicate safety check');
       }
 
@@ -534,7 +534,7 @@ export class PrivateBookingService {
       .maybeSingle();
 
     if (error) {
-      console.error('Error updating private booking:', error);
+      logger.error('Error updating private booking:', { error: error instanceof Error ? error : new Error(String(error)) });
       throw new Error('Failed to update private booking');
     }
 
@@ -708,7 +708,7 @@ export class PrivateBookingService {
             }
           });
         } catch (analyticsError) {
-          console.error('Failed to record private booking confirmation analytics:', analyticsError);
+          logger.error('Failed to record private booking confirmation analytics:', { error: analyticsError instanceof Error ? analyticsError : new Error(String(analyticsError)) });
         }
       }
 
@@ -803,9 +803,9 @@ export class PrivateBookingService {
                 .maybeSingle()
 
               if (clearCalendarError) {
-                console.error('Failed to clear private booking calendar event id after removal:', clearCalendarError)
+                logger.error('Failed to clear private booking calendar event id after removal:', { error: clearCalendarError instanceof Error ? clearCalendarError : new Error(String(clearCalendarError)) })
               } else if (!clearedCalendarRow) {
-                console.error('Failed to clear private booking calendar event id after removal: booking row not found')
+                logger.error('Failed to clear private booking calendar event id after removal: booking row not found', { error: new Error('Failed to clear private booking calendar event id after removal: booking row not found') })
               }
               updatedBooking.calendar_event_id = null
             }
@@ -826,14 +826,14 @@ export class PrivateBookingService {
             .maybeSingle();
 
           if (calendarUpdateError) {
-            console.error('Failed to persist private booking calendar event id during update:', calendarUpdateError);
+            logger.error('Failed to persist private booking calendar event id during update:', { error: calendarUpdateError instanceof Error ? calendarUpdateError : new Error(String(calendarUpdateError)) });
           } else if (!updatedCalendarRow) {
-            console.error('Failed to persist private booking calendar event id during update: booking row not found');
+            logger.error('Failed to persist private booking calendar event id during update: booking row not found', { error: new Error('Failed to persist private booking calendar event id during update: booking row not found') });
           }
           updatedBooking.calendar_event_id = eventId
         }
       } catch (error) {
-        console.error('Calendar sync exception:', error);
+        logger.error('Calendar sync exception:', { error: error instanceof Error ? error : new Error(String(error)) });
       }
     }
 
@@ -894,7 +894,7 @@ export class PrivateBookingService {
       .maybeSingle();
 
     if (error) {
-      console.error('Error applying booking discount:', error);
+      logger.error('Error applying booking discount:', { error: error instanceof Error ? error : new Error(String(error)) });
       throw new Error(error.message || 'Failed to apply booking discount');
     }
 
@@ -973,13 +973,13 @@ export class PrivateBookingService {
             .maybeSingle();
 
           if (clearCalendarError) {
-            console.error('Failed to clear calendar event id after cancellation:', clearCalendarError);
+            logger.error('Failed to clear calendar event id after cancellation:', { error: clearCalendarError instanceof Error ? clearCalendarError : new Error(String(clearCalendarError)) });
           } else if (!clearedCalendarRow) {
-            console.error('Failed to clear calendar event id after cancellation: booking row not found');
+            logger.error('Failed to clear calendar event id after cancellation: booking row not found', { error: new Error('Failed to clear calendar event id after cancellation: booking row not found') });
           }
         }
       } catch (error) {
-        console.error('Failed to delete calendar event:', error);
+        logger.error('Failed to delete calendar event:', { error: error instanceof Error ? error : new Error(String(error)) });
       }
     }
 
@@ -1112,13 +1112,13 @@ export class PrivateBookingService {
             .maybeSingle();
 
           if (clearCalendarError) {
-            console.error('Failed to clear calendar event id after expiry:', clearCalendarError);
+            logger.error('Failed to clear calendar event id after expiry:', { error: clearCalendarError instanceof Error ? clearCalendarError : new Error(String(clearCalendarError)) });
           } else if (!clearedCalendarRow) {
-            console.error('Failed to clear calendar event id after expiry: booking row not found');
+            logger.error('Failed to clear calendar event id after expiry: booking row not found', { error: new Error('Failed to clear calendar event id after expiry: booking row not found') });
           }
         }
       } catch (error) {
-        console.error('Failed to delete calendar event:', error);
+        logger.error('Failed to delete calendar event:', { error: error instanceof Error ? error : new Error(String(error)) });
       }
     }
 
@@ -1151,7 +1151,7 @@ export class PrivateBookingService {
           }
         });
       } catch (error) {
-        console.error('Failed to queue expiry SMS notification:', error)
+        logger.error('Failed to queue expiry SMS notification:', { error: error instanceof Error ? error : new Error(String(error)) })
         smsResult = { error: 'Failed to queue SMS notification' }
       }
 
@@ -1241,7 +1241,7 @@ export class PrivateBookingService {
           }
         });
       } catch (error) {
-        console.error('Failed to queue hold extension SMS:', error);
+        logger.error('Failed to queue hold extension SMS:', { error: error instanceof Error ? error : new Error(String(error)) });
         smsResult = { error: 'Failed to queue SMS' };
       }
 
@@ -1272,7 +1272,7 @@ export class PrivateBookingService {
           }
         }
       } catch (error) {
-        console.error('Failed to delete calendar event during booking deletion:', error);
+        logger.error('Failed to delete calendar event during booking deletion:', { error: error instanceof Error ? error : new Error(String(error)) });
         throw error
       }
     }
@@ -1285,7 +1285,7 @@ export class PrivateBookingService {
       .maybeSingle();
 
     if (error) {
-      console.error('Error deleting private booking:', error);
+      logger.error('Error deleting private booking:', { error: error instanceof Error ? error : new Error(String(error)) });
       throw new Error(error.message || 'Failed to delete private booking');
     }
 
@@ -1344,7 +1344,7 @@ export class PrivateBookingService {
           }
         });
       } catch (analyticsError) {
-        console.error('Failed to record private booking confirmation analytics from deposit:', analyticsError);
+        logger.error('Failed to record private booking confirmation analytics from deposit:', { error: analyticsError instanceof Error ? analyticsError : new Error(String(analyticsError)) });
       }
     }
 
@@ -1437,13 +1437,13 @@ export class PrivateBookingService {
             .maybeSingle();
 
           if (calendarUpdateError) {
-            console.error('Failed to persist calendar event id after deposit:', calendarUpdateError);
+            logger.error('Failed to persist calendar event id after deposit:', { error: calendarUpdateError instanceof Error ? calendarUpdateError : new Error(String(calendarUpdateError)) });
           } else if (!updatedCalendarRow) {
-            console.error('Failed to persist calendar event id after deposit: booking row not found');
+            logger.error('Failed to persist calendar event id after deposit: booking row not found', { error: new Error('Failed to persist calendar event id after deposit: booking row not found') });
           }
         }
       } catch (error) {
-        console.error('Calendar sync failed during deposit record:', error);
+        logger.error('Calendar sync failed during deposit record:', { error: error instanceof Error ? error : new Error(String(error)) });
       }
     }
 
@@ -1701,13 +1701,13 @@ export class PrivateBookingService {
             .maybeSingle();
 
           if (calendarUpdateError) {
-            console.error('Failed to persist calendar event id after final payment:', calendarUpdateError);
+            logger.error('Failed to persist calendar event id after final payment:', { error: calendarUpdateError instanceof Error ? calendarUpdateError : new Error(String(calendarUpdateError)) });
           } else if (!updatedCalendarRow) {
-            console.error('Failed to persist calendar event id after final payment: booking row not found');
+            logger.error('Failed to persist calendar event id after final payment: booking row not found', { error: new Error('Failed to persist calendar event id after final payment: booking row not found') });
           }
         }
       } catch (error) {
-        console.error('Calendar sync failed during final payment record:', error);
+        logger.error('Calendar sync failed during final payment record:', { error: error instanceof Error ? error : new Error(String(error)) });
       }
     }
 
@@ -1784,7 +1784,7 @@ export class PrivateBookingService {
     const { data, error, count } = await query;
 
     if (error) {
-      console.error('Error fetching private bookings:', error);
+      logger.error('Error fetching private bookings:', { error: error instanceof Error ? error : new Error(String(error)) });
       throw new Error(error.message || 'An error occurred');
     }
 
@@ -1888,7 +1888,7 @@ export class PrivateBookingService {
     const { data, error, count } = await query.range(start, end);
 
     if (error) {
-      console.error('Error fetching private bookings:', error);
+      logger.error('Error fetching private bookings:', { error: error instanceof Error ? error : new Error(String(error)) });
       throw new Error(error.message || 'An error occurred');
     }
 
@@ -1911,7 +1911,7 @@ export class PrivateBookingService {
       ]);
 
       if (holdExpiryResult.error) {
-        console.error('Error fetching hold expiry dates for private bookings:', holdExpiryResult.error);
+        logger.error('Error fetching hold expiry dates for private bookings:', { error: holdExpiryResult.error instanceof Error ? holdExpiryResult.error : new Error(String(holdExpiryResult.error)) });
       } else if (holdExpiryResult.data) {
         for (const row of holdExpiryResult.data) {
           holdExpiryById.set(row.id, row.hold_expiry ?? null);
@@ -1970,7 +1970,7 @@ export class PrivateBookingService {
       .order('start_time', { ascending: true, nullsFirst: true });
 
     if (error) {
-      console.error('Error fetching bookings for calendar:', error);
+      logger.error('Error fetching bookings for calendar:', { error: error instanceof Error ? error : new Error(String(error)) });
       throw new Error(error.message || 'An error occurred');
     }
 
@@ -2018,7 +2018,7 @@ export class PrivateBookingService {
       .maybeSingle();
 
     if (error) {
-      console.error('Error fetching private booking:', error);
+      logger.error('Error fetching private booking:', { error: error instanceof Error ? error : new Error(String(error)) });
       throw new Error(error.message || 'An error occurred');
     }
 
@@ -2081,7 +2081,7 @@ export class PrivateBookingService {
       .maybeSingle();
 
     if (error) {
-      console.error('Error fetching private booking for edit:', error);
+      logger.error('Error fetching private booking for edit:', { error: error instanceof Error ? error : new Error(String(error)) });
       throw new Error(error.message || 'An error occurred');
     }
 
@@ -2114,7 +2114,7 @@ export class PrivateBookingService {
       .maybeSingle();
 
     if (error) {
-      console.error('Error fetching private booking items:', error);
+      logger.error('Error fetching private booking items:', { error: error instanceof Error ? error : new Error(String(error)) });
       throw new Error(error.message || 'An error occurred');
     }
 
@@ -2174,7 +2174,7 @@ export class PrivateBookingService {
       .maybeSingle();
 
     if (bookingError) {
-      console.error('Error fetching private booking for messages:', bookingError);
+      logger.error('Error fetching private booking for messages:', { error: bookingError instanceof Error ? bookingError : new Error(String(bookingError)) });
       throw new Error(bookingError.message || 'An error occurred');
     }
 
@@ -2189,7 +2189,7 @@ export class PrivateBookingService {
       .order('created_at', { ascending: false });
 
     if (smsError) {
-      console.error('Error fetching private booking SMS queue:', smsError);
+      logger.error('Error fetching private booking SMS queue:', { error: smsError instanceof Error ? smsError : new Error(String(smsError)) });
       throw new Error(smsError.message || 'Failed to fetch booking messages');
     }
 
@@ -2214,7 +2214,7 @@ export class PrivateBookingService {
     const { data, error } = await query;
 
     if (error) {
-      console.error('Error fetching venue spaces:', error);
+      logger.error('Error fetching venue spaces:', { error: error instanceof Error ? error : new Error(String(error)) });
       throw new Error(error.message || 'An error occurred');
     }
 
@@ -2240,7 +2240,7 @@ export class PrivateBookingService {
     const { data, error } = await query;
 
     if (error) {
-      console.error('Error fetching catering packages:', error);
+      logger.error('Error fetching catering packages:', { error: error instanceof Error ? error : new Error(String(error)) });
       throw new Error(error.message || 'An error occurred');
     }
 
@@ -2271,7 +2271,7 @@ export class PrivateBookingService {
     const { data, error } = await query;
 
     if (error) {
-      console.error('Error fetching vendors:', error);
+      logger.error('Error fetching vendors:', { error: error instanceof Error ? error : new Error(String(error)) });
       throw new Error(error.message || 'An error occurred');
     }
 
@@ -2293,7 +2293,7 @@ export class PrivateBookingService {
       .maybeSingle();
 
     if (error) {
-      console.error('Error fetching vendor rate:', error);
+      logger.error('Error fetching vendor rate:', { error: error instanceof Error ? error : new Error(String(error)) });
       throw new Error(error.message || 'Failed to fetch vendor rate');
     }
 
@@ -2378,7 +2378,7 @@ export class PrivateBookingService {
         })
       }
     } catch (smsError) {
-      console.error('Failed to queue booking created SMS after booking creation:', smsError);
+      logger.error('Failed to queue booking created SMS after booking creation:', { error: smsError instanceof Error ? smsError : new Error(String(smsError)) });
     }
   }
 
@@ -2405,7 +2405,7 @@ export class PrivateBookingService {
       .limit(1);
 
     if (orderError) {
-      console.error('Error determining next item order:', orderError);
+      logger.error('Error determining next item order:', { error: orderError instanceof Error ? orderError : new Error(String(orderError)) });
       throw new Error(orderError.message || 'Failed to determine item order');
     }
 
@@ -2431,7 +2431,7 @@ export class PrivateBookingService {
       });
 
     if (error) {
-      console.error('Error adding booking item:', error);
+      logger.error('Error adding booking item:', { error: error instanceof Error ? error : new Error(String(error)) });
       throw new Error(error.message || 'Failed to add booking item');
     }
 
@@ -2475,7 +2475,7 @@ export class PrivateBookingService {
       .maybeSingle();
 
     if (error) {
-      console.error('Error updating booking item:', error);
+      logger.error('Error updating booking item:', { error: error instanceof Error ? error : new Error(String(error)) });
       throw new Error(error.message || 'Failed to update booking item');
     }
 
@@ -2508,7 +2508,7 @@ export class PrivateBookingService {
       .maybeSingle();
 
     if (error) {
-      console.error('Error deleting booking item:', error);
+      logger.error('Error deleting booking item:', { error: error instanceof Error ? error : new Error(String(error)) });
       throw new Error(error.message || 'Failed to delete booking item');
     }
 
@@ -2532,7 +2532,7 @@ export class PrivateBookingService {
       .eq('booking_id', bookingId);
 
     if (fetchError) {
-      console.error('Error fetching booking items for reorder:', fetchError);
+      logger.error('Error fetching booking items for reorder:', { error: fetchError instanceof Error ? fetchError : new Error(String(fetchError)) });
       throw new Error(fetchError.message || 'Failed to fetch booking items');
     }
 
@@ -2572,17 +2572,17 @@ export class PrivateBookingService {
             .maybeSingle()
 
           if (restoreError) {
-            console.error('Failed to restore booking item order during rollback:', restoreError)
+            logger.error('Failed to restore booking item order during rollback:', { error: restoreError instanceof Error ? restoreError : new Error(String(restoreError)) })
             return
           }
 
           if (!restoredRow) {
-            console.error('Failed to restore booking item order during rollback: item no longer exists', { id, bookingId })
+            logger.error('Failed to restore booking item order during rollback: item no longer exists', { error: new Error('item no longer exists'), metadata: { id, bookingId } })
           }
         })
       );
 
-      console.error('Error updating booking item order:', updateFailure);
+      logger.error('Error updating booking item order:', { error: updateFailure instanceof Error ? updateFailure : new Error(String(updateFailure)) });
       throw new Error(
         updateFailure instanceof Error
           ? updateFailure.message
@@ -2623,7 +2623,7 @@ export class PrivateBookingService {
       .single();
 
     if (error) {
-      console.error('Error creating venue space:', error);
+      logger.error('Error creating venue space:', { error: error instanceof Error ? error : new Error(String(error)) });
       throw new Error(error.message || 'Failed to create venue space');
     }
 
@@ -2686,7 +2686,7 @@ export class PrivateBookingService {
       .maybeSingle();
 
     if (error) {
-      console.error('Error updating venue space:', error);
+      logger.error('Error updating venue space:', { error: error instanceof Error ? error : new Error(String(error)) });
       throw new Error(error.message || 'Failed to update venue space');
     }
 
@@ -2745,7 +2745,7 @@ export class PrivateBookingService {
       .maybeSingle();
 
     if (error) {
-      console.error('Error deleting venue space:', error);
+      logger.error('Error deleting venue space:', { error: error instanceof Error ? error : new Error(String(error)) });
       throw new Error(error.message || 'Failed to delete venue space');
     }
 
@@ -2807,7 +2807,7 @@ export class PrivateBookingService {
       .single();
 
     if (error) {
-      console.error('Error creating catering package:', error);
+      logger.error('Error creating catering package:', { error: error instanceof Error ? error : new Error(String(error)) });
       if (error.code === '23505') {
         throw new Error('A catering package with this name already exists. Please choose a different name.');
       }
@@ -2882,7 +2882,7 @@ export class PrivateBookingService {
       .maybeSingle();
 
     if (error) {
-      console.error('Error updating catering package:', error);
+      logger.error('Error updating catering package:', { error: error instanceof Error ? error : new Error(String(error)) });
       if (error.code === '23505') {
         throw new Error('A catering package with this name already exists. Please choose a different name.');
       }
@@ -2948,7 +2948,7 @@ export class PrivateBookingService {
       .maybeSingle();
 
     if (error) {
-      console.error('Error deleting catering package:', error);
+      logger.error('Error deleting catering package:', { error: error instanceof Error ? error : new Error(String(error)) });
       throw new Error(error.message || 'Failed to delete catering package');
     }
 
@@ -3017,7 +3017,7 @@ export class PrivateBookingService {
       .single();
 
     if (error) {
-      console.error('Error creating vendor:', error);
+      logger.error('Error creating vendor:', { error: error instanceof Error ? error : new Error(String(error)) });
       throw new Error(error.message || 'Failed to create vendor');
     }
 
@@ -3093,7 +3093,7 @@ export class PrivateBookingService {
       .maybeSingle();
 
     if (error) {
-      console.error('Error updating vendor:', error);
+      logger.error('Error updating vendor:', { error: error instanceof Error ? error : new Error(String(error)) });
       throw new Error(error.message || 'Failed to update vendor');
     }
 
@@ -3158,7 +3158,7 @@ export class PrivateBookingService {
       .maybeSingle();
 
     if (error) {
-      console.error('Error deleting vendor:', error);
+      logger.error('Error deleting vendor:', { error: error instanceof Error ? error : new Error(String(error)) });
       throw new Error(error.message || 'Failed to delete vendor');
     }
 
