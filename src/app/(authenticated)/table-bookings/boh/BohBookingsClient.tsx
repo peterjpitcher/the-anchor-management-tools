@@ -12,7 +12,6 @@ type StatusFilter =
   | 'all'
   | 'confirmed'
   | 'pending_payment'
-  | 'pending_card_capture'
   | 'seated'
   | 'left'
   | 'no_show'
@@ -119,7 +118,6 @@ const STATUS_OPTIONS: Array<{ value: StatusFilter; label: string }> = [
   { value: 'all', label: 'All statuses' },
   { value: 'confirmed', label: 'Confirmed' },
   { value: 'pending_payment', label: 'Pending payment' },
-  { value: 'pending_card_capture', label: 'Pending card capture' },
   { value: 'seated', label: 'Seated' },
   { value: 'left', label: 'Left' },
   { value: 'no_show', label: 'No-show' },
@@ -249,7 +247,6 @@ function getStatusBadgeClasses(status: string): string {
     case 'seated':
       return 'bg-emerald-100 text-emerald-800 border-emerald-200'
     case 'pending_payment':
-    case 'pending_card_capture':
       return 'bg-yellow-100 text-yellow-800 border-yellow-200'
     case 'left':
     case 'completed':
@@ -270,8 +267,6 @@ function getStatusLabel(status: string): string {
   switch (status) {
     case 'pending_payment':
       return 'Pending payment'
-    case 'pending_card_capture':
-      return 'Pending card'
     case 'no_show':
       return 'No-show'
     case 'visited_waiting_for_review':
@@ -1161,9 +1156,16 @@ export function BohBookingsClient({
                       </div>
                     </td>
                     <td className="px-3 py-2 whitespace-nowrap">
-                      <span className={`inline-flex rounded-full border px-2 py-0.5 text-[11px] font-medium ${getStatusBadgeClasses(booking.visual_status)}`}>
-                        {getStatusLabel(booking.visual_status)}
-                      </span>
+                      <div className="flex flex-wrap items-center gap-1">
+                        <span className={`inline-flex rounded-full border px-2 py-0.5 text-[11px] font-medium ${getStatusBadgeClasses(booking.visual_status)}`}>
+                          {getStatusLabel(booking.visual_status)}
+                        </span>
+                        {booking.status === 'confirmed' && booking.payment_status === 'pending' && (
+                          <span className="inline-flex rounded-full border border-yellow-300 bg-yellow-50 px-2 py-0.5 text-[11px] font-medium text-yellow-800">
+                            Deposit outstanding
+                          </span>
+                        )}
+                      </div>
                     </td>
                     <td className="hidden px-3 py-2 text-gray-700 whitespace-nowrap lg:table-cell">{booking.customer?.mobile_number || '—'}</td>
                     <td className="px-3 py-2 text-right whitespace-nowrap">
@@ -1214,6 +1216,11 @@ export function BohBookingsClient({
               <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${getStatusBadgeClasses(selectedBooking.visual_status)}`}>
                 {getStatusLabel(selectedBooking.visual_status)}
               </span>
+              {selectedBooking.status === 'confirmed' && selectedBooking.payment_status === 'pending' && (
+                <span className="inline-flex rounded-full border border-yellow-300 bg-yellow-50 px-2.5 py-1 text-xs font-semibold text-yellow-800">
+                  Deposit outstanding
+                </span>
+              )}
               <span className="text-lg font-bold text-gray-900">{selectedBooking.party_size || 0} guests</span>
               <span className="text-sm font-medium text-gray-700">
                 {selectedBooking.table_names.length > 0

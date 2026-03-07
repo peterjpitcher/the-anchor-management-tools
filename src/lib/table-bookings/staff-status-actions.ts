@@ -108,7 +108,7 @@ export function buildStaffStatusTransitionPlan(input: {
           no_show_marked_at: null,
           no_show_marked_by: null,
           updated_at: input.nowIso,
-          status: input.booking.status === 'pending_card_capture' ? 'confirmed' : input.booking.status,
+          status: input.booking.status,
         },
         select: 'id, status, seated_at, left_at, no_show_at, no_show_marked_at, no_show_marked_by',
       },
