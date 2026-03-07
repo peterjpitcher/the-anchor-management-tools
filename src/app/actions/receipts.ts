@@ -38,7 +38,8 @@ const MAX_MONTH_PAGE_SIZE = 5000
 const RECEIPT_AI_JOB_CHUNK_SIZE = 10
 const EXPENSE_CATEGORY_OPTIONS = receiptExpenseCategorySchema.options
 const BULK_STATUS_OPTIONS = receiptTransactionStatusSchema.options
-const OUTSTANDING_STATUSES: ReceiptTransaction['status'][] = ['pending']
+// 'cant_find' means staff searched but could not locate the receipt — still outstanding and requires follow-up
+const OUTSTANDING_STATUSES: ReceiptTransaction['status'][] = ['pending', 'cant_find']
 type BulkStatus = (typeof BULK_STATUS_OPTIONS)[number]
 
 const bulkGroupQuerySchema = z.object({
@@ -520,7 +521,9 @@ function parseCurrency(value: string | null | undefined): number | null {
   const cleaned = value.replace(/,/g, '').trim()
   if (!cleaned) return null
   const result = Number.parseFloat(cleaned)
-  return Number.isFinite(result) ? Number(result.toFixed(2)) : null
+  if (!Number.isFinite(result)) return null
+  if (result < 0) return null
+  return Number(result.toFixed(2))
 }
 
 function normalizeVendorInput(value: unknown): string | null {
