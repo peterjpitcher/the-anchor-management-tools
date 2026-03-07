@@ -365,6 +365,9 @@ export function ReceiptTableRow({
             <button onClick={() => handleReceiptDelete(f.id)} className="text-red-500 text-xs px-1 hover:bg-red-50 rounded" disabled={isPending}>×</button>
           </div>
         ))}
+        {transaction.files.length > 0 && (
+          <p className="mt-1 text-[10px] text-gray-400">Links expire after 5 min. Refresh if a link stops working.</p>
+        )}
       </td>
 
       <td className="px-4 py-3 min-w-[200px]">
