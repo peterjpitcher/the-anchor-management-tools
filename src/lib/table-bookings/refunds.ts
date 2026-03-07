@@ -65,7 +65,7 @@ export async function refundTableBookingDeposit(
   await supabase
     .from('payments')
     .update({
-      status: tier === 'full' ? 'refunded' : 'partial_refund',
+      status: tier === 'full' ? 'refunded' : 'partially_refunded',
       refund_amount: refundAmountPence / 100,
       updated_at: new Date().toISOString(),
     })
