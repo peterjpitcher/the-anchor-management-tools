@@ -79,7 +79,7 @@ export function ReceiptStats({ summary }: ReceiptStatsProps) {
       <CostSummaryCard cost={summary.openAICost} breakdown={summary.aiUsageBreakdown} />
       <SummaryCard title="Pending" value={summary.totals.pending} tone="warning" />
       <SummaryCard title="Completed" value={summary.totals.completed} tone="success" />
-      <SummaryCard title="Auto-matched" value={summary.totals.autoCompleted} tone="info" />
+      <SummaryCard title="Auto completed" value={summary.totals.autoCompleted} tone="info" />
       <SummaryCard title="No receipt required" value={summary.totals.noReceiptRequired} tone="neutral" />
       <SummaryCard title="Can't find" value={summary.totals.cantFind} tone="neutral" />
     </div>
