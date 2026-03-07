@@ -122,11 +122,12 @@ export interface Vendor {
   name: string
   company_name?: string
   service_type: VendorServiceType
+  contact_name?: string
   contact_phone?: string
   contact_email?: string
   website?: string
   typical_rate?: string
-  typical_rate_normalized?: string | null
+  typical_rate_normalized?: string | null // TODO: verify this field exists in DB
   notes?: string
   preferred: boolean
   active: boolean
