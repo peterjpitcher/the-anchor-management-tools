@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireFohPermission } from '@/lib/foh/api-auth'
+import { refundTableBookingDeposit } from '@/lib/table-bookings/refunds'
+import { sendTableBookingCancelledSmsIfAllowed } from '@/lib/table-bookings/bookings'
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
@@ -18,7 +20,7 @@ export async function DELETE(
   }
 
   const { data: existing, error: loadError } = await (auth.supabase.from('table_bookings') as any)
-    .select('id, booking_reference, status')
+    .select('id, customer_id, booking_reference, booking_date, status')
     .eq('id', id)
     .maybeSingle()
 
@@ -58,6 +60,20 @@ export async function DELETE(
 
   if (!cancelledBooking) {
     return NextResponse.json({ error: 'Booking not found' }, { status: 404 })
+  }
+
+  // Tiered deposit refund + cancellation SMS (never fail the delete)
+  try {
+    const bookingDate = new Date(`${existing.booking_date}T12:00:00`)
+    const refundResult = await refundTableBookingDeposit(existing.id, bookingDate)
+    await sendTableBookingCancelledSmsIfAllowed(auth.supabase, {
+      customerId: existing.customer_id,
+      bookingReference: existing.booking_reference || id,
+      bookingDate: existing.booking_date,
+      refundResult,
+    })
+  } catch (err) {
+    console.error('[table-booking-delete] refund/SMS error:', err)
   }
 
   return NextResponse.json({

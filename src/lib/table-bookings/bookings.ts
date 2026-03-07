@@ -1037,6 +1037,108 @@ export async function sendSundayPreorderLinkSmsIfAllowed(
   }
 }
 
+export async function sendTableBookingCancelledSmsIfAllowed(
+  supabase: SupabaseClient<any, 'public', any>,
+  params: {
+    customerId: string
+    bookingReference: string
+    bookingDate: string // YYYY-MM-DD format
+    refundResult: { refunded: false; reason: string } | { refunded: true; amountPence: number; tier: string }
+  }
+): Promise<void> {
+  try {
+    const { data: customer } = await supabase
+      .from('customers')
+      .select('id, first_name, mobile_number, sms_status')
+      .eq('id', params.customerId)
+      .maybeSingle()
+
+    if (!customer || customer.sms_status !== 'active' || !customer.mobile_number) {
+      return
+    }
+
+    // Format booking date for display (e.g. "Sat 14 Mar 2026")
+    let dateLabel = params.bookingDate
+    try {
+      dateLabel = new Intl.DateTimeFormat('en-GB', {
+        timeZone: 'Europe/London',
+        weekday: 'short',
+        day: 'numeric',
+        month: 'short',
+        year: 'numeric',
+      }).format(new Date(`${params.bookingDate}T12:00:00`))
+    } catch {
+      // fall back to raw date string
+    }
+
+    let smsBody: string
+    if (params.refundResult.refunded) {
+      const amountGbp = new Intl.NumberFormat('en-GB', {
+        style: 'currency',
+        currency: 'GBP',
+      }).format(params.refundResult.amountPence / 100)
+
+      if (params.refundResult.tier === 'full') {
+        smsBody = `The Anchor: Your booking on ${dateLabel} has been cancelled. A full refund of ${amountGbp} will appear within 5-10 days.`
+      } else {
+        smsBody = `The Anchor: Your booking on ${dateLabel} has been cancelled. A 50% refund of ${amountGbp} will appear within 5-10 days.`
+      }
+    } else if (params.refundResult.reason === 'zero_tier') {
+      smsBody = `The Anchor: Your booking on ${dateLabel} has been cancelled. As this is within 3 days, your deposit cannot be refunded.`
+    } else {
+      smsBody = `The Anchor: Your booking on ${dateLabel} has been cancelled. We hope to see you again soon.`
+    }
+
+    const supportPhone = process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || process.env.TWILIO_PHONE_NUMBER || undefined
+
+    const smsResult = await sendSMS(
+      customer.mobile_number,
+      ensureReplyInstruction(smsBody, supportPhone),
+      {
+        customerId: customer.id,
+        metadata: {
+          booking_reference: params.bookingReference,
+          template_key: 'table_booking_cancelled',
+        },
+      }
+    )
+
+    const smsCode = typeof smsResult.code === 'string' ? smsResult.code : null
+    const smsLogFailure = smsResult.logFailure === true || smsCode === 'logging_failed'
+
+    if (smsLogFailure) {
+      logger.error('Table booking cancelled SMS sent but outbound message logging failed', {
+        metadata: {
+          bookingReference: params.bookingReference,
+          customerId: customer.id,
+          code: smsCode,
+          logFailure: smsLogFailure,
+        },
+      })
+    }
+
+    if (!smsResult.success) {
+      logger.warn('Table booking cancelled SMS send returned non-success', {
+        metadata: {
+          bookingReference: params.bookingReference,
+          customerId: customer.id,
+          error: smsResult.error,
+          code: smsCode,
+        },
+      })
+    }
+  } catch (smsError) {
+    logger.warn('Table booking cancelled SMS threw unexpectedly', {
+      metadata: {
+        bookingReference: params.bookingReference,
+        customerId: params.customerId,
+        error: smsError instanceof Error ? smsError.message : String(smsError),
+      },
+    })
+    // Do not rethrow — SMS failure must not affect the cancel/delete operation
+  }
+}
+
 export async function alignTablePaymentHoldToScheduledSend(
   supabase: SupabaseClient<any, 'public', any>,
   input: {
