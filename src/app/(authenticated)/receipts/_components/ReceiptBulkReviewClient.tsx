@@ -547,6 +547,13 @@ export default function ReceiptBulkReviewClient({ initialData, initialFilters }:
                     >
                       Reset to suggestion
                     </Button>
+                  </div>
+                  {isFuzzyGrouping && (
+                    <p className="text-xs text-amber-700">
+                      Fuzzy mode is on: &ldquo;Apply classification&rdquo; will only update transactions whose description matches exactly &ldquo;{group.details}&rdquo;.
+                    </p>
+                  )}
+                  <div className="flex flex-wrap items-center gap-3">
                     <Button
                       type="button"
                       variant="ghost"
