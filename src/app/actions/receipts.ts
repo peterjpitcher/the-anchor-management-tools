@@ -1332,6 +1332,14 @@ export async function importReceiptStatement(formData: FormData) {
 
   if (insertError) {
     console.error('Failed to insert receipt transactions:', insertError)
+    // Attempt to clean up the orphaned batch record
+    const { error: batchDeleteError } = await supabase
+      .from('receipt_batches')
+      .delete()
+      .eq('id', batch.id)
+    if (batchDeleteError) {
+      console.error('Failed to clean up orphaned receipt batch after transaction insert failure:', batchDeleteError)
+    }
     return { error: 'Failed to store the transactions.' }
   }
 
