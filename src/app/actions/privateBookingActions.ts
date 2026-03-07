@@ -557,8 +557,18 @@ export async function recordDepositPayment(bookingId: string, formData: FormData
     return { error: 'You do not have permission to record deposits' }
   }
 
-  const paymentMethod = getString(formData, 'payment_method') as string
-  const amount = parseFloat(getString(formData, 'amount') as string)
+  const paymentMethod = getString(formData, 'payment_method')
+  const amountRaw = getString(formData, 'amount')
+  const amount = amountRaw ? parseFloat(amountRaw) : NaN
+  if (!Number.isFinite(amount) || amount <= 0) {
+    return { success: false, error: 'Invalid deposit amount' }
+  }
+
+  const VALID_PAYMENT_METHODS = ['cash', 'card', 'invoice'] as const
+  type ValidPaymentMethod = typeof VALID_PAYMENT_METHODS[number]
+  if (!paymentMethod || !(VALID_PAYMENT_METHODS as readonly string[]).includes(paymentMethod)) {
+    return { success: false, error: 'Invalid payment method' }
+  }
 
   try {
     const result = await PrivateBookingService.recordDeposit(
@@ -592,7 +602,11 @@ export async function recordFinalPayment(bookingId: string, formData: FormData) 
     return { error: 'You do not have permission to record payments' }
   }
 
-  const paymentMethod = getString(formData, 'payment_method') as string
+  const paymentMethod = getString(formData, 'payment_method')
+  if (!paymentMethod || !(['cash', 'card', 'invoice'] as const).includes(paymentMethod as 'cash' | 'card' | 'invoice')) {
+    return { success: false, error: 'Invalid payment method' }
+  }
+
   const amountRaw = getString(formData, 'amount')
   const amount = amountRaw ? parseFloat(amountRaw) : NaN
 
