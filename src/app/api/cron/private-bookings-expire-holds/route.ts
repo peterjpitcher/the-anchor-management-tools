@@ -23,7 +23,10 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     .lt('hold_expiry', now);
 
   if (fetchError) {
-    logger.error('private-bookings-expire-holds: fetch failed', { metadata: { error: fetchError.message } });
+    logger.error('private-bookings-expire-holds: fetch failed', {
+      error: new Error(fetchError.message),
+      metadata: { message: fetchError.message },
+    });
     return NextResponse.json({ error: fetchError.message }, { status: 500 });
   }
 
@@ -44,7 +47,8 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 
   if (updateError) {
     logger.error('private-bookings-expire-holds: update failed', {
-      metadata: { error: updateError.message, ids },
+      error: new Error(updateError.message),
+      metadata: { message: updateError.message, ids },
     });
     return NextResponse.json({ error: updateError.message }, { status: 500 });
   }

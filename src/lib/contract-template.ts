@@ -112,10 +112,18 @@ export function generateContractHTML(data: ContractData): string {
   const subtotal = calculateSubtotal()
   const discountAmount = calculateDiscountAmount()
   const total = calculateTotal()
-  // Sum all recorded payments to calculate true remaining balance
+  // Sum all recorded payments to calculate true remaining balance.
+  // The deposit is stored on the booking row (deposit_paid_date / deposit_amount), NOT in
+  // private_booking_payments, so we must add it to the accumulator start value when paid.
+  const depositPaid = (booking.deposit_paid_date && Number.isFinite(booking.deposit_amount))
+    ? (booking.deposit_amount as number)
+    : 0
   const totalPaid = booking.final_payment_date
     ? total
-    : (booking.payments || []).reduce((sum, p) => sum + (Number.isFinite(p.amount) ? p.amount : 0), 0)
+    : ((booking.payments || []) as Array<{ amount: number | string }>).reduce((sum, p) => {
+        const paid = typeof p.amount === 'string' ? parseFloat(p.amount) : (p.amount ?? 0)
+        return sum + (Number.isFinite(paid) ? paid : 0)
+      }, depositPaid)
   const balanceDue = Math.max(0, total - totalPaid)
   const contractNote = formatPlainText(booking.contract_note)
 
@@ -582,7 +590,7 @@ export function generateContractHTML(data: ContractData): string {
         </tr>
       </thead>
       <tbody>
-        ${vendorItems.map((item: any) => `
+        ${vendorItems.map((item: PrivateBookingItem) => `
           <tr>
             <td>${escapeHtml(item.description || '')}</td>
             <td>${formatCurrency(item.line_total)}</td>
@@ -604,7 +612,7 @@ export function generateContractHTML(data: ContractData): string {
         </tr>
       </thead>
       <tbody>
-        ${otherItems.map((item: any) => `
+        ${otherItems.map((item: PrivateBookingItem) => `
           <tr>
             <td>${escapeHtml(item.description || '')}</td>
             <td>${item.quantity}</td>
