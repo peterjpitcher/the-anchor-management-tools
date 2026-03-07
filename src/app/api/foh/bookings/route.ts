@@ -9,9 +9,7 @@ import { ensureCustomerForPhone } from '@/lib/sms/customers'
 import { logger } from '@/lib/logger'
 import { recordAnalyticsEvent } from '@/lib/analytics/events'
 import {
-  alignTableCardCaptureHoldToScheduledSend,
   alignTablePaymentHoldToScheduledSend,
-  createTableCardCaptureToken,
   createTablePaymentToken,
   mapTableBookingBlockedReason,
   sendManagerTableBookingCreatedEmailIfAllowed,
