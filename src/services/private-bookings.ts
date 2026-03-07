@@ -1310,7 +1310,7 @@ export class PrivateBookingService {
     // Only transition status to confirmed when the booking is still a draft.
     // For already-confirmed or completed bookings, leave status and
     // cancellation_reason untouched to avoid unnecessary churn.
-    const statusUpdate: Partial<{ status: string; cancellation_reason: null }> =
+    const statusUpdate: Partial<{ status: BookingStatus; cancellation_reason: null }> =
       booking.status === 'draft'
         ? { status: 'confirmed', cancellation_reason: null }
         : {};
