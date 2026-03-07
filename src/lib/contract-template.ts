@@ -116,6 +116,16 @@ export function generateContractHTML(data: ContractData): string {
   const balanceDue = booking.final_payment_date ? 0 : total
   const contractNote = formatPlainText(booking.contract_note)
 
+  // Pre-escaped variables for safe HTML interpolation
+  const safeCustomerName = escapeHtml(customerName)
+  const safeEventType = escapeHtml(eventType)
+  const safeSpecialRequirements = booking.special_requirements
+    ? escapeHtml(booking.special_requirements)
+    : null
+  const safeAccessibilityNeeds = booking.accessibility_needs
+    ? escapeHtml(booking.accessibility_needs)
+    : null
+
   // Calculate balance due date (7 days before event)
   let balanceDueDate = 'To be confirmed'
   if (booking.event_date) {
@@ -136,7 +146,7 @@ export function generateContractHTML(data: ContractData): string {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Private Booking Contract - ${customerName}</title>
+  <title>Private Booking Contract - ${safeCustomerName}</title>
   <style>
     @page {
       size: A4;
@@ -426,7 +436,7 @@ export function generateContractHTML(data: ContractData): string {
   <div class="info-grid">
     <div class="info-section">
       <h3>Customer Details</h3>
-      <p><strong>Name:</strong> ${customerName}</p>
+      <p><strong>Name:</strong> ${safeCustomerName}</p>
       ${booking.contact_phone ? `<p><strong>Phone:</strong> ${booking.contact_phone}</p>` : ''}
       ${booking.contact_email ? `<p><strong>Email:</strong> ${booking.contact_email}</p>` : ''}
     </div>
@@ -437,15 +447,15 @@ export function generateContractHTML(data: ContractData): string {
       <p><strong>Time:</strong> ${startTime} to ${endTime}</p>
       ${booking.setup_time ? `<p><strong>Setup Time:</strong> ${formatTime(booking.setup_time)}</p>` : ''}
       <p><strong>Expected Guests:</strong> ${guestCount}</p>
-      <p><strong>Event Type:</strong> ${eventType}</p>
+      <p><strong>Event Type:</strong> ${safeEventType}</p>
     </div>
   </div>
 
-  ${booking.special_requirements || booking.accessibility_needs ? `
+  ${safeSpecialRequirements || safeAccessibilityNeeds ? `
   <div class="info-section" style="margin-bottom: 30px;">
     <h3>Special Requirements</h3>
-    ${booking.special_requirements ? `<p><strong>Event Requirements:</strong> ${booking.special_requirements}</p>` : ''}
-    ${booking.accessibility_needs ? `<p><strong>Accessibility Needs:</strong> ${booking.accessibility_needs}</p>` : ''}
+    ${safeSpecialRequirements ? `<p><strong>Event Requirements:</strong> ${safeSpecialRequirements}</p>` : ''}
+    ${safeAccessibilityNeeds ? `<p><strong>Accessibility Needs:</strong> ${safeAccessibilityNeeds}</p>` : ''}
   </div>
   ` : ''}
 
@@ -477,11 +487,11 @@ export function generateContractHTML(data: ContractData): string {
     return `
           <tr>
             <td>
-              ${item.description}
+              ${escapeHtml(item.description || '')}
               ${hasDiscount ? `
                 <br/><small class="discount-note">
                   <strong>✓ Discount: ${item.discount_type === 'percent' ? `${item.discount_value}% off` : `£${item.discount_value} off`}</strong>
-                  ${item.notes ? ` - ${item.notes}` : ''}
+                  ${item.notes ? ` - ${escapeHtml(item.notes || '')}` : ''}
                 </small>
               ` : ''}
             </td>
@@ -523,11 +533,11 @@ export function generateContractHTML(data: ContractData): string {
         return `
           <tr>
             <td>
-              ${item.description}
+              ${escapeHtml(item.description || '')}
               ${hasDiscount ? `
                 <br/><small class="discount-note">
                   <strong>✓ Discount: ${item.discount_type === 'percent' ? `${item.discount_value}% off` : `£${item.discount_value} off`}</strong>
-                  ${item.notes ? ` - ${item.notes}` : ''}
+                  ${item.notes ? ` - ${escapeHtml(item.notes || '')}` : ''}
                 </small>
               ` : ''}
             </td>
@@ -567,7 +577,7 @@ export function generateContractHTML(data: ContractData): string {
       <tbody>
         ${vendorItems.map((item: any) => `
           <tr>
-            <td>${item.description}</td>
+            <td>${escapeHtml(item.description || '')}</td>
             <td>${formatCurrency(item.line_total)}</td>
           </tr>
         `).join('')}
@@ -589,7 +599,7 @@ export function generateContractHTML(data: ContractData): string {
       <tbody>
         ${otherItems.map((item: any) => `
           <tr>
-            <td>${item.description}</td>
+            <td>${escapeHtml(item.description || '')}</td>
             <td>${item.quantity}</td>
             <td>${formatCurrency(item.unit_price)}</td>
             <td>${formatCurrency(item.line_total)}</td>
@@ -703,19 +713,19 @@ export function generateContractHTML(data: ContractData): string {
 
   <div class="agreement-section">
     <h3>AGREEMENT</h3>
-    <p>I, <strong>${customerName}</strong>, hereby agree to engage Orange Jelly Limited, operating as The Anchor Pub, to host my event described as "<strong>${eventType}</strong>" on <strong>${eventDate}</strong> from <strong>${startTime}</strong> to <strong>${endTime}</strong>. In accordance with the terms of this agreement, I commit to paying the total cost of the event, amounting to <strong>${formatCurrency(total)}</strong>.</p>
+    <p>I, <strong>${safeCustomerName}</strong>, hereby agree to engage Orange Jelly Limited, operating as The Anchor Pub, to host my event described as "<strong>${safeEventType}</strong>" on <strong>${eventDate}</strong> from <strong>${startTime}</strong> to <strong>${endTime}</strong>. In accordance with the terms of this agreement, I commit to paying the total cost of the event, amounting to <strong>${formatCurrency(total)}</strong>.</p>
     
     <p>To secure this booking, I will pay a refundable security deposit of <strong>${formatCurrency(depositAmount)}</strong> in cash. This deposit is to cover any potential damages from the event and is <strong>separate from and additional to</strong> the total event cost. The deposit will be returned within 48 hours after the event's conclusion, provided that no significant damages occur beyond normal wear and incidental breakages.</p>
     
     <p>The total event cost of <strong>${formatCurrency(total)}</strong> is due no later than <strong>${balanceDueDate}</strong>, which is 7 days before the event date. This payment is for the booking items and services only, and does not include the refundable security deposit. I understand that failure to pay the full amount by this due date may result in the cancellation of my event without a refund of my deposit.</p>
     
-    <p>By signing below, I, <strong>${customerName}</strong>, confirm my understanding and agreement to these terms, and commit to upholding my responsibilities as outlined in this agreement.</p>
+    <p>By signing below, I, <strong>${safeCustomerName}</strong>, confirm my understanding and agreement to these terms, and commit to upholding my responsibilities as outlined in this agreement.</p>
   </div>
 
   <div class="signature-section">
     <div class="signature-box">
       <div class="signature-line"></div>
-      <p><strong>Host Name:</strong> ${customerName}</p>
+      <p><strong>Host Name:</strong> ${safeCustomerName}</p>
       <p><strong>Date:</strong> ${formatDate(new Date().toISOString())}</p>
     </div>
     <div class="signature-box">
