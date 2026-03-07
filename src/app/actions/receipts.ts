@@ -969,7 +969,10 @@ async function applyAutomationRules(
   }
 
   if (classificationLogs.length) {
-    await supabase.from('receipt_transaction_logs').insert(classificationLogs)
+    const { error: classificationLogError } = await supabase.from('receipt_transaction_logs').insert(classificationLogs)
+    if (classificationLogError) {
+      console.error('Failed to record automation classification logs', classificationLogError)
+    }
   }
 
   if (targetRuleId) {
@@ -1402,7 +1405,10 @@ export async function importReceiptStatement(formData: FormData) {
       performed_at: now,
     }))
 
-    await supabase.from('receipt_transaction_logs').insert(logs)
+    const { error: importLogError } = await supabase.from('receipt_transaction_logs').insert(logs)
+    if (importLogError) {
+      console.error('Failed to record import transaction logs', importLogError)
+    }
   }
 
   await logAuditEvent({
@@ -1510,7 +1516,7 @@ export async function markReceiptTransaction(input: {
     return { error: 'Transaction not found' }
   }
 
-  await supabase.from('receipt_transaction_logs').insert({
+  const { error: manualUpdateLogError } = await supabase.from('receipt_transaction_logs').insert({
     transaction_id: input.transactionId,
     previous_status: existing.status,
     new_status: updated.status,
@@ -1520,6 +1526,9 @@ export async function markReceiptTransaction(input: {
     rule_id: null,
     performed_at: now,
   })
+  if (manualUpdateLogError) {
+    console.error('Failed to record manual update transaction log', manualUpdateLogError)
+  }
 
   await logAuditEvent({
     operation_type: 'update_status',
@@ -1642,7 +1651,7 @@ export async function updateReceiptClassification(input: {
     return { error: 'Transaction not found' }
   }
 
-  await supabase.from('receipt_transaction_logs').insert({
+  const { error: classifyLogError } = await supabase.from('receipt_transaction_logs').insert({
     transaction_id: transactionId,
     previous_status: transaction.status,
     new_status: updated.status,
@@ -1652,6 +1661,9 @@ export async function updateReceiptClassification(input: {
     rule_id: null,
     performed_at: now,
   })
+  if (classifyLogError) {
+    console.error('Failed to record manual classification transaction log', classifyLogError)
+  }
 
   await logAuditEvent({
     operation_type: 'update_classification',
@@ -3367,19 +3379,44 @@ export async function requeueUnclassifiedTransactions(): Promise<{ success: bool
 
   const supabase = createAdminClient()
 
-  const { data, error } = await supabase
+  // Query 1: transactions with no vendor classification at all
+  const { data: vendorMissing, error: vendorError } = await supabase
     .from('receipt_transactions')
     .select('id, batch_id')
     .is('vendor_name', null)
     .is('vendor_source', null)
     .limit(5000)
 
-  if (error) {
-    console.error('Failed to load unclassified transactions for requeue', error)
+  if (vendorError) {
+    console.error('Failed to load vendor-unclassified transactions for requeue', vendorError)
     return { success: false, error: 'Failed to load transactions' }
   }
 
-  const rows = data ?? []
+  // Query 2: outgoing transactions that have a vendor but no expense category
+  const { data: expenseMissing, error: expenseError } = await supabase
+    .from('receipt_transactions')
+    .select('id, batch_id')
+    .is('expense_category', null)
+    .is('expense_category_source', null)
+    .not('amount_out', 'is', null)
+    .gt('amount_out', 0)
+    .limit(5000)
+
+  if (expenseError) {
+    console.error('Failed to load expense-unclassified transactions for requeue', expenseError)
+    return { success: false, error: 'Failed to load transactions' }
+  }
+
+  // Merge and de-duplicate by ID
+  const seenIds = new Set<string>()
+  const rows: Array<{ id: string; batch_id: string | null }> = []
+  for (const row of [...(vendorMissing ?? []), ...(expenseMissing ?? [])]) {
+    if (!seenIds.has(row.id)) {
+      seenIds.add(row.id)
+      rows.push(row)
+    }
+  }
+
   if (!rows.length) {
     return { success: true, queued: 0 }
   }
