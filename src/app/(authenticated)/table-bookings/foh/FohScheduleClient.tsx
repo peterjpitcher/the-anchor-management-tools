@@ -66,7 +66,7 @@ type FohScheduleResponse = {
 type FohCreateBookingResponse = {
   success: boolean
   data?: {
-    state: 'confirmed' | 'pending_card_capture' | 'pending_payment' | 'blocked'
+    state: 'confirmed' | 'pending_payment' | 'blocked'
     table_booking_id: string | null
     booking_reference: string | null
     reason: string | null
@@ -204,7 +204,6 @@ type WalkInTargetTable = {
 type BookingVisualState =
   | 'private_block'
   | 'pending_payment'
-  | 'pending_card_capture'
   | 'confirmed'
   | 'seated'
   | 'left'
@@ -250,8 +249,6 @@ function statusBadgeClass(status?: string | null): string {
       return 'bg-green-100 text-green-800 border-green-200'
     case 'pending_payment':
       return 'bg-yellow-100 text-yellow-800 border-yellow-200'
-    case 'pending_card_capture':
-      return 'bg-yellow-100 text-yellow-800 border-yellow-200'
     case 'no_show':
       return 'bg-red-100 text-red-700 border-red-200'
     case 'cancelled':
@@ -275,8 +272,6 @@ function statusBlockClass(status?: string | null): string {
     case 'confirmed':
       return 'border-green-300 bg-green-200/90 text-green-900'
     case 'pending_payment':
-      return 'border-amber-300 bg-amber-200/90 text-amber-900'
-    case 'pending_card_capture':
       return 'border-amber-300 bg-amber-200/90 text-amber-900'
     case 'no_show':
       return 'border-red-300 bg-red-200/90 text-red-900'
@@ -312,8 +307,6 @@ function getBookingVisualState(booking: FohBooking): BookingVisualState {
   switch (booking.status) {
     case 'pending_payment':
       return 'pending_payment'
-    case 'pending_card_capture':
-      return 'pending_card_capture'
     case 'confirmed':
       return 'confirmed'
     case 'cancelled':
@@ -336,8 +329,6 @@ function getBookingVisualLabel(booking: FohBooking): string {
       return 'Private block'
     case 'pending_payment':
       return 'Pending payment'
-    case 'pending_card_capture':
-      return 'Pending card'
     case 'seated':
       return 'Seated'
     case 'left':
@@ -2171,8 +2162,6 @@ export function FohScheduleClient({
       const outcome =
         payload.data.state === 'pending_payment'
           ? 'reserved and awaiting deposit payment'
-          : payload.data.state === 'pending_card_capture'
-          ? 'created and awaiting card capture'
           : isWalkIn
             ? 'created, confirmed and seated'
             : 'created and confirmed'
