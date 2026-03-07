@@ -844,7 +844,31 @@ export class PrivateBookingService {
   }
 
   static async updateBookingStatus(id: string, status: BookingStatus, performedByUserId?: string) {
-    return this.updateBooking(id, { status }, performedByUserId);
+    const supabase = await createClient()
+    const { data: current, error } = await supabase
+      .from('private_bookings')
+      .select('status')
+      .eq('id', id)
+      .single()
+
+    if (error || !current) throw new Error('Booking not found')
+
+    const ALLOWED_TRANSITIONS: Record<BookingStatus, BookingStatus[]> = {
+      draft:     ['confirmed', 'cancelled'],
+      confirmed: ['completed', 'cancelled'],
+      completed: [],
+      cancelled: [],
+    }
+
+    const currentStatus = current.status as BookingStatus
+    const allowed = ALLOWED_TRANSITIONS[currentStatus] ?? []
+    if (!allowed.includes(status)) {
+      throw new Error(
+        `Cannot transition booking from '${currentStatus}' to '${status}'`
+      )
+    }
+
+    return this.updateBooking(id, { status }, performedByUserId)
   }
 
   static async applyBookingDiscount(
