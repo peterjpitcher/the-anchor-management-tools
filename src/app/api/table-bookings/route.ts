@@ -231,29 +231,6 @@ export async function POST(request: NextRequest) {
       let smsMeta: SmsSafetyMeta = null
 
       if (
-        bookingResult.state === 'pending_card_capture' &&
-        bookingResult.table_booking_id &&
-        bookingResult.hold_expires_at
-      ) {
-        try {
-          const token = await createTableCardCaptureToken(supabase, {
-            customerId: customerResolution.customerId,
-            tableBookingId: bookingResult.table_booking_id,
-            holdExpiresAt: bookingResult.hold_expires_at,
-            appBaseUrl
-          })
-          nextStepUrl = token.url
-        } catch (tokenError) {
-          logger.warn('Failed to create table card capture token', {
-            metadata: {
-              tableBookingId: bookingResult.table_booking_id,
-              error: tokenError instanceof Error ? tokenError.message : String(tokenError)
-            }
-          })
-        }
-      }
-
-      if (
         bookingResult.state === 'pending_payment' &&
         bookingResult.table_booking_id &&
         bookingResult.hold_expires_at
@@ -278,7 +255,6 @@ export async function POST(request: NextRequest) {
 
       if (
         bookingResult.state === 'confirmed' ||
-        bookingResult.state === 'pending_card_capture' ||
         bookingResult.state === 'pending_payment'
       ) {
         let smsSendResult: Awaited<ReturnType<typeof sendTableBookingCreatedSmsIfAllowed>> | null = null
@@ -332,28 +308,6 @@ export async function POST(request: NextRequest) {
         }
 
         if (
-          bookingResult.state === 'pending_card_capture' &&
-          bookingResult.table_booking_id &&
-          smsSendResult?.scheduledFor
-        ) {
-          try {
-            holdExpiresAt =
-              (await alignTableCardCaptureHoldToScheduledSend(supabase, {
-                tableBookingId: bookingResult.table_booking_id,
-                scheduledSendIso: smsSendResult.scheduledFor,
-                bookingStartIso: bookingResult.start_datetime || null
-              })) || holdExpiresAt
-          } catch (alignmentError) {
-            logger.warn('Failed to align card capture hold with scheduled SMS send', {
-              metadata: {
-                tableBookingId: bookingResult.table_booking_id,
-                error: alignmentError instanceof Error ? alignmentError.message : String(alignmentError)
-              }
-            })
-          }
-        }
-
-        if (
           bookingResult.state === 'pending_payment' &&
           bookingResult.table_booking_id &&
           smsSendResult?.scheduledFor
@@ -394,22 +348,6 @@ export async function POST(request: NextRequest) {
           })
         ]
 
-        if (bookingResult.state === 'pending_card_capture') {
-          analyticsPromises.push(recordTableBookingAnalyticsSafe(supabase, {
-            customerId: customerResolution.customerId,
-            tableBookingId: bookingResult.table_booking_id,
-            eventType: 'card_capture_started',
-            metadata: {
-              hold_expires_at: holdExpiresAt,
-              next_step_url_provided: Boolean(nextStepUrl)
-            }
-          }, {
-            tableBookingId: bookingResult.table_booking_id,
-            customerId: customerResolution.customerId,
-            eventType: 'card_capture_started'
-          }))
-        }
-
         if (bookingResult.state === 'pending_payment') {
           analyticsPromises.push(recordTableBookingAnalyticsSafe(supabase, {
             customerId: customerResolution.customerId,
@@ -432,7 +370,7 @@ export async function POST(request: NextRequest) {
       }
 
       const responseState: TableBookingResponseData['state'] =
-        bookingResult.state === 'confirmed' || bookingResult.state === 'pending_card_capture' || bookingResult.state === 'pending_payment'
+        bookingResult.state === 'confirmed' || bookingResult.state === 'pending_payment'
           ? bookingResult.state
           : 'blocked'
 
@@ -447,8 +385,8 @@ export async function POST(request: NextRequest) {
           reason: bookingResult.reason || null,
           blocked_reason:
             responseState === 'blocked' ? mapTableBookingBlockedReason(bookingResult.reason) : null,
-          next_step_url: responseState === 'pending_card_capture' || responseState === 'pending_payment' ? nextStepUrl : null,
-          hold_expires_at: responseState === 'pending_card_capture' || responseState === 'pending_payment' ? holdExpiresAt : null,
+          next_step_url: responseState === 'pending_payment' ? nextStepUrl : null,
+          hold_expires_at: responseState === 'pending_payment' ? holdExpiresAt : null,
           table_name: bookingResult.table_name || null
         } satisfies TableBookingResponseData,
         meta: {

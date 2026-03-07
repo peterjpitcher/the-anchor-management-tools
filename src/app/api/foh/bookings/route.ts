@@ -1183,7 +1183,7 @@ export async function POST(request: NextRequest) {
   if (
     payload.walk_in === true &&
     bookingResult.table_booking_id &&
-    (bookingResult.state === 'confirmed' || bookingResult.state === 'pending_card_capture')
+    bookingResult.state === 'confirmed'
   ) {
     try {
       await markWalkInBookingAsSeated(auth.supabase, bookingResult.table_booking_id)
@@ -1193,29 +1193,6 @@ export async function POST(request: NextRequest) {
           userId: auth.userId,
           tableBookingId: bookingResult.table_booking_id,
           error: seatError instanceof Error ? seatError.message : String(seatError)
-        }
-      })
-    }
-  }
-
-  if (
-    bookingResult.state === 'pending_card_capture' &&
-    bookingResult.table_booking_id &&
-    bookingResult.hold_expires_at
-  ) {
-    try {
-      const token = await createTableCardCaptureToken(auth.supabase, {
-        customerId,
-        tableBookingId: bookingResult.table_booking_id,
-        holdExpiresAt: bookingResult.hold_expires_at,
-        appBaseUrl
-      })
-      nextStepUrl = token.url
-    } catch (tokenError) {
-      logger.warn('Failed to create table card-capture token for FOH create', {
-        metadata: {
-          tableBookingId: bookingResult.table_booking_id,
-          error: tokenError instanceof Error ? tokenError.message : String(tokenError)
         }
       })
     }
@@ -1250,7 +1227,6 @@ export async function POST(request: NextRequest) {
     normalizedPhone &&
     (
       bookingResult.state === 'confirmed' ||
-      bookingResult.state === 'pending_card_capture' ||
       bookingResult.state === 'pending_payment'
     )
   ) {
@@ -1260,19 +1236,6 @@ export async function POST(request: NextRequest) {
       bookingResult,
       nextStepUrl
     })
-
-    if (
-      bookingResult.state === 'pending_card_capture' &&
-      bookingResult.table_booking_id &&
-      smsSendResult.scheduledFor
-    ) {
-      holdExpiresAt =
-        (await alignTableCardCaptureHoldToScheduledSend(auth.supabase, {
-          tableBookingId: bookingResult.table_booking_id,
-          scheduledSendIso: smsSendResult.scheduledFor,
-          bookingStartIso: bookingResult.start_datetime || null
-        })) || holdExpiresAt
-    }
 
     if (
       bookingResult.state === 'pending_payment' &&
@@ -1306,24 +1269,6 @@ export async function POST(request: NextRequest) {
       eventType: 'table_booking_created'
     })
 
-    if (bookingResult.state === 'pending_card_capture') {
-      await recordFohTableBookingAnalyticsSafe(auth.supabase, {
-        customerId,
-        tableBookingId: bookingResult.table_booking_id,
-        eventType: 'card_capture_started',
-        metadata: {
-          hold_expires_at: holdExpiresAt,
-          next_step_url_provided: Boolean(nextStepUrl),
-          source: 'foh'
-        }
-      }, {
-        userId: auth.userId,
-        customerId,
-        tableBookingId: bookingResult.table_booking_id,
-        eventType: 'card_capture_started'
-      })
-    }
-
     if (bookingResult.state === 'pending_payment') {
       await recordFohTableBookingAnalyticsSafe(auth.supabase, {
         customerId,
@@ -1347,7 +1292,6 @@ export async function POST(request: NextRequest) {
 
   if (
     bookingResult.state === 'confirmed' ||
-    bookingResult.state === 'pending_card_capture' ||
     bookingResult.state === 'pending_payment'
   ) {
     const managerEmailResult = await sendManagerTableBookingCreatedEmailIfAllowed(auth.supabase, {
@@ -1368,7 +1312,7 @@ export async function POST(request: NextRequest) {
 
   const shouldHandleSundayPreorder =
     effectiveSundayLunch &&
-    (bookingResult.state === 'confirmed' || bookingResult.state === 'pending_card_capture') &&
+    bookingResult.state === 'confirmed' &&
     Boolean(bookingResult.table_booking_id)
 
   if (shouldHandleSundayPreorder && bookingResult.table_booking_id) {
@@ -1460,7 +1404,6 @@ export async function POST(request: NextRequest) {
   const responseState: FohCreateBookingResponseData['state'] =
     (
       bookingResult.state === 'confirmed' ||
-      bookingResult.state === 'pending_card_capture' ||
       bookingResult.state === 'pending_payment'
     )
       ? bookingResult.state
@@ -1478,8 +1421,8 @@ export async function POST(request: NextRequest) {
         reason: bookingResult.reason || null,
         blocked_reason:
           responseState === 'blocked' ? mapTableBookingBlockedReason(bookingResult.reason) : null,
-        next_step_url: responseState === 'pending_card_capture' || responseState === 'pending_payment' ? nextStepUrl : null,
-        hold_expires_at: responseState === 'pending_card_capture' || responseState === 'pending_payment' ? holdExpiresAt : null,
+        next_step_url: responseState === 'pending_payment' ? nextStepUrl : null,
+        hold_expires_at: responseState === 'pending_payment' ? holdExpiresAt : null,
         table_name: bookingResult.table_name || null,
         sunday_preorder_state: sundayPreorderState,
         sunday_preorder_reason: sundayPreorderReason

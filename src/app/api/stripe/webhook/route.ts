@@ -19,7 +19,6 @@ import {
   sendEventPaymentRetrySms
 } from '@/lib/events/event-payments'
 import {
-  sendTableBookingConfirmedAfterCardCaptureSmsIfAllowed,
   sendTableBookingConfirmedAfterDepositSmsIfAllowed,
 } from '@/lib/table-bookings/bookings'
 
@@ -539,7 +538,7 @@ async function handleCheckoutSessionCompleted(
             booking_reference: rpcResult.booking_reference || null
           }
         }, 'table_card_capture_completed'),
-        sendTableBookingConfirmedAfterCardCaptureSmsIfAllowed(supabase, rpcResult.table_booking_id)
+        Promise.resolve(null)
       ])
 
       if (customerUpdateOutcome.status === 'rejected') {
