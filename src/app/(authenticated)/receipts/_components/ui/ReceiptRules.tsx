@@ -410,6 +410,9 @@ export function ReceiptRules({ rules, pendingSuggestion, onApplySuggestion, onDi
                       value={newMatchDescription}
                       onChange={(e) => { setNewMatchDescription(e.target.value); setIsPreviewVisible(false) }}
                     />
+                    <p className="mt-1 text-xs text-gray-500">
+                      Matches transactions if ANY of these words appear in the description (comma-separated)
+                    </p>
                     <MatchDescriptionTokenPreview value={newMatchDescription} />
                   </div>
                   <Input name="match_transaction_type" placeholder="Match transaction type" />
