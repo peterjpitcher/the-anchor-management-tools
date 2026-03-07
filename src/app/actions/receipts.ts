@@ -2891,6 +2891,18 @@ export async function runReceiptRuleRetroactively(
         totals,
         totalRecords,
       })
+      // Finalize the partial run: revalidate paths and write a partial audit log entry
+      // so staff can see that the retro-run only partially completed.
+      await finalizeReceiptRuleRetroRun({
+        ruleId,
+        scope,
+        reviewed: totals.reviewed,
+        statusAutoUpdated: totals.statusAutoUpdated,
+        classificationUpdated: totals.classificationUpdated,
+        matched: totals.matched,
+        vendorIntended: totals.vendorIntended,
+        expenseIntended: totals.expenseIntended,
+      })
       return {
         success: true,
         ruleId,
@@ -2903,8 +2915,10 @@ export async function runReceiptRuleRetroactively(
         samples,
         scope,
         done: false,
+        partial: true,
         nextOffset: offset,
         total: totalRecords,
+        warning: `Time limit reached after processing ${totals.reviewed} transactions. Re-run to continue.`,
       }
     }
   }
