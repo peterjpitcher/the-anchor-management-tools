@@ -124,7 +124,7 @@ type TableCardCaptureCompletedResult = {
 }
 
 type TableDepositCompletedResult = {
-  state: 'confirmed' | 'already_confirmed' | 'blocked'
+  state: 'confirmed' | 'blocked'
   reason?: string
   table_booking_id?: string
   customer_id?: string
