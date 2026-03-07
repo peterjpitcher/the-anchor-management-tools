@@ -1303,14 +1303,25 @@ export class PrivateBookingService {
 
     if (fetchError || !booking) throw new Error('Booking not found');
 
+    if (booking.status === 'cancelled') {
+      throw new Error('Cannot record a deposit on a cancelled booking');
+    }
+
+    // Only transition status to confirmed when the booking is still a draft.
+    // For already-confirmed or completed bookings, leave status and
+    // cancellation_reason untouched to avoid unnecessary churn.
+    const statusUpdate: Partial<{ status: string; cancellation_reason: null }> =
+      booking.status === 'draft'
+        ? { status: 'confirmed', cancellation_reason: null }
+        : {};
+
     const { data: updatedBooking, error } = await supabase
       .from('private_bookings')
       .update({
         deposit_paid_date: new Date().toISOString(),
         deposit_payment_method: method,
         deposit_amount: amount,
-        status: 'confirmed',
-        cancellation_reason: null,
+        ...statusUpdate,
         updated_at: new Date().toISOString()
       })
       .eq('id', bookingId)
