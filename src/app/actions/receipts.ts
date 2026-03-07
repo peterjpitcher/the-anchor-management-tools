@@ -377,11 +377,25 @@ const fileSchema = z.instanceof(File, { message: 'Please attach a CSV file' })
     message: 'Only CSV bank statements are supported'
   })
 
+const ALLOWED_RECEIPT_MIME_TYPES = [
+  'application/pdf',
+  'image/png',
+  'image/jpeg',
+  'image/jpg',
+  'image/gif',
+  'image/webp',
+  'image/heic',
+]
+
 const receiptFileSchema = z.instanceof(File, { message: 'Please choose a receipt file' })
   .refine((file) => file.size > 0, { message: 'File is empty' })
   .refine((file) => file.size <= MAX_RECEIPT_UPLOAD_SIZE, {
     message: 'File is too large. Please keep receipts under 15MB.'
   })
+  .refine(
+    (file) => ALLOWED_RECEIPT_MIME_TYPES.includes(file.type),
+    { message: 'Only PDF, PNG, JPG, GIF, WEBP, and HEIC files are accepted.' }
+  )
 
 const classificationUpdateSchema = z.object({
   transactionId: z.string().uuid('Transaction reference is invalid'),
@@ -3421,6 +3435,7 @@ export async function previewReceiptRule(formData: FormData): Promise<{ success:
     supabase
       .from('receipt_transactions')
       .select('id, details, transaction_type, amount_in, amount_out, status, vendor_name, expense_category')
+      .order('transaction_date', { ascending: false })
       .limit(2000),
   ])
 
