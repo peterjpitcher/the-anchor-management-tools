@@ -1361,13 +1361,15 @@ export async function importReceiptStatement(formData: FormData) {
 
   let aiJobsQueued = 0
   let aiJobsFailed = 0
+  let aiEnqueueWarning: string | undefined
 
   try {
     const queuedResult = await enqueueReceiptAiClassificationJobs(insertedIds, batch.id)
     aiJobsQueued = queuedResult.queued
     aiJobsFailed = queuedResult.failed
-  } catch (error) {
-    console.error('Failed to enqueue receipt AI classification jobs', error)
+  } catch (enqueueError) {
+    console.error('Failed to enqueue AI classification jobs:', enqueueError)
+    aiEnqueueWarning = 'AI classification could not be queued — use the re-queue button to retry.'
   }
 
   if (insertedIds.length) {
@@ -1415,7 +1417,7 @@ export async function importReceiptStatement(formData: FormData) {
     autoApplied,
     autoClassified,
     batch,
-    warning: automationWarning,
+    warning: automationWarning ?? aiEnqueueWarning,
   }
 }
 
