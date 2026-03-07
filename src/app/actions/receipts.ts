@@ -137,6 +137,7 @@ export type ReceiptWorkspaceSummary = {
   lastImport?: ReceiptBatch | null
   openAICost: number
   aiUsageBreakdown?: AIUsageBreakdown | null
+  failedAiJobCount: number
 }
 
 export type ReceiptWorkspaceData = {
@@ -2705,7 +2706,7 @@ export async function createReceiptRuleFromGroup(input: {
 
 async function fetchSummary(): Promise<ReceiptWorkspaceSummary> {
   const supabase = createAdminClient()
-  const [{ data: statusCounts }, { data: lastBatch }, { data: costData, error: costError }, { data: breakdownData, error: breakdownError }] = await Promise.all([
+  const [{ data: statusCounts }, { data: lastBatch }, { data: costData, error: costError }, { data: breakdownData, error: breakdownError }, { count: failedJobCount }] = await Promise.all([
     supabase.rpc('count_receipt_statuses'),
     supabase
       .from('receipt_batches')
@@ -2715,6 +2716,11 @@ async function fetchSummary(): Promise<ReceiptWorkspaceSummary> {
       .maybeSingle(),
     supabase.rpc('get_openai_usage_total'),
     supabase.rpc('get_ai_usage_breakdown'),
+    supabase
+      .from('jobs')
+      .select('id', { count: 'exact', head: true })
+      .eq('type', 'classify_receipt_transactions')
+      .eq('status', 'failed'),
   ])
 
   const counts = Array.isArray(statusCounts) ? statusCounts[0] : statusCounts
@@ -2758,6 +2764,7 @@ async function fetchSummary(): Promise<ReceiptWorkspaceSummary> {
     lastImport: lastBatch ?? null,
     openAICost,
     aiUsageBreakdown,
+    failedAiJobCount: failedJobCount ?? 0,
   }
 }
 
