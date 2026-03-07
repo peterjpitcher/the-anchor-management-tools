@@ -1858,23 +1858,6 @@ export async function deleteReceiptFile(fileId: string) {
     return { error: 'Failed to remove stored receipt file.' }
   }
 
-  const now = new Date().toISOString()
-
-  const { error: deleteLogError } = await supabase.from('receipt_transaction_logs').insert({
-    transaction_id: receipt.transaction_id,
-    previous_status: transaction?.status ?? null,
-    new_status: 'pending',
-    action_type: 'receipt_deleted',
-    note: 'Receipt removed by user',
-    performed_by: user_id,
-    rule_id: null,
-    performed_at: now,
-  })
-
-  if (deleteLogError) {
-    console.error('Failed to record receipt deletion transaction log:', deleteLogError)
-  }
-
   // If there are no receipts left, revert to pending
   const { data: remaining, error: remainingError } = await supabase
     .from('receipt_files')
@@ -1883,8 +1866,25 @@ export async function deleteReceiptFile(fileId: string) {
 
   if (remainingError) {
     console.error('Failed to check for remaining receipts:', remainingError)
+    // Conservatively reset to pending — we cannot confirm files remain
+    await supabase
+      .from('receipt_transactions')
+      .update({
+        status: 'pending',
+        receipt_required: true,
+        marked_by: null,
+        marked_by_email: null,
+        marked_by_name: null,
+        marked_at: null,
+        marked_method: null,
+        rule_applied_id: null,
+      })
+      .eq('id', receipt.transaction_id)
     return { error: 'Receipt was removed, but failed to verify remaining receipt files.' }
   }
+
+  // Determine the actual resulting status based on remaining files
+  const newStatus = remaining?.length ? 'completed' : 'pending'
 
   if (!remaining?.length) {
     const { data: updatedTransaction, error: transactionUpdateError } = await supabase
@@ -1911,6 +1911,23 @@ export async function deleteReceiptFile(fileId: string) {
     if (!updatedTransaction) {
       return { error: 'Receipt was removed, but transaction no longer exists.' }
     }
+  }
+
+  const now = new Date().toISOString()
+
+  const { error: deleteLogError } = await supabase.from('receipt_transaction_logs').insert({
+    transaction_id: receipt.transaction_id,
+    previous_status: transaction?.status ?? null,
+    new_status: newStatus,
+    action_type: 'receipt_deleted',
+    note: 'Receipt removed by user',
+    performed_by: user_id,
+    rule_id: null,
+    performed_at: now,
+  })
+
+  if (deleteLogError) {
+    console.error('Failed to record receipt deletion transaction log:', deleteLogError)
   }
 
   await logAuditEvent({
