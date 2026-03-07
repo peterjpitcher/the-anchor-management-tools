@@ -46,7 +46,7 @@ const CreateTableBookingSchema = z.object({
 })
 
 type TableBookingResponseData = {
-  state: 'confirmed' | 'pending_card_capture' | 'pending_payment' | 'blocked'
+  state: 'confirmed' | 'pending_payment' | 'blocked'
   table_booking_id: string | null
   booking_reference: string | null
   reason: string | null
