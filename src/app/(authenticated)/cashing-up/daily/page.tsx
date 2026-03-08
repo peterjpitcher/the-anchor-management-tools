@@ -59,7 +59,6 @@ export default async function DailyCashupPage(props: { searchParams: Promise<{ d
   if (sessionDate && siteId) {
     try {
       initialSessionData = await CashingUpService.getSessionByDateAndSite(supabase, siteId, sessionDate);
-      console.log('Server Page: Fetched session data:', initialSessionData ? { id: initialSessionData.id, status: initialSessionData.status } : 'None');
     } catch (error: any) {
       console.error('Error fetching session data:', error);
       // Continue without session data, will show empty form
@@ -70,7 +69,7 @@ export default async function DailyCashupPage(props: { searchParams: Promise<{ d
     <PageLayout title="Cashing Up" navItems={navItems}>
       <DailyCashupForm
         site={siteDetails}
-        sessionDate={sessionDate || new Date().toISOString().split('T')[0]} // Default to today if not provided
+        sessionDate={sessionDate || (() => { const t = new Date(); return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}-${String(t.getDate()).padStart(2, '0')}`; })()} // Local date to avoid UTC toISOString() shift
         initialSessionData={initialSessionData}
         isBill={isBill}
       />

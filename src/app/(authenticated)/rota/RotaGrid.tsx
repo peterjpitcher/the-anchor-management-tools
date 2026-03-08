@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useTransition, useCallback, useMemo } from 'react';
+import { useState, useTransition, useCallback, useMemo, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   DndContext,
@@ -33,6 +33,7 @@ import type { RotaDayInfo } from '@/app/actions/rota-day-info';
 import ShiftDetailModal from './ShiftDetailModal';
 import CreateShiftModal from './CreateShiftModal';
 import BookHolidayModal from './BookHolidayModal';
+import HolidayDetailModal from './HolidayDetailModal';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -59,6 +60,14 @@ type ActiveItem = { type: 'shift'; shift: RotaShift };
 // Helpers
 // ---------------------------------------------------------------------------
 
+function shiftIsUnpublished(shift: RotaShift, week: RotaWeek): boolean {
+  if (week.status === 'draft') return true;         // never published
+  if (!week.published_at) return false;             // published but no timestamp — treat all as published
+  // A shift is unpublished if it was created OR modified after the last publish.
+  // updated_at changes on every write (move, edit, status change) via DB trigger.
+  return shift.created_at > week.published_at || shift.updated_at > week.published_at;
+}
+
 function paidHours(start: string, end: string, breakMins: number, overnight: boolean): number {
   const [sh, sm] = start.split(':').map(Number);
   const [eh, em] = end.split(':').map(Number);
@@ -78,8 +87,21 @@ function formatDayHeader(iso: string): string {
   return d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric' });
 }
 
+function getLocalIsoDate(): string {
+  const t = new Date();
+  return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}-${String(t.getDate()).padStart(2, '0')}`;
+}
+
 function isToday(iso: string): boolean {
-  return iso === new Date().toISOString().split('T')[0];
+  return iso === getLocalIsoDate();
+}
+
+function formatWeekRange(days: string[]): string {
+  const s = new Date(days[0] + 'T00:00:00Z');
+  const e = new Date(days[6] + 'T00:00:00Z');
+  const startStr = s.toLocaleDateString('en-GB', { day: 'numeric', month: 'long' });
+  const endStr = e.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
+  return `${startStr} – ${endStr}`;
 }
 
 function addWeeks(weekStart: string, n: number): string {
@@ -103,8 +125,6 @@ function deptWeekHours(dept: string, shifts: RotaShift[]): number {
 // ---------------------------------------------------------------------------
 // Draggable shift block
 // ---------------------------------------------------------------------------
-
-const HATCH = 'repeating-linear-gradient(-45deg,transparent,transparent 3px,rgba(0,0,0,0.07) 3px,rgba(0,0,0,0.07) 4px)';
 
 function DraggableShiftBlock({
   shift,
@@ -132,16 +152,17 @@ function DraggableShiftBlock({
   return (
     <div
       ref={setNodeRef}
-      style={{
-        transform: CSS.Translate.toString(transform),
-        opacity: isDragging ? 0.3 : 1,
-        backgroundImage: isDraft ? HATCH : undefined,
-      }}
-      className={`rounded border ${colourClass} px-1.5 py-1 text-xs cursor-grab active:cursor-grabbing select-none hover:shadow-sm transition-shadow`}
+      style={{ transform: CSS.Translate.toString(transform), opacity: isDragging ? 0.3 : 1 }}
+      className={`rounded ${isDraft ? 'border-2 border-dashed' : 'border'} ${colourClass} px-1.5 py-1 text-xs cursor-grab active:cursor-grabbing select-none hover:shadow-sm transition-shadow`}
       {...attributes}
       {...listeners}
       onClick={onClick}
     >
+      {isDraft && (
+        <p className="text-[9px] font-bold uppercase tracking-wider text-amber-700 leading-none mb-0.5">
+          Unpublished
+        </p>
+      )}
       {shift.name && (
         <p className="font-semibold text-gray-900 leading-tight truncate">{shift.name}</p>
       )}
@@ -154,11 +175,14 @@ function DraggableShiftBlock({
 }
 
 // Shift block displayed in DragOverlay (no interaction)
-function ShiftBlockOverlay({ shift }: { shift: RotaShift }) {
+function ShiftBlockOverlay({ shift, isDraft }: { shift: RotaShift; isDraft: boolean }) {
   const ph = paidHours(shift.start_time, shift.end_time, shift.unpaid_break_minutes, shift.is_overnight);
   const deptColour = shift.department === 'bar' ? 'bg-blue-100 border-blue-300' : 'bg-orange-100 border-orange-300';
   return (
-    <div className={`rounded border ${deptColour} px-1.5 py-1 text-xs shadow-lg opacity-90 w-28`}>
+    <div className={`rounded ${isDraft ? 'border-2 border-dashed' : 'border'} ${deptColour} px-1.5 py-1 text-xs shadow-lg opacity-90 w-28`}>
+      {isDraft && (
+        <p className="text-[9px] font-bold uppercase tracking-wider text-amber-700 leading-none mb-0.5">Unpublished</p>
+      )}
       {shift.name && <p className="font-semibold text-gray-900 truncate">{shift.name}</p>}
       <p className="font-medium text-gray-800 truncate">
         {formatTime12Hour(shift.start_time)}–{formatTime12Hour(shift.end_time)}{' '}
@@ -185,6 +209,7 @@ function DroppableCell({
   disabled,
   onAdd,
   onBookHoliday,
+  onLeaveClick,
 }: {
   employeeId: string;
   date: string;
@@ -193,6 +218,7 @@ function DroppableCell({
   disabled: boolean;
   onAdd?: () => void;
   onBookHoliday?: () => void;
+  onLeaveClick?: () => void;
 }) {
   const { setNodeRef, isOver } = useDroppable({
     id: `cell:${employeeId}:${date}`,
@@ -208,9 +234,20 @@ function DroppableCell({
     <div ref={setNodeRef} className={`${baseClass} ${overClass || (leaveStyle?.bg ?? '')}`}>
       {leaveStyle && (
         <div className="mb-0.5">
-          <span className={`inline-block w-full text-center text-xs font-semibold rounded px-1 py-0.5 leading-tight tracking-wide ${leaveStyle.pill}`}>
-            {leaveStyle.label}
-          </span>
+          {onLeaveClick ? (
+            <button
+              type="button"
+              onClick={e => { e.stopPropagation(); onLeaveClick(); }}
+              className={`w-full text-center text-xs font-semibold rounded px-1 py-0.5 leading-tight tracking-wide ${leaveStyle.pill} hover:opacity-75 transition-opacity`}
+              title="View holiday details"
+            >
+              {leaveStyle.label}
+            </button>
+          ) : (
+            <span className={`inline-block w-full text-center text-xs font-semibold rounded px-1 py-0.5 leading-tight tracking-wide ${leaveStyle.pill}`}>
+              {leaveStyle.label}
+            </span>
+          )}
         </div>
       )}
       <div className="space-y-0.5 relative z-10">{children}</div>
@@ -301,18 +338,41 @@ export default function RotaGrid({
   const [holidayTarget, setHolidayTarget] = useState<{ employeeId: string; date: string } | null>(null);
   const [publishPending, startPublishTransition] = useTransition();
   const [dndPending, startDndTransition] = useTransition();
+  const [navPending, startNavTransition] = useTransition();
+  const [holidayDetailTarget, setHolidayDetailTarget] = useState<{ requestId: string; employeeName: string } | null>(null);
+
+  const navigateToWeek = useCallback((week: string) => {
+    startNavTransition(() => { router.push(`/rota?week=${week}`); });
+  }, [router]);
+
+  // Prefetch adjacent weeks so arrow navigation feels instant
+  useEffect(() => {
+    router.prefetch(`/rota?week=${addWeeks(weekStart, -1)}`);
+    router.prefetch(`/rota?week=${addWeeks(weekStart, 1)}`);
+  }, [weekStart, router]);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
   );
 
-  // Build lookup map: "employeeId:date" → leave status (approved or pending only)
+  // Build lookup maps keyed by "employeeId:date"
   const leaveMap = useMemo(
     () =>
       new Map<string, 'approved' | 'pending'>(
         activeLeaveDays
           .filter(l => l.status !== 'declined')
           .map(l => [`${l.employee_id}:${l.leave_date}`, l.status as 'approved' | 'pending']),
+      ),
+    [activeLeaveDays],
+  );
+
+  // Full leave day object lookup (for opening the detail modal)
+  const leaveDayMap = useMemo(
+    () =>
+      new Map<string, LeaveDayWithRequest>(
+        activeLeaveDays
+          .filter(l => l.status !== 'declined')
+          .map(l => [`${l.employee_id}:${l.leave_date}`, l]),
       ),
     [activeLeaveDays],
   );
@@ -326,6 +386,23 @@ export default function RotaGrid({
     () => budgets.filter(b => b.budget_year === currentYear),
     [budgets, currentYear],
   );
+
+  // Derive publish banner state from per-shift computed states so borders and
+  // buttons are always in sync, even before the next router.refresh().
+  const activeShifts = useMemo(() => shifts.filter(s => s.status !== 'cancelled'), [shifts]);
+  const unpublishedShifts = useMemo(
+    () => activeShifts.filter(s => shiftIsUnpublished(s, week)),
+    [activeShifts, week],
+  );
+  const hasAnyUnpublished = unpublishedShifts.length > 0;
+  const hasAnyPublished = unpublishedShifts.length < activeShifts.length && activeShifts.length > 0;
+  // showPublishedBanner: week was published and no shifts need re-publishing (or empty published week)
+  const showPublishedBanner = week.status === 'published' && !hasAnyUnpublished;
+  // showAllDraftBanner: nothing is published — covers new draft weeks, empty draft weeks, and the edge
+  // case where a published week has had ALL its shifts modified since last publish
+  const showAllDraftBanner = !showPublishedBanner && !hasAnyPublished;
+  // showMixedBanner: some shifts are published, some are draft — partial re-publish needed
+  const showMixedBanner = hasAnyUnpublished && hasAnyPublished;
 
   // DnD handlers
   const handleDragStart = useCallback((event: DragStartEvent) => {
@@ -420,60 +497,80 @@ export default function RotaGrid({
 
   return (
     <div className="space-y-4">
-      {/* Publish banner */}
-      {week.status === 'draft' && canPublish && (
+      {/* Publish banner — state derived from per-shift border computation so borders and button stay in sync */}
+      {showPublishedBanner && (
+        <div className="flex items-center gap-2 rounded-lg bg-green-50 border border-green-100 px-4 py-2">
+          <CheckCircleIcon className="h-4 w-4 text-green-600 shrink-0" />
+          <span className="text-sm text-green-700">Published — staff can see this rota.</span>
+        </div>
+      )}
+      {showAllDraftBanner && canPublish && (
         <div className="flex items-center justify-between rounded-lg bg-amber-50 border border-amber-200 px-4 py-3">
           <div className="flex items-center gap-2 text-sm text-amber-800">
             <ExclamationTriangleIcon className="h-4 w-4 shrink-0" />
             <span>This rota is a <strong>draft</strong> — staff cannot see it until published.</span>
           </div>
           <Button type="button" size="sm" onClick={handlePublish} disabled={publishPending}>
-            {publishPending ? 'Publishing…' : 'Publish rota'}
+            {publishPending ? 'Publishing…' : 'Publish'}
           </Button>
         </div>
       )}
-      {week.status === 'published' && week.has_unpublished_changes && canPublish && (
+      {showMixedBanner && canPublish && (
         <div className="flex items-center justify-between rounded-lg bg-orange-50 border border-orange-200 px-4 py-3">
           <div className="flex items-center gap-2 text-sm text-orange-800">
             <ExclamationTriangleIcon className="h-4 w-4 shrink-0" />
-            <span>Unsaved changes since last publish.</span>
+            <span>There are unpublished changes — some shifts are not visible to staff.</span>
           </div>
           <Button type="button" size="sm" onClick={handlePublish} disabled={publishPending}>
-            {publishPending ? 'Publishing…' : 'Re-publish'}
+            {publishPending ? 'Publishing…' : 'Publish Changes'}
           </Button>
-        </div>
-      )}
-      {week.status === 'published' && !week.has_unpublished_changes && (
-        <div className="flex items-center gap-2 rounded-lg bg-green-50 border border-green-100 px-4 py-2">
-          <CheckCircleIcon className="h-4 w-4 text-green-600 shrink-0" />
-          <span className="text-sm text-green-700">Published — staff can see this rota.</span>
         </div>
       )}
 
       {/* Week navigation + budget bars */}
       <div className="flex flex-wrap items-center justify-between gap-4">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          {/* Arrow navigation */}
           <button
             type="button"
-            onClick={() => router.push(`/rota?week=${addWeeks(weekStart, -1)}`)}
-            className="p-1.5 rounded-md text-gray-500 hover:text-gray-700 hover:bg-gray-100"
+            onClick={() => navigateToWeek(addWeeks(weekStart, -1))}
+            className="p-1.5 rounded-md text-gray-500 hover:text-gray-700 hover:bg-gray-100 disabled:opacity-40"
+            disabled={navPending}
           >
             <ChevronLeftIcon className="h-4 w-4" />
           </button>
           <button
             type="button"
-            onClick={() => router.push(`/rota?week=${new Date().toISOString().split('T')[0]}`)}
-            className="text-xs px-2 py-1 rounded-md text-gray-600 hover:bg-gray-100"
+            onClick={() => navigateToWeek(getLocalIsoDate())}
+            className="text-xs px-2 py-1 rounded-md text-gray-600 hover:bg-gray-100 disabled:opacity-40"
+            disabled={navPending}
           >
             Today
           </button>
           <button
             type="button"
-            onClick={() => router.push(`/rota?week=${addWeeks(weekStart, 1)}`)}
-            className="p-1.5 rounded-md text-gray-500 hover:text-gray-700 hover:bg-gray-100"
+            onClick={() => navigateToWeek(addWeeks(weekStart, 1))}
+            className="p-1.5 rounded-md text-gray-500 hover:text-gray-700 hover:bg-gray-100 disabled:opacity-40"
+            disabled={navPending}
           >
             <ChevronRightIcon className="h-4 w-4" />
           </button>
+
+          {/* Week picker */}
+          <input
+            type="date"
+            value={weekStart}
+            onChange={e => { if (e.target.value) navigateToWeek(e.target.value); }}
+            className="text-xs border border-gray-200 rounded-md px-2 py-1.5 text-gray-600 h-8 focus:outline-none focus:ring-1 focus:ring-gray-300 cursor-pointer"
+          />
+
+          <div className="w-px h-6 bg-gray-200 mx-1" />
+
+          {/* Week range label */}
+          <span className="text-base font-bold text-gray-900 whitespace-nowrap">
+            {navPending ? '…' : formatWeekRange(days)}
+          </span>
+
           {canEdit && hasScheduledTemplates && (
             <Button
               type="button"
@@ -600,7 +697,7 @@ export default function RotaGrid({
                             key={s.id}
                             shift={s}
                             disabled={!canEdit || isPending}
-                            isDraft={week.status === 'draft'}
+                            isDraft={shiftIsUnpublished(s, week)}
                             onClick={() => setSelectedShift(s)}
                           />
                         ))}
@@ -655,13 +752,17 @@ export default function RotaGrid({
                               disabled={!canEdit || isPending}
                               onAdd={canEdit && !isPending ? () => setCreateTarget({ employeeId: emp.employee_id, date: d }) : undefined}
                               onBookHoliday={canEdit && !isPending ? () => setHolidayTarget({ employeeId: emp.employee_id, date: d }) : undefined}
+                              onLeaveClick={(() => {
+                                const ld = leaveDayMap.get(`${emp.employee_id}:${d}`);
+                                return ld ? () => setHolidayDetailTarget({ requestId: ld.request_id, employeeName: empDisplayName(emp) }) : undefined;
+                              })()}
                             >
                               {cellShifts.map(s => (
                                 <DraggableShiftBlock
                                   key={s.id}
                                   shift={s}
                                   disabled={!canEdit || isPending}
-                                  isDraft={week.status === 'draft'}
+                                  isDraft={shiftIsUnpublished(s, week)}
                                   onClick={() => setSelectedShift(s)}
                                 />
                               ))}
@@ -680,7 +781,7 @@ export default function RotaGrid({
         {/* Drag overlay */}
         <DragOverlay dropAnimation={null}>
           {activeItem?.type === 'shift' && (
-            <ShiftBlockOverlay shift={activeItem.shift} />
+            <ShiftBlockOverlay shift={activeItem.shift} isDraft={shiftIsUnpublished(activeItem.shift, week)} />
           )}
         </DragOverlay>
       </DndContext>
@@ -692,6 +793,7 @@ export default function RotaGrid({
         <span className="flex items-center gap-1"><span className="inline-block w-3 h-3 rounded-sm bg-red-100 border border-red-300" /> Sick</span>
         <span className="flex items-center gap-1"><span className="inline-block w-3 h-3 rounded-sm bg-green-100 border border-green-300" /> Holiday (approved)</span>
         <span className="flex items-center gap-1"><span className="inline-block w-3 h-3 rounded-sm bg-amber-100 border border-amber-300" /> Holiday (pending)</span>
+        <span className="flex items-center gap-1"><span className="inline-block w-3 h-3 rounded-sm bg-blue-50 border-2 border-dashed border-blue-300" /> Unpublished shift</span>
         {canEdit && <span className="text-gray-400">Drag shifts to move them · Hover a cell to add a shift (+) or book holiday (calendar icon)</span>}
       </div>
 
@@ -747,6 +849,22 @@ export default function RotaGrid({
           onBooked={(days) => {
             setActiveLeaveDays(prev => [...prev, ...days]);
             setHolidayTarget(null);
+          }}
+        />
+      )}
+
+      {/* Holiday detail modal */}
+      {holidayDetailTarget && (
+        <HolidayDetailModal
+          requestId={holidayDetailTarget.requestId}
+          employeeName={holidayDetailTarget.employeeName}
+          canEdit={canEdit}
+          onClose={() => setHolidayDetailTarget(null)}
+          onDeleted={(requestId) => {
+            setActiveLeaveDays(prev => prev.filter(l => l.request_id !== requestId));
+          }}
+          onUpdated={() => {
+            router.refresh();
           }}
         />
       )}

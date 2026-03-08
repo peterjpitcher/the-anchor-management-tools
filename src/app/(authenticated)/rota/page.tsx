@@ -119,7 +119,6 @@ export default async function RotaPage({ searchParams }: RotaPageProps) {
   return (
     <PageLayout
       title="Weekly Rota"
-      subtitle={formatWeekRange(days[0], days[6])}
       navItems={rotaNavItems}
       headerActions={
         <div className="flex items-center gap-2">

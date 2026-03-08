@@ -1,8 +1,13 @@
 import { getWeeklyDataAction } from '@/app/actions/cashing-up';
 import { createClient } from '@/lib/supabase/server';
 import { PageLayout } from '@/components/ui-v2/layout/PageLayout';
+import { checkUserPermission } from '@/app/actions/rbac';
+import { redirect } from 'next/navigation';
 
 export default async function WeeklyCashupPage({ searchParams }: { searchParams: Promise<{ siteId?: string; week?: string }> }) {
+  const canView = await checkUserPermission('cashing_up', 'view');
+  if (!canView) redirect('/unauthorized');
+
   const { week: paramWeek } = await searchParams;
   const supabase = await createClient();
   const { data: site } = await supabase.from('sites').select('id, name').limit(1).single();
@@ -16,7 +21,8 @@ export default async function WeeklyCashupPage({ searchParams }: { searchParams:
   const dayOfWeek = d.getDay();
   const diffToMon = d.getDate() - dayOfWeek + (dayOfWeek === 0 ? -6 : 1); // adjust when day is sunday
   const monday = new Date(d.setDate(diffToMon));
-  const defaultWeek = monday.toISOString().split('T')[0];
+  // Use local date parts to avoid UTC toISOString() shift in BST
+  const defaultWeek = `${monday.getFullYear()}-${String(monday.getMonth() + 1).padStart(2, '0')}-${String(monday.getDate()).padStart(2, '0')}`;
   
   const weekStart = paramWeek || defaultWeek;
   

@@ -70,11 +70,23 @@ export async function importCashupHistoryAction(rows: ImportRow[]): Promise<Impo
       }
 
       // 2. Validate Date
-      const dateObj = new Date(row.date);
-      if (isNaN(dateObj.getTime())) {
-        throw new Error(`Invalid date: "${row.date}"`);
-      }
-      const isoDate = dateObj.toISOString().split('T')[0]; // YYYY-MM-DD
+      // Avoid new Date('YYYY-MM-DD') which parses as UTC midnight and shifts the day
+      // backwards by one in timezones behind UTC (e.g. Europe/London in winter).
+      const isoDate = (() => {
+        if (/^\d{4}-\d{2}-\d{2}$/.test(row.date)) {
+          // Already YYYY-MM-DD — validate by parsing with noon local time to avoid UTC boundary
+          const d = new Date(row.date + 'T12:00:00');
+          if (isNaN(d.getTime())) throw new Error(`Invalid date: "${row.date}"`);
+          return row.date;
+        }
+        // Other formats: parse and reformat using local date parts
+        const d = new Date(row.date);
+        if (isNaN(d.getTime())) throw new Error(`Invalid date: "${row.date}"`);
+        const year = d.getFullYear();
+        const month = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+      })();
 
       // 3. Prepare DTO
       // Process Cash Counts if available
