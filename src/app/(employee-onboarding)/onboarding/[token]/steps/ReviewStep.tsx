@@ -71,7 +71,7 @@ export default function ReviewStep({ token, savedSections }: ReviewStepProps) {
 
       {!allComplete && (
         <p className="text-sm text-yellow-700 bg-yellow-50 rounded-md px-4 py-3">
-          Please complete all sections before submitting. Personal details and emergency contacts are required.
+          Please complete all sections before submitting. Personal details (first and last name) must be completed before submitting.
         </p>
       )}
 

@@ -1,6 +1,6 @@
 import { sendEmail } from './emailService';
 
-const MANAGER_EMAIL = 'manager@the-anchor.pub';
+const MANAGER_EMAIL = process.env.MANAGER_EMAIL || 'manager@the-anchor.pub';
 
 export function buildWelcomeEmail(email: string, onboardingUrl: string) {
   const subject = 'Welcome to The Anchor -- Complete Your Profile';

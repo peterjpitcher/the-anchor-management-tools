@@ -40,8 +40,8 @@ const EMPLOYEE_ATTACHMENT_ALLOWED_MIME_TYPES = [
   'text/plain',
 ] as const;
 
-const EMPLOYEE_DOCUMENT_EMAIL_COMPANY = 'Orange Jelly Limited';
-const EMPLOYEE_DOCUMENT_EMAIL_SENDER = 'Peter Pitcher';
+const EMPLOYEE_DOCUMENT_EMAIL_COMPANY = process.env.COMPANY_LEGAL_NAME || 'Orange Jelly Limited';
+const EMPLOYEE_DOCUMENT_EMAIL_SENDER = process.env.DOCUMENT_EMAIL_SENDER || 'Peter Pitcher';
 
 function buildEmployeeDocumentEmail(params: {
   employeeName: string;
