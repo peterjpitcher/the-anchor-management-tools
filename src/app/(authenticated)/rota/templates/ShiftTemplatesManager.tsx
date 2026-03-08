@@ -368,7 +368,13 @@ export default function ShiftTemplatesManager({ canEdit, initialTemplates, emplo
       ) : (
         <div className="space-y-6">
           {departments.map(dept => {
-            const deptTemplates = activeTemplates.filter(t => t.department === dept.name);
+            const deptTemplates = activeTemplates
+              .filter(t => t.department === dept.name)
+              .sort((a, b) => {
+                const aDow = a.day_of_week ?? 7;
+                const bDow = b.day_of_week ?? 7;
+                return aDow - bDow;
+              });
             if (deptTemplates.length === 0) return null;
             return (
               <div key={dept.name}>
@@ -382,7 +388,9 @@ export default function ShiftTemplatesManager({ canEdit, initialTemplates, emplo
           {/* Templates for departments not in the departments list */}
           {(() => {
             const knownDepts = new Set(departments.map(d => d.name));
-            const other = activeTemplates.filter(t => !knownDepts.has(t.department));
+            const other = activeTemplates
+              .filter(t => !knownDepts.has(t.department))
+              .sort((a, b) => (a.day_of_week ?? 7) - (b.day_of_week ?? 7));
             if (other.length === 0) return null;
             return (
               <div>
