@@ -28,6 +28,28 @@ import {
 	} from '@/services/employees';
 
 const EMPLOYEE_ATTACHMENTS_BUCKET_NAME = 'employee-attachments';
+
+// Sensitive fields stored in separate tables (employee_financial_details,
+// employee_health_records). Stripped here as defence-in-depth — they should
+// never appear on an employees.* row, but guard against future schema drift.
+const SENSITIVE_EMPLOYEE_FIELDS = new Set([
+  'ni_number', 'bank_account_number', 'bank_sort_code', 'bank_name', 'payee_name', 'branch_address',
+  'doctor_name', 'doctor_address', 'allergies', 'absence_or_treatment_details',
+  'illness_history', 'recent_treatment', 'has_diabetes', 'has_epilepsy',
+  'has_skin_condition', 'has_depressive_illness', 'has_bowel_problems',
+  'has_ear_problems', 'is_registered_disabled', 'disability_reg_number',
+  'disability_reg_expiry_date', 'disability_details',
+]);
+
+function sanitiseEmployeeForAudit(employee: Record<string, unknown>): Record<string, unknown> {
+  const sanitised: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(employee)) {
+    if (!SENSITIVE_EMPLOYEE_FIELDS.has(key)) {
+      sanitised[key] = value;
+    }
+  }
+  return sanitised;
+}
 const RIGHT_TO_WORK_ALLOWED_MIME_TYPES = ['application/pdf', 'image/jpeg', 'image/png'] as const;
 const EMPLOYEE_ATTACHMENT_ALLOWED_MIME_TYPES = [
   'application/pdf',
@@ -312,7 +334,7 @@ export async function addEmployee(prevState: ActionFormState, formData: FormData
           resource_type: 'employee',
           resource_id: newEmployee.employee_id,
           operation_status: 'success',
-          new_values: newEmployee,
+          new_values: sanitiseEmployeeForAudit(newEmployee as Record<string, unknown>),
           additional_info: {
               employee_name: `${newEmployee.first_name} ${newEmployee.last_name}`,
               job_title: newEmployee.job_title,
@@ -378,8 +400,8 @@ export async function updateEmployee(prevState: ActionFormState, formData: FormD
           resource_type: 'employee',
           resource_id: employeeId,
           operation_status: 'success',
-          old_values: oldEmployee,
-          new_values: updatedEmployee,
+          old_values: sanitiseEmployeeForAudit(oldEmployee as Record<string, unknown>),
+          new_values: sanitiseEmployeeForAudit(updatedEmployee as Record<string, unknown>),
           additional_info: {
               fields_changed: changedFields
           }
