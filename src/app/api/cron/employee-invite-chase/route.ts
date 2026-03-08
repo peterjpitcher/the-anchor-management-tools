@@ -43,30 +43,40 @@ export async function GET(request: NextRequest) {
     for (const row of tokens ?? []) {
       const createdAt = row.created_at;
 
-      // Day 3 chase
+      // Day 3 chase — checked independently so day6 can also fire on the same run
       if (!row.day3_chase_sent_at && createdAt <= day3Threshold) {
         try {
           await sendChaseEmail(row.email, buildOnboardingUrl(row.token), 3);
-          await supabase
+          const { error: updateDay3Error } = await supabase
             .from('employee_invite_tokens')
             .update({ day3_chase_sent_at: nowIso })
             .eq('id', row.id);
-          result.day3ChasesSent++;
+          if (updateDay3Error) {
+            console.error('[employee-invite-chase] Failed to record day3 timestamp for token:', row.id, updateDay3Error);
+            result.errors.push(`Day 3 timestamp update failed for ${row.email}: ${updateDay3Error.message}`);
+          } else {
+            result.day3ChasesSent++;
+          }
         } catch (emailError: any) {
           result.errors.push(`Day 3 chase failed for ${row.email}: ${emailError.message}`);
         }
-        continue; // Don't also send day 6 in the same run
+        // No continue — fall through so day6 is also checked this run
       }
 
-      // Day 6 chase
+      // Day 6 chase — checked independently of day3
       if (!row.day6_chase_sent_at && createdAt <= day6Threshold) {
         try {
           await sendChaseEmail(row.email, buildOnboardingUrl(row.token), 6);
-          await supabase
+          const { error: updateDay6Error } = await supabase
             .from('employee_invite_tokens')
             .update({ day6_chase_sent_at: nowIso })
             .eq('id', row.id);
-          result.day6ChasesSent++;
+          if (updateDay6Error) {
+            console.error('[employee-invite-chase] Failed to record day6 timestamp for token:', row.id, updateDay6Error);
+            result.errors.push(`Day 6 timestamp update failed for ${row.email}: ${updateDay6Error.message}`);
+          } else {
+            result.day6ChasesSent++;
+          }
         } catch (emailError: any) {
           result.errors.push(`Day 6 chase failed for ${row.email}: ${emailError.message}`);
         }

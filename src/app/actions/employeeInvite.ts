@@ -49,7 +49,8 @@ export async function inviteEmployee(prevState: any, formData: FormData) {
 
     if (error) {
       console.error('[inviteEmployee] RPC error:', error);
-      if (error.message?.includes('already exists')) {
+      // DEF-013: also catch Postgres unique violation code 23505
+      if (error.message?.toLowerCase().includes('already exists') || error.code === '23505') {
         return { type: 'error', message: 'An employee with this email address already exists.' };
       }
       return { type: 'error', message: 'Failed to create invite. Please try again.' };
@@ -60,11 +61,16 @@ export async function inviteEmployee(prevState: any, formData: FormData) {
       return { type: 'error', message: 'Invite created but token was not returned.' };
     }
 
-    // Set invited_at timestamp
-    await adminClient
+    // DEF-007: Set invited_at timestamp — check for error and fail fast on failure
+    const { error: invitedAtError } = await adminClient
       .from('employees')
       .update({ invited_at: new Date().toISOString() })
       .eq('employee_id', result.employee_id);
+
+    if (invitedAtError) {
+      console.error('[inviteEmployee] Failed to set invited_at:', invitedAtError);
+      return { type: 'error', message: 'Failed to record invite timestamp. Please try again.' };
+    }
 
     // Send welcome email (best-effort)
     try {
@@ -131,10 +137,16 @@ export async function sendPortalInvite(employeeId: string) {
     return { type: 'error', message: 'Failed to create invite token.' };
   }
 
+  // DEF-009: If email fails, clean up the orphaned token before returning error
   try {
     await sendPortalInviteEmail(employee.email_address, buildOnboardingUrl(tokenData.token));
   } catch (emailError) {
     console.error('[sendPortalInvite] Failed to send email:', emailError);
+    // Clean up orphaned token
+    await adminClient
+      .from('employee_invite_tokens')
+      .delete()
+      .eq('token', tokenData.token);
     return { type: 'error', message: 'Token created but email could not be sent.' };
   }
 
@@ -178,7 +190,14 @@ export async function resendInvite(employeeId: string) {
     return { type: 'error', message: 'Can only resend invites for Onboarding employees.' };
   }
 
-  // Create a new token (old one remains valid)
+  // DEF-014: Expire all existing pending tokens before creating a new one
+  await adminClient
+    .from('employee_invite_tokens')
+    .update({ expires_at: new Date().toISOString() })
+    .eq('employee_id', employeeId)
+    .is('completed_at', null);
+
+  // Create a new token
   const { data: tokenData, error: tokenError } = await adminClient
     .from('employee_invite_tokens')
     .insert({ employee_id: employeeId, email: employee.email_address })
@@ -290,18 +309,26 @@ export async function createEmployeeAccount(token: string, password: string): Pr
 
   const authUserId = authData.user?.id;
   if (!authUserId) {
+    // Edge case: auth user was created but no ID returned — attempt cleanup is not possible
+    // without the ID; return error immediately
     return { success: false, error: 'Account created but no user ID returned.' };
   }
 
-  // Link auth_user_id to employee
+  // DEF-002: Link auth_user_id to employee — failure here means the user cannot sign in.
+  // On failure, delete the orphaned auth user and surface the error.
   const { error: linkError } = await adminClient
     .from('employees')
     .update({ auth_user_id: authUserId })
     .eq('employee_id', validation.employee_id);
 
   if (linkError) {
-    console.error('[createEmployeeAccount] Failed to link auth user:', linkError);
-    // Don't fail — user can still proceed
+    console.error('[createEmployeeAccount] Failed to link auth user to employee:', linkError);
+    // Attempt to clean up the orphaned auth user
+    const { error: deleteAuthError } = await adminClient.auth.admin.deleteUser(authUserId);
+    if (deleteAuthError) {
+      console.error('[createEmployeeAccount] CRITICAL: Failed to delete orphaned auth user after link failure. Manual cleanup required. auth_user_id:', authUserId, deleteAuthError);
+    }
+    return { success: false, error: 'Failed to link account. Please try again.' };
   }
 
   return { success: true };
@@ -400,6 +427,32 @@ export async function saveOnboardingSection(
     } else if (section === 'emergency_contacts') {
       const parsed = EmergencyContactsSectionSchema.parse(data);
 
+      // DEF-001: Compensation pattern — back up existing contacts before destructive delete
+      const { data: existingContacts } = await adminClient
+        .from('employee_emergency_contacts')
+        .select('*')
+        .eq('employee_id', employeeId);
+
+      // Helper to restore contacts from backup
+      async function restoreContacts(contacts: any[]): Promise<void> {
+        if (!contacts?.length) return;
+        try {
+          await adminClient.from('employee_emergency_contacts').insert(
+            contacts.map((c) => ({
+              employee_id: c.employee_id,
+              name: c.name,
+              relationship: c.relationship,
+              phone_number: c.phone_number,
+              mobile_number: c.mobile_number,
+              address: c.address,
+              priority: c.priority,
+            }))
+          );
+        } catch (restoreErr) {
+          console.error('[saveOnboardingSection] CRITICAL: Failed to restore emergency contacts after failed save:', restoreErr);
+        }
+      }
+
       // Delete existing contacts for this employee
       await adminClient
         .from('employee_emergency_contacts')
@@ -408,7 +461,7 @@ export async function saveOnboardingSection(
 
       // Insert primary contact
       if (parsed.primary.name) {
-        await adminClient.from('employee_emergency_contacts').insert({
+        const { error: primaryError } = await adminClient.from('employee_emergency_contacts').insert({
           employee_id: employeeId,
           name: parsed.primary.name,
           relationship: parsed.primary.relationship ?? null,
@@ -417,11 +470,17 @@ export async function saveOnboardingSection(
           address: parsed.primary.address ?? null,
           priority: 'Primary',
         });
+
+        if (primaryError) {
+          console.error('[saveOnboardingSection] Failed to insert primary emergency contact — attempting restore:', primaryError);
+          await restoreContacts(existingContacts ?? []);
+          return { success: false, error: 'Failed to save primary emergency contact. Previous contacts have been restored. Please try again.' };
+        }
       }
 
       // Insert secondary contact if provided
       if (parsed.secondary?.name) {
-        await adminClient.from('employee_emergency_contacts').insert({
+        const { error: secondaryError } = await adminClient.from('employee_emergency_contacts').insert({
           employee_id: employeeId,
           name: parsed.secondary.name,
           relationship: parsed.secondary.relationship ?? null,
@@ -430,6 +489,18 @@ export async function saveOnboardingSection(
           address: parsed.secondary.address ?? null,
           priority: 'Secondary',
         });
+
+        if (secondaryError) {
+          console.error('[saveOnboardingSection] Failed to insert secondary emergency contact — attempting restore:', secondaryError);
+          // Remove the primary we just inserted, then restore original state
+          await adminClient
+            .from('employee_emergency_contacts')
+            .delete()
+            .eq('employee_id', employeeId)
+            .eq('priority', 'Primary');
+          await restoreContacts(existingContacts ?? []);
+          return { success: false, error: 'Failed to save secondary emergency contact. Previous contacts have been restored. Please try again.' };
+        }
       }
 
     } else if (section === 'financial') {
@@ -509,13 +580,21 @@ export async function submitOnboardingProfile(token: string): Promise<{ success:
     return { success: false, error: 'Failed to complete profile. Please try again.' };
   }
 
-  // Mark token as completed
-  await adminClient
+  // DEF-005: Mark token as completed — failure here is critical: employee is Active but cron will keep chasing
+  const { error: tokenMarkError } = await adminClient
     .from('employee_invite_tokens')
     .update({ completed_at: now })
     .eq('token', token);
 
-  // Update profile full_name if auth user exists
+  if (tokenMarkError) {
+    console.error('[submitOnboardingProfile] CRITICAL: Failed to mark token as completed. Employee is Active but token shows incomplete.', tokenMarkError);
+    return {
+      success: false,
+      error: 'Profile submitted but a system error occurred. Please contact your manager to confirm your account is active.',
+    };
+  }
+
+  // DEF-010: Update profile full_name if auth user exists — non-fatal on failure
   if (validation.hasAuthUser) {
     const { data: empData } = await adminClient
       .from('employees')
@@ -524,13 +603,18 @@ export async function submitOnboardingProfile(token: string): Promise<{ success:
       .maybeSingle();
 
     if (empData?.auth_user_id) {
-      await adminClient
+      const { error: profileUpdateError } = await adminClient
         .from('profiles')
         .update({
           full_name: `${empData.first_name} ${empData.last_name}`,
           updated_at: now,
         })
         .eq('id', empData.auth_user_id);
+
+      if (profileUpdateError) {
+        console.error('[submitOnboardingProfile] Failed to update profile name:', profileUpdateError);
+        // Non-fatal — employee is Active, log and continue
+      }
     }
   }
 
@@ -614,12 +698,20 @@ export async function revokeEmployeeAccess(employeeId: string): Promise<{ succes
 
   const adminClient = createAdminClient();
 
-  // Get auth_user_id before updating status
+  // DEF-006: Fetch status along with auth_user_id and email for guard checks
   const { data: employee } = await adminClient
     .from('employees')
-    .select('auth_user_id, email_address')
+    .select('auth_user_id, email_address, status')
     .eq('employee_id', employeeId)
     .maybeSingle();
+
+  // DEF-006: Guard against invalid status transitions
+  if (employee?.status === 'Former') {
+    return { success: false, error: 'Employee is already a former employee.' };
+  }
+  if (employee?.status === 'Onboarding') {
+    return { success: false, error: 'Cannot revoke access for an employee who has not yet been activated. Use delete instead.' };
+  }
 
   const now = new Date().toISOString();
   const today = new Date().toISOString().split('T')[0];
@@ -645,7 +737,8 @@ export async function revokeEmployeeAccess(employeeId: string): Promise<{ succes
     .update({ employee_id: null })
     .eq('employee_id', employeeId);
 
-  // Delete all user_roles if auth user exists
+  // DEF-004: Delete all user_roles if auth user exists — this is a hard failure.
+  // A former employee with active roles is a security issue.
   if (employee?.auth_user_id) {
     const { error: rolesError } = await adminClient
       .from('user_roles')
@@ -653,9 +746,31 @@ export async function revokeEmployeeAccess(employeeId: string): Promise<{ succes
       .eq('user_id', employee.auth_user_id);
 
     if (rolesError) {
-      console.error('[revokeEmployeeAccess] Error deleting user roles:', rolesError);
-      // Don't fail the entire operation
+      console.error('[revokeEmployeeAccess] CRITICAL: Failed to delete user roles:', rolesError);
+      return { success: false, error: 'Failed to remove system access. Please try again or contact an administrator.' };
     }
+  }
+
+  // DEF-011: Expire all pending invite tokens
+  await adminClient
+    .from('employee_invite_tokens')
+    .update({ expires_at: now })
+    .eq('employee_id', employeeId)
+    .is('completed_at', null);
+
+  // DEF-011: Delete the auth user to prevent sign-in
+  if (employee?.auth_user_id) {
+    const { error: authDeleteError } = await adminClient.auth.admin.deleteUser(employee.auth_user_id);
+    if (authDeleteError) {
+      console.error('[revokeEmployeeAccess] Failed to delete auth user:', authDeleteError);
+      // Non-fatal if roles are already deleted — log for manual follow-up
+    }
+
+    // DEF-011: Clear auth_user_id on the employee record
+    await adminClient
+      .from('employees')
+      .update({ auth_user_id: null })
+      .eq('employee_id', employeeId);
   }
 
   try {

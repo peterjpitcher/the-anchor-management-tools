@@ -7,7 +7,6 @@ import { getUpcomingBirthday, calculateAge } from '@/lib/employeeUtils';
 import { format } from 'date-fns';
 import { checkUserPermission } from './rbac';
 import { logAuditEvent } from './audit';
-import { syncBirthdayCalendarEvent, deleteBirthdayCalendarEvent } from '@/lib/google-calendar-birthdays';
 import {
   claimIdempotencyKey,
   computeIdempotencyRequestHash,
@@ -106,7 +105,7 @@ async function sendBirthdayRemindersInternal(daysAhead: number = 7) {
     const emailBody = generateBirthdayReminderEmail(upcomingBirthdays);
     
     // Send email to manager
-    const managerEmail = 'manager@the-anchor.pub';
+    const managerEmail = process.env.MANAGER_EMAIL || 'manager@the-anchor.pub';
     const result = await sendEmail({
       to: managerEmail,
       subject: `Birthday Reminder: ${upcomingBirthdays.length} upcoming birthday${upcomingBirthdays.length > 1 ? 's' : ''} next week`,
