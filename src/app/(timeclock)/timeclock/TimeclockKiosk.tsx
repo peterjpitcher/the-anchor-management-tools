@@ -50,12 +50,16 @@ export default function TimeclockKiosk({ employees, openSessions: initialSession
     if (!UUID_RE.test(selectedId)) { toast.error('Invalid employee selection'); return; }
     if (isAlreadyClockedIn) { toast.error('You are already clocked in'); return; }
     startTransition(async () => {
-      const result = await clockIn(selectedId);
-      if (!result.success) { toast.error(result.error); return; }
-      toast.success(`Welcome in, ${empName(selectedEmp!)} 👋`);
-      setSessions(prev => [...prev, { ...result.data, employee_name: empName(selectedEmp!) }]);
-      setSelectedId('');
-      router.refresh();
+      try {
+        const result = await clockIn(selectedId);
+        if (!result.success) { toast.error(result.error); return; }
+        toast.success(`Welcome in, ${empName(selectedEmp!)} 👋`);
+        setSessions(prev => [...prev, { ...result.data, employee_name: empName(selectedEmp!) }]);
+        setSelectedId('');
+        router.refresh();
+      } catch {
+        toast.error('Something went wrong. Please try again.');
+      }
     });
   };
 
@@ -64,12 +68,16 @@ export default function TimeclockKiosk({ employees, openSessions: initialSession
     if (!UUID_RE.test(selectedId)) { toast.error('Invalid employee selection'); return; }
     if (!isAlreadyClockedIn) { toast.error('You are not currently clocked in'); return; }
     startTransition(async () => {
-      const result = await clockOut(selectedId);
-      if (!result.success) { toast.error(result.error); return; }
-      toast.success(`See you later, ${empName(selectedEmp!)}! ✅`);
-      setSessions(prev => prev.filter(s => s.employee_id !== selectedId));
-      setSelectedId('');
-      router.refresh();
+      try {
+        const result = await clockOut(selectedId);
+        if (!result.success) { toast.error(result.error); return; }
+        toast.success(`See you later, ${empName(selectedEmp!)}! ✅`);
+        setSessions(prev => prev.filter(s => s.employee_id !== selectedId));
+        setSelectedId('');
+        router.refresh();
+      } catch {
+        toast.error('Something went wrong. Please try again.');
+      }
     });
   };
 
