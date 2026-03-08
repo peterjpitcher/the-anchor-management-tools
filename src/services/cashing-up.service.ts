@@ -1,19 +1,19 @@
 import { SupabaseClient } from '@supabase/supabase-js';
 import { UpsertCashupSessionDTO, CashupSession, CashupDashboardData, CashupInsightsData } from '@/types/cashing-up';
-import { subDays } from 'date-fns';
+import { subDays, format, subMonths } from 'date-fns';
 
 export class CashingUpService {
   static async getInsightsData(supabase: SupabaseClient, siteId: string, year?: number): Promise<CashupInsightsData> {
-    let startDate: Date;
-    let endDate: Date;
+    // DEF-M02: use format() (local time) instead of toISOString() (UTC) to avoid date boundary shift
+    let startDateStr: string;
+    let endDateStr: string;
 
     if (year) {
-        startDate = new Date(year, 0, 1); // Jan 1st of the year
-        endDate = new Date(year, 11, 31); // Dec 31st of the year
+        startDateStr = format(new Date(year, 0, 1), 'yyyy-MM-dd'); // Jan 1st of the year
+        endDateStr = format(new Date(year, 11, 31), 'yyyy-MM-dd'); // Dec 31st of the year
     } else {
-        endDate = new Date();
-        startDate = new Date();
-        startDate.setMonth(startDate.getMonth() - 12); // Last 12 months
+        endDateStr = format(new Date(), 'yyyy-MM-dd');
+        startDateStr = format(subMonths(new Date(), 12), 'yyyy-MM-dd'); // Last 12 months
     }
 
     // Fetch Sessions
@@ -21,8 +21,8 @@ export class CashingUpService {
       .from('cashup_sessions')
       .select('session_date, total_counted_amount, total_variance_amount')
       .eq('site_id', siteId)
-      .gte('session_date', startDate.toISOString().split('T')[0])
-      .lte('session_date', endDate.toISOString().split('T')[0]);
+      .gte('session_date', startDateStr)
+      .lte('session_date', endDateStr);
 
     if (sessionError) throw sessionError;
 
@@ -31,8 +31,8 @@ export class CashingUpService {
       .from('cashup_payment_breakdowns')
       .select('payment_type_label, counted_amount, cashup_sessions!inner(site_id, session_date)')
       .eq('cashup_sessions.site_id', siteId)
-      .gte('cashup_sessions.session_date', startDate.toISOString().split('T')[0])
-      .lte('cashup_sessions.session_date', endDate.toISOString().split('T')[0]);
+      .gte('cashup_sessions.session_date', startDateStr)
+      .lte('cashup_sessions.session_date', endDateStr);
 
     if (bdError) throw bdError;
 
@@ -41,7 +41,8 @@ export class CashingUpService {
     const dayStats = new Map<number, { count: number; takings: number; variance: number }>();
 
     sessions?.forEach(s => {
-      const date = new Date(s.session_date);
+      // DEF-M02: T12:00:00 prevents UTC midnight parsing from shifting the day-of-week
+      const date = new Date(s.session_date + 'T12:00:00');
       const day = date.getDay();
       const current = dayStats.get(day) || { count: 0, takings: 0, variance: 0 };
       
@@ -177,6 +178,7 @@ export class CashingUpService {
     };
 
     let sessionId = existingId;
+    const isNewSession = !sessionId; // DEF-C05: track for compensating delete on child insert failure
 
     if (!sessionId) {
       // Check for existing session to avoid constraint violation
@@ -206,6 +208,14 @@ export class CashingUpService {
       if (error) throw error;
       sessionId = newSession.id;
     } else {
+      // DEF-C06: guard against modifying locked sessions
+      const { data: current } = await supabase
+        .from('cashup_sessions')
+        .select('status')
+        .eq('id', sessionId)
+        .single();
+      if (current?.status === 'locked') throw new Error('Cannot modify a locked session');
+
       // Update
       const { data: updatedSession, error } = await supabase
         .from('cashup_sessions')
@@ -213,12 +223,20 @@ export class CashingUpService {
         .eq('id', sessionId)
         .select('id')
         .maybeSingle();
-      
+
       if (error) throw error;
       if (!updatedSession) throw new Error('Session not found');
     }
 
-    // Handle children (Replace strategy)
+    // Handle children (Replace strategy with compensating restore on failure — DEF-C05)
+    // Fetch existing children before deleting so we can restore if insert fails
+    const [existingBreakdownsRes, existingCountsRes] = await Promise.all([
+      supabase.from('cashup_payment_breakdowns').select('*').eq('cashup_session_id', sessionId),
+      supabase.from('cashup_cash_counts').select('*').eq('cashup_session_id', sessionId),
+    ]);
+    const existingBreakdowns = existingBreakdownsRes.data ?? [];
+    const existingCounts = existingCountsRes.data ?? [];
+
     // Delete existing
     const { error: deleteBreakdownsError } = await supabase
       .from('cashup_payment_breakdowns')
@@ -244,7 +262,23 @@ export class CashingUpService {
 
     if (breakdowns.length > 0) {
       const { error: bdError } = await supabase.from('cashup_payment_breakdowns').insert(breakdowns);
-      if (bdError) throw bdError;
+      if (bdError) {
+        if (isNewSession) {
+          // New session: compensating delete of orphaned session header
+          await supabase.from('cashup_sessions').delete().eq('id', sessionId).then(() => {}, () => {});
+        } else {
+          // Existing session: attempt to restore original children
+          await Promise.all([
+            existingBreakdowns.length > 0
+              ? supabase.from('cashup_payment_breakdowns').insert(existingBreakdowns).throwOnError()
+              : Promise.resolve(),
+            existingCounts.length > 0
+              ? supabase.from('cashup_cash_counts').insert(existingCounts).throwOnError()
+              : Promise.resolve(),
+          ]);
+        }
+        throw bdError;
+      }
     }
 
     const counts = data.cashCounts.map(c => ({
@@ -256,7 +290,18 @@ export class CashingUpService {
 
     if (counts.length > 0) {
       const { error: cError } = await supabase.from('cashup_cash_counts').insert(counts);
-      if (cError) throw cError;
+      if (cError) {
+        if (isNewSession) {
+          // New session: compensating delete of orphaned session header (breakdowns already inserted ok)
+          await supabase.from('cashup_sessions').delete().eq('id', sessionId).then(() => {}, () => {});
+        } else {
+          // Existing session: attempt to restore original counts
+          if (existingCounts.length > 0) {
+            await supabase.from('cashup_cash_counts').insert(existingCounts).throwOnError();
+          }
+        }
+        throw cError;
+      }
     }
 
     return this.getSession(supabase, sessionId!);
@@ -306,11 +351,12 @@ export class CashingUpService {
       .from('cashup_sessions')
       .update({ status: 'locked', updated_by_user_id: userId, updated_at: new Date().toISOString() })
       .eq('id', id)
+      .eq('status', 'approved') // DEF-C04: can only lock approved sessions
       .select('id')
       .maybeSingle();
-    
+
     if (error) throw error;
-    if (!updatedRow) throw new Error('Session not found');
+    if (!updatedRow) throw new Error('Session not found or not in approved status');
     return this.getSession(supabase, id);
   }
 
@@ -329,11 +375,11 @@ export class CashingUpService {
   }
 
   static async getWeeklyData(supabase: SupabaseClient, siteId: string, weekStartDate: string) {
-    // Compute the week end date
+    // Compute the week end date (DEF-M02: use format() to avoid UTC toISOString shift)
     const weekEndDate = (() => {
-      const d = new Date(weekStartDate + 'T00:00:00');
+      const d = new Date(weekStartDate + 'T12:00:00');
       d.setDate(d.getDate() + 6);
-      return d.toISOString().split('T')[0];
+      return format(d, 'yyyy-MM-dd');
     })();
 
     // Fetch view rows and targets in parallel (N+1 fix: one targets query instead of per-row)
@@ -372,11 +418,10 @@ export class CashingUpService {
   }
 
   static async getDashboardData(supabase: SupabaseClient, siteId?: string, fromDate?: string, toDate?: string): Promise<CashupDashboardData> {
-    // This would be complex SQL or multiple queries.
-    // For Foundation/Discovery, returning mock structure or basic aggregations.
-
-    // Build sessions and targets queries
-    let sessionQuery = supabase.from('cashup_sessions').select('total_counted_amount, total_variance_amount, session_date, site_id, status, notes, cashup_payment_breakdowns(payment_type_code, counted_amount)');
+    // DEF-S01–S05: replaced stub values with real aggregations; fetch sites in parallel
+    let sessionQuery = supabase
+      .from('cashup_sessions')
+      .select('total_counted_amount, total_variance_amount, session_date, site_id, status, notes, cashup_payment_breakdowns(payment_type_code, counted_amount)');
     if (siteId) sessionQuery = sessionQuery.eq('site_id', siteId);
     if (fromDate) sessionQuery = sessionQuery.gte('session_date', fromDate);
     if (toDate) sessionQuery = sessionQuery.lte('session_date', toDate);
@@ -387,53 +432,82 @@ export class CashingUpService {
       .order('effective_from', { ascending: false });
     if (siteId) targetQuery = targetQuery.eq('site_id', siteId);
 
-    // Fetch sessions and targets in parallel (N+1 fix)
-    const [{ data, error }, { data: allTargets }] = await Promise.all([
+    const [{ data, error }, { data: allTargets }, { data: sites }] = await Promise.all([
       sessionQuery.order('session_date', { ascending: false }),
       targetQuery,
+      supabase.from('sites').select('id, name'),
     ]);
 
     if (error) throw error;
 
     const sessions = data || [];
     const targetRows = allTargets ?? [];
+    const siteMap = new Map<string, string>((sites ?? []).map(s => [s.id, s.name]));
 
     const getTargetAmountForSession = (sessionSiteId: string, sessionDate: string): number => {
-      const dow = new Date(sessionDate).getDay();
+      const dow = new Date(sessionDate + 'T12:00:00').getDay(); // DEF-M02: noon avoids UTC boundary shift
       const match = targetRows.find(
         t => t.site_id === sessionSiteId && t.day_of_week === dow && t.effective_from <= sessionDate
       );
       return match?.target_amount ?? 0;
     };
 
-    // Augment sessions with Target data (no more per-session DB calls)
     const sessionsWithTarget = sessions.map((s) => {
       const target = getTargetAmountForSession(s.site_id, s.session_date);
-      const varianceVsTarget = (s.total_counted_amount || 0) - target;
-
-      // Calculate breakdown totals
-      const breakdowns = s.cashup_payment_breakdowns || [];
+      const breakdowns = (s.cashup_payment_breakdowns as any[]) || []; // any: Supabase doesn't narrow nested join types
       const cashTotal = breakdowns.find((b: any) => b.payment_type_code === 'CASH')?.counted_amount || 0;
       const cardTotal = breakdowns.find((b: any) => b.payment_type_code === 'CARD')?.counted_amount || 0;
       const stripeTotal = breakdowns.find((b: any) => b.payment_type_code === 'STRIPE')?.counted_amount || 0;
-
-      return {
-        ...s,
-        target,
-        varianceVsTarget,
-        cashTotal,
-        cardTotal,
-        stripeTotal
-      };
+      return { ...s, target, cashTotal, cardTotal, stripeTotal };
     });
 
     const totalTakings = sessionsWithTarget.reduce((sum, s) => sum + (s.total_counted_amount || 0), 0);
-    const totalTarget = sessionsWithTarget.reduce((sum, s) => sum + (s.target || 0), 0);
-    // Use stored total_variance_amount (Counted - Expected) instead of variance vs target
+    const totalTarget = sessionsWithTarget.reduce((sum, s) => sum + s.target, 0);
     const totalVariance = sessionsWithTarget.reduce((sum, s) => sum + (s.total_variance_amount || 0), 0);
-    
-    // Filter for days with actual takings to calculate meaningful average (excludes "Closed" days)
     const sessionsWithTakings = sessionsWithTarget.filter(s => (s.total_counted_amount || 0) > 0);
+
+    // DEF-S03: payment mix from in-memory breakdown data (no additional DB query needed)
+    const mixMap = new Map<string, number>();
+    for (const s of sessionsWithTarget) {
+      mixMap.set('CASH', (mixMap.get('CASH') || 0) + s.cashTotal);
+      mixMap.set('CARD', (mixMap.get('CARD') || 0) + s.cardTotal);
+      mixMap.set('STRIPE', (mixMap.get('STRIPE') || 0) + s.stripeTotal);
+    }
+    const paymentMix = Array.from(mixMap.entries())
+      .filter(([, v]) => v > 0)
+      .map(([paymentTypeCode, amount]) => ({ paymentTypeCode, amount }));
+
+    // DEF-S04: top sites by net variance, computed from in-memory data
+    const siteVarianceMap = new Map<string, number>();
+    for (const s of sessionsWithTarget) {
+      siteVarianceMap.set(s.site_id, (siteVarianceMap.get(s.site_id) || 0) + (s.total_variance_amount || 0));
+    }
+    const topSitesByVariance = Array.from(siteVarianceMap.entries())
+      .sort((a, b) => Math.abs(b[1]) - Math.abs(a[1]))
+      .slice(0, 5)
+      .map(([id, totalVariance]) => ({ siteId: id, siteName: siteMap.get(id) || id, totalVariance }));
+
+    // DEF-S05: compliance grouped by site, counting submitted/approved days
+    const complianceBySite = new Map<string, { submitted: number; approved: number; total: number }>();
+    for (const s of sessionsWithTarget) {
+      const entry = complianceBySite.get(s.site_id) || { submitted: 0, approved: 0, total: 0 };
+      entry.total++;
+      if (['submitted', 'approved', 'locked'].includes(s.status as string)) entry.submitted++;
+      if (['approved', 'locked'].includes(s.status as string)) entry.approved++;
+      complianceBySite.set(s.site_id, entry);
+    }
+    const compliance = Array.from(complianceBySite.entries()).map(([id, counts]) => ({
+      siteId: id,
+      siteName: siteMap.get(id) || id,
+      expectedDays: counts.total,
+      submittedDays: counts.submitted,
+      approvedDays: counts.approved,
+    }));
+
+    // DEF-S01: expectedDays from explicit date range or fall back to actual session count
+    const expectedDays = fromDate && toDate
+      ? Math.round((new Date(toDate + 'T12:00:00').getTime() - new Date(fromDate + 'T12:00:00').getTime()) / 86400000) + 1
+      : sessions.length;
 
     return {
       kpis: {
@@ -441,41 +515,37 @@ export class CashingUpService {
         totalTarget,
         averageDailyTakings: sessionsWithTakings.length ? totalTakings / sessionsWithTakings.length : 0,
         totalVariance,
-        // High variance days based on actual cash discrepancy, not target
-        highVarianceDays: sessionsWithTarget.filter(s => Math.abs(s.total_variance_amount || 0) > 50).length, 
+        highVarianceDays: sessionsWithTarget.filter(s => Math.abs(s.total_variance_amount || 0) > 50).length,
         daysWithSubmittedSessions: sessions.length,
-        expectedDays: 28 // Mock
+        expectedDays,
       },
       charts: {
         dailyTakings: sessionsWithTarget.map(s => ({ date: s.session_date, siteId: s.site_id, totalTakings: s.total_counted_amount, target: s.target })),
-        // Use stored variance (discrepancy)
         dailyVariance: sessionsWithTarget.map(s => ({ date: s.session_date, totalVariance: s.total_variance_amount || 0 })),
-        paymentMix: [], // Requires joining breakdowns
-        topSitesByVariance: []
+        paymentMix, // DEF-S03: real data from breakdowns
+        topSitesByVariance, // DEF-S04: real data aggregated by site
       },
       tables: {
         variance: sessionsWithTarget.map(s => ({
           siteId: s.site_id,
-          siteName: 'Site', // Need join
+          siteName: siteMap.get(s.site_id) || s.site_id, // DEF-S02: real site name via sites join
           sessionDate: s.session_date,
           totalTakings: s.total_counted_amount,
-          // Use stored variance (discrepancy)
           variance: s.total_variance_amount || 0,
-          // Percent of Taking? Or vs Expected? Let's do vs Counted for now or 0 if 0.
           variancePercent: s.total_counted_amount ? ((s.total_variance_amount || 0) / s.total_counted_amount) * 100 : 0,
           status: s.status as any,
           notes: s.notes,
           cashTotal: s.cashTotal,
           cardTotal: s.cardTotal,
-          stripeTotal: s.stripeTotal
+          stripeTotal: s.stripeTotal,
         })),
-        compliance: []
-      }
+        compliance, // DEF-S05: real compliance data
+      },
     };
   }
 
   static async getDailyTarget(supabase: SupabaseClient, siteId: string, date: string): Promise<number> {
-    const dayOfWeek = new Date(date).getDay();
+    const dayOfWeek = new Date(date + 'T12:00:00').getDay(); // DEF-M02: noon avoids UTC boundary shift
     
     const { data, error } = await supabase
       .from('cashup_targets')
@@ -496,17 +566,21 @@ export class CashingUpService {
   }
 
   static async setDailyTarget(supabase: SupabaseClient, siteId: string, date: string, amount: number, userId: string) {
-    const dayOfWeek = new Date(date).getDay();
-    
+    const dayOfWeek = new Date(date + 'T12:00:00').getDay(); // DEF-M02: noon avoids UTC boundary shift
+
+    // DEF-H06: upsert instead of insert to handle duplicate calls for same date
     const { error } = await supabase
       .from('cashup_targets')
-      .insert({
-        site_id: siteId,
-        day_of_week: dayOfWeek,
-        target_amount: amount,
-        effective_from: date,
-        created_by: userId
-      });
+      .upsert(
+        {
+          site_id: siteId,
+          day_of_week: dayOfWeek,
+          target_amount: amount,
+          effective_from: date,
+          created_by: userId,
+        },
+        { onConflict: 'site_id, day_of_week, effective_from' }
+      );
 
     if (error) throw error;
     return true;
@@ -536,12 +610,12 @@ export class CashingUpService {
   }
 
   static async getWeeklyProgress(supabase: SupabaseClient, siteId: string, date: string) {
-    const requestedDate = new Date(date);
+    const requestedDate = new Date(date + 'T12:00:00'); // DEF-M02: noon avoids UTC boundary shift
     const day = requestedDate.getDay();
     const diff = requestedDate.getDate() - day + (day === 0 ? -6 : 1); // Adjust when day is Sunday
     const weekStart = new Date(requestedDate);
     weekStart.setDate(diff);
-    const weekStartStr = weekStart.toISOString().split('T')[0];
+    const weekStartStr = format(weekStart, 'yyyy-MM-dd');
 
     const latestCompleted = subDays(new Date(), 1);
     const targetDate = requestedDate > latestCompleted ? latestCompleted : requestedDate;
@@ -555,7 +629,7 @@ export class CashingUpService {
     const d = new Date(weekStart);
 
     while (d <= targetDate) {
-      dates.push(d.toISOString().split('T')[0]);
+      dates.push(format(d, 'yyyy-MM-dd')); // DEF-M02: format() uses local time, not UTC
       d.setDate(d.getDate() + 1);
     }
 
@@ -605,13 +679,13 @@ export class CashingUpService {
   }
 
   static async getWeeklyReportData(supabase: SupabaseClient, siteId: string, weekStartDate: string) {
-    // 1. Generate all 7 dates for the week
-    const start = new Date(weekStartDate);
+    // 1. Generate all 7 dates for the week (DEF-M02: noon + format() avoids UTC boundary shift)
+    const start = new Date(weekStartDate + 'T12:00:00');
     const dates: string[] = [];
     for (let i = 0; i < 7; i++) {
       const d = new Date(start);
       d.setDate(start.getDate() + i);
-      dates.push(d.toISOString().split('T')[0]);
+      dates.push(format(d, 'yyyy-MM-dd'));
     }
     const endDate = dates[6];
 

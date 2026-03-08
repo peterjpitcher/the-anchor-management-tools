@@ -5,26 +5,26 @@ import { PermissionService } from '@/services/permission';
 import { CashingUpService } from '@/services/cashing-up.service';
 import { UpsertCashupSessionDTO } from '@/types/cashing-up';
 import { revalidatePath, revalidateTag } from 'next/cache';
-import { checkUserPermission } from '@/app/actions/rbac';
+import { logAuditEvent } from '@/app/actions/audit';
 
 export async function getSessionByIdAction(id: string) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
-  
+
   if (!user) {
-    return { error: 'Unauthorized' };
+    return { success: false, error: 'Unauthorized' };
   }
 
   const hasPermission = await PermissionService.checkUserPermission('cashing_up', 'view', user.id);
   if (!hasPermission) {
-    return { error: 'Forbidden' };
+    return { success: false, error: 'Forbidden' };
   }
 
   try {
     const data = await CashingUpService.getSession(supabase, id);
-    return { data };
+    return { success: true, data };
   } catch (error: any) {
-    return { error: error.message };
+    return { success: false, error: error.message };
   }
 }
 
@@ -45,7 +45,8 @@ export async function upsertSessionAction(data: UpsertCashupSessionDTO, existing
   try {
     const result = await CashingUpService.upsertSession(supabase, data, user.id, existingId);
     revalidatePath('/cashing-up');
-    revalidateTag('dashboard')
+    revalidateTag('dashboard');
+    void logAuditEvent({ operation_type: existingId ? 'update' : 'create', resource_type: 'cashup_session', operation_status: 'success' });
     return { success: true, data: result };
   } catch (error: any) {
     console.error('Upsert error:', error);
@@ -56,7 +57,7 @@ export async function upsertSessionAction(data: UpsertCashupSessionDTO, existing
 export async function submitSessionAction(id: string) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
-  
+
   if (!user) return { success: false, error: 'Unauthorized' };
 
   const hasPermission = await PermissionService.checkUserPermission('cashing_up', 'submit', user.id);
@@ -65,7 +66,8 @@ export async function submitSessionAction(id: string) {
   try {
     const result = await CashingUpService.submitSession(supabase, id, user.id);
     revalidatePath('/cashing-up');
-    revalidateTag('dashboard')
+    revalidateTag('dashboard');
+    void logAuditEvent({ operation_type: 'update', resource_type: 'cashup_session', operation_status: 'success' });
     return { success: true, data: result };
   } catch (error: any) {
     return { success: false, error: error.message };
@@ -75,7 +77,7 @@ export async function submitSessionAction(id: string) {
 export async function approveSessionAction(id: string) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
-  
+
   if (!user) return { success: false, error: 'Unauthorized' };
 
   const hasPermission = await PermissionService.checkUserPermission('cashing_up', 'approve', user.id);
@@ -84,7 +86,8 @@ export async function approveSessionAction(id: string) {
   try {
     const result = await CashingUpService.approveSession(supabase, id, user.id);
     revalidatePath('/cashing-up');
-    revalidateTag('dashboard')
+    revalidateTag('dashboard');
+    void logAuditEvent({ operation_type: 'update', resource_type: 'cashup_session', operation_status: 'success' });
     return { success: true, data: result };
   } catch (error: any) {
     return { success: false, error: error.message };
@@ -94,7 +97,7 @@ export async function approveSessionAction(id: string) {
 export async function lockSessionAction(id: string) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
-  
+
   if (!user) return { success: false, error: 'Unauthorized' };
 
   const hasPermission = await PermissionService.checkUserPermission('cashing_up', 'lock', user.id);
@@ -103,7 +106,8 @@ export async function lockSessionAction(id: string) {
   try {
     const result = await CashingUpService.lockSession(supabase, id, user.id);
     revalidatePath('/cashing-up');
-    revalidateTag('dashboard')
+    revalidateTag('dashboard');
+    void logAuditEvent({ operation_type: 'update', resource_type: 'cashup_session', operation_status: 'success' });
     return { success: true, data: result };
   } catch (error: any) {
     return { success: false, error: error.message };
@@ -113,7 +117,7 @@ export async function lockSessionAction(id: string) {
 export async function unlockSessionAction(id: string) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
-  
+
   if (!user) return { success: false, error: 'Unauthorized' };
 
   const hasPermission = await PermissionService.checkUserPermission('cashing_up', 'unlock', user.id);
@@ -122,7 +126,8 @@ export async function unlockSessionAction(id: string) {
   try {
     const result = await CashingUpService.unlockSession(supabase, id, user.id);
     revalidatePath('/cashing-up');
-    revalidateTag('dashboard')
+    revalidateTag('dashboard');
+    void logAuditEvent({ operation_type: 'update', resource_type: 'cashup_session', operation_status: 'success' });
     return { success: true, data: result };
   } catch (error: any) {
     return { success: false, error: error.message };
@@ -132,32 +137,32 @@ export async function unlockSessionAction(id: string) {
 export async function getWeeklyDataAction(siteId: string, weekStartDate: string) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
-  
-  if (!user) return { error: 'Unauthorized' };
+
+  if (!user) return { success: false, error: 'Unauthorized' };
 
   const hasPermission = await PermissionService.checkUserPermission('cashing_up', 'view', user.id);
-  if (!hasPermission) return { error: 'Forbidden' };
+  if (!hasPermission) return { success: false, error: 'Forbidden' };
 
   try {
     const data = await CashingUpService.getWeeklyData(supabase, siteId, weekStartDate);
-    return { data };
+    return { success: true, data };
   } catch (error: any) {
-    return { error: error.message };
+    return { success: false, error: error.message };
   }
 }
 
 export async function getDashboardDataAction(siteId?: string, fromDate?: string, toDate?: string) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
-  
-  if (!user) return { error: 'Unauthorized' };
+
+  if (!user) return { success: false, error: 'Unauthorized' };
 
   const hasPermission = await PermissionService.checkUserPermission('cashing_up', 'view', user.id);
-  if (!hasPermission) return { error: 'Forbidden' };
+  if (!hasPermission) return { success: false, error: 'Forbidden' };
 
   try {
     const data = await CashingUpService.getDashboardData(supabase, siteId, fromDate, toDate);
-    return { data };
+    return { success: true, data };
   } catch (error) {
     console.error('Error fetching dashboard data:', error);
     return { success: false, error: 'Failed to load dashboard data' };
@@ -172,6 +177,9 @@ export async function getInsightsDataAction(siteId?: string, year?: number) {
     if (!user) {
       return { success: false, error: 'Unauthorized' };
     }
+
+    const hasPermission = await PermissionService.checkUserPermission('cashing_up', 'view', user.id);
+    if (!hasPermission) return { success: false, error: 'Forbidden' };
 
     // Default site if not provided
     let targetSiteId = siteId;
@@ -196,6 +204,10 @@ export async function getDailyTargetAction(siteId: string, date: string) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { success: false, error: 'Unauthorized' };
+
+  const hasPermission = await PermissionService.checkUserPermission('cashing_up', 'view', user.id);
+  if (!hasPermission) return { success: false, error: 'Forbidden' };
+
   try {
     const target = await CashingUpService.getDailyTarget(supabase, siteId, date);
     return { success: true, data: target };
@@ -210,11 +222,12 @@ export async function setDailyTargetAction(siteId: string, date: string, amount:
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { success: false, error: 'Unauthorized' };
 
-  const canManage = await checkUserPermission('receipts', 'edit');
-  if (!canManage) return { success: false, error: 'Insufficient permissions' };
+  const hasPermission = await PermissionService.checkUserPermission('cashing_up', 'edit', user.id);
+  if (!hasPermission) return { success: false, error: 'Insufficient permissions' };
 
   try {
     await CashingUpService.setDailyTarget(supabase, siteId, date, amount, user.id);
+    void logAuditEvent({ operation_type: 'update', resource_type: 'cashup_target', operation_status: 'success' });
     return { success: true };
   } catch (error: any) {
     console.error('Error setting daily target:', error);
@@ -227,6 +240,9 @@ export async function updateWeeklyTargetsAction(siteId: string, targets: Record<
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { success: false, error: 'Unauthorized' };
 
+  const hasPermission = await PermissionService.checkUserPermission('cashing_up', 'edit', user.id);
+  if (!hasPermission) return { success: false, error: 'Forbidden' };
+
   try {
     const targetArray = Object.entries(targets).map(([day, amount]) => ({
       dayOfWeek: parseInt(day),
@@ -234,6 +250,7 @@ export async function updateWeeklyTargetsAction(siteId: string, targets: Record<
     }));
 
     await CashingUpService.setWeeklyTargets(supabase, siteId, targetArray, effectiveDate, user.id);
+    void logAuditEvent({ operation_type: 'update', resource_type: 'cashup_targets', operation_status: 'success' });
     return { success: true };
   } catch (error: any) {
     console.error('Error setting weekly targets:', error);
@@ -245,6 +262,10 @@ export async function getWeeklyProgressAction(siteId: string, date: string) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { success: false, error: 'Unauthorized' };
+
+  const hasPermission = await PermissionService.checkUserPermission('cashing_up', 'view', user.id);
+  if (!hasPermission) return { success: false, error: 'Forbidden' };
+
   try {
     const data = await CashingUpService.getWeeklyProgress(supabase, siteId, date);
     return { success: true, data };

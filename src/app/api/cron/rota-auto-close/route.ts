@@ -81,7 +81,7 @@ export async function GET(request: Request) {
       const workDate = session.work_date;
       const fallbackLocal = fromZonedTime(`${workDate}T23:59:00`, TIMEZONE);
       clockOutAt = fallbackLocal.toISOString();
-      reason = 'fallback_end_of_day';
+      reason = 'fallback_0500';
     }
 
     const { error: updateError } = await supabase

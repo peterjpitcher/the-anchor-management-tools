@@ -126,7 +126,7 @@ export async function submitLeaveRequest(input: z.infer<typeof SubmitLeaveSchema
   const dayRows = days.map(d => ({
     request_id: request.id,
     employee_id: employeeId,
-    leave_date: d.toISOString().split('T')[0],
+    leave_date: formatInTimeZone(d, 'Europe/London', 'yyyy-MM-dd'),
   }));
 
   // Use ON CONFLICT DO NOTHING — employee may already have a day from another request
@@ -328,7 +328,7 @@ export async function bookApprovedHoliday(input: {
   const dayRows = days.map(d => ({
     request_id: request.id,
     employee_id: employeeId,
-    leave_date: d.toISOString().split('T')[0],
+    leave_date: formatInTimeZone(d, 'Europe/London', 'yyyy-MM-dd'),
   }));
 
   const { error: leaveDaysApprovedError } = await supabase.from('leave_days').upsert(dayRows, { onConflict: 'employee_id,leave_date', ignoreDuplicates: true });
@@ -444,4 +444,118 @@ export async function getHolidayUsage(employeeId: string, holidayYear: number): 
   const total = approvedDaysResult.count ?? 0;
   const pendingTotal = pendingDaysResult.count ?? 0;
   return { success: true, count: total, pendingCount: pendingTotal, allowance, overThreshold: total >= allowance };
+}
+
+// ---------------------------------------------------------------------------
+// Get a single leave request by ID (manager view from rota)
+// ---------------------------------------------------------------------------
+
+export async function getLeaveRequestById(
+  requestId: string,
+): Promise<{ success: true; data: LeaveRequest } | { success: false; error: string }> {
+  const canView = await checkUserPermission('leave', 'view');
+  if (!canView) return { success: false, error: 'Permission denied' };
+
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from('leave_requests')
+    .select('*')
+    .eq('id', requestId)
+    .single();
+
+  if (error || !data) return { success: false, error: error?.message ?? 'Not found' };
+  return { success: true, data: data as LeaveRequest };
+}
+
+// ---------------------------------------------------------------------------
+// Delete a leave request and all its leave_days (manager)
+// ---------------------------------------------------------------------------
+
+export async function deleteLeaveRequest(
+  requestId: string,
+): Promise<{ success: true } | { success: false; error: string }> {
+  const canEdit = await checkUserPermission('leave', 'edit');
+  if (!canEdit) return { success: false, error: 'Permission denied' };
+
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+
+  // Delete leave_days first (FK constraint)
+  const { error: daysError } = await supabase.from('leave_days').delete().eq('request_id', requestId);
+  if (daysError) return { success: false, error: daysError.message };
+
+  const { error } = await supabase.from('leave_requests').delete().eq('id', requestId);
+  if (error) return { success: false, error: error.message };
+
+  void logAuditEvent({
+    user_id: user?.id,
+    operation_type: 'delete',
+    resource_type: 'leave_request',
+    resource_id: requestId,
+    operation_status: 'success',
+  });
+
+  revalidatePath('/rota');
+  revalidatePath('/rota/leave');
+  revalidatePath('/portal/leave');
+  return { success: true };
+}
+
+// ---------------------------------------------------------------------------
+// Update leave request date range (manager) — regenerates leave_days
+// ---------------------------------------------------------------------------
+
+export async function updateLeaveRequestDates(
+  requestId: string,
+  startDate: string,
+  endDate: string,
+): Promise<{ success: true } | { success: false; error: string }> {
+  const canEdit = await checkUserPermission('leave', 'edit');
+  if (!canEdit) return { success: false, error: 'Permission denied' };
+
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+
+  const { data: request, error: fetchError } = await supabase
+    .from('leave_requests')
+    .select('id, employee_id')
+    .eq('id', requestId)
+    .single();
+  if (fetchError || !request) return { success: false, error: 'Request not found' };
+
+  const { error: updateError } = await supabase
+    .from('leave_requests')
+    .update({ start_date: startDate, end_date: endDate, updated_at: new Date().toISOString() })
+    .eq('id', requestId);
+  if (updateError) return { success: false, error: updateError.message };
+
+  // Regenerate leave_days for the new range
+  const { error: deleteError } = await supabase.from('leave_days').delete().eq('request_id', requestId);
+  if (deleteError) return { success: false, error: deleteError.message };
+
+  const days = eachDayOfInterval({ start: parseISO(startDate), end: parseISO(endDate) });
+  const dayRows = days.map(d => ({
+    request_id: requestId,
+    employee_id: (request as { employee_id: string }).employee_id,
+    leave_date: formatInTimeZone(d, 'Europe/London', 'yyyy-MM-dd'),
+  }));
+
+  if (dayRows.length > 0) {
+    const { error: insertError } = await supabase.from('leave_days').insert(dayRows);
+    if (insertError) return { success: false, error: insertError.message };
+  }
+
+  void logAuditEvent({
+    user_id: user?.id,
+    operation_type: 'update',
+    resource_type: 'leave_request',
+    resource_id: requestId,
+    operation_status: 'success',
+    new_values: { start_date: startDate, end_date: endDate },
+  });
+
+  revalidatePath('/rota');
+  revalidatePath('/rota/leave');
+  revalidatePath('/portal/leave');
+  return { success: true };
 }

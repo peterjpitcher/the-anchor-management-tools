@@ -653,7 +653,7 @@ export function DailyCashupForm({ site, sessionDate, initialSessionData, isBill 
 
               {/* SUMMARY & NOTES */}
               <div className="bg-blue-50 p-4 rounded border border-blue-100 flex justify-between items-center">
-                <span className="text-lg font-bold text-blue-900">Total Variance</span>
+                <span className="text-lg font-bold text-blue-900">Cash Variance</span>
                 <span className={`text-xl font-bold font-mono ${variance < 0 ? 'text-red-600' : variance > 0 ? 'text-green-600' : 'text-gray-800'}`}>
                   £{variance.toFixed(2)}
                 </span>
