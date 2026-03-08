@@ -31,41 +31,56 @@ export function buildStaffRotaEmailHtml(
   weekStart: string, // ISO date (Monday)
   weekEnd: string,   // ISO date (Sunday)
   shifts: ShiftSummary[],
+  openShifts: ShiftSummary[] = [],
 ): string {
   const weekLabel = `${format(parseISO(weekStart), 'd MMM')} – ${format(parseISO(weekEnd), 'd MMM yyyy')}`;
 
-  const shiftsHtml = shifts.length === 0
-    ? '<p style="color:#666">No shifts scheduled this week.</p>'
-    : shifts.map(s => `
-        <tr>
-          <td style="padding:8px 12px;border-bottom:1px solid #eee">${format(parseISO(s.date), 'EEE d MMM')}</td>
-          <td style="padding:8px 12px;border-bottom:1px solid #eee">${s.startTime} – ${s.endTime}</td>
-          <td style="padding:8px 12px;border-bottom:1px solid #eee;text-transform:capitalize">${s.department}</td>
+  const shiftRows = (items: ShiftSummary[]) =>
+    items.map(s => `
+      <tr>
+        <td style="padding:8px 12px;border-bottom:1px solid #eee">${format(parseISO(s.date), 'EEE d MMM')}</td>
+        <td style="padding:8px 12px;border-bottom:1px solid #eee">${s.startTime} – ${s.endTime}</td>
+        <td style="padding:8px 12px;border-bottom:1px solid #eee;text-transform:capitalize">${s.department}</td>
+      </tr>
+    `).join('');
+
+  const shiftsTable = (items: ShiftSummary[], headerBg: string) => `
+    <table style="width:100%;border-collapse:collapse;margin:16px 0">
+      <thead>
+        <tr style="background:${headerBg};color:#fff">
+          <th style="padding:8px 12px;text-align:left">Day</th>
+          <th style="padding:8px 12px;text-align:left">Time</th>
+          <th style="padding:8px 12px;text-align:left">Area</th>
         </tr>
-      `).join('');
+      </thead>
+      <tbody>${shiftRows(items)}</tbody>
+    </table>
+  `;
+
+  const openShiftsSection = openShifts.length === 0 ? '' : `
+    <div style="margin-top:32px;padding:16px 20px;background:#fff8e1;border:1px solid #f59e0b;border-radius:6px">
+      <h3 style="margin:0 0 8px;color:#92400e;font-size:16px">Shifts still to be filled</h3>
+      <p style="margin:0 0 12px;color:#78350f;font-size:14px">
+        The following shifts are still available this week. If you can help out, please let management know.
+      </p>
+      ${shiftsTable(openShifts, '#b45309')}
+    </div>
+  `;
 
   return `
     <div style="font-family:sans-serif;max-width:600px;margin:0 auto">
       <h2 style="color:#1a1a1a">Your shifts for ${weekLabel}</h2>
       <p>Hi ${employeeName},</p>
       <p>Here are your shifts for the coming week:</p>
-      ${shifts.length > 0 ? `
-        <table style="width:100%;border-collapse:collapse;margin:16px 0">
-          <thead>
-            <tr style="background:#1F5C2E;color:#fff">
-              <th style="padding:8px 12px;text-align:left">Day</th>
-              <th style="padding:8px 12px;text-align:left">Time</th>
-              <th style="padding:8px 12px;text-align:left">Area</th>
-            </tr>
-          </thead>
-          <tbody>${shiftsHtml}</tbody>
-        </table>
-      ` : shiftsHtml}
-      <p style="color:#666;font-size:14px">
-        View your full schedule and manage holiday requests in the
-        <a href="${APP_URL}/portal/shifts">staff portal</a>.
-      </p>
-      <p style="color:#aaa;font-size:12px">The Anchor</p>
+      ${shifts.length > 0 ? shiftsTable(shifts, '#1F5C2E') : '<p style="color:#666">No shifts scheduled this week.</p>'}
+      ${openShiftsSection}
+      <div style="margin-top:24px">
+        <a href="${APP_URL}/portal/shifts"
+           style="display:inline-block;background:#1F5C2E;color:#fff;padding:10px 20px;border-radius:4px;text-decoration:none;font-size:14px">
+          View your rota
+        </a>
+      </div>
+      <p style="color:#aaa;font-size:12px;margin-top:24px">The Anchor</p>
     </div>
   `;
 }

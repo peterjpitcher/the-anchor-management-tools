@@ -40,7 +40,7 @@ export async function sendRotaWeekEmails(
   const weekEnd = addDays(weekStart, 6);
   const supabase = createAdminClient();
 
-  const [{ data: employees }, { data: shifts }] = await Promise.all([
+  const [{ data: employees }, { data: shifts }, { data: openShifts }] = await Promise.all([
     supabase
       .from('employees')
       .select('employee_id, first_name, last_name, email_address')
@@ -51,6 +51,13 @@ export async function sendRotaWeekEmails(
       .eq('week_id', weekId)
       .eq('is_open_shift', false)
       .not('employee_id', 'is', null)
+      .order('shift_date')
+      .order('start_time'),
+    supabase
+      .from('rota_published_shifts')
+      .select('shift_date, start_time, end_time, department, name')
+      .eq('week_id', weekId)
+      .eq('is_open_shift', true)
       .order('shift_date')
       .order('start_time'),
   ]);
@@ -84,11 +91,19 @@ export async function sendRotaWeekEmails(
         templateName: s.name ?? '',
       }));
 
+      const openShiftSummaries: ShiftSummary[] = (openShifts ?? []).map(s => ({
+        date: s.shift_date,
+        startTime: s.start_time,
+        endTime: s.end_time,
+        department: s.department,
+        templateName: s.name ?? '',
+      }));
+
       const emailSubject = subject(weekEnd);
       const emailResult = await sendEmail({
         to: emp.email_address!,
         subject: emailSubject,
-        html: buildStaffRotaEmailHtml(empName, weekStart, weekEnd, shiftSummaries),
+        html: buildStaffRotaEmailHtml(empName, weekStart, weekEnd, shiftSummaries, openShiftSummaries),
       });
 
       await supabase.from('rota_email_log').insert({
