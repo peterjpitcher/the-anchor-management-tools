@@ -121,7 +121,7 @@ export default function TaskSidebar({ todos, isOpen, toggle }: TaskSidebarProps)
                                     <h4 className="mb-1 text-sm font-medium leading-snug text-gray-800 group-hover:text-black line-clamp-2">
                                         {todo.label}
                                     </h4>
-                                    <p className="line-clamp-2 text-xs leading-snug text-gray-500">{todo.eventName}</p>
+                                    <p className="line-clamp-2 text-xs leading-snug text-gray-500">{todo.eventName} · {format(new Date(todo.eventDate), 'MMMM d')}</p>
                                 </div>
                             </div>
                         </Link>
