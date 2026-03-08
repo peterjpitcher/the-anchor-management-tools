@@ -16,6 +16,12 @@ import { FinancialDetailsSchema, HealthRecordSchema, EmergencyContactSchema } fr
 
 const BASE_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://manage.the-anchor.pub';
 
+// DEF-015 verified: the employee_invite_tokens table column is defined as
+// `expires_at TIMESTAMPTZ NOT NULL DEFAULT NOW() + INTERVAL '7 days'`
+// in migration 20260227000001_employee_invite_onboarding.sql.
+// The create_employee_invite RPC relies on this default. Welcome and portal
+// invite emails both promise "7 days" — this matches the DB constraint.
+
 function buildOnboardingUrl(token: string): string {
   return `${BASE_URL}/onboarding/${token}`;
 }
