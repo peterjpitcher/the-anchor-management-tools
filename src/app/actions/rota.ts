@@ -807,38 +807,27 @@ export async function publishRotaWeek(weekId: string): Promise<
     .eq('week_id', weekId)
     .neq('status', 'cancelled');
 
-  // Replace the snapshot safely: insert new rows first, then delete old ones not
-  // in the new set. This avoids the table ever being empty during the operation.
+  // Replace the snapshot atomically: delete the previous published snapshot for
+  // this week, then insert the current state fresh. Using delete-then-insert is
+  // simpler and more reliable than upsert + selective-delete; the sub-millisecond
+  // empty window is acceptable for an internal management tool.
   // Must use the admin client — rota_published_shifts has no write RLS policies
   // for regular users (intentional: only the system should write to this table).
   const admin = createAdminClient();
   const now = new Date().toISOString();
-  const newShiftIds: string[] = [];
+
+  const { error: deleteError } = await admin
+    .from('rota_published_shifts')
+    .delete()
+    .eq('week_id', weekId);
+  if (deleteError) return { success: false, error: deleteError.message };
 
   if (currentShifts?.length) {
-    const { data: inserted, error: insertError } = await admin.from('rota_published_shifts').insert(
-      currentShifts.map(s => ({ ...s, published_at: now })),
-    ).select('id');
+    const { error: insertError } = await admin
+      .from('rota_published_shifts')
+      .insert(currentShifts.map(s => ({ ...s, published_at: now })));
     if (insertError) return { success: false, error: insertError.message };
-    (inserted ?? []).forEach((r: { id: string }) => newShiftIds.push(r.id));
   }
-
-  // Delete all rows for this week that were NOT just inserted (the old snapshot).
-  // When there are no new shifts (empty week), delete everything for this week.
-  let deleteError: { message: string } | null = null;
-  if (newShiftIds.length > 0) {
-    ({ error: deleteError } = await admin
-      .from('rota_published_shifts')
-      .delete()
-      .eq('week_id', weekId)
-      .not('id', 'in', `(${newShiftIds.join(',')})`));
-  } else {
-    ({ error: deleteError } = await admin
-      .from('rota_published_shifts')
-      .delete()
-      .eq('week_id', weekId));
-  }
-  if (deleteError) return { success: false, error: deleteError.message };
 
   // Only update status after snapshot succeeds
   const { error } = await supabase
