@@ -19,7 +19,7 @@ import { POST } from '@/app/api/foh/bookings/route'
 type MockOkResult = {
   ok: true
   userId: string
-  supabase: any
+  supabase: any // typed as any to avoid brittle coupling to the internal Supabase admin client type
 }
 
 function makeRequest(body: object) {
