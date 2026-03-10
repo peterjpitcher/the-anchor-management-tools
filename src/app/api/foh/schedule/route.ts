@@ -175,7 +175,7 @@ export async function GET(request: NextRequest) {
       .order('name', { ascending: true, nullsFirst: false }),
     (supabase.from('table_bookings') as any)
       .select(
-        'id, booking_reference, booking_date, booking_time, party_size, booking_type, booking_purpose, status, special_requirements, seated_at, left_at, no_show_at, start_datetime, end_datetime, event_id, customer:customers!table_bookings_customer_id_fkey(first_name,last_name)'
+        'id, booking_reference, booking_date, booking_time, party_size, booking_type, booking_purpose, status, special_requirements, seated_at, left_at, no_show_at, start_datetime, end_datetime, event_id, deposit_waived, customer:customers!table_bookings_customer_id_fkey(first_name,last_name)'
       )
       .eq('booking_date', date)
       // Only show bookings that are actively occupying a table:
@@ -477,6 +477,7 @@ export async function GET(request: NextRequest) {
           guest_name: buildGuestName(booking.customer),
           booking_time: booking.booking_time,
           party_size: booking.party_size,
+          deposit_waived: booking.deposit_waived ?? false,
           booking_type: derivedBookingType,
           booking_purpose: derivedBookingPurpose,
           status: booking.status,
@@ -525,6 +526,7 @@ export async function GET(request: NextRequest) {
       guest_name: buildGuestName(booking.customer),
       booking_time: booking.booking_time,
       party_size: booking.party_size,
+      deposit_waived: booking.deposit_waived ?? false,
       booking_type: booking.event_id ? 'event' : booking.booking_type,
       booking_purpose: booking.event_id ? 'event' : booking.booking_purpose,
       status: booking.status,
