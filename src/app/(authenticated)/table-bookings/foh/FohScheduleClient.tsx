@@ -28,6 +28,7 @@ type FohBooking = {
   assigned_table_ids?: string[]
   is_private_block?: boolean
   private_booking_id?: string | null
+  deposit_waived?: boolean | null
 }
 
 type FohLane = {
@@ -952,12 +953,14 @@ export function FohScheduleClient({
   initialDate,
   canEdit,
   isSuperAdmin = false,
-  styleVariant = 'default'
+  styleVariant = 'default',
+  canWaiveDeposit = false
 }: {
   initialDate: string
   canEdit: boolean
   isSuperAdmin?: boolean
   styleVariant?: FohStyleVariant
+  canWaiveDeposit?: boolean
 }) {
   const supabase = useMemo(() => createSupabaseClient(), [])
   const isManagerKioskStyle = styleVariant === 'manager_kiosk'
@@ -1020,7 +1023,8 @@ export function FohScheduleClient({
     sunday_lunch: false,
     sunday_deposit_method: 'payment_link' as 'payment_link' | 'cash',
     sunday_preorder_mode: 'send_link' as 'send_link' | 'capture_now',
-    notes: ''
+    notes: '',
+    waive_deposit: false
   })
 
   const fetchSchedule = useCallback(async (requestedDate: string) => {
@@ -1762,7 +1766,8 @@ export function FohScheduleClient({
       sunday_lunch: false,
       sunday_deposit_method: 'payment_link',
       sunday_preorder_mode: 'send_link',
-      notes: ''
+      notes: '',
+      waive_deposit: false
     }))
     setCreateMode('booking')
     setWalkInTargetTable(null)
@@ -1872,7 +1877,8 @@ export function FohScheduleClient({
       customer_name: walkInMode ? '' : current.customer_name,
       first_name: walkInMode ? '' : current.first_name,
       last_name: walkInMode ? '' : current.last_name,
-      notes: walkInMode ? '' : current.notes
+      notes: walkInMode ? '' : current.notes,
+      waive_deposit: false
     }))
 
     if (walkInMode) {
@@ -2087,7 +2093,7 @@ export function FohScheduleClient({
     }
 
     const requiresDepositValidation =
-      (!isWalkIn && !isManagement) &&
+      (!isWalkIn && !isManagement && !createForm.waive_deposit) &&
       ((createForm.sunday_lunch && sundaySelected) || partySize >= 7)
     if (requiresDepositValidation && !createForm.sunday_deposit_method) {
       setErrorMessage('Choose whether the deposit was taken in cash or should be sent by payment link.')
@@ -2141,9 +2147,10 @@ export function FohScheduleClient({
           purpose: createForm.purpose === 'drinks' ? 'drinks' : 'food',
           notes: createForm.notes || undefined,
           sunday_lunch: isManagement ? undefined : createForm.sunday_lunch,
-          sunday_deposit_method: (!isWalkIn && !isManagement && (createForm.sunday_lunch || partySize >= 7)) ? createForm.sunday_deposit_method : undefined,
+          sunday_deposit_method: (!isWalkIn && !isManagement && !createForm.waive_deposit && (createForm.sunday_lunch || partySize >= 7)) ? createForm.sunday_deposit_method : undefined,
           sunday_preorder_mode: (!isManagement && createForm.sunday_lunch) ? createForm.sunday_preorder_mode : undefined,
-          sunday_preorder_items: (!isManagement && sundayPreorderItems.length > 0) ? sundayPreorderItems : undefined
+          sunday_preorder_items: (!isManagement && sundayPreorderItems.length > 0) ? sundayPreorderItems : undefined,
+          waive_deposit: createForm.waive_deposit || undefined
         })
       })
 
@@ -2679,6 +2686,11 @@ export function FohScheduleClient({
                 </p>
               )}
               {selectedBooking.notes && <p className="mt-1 text-xs text-gray-600">Note: {selectedBooking.notes}</p>}
+              {selectedBooking.deposit_waived && (
+                <span className="mt-1 inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">
+                  Deposit waived
+                </span>
+              )}
             </div>
 
             {selectedBooking.is_private_block && (
@@ -3246,7 +3258,27 @@ export function FohScheduleClient({
                   <span>Sunday lunch</span>
                 </label>
 
-                {formRequiresDeposit && (
+                {formRequiresDeposit && canWaiveDeposit && (
+                  <div className="flex items-center gap-2 rounded-md border border-gray-200 bg-gray-50 px-3 py-2">
+                    <input
+                      id="waive-deposit"
+                      type="checkbox"
+                      checked={createForm.waive_deposit}
+                      onChange={(e) =>
+                        setCreateForm((prev) => ({
+                          ...prev,
+                          waive_deposit: e.target.checked
+                        }))
+                      }
+                      className="h-4 w-4 rounded border-gray-300 text-sidebar focus:ring-sidebar"
+                    />
+                    <label htmlFor="waive-deposit" className="cursor-pointer text-xs font-medium text-gray-700">
+                      Waive deposit for this booking
+                    </label>
+                  </div>
+                )}
+
+                {formRequiresDeposit && !createForm.waive_deposit && (
                   <div className="rounded-md border border-gray-200 bg-gray-50 p-3">
                     <p className="text-xs font-medium text-gray-800">
                       {createForm.sunday_lunch ? 'Sunday lunch deposit' : 'Table deposit'}
