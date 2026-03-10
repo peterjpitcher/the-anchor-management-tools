@@ -19,7 +19,6 @@ import { POST } from '@/app/api/foh/bookings/route'
 type MockOkResult = {
   ok: true
   userId: string
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   supabase: any
 }
 
@@ -42,6 +41,7 @@ const baseBookingPayload = {
 describe('POST /api/foh/bookings — deposit waiver', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    process.env.NEXT_PUBLIC_APP_URL = 'http://localhost:3000'
   })
 
   it('should return 403 when a non-manager tries to waive the deposit', async () => {
@@ -94,15 +94,31 @@ describe('POST /api/foh/bookings — deposit waiver', () => {
             })
           }
         }
-        // All other tables: return empty/success stubs
-        return {
-          select: vi.fn().mockReturnValue({
-            eq: vi.fn().mockResolvedValue({ data: [], error: null }),
+        if (table === 'customers') {
+          const eqChain = {
+            eq: vi.fn(),
+            maybeSingle: vi.fn().mockResolvedValue({
+              data: { id: '00000000-0000-0000-0000-000000000001', mobile_e164: '+441234567890', mobile_number: '01234567890' },
+              error: null
+            }),
             single: vi.fn().mockResolvedValue({ data: null, error: null }),
-            limit: vi.fn().mockReturnValue({
-              eq: vi.fn().mockResolvedValue({ data: [], error: null })
-            })
-          }),
+          }
+          eqChain.eq.mockReturnValue(eqChain)
+          return { select: vi.fn().mockReturnValue(eqChain) }
+        }
+        // All other tables: return empty/success stubs
+        const eqChain = {
+          eq: vi.fn(),
+          maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }),
+          single: vi.fn().mockResolvedValue({ data: null, error: null }),
+          limit: vi.fn().mockReturnValue({
+            eq: vi.fn().mockResolvedValue({ data: [], error: null })
+          })
+        }
+        // eq returns itself so further chaining works
+        eqChain.eq.mockReturnValue(eqChain)
+        return {
+          select: vi.fn().mockReturnValue(eqChain),
           insert: vi.fn().mockResolvedValue({ data: null, error: null }),
           update: vi.fn().mockReturnValue({
             eq: vi.fn().mockResolvedValue({ data: null, error: null })
@@ -122,8 +138,8 @@ describe('POST /api/foh/bookings — deposit waiver', () => {
 
     const req = makeRequest({ ...baseBookingPayload, waive_deposit: true })
     const res = await POST(req)
-    // Should succeed (200) — not blocked on deposit method missing
-    expect(res.status).toBe(200)
+    // Should succeed (201) — not blocked on deposit method missing
+    expect(res.status).toBe(201)
   })
 
   it('should require sunday_deposit_method when waive_deposit is false and party_size >= 7', async () => {
