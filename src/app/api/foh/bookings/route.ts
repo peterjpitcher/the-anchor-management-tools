@@ -848,10 +848,16 @@ export async function POST(request: NextRequest) {
 
   // Deposit waiver: manager or super_admin can skip deposit for a specific booking.
   if (payload.waive_deposit === true) {
-    const { data: roleRows } = await auth.supabase
+    const { data: roleRows, error: roleQueryError } = await auth.supabase
       .from('user_roles')
       .select('roles(name)')
       .eq('user_id', auth.userId)
+    if (roleQueryError) {
+      logger.error('Failed to fetch user roles for deposit waiver check', {
+        error: roleQueryError,
+        metadata: { userId: auth.userId }
+      })
+    }
     const isManagerOrAbove = (roleRows as Array<{ roles: { name: string } | null }> | null)
       ?.some((r) => r.roles?.name === 'manager' || r.roles?.name === 'super_admin') ?? false
     if (!isManagerOrAbove) {
