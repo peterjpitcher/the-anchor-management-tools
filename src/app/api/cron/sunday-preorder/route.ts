@@ -395,7 +395,7 @@ async function loadSentTemplateSet(
   for (const bookingChunk of chunkArray(bookingIds, 300)) {
     const { data, error } = await supabase
       .from('messages')
-      .select('table_booking_id, template_key, metadata')
+      .select('table_booking_id, template_key')
       .in('table_booking_id', bookingChunk)
       .in('template_key', templateKeys)
 
@@ -410,8 +410,8 @@ async function loadSentTemplateSet(
     }
 
     for (const row of data || []) {
-      const bookingId = (row as any).table_booking_id || (row as any)?.metadata?.table_booking_id
-      const templateKey = (row as any).template_key || (row as any)?.metadata?.template_key
+      const bookingId = row.table_booking_id
+      const templateKey = row.template_key
       if (typeof bookingId === 'string' && typeof templateKey === 'string') {
         sent.add(`${bookingId}:${templateKey}`)
       }
