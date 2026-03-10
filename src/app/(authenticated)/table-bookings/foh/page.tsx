@@ -27,14 +27,18 @@ export default async function TableBookingsFohPage() {
 
   const userId = authResult.data.user?.id
   let isSuperAdmin = false
+  let canWaiveDeposit = false
   if (userId) {
     const admin = createAdminClient()
     const { data: roleRows } = await admin
       .from('user_roles')
       .select('roles(name)')
       .eq('user_id', userId)
-    isSuperAdmin = (roleRows as Array<{ roles: { name: string } | null }> | null)
-      ?.some((r) => r.roles?.name === 'super_admin') ?? false
+    const roles = (roleRows as Array<{ roles: { name: string } | null }> | null) ?? []
+    isSuperAdmin = roles.some((r) => r.roles?.name === 'super_admin')
+    canWaiveDeposit = roles.some(
+      (r) => r.roles?.name === 'manager' || r.roles?.name === 'super_admin'
+    )
   }
 
   if (!canView) {
@@ -122,6 +126,7 @@ export default async function TableBookingsFohPage() {
         initialDate={getLondonDateIso()}
         canEdit={canEdit}
         isSuperAdmin={isSuperAdmin}
+        canWaiveDeposit={canWaiveDeposit}
         styleVariant={useManagerKioskStyle ? 'manager_kiosk' : 'default'}
       />
     </PageLayout>
