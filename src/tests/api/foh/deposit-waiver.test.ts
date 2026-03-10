@@ -6,7 +6,9 @@ vi.mock('@/lib/foh/api-auth', () => ({
   requireFohPermission: vi.fn()
 }))
 vi.mock('@/lib/supabase/server', () => ({
-  createClient: vi.fn()
+  createClient: vi.fn().mockResolvedValue({
+    auth: { getUser: vi.fn().mockResolvedValue({ data: { user: null }, error: null }) }
+  })
 }))
 
 import { requireFohPermission } from '@/lib/foh/api-auth'
@@ -60,6 +62,10 @@ describe('POST /api/foh/bookings — deposit waiver', () => {
 
     const req = makeRequest({ ...baseBookingPayload, waive_deposit: true })
     const res = await POST(req)
+    // NOTE: This test will continue to fail (returning 400 from Zod) until BOTH:
+    // 1. waive_deposit is added to the schema (Task 4 Step 1), AND
+    // 2. the role check block is added (Task 4 Step 3)
+    // After both steps, it should return 403 for a staff user.
     expect(res.status).toBe(403)
     const json = await res.json()
     expect(json.error).toMatch(/permission/i)
@@ -78,12 +84,31 @@ describe('POST /api/foh/bookings — deposit waiver', () => {
     }
 
     const mockSupabase = {
-      from: vi.fn().mockReturnValue({
-        select: vi.fn().mockReturnValue({
-          eq: vi.fn().mockResolvedValue({
-            data: [{ roles: { name: 'manager' } }]
-          })
-        })
+      from: vi.fn().mockImplementation((table: string) => {
+        if (table === 'user_roles') {
+          return {
+            select: vi.fn().mockReturnValue({
+              eq: vi.fn().mockResolvedValue({
+                data: [{ roles: { name: 'manager' } }]
+              })
+            })
+          }
+        }
+        // All other tables: return empty/success stubs
+        return {
+          select: vi.fn().mockReturnValue({
+            eq: vi.fn().mockResolvedValue({ data: [], error: null }),
+            single: vi.fn().mockResolvedValue({ data: null, error: null }),
+            limit: vi.fn().mockReturnValue({
+              eq: vi.fn().mockResolvedValue({ data: [], error: null })
+            })
+          }),
+          insert: vi.fn().mockResolvedValue({ data: null, error: null }),
+          update: vi.fn().mockReturnValue({
+            eq: vi.fn().mockResolvedValue({ data: null, error: null })
+          }),
+          upsert: vi.fn().mockResolvedValue({ data: null, error: null })
+        }
       }),
       rpc: vi.fn().mockResolvedValue(mockRpcResult)
     }
