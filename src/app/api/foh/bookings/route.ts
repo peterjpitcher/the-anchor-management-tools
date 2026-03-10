@@ -49,7 +49,8 @@ const CreateFohTableBookingSchema = z.object({
   sunday_preorder_mode: z.enum(['send_link', 'capture_now']).optional(),
   sunday_preorder_items: z.array(SundayPreorderItemSchema).optional(),
   default_country_code: z.string().regex(/^\d{1,4}$/).optional(),
-  management_override: z.boolean().optional()
+  management_override: z.boolean().optional(),
+  waive_deposit: z.boolean().optional()
 }).superRefine((value, context) => {
   if (!value.customer_id && !value.phone && value.walk_in !== true && value.management_override !== true) {
     context.addIssue({
@@ -82,9 +83,10 @@ const CreateFohTableBookingSchema = z.object({
     }
   }
 
-  // Deposit not required for management overrides — they bypass all booking restrictions
+  // Deposit not required for management overrides or deposit waivers — they bypass deposit restrictions
   if (
     value.management_override !== true &&
+    value.waive_deposit !== true &&
     (value.sunday_lunch === true || (value.party_size != null && value.party_size >= 7)) &&
     value.sunday_deposit_method == null
   ) {
@@ -844,6 +846,22 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ success: true, data: responseData })
   }
 
+  // Deposit waiver: manager or super_admin can skip deposit for a specific booking.
+  if (payload.waive_deposit === true) {
+    const { data: roleRows } = await auth.supabase
+      .from('user_roles')
+      .select('roles(name)')
+      .eq('user_id', auth.userId)
+    const isManagerOrAbove = (roleRows as Array<{ roles: { name: string } | null }> | null)
+      ?.some((r) => r.roles?.name === 'manager' || r.roles?.name === 'super_admin') ?? false
+    if (!isManagerOrAbove) {
+      return NextResponse.json(
+        { error: 'Insufficient permissions to waive deposit' },
+        { status: 403 }
+      )
+    }
+  }
+
   let normalizedPhone: string | null = null
   let customerId: string | null = null
   let shouldSendBookingSms = true
@@ -1014,7 +1032,7 @@ export async function POST(request: NextRequest) {
     )
   }
 
-  const requiresDeposit = effectiveSundayLunch || payload.party_size >= 7
+  const requiresDeposit = (effectiveSundayLunch || payload.party_size >= 7) && payload.waive_deposit !== true
   const depositMethod = requiresDeposit
     ? payload.sunday_deposit_method || null
     : null
@@ -1035,7 +1053,8 @@ export async function POST(request: NextRequest) {
     p_notes: payload.notes || null,
     p_sunday_lunch: effectiveSundayLunch,
     p_source: payload.walk_in === true ? 'walk-in' : 'admin',
-    p_bypass_cutoff: true
+    p_bypass_cutoff: true,
+    p_deposit_waived: payload.waive_deposit === true
   })
 
   let bookingResult: TableBookingRpcResult
@@ -1118,61 +1137,86 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  if (
-    bookingResult.state === 'pending_payment' &&
-    bookingResult.table_booking_id &&
-    depositMethod === 'cash'
-  ) {
-    const { data: cashConfirmRaw, error: cashConfirmError } = await auth.supabase.rpc('record_table_cash_deposit_v05', {
-      p_table_booking_id: bookingResult.table_booking_id,
-      p_amount: Number((Math.max(1, Number(payload.party_size || 1)) * 10).toFixed(2)),
-      p_currency: 'GBP',
-    })
+  if (payload.waive_deposit !== true) {
+    if (
+      bookingResult.state === 'pending_payment' &&
+      bookingResult.table_booking_id &&
+      depositMethod === 'cash'
+    ) {
+      const { data: cashConfirmRaw, error: cashConfirmError } = await auth.supabase.rpc('record_table_cash_deposit_v05', {
+        p_table_booking_id: bookingResult.table_booking_id,
+        p_amount: Number((Math.max(1, Number(payload.party_size || 1)) * 10).toFixed(2)),
+        p_currency: 'GBP',
+      })
 
-    if (cashConfirmError) {
-      logger.error('record_table_cash_deposit_v05 RPC failed for FOH create', {
-        error: new Error(cashConfirmError.message),
-        metadata: {
-          userId: auth.userId,
+      if (cashConfirmError) {
+        logger.error('record_table_cash_deposit_v05 RPC failed for FOH create', {
+          error: new Error(cashConfirmError.message),
+          metadata: {
+            userId: auth.userId,
+            customerId,
+            tableBookingId: bookingResult.table_booking_id,
+          },
+        })
+        return NextResponse.json(
+          { error: 'Booking was created but cash deposit confirmation failed. Please reopen the booking and retry.' },
+          { status: 500 }
+        )
+      }
+
+      const cashConfirm = (cashConfirmRaw ?? {}) as {
+        state?: 'confirmed' | 'already_confirmed' | 'blocked'
+        reason?: string
+      }
+
+      if (cashConfirm.state === 'blocked') {
+        logger.warn('Cash deposit confirmation returned blocked for FOH create', {
+          metadata: {
+            userId: auth.userId,
+            customerId,
+            tableBookingId: bookingResult.table_booking_id,
+            reason: cashConfirm.reason || null,
+          },
+        })
+        return NextResponse.json(
+          { error: 'Booking was created but cash deposit could not be confirmed.' },
+          { status: 409 }
+        )
+      }
+
+      bookingResult = {
+        ...bookingResult,
+        state: 'confirmed',
+        status: 'confirmed',
+        hold_expires_at: undefined,
+      }
+      holdExpiresAt = null
+      nextStepUrl = null
+    } else if (
+      bookingResult.state === 'pending_payment' &&
+      bookingResult.table_booking_id &&
+      bookingResult.hold_expires_at &&
+      depositMethod === 'payment_link'
+    ) {
+      try {
+        const token = await createTablePaymentToken(auth.supabase, {
           customerId,
           tableBookingId: bookingResult.table_booking_id,
-        },
-      })
-      return NextResponse.json(
-        { error: 'Booking was created but cash deposit confirmation failed. Please reopen the booking and retry.' },
-        { status: 500 }
-      )
+          holdExpiresAt: bookingResult.hold_expires_at,
+          appBaseUrl,
+        })
+        nextStepUrl = token.url
+      } catch (tokenError) {
+        logger.warn('Failed to create table payment token for FOH create', {
+          metadata: {
+            tableBookingId: bookingResult.table_booking_id,
+            error: tokenError instanceof Error ? tokenError.message : String(tokenError),
+          },
+        })
+      }
     }
-
-    const cashConfirm = (cashConfirmRaw ?? {}) as {
-      state?: 'confirmed' | 'already_confirmed' | 'blocked'
-      reason?: string
-    }
-
-    if (cashConfirm.state === 'blocked') {
-      logger.warn('Cash deposit confirmation returned blocked for FOH create', {
-        metadata: {
-          userId: auth.userId,
-          customerId,
-          tableBookingId: bookingResult.table_booking_id,
-          reason: cashConfirm.reason || null,
-        },
-      })
-      return NextResponse.json(
-        { error: 'Booking was created but cash deposit could not be confirmed.' },
-        { status: 409 }
-      )
-    }
-
-    bookingResult = {
-      ...bookingResult,
-      state: 'confirmed',
-      status: 'confirmed',
-      hold_expires_at: undefined,
-    }
-    holdExpiresAt = null
-    nextStepUrl = null
   }
+  // If waive_deposit is true, booking is already confirmed via RPC — fall through to SMS
 
   if (
     payload.walk_in === true &&
@@ -1188,30 +1232,6 @@ export async function POST(request: NextRequest) {
           tableBookingId: bookingResult.table_booking_id,
           error: seatError instanceof Error ? seatError.message : String(seatError)
         }
-      })
-    }
-  }
-
-  if (
-    bookingResult.state === 'pending_payment' &&
-    bookingResult.table_booking_id &&
-    bookingResult.hold_expires_at &&
-    depositMethod === 'payment_link'
-  ) {
-    try {
-      const token = await createTablePaymentToken(auth.supabase, {
-        customerId,
-        tableBookingId: bookingResult.table_booking_id,
-        holdExpiresAt: bookingResult.hold_expires_at,
-        appBaseUrl,
-      })
-      nextStepUrl = token.url
-    } catch (tokenError) {
-      logger.warn('Failed to create table payment token for FOH create', {
-        metadata: {
-          tableBookingId: bookingResult.table_booking_id,
-          error: tokenError instanceof Error ? tokenError.message : String(tokenError),
-        },
       })
     }
   }
