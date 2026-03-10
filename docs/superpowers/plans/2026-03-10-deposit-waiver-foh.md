@@ -59,10 +59,20 @@ npx supabase db push --dry-run
 
 Should report zero pending migrations after the push.
 
-- [ ] **Step 3: Commit**
+- [ ] **Step 3: Regenerate TypeScript types from the updated schema**
+
+After pushing the migration, the auto-generated `src/types/database.generated.ts` will be stale (it won't include `deposit_waived`). Regenerate it:
 
 ```bash
-git add supabase/migrations/20260509000004_deposit_waiver_column.sql
+npx supabase gen types typescript --local > src/types/database.generated.ts
+```
+
+If `--local` fails (no local instance running), use `--project-id <your-project-ref>` instead. Confirm `deposit_waived` now appears in the `table_bookings` Row type in the generated file.
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add supabase/migrations/20260509000004_deposit_waiver_column.sql src/types/database.generated.ts
 git commit -m "feat: add deposit_waived column to table_bookings"
 ```
 
@@ -111,8 +121,9 @@ $$;
 > 2. **Add `p_deposit_waived` to the parameter list** (already shown above).
 >
 > 3. **Short-circuit the deposit requirement when waiving.** Inside the function body,
->    find the block that sets `v_deposit_required` (it will look like `v_deposit_required := true`
->    based on `v_party_size >= 7 OR v_sunday_lunch`). Immediately **before** that block, add:
+>    find line 387 — a single-line assignment:
+>    `v_deposit_required := COALESCE(p_sunday_lunch, false) OR (p_party_size BETWEEN 7 AND 20);`
+>    Insert the following block **immediately before** that line:
 >
 >    ```sql
 >    -- Deposit waiver overrides the automatic deposit requirement
@@ -333,7 +344,7 @@ if (
 
 - [ ] **Step 3: Add the deposit waiver permission check and booking path**
 
-After the `management_override` block (which returns early), add a new block for `waive_deposit`. Find the section after the management override early return — this is where normal booking flow begins. Add the following immediately after parsing `payload`:
+The `management_override` block occupies lines 791–844 and ends with a hard early `return`. Normal booking flow resumes at line 847 (`let normalizedPhone`). Add the following block at line 847, immediately after the management override block ends:
 
 ```typescript
 // Deposit waiver: manager or super_admin can skip deposit for a specific booking.
@@ -616,9 +627,9 @@ to the initial state object.
 
 - [ ] **Step 4: Add the waiver toggle UI**
 
-Find the section where the deposit method selector is rendered (around line 1551, where `formRequiresDeposit` is used). The deposit method selector (Cash / Payment link) is shown when `formRequiresDeposit` is true.
+The `formRequiresDeposit` computed value is declared at line 1547 but the **UI that renders the Cash / Payment link selector** is at line 3249 — this is the insertion point. Search for `{formRequiresDeposit &&` in the JSX render section to find the deposit method selector block.
 
-**Above** the deposit method selector, add the waiver toggle (only shown to managers+):
+**Above** the deposit method selector (at line 3249), add the waiver toggle (only shown to managers+):
 
 ```tsx
 {formRequiresDeposit && canWaiveDeposit && (
@@ -631,8 +642,8 @@ Find the section where the deposit method selector is rendered (around line 1551
         setCreateForm((prev) => ({
           ...prev,
           waive_deposit: e.target.checked,
-          // Clear deposit method when waiving
-          sunday_deposit_method: e.target.checked ? undefined : prev.sunday_deposit_method
+          // Reset deposit method to default when waiving (undefined is not valid — type is 'payment_link' | 'cash')
+          sunday_deposit_method: e.target.checked ? 'payment_link' : prev.sunday_deposit_method
         }))
       }
       className="h-4 w-4 rounded border-gray-300 text-sidebar focus:ring-sidebar"
@@ -677,9 +688,13 @@ if (requiresDepositValidation && !createForm.sunday_deposit_method) {
 
 Do NOT add the waiver check only inside the `if` block body — the constant must be updated so the validation is skipped entirely.
 
-- [ ] **Step 6: Reset `waive_deposit` when the form resets**
+- [ ] **Step 6: Reset `waive_deposit` in all form reset locations**
 
-Wherever the create form is reset to its initial state (after a successful booking, or when the form is closed), ensure `waive_deposit: false` is included in the reset.
+There are **three** reset locations that must include `waive_deposit: false`. Do not miss any:
+
+1. **`useState` initial value (line 1010)** — the object passed to `useState({...})`. Add `waive_deposit: false` here.
+2. **`resetCreateModalState()` function (line 1752)** — this constructs a full object (not a spread). Add `waive_deposit: false` here. This is the primary post-booking-success reset.
+3. **`openCreateModal` / `setCreateForm` call (line 1856)** — this spreads `...current` and patches specific fields. Explicitly add `waive_deposit: false` so re-opening the modal always starts with the toggle unchecked.
 
 - [ ] **Step 7: Add "Deposit waived" badge to the booking modal**
 
