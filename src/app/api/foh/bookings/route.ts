@@ -8,6 +8,7 @@ import { formatPhoneForStorage } from '@/lib/utils'
 import { ensureCustomerForPhone } from '@/lib/sms/customers'
 import { logger } from '@/lib/logger'
 import { recordAnalyticsEvent } from '@/lib/analytics/events'
+import { logAuditEvent } from '@/app/actions/audit'
 import {
   alignTablePaymentHoldToScheduledSend,
   createTablePaymentToken,
@@ -857,8 +858,9 @@ export async function POST(request: NextRequest) {
         error: roleQueryError,
         metadata: { userId: auth.userId }
       })
+      return NextResponse.json({ error: 'Failed to verify permissions' }, { status: 500 })
     }
-    const isManagerOrAbove = (roleRows as Array<{ roles: { name: string } | null }> | null)
+    const isManagerOrAbove = (roleRows as unknown as Array<{ roles: { name: string } | null }> | null)
       ?.some((r) => r.roles?.name === 'manager' || r.roles?.name === 'super_admin') ?? false
     if (!isManagerOrAbove) {
       return NextResponse.json(
@@ -866,6 +868,13 @@ export async function POST(request: NextRequest) {
         { status: 403 }
       )
     }
+    await logAuditEvent({
+      user_id: auth.userId,
+      operation_type: 'create',
+      resource_type: 'table_booking_deposit_waiver',
+      operation_status: 'success',
+      additional_info: { waive_deposit: true }
+    })
   }
 
   let normalizedPhone: string | null = null
@@ -1280,7 +1289,8 @@ export async function POST(request: NextRequest) {
         sunday_lunch: effectiveSundayLunch,
         status: bookingResult.status || bookingResult.state,
         table_name: bookingResult.table_name || null,
-        source: 'foh'
+        source: 'foh',
+        deposit_waived: payload.waive_deposit === true
       }
     }, {
       userId: auth.userId,
