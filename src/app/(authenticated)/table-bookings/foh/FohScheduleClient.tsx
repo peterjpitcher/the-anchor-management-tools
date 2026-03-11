@@ -29,6 +29,7 @@ type FohBooking = {
   is_private_block?: boolean
   private_booking_id?: string | null
   deposit_waived?: boolean | null
+  sunday_preorder_completed_at?: string | null
 }
 
 type FohLane = {
