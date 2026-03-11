@@ -2,7 +2,7 @@ import { notFound, redirect } from 'next/navigation'
 import { checkUserPermission } from '@/app/actions/rbac'
 import { createClient } from '@/lib/supabase/server'
 import { PageLayout } from '@/components/ui-v2/layout/PageLayout'
-import BookingDetailClient from './BookingDetailClient'
+import BookingDetailClient, { type Booking } from './BookingDetailClient'
 
 interface Props {
   params: Promise<{ id: string }>
@@ -48,8 +48,17 @@ export default async function BookingDetailPage({ params }: Props) {
   }
   if (!booking) notFound()
 
-  // Supabase returns joins as arrays; normalise to a single object
-  const customer = Array.isArray(booking.customer) ? booking.customer[0] : booking.customer
+  // Supabase infers nested joins as arrays; normalise to scalar before passing to the client component
+  const customer = Array.isArray(booking.customer) ? (booking.customer[0] ?? null) : booking.customer
+  const tableBookingTables = booking.table_booking_tables.map((tbt) => ({
+    table: Array.isArray(tbt.table) ? (tbt.table[0] ?? null) : tbt.table,
+  }))
+  const normalizedBooking: Booking = {
+    ...booking,
+    customer: customer ?? null,
+    table_booking_tables: tableBookingTables,
+  } as unknown as Booking
+
   const guestName = [customer?.first_name, customer?.last_name]
     .filter(Boolean)
     .join(' ')
@@ -62,7 +71,7 @@ export default async function BookingDetailPage({ params }: Props) {
       backButton={{ label: 'Back to BOH', href: '/table-bookings/boh' }}
     >
       <BookingDetailClient
-        booking={booking}
+        booking={normalizedBooking}
         canEdit={canEdit}
         canManage={canManage}
       />
