@@ -53,7 +53,7 @@ export async function POST(
 
   const items = (body as { items: SundayPreorderSaveInputItem[] }).items
 
-  const result = await saveSundayPreorderByBookingId(auth.supabase, { bookingId: id, items })
+  const result = await saveSundayPreorderByBookingId(auth.supabase, { bookingId: id, items, staffOverride: true })
 
   if (result.state === 'blocked') {
     return NextResponse.json({ error: result.reason ?? 'Save blocked' }, { status: 422 })
