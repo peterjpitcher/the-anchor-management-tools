@@ -10,6 +10,12 @@ export async function GET() {
 
   try {
     const items = await getSundayLunchMenuItems(auth.supabase)
+    if (items === null) {
+      return NextResponse.json(
+        { success: false, error: 'Sunday lunch menu is not available' },
+        { status: 503 }
+      )
+    }
     return NextResponse.json({
       success: true,
       data: items

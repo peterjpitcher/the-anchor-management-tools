@@ -38,7 +38,14 @@ export async function POST(
   })
 
   if (!transition.ok) {
-    return NextResponse.json({ error: transition.error }, { status: transition.status })
+    const { data: currentBooking } = await (auth.supabase.from('table_bookings') as any)
+      .select('id, status, seated_at, left_at, no_show_at, cancelled_at, updated_at')
+      .eq('id', id)
+      .maybeSingle()
+    return NextResponse.json(
+      { error: transition.error, booking: currentBooking ?? null },
+      { status: transition.status }
+    )
   }
 
   const committedPartySize = Math.max(
@@ -51,7 +58,7 @@ export async function POST(
   const { data: noShowRow, error: updateError } = await (auth.supabase.from('table_bookings') as any)
     .update(transition.plan.update)
     .eq('id', id)
-    .select('id')
+    .select('id, status, seated_at, left_at, no_show_at, cancelled_at, updated_at')
     .maybeSingle()
 
   if (updateError) {
@@ -100,6 +107,15 @@ export async function POST(
 
   return NextResponse.json({
     success: true,
+    booking: {
+      id: noShowRow.id,
+      status: noShowRow.status,
+      seated_at: noShowRow.seated_at,
+      left_at: noShowRow.left_at,
+      no_show_at: noShowRow.no_show_at,
+      cancelled_at: noShowRow.cancelled_at,
+      updated_at: noShowRow.updated_at
+    },
     data: {
       booking_id: booking.id,
       no_show_marked_at: nowIso,

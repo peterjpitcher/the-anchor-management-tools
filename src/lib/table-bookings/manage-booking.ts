@@ -492,7 +492,20 @@ export async function updateTableBookingByRawToken(
   const bookingId = preview.table_booking_id
   const customerId = preview.customer_id
   const oldPartySize = Math.max(1, Number(preview.party_size || 1))
-  const oldCommittedSize = Math.max(1, Number(preview.committed_party_size || oldPartySize))
+
+  // committed_party_size should always be set (NOT NULL in the DB since the v05 migration).
+  // If it arrives as null/undefined here the TypeScript type is telling us something unexpected
+  // happened (e.g. a direct DB insert that bypassed the RPC). We fall back to oldPartySize to
+  // preserve existing behaviour, but we log a warning so the assumption is visible in the audit
+  // trail rather than silently affecting charge calculations.
+  const committedPartySizeWasNull = preview.committed_party_size == null
+  if (committedPartySizeWasNull) {
+    logger.warn('[manage-booking] committed_party_size is null, falling back to party_size', {
+      metadata: { bookingId }
+    })
+  }
+  const oldCommittedSize = Math.max(1, Number(preview.committed_party_size ?? oldPartySize))
+
   const cleanNotes = input.notes ? input.notes.trim().slice(0, 500) : null
 
   if (input.action === 'cancel') {
@@ -587,7 +600,8 @@ export async function updateTableBookingByRawToken(
           source: 'guest_late_cancel',
           old_party_size: oldPartySize,
           committed_party_size: oldCommittedSize,
-          fee_per_head: feePerHead
+          fee_per_head: feePerHead,
+          ...(committedPartySizeWasNull ? { committed_party_size_was_null: true } : {})
         }
       })
       chargeRequestId = chargeRequest.chargeRequestId
@@ -688,7 +702,8 @@ export async function updateTableBookingByRawToken(
             new_party_size: newPartySize,
             committed_party_size: oldCommittedSize,
             reduction_count: reductionCount,
-            fee_per_head: feePerHead
+            fee_per_head: feePerHead,
+            ...(committedPartySizeWasNull ? { committed_party_size_was_null: true } : {})
           }
         }
       }

@@ -29,6 +29,7 @@ interface PreorderData {
   submit_deadline_at?: string | null
   sunday_preorder_cutoff_at?: string | null
   sunday_preorder_completed_at?: string | null
+  cutoff_overridden?: boolean
   existing_items?: PreorderItem[]
   menu_items?: MenuItem[]
 }
@@ -116,6 +117,9 @@ export default function PreorderTab({ booking, canEdit }: Props) {
           {data.sunday_preorder_cutoff_at && (
             <p className="text-xs text-gray-500 mt-0.5">
               Cutoff: {formatLondonDateTime(data.sunday_preorder_cutoff_at)}
+              {data.cutoff_overridden && (
+                <span className="ml-1 text-amber-600">(custom cutoff set)</span>
+              )}
             </p>
           )}
         </div>

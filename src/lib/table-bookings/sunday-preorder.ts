@@ -3,6 +3,43 @@ import { createGuestToken, hashGuestToken } from '@/lib/guest/tokens'
 
 type BookingItemType = 'main' | 'side' | 'extra'
 
+// Typed shapes for DB rows returned by loadSundayLunchMenuItems — prevents silent
+// any[] casts masking missing or malformed fields from the menu tables.
+interface MenuMenuRow {
+  id: string
+}
+
+interface MenuDishMenuAssignmentRow {
+  dish_id: string
+  category_id: string | null
+  sort_order: number | null
+}
+
+interface MenuDishRow {
+  id: string
+  name: string
+  selling_price: number | null
+  is_active: boolean
+}
+
+interface MenuCategoryRow {
+  id: string
+  code: string | null
+  name: string | null
+}
+
+interface FallbackDishRow {
+  id: string
+  name: string
+  selling_price: number | null
+}
+
+interface LegacyMenuItemRow {
+  name: string
+  category: string | null
+  display_order: number | null
+}
+
 export type SundayMenuItem = {
   menu_dish_id: string
   name: string
@@ -35,6 +72,7 @@ export type SundayPreorderPageData = {
   cancellation_deadline_at?: string | null
   sunday_preorder_cutoff_at?: string | null
   sunday_preorder_completed_at?: string | null
+  cutoff_overridden?: boolean
   existing_items?: SundayPreorderExistingItem[]
   menu_items?: SundayMenuItem[]
 }
@@ -121,33 +159,32 @@ function isUuid(value: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)
 }
 
+// Returns null when no menu items could be loaded (triggers menu_unavailable block in callers).
 async function loadSundayLunchMenuItems(
   supabase: SupabaseClient<any, 'public', any>
-): Promise<SundayMenuItem[]> {
-  const { data: sundayMenu, error: sundayMenuError } = await (supabase.from('menu_menus') as any)
+): Promise<SundayMenuItem[] | null> {
+  const { data: sundayMenuRaw, error: sundayMenuError } = await (supabase.from('menu_menus') as any)
     .select('id')
     .eq('code', 'sunday_lunch')
     .eq('is_active', true)
     .maybeSingle()
 
-  if (!sundayMenuError && sundayMenu?.id) {
-    const { data: assignments, error: assignmentsError } = await (supabase.from('menu_dish_menu_assignments') as any)
+  if (!sundayMenuError && sundayMenuRaw?.id) {
+    const sundayMenu = sundayMenuRaw as MenuMenuRow
+
+    const { data: assignmentsRaw, error: assignmentsError } = await (supabase.from('menu_dish_menu_assignments') as any)
       .select('dish_id, category_id, sort_order')
       .eq('menu_id', sundayMenu.id)
 
-    const assignmentRows = assignmentsError
+    const assignmentRows: MenuDishMenuAssignmentRow[] = assignmentsError
       ? []
-      : ((assignments || []) as Array<{
-          dish_id: string
-          category_id: string | null
-          sort_order: number | null
-        }>)
+      : (assignmentsRaw || []) as MenuDishMenuAssignmentRow[]
 
     if (assignmentRows.length > 0) {
       const dishIds = Array.from(new Set(assignmentRows.map((row) => row.dish_id).filter(Boolean)))
       const categoryIds = Array.from(new Set(assignmentRows.map((row) => row.category_id).filter(Boolean)))
 
-      const [{ data: dishes }, { data: categories }] = await Promise.all([
+      const [{ data: dishesRaw }, { data: categoriesRaw }] = await Promise.all([
         (supabase.from('menu_dishes') as any)
           .select('id, name, selling_price, is_active')
           .in('id', dishIds)
@@ -156,18 +193,15 @@ async function loadSundayLunchMenuItems(
           ? (supabase.from('menu_categories') as any)
               .select('id, code, name')
               .in('id', categoryIds)
-          : Promise.resolve({ data: [] as any[] })
+          : Promise.resolve({ data: [] as MenuCategoryRow[] })
       ])
 
       const dishMap = new Map(
-        ((dishes || []) as Array<{ id: string; name: string; selling_price: number }>).map((dish) => [dish.id, dish])
+        ((dishesRaw || []) as MenuDishRow[]).map((dish) => [dish.id, dish])
       )
 
       const categoryMap = new Map(
-        ((categories || []) as Array<{ id: string; code: string | null; name: string | null }>).map((category) => [
-          category.id,
-          category
-        ])
+        ((categoriesRaw || []) as MenuCategoryRow[]).map((category) => [category.id, category])
       )
 
       const menuItems: SundayMenuItem[] = []
@@ -175,6 +209,12 @@ async function loadSundayLunchMenuItems(
       for (const assignment of assignmentRows) {
         const dish = dishMap.get(assignment.dish_id)
         if (!dish) continue
+
+        // Guard: a dish row missing id or name is malformed — skip and warn rather than silently producing a broken item.
+        if (!dish.id || !dish.name) {
+          console.warn('[sunday-preorder] loadSundayLunchMenuItems: skipping dish with missing id or name', { dish_id: assignment.dish_id })
+          continue
+        }
 
         const category = assignment.category_id ? categoryMap.get(assignment.category_id) : undefined
 
@@ -197,42 +237,48 @@ async function loadSundayLunchMenuItems(
 
   // Fallback for older data: use active Sunday-lunch flagged dishes even if the menu
   // assignment records are missing. This keeps "Capture now" usable.
-  const { data: fallbackDishes, error: fallbackDishesError } = await (supabase.from('menu_dishes') as any)
+  const { data: fallbackDishesRaw, error: fallbackDishesError } = await (supabase.from('menu_dishes') as any)
     .select('id, name, selling_price')
     .eq('is_active', true)
     .eq('is_sunday_lunch', true)
 
   if (fallbackDishesError) {
-    return []
+    return null
   }
 
-  const dishRows = (fallbackDishes || []) as Array<{
-    id: string
-    name: string
-    selling_price: number | null
-  }>
+  const dishRows = (fallbackDishesRaw || []) as FallbackDishRow[]
 
   if (dishRows.length === 0) {
-    return []
+    return null
   }
 
-  const { data: legacyItems } = await (supabase.from('sunday_lunch_menu_items') as any)
+  const { data: legacyItemsRaw } = await (supabase.from('sunday_lunch_menu_items') as any)
     .select('name, category, display_order')
     .eq('is_active', true)
 
   const legacyByName = new Map(
-    ((legacyItems || []) as Array<{ name: string; category: string | null; display_order: number | null }>).map((row) => [
+    ((legacyItemsRaw || []) as LegacyMenuItemRow[]).map((row) => [
       row.name.trim().toLowerCase(),
       row
     ])
   )
 
-  const fallbackMenuItems: SundayMenuItem[] = dishRows.map((dish, index) => {
+  const fallbackMenuItems: SundayMenuItem[] = []
+
+  for (let index = 0; index < dishRows.length; index++) {
+    const dish = dishRows[index]
+
+    // Guard: a dish row missing id or name is malformed — skip and warn.
+    if (!dish.id || !dish.name) {
+      console.warn('[sunday-preorder] loadSundayLunchMenuItems (fallback): skipping dish with missing id or name', { dish })
+      continue
+    }
+
     const legacy = legacyByName.get(dish.name.trim().toLowerCase())
     const categoryCode = legacy?.category || null
     const categoryName = formatCategoryName(categoryCode)
 
-    return {
+    fallbackMenuItems.push({
       menu_dish_id: dish.id,
       name: dish.name,
       price: Number(Number(dish.selling_price || 0).toFixed(2)),
@@ -242,8 +288,12 @@ async function loadSundayLunchMenuItems(
       sort_order: Number.isFinite(Number(legacy?.display_order))
         ? Number(legacy?.display_order)
         : index
-    }
-  })
+    })
+  }
+
+  if (fallbackMenuItems.length === 0) {
+    return null
+  }
 
   return sortSundayMenuItems(fallbackMenuItems)
 }
@@ -331,6 +381,17 @@ export async function getSundayPreorderPageDataByRawToken(
   const submitDeadline = minDefinedDate(cancellationDeadline, sundayCutoff)
   const canSubmit = Boolean(submitDeadline && now.getTime() < submitDeadline.getTime())
 
+  // Detect when a custom cutoff is set earlier than the standard 24h deadline so staff
+  // can see the deadline has been overridden.
+  const cutoffOverridden = Boolean(
+    sundayCutoff && sundayCutoff.getTime() < cancellationDeadline.getTime()
+  )
+  if (cutoffOverridden) {
+    console.warn(
+      `[sunday-preorder] booking ${booking.id}: sunday_preorder_cutoff_at (${booking.sunday_preorder_cutoff_at}) is earlier than the 24h cancellation deadline (${cancellationDeadline.toISOString()}) — cutoff overridden`
+    )
+  }
+
   const [menuItems, existingRows] = await Promise.all([
     loadSundayLunchMenuItems(supabase),
     (supabase.from('table_booking_items') as any)
@@ -338,6 +399,10 @@ export async function getSundayPreorderPageDataByRawToken(
       .eq('booking_id', booking.id)
       .not('menu_dish_id', 'is', null)
   ])
+
+  if (menuItems === null) {
+    return { state: 'blocked', reason: 'menu_unavailable' }
+  }
 
   const existingItems: SundayPreorderExistingItem[] = ((existingRows.data || []) as any[])
     .filter((row) => typeof row.menu_dish_id === 'string')
@@ -362,6 +427,7 @@ export async function getSundayPreorderPageDataByRawToken(
     cancellation_deadline_at: toIsoOrNull(cancellationDeadline),
     sunday_preorder_cutoff_at: booking.sunday_preorder_cutoff_at || null,
     sunday_preorder_completed_at: booking.sunday_preorder_completed_at || null,
+    cutoff_overridden: cutoffOverridden || undefined,
     existing_items: existingItems,
     menu_items: menuItems
   }
@@ -402,6 +468,17 @@ export async function getSundayPreorderPageDataByBookingId(
   const submitDeadline = minDefinedDate(cancellationDeadline, sundayCutoff)
   const canSubmit = Boolean(submitDeadline && now.getTime() < submitDeadline.getTime())
 
+  // Detect when a custom cutoff is set earlier than the standard 24h deadline so staff
+  // can see the deadline has been overridden.
+  const cutoffOverridden = Boolean(
+    sundayCutoff && sundayCutoff.getTime() < cancellationDeadline.getTime()
+  )
+  if (cutoffOverridden) {
+    console.warn(
+      `[sunday-preorder] booking ${booking.id}: sunday_preorder_cutoff_at (${booking.sunday_preorder_cutoff_at}) is earlier than the 24h cancellation deadline (${cancellationDeadline.toISOString()}) — cutoff overridden`
+    )
+  }
+
   const [menuItems, existingRows] = await Promise.all([
     loadSundayLunchMenuItems(supabase),
     (supabase.from('table_booking_items') as any)
@@ -409,6 +486,10 @@ export async function getSundayPreorderPageDataByBookingId(
       .eq('booking_id', booking.id)
       .not('menu_dish_id', 'is', null)
   ])
+
+  if (menuItems === null) {
+    return { state: 'blocked', reason: 'menu_unavailable' }
+  }
 
   const existingItems: SundayPreorderExistingItem[] = ((existingRows.data || []) as any[])
     .filter((row) => typeof row.menu_dish_id === 'string')
@@ -433,6 +514,7 @@ export async function getSundayPreorderPageDataByBookingId(
     cancellation_deadline_at: toIsoOrNull(cancellationDeadline),
     sunday_preorder_cutoff_at: booking.sunday_preorder_cutoff_at || null,
     sunday_preorder_completed_at: booking.sunday_preorder_completed_at || null,
+    cutoff_overridden: cutoffOverridden || undefined,
     existing_items: existingItems,
     menu_items: menuItems
   }
@@ -617,6 +699,6 @@ export async function saveSundayPreorderByBookingId(
 
 export async function getSundayLunchMenuItems(
   supabase: SupabaseClient<any, 'public', any>
-): Promise<SundayMenuItem[]> {
+): Promise<SundayMenuItem[] | null> {
   return loadSundayLunchMenuItems(supabase)
 }

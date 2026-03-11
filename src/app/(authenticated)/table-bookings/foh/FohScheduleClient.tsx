@@ -924,6 +924,14 @@ function resolveWalkInDefaults(input: {
   }
 }
 
+class BookingActionError extends Error {
+  payload: Record<string, unknown> | null
+  constructor(message: string, payload: Record<string, unknown> | null) {
+    super(message)
+    this.payload = payload
+  }
+}
+
 async function postBookingAction(path: string, body?: Record<string, unknown>) {
   const response = await fetch(path, {
     method: 'POST',
@@ -935,7 +943,7 @@ async function postBookingAction(path: string, body?: Record<string, unknown>) {
 
   if (!response.ok) {
     const errorMessage = payload && typeof payload.error === 'string' ? payload.error : 'Action failed'
-    throw new Error(errorMessage)
+    throw new BookingActionError(errorMessage, payload)
   }
 
   return payload
@@ -1733,8 +1741,31 @@ export function FohScheduleClient({
     setWalkoutModalOpen(false)
   }
 
+  function applyBookingPatch(bookingPatch: { id: string; status?: string | null; seated_at?: string | null; left_at?: string | null; no_show_at?: string | null; cancelled_at?: string | null; updated_at?: string | null }) {
+    setSchedule((current) => {
+      if (!current) return current
+      function patchBookings(bookings: FohBooking[]): FohBooking[] {
+        return bookings.map((b) =>
+          b.id === bookingPatch.id ? { ...b, ...bookingPatch } : b
+        )
+      }
+      return {
+        ...current,
+        lanes: current.lanes.map((lane) => ({
+          ...lane,
+          bookings: patchBookings(lane.bookings)
+        })),
+        unassigned_bookings: patchBookings(current.unassigned_bookings)
+      }
+    })
+    setSelectedBookingContext((current) => {
+      if (!current || current.booking.id !== bookingPatch.id) return current
+      return { ...current, booking: { ...current.booking, ...bookingPatch } }
+    })
+  }
+
   async function runAction(
-    action: () => Promise<void>,
+    action: () => Promise<unknown>,
     successMessage: string,
     inFlightLabel?: string
   ): Promise<boolean> {
@@ -1745,11 +1776,36 @@ export function FohScheduleClient({
     setBookingActionInFlight(inFlightLabel || successMessage)
 
     try {
-      await action()
+      const result = await action()
+      // If the response includes a booking snapshot, patch local state directly
+      // to avoid a full reload race on concurrent actions.
+      const resultPayload = result as Record<string, unknown> | null
+      const bookingSnapshotFromSuccess =
+        resultPayload &&
+        typeof resultPayload.booking === 'object' &&
+        resultPayload.booking !== null &&
+        typeof (resultPayload.booking as any).id === 'string'
+          ? (resultPayload.booking as Parameters<typeof applyBookingPatch>[0])
+          : null
+      if (bookingSnapshotFromSuccess) {
+        applyBookingPatch(bookingSnapshotFromSuccess)
+      }
       await reloadSchedule()
       setStatusMessage(successMessage)
       return true
     } catch (error) {
+      // If the failed response included a booking snapshot, apply it so the UI
+      // reflects the true current state after a conflict (e.g. concurrent click).
+      if (error instanceof BookingActionError && error.payload) {
+        const errorPayload = error.payload
+        if (
+          typeof errorPayload.booking === 'object' &&
+          errorPayload.booking !== null &&
+          typeof (errorPayload.booking as any).id === 'string'
+        ) {
+          applyBookingPatch(errorPayload.booking as Parameters<typeof applyBookingPatch>[0])
+        }
+      }
       setErrorMessage(error instanceof Error ? error.message : 'Action failed')
       return false
     } finally {

@@ -60,13 +60,20 @@ export async function POST(
   })
 
   if (!transition.ok) {
-    return NextResponse.json({ error: transition.error }, { status: transition.status })
+    const { data: currentBooking } = await (auth.supabase.from('table_bookings') as any)
+      .select('id, status, seated_at, left_at, no_show_at, cancelled_at, updated_at')
+      .eq('id', id)
+      .maybeSingle()
+    return NextResponse.json(
+      { error: transition.error, booking: currentBooking ?? null },
+      { status: transition.status }
+    )
   }
 
   const { data, error } = await (auth.supabase.from('table_bookings') as any)
     .update(transition.plan.update)
     .eq('id', id)
-    .select(transition.plan.select)
+    .select('id, status, seated_at, left_at, no_show_at, cancelled_at, updated_at')
     .maybeSingle()
 
   if (error) {
@@ -76,5 +83,5 @@ export async function POST(
     return NextResponse.json({ error: 'Booking not found' }, { status: 404 })
   }
 
-  return NextResponse.json({ success: true, data })
+  return NextResponse.json({ success: true, booking: data, data })
 }
