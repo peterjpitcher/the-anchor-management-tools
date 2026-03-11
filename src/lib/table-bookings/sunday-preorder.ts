@@ -443,10 +443,12 @@ async function saveSundayPreorderFromPageData(
   input: {
     pageData: SundayPreorderPageData
     items: SundayPreorderSaveInputItem[]
+    staffOverride?: boolean
   }
 ): Promise<SundayPreorderSaveResult> {
   const { pageData } = input
-  if (pageData.state !== 'ready' || !pageData.booking_id || !pageData.can_submit) {
+  // staffOverride: true allows staff to save after the customer-facing cutoff has passed
+  if (pageData.state !== 'ready' || !pageData.booking_id || (!pageData.can_submit && !input.staffOverride)) {
     return {
       state: 'blocked',
       reason: pageData.reason || (pageData.state === 'ready' ? 'submit_cutoff_passed' : 'invalid_token')
@@ -560,12 +562,14 @@ export async function saveSundayPreorderByBookingId(
   input: {
     bookingId: string
     items: SundayPreorderSaveInputItem[]
+    staffOverride?: boolean
   }
 ): Promise<SundayPreorderSaveResult> {
   const pageData = await getSundayPreorderPageDataByBookingId(supabase, input.bookingId)
   return saveSundayPreorderFromPageData(supabase, {
     pageData,
-    items: input.items
+    items: input.items,
+    staffOverride: input.staffOverride
   })
 }
 
