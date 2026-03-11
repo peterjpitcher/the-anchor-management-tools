@@ -2636,8 +2636,7 @@ export function FohScheduleClient({
                           </p>
                           {booking.booking_type === 'sunday_lunch' && (
                             <p
-                              className="truncate text-xs font-semibold mt-0.5"
-                              style={{ color: booking.sunday_preorder_completed_at ? '#86efac' : '#fcd34d' }}
+                              className={`truncate text-xs font-semibold mt-0.5 ${booking.sunday_preorder_completed_at ? 'text-green-300' : 'text-amber-300'}`}
                             >
                               {booking.sunday_preorder_completed_at ? '✓ Pre-order done' : '⏳ Pre-order pending'}
                             </p>
