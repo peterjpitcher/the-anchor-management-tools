@@ -180,10 +180,16 @@ export async function POST(request: NextRequest) {
         // The default 7-day window is only needed for the SMS-reminder flow.
         if (payload.source === 'website') {
           const thirtyMinsFromNow = new Date(Date.now() + 30 * 60 * 1000).toISOString()
-          await supabase
+          const { error: expiryError } = await supabase
             .from('parking_bookings')
             .update({ payment_due_at: thirtyMinsFromNow })
             .eq('id', booking.id)
+          if (expiryError) {
+            logger.error('Failed to set 30-minute expiry for website parking booking', {
+              error: expiryError,
+              metadata: { bookingId: booking.id }
+            })
+          }
           booking = { ...booking, payment_due_at: thirtyMinsFromNow }
         }
 
