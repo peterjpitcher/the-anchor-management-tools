@@ -141,8 +141,9 @@ Each agent gets a brief tailored to THIS section. Use the **Brief Template** bel
 - **Project**: [e.g., OJ-AnchorManagementTools]
 
 ## File Inventory
-### Tier 1 — Critical Path (read in full)
+### Tier 1 — Critical Path (read in full, aim for 8–15 files)
 [List files with one-line description of each]
+[If >15 files: revisit triage — you may be over-scoping]
 
 ### Tier 2 — Supporting (trace into as needed)
 [List files with one-line description]
@@ -168,6 +169,20 @@ Each agent gets a brief tailored to THIS section. Use the **Brief Template** bel
 ## Critical Path File Contents
 [For Tier 1 files: paste the actual file contents here to save the agent context on tool calls]
 ```
+
+### Brief Completeness Checklist
+
+Before deploying an agent, verify every brief has:
+- [ ] Target Section clearly identifies the path
+- [ ] File Inventory is broken into Tier 1, 2, 3 (not a flat list)
+- [ ] Tier 1 files ≤15 (or section was split into sub-domains)
+- [ ] Known Problems lists at least one symptom from the user
+- [ ] Business Rules describe what SHOULD happen (not just what happens now)
+- [ ] Multi-Step Operations lists specific operations for failure-path analysis
+- [ ] Project Standards includes relevant excerpts from `.claude/rules/`
+- [ ] Critical Path File Contents actually includes file contents (not just paths)
+
+**If any item is unchecked: do NOT deploy the agent. Go back to reconnaissance.**
 
 ---
 
@@ -200,6 +215,8 @@ Include the tier classification in each agent's brief so they know where to spen
 ### Split If Necessary
 If the section has distinct sub-domains (e.g., `/table-bookings` has creation, amendments, payments, and communications), consider running the review as multiple passes — one sub-domain at a time — with a final consolidation across all passes. This keeps each agent pass focused and thorough rather than spread thin.
 
+A "sub-domain" is a functionally independent area with its own entry points (distinct API routes, server actions, or UI flows), its own data models, and minimal cross-calls to other sub-domains. If you split, run all sub-domain passes in parallel (Phase 1 for each), then consolidate once — merging defect logs and identifying cross-domain defects.
+
 ### Context Budget Rule
 Each subagent should hold no more than ~15 full files in its prompt. If the critical path exceeds this:
 - Split into sub-domain passes
@@ -211,9 +228,10 @@ Each subagent should hold no more than ~15 full files in its prompt. If the crit
 
 Agents will encounter code that calls shared utilities, services, or modules outside the target section. The rule:
 
-- **Read one level out.** When a flow calls an external function, read that function to understand its interface, behavior, and failure modes. Include it in flow maps and failure-at-step-N analysis.
+- **Read one level out.** When a flow calls an external function, read that function's signature, return type, and error behavior. For INTERNAL calls (same directory tree), follow one level deep. For EXTERNAL calls (different directory, npm package, or external service), read the function signature only — do NOT audit the dependency's internals.
 - **Do not remediate external code.** If the external dependency is broken, log it as "EXTERNAL DEPENDENCY RISK" with a description of the problem and which flows it affects. It becomes a recommendation for a separate review, not a fix in this one.
 - **Do flag external risks in the defect log.** If a shared payment utility has no idempotency, that's a finding even though it's outside scope — because it affects this section's reliability. Tag it with severity but mark the fix as "OUT OF SCOPE — requires separate review of [path]."
+- **Exception — Security/Integrity Boundaries:** If an external dependency has no error handling and you're calling it inside a transaction, read the dependency's error documentation (1 file max). If it can fail silently, flag as EXTERNAL DEPENDENCY RISK.
 
 This keeps the review focused on what can be fixed within the target section while ensuring nothing dangerous is silently ignored.
 
@@ -315,14 +333,12 @@ Any defect that only ONE agent found gets a confidence flag. Investigate it your
 
 **Step B: Process and cross-reference research findings.**
 
-Before cross-referencing with agent reports, classify each research finding:
-
+First classify each research finding:
 - **Include as defect** if: specific documentation cited + code visibly violates it + affects users/business/operations
 - **Include as recommendation** if: docs cite a preferred pattern but current code works correctly
 - **Discard** if: speculative, outside scope, or no concrete evidence of harm
 
-Then for every included finding in `research-notes.md`:
-For every included research finding:
+Then for every included research finding:
 - Does the codebase violate a documented framework pattern or API contract? → Add to defect log with the specific documentation reference as evidence.
 - Does the section diverge from project conventions established elsewhere? → Flag as a finding; assess whether it's a defect or an intentional exception.
 - Are there known issues or deprecations that affect flows the Mapper documented? → Cross-reference with the Technical Architect's report and add to defect log if not already captured.
@@ -351,7 +367,7 @@ Use this exact schema for every defect:
 - **Documentation Ref**: [URL if research-sourced, otherwise N/A]
 ```
 
-**Severity definitions (use these consistently):**
+**Severity definitions (use consistently across all phases):**
 
 - **CRITICAL**: Actively breaking user/business function NOW — payment failure, auth bypass, data loss, regulatory violation, customer charged wrong amount
 - **HIGH**: Feature broken or severely degraded — user friction, data integrity risk, security gap
@@ -387,6 +403,26 @@ If the remediation plan contains more than ~15 defects, split implementation acr
 3. **Never split a dependency chain** — If fix B depends on fix A, both go to the same agent. Use the remediation plan's dependency ordering to determine which defects must stay together.
 
 Each implementation agent gets only the defects, test cases, and research notes relevant to their assigned cluster — not the entire log.
+
+### Pre-Implementation Dependency Mapping
+
+Before splitting, build a dependency graph:
+
+1. For every defect, identify: root cause file(s), whether the fix touches shared utilities, and whether other defects depend on this fix being applied first.
+2. Mark dependencies: A → B means "B depends on A being fixed first."
+3. Find the **critical path** — the longest chain of dependent fixes. This chain must go to a single agent and be applied sequentially.
+4. Group independent defects into parallel batches:
+   - **Batch 1**: All defects on the critical path (sequential, one agent)
+   - **Batch 2+**: Non-dependent defects (can run in parallel after Batch 1 completes)
+5. Each agent receives a **dependency reference sheet** showing which earlier-batch fixes their work depends on and which later batches depend on theirs.
+
+### Implementation Escalation Rules
+
+If the implementation engineer encounters unexpected situations:
+
+- **Fix requires bigger refactor than scoped**: STOP and report back to orchestrator with: what defect, what was expected, what's actually needed, and estimated impact. Orchestrator decides whether to expand scope or defer.
+- **Fixing defect A reveals defect B's root cause is different**: Fix A as planned. Log the revised understanding of B in `blockers.md` for orchestrator review. Do NOT change the plan unilaterally.
+- **A test case appears wrong** (tests old behavior): Log it. Fix the defect according to the business rules, not the test case. Note the discrepancy for the validation specialist.
 
 ---
 
@@ -425,17 +461,45 @@ If validation surfaces new issues: fix → validate → repeat, subject to these
 
 ## Phase 4: Final Report
 
-Produce a consolidated report that states clearly:
+Save to `tasks/review-{section}/final-report.md`. Format:
 
-1. What the correct rules are for this section
-2. What the user/customer sees at each step
-3. What admin/staff sees at each step
-4. What happens when something fails (including partial failures)
-5. What data is stored and why
-6. What the code now does vs what it did before
-7. How it was tested (reference specific test case IDs)
-8. What remains out of scope
-9. Recommendations for monitoring, alerts, and future work
+```markdown
+# Final Review Report — [Section Name]
+
+## Executive Summary
+[1 paragraph: what was wrong, at what severity, and what was fixed]
+
+## What Was Correct
+[Bullet list: aspects that were working well or didn't need fixes]
+
+## Defect Log
+[Link or embed the master defect log from Phase 1c]
+
+## How It Works Now
+For each user/admin/system flow in the section:
+- What is the happy path?
+- What happens when it fails at critical steps?
+- What data is created/modified?
+
+## Test Coverage
+- [Reference test case IDs from the QA matrix]
+- Coverage: [X flows tested, Y test cases total]
+
+## What Changed (Implementation Summary)
+- Files modified: [list]
+- Approximate lines changed: [N]
+- Breaking changes: [yes/no + details]
+
+## What Remains Out of Scope
+[EXTERNAL DEPENDENCY RISKs and ENHANCEMENT items not included]
+
+## Recommendations
+[Monitoring, alerts, refactoring, or follow-up reviews recommended]
+
+## Sign-Off
+Reviewed [N defects], fixed [N defects], validated with [M test cases].
+Remediation status: COMPLETE / INCOMPLETE [with notes].
+```
 
 ---
 
@@ -474,7 +538,10 @@ tasks/review-{section}/
 │   ├── consolidated-defect-log.md
 │   └── remediation-plan.md
 ├── phase-2/
-│   └── implementation/changes-log.md
+│   └── implementation/
+│       ├── changes-log.md
+│       ├── blockers.md
+│       └── test-results.md
 ├── phase-3/
 │   └── validation/validation-report.md
 └── final-report.md

@@ -41,6 +41,7 @@ Specifically look for:
 - **Contradictions**: Two parts of the system enforce conflicting rules
 - **Missing enforcement**: Rules that are expected but never checked in code
 - **Exception logic**: Business rule exceptions — are they correctly scoped? Can they fire accidentally?
+- **Failure compensation rules**: For every multi-step operation, state the business rule for what should happen when it fails at each step. If no rule exists for failure compensation, flag it — every multi-step operation needs a defined failure policy.
 
 ## Output Format
 
@@ -81,3 +82,18 @@ The user can decide what's intentional. Your job is to surface everything that *
 ## How to Work
 
 Read the brief for stated business rules. Then read the code as if you're a new employee trying to figure out the rules from code alone. Every difference between those two pictures is a finding. Don't give the code the benefit of the doubt — if a rule isn't enforced, a TODO comment doesn't count. Pay special attention to money, communications, and anything customer-facing.
+
+### Cross-Reference Project Conventions
+
+After auditing against user-stated business rules, also cross-reference against the project's own documented conventions:
+- Read `.claude/rules/` files relevant to this section
+- Read the project `CLAUDE.md` for conventions
+- Check how similar operations are handled in other parts of the codebase
+- If this section diverges from project-wide patterns, flag it — even if the code "works", divergence from established conventions is a finding
+
+### Multi-Step Operations
+
+For every multi-step operation in this section (use the Structural Mapper's numbered flows if available):
+- State the business rule for what should happen at each step
+- State the business rule for failure compensation at each step
+- If no business rule exists for a failure scenario, flag it with "NEEDS CLARIFICATION: No business rule defined for failure at step N of [operation]"
