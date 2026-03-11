@@ -1033,7 +1033,8 @@ export function FohScheduleClient({
     sunday_deposit_method: 'payment_link' as 'payment_link' | 'cash',
     sunday_preorder_mode: 'send_link' as 'send_link' | 'capture_now',
     notes: '',
-    waive_deposit: false
+    waive_deposit: false,
+    is_venue_event: false
   })
 
   const fetchSchedule = useCallback(async (requestedDate: string) => {
@@ -1559,7 +1560,9 @@ export function FohScheduleClient({
 
   const sundaySelected = isSundayDate(createForm.booking_date)
   const formRequiresDeposit =
-    createMode !== 'management' && (
+    createMode !== 'management' &&
+    !createForm.is_venue_event &&
+    (
       (createForm.sunday_lunch && sundaySelected) ||
       (createMode !== 'walk_in' && Number(createForm.party_size) >= 7)
     )
@@ -1776,7 +1779,8 @@ export function FohScheduleClient({
       sunday_deposit_method: 'payment_link',
       sunday_preorder_mode: 'send_link',
       notes: '',
-      waive_deposit: false
+      waive_deposit: false,
+      is_venue_event: false
     }))
     setCreateMode('booking')
     setWalkInTargetTable(null)
@@ -1887,7 +1891,8 @@ export function FohScheduleClient({
       first_name: walkInMode ? '' : current.first_name,
       last_name: walkInMode ? '' : current.last_name,
       notes: walkInMode ? '' : current.notes,
-      waive_deposit: false
+      waive_deposit: false,
+      is_venue_event: false
     }))
 
     if (walkInMode) {
@@ -2102,7 +2107,7 @@ export function FohScheduleClient({
     }
 
     const requiresDepositValidation =
-      (!isWalkIn && !isManagement && !createForm.waive_deposit) &&
+      (!isWalkIn && !isManagement && !createForm.waive_deposit && !createForm.is_venue_event) &&
       ((createForm.sunday_lunch && sundaySelected) || partySize >= 7)
     if (requiresDepositValidation && !createForm.sunday_deposit_method) {
       setErrorMessage('Choose whether the deposit was taken in cash or should be sent by payment link.')
@@ -2156,10 +2161,11 @@ export function FohScheduleClient({
           purpose: createForm.purpose === 'drinks' ? 'drinks' : 'food',
           notes: createForm.notes || undefined,
           sunday_lunch: isManagement ? undefined : createForm.sunday_lunch,
-          sunday_deposit_method: (!isWalkIn && !isManagement && !createForm.waive_deposit && (createForm.sunday_lunch || partySize >= 7)) ? createForm.sunday_deposit_method : undefined,
+          sunday_deposit_method: (!isWalkIn && !isManagement && !createForm.waive_deposit && !createForm.is_venue_event && (createForm.sunday_lunch || partySize >= 7)) ? createForm.sunday_deposit_method : undefined,
           sunday_preorder_mode: (!isManagement && createForm.sunday_lunch) ? createForm.sunday_preorder_mode : undefined,
           sunday_preorder_items: (!isManagement && sundayPreorderItems.length > 0) ? sundayPreorderItems : undefined,
-          waive_deposit: createForm.waive_deposit || undefined
+          waive_deposit: createForm.waive_deposit || undefined,
+          is_venue_event: createForm.is_venue_event || undefined
         })
       })
 
@@ -3273,6 +3279,25 @@ export function FohScheduleClient({
                   />
                   <span>Sunday lunch</span>
                 </label>
+
+                <div className="flex items-center gap-2 rounded-md border border-gray-200 bg-gray-50 px-3 py-2">
+                  <input
+                    id="is-venue-event"
+                    type="checkbox"
+                    checked={createForm.is_venue_event}
+                    onChange={(e) =>
+                      setCreateForm((prev) => ({
+                        ...prev,
+                        is_venue_event: e.target.checked,
+                        waive_deposit: e.target.checked ? false : prev.waive_deposit
+                      }))
+                    }
+                    className="h-4 w-4 rounded border-gray-300 text-sidebar focus:ring-sidebar"
+                  />
+                  <label htmlFor="is-venue-event" className="cursor-pointer text-xs font-medium text-gray-700">
+                    Venue event (waives deposit)
+                  </label>
+                </div>
 
                 {formRequiresDeposit && canWaiveDeposit && (
                   <div className="flex items-center gap-2 rounded-md border border-gray-200 bg-gray-50 px-3 py-2">

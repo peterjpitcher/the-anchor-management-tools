@@ -51,7 +51,8 @@ const CreateFohTableBookingSchema = z.object({
   sunday_preorder_items: z.array(SundayPreorderItemSchema).optional(),
   default_country_code: z.string().regex(/^\d{1,4}$/).optional(),
   management_override: z.boolean().optional(),
-  waive_deposit: z.boolean().optional()
+  waive_deposit: z.boolean().optional(),
+  is_venue_event: z.boolean().optional().default(false)
 }).superRefine((value, context) => {
   if (!value.customer_id && !value.phone && value.walk_in !== true && value.management_override !== true) {
     context.addIssue({
@@ -84,10 +85,11 @@ const CreateFohTableBookingSchema = z.object({
     }
   }
 
-  // Deposit not required for management overrides or deposit waivers — they bypass deposit restrictions
+  // Deposit not required for management overrides, deposit waivers, or venue events — they bypass deposit restrictions
   if (
     value.management_override !== true &&
     value.waive_deposit !== true &&
+    value.is_venue_event !== true &&
     (value.sunday_lunch === true || (value.party_size != null && value.party_size >= 7)) &&
     value.sunday_deposit_method == null
   ) {
@@ -1047,7 +1049,7 @@ export async function POST(request: NextRequest) {
     )
   }
 
-  const requiresDeposit = (effectiveSundayLunch || payload.party_size >= 7) && payload.waive_deposit !== true
+  const requiresDeposit = (effectiveSundayLunch || payload.party_size >= 7) && payload.waive_deposit !== true && payload.is_venue_event !== true
   const depositMethod = requiresDeposit
     ? payload.sunday_deposit_method || null
     : null
@@ -1069,7 +1071,8 @@ export async function POST(request: NextRequest) {
     p_sunday_lunch: effectiveSundayLunch,
     p_source: payload.walk_in === true ? 'walk-in' : 'admin',
     p_bypass_cutoff: true,
-    p_deposit_waived: payload.waive_deposit === true
+    // Venue events automatically waive the deposit, just like an explicit waive_deposit
+    p_deposit_waived: payload.waive_deposit === true || payload.is_venue_event === true
   })
 
   let bookingResult: TableBookingRpcResult
@@ -1149,6 +1152,25 @@ export async function POST(request: NextRequest) {
         },
         { status: 500 }
       )
+    }
+  }
+
+  // Stamp is_venue_event on the booking record when set — the RPC does not accept this field,
+  // so we update it immediately after creation. Non-fatal: the deposit logic has already been
+  // bypassed above; this is a data-quality write for reporting/display purposes.
+  if (payload.is_venue_event === true && bookingResult.table_booking_id) {
+    const { error: venueEventUpdateError } = await (auth.supabase.from('table_bookings') as any)
+      .update({ is_venue_event: true })
+      .eq('id', bookingResult.table_booking_id)
+
+    if (venueEventUpdateError) {
+      logger.warn('Failed to stamp is_venue_event on table booking', {
+        metadata: {
+          userId: auth.userId,
+          tableBookingId: bookingResult.table_booking_id,
+          error: venueEventUpdateError.message || String(venueEventUpdateError)
+        }
+      })
     }
   }
 
