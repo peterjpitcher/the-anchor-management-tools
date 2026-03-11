@@ -30,7 +30,8 @@ const CreateBookingSchema = z.object({
   }),
   start_at: z.string().datetime({ offset: true }),
   end_at: z.string().datetime({ offset: true }),
-  notes: z.string().optional()
+  notes: z.string().optional(),
+  source: z.enum(['website', 'staff']).optional().default('staff')
 })
 
 function sanitizeRegistration(reg: string): string {
@@ -175,6 +176,23 @@ export async function POST(request: NextRequest) {
           throw serviceError
         }
 
+        // For website-sourced bookings use a 30-minute expiry.
+        // The default 7-day window is only needed for the SMS-reminder flow.
+        if (payload.source === 'website') {
+          const thirtyMinsFromNow = new Date(Date.now() + 30 * 60 * 1000).toISOString()
+          const { error: expiryError } = await supabase
+            .from('parking_bookings')
+            .update({ payment_due_at: thirtyMinsFromNow })
+            .eq('id', booking.id)
+          if (expiryError) {
+            logger.error('Failed to set 30-minute expiry for website parking booking', {
+              error: expiryError,
+              metadata: { bookingId: booking.id }
+            })
+          }
+          booking = { ...booking, payment_due_at: thirtyMinsFromNow }
+        }
+
         const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
         const paymentResult = await createParkingPaymentOrder(booking, {
           returnUrl: `${appUrl}/api/parking/payment/return?booking_id=${booking.id}`,
@@ -182,59 +200,65 @@ export async function POST(request: NextRequest) {
           client: supabase
         })
 
-        try {
-          const notificationResult = await sendParkingPaymentRequest(booking, paymentResult.approveUrl, {
-            client: supabase
-          })
-          const smsCode =
-            notificationResult && typeof notificationResult.code === 'string'
-              ? notificationResult.code
-              : null
-          const smsLogFailure =
-            (notificationResult?.logFailure === true) || smsCode === 'logging_failed'
-          const smsSent = notificationResult?.sent === true
-          const smsSkipped = notificationResult?.skipped === true
-
-          smsMeta = {
-            sent: smsSent,
-            skipped: smsSkipped,
-            code: smsCode,
-            logFailure: smsLogFailure
-          }
-
-          if (smsLogFailure) {
-            logger.error('Initial parking payment request SMS sent but outbound message logging failed', {
-              metadata: {
-                bookingId: booking.id,
-                code: smsCode,
-                logFailure: smsLogFailure
-              }
+        // Only send payment-request SMS for staff-created bookings.
+        // Website bookings collect payment inline; no SMS needed at this stage.
+        if (payload.source !== 'website') {
+          try {
+            const notificationResult = await sendParkingPaymentRequest(booking, paymentResult.approveUrl, {
+              client: supabase
             })
-          } else if (!smsSent && !smsSkipped) {
-            logger.warn('Initial parking payment request SMS did not send', {
-              metadata: {
-                bookingId: booking.id,
-                code: smsCode
-              }
-            })
-          }
-        } catch (notificationError) {
-          logger.error('Initial parking payment request SMS task threw unexpectedly', {
-            error:
-              notificationError instanceof Error
-                ? notificationError
-                : new Error(String(notificationError)),
-            metadata: {
-              bookingId: booking.id
+            const smsCode =
+              notificationResult && typeof notificationResult.code === 'string'
+                ? notificationResult.code
+                : null
+            const smsLogFailure =
+              (notificationResult?.logFailure === true) || smsCode === 'logging_failed'
+            const smsSent = notificationResult?.sent === true
+            const smsSkipped = notificationResult?.skipped === true
+
+            smsMeta = {
+              sent: smsSent,
+              skipped: smsSkipped,
+              code: smsCode,
+              logFailure: smsLogFailure
             }
-          })
 
-          smsMeta = {
-            sent: false,
-            skipped: false,
-            code: 'unexpected_exception',
-            logFailure: false
+            if (smsLogFailure) {
+              logger.error('Initial parking payment request SMS sent but outbound message logging failed', {
+                metadata: {
+                  bookingId: booking.id,
+                  code: smsCode,
+                  logFailure: smsLogFailure
+                }
+              })
+            } else if (!smsSent && !smsSkipped) {
+              logger.warn('Initial parking payment request SMS did not send', {
+                metadata: {
+                  bookingId: booking.id,
+                  code: smsCode
+                }
+              })
+            }
+          } catch (notificationError) {
+            logger.error('Initial parking payment request SMS task threw unexpectedly', {
+              error:
+                notificationError instanceof Error
+                  ? notificationError
+                  : new Error(String(notificationError)),
+              metadata: {
+                bookingId: booking.id
+              }
+            })
+
+            smsMeta = {
+              sent: false,
+              skipped: false,
+              code: 'unexpected_exception',
+              logFailure: false
+            }
           }
+        } else {
+          smsMeta = { sent: false, skipped: true, code: 'source_website', logFailure: false }
         }
 
         const responsePayload = {
@@ -246,7 +270,8 @@ export async function POST(request: NextRequest) {
             currency: 'GBP',
             pricing_breakdown: booking.pricing_breakdown,
             payment_due_at: booking.payment_due_at,
-            paypal_approval_url: paymentResult.approveUrl
+            paypal_approval_url: paymentResult.approveUrl,
+            paypal_order_id: paymentResult.orderId
           },
           meta: {
             status_code: 201,
