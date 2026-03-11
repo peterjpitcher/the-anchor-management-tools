@@ -57,8 +57,9 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    let confirmed: Awaited<ReturnType<typeof captureParkingPayment>>
     try {
-      await captureParkingPayment(booking, order_id, { client: supabase })
+      confirmed = await captureParkingPayment(booking, order_id, { client: supabase })
     } catch (error) {
       logger.error('PayPal capture failed in website capture endpoint', {
         error: error instanceof Error ? error : new Error(String(error)),
@@ -69,7 +70,7 @@ export async function POST(request: NextRequest) {
 
     return createApiResponse({
       success: true,
-      data: { booking_id: booking.id, reference: booking.reference, status: 'confirmed' },
+      data: { booking_id: confirmed.id, reference: confirmed.reference, status: confirmed.status },
     }, 200)
   }, ['parking:create'], request)
 }
