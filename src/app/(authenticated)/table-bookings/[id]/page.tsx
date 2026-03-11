@@ -40,7 +40,13 @@ export default async function BookingDetailPage({ params }: Props) {
     .eq('id', id)
     .single()
 
-  if (error || !booking) notFound()
+  if (error) {
+    if (error.code !== 'PGRST116') {
+      console.error('Error loading booking:', error)
+    }
+    notFound()
+  }
+  if (!booking) notFound()
 
   const guestName = [booking.customer?.first_name, booking.customer?.last_name]
     .filter(Boolean)
