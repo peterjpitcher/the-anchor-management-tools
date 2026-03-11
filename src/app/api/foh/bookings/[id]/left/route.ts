@@ -24,8 +24,12 @@ export async function POST(
   }
 
   if (['cancelled', 'no_show', 'completed'].includes(booking.status)) {
+    const { data: currentBooking } = await (auth.supabase.from('table_bookings') as any)
+      .select('id, status, seated_at, left_at, no_show_at, cancelled_at, updated_at')
+      .eq('id', id)
+      .maybeSingle()
     return NextResponse.json(
-      { error: 'Booking cannot be marked left from current status' },
+      { error: 'Booking cannot be marked left from current status', booking: currentBooking ?? null },
       { status: 409 }
     )
   }
@@ -43,7 +47,7 @@ export async function POST(
   const { data, error } = await (auth.supabase.from('table_bookings') as any)
     .update({ left_at: nowIso, end_datetime: nowIso, updated_at: nowIso })
     .eq('id', id)
-    .select('id, status, left_at, end_datetime')
+    .select('id, status, seated_at, left_at, no_show_at, cancelled_at, updated_at')
     .maybeSingle()
 
   if (error) {
@@ -53,5 +57,5 @@ export async function POST(
     return NextResponse.json({ error: 'Booking not found' }, { status: 404 })
   }
 
-  return NextResponse.json({ success: true, data })
+  return NextResponse.json({ success: true, booking: data, data })
 }

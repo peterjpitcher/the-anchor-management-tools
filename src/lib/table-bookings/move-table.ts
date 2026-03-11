@@ -296,7 +296,7 @@ export async function moveBookingAssignmentToTable(
         return {
           ok: false,
           status: 409,
-          error: 'Target table is no longer available for this booking window'
+          error: 'That table is no longer available. Please refresh and choose another.'
         }
       }
       return { ok: false, status: 500, error: 'Failed to update target table assignment window' }
@@ -324,7 +324,7 @@ export async function moveBookingAssignmentToTable(
         return {
           ok: false,
           status: 409,
-          error: 'Target table is no longer available for this booking window'
+          error: 'That table is no longer available. Please refresh and choose another.'
         }
       }
       return { ok: false, status: 500, error: 'Failed to move table assignment' }
