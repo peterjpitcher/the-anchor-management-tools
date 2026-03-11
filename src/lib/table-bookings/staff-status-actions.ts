@@ -52,7 +52,8 @@ function blocks(action: string, booking: StaffStatusBooking): StaffStatusTransit
   }
 
   if (CLOSED_STATUSES.has(booking.status)) {
-    if (action === 'seated') {
+    // 'no_show' bookings can be re-seated — the seated handler resets status to 'confirmed'
+    if (action === 'seated' && booking.status !== 'no_show') {
       return {
         ok: false,
         status: 409,
@@ -98,6 +99,10 @@ export function buildStaffStatusTransitionPlan(input: {
   }
 
   if (input.action === 'seated') {
+    // When re-seating a no-show booking, reset status to 'confirmed' so the
+    // booking is no longer in CLOSED_STATUSES and further transitions are allowed.
+    const statusAfterSeating =
+      input.booking.status === 'no_show' ? 'confirmed' : input.booking.status
     return {
       ok: true,
       plan: {
@@ -108,7 +113,7 @@ export function buildStaffStatusTransitionPlan(input: {
           no_show_marked_at: null,
           no_show_marked_by: null,
           updated_at: input.nowIso,
-          status: input.booking.status,
+          status: statusAfterSeating,
         },
         select: 'id, status, seated_at, left_at, no_show_at, no_show_marked_at, no_show_marked_by',
       },

@@ -5,6 +5,7 @@ import {
   saveSundayPreorderByBookingId,
 } from '@/lib/table-bookings/sunday-preorder'
 import type { SundayPreorderSaveInputItem } from '@/lib/table-bookings/sunday-preorder'
+import { logAuditEvent } from '@/app/actions/audit'
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
@@ -28,7 +29,7 @@ export async function POST(
   req: NextRequest,
   context: { params: Promise<{ id: string }> }
 ): Promise<NextResponse> {
-  const auth = await requireFohPermission('edit')
+  const auth = await requireFohPermission('manage')
   if (!auth.ok) return auth.response
 
   const { id } = await context.params
@@ -58,6 +59,15 @@ export async function POST(
   if (result.state === 'blocked') {
     return NextResponse.json({ error: result.reason ?? 'Save blocked' }, { status: 422 })
   }
+
+  await logAuditEvent({
+    user_id: auth.userId,
+    operation_type: 'table_booking.preorder_staff_override',
+    resource_type: 'table_booking',
+    resource_id: id,
+    operation_status: 'success',
+    additional_info: { item_count: result.item_count },
+  })
 
   return NextResponse.json({ success: true, item_count: result.item_count })
 }
