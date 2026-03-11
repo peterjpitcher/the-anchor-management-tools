@@ -1,8 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Modal } from '@/components/ui-v2/overlay/Modal'
-import { ConfirmDialog } from '@/components/ui-v2/overlay/ConfirmDialog'
+import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui-v2/forms/Button'
 import { EmptyState } from '@/components/ui-v2/display/EmptyState'
 import toast from 'react-hot-toast'
@@ -92,22 +91,6 @@ type BohBookingsResponse = {
     total: number
     tables: BohTable[]
     bookings: BohBooking[]
-  }
-}
-
-type MoveTableOption = {
-  id: string
-  name: string
-  table_number?: string | null
-  capacity?: number | null
-}
-
-type MoveTableAvailabilityResponse = {
-  success?: boolean
-  error?: string
-  data?: {
-    booking_id: string
-    tables: MoveTableOption[]
   }
 }
 
@@ -304,12 +287,6 @@ function getSortValue(booking: BohBooking, column: SortColumn): string | number 
   }
 }
 
-function getDefaultSmsMessage(booking: BohBooking): string {
-  const firstName = booking.customer?.first_name?.trim() || booking.guest_name?.split(' ')[0] || 'there'
-  const referencePart = booking.booking_reference ? ` (${booking.booking_reference})` : ''
-  return `The Anchor: Hi ${firstName}, this is a quick update about your booking${referencePart}. Please reply to this message if you need anything.`
-}
-
 function isArrivedBooking(booking: BohBooking): boolean {
   if (booking.seated_at || booking.left_at) return true
   const status = (booking.visual_status || booking.status || '').toLowerCase()
@@ -387,6 +364,7 @@ export function BohBookingsClient({
   canEdit: boolean
   canManage: boolean
 }) {
+  const router = useRouter()
   const [view, setView] = useState<BohViewMode>('week')
   const [focusDate, setFocusDate] = useState<string>(getTodayIsoDate())
   const [rangeStartDate, setRangeStartDate] = useState<string>(focusDate)
@@ -399,34 +377,10 @@ export function BohBookingsClient({
   const [previousPeriodBookings, setPreviousPeriodBookings] = useState<BohBooking[]>([])
   const [searchTerm, setSearchTerm] = useState<string>('')
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
-  const [selectedBookingId, setSelectedBookingId] = useState<string | null>(null)
-  const [moveTableId, setMoveTableId] = useState<string>('')
-  const [availableMoveTables, setAvailableMoveTables] = useState<MoveTableOption[]>([])
-  const [loadingMoveTables, setLoadingMoveTables] = useState<boolean>(false)
-  const [smsBody, setSmsBody] = useState<string>('')
   const [sortColumn, setSortColumn] = useState<SortColumn>('datetime')
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc')
   const [actionLoadingKey, setActionLoadingKey] = useState<string | null>(null)
   const [lastInteractionAtMs, setLastInteractionAtMs] = useState<number>(() => Date.now())
-
-  // Delete confirmation
-  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
-  const [deleteConfirmBookingId, setDeleteConfirmBookingId] = useState<string | null>(null)
-
-  // Party size edit modal
-  const [partySizeEditOpen, setPartySizeEditOpen] = useState(false)
-  const [partySizeEditValue, setPartySizeEditValue] = useState('')
-  const [partySizeEditSendSms, setPartySizeEditSendSms] = useState(true)
-
-  // No-show / cancel confirmation
-  const [noShowConfirmOpen, setNoShowConfirmOpen] = useState(false)
-  const [cancelConfirmOpen, setCancelConfirmOpen] = useState(false)
-
-  const closeSelectedBookingModal = useCallback(() => {
-    setSelectedBookingId(null)
-    setMoveTableId('')
-    setSmsBody('')
-  }, [])
 
   const abortControllerRef = useRef<AbortController | null>(null)
 
@@ -536,7 +490,7 @@ export function BohBookingsClient({
     const intervalId = window.setInterval(() => {
       const todayDate = getTodayIsoDate()
       if (focusDate === todayDate) return
-      if (selectedBookingId || actionLoadingKey) return
+      if (actionLoadingKey) return
       if (document.visibilityState !== 'visible') return
 
       const activeElement = document.activeElement
@@ -557,71 +511,7 @@ export function BohBookingsClient({
     return () => {
       window.clearInterval(intervalId)
     }
-  }, [actionLoadingKey, focusDate, lastInteractionAtMs, selectedBookingId])
-
-  useEffect(() => {
-    if (!selectedBookingId) return
-
-    const booking = bookings.find((item) => item.id === selectedBookingId)
-    if (!booking) {
-      setSelectedBookingId(null)
-      return
-    }
-
-    setSmsBody((current) => current || getDefaultSmsMessage(booking))
-  }, [bookings, selectedBookingId])
-
-  const selectedBooking = useMemo(
-    () => bookings.find((item) => item.id === selectedBookingId) || null,
-    [bookings, selectedBookingId]
-  )
-
-  useEffect(() => {
-    let cancelled = false
-
-    async function loadAvailableMoveTables() {
-      if (!selectedBooking || !canEdit) {
-        setAvailableMoveTables([])
-        setMoveTableId('')
-        setLoadingMoveTables(false)
-        return
-      }
-
-      setLoadingMoveTables(true)
-
-      try {
-        const response = await fetch(`/api/boh/table-bookings/${selectedBooking.id}/move-table`, {
-          cache: 'no-store'
-        })
-
-        const payload = (await response.json()) as MoveTableAvailabilityResponse
-        if (!response.ok || !payload.success || !payload.data) {
-          throw new Error(payload.error || 'Failed to load available tables')
-        }
-
-        if (cancelled) return
-
-        const options = Array.isArray(payload.data.tables) ? payload.data.tables : []
-        setAvailableMoveTables(options)
-        setMoveTableId((current) => (current && options.some((table) => table.id === current) ? current : ''))
-      } catch (error) {
-        if (cancelled) return
-        setAvailableMoveTables([])
-        setMoveTableId('')
-        toast.error(error instanceof Error ? error.message : 'Failed to load available tables')
-      } finally {
-        if (!cancelled) {
-          setLoadingMoveTables(false)
-        }
-      }
-    }
-
-    void loadAvailableMoveTables()
-
-    return () => {
-      cancelled = true
-    }
-  }, [canEdit, selectedBooking?.id])
+  }, [actionLoadingKey, focusDate, lastInteractionAtMs])
 
   const filteredBookings = useMemo(() => {
     const normalizedSearch = searchTerm.trim().toLowerCase()
@@ -744,193 +634,6 @@ export function BohBookingsClient({
     }
     return Array.from(totals.entries()).sort((a, b) => b[1] - a[1])
   }, [filteredBookings])
-
-  async function runAction(actionKey: string, task: () => Promise<void>, successMessage: string) {
-    setActionLoadingKey(actionKey)
-    try {
-      await task()
-      toast.success(successMessage)
-      await loadBookings()
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Action failed')
-    } finally {
-      setActionLoadingKey(null)
-    }
-  }
-
-  async function handleStatusAction(action: 'seated' | 'left' | 'no_show' | 'cancelled' | 'confirmed' | 'completed') {
-    if (!selectedBooking) return
-
-    await runAction(
-      `status:${action}`,
-      async () => {
-        const response = await fetch(`/api/boh/table-bookings/${selectedBooking.id}/status`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action })
-        })
-
-        const payload = (await response.json()) as { error?: string }
-        if (!response.ok) {
-          throw new Error(payload.error || 'Failed to update booking status')
-        }
-      },
-      `Booking updated: ${getStatusLabel(action)}`
-    )
-  }
-
-  function openPartySizeEdit() {
-    if (!selectedBooking) return
-    const currentSize = Math.max(1, Number(selectedBooking.party_size || 1))
-    setPartySizeEditValue(String(currentSize))
-    setPartySizeEditSendSms(true)
-    setPartySizeEditOpen(true)
-  }
-
-  async function handleSubmitPartySize() {
-    if (!selectedBooking) return
-
-    const nextSize = Number.parseInt(partySizeEditValue, 10)
-    if (!Number.isFinite(nextSize) || nextSize < 1 || nextSize > 50) {
-      toast.error('Enter a party size between 1 and 50')
-      return
-    }
-
-    setPartySizeEditOpen(false)
-
-    await runAction(
-      'party-size',
-      async () => {
-        const response = await fetch(`/api/boh/table-bookings/${selectedBooking.id}/party-size`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            party_size: nextSize,
-            send_sms: partySizeEditSendSms
-          })
-        })
-
-        const payload = (await response.json()) as { error?: string }
-        if (!response.ok) {
-          throw new Error(payload.error || 'Failed to update party size')
-        }
-      },
-      'Party size updated'
-    )
-  }
-
-  async function handleMoveTable() {
-    if (!selectedBooking) return
-    if (!moveTableId) {
-      toast.error('Select a table to move this booking')
-      return
-    }
-
-    await runAction(
-      'move-table',
-      async () => {
-        const response = await fetch(`/api/boh/table-bookings/${selectedBooking.id}/move-table`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ table_id: moveTableId })
-        })
-
-        const payload = (await response.json()) as { error?: string }
-        if (!response.ok) {
-          throw new Error(payload.error || 'Failed to move booking to selected table')
-        }
-      },
-      'Table assignment updated'
-    )
-  }
-
-  async function handleSendSms() {
-    if (!selectedBooking) return
-
-    const trimmed = smsBody.trim()
-    if (!trimmed) {
-      toast.error('Enter an SMS message before sending')
-      return
-    }
-
-    await runAction(
-      'send-sms',
-      async () => {
-        const response = await fetch(`/api/boh/table-bookings/${selectedBooking.id}/sms`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ message: trimmed })
-        })
-
-        const payload = (await response.json()) as { error?: string }
-        if (!response.ok) {
-          throw new Error(payload.error || 'Failed to send SMS')
-        }
-      },
-      'SMS sent to guest'
-    )
-  }
-
-  function openDeleteConfirm() {
-    if (!selectedBooking) return
-    setDeleteConfirmBookingId(selectedBooking.id)
-    setDeleteConfirmOpen(true)
-  }
-
-  async function handleDeleteBooking() {
-    const bookingId = deleteConfirmBookingId
-    if (!bookingId) return
-
-    setDeleteConfirmOpen(false)
-    setDeleteConfirmBookingId(null)
-    closeSelectedBookingModal()
-
-    await runAction(
-      'delete-booking',
-      async () => {
-        const controller = new AbortController()
-        const timeoutId = window.setTimeout(() => controller.abort(), 15_000)
-        let response: Response
-
-        try {
-          response = await fetch(`/api/boh/table-bookings/${bookingId}`, {
-            method: 'DELETE',
-            signal: controller.signal
-          })
-        } catch (error) {
-          if (error instanceof DOMException && error.name === 'AbortError') {
-            throw new Error('Delete request timed out. Please try again.')
-          }
-          throw error
-        } finally {
-          window.clearTimeout(timeoutId)
-        }
-
-        const payload = (await response.json().catch(() => ({}))) as { error?: string }
-        if (!response.ok) {
-          throw new Error(payload.error || 'Failed to delete booking')
-        }
-      },
-      'Booking deleted'
-    )
-  }
-
-  async function handleCopyDepositLink() {
-    if (!selectedBooking) return
-    setActionLoadingKey('copy-deposit-link')
-    try {
-      const response = await fetch(`/api/boh/table-bookings/${selectedBooking.id}/deposit-link`)
-      const data = (await response.json()) as { url?: string; error?: string }
-      if (!response.ok) throw new Error(data.error || 'Failed to generate deposit link')
-      if (!data.url) throw new Error('No deposit link returned')
-      await navigator.clipboard.writeText(data.url)
-      toast.success('Deposit link copied to clipboard')
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to copy deposit link')
-    } finally {
-      setActionLoadingKey(null)
-    }
-  }
 
   function handleSort(column: SortColumn) {
     const newDirection = sortColumn === column ? (sortDirection === 'asc' ? 'desc' : 'asc') : 'asc'
@@ -1173,12 +876,7 @@ export function BohBookingsClient({
                         variant="secondary"
                         size="sm"
                         aria-label={`Manage booking for ${booking.guest_name || booking.booking_reference || 'unknown guest'}`}
-                        onClick={() => {
-                          setSelectedBookingId(booking.id)
-                          setMoveTableId('')
-                          setSmsBody('')
-                          setLastInteractionAtMs(Date.now())
-                        }}
+                        onClick={() => router.push(`/table-bookings/${booking.id}`)}
                       >
                         Manage
                       </Button>
@@ -1190,329 +888,6 @@ export function BohBookingsClient({
           )}
         </div>
       </div>
-
-      <Modal
-        open={Boolean(selectedBooking)}
-        onClose={closeSelectedBookingModal}
-        title={selectedBooking?.guest_name || selectedBooking?.booking_reference || 'Booking details'}
-        description={selectedBooking ? `${selectedBooking.booking_reference || 'No reference'} · ${formatBookingDateTime(selectedBooking)}` : undefined}
-        size="lg"
-        footer={
-          <div className="flex justify-end">
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={closeSelectedBookingModal}
-            >
-              Close
-            </Button>
-          </div>
-        }
-      >
-        {selectedBooking && (
-          <div className="space-y-5">
-            {/* Key info strip: status, party size, table — scannable at a glance */}
-            <div className="flex flex-wrap items-center gap-3 rounded-md border border-gray-200 bg-gray-50 px-4 py-3">
-              <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${getStatusBadgeClasses(selectedBooking.visual_status)}`}>
-                {getStatusLabel(selectedBooking.visual_status)}
-              </span>
-              {selectedBooking.status === 'confirmed' && selectedBooking.payment_status === 'pending' && (
-                <span className="inline-flex rounded-full border border-yellow-300 bg-yellow-50 px-2.5 py-1 text-xs font-semibold text-yellow-800">
-                  Deposit outstanding
-                </span>
-              )}
-              <span className="text-lg font-bold text-gray-900">{selectedBooking.party_size || 0} guests</span>
-              <span className="text-sm font-medium text-gray-700">
-                {selectedBooking.table_names.length > 0
-                  ? selectedBooking.table_names.join(', ')
-                  : 'Unassigned'}
-              </span>
-              <span className="text-sm text-gray-500">{selectedBooking.booking_type || 'table'}</span>
-            </div>
-
-            <div className="grid gap-3 sm:grid-cols-2">
-              <div className="rounded-md border border-gray-200 bg-gray-50 p-3">
-                <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Guest</p>
-                <p className="mt-1 text-sm font-medium text-gray-900">{selectedBooking.guest_name || 'Unknown guest'}</p>
-                <p className="text-sm text-gray-700">{selectedBooking.customer?.mobile_number || 'No mobile number'}</p>
-                <p className="text-sm text-gray-500">SMS: {selectedBooking.customer?.sms_status || 'unknown'}</p>
-              </div>
-
-              <div className="rounded-md border border-gray-200 bg-gray-50 p-3">
-                <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Lifecycle</p>
-                <p className="mt-1 text-sm text-gray-700">Seated: {formatLifecycleTime(selectedBooking.seated_at) || 'Not set'}</p>
-                <p className="text-sm text-gray-700">Left: {formatLifecycleTime(selectedBooking.left_at) || 'Not set'}</p>
-                <p className="text-sm text-gray-700">No-show: {formatLifecycleTime(selectedBooking.no_show_at) || 'Not set'}</p>
-              </div>
-            </div>
-
-            {selectedBooking.special_requirements && (
-              <div className="rounded-md border border-amber-200 bg-amber-50 p-3">
-                <p className="text-xs font-semibold uppercase tracking-wide text-amber-700">Special requirements</p>
-                <p className="mt-1 whitespace-pre-wrap text-sm font-medium text-amber-900">{selectedBooking.special_requirements}</p>
-              </div>
-            )}
-
-            {canEdit && (
-              <div className="rounded-md border border-gray-200 bg-white p-3 space-y-3">
-                <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Quick actions</p>
-                <div className="flex flex-wrap gap-2">
-                  <Button
-                    variant="primary"
-                    size="sm"
-                    loading={actionLoadingKey === 'status:seated'}
-                    disabled={Boolean(actionLoadingKey)}
-                    onClick={() => handleStatusAction('seated')}
-                  >
-                    Seat guest
-                  </Button>
-                  <Button
-                    variant="primary"
-                    size="sm"
-                    loading={actionLoadingKey === 'status:left'}
-                    disabled={Boolean(actionLoadingKey)}
-                    onClick={() => handleStatusAction('left')}
-                  >
-                    Mark left
-                  </Button>
-                </div>
-                <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 pt-1">Other status</p>
-                <div className="flex flex-wrap gap-2">
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    loading={actionLoadingKey === 'party-size'}
-                    disabled={Boolean(actionLoadingKey)}
-                    onClick={openPartySizeEdit}
-                  >
-                    Edit party size
-                  </Button>
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    loading={actionLoadingKey === 'status:confirmed'}
-                    disabled={Boolean(actionLoadingKey)}
-                    onClick={() => handleStatusAction('confirmed')}
-                  >
-                    Mark Confirmed
-                  </Button>
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    loading={actionLoadingKey === 'status:completed'}
-                    disabled={Boolean(actionLoadingKey)}
-                    onClick={() => handleStatusAction('completed')}
-                  >
-                    Mark Completed
-                  </Button>
-                  <Button
-                    variant="danger"
-                    size="sm"
-                    loading={actionLoadingKey === 'status:no_show'}
-                    disabled={Boolean(actionLoadingKey)}
-                    onClick={() => setNoShowConfirmOpen(true)}
-                  >
-                    Mark No-show
-                  </Button>
-                  <Button
-                    variant="danger"
-                    size="sm"
-                    loading={actionLoadingKey === 'status:cancelled'}
-                    disabled={Boolean(actionLoadingKey)}
-                    onClick={() => setCancelConfirmOpen(true)}
-                  >
-                    Cancel Booking
-                  </Button>
-                  {(selectedBooking.status === 'pending_payment' || selectedBooking.payment_status === 'pending') && (
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      loading={actionLoadingKey === 'copy-deposit-link'}
-                      disabled={Boolean(actionLoadingKey)}
-                      onClick={() => void handleCopyDepositLink()}
-                    >
-                      Copy deposit link
-                    </Button>
-                  )}
-                </div>
-              </div>
-            )}
-
-            {canEdit && (
-              <div className="rounded-md border border-gray-200 bg-white p-3 space-y-3">
-                <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Move table</p>
-                <div className="flex flex-col gap-2 sm:flex-row">
-                  <select
-                    value={moveTableId}
-                    onChange={(event) => setMoveTableId(event.target.value)}
-                    disabled={loadingMoveTables || availableMoveTables.length === 0}
-                    className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-gray-500 focus:outline-none focus:ring-2 focus:ring-gray-200"
-                  >
-                    <option value="">
-                      {loadingMoveTables
-                        ? 'Loading available tables…'
-                        : availableMoveTables.length === 0
-                          ? 'No available tables'
-                          : 'Select table'}
-                    </option>
-                    {availableMoveTables.map((table) => (
-                      <option key={table.id} value={table.id}>
-                        {table.name}
-                        {table.table_number ? ` (${table.table_number})` : ''}
-                        {table.capacity ? ` · cap ${table.capacity}` : ''}
-                      </option>
-                    ))}
-                  </select>
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    loading={actionLoadingKey === 'move-table'}
-                    disabled={loadingMoveTables || availableMoveTables.length === 0 || Boolean(actionLoadingKey)}
-                    onClick={() => void handleMoveTable()}
-                  >
-                    Move
-                  </Button>
-                </div>
-              </div>
-            )}
-
-            {canEdit && (
-              <div className="rounded-md border border-gray-200 bg-white p-3 space-y-3">
-                <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Send SMS to guest</p>
-                <textarea
-                  value={smsBody}
-                  onChange={(event) => setSmsBody(event.target.value)}
-                  rows={4}
-                  maxLength={640}
-                  className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:border-gray-500 focus:outline-none focus:ring-2 focus:ring-gray-200"
-                  placeholder="Type message…"
-                />
-                <div className="flex items-center justify-between">
-                  <p className="text-xs text-gray-500">{smsBody.length}/640</p>
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    loading={actionLoadingKey === 'send-sms'}
-                    disabled={Boolean(actionLoadingKey)}
-                    onClick={() => void handleSendSms()}
-                  >
-                    Send SMS
-                  </Button>
-                </div>
-              </div>
-            )}
-
-            {canManage && (
-              <div className="rounded-md border border-red-200 bg-red-50 p-3 space-y-3">
-                <p className="text-xs font-semibold uppercase tracking-wide text-red-700">Danger zone</p>
-                <p className="text-sm text-red-800">Delete this booking permanently.</p>
-                <Button
-                  variant="danger"
-                  size="sm"
-                  loading={actionLoadingKey === 'delete-booking'}
-                  disabled={Boolean(actionLoadingKey)}
-                  onClick={openDeleteConfirm}
-                >
-                  Delete Booking
-                </Button>
-              </div>
-            )}
-          </div>
-        )}
-      </Modal>
-
-      {/* Delete confirmation dialog */}
-      <ConfirmDialog
-        open={deleteConfirmOpen}
-        onClose={() => {
-          setDeleteConfirmOpen(false)
-          setDeleteConfirmBookingId(null)
-        }}
-        onConfirm={() => void handleDeleteBooking()}
-        type="danger"
-        destructive
-        title="Delete this booking?"
-        message={`Delete booking ${selectedBooking?.booking_reference || ''} for ${selectedBooking?.guest_name || 'unknown guest'} permanently? This cannot be undone.`}
-        confirmText="Delete"
-      />
-
-      {/* No-show confirmation dialog */}
-      <ConfirmDialog
-        open={noShowConfirmOpen}
-        onClose={() => setNoShowConfirmOpen(false)}
-        onConfirm={async () => {
-          setNoShowConfirmOpen(false)
-          await handleStatusAction('no_show')
-        }}
-        type="warning"
-        title="Mark as no-show?"
-        message="This may trigger a charge request for the customer."
-        confirmText="Mark No-show"
-        closeOnConfirm={false}
-      />
-
-      {/* Cancel booking confirmation dialog */}
-      <ConfirmDialog
-        open={cancelConfirmOpen}
-        onClose={() => setCancelConfirmOpen(false)}
-        onConfirm={async () => {
-          setCancelConfirmOpen(false)
-          await handleStatusAction('cancelled')
-        }}
-        type="warning"
-        title="Cancel this booking?"
-        message="The customer will be notified."
-        confirmText="Cancel Booking"
-        confirmVariant="danger"
-        closeOnConfirm={false}
-      />
-
-      {/* Party size edit modal */}
-      <Modal
-        open={partySizeEditOpen}
-        onClose={() => setPartySizeEditOpen(false)}
-        title="Edit party size"
-        size="sm"
-      >
-        <div className="space-y-4">
-          <div>
-            <label htmlFor="party-size-input" className="block text-sm font-medium text-gray-700">
-              New party size
-            </label>
-            <input
-              id="party-size-input"
-              type="number"
-              min={1}
-              max={50}
-              value={partySizeEditValue}
-              onChange={(e) => setPartySizeEditValue(e.target.value)}
-              className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-gray-500 focus:outline-none focus:ring-2 focus:ring-gray-200"
-            />
-          </div>
-          <label className="flex items-center gap-2 text-sm text-gray-700">
-            <input
-              type="checkbox"
-              checked={partySizeEditSendSms}
-              onChange={(e) => setPartySizeEditSendSms(e.target.checked)}
-              className="rounded border-gray-300 text-green-600 focus:ring-green-500"
-            />
-            Notify guest by SMS
-          </label>
-          <div className="flex justify-end gap-2">
-            <Button variant="secondary" size="sm" onClick={() => setPartySizeEditOpen(false)}>
-              Cancel
-            </Button>
-            <Button
-              variant="primary"
-              size="sm"
-              onClick={() => void handleSubmitPartySize()}
-              disabled={!partySizeEditValue || Number.parseInt(partySizeEditValue, 10) < 1}
-            >
-              Save
-            </Button>
-          </div>
-        </div>
-      </Modal>
     </div>
   )
 }
