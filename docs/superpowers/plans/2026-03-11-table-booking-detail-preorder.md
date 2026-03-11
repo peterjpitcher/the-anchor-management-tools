@@ -68,7 +68,7 @@ git commit -m "feat: add sunday_preorder_completed_at to FOH schedule query and 
 - Modify: `src/app/(authenticated)/table-bookings/foh/FohScheduleClient.tsx` (~lines 2605-2629)
 
 - [ ] Locate the booking card `<button>` element in the swimlane (~line 2605). It has `style={{ left: ..., width: ... }}`
-- [ ] Add a helper function directly above the card render block:
+- [ ] Add the helper function at **module scope** alongside `getBookingVisualState` and similar helpers (~line 291) — NOT inline above the card render block (which would re-create it on every render):
 
 ```typescript
 function getSundayPreorderBorderStyle(booking: FohBooking): React.CSSProperties {
@@ -438,7 +438,9 @@ Note: First search for an existing `StatusBadge` in `src/components/` — if fou
       </div>
     )}
 
-    {/* Pre-order banner — Sunday lunch only */}
+    {/* Pre-order banner — Sunday lunch only.
+        Note: item counts are NOT shown here (would require an extra fetch at page load).
+        The Pre-order tab shows the full detail one click away — this banner is just a status signal. */}
     {isSundayLunch && (
       <button
         type="button"
@@ -453,8 +455,8 @@ Note: First search for an existing `StatusBadge` in `src/components/` — if fou
           className={`text-sm font-medium ${booking.sunday_preorder_completed_at ? 'text-green-800' : 'text-amber-800'}`}
         >
           {booking.sunday_preorder_completed_at
-            ? '🍽 Sunday pre-order submitted'
-            : '⏳ Sunday pre-order not yet submitted'}
+            ? 'Sunday pre-order submitted'
+            : 'Sunday pre-order not yet submitted'}
         </span>
         <span
           className={`text-xs ${booking.sunday_preorder_completed_at ? 'text-green-600' : 'text-amber-600'}`}
@@ -494,9 +496,10 @@ git commit -m "feat: add overview tab status strip, guest info, notes, and pre-o
 - [ ] Add imports at the top of the file — check `BohBookingsClient.tsx` for exact import paths, you'll need:
   - `useRouter` from `'next/navigation'`
   - `useEffect` added to the existing React import
-  - `toast` from `'sonner'` (confirm in `BohBookingsClient`)
+  - `toast` from `'react-hot-toast'` (the project standard — confirmed in `BohBookingsClient.tsx` line 8)
   - `Button` from the ui-v2 components (check `BohBookingsClient` import path)
   - `ConfirmDialog` and `Modal` from ui-v2 (check `BohBookingsClient` import paths)
+  - `formatDateInLondon` from `'@/lib/dateUtils'` (already added in Task 5)
 
 - [ ] Add these type definitions at the top of the file (below the `Booking` interface):
 
@@ -668,6 +671,28 @@ async function handleSubmitPartySize() {
 }
 ```
 
+- [ ] Add the copy deposit link handler — check `BohBookingsClient.tsx` for the exact implementation (it likely calls an endpoint and copies the returned URL to clipboard):
+
+```typescript
+async function handleCopyDepositLink() {
+  await runAction(
+    'deposit-link',
+    async () => {
+      const response = await fetch(`/api/boh/table-bookings/${booking.id}/deposit-link`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      })
+      const payload = (await response.json()) as { error?: string; url?: string }
+      if (!response.ok) throw new Error(payload.error ?? 'Failed to generate deposit link')
+      if (payload.url) await navigator.clipboard.writeText(payload.url)
+    },
+    'Deposit link copied to clipboard'
+  )
+}
+```
+
+Note: Verify the exact endpoint and response shape in `BohBookingsClient.tsx` — the above is based on the expected pattern. Adjust if the actual implementation differs.
+
 - [ ] Add the delete handler:
 
 ```typescript
@@ -736,6 +761,14 @@ async function handleDeleteBooking() {
         disabled={Boolean(actionLoadingKey)}
       >
         Edit party size
+      </Button>
+      <Button
+        size="sm"
+        variant="secondary"
+        onClick={() => void handleCopyDepositLink()}
+        disabled={Boolean(actionLoadingKey)}
+      >
+        Copy deposit link
       </Button>
       {canManage && (
         <>
@@ -1074,7 +1107,7 @@ git commit -m "feat: add GET and POST /api/boh/table-bookings/[id]/preorder endp
 
 import { useState, useEffect, useCallback } from 'react'
 import { Button } from '@/components/ui-v2/forms/Button'  // adjust import path to match project
-import toast from 'sonner'  // check BohBookingsClient for actual toast import
+import toast from 'react-hot-toast'
 import { formatDateInLondon } from '@/lib/dateUtils'
 import type { Booking } from './BookingDetailClient'
 
@@ -1191,9 +1224,9 @@ export default function PreorderTab({ booking, canEdit }: Props) {
       {itemsByType.main.length > 0 && (
         <div>
           <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 mb-2">Mains</p>
-          {itemsByType.main.map((item, i) => (
+          {itemsByType.main.map((item) => (
             <div
-              key={i}
+              key={item.menu_dish_id}
               className="flex items-center justify-between bg-gray-50 rounded-md px-3 py-2 mb-1"
             >
               <span className="text-sm text-gray-900">
@@ -1211,9 +1244,9 @@ export default function PreorderTab({ booking, canEdit }: Props) {
       {itemsByType.side.length > 0 && (
         <div>
           <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 mb-2">Sides</p>
-          {itemsByType.side.map((item, i) => (
+          {itemsByType.side.map((item) => (
             <div
-              key={i}
+              key={item.menu_dish_id}
               className="flex items-center justify-between bg-gray-50 rounded-md px-3 py-2 mb-1"
             >
               <span className="text-sm text-gray-900">
@@ -1231,9 +1264,9 @@ export default function PreorderTab({ booking, canEdit }: Props) {
       {itemsByType.extra.length > 0 && (
         <div>
           <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 mb-2">Extras</p>
-          {itemsByType.extra.map((item, i) => (
+          {itemsByType.extra.map((item) => (
             <div
-              key={i}
+              key={item.menu_dish_id}
               className="flex items-center justify-between bg-gray-50 rounded-md px-3 py-2 mb-1"
             >
               <span className="text-sm text-gray-900">
