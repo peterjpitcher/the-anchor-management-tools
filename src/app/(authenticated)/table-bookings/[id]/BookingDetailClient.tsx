@@ -127,6 +127,7 @@ export default function BookingDetailClient({ booking, canEdit, canManage }: Pro
   const [partySizeEditOpen, setPartySizeEditOpen] = useState(false)
   const [partySizeEditValue, setPartySizeEditValue] = useState('')
   const [partySizeEditSendSms, setPartySizeEditSendSms] = useState(true)
+  const [smsBody, setSmsBody] = useState('')
 
   async function runAction(key: string, fn: () => Promise<void>, successMsg: string) {
     setActionLoadingKey(key)
@@ -228,6 +229,27 @@ export default function BookingDetailClient({ booking, canEdit, canManage }: Pro
         router.push('/table-bookings/boh')
       },
       'Booking deleted'
+    )
+  }
+
+  async function handleSendSms() {
+    const trimmed = smsBody.trim()
+    if (!trimmed) {
+      toast.error('Enter an SMS message before sending')
+      return
+    }
+    await runAction(
+      'send-sms',
+      async () => {
+        const response = await fetch(`/api/boh/table-bookings/${booking.id}/sms`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ message: trimmed }),
+        })
+        const payload = (await response.json()) as { error?: string }
+        if (!response.ok) throw new Error(payload.error ?? 'Failed to send SMS')
+      },
+      'SMS sent to guest'
     )
   }
 
@@ -531,7 +553,35 @@ export default function BookingDetailClient({ booking, canEdit, canManage }: Pro
         <PreorderTab booking={booking} canEdit={canEdit} />
       )}
       {tab === 'sms' && (
-        <div className="text-sm text-gray-500">SMS — coming in next task</div>
+        <div className="space-y-4 max-w-lg">
+          {canEdit ? (
+            <div className="rounded-lg border border-gray-200 bg-white p-4 space-y-3">
+              <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Send SMS to guest</p>
+              <textarea
+                value={smsBody}
+                onChange={(e) => setSmsBody(e.target.value)}
+                rows={5}
+                maxLength={640}
+                className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:border-gray-500 focus:outline-none focus:ring-2 focus:ring-gray-200"
+                placeholder="Type message…"
+              />
+              <div className="flex items-center justify-between">
+                <p className="text-xs text-gray-500">{smsBody.length}/640</p>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  loading={actionLoadingKey === 'send-sms'}
+                  disabled={Boolean(actionLoadingKey)}
+                  onClick={() => void handleSendSms()}
+                >
+                  Send SMS
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <p className="text-sm text-gray-500">You do not have permission to send SMS messages.</p>
+          )}
+        </div>
       )}
 
       {/* No-show confirmation */}
