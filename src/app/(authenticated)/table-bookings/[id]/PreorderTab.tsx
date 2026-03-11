@@ -194,13 +194,9 @@ export default function PreorderTab({ booking, canEdit }: Props) {
   )
 }
 
-// ---------------------------------------------------------------------------
-// Edit form — Task 10 will replace this stub
-// ---------------------------------------------------------------------------
-
 function PreorderEditForm({
-  data: _data,
-  bookingId: _bookingId,
+  data,
+  bookingId,
   onSave,
   onCancel,
 }: {
@@ -209,17 +205,97 @@ function PreorderEditForm({
   onSave: () => void
   onCancel: () => void
 }) {
+  const initialQtys: Record<string, number> = {}
+  data.existing_items?.forEach((item) => {
+    initialQtys[item.menu_dish_id] = item.quantity
+  })
+
+  const [qtys, setQtys] = useState<Record<string, number>>(initialQtys)
+  const [saving, setSaving] = useState(false)
+
+  const menuByType = {
+    main: data.menu_items?.filter((i) => i.item_type === 'main').sort((a, b) => a.sort_order - b.sort_order) ?? [],
+    side: data.menu_items?.filter((i) => i.item_type === 'side').sort((a, b) => a.sort_order - b.sort_order) ?? [],
+    extra: data.menu_items?.filter((i) => i.item_type === 'extra').sort((a, b) => a.sort_order - b.sort_order) ?? [],
+  }
+
+  async function handleSave() {
+    setSaving(true)
+    try {
+      const items = Object.entries(qtys)
+        .filter(([, qty]) => qty > 0)
+        .map(([menu_dish_id, quantity]) => ({ menu_dish_id, quantity }))
+
+      const res = await fetch(`/api/boh/table-bookings/${bookingId}/preorder`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ items }),
+      })
+
+      if (!res.ok) {
+        const payload = (await res.json()) as { error?: string }
+        throw new Error(payload.error ?? 'Failed to save pre-order')
+      }
+
+      toast.success('Pre-order saved')
+      onSave()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to save pre-order')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  function renderSection(label: string, items: MenuItem[]) {
+    if (items.length === 0) return null
+    return (
+      <div>
+        <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 mb-2">{label}</p>
+        {items.map((item) => (
+          <div
+            key={item.menu_dish_id}
+            className="flex items-center justify-between bg-gray-50 rounded-md px-3 py-2 mb-1"
+          >
+            <span
+              className={`text-sm ${(qtys[item.menu_dish_id] ?? 0) === 0 ? 'text-gray-400' : 'text-gray-900'}`}
+            >
+              {item.name}
+            </span>
+            <input
+              type="number"
+              min={0}
+              max={99}
+              value={qtys[item.menu_dish_id] ?? 0}
+              onChange={(e) =>
+                setQtys((prev) => ({
+                  ...prev,
+                  [item.menu_dish_id]: Math.max(0, parseInt(e.target.value) || 0),
+                }))
+              }
+              className="w-16 text-center rounded-md border border-gray-300 px-2 py-0.5 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+        ))}
+      </div>
+    )
+  }
+
   return (
     <div className="space-y-4 max-w-2xl">
-      <p className="text-sm text-gray-500">Edit form coming soon.</p>
-      <div className="flex gap-2">
-        <Button size="sm" variant="secondary" onClick={onCancel}>
-          Cancel
-        </Button>
-        <Button size="sm" onClick={onSave}>
-          Save
-        </Button>
+      <div className="flex items-center justify-between">
+        <p className="text-sm font-medium text-gray-900">Edit pre-order</p>
+        <div className="flex gap-2">
+          <Button size="sm" variant="secondary" onClick={onCancel} disabled={saving}>
+            Cancel
+          </Button>
+          <Button size="sm" onClick={() => void handleSave()} loading={saving}>
+            Save changes
+          </Button>
+        </div>
       </div>
+      {renderSection('Mains', menuByType.main)}
+      {renderSection('Sides', menuByType.side)}
+      {renderSection('Extras', menuByType.extra)}
     </div>
   )
 }
