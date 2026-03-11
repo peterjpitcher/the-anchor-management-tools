@@ -2,7 +2,14 @@
 
 import { useState } from 'react'
 import PreorderTab from './PreorderTab'
-import { formatDateInLondon } from '@/lib/dateUtils'
+// formatDateInLondon uses toLocaleDateString (date-only); use Intl.DateTimeFormat directly for time display
+const formatLondonTime = (iso: string) =>
+  new Intl.DateTimeFormat('en-GB', {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+    timeZone: 'Europe/London',
+  }).format(new Date(iso))
 
 function StatusBadge({ status }: { status: string }) {
   const colours: Record<string, string> = {
@@ -127,6 +134,11 @@ export default function BookingDetailClient({ booking, canEdit, canManage: _canM
                 {booking.booking_type.replace(/_/g, ' ')}
               </span>
             )}
+            {booking.deposit_waived != null && (
+              <span className={`text-xs font-medium px-2 py-0.5 rounded ${booking.deposit_waived ? 'bg-gray-100 text-gray-500' : 'bg-blue-100 text-blue-700'}`}>
+                {booking.deposit_waived ? 'Deposit waived' : 'Deposit required'}
+              </span>
+            )}
           </div>
 
           {/* Guest info */}
@@ -140,12 +152,17 @@ export default function BookingDetailClient({ booking, canEdit, canManage: _canM
             )}
             {booking.seated_at && (
               <p className="text-xs text-gray-400">
-                Seated: {formatDateInLondon(new Date(booking.seated_at), { hour: '2-digit', minute: '2-digit', hour12: false })}
+                Seated: {formatLondonTime(booking.seated_at)}
               </p>
             )}
             {booking.left_at && (
               <p className="text-xs text-gray-400">
-                Left: {formatDateInLondon(new Date(booking.left_at), { hour: '2-digit', minute: '2-digit', hour12: false })}
+                Left: {formatLondonTime(booking.left_at)}
+              </p>
+            )}
+            {booking.no_show_at && (
+              <p className="text-xs text-red-400">
+                No-show: {formatLondonTime(booking.no_show_at)}
               </p>
             )}
           </div>
