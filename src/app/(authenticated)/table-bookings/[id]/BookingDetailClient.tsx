@@ -20,7 +20,7 @@ interface BookingTableInner {
 }
 
 interface BookingTable {
-  table: BookingTableInner | BookingTableInner[] | null
+  table: BookingTableInner | null
 }
 
 export interface Booking {
@@ -47,7 +47,7 @@ export interface Booking {
   sunday_preorder_cutoff_at: string | null
   sunday_preorder_completed_at: string | null
   deposit_waived: boolean | null
-  customer: BookingCustomer | BookingCustomer[] | null
+  customer: BookingCustomer | null
   table_booking_tables: BookingTable[]
 }
 
