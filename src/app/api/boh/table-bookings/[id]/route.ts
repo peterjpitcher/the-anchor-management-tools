@@ -98,6 +98,7 @@ export async function DELETE(
       bookingReference: existing.booking_reference || id,
       bookingDate: existing.booking_date,
       refundResult,
+      tableBookingId: existing.id,
     })
   } catch (err) {
     console.error('[table-booking-delete] refund/SMS error:', err)
