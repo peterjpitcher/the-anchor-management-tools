@@ -1,6 +1,6 @@
 'use client'
 
-import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { CSSProperties, FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { RealtimeChannel } from '@supabase/supabase-js'
 import { fromZonedTime } from 'date-fns-tz'
 import Image from 'next/image'
@@ -287,6 +287,14 @@ function statusBlockClass(status?: string | null): string {
     default:
       return 'border-gray-300 bg-gray-200/90 text-gray-800'
   }
+}
+
+function getSundayPreorderBorderStyle(booking: FohBooking): CSSProperties {
+  if (booking.booking_type !== 'sunday_lunch') return {}
+  if (booking.sunday_preorder_completed_at) {
+    return { borderLeft: '4px solid #16a34a' }  // green — submitted
+  }
+  return { borderLeft: '4px solid #d97706' }  // amber — pending
 }
 
 function getBookingVisualState(booking: FohBooking): BookingVisualState {
@@ -2615,7 +2623,7 @@ export function FohScheduleClient({
                             })
                           }}
                           className={`${bookingBlockBaseClass} ${statusBlockClass(visualState)}`}
-                          style={{ left: `${leftPct}%`, width: `${widthPct}%` }}
+                          style={{ left: `${leftPct}%`, width: `${widthPct}%`, ...getSundayPreorderBorderStyle(booking) }}
                           title={`${booking.guest_name || 'Guest'} · ${booking.booking_reference || booking.id.slice(0, 8)} · ${formatBookingWindow(booking.start_datetime, booking.end_datetime, booking.booking_time)} · ${visualLabel}`}
                         >
                           <p className="truncate font-semibold">
@@ -2626,6 +2634,14 @@ export function FohScheduleClient({
                               ? formatBookingWindow(booking.start_datetime, booking.end_datetime, booking.booking_time)
                               : `${formatBookingWindow(booking.start_datetime, booking.end_datetime, booking.booking_time)} · ${booking.party_size || 1}p · ${visualLabel}`}
                           </p>
+                          {booking.booking_type === 'sunday_lunch' && (
+                            <p
+                              className="truncate text-xs font-semibold mt-0.5"
+                              style={{ color: booking.sunday_preorder_completed_at ? '#86efac' : '#fcd34d' }}
+                            >
+                              {booking.sunday_preorder_completed_at ? '✓ Pre-order done' : '⏳ Pre-order pending'}
+                            </p>
+                          )}
                       </button>
                     )
                   })}
