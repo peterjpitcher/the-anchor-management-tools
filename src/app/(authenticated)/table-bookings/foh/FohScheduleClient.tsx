@@ -3007,46 +3007,11 @@ export function FohScheduleClient({
       <Modal
         open={isCreateModalOpen}
         onClose={closeCreateModal}
-        title={createMode === 'management' ? 'Management booking' : createMode === 'walk_in' ? 'Add walk-in' : 'Add booking'}
+        title={createMode === 'walk_in' ? 'Add walk-in' : 'Add booking'}
         description="Search existing customer by name or phone first. If not found, enter phone details to create a new customer."
         size="lg"
       >
         <form onSubmit={handleCreateBooking} className="space-y-4">
-          {isSuperAdmin && createMode !== 'walk_in' && (
-            <div className="flex items-center gap-2 rounded-md border border-gray-200 bg-gray-50 px-3 py-2">
-              <span className="text-xs font-medium text-gray-700">Mode:</span>
-              <button
-                type="button"
-                onClick={() => setCreateMode('booking')}
-                className={cn(
-                  'rounded px-2.5 py-1 text-xs font-medium',
-                  createMode === 'booking'
-                    ? 'bg-sidebar text-white'
-                    : 'border border-gray-300 text-gray-700 hover:bg-gray-100'
-                )}
-              >
-                Standard
-              </button>
-              <button
-                type="button"
-                onClick={() => setCreateMode('management')}
-                className={cn(
-                  'rounded px-2.5 py-1 text-xs font-medium',
-                  createMode === 'management'
-                    ? 'bg-amber-600 text-white'
-                    : 'border border-gray-300 text-gray-700 hover:bg-gray-100'
-                )}
-              >
-                Management override
-              </button>
-            </div>
-          )}
-
-          {createMode === 'management' && (
-            <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
-              Hours, service windows, card capture, and deposit requirements are all bypassed. A customer must be selected. The booking will be confirmed immediately.
-            </div>
-          )}
 
           <div className="rounded-md border border-gray-200 bg-gray-50 p-3">
             <label className="block text-xs font-medium text-gray-700">
@@ -3568,9 +3533,7 @@ export function FohScheduleClient({
 
           <div className="flex flex-wrap items-center justify-between gap-3 border-t border-gray-200 pt-3">
             <p className="text-xs text-gray-500">
-              {createMode === 'management'
-                ? 'Management bookings bypass all restrictions. Recorded as source: management.'
-                : createMode === 'walk_in'
+              {createMode === 'walk_in'
                 ? 'Walk-ins require covers. Guest name and phone are optional.'
                 : createForm.purpose !== 'event'
                 ? 'Sunday lunch and bookings of 7+ people require a GBP 10 per person deposit.'
@@ -3589,7 +3552,7 @@ export function FohScheduleClient({
                 disabled={submittingBooking}
                 className="rounded-md bg-sidebar px-4 py-2 text-sm font-medium text-white hover:bg-sidebar/90 disabled:cursor-not-allowed disabled:opacity-50"
               >
-                {submittingBooking ? 'Creating…' : createMode === 'management' ? 'Create management booking' : createMode === 'walk_in' ? 'Create walk-in' : 'Create booking'}
+                {submittingBooking ? 'Creating…' : createMode === 'walk_in' ? 'Create walk-in' : 'Create booking'}
               </button>
             </div>
           </div>
