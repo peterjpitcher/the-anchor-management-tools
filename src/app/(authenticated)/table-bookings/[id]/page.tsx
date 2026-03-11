@@ -32,9 +32,6 @@ export default async function BookingDetailPage({ params }: Props) {
       deposit_waived,
       customer:customers!table_bookings_customer_id_fkey(
         id, first_name, last_name, mobile_number
-      ),
-      table_booking_tables(
-        table:venue_tables(id, name, table_number, capacity)
       )
     `)
     .eq('id', id)
@@ -50,13 +47,10 @@ export default async function BookingDetailPage({ params }: Props) {
 
   // Supabase infers nested joins as arrays; normalise to scalar before passing to the client component
   const customer = Array.isArray(booking.customer) ? (booking.customer[0] ?? null) : booking.customer
-  const tableBookingTables = booking.table_booking_tables.map((tbt) => ({
-    table: Array.isArray(tbt.table) ? (tbt.table[0] ?? null) : tbt.table,
-  }))
   const normalizedBooking: Booking = {
     ...booking,
     customer: customer ?? null,
-    table_booking_tables: tableBookingTables,
+    table_booking_tables: [],
   } as unknown as Booking
 
   const guestName = [customer?.first_name, customer?.last_name]

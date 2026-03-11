@@ -512,6 +512,34 @@ export function verifyStripeWebhookSignature(
   return parsed.signatures.some((candidate) => secureHexEquals(candidate, expectedSignature))
 }
 
+export async function expireStripeCheckoutSession(sessionId: string): Promise<void> {
+  const secretKey = getStripeSecretKey()
+  const sessionIdTrimmed = sessionId.trim()
+  if (!sessionIdTrimmed) {
+    throw new Error('Stripe checkout session ID is required to expire a session')
+  }
+
+  const response = await fetch(`${STRIPE_API_BASE_URL}/checkout/sessions/${encodeURIComponent(sessionIdTrimmed)}/expire`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${secretKey}`,
+      'Content-Type': 'application/x-www-form-urlencoded'
+    }
+  })
+
+  if (!response.ok) {
+    const rawText = await response.text()
+    let payload: any = null
+    try {
+      payload = rawText ? JSON.parse(rawText) : null
+    } catch {
+      payload = null
+    }
+    const details = payload?.error?.message || rawText || `Stripe expire session API error (${response.status})`
+    throw new Error(details)
+  }
+}
+
 type CreateStripeRefundInput = {
   paymentIntentId: string
   amountMinor?: number

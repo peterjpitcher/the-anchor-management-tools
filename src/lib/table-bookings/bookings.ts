@@ -9,9 +9,11 @@ import { createSundayPreorderToken } from '@/lib/table-bookings/sunday-preorder'
 import {
   computeStripeCheckoutExpiresAtUnix,
   createStripeTableDepositCheckoutSession,
+  expireStripeCheckoutSession,
   type StripeCheckoutSession,
 } from '@/lib/payments/stripe'
 import { logger } from '@/lib/logger'
+import { AuditService } from '@/services/audit'
 
 const DEPOSIT_PER_PERSON_GBP = 10
 
@@ -525,6 +527,10 @@ export async function createTableCheckoutSessionByRawToken(
     state: 'blocked'
     reason: TablePaymentPreviewResult extends { state: 'blocked'; reason: infer R } ? R : string
   }
+  | {
+    state: 'error'
+    reason: string
+  }
 > {
   const preview = await getTablePaymentPreviewByRawToken(supabase, input.rawToken)
   if (preview.state !== 'ready') {
@@ -638,15 +644,34 @@ export async function createTableCheckoutSessionByRawToken(
       }
     }
   } catch (persistenceError) {
-    // Do not block guest checkout if payment-row persistence fails after Stripe session creation.
-    // Webhook confirmation can still upsert payment state by checkout session metadata.
-    logger.error('Failed to persist pending table-deposit payment row after Stripe checkout session creation', {
+    // DB persistence failed after Stripe session was created. If the guest were given
+    // the checkout URL and paid, the webhook would have no matching payment row to
+    // update. Attempt to expire the Stripe session so no payment can be taken, then
+    // return an error state so the caller can surface a recoverable error to the guest.
+    logger.error('Failed to persist pending table-deposit payment row after Stripe checkout session creation — expiring Stripe session', {
       error: persistenceError instanceof Error ? persistenceError : new Error(String(persistenceError)),
       metadata: {
         tableBookingId: preview.tableBookingId,
         checkoutSessionId: session.id,
       },
     })
+
+    try {
+      await expireStripeCheckoutSession(session.id)
+    } catch (expireError) {
+      logger.error('Failed to expire Stripe checkout session after DB persistence failure — manual action required', {
+        error: expireError instanceof Error ? expireError : new Error(String(expireError)),
+        metadata: {
+          tableBookingId: preview.tableBookingId,
+          checkoutSessionId: session.id,
+        },
+      })
+    }
+
+    return {
+      state: 'error',
+      reason: persistenceError instanceof Error ? persistenceError.message : String(persistenceError),
+    }
   }
 
   return {
@@ -739,6 +764,18 @@ export async function sendTableBookingCreatedSmsIfAllowed(
         logFailure: thrownSafety.logFailure,
       }
     })
+    await AuditService.logAuditEvent({
+      operation_type: 'table_booking.sms_failed',
+      resource_type: 'table_booking',
+      resource_id: input.bookingResult.table_booking_id ?? undefined,
+      operation_status: 'failure',
+      error_message: smsError instanceof Error ? smsError.message : String(smsError),
+      additional_info: {
+        sms_type: input.bookingResult.state === 'pending_payment' ? 'table_booking_pending_payment' : 'table_booking_confirmed',
+        customer_id: input.customerId,
+        code: thrownSafety.code,
+      },
+    })
     return {
       sms: {
         success: false,
@@ -774,6 +811,21 @@ export async function sendTableBookingCreatedSmsIfAllowed(
       }
     })
   }
+
+  const smsType = input.bookingResult.state === 'pending_payment' ? 'table_booking_pending_payment' : 'table_booking_confirmed'
+
+  await AuditService.logAuditEvent({
+    operation_type: smsDeliveredOrUnknown ? 'table_booking.sms_sent' : 'table_booking.sms_failed',
+    resource_type: 'table_booking',
+    resource_id: input.bookingResult.table_booking_id ?? undefined,
+    operation_status: smsDeliveredOrUnknown ? 'success' : 'failure',
+    error_message: smsDeliveredOrUnknown ? undefined : (result.error ?? smsCode ?? undefined),
+    additional_info: {
+      sms_type: smsType,
+      customer_id: input.customerId,
+      code: smsCode,
+    },
+  })
 
   return {
     scheduledFor: smsDeliveredOrUnknown ? result.scheduledFor : undefined,
@@ -901,6 +953,19 @@ export async function sendTableBookingConfirmedAfterDepositSmsIfAllowed(
       })
     }
 
+    await AuditService.logAuditEvent({
+      operation_type: smsDeliveredOrUnknown ? 'table_booking.sms_sent' : 'table_booking.sms_failed',
+      resource_type: 'table_booking',
+      resource_id: tableBookingId,
+      operation_status: smsDeliveredOrUnknown ? 'success' : 'failure',
+      error_message: smsDeliveredOrUnknown ? undefined : (smsResult.error ?? smsCode ?? undefined),
+      additional_info: {
+        sms_type: templateKey,
+        customer_id: customer.id,
+        code: smsCode,
+      },
+    })
+
     return {
       success: smsDeliveredOrUnknown,
       code: smsCode,
@@ -915,6 +980,19 @@ export async function sendTableBookingConfirmedAfterDepositSmsIfAllowed(
         error: smsError instanceof Error ? smsError.message : String(smsError),
         code: thrownSafety.code,
         logFailure: thrownSafety.logFailure,
+      },
+    })
+
+    await AuditService.logAuditEvent({
+      operation_type: 'table_booking.sms_failed',
+      resource_type: 'table_booking',
+      resource_id: tableBookingId,
+      operation_status: 'failure',
+      error_message: smsError instanceof Error ? smsError.message : String(smsError),
+      additional_info: {
+        sms_type: templateKey,
+        customer_id: customer.id,
+        code: thrownSafety.code,
       },
     })
 
@@ -988,6 +1066,18 @@ export async function sendSundayPreorderLinkSmsIfAllowed(
         logFailure: thrownSafety.logFailure,
       }
     })
+    await AuditService.logAuditEvent({
+      operation_type: 'table_booking.sms_failed',
+      resource_type: 'table_booking',
+      resource_id: input.tableBookingId,
+      operation_status: 'failure',
+      error_message: smsError instanceof Error ? smsError.message : String(smsError),
+      additional_info: {
+        sms_type: 'sunday_preorder_request',
+        customer_id: customer.id,
+        code: thrownSafety.code,
+      },
+    })
     return {
       sent: false,
       url: tokenUrl,
@@ -1025,6 +1115,19 @@ export async function sendSundayPreorderLinkSmsIfAllowed(
     })
   }
 
+  await AuditService.logAuditEvent({
+    operation_type: smsDeliveredOrUnknown ? 'table_booking.sms_sent' : 'table_booking.sms_failed',
+    resource_type: 'table_booking',
+    resource_id: input.tableBookingId,
+    operation_status: smsDeliveredOrUnknown ? 'success' : 'failure',
+    error_message: smsDeliveredOrUnknown ? undefined : (result.error ?? smsCode ?? undefined),
+    additional_info: {
+      sms_type: 'sunday_preorder_request',
+      customer_id: customer.id,
+      code: smsCode,
+    },
+  })
+
   return {
     sent: smsDeliveredOrUnknown,
     scheduledFor: smsDeliveredOrUnknown ? result.scheduledFor : undefined,
@@ -1044,6 +1147,7 @@ export async function sendTableBookingCancelledSmsIfAllowed(
     bookingReference: string
     bookingDate: string // YYYY-MM-DD format
     refundResult: { refunded: false; reason: string } | { refunded: true; amountPence: number; tier: string }
+    tableBookingId?: string
   }
 ): Promise<void> {
   try {
@@ -1105,6 +1209,7 @@ export async function sendTableBookingCancelledSmsIfAllowed(
 
     const smsCode = typeof smsResult.code === 'string' ? smsResult.code : null
     const smsLogFailure = smsResult.logFailure === true || smsCode === 'logging_failed'
+    const smsDeliveredOrUnknown = smsResult.success === true || smsLogFailure
 
     if (smsLogFailure) {
       logger.error('Table booking cancelled SMS sent but outbound message logging failed', {
@@ -1127,6 +1232,20 @@ export async function sendTableBookingCancelledSmsIfAllowed(
         },
       })
     }
+
+    await AuditService.logAuditEvent({
+      operation_type: smsDeliveredOrUnknown ? 'table_booking.sms_sent' : 'table_booking.sms_failed',
+      resource_type: 'table_booking',
+      resource_id: params.tableBookingId,
+      operation_status: smsDeliveredOrUnknown ? 'success' : 'failure',
+      error_message: smsDeliveredOrUnknown ? undefined : (smsResult.error ?? smsCode ?? undefined),
+      additional_info: {
+        sms_type: 'table_booking_cancelled',
+        customer_id: customer.id,
+        booking_reference: params.bookingReference,
+        code: smsCode,
+      },
+    })
   } catch (smsError) {
     logger.warn('Table booking cancelled SMS threw unexpectedly', {
       metadata: {

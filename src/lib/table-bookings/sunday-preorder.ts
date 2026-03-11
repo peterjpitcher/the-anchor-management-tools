@@ -490,33 +490,75 @@ async function saveSundayPreorderFromPageData(
 
   const nowIso = new Date().toISOString()
 
-  const { error: deleteError } = await (supabase.from('table_booking_items') as any)
-    .delete()
+  // Load existing menu-dish items for this booking so we can do a safe incremental
+  // replace (delete removed + update/insert remaining) rather than a full delete+insert.
+  // A full delete followed by insert creates a window where concurrent saves can
+  // interleave: concurrent save A deletes, concurrent save B deletes, A inserts, B
+  // inserts — one save silently wins. The incremental approach avoids that window.
+  const { data: existingItemRows, error: existingItemsError } = await (supabase.from('table_booking_items') as any)
+    .select('id, menu_dish_id')
     .eq('booking_id', pageData.booking_id)
     .not('menu_dish_id', 'is', null)
 
-  if (deleteError) {
-    throw deleteError
+  if (existingItemsError) {
+    throw existingItemsError
   }
 
-  const insertRows = Array.from(quantityByDish.entries()).map(([dishId, quantity]) => {
-    const menuItem = allowedItems.get(dishId)!
+  const existingRows = (existingItemRows || []) as Array<{ id: string; menu_dish_id: string }>
+  const existingByDishId = new Map(existingRows.map((row) => [row.menu_dish_id, row.id]))
 
-    return {
-      booking_id: pageData.booking_id,
-      menu_dish_id: dishId,
-      custom_item_name: menuItem.name,
-      price_at_booking: Number(menuItem.price.toFixed(2)),
-      quantity,
-      item_type: menuItem.item_type,
-      created_at: nowIso,
-      updated_at: nowIso
+  // Delete rows whose dish is no longer in the new selection
+  const dishIdsToKeep = Array.from(quantityByDish.keys())
+  const rowIdsToDelete = existingRows
+    .filter((row) => !quantityByDish.has(row.menu_dish_id))
+    .map((row) => row.id)
+
+  if (rowIdsToDelete.length > 0) {
+    const { error: deleteError } = await (supabase.from('table_booking_items') as any)
+      .delete()
+      .in('id', rowIdsToDelete)
+
+    if (deleteError) {
+      throw deleteError
     }
-  })
+  }
 
-  const { error: insertError } = await (supabase.from('table_booking_items') as any).insert(insertRows)
-  if (insertError) {
-    throw insertError
+  // Update existing rows and insert new ones — never leave a gap where all items are absent
+  for (const dishId of dishIdsToKeep) {
+    const quantity = quantityByDish.get(dishId)!
+    const menuItem = allowedItems.get(dishId)!
+    const existingRowId = existingByDishId.get(dishId)
+
+    if (existingRowId) {
+      const { error: updateError } = await (supabase.from('table_booking_items') as any)
+        .update({
+          custom_item_name: menuItem.name,
+          price_at_booking: Number(menuItem.price.toFixed(2)),
+          quantity,
+          item_type: menuItem.item_type,
+          updated_at: nowIso
+        })
+        .eq('id', existingRowId)
+
+      if (updateError) {
+        throw updateError
+      }
+    } else {
+      const { error: insertError } = await (supabase.from('table_booking_items') as any).insert({
+        booking_id: pageData.booking_id,
+        menu_dish_id: dishId,
+        custom_item_name: menuItem.name,
+        price_at_booking: Number(menuItem.price.toFixed(2)),
+        quantity,
+        item_type: menuItem.item_type,
+        created_at: nowIso,
+        updated_at: nowIso
+      })
+
+      if (insertError) {
+        throw insertError
+      }
+    }
   }
 
   const { data: updatedBooking, error: bookingUpdateError } = await (supabase.from('table_bookings') as any)
@@ -539,7 +581,7 @@ async function saveSundayPreorderFromPageData(
   return {
     state: 'saved',
     booking_id: pageData.booking_id,
-    item_count: insertRows.length
+    item_count: dishIdsToKeep.length
   }
 }
 

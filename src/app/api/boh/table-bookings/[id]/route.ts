@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireFohPermission } from '@/lib/foh/api-auth'
 import { refundTableBookingDeposit } from '@/lib/table-bookings/refunds'
 import { sendTableBookingCancelledSmsIfAllowed } from '@/lib/table-bookings/bookings'
+import { expireStripeCheckoutSession, isStripeConfigured } from '@/lib/payments/stripe'
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
@@ -20,7 +21,7 @@ export async function DELETE(
   }
 
   const { data: existing, error: loadError } = await (auth.supabase.from('table_bookings') as any)
-    .select('id, customer_id, booking_reference, booking_date, status')
+    .select('id, customer_id, booking_reference, booking_date, status, payment_status')
     .eq('id', id)
     .maybeSingle()
 
@@ -38,6 +39,32 @@ export async function DELETE(
       { error: `Booking cannot be cancelled because it is already ${existing.status.replace('_', ' ')}` },
       { status: 409 }
     )
+  }
+
+  // Expire any pending Stripe checkout session to prevent the guest completing
+  // payment after cancellation (orphaned charge risk).
+  const isPendingPayment =
+    existing.status === 'pending_payment' || existing.payment_status === 'pending'
+  if (isPendingPayment && isStripeConfigured()) {
+    try {
+      const { data: pendingPayment } = await (auth.supabase.from('payments') as any)
+        .select('stripe_checkout_session_id')
+        .eq('table_booking_id', id)
+        .eq('charge_type', 'table_deposit')
+        .eq('status', 'pending')
+        .not('stripe_checkout_session_id', 'is', null)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+
+      const sessionId = (pendingPayment as any)?.stripe_checkout_session_id
+      if (sessionId) {
+        await expireStripeCheckoutSession(sessionId)
+      }
+    } catch (stripeErr) {
+      // Log but do not block the cancellation
+      console.error('[boh-table-booking-delete] Failed to expire Stripe checkout session:', stripeErr)
+    }
   }
 
   const nowIso = new Date().toISOString()

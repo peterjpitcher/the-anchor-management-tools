@@ -550,7 +550,7 @@ export default function BookingDetailClient({ booking, canEdit, canManage }: Pro
         </div>
       )}
       {tab === 'preorder' && isSundayLunch && (
-        <PreorderTab booking={booking} canEdit={canEdit} />
+        <PreorderTab booking={booking} canEdit={canManage} />
       )}
       {tab === 'sms' && (
         <div className="space-y-4 max-w-lg">

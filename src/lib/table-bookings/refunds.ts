@@ -1,5 +1,7 @@
 import { createStripeRefund } from '@/lib/payments/stripe'
 import { createClient } from '@/lib/supabase/server'
+import { AuditService } from '@/services/audit'
+import { logger } from '@/lib/logger'
 
 export type RefundTier = 'full' | 'half' | 'none'
 
@@ -62,7 +64,10 @@ export async function refundTableBookingDeposit(
     idempotencyKey: `tbl-refund-${payment.id}-${tier}`,
   })
 
-  await supabase
+  // Stripe refund succeeded — attempt DB update. If the DB update fails, the customer
+  // has received their money but our records are inconsistent. We log a critical audit
+  // event for manual reconciliation and rethrow so the caller knows the state is dirty.
+  const { error: dbUpdateError } = await supabase
     .from('payments')
     .update({
       status: tier === 'full' ? 'refunded' : 'partially_refunded',
@@ -70,6 +75,37 @@ export async function refundTableBookingDeposit(
       updated_at: new Date().toISOString(),
     })
     .eq('id', payment.id)
+
+  if (dbUpdateError) {
+    logger.error('Stripe refund succeeded but DB payment update failed — manual reconciliation required', {
+      metadata: {
+        tableBookingId,
+        paymentId: payment.id,
+        stripeRefundId: stripeRefund.id,
+        amountPence: refundAmountPence,
+        tier,
+        dbError: dbUpdateError.message,
+      },
+    })
+
+    await AuditService.logAuditEvent({
+      operation_type: 'table_booking.refund_stripe_success_db_failed',
+      resource_type: 'table_booking',
+      resource_id: tableBookingId,
+      operation_status: 'failure',
+      error_message: dbUpdateError.message,
+      additional_info: {
+        stripe_refund_id: stripeRefund.id,
+        payment_id: payment.id,
+        amount_pence: refundAmountPence,
+        tier,
+      },
+    })
+
+    throw new Error(
+      `Stripe refund ${stripeRefund.id} succeeded (${refundAmountPence}p) but DB update failed: ${dbUpdateError.message}`
+    )
+  }
 
   return { refunded: true, amountPence: refundAmountPence, refundId: stripeRefund.id, tier }
 }

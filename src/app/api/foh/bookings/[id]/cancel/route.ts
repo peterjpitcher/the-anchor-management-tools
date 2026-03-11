@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireFohPermission } from '@/lib/foh/api-auth'
 import { getTableBookingForFoh } from '@/lib/foh/bookings'
 import { buildStaffStatusTransitionPlan } from '@/lib/table-bookings/staff-status-actions'
+import { expireStripeCheckoutSession, isStripeConfigured } from '@/lib/payments/stripe'
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
@@ -22,6 +23,32 @@ export async function POST(
 
   if (!booking) {
     return NextResponse.json({ error: 'Booking not found' }, { status: 404 })
+  }
+
+  // Expire any pending Stripe checkout session to prevent the guest completing
+  // payment after cancellation (orphaned charge risk).
+  const isPendingPayment =
+    booking.status === 'pending_payment' || booking.payment_status === 'pending'
+  if (isPendingPayment && isStripeConfigured()) {
+    try {
+      const { data: pendingPayment } = await (auth.supabase.from('payments') as any)
+        .select('stripe_checkout_session_id')
+        .eq('table_booking_id', id)
+        .eq('charge_type', 'table_deposit')
+        .eq('status', 'pending')
+        .not('stripe_checkout_session_id', 'is', null)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+
+      const sessionId = (pendingPayment as any)?.stripe_checkout_session_id
+      if (sessionId) {
+        await expireStripeCheckoutSession(sessionId)
+      }
+    } catch (stripeErr) {
+      // Log but do not block the cancellation
+      console.error('[foh-cancel] Failed to expire Stripe checkout session:', stripeErr)
+    }
   }
 
   const nowIso = new Date().toISOString()

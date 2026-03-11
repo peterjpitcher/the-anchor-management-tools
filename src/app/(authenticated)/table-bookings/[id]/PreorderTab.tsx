@@ -7,11 +7,10 @@ import type { Booking } from './BookingDetailClient'
 
 interface PreorderItem {
   menu_dish_id: string
-  custom_item_name: string | null
+  name_snapshot: string
   item_type: 'main' | 'side' | 'extra'
   quantity: number
-  price_at_booking: number
-  guest_name: string | null
+  price_snapshot: number
 }
 
 interface MenuItem {
@@ -141,7 +140,7 @@ export default function PreorderTab({ booking, canEdit }: Props) {
               className="flex items-center justify-between bg-gray-50 rounded-md px-3 py-2 mb-1"
             >
               <span className="text-sm text-gray-900">
-                {item.custom_item_name ?? item.menu_dish_id}
+                {item.name_snapshot}
               </span>
               <span className="text-sm font-medium text-gray-600 bg-white border border-gray-200 rounded px-2 py-0.5">
                 &times; {item.quantity}
@@ -161,7 +160,7 @@ export default function PreorderTab({ booking, canEdit }: Props) {
               className="flex items-center justify-between bg-gray-50 rounded-md px-3 py-2 mb-1"
             >
               <span className="text-sm text-gray-900">
-                {item.custom_item_name ?? item.menu_dish_id}
+                {item.name_snapshot}
               </span>
               <span className="text-sm font-medium text-gray-600 bg-white border border-gray-200 rounded px-2 py-0.5">
                 &times; {item.quantity}
@@ -181,7 +180,7 @@ export default function PreorderTab({ booking, canEdit }: Props) {
               className="flex items-center justify-between bg-gray-50 rounded-md px-3 py-2 mb-1"
             >
               <span className="text-sm text-gray-900">
-                {item.custom_item_name ?? item.menu_dish_id}
+                {item.name_snapshot}
               </span>
               <span className="text-sm font-medium text-gray-600 bg-white border border-gray-200 rounded px-2 py-0.5">
                 &times; {item.quantity}

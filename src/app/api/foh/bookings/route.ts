@@ -1340,9 +1340,12 @@ export async function POST(request: NextRequest) {
     }
   }
 
+  // Also handle pre-orders for pending_payment bookings (payment_link deposit method):
+  // the booking exists and is not cancelled, so we can capture/send the pre-order even
+  // though the deposit hasn't been paid yet.
   const shouldHandleSundayPreorder =
     effectiveSundayLunch &&
-    bookingResult.state === 'confirmed' &&
+    (bookingResult.state === 'confirmed' || bookingResult.state === 'pending_payment') &&
     Boolean(bookingResult.table_booking_id)
 
   if (shouldHandleSundayPreorder && bookingResult.table_booking_id) {
@@ -1353,9 +1356,11 @@ export async function POST(request: NextRequest) {
     if (mode === 'capture_now') {
       let captureResult: Awaited<ReturnType<typeof saveSundayPreorderByBookingId>> | null = null
       try {
+        // staffOverride: true so FOH staff can capture regardless of the customer-facing cutoff
         captureResult = await saveSundayPreorderByBookingId(auth.supabase, {
           bookingId: bookingResult.table_booking_id,
-          items: payload.sunday_preorder_items || []
+          items: payload.sunday_preorder_items || [],
+          staffOverride: true
         })
       } catch (captureError) {
         logger.warn('Failed to capture Sunday pre-order during FOH booking create', {
@@ -1368,6 +1373,20 @@ export async function POST(request: NextRequest) {
         // Keep the response fail-safe: the table booking is already committed, and returning
         // 500 encourages operator retries that can create duplicates.
         sundayPreorderReason = 'capture_exception'
+        // Audit the capture failure so operators are not silently misled
+        try {
+          await logAuditEvent({
+            user_id: auth.userId,
+            operation_type: 'create',
+            resource_type: 'sunday_preorder',
+            resource_id: bookingResult.table_booking_id,
+            operation_status: 'failure',
+            error_message: captureError instanceof Error ? captureError.message : String(captureError),
+            additional_info: { reason: 'capture_exception', booking_id: bookingResult.table_booking_id }
+          })
+        } catch {
+          // Audit log failure must not affect the booking response
+        }
       }
 
       if (captureResult?.state === 'saved') {
@@ -1375,6 +1394,22 @@ export async function POST(request: NextRequest) {
       } else {
         if (!sundayPreorderReason) {
           sundayPreorderReason = captureResult?.reason || 'capture_failed'
+        }
+        // Audit non-exception capture failures (e.g. blocked by validation)
+        if (sundayPreorderReason !== 'capture_exception') {
+          try {
+            await logAuditEvent({
+              user_id: auth.userId,
+              operation_type: 'create',
+              resource_type: 'sunday_preorder',
+              resource_id: bookingResult.table_booking_id,
+              operation_status: 'failure',
+              error_message: sundayPreorderReason,
+              additional_info: { reason: sundayPreorderReason, booking_id: bookingResult.table_booking_id }
+            })
+          } catch {
+            // Audit log failure must not affect the booking response
+          }
         }
 
         try {

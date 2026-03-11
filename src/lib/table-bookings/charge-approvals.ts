@@ -459,6 +459,34 @@ export async function attemptApprovedChargeFromDecision(
     }
   }
 
+  // Idempotency guard: if a non-failed Stripe payment intent already exists for
+  // this charge request, return it instead of creating a duplicate charge.
+  const { data: existingRequest, error: existingRequestError } = await (supabase.from('charge_requests') as any)
+    .select('stripe_payment_intent_id, charge_status')
+    .eq('id', chargeRequestId)
+    .maybeSingle()
+
+  if (existingRequestError) {
+    logger.warn('Failed to load charge request for idempotency check', {
+      metadata: { chargeRequestId, error: existingRequestError.message }
+    })
+  }
+
+  const existingIntentId: string | null = (existingRequest as any)?.stripe_payment_intent_id ?? null
+  const existingChargeStatus: string | null = (existingRequest as any)?.charge_status ?? null
+  const isTerminalStatus = existingChargeStatus === 'failed' || existingChargeStatus === 'waived'
+
+  if (existingIntentId && !isTerminalStatus) {
+    // A valid Stripe intent already exists — return it to prevent double-charging.
+    const mappedStatus = mapPaymentIntentStatus(existingChargeStatus)
+    return {
+      status: mappedStatus,
+      stripePaymentIntentId: existingIntentId,
+      amount,
+      currency
+    }
+  }
+
   let attemptedStripeIntent: { id: string; status: string } | null = null
 
   try {
