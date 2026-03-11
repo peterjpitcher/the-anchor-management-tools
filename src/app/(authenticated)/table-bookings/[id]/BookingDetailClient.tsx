@@ -185,7 +185,6 @@ export default function BookingDetailClient({ booking, canEdit, canManage }: Pro
       toast.error('Enter a party size between 1 and 50')
       return
     }
-    setPartySizeEditOpen(false)
     await runAction(
       'party-size',
       async () => {
@@ -196,6 +195,7 @@ export default function BookingDetailClient({ booking, canEdit, canManage }: Pro
         })
         const payload = (await response.json()) as { error?: string }
         if (!response.ok) throw new Error(payload.error ?? 'Failed to update party size')
+        setPartySizeEditOpen(false)
       },
       'Party size updated'
     )
@@ -225,10 +225,10 @@ export default function BookingDetailClient({ booking, canEdit, canManage }: Pro
         })
         const payload = (await response.json()) as { error?: string }
         if (!response.ok) throw new Error(payload.error ?? 'Failed to delete booking')
+        router.push('/table-bookings/boh')
       },
       'Booking deleted'
     )
-    router.push('/table-bookings/boh')
   }
 
   useEffect(() => {
@@ -444,42 +444,16 @@ export default function BookingDetailClient({ booking, canEdit, canManage }: Pro
                 >
                   Edit party size
                 </Button>
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  onClick={() => void handleCopyDepositLink()}
-                  loading={actionLoadingKey === 'deposit-link'}
-                  disabled={Boolean(actionLoadingKey)}
-                >
-                  Copy deposit link
-                </Button>
-                {canManage && (
-                  <>
-                    <Button
-                      size="sm"
-                      variant="danger"
-                      onClick={() => setNoShowConfirmOpen(true)}
-                      disabled={Boolean(actionLoadingKey)}
-                    >
-                      Mark no-show
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="danger"
-                      onClick={() => setCancelConfirmOpen(true)}
-                      disabled={Boolean(actionLoadingKey)}
-                    >
-                      Cancel booking
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="danger"
-                      onClick={() => setDeleteConfirmOpen(true)}
-                      disabled={Boolean(actionLoadingKey)}
-                    >
-                      Delete booking
-                    </Button>
-                  </>
+                {booking.status === 'pending_payment' && (
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    onClick={() => void handleCopyDepositLink()}
+                    loading={actionLoadingKey === 'deposit-link'}
+                    disabled={Boolean(actionLoadingKey)}
+                  >
+                    Copy deposit link
+                  </Button>
                 )}
               </div>
 
@@ -514,6 +488,39 @@ export default function BookingDetailClient({ booking, canEdit, canManage }: Pro
                   onClick={() => void handleMoveTable()}
                 >
                   Move
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {/* Danger zone — separate section, gated on canManage independently of canEdit */}
+          {canManage && (
+            <div className="rounded-lg border border-red-200 bg-red-50 p-4 space-y-3">
+              <p className="text-xs font-semibold uppercase tracking-wide text-red-500">Danger zone</p>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  size="sm"
+                  variant="danger"
+                  onClick={() => setNoShowConfirmOpen(true)}
+                  disabled={Boolean(actionLoadingKey)}
+                >
+                  Mark no-show
+                </Button>
+                <Button
+                  size="sm"
+                  variant="danger"
+                  onClick={() => setCancelConfirmOpen(true)}
+                  disabled={Boolean(actionLoadingKey)}
+                >
+                  Cancel booking
+                </Button>
+                <Button
+                  size="sm"
+                  variant="danger"
+                  onClick={() => setDeleteConfirmOpen(true)}
+                  disabled={Boolean(actionLoadingKey)}
+                >
+                  Delete booking
                 </Button>
               </div>
             </div>
@@ -608,7 +615,8 @@ export default function BookingDetailClient({ booking, canEdit, canManage }: Pro
             <Button
               size="sm"
               onClick={() => void handleSubmitPartySize()}
-              disabled={!partySizeEditValue || Number.parseInt(partySizeEditValue, 10) < 1}
+              loading={actionLoadingKey === 'party-size'}
+              disabled={Boolean(actionLoadingKey) || !partySizeEditValue || Number.parseInt(partySizeEditValue, 10) < 1}
             >
               Save
             </Button>
