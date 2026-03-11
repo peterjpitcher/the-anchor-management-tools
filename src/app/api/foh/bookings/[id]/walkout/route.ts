@@ -69,7 +69,11 @@ export async function POST(
     data: {
       booking_id: booking.id,
       charge_request_id: chargeRequestId,
-      amount: chargeAmount
+      amount: chargeAmount,
+      booking: {
+        id: booking.id,
+        status: booking.status
+      }
     }
   })
 }
