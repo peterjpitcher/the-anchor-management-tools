@@ -48,7 +48,9 @@ export default async function BookingDetailPage({ params }: Props) {
   }
   if (!booking) notFound()
 
-  const guestName = [booking.customer?.first_name, booking.customer?.last_name]
+  // Supabase returns joins as arrays; normalise to a single object
+  const customer = Array.isArray(booking.customer) ? booking.customer[0] : booking.customer
+  const guestName = [customer?.first_name, customer?.last_name]
     .filter(Boolean)
     .join(' ')
   const title = guestName || booking.booking_reference || 'Booking'
