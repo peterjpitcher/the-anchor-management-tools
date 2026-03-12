@@ -69,7 +69,6 @@ type EntryFormState = {
   vendor_id: string
   project_id: string
   entry_date: string
-  start_time: string
   duration_hours: number
   miles: string
   amount_ex_vat: string
@@ -79,19 +78,6 @@ type EntryFormState = {
   billable: boolean
 }
 
-function toLondonTimeHm(iso: string | null) {
-  if (!iso) return ''
-  try {
-    return new Intl.DateTimeFormat('en-GB', {
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: false,
-      timeZone: 'Europe/London',
-    }).format(new Date(iso))
-  } catch {
-    return ''
-  }
-}
 
 function StatCard({
   label,
@@ -148,7 +134,6 @@ export default function OJProjectsDashboardPage() {
   const [vendorId, setVendorId] = useState('')
   const [projectId, setProjectId] = useState('')
   const [entryDate, setEntryDate] = useState(getTodayIsoDate())
-  const [startTime, setStartTime] = useState('09:00')
   const [durationHoursInput, setDurationHoursInput] = useState('1')
   const [workTypeId, setWorkTypeId] = useState('')
   const [miles, setMiles] = useState<number>(0)
@@ -164,7 +149,6 @@ export default function OJProjectsDashboardPage() {
     vendor_id: '',
     project_id: '',
     entry_date: '',
-    start_time: '09:00',
     duration_hours: 1.0,
     miles: '',
     amount_ex_vat: '',
@@ -622,7 +606,6 @@ export default function OJProjectsDashboardPage() {
 
       let res: any
       if (entryType === 'time') {
-        fd.append('start_time', startTime)
         fd.append('duration_minutes', String(parsedDurationHours * 60))
         if (workTypeId) fd.append('work_type_id', workTypeId)
         res = await createTimeEntry(fd)
@@ -671,7 +654,6 @@ export default function OJProjectsDashboardPage() {
       vendor_id: entry.vendor_id,
       project_id: entry.project_id,
       entry_date: entry.entry_date,
-      start_time: toLondonTimeHm(entry.start_at) || '09:00',
       duration_hours: durationHoursValue,
       miles: entry.miles != null ? String(entry.miles) : '',
       amount_ex_vat: entry.amount_ex_vat_snapshot != null ? String(entry.amount_ex_vat_snapshot) : '',
@@ -701,7 +683,6 @@ export default function OJProjectsDashboardPage() {
       fd.append('billable', String(editForm.billable))
 
       if (editForm.entry_type === 'time') {
-        fd.append('start_time', editForm.start_time)
         fd.append('duration_minutes', String(editForm.duration_hours * 60))
         fd.append('work_type_id', editForm.work_type_id || '')
       } else if (editForm.entry_type === 'one_off') {
@@ -1052,21 +1033,16 @@ export default function OJProjectsDashboardPage() {
 
                       {entryType === 'time' ? (
                         <>
-                          <div className="flex gap-3">
-                            <FormGroup label="Start" required className="flex-1">
-                              <Input type="time" value={startTime} onChange={(e) => setStartTime(e.target.value)} required />
-                            </FormGroup>
-                            <FormGroup label="Duration" required className="flex-1">
-                              <Input
-                                type="text"
-                                inputMode="decimal"
-                                value={durationHoursInput}
-                                onChange={(e) => setDurationHoursInput(e.target.value)}
-                                required
-                                rightElement={<span className="text-gray-500 text-xs mr-3">h</span>}
-                              />
-                            </FormGroup>
-                          </div>
+                          <FormGroup label="Duration" required>
+                            <Input
+                              type="text"
+                              inputMode="decimal"
+                              value={durationHoursInput}
+                              onChange={(e) => setDurationHoursInput(e.target.value)}
+                              required
+                              rightElement={<span className="text-gray-500 text-xs mr-3">h</span>}
+                            />
+                          </FormGroup>
 
                           <FormGroup label="Work Type">
                             <Select value={workTypeId} onChange={(e) => setWorkTypeId(e.target.value)}>
@@ -1536,14 +1512,6 @@ export default function OJProjectsDashboardPage() {
 
             {editForm.entry_type === 'time' ? (
               <>
-                <FormGroup label="Start" required>
-                  <Input
-                    type="time"
-                    value={editForm.start_time}
-                    onChange={(e) => setEditForm({ ...editForm, start_time: e.target.value })}
-                    required
-                  />
-                </FormGroup>
                 <FormGroup label="Duration (h)" required>
                   <Input
                     type="number"

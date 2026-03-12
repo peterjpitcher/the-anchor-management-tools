@@ -4,15 +4,11 @@ import { createClient } from '@/lib/supabase/server'
 import { checkUserPermission } from '@/app/actions/rbac'
 import { logAuditEvent } from '@/app/actions/audit'
 import { z } from 'zod'
-import { fromZonedTime } from 'date-fns-tz'
-
-const LONDON_TZ = 'Europe/London'
 
 const TimeEntrySchema = z.object({
   vendor_id: z.string().uuid('Invalid vendor ID'),
   project_id: z.string().uuid('Invalid project ID'),
   entry_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must be YYYY-MM-DD'),
-  start_time: z.string().regex(/^\d{2}:\d{2}$/, 'Start time must be HH:MM'),
   duration_minutes: z.coerce.number().min(1, 'Duration must be at least 1 minute'),
   work_type_id: z.string().uuid('Invalid work type').optional().or(z.literal('')).optional(),
   description: z.string().max(5000).optional(),
@@ -46,7 +42,6 @@ const UpdateEntrySchema = z.object({
   vendor_id: z.string().uuid('Invalid vendor ID'),
   project_id: z.string().uuid('Invalid project ID'),
   entry_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must be YYYY-MM-DD'),
-  start_time: z.string().regex(/^\d{2}:\d{2}$/).optional(),
   duration_minutes: z.coerce.number().min(1).optional(),
   miles: z.coerce.number().optional(),
   amount_ex_vat: z.coerce.number().positive().optional(),
@@ -55,24 +50,6 @@ const UpdateEntrySchema = z.object({
   internal_notes: z.string().max(10000).optional(),
   billable: z.coerce.boolean().optional(),
 })
-
-function timeToMinutes(time: string) {
-  const [hh, mm] = time.split(':').map((v) => Number.parseInt(v, 10))
-  if (Number.isNaN(hh) || Number.isNaN(mm)) return null
-  if (hh < 0 || hh > 23 || mm < 0 || mm > 59) return null
-  return hh * 60 + mm
-}
-
-function toLondonUtcIso(date: string, time: string) {
-  return fromZonedTime(`${date}T${time}:00`, LONDON_TZ).toISOString()
-}
-
-// Fixed: Correctly adds minutes to an ISO string by date object manipulation
-function addMinutesToIso(isoContext: string, minutes: number) {
-  const d = new Date(isoContext)
-  d.setMinutes(d.getMinutes() + minutes)
-  return d.toISOString()
-}
 
 async function getVendorSettingsOrDefault(supabase: Awaited<ReturnType<typeof createClient>>, vendorId: string) {
   const { data } = await supabase
@@ -177,7 +154,6 @@ export async function createTimeEntry(formData: FormData) {
     vendor_id: formData.get('vendor_id'),
     project_id: formData.get('project_id'),
     entry_date: formData.get('entry_date'),
-    start_time: formData.get('start_time'),
     duration_minutes: formData.get('duration_minutes'),
     work_type_id: formData.get('work_type_id') || undefined,
     description: formData.get('description') || undefined,
@@ -186,23 +162,15 @@ export async function createTimeEntry(formData: FormData) {
   })
   if (!parsed.success) return { error: parsed.error.errors[0].message }
 
-  const startMin = timeToMinutes(parsed.data.start_time)
-  if (startMin === null) return { error: 'Invalid start time' }
+  const rawMinutes = parsed.data.duration_minutes
+  const roundedMinutes = Math.ceil(rawMinutes / 15) * 15
+  if (roundedMinutes <= 0) return { error: 'Invalid duration after rounding' }
 
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
 
   const match = await ensureProjectMatchesVendor(supabase, parsed.data.project_id, parsed.data.vendor_id)
   if ('error' in match) return { error: match.error }
-
-  const startAtIso = toLondonUtcIso(parsed.data.entry_date, parsed.data.start_time)
-
-  // Calculate end time based on duration
-  const rawMinutes = parsed.data.duration_minutes
-  const endAtIso = addMinutesToIso(startAtIso, rawMinutes)
-
-  const roundedMinutes = Math.ceil(rawMinutes / 15) * 15
-  if (roundedMinutes <= 0) return { error: 'Invalid duration after rounding' }
 
   const workTypeId = parsed.data.work_type_id ? String(parsed.data.work_type_id) : null
   const [settings, workTypeName] = await Promise.all([
@@ -217,8 +185,8 @@ export async function createTimeEntry(formData: FormData) {
       project_id: parsed.data.project_id,
       entry_type: 'time',
       entry_date: parsed.data.entry_date,
-      start_at: startAtIso,
-      end_at: endAtIso,
+      start_at: null,
+      end_at: null,
       duration_minutes_raw: rawMinutes,
       duration_minutes_rounded: roundedMinutes,
       miles: null,
@@ -244,26 +212,15 @@ export async function createTimeEntry(formData: FormData) {
     resource_type: 'oj_entry',
     resource_id: data.id,
     operation_status: 'success',
-    new_values: { entry_type: 'time', project_id: data.project_id, entry_date: data.entry_date, duration_minutes_rounded: data.duration_minutes_rounded },
+    new_values: {
+      entry_type: 'time',
+      project_id: data.project_id,
+      entry_date: data.entry_date,
+      duration_minutes_rounded: data.duration_minutes_rounded,
+    },
   })
 
-  let warning: string | undefined
-  try {
-    const { count } = await supabase
-      .from('oj_entries')
-      .select('id', { count: 'exact', head: true })
-      .eq('vendor_id', parsed.data.vendor_id)
-      .eq('entry_type', 'time')
-      .lt('start_at', endAtIso)
-      .gt('end_at', startAtIso)
-      .neq('id', data.id)
-
-    if (typeof count === 'number' && count > 0) {
-      warning = `This entry overlaps with ${count} other time ${count === 1 ? 'entry' : 'entries'}.`
-    }
-  } catch { }
-
-  return { entry: data, success: true as const, warning }
+  return { entry: data, success: true as const }
 }
 
 export async function createMileageEntry(formData: FormData) {
@@ -403,7 +360,6 @@ export async function updateEntry(formData: FormData) {
     vendor_id: formData.get('vendor_id'),
     project_id: formData.get('project_id'),
     entry_date: formData.get('entry_date'),
-    start_time: formData.get('start_time') || undefined,
     duration_minutes: formData.get('duration_minutes') || undefined,
     miles: formData.get('miles') ?? undefined,
     amount_ex_vat: formData.get('amount_ex_vat') || undefined,
@@ -419,7 +375,7 @@ export async function updateEntry(formData: FormData) {
 
   const { data: existing, error: fetchError } = await supabase
     .from('oj_entries')
-    .select('id, status')
+    .select('id, status, start_at, end_at')
     .eq('id', parsed.data.id)
     .single()
 
@@ -438,19 +394,11 @@ export async function updateEntry(formData: FormData) {
   ])
 
   if (parsed.data.entry_type === 'time') {
-    if (!parsed.data.start_time || !parsed.data.duration_minutes) {
-      return { error: 'Start time and duration are required for time entries' }
+    if (!parsed.data.duration_minutes) {
+      return { error: 'Duration is required for time entries' }
     }
 
-    const startMin = timeToMinutes(parsed.data.start_time)
-    if (startMin === null) return { error: 'Invalid start time' }
-
-    const startAtIso = toLondonUtcIso(parsed.data.entry_date, parsed.data.start_time)
-
-    // Calculate end based on duration
     const rawMinutes = parsed.data.duration_minutes
-    const endAtIso = addMinutesToIso(startAtIso, rawMinutes)
-
     const roundedMinutes = Math.ceil(rawMinutes / 15) * 15
     if (roundedMinutes <= 0) return { error: 'Invalid duration after rounding' }
 
@@ -463,8 +411,8 @@ export async function updateEntry(formData: FormData) {
         vendor_id: parsed.data.vendor_id,
         project_id: parsed.data.project_id,
         entry_date: parsed.data.entry_date,
-        start_at: startAtIso,
-        end_at: endAtIso,
+        start_at: existing.start_at ?? null,
+        end_at: existing.end_at ?? null,
         duration_minutes_raw: rawMinutes,
         duration_minutes_rounded: roundedMinutes,
         work_type_id: workTypeId,
@@ -493,23 +441,7 @@ export async function updateEntry(formData: FormData) {
       new_values: { entry_type: 'time', duration_minutes_rounded: roundedMinutes },
     })
 
-    let warning: string | undefined
-    try {
-      const { count } = await supabase
-        .from('oj_entries')
-        .select('id', { count: 'exact', head: true })
-        .eq('vendor_id', parsed.data.vendor_id)
-        .eq('entry_type', 'time')
-        .lt('start_at', endAtIso)
-        .gt('end_at', startAtIso)
-        .neq('id', parsed.data.id)
-
-      if (typeof count === 'number' && count > 0) {
-        warning = `This entry overlaps with ${count} other time ${count === 1 ? 'entry' : 'entries'}.`
-      }
-    } catch { }
-
-    return { entry: data, success: true as const, warning }
+    return { entry: data, success: true as const }
   }
 
   // one_off
