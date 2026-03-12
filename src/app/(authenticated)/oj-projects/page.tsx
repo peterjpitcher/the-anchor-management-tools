@@ -148,7 +148,6 @@ export default function OJProjectsDashboardPage() {
   const [vendorId, setVendorId] = useState('')
   const [projectId, setProjectId] = useState('')
   const [entryDate, setEntryDate] = useState(getTodayIsoDate())
-  const [startTime, setStartTime] = useState('09:00')
   const [durationHoursInput, setDurationHoursInput] = useState('1')
   const [workTypeId, setWorkTypeId] = useState('')
   const [miles, setMiles] = useState<number>(0)
@@ -622,7 +621,6 @@ export default function OJProjectsDashboardPage() {
 
       let res: any
       if (entryType === 'time') {
-        fd.append('start_time', startTime)
         fd.append('duration_minutes', String(parsedDurationHours * 60))
         if (workTypeId) fd.append('work_type_id', workTypeId)
         res = await createTimeEntry(fd)
@@ -1052,21 +1050,16 @@ export default function OJProjectsDashboardPage() {
 
                       {entryType === 'time' ? (
                         <>
-                          <div className="flex gap-3">
-                            <FormGroup label="Start" required className="flex-1">
-                              <Input type="time" value={startTime} onChange={(e) => setStartTime(e.target.value)} required />
-                            </FormGroup>
-                            <FormGroup label="Duration" required className="flex-1">
-                              <Input
-                                type="text"
-                                inputMode="decimal"
-                                value={durationHoursInput}
-                                onChange={(e) => setDurationHoursInput(e.target.value)}
-                                required
-                                rightElement={<span className="text-gray-500 text-xs mr-3">h</span>}
-                              />
-                            </FormGroup>
-                          </div>
+                          <FormGroup label="Duration" required>
+                            <Input
+                              type="text"
+                              inputMode="decimal"
+                              value={durationHoursInput}
+                              onChange={(e) => setDurationHoursInput(e.target.value)}
+                              required
+                              rightElement={<span className="text-gray-500 text-xs mr-3">h</span>}
+                            />
+                          </FormGroup>
 
                           <FormGroup label="Work Type">
                             <Select value={workTypeId} onChange={(e) => setWorkTypeId(e.target.value)}>
