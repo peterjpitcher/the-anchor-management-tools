@@ -42,7 +42,6 @@ const UpdateEntrySchema = z.object({
   vendor_id: z.string().uuid('Invalid vendor ID'),
   project_id: z.string().uuid('Invalid project ID'),
   entry_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must be YYYY-MM-DD'),
-  start_time: z.string().regex(/^\d{2}:\d{2}$/).optional(),
   duration_minutes: z.coerce.number().min(1).optional(),
   miles: z.coerce.number().optional(),
   amount_ex_vat: z.coerce.number().positive().optional(),
@@ -361,7 +360,6 @@ export async function updateEntry(formData: FormData) {
     vendor_id: formData.get('vendor_id'),
     project_id: formData.get('project_id'),
     entry_date: formData.get('entry_date'),
-    start_time: formData.get('start_time') || undefined,
     duration_minutes: formData.get('duration_minutes') || undefined,
     miles: formData.get('miles') ?? undefined,
     amount_ex_vat: formData.get('amount_ex_vat') || undefined,
@@ -377,7 +375,7 @@ export async function updateEntry(formData: FormData) {
 
   const { data: existing, error: fetchError } = await supabase
     .from('oj_entries')
-    .select('id, status')
+    .select('id, status, start_at, end_at')
     .eq('id', parsed.data.id)
     .single()
 
@@ -413,6 +411,8 @@ export async function updateEntry(formData: FormData) {
         vendor_id: parsed.data.vendor_id,
         project_id: parsed.data.project_id,
         entry_date: parsed.data.entry_date,
+        start_at: existing.start_at ?? null,
+        end_at: existing.end_at ?? null,
         duration_minutes_raw: rawMinutes,
         duration_minutes_rounded: roundedMinutes,
         work_type_id: workTypeId,
