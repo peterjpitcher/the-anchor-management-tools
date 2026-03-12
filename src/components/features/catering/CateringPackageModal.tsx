@@ -52,6 +52,8 @@ export function CateringPackageModal({
                 return isNaN(parsed) ? 0 : parsed
             }
 
+            const getString = (key: string) => formData.get(key) as string || null
+
             if (isEditing && packageToEdit) {
                 // Need to append the ID for update
                 formData.append('packageId', packageToEdit.id)
@@ -63,8 +65,12 @@ export function CateringPackageModal({
                     per_head_cost: parseCost(formData.get('cost_per_head')),
                     pricing_model: formData.get('pricing_model') as any,
                     minimum_order: parseInt(formData.get('minimum_guests') as string) || null,
-                    description: formData.get('description') as string || null,
-                    includes: formData.get('dietary_notes') as string || null,
+                    summary: getString('summary'),
+                    includes: getString('includes'),
+                    served: getString('served'),
+                    good_to_know: getString('good_to_know'),
+                    guest_description: getString('guest_description'),
+                    dietary_notes: getString('dietary_notes'),
                     is_active: formData.get('active') === 'on'
                 })
             } else {
@@ -75,8 +81,12 @@ export function CateringPackageModal({
                     per_head_cost: parseCost(formData.get('cost_per_head')),
                     pricing_model: formData.get('pricing_model') as any,
                     minimum_order: parseInt(formData.get('minimum_guests') as string) || null,
-                    description: formData.get('description') as string || null,
-                    includes: formData.get('dietary_notes') as string || null,
+                    summary: getString('summary'),
+                    includes: getString('includes'),
+                    served: getString('served'),
+                    good_to_know: getString('good_to_know'),
+                    guest_description: getString('guest_description'),
+                    dietary_notes: getString('dietary_notes'),
                     is_active: formData.get('active') === 'on'
                 })
             }
@@ -228,23 +238,63 @@ export function CateringPackageModal({
                     </div>
                 </div>
 
-                <FormGroup label="Description">
-                    <Textarea
-                        name="description"
-                        defaultValue={packageToEdit?.description || ''}
-                        rows={2}
-                        placeholder="Brief description of the package..."
-                    />
-                </FormGroup>
+                <div className="space-y-4">
+                    <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wider">Package Details</h3>
 
-                <FormGroup label="Dietary Information & Includes">
-                    <Textarea
-                        name="dietary_notes"
-                        defaultValue={packageToEdit?.dietary_notes || ''}
-                        rows={4}
-                        placeholder="What's included in this package? e.g. Vegetarian options, specific dishes..."
-                    />
-                </FormGroup>
+                    <FormGroup label="Summary" help="One-line overview shown to staff">
+                        <Textarea
+                            name="summary"
+                            defaultValue={packageToEdit?.summary || ''}
+                            rows={2}
+                            placeholder="e.g. A hearty BBQ spread served buffet-style."
+                        />
+                    </FormGroup>
+
+                    <FormGroup label="Includes" help="What guests receive">
+                        <Textarea
+                            name="includes"
+                            defaultValue={packageToEdit?.includes || ''}
+                            rows={2}
+                            placeholder="e.g. Beef burger, chicken drumstick, pork sausage, potato salad, coleslaw and fresh leaf salad."
+                        />
+                    </FormGroup>
+
+                    <FormGroup label="Served" help="How the food is presented or served">
+                        <Textarea
+                            name="served"
+                            defaultValue={packageToEdit?.served || ''}
+                            rows={2}
+                            placeholder="e.g. Buffet-style — guests help themselves."
+                        />
+                    </FormGroup>
+
+                    <FormGroup label="Good to Know" help="Dietary options, advance notice requirements, etc.">
+                        <Textarea
+                            name="good_to_know"
+                            defaultValue={packageToEdit?.good_to_know || ''}
+                            rows={2}
+                            placeholder="e.g. Vegetarian option available at the same price. Advance notice required."
+                        />
+                    </FormGroup>
+
+                    <FormGroup label="Guest-Friendly Description" help="Shown to customers on the booking form">
+                        <Textarea
+                            name="guest_description"
+                            defaultValue={packageToEdit?.guest_description || ''}
+                            rows={3}
+                            placeholder="e.g. Enjoy a delicious spread of BBQ classics including burgers, chicken, sausages and fresh salads — all laid out for guests to help themselves."
+                        />
+                    </FormGroup>
+
+                    <FormGroup label="Dietary Notes" help="Allergen information or dietary flags for the kitchen">
+                        <Textarea
+                            name="dietary_notes"
+                            defaultValue={packageToEdit?.dietary_notes || ''}
+                            rows={2}
+                            placeholder="e.g. Contains gluten, dairy. Vegan option available on request."
+                        />
+                    </FormGroup>
+                </div>
 
                 <ModalActions align="between">
                     {isEditing ? (

@@ -70,10 +70,10 @@ export function CateringPackageCard({ package: pkg, onEdit }: CateringPackageCar
                     </div>
                 </div>
 
-                {/* Description */}
-                {pkg.description && (
+                {/* Summary */}
+                {pkg.summary && (
                     <p className="text-sm text-gray-600 line-clamp-2">
-                        {pkg.description}
+                        {pkg.summary}
                     </p>
                 )}
 

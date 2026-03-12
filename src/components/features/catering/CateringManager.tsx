@@ -4,14 +4,29 @@ import { useState } from 'react'
 import { CateringPackage } from '@/types/private-bookings'
 import { Tabs } from '@/components/ui-v2/navigation/Tabs'
 import { Button } from '@/components/ui-v2/forms/Button'
+import { Badge } from '@/components/ui-v2/display/Badge'
+import { DataTable, Column } from '@/components/ui-v2/display/DataTable'
 import { EmptyState } from '@/components/ui-v2/display/EmptyState'
-import { PlusIcon, SparklesIcon } from '@heroicons/react/24/outline'
-import { CateringPackageCard } from './CateringPackageCard'
+import { PlusIcon, SparklesIcon, PencilIcon } from '@heroicons/react/24/outline'
 import { CateringPackageModal } from './CateringPackageModal'
 import { useRouter } from 'next/navigation'
 
 interface CateringManagerProps {
     initialPackages: CateringPackage[]
+}
+
+const formatPrice = (pkg: CateringPackage): string => {
+    const amount = new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP' }).format(pkg.cost_per_head)
+    switch (pkg.pricing_model) {
+        case 'per_head':    return `${amount} / person`
+        case 'per_jar':     return `${amount} / jar`
+        case 'per_tray':    return `${amount} / tray`
+        case 'total_value': return `${amount} total`
+        case 'variable':    return 'Price on request'
+        case 'menu_priced': return 'Menu priced'
+        case 'free':        return 'No charge'
+        default:            return amount
+    }
 }
 
 export function CateringManager({ initialPackages }: CateringManagerProps) {
@@ -33,12 +48,69 @@ export function CateringManager({ initialPackages }: CateringManagerProps) {
         router.refresh()
     }
 
-    const filterPackages = (category: string) => {
-        return initialPackages.filter(pkg => pkg.category === category)
-    }
+    const columns: Column<CateringPackage>[] = [
+        {
+            key: 'name',
+            header: 'Package',
+            sortable: true,
+            cell: (pkg: CateringPackage) => (
+                <div>
+                    <p className="font-medium text-gray-900">{pkg.name}</p>
+                    {pkg.summary && (
+                        <p className="text-sm text-gray-500 mt-0.5 line-clamp-1">{pkg.summary}</p>
+                    )}
+                </div>
+            )
+        },
+        {
+            key: 'price',
+            header: 'Price',
+            sortable: true,
+            sortFn: (a: CateringPackage, b: CateringPackage) => a.cost_per_head - b.cost_per_head,
+            hideOnMobile: true,
+            cell: (pkg: CateringPackage) => (
+                <span className="font-medium text-gray-900 whitespace-nowrap">{formatPrice(pkg)}</span>
+            )
+        },
+        {
+            key: 'minimum_guests',
+            header: 'Min Guests',
+            sortable: true,
+            align: 'center',
+            hideOnMobile: true,
+            cell: (pkg: CateringPackage) => (
+                <span className="text-gray-700">{pkg.minimum_guests ?? '—'}</span>
+            )
+        },
+        {
+            key: 'status',
+            header: 'Status',
+            align: 'center',
+            cell: (pkg: CateringPackage) => (
+                <Badge variant={pkg.active ? 'success' : 'secondary'} size="sm">
+                    {pkg.active ? 'Active' : 'Inactive'}
+                </Badge>
+            )
+        },
+        {
+            key: 'actions',
+            header: '',
+            align: 'right',
+            cell: (pkg: CateringPackage) => (
+                <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => handleEdit(pkg)}
+                    leftIcon={<PencilIcon className="h-3.5 w-3.5" />}
+                >
+                    Edit
+                </Button>
+            )
+        }
+    ]
 
-    const renderPackageList = (category: string) => {
-        const packages = filterPackages(category)
+    const renderTable = (category: string) => {
+        const packages = initialPackages.filter(pkg => pkg.category === category)
 
         if (packages.length === 0) {
             return (
@@ -58,26 +130,13 @@ export function CateringManager({ initialPackages }: CateringManagerProps) {
         }
 
         return (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 animate-in fade-in duration-500">
-                {packages.map(pkg => (
-                    <CateringPackageCard
-                        key={pkg.id}
-                        package={pkg}
-                        onEdit={handleEdit}
-                    />
-                ))}
-
-                {/* Quick Add Card */}
-                <button
-                    onClick={handleAdd}
-                    className="flex flex-col items-center justify-center p-6 border-2 border-dashed border-gray-200 rounded-lg hover:border-green-500 hover:bg-green-50 transition-all group h-full min-h-[200px]"
-                >
-                    <div className="h-10 w-10 rounded-full bg-gray-100 flex items-center justify-center group-hover:bg-green-100 transition-colors mb-3">
-                        <PlusIcon className="h-5 w-5 text-gray-500 group-hover:text-green-600" />
-                    </div>
-                    <span className="font-medium text-gray-900 group-hover:text-green-700">Add New Package</span>
-                </button>
-            </div>
+            <DataTable
+                columns={columns}
+                data={packages}
+                onRowClick={(pkg) => handleEdit(pkg)}
+                clickableRows
+                getRowKey={(pkg) => pkg.id}
+            />
         )
     }
 
@@ -95,17 +154,17 @@ export function CateringManager({ initialPackages }: CateringManagerProps) {
                     {
                         key: 'food',
                         label: 'Food',
-                        content: <div className="pt-6">{renderPackageList('food')}</div>
+                        content: <div className="pt-4">{renderTable('food')}</div>
                     },
                     {
                         key: 'drink',
                         label: 'Drinks',
-                        content: <div className="pt-6">{renderPackageList('drink')}</div>
+                        content: <div className="pt-4">{renderTable('drink')}</div>
                     },
                     {
                         key: 'addon',
                         label: 'Add-ons',
-                        content: <div className="pt-6">{renderPackageList('addon')}</div>
+                        content: <div className="pt-4">{renderTable('addon')}</div>
                     }
                 ]}
             />

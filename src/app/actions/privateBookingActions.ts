@@ -1008,8 +1008,12 @@ export async function createCateringPackage(data: {
   per_head_cost: number
   pricing_model?: 'per_head' | 'total_value'
   minimum_order?: number | null
-  description?: string | null
+  summary?: string | null
   includes?: string | null
+  served?: string | null
+  good_to_know?: string | null
+  guest_description?: string | null
+  dietary_notes?: string | null
   is_active: boolean
 }) {
   const permission = await requirePrivateBookingsPermission('manage_catering')
@@ -1036,8 +1040,12 @@ export async function updateCateringPackage(id: string, data: {
   per_head_cost: number
   pricing_model?: 'per_head' | 'total_value'
   minimum_order?: number | null
-  description?: string | null
+  summary?: string | null
   includes?: string | null
+  served?: string | null
+  good_to_know?: string | null
+  guest_description?: string | null
+  dietary_notes?: string | null
   is_active: boolean
 }) {
   const permission = await requirePrivateBookingsPermission('manage_catering')

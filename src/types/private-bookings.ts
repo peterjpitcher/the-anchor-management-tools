@@ -103,7 +103,11 @@ export interface VenueSpace {
 export interface CateringPackage {
   id: string
   name: string
-  description?: string
+  summary?: string
+  includes?: string
+  served?: string
+  good_to_know?: string
+  guest_description?: string
   serving_style?: PackageType
   category: 'food' | 'drink' | 'addon'
   pricing_model?: PricingModel

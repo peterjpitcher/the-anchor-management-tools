@@ -1,7 +1,11 @@
 export interface CateringPackage {
   id: string;
   name: string;
-  description?: string;
+  summary?: string;
+  includes?: string;
+  served?: string;
+  good_to_know?: string;
+  guest_description?: string;
   serving_style: 'buffet' | 'sit-down' | 'canapes' | 'drinks' | 'pizza' | 'other';
   category: 'food' | 'drink' | 'addon';
   cost_per_head: number;
@@ -16,7 +20,11 @@ export interface CateringPackage {
 
 export interface CreateCateringPackageInput {
   name: string;
-  description?: string | null;
+  summary?: string | null;
+  includes?: string | null;
+  served?: string | null;
+  good_to_know?: string | null;
+  guest_description?: string | null;
   serving_style: string;
   category: 'food' | 'drink' | 'addon';
   cost_per_head: number;
