@@ -549,6 +549,9 @@ export function generateContractHTML(data: ContractData): string {
           <tr>
             <td>
               ${escapeHtml(item.description || '')}
+              ${item.package?.guest_description ? `
+                <br/><small style="color: #666; font-weight: normal;">${escapeHtml(item.package.guest_description)}</small>
+              ` : ''}
               ${hasDiscount ? `
                 <br/><small class="discount-note">
                   <strong>✓ Discount: ${item.discount_type === 'percent' ? `${item.discount_value}% off` : `£${item.discount_value} off`}</strong>

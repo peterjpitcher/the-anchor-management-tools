@@ -2785,8 +2785,12 @@ export class PrivateBookingService {
     per_head_cost: number;
     pricing_model?: 'per_head' | 'total_value';
     minimum_order?: number | null;
-    description?: string | null;
+    summary?: string | null;
     includes?: string | null;
+    served?: string | null;
+    good_to_know?: string | null;
+    guest_description?: string | null;
+    dietary_notes?: string | null;
     is_active: boolean;
   }, userId: string, userEmail?: string) {
     const admin = createAdminClient();
@@ -2798,8 +2802,12 @@ export class PrivateBookingService {
       cost_per_head: data.per_head_cost,
       pricing_model: data.pricing_model || 'per_head',
       minimum_guests: data.minimum_order,
-      description: data.description,
-      dietary_notes: data.includes,
+      summary: data.summary,
+      includes: data.includes,
+      served: data.served,
+      good_to_know: data.good_to_know,
+      guest_description: data.guest_description,
+      dietary_notes: data.dietary_notes,
       active: data.is_active,
       display_order: 0
     };
@@ -2833,7 +2841,11 @@ export class PrivateBookingService {
           cost_per_head: inserted.cost_per_head,
           pricing_model: inserted.pricing_model,
           minimum_guests: inserted.minimum_guests,
-          description: inserted.description,
+          summary: inserted.summary,
+          includes: inserted.includes,
+          served: inserted.served,
+          good_to_know: inserted.good_to_know,
+          guest_description: inserted.guest_description,
           dietary_notes: inserted.dietary_notes,
           active: inserted.active
         }
@@ -2850,8 +2862,12 @@ export class PrivateBookingService {
     per_head_cost: number;
     pricing_model?: 'per_head' | 'total_value';
     minimum_order?: number | null;
-    description?: string | null;
+    summary?: string | null;
     includes?: string | null;
+    served?: string | null;
+    good_to_know?: string | null;
+    guest_description?: string | null;
+    dietary_notes?: string | null;
     is_active: boolean;
   }, userId: string, userEmail?: string) {
     const admin = createAdminClient();
@@ -2873,8 +2889,12 @@ export class PrivateBookingService {
       cost_per_head: data.per_head_cost,
       pricing_model: data.pricing_model || 'per_head',
       minimum_guests: data.minimum_order,
-      description: data.description,
-      dietary_notes: data.includes,
+      summary: data.summary,
+      includes: data.includes,
+      served: data.served,
+      good_to_know: data.good_to_know,
+      guest_description: data.guest_description,
+      dietary_notes: data.dietary_notes,
       active: data.is_active
     };
 
@@ -2907,21 +2927,27 @@ export class PrivateBookingService {
         operation_status: 'success',
         old_values: {
           name: existing.name,
-          package_type: existing.package_type,
           cost_per_head: existing.cost_per_head,
           pricing_model: existing.pricing_model,
           minimum_guests: existing.minimum_guests,
-          description: existing.description,
+          summary: existing.summary,
+          includes: existing.includes,
+          served: existing.served,
+          good_to_know: existing.good_to_know,
+          guest_description: existing.guest_description,
           dietary_notes: existing.dietary_notes,
           active: existing.active
         },
         new_values: {
           name: updated.name,
-          package_type: updated.package_type,
           cost_per_head: updated.cost_per_head,
           pricing_model: updated.pricing_model,
           minimum_guests: updated.minimum_guests,
-          description: updated.description,
+          summary: updated.summary,
+          includes: updated.includes,
+          served: updated.served,
+          good_to_know: updated.good_to_know,
+          guest_description: updated.guest_description,
           dietary_notes: updated.dietary_notes,
           active: updated.active
         }
