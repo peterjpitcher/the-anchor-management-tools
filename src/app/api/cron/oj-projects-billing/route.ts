@@ -311,12 +311,17 @@ function buildInvoiceNotes(input: {
       if (input.includeEntryDetails) {
         lines.push(`  Entries:`)
         for (const e of bucket.entries) {
-          const start = toLondonTimeHm(e.start_at) || ''
-          const end = toLondonTimeHm(e.end_at) || ''
           const hours = Number(e.duration_minutes_rounded || 0) / 60
           const workType = getWorkTypeLabel(e)
           const desc = e.description ? String(e.description).replace(/\s+/g, ' ').trim() : ''
-          lines.push(`    - ${e.entry_date} ${start}–${end} (${hours.toFixed(2)}h) [${workType}]${desc ? ` ${desc}` : ''}`)
+
+          if (e.start_at) {
+            const start = toLondonTimeHm(e.start_at) || ''
+            const end = toLondonTimeHm(e.end_at) || ''
+            lines.push(`    - ${e.entry_date} ${start}–${end} (${hours.toFixed(2)}h) [${workType}]${desc ? ` ${desc}` : ''}`)
+          } else {
+            lines.push(`    - ${e.entry_date} (${hours.toFixed(2)}h) [${workType}]${desc ? ` ${desc}` : ''}`)
+          }
         }
       } else {
         lines.push(`  Entries: ${bucket.entries.length}`)
