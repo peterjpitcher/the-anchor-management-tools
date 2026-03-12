@@ -41,8 +41,6 @@ type EntryFormState = {
   vendor_id: string
   project_id: string
   entry_date: string
-  start_time: string
-  end_time: string
   duration_hours: number
   miles: string
   work_type_id: string
@@ -63,19 +61,6 @@ function monthRange(date: Date) {
   return { start: toIso(start), end: toIso(end) }
 }
 
-function toLondonTimeHm(iso: string | null) {
-  if (!iso) return ''
-  try {
-    return new Intl.DateTimeFormat('en-GB', {
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: false,
-      timeZone: 'Europe/London',
-    }).format(new Date(iso))
-  } catch {
-    return ''
-  }
-}
 
 export default function OJProjectsEntriesPage() {
   const router = useRouter()
@@ -107,8 +92,6 @@ export default function OJProjectsEntriesPage() {
     vendor_id: '',
     project_id: '',
     entry_date: '',
-    start_time: '09:00',
-    end_time: '10:00',
     duration_hours: 1.0,
     miles: '',
     work_type_id: '',
@@ -191,8 +174,6 @@ export default function OJProjectsEntriesPage() {
       vendor_id: entry.vendor_id,
       project_id: entry.project_id,
       entry_date: entry.entry_date,
-      start_time: toLondonTimeHm(entry.start_at) || '09:00',
-      end_time: toLondonTimeHm(entry.end_at) || '',
       duration_hours: durationHrs,
       miles: entry.miles != null ? String(entry.miles) : '',
       work_type_id: entry.work_type_id || '',
@@ -221,7 +202,6 @@ export default function OJProjectsEntriesPage() {
       fd.append('billable', String(form.billable))
 
       if (form.entry_type === 'time') {
-        fd.append('start_time', form.start_time)
         fd.append('duration_minutes', String(form.duration_hours * 60))
         fd.append('work_type_id', form.work_type_id || '')
       } else {
@@ -416,9 +396,10 @@ export default function OJProjectsEntriesPage() {
                         {entry.entry_type === 'time' ? (
                           <>
                             <Clock className="w-3.5 h-3.5 text-gray-400" />
-                            <span>{`${(entry.duration_minutes_rounded || 0) / 60}h`}</span>
-                            <span className="text-xs text-gray-400 font-normal">
-                              ({toLondonTimeHm(entry.start_at)}–{toLondonTimeHm(entry.end_at)})
+                            <span>
+                              {entry.duration_minutes_rounded
+                                ? `${(entry.duration_minutes_rounded / 60).toFixed(2)}h`
+                                : '—'}
                             </span>
                           </>
                         ) : (
@@ -535,9 +516,6 @@ export default function OJProjectsEntriesPage() {
 
             {form.entry_type === 'time' ? (
               <>
-                <FormGroup label="Start" required>
-                  <Input type="time" value={form.start_time} onChange={(e) => setForm({ ...form, start_time: e.target.value })} required />
-                </FormGroup>
                 <FormGroup label="Duration (h)" required>
                   <Input
                     type="number"
