@@ -69,7 +69,6 @@ type EntryFormState = {
   vendor_id: string
   project_id: string
   entry_date: string
-  start_time: string
   duration_hours: number
   miles: string
   amount_ex_vat: string
@@ -79,19 +78,6 @@ type EntryFormState = {
   billable: boolean
 }
 
-function toLondonTimeHm(iso: string | null) {
-  if (!iso) return ''
-  try {
-    return new Intl.DateTimeFormat('en-GB', {
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: false,
-      timeZone: 'Europe/London',
-    }).format(new Date(iso))
-  } catch {
-    return ''
-  }
-}
 
 function StatCard({
   label,
@@ -163,7 +149,6 @@ export default function OJProjectsDashboardPage() {
     vendor_id: '',
     project_id: '',
     entry_date: '',
-    start_time: '09:00',
     duration_hours: 1.0,
     miles: '',
     amount_ex_vat: '',
@@ -669,7 +654,6 @@ export default function OJProjectsDashboardPage() {
       vendor_id: entry.vendor_id,
       project_id: entry.project_id,
       entry_date: entry.entry_date,
-      start_time: toLondonTimeHm(entry.start_at) || '09:00',
       duration_hours: durationHoursValue,
       miles: entry.miles != null ? String(entry.miles) : '',
       amount_ex_vat: entry.amount_ex_vat_snapshot != null ? String(entry.amount_ex_vat_snapshot) : '',
@@ -699,7 +683,6 @@ export default function OJProjectsDashboardPage() {
       fd.append('billable', String(editForm.billable))
 
       if (editForm.entry_type === 'time') {
-        fd.append('start_time', editForm.start_time)
         fd.append('duration_minutes', String(editForm.duration_hours * 60))
         fd.append('work_type_id', editForm.work_type_id || '')
       } else if (editForm.entry_type === 'one_off') {
@@ -1529,14 +1512,6 @@ export default function OJProjectsDashboardPage() {
 
             {editForm.entry_type === 'time' ? (
               <>
-                <FormGroup label="Start" required>
-                  <Input
-                    type="time"
-                    value={editForm.start_time}
-                    onChange={(e) => setEditForm({ ...editForm, start_time: e.target.value })}
-                    required
-                  />
-                </FormGroup>
                 <FormGroup label="Duration (h)" required>
                   <Input
                     type="number"
