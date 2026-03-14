@@ -49,7 +49,20 @@ interface DragBookingData {
  * Owns all drag-and-drop state for the FOH schedule.
  * Pass a ref to the timeline container div so we can detect out-of-bounds drags.
  */
-export function useFohDrag(timelineRef: React.RefObject<HTMLElement | null>) {
+export function useFohDrag(timelineRef: React.RefObject<HTMLElement | null>): {
+  pendingMove: PendingMove | null
+  isDragging: boolean
+  liveSnapTime: string | null
+  isOutOfBounds: boolean
+  isSubmitting: boolean
+  confirmError: string | null
+  sensors: ReturnType<typeof useSensors>
+  onDragStart: (event: DragStartEvent) => void
+  onDragMove: (event: DragMoveEvent) => void
+  onDragEnd: (event: DragEndEvent) => void
+  confirm: () => Promise<void>
+  cancel: () => void
+} {
   const [isDragging, setIsDragging] = useState(false)
   const [liveSnapTime, setLiveSnapTime] = useState<string | null>(null)
   const [isOutOfBounds, setIsOutOfBounds] = useState(false)
@@ -130,7 +143,11 @@ export function useFohDrag(timelineRef: React.RefObject<HTMLElement | null>) {
 
     if (sameTable) {
       // Time change drag
-      if (!timelineRef.current) return
+      if (!timelineRef.current) {
+        isOutOfBoundsRef.current = false
+        setIsOutOfBounds(false)
+        return
+      }
       const containerRect = timelineRef.current.getBoundingClientRect()
       const pointerX = (event.activatorEvent as PointerEvent).clientX + event.delta.x
       const offsetPx = pointerX - containerRect.left

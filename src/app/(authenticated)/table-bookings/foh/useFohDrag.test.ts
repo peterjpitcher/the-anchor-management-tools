@@ -51,8 +51,10 @@ const makeDragStartEvent = (data: ReturnType<typeof makeBookingData>) => ({
     data: { current: data },
     rect: { current: { initial: null, translated: null } },
   },
-  activatorEvent: makePointerEvent(),
-} as any)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  activatorEvent: makePointerEvent() as any, // dnd-kit expects Event; PointerEvent stub satisfies runtime shape
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+} as any) // DragStartEvent has internal generics not assignable from a plain object literal
 
 const makeDragMoveEvent = (
   data: ReturnType<typeof makeBookingData>,
@@ -64,11 +66,13 @@ const makeDragMoveEvent = (
     data: { current: data },
     rect: { current: { initial: null, translated: null } },
   },
-  activatorEvent: makePointerEvent('pointermove', clientX),
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  activatorEvent: makePointerEvent('pointermove', clientX) as any, // dnd-kit expects Event; PointerEvent stub satisfies runtime shape
   delta: { x: deltaX, y: 0 },
   over: null,
   collisions: null,
-} as any)
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+} as any) // DragMoveEvent has internal generics not assignable from a plain object literal
 
 const makeDragEndEvent = (
   data: ReturnType<typeof makeBookingData>,
@@ -83,9 +87,11 @@ const makeDragEndEvent = (
   },
   over: { id: overId, data: { current: overData }, rect: { width: 0, height: 0 }, disabled: false },
   delta: { x: deltaX, y: 0 },
-  activatorEvent: makePointerEvent(),
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  activatorEvent: makePointerEvent() as any, // dnd-kit expects Event; PointerEvent stub satisfies runtime shape
   collisions: null,
-} as any)
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+} as any) // DragEndEvent has internal generics not assignable from a plain object literal
 
 describe('useFohDrag', () => {
   beforeEach(() => vi.clearAllMocks())
@@ -102,30 +108,9 @@ describe('useFohDrag', () => {
     const ref = createTimelineRef()
     const { result } = renderHook(() => useFohDrag(ref as React.RefObject<HTMLElement | null>))
 
+    const data = makeBookingData({ bookingLabel: 'Smith × 4', fromTime: '12:00', tableId: 'table-a' })
     act(() => {
-      result.current.onDragEnd({
-        active: {
-          id: 'booking-1',
-          data: {
-            current: {
-              bookingId: 'booking-1',
-              bookingLabel: 'Smith × 4',
-              fromTime: '12:00',
-              tableId: 'table-a',
-              tableName: 'Table 1',
-              durationMinutes: 90,
-              startMinutes: 720,
-              timelineStartMin: 660,
-              timelineEndMin: 1380,
-            },
-          },
-          rect: { current: { initial: null, translated: null } },
-        },
-        over: { id: 'table-a', data: { current: {} }, rect: { width: 0, height: 0 }, disabled: false },
-        delta: { x: 50, y: 0 },
-        activatorEvent: makePointerEvent(),
-        collisions: null,
-      } as any)
+      result.current.onDragEnd(makeDragEndEvent(data, 'table-a', {}, 50))
     })
 
     expect(result.current.pendingMove?.type).toBe('time')
@@ -138,30 +123,9 @@ describe('useFohDrag', () => {
     const ref = createTimelineRef()
     const { result } = renderHook(() => useFohDrag(ref as React.RefObject<HTMLElement | null>))
 
+    const data = makeBookingData({ bookingLabel: 'Jones × 2', fromTime: '19:00', tableId: 'table-a', tableName: 'Table 1', durationMinutes: 60, startMinutes: 1140 })
     act(() => {
-      result.current.onDragEnd({
-        active: {
-          id: 'booking-1',
-          data: {
-            current: {
-              bookingId: 'booking-1',
-              bookingLabel: 'Jones × 2',
-              fromTime: '19:00',
-              tableId: 'table-a',
-              tableName: 'Table 1',
-              durationMinutes: 60,
-              startMinutes: 1140,
-              timelineStartMin: 660,
-              timelineEndMin: 1380,
-            },
-          },
-          rect: { current: { initial: null, translated: null } },
-        },
-        over: { id: 'table-b', data: { current: { tableName: 'Table 2' } }, rect: { width: 0, height: 0 }, disabled: false },
-        delta: { x: 0, y: 50 },
-        activatorEvent: makePointerEvent(),
-        collisions: null,
-      } as any)
+      result.current.onDragEnd(makeDragEndEvent(data, 'table-b', { tableName: 'Table 2' }, 0))
     })
 
     expect(result.current.pendingMove?.type).toBe('table')
@@ -343,6 +307,28 @@ describe('useFohDrag', () => {
       expect(init.method).toBe('POST')
       expect(JSON.parse(init.body as string)).toEqual({ table_id: 'table-z' })
       expect(result.current.pendingMove).toBeNull()
+    })
+
+    it('sets confirmError and keeps pendingMove open when PATCH time returns 500', async () => {
+      const ref = createTimelineRef()
+      const { result } = renderHook(() => useFohDrag(ref as React.RefObject<HTMLElement | null>))
+
+      // Set up time pendingMove: same table, fromTime '12:00', snapToInterval mock → '13:00'
+      act(() => { result.current.onDragEnd(makeDragEndEvent(makeBookingData({ fromTime: '12:00' }), 'table-a', {}, 50)) })
+      expect(result.current.pendingMove?.type).toBe('time')
+
+      vi.spyOn(global, 'fetch').mockResolvedValueOnce({
+        ok: false,
+        status: 500,
+        json: async () => ({ error: 'Server error' }),
+      } as Response)
+
+      await act(async () => { await result.current.confirm() })
+
+      // Error message surfaced from response body
+      expect(result.current.confirmError).toBe('Server error')
+      // Modal stays open — pendingMove must NOT be cleared
+      expect(result.current.pendingMove).not.toBeNull()
     })
   })
 
