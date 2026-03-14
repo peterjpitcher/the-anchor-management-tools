@@ -1,9 +1,10 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { logger } from '@/lib/logger'
 import type { SupabaseClient } from '@supabase/supabase-js'
+import type { Database } from '@/types/database.generated'
 
 type RecordOutboundSmsParams = {
-  supabase?: SupabaseClient<any, 'public', any>
+  supabase?: SupabaseClient<Database, 'public'>
   customerId?: string | null
   to: string
   body: string
@@ -88,8 +89,9 @@ export async function recordOutboundSmsMessage(params: RecordOutboundSmsParams):
   }
 
   try {
-    const { data, error } = await client
-      .from('messages')
+    // insertPayload is built dynamically; cast required because Database type enforces
+    // all required columns explicitly, but we build the object conditionally above.
+    const { data, error } = await (client.from('messages') as any)
       .insert(insertPayload)
       .select('id')
       .single()
@@ -101,14 +103,13 @@ export async function recordOutboundSmsMessage(params: RecordOutboundSmsParams):
         typeof error === 'object' &&
         error !== null &&
         'message' in error &&
-        typeof (error as any).message === 'string' &&
-        (error as any).message.toLowerCase().includes("'metadata'")
+        typeof (error as { message: unknown }).message === 'string' &&
+        (error as { message: string }).message.toLowerCase().includes("'metadata'")
 
       if (isMetadataMissing) {
         const { metadata: _removed, ...withoutMetadata } = insertPayload
 
-        const { data: fallbackData, error: fallbackError } = await client
-          .from('messages')
+        const { data: fallbackData, error: fallbackError } = await (client.from('messages') as any)
           .insert(withoutMetadata)
           .select('id')
           .single()

@@ -1,3 +1,4 @@
+import { unstable_cache, revalidateTag } from 'next/cache';
 import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { z } from 'zod';
@@ -78,42 +79,41 @@ function isUserSummary(record: UserSummary | null): record is UserSummary {
   return record !== null;
 }
 
+// Cache all permissions for a user for 60 seconds.
+// A single call to get_user_permissions is reused across all checkUserPermission calls
+// within the same cache window, reducing N DB round-trips to 1.
+const getCachedUserPermissions = (userId: string) =>
+  unstable_cache(
+    async (): Promise<UserPermission[]> => {
+      const admin = createAdminClient();
+      const { data, error } = await admin.rpc('get_user_permissions', { p_user_id: userId });
+      if (error) {
+        console.error('Error fetching cached user permissions:', error);
+        return [];
+      }
+      return (data as UserPermission[]) ?? [];
+    },
+    ['user-permissions', userId],
+    { revalidate: 60, tags: [`permissions-${userId}`] }
+  )();
+
 export class PermissionService {
   static async checkUserPermission(
     moduleName: ModuleName,
     action: ActionType,
     userId: string
   ): Promise<boolean> {
-    const supabase = createAdminClient(); // Use admin client for permission check, to avoid RLS issues
-
-    const { data, error } = await supabase
-      .rpc('user_has_permission', {
-        p_user_id: userId,
-        p_module_name: moduleName,
-        p_action: action
-      });
-    
-    if (error) {
-      console.error('Error checking permission:', error);
-      return false;
-    }
-
-    
-    return data === true;
+    // Use the cached permissions fetch so multiple permission checks within the
+    // same request window only make one DB call.
+    const permissions = await getCachedUserPermissions(userId);
+    return permissions.some(
+      (p) => p.module_name === moduleName && p.action === action
+    );
   }
 
   static async getUserPermissions(userId: string) {
-    const supabase = createAdminClient();
-    
-    const { data, error } = await supabase
-      .rpc('get_user_permissions', { p_user_id: userId });
-    
-    if (error) {
-      console.error('Error fetching user permissions:', error);
-      throw new Error('Failed to fetch permissions');
-    }
-    
-    return data as UserPermission[];
+    // Delegate to the cached fetch so callers also benefit from caching.
+    return getCachedUserPermissions(userId);
   }
 
   static async getUserRoles(targetUserId: string, checkUserManagementPermission: boolean, actingUserId?: string) {
@@ -379,6 +379,9 @@ export class PermissionService {
         throw new Error('Failed to assign roles');
       }
     }
+    // Bust the cached permissions for the affected user so the next check
+    // reflects the new role assignment immediately.
+    revalidateTag(`permissions-${userId}`);
     return { oldRoles: existing || [], newRoles: dedupedRoleIds };
   }
 

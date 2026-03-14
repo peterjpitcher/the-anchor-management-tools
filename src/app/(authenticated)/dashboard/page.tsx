@@ -287,6 +287,48 @@ export default async function DashboardPage() {
   }> = []
 
   if (snapshot.privateBookings.permitted) {
+    // B4: Revenue Today tile
+    overviewCards.push({
+      key: 'revenue-today',
+      href: '/private-bookings',
+      title: 'Revenue Today',
+      value: currencyFormatter.format(snapshot.revenueToday),
+      description: (
+        <span className="text-xs text-gray-500">
+          {privateToday.length > 0
+            ? `${privateToday.length} private booking${privateToday.length !== 1 ? 's' : ''} today`
+            : 'No private bookings today'}
+        </span>
+      ),
+      icon: CurrencyPoundIcon,
+      borderClassName: 'border-l-4 border-l-emerald-500',
+      iconWrapperClassName: 'bg-emerald-50 text-emerald-600',
+    })
+
+    // B3: Booking Pipeline tile
+    const pipeline = snapshot.bookingPipelineValue
+    overviewCards.push({
+      key: 'booking-pipeline',
+      href: '/private-bookings',
+      title: 'Booking Pipeline',
+      value: currencyFormatter.format(pipeline.total),
+      description: (
+        <div className="space-y-0.5 text-xs">
+          <p className="text-gray-500">
+            <span className="font-medium text-emerald-700">{currencyFormatter.format(pipeline.confirmed)}</span>
+            {' confirmed'}
+          </p>
+          <p className="text-gray-500">
+            <span className="font-medium text-indigo-600">{currencyFormatter.format(pipeline.draft)}</span>
+            {' draft'}
+          </p>
+        </div>
+      ),
+      icon: CurrencyPoundIcon,
+      borderClassName: 'border-l-4 border-l-violet-500',
+      iconWrapperClassName: 'bg-violet-50 text-violet-600',
+    })
+
     overviewCards.push({
       key: 'private-bookings-holds',
       href: '/private-bookings',
@@ -535,7 +577,15 @@ export default async function DashboardPage() {
                       </div>
                       <div className="flex-1">
                         <h4 className="text-sm font-medium text-gray-900">{event.name}</h4>
-                        <p className="text-xs text-gray-500">Event • {event.time || 'All Day'}</p>
+                        <div className="flex items-center gap-2 mt-0.5">
+                          <p className="text-xs text-gray-500">Event • {event.time || 'All Day'}</p>
+                          {/* B5: Capacity badge */}
+                          {event.capacity != null && (
+                            <span className="inline-flex items-center rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700 ring-1 ring-inset ring-blue-600/20">
+                              Cap: {event.capacity}
+                            </span>
+                          )}
+                        </div>
                       </div>
                       <Link href={`/events/${event.id}`}>
                         <Button variant="ghost" size="sm" rightIcon={<ArrowRightIcon className="h-4 w-4" />}>

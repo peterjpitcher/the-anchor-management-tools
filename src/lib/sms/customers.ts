@@ -1,6 +1,7 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { formatPhoneForStorage, generatePhoneVariants } from '@/lib/utils'
 import type { SupabaseClient } from '@supabase/supabase-js'
+import type { Database } from '@/types/database.generated'
 
 type CustomerFallback = {
   firstName?: string
@@ -73,7 +74,7 @@ function isPlaceholderLastName(value: string | null | undefined): boolean {
 }
 
 async function enrichMatchedCustomer(
-  client: SupabaseClient<any, 'public', any>,
+  client: SupabaseClient<Database, 'public'>,
   input: {
     existingCustomer: CustomerLookupRow
     standardizedPhone: string
@@ -144,7 +145,7 @@ function deriveNameParts(fullName?: string | null): CustomerFallback {
 }
 
 async function findCustomerByPhone(
-  client: SupabaseClient<any, 'public', any>,
+  client: SupabaseClient<Database, 'public'>,
   standardizedPhone: string,
   numbersToMatch: string[]
 ): Promise<{ customer: CustomerLookupRow | null; lookupError: boolean }> {
@@ -189,7 +190,7 @@ async function findCustomerByPhone(
 }
 
 export async function ensureCustomerForPhone(
-  supabase: SupabaseClient<any, 'public', any> | undefined,
+  supabase: SupabaseClient<Database, 'public'> | undefined,
   phone: string | null | undefined,
   fallback: CustomerFallback = {}
 ): Promise<ResolvedCustomerResult> {
@@ -265,7 +266,7 @@ export async function ensureCustomerForPhone(
       .single()
 
     if (insertError) {
-      if ((insertError as any)?.code === '23505') {
+      if ((insertError as { code?: string })?.code === '23505') {
         const conflictLookup = await findCustomerByPhone(client, standardizedPhone, numbersToMatch)
         const conflictMatch = conflictLookup.customer
         if (conflictMatch) {
@@ -297,7 +298,7 @@ export async function ensureCustomerForPhone(
 }
 
 async function validateCustomerIdMatchesPhone(
-  client: SupabaseClient<any, 'public', any>,
+  client: SupabaseClient<Database, 'public'>,
   input: {
     customerId: string
     standardizedTo: string
@@ -330,8 +331,8 @@ async function validateCustomerIdMatchesPhone(
     }
 
     const rawPhones = [
-      (customer as any)?.mobile_e164,
-      (customer as any)?.mobile_number
+      customer?.mobile_e164,
+      customer?.mobile_number
     ].filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
 
     if (rawPhones.length === 0) {
@@ -366,7 +367,7 @@ async function validateCustomerIdMatchesPhone(
 }
 
 export async function resolveCustomerIdForSms(
-  supabase: SupabaseClient<any, 'public', any>,
+  supabase: SupabaseClient<Database, 'public'>,
   params: { bookingId?: string; customerId?: string; to: string }
 ): Promise<{ customerId: string | null; resolutionError?: string }> {
   let standardizedTo: string
@@ -552,7 +553,7 @@ export async function resolveCustomerIdForSms(
           .from('private_bookings')
           .update({
             customer_id: customerId,
-            customer_name: displayName || null
+            customer_name: displayName || undefined
           })
           .eq('id', bookingContext.record.id)
           .select('id')

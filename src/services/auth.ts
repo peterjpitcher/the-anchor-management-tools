@@ -70,42 +70,15 @@ export class AuthService {
     return { success: true, userId: data.user.id };
   }
 
-  static async signUp(email: string, password: string, firstName: string, lastName: string) {
-    // Rate limit signup attempts
-    await checkRateLimit('api', 2); // 2 signups per minute
-    
-    const supabase = await createClient();
-    
-    const { data, error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        data: {
-          first_name: firstName,
-          last_name: lastName,
-        }
-      }
-    });
-
-    if (error) {
-      throw new Error(error.message);
-    }
-
-    if (data.user) {
-      // Log signup
-      await AuditService.logAuditEvent({
-        user_id: data.user.id,
-        user_email: data.user.email || undefined,
-        operation_type: 'signup',
-        resource_type: 'auth',
-        operation_status: 'success',
-        additional_info: {
-          method: 'password'
-        }
-      });
-    }
-
-    return { success: true };
+  // Self-registration is disabled. This application is invite-only.
+  // Users must be invited by an administrator via the invite flow.
+  static async signUp(
+    _email: string,
+    _password: string,
+    _firstName: string,
+    _lastName: string
+  ) {
+    throw new Error('Registration is not available. Please contact an administrator.');
   }
 
   static async signOut() {

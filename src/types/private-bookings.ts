@@ -1,5 +1,5 @@
 export type BookingStatus = 'draft' | 'confirmed' | 'completed' | 'cancelled'
-export type PaymentMethod = 'cash' | 'card' | 'invoice'
+export type PaymentMethod = 'cash' | 'card' | 'invoice' | 'paypal'
 export type ItemType = 'space' | 'catering' | 'vendor' | 'other'
 export type DiscountType = 'percent' | 'fixed'
 export type PackageType = 'buffet' | 'sit-down' | 'canapes' | 'drinks' | 'pizza' | 'other'
@@ -83,6 +83,8 @@ export interface PrivateBooking {
   created_by?: string
   created_at: string
   updated_at: string
+  paypal_deposit_order_id?: string
+  paypal_deposit_capture_id?: string
 }
 
 export interface VenueSpace {

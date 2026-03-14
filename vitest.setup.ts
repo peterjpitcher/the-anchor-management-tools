@@ -3,9 +3,11 @@ import { vi } from 'vitest'
 import { mockTwilioClient } from './tests/mocks/twilio'
 import { mockGraphClient } from './tests/mocks/microsoft-graph'
 
-// Mock Supabase environment variables
+// Mock required environment variables
 process.env.NEXT_PUBLIC_SUPABASE_URL = 'https://example.supabase.co'
 process.env.SUPABASE_SERVICE_ROLE_KEY = 'dummy-service-role-key'
+process.env.CRON_SECRET = 'dummy-cron-secret'
+process.env.NEXT_PUBLIC_APP_URL = 'https://example.com'
 
 vi.mock('next/navigation', () => ({
   useRouter: () => ({

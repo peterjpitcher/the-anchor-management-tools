@@ -24,6 +24,9 @@ import { DataTable } from '@/components/ui-v2/display/DataTable'
 import { Spinner } from '@/components/ui-v2/feedback/Spinner'
 import { Pagination } from '@/components/ui-v2/navigation/Pagination'
 import { FormGroup } from '@/components/ui-v2/forms/FormGroup'
+import { ConfirmDialog } from '@/components/ui-v2/overlay/ConfirmDialog'
+import { Drawer } from '@/components/ui-v2/overlay/Drawer'
+import { FunnelIcon } from '@heroicons/react/24/outline'
 import { formatCurrency } from '@/components/ui-v2/utils/format'
 import { formatDateFull, formatTime12Hour } from '@/lib/dateUtils'
 import { deletePrivateBooking, cancelPrivateBooking, extendBookingHold } from '@/app/actions/privateBookingActions'
@@ -277,10 +280,14 @@ export default function PrivateBookingsClient({
     fetchWithState({ page: nextPage })
   }
 
-  const handleCancelBooking = async (bookingId: string) => {
-    if (!window.confirm('Cancel this booking? An SMS will be sent to inform the customer.')) return
+  const handleCancelBooking = (bookingId: string) => {
+    setCancelConfirmBookingId(bookingId)
+  }
 
-    const result = await cancelPrivateBooking(bookingId, 'Cancelled from list view')
+  const handleCancelBookingConfirm = async () => {
+    if (!cancelConfirmBookingId) return
+
+    const result = await cancelPrivateBooking(cancelConfirmBookingId, 'Cancelled from list view')
     if ('error' in result && result.error) {
       toast.error(result.error ?? 'Failed to cancel booking.')
       return
@@ -291,7 +298,9 @@ export default function PrivateBookingsClient({
     fetchWithState({ page: currentPage })
   }
 
+  const [cancelConfirmBookingId, setCancelConfirmBookingId] = useState<string | null>(null)
   const [extendingHoldId, setExtendingHoldId] = useState<string | null>(null)
+  const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false)
 
   const handleExtendHold = async (bookingId: string, days: 7 | 14 | 30) => {
     setExtendingHoldId(bookingId)
@@ -380,12 +389,13 @@ export default function PrivateBookingsClient({
   const sectionActions = (
     <div className="flex items-center gap-2">
       {hiddenCount > 0 && (
-        <button
+        <Button
+          variant="ghost"
+          size="sm"
           onClick={restoreHidden}
-          className="text-xs text-gray-500 hover:text-gray-700 underline"
         >
           {hiddenCount} hidden · Restore
-        </button>
+        </Button>
       )}
       {canToggleCancelled && (
         <Button
@@ -425,7 +435,105 @@ export default function PrivateBookingsClient({
           : undefined
       }
     >
+      {/* Cancel booking confirmation dialog */}
+      <ConfirmDialog
+        open={cancelConfirmBookingId !== null}
+        onClose={() => setCancelConfirmBookingId(null)}
+        onConfirm={handleCancelBookingConfirm}
+        title="Cancel this booking?"
+        message="An SMS will be sent to inform the customer. This action cannot be undone."
+        type="warning"
+        confirmText="Cancel booking"
+        cancelText="Keep booking"
+      />
+
       <div className="space-y-6">
+        {/* Mobile filter button */}
+        <div className="block sm:hidden">
+          <Button
+            variant="secondary"
+            className="w-full flex items-center justify-center gap-2"
+            onClick={() => setMobileFiltersOpen(true)}
+            leftIcon={<FunnelIcon className="h-4 w-4" />}
+          >
+            Filters
+            {(statusFilter !== 'all' || dateFilter !== 'upcoming' || searchDraft) && (
+              <span className="ml-1 inline-flex items-center justify-center h-5 w-5 rounded-full bg-primary-600 text-white text-xs">
+                {[statusFilter !== 'all', dateFilter !== 'upcoming', Boolean(searchDraft)].filter(Boolean).length}
+              </span>
+            )}
+          </Button>
+        </div>
+
+        {/* Mobile filters drawer */}
+        <Drawer
+          open={mobileFiltersOpen}
+          onClose={() => setMobileFiltersOpen(false)}
+          position="bottom"
+          title="Filter Bookings"
+          size="md"
+          footer={
+            <div className="flex gap-3">
+              <Button
+                variant="secondary"
+                className="flex-1"
+                onClick={() => {
+                  handleClearFilters()
+                  setMobileFiltersOpen(false)
+                }}
+              >
+                Clear Filters
+              </Button>
+              <Button
+                variant="primary"
+                className="flex-1"
+                onClick={() => setMobileFiltersOpen(false)}
+              >
+                Apply
+              </Button>
+            </div>
+          }
+        >
+          <div className="space-y-4">
+            <FormGroup label="Search">
+              <div className="relative">
+                <Input
+                  type="text"
+                  placeholder="Search customer name..."
+                  value={searchDraft}
+                  onChange={(event) => handleSearchChange(event.target.value)}
+                  className="pl-10"
+                />
+                <MagnifyingGlassIcon className="absolute left-3 top-2.5 h-5 w-5 text-gray-400" />
+              </div>
+            </FormGroup>
+
+            <FormGroup label="Status">
+              <Select
+                value={statusFilter}
+                onChange={(event) => handleStatusChange(event.target.value as BookingStatus | 'all')}
+              >
+                <option value="all">All Statuses</option>
+                <option value="draft">Draft</option>
+                <option value="confirmed">Confirmed</option>
+                <option value="completed">Completed</option>
+                <option value="cancelled">Cancelled</option>
+              </Select>
+            </FormGroup>
+
+            <FormGroup label="Date">
+              <Select
+                value={dateFilter}
+                onChange={(event) => handleDateFilterChange(event.target.value as 'all' | 'upcoming' | 'past')}
+              >
+                <option value="all">All Dates</option>
+                <option value="upcoming">Upcoming</option>
+                <option value="past">Past</option>
+              </Select>
+            </FormGroup>
+          </div>
+        </Drawer>
+
         <Card className="hidden sm:block">
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             <FormGroup label="Search">
@@ -493,6 +601,13 @@ export default function PrivateBookingsClient({
                 {
                   key: 'datetime',
                   header: 'Date & Time',
+                  sortable: true,
+                  sortFn: (a, b) => {
+                    if (a.is_date_tbd && b.is_date_tbd) return 0
+                    if (a.is_date_tbd) return 1
+                    if (b.is_date_tbd) return -1
+                    return (a.event_date ?? '').localeCompare(b.event_date ?? '')
+                  },
                   cell: (booking) => (
                     <div>
                       {booking.is_date_tbd ? (
@@ -514,6 +629,8 @@ export default function PrivateBookingsClient({
                 {
                   key: 'customer',
                   header: 'Customer',
+                  sortable: true,
+                  sortFn: (a, b) => (a.customer_name ?? '').localeCompare(b.customer_name ?? ''),
                   cell: (booking) => (
                     <div>
                       <div className="text-sm font-medium text-gray-900">{booking.customer_name}</div>
@@ -546,6 +663,8 @@ export default function PrivateBookingsClient({
                 {
                   key: 'status',
                   header: 'Status',
+                  sortable: true,
+                  sortFn: (a, b) => a.status.localeCompare(b.status),
                   cell: (booking) => (
                     <div>
                       <Badge variant={statusConfig[booking.status].variant} size="sm">
@@ -637,13 +756,14 @@ export default function PrivateBookingsClient({
                         </Button>
                       )}
                       {booking.status === 'cancelled' && (
-                        <button
+                        <Button
+                          variant="ghost"
+                          size="sm"
                           onClick={(e) => { e.stopPropagation(); hideBooking(booking.id) }}
-                          className="text-xs text-gray-400 hover:text-gray-600 px-1.5 py-0.5 rounded hover:bg-gray-100"
                           title="Hide this booking from view"
                         >
                           Hide
-                        </button>
+                        </Button>
                       )}
                       {permissions.hasDeletePermission && (booking.status === 'draft' || booking.status === 'cancelled') && (
                         <DeleteBookingButton
@@ -774,12 +894,13 @@ export default function PrivateBookingsClient({
                       </div>
                     )}
                     {booking.status === 'cancelled' && (
-                      <button
+                      <Button
+                        variant="ghost"
+                        size="sm"
                         onClick={(e) => { e.stopPropagation(); hideBooking(booking.id) }}
-                        className="text-xs text-gray-400 hover:text-gray-600 px-2 py-1 rounded hover:bg-gray-100"
                       >
                         Hide
-                      </button>
+                      </Button>
                     )}
                     {permissions.hasDeletePermission && (booking.status === 'draft' || booking.status === 'cancelled') && (
                       <DeleteBookingButton

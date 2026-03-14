@@ -1143,15 +1143,19 @@ export type Database = {
           category: string
           cost_per_head: number
           created_at: string
-          description: string | null
           dietary_notes: string | null
           display_order: number | null
+          good_to_know: string | null
+          guest_description: string | null
           id: string
+          includes: string | null
           maximum_guests: number | null
           minimum_guests: number | null
           name: string
           pricing_model: string | null
+          served: string | null
           serving_style: string | null
+          summary: string | null
           updated_at: string
         }
         Insert: {
@@ -1159,15 +1163,19 @@ export type Database = {
           category: string
           cost_per_head: number
           created_at?: string
-          description?: string | null
           dietary_notes?: string | null
           display_order?: number | null
+          good_to_know?: string | null
+          guest_description?: string | null
           id?: string
+          includes?: string | null
           maximum_guests?: number | null
           minimum_guests?: number | null
           name: string
           pricing_model?: string | null
+          served?: string | null
           serving_style?: string | null
+          summary?: string | null
           updated_at?: string
         }
         Update: {
@@ -1175,15 +1183,19 @@ export type Database = {
           category?: string
           cost_per_head?: number
           created_at?: string
-          description?: string | null
           dietary_notes?: string | null
           display_order?: number | null
+          good_to_know?: string | null
+          guest_description?: string | null
           id?: string
+          includes?: string | null
           maximum_guests?: number | null
           minimum_guests?: number | null
           name?: string
           pricing_model?: string | null
+          served?: string | null
           serving_style?: string | null
+          summary?: string | null
           updated_at?: string
         }
         Relationships: []
@@ -7070,6 +7082,8 @@ export type Database = {
           hold_expiry: string | null
           id: string
           internal_notes: string | null
+          paypal_deposit_capture_id: string | null
+          paypal_deposit_order_id: string | null
           setup_date: string | null
           setup_time: string | null
           source: string | null
@@ -7113,6 +7127,8 @@ export type Database = {
           hold_expiry?: string | null
           id?: string
           internal_notes?: string | null
+          paypal_deposit_capture_id?: string | null
+          paypal_deposit_order_id?: string | null
           setup_date?: string | null
           setup_time?: string | null
           source?: string | null
@@ -7156,6 +7172,8 @@ export type Database = {
           hold_expiry?: string | null
           id?: string
           internal_notes?: string | null
+          paypal_deposit_capture_id?: string | null
+          paypal_deposit_order_id?: string | null
           setup_date?: string | null
           setup_time?: string | null
           source?: string | null
@@ -9249,6 +9267,7 @@ export type Database = {
           hold_expires_at: string | null
           id: string
           internal_notes: string | null
+          is_venue_event: boolean
           left_at: string | null
           modification_count: number | null
           no_show_at: string | null
@@ -9302,6 +9321,7 @@ export type Database = {
           hold_expires_at?: string | null
           id?: string
           internal_notes?: string | null
+          is_venue_event?: boolean
           left_at?: string | null
           modification_count?: number | null
           no_show_at?: string | null
@@ -9355,6 +9375,7 @@ export type Database = {
           hold_expires_at?: string | null
           id?: string
           internal_notes?: string | null
+          is_venue_event?: boolean
           left_at?: string | null
           modification_count?: number | null
           no_show_at?: string | null
@@ -10677,6 +10698,7 @@ export type Database = {
       private_bookings_with_details: {
         Row: {
           balance_due_date: string | null
+          balance_remaining: number | null
           calculated_total: number | null
           calendar_event_id: string | null
           contact_email: string | null
@@ -10707,13 +10729,16 @@ export type Database = {
           final_payment_date: string | null
           final_payment_method: string | null
           guest_count: number | null
+          hold_expiry: string | null
           id: string | null
           internal_notes: string | null
+          payment_status: string | null
           setup_date: string | null
           setup_time: string | null
           start_time: string | null
           status: string | null
           total_amount: number | null
+          total_balance_paid: number | null
           updated_at: string | null
         }
         Relationships: [
@@ -11101,34 +11126,21 @@ export type Database = {
         }
         Returns: Json
       }
-      create_table_booking_v05:
-        | {
-            Args: {
-              p_booking_date: string
-              p_booking_purpose?: string
-              p_booking_time: string
-              p_customer_id: string
-              p_notes?: string
-              p_party_size: number
-              p_source?: string
-              p_sunday_lunch?: boolean
-            }
-            Returns: Json
-          }
-        | {
-            Args: {
-              p_booking_date: string
-              p_booking_purpose?: string
-              p_booking_time: string
-              p_bypass_cutoff?: boolean
-              p_customer_id: string
-              p_notes?: string
-              p_party_size: number
-              p_source?: string
-              p_sunday_lunch?: boolean
-            }
-            Returns: Json
-          }
+      create_table_booking_v05: {
+        Args: {
+          p_booking_date: string
+          p_booking_purpose?: string
+          p_booking_time: string
+          p_bypass_cutoff?: boolean
+          p_customer_id: string
+          p_deposit_waived?: boolean
+          p_notes?: string
+          p_party_size: number
+          p_source?: string
+          p_sunday_lunch?: boolean
+        }
+        Returns: Json
+      }
       create_table_booking_v05_core: {
         Args: {
           p_booking_date: string
@@ -11636,6 +11648,15 @@ export type Database = {
         Returns: string
       }
       rebuild_customer_category_stats: { Args: never; Returns: number }
+      record_balance_payment: {
+        Args: {
+          p_amount: number
+          p_booking_id: string
+          p_method: string
+          p_recorded_by?: string
+        }
+        Returns: Json
+      }
       record_invoice_payment_transaction: {
         Args: { p_payment_data: Json }
         Returns: Json

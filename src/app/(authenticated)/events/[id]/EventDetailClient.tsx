@@ -333,6 +333,24 @@ export default function EventDetailClient({
     [initialBookings]
   )
 
+  const profitabilityStats = useMemo(() => {
+    const nonCancelledBookings = initialBookings.filter(
+      (booking) => !['cancelled', 'expired'].includes(booking.status || '') && !booking.cancelled_at
+    )
+    const totalBookings = nonCancelledBookings.length
+    const totalSeats = nonCancelledBookings.reduce(
+      (total, booking) => total + Math.max(1, Number(booking.seats || 1)),
+      0
+    )
+    const pricePerSeat = event.price_per_seat ?? event.price ?? null
+    const isFree = event.is_free === true || pricePerSeat === null || pricePerSeat === 0
+    const estimatedRevenue = isFree ? null : totalSeats * pricePerSeat!
+    const capacityUtilisation =
+      event.capacity != null && event.capacity > 0 ? totalSeats / event.capacity : null
+
+    return { totalBookings, totalSeats, estimatedRevenue, capacityUtilisation, isFree }
+  }, [initialBookings, event.capacity, event.is_free, event.price, event.price_per_seat])
+
   const bookingUrl = useMemo(() => {
     const trimmed = (event.booking_url || '').trim()
     return trimmed.length > 0 ? trimmed : null
@@ -1133,6 +1151,54 @@ export default function EventDetailClient({
                 </div>
               )}
             </div>
+          </div>
+        </Card>
+
+        <Card padding="lg">
+          <div className="space-y-4">
+            <div>
+              <h2 className="text-lg font-semibold text-gray-900">Bookings &amp; Revenue</h2>
+              <p className="mt-1 text-sm text-gray-600">
+                Summary of active bookings and estimated income for this event.
+              </p>
+            </div>
+
+            <dl className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              <div className="rounded-lg border border-gray-200 bg-gray-50 px-4 py-3">
+                <dt className="text-xs font-semibold uppercase tracking-wide text-gray-500">Active bookings</dt>
+                <dd className="mt-1 text-2xl font-bold text-gray-900">{profitabilityStats.totalBookings}</dd>
+              </div>
+
+              <div className="rounded-lg border border-gray-200 bg-gray-50 px-4 py-3">
+                <dt className="text-xs font-semibold uppercase tracking-wide text-gray-500">Total seats</dt>
+                <dd className="mt-1 text-2xl font-bold text-gray-900">{profitabilityStats.totalSeats}</dd>
+              </div>
+
+              {event.capacity != null && event.capacity > 0 ? (
+                <div className="rounded-lg border border-gray-200 bg-gray-50 px-4 py-3">
+                  <dt className="text-xs font-semibold uppercase tracking-wide text-gray-500">Capacity</dt>
+                  <dd className="mt-1 text-2xl font-bold text-gray-900">
+                    {profitabilityStats.totalSeats} / {event.capacity}
+                  </dd>
+                  <dd className="mt-0.5 text-sm text-gray-500">
+                    {Math.round((profitabilityStats.capacityUtilisation ?? 0) * 100)}% utilised
+                  </dd>
+                </div>
+              ) : null}
+
+              <div className="rounded-lg border border-gray-200 bg-gray-50 px-4 py-3">
+                <dt className="text-xs font-semibold uppercase tracking-wide text-gray-500">Est. revenue</dt>
+                {profitabilityStats.isFree ? (
+                  <dd className="mt-1">
+                    <Badge variant="info" size="sm">Free event</Badge>
+                  </dd>
+                ) : (
+                  <dd className="mt-1 text-2xl font-bold text-gray-900">
+                    {currencyFormatter.format(profitabilityStats.estimatedRevenue ?? 0)}
+                  </dd>
+                )}
+              </div>
+            </dl>
           </div>
         </Card>
 

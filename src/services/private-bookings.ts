@@ -8,6 +8,12 @@ import { recordAnalyticsEvent } from '@/lib/analytics/events';
 import { logAuditEvent } from '@/app/actions/audit'; // Audit logging will be in action, but helper types needed
 import { ensureCustomerForPhone } from '@/lib/sms/customers';
 import { logger } from '@/lib/logger';
+import {
+  sendBookingConfirmationEmail,
+  sendDepositReceivedEmail,
+  sendBalancePaidEmail,
+  sendBookingCalendarInvite,
+} from '@/lib/email/private-booking-emails';
 import type {
   BookingStatus,
   BookingItemFormData,
@@ -61,6 +67,31 @@ function sanitizeBookingSearchTerm(value: string): string {
     .replace(/\s+/g, ' ')
     .trim()
     .slice(0, 80);
+}
+
+const STANDARD_HOLD_DAYS = 14;
+const SHORT_NOTICE_HOLD_DAYS = 2;
+
+/**
+ * Compute the automatic hold expiry date for a private booking.
+ * - If booking is created < 7 days before the event (short notice): 48 hours from now, capped at event start.
+ * - Otherwise: 14 days from now, capped at 7 days before the event.
+ */
+function computeHoldExpiry(eventDate: Date, now: Date): Date {
+  const sevenDaysBeforeEvent = new Date(eventDate);
+  sevenDaysBeforeEvent.setDate(sevenDaysBeforeEvent.getDate() - 7);
+
+  if (now.getTime() > sevenDaysBeforeEvent.getTime()) {
+    // Short notice: 48 hours from now, capped at event start
+    const shortNoticeExpiry = new Date(now);
+    shortNoticeExpiry.setDate(shortNoticeExpiry.getDate() + SHORT_NOTICE_HOLD_DAYS);
+    return shortNoticeExpiry.getTime() > eventDate.getTime() ? eventDate : shortNoticeExpiry;
+  }
+
+  // Normal: 14 days from now, capped at 7 days before event
+  const standardExpiry = new Date(now);
+  standardExpiry.setDate(standardExpiry.getDate() + STANDARD_HOLD_DAYS);
+  return standardExpiry.getTime() > sevenDaysBeforeEvent.getTime() ? sevenDaysBeforeEvent : standardExpiry;
 }
 
 // Helper function to format time to HH:MM
@@ -198,9 +229,6 @@ export class PrivateBookingService {
     let holdExpiryMoment: Date;
 
     // Logic for Deposit Due Date (Hold Expiry)
-    const STANDARD_HOLD_DAYS = 14;
-    const SHORT_NOTICE_HOLD_DAYS = 2;
-
     const sevenDaysBeforeEvent = new Date(actualEventDate);
     sevenDaysBeforeEvent.setDate(sevenDaysBeforeEvent.getDate() - 7);
 
@@ -226,27 +254,7 @@ export class PrivateBookingService {
       }
     } else {
       // Default auto-calculation
-
-      // Check if we are in "Short Notice" territory (booking created less than 7 days before event)
-      if (currentDateTime.getTime() > sevenDaysBeforeEvent.getTime()) {
-        // Short Notice Logic: 48 hours from now, capped at event start
-        const shortNoticeExpiry = new Date(currentDateTime);
-        shortNoticeExpiry.setDate(shortNoticeExpiry.getDate() + SHORT_NOTICE_HOLD_DAYS);
-
-        if (shortNoticeExpiry.getTime() > actualEventDate.getTime()) {
-          holdExpiryMoment = actualEventDate;
-        } else {
-          holdExpiryMoment = shortNoticeExpiry;
-        }
-      } else {
-        // Normal Booking Logic: 14 days from now, but NEVER later than 7 days before event
-        holdExpiryMoment = new Date(currentDateTime);
-        holdExpiryMoment.setDate(holdExpiryMoment.getDate() + STANDARD_HOLD_DAYS);
-
-        if (holdExpiryMoment.getTime() > sevenDaysBeforeEvent.getTime()) {
-          holdExpiryMoment = sevenDaysBeforeEvent;
-        }
-      }
+      holdExpiryMoment = computeHoldExpiry(actualEventDate, currentDateTime);
     }
 
     const holdExpiryIso = holdExpiryMoment.toISOString();
@@ -398,36 +406,8 @@ export class PrivateBookingService {
     if (dateChanged && currentBooking.status === 'draft') {
       const currentDateTime = new Date();
       const newEventDate = input.event_date ? new Date(input.event_date) : new Date(finalEventDate);
-      let holdExpiryMoment: Date;
 
-      const STANDARD_HOLD_DAYS = 14;
-      const SHORT_NOTICE_HOLD_DAYS = 2;
-
-      const sevenDaysBeforeEvent = new Date(newEventDate);
-      sevenDaysBeforeEvent.setDate(sevenDaysBeforeEvent.getDate() - 7);
-
-      // Check if we are in "Short Notice" territory
-      if (currentDateTime.getTime() > sevenDaysBeforeEvent.getTime()) {
-        // Short Notice Logic: 48 hours from now, capped at event start
-        const shortNoticeExpiry = new Date(currentDateTime);
-        shortNoticeExpiry.setDate(shortNoticeExpiry.getDate() + SHORT_NOTICE_HOLD_DAYS);
-
-        if (shortNoticeExpiry.getTime() > newEventDate.getTime()) {
-          holdExpiryMoment = newEventDate;
-        } else {
-          holdExpiryMoment = shortNoticeExpiry;
-        }
-      } else {
-        // Normal Booking Logic: 14 days from now, but NEVER later than 7 days before event
-        holdExpiryMoment = new Date(currentDateTime);
-        holdExpiryMoment.setDate(holdExpiryMoment.getDate() + STANDARD_HOLD_DAYS);
-
-        if (holdExpiryMoment.getTime() > sevenDaysBeforeEvent.getTime()) {
-          holdExpiryMoment = sevenDaysBeforeEvent;
-        }
-      }
-
-      holdExpiryIso = holdExpiryMoment.toISOString();
+      holdExpiryIso = computeHoldExpiry(newEventDate, currentDateTime).toISOString();
     }
 
     const finalStartTime = input.start_time || currentBooking.start_time || DEFAULT_TBD_TIME;
@@ -709,6 +689,17 @@ export class PrivateBookingService {
           });
         } catch (analyticsError) {
           logger.error('Failed to record private booking confirmation analytics:', { error: analyticsError instanceof Error ? analyticsError : new Error(String(analyticsError)) });
+        }
+
+        // Send confirmation email (non-blocking)
+        if (updatedBooking.contact_email) {
+          sendBookingConfirmationEmail(updatedBooking).catch(e =>
+            logger.error('Failed to send booking confirmation email', { error: e instanceof Error ? e : new Error(String(e)) })
+          );
+          // Send calendar invite alongside confirmation (non-blocking)
+          sendBookingCalendarInvite(updatedBooking).catch(e =>
+            logger.error('Failed to send calendar invite', { error: e instanceof Error ? e : new Error(String(e)) })
+          );
         }
       }
 
@@ -1297,7 +1288,7 @@ export class PrivateBookingService {
 
     const { data: booking, error: fetchError } = await supabase
       .from('private_bookings')
-      .select('id, customer_first_name, customer_last_name, customer_name, event_date, start_time, end_time, end_time_next_day, contact_phone, customer_id, calendar_event_id, status, guest_count, event_type, deposit_paid_date')
+      .select('id, customer_first_name, customer_last_name, customer_name, event_date, start_time, end_time, end_time_next_day, contact_phone, contact_email, customer_id, calendar_event_id, status, guest_count, event_type, deposit_paid_date, deposit_amount, balance_due_date, total_amount')
       .eq('id', bookingId)
       .single();
 
@@ -1421,6 +1412,23 @@ export class PrivateBookingService {
           }
         })
       }
+    }
+
+    // Send deposit received email (non-blocking)
+    if (booking.contact_email) {
+      sendDepositReceivedEmail({
+        contact_email: booking.contact_email,
+        customer_first_name: booking.customer_first_name,
+        customer_name: booking.customer_name,
+        event_date: booking.event_date,
+        event_type: booking.event_type,
+        deposit_amount: amount,
+        deposit_payment_method: method,
+        balance_due_date: booking.balance_due_date,
+        total_amount: booking.total_amount,
+      }).catch(e =>
+        logger.error('Failed to send deposit received email', { error: e instanceof Error ? e : new Error(String(e)) })
+      );
     }
 
     // Calendar Sync
@@ -1554,64 +1562,37 @@ export class PrivateBookingService {
   static async recordBalancePayment(bookingId: string, amount: number, method: string, performedByUserId?: string) {
     const supabase = await createClient();
 
+    // Fetch booking upfront — needed for SMS context and calendar sync regardless of outcome.
     const { data: booking, error: fetchError } = await supabase
       .from('private_bookings')
-      .select('id, customer_first_name, customer_last_name, customer_name, event_date, start_time, end_time, end_time_next_day, contact_phone, customer_id, calendar_event_id, status, guest_count, event_type, deposit_paid_date, deposit_amount, total_amount')
+      .select('id, customer_first_name, customer_last_name, customer_name, event_date, start_time, end_time, end_time_next_day, contact_phone, contact_email, customer_id, calendar_event_id, status, guest_count, event_type, deposit_paid_date, deposit_amount, total_amount')
       .eq('id', bookingId)
       .single();
 
     if (fetchError || !booking) throw new Error('Booking not found');
 
-    // Insert the payment record
-    const { error: insertError } = await supabase
-      .from('private_booking_payments')
-      .insert({
-        booking_id: bookingId,
-        amount,
-        method,
-        recorded_by: performedByUserId ?? null,
+    // Single atomic RPC: inserts payment, recalculates totals, and conditionally
+    // stamps final_payment_date — all within one transaction with a FOR UPDATE lock.
+    const { data: result, error: rpcError } = await supabase
+      .rpc('record_balance_payment', {
+        p_booking_id: bookingId,
+        p_amount: amount,
+        p_method: method,
+        p_recorded_by: performedByUserId ?? null,
       });
 
-    if (insertError) throw new Error('Failed to record payment');
+    if (rpcError) throw new Error('Failed to record payment');
 
-    // Calculate total paid so far (sum of all balance payments)
-    const { data: paymentsSum, error: sumError } = await supabase
-      .from('private_booking_payments')
-      .select('amount')
-      .eq('booking_id', bookingId);
+    const isFullyPaid = result.is_fully_paid as boolean;
+    // totalBalancePaid and remainingBalance are available if callers need them in future.
+    // const totalBalancePaid = result.total_paid as number;
+    // const remainingBalance = result.remaining_balance as number;
 
-    if (sumError) throw new Error('Failed to calculate payments total');
-
-    const totalBalancePaid = (paymentsSum ?? []).reduce((sum, p) => sum + toNumber(p.amount), 0);
-
-    // Determine the booking total from items
-    const { data: itemsData } = await supabase
-      .from('private_booking_items')
-      .select('line_total')
-      .eq('booking_id', bookingId);
-
-    // Security deposit is a returnable bond — it does NOT reduce the event cost
-    const itemsTotal = (itemsData ?? []).reduce((sum, item) => sum + toNumber(item.line_total), 0);
-    const remainingBalance = itemsTotal - totalBalancePaid;
-
-    const isFullyPaid = remainingBalance <= 0;
-
-    let updatedBooking: typeof booking | null = null;
-    if (isFullyPaid) {
-      const { data, error } = await supabase
-        .from('private_bookings')
-        .update({
-          final_payment_date: new Date().toISOString(),
-          final_payment_method: method,
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', bookingId)
-        .select()
-        .maybeSingle();
-
-      if (error) throw new Error('Failed to update booking payment status');
-      updatedBooking = data;
-    }
+    // updatedBooking is only needed for calendar sync — synthesise from known fields
+    // when the booking is now fully paid (the RPC updated final_payment_date server-side).
+    const updatedBooking = isFullyPaid
+      ? { ...booking, final_payment_date: new Date().toISOString(), final_payment_method: method }
+      : null;
 
     if (!isFullyPaid) {
       return { success: true };
@@ -1685,6 +1666,20 @@ export class PrivateBookingService {
           }
         })
       }
+    }
+
+    // Send balance paid email (non-blocking)
+    if (booking.contact_email) {
+      sendBalancePaidEmail({
+        contact_email: booking.contact_email,
+        customer_first_name: booking.customer_first_name,
+        customer_name: booking.customer_name,
+        event_date: booking.event_date,
+        event_type: booking.event_type,
+        total_amount: booking.total_amount,
+      }).catch(e =>
+        logger.error('Failed to send balance paid email', { error: e instanceof Error ? e : new Error(String(e)) })
+      );
     }
 
     // Calendar Sync

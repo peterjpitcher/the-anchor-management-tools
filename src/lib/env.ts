@@ -9,7 +9,7 @@ const envSchema = z.object({
   NEXT_PUBLIC_CONTACT_PHONE_NUMBER: z.string().optional(),
   
   // Server-only variables
-  SUPABASE_SERVICE_ROLE_KEY: z.string().min(1, 'SUPABASE_SERVICE_ROLE_KEY is required').optional(),
+  SUPABASE_SERVICE_ROLE_KEY: z.string().min(1, 'SUPABASE_SERVICE_ROLE_KEY is required'),
   TWILIO_ACCOUNT_SID: z.string().optional(),
   TWILIO_AUTH_TOKEN: z.string().optional(),
   TWILIO_PHONE_NUMBER: z.string().optional(),
@@ -30,7 +30,7 @@ const envSchema = z.object({
   MAX_SUNDAY_PREORDER_SMS_PER_RUN: z.string().optional(),
   PARKING_SEND_GUARD_WINDOW_MINUTES: z.string().optional(),
   PARKING_SEND_GUARD_LIMIT: z.string().optional(),
-  CRON_SECRET: z.string().min(1, 'CRON_SECRET is required').optional(),
+  CRON_SECRET: z.string().min(1, 'CRON_SECRET is required'),
   
   // Webhook configuration
   WEBHOOK_BASE_URL: z.string().url().optional(),

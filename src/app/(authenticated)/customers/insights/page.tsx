@@ -21,6 +21,7 @@ import { Card } from '@/components/ui-v2/layout/Card'
 import { Stat, StatGroup } from '@/components/ui-v2/display/Stat'
 import { Badge } from '@/components/ui-v2/display/Badge'
 import { BarChart } from '@/components/charts/BarChart'
+import { WinBackCampaign } from '@/components/features/customers/WinBackCampaign'
 
 const WINDOW_OPTIONS: Array<{ key: CustomerInsightsWindow; label: string }> = [
   { key: '30d', label: '30 days' },
@@ -78,6 +79,8 @@ export default async function CustomersInsightsPage({ searchParams }: CustomerIn
   if (!canViewCustomers) {
     redirect('/unauthorized')
   }
+
+  const canManageCustomers = await checkUserPermission('customers', 'manage')
 
   const resolvedSearchParams = searchParams ? await searchParams : {}
   const windowParamRaw = resolvedSearchParams.window
@@ -366,6 +369,13 @@ export default async function CustomersInsightsPage({ searchParams }: CustomerIn
                 </div>
               )}
             </Card>
+
+            {canManageCustomers && (
+              <Card>
+                <h3 className="text-base font-semibold text-gray-900 mb-3">Campaigns</h3>
+                <WinBackCampaign />
+              </Card>
+            )}
           </>
         )}
       </div>

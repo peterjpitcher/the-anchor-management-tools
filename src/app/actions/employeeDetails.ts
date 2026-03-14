@@ -84,16 +84,30 @@ export async function getEmployeeDetailData(employeeId: string): Promise<Employe
     canDeleteDocuments
   };
 
+  // Granular view_financial / view_health permissions do not yet exist in the
+  // ActionType union. Gate sensitive data (bank account numbers, NI numbers,
+  // health records) behind employees.edit until dedicated permissions are added.
+  const canAccessFinancial = canEdit;
+  const canAccessHealth = canEdit;
+
   try {
     const employeeData = await EmployeeService.getEmployeeByIdWithDetails(employeeId);
-    
+
     // Filter attachments and categories based on permissions
     const filteredAttachments = canViewDocuments ? employeeData.attachments : [];
     const filteredCategories = canViewDocuments ? employeeData.attachmentCategories : [];
-    
+
+    // Redact sensitive data for users without elevated permissions.
+    // Bank account numbers, NI numbers, and health records must not be
+    // exposed to anyone who only holds employees.view.
+    const filteredFinancialDetails = canAccessFinancial ? employeeData.financialDetails : null;
+    const filteredHealthRecord = canAccessHealth ? employeeData.healthRecord : null;
+
     return {
       data: {
         ...employeeData,
+        financialDetails: filteredFinancialDetails,
+        healthRecord: filteredHealthRecord,
         attachments: filteredAttachments,
         attachmentCategories: filteredCategories,
         permissions

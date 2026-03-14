@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation'
 import { checkUserPermission } from '@/app/actions/rbac'
-import { listAuditLogs } from '@/app/actions/auditLogs'
+import { listAuditLogs, listAuditLogUsers } from '@/app/actions/auditLogs'
 import AuditLogsClient from './AuditLogsClient'
 
 export default async function AuditLogsPage() {
@@ -9,7 +9,10 @@ export default async function AuditLogsPage() {
     redirect('/unauthorized')
   }
 
-  const result = await listAuditLogs()
+  const [result, usersResult] = await Promise.all([
+    listAuditLogs(),
+    listAuditLogUsers(),
+  ])
 
   return (
     <AuditLogsClient
@@ -19,6 +22,7 @@ export default async function AuditLogsPage() {
       initialPage={result.page}
       initialFilters={result.filters}
       initialError={result.error ?? null}
+      availableUsers={usersResult.users ?? []}
     />
   )
 }

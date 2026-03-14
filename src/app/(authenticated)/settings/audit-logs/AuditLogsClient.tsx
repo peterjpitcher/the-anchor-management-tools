@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from 'react'
 import type { AuditLog } from '@/types/database'
+import type { AuditLogUser } from '@/app/actions/auditLogs'
 import { listAuditLogs } from '@/app/actions/auditLogs'
 import { formatDate } from '@/lib/dateUtils'
 import { PageLayout } from '@/components/ui-v2/layout/PageLayout'
@@ -24,6 +25,8 @@ type FiltersState = {
   status: string
   dateFrom: string
   dateTo: string
+  userId: string
+  resourceId: string
 }
 
 type AuditLogsClientProps = {
@@ -33,6 +36,7 @@ type AuditLogsClientProps = {
   initialPage: number
   initialFilters: FiltersState
   initialError: string | null
+  availableUsers: AuditLogUser[]
 }
 
 const OPERATION_OPTIONS = [
@@ -95,6 +99,37 @@ function getStatusVariant(status: string): 'success' | 'error' {
   return status === 'success' ? 'success' : 'error'
 }
 
+function escapeCsvCell(value: string | null | undefined): string {
+  const str = value ?? ''
+  // Wrap in quotes if the value contains a comma, quote, or newline
+  if (str.includes(',') || str.includes('"') || str.includes('\n')) {
+    return `"${str.replace(/"/g, '""')}"`
+  }
+  return str
+}
+
+function downloadCsv(logs: AuditLog[]): void {
+  const headers = ['Timestamp', 'User Email', 'Operation Type', 'Resource Type', 'Resource ID', 'Status', 'IP Address']
+  const rows = logs.map(log => [
+    new Date(log.created_at).toISOString(),
+    log.user_email ?? '',
+    log.operation_type,
+    log.resource_type,
+    log.resource_id ?? '',
+    log.operation_status,
+    log.ip_address ?? '',
+  ].map(escapeCsvCell))
+
+  const csv = [headers, ...rows].map(row => row.join(',')).join('\n')
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = `audit-logs-${new Date().toISOString().slice(0, 10)}.csv`
+  link.click()
+  URL.revokeObjectURL(url)
+}
+
 export default function AuditLogsClient({
   initialLogs,
   initialTotalCount,
@@ -102,6 +137,7 @@ export default function AuditLogsClient({
   initialPage,
   initialFilters,
   initialError,
+  availableUsers,
 }: AuditLogsClientProps) {
   const [logs, setLogs] = useState<AuditLog[]>(initialLogs)
   const [totalCount, setTotalCount] = useState(initialTotalCount)
@@ -122,6 +158,8 @@ export default function AuditLogsClient({
         status: nextFilters.status || undefined,
         dateFrom: nextFilters.dateFrom || undefined,
         dateTo: nextFilters.dateTo || undefined,
+        userId: nextFilters.userId || undefined,
+        resourceId: nextFilters.resourceId || undefined,
         page: nextPage,
         pageSize,
       })
@@ -160,6 +198,8 @@ export default function AuditLogsClient({
       status: '',
       dateFrom: '',
       dateTo: '',
+      userId: '',
+      resourceId: '',
     }
     setFilters(cleared)
     setPage(1)
@@ -170,6 +210,15 @@ export default function AuditLogsClient({
     { label: 'Settings', href: '/settings' },
     { label: 'Audit Logs' },
   ]
+
+  const hasActiveFilters =
+    filters.operationType ||
+    filters.resourceType ||
+    filters.status ||
+    filters.dateFrom ||
+    filters.dateTo ||
+    filters.userId ||
+    filters.resourceId
 
   return (
     <PageLayout
@@ -183,71 +232,104 @@ export default function AuditLogsClient({
 
         <Section id="filters" title="Filters">
           <Card>
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
               <FormGroup label="Operation">
                 <Select
                   value={filters.operationType}
-                onChange={(event) => handleFilterChange({ operationType: event.target.value })}
-                disabled={isRefreshing}
+                  onChange={(event) => handleFilterChange({ operationType: event.target.value })}
+                  disabled={isRefreshing}
+                >
+                  {OPERATION_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </Select>
+              </FormGroup>
+
+              <FormGroup label="Resource">
+                <Select
+                  value={filters.resourceType}
+                  onChange={(event) => handleFilterChange({ resourceType: event.target.value })}
+                  disabled={isRefreshing}
+                >
+                  {RESOURCE_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </Select>
+              </FormGroup>
+
+              <FormGroup label="Status">
+                <Select
+                  value={filters.status}
+                  onChange={(event) => handleFilterChange({ status: event.target.value })}
+                  disabled={isRefreshing}
+                >
+                  {STATUS_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </Select>
+              </FormGroup>
+
+              <FormGroup label="User">
+                <Select
+                  value={filters.userId}
+                  onChange={(event) => handleFilterChange({ userId: event.target.value })}
+                  disabled={isRefreshing}
+                >
+                  <option value="">All Users</option>
+                  {availableUsers.map((u) => (
+                    <option key={u.user_id} value={u.user_id}>
+                      {u.user_email ?? u.user_id}
+                    </option>
+                  ))}
+                </Select>
+              </FormGroup>
+
+              <FormGroup label="From date">
+                <Input
+                  type="date"
+                  value={filters.dateFrom}
+                  onChange={(event) => handleFilterChange({ dateFrom: event.target.value })}
+                  disabled={isRefreshing}
+                />
+              </FormGroup>
+
+              <FormGroup label="To date">
+                <Input
+                  type="date"
+                  value={filters.dateTo}
+                  onChange={(event) => handleFilterChange({ dateTo: event.target.value })}
+                  disabled={isRefreshing}
+                />
+              </FormGroup>
+
+              <FormGroup label="Resource ID">
+                <Input
+                  type="text"
+                  placeholder="Search resource ID…"
+                  value={filters.resourceId}
+                  onChange={(event) => handleFilterChange({ resourceId: event.target.value })}
+                  disabled={isRefreshing}
+                />
+              </FormGroup>
+            </div>
+            <div className="mt-4 flex items-center justify-between gap-2">
+              <Button
+                variant="secondary"
+                onClick={() => downloadCsv(logs)}
+                disabled={isRefreshing || logs.length === 0}
+                type="button"
               >
-                {OPERATION_OPTIONS.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </Select>
-            </FormGroup>
-
-            <FormGroup label="Resource">
-              <Select
-                value={filters.resourceType}
-                onChange={(event) => handleFilterChange({ resourceType: event.target.value })}
-                disabled={isRefreshing}
-              >
-                {RESOURCE_OPTIONS.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </Select>
-            </FormGroup>
-
-            <FormGroup label="Status">
-              <Select
-                value={filters.status}
-                onChange={(event) => handleFilterChange({ status: event.target.value })}
-                disabled={isRefreshing}
-              >
-                {STATUS_OPTIONS.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </Select>
-            </FormGroup>
-
-            <FormGroup label="From date">
-              <Input
-                type="date"
-                value={filters.dateFrom}
-                onChange={(event) => handleFilterChange({ dateFrom: event.target.value })}
-                disabled={isRefreshing}
-              />
-            </FormGroup>
-
-            <FormGroup label="To date">
-              <Input
-                type="date"
-                value={filters.dateTo}
-                onChange={(event) => handleFilterChange({ dateTo: event.target.value })}
-                disabled={isRefreshing}
-              />
-            </FormGroup>
-          </div>
-          <div className="mt-4 flex justify-end">
-            <Button variant="secondary" onClick={handleClearFilters} disabled={isRefreshing}>
-              Clear Filters
-            </Button>
+                Export CSV
+              </Button>
+              <Button variant="secondary" onClick={handleClearFilters} disabled={isRefreshing} type="button">
+                Clear Filters
+              </Button>
             </div>
           </Card>
         </Section>
@@ -258,100 +340,97 @@ export default function AuditLogsClient({
               <div className="flex items-center justify-center py-8">
                 <Spinner size="lg" />
               </div>
-          ) : logs.length === 0 ? (
-            <EmptyState
-              title="No audit logs found"
-              description="No audit logs match your current filters."
-              action={
-                (filters.operationType ||
-                  filters.resourceType ||
-                  filters.status ||
-                  filters.dateFrom ||
-                  filters.dateTo) && (
-                  <Button variant="secondary" onClick={handleClearFilters} disabled={isRefreshing}>
-                    Clear Filters
-                  </Button>
-                )
-              }
-            />
-          ) : (
-            <DataTable
-              data={logs}
-              getRowKey={(log) => log.id}
-              columns={[
-                {
-                  key: 'created_at',
-                  header: 'Time',
-                  cell: (log: AuditLog) => (
-                    <div>
-                      <div className="text-sm text-gray-900">{formatDate(log.created_at)}</div>
-                      <div className="text-xs text-gray-500">
-                        {new Date(log.created_at).toLocaleTimeString()}
-                      </div>
-                    </div>
-                  ),
-                },
-                {
-                  key: 'user_email',
-                  header: 'User',
-                  cell: (log: AuditLog) => log.user_email || 'System',
-                },
-                {
-                  key: 'operation_type',
-                  header: 'Operation',
-                  cell: (log: AuditLog) => (
-                    <span>
-                      <span className="mr-2">{getOperationIcon(log.operation_type)}</span>
-                      {log.operation_type}
-                    </span>
-                  ),
-                },
-                {
-                  key: 'resource_type',
-                  header: 'Resource',
-                  cell: (log: AuditLog) => (
-                    <div>
-                      <div className="text-sm">{log.resource_type}</div>
-                      {log.resource_id && (
-                        <div className="text-xs text-gray-500">ID: {log.resource_id.slice(0, 8)}...</div>
-                      )}
-                    </div>
-                  ),
-                },
-                {
-                  key: 'operation_status',
-                  header: 'Status',
-                  cell: (log: AuditLog) => (
-                    <div>
-                      <Badge variant={getStatusVariant(log.operation_status)} size="sm">
-                        {log.operation_status}
-                      </Badge>
-                      {log.error_message && (
-                        <div className="text-xs text-red-600 mt-1">{log.error_message}</div>
-                      )}
-                    </div>
-                  ),
-                },
-                {
-                  key: 'ip_address',
-                  header: 'IP Address',
-                  cell: (log: AuditLog) => log.ip_address || '-',
-                },
-                {
-                  key: 'actions',
-                  header: '',
-                  cell: (log: AuditLog) => (
-                    <Button
-                      onClick={() => setExpandedLog(expandedLog === log.id ? null : log.id)}
-                      variant="secondary"
-                      size="sm"
-                    >
-                      {expandedLog === log.id ? 'Hide' : 'Details'}
+            ) : logs.length === 0 ? (
+              <EmptyState
+                title="No audit logs found"
+                description="No audit logs match your current filters."
+                action={
+                  hasActiveFilters && (
+                    <Button variant="secondary" onClick={handleClearFilters} disabled={isRefreshing}>
+                      Clear Filters
                     </Button>
-                  ),
-                },
-              ]}
-            />
+                  )
+                }
+              />
+            ) : (
+              <DataTable
+                data={logs}
+                getRowKey={(log) => log.id}
+                columns={[
+                  {
+                    key: 'created_at',
+                    header: 'Time',
+                    cell: (log: AuditLog) => (
+                      <div>
+                        <div className="text-sm text-gray-900">{formatDate(log.created_at)}</div>
+                        <div className="text-xs text-gray-500">
+                          {new Date(log.created_at).toLocaleTimeString()}
+                        </div>
+                      </div>
+                    ),
+                  },
+                  {
+                    key: 'user_email',
+                    header: 'User',
+                    cell: (log: AuditLog) => log.user_email || 'System',
+                  },
+                  {
+                    key: 'operation_type',
+                    header: 'Operation',
+                    cell: (log: AuditLog) => (
+                      <span>
+                        <span className="mr-2">{getOperationIcon(log.operation_type)}</span>
+                        {log.operation_type}
+                      </span>
+                    ),
+                  },
+                  {
+                    key: 'resource_type',
+                    header: 'Resource',
+                    cell: (log: AuditLog) => (
+                      <div>
+                        <div className="text-sm">{log.resource_type}</div>
+                        {log.resource_id && (
+                          <div className="text-xs text-gray-500">ID: {log.resource_id.slice(0, 8)}...</div>
+                        )}
+                      </div>
+                    ),
+                  },
+                  {
+                    key: 'operation_status',
+                    header: 'Status',
+                    cell: (log: AuditLog) => (
+                      <div>
+                        <Badge variant={getStatusVariant(log.operation_status)} size="sm">
+                          {log.operation_status}
+                        </Badge>
+                        {log.error_message && (
+                          <div className="text-xs text-red-600 mt-1">{log.error_message}</div>
+                        )}
+                      </div>
+                    ),
+                  },
+                  {
+                    key: 'ip_address',
+                    header: 'IP Address',
+                    cell: (log: AuditLog) => log.ip_address || '-',
+                  },
+                  {
+                    key: 'actions',
+                    header: '',
+                    cell: (log: AuditLog) => (
+                      <Button
+                        onClick={() => setExpandedLog(expandedLog === log.id ? null : log.id)}
+                        variant="secondary"
+                        size="sm"
+                        type="button"
+                      >
+                        {expandedLog === log.id ? 'Hide' : 'Details'}
+                      </Button>
+                    ),
+                  },
+                ]}
+              />
             )}
           </Card>
         </Section>
