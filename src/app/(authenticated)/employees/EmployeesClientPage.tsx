@@ -27,6 +27,7 @@ type EmployeeStatus = 'all' | 'Active' | 'Former' | 'Onboarding' | 'Started Sepa
 
 interface EmployeesClientPageProps {
   initialData: EmployeeRosterResult
+  initialError?: string | null
   permissions: {
     canCreate: boolean
     canExport: boolean
@@ -85,7 +86,7 @@ function employeeDisplayName(employee: Employee): string {
   return employee.email_address
 }
 
-export default function EmployeesClientPage({ initialData, permissions }: EmployeesClientPageProps) {
+export default function EmployeesClientPage({ initialData, initialError, permissions }: EmployeesClientPageProps) {
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
@@ -252,6 +253,7 @@ export default function EmployeesClientPage({ initialData, permissions }: Employ
           { label: 'Birthdays', href: '/employees/birthdays' },
         ]}
         headerActions={headerActions}
+        error={initialError}
       >
         <section id="filters">
           <Card>

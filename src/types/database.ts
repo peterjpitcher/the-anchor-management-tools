@@ -15,6 +15,7 @@ export interface Event {
   performer_name?: string | null;
   performer_type?: string | null;
   price?: number | null;
+  price_per_seat?: number | null;
   is_free?: boolean | null;
   booking_url?: string | null;
   // Phase 1 SEO fields

@@ -32,16 +32,15 @@ export async function signIn(email: string, password: string) {
   }
 }
 
-export async function signUp(email: string, password: string, firstName: string, lastName: string) {
-  try {
-    return await AuthService.signUp(email, password, firstName, lastName);
-  } catch (error: any) {
-    if (error.message.includes('Too many requests')) {
-      return { error: 'Too many signup attempts. Please try again later.' };
-    }
-    console.error('Sign up error:', error);
-    return { error: error.message || 'An error occurred during sign up' };
-  }
+// Self-registration is disabled. This application is invite-only.
+// Users must be invited by an administrator via the invite flow.
+export async function signUp(
+  _email: string,
+  _password: string,
+  _firstName: string,
+  _lastName: string
+) {
+  return { error: 'Registration is not available. Please contact an administrator.' };
 }
 
 export async function signOut() {

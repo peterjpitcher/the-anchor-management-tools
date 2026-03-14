@@ -18,7 +18,7 @@ type IdempotencyRecord = {
   expires_at: string | null
 }
 
-function stableSerialize(value: unknown): string {
+export function stableSerialize(value: unknown): string {
   if (value === null || typeof value !== 'object') {
     return JSON.stringify(value)
   }

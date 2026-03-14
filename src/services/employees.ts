@@ -1057,17 +1057,27 @@ export class EmployeeService {
       return builder;
     };
 
-    const [allCountRes, activeCountRes, formerCountRes, onboardingCountRes] = await Promise.all([
-      adminClient.from('employees').select('*', { count: 'exact', head: true }),
-      adminClient.from('employees').select('*', { count: 'exact', head: true }).in('status', ['Active', 'Started Separation']),
-      adminClient.from('employees').select('*', { count: 'exact', head: true }).eq('status', 'Former'),
-      adminClient.from('employees').select('*', { count: 'exact', head: true }).eq('status', 'Onboarding'),
-    ]);
+    // Single query to get all status counts in one round-trip, then derive tab counts in JS
+    const { data: statusRows, error: statusCountError } = await adminClient
+      .from('employees')
+      .select('status');
 
-    if (allCountRes.error || activeCountRes.error || formerCountRes.error || onboardingCountRes.error) {
-      throw allCountRes.error || activeCountRes.error || formerCountRes.error || onboardingCountRes.error;
+    if (statusCountError) {
+      throw statusCountError;
     }
 
+    const statusMap = new Map<string, number>();
+    let allCount = 0;
+    for (const row of statusRows ?? []) {
+      const s = (row.status as string) ?? '';
+      statusMap.set(s, (statusMap.get(s) ?? 0) + 1);
+      allCount += 1;
+    }
+    const activeCount = (statusMap.get('Active') ?? 0) + (statusMap.get('Started Separation') ?? 0);
+    const formerCount = statusMap.get('Former') ?? 0;
+    const onboardingCount = statusMap.get('Onboarding') ?? 0;
+
+    // Filtered count for the selected tab + search term
     const { count, error: countError } = await applyFilters(
       adminClient.from('employees').select('*', { count: 'exact', head: true })
     );
@@ -1104,10 +1114,10 @@ export class EmployeeService {
         totalPages
       },
       statusCounts: {
-        all: allCountRes.count ?? 0,
-        active: activeCountRes.count ?? 0,
-        former: formerCountRes.count ?? 0,
-        onboarding: onboardingCountRes.count ?? 0,
+        all: allCount,
+        active: activeCount,
+        former: formerCount,
+        onboarding: onboardingCount,
         startedSeparation: 0,
       },
       filters: {

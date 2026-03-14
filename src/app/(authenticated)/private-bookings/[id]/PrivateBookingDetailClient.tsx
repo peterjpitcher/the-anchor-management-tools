@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, type ReactNode } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { formatDateFull, formatTime12Hour, formatDateTime12Hour } from "@/lib/dateUtils";
 import {
   PencilIcon,
@@ -29,6 +29,7 @@ import {
   BuildingOfficeIcon,
   BoltIcon,
   Bars3Icon,
+  LinkIcon,
 } from "@heroicons/react/24/outline";
 import {
   DndContext,
@@ -62,6 +63,11 @@ import {
   applyBookingDiscount,
   cancelPrivateBooking,
   addPrivateBookingNote,
+  createDepositPaymentOrder,
+  captureDepositPayment,
+  resendCalendarInvite,
+  getBookingPortalLink,
+  sendDepositPaymentLink,
 } from '@/app/actions/privateBookingActions'
 import type {
   PrivateBookingWithDetails,
@@ -1301,6 +1307,7 @@ export default function PrivateBookingDetailClient({
   initialError,
 }: PrivateBookingDetailClientProps) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [booking, setBooking] = useState<PrivateBookingWithDetails | null>(() =>
     initialBooking ? normalizeBooking(initialBooking) : null,
   );
@@ -1323,6 +1330,13 @@ export default function PrivateBookingDetailClient({
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [noteText, setNoteText] = useState('');
   const [addingNote, setAddingNote] = useState(false);
+  const [sendingCalendarInvite, setSendingCalendarInvite] = useState(false);
+  // PayPal deposit state
+  const [paypalDepositLoading, setPaypalDepositLoading] = useState(false);
+  const [paypalCaptureHandled, setPaypalCaptureHandled] = useState(false);
+  const [sendingDepositLink, setSendingDepositLink] = useState(false);
+  // Share portal link state
+  const [isCopyingLink, setIsCopyingLink] = useState(false);
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
@@ -1401,6 +1415,72 @@ export default function PrivateBookingDetailClient({
     loadBooking(bookingId);
   }, [bookingId, loadBooking]);
 
+  // Handle PayPal return URL — capture the payment when PayPal redirects back
+  useEffect(() => {
+    const paypalReturn = searchParams.get('paypal_return');
+    const orderId = searchParams.get('order_id');
+
+    if (paypalReturn !== 'deposit' || !orderId || paypalCaptureHandled) {
+      return;
+    }
+
+    setPaypalCaptureHandled(true);
+
+    // Clean URL params immediately to prevent re-runs on navigation
+    const cleanUrl = `/private-bookings/${bookingId}`;
+    router.replace(cleanUrl, { scroll: false });
+
+    (async () => {
+      try {
+        const result = await captureDepositPayment(bookingId, orderId);
+        if (result.success) {
+          toast.success('Deposit payment received successfully.');
+          refreshBooking();
+        } else {
+          toast.error(result.error || 'Failed to confirm deposit payment. Please contact support.');
+        }
+      } catch (_err) {
+        toast.error('An unexpected error occurred confirming your payment. Please contact support.');
+      }
+    })();
+  }, [searchParams]); // intentionally depends only on searchParams — runs once on return from PayPal
+
+  const handlePaypalDeposit = useCallback(async () => {
+    if (paypalDepositLoading) return;
+    setPaypalDepositLoading(true);
+    try {
+      const result = await createDepositPaymentOrder(bookingId);
+      if (result.error) {
+        toast.error(result.error);
+        return;
+      }
+      if (result.approveUrl) {
+        window.location.href = result.approveUrl;
+      }
+    } catch (_err) {
+      toast.error('Failed to create PayPal payment link. Please try again.');
+    } finally {
+      setPaypalDepositLoading(false);
+    }
+  }, [bookingId, paypalDepositLoading]);
+
+  const handleSendDepositLink = useCallback(async () => {
+    if (sendingDepositLink) return;
+    setSendingDepositLink(true);
+    try {
+      const result = await sendDepositPaymentLink(bookingId);
+      if (result.error) {
+        toast.error(result.error);
+        return;
+      }
+      toast.success('Payment link sent to customer');
+    } catch (_err) {
+      toast.error('Failed to send payment link. Please try again.');
+    } finally {
+      setSendingDepositLink(false);
+    }
+  }, [bookingId, sendingDepositLink]);
+
   const handleAddNote = useCallback(async () => {
     if (addingNote) {
       return;
@@ -1443,6 +1523,39 @@ export default function PrivateBookingDetailClient({
     },
     [handleAddNote],
   );
+
+  const handleResendCalendarInvite = useCallback(async () => {
+    if (!bookingId || sendingCalendarInvite) return;
+    setSendingCalendarInvite(true);
+    try {
+      const result = await resendCalendarInvite(bookingId);
+      if (result.success) {
+        toast.success('Calendar invite sent successfully');
+      } else {
+        toast.error(result.error || 'Failed to send calendar invite');
+      }
+    } finally {
+      setSendingCalendarInvite(false);
+    }
+  }, [bookingId, sendingCalendarInvite]);
+
+  const handleCopyPortalLink = useCallback(async () => {
+    if (!bookingId || isCopyingLink) return;
+    setIsCopyingLink(true);
+    try {
+      const result = await getBookingPortalLink(bookingId);
+      if (result.success && result.url) {
+        await navigator.clipboard.writeText(result.url);
+        toast.success('Link copied to clipboard');
+      } else {
+        toast.error(result.error || 'Failed to generate link');
+      }
+    } catch {
+      toast.error('Failed to copy link to clipboard');
+    } finally {
+      setIsCopyingLink(false);
+    }
+  }, [bookingId, isCopyingLink]);
 
   const handleDragEnd = useCallback(async (event: DragEndEvent) => {
     if (!canEdit || isReordering || !bookingId) {
@@ -1723,12 +1836,24 @@ export default function PrivateBookingDetailClient({
       backButton={{ label: "Back to Private Bookings", href: "/private-bookings" }}
       navItems={navItems}
       headerActions={
-        canEdit ? (
-          <div className="flex items-center gap-2">
-            <Button variant="secondary" onClick={() => setShowStatusModal(true)}>Update Status</Button>
-            <LinkButton variant="primary" href={`/private-bookings/${bookingId}/edit`}>Edit Booking</LinkButton>
-          </div>
-        ) : undefined
+        <div className="flex items-center gap-2">
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={handleCopyPortalLink}
+            loading={isCopyingLink}
+            aria-label="Copy customer portal link to clipboard"
+          >
+            <LinkIcon className="h-4 w-4 mr-1.5" aria-hidden="true" />
+            Share Link
+          </Button>
+          {canEdit && (
+            <>
+              <Button variant="secondary" onClick={() => setShowStatusModal(true)}>Update Status</Button>
+              <LinkButton variant="primary" href={`/private-bookings/${bookingId}/edit`}>Edit Booking</LinkButton>
+            </>
+          )}
+        </div>
       }
     >
       {pageError && (
@@ -1860,6 +1985,23 @@ export default function PrivateBookingDetailClient({
                       <span className="text-gray-500">Not provided</span>
                     )}
                   </div>
+                  {canEdit &&
+                    booking.contact_email &&
+                    (booking.status === 'confirmed' || booking.status === 'completed') && (
+                      <div className="mt-2">
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          size="sm"
+                          loading={sendingCalendarInvite}
+                          disabled={sendingCalendarInvite}
+                          onClick={handleResendCalendarInvite}
+                        >
+                          <CalendarDaysIcon className="h-4 w-4 mr-1.5" />
+                          Resend Calendar Invite
+                        </Button>
+                      </div>
+                    )}
                 </div>
 
                 <div>
@@ -2197,15 +2339,33 @@ export default function PrivateBookingDetailClient({
                       {formatMoney(booking.deposit_amount ?? 250)}
                     </p>
                     {!booking.deposit_paid_date &&
-                      booking.status !== "draft" &&
+                      booking.status === "draft" &&
                       canManageDeposits && (
-                        <button
+                        <div className="mt-1 flex flex-col gap-1 items-end">
+                          <button
                             onClick={() => setShowDepositModal(true)}
-                            className="mt-1 text-xs px-2 py-1 bg-green-600 text-white rounded hover:bg-green-700"
+                            className="text-xs px-2 py-1 bg-green-600 text-white rounded hover:bg-green-700"
                           >
                             Record Payment
                           </button>
-                        )}
+                          <button
+                            type="button"
+                            onClick={handlePaypalDeposit}
+                            disabled={paypalDepositLoading}
+                            className="text-xs px-2 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
+                          >
+                            {paypalDepositLoading ? 'Creating link…' : 'Pay via PayPal'}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={handleSendDepositLink}
+                            disabled={sendingDepositLink}
+                            className="text-xs px-2 py-1 bg-indigo-600 text-white rounded hover:bg-indigo-700 disabled:opacity-50"
+                          >
+                            {sendingDepositLink ? 'Sending…' : 'Send payment link'}
+                          </button>
+                        </div>
+                      )}
                     </div>
                   </div>
                   <p className="text-xs text-gray-600 mt-2">

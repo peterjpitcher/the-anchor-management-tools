@@ -12,6 +12,8 @@ type EventSummary = {
   name: string
   date: string | null
   time: string | null
+  capacity: number | null
+  price: number | null
 }
 
 type CalendarNoteSummary = {
@@ -35,6 +37,14 @@ type EventsSnapshot = {
   totalUpcoming: number
   nextUpcoming?: EventSummary
   error?: string
+}
+
+type BookingPipelineValue = {
+  confirmed: number
+  draft: number
+  total: number
+  confirmedCount: number
+  draftCount: number
 }
 
 type CustomersSnapshot = {
@@ -217,6 +227,10 @@ export type DashboardSnapshot = {
   cashingUp: CashingUpSnapshot
   tableBookings: TableBookingsSnapshot
   systemHealth: SystemHealthSnapshot
+  /** B4: Total revenue from private bookings today (confirmed/completed) */
+  revenueToday: number
+  /** B3: Pipeline value of upcoming confirmed + draft private bookings */
+  bookingPipelineValue: BookingPipelineValue
 }
 
 type PermissionRecord = {
@@ -267,8 +281,7 @@ function isMissingColumnError(error: unknown, columnName: string): boolean {
   return new RegExp(`\\b${columnName}\\b`, 'i').test(pgError.message ?? '')
 }
 
-const fetchDashboardSnapshot = unstable_cache(
-  async (userId: string): Promise<DashboardSnapshot> => {
+async function fetchDashboardSnapshotImpl(userId: string): Promise<DashboardSnapshot> {
     const supabase = await createAdminClient()
     const { data: userResult, error: userLookupError } = await supabase.auth.admin.getUserById(userId)
 
@@ -416,6 +429,16 @@ const fetchDashboardSnapshot = unstable_cache(
       permitted: hasModuleAccess(permissionsMap, 'settings') || hasModuleAccess(permissionsMap, 'users'),
       smsFailures24h: 0,
       failedCronJobs24h: 0,
+    }
+
+    // B4 / B3 analytics — only computed when user has private_bookings access
+    let revenueToday = 0
+    const bookingPipelineValue: BookingPipelineValue = {
+      confirmed: 0,
+      draft: 0,
+      total: 0,
+      confirmedCount: 0,
+      draftCount: 0,
     }
 
     // Execute all permitted fetches in parallel
@@ -588,7 +611,9 @@ const fetchDashboardSnapshot = unstable_cache(
                   id,
                   name,
                   date,
-                  time
+                  time,
+                  capacity,
+                  price
                 `,
                 { count: 'exact' }
               )
@@ -603,7 +628,9 @@ const fetchDashboardSnapshot = unstable_cache(
                   id,
                   name,
                   date,
-                  time
+                  time,
+                  capacity,
+                  price
                 `
               )
               .gte('date', eventsLookbackIso)
@@ -621,12 +648,16 @@ const fetchDashboardSnapshot = unstable_cache(
             name: string | null
             date: string | null
             time: string | null
+            capacity: number | null
+            price: number | null
           }): EventSummary => {
             return {
               id: event.id as string,
               name: (event.name as string) ?? 'Untitled event',
               date: (event.date as string) ?? null,
               time: (event.time as string) ?? null,
+              capacity: event.capacity ?? null,
+              price: event.price ?? null,
             }
           }
 
@@ -997,42 +1028,54 @@ const fetchDashboardSnapshot = unstable_cache(
 
       quotes.permitted ? (async () => {
         try {
-          let quotesResult = await supabase
-            .from('quotes')
-            .select('status, total_amount, valid_until')
-            .is('deleted_at', null)
+          // Replace full-table fetch + JS-side aggregation with four targeted queries.
+          // todayIso is already computed in the outer scope.
+          const sumAmounts = (rows: Array<{ total_amount?: number | null }> | null) =>
+            (rows ?? []).reduce((acc, r) => acc + Number(r.total_amount ?? 0), 0)
 
-          if (quotesResult.error && isMissingColumnError(quotesResult.error, 'deleted_at')) {
-            quotesResult = await supabase
-              .from('quotes')
-              .select('status, total_amount, valid_until')
+          // Helper: run a query and fall back to the same query without the deleted_at filter
+          // when the column doesn't exist yet.
+          // Using PromiseLike so Supabase's PostgrestFilterBuilder (which is thenable but not
+          // a native Promise) is accepted without wrapping.
+          const withDeletedAtFallback = async <T>(
+            primary: PromiseLike<{ data: T | null; error: unknown; count?: number | null }>,
+            fallback: () => PromiseLike<{ data: T | null; error: unknown; count?: number | null }>
+          ) => {
+            const res = await primary
+            if (res.error && isMissingColumnError(res.error, 'deleted_at')) {
+              return fallback()
+            }
+            return res
           }
 
-          if (quotesResult.error) throw quotesResult.error
+          const [draftRes, pendingRes, expiredRes, acceptedRes] = await Promise.all([
+            withDeletedAtFallback(
+              supabase.from('quotes').select('id', { count: 'exact', head: true }).eq('status', 'draft').is('deleted_at', null),
+              () => supabase.from('quotes').select('id', { count: 'exact', head: true }).eq('status', 'draft')
+            ),
+            withDeletedAtFallback(
+              supabase.from('quotes').select('total_amount').eq('status', 'sent').or(`valid_until.is.null,valid_until.gte.${todayIso}`).is('deleted_at', null).limit(1000),
+              () => supabase.from('quotes').select('total_amount').eq('status', 'sent').or(`valid_until.is.null,valid_until.gte.${todayIso}`).limit(1000)
+            ),
+            withDeletedAtFallback(
+              supabase.from('quotes').select('total_amount').eq('status', 'sent').lt('valid_until', todayIso).is('deleted_at', null).limit(1000),
+              () => supabase.from('quotes').select('total_amount').eq('status', 'sent').lt('valid_until', todayIso).limit(1000)
+            ),
+            withDeletedAtFallback(
+              supabase.from('quotes').select('total_amount').eq('status', 'accepted').is('deleted_at', null).limit(1000),
+              () => supabase.from('quotes').select('total_amount').eq('status', 'accepted').limit(1000)
+            ),
+          ])
 
-          const today = new Date()
-          today.setHours(0, 0, 0, 0)
+          if (draftRes.error) throw draftRes.error
+          if (pendingRes.error) throw pendingRes.error
+          if (expiredRes.error) throw expiredRes.error
+          if (acceptedRes.error) throw acceptedRes.error
 
-          for (const quote of quotesResult.data ?? []) {
-            const status = (quote.status as string) ?? 'draft'
-            const totalAmount = Number(quote.total_amount ?? 0)
-
-            if (status === 'draft') {
-              quotes.draftCount += 1
-              continue
-            }
-
-            if (status === 'sent') {
-              const validUntil = quote.valid_until ? new Date(quote.valid_until as string) : null
-              if (validUntil && validUntil < today) {
-                quotes.totalExpiredValue += totalAmount
-              } else {
-                quotes.totalPendingValue += totalAmount
-              }
-            } else if (status === 'accepted') {
-              quotes.totalAcceptedValue += totalAmount
-            }
-          }
+          quotes.draftCount = draftRes.count ?? 0
+          quotes.totalPendingValue = sumAmounts(pendingRes.data as Array<{ total_amount?: number | null }> | null)
+          quotes.totalExpiredValue = sumAmounts(expiredRes.data as Array<{ total_amount?: number | null }> | null)
+          quotes.totalAcceptedValue = sumAmounts(acceptedRes.data as Array<{ total_amount?: number | null }> | null)
         } catch (error) {
           console.error('Failed to load dashboard quote metrics:', error)
           quotes.error = 'Failed to load quote metrics'
@@ -1119,6 +1162,45 @@ const fetchDashboardSnapshot = unstable_cache(
           systemHealth.error = 'Failed to load system health'
         }
       })() : Promise.resolve(),
+      // B3 + B4: private booking pipeline value and revenue today
+      privateBookings.permitted ? (async () => {
+        try {
+          // Fetch all upcoming confirmed + draft bookings for pipeline value (no limit)
+          const { data: pipelineData, error: pipelineError } = await supabase
+            .from('private_bookings')
+            .select('status, total_amount, event_date')
+            .gte('event_date', todayIso)
+            .in('status', ['confirmed', 'draft'])
+
+          if (pipelineError) throw pipelineError
+
+          for (const row of pipelineData ?? []) {
+            const amount = Number(row.total_amount ?? 0)
+            if (row.status === 'confirmed') {
+              bookingPipelineValue.confirmed += amount
+              bookingPipelineValue.confirmedCount += 1
+            } else if (row.status === 'draft') {
+              bookingPipelineValue.draft += amount
+              bookingPipelineValue.draftCount += 1
+            }
+          }
+          bookingPipelineValue.total = bookingPipelineValue.confirmed + bookingPipelineValue.draft
+
+          // B4: Revenue today — sum total_amount of confirmed/completed bookings with event_date = today
+          const { data: todayPbData, error: todayPbError } = await supabase
+            .from('private_bookings')
+            .select('total_amount')
+            .eq('event_date', todayIso)
+            .in('status', ['confirmed', 'completed'])
+
+          if (todayPbError) throw todayPbError
+
+          revenueToday = (todayPbData ?? []).reduce((sum, row) => sum + Number(row.total_amount ?? 0), 0)
+        } catch (error) {
+          console.error('Failed to load dashboard booking pipeline / revenue today:', error)
+        }
+      })() : Promise.resolve(),
+
       // Ensure all items in Promise.allSettled are followed by a comma,
       // and the final closing parenthesis and bracket match the opening ones.
     ])
@@ -1148,25 +1230,36 @@ const fetchDashboardSnapshot = unstable_cache(
       cashingUp,
       tableBookings,
       systemHealth,
+      revenueToday,
+      bookingPipelineValue,
     }
-  },
-  ['dashboard-snapshot'],
-  {
-    revalidate: 60,
-    tags: ['dashboard'],
+}
+
+export async function loadDashboardSnapshot(userId?: string): Promise<DashboardSnapshot> {
+  let resolvedUserId = userId
+
+  if (!resolvedUserId) {
+    const supabase = await createClient()
+    const {
+      data: { user },
+      error,
+    } = await supabase.auth.getUser()
+
+    if (error || !user) {
+      throw new Error('Not authenticated')
+    }
+
+    resolvedUserId = user.id
   }
-)
 
-export async function loadDashboardSnapshot() {
-  const supabase = await createClient()
-  const {
-    data: { user },
-    error,
-  } = await supabase.auth.getUser()
+  // Wrap unstable_cache with the userId baked into the key array so each user
+  // gets their own isolated cache entry. Without this, Next.js may serve one
+  // user's dashboard data to another user sharing the same cache tag.
+  const fetchForUser = unstable_cache(
+    async () => fetchDashboardSnapshotImpl(resolvedUserId!),
+    ['dashboard-snapshot', resolvedUserId],
+    { revalidate: 60, tags: ['dashboard', `dashboard-user-${resolvedUserId}`] }
+  )
 
-  if (error || !user) {
-    throw new Error('Not authenticated')
-  }
-
-  return fetchDashboardSnapshot(user.id)
+  return fetchForUser()
 }

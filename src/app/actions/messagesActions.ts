@@ -5,7 +5,7 @@ import type { Message } from '@/types/database'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { logger } from '@/lib/logger'
-import { revalidatePath } from 'next/cache'
+import { revalidatePath, revalidateTag } from 'next/cache'
 import { checkUserPermission } from './rbac'
 
 type CustomerSummary = {
@@ -425,6 +425,7 @@ export async function markMessageAsRead(messageId: string) {
 
   revalidatePath('/messages')
   revalidatePath('/', 'layout')
+  revalidateTag('dashboard')
 }
 
 export async function markAllMessagesAsRead() {
@@ -450,6 +451,7 @@ export async function markAllMessagesAsRead() {
 
   revalidatePath('/messages')
   revalidatePath('/', 'layout')
+  revalidateTag('dashboard')
 }
 
 export async function markConversationAsRead(customerId: string) {
@@ -478,6 +480,7 @@ export async function markConversationAsRead(customerId: string) {
   revalidatePath('/messages')
   revalidatePath('/', 'layout')
   revalidatePath(`/customers/${customerId}`)
+  revalidateTag('dashboard')
 }
 
 export async function markConversationAsUnread(customerId: string) {

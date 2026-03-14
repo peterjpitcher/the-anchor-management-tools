@@ -733,7 +733,8 @@ export async function recordPayment(formData: FormData) {
 
     revalidatePath('/invoices')
     revalidatePath(`/invoices/${invoiceId}`)
-    
+    revalidateTag('dashboard')
+
     return { payment, success: true, remittanceAdvice }
   } catch (error: any) {
     console.error('Error in recordPayment:', error)

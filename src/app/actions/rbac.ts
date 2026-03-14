@@ -55,9 +55,9 @@ export async function getUserPermissions(userId?: string) {
     
     const permissions = await PermissionService.getUserPermissions(targetUserId);
     return { success: true, data: permissions as UserPermission[] };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error fetching user permissions:', error);
-    return { error: error.message || 'Failed to fetch permissions' };
+    return { error: error instanceof Error ? error.message : 'Failed to fetch permissions' };
   }
 }
 
@@ -101,9 +101,9 @@ export async function getCurrentUserModuleActions(moduleName: ModuleName) {
     const uniqueActions = Array.from(new Set(actions));
 
     return { success: true as const, actions: uniqueActions };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error fetching module permissions:', error);
-    return { error: error.message || 'Failed to fetch permissions' };
+    return { error: error instanceof Error ? error.message : 'Failed to fetch permissions' };
   }
 }
 
@@ -123,9 +123,9 @@ export async function getUserRoles(userId?: string) {
 
     const roles = await PermissionService.getUserRoles(targetUserId, checkUserManagementPermission, user.id);
     return { success: true, data: roles || [] };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error fetching user roles:', error);
-    return { error: error.message || 'Failed to fetch roles' };
+    return { error: error instanceof Error ? error.message : 'Failed to fetch roles' };
   }
 }
 
@@ -138,9 +138,9 @@ export async function getAllRoles() {
 
     const roles = await PermissionService.getAllRoles();
     return { success: true, data: roles };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error fetching roles:', error);
-    return { error: error.message || 'Failed to fetch roles' };
+    return { error: error instanceof Error ? error.message : 'Failed to fetch roles' };
   }
 }
 
@@ -153,9 +153,9 @@ export async function getAllPermissions() {
 
     const permissions = await PermissionService.getAllPermissions();
     return { success: true, data: permissions };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error fetching permissions:', error);
-    return { error: error.message || 'Failed to fetch permissions' };
+    return { error: error instanceof Error ? error.message : 'Failed to fetch permissions' };
   }
 }
 
@@ -168,9 +168,9 @@ export async function getRolePermissions(roleId: string) {
 
     const rolePermissions = await PermissionService.getRolePermissions(roleId);
     return { success: true, data: rolePermissions || [] };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error fetching role permissions:', error);
-    return { error: error.message || 'Failed to fetch role permissions' };
+    return { error: error instanceof Error ? error.message : 'Failed to fetch role permissions' };
   }
 }
 
@@ -216,9 +216,9 @@ export async function createRole(prevState: unknown, formData: FormData) {
 
     revalidatePath('/roles');
     return { success: true, data: newRole };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error creating role:', error);
-    return { error: error.message || 'Failed to create role' };
+    return { error: error instanceof Error ? error.message : 'Failed to create role' };
   }
 }
 
@@ -270,9 +270,9 @@ export async function updateRole(prevState: unknown, formData: FormData) {
 
     revalidatePath('/roles');
     return { success: true };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error updating role:', error);
-    return { error: error.message || 'Failed to update role' };
+    return { error: error instanceof Error ? error.message : 'Failed to update role' };
   }
 }
 
@@ -302,9 +302,9 @@ export async function deleteRole(roleId: string) {
 
     revalidatePath('/roles');
     return { success: true };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error deleting role:', error);
-    return { error: error.message || 'Failed to delete role' };
+    return { error: error instanceof Error ? error.message : 'Failed to delete role' };
   }
 }
 
@@ -336,9 +336,9 @@ export async function assignPermissionsToRole(roleId: string, permissionIds: str
     
     revalidatePath('/roles');
     return { success: true };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error assigning permissions:', error);
-    return { error: error.message || 'Failed to assign permissions' };
+    return { error: error instanceof Error ? error.message : 'Failed to assign permissions' };
   }
 }
 
@@ -370,9 +370,9 @@ export async function assignRolesToUser(userId: string, roleIds: string[]) {
     
     revalidatePath('/users');
     return { success: true };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error assigning roles:', error);
-    return { error: error.message || 'Failed to assign roles' };
+    return { error: error instanceof Error ? error.message : 'Failed to assign roles' };
   }
 }
 
@@ -387,8 +387,8 @@ export async function getAllUsers() {
     const users = await PermissionService.getAllUsers(actingUser);
 
     return { success: true, data: users };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error fetching users:', error);
-    return { error: error.message || 'Failed to fetch users' };
+    return { error: error instanceof Error ? error.message : 'Failed to fetch users' };
   }
 }

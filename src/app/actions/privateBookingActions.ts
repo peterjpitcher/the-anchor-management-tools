@@ -2,8 +2,10 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { createSimplePayPalOrder, capturePayPalPayment, getPayPalOrder } from '@/lib/paypal'
 import { logger } from '@/lib/logger'
 import { checkUserPermission } from '@/app/actions/rbac'
+import { generateBookingToken } from '@/lib/private-bookings/booking-token'
 import { revalidatePath, revalidateTag } from 'next/cache'
 import { z } from 'zod'
 import type {
@@ -25,6 +27,7 @@ import {
   UpdatePrivateBookingInput
 } from '@/services/private-bookings'
 import { SmsQueueService } from '@/services/sms-queue' // Still needed for SMS actions
+import { sendBookingCalendarInvite, sendDepositPaymentLinkEmail } from '@/lib/email/private-booking-emails'
 
 // Helper function to extract string values from FormData
 const getString = (formData: FormData, key: string): string | undefined => {
@@ -1301,5 +1304,378 @@ export async function deleteVendor(id: string) {
   } catch (error: any) {
     logPrivateBookingActionError('Error deleting vendor:', error)
     return { error: error.message || 'Failed to delete vendor' }
+  }
+}
+
+// Create a PayPal order for a private booking deposit
+export async function createDepositPaymentOrder(
+  bookingId: string
+): Promise<{ success?: boolean; approveUrl?: string; orderId?: string; error?: string }> {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+
+  if (!user) {
+    return { error: 'Not authenticated' }
+  }
+
+  const canManageDeposits = await checkUserPermission('private_bookings', 'manage_deposits')
+  if (!canManageDeposits) {
+    return { error: 'You do not have permission to manage deposits' }
+  }
+
+  // Fetch the booking using admin client (service role) to avoid RLS issues during write
+  const admin = createAdminClient()
+  const { data: booking, error: fetchError } = await admin
+    .from('private_bookings')
+    .select('id, deposit_amount, event_date, event_type, customer_name, customer_first_name, contact_email, status, deposit_paid_date, paypal_deposit_order_id')
+    .eq('id', bookingId)
+    .maybeSingle()
+
+  if (fetchError) {
+    logger.error('Error fetching booking for PayPal deposit order', {
+      error: fetchError,
+      metadata: { bookingId }
+    })
+    return { error: 'Failed to load booking' }
+  }
+
+  if (!booking) {
+    return { error: 'Booking not found' }
+  }
+
+  if (booking.status !== 'draft') {
+    return { error: 'Deposits can only be recorded against draft bookings' }
+  }
+
+  if (booking.deposit_paid_date) {
+    return { error: 'Deposit has already been paid for this booking' }
+  }
+
+  const depositAmount = typeof booking.deposit_amount === 'number' ? booking.deposit_amount : 0
+  if (depositAmount <= 0) {
+    return { error: 'No deposit amount set for this booking' }
+  }
+
+  // If an order already exists, attempt to reuse it
+  if (booking.paypal_deposit_order_id) {
+    try {
+      const existingOrder = await getPayPalOrder(booking.paypal_deposit_order_id)
+      // If order is still CREATED or APPROVED, return its approve URL
+      if (existingOrder?.status === 'CREATED' || existingOrder?.status === 'APPROVED') {
+        const approveUrl =
+          existingOrder.links?.find((l: { rel: string; href: string }) => l.rel === 'payer-action')?.href ||
+          existingOrder.links?.find((l: { rel: string; href: string }) => l.rel === 'approve')?.href
+        if (approveUrl) {
+          return { success: true, approveUrl, orderId: booking.paypal_deposit_order_id }
+        }
+      }
+      // Order is no longer usable — fall through to create a new one
+    } catch (lookupError) {
+      logger.error('Failed to look up existing PayPal deposit order; will create a new one', {
+        error: lookupError instanceof Error ? lookupError : new Error(String(lookupError)),
+        metadata: { bookingId, orderId: booking.paypal_deposit_order_id }
+      })
+    }
+  }
+
+  try {
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL || ''
+    const result = await createSimplePayPalOrder({
+      customId: `pb-deposit-${bookingId}`,
+      reference: bookingId,
+      description: `Deposit for ${booking.event_type || 'Private Booking'} on ${booking.event_date}`,
+      amount: depositAmount,
+      returnUrl: `${appUrl}/private-bookings/${bookingId}?paypal_return=deposit&order_id=`,
+      cancelUrl: `${appUrl}/private-bookings/${bookingId}?paypal_cancel=deposit`,
+      currency: 'GBP',
+      brandName: 'The Anchor',
+      requestId: `pb-deposit-${bookingId}`,
+    })
+
+    // Persist the order ID so we can re-use or track it
+    const { error: updateError } = await admin
+      .from('private_bookings')
+      .update({ paypal_deposit_order_id: result.orderId })
+      .eq('id', bookingId)
+
+    if (updateError) {
+      logger.error('Failed to persist paypal_deposit_order_id on booking', {
+        error: updateError,
+        metadata: { bookingId, orderId: result.orderId }
+      })
+      // Non-fatal: the payment link is still valid even if we couldn't persist the order ID
+    }
+
+    return { success: true, approveUrl: result.approveUrl, orderId: result.orderId }
+  } catch (error: any) {
+    logger.error('Error creating PayPal deposit order', {
+      error: error instanceof Error ? error : new Error(String(error)),
+      metadata: { bookingId }
+    })
+    return { error: error.message || 'Failed to create PayPal payment order' }
+  }
+}
+
+// Capture a PayPal deposit payment after the customer approves it
+export async function captureDepositPayment(
+  bookingId: string,
+  orderId: string
+): Promise<{ success?: boolean; error?: string }> {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+
+  if (!user) {
+    return { error: 'Not authenticated' }
+  }
+
+  const canManageDeposits = await checkUserPermission('private_bookings', 'manage_deposits')
+  if (!canManageDeposits) {
+    return { error: 'You do not have permission to manage deposits' }
+  }
+
+  const admin = createAdminClient()
+  const { data: booking, error: fetchError } = await admin
+    .from('private_bookings')
+    .select('id, deposit_amount, deposit_paid_date, paypal_deposit_order_id, status, customer_first_name, customer_name, event_date, event_type, contact_email, contact_phone, customer_id, calendar_event_id, balance_due_date, total_amount')
+    .eq('id', bookingId)
+    .maybeSingle()
+
+  if (fetchError) {
+    logger.error('Error fetching booking for PayPal deposit capture', {
+      error: fetchError,
+      metadata: { bookingId }
+    })
+    return { error: 'Failed to load booking' }
+  }
+
+  if (!booking) {
+    return { error: 'Booking not found' }
+  }
+
+  if (booking.paypal_deposit_order_id !== orderId) {
+    return { error: 'Order ID does not match this booking' }
+  }
+
+  if (booking.deposit_paid_date) {
+    // Already captured — idempotent success
+    return { success: true }
+  }
+
+  try {
+    const captureResult = await capturePayPalPayment(orderId)
+
+    // Record deposit: mark deposit_paid_date, method=paypal, store capture ID
+    const { error: updateError } = await admin
+      .from('private_bookings')
+      .update({
+        deposit_paid_date: new Date().toISOString(),
+        deposit_payment_method: 'paypal',
+        paypal_deposit_capture_id: captureResult.transactionId,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', bookingId)
+      .is('deposit_paid_date', null) // Guard against double-capture
+
+    if (updateError) {
+      logger.error('Failed to record PayPal deposit capture on booking', {
+        error: updateError,
+        metadata: { bookingId, orderId, captureId: captureResult.transactionId }
+      })
+      return { error: 'Payment was captured but we failed to update the booking. Please contact support.' }
+    }
+
+    // Audit log
+    try {
+      await logAuditEvent({
+        user_id: user.id,
+        operation_type: 'update',
+        resource_type: 'private_booking',
+        resource_id: bookingId,
+        operation_status: 'success',
+        additional_info: {
+          action: 'paypal_deposit_captured',
+          order_id: orderId,
+          capture_id: captureResult.transactionId,
+          amount: captureResult.amount,
+        },
+      })
+    } catch (auditError) {
+      logger.error('Failed to log audit event for PayPal deposit capture', {
+        error: auditError instanceof Error ? auditError : new Error(String(auditError)),
+        metadata: { bookingId }
+      })
+    }
+
+    revalidatePath(`/private-bookings/${bookingId}`)
+    revalidatePath('/private-bookings')
+    revalidateTag('dashboard')
+    return { success: true }
+  } catch (error: any) {
+    logger.error('Error capturing PayPal deposit payment', {
+      error: error instanceof Error ? error : new Error(String(error)),
+      metadata: { bookingId, orderId }
+    })
+    return { error: error.message || 'Failed to capture PayPal payment' }
+  }
+}
+
+/**
+ * Resend a calendar invite (.ics) to the customer for a confirmed/completed booking.
+ * Awaited — caller sees success/failure immediately.
+ */
+export async function resendCalendarInvite(
+  bookingId: string
+): Promise<{ success?: boolean; error?: string }> {
+  const canEdit = await checkUserPermission('private_bookings', 'edit')
+  if (!canEdit) {
+    return { error: 'You do not have permission to perform this action' }
+  }
+
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) {
+    return { error: 'Not authenticated' }
+  }
+
+  // Fetch the booking fields needed for the invite
+  const admin = createAdminClient()
+  const { data: booking, error: fetchError } = await admin
+    .from('private_bookings')
+    .select(
+      'id, contact_email, customer_first_name, customer_last_name, customer_name, event_date, start_time, end_time, end_time_next_day, event_type, guest_count, status'
+    )
+    .eq('id', bookingId)
+    .single()
+
+  if (fetchError || !booking) {
+    return { error: 'Booking not found' }
+  }
+
+  if (!booking.contact_email) {
+    return { error: 'This booking has no contact email address' }
+  }
+
+  if (booking.status !== 'confirmed' && booking.status !== 'completed') {
+    return { error: 'Calendar invites can only be sent for confirmed or completed bookings' }
+  }
+
+  try {
+    await sendBookingCalendarInvite(booking)
+  } catch (e) {
+    logPrivateBookingActionError('Error sending calendar invite', e, { bookingId })
+    return { error: 'Failed to send the calendar invite — please try again' }
+  }
+
+  try {
+    await logAuditEvent({
+      user_id: user.id,
+      operation_type: 'calendar_invite_resent',
+      resource_type: 'private_booking',
+      resource_id: bookingId,
+      operation_status: 'success',
+    })
+  } catch (auditError) {
+    logger.error('Failed to log audit event for calendar invite resend', {
+      error: auditError instanceof Error ? auditError : new Error(String(auditError)),
+      metadata: { bookingId },
+    })
+  }
+
+  revalidatePath(`/private-bookings/${bookingId}`)
+  return { success: true }
+}
+
+/**
+ * Generates a shareable, read-only customer portal link for a private booking.
+ * The link embeds an HMAC-signed token — no login required for the customer.
+ * Requires the caller to have at least 'view' permission on private_bookings.
+ */
+export async function getBookingPortalLink(
+  bookingId: string
+): Promise<{ success?: boolean; url?: string; error?: string }> {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+
+  if (!user) {
+    return { error: 'Not authenticated' }
+  }
+
+  const hasPermission = await checkUserPermission('private_bookings', 'view')
+  if (!hasPermission) {
+    return { error: 'Insufficient permissions' }
+  }
+
+  const token = generateBookingToken(bookingId)
+  const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? ''
+  const url = `${baseUrl}/booking-portal/${token}`
+
+  return { success: true, url }
+}
+
+/**
+ * Create a PayPal deposit payment order and email the approve link directly to the customer.
+ * Staff-initiated, not automated.
+ */
+export async function sendDepositPaymentLink(
+  bookingId: string
+): Promise<{ success?: boolean; error?: string }> {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+
+  if (!user) return { error: 'Not authenticated' }
+
+  const canManageDeposits = await checkUserPermission('private_bookings', 'manage_deposits')
+  if (!canManageDeposits) return { error: 'You do not have permission to manage deposits' }
+
+  const admin = createAdminClient()
+  const { data: booking, error: fetchError } = await admin
+    .from('private_bookings')
+    .select('id, deposit_amount, deposit_paid_date, status, event_date, event_type, customer_first_name, customer_name, contact_email')
+    .eq('id', bookingId)
+    .maybeSingle()
+
+  if (fetchError) return { error: 'Failed to load booking' }
+  if (!booking) return { error: 'Booking not found' }
+  if (booking.status !== 'draft') return { error: 'Deposit payments can only be sent for draft bookings' }
+  if (booking.deposit_paid_date) return { error: 'Deposit has already been paid' }
+
+  const depositAmount = typeof booking.deposit_amount === 'number' ? booking.deposit_amount : 0
+  if (depositAmount <= 0) return { error: 'No deposit amount set for this booking' }
+  if (!booking.contact_email) return { error: 'No email address on file for this customer' }
+
+  try {
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL || ''
+    const portalToken = generateBookingToken(bookingId)
+    const portalUrl = `${appUrl}/booking-portal/${portalToken}`
+
+    const result = await createSimplePayPalOrder({
+      customId: `pb-deposit-${bookingId}`,
+      reference: bookingId,
+      description: `Deposit for ${booking.event_type || 'Private Booking'} on ${booking.event_date}`,
+      amount: depositAmount,
+      returnUrl: `${portalUrl}?payment_pending=1`,
+      cancelUrl: `${portalUrl}`,
+      currency: 'GBP',
+      brandName: 'The Anchor',
+      // Unique per-send so we always get a fresh PayPal link rather than reusing a stale one
+      requestId: `pb-deposit-customer-${bookingId}-${Date.now()}`,
+    })
+
+    // Persist the latest order ID
+    await admin
+      .from('private_bookings')
+      .update({ paypal_deposit_order_id: result.orderId })
+      .eq('id', bookingId)
+
+    await sendDepositPaymentLinkEmail(booking, result.approveUrl)
+
+    logger.info('Deposit payment link sent to customer', { metadata: { bookingId, orderId: result.orderId } })
+    return { success: true }
+  } catch (error: unknown) {
+    logger.error('Error sending deposit payment link', {
+      error: error instanceof Error ? error : new Error(String(error)),
+      metadata: { bookingId }
+    })
+    return { error: error instanceof Error ? error.message : 'Failed to send payment link' }
   }
 }

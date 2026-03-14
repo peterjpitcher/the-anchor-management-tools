@@ -91,9 +91,12 @@ export default async function RotaPage({ searchParams }: RotaPageProps) {
 
   if (!weekResult.success) {
     return (
-      <PageLayout title="Rota" subtitle="Weekly rota planning" navItems={rotaNavItems}>
-        <p className="text-red-600 text-sm">Error loading rota: {weekResult.error}</p>
-      </PageLayout>
+      <PageLayout
+        title="Rota"
+        subtitle="Weekly rota planning"
+        navItems={rotaNavItems}
+        error={weekResult.error ?? 'Failed to load rota data. Please try again.'}
+      />
     );
   }
 

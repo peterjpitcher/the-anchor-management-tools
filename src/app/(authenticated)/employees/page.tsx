@@ -41,13 +41,10 @@ export default async function EmployeesPage({ searchParams }: PageProps) {
     pageSize: 50
   })
 
-  if (initialData.error) {
-    throw new Error(initialData.error)
-  }
-
   return (
     <EmployeesClientPage
       initialData={initialData}
+      initialError={initialData.error ?? null}
       permissions={{
         canCreate,
         canExport,

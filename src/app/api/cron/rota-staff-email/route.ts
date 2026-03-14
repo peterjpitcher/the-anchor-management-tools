@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { toZonedTime, format, formatInTimeZone } from 'date-fns-tz';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { sendRotaWeekEmails } from '@/lib/rota/send-rota-emails';
+import { authorizeCronRequest } from '@/lib/cron-auth';
 
 // Vercel Cron: runs at 21:00 Europe/London every Sunday
 const TIMEZONE = 'Europe/London';
@@ -15,8 +16,8 @@ function getNextMondayIso(nowUtc: Date): string {
 }
 
 export async function GET(request: Request) {
-  const authHeader = request.headers.get('authorization');
-  if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+  const authResult = authorizeCronRequest(request);
+  if (!authResult.authorized) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 

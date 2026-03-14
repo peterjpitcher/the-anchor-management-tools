@@ -41,8 +41,11 @@ const PRIVATE_BOOKING_SMS_AUTO_SEND_TRIGGERS = new Set<string>([
   'deposit_reminder_7day',
   'deposit_reminder_1day',
   'balance_reminder_14day',
+  'balance_reminder_7day',
+  'balance_reminder_1day',
   'event_reminder_1d',
   'setup_reminder',
+  'post_event_followup',
   'manual',
 ]);
 

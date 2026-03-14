@@ -1,6 +1,8 @@
 import crypto from 'crypto'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { logger } from '@/lib/logger'
+import type { Database } from '@/types/database.generated'
+import { stableSerialize } from '@/lib/api/idempotency'
 
 type SmsSafetyConfig = {
   enabled: boolean
@@ -85,23 +87,6 @@ function resolveConfig(): SmsSafetyConfig {
 
 function normalizePhone(to: string): string {
   return to.replace(/\s+/g, '')
-}
-
-function stableSerialize(value: unknown): string {
-  if (value === null || typeof value !== 'object') {
-    return JSON.stringify(value)
-  }
-
-  if (Array.isArray(value)) {
-    return `[${value.map((item) => stableSerialize(item)).join(',')}]`
-  }
-
-  const entries = Object.entries(value as Record<string, unknown>)
-    .filter(([, entryValue]) => entryValue !== undefined)
-    .sort(([left], [right]) => left.localeCompare(right))
-    .map(([entryKey, entryValue]) => `${JSON.stringify(entryKey)}:${stableSerialize(entryValue)}`)
-
-  return `{${entries.join(',')}}`
 }
 
 function hashSha256(value: string): string {
@@ -205,7 +190,7 @@ function resolveMissingIdempotencyTableResult(
 }
 
 export async function claimSmsIdempotency(
-  supabase: SupabaseClient<any, 'public', any>,
+  supabase: SupabaseClient<Database, 'public'>,
   context: SmsDedupContext
 ): Promise<SmsIdempotencyClaimResult> {
   const { idempotencyTtlHours, allowMissingTables } = resolveConfig()
@@ -221,7 +206,7 @@ export async function claimSmsIdempotency(
     expires_at: expiresAt
   }
 
-  const { error } = await (supabase.from('idempotency_keys') as any).insert(claimPayload)
+  const { error } = await supabase.from('idempotency_keys').insert(claimPayload)
 
   if (!error) {
     return 'claimed'
@@ -236,7 +221,7 @@ export async function claimSmsIdempotency(
     throw error
   }
 
-  const { data: existing, error: existingError } = await (supabase.from('idempotency_keys') as any)
+  const { data: existing, error: existingError } = await supabase.from('idempotency_keys')
     .select('request_hash, expires_at')
     .eq('key', context.key)
     .maybeSingle()
@@ -249,7 +234,7 @@ export async function claimSmsIdempotency(
   }
 
   if (!existing) {
-    const { error: retryError } = await (supabase.from('idempotency_keys') as any).insert(claimPayload)
+    const { error: retryError } = await supabase.from('idempotency_keys').insert(claimPayload)
     if (!retryError) {
       return 'claimed'
     }
@@ -267,7 +252,7 @@ export async function claimSmsIdempotency(
   }
 
   if (isExpired(existing.expires_at)) {
-    let reclaimQuery = (supabase.from('idempotency_keys') as any)
+    let reclaimQuery = supabase.from('idempotency_keys')
       .update({
         request_hash: context.requestHash,
         response: {
@@ -308,10 +293,10 @@ export async function claimSmsIdempotency(
 }
 
 export async function releaseSmsIdempotencyClaim(
-  supabase: SupabaseClient<any, 'public', any>,
+  supabase: SupabaseClient<Database, 'public'>,
   context: SmsDedupContext
 ): Promise<void> {
-  const { error } = await (supabase.from('idempotency_keys') as any)
+  const { error } = await supabase.from('idempotency_keys')
     .delete()
     .eq('key', context.key)
     .eq('request_hash', context.requestHash)
@@ -320,14 +305,14 @@ export async function releaseSmsIdempotencyClaim(
     logger.warn('Failed releasing SMS idempotency claim', {
       metadata: {
         key: context.key,
-        error: (error as any)?.message || String(error)
+        error: error instanceof Error ? error.message : String(error)
       }
     })
   }
 }
 
 export async function evaluateSmsSafetyLimits(
-  supabase: SupabaseClient<any, 'public', any>,
+  supabase: SupabaseClient<Database, 'public'>,
   params: {
     to: string
     customerId?: string | null
@@ -350,16 +335,16 @@ export async function evaluateSmsSafetyLimits(
   const recipientValue = params.customerId || normalizePhone(params.to)
 
   const [{ count: globalCount, error: globalError }, { count: recipientHourCount, error: recipientHourError }, { count: recipientDayCount, error: recipientDayError }] = await Promise.all([
-    (supabase.from('messages') as any)
+    supabase.from('messages')
       .select('id', { count: 'exact', head: true })
       .eq('direction', 'outbound')
       .gte('created_at', hourAgoIso),
-    (supabase.from('messages') as any)
+    supabase.from('messages')
       .select('id', { count: 'exact', head: true })
       .eq('direction', 'outbound')
       .eq(recipientColumn, recipientValue)
       .gte('created_at', hourAgoIso),
-    (supabase.from('messages') as any)
+    supabase.from('messages')
       .select('id', { count: 'exact', head: true })
       .eq('direction', 'outbound')
       .eq(recipientColumn, recipientValue)
@@ -371,13 +356,13 @@ export async function evaluateSmsSafetyLimits(
     if (isMissingTableError(firstError)) {
       if (config.allowMissingTables) {
         logger.warn('SMS safety limits skipped because messages table is unavailable', {
-          metadata: { error: (firstError as any)?.message || String(firstError) }
+          metadata: { error: firstError instanceof Error ? firstError.message : String(firstError) }
         })
         return { allowed: true, metrics }
       }
 
       logger.error('SMS safety limits unavailable because messages table is missing; blocking send', {
-        metadata: { error: (firstError as any)?.message || String(firstError) }
+        metadata: { error: firstError instanceof Error ? firstError.message : String(firstError) }
       })
       return {
         allowed: false,
