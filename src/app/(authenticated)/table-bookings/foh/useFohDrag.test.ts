@@ -139,13 +139,7 @@ describe('useFohDrag', () => {
     const { result } = renderHook(() => useFohDrag(ref as React.RefObject<HTMLElement | null>))
 
     act(() => {
-      result.current.onDragEnd({
-        active: { id: 'b1', data: { current: { bookingId: 'b1', bookingLabel: 'X', fromTime: '12:00', tableId: 'ta', tableName: 'T1', durationMinutes: 60, startMinutes: 720, timelineStartMin: 660, timelineEndMin: 1380 } }, rect: { current: { initial: null, translated: null } } },
-        over: { id: 'ta', data: { current: {} }, rect: { width: 0, height: 0 }, disabled: false },
-        delta: { x: 10, y: 0 },
-        activatorEvent: makePointerEvent(),
-        collisions: null,
-      } as any)
+      result.current.onDragEnd(makeDragEndEvent(makeBookingData(), 'table-a', {}, 10))
     })
 
     act(() => result.current.cancel())
@@ -191,6 +185,20 @@ describe('useFohDrag', () => {
       expect(result.current.isDragging).toBe(true)
 
       act(() => { result.current.onDragEnd(makeDragEndEvent(makeBookingData())) })
+      expect(result.current.isDragging).toBe(false)
+    })
+
+    it('does not set isDragging when drag data is missing', () => {
+      const ref = createTimelineRef()
+      const { result } = renderHook(() => useFohDrag(ref as React.RefObject<HTMLElement | null>))
+
+      act(() => {
+        result.current.onDragStart({
+          active: { id: 'booking-1', data: { current: undefined }, rect: { current: { initial: null, translated: null } } },
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        } as any) // dnd-kit DragStartEvent; data.current is intentionally undefined to test the guard
+      })
+
       expect(result.current.isDragging).toBe(false)
     })
   })
@@ -329,6 +337,8 @@ describe('useFohDrag', () => {
       expect(result.current.confirmError).toBe('Server error')
       // Modal stays open — pendingMove must NOT be cleared
       expect(result.current.pendingMove).not.toBeNull()
+      // isSubmitting must have been reset by the finally block
+      expect(result.current.isSubmitting).toBe(false)
     })
   })
 

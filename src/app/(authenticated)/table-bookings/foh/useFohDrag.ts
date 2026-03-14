@@ -192,6 +192,7 @@ export function useFohDrag(timelineRef: React.RefObject<HTMLElement | null>): {
   }, [timelineRef])
 
   const confirm = useCallback(async () => {
+    // Guard: if no pending move, do nothing (isSubmitting is already false)
     if (!pendingMove) return
     setIsSubmitting(true)
     setConfirmError(null)
