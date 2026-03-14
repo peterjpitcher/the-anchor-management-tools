@@ -142,7 +142,8 @@ describe('useFohDrag', () => {
     expect(result.current.confirmError).toBeNull()
   })
 
-  it('does not set pendingMove if dropped with no over target', () => {
+  it('treats null over target as same-table time change when pointer is in-bounds', () => {
+    // Previously this returned early (bug). Now: null over + in-bounds → time pendingMove.
     const ref = createTimelineRef()
     const { result } = renderHook(() => useFohDrag(ref as React.RefObject<HTMLElement | null>))
 
@@ -151,6 +152,41 @@ describe('useFohDrag', () => {
         active: { id: 'b1', data: { current: { bookingId: 'b1', bookingLabel: 'X', fromTime: '12:00', tableId: 'ta', tableName: 'T1', durationMinutes: 60, startMinutes: 720, timelineStartMin: 660, timelineEndMin: 1380 } }, rect: { current: { initial: null, translated: null } } },
         over: null,
         delta: { x: 10, y: 0 },
+        activatorEvent: makePointerEvent(),
+        collisions: null,
+      } as any)
+    })
+
+    // snapToInterval mock returns '13:00', which differs from fromTime '12:00' → pendingMove set
+    expect(result.current.pendingMove?.type).toBe('time')
+  })
+
+  it('does not set pendingMove if pointer is out-of-bounds at drop', () => {
+    // Pointer ends outside timeline bounds → drag rejected regardless of over target.
+    // onDragStart must be called first to populate dragDataRef so onDragMove can run.
+    const ref = createTimelineRef({ left: 100, right: 700, width: 600 })
+    const { result } = renderHook(() => useFohDrag(ref as React.RefObject<HTMLElement | null>))
+    const bookingData = { bookingId: 'b1', bookingLabel: 'X', fromTime: '12:00', tableId: 'ta', tableName: 'T1', durationMinutes: 60, startMinutes: 720, timelineStartMin: 660, timelineEndMin: 1380 }
+
+    act(() => {
+      result.current.onDragStart(makeDragStartEvent(bookingData))
+    })
+
+    act(() => {
+      result.current.onDragMove({
+        active: { id: 'b1', data: { current: bookingData }, rect: { current: { initial: null, translated: null } } },
+        over: null,
+        delta: { x: 800, y: 0 }, // pointer at 0 + 800 = 800, outside right: 700
+        activatorEvent: makePointerEvent('pointermove', 0),
+        collisions: null,
+      } as any)
+    })
+
+    act(() => {
+      result.current.onDragEnd({
+        active: { id: 'b1', data: { current: bookingData }, rect: { current: { initial: null, translated: null } } },
+        over: null,
+        delta: { x: 800, y: 0 },
         activatorEvent: makePointerEvent(),
         collisions: null,
       } as any)
