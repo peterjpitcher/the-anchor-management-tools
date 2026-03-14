@@ -694,6 +694,13 @@ export function BohBookingsClient({
                 </button>
               ))}
             </div>
+            <a
+              href={`/api/boh/table-bookings/preorder-sheet?date=${focusDate}`}
+              download
+              className="ml-2 inline-flex items-center rounded-md border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
+            >
+              Kitchen pre-order sheet
+            </a>
           </div>
         </div>
 
