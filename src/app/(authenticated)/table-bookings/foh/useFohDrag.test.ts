@@ -51,9 +51,7 @@ const makeDragStartEvent = (data: ReturnType<typeof makeBookingData>) => ({
     data: { current: data },
     rect: { current: { initial: null, translated: null } },
   },
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   activatorEvent: makePointerEvent() as any, // dnd-kit expects Event; PointerEvent stub satisfies runtime shape
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 } as any) // DragStartEvent has internal generics not assignable from a plain object literal
 
 const makeDragMoveEvent = (
@@ -66,12 +64,10 @@ const makeDragMoveEvent = (
     data: { current: data },
     rect: { current: { initial: null, translated: null } },
   },
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   activatorEvent: makePointerEvent('pointermove', clientX) as any, // dnd-kit expects Event; PointerEvent stub satisfies runtime shape
   delta: { x: deltaX, y: 0 },
   over: null,
   collisions: null,
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 } as any) // DragMoveEvent has internal generics not assignable from a plain object literal
 
 const makeDragEndEvent = (
@@ -87,10 +83,8 @@ const makeDragEndEvent = (
   },
   over: { id: overId, data: { current: overData }, rect: { width: 0, height: 0 }, disabled: false },
   delta: { x: deltaX, y: 0 },
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   activatorEvent: makePointerEvent() as any, // dnd-kit expects Event; PointerEvent stub satisfies runtime shape
   collisions: null,
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 } as any) // DragEndEvent has internal generics not assignable from a plain object literal
 
 describe('useFohDrag', () => {
@@ -195,7 +189,6 @@ describe('useFohDrag', () => {
       act(() => {
         result.current.onDragStart({
           active: { id: 'booking-1', data: { current: undefined }, rect: { current: { initial: null, translated: null } } },
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
         } as any) // dnd-kit DragStartEvent; data.current is intentionally undefined to test the guard
       })
 
