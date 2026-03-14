@@ -78,15 +78,6 @@ export function DragConfirmationModal({
 
         <p className="mb-5 text-sm text-[hsl(var(--muted-foreground))]">{message}</p>
 
-        {error && (
-          <p
-            className="mb-4 rounded border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700"
-            role="alert"
-          >
-            {error}
-          </p>
-        )}
-
         <div className="flex justify-end gap-3">
           <button
             type="button"
@@ -105,6 +96,15 @@ export function DragConfirmationModal({
             {isSubmitting ? 'Moving…' : 'Confirm'}
           </button>
         </div>
+
+        {error && (
+          <p
+            className="mt-4 rounded border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700"
+            role="alert"
+          >
+            {error}
+          </p>
+        )}
       </div>
     </div>
   )
