@@ -37,12 +37,13 @@ import { formatDateDdMmmmYyyy } from '@/lib/dateUtils'
 
 type EntryFormState = {
   id?: string
-  entry_type: 'time' | 'mileage'
+  entry_type: 'time' | 'mileage' | 'one_off'
   vendor_id: string
   project_id: string
   entry_date: string
   duration_hours: number
   miles: string
+  amount_ex_vat: string
   work_type_id: string
   description: string
   internal_notes: string
@@ -94,6 +95,7 @@ export default function OJProjectsEntriesPage() {
     entry_date: '',
     duration_hours: 1.0,
     miles: '',
+    amount_ex_vat: '',
     work_type_id: '',
     description: '',
     internal_notes: '',
@@ -176,6 +178,7 @@ export default function OJProjectsEntriesPage() {
       entry_date: entry.entry_date,
       duration_hours: durationHrs,
       miles: entry.miles != null ? String(entry.miles) : '',
+      amount_ex_vat: entry.amount_ex_vat_snapshot != null ? String(entry.amount_ex_vat_snapshot) : '',
       work_type_id: entry.work_type_id || '',
       description: entry.description || '',
       internal_notes: entry.internal_notes || '',
@@ -204,6 +207,8 @@ export default function OJProjectsEntriesPage() {
       if (form.entry_type === 'time') {
         fd.append('duration_minutes', String(form.duration_hours * 60))
         fd.append('work_type_id', form.work_type_id || '')
+      } else if (form.entry_type === 'one_off') {
+        fd.append('amount_ex_vat', form.amount_ex_vat)
       } else {
         fd.append('miles', form.miles)
       }
@@ -342,6 +347,7 @@ export default function OJProjectsEntriesPage() {
                   <option value="all">All Types</option>
                   <option value="time">Time</option>
                   <option value="mileage">Mileage</option>
+                  <option value="one_off">One-off Charge</option>
                 </Select>
               </FormGroup>
 
@@ -402,6 +408,8 @@ export default function OJProjectsEntriesPage() {
                                 : '—'}
                             </span>
                           </>
+                        ) : entry.entry_type === 'one_off' ? (
+                          <span className="text-gray-500">—</span>
                         ) : (
                           <>
                             <MapPin className="w-3.5 h-3.5 text-gray-400" />
@@ -423,6 +431,8 @@ export default function OJProjectsEntriesPage() {
                       {new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP' }).format(
                         entry.entry_type === 'time'
                           ? ((entry.duration_minutes_rounded || 0) / 60) * (entry.hourly_rate_ex_vat_snapshot || 0)
+                          : entry.entry_type === 'one_off'
+                          ? (entry.amount_ex_vat_snapshot || 0)
                           : (entry.miles || 0) * (entry.mileage_rate_snapshot || 0)
                       )}
                     </td>
@@ -473,6 +483,7 @@ export default function OJProjectsEntriesPage() {
               >
                 <option value="time">Time</option>
                 <option value="mileage">Mileage</option>
+                <option value="one_off">One-off Charge</option>
               </Select>
             </FormGroup>
 
@@ -539,6 +550,17 @@ export default function OJProjectsEntriesPage() {
                   </Select>
                 </FormGroup>
               </>
+            ) : form.entry_type === 'one_off' ? (
+              <FormGroup label="Amount (ex VAT, £)" required>
+                <Input
+                  type="number"
+                  min="0.01"
+                  step="0.01"
+                  value={form.amount_ex_vat}
+                  onChange={(e) => setForm({ ...form, amount_ex_vat: e.target.value })}
+                  required
+                />
+              </FormGroup>
             ) : (
               <FormGroup label="Miles" required>
                 <Input
