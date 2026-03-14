@@ -21,6 +21,7 @@ import {
   ExclamationTriangleIcon,
   PlusIcon,
   CalendarDaysIcon,
+  PrinterIcon,
 } from '@heroicons/react/24/outline';
 import { Button } from '@/components/ui-v2/forms/Button';
 import { Badge } from '@/components/ui-v2/display/Badge';
@@ -582,6 +583,16 @@ export default function RotaGrid({
               Apply templates
             </Button>
           )}
+
+          <a
+            href={`/api/rota/pdf?week=${weekStart}`}
+            download
+            title="Download rota as PDF"
+            className="flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-md text-gray-600 border border-gray-200 hover:bg-gray-50 hover:text-gray-800 transition-colors"
+          >
+            <PrinterIcon className="h-3.5 w-3.5" />
+            Download PDF
+          </a>
         </div>
 
         {currentYearBudgets.length > 0 && (

@@ -6,7 +6,7 @@ import { checkUserPermission } from '@/app/actions/rbac';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { logAuditEvent } from '@/app/actions/audit';
-import { sendRotaWeekEmails } from '@/lib/rota/send-rota-emails';
+import { sendRotaWeekEmails, sendRotaWeekChangeEmails, type DiffShiftRow } from '@/lib/rota/send-rota-emails';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -799,6 +799,15 @@ export async function publishRotaWeek(weekId: string): Promise<
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
 
+  // Fetch week metadata early — needed to determine first vs. re-publish
+  const { data: weekRow } = await supabase
+    .from('rota_weeks')
+    .select('week_start, status')
+    .eq('id', weekId)
+    .single();
+
+  const isRepublish = weekRow?.status === 'published';
+
   // Snapshot current shifts into rota_published_shifts so staff only see
   // what was published, not in-progress edits.
   const { data: currentShifts } = await supabase
@@ -815,6 +824,17 @@ export async function publishRotaWeek(weekId: string): Promise<
   // for regular users (intentional: only the system should write to this table).
   const admin = createAdminClient();
   const now = new Date().toISOString();
+
+  // For a re-publish, capture the previous snapshot BEFORE we overwrite it so we
+  // can compute the per-employee diff and only email staff whose shifts changed.
+  let previousPublishedShifts: DiffShiftRow[] = [];
+  if (isRepublish) {
+    const { data: prev } = await admin
+      .from('rota_published_shifts')
+      .select('id, employee_id, shift_date, start_time, end_time, department, name, is_open_shift')
+      .eq('week_id', weekId);
+    previousPublishedShifts = (prev ?? []) as DiffShiftRow[];
+  }
 
   const { error: deleteError } = await admin
     .from('rota_published_shifts')
@@ -851,14 +871,25 @@ export async function publishRotaWeek(weekId: string): Promise<
     operation_status: 'success',
   });
 
-  // Notify staff of their shifts — fire-and-forget, errors must not block publish
-  const { data: weekRow } = await supabase
-    .from('rota_weeks')
-    .select('week_start')
-    .eq('id', weekId)
-    .single();
+  // Notify staff — fire-and-forget, errors must not block publish.
+  // On first publish: everyone with shifts gets their full schedule.
+  // On re-publish: only staff whose shifts changed get an update email.
   if (weekRow?.week_start) {
-    void sendRotaWeekEmails(weekId, weekRow.week_start);
+    if (isRepublish) {
+      const newShiftsForDiff: DiffShiftRow[] = (currentShifts ?? []).map(s => ({
+        id: s.id,
+        employee_id: s.employee_id,
+        shift_date: s.shift_date,
+        start_time: s.start_time,
+        end_time: s.end_time,
+        department: s.department,
+        name: s.name,
+        is_open_shift: s.is_open_shift,
+      }));
+      void sendRotaWeekChangeEmails(weekId, weekRow.week_start, previousPublishedShifts, newShiftsForDiff);
+    } else {
+      void sendRotaWeekEmails(weekId, weekRow.week_start);
+    }
   }
 
   revalidatePath('/rota');
