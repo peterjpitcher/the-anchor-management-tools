@@ -19,11 +19,12 @@ interface DraggableBookingBlockProps {
   timelineEndMin: number
   leftPct: number
   widthPct: number
-  isDraggingAny: boolean
-  liveSnapTime: string | null
-  isOutOfBounds: boolean
-  canDrag: boolean
-  isManagerKiosk: boolean
+  // Raw booking fields used to compute draggability inside this component
+  canEdit: boolean
+  status: string | null
+  isPrivateBlock: boolean
+  assignmentCount: number | null
+  styleVariant: 'default' | 'manager_kiosk'
   className: string
   style?: React.CSSProperties
   title?: string
@@ -42,18 +43,27 @@ export function DraggableBookingBlock({
   timelineEndMin,
   leftPct,
   widthPct,
-  isDraggingAny,
-  liveSnapTime: _liveSnapTime,
-  isOutOfBounds: _isOutOfBounds,
-  canDrag,
-  isManagerKiosk,
+  canEdit,
+  status,
+  isPrivateBlock,
+  assignmentCount,
+  styleVariant,
   className,
   style,
   title,
   onClick,
   children,
 }: DraggableBookingBlockProps) {
-  const canDragThis = canDrag && !isManagerKiosk
+  // Evaluate all non-draggable conditions as specified:
+  // kiosk mode, canEdit, terminal statuses, private blocks, multi-table bookings
+  const canDragThis =
+    styleVariant !== 'manager_kiosk' &&
+    canEdit &&
+    !isPrivateBlock &&
+    (assignmentCount ?? 1) <= 1 &&
+    status !== 'cancelled' &&
+    status !== 'no_show' &&
+    status !== 'completed'
 
   const { setNodeRef, listeners, attributes, isDragging } = useDraggable({
     id: bookingId,
@@ -79,7 +89,7 @@ export function DraggableBookingBlock({
       {...attributes}
       className={cn(
         className,
-        canDragThis && !isDraggingAny ? 'cursor-grab' : '',
+        canDragThis ? 'cursor-grab' : '',
         isDragging ? 'opacity-40 cursor-grabbing' : '',
       )}
       style={{

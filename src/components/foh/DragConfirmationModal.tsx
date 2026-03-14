@@ -1,25 +1,6 @@
 'use client'
 
-export type PendingMove =
-  | {
-      type: 'time'
-      bookingId: string
-      bookingLabel: string
-      fromTime: string
-      toTime: string
-      tableId: string
-      tableName: string
-    }
-  | {
-      type: 'table'
-      bookingId: string
-      bookingLabel: string
-      time: string
-      fromTableId: string
-      fromTableName: string
-      toTableId: string
-      toTableName: string
-    }
+import type { PendingMove } from '@/app/(authenticated)/table-bookings/foh/useFohDrag'
 
 interface DragConfirmationModalProps {
   pendingMove: PendingMove | null

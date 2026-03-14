@@ -7,6 +7,11 @@ import Image from 'next/image'
 import { Modal, ModalActions } from '@/components/ui-v2/overlay/Modal'
 import { createClient as createSupabaseClient } from '@/lib/supabase/client'
 import { cn } from '@/lib/utils'
+import { DndContext, DragOverlay, type DragStartEvent, type DragMoveEvent, type DragEndEvent } from '@dnd-kit/core'
+import { useFohDrag } from './useFohDrag'
+import { DraggableBookingBlock } from '@/components/foh/DraggableBookingBlock'
+import { DroppableLaneTimeline } from '@/components/foh/DroppableLaneTimeline'
+import { DragConfirmationModal } from '@/components/foh/DragConfirmationModal'
 
 type FohBooking = {
   id: string
@@ -1026,6 +1031,74 @@ export function FohScheduleClient({
   const [upcomingEvents, setUpcomingEvents] = useState<FohUpcomingEvent[]>([])
   const [upcomingEventsLoaded, setUpcomingEventsLoaded] = useState(false)
   const lastInteractionAtMsRef = useRef(Date.now())
+  const timelineRef = useRef<HTMLDivElement | null>(null)
+
+  // activeDragData: captures the drag-start booking so DragOverlay can render a ghost
+  const [activeDragData, setActiveDragData] = useState<{
+    bookingId: string
+    bookingLabel: string
+    widthPx: number
+    visualState: string
+    blockBaseClass: string
+  } | null>(null)
+
+  const {
+    pendingMove,
+    isDragging,
+    liveSnapTime,
+    isOutOfBounds,
+    isSubmitting,
+    confirmError,
+    sensors,
+    onDragStart: fohDragStart,
+    onDragMove,
+    onDragEnd: fohDragEnd,
+    confirm: confirmMove,
+    cancel: cancelMove,
+  } = useFohDrag(timelineRef)
+
+  // Keep a ref in sync with isDragging so the realtime subscription callback
+  // can check drag state without stale closure issues.
+  const isDraggingRef = useRef(false)
+  useEffect(() => {
+    isDraggingRef.current = isDragging
+  }, [isDragging])
+
+  // Stable ref to reloadSchedule so the drag-end effect can call it without
+  // being listed in its own dependency array (reloadSchedule is declared later
+  // in the file but is stable after mount).
+  const reloadScheduleRef = useRef<typeof reloadSchedule | null>(null)
+
+  // When drag ends, trigger a schedule refresh to pick up any server changes.
+  const prevIsDraggingRef = useRef(false)
+  useEffect(() => {
+    if (prevIsDraggingRef.current && !isDragging) {
+      void reloadScheduleRef.current?.({ requestedDate: date, surfaceError: false }).catch(() => {})
+    }
+    prevIsDraggingRef.current = isDragging
+  }, [isDragging, date])
+
+  // Wrap onDragStart to also capture activeDragData for DragOverlay rendering
+  const onDragStart = (event: DragStartEvent) => {
+    fohDragStart(event)
+    const rect = event.active.rect.current.initial
+    const data = event.active.data.current as { bookingId: string; bookingLabel: string } | undefined
+    if (data && rect) {
+      setActiveDragData({
+        bookingId: data.bookingId,
+        bookingLabel: data.bookingLabel,
+        widthPx: rect.width,
+        visualState: '',
+        blockBaseClass: bookingBlockBaseClass,
+      })
+    }
+  }
+
+  // Wrap onDragEnd to clear activeDragData after drag ends
+  const onDragEnd = (event: DragEndEvent) => {
+    fohDragEnd(event)
+    setActiveDragData(null)
+  }
 
   const [createForm, setCreateForm] = useState({
     booking_date: initialDate,
@@ -1117,6 +1190,12 @@ export function FohScheduleClient({
     [date, fetchSchedule]
   )
 
+  // Keep reloadScheduleRef current so the drag-end effect can call it
+  // without needing it in its own dependency array.
+  useEffect(() => {
+    reloadScheduleRef.current = reloadSchedule
+  }, [reloadSchedule])
+
   useEffect(() => {
     let cancelled = false
     let refreshTimeoutId: number | null = null
@@ -1125,6 +1204,8 @@ export function FohScheduleClient({
 
     const queueRefresh = () => {
       if (cancelled) return
+      // Suppress realtime refresh while a drag is in flight to avoid disrupting the drag ghost
+      if (isDraggingRef.current) return
       if (refreshTimeoutId != null) {
         window.clearTimeout(refreshTimeoutId)
       }
@@ -2590,11 +2671,17 @@ export function FohScheduleClient({
           </div>
         )}
 
+        <DndContext
+          sensors={sensors}
+          onDragStart={onDragStart}
+          onDragMove={onDragMove}
+          onDragEnd={onDragEnd}
+        >
         <div className="overflow-x-auto">
           <div className="min-w-[980px] border border-gray-200">
             <div className="grid grid-cols-[220px_1fr] border-b border-gray-200 bg-gray-50">
               <div className={cn(tableHeaderCellClass, 'sticky left-0 z-10 bg-gray-50')}>Table</div>
-              <div className={timelineHeaderTrackClass}>
+              <div ref={timelineRef} className={timelineHeaderTrackClass}>
                 {timeline.ticks.map((minute) => {
                   const left = ((minute - timeline.startMin) / timelineDuration) * 100
                   return (
@@ -2631,25 +2718,17 @@ export function FohScheduleClient({
                   </div>
                 </div>
 
-                <div
+                <DroppableLaneTimeline
+                  tableId={lane.table_id}
+                  tableName={lane.table_name}
                   className={laneTimelineClass}
-                  role={canEdit ? 'button' : undefined}
-                  tabIndex={canEdit ? 0 : undefined}
-                  onClick={() => {
+                  canEdit={canEdit}
+                  onLaneClick={() => {
                     openWalkInModalFromLane({
                       table_id: lane.table_id,
                       table_name: lane.table_name
                     })
                   }}
-                  onKeyDown={canEdit ? (e) => {
-                    if (e.key === 'Enter' || e.key === ' ') {
-                      e.preventDefault()
-                      openWalkInModalFromLane({
-                        table_id: lane.table_id,
-                        table_name: lane.table_name
-                      })
-                    }
-                  } : undefined}
                 >
                   {timeline.ticks.map((minute) => {
                     const left = ((minute - timeline.startMin) / timelineDuration) * 100
@@ -2674,9 +2753,26 @@ export function FohScheduleClient({
                     const visualLabel = getBookingVisualLabel(booking)
 
                     return (
-                        <button
-                          type="button"
+                        <DraggableBookingBlock
                           key={`${lane.table_id}-${booking.id}`}
+                          bookingId={booking.id}
+                          bookingLabel={booking.guest_name || booking.booking_reference || booking.id.slice(0, 8)}
+                          fromTime={booking.booking_time}
+                          tableId={lane.table_id}
+                          tableName={lane.table_name}
+                          durationMinutes={window.end - window.start}
+                          timelineStartMin={timeline.startMin}
+                          timelineEndMin={timeline.endMin}
+                          leftPct={leftPct}
+                          widthPct={widthPct}
+                          canEdit={canEdit}
+                          status={booking.status}
+                          isPrivateBlock={Boolean(booking.is_private_block)}
+                          assignmentCount={booking.assignment_count ?? null}
+                          styleVariant={styleVariant}
+                          className={cn(bookingBlockBaseClass, statusBlockClass(visualState))}
+                          style={getSundayPreorderBorderStyle(booking)}
+                          title={`${booking.guest_name || 'Guest'} · ${booking.booking_reference || booking.id.slice(0, 8)} · ${formatBookingWindow(booking.start_datetime, booking.end_datetime, booking.booking_time)} · ${visualLabel}`}
                           onClick={(event) => {
                             event.stopPropagation()
                             openBookingDetails(booking, {
@@ -2684,9 +2780,6 @@ export function FohScheduleClient({
                               laneTableName: lane.table_name
                             })
                           }}
-                          className={`${bookingBlockBaseClass} ${statusBlockClass(visualState)}`}
-                          style={{ left: `${leftPct}%`, width: `${widthPct}%`, ...getSundayPreorderBorderStyle(booking) }}
-                          title={`${booking.guest_name || 'Guest'} · ${booking.booking_reference || booking.id.slice(0, 8)} · ${formatBookingWindow(booking.start_datetime, booking.end_datetime, booking.booking_time)} · ${visualLabel}`}
                         >
                           <p className="truncate font-semibold">
                             {booking.guest_name || booking.booking_reference || booking.id.slice(0, 8)}
@@ -2703,7 +2796,7 @@ export function FohScheduleClient({
                               {booking.sunday_preorder_completed_at ? '✓ Pre-order done' : '⏳ Pre-order pending'}
                             </p>
                           )}
-                      </button>
+                        </DraggableBookingBlock>
                     )
                   })}
 
@@ -2718,11 +2811,35 @@ export function FohScheduleClient({
                       {canEdit ? 'Tap lane to add walk-in' : 'Available for entire visible service window'}
                     </div>
                   )}
-                </div>
+                </DroppableLaneTimeline>
               </div>
             ))}
           </div>
         </div>
+        <DragOverlay dropAnimation={null}>
+          {activeDragData ? (
+            <div
+              className={cn(activeDragData.blockBaseClass, 'opacity-90 shadow-xl ring-2 ring-white/50 cursor-grabbing')}
+              style={{ width: activeDragData.widthPx }}
+            >
+              <p className="truncate font-semibold">{activeDragData.bookingLabel}</p>
+              {liveSnapTime && !isOutOfBounds && (
+                <p className="truncate text-xs font-semibold opacity-80">{liveSnapTime}</p>
+              )}
+              {isOutOfBounds && (
+                <p className="truncate text-xs font-semibold text-red-200 opacity-80">Out of range</p>
+              )}
+            </div>
+          ) : null}
+        </DragOverlay>
+        </DndContext>
+        <DragConfirmationModal
+          pendingMove={pendingMove}
+          onConfirm={confirmMove}
+          onCancel={cancelMove}
+          isSubmitting={isSubmitting}
+          error={confirmError}
+        />
       </div>
 
       <Modal
