@@ -10,6 +10,12 @@ export type ShiftSummary = {
   templateName: string;
 };
 
+export type ShiftChange = {
+  type: 'added' | 'removed' | 'modified';
+  before?: ShiftSummary; // present for 'removed' and 'modified'
+  after?: ShiftSummary;  // present for 'added' and 'modified'
+};
+
 export type PayrollEmployeeSummary = {
   name: string;
   plannedHours: number;
@@ -74,6 +80,133 @@ export function buildStaffRotaEmailHtml(
       <p>Here are your shifts for the coming week:</p>
       ${shifts.length > 0 ? shiftsTable(shifts, '#1F5C2E') : '<p style="color:#666">No shifts scheduled this week.</p>'}
       ${openShiftsSection}
+      <div style="margin-top:24px">
+        <a href="${APP_URL}/portal/shifts"
+           style="display:inline-block;background:#1F5C2E;color:#fff;padding:10px 20px;border-radius:4px;text-decoration:none;font-size:14px">
+          View your rota
+        </a>
+      </div>
+      <p style="color:#aaa;font-size:12px;margin-top:24px">The Anchor</p>
+    </div>
+  `;
+}
+
+/**
+ * Rota update email sent only to staff whose shifts changed after a re-publish.
+ * Shows a "what changed" section followed by their full schedule for the week.
+ */
+export function buildRotaChangeEmailHtml(
+  employeeName: string,
+  weekStart: string,
+  weekEnd: string,
+  changes: ShiftChange[],
+  allShifts: ShiftSummary[],
+  openShifts: ShiftSummary[] = [],
+): string {
+  const weekLabel = `${format(parseISO(weekStart), 'd MMM')} – ${format(parseISO(weekEnd), 'd MMM yyyy')}`;
+
+  const fmtShift = (s: ShiftSummary) =>
+    `${format(parseISO(s.date), 'EEE d MMM')}, ${s.startTime} – ${s.endTime} (${s.department})`;
+
+  const changesHtml = changes.map(c => {
+    if (c.type === 'added') {
+      return `
+        <tr>
+          <td style="padding:8px 12px;border-bottom:1px solid #eee">
+            <span style="display:inline-block;background:#dcfce7;color:#166534;padding:2px 6px;border-radius:3px;font-size:11px;font-weight:600;margin-right:8px">Added</span>
+            ${fmtShift(c.after!)}
+          </td>
+        </tr>`;
+    }
+    if (c.type === 'removed') {
+      return `
+        <tr>
+          <td style="padding:8px 12px;border-bottom:1px solid #eee">
+            <span style="display:inline-block;background:#fee2e2;color:#991b1b;padding:2px 6px;border-radius:3px;font-size:11px;font-weight:600;margin-right:8px">Removed</span>
+            <span style="text-decoration:line-through;color:#666">${fmtShift(c.before!)}</span>
+          </td>
+        </tr>`;
+    }
+    // modified
+    return `
+      <tr>
+        <td style="padding:8px 12px;border-bottom:1px solid #eee">
+          <span style="display:inline-block;background:#fef9c3;color:#854d0e;padding:2px 6px;border-radius:3px;font-size:11px;font-weight:600;margin-right:8px">Changed</span>
+          <span style="text-decoration:line-through;color:#666">${fmtShift(c.before!)}</span>
+          <span style="margin:0 6px;color:#999">→</span>
+          ${fmtShift(c.after!)}
+        </td>
+      </tr>`;
+  }).join('');
+
+  const shiftRows = allShifts.map(s => `
+    <tr>
+      <td style="padding:8px 12px;border-bottom:1px solid #eee">${format(parseISO(s.date), 'EEE d MMM')}</td>
+      <td style="padding:8px 12px;border-bottom:1px solid #eee">${s.startTime} – ${s.endTime}</td>
+      <td style="padding:8px 12px;border-bottom:1px solid #eee;text-transform:capitalize">${s.department}</td>
+    </tr>
+  `).join('');
+
+  const openShiftRows = openShifts.map(s => `
+    <tr>
+      <td style="padding:8px 12px;border-bottom:1px solid #eee">${format(parseISO(s.date), 'EEE d MMM')}</td>
+      <td style="padding:8px 12px;border-bottom:1px solid #eee">${s.startTime} – ${s.endTime}</td>
+      <td style="padding:8px 12px;border-bottom:1px solid #eee;text-transform:capitalize">${s.department}</td>
+    </tr>
+  `).join('');
+
+  const openShiftsSection = openShifts.length === 0 ? '' : `
+    <div style="margin-top:32px;padding:16px 20px;background:#fff8e1;border:1px solid #f59e0b;border-radius:6px">
+      <h3 style="margin:0 0 8px;color:#92400e;font-size:16px">Shifts still to be filled</h3>
+      <p style="margin:0 0 12px;color:#78350f;font-size:14px">
+        The following shifts are still available this week. If you can help out, please let management know.
+      </p>
+      <table style="width:100%;border-collapse:collapse;margin:0">
+        <thead>
+          <tr style="background:#b45309;color:#fff">
+            <th style="padding:8px 12px;text-align:left">Day</th>
+            <th style="padding:8px 12px;text-align:left">Time</th>
+            <th style="padding:8px 12px;text-align:left">Area</th>
+          </tr>
+        </thead>
+        <tbody>${openShiftRows}</tbody>
+      </table>
+    </div>
+  `;
+
+  const scheduleSection = allShifts.length > 0 ? `
+    <table style="width:100%;border-collapse:collapse;margin:16px 0">
+      <thead>
+        <tr style="background:#1F5C2E;color:#fff">
+          <th style="padding:8px 12px;text-align:left">Day</th>
+          <th style="padding:8px 12px;text-align:left">Time</th>
+          <th style="padding:8px 12px;text-align:left">Area</th>
+        </tr>
+      </thead>
+      <tbody>${shiftRows}</tbody>
+    </table>
+  ` : '<p style="color:#666">No shifts scheduled for you this week.</p>';
+
+  return `
+    <div style="font-family:sans-serif;max-width:600px;margin:0 auto">
+      <h2 style="color:#1a1a1a">Your rota has been updated — ${weekLabel}</h2>
+      <p>Hi ${employeeName},</p>
+      <p>The rota for the coming week has been updated. Here's what changed for you:</p>
+
+      <div style="background:#f8f9fa;border:1px solid #dee2e6;border-radius:6px;margin:16px 0;overflow:hidden">
+        <div style="background:#374151;padding:10px 12px">
+          <h3 style="color:#fff;margin:0;font-size:14px;font-weight:600">Changes to your shifts</h3>
+        </div>
+        <table style="width:100%;border-collapse:collapse">
+          <tbody>${changesHtml}</tbody>
+        </table>
+      </div>
+
+      <h3 style="color:#1a1a1a;margin:24px 0 8px">Your full schedule this week</h3>
+      ${scheduleSection}
+
+      ${openShiftsSection}
+
       <div style="margin-top:24px">
         <a href="${APP_URL}/portal/shifts"
            style="display:inline-block;background:#1F5C2E;color:#fff;padding:10px 20px;border-radius:4px;text-decoration:none;font-size:14px">
