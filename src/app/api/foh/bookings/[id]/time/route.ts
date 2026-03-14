@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
-import { requireFohPermission } from '@/lib/foh/api-auth'
+import { fromZonedTime } from 'date-fns-tz'
+import { requireFohPermission, getLondonDateIso } from '@/lib/foh/api-auth'
 import { logger } from '@/lib/logger'
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -97,15 +98,24 @@ export async function PATCH(
     const durationMs = endDate.getTime() - startDate.getTime()
 
     // Step 3: Build new start/end datetimes
-    const newStart = new Date(startDate)
-    newStart.setUTCHours(newHours, newMinutes, 0, 0)
+    // Use getLondonDateIso to get the booking date in London local time, then combine
+    // with the new London-local time using fromZonedTime to get the correct UTC value.
+    // Using setUTCHours would treat the London clock time as UTC, causing a 1-hour
+    // offset in British Summer Time (BST, UTC+1).
+    const londonDateIso = getLondonDateIso(startDate)
+    const newStart = fromZonedTime(`${londonDateIso}T${newTime}:00`, 'Europe/London')
     const newEnd = new Date(newStart.getTime() + durationMs)
 
-    // Record original time for logging
-    const fromTime =
-      String(startDate.getUTCHours()).padStart(2, '0') +
-      ':' +
-      String(startDate.getUTCMinutes()).padStart(2, '0')
+    // Record original time for logging — derive from UTC using same getLondonDateIso approach
+    const origLondonParts = new Intl.DateTimeFormat('en-GB', {
+      timeZone: 'Europe/London',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    }).formatToParts(startDate)
+    const fromHour = origLondonParts.find(p => p.type === 'hour')?.value ?? '00'
+    const fromMinute = origLondonParts.find(p => p.type === 'minute')?.value ?? '00'
+    const fromTime = `${fromHour}:${fromMinute}`
 
     // Step 4: Update table_bookings
     const { error: tbUpdateError } = await auth.supabase

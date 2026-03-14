@@ -125,7 +125,7 @@ export function useFohDrag(timelineRef: React.RefObject<HTMLElement | null>): {
     const data = dragDataRef.current ?? (event.active.data.current as DragBookingData | undefined) ?? null
     dragDataRef.current = null
 
-    if (!data || !event.over) {
+    if (!data) {
       isOutOfBoundsRef.current = false
       setIsOutOfBounds(false)
       return
@@ -138,7 +138,11 @@ export function useFohDrag(timelineRef: React.RefObject<HTMLElement | null>): {
       return
     }
 
-    const toTableId = String(event.over.id)
+    // When event.over is null (pointer released in header or gap between lanes)
+    // but still within horizontal bounds, treat as a same-table time change.
+    // The pointer naturally drifts vertically during horizontal time drags,
+    // which can leave it outside any DroppableLaneTimeline at the moment of release.
+    const toTableId = event.over ? String(event.over.id) : data.tableId
     const sameTable = toTableId === data.tableId
 
     if (sameTable) {
@@ -175,7 +179,9 @@ export function useFohDrag(timelineRef: React.RefObject<HTMLElement | null>): {
       })
     } else {
       // Table change drag — preserve original time
-      const overData = event.over.data.current as { tableName?: string } | undefined
+      // event.over is always non-null here: toTableId !== data.tableId means
+      // event.over.id was used to derive toTableId (not the data.tableId fallback).
+      const overData = event.over?.data.current as { tableName?: string } | undefined
       const toTableName = overData?.tableName ?? toTableId
 
       setPendingMove({

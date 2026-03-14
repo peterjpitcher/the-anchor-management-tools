@@ -5,6 +5,7 @@ import { requireFohPermission } from '@/lib/foh/api-auth'
 
 vi.mock('@/lib/foh/api-auth', () => ({
   requireFohPermission: vi.fn(),
+  getLondonDateIso: vi.fn((date: Date) => date.toISOString().slice(0, 10)),
 }))
 vi.mock('@/lib/logger', () => ({
   logger: { error: vi.fn(), info: vi.fn() },
