@@ -73,13 +73,32 @@ export async function POST(
       }
 
       // Persist the order ID and deposit amount on the booking
-      await supabase
+      const { error: persistError } = await supabase
         .from('table_bookings')
         .update({
           paypal_deposit_order_id: paypalOrder.orderId,
           deposit_amount: depositAmount,
         })
         .eq('id', bookingId);
+
+      if (persistError) {
+        void logAuditEvent({
+          operation_type: 'payment.order_persist_failed',
+          resource_type: 'table_booking',
+          resource_id: bookingId,
+          operation_status: 'failure',
+          additional_info: {
+            orderId: paypalOrder.orderId,
+            amount: depositAmount,
+            dbError: persistError.message,
+            action_needed: 'PayPal order created but order ID not persisted — manual reconciliation may be needed',
+          },
+        });
+        return NextResponse.json(
+          { error: 'Order created but could not be saved. Please try again.' },
+          { status: 502 },
+        );
+      }
 
       // Audit log
       void logAuditEvent({
