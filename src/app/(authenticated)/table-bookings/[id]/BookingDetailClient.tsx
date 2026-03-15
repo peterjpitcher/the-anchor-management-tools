@@ -78,6 +78,10 @@ export interface Booking {
   sunday_preorder_cutoff_at: string | null
   sunday_preorder_completed_at: string | null
   deposit_waived: boolean | null
+  payment_status: string | null
+  payment_method: string | null
+  paypal_deposit_capture_id: string | null
+  deposit_amount: number | null
   customer: BookingCustomer | null
   table_booking_tables: BookingTable[]
 }
@@ -388,6 +392,46 @@ export default function BookingDetailClient({ booking, canEdit, canManage }: Pro
               )}
               {booking.celebration_type && (
                 <p className="text-sm text-gray-700">Celebration: {booking.celebration_type}</p>
+              )}
+            </div>
+          )}
+
+          {/* Deposit section — only when a deposit is involved */}
+          {(booking.payment_status === 'completed' || booking.payment_status === 'pending' || booking.status === 'pending_payment') && (
+            <div className="rounded-lg border border-gray-200 bg-white p-4 space-y-1">
+              <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 mb-2">Deposit</p>
+              {booking.payment_status === 'completed' ? (
+                <div className="space-y-0.5">
+                  <div className="flex items-center gap-2">
+                    <span className="inline-block w-2 h-2 rounded-full bg-green-500" />
+                    <span className="text-sm font-medium text-green-700">
+                      Paid via {booking.payment_method === 'paypal' ? 'PayPal' : booking.payment_method ?? 'Card'}
+                    </span>
+                    <span className="text-green-500 text-sm">✓</span>
+                  </div>
+                  {booking.deposit_amount != null && (
+                    <p className="text-sm text-gray-700 pl-4">
+                      £{booking.deposit_amount.toFixed(2)}
+                    </p>
+                  )}
+                  {booking.paypal_deposit_capture_id && (
+                    <p className="text-xs text-gray-400 pl-4">
+                      Capture ID: {booking.paypal_deposit_capture_id}
+                    </p>
+                  )}
+                </div>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <span className="text-amber-500 text-sm">⚠</span>
+                  <span className="text-sm font-medium text-amber-700">
+                    Outstanding —{' '}
+                    {booking.deposit_amount != null
+                      ? `£${booking.deposit_amount.toFixed(2)}`
+                      : booking.party_size != null
+                        ? `£${(booking.party_size * 10).toFixed(2)} (£10 × ${booking.party_size})`
+                        : 'amount pending'}
+                  </span>
+                </div>
               )}
             </div>
           )}

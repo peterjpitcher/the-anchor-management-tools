@@ -30,6 +30,7 @@ export default async function BookingDetailPage({ params }: Props) {
       start_datetime, end_datetime, duration_minutes,
       sunday_preorder_cutoff_at, sunday_preorder_completed_at,
       deposit_waived,
+      payment_status, payment_method, paypal_deposit_capture_id, deposit_amount,
       customer:customers!table_bookings_customer_id_fkey(
         id, first_name, last_name, mobile_number
       )
