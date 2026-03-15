@@ -116,4 +116,31 @@ describe('addShiftsFromTemplates', () => {
     const result = await addShiftsFromTemplates('week-1', [])
     expect(result).toEqual({ success: false, error: 'No shifts selected' })
   })
+
+  it('returns error when insert fails', async () => {
+    mockCreateClient.mockResolvedValue({
+      auth: { getUser: vi.fn().mockResolvedValue({ data: { user: { id: 'u1' } } }) },
+      from: vi.fn().mockImplementation((table: string) => {
+        if (table === 'rota_weeks') return {
+          select: vi.fn().mockReturnThis(), eq: vi.fn().mockReturnThis(),
+          single: vi.fn().mockResolvedValue({ data: { week_start: '2026-03-16' }, error: null }),
+          update: vi.fn().mockReturnValue({ eq: vi.fn().mockReturnValue({ eq: vi.fn().mockResolvedValue({ error: null }) }) }),
+        }
+        if (table === 'rota_shift_templates') return {
+          select: vi.fn().mockReturnThis(), eq: vi.fn().mockReturnThis(),
+          in: vi.fn().mockResolvedValue({ data: [{ id: 'tmpl-bar', name: 'Bar', start_time: '10:00:00', end_time: '18:00:00', unpaid_break_minutes: 0, department: 'bar', employee_id: null }], error: null }),
+        }
+        if (table === 'rota_shifts') return {
+          select: vi.fn().mockReturnThis(), eq: vi.fn().mockReturnThis(),
+          insert: vi.fn().mockReturnValue({
+            select: vi.fn().mockResolvedValue({ data: null, error: { message: 'DB error' } }),
+          }),
+        }
+        return { select: vi.fn().mockReturnThis(), eq: vi.fn().mockReturnThis() }
+      }),
+    } as never)
+
+    const result = await addShiftsFromTemplates('week-1', [{ templateId: 'tmpl-bar', date: '2026-03-16' }])
+    expect(result).toEqual({ success: false, error: 'DB error' })
+  })
 })
