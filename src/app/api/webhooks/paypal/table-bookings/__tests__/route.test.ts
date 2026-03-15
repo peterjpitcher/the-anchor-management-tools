@@ -15,18 +15,25 @@ vi.mock('@/app/actions/audit', () => ({
   logAuditEvent: vi.fn().mockResolvedValue(undefined),
 }))
 
+// Idempotency mock — default to 'claimed' (first-time processing) so happy-path tests pass
+vi.mock('@/lib/api/idempotency', () => ({
+  claimIdempotencyKey: vi.fn().mockResolvedValue({ state: 'claimed' }),
+  computeIdempotencyRequestHash: vi.fn().mockReturnValue('test-hash'),
+  persistIdempotencyResponse: vi.fn().mockResolvedValue(undefined),
+  releaseIdempotencyClaim: vi.fn().mockResolvedValue(undefined),
+}))
+
 // ── Supabase mock helpers ─────────────────────────────────────────────────────
 
 /**
  * Build a chainable Supabase mock per test.
- * We track separate call chains for webhook_logs and table_bookings.
+ * Only needs to handle webhook_logs inserts and table_bookings select/update —
+ * idempotency is now handled by the @/lib/api/idempotency module mock above.
  */
 function createSupabaseMock({
-  existingWebhookLog = null,
   existingBooking = null,
   bookingUpdateError = null,
 }: {
-  existingWebhookLog?: { id: string } | null
   existingBooking?: {
     id: string
     status: string
@@ -38,16 +45,6 @@ function createSupabaseMock({
 } = {}) {
   // webhook_logs — insert always succeeds
   const wlInsert = vi.fn().mockResolvedValue({ error: null })
-  const wlUpdateEq2 = vi.fn().mockResolvedValue({ error: null })
-  const wlUpdateEq1 = vi.fn().mockReturnValue({ eq: wlUpdateEq2 })
-  const wlUpdate = vi.fn().mockReturnValue({ eq: wlUpdateEq1 })
-
-  // webhook_logs — select chain for duplicate check
-  const wlMaybeSingle = vi.fn().mockResolvedValue({ data: existingWebhookLog, error: null })
-  const wlIn = vi.fn().mockReturnValue({ maybeSingle: wlMaybeSingle })
-  const wlSelectEq2 = vi.fn().mockReturnValue({ in: wlIn })
-  const wlSelectEq1 = vi.fn().mockReturnValue({ eq: wlSelectEq2 })
-  const wlSelect = vi.fn().mockReturnValue({ eq: wlSelectEq1 })
 
   // table_bookings — select chain for booking lookup
   const tbMaybeSingle = vi.fn().mockResolvedValue({ data: existingBooking, error: null })
@@ -61,7 +58,7 @@ function createSupabaseMock({
 
   const from = vi.fn().mockImplementation((table: string) => {
     if (table === 'webhook_logs') {
-      return { insert: wlInsert, select: wlSelect, update: wlUpdate }
+      return { insert: wlInsert }
     }
     if (table === 'table_bookings') {
       return { select: tbSelect, update: tbUpdate }
@@ -72,7 +69,6 @@ function createSupabaseMock({
   return {
     from,
     _tbUpdate: tbUpdate,
-    _tbUpdateEq: tbUpdateEq,
     _wlInsert: wlInsert,
   }
 }
@@ -150,12 +146,14 @@ describe('POST /api/webhooks/paypal/table-bookings', () => {
   it('marks booking paid when PAYMENT.CAPTURE.COMPLETED is valid and booking not yet captured', async () => {
     const { verifyPayPalWebhook } = await import('@/lib/paypal')
     const { createAdminClient } = await import('@/lib/supabase/admin')
+    const { claimIdempotencyKey, persistIdempotencyResponse } = await import('@/lib/api/idempotency')
     const { POST } = await import('../route')
 
     vi.mocked(verifyPayPalWebhook).mockResolvedValueOnce(true)
+    vi.mocked(claimIdempotencyKey).mockResolvedValueOnce({ state: 'claimed' })
+    vi.mocked(persistIdempotencyResponse).mockResolvedValueOnce(undefined)
 
     const mockSupabase = createSupabaseMock({
-      existingWebhookLog: null, // no duplicate
       existingBooking: {
         id: VALID_BOOKING_ID,
         status: 'pending',
@@ -183,16 +181,16 @@ describe('POST /api/webhooks/paypal/table-bookings', () => {
     )
   })
 
-  it('returns 200 without reprocessing when event is a duplicate', async () => {
+  it('returns 200 without reprocessing when idempotency claim returns replay', async () => {
     const { verifyPayPalWebhook } = await import('@/lib/paypal')
     const { createAdminClient } = await import('@/lib/supabase/admin')
+    const { claimIdempotencyKey } = await import('@/lib/api/idempotency')
     const { POST } = await import('../route')
 
     vi.mocked(verifyPayPalWebhook).mockResolvedValueOnce(true)
+    vi.mocked(claimIdempotencyKey).mockResolvedValueOnce({ state: 'replay' })
 
-    const mockSupabase = createSupabaseMock({
-      existingWebhookLog: { id: 'existing-log-uuid' }, // duplicate found
-    })
+    const mockSupabase = createSupabaseMock()
     vi.mocked(createAdminClient).mockReturnValue(mockSupabase as any)
 
     const response = await POST(makeRequest(makeCaptureCompletedBody()))
@@ -208,12 +206,14 @@ describe('POST /api/webhooks/paypal/table-bookings', () => {
   it('returns 200 without update when booking already has a capture ID', async () => {
     const { verifyPayPalWebhook } = await import('@/lib/paypal')
     const { createAdminClient } = await import('@/lib/supabase/admin')
+    const { claimIdempotencyKey, persistIdempotencyResponse } = await import('@/lib/api/idempotency')
     const { POST } = await import('../route')
 
     vi.mocked(verifyPayPalWebhook).mockResolvedValueOnce(true)
+    vi.mocked(claimIdempotencyKey).mockResolvedValueOnce({ state: 'claimed' })
+    vi.mocked(persistIdempotencyResponse).mockResolvedValueOnce(undefined)
 
     const mockSupabase = createSupabaseMock({
-      existingWebhookLog: null,
       existingBooking: {
         id: VALID_BOOKING_ID,
         status: 'confirmed',

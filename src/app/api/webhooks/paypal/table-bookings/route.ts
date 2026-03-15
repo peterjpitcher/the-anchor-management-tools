@@ -3,6 +3,14 @@ import { verifyPayPalWebhook } from '@/lib/paypal'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { logger } from '@/lib/logger'
 import { logAuditEvent } from '@/app/actions/audit'
+import {
+  claimIdempotencyKey,
+  computeIdempotencyRequestHash,
+  persistIdempotencyResponse,
+  releaseIdempotencyClaim,
+} from '@/lib/api/idempotency'
+
+const IDEMPOTENCY_TTL_HOURS = 24 * 30
 
 function truncate(value: string | null | undefined, maxLength: number): string | null {
   if (!value) return null
@@ -46,6 +54,7 @@ async function logWebhook(
     errorDetails?: unknown
   },
 ) {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { error } = await (supabase.from('webhook_logs') as any).insert({
     webhook_type: 'paypal',
     status: input.status,
@@ -63,7 +72,8 @@ async function logWebhook(
   if (error) {
     logger.error('Failed to store PayPal table-bookings webhook log', {
       error: new Error(
-        typeof (error as any)?.message === 'string' ? (error as any).message : String(error),
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        typeof (error as any)?.message === 'string' ? (error as any).message : String(error), // Supabase error shape is not fully typed
       ),
       metadata: {
         status: input.status,
@@ -76,7 +86,8 @@ async function logWebhook(
 
 async function handleDepositCaptureCompleted(
   supabase: ReturnType<typeof createAdminClient>,
-  event: any,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  event: any, // PayPal webhook event payload is not typed in this project
 ) {
   const resource = event.resource
   const captureId: string = resource.id ?? ''
@@ -158,6 +169,10 @@ export async function POST(request: NextRequest) {
   const headers = Object.fromEntries(request.headers.entries())
   const webhookId = process.env.PAYPAL_TABLE_BOOKINGS_WEBHOOK_ID?.trim()
 
+  let idempotencyKey: string | null = null
+  let requestHash: string | null = null
+  let claimHeld = false
+
   try {
     if (!webhookId) {
       const errorMessage = 'PAYPAL_TABLE_BOOKINGS_WEBHOOK_ID not configured'
@@ -180,7 +195,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Invalid signature' }, { status: 401 })
     }
 
-    let event: any
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let event: any // PayPal webhook event payload is not typed in this project
     try {
       event = JSON.parse(body)
     } catch (parseError) {
@@ -214,44 +230,107 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ received: true, ignored: true })
     }
 
-    // Idempotency: check webhook_logs for a previously processed record with this event ID
-    const { data: existingLog, error: logCheckError } = await (
-      supabase.from('webhook_logs') as any
-    )
-      .select('id')
-      .eq('params->>event_id', eventId)
-      .eq('params->>source', 'table_bookings')
-      .in('status', ['processed', 'received'])
-      .maybeSingle()
+    // Atomic idempotency claim — closes the TOCTOU race present in a check-then-insert pattern
+    idempotencyKey = `webhook:paypal:table-bookings:${eventId}`
+    requestHash = computeIdempotencyRequestHash(event)
 
-    if (logCheckError) {
-      logger.error('Failed to check webhook_logs for duplicate table-bookings event', {
-        error: new Error(
-          typeof logCheckError?.message === 'string' ? logCheckError.message : String(logCheckError),
-        ),
-        metadata: { eventId },
+    const claim = await claimIdempotencyKey(
+      supabase,
+      idempotencyKey,
+      requestHash,
+      IDEMPOTENCY_TTL_HOURS,
+    )
+
+    if (claim.state === 'conflict') {
+      await logWebhook(supabase, {
+        status: 'idempotency_conflict',
+        headers,
+        body,
+        eventId,
+        eventType,
+        errorMessage: 'Event id reused with a different payload',
       })
-      // Fail open — continue processing rather than block
+      return NextResponse.json({ error: 'Conflict' }, { status: 409 })
     }
 
-    if (existingLog) {
+    if (claim.state === 'in_progress') {
+      await logWebhook(supabase, {
+        status: 'in_progress',
+        headers,
+        body,
+        eventId,
+        eventType,
+        errorMessage: 'Event is currently being processed',
+      })
+      return NextResponse.json(
+        { error: 'Event is currently being processed' },
+        { status: 409 },
+      )
+    }
+
+    if (claim.state === 'replay') {
       await logWebhook(supabase, { status: 'duplicate', headers, body, eventId, eventType })
       return NextResponse.json({ received: true, duplicate: true })
     }
 
-    // Record receipt before processing (idempotency anchor)
+    claimHeld = true
+
     await logWebhook(supabase, { status: 'received', headers, body, eventId, eventType })
 
     await handleDepositCaptureCompleted(supabase, event)
 
-    // Mark as processed
-    await (supabase.from('webhook_logs') as any)
-      .update({ status: 'processed' })
-      .eq('params->>event_id', eventId)
-      .eq('params->>source', 'table_bookings')
+    try {
+      await persistIdempotencyResponse(
+        supabase,
+        idempotencyKey,
+        requestHash,
+        {
+          state: 'processed',
+          event_id: eventId,
+          event_type: eventType,
+          processed_at: new Date().toISOString(),
+        },
+        IDEMPOTENCY_TTL_HOURS,
+      )
+      claimHeld = false
+    } catch (persistError) {
+      // Returning 500 causes PayPal to retry, which can repeat non-transactional side effects
+      // (webhook logs, audit logs) even when the main handler has already committed.
+      logger.error('PayPal table-bookings webhook processed but failed to persist idempotency response', {
+        error: persistError instanceof Error ? persistError : new Error(String(persistError)),
+        metadata: { eventId, eventType },
+      })
+
+      await logWebhook(supabase, {
+        status: 'idempotency_persist_failed',
+        headers,
+        body,
+        eventId,
+        eventType,
+        errorMessage: persistError instanceof Error ? persistError.message : String(persistError),
+      })
+
+      return NextResponse.json({ received: true, idempotency_persist_failed: true })
+    }
+
+    await logWebhook(supabase, { status: 'success', headers, body, eventId, eventType })
 
     return NextResponse.json({ received: true })
   } catch (error) {
+    if (claimHeld && idempotencyKey && requestHash) {
+      try {
+        await releaseIdempotencyClaim(supabase, idempotencyKey, requestHash)
+      } catch (releaseError) {
+        logger.error('Failed to release PayPal table-bookings webhook idempotency claim', {
+          error: releaseError instanceof Error ? releaseError : new Error(String(releaseError)),
+          metadata: {
+            idempotencyKey,
+            eventId: idempotencyKey.replace('webhook:paypal:table-bookings:', ''),
+          },
+        })
+      }
+    }
+
     logger.error('PayPal table-bookings webhook error', {
       error: error instanceof Error ? error : new Error(String(error)),
     })
