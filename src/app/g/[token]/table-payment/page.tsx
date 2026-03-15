@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import { redirect } from 'next/navigation'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { headers } from 'next/headers'
 import { checkGuestTokenThrottle } from '@/lib/guest/token-throttle'
@@ -30,6 +31,30 @@ export default async function TablePaymentPage({ params, searchParams }: TablePa
   const state = getSingleValue(resolvedSearchParams.state)
   const reason = getSingleValue(resolvedSearchParams.reason)
   const contactPhone = process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || '01753 682707'
+
+  if (state === 'paid') {
+    return (
+      <GuestPageShell>
+        <div className="mx-auto w-full max-w-xl rounded-xl border border-white/15 bg-white px-6 py-8 shadow-sm">
+          <h1 className="text-2xl font-semibold text-slate-900">Deposit received</h1>
+          <p className="mt-2 text-sm text-slate-700">
+            {formatGuestGreeting(null, 'your deposit payment has been received.')}
+          </p>
+          <p className="mt-3 text-sm text-slate-700">
+            Thanks. We are confirming your booking now. You will receive a text confirmation shortly.
+          </p>
+          <p className="mt-3 text-sm text-slate-700">
+            If you do not receive confirmation, call {contactPhone}.
+          </p>
+          <div className="mt-6">
+            <Link className="text-sm font-medium text-slate-900 underline underline-offset-4" href="https://www.the-anchor.pub/book-table">
+              Back to The Anchor
+            </Link>
+          </div>
+        </div>
+      </GuestPageShell>
+    )
+  }
 
   if (state === 'blocked') {
     return (
@@ -99,30 +124,9 @@ export default async function TablePaymentPage({ params, searchParams }: TablePa
     .eq('id', preview.tableBookingId)
     .single()
 
-  // Already paid — show confirmation
+  // Already paid — redirect to confirmed page
   if (booking?.payment_status === 'completed') {
-    const guestFirstNameForSuccess = await getCustomerFirstNameById(supabase, preview.customerId)
-    return (
-      <GuestPageShell>
-        <div className="mx-auto w-full max-w-xl rounded-xl border border-white/15 bg-white px-6 py-8 shadow-sm">
-          <h1 className="text-2xl font-semibold text-slate-900">Deposit received</h1>
-          <p className="mt-2 text-sm text-slate-700">
-            {formatGuestGreeting(guestFirstNameForSuccess, 'your deposit payment has been received.')}
-          </p>
-          <p className="mt-3 text-sm text-slate-700">
-            Thanks. We are confirming your booking now. You will receive a text confirmation shortly.
-          </p>
-          <p className="mt-3 text-sm text-slate-700">
-            If you do not receive confirmation, call {contactPhone}.
-          </p>
-          <div className="mt-6">
-            <Link className="text-sm font-medium text-slate-900 underline underline-offset-4" href="https://www.the-anchor.pub/book-table">
-              Back to The Anchor
-            </Link>
-          </div>
-        </div>
-      </GuestPageShell>
-    )
+    redirect(`/g/${token}/table-payment?state=paid`)
   }
 
   // Create or reuse PayPal order
@@ -190,7 +194,7 @@ export default async function TablePaymentPage({ params, searchParams }: TablePa
     const db = createAdminClient()
     try {
       const capture = await capturePayPalPayment(captureOrderId)
-      await db
+      const { error: updateError } = await db
         .from('table_bookings')
         .update({
           payment_status: 'completed',
@@ -199,6 +203,22 @@ export default async function TablePaymentPage({ params, searchParams }: TablePa
           paypal_deposit_capture_id: capture.transactionId,
         })
         .eq('id', bookingIdForCapture)
+
+      if (updateError) {
+        void logAuditEvent({
+          operation_type: 'payment.capture_local_update_failed',
+          resource_type: 'table_booking',
+          resource_id: bookingIdForCapture,
+          operation_status: 'failure',
+          additional_info: {
+            orderId: captureOrderId,
+            transactionId: capture.transactionId,
+            dbError: updateError.message,
+            action_needed: 'Manual reconciliation required — PayPal capture succeeded but DB update failed',
+          },
+        })
+        return { success: false, error: 'Payment captured but booking update failed — team notified' }
+      }
 
       void logAuditEvent({
         operation_type: 'payment.captured',
@@ -230,7 +250,7 @@ export default async function TablePaymentPage({ params, searchParams }: TablePa
   }
 
   const guestFirstName = await getCustomerFirstNameById(supabase, preview.customerId)
-  const paypalClientId = process.env.NEXT_PUBLIC_PAYPAL_CLIENT_ID ?? process.env.PAYPAL_CLIENT_ID ?? ''
+  const paypalClientId = process.env.NEXT_PUBLIC_PAYPAL_CLIENT_ID ?? ''
   const paypalEnvironment = process.env.PAYPAL_ENVIRONMENT ?? 'live'
 
   return (
