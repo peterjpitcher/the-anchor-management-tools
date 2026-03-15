@@ -717,7 +717,17 @@ export async function addShiftsFromTemplates(
     .insert(insertPayload)
     .select('*');
 
-  if (insertError) return { success: false, error: insertError.message };
+  if (insertError) {
+    void logAuditEvent({
+      user_id: user?.id,
+      operation_type: 'create',
+      resource_type: 'rota_week',
+      resource_id: weekId,
+      operation_status: 'failure',
+      additional_info: { action: 'add_shifts_from_selection', error: insertError.message },
+    });
+    return { success: false, error: insertError.message };
+  }
 
   const newShifts = (inserted ?? []) as RotaShift[];
 
