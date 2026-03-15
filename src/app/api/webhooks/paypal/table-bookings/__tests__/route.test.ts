@@ -124,7 +124,7 @@ describe('POST /api/webhooks/paypal/table-bookings', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     vi.resetModules()
-    process.env.PAYPAL_TABLE_BOOKINGS_WEBHOOK_ID = 'test-webhook-id'
+    process.env.PAYPAL_WEBHOOK_ID = 'test-webhook-id'
   })
 
   it('returns 401 when PayPal signature verification fails', async () => {
