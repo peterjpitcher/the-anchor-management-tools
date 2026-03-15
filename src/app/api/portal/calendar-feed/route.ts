@@ -1,3 +1,4 @@
+import { createHash } from 'crypto'
 import { NextRequest } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { verifyCalendarToken } from '@/lib/portal/calendar-token'
@@ -7,6 +8,7 @@ import {
   addOneDay,
   escapeICS,
   foldLine,
+  deriveSequence,
   VTIMEZONE_EUROPE_LONDON,
   ICS_CALENDAR_REFRESH_LINES,
 } from '@/lib/ics/utils'
@@ -42,22 +44,20 @@ export async function GET(req: NextRequest): Promise<Response> {
   const to = new Date()
   to.setDate(to.getDate() + 84)
 
-  // DEFECT-004: destructure error so DB failures return 500 instead of silently returning empty ICS
+  // Include cancelled shifts so Google Calendar receives explicit STATUS:CANCELLED VEVENTs
+  // and removes them, rather than silently leaving stale events when UIDs disappear.
   const { data: shifts, error: shiftsError } = await supabase
     .from('rota_published_shifts')
     .select('*')
     .eq('employee_id', employeeId)
     .gte('shift_date', from.toISOString().split('T')[0])
     .lte('shift_date', to.toISOString().split('T')[0])
-    .neq('status', 'cancelled')
     .order('shift_date')
     .order('start_time')
 
   if (shiftsError) {
     return new Response('Error loading shifts', { status: 500 })
   }
-
-  const dtstamp = icsTimestamp(new Date())
 
   const lines: string[] = [
     'BEGIN:VCALENDAR',
@@ -68,9 +68,9 @@ export async function GET(req: NextRequest): Promise<Response> {
     `X-WR-CALNAME:${escapeICS(empName)} — Shifts`,
     'X-WR-TIMEZONE:Europe/London',
     'X-WR-CALDESC:Your published shifts at The Anchor',
-    // DEFECT-001: refresh hints so calendar apps poll hourly instead of caching for days
+    // Refresh hints for Apple Calendar and Outlook; Google Calendar ignores these
     ...ICS_CALENDAR_REFRESH_LINES,
-    // DEFECT-003: VTIMEZONE required by RFC 5545 §3.6.5 when TZID= is used
+    // VTIMEZONE required by RFC 5545 §3.6.5 when TZID= is used
     ...VTIMEZONE_EUROPE_LONDON,
   ]
 
@@ -93,23 +93,28 @@ export async function GET(req: NextRequest): Promise<Response> {
 
     const descParts: string[] = [`Department: ${deptLabel || (shift.department as string)}`]
     if (shift.status === 'sick') descParts.push('Status: Sick')
+    if (shift.status === 'cancelled') descParts.push('Status: Cancelled')
     if (shift.notes) descParts.push(`Notes: ${shift.notes as string}`)
 
-    // DEFECT-002: LAST-MODIFIED lets clients detect changes; fall back to dtstamp if no published_at
-    const lastModified = shift.published_at
+    // DTSTAMP per RFC 5545 §3.8.7.2 = last time the event was modified in the calendar store.
+    // Use published_at so it only changes when the shift is actually re-published.
+    const isCancelled = shift.status === 'cancelled' || shift.status === 'sick'
+    const eventDtstamp = shift.published_at
       ? icsTimestamp(shift.published_at as string)
-      : dtstamp
+      : icsTimestamp(new Date())
+    const lastModified = eventDtstamp
+    const icsStatus = isCancelled ? 'CANCELLED' : 'CONFIRMED'
 
     lines.push('BEGIN:VEVENT')
     lines.push(`UID:staff-shift-${shift.id as string}@anchor-management`)
-    lines.push(`DTSTAMP:${dtstamp}`)
+    lines.push(`DTSTAMP:${eventDtstamp}`)
     lines.push(`DTSTART;TZID=Europe/London:${dtStart}`)
     lines.push(`DTEND;TZID=Europe/London:${dtEnd}`)
     lines.push(`SUMMARY:${escapeICS(summary)}`)
     lines.push(`DESCRIPTION:${escapeICS(descParts.join('\\n'))}`)
-    lines.push(`STATUS:${shift.status === 'sick' ? 'CANCELLED' : 'CONFIRMED'}`)
+    lines.push(`STATUS:${icsStatus}`)
     lines.push(`LAST-MODIFIED:${lastModified}`)
-    lines.push('SEQUENCE:0')
+    lines.push(`SEQUENCE:${deriveSequence(shift.published_at as string | null, isCancelled)}`)
     lines.push('END:VEVENT')
   }
 
@@ -117,11 +122,42 @@ export async function GET(req: NextRequest): Promise<Response> {
 
   const ics = lines.map(foldLine).join('\r\n')
 
+  // ETag: SHA-256 of ICS body (truncated to 32 hex chars)
+  const etag = `"${createHash('sha256').update(ics).digest('hex').substring(0, 32)}"`
+
+  // Last-Modified: most recent published_at across all returned shifts
+  const mostRecentPublish = (shifts ?? [])
+    .map(s => s.published_at ? new Date(s.published_at as string) : null)
+    .filter((d): d is Date => d !== null)
+    .sort((a, b) => b.getTime() - a.getTime())[0] ?? null
+  const lastModifiedHeader = mostRecentPublish
+    ? mostRecentPublish.toUTCString()
+    : new Date().toUTCString()
+
+  // Conditional GET support
+  const ifNoneMatchHeader = req.headers.get('if-none-match')
+  const ifModifiedSinceHeader = req.headers.get('if-modified-since')
+  const notModified =
+    (ifNoneMatchHeader !== null && ifNoneMatchHeader === etag) ||
+    (ifModifiedSinceHeader !== null && mostRecentPublish !== null &&
+      new Date(ifModifiedSinceHeader) >= mostRecentPublish)
+
+  if (notModified) {
+    return new Response(null, {
+      status: 304,
+      headers: { 'ETag': etag, 'Last-Modified': lastModifiedHeader },
+    })
+  }
+
   return new Response(ics, {
     headers: {
       'Content-Type': 'text/calendar; charset=utf-8',
       'Content-Disposition': `inline; filename="${empName.replace(/\s+/g, '-')}-shifts.ics"`,
       'Cache-Control': 'no-cache, no-store, must-revalidate',
+      'Pragma': 'no-cache',
+      'Expires': '0',
+      'ETag': etag,
+      'Last-Modified': lastModifiedHeader,
     },
   })
 }
