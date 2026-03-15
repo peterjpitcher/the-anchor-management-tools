@@ -12,6 +12,31 @@ export type Database = {
   __InternalSupabase: {
     PostgrestVersion: "12.2.3 (519615d)"
   }
+  graphql_public: {
+    Tables: {
+      [_ in never]: never
+    }
+    Views: {
+      [_ in never]: never
+    }
+    Functions: {
+      graphql: {
+        Args: {
+          extensions?: Json
+          operationName?: string
+          query?: string
+          variables?: Json
+        }
+        Returns: Json
+      }
+    }
+    Enums: {
+      [_ in never]: never
+    }
+    CompositeTypes: {
+      [_ in never]: never
+    }
+  }
   public: {
     Tables: {
       achievement_progress: {
@@ -739,6 +764,7 @@ export type Database = {
           completed_at: string | null
           created_at: string
           customer_id: string
+          deposit_amount: number | null
           event_id: string
           expired_at: string | null
           hold_expires_at: string | null
@@ -746,6 +772,8 @@ export type Database = {
           is_reminder_only: boolean
           last_reminder_sent: string | null
           notes: string | null
+          paypal_deposit_capture_id: string | null
+          paypal_deposit_order_id: string | null
           review_clicked_at: string | null
           review_sms_sent_at: string | null
           review_window_closes_at: string | null
@@ -761,6 +789,7 @@ export type Database = {
           completed_at?: string | null
           created_at?: string
           customer_id: string
+          deposit_amount?: number | null
           event_id: string
           expired_at?: string | null
           hold_expires_at?: string | null
@@ -768,6 +797,8 @@ export type Database = {
           is_reminder_only?: boolean
           last_reminder_sent?: string | null
           notes?: string | null
+          paypal_deposit_capture_id?: string | null
+          paypal_deposit_order_id?: string | null
           review_clicked_at?: string | null
           review_sms_sent_at?: string | null
           review_window_closes_at?: string | null
@@ -783,6 +814,7 @@ export type Database = {
           completed_at?: string | null
           created_at?: string
           customer_id?: string
+          deposit_amount?: number | null
           event_id?: string
           expired_at?: string | null
           hold_expires_at?: string | null
@@ -790,6 +822,8 @@ export type Database = {
           is_reminder_only?: boolean
           last_reminder_sent?: string | null
           notes?: string | null
+          paypal_deposit_capture_id?: string | null
+          paypal_deposit_order_id?: string | null
           review_clicked_at?: string | null
           review_sms_sent_at?: string | null
           review_window_closes_at?: string | null
@@ -11841,7 +11875,7 @@ export type Database = {
         | "auto_completed"
         | "no_receipt_required"
         | "cant_find"
-      table_booking_payment_method: "payment_link" | "cash"
+      table_booking_payment_method: "payment_link" | "cash" | "paypal"
       table_booking_status:
         | "pending_payment"
         | "confirmed"
@@ -11977,6 +12011,9 @@ export type CompositeTypes<
     : never
 
 export const Constants = {
+  graphql_public: {
+    Enums: {},
+  },
   public: {
     Enums: {
       booking_item_type: ["main", "side", "extra"],
@@ -12042,7 +12079,7 @@ export const Constants = {
         "no_receipt_required",
         "cant_find",
       ],
-      table_booking_payment_method: ["payment_link", "cash"],
+      table_booking_payment_method: ["payment_link", "cash", "paypal"],
       table_booking_status: [
         "pending_payment",
         "confirmed",
