@@ -125,7 +125,6 @@ export default function AddShiftsModal({
       }
     }
     return items;
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [templates, weekDates, existingKeys]);
 
   const initialFloating = useMemo<FloatingItem[]>(
@@ -201,7 +200,7 @@ export default function AddShiftsModal({
       if (result.created > 0) parts.push(`${result.created} shift${result.created !== 1 ? 's' : ''} added`);
       if (result.skipped > 0) parts.push(`${result.skipped} already existed and skipped`);
       if (parts.length) toast.success(parts.join(' · '));
-      else toast.success('No new shifts were added');
+      else toast('No new shifts were added', { icon: 'ℹ️' });
       onShiftsAdded(result.shifts);
       onClose();
     });
