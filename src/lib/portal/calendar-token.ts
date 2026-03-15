@@ -1,4 +1,4 @@
-import { createHmac } from 'crypto'
+import { createHmac, timingSafeEqual } from 'crypto'
 
 export function generateCalendarToken(employeeId: string): string {
   return createHmac('sha256', process.env.SUPABASE_SERVICE_ROLE_KEY ?? 'fallback-no-key')
@@ -8,5 +8,11 @@ export function generateCalendarToken(employeeId: string): string {
 }
 
 export function verifyCalendarToken(employeeId: string, token: string): boolean {
-  return generateCalendarToken(employeeId) === token
+  const expected = generateCalendarToken(employeeId)
+  if (expected.length !== token.length) return false
+  try {
+    return timingSafeEqual(Buffer.from(expected), Buffer.from(token))
+  } catch {
+    return false
+  }
 }

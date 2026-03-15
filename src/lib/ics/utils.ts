@@ -113,9 +113,27 @@ export const VTIMEZONE_EUROPE_LONDON: string[] = [
 ];
 
 /**
+ * Derive a monotonically-increasing SEQUENCE number from a shift's published_at timestamp.
+ * RFC 5545 §3.8.7.4: SEQUENCE must increment when event details change.
+ * Since rota_published_shifts is a snapshot table, published_at updates on each re-publish,
+ * giving us a valid increasing SEQUENCE without a dedicated DB column.
+ * Epoch: 2025-01-01T00:00:00Z = 1735689600000 ms.
+ * For cancelled events, add 1 to ensure SEQUENCE is strictly greater than the last CONFIRMED value.
+ */
+export function deriveSequence(publishedAt: string | null, isCancelled = false): number {
+  const EPOCH_MS = 1735689600000; // 2025-01-01T00:00:00Z
+  if (!publishedAt) return isCancelled ? 1 : 0;
+  const ms = new Date(publishedAt).getTime() - EPOCH_MS;
+  const seq = Math.max(0, Math.floor(ms / 1000));
+  return isCancelled ? seq + 1 : seq;
+}
+
+/**
  * Standard calendar refresh hint properties.
- * Fixes DEFECT-001: without these, Google Calendar caches up to 24h, Apple up to 1 week.
- * PT1H = refresh every 1 hour.
+ * Apple Calendar and Outlook honour these (PT1H = refresh hourly).
+ * NOTE: Google Calendar ignores REFRESH-INTERVAL and X-PUBLISHED-TTL entirely —
+ * it polls ICS subscriptions on its own 12–24 hour schedule regardless.
+ * These properties are kept for Apple/Outlook compatibility.
  */
 export const ICS_CALENDAR_REFRESH_LINES: string[] = [
   'REFRESH-INTERVAL;VALUE=DURATION:PT1H',

@@ -34,7 +34,7 @@ export default function RotaFeedButton({ feedUrl }: { feedUrl: string }) {
             <div className="flex items-start justify-between">
               <div>
                 <p className="text-sm font-semibold text-gray-900">Calendar feed</p>
-                <p className="text-xs text-gray-500 mt-0.5">Subscribe to see all rota shifts in your calendar app. The feed updates automatically.</p>
+                <p className="text-xs text-gray-500 mt-0.5">Subscribe to see all rota shifts in your calendar app. Rota changes appear within 24 hours of publishing (Google Calendar), or sooner in Apple Calendar and Outlook.</p>
               </div>
               <button
                 type="button"

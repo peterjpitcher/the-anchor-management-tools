@@ -7,6 +7,7 @@ import {
   addOneDay,
   escapeICS,
   foldLine,
+  deriveSequence,
   VTIMEZONE_EUROPE_LONDON,
   ICS_CALENDAR_REFRESH_LINES,
 } from '@/lib/ics/utils';
@@ -63,15 +64,12 @@ export async function GET(req: NextRequest): Promise<Response> {
     .select('*, employee:employees(first_name, last_name)')
     .gte('shift_date', fromStr)
     .lte('shift_date', toStr)
-    .neq('status', 'cancelled')
     .order('shift_date')
     .order('start_time');
 
   if (error) {
     return new Response('Error loading rota', { status: 500 });
   }
-
-  const dtstamp = icsTimestamp(new Date());
 
   const lines: string[] = [
     'BEGIN:VCALENDAR',
@@ -82,9 +80,9 @@ export async function GET(req: NextRequest): Promise<Response> {
     'X-WR-CALNAME:Anchor Rota',
     'X-WR-TIMEZONE:Europe/London',
     'X-WR-CALDESC:Staff rota shifts',
-    // DEFECT-001: refresh hints so calendar apps poll hourly instead of caching for days
+    // Refresh hints for Apple Calendar and Outlook; Google Calendar ignores these
     ...ICS_CALENDAR_REFRESH_LINES,
-    // DEFECT-003: VTIMEZONE required by RFC 5545 §3.6.5 when TZID= is used
+    // VTIMEZONE required by RFC 5545 §3.6.5 when TZID= is used
     ...VTIMEZONE_EUROPE_LONDON,
   ];
 
@@ -114,23 +112,29 @@ export async function GET(req: NextRequest): Promise<Response> {
 
     const descParts: string[] = [`Department: ${deptLabel || (shift.department as string)}`];
     if (shift.status === 'sick') descParts.push('Status: Sick');
+    if (shift.status === 'cancelled') descParts.push('Status: Cancelled');
     if (shift.notes) descParts.push(`Notes: ${shift.notes as string}`);
 
-    // DEFECT-002: LAST-MODIFIED lets clients detect changes; fall back to dtstamp if no published_at
-    const lastModified = shift.published_at
+    // DTSTAMP per RFC 5545 §3.8.7.2 = last time the event was modified in the calendar store.
+    // Use published_at so it only changes when the shift is actually re-published.
+    const isCancelled = shift.status === 'cancelled' || shift.status === 'sick';
+    const eventDtstamp = shift.published_at
       ? icsTimestamp(shift.published_at as string)
-      : dtstamp;
+      : icsTimestamp(new Date());
+    // LAST-MODIFIED: same source as DTSTAMP for this feed
+    const lastModified = eventDtstamp;
+    const icsStatus = isCancelled ? 'CANCELLED' : 'CONFIRMED';
 
     lines.push('BEGIN:VEVENT');
     lines.push(`UID:shift-${shift.id as string}@anchor-management`);
-    lines.push(`DTSTAMP:${dtstamp}`);
+    lines.push(`DTSTAMP:${eventDtstamp}`);
     lines.push(`DTSTART;TZID=Europe/London:${dtStart}`);
     lines.push(`DTEND;TZID=Europe/London:${dtEnd}`);
     lines.push(`SUMMARY:${escapeICS(summary)}`);
     lines.push(`DESCRIPTION:${escapeICS(descParts.join('\\n'))}`);
-    lines.push(`STATUS:${shift.status === 'sick' ? 'CANCELLED' : 'CONFIRMED'}`);
+    lines.push(`STATUS:${icsStatus}`);
     lines.push(`LAST-MODIFIED:${lastModified}`);
-    lines.push('SEQUENCE:0');
+    lines.push(`SEQUENCE:${deriveSequence(shift.published_at as string | null, isCancelled)}`);
     lines.push('END:VEVENT');
   }
 
@@ -138,11 +142,42 @@ export async function GET(req: NextRequest): Promise<Response> {
 
   const ics = lines.map(foldLine).join('\r\n');
 
+  // ETag: SHA-256 of ICS body (truncated to 32 hex chars)
+  const etag = `"${createHash('sha256').update(ics).digest('hex').substring(0, 32)}"`;
+
+  // Last-Modified: most recent published_at across all returned shifts
+  const mostRecentPublish = (shifts ?? [])
+    .map(s => s.published_at ? new Date(s.published_at as string) : null)
+    .filter((d): d is Date => d !== null)
+    .sort((a, b) => b.getTime() - a.getTime())[0] ?? null;
+  const lastModifiedHeader = mostRecentPublish
+    ? mostRecentPublish.toUTCString()
+    : new Date().toUTCString();
+
+  // Conditional GET support — lets Google issue 304 instead of re-downloading
+  const ifNoneMatchHeader = req.headers.get('if-none-match');
+  const ifModifiedSinceHeader = req.headers.get('if-modified-since');
+  const notModified =
+    (ifNoneMatchHeader !== null && ifNoneMatchHeader === etag) ||
+    (ifModifiedSinceHeader !== null && mostRecentPublish !== null &&
+      new Date(ifModifiedSinceHeader) >= mostRecentPublish);
+
+  if (notModified) {
+    return new Response(null, {
+      status: 304,
+      headers: { 'ETag': etag, 'Last-Modified': lastModifiedHeader },
+    });
+  }
+
   return new Response(ics, {
     headers: {
       'Content-Type': 'text/calendar; charset=utf-8',
       'Content-Disposition': 'inline; filename="rota.ics"',
       'Cache-Control': 'no-cache, no-store, must-revalidate',
+      'Pragma': 'no-cache',
+      'Expires': '0',
+      'ETag': etag,
+      'Last-Modified': lastModifiedHeader,
     },
   });
 }
