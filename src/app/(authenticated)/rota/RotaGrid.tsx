@@ -35,6 +35,7 @@ import ShiftDetailModal from './ShiftDetailModal';
 import CreateShiftModal from './CreateShiftModal';
 import BookHolidayModal from './BookHolidayModal';
 import HolidayDetailModal from './HolidayDetailModal';
+import AddShiftsModal from './AddShiftsModal';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -453,6 +454,13 @@ export default function RotaGrid({
     [templates],
   );
 
+  const hasAnyActiveTemplate = useMemo(
+    () => templates.some(t => t.is_active),
+    [templates],
+  );
+
+  const [showAddShifts, setShowAddShifts] = useState(false);
+
   // Pre-compute hours per employee so empWeekHours isn't called N times per render
   const empHoursMap = useMemo(() => {
     const map = new Map<string, number>();
@@ -581,6 +589,17 @@ export default function RotaGrid({
               disabled={isPending}
             >
               Apply templates
+            </Button>
+          )}
+          {canEdit && hasAnyActiveTemplate && (
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              onClick={() => setShowAddShifts(true)}
+              disabled={isPending}
+            >
+              Add shifts
             </Button>
           )}
 
@@ -876,6 +895,22 @@ export default function RotaGrid({
           }}
           onUpdated={() => {
             router.refresh();
+          }}
+        />
+      )}
+
+      {/* Add shifts modal */}
+      {showAddShifts && (
+        <AddShiftsModal
+          week={week}
+          weekDates={days}
+          templates={templates}
+          existingShifts={shifts}
+          employees={employees}
+          onClose={() => setShowAddShifts(false)}
+          onShiftsAdded={(newShifts) => {
+            setShifts(prev => [...prev, ...newShifts]);
+            setShowAddShifts(false);
           }}
         />
       )}
