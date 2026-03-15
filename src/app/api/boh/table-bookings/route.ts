@@ -200,8 +200,8 @@ async function loadBookingsRows(
   input: { startDate: string; endDate: string }
 ): Promise<{ data: any[]; error: unknown | null }> {
   const attempts = [
-    'id, booking_reference, booking_date, booking_time, party_size, committed_party_size, booking_type, booking_purpose, status, payment_status, special_requirements, seated_at, left_at, no_show_at, cancelled_at, cancelled_by, start_datetime, end_datetime, duration_minutes, hold_expires_at, created_at, updated_at, customer_id, event_id, customer:customers!table_bookings_customer_id_fkey(id,first_name,last_name,mobile_number,sms_status)',
-    'id, booking_reference, booking_date, booking_time, party_size, booking_type, status, payment_status, special_requirements, seated_at, left_at, no_show_at, cancelled_at, start_datetime, end_datetime, duration_minutes, created_at, updated_at, customer_id, event_id, customer:customers!table_bookings_customer_id_fkey(id,first_name,last_name,mobile_number,sms_status)',
+    'id, booking_reference, booking_date, booking_time, party_size, committed_party_size, booking_type, booking_purpose, status, payment_status, payment_method, special_requirements, seated_at, left_at, no_show_at, cancelled_at, cancelled_by, start_datetime, end_datetime, duration_minutes, hold_expires_at, created_at, updated_at, customer_id, event_id, customer:customers!table_bookings_customer_id_fkey(id,first_name,last_name,mobile_number,sms_status)',
+    'id, booking_reference, booking_date, booking_time, party_size, booking_type, status, payment_status, payment_method, special_requirements, seated_at, left_at, no_show_at, cancelled_at, start_datetime, end_datetime, duration_minutes, created_at, updated_at, customer_id, event_id, customer:customers!table_bookings_customer_id_fkey(id,first_name,last_name,mobile_number,sms_status)',
     'id, booking_reference, booking_date, booking_time, party_size, booking_type, status, special_requirements, duration_minutes, no_show_at, cancelled_at, created_at, updated_at, customer_id, customer:customers!table_bookings_customer_id_fkey(id,first_name,last_name,mobile_number,sms_status)',
     'id, booking_reference, booking_date, booking_time, party_size, booking_type, status, special_requirements, duration_minutes, no_show_at, cancelled_at, created_at, updated_at, customer_id, customer:customers!table_bookings_customer_id_fkey(id,first_name,last_name,mobile_number)'
   ]
@@ -268,8 +268,6 @@ export async function GET(request: NextRequest) {
 
   const view = normalizeViewMode(request.nextUrl.searchParams.get('view'))
   const dateParam = request.nextUrl.searchParams.get('date')
-  const statusFilterRaw = request.nextUrl.searchParams.get('status')
-  const searchQuery = request.nextUrl.searchParams.get('q')?.trim().toLowerCase() || ''
 
   const requestedDate = dateParam && isIsoDate(dateParam) ? dateParam : getLondonDateIso()
   const range = computeRange(requestedDate, view)
@@ -406,16 +404,6 @@ export async function GET(request: NextRequest) {
   })
 
   const tableNumberCollator = new Intl.Collator('en', { numeric: true, sensitivity: 'base' })
-  const parsedStatusFilters = statusFilterRaw
-    ? new Set(
-        statusFilterRaw
-          .split(',')
-          .map((value) => value.trim().toLowerCase())
-          .filter(Boolean)
-      )
-    : null
-
-  const showingCancelledExplicitly = parsedStatusFilters !== null && parsedStatusFilters.has('cancelled')
 
   const mappedBookings = bookingRows
     .map((row) => {
@@ -493,6 +481,7 @@ export async function GET(request: NextRequest) {
         cancelled_by: row.cancelled_by || null,
         hold_expires_at: row.hold_expires_at || null,
         payment_status: row.payment_status || null,
+        payment_method: row.payment_method || null,
         created_at: row.created_at || null,
         updated_at: row.updated_at || null,
         customer,
@@ -518,25 +507,6 @@ export async function GET(request: NextRequest) {
           table_names: tableNames
         })
       }
-    })
-    .filter((booking) => {
-      if (parsedStatusFilters && parsedStatusFilters.size > 0) {
-        const status = (booking.status || '').toLowerCase()
-        const visualStatus = booking.visual_status.toLowerCase()
-        if (!parsedStatusFilters.has(status) && !parsedStatusFilters.has(visualStatus)) {
-          return false
-        }
-      } else if (!showingCancelledExplicitly) {
-        if ((booking.status || '').toLowerCase() === 'cancelled') {
-          return false
-        }
-      }
-
-      if (searchQuery && !booking._search_blob.includes(searchQuery)) {
-        return false
-      }
-
-      return true
     })
     .sort((a, b) => a._sort_key.localeCompare(b._sort_key))
 
