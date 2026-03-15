@@ -1,6 +1,15 @@
-import { createHash } from 'crypto';
+import { createHash, timingSafeEqual } from 'crypto';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { NextRequest } from 'next/server';
+import {
+  icsDate,
+  icsTimestamp,
+  addOneDay,
+  escapeICS,
+  foldLine,
+  VTIMEZONE_EUROPE_LONDON,
+  ICS_CALENDAR_REFRESH_LINES,
+} from '@/lib/ics/utils';
 
 export const dynamic = 'force-dynamic';
 
@@ -8,7 +17,6 @@ export const dynamic = 'force-dynamic';
 // Prefer ROTA_FEED_SECRET (dedicated secret, easier to rotate without affecting Supabase).
 // Falls back to SHA-256(service role key) so existing calendar subscriptions continue to work
 // until operators set ROTA_FEED_SECRET and re-subscribe.
-// Migration path: set ROTA_FEED_SECRET=<random string>, update calendar subscriptions with new URL.
 function getFeedToken(): string {
   if (process.env.ROTA_FEED_SECRET) {
     return process.env.ROTA_FEED_SECRET;
@@ -19,47 +27,23 @@ function getFeedToken(): string {
     .substring(0, 32);
 }
 
-function icsDate(dateStr: string, timeStr: string): string {
-  // Returns YYYYMMDDTHHMMSS for use with TZID=Europe/London
-  const datePart = dateStr.replace(/-/g, '');
-  const [h, m] = timeStr.split(':');
-  return `${datePart}T${h.padStart(2, '0')}${m.padStart(2, '0')}00`;
-}
-
-function addOneDay(dateStr: string): string {
-  const d = new Date(dateStr + 'T12:00:00Z');
-  d.setUTCDate(d.getUTCDate() + 1);
-  return d.toISOString().split('T')[0];
-}
-
-function escapeICS(str: string): string {
-  return str
-    .replace(/\\/g, '\\\\')
-    .replace(/;/g, '\\;')
-    .replace(/,/g, '\\,')
-    .replace(/\n/g, '\\n')
-    .replace(/\r/g, '');
-}
-
-// Fold long ICS lines at 75 octets per RFC 5545
-function foldLine(line: string): string {
-  const bytes = Buffer.from(line, 'utf8');
-  if (bytes.length <= 75) return line;
-  const parts: string[] = [];
-  let offset = 0;
-  let first = true;
-  while (offset < bytes.length) {
-    const limit = first ? 75 : 74;
-    parts.push(bytes.slice(offset, offset + limit).toString('utf8'));
-    offset += limit;
-    first = false;
+/**
+ * Timing-safe token comparison (fixes DEFECT-006).
+ * Differing lengths return false immediately — no timing leak since
+ * we are not revealing which byte position differs.
+ */
+function isValidToken(provided: string, expected: string): boolean {
+  if (provided.length !== expected.length) return false;
+  try {
+    return timingSafeEqual(Buffer.from(provided), Buffer.from(expected));
+  } catch {
+    return false;
   }
-  return parts.join('\r\n ');
 }
 
-export async function GET(req: NextRequest) {
+export async function GET(req: NextRequest): Promise<Response> {
   const token = req.nextUrl.searchParams.get('token');
-  if (!token || token !== getFeedToken()) {
+  if (!token || !isValidToken(token, getFeedToken())) {
     return new Response('Unauthorized', { status: 401 });
   }
 
@@ -87,7 +71,7 @@ export async function GET(req: NextRequest) {
     return new Response('Error loading rota', { status: 500 });
   }
 
-  const dtstamp = new Date().toISOString().replace(/[-:.]/g, '').substring(0, 15) + 'Z';
+  const dtstamp = icsTimestamp(new Date());
 
   const lines: string[] = [
     'BEGIN:VCALENDAR',
@@ -98,6 +82,10 @@ export async function GET(req: NextRequest) {
     'X-WR-CALNAME:Anchor Rota',
     'X-WR-TIMEZONE:Europe/London',
     'X-WR-CALDESC:Staff rota shifts',
+    // DEFECT-001: refresh hints so calendar apps poll hourly instead of caching for days
+    ...ICS_CALENDAR_REFRESH_LINES,
+    // DEFECT-003: VTIMEZONE required by RFC 5545 §3.6.5 when TZID= is used
+    ...VTIMEZONE_EUROPE_LONDON,
   ];
 
   for (const shift of shifts ?? []) {
@@ -109,31 +97,40 @@ export async function GET(req: NextRequest) {
         : 'Unknown';
 
     const deptLabel = shift.department
-      ? shift.department.charAt(0).toUpperCase() + shift.department.slice(1)
+      ? (shift.department as string).charAt(0).toUpperCase() + (shift.department as string).slice(1)
       : '';
 
     const summary = [
       empName,
-      shift.name ? `— ${shift.name}` : null,
+      shift.name ? `— ${shift.name as string}` : null,
       deptLabel ? `(${deptLabel})` : null,
     ].filter(Boolean).join(' ');
 
-    const endDate = shift.is_overnight ? addOneDay(shift.shift_date) : shift.shift_date;
-    const dtStart = icsDate(shift.shift_date, shift.start_time);
-    const dtEnd = icsDate(endDate, shift.end_time);
+    const endDate = shift.is_overnight
+      ? addOneDay(shift.shift_date as string)
+      : (shift.shift_date as string);
+    const dtStart = icsDate(shift.shift_date as string, shift.start_time as string);
+    const dtEnd = icsDate(endDate, shift.end_time as string);
 
-    const descParts: string[] = [`Department: ${deptLabel || shift.department}`];
+    const descParts: string[] = [`Department: ${deptLabel || (shift.department as string)}`];
     if (shift.status === 'sick') descParts.push('Status: Sick');
-    if (shift.notes) descParts.push(`Notes: ${shift.notes}`);
+    if (shift.notes) descParts.push(`Notes: ${shift.notes as string}`);
+
+    // DEFECT-002: LAST-MODIFIED lets clients detect changes; fall back to dtstamp if no published_at
+    const lastModified = shift.published_at
+      ? icsTimestamp(shift.published_at as string)
+      : dtstamp;
 
     lines.push('BEGIN:VEVENT');
-    lines.push(`UID:shift-${shift.id}@anchor-management`);
+    lines.push(`UID:shift-${shift.id as string}@anchor-management`);
     lines.push(`DTSTAMP:${dtstamp}`);
     lines.push(`DTSTART;TZID=Europe/London:${dtStart}`);
     lines.push(`DTEND;TZID=Europe/London:${dtEnd}`);
     lines.push(`SUMMARY:${escapeICS(summary)}`);
     lines.push(`DESCRIPTION:${escapeICS(descParts.join('\\n'))}`);
     lines.push(`STATUS:${shift.status === 'sick' ? 'CANCELLED' : 'CONFIRMED'}`);
+    lines.push(`LAST-MODIFIED:${lastModified}`);
+    lines.push('SEQUENCE:0');
     lines.push('END:VEVENT');
   }
 

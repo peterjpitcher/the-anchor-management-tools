@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { sendTableBookingCancelledSmsIfAllowed } from '@/lib/table-bookings/bookings'
+import { logAuditEvent } from '@/app/actions/audit'
 
 export const maxDuration = 60
 
@@ -17,8 +18,9 @@ export async function GET(request: NextRequest) {
   const cutoffDate = new Date(now.getTime() + 25 * 60 * 60 * 1000)
   const { data: candidates, error } = await supabase
     .from('table_bookings')
-    .select('id, customer_id, booking_reference, booking_date, booking_time')
+    .select('id, customer_id, booking_reference, booking_date, booking_time, deposit_waived')
     .eq('status', 'pending_payment')
+    .eq('deposit_waived', false)
     .lte('booking_date', cutoffDate.toISOString().split('T')[0])
 
   if (error) {
@@ -47,6 +49,22 @@ export async function GET(request: NextRequest) {
     if (updateErr) {
       console.error('[deposit-timeout] update error for booking', booking.id, updateErr)
       continue
+    }
+
+    try {
+      await logAuditEvent({
+        operation_type: 'table_booking.auto_cancelled',
+        resource_type: 'table_booking',
+        resource_id: booking.id,
+        operation_status: 'success',
+        additional_info: {
+          booking_reference: booking.booking_reference,
+          reason: 'deposit_not_paid_within_24h',
+          cancelled_by: 'system',
+        },
+      })
+    } catch (auditErr) {
+      console.error('[deposit-timeout] audit log error for booking', booking.id, auditErr)
     }
 
     try {

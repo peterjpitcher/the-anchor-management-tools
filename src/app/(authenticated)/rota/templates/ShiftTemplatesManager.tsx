@@ -31,11 +31,14 @@ interface ShiftTemplatesManagerProps {
 const DEPARTMENT_COLOURS: Record<string, string> = {
   bar: 'bg-blue-50 border-blue-200',
   kitchen: 'bg-orange-50 border-orange-200',
+  runner: 'bg-green-50 border-green-200',
 };
+const DEPARTMENT_COLOUR_DEFAULT = 'bg-gray-50 border-gray-200';
 
-const DEPARTMENT_BADGE: Record<string, 'info' | 'warning'> = {
+const DEPARTMENT_BADGE: Record<string, 'info' | 'warning' | 'success' | 'default'> = {
   bar: 'info',
   kitchen: 'warning',
+  runner: 'success',
 };
 
 function paidHours(start: string, end: string, breakMins: number): string {
@@ -263,7 +266,7 @@ function TemplateRow({ template, employees, departments, canEdit }: { template: 
 
   return (
     <div
-      className={`flex items-center justify-between p-3 rounded-lg border ${DEPARTMENT_COLOURS[current.department]} transition-colors`}
+      className={`flex items-center justify-between p-3 rounded-lg border ${DEPARTMENT_COLOURS[current.department] ?? DEPARTMENT_COLOUR_DEFAULT} transition-colors`}
       style={colourStyle}
     >
       <div className="flex items-center gap-3 min-w-0">
@@ -295,7 +298,7 @@ function TemplateRow({ template, employees, departments, canEdit }: { template: 
         </div>
       </div>
       <div className="flex items-center gap-2 ml-3 shrink-0">
-        <Badge variant={DEPARTMENT_BADGE[current.department]} size="sm">{current.department}</Badge>
+        <Badge variant={DEPARTMENT_BADGE[current.department] ?? 'default'} size="sm">{current.department}</Badge>
         {canEdit && (
           <>
             <button

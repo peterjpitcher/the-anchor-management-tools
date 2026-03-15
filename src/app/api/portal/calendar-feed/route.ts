@@ -1,46 +1,19 @@
 import { NextRequest } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { verifyCalendarToken } from '@/lib/portal/calendar-token'
+import {
+  icsDate,
+  icsTimestamp,
+  addOneDay,
+  escapeICS,
+  foldLine,
+  VTIMEZONE_EUROPE_LONDON,
+  ICS_CALENDAR_REFRESH_LINES,
+} from '@/lib/ics/utils'
 
 export const dynamic = 'force-dynamic'
 
-function icsDate(dateStr: string, timeStr: string): string {
-  const datePart = dateStr.replace(/-/g, '')
-  const [h, m] = timeStr.split(':')
-  return `${datePart}T${h.padStart(2, '0')}${m.padStart(2, '0')}00`
-}
-
-function addOneDay(dateStr: string): string {
-  const d = new Date(dateStr + 'T12:00:00Z')
-  d.setUTCDate(d.getUTCDate() + 1)
-  return d.toISOString().split('T')[0]
-}
-
-function escapeICS(str: string): string {
-  return str
-    .replace(/\\/g, '\\\\')
-    .replace(/;/g, '\\;')
-    .replace(/,/g, '\\,')
-    .replace(/\n/g, '\\n')
-    .replace(/\r/g, '')
-}
-
-function foldLine(line: string): string {
-  const bytes = Buffer.from(line, 'utf8')
-  if (bytes.length <= 75) return line
-  const parts: string[] = []
-  let offset = 0
-  let first = true
-  while (offset < bytes.length) {
-    const limit = first ? 75 : 74
-    parts.push(bytes.slice(offset, offset + limit).toString('utf8'))
-    offset += limit
-    first = false
-  }
-  return parts.join('\r\n ')
-}
-
-export async function GET(req: NextRequest) {
+export async function GET(req: NextRequest): Promise<Response> {
   const employeeId = req.nextUrl.searchParams.get('employee_id')
   const token = req.nextUrl.searchParams.get('token')
 
@@ -69,7 +42,8 @@ export async function GET(req: NextRequest) {
   const to = new Date()
   to.setDate(to.getDate() + 84)
 
-  const { data: shifts } = await supabase
+  // DEFECT-004: destructure error so DB failures return 500 instead of silently returning empty ICS
+  const { data: shifts, error: shiftsError } = await supabase
     .from('rota_published_shifts')
     .select('*')
     .eq('employee_id', employeeId)
@@ -79,7 +53,11 @@ export async function GET(req: NextRequest) {
     .order('shift_date')
     .order('start_time')
 
-  const dtstamp = new Date().toISOString().replace(/[-:.]/g, '').substring(0, 15) + 'Z'
+  if (shiftsError) {
+    return new Response('Error loading shifts', { status: 500 })
+  }
+
+  const dtstamp = icsTimestamp(new Date())
 
   const lines: string[] = [
     'BEGIN:VCALENDAR',
@@ -90,35 +68,48 @@ export async function GET(req: NextRequest) {
     `X-WR-CALNAME:${escapeICS(empName)} — Shifts`,
     'X-WR-TIMEZONE:Europe/London',
     'X-WR-CALDESC:Your published shifts at The Anchor',
+    // DEFECT-001: refresh hints so calendar apps poll hourly instead of caching for days
+    ...ICS_CALENDAR_REFRESH_LINES,
+    // DEFECT-003: VTIMEZONE required by RFC 5545 §3.6.5 when TZID= is used
+    ...VTIMEZONE_EUROPE_LONDON,
   ]
 
   for (const shift of shifts ?? []) {
     const deptLabel = shift.department
-      ? shift.department.charAt(0).toUpperCase() + shift.department.slice(1)
+      ? (shift.department as string).charAt(0).toUpperCase() + (shift.department as string).slice(1)
       : ''
 
     const summary = [
       'Shift at The Anchor',
       deptLabel ? `(${deptLabel})` : null,
-      shift.name ? `— ${shift.name}` : null,
+      shift.name ? `— ${shift.name as string}` : null,
     ].filter(Boolean).join(' ')
 
-    const endDate = shift.is_overnight ? addOneDay(shift.shift_date) : shift.shift_date
-    const dtStart = icsDate(shift.shift_date, shift.start_time)
-    const dtEnd = icsDate(endDate, shift.end_time)
+    const endDate = shift.is_overnight
+      ? addOneDay(shift.shift_date as string)
+      : (shift.shift_date as string)
+    const dtStart = icsDate(shift.shift_date as string, shift.start_time as string)
+    const dtEnd = icsDate(endDate, shift.end_time as string)
 
-    const descParts = [`Department: ${deptLabel || shift.department}`]
+    const descParts: string[] = [`Department: ${deptLabel || (shift.department as string)}`]
     if (shift.status === 'sick') descParts.push('Status: Sick')
-    if (shift.notes) descParts.push(`Notes: ${shift.notes}`)
+    if (shift.notes) descParts.push(`Notes: ${shift.notes as string}`)
+
+    // DEFECT-002: LAST-MODIFIED lets clients detect changes; fall back to dtstamp if no published_at
+    const lastModified = shift.published_at
+      ? icsTimestamp(shift.published_at as string)
+      : dtstamp
 
     lines.push('BEGIN:VEVENT')
-    lines.push(`UID:staff-shift-${shift.id}@anchor-management`)
+    lines.push(`UID:staff-shift-${shift.id as string}@anchor-management`)
     lines.push(`DTSTAMP:${dtstamp}`)
     lines.push(`DTSTART;TZID=Europe/London:${dtStart}`)
     lines.push(`DTEND;TZID=Europe/London:${dtEnd}`)
     lines.push(`SUMMARY:${escapeICS(summary)}`)
     lines.push(`DESCRIPTION:${escapeICS(descParts.join('\\n'))}`)
     lines.push(`STATUS:${shift.status === 'sick' ? 'CANCELLED' : 'CONFIRMED'}`)
+    lines.push(`LAST-MODIFIED:${lastModified}`)
+    lines.push('SEQUENCE:0')
     lines.push('END:VEVENT')
   }
 
