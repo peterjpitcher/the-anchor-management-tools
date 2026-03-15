@@ -23,7 +23,7 @@ interface AddShiftsModalProps {
   onShiftsAdded: (shifts: RotaShift[]) => void;
 }
 
-type DayState = 'recommended' | 'exists' | 'unchecked';
+type DayState = 'recommended' | 'exists';
 
 interface ScheduledItem {
   template: ShiftTemplate;

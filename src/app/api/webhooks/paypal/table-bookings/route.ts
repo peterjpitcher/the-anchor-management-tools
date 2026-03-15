@@ -54,7 +54,6 @@ async function logWebhook(
     errorDetails?: unknown
   },
 ) {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { error } = await (supabase.from('webhook_logs') as any).insert({
     webhook_type: 'paypal',
     status: input.status,
@@ -72,7 +71,6 @@ async function logWebhook(
   if (error) {
     logger.error('Failed to store PayPal table-bookings webhook log', {
       error: new Error(
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         typeof (error as any)?.message === 'string' ? (error as any).message : String(error), // Supabase error shape is not fully typed
       ),
       metadata: {
@@ -86,7 +84,6 @@ async function logWebhook(
 
 async function handleDepositCaptureCompleted(
   supabase: ReturnType<typeof createAdminClient>,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   event: any, // PayPal webhook event payload is not typed in this project
 ) {
   const resource = event.resource
@@ -195,7 +192,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Invalid signature' }, { status: 401 })
     }
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let event: any // PayPal webhook event payload is not typed in this project
     try {
       event = JSON.parse(body)

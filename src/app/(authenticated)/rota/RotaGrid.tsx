@@ -910,7 +910,6 @@ export default function RotaGrid({
           onClose={() => setShowAddShifts(false)}
           onShiftsAdded={(newShifts) => {
             setShifts(prev => [...prev, ...newShifts]);
-            setShowAddShifts(false);
           }}
         />
       )}
