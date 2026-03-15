@@ -764,7 +764,6 @@ export type Database = {
           completed_at: string | null
           created_at: string
           customer_id: string
-          deposit_amount: number | null
           event_id: string
           expired_at: string | null
           hold_expires_at: string | null
@@ -772,8 +771,6 @@ export type Database = {
           is_reminder_only: boolean
           last_reminder_sent: string | null
           notes: string | null
-          paypal_deposit_capture_id: string | null
-          paypal_deposit_order_id: string | null
           review_clicked_at: string | null
           review_sms_sent_at: string | null
           review_window_closes_at: string | null
@@ -789,7 +786,6 @@ export type Database = {
           completed_at?: string | null
           created_at?: string
           customer_id: string
-          deposit_amount?: number | null
           event_id: string
           expired_at?: string | null
           hold_expires_at?: string | null
@@ -797,8 +793,6 @@ export type Database = {
           is_reminder_only?: boolean
           last_reminder_sent?: string | null
           notes?: string | null
-          paypal_deposit_capture_id?: string | null
-          paypal_deposit_order_id?: string | null
           review_clicked_at?: string | null
           review_sms_sent_at?: string | null
           review_window_closes_at?: string | null
@@ -814,7 +808,6 @@ export type Database = {
           completed_at?: string | null
           created_at?: string
           customer_id?: string
-          deposit_amount?: number | null
           event_id?: string
           expired_at?: string | null
           hold_expires_at?: string | null
@@ -822,8 +815,6 @@ export type Database = {
           is_reminder_only?: boolean
           last_reminder_sent?: string | null
           notes?: string | null
-          paypal_deposit_capture_id?: string | null
-          paypal_deposit_order_id?: string | null
           review_clicked_at?: string | null
           review_sms_sent_at?: string | null
           review_window_closes_at?: string | null
@@ -9290,6 +9281,7 @@ export type Database = {
           correlation_id: string | null
           created_at: string | null
           customer_id: string | null
+          deposit_amount: number | null
           deposit_waived: boolean
           dietary_requirements: string[] | null
           duration_minutes: number | null
@@ -9313,6 +9305,8 @@ export type Database = {
             | Database["public"]["Enums"]["table_booking_payment_method"]
             | null
           payment_status: Database["public"]["Enums"]["payment_status"] | null
+          paypal_deposit_capture_id: string | null
+          paypal_deposit_order_id: string | null
           reminder_sent: boolean | null
           review_clicked_at: string | null
           review_sms_sent_at: string | null
@@ -9344,6 +9338,7 @@ export type Database = {
           correlation_id?: string | null
           created_at?: string | null
           customer_id?: string | null
+          deposit_amount?: number | null
           deposit_waived?: boolean
           dietary_requirements?: string[] | null
           duration_minutes?: number | null
@@ -9367,6 +9362,8 @@ export type Database = {
             | Database["public"]["Enums"]["table_booking_payment_method"]
             | null
           payment_status?: Database["public"]["Enums"]["payment_status"] | null
+          paypal_deposit_capture_id?: string | null
+          paypal_deposit_order_id?: string | null
           reminder_sent?: boolean | null
           review_clicked_at?: string | null
           review_sms_sent_at?: string | null
@@ -9398,6 +9395,7 @@ export type Database = {
           correlation_id?: string | null
           created_at?: string | null
           customer_id?: string | null
+          deposit_amount?: number | null
           deposit_waived?: boolean
           dietary_requirements?: string[] | null
           duration_minutes?: number | null
@@ -9421,6 +9419,8 @@ export type Database = {
             | Database["public"]["Enums"]["table_booking_payment_method"]
             | null
           payment_status?: Database["public"]["Enums"]["payment_status"] | null
+          paypal_deposit_capture_id?: string | null
+          paypal_deposit_order_id?: string | null
           reminder_sent?: boolean | null
           review_clicked_at?: string | null
           review_sms_sent_at?: string | null
