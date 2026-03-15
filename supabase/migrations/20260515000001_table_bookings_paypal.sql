@@ -1,10 +1,10 @@
 -- supabase/migrations/20260515000001_table_bookings_paypal.sql
 
 -- Add PayPal deposit tracking columns
-ALTER TABLE bookings
+ALTER TABLE table_bookings
   ADD COLUMN IF NOT EXISTS paypal_deposit_order_id TEXT,
   ADD COLUMN IF NOT EXISTS paypal_deposit_capture_id TEXT,
-  ADD COLUMN IF NOT EXISTS deposit_amount INTEGER; -- stored in pence (£10/person = 1000)
+  ADD COLUMN IF NOT EXISTS deposit_amount NUMERIC(10,2); -- GBP with 2dp, e.g. 80.00 for 8 guests
 
 -- Add paypal as a valid payment method
 DO $$
