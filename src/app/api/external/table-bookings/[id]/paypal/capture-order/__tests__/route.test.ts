@@ -139,4 +139,29 @@ describe('POST /api/external/table-bookings/[id]/paypal/capture-order', () => {
     expect(res.status).toBe(502);
     expect(body.error).toBeDefined();
   });
+
+  it('returns 502 and logs reconciliation event if PayPal succeeds but DB update fails', async () => {
+    const booking = makeBooking({ paypal_deposit_order_id: 'ORDER-123' });
+    mockBookingFetch(booking);
+    mockCapturePayPalPayment.mockResolvedValueOnce({
+      transactionId: 'CAPTURE-XYZ',
+      status: 'COMPLETED',
+      payerId: 'PAYER-2',
+      amount: '40.00',
+    });
+    // DB update returns an error
+    mockUpdateEq.mockResolvedValueOnce({ error: { message: 'DB write failed' } });
+    mockUpdate.mockReturnValue({ eq: mockUpdateEq });
+
+    const res = await callRoute('booking-uuid-1', { orderId: 'ORDER-123' });
+    const body = await res.json();
+
+    expect(res.status).toBe(502);
+    expect(body.error).toBeDefined();
+
+    const { logAuditEvent } = await import('@/app/actions/audit');
+    expect(logAuditEvent).toHaveBeenCalledWith(
+      expect.objectContaining({ operation_type: 'payment.capture_local_update_failed' }),
+    );
+  });
 });
