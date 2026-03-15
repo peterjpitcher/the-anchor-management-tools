@@ -18,7 +18,7 @@ A secondary "Add Shifts" button sits next to the existing "Apply Templates" butt
 ### Trigger
 
 - A secondary (outline) button labelled **"Add Shifts"** appears in the rota toolbar next to "Apply Templates".
-- Visible whenever `canEdit === true` and at least one active shift template exists (regardless of whether any template has `day_of_week` set).
+- Visible whenever `canEdit === true` and at least one active shift template exists (regardless of whether any template has `day_of_week` set). This requires a new `useMemo` variable `hasAnyActiveTemplate = templates.some(t => t.is_active)` — separate from the existing `hasScheduledTemplates` guard used by "Apply Templates" — so the two buttons are independently controlled.
 - Clicking it opens the modal for the currently-selected week.
 
 ### Modal — Structure
@@ -64,7 +64,7 @@ If there are no floating templates, this zone is hidden.
 On modal open, the client fetches (or receives from the server) the set of shifts already present this week. For each scheduled template (has `day_of_week`):
 
 1. Calculate the target date for that day within the current week.
-2. Check if a shift already exists this week that was created from this template (`template_id` match) on that date **OR** any shift exists for the same `(start_time, end_time, department)` tuple on that date (looser duplicate check as fallback).
+2. Check if a shift already exists this week that was created from this template (`template_id` match) on that date **OR** any shift exists for the same `(start_time, end_time, department)` tuple on that date (looser duplicate check as fallback). Both `start_time` values are normalised to `HH:MM` for comparison (`shift.start_time === template.start_time.slice(0, 5)`).
 3. If no match → **Recommended** (pre-checked).
 4. If match found → **Already added** (disabled, unchecked).
 
@@ -98,7 +98,7 @@ On "Add N shifts" click:
 ```typescript
 interface AddShiftsModalProps {
   week: RotaWeek;
-  weekDates: string[];           // ISO dates Mon–Sun for this week, e.g. ["2026-03-16", ...]
+  weekDates: string[];           // Always exactly 7 ISO dates, index 0 = Monday … index 6 = Sunday (matches day_of_week). weekDates[t.day_of_week] gives the target date for template t.
   templates: ShiftTemplate[];    // all active templates
   existingShifts: RotaShift[];   // current week's shifts (for recommendation logic)
   employees: RotaEmployee[];     // for resolving employee_id → display name
@@ -118,7 +118,7 @@ addShiftsFromTemplates(
          | { success: false; error: string }>
 ```
 
-Server-side deduplication key: `${templateId}:${shiftDate}` (same as `autoPopulateWeekFromTemplates`).
+Server-side deduplication key: `${templateId}:${shiftDate}` (same as `autoPopulateWeekFromTemplates`). `skipped` is not present in `autoPopulateWeekFromTemplates` and must be computed explicitly as `selections.length - insertPayload.length` after the deduplication loop.
 
 ---
 
@@ -147,7 +147,7 @@ No extra server round-trip to open the modal — all data already in RotaGrid's 
 | No floating templates | "Other templates" section hidden entirely |
 | Floating template checked but no day selected | "Add N shifts" button disabled; field highlighted on attempted submit |
 | Race condition (shift added between open and submit) | Server skips duplicate silently; `skipped` count in toast |
-| Week has no `id` yet (never had a shift) | Server action creates the `rota_weeks` record before inserting shifts (same pattern as `autoPopulateWeekFromTemplates`) |
+| Week has no `id` yet (never had a shift) | `autoPopulateWeekFromTemplates` returns an error if the week record is missing — `addShiftsFromTemplates` follows the same pattern. RotaGrid must only open the modal for weeks that already have an `id` (i.e. at least one shift or the week row exists). If `week.id` is absent, the button should be disabled or the modal should show an error. |
 | `canEdit === false` | Button not rendered |
 
 ---
@@ -155,7 +155,7 @@ No extra server round-trip to open the modal — all data already in RotaGrid's 
 ## Permissions
 
 - Button only rendered when `canEdit === true` (existing RBAC check, `rota` / `create`).
-- Server action calls `checkUserPermission('rota', 'create')` and returns `{ error: 'Permission denied' }` if not authorised.
+- Server action calls `checkUserPermission('rota', 'edit')` and returns `{ error: 'Permission denied' }` if not authorised. Uses `'edit'` (not `'create'`) to match the precedent set by `autoPopulateWeekFromTemplates`.
 
 ---
 
