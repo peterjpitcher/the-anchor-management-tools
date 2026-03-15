@@ -101,6 +101,19 @@ describe('POST /api/external/table-bookings/[id]/paypal/capture-order', () => {
     expect(mockCapturePayPalPayment).toHaveBeenCalledWith('ORDER-123');
   });
 
+  it('returns 404 if booking not found', async () => {
+    mockSingle.mockResolvedValueOnce({ data: null, error: null });
+    mockEq.mockReturnValue({ single: mockSingle });
+    mockSelect.mockReturnValue({ eq: mockEq });
+
+    const res = await callRoute('non-existent-id', { orderId: 'ORDER-123' });
+    const body = await res.json();
+
+    expect(res.status).toBe(404);
+    expect(body.error).toBeDefined();
+    expect(mockCapturePayPalPayment).not.toHaveBeenCalled();
+  });
+
   it('returns 400 if orderId does not match stored order', async () => {
     const booking = makeBooking({ paypal_deposit_order_id: 'ORDER-123' });
     mockBookingFetch(booking);
