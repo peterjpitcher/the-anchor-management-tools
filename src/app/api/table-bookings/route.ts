@@ -261,7 +261,7 @@ export async function POST(request: NextRequest) {
         let smsSendResult: Awaited<ReturnType<typeof sendTableBookingCreatedSmsIfAllowed>> | null = null
 
         const [smsOutcome, emailOutcome] = await Promise.allSettled([
-          payload.skip_customer_sms
+          (payload.skip_customer_sms && bookingResult.state === 'pending_payment')
             ? Promise.resolve({ sms: null } as Awaited<ReturnType<typeof sendTableBookingCreatedSmsIfAllowed>>)
             : sendTableBookingCreatedSmsIfAllowed(supabase, {
                 customerId: customerResolution.customerId,
