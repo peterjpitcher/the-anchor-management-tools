@@ -193,6 +193,75 @@ export async function createSimplePayPalOrder(options: PayPalOrderOptions) {
   });
 }
 
+export interface InlinePayPalOrderOptions {
+  customId: string;
+  reference: string;
+  description: string;
+  amount: number;
+  currency?: string;
+  requestId?: string;
+}
+
+/**
+ * Creates a PayPal order for use with inline/popup PayPal buttons.
+ * Unlike createSimplePayPalOrder, this does NOT set payment_source with redirect URLs —
+ * those cause the popup to immediately close by triggering the redirect flow.
+ */
+export async function createInlinePayPalOrder(options: InlinePayPalOrderOptions) {
+  const accessToken = await getAccessToken();
+  const { baseUrl } = getPayPalConfig();
+
+  const payload = {
+    intent: 'CAPTURE',
+    purchase_units: [
+      {
+        reference_id: options.reference,
+        custom_id: options.customId,
+        description: options.description,
+        amount: {
+          currency_code: options.currency ?? 'GBP',
+          value: options.amount.toFixed(2),
+        },
+      },
+    ],
+  };
+
+  const requestId = options.requestId || `inline-${options.customId}`;
+
+  const response = await retry(
+    async () => fetch(`${baseUrl}/v2/checkout/orders`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${accessToken}`,
+        'PayPal-Request-Id': requestId,
+      },
+      body: JSON.stringify(payload),
+    }),
+    RetryConfigs.api
+  );
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    let errorMessage = 'Failed to create PayPal order';
+    try {
+      const errorJson = JSON.parse(errorText);
+      console.error('PayPal order creation error:', errorJson);
+      if (errorJson.details && errorJson.details.length > 0) {
+        errorMessage = errorJson.details[0].description || errorJson.message || errorMessage;
+      } else if (errorJson.message) {
+        errorMessage = errorJson.message;
+      }
+    } catch {
+      console.error('PayPal order creation error (raw):', errorText);
+    }
+    throw new Error(errorMessage);
+  }
+
+  const data = await response.json();
+  return { orderId: data.id as string };
+}
+
 // Capture PayPal payment
 export async function capturePayPalPayment(orderId: string) {
   const accessToken = await getAccessToken();
