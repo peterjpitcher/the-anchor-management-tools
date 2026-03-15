@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 
 import { withApiAuth } from '@/lib/api/auth';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { createSimplePayPalOrder } from '@/lib/paypal';
+import { createInlinePayPalOrder } from '@/lib/paypal';
 import { logAuditEvent } from '@/app/actions/audit';
 
 export const dynamic = 'force-dynamic';
@@ -54,18 +54,15 @@ export async function POST(
 
       // Calculate amount server-side — never trust client
       const depositAmount = booking.party_size * 10;
-      const appBaseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://app.the-anchor.pub';
 
-      let paypalOrder: { orderId: string; approveUrl?: string };
+      let paypalOrder: { orderId: string };
       try {
-        paypalOrder = await createSimplePayPalOrder({
+        paypalOrder = await createInlinePayPalOrder({
           customId: bookingId,
           reference: `tb-deposit-${bookingId}`,
           description: `Table booking deposit – ${booking.party_size} guests`,
           amount: depositAmount,
           currency: 'GBP',
-          returnUrl: `${appBaseUrl}/table-booking/deposit/success`,
-          cancelUrl: `${appBaseUrl}/table-booking/deposit/cancel`,
           requestId: `tb-deposit-${bookingId}`,
         });
       } catch (err) {
