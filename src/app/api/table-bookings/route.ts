@@ -42,7 +42,8 @@ const CreateTableBookingSchema = z.object({
   purpose: z.enum(['food', 'drinks']),
   notes: z.string().trim().max(500).optional(),
   sunday_lunch: z.boolean().optional(),
-  default_country_code: z.string().regex(/^\d{1,4}$/).optional()
+  default_country_code: z.string().regex(/^\d{1,4}$/).optional(),
+  skip_customer_sms: z.boolean().optional()
 })
 
 type TableBookingResponseData = {
@@ -260,12 +261,14 @@ export async function POST(request: NextRequest) {
         let smsSendResult: Awaited<ReturnType<typeof sendTableBookingCreatedSmsIfAllowed>> | null = null
 
         const [smsOutcome, emailOutcome] = await Promise.allSettled([
-          sendTableBookingCreatedSmsIfAllowed(supabase, {
-            customerId: customerResolution.customerId,
-            normalizedPhone,
-            bookingResult,
-            nextStepUrl
-          }),
+          payload.skip_customer_sms
+            ? Promise.resolve({ sms: null } as Awaited<ReturnType<typeof sendTableBookingCreatedSmsIfAllowed>>)
+            : sendTableBookingCreatedSmsIfAllowed(supabase, {
+                customerId: customerResolution.customerId,
+                normalizedPhone,
+                bookingResult,
+                nextStepUrl
+              }),
           sendManagerTableBookingCreatedEmailIfAllowed(supabase, {
             tableBookingId: bookingResult.table_booking_id || null,
             fallbackCustomerId: customerResolution.customerId,
