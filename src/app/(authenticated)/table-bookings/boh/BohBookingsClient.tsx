@@ -51,6 +51,7 @@ type BohBooking = {
   cancelled_by: string | null
   hold_expires_at: string | null
   payment_status: string | null
+  payment_method: string | null
   created_at: string | null
   updated_at: string | null
   customer: {
@@ -839,6 +840,7 @@ export function BohBookingsClient({
                       Phone <span className="text-gray-400">{sortIndicator('phone')}</span>
                     </button>
                   </th>
+                  <th className="hidden px-3 py-2 text-left font-semibold text-gray-700 lg:table-cell">Deposit</th>
                   <th className="px-3 py-2 text-right font-semibold text-gray-700">Action</th>
                 </tr>
               </thead>
@@ -866,18 +868,22 @@ export function BohBookingsClient({
                       </div>
                     </td>
                     <td className="px-3 py-2 whitespace-nowrap">
-                      <div className="flex flex-wrap items-center gap-1">
-                        <span className={`inline-flex rounded-full border px-2 py-0.5 text-[11px] font-medium ${getStatusBadgeClasses(booking.visual_status)}`}>
-                          {getStatusLabel(booking.visual_status)}
-                        </span>
-                        {booking.status === 'confirmed' && booking.payment_status === 'pending' && (
-                          <span className="inline-flex rounded-full border border-yellow-300 bg-yellow-50 px-2 py-0.5 text-[11px] font-medium text-yellow-800">
-                            Deposit outstanding
-                          </span>
-                        )}
-                      </div>
+                      <span className={`inline-flex rounded-full border px-2 py-0.5 text-[11px] font-medium ${getStatusBadgeClasses(booking.visual_status)}`}>
+                        {getStatusLabel(booking.visual_status)}
+                      </span>
                     </td>
                     <td className="hidden px-3 py-2 text-gray-700 whitespace-nowrap lg:table-cell">{booking.customer?.mobile_number || '—'}</td>
+                    <td className="hidden px-3 py-2 whitespace-nowrap lg:table-cell">
+                      {booking.payment_status === 'completed' ? (
+                        <span className="inline-flex rounded-full border border-green-300 bg-green-50 px-2 py-0.5 text-[11px] font-medium text-green-800">
+                          Paid · {booking.payment_method === 'paypal' ? 'PayPal' : booking.payment_method === 'cash' ? 'Cash' : 'Card'}
+                        </span>
+                      ) : (booking.payment_status === 'pending' || booking.status === 'pending_payment') ? (
+                        <span className="inline-flex rounded-full border border-amber-300 bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-800">
+                          Outstanding
+                        </span>
+                      ) : null}
+                    </td>
                     <td className="px-3 py-2 text-right whitespace-nowrap">
                       <Button
                         variant="secondary"
