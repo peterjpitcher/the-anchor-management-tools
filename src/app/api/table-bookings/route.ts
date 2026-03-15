@@ -269,11 +269,15 @@ export async function POST(request: NextRequest) {
                 bookingResult,
                 nextStepUrl
               }),
-          sendManagerTableBookingCreatedEmailIfAllowed(supabase, {
-            tableBookingId: bookingResult.table_booking_id || null,
-            fallbackCustomerId: customerResolution.customerId,
-            createdVia: 'api'
-          })
+          // Defer manager email for website bookings awaiting deposit payment —
+          // it will be sent in the capture-order route once payment is confirmed.
+          (payload.skip_customer_sms && bookingResult.state === 'pending_payment')
+            ? Promise.resolve({ sent: false, skipped: true, reason: 'deferred_to_payment_capture' } as Awaited<ReturnType<typeof sendManagerTableBookingCreatedEmailIfAllowed>>)
+            : sendManagerTableBookingCreatedEmailIfAllowed(supabase, {
+                tableBookingId: bookingResult.table_booking_id || null,
+                fallbackCustomerId: customerResolution.customerId,
+                createdVia: 'api'
+              })
         ])
 
         if (smsOutcome.status === 'fulfilled') {
