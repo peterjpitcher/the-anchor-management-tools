@@ -63,6 +63,8 @@ type TableBookingResponseData = {
   next_step_url: string | null
   hold_expires_at: string | null
   table_name: string | null
+  booking_id: string | null
+  deposit_amount: number | null
 }
 
 function isAssignmentConflictRpcError(error: { code?: string; message?: string } | null | undefined): boolean {
@@ -385,7 +387,9 @@ export async function POST(request: NextRequest) {
             responseState === 'blocked' ? mapTableBookingBlockedReason(bookingResult.reason) : null,
           next_step_url: responseState === 'pending_payment' ? nextStepUrl : null,
           hold_expires_at: responseState === 'pending_payment' ? holdExpiresAt : null,
-          table_name: bookingResult.table_name || null
+          table_name: bookingResult.table_name || null,
+          booking_id: responseState === 'pending_payment' ? (bookingResult.table_booking_id || null) : null,
+          deposit_amount: responseState === 'pending_payment' ? payload.party_size * 10 : null
         } satisfies TableBookingResponseData,
         meta: {
           status_code: responseStatus,
