@@ -164,7 +164,7 @@ export async function POST(request: NextRequest) {
   const supabase = createAdminClient()
   const body = await request.text()
   const headers = Object.fromEntries(request.headers.entries())
-  const webhookId = process.env.PAYPAL_TABLE_BOOKINGS_WEBHOOK_ID?.trim()
+  const webhookId = process.env.PAYPAL_WEBHOOK_ID?.trim()
 
   let idempotencyKey: string | null = null
   let requestHash: string | null = null
@@ -172,7 +172,7 @@ export async function POST(request: NextRequest) {
 
   try {
     if (!webhookId) {
-      const errorMessage = 'PAYPAL_TABLE_BOOKINGS_WEBHOOK_ID not configured'
+      const errorMessage = 'PAYPAL_WEBHOOK_ID not configured'
       logger.error(errorMessage)
       await logWebhook(supabase, { status: 'configuration_error', headers, body, errorMessage })
       return NextResponse.json(
