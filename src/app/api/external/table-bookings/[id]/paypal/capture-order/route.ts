@@ -5,6 +5,10 @@ import { withApiAuth } from '@/lib/api/auth';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { capturePayPalPayment } from '@/lib/paypal';
 import { logAuditEvent } from '@/app/actions/audit';
+import {
+  sendManagerTableBookingCreatedEmailIfAllowed,
+  sendTableBookingCreatedSmsIfAllowed,
+} from '@/lib/table-bookings/bookings';
 
 export const dynamic = 'force-dynamic';
 
@@ -35,7 +39,7 @@ export async function POST(
       // Fetch the booking
       const { data: booking, error: fetchError } = await supabase
         .from('table_bookings')
-        .select('id, status, payment_status, paypal_deposit_order_id, paypal_deposit_capture_id')
+        .select('id, status, payment_status, paypal_deposit_order_id, paypal_deposit_capture_id, customer_id, party_size, start_datetime, booking_reference, sunday_lunch, source')
         .eq('id', bookingId)
         .single();
 
@@ -119,6 +123,40 @@ export async function POST(
           bookingId,
         },
       });
+
+      // Send confirmation notifications now that payment is confirmed.
+      // Both were deferred at booking-creation time for website bookings awaiting deposit.
+      if (booking.customer_id) {
+        const bookingResultForNotifications = {
+          state: 'confirmed' as const,
+          table_booking_id: bookingId,
+          booking_reference: booking.booking_reference ?? undefined,
+          start_datetime: booking.start_datetime ?? undefined,
+          party_size: booking.party_size ?? undefined,
+          sunday_lunch: booking.sunday_lunch ?? false,
+        };
+
+        const { data: customer } = await supabase
+          .from('customers')
+          .select('mobile_e164, mobile_number')
+          .eq('id', booking.customer_id)
+          .maybeSingle();
+
+        const normalizedPhone = customer?.mobile_e164 || customer?.mobile_number || '';
+
+        void Promise.allSettled([
+          sendTableBookingCreatedSmsIfAllowed(supabase, {
+            customerId: booking.customer_id,
+            normalizedPhone,
+            bookingResult: bookingResultForNotifications,
+          }),
+          sendManagerTableBookingCreatedEmailIfAllowed(supabase, {
+            tableBookingId: bookingId,
+            fallbackCustomerId: booking.customer_id,
+            createdVia: 'api',
+          }),
+        ]);
+      }
 
       return NextResponse.json({ success: true });
     },
