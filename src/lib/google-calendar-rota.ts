@@ -1,0 +1,236 @@
+import 'server-only'
+
+import { google } from 'googleapis'
+import { fromZonedTime } from 'date-fns-tz'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { getOAuth2Client } from '@/lib/google-calendar'
+
+const calendar = google.calendar('v3')
+const CALENDAR_TIME_ZONE = 'Europe/London'
+
+// Each rota shift is colour-coded by department so the calendar is scannable at a glance.
+// Google Calendar colour IDs: 1=Lavender 2=Sage 6=Tangerine 8=Graphite 11=Tomato
+const DEPT_COLOUR: Record<string, string> = {
+  bar: '1',      // Lavender (matches bar=info/blue badge)
+  kitchen: '6',  // Tangerine (matches kitchen=warning/orange badge)
+  runner: '2',   // Sage (matches runner=success/green badge)
+}
+
+function getRotaCalendarId(): string | null {
+  return process.env.GOOGLE_CALENDAR_ROTA_ID ?? null
+}
+
+function isRotaCalendarConfigured(): boolean {
+  return Boolean(
+    getRotaCalendarId() &&
+    (process.env.GOOGLE_SERVICE_ACCOUNT_KEY ||
+      (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET && process.env.GOOGLE_REFRESH_TOKEN))
+  )
+}
+
+function formatTime(t: string): string {
+  const [h, m] = t.split(':')
+  return `${h.padStart(2, '0')}:${m.padStart(2, '0')}`
+}
+
+function addOneDay(dateStr: string): string {
+  const d = new Date(dateStr + 'T12:00:00Z')
+  d.setUTCDate(d.getUTCDate() + 1)
+  return d.toISOString().split('T')[0]
+}
+
+function toUtcIso(dateStr: string, timeStr: string): string {
+  const [h, m] = timeStr.split(':')
+  const local = `${dateStr}T${h.padStart(2, '0')}:${m.padStart(2, '0')}:00`
+  return fromZonedTime(local, CALENDAR_TIME_ZONE).toISOString()
+}
+
+function shiftColour(department: string | null, status: string): string {
+  if (status === 'sick') return '11' // Tomato/Red
+  return DEPT_COLOUR[department ?? ''] ?? '8' // Graphite/Gray for unknown dept
+}
+
+export interface RotaShiftRow {
+  id: string
+  week_id: string
+  employee_id: string | null
+  shift_date: string
+  start_time: string
+  end_time: string
+  department: string | null
+  status: string
+  notes: string | null
+  is_overnight: boolean
+  is_open_shift: boolean
+  name: string | null
+}
+
+/**
+ * Push a published rota week directly to the management Google Calendar.
+ * Must be called fire-and-forget from publishRotaWeek — never awaited on the
+ * critical path, and errors must not bubble up.
+ *
+ * Uses GOOGLE_CALENDAR_ROTA_ID and the existing GOOGLE_SERVICE_ACCOUNT_KEY.
+ */
+export async function syncRotaWeekToCalendar(
+  weekId: string,
+  shifts: RotaShiftRow[]
+): Promise<void> {
+  if (!isRotaCalendarConfigured()) {
+    console.log('[RotaCalendar] GOOGLE_CALENDAR_ROTA_ID not configured — skipping sync')
+    return
+  }
+
+  const calendarId = getRotaCalendarId()!
+  const admin = createAdminClient()
+
+  // -- Fetch employee names in one query -----------------------------------
+  const employeeIds = [...new Set(
+    shifts.filter(s => s.employee_id).map(s => s.employee_id!)
+  )]
+  const { data: employees } = await admin
+    .from('employees')
+    .select('employee_id, first_name, last_name')
+    .in('employee_id', employeeIds)
+
+  const empName = new Map<string, string>()
+  for (const e of employees ?? []) {
+    empName.set(
+      e.employee_id,
+      [e.first_name, e.last_name].filter(Boolean).join(' ') || 'Unknown'
+    )
+  }
+
+  // -- Fetch existing event-ID mappings for this week ----------------------
+  const { data: existing } = await admin
+    .from('rota_google_calendar_events')
+    .select('shift_id, google_event_id')
+    .eq('week_id', weekId)
+
+  const existingMap = new Map<string, string>()
+  for (const row of existing ?? []) {
+    existingMap.set(row.shift_id, row.google_event_id)
+  }
+
+  const auth = await getOAuth2Client()
+  const currentShiftIds = new Set(shifts.map(s => s.id))
+
+  // -- Delete events for shifts removed since last publish -----------------
+  for (const [shiftId, eventId] of existingMap) {
+    if (!currentShiftIds.has(shiftId)) {
+      await safeDeleteEvent(auth, calendarId, eventId, shiftId)
+      await admin.from('rota_google_calendar_events').delete().eq('shift_id', shiftId)
+    }
+  }
+
+  // -- Create / update events for current shifts ---------------------------
+  for (const shift of shifts) {
+    const existingEventId = existingMap.get(shift.id)
+
+    // Cancelled shifts: remove from calendar entirely
+    if (shift.status === 'cancelled') {
+      if (existingEventId) {
+        await safeDeleteEvent(auth, calendarId, existingEventId, shift.id)
+        await admin.from('rota_google_calendar_events').delete().eq('shift_id', shift.id)
+      }
+      continue
+    }
+
+    const name = shift.is_open_shift
+      ? 'Open Shift'
+      : (shift.employee_id ? (empName.get(shift.employee_id) ?? 'Unknown') : 'Unknown')
+
+    const dept = shift.department
+      ? shift.department.charAt(0).toUpperCase() + shift.department.slice(1)
+      : ''
+
+    const timeRange = `${formatTime(shift.start_time)}–${formatTime(shift.end_time)}`
+    const sickTag = shift.status === 'sick' ? '[SICK] ' : ''
+    const shiftLabel = shift.name ? ` — ${shift.name}` : ''
+    const summary = `${sickTag}${name}${shiftLabel}${dept ? ` (${dept})` : ''} ${timeRange}`
+
+    const endDate = shift.is_overnight ? addOneDay(shift.shift_date) : shift.shift_date
+    const startIso = toUtcIso(shift.shift_date, shift.start_time)
+    const endIso = toUtcIso(endDate, shift.end_time)
+
+    const description = [
+      `Employee: ${name}`,
+      dept ? `Department: ${dept}` : null,
+      shift.status === 'sick' ? 'Status: Sick' : null,
+      shift.notes ? `Notes: ${shift.notes}` : null,
+      '',
+      `${process.env.NEXT_PUBLIC_APP_URL}/rota`,
+    ].filter(Boolean).join('\n')
+
+    const eventBody = {
+      summary,
+      description,
+      start: { dateTime: startIso, timeZone: CALENDAR_TIME_ZONE },
+      end: { dateTime: endIso, timeZone: CALENDAR_TIME_ZONE },
+      colorId: shiftColour(shift.department, shift.status),
+    }
+
+    let googleEventId: string | null = null
+
+    try {
+      if (existingEventId) {
+        const res = await calendar.events.update({
+          auth: auth as any,
+          calendarId,
+          eventId: existingEventId,
+          requestBody: eventBody,
+        })
+        googleEventId = res.data.id ?? null
+      } else {
+        const res = await calendar.events.insert({
+          auth: auth as any,
+          calendarId,
+          requestBody: eventBody,
+        })
+        googleEventId = res.data.id ?? null
+      }
+    } catch (err: any) {
+      // Existing event was deleted externally — re-create
+      if (existingEventId && (err?.code === 404 || err?.code === 410)) {
+        try {
+          const res = await calendar.events.insert({
+            auth: auth as any,
+            calendarId,
+            requestBody: eventBody,
+          })
+          googleEventId = res.data.id ?? null
+        } catch (err2: any) {
+          console.error('[RotaCalendar] Re-create failed for shift', shift.id, err2?.message)
+        }
+      } else {
+        console.error('[RotaCalendar] Sync failed for shift', shift.id, err?.message)
+      }
+    }
+
+    if (googleEventId) {
+      await admin.from('rota_google_calendar_events').upsert({
+        shift_id: shift.id,
+        week_id: weekId,
+        google_event_id: googleEventId,
+        updated_at: new Date().toISOString(),
+      })
+    }
+  }
+
+  console.log('[RotaCalendar] Sync complete for week', weekId, `(${shifts.length} shifts)`)
+}
+
+async function safeDeleteEvent(
+  auth: any,
+  calendarId: string,
+  eventId: string,
+  shiftId: string
+): Promise<void> {
+  try {
+    await calendar.events.delete({ auth: auth as any, calendarId, eventId })
+  } catch (err: any) {
+    if (err?.code !== 404 && err?.code !== 410) {
+      console.error('[RotaCalendar] Delete failed for shift', shiftId, err?.message)
+    }
+  }
+}
