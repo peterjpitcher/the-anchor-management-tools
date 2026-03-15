@@ -636,6 +636,113 @@ export async function autoPopulateWeekFromTemplates(
 }
 
 // ---------------------------------------------------------------------------
+// Add specific shifts from selected templates
+// User picks template + date combinations from the AddShiftsModal.
+// Server re-checks for duplicates (race condition safety) then batch-inserts.
+// ---------------------------------------------------------------------------
+
+export type ShiftSelection = { templateId: string; date: string }; // date = ISO "YYYY-MM-DD"
+
+export async function addShiftsFromTemplates(
+  weekId: string,
+  selections: ShiftSelection[],
+): Promise<
+  { success: true; created: number; skipped: number; shifts: RotaShift[] } |
+  { success: false; error: string }
+> {
+  const canEdit = await checkUserPermission('rota', 'edit');
+  if (!canEdit) return { success: false, error: 'Permission denied' };
+  if (!selections.length) return { success: false, error: 'No shifts selected' };
+
+  const supabase = await createClient();
+
+  const templateIds = [...new Set(selections.map(s => s.templateId))];
+
+  const [
+    { data: week, error: weekError },
+    { data: templates, error: tErr },
+    { data: existing },
+    { data: { user } },
+  ] = await Promise.all([
+    supabase.from('rota_weeks').select('week_start').eq('id', weekId).single(),
+    supabase.from('rota_shift_templates').select('*').in('id', templateIds),
+    supabase.from('rota_shifts').select('template_id, shift_date').eq('week_id', weekId),
+    supabase.auth.getUser(),
+  ]);
+
+  if (weekError || !week) return { success: false, error: 'Rota week not found' };
+  if (tErr) return { success: false, error: tErr.message };
+
+  type ShiftTemplate = { id: string; name: string; start_time: string; end_time: string; unpaid_break_minutes: number; department: string; employee_id: string | null };
+  const templateMap = new Map((templates ?? []).map((t: ShiftTemplate) => [t.id, t]));
+
+  // Server-side deduplication key: templateId:date
+  const existingSet = new Set(
+    (existing ?? []).map((s: { template_id: string | null; shift_date: string }) =>
+      `${s.template_id}:${s.shift_date}`,
+    ),
+  );
+
+  const insertPayload: object[] = [];
+  for (const sel of selections) {
+    if (existingSet.has(`${sel.templateId}:${sel.date}`)) continue;
+    const t = templateMap.get(sel.templateId);
+    if (!t) continue;
+
+    insertPayload.push({
+      week_id: weekId,
+      employee_id: t.employee_id ?? null,
+      is_open_shift: !t.employee_id,
+      template_id: t.id,
+      name: t.name as string,
+      shift_date: sel.date,
+      start_time: (t.start_time as string).slice(0, 5),
+      end_time: (t.end_time as string).slice(0, 5),
+      unpaid_break_minutes: t.unpaid_break_minutes,
+      department: t.department,
+      is_overnight: false,
+      created_by: user?.id,
+    });
+  }
+
+  // skipped = selections not in insertPayload (already existed server-side)
+  const skipped = selections.length - insertPayload.length;
+
+  if (insertPayload.length === 0) {
+    return { success: true, created: 0, skipped, shifts: [] };
+  }
+
+  const { data: inserted, error: insertError } = await supabase
+    .from('rota_shifts')
+    .insert(insertPayload)
+    .select('*');
+
+  if (insertError) return { success: false, error: insertError.message };
+
+  const newShifts = (inserted ?? []) as RotaShift[];
+
+  if (newShifts.length > 0) {
+    await supabase
+      .from('rota_weeks')
+      .update({ has_unpublished_changes: true })
+      .eq('id', weekId)
+      .eq('status', 'published');
+    revalidatePath('/rota');
+  }
+
+  void logAuditEvent({
+    user_id: user?.id,
+    operation_type: 'create',
+    resource_type: 'rota_week',
+    resource_id: weekId,
+    operation_status: 'success',
+    additional_info: { action: 'add_shifts_from_selection', shifts_created: newShifts.length, shifts_skipped: skipped },
+  });
+
+  return { success: true, created: newShifts.length, skipped, shifts: newShifts };
+}
+
+// ---------------------------------------------------------------------------
 // Active employees for the rota grid
 // ---------------------------------------------------------------------------
 
