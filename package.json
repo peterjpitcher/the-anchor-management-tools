@@ -25,6 +25,7 @@
     "@hookform/resolvers": "^5.2.2",
     "@microsoft/microsoft-graph-client": "^3.0.7",
     "@napi-rs/canvas": "^0.1.88",
+    "@paypal/react-paypal-js": "^9.0.1",
     "@sparticuz/chromium": "^138.0.1",
     "@supabase/ssr": "^0.6.1",
     "@supabase/supabase-js": "^2.55.0",
