@@ -966,6 +966,16 @@ export async function publishRotaWeek(weekId: string): Promise<
     if (insertError) return { success: false, error: insertError.message };
   }
 
+  // Sync to management Google Calendar — fire-and-forget, must not block publish
+  void (async () => {
+    try {
+      const { syncRotaWeekToCalendar } = await import('@/lib/google-calendar-rota');
+      await syncRotaWeekToCalendar(weekId, currentShifts ?? []);
+    } catch (err) {
+      console.error('[RotaCalendar] Sync threw unexpectedly:', err);
+    }
+  })();
+
   // Only update status after snapshot succeeds
   const { error } = await supabase
     .from('rota_weeks')
