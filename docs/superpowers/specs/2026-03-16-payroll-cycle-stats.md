@@ -42,16 +42,18 @@ Between the approval banner and the action buttons row. Renders at all times (cu
 | Tile | Value | Colour |
 |---|---|---|
 | **Planned to date** | `sum(plannedHours)` for cutoff rows | Neutral |
-| **Actual to date** | `sum(actualHours)` for cutoff rows | Neutral |
-| **Variance** | actual − planned | Green if ≥ 0, amber if −1h to −10h, red if < −10h |
-| **Earned to date** | `sum(totalPay)` for cutoff rows | Green tint |
+| **Actual to date** | `sum(actualHours)` for cutoff rows (skip `null`) | Neutral |
+| **Variance** | actual − planned | Green if ≥ 0h, amber if > −10h and < 0h, red if ≤ −10h |
+| **Earned to date** | `sum(totalPay)` for cutoff rows (treat `null` as 0) | Green tint |
 
-For current cycles: planned tile shows a sub-label "of Xh total" (total planned for the full cycle) to give context on remaining planned hours.
+For current cycles only: the Planned tile shows a sub-label "of Xh total" where X = `sum(plannedHours)` across **all rows** (not just cutoff rows), giving context on remaining planned hours.
 
 ### Edge cases
-- Rows with `null` `actualHours` are excluded from actual and earned sums (shift scheduled but not yet clocked)
+- Rows with `null` `actualHours` are skipped when summing actual hours
+- Rows with `null` `totalPay` are treated as `0` when summing earned (consistent with existing `PayrollClient` behaviour)
 - If no cutoff rows exist (future cycle), all tiles display `—`
-- Values are formatted: hours to 1 decimal place (e.g. `42.5h`), currency as `£X,XXX` (e.g. `£2,686`)
+- Hours formatted to 1 decimal place (e.g. `42.5h`)
+- Currency formatted as `£X,XXX.XX` using `.toFixed(2)` to match the existing `PayrollClient` currency pattern (e.g. `£2,686.50`)
 
 ---
 
@@ -60,12 +62,15 @@ For current cycles: planned tile shows a sub-label "of Xh total" (total planned 
 ### Change
 Add one new line — **Earned to date** — to each existing employee card. Positioned below the existing avg rate line, separated by a subtle divider.
 
+### Derivation
+`earnedToDate` is derived from `initialRows: PayrollRow[]` (the existing prop on `PayrollClient`), **not** from the pre-aggregated `employees: PayrollEmployeeSummary[]` prop (which has no per-date breakdown). Apply the cutoff filter to `initialRows`, then group by `employeeId` and sum `totalPay` (treating `null` as `0`) per employee.
+
 ### Value
-`sum(totalPay)` for that employee's cutoff rows. Displayed as `£X,XXX` in green.
+Displayed as `£X,XXX.XX` (`.toFixed(2)`) in green.
 
 ### Edge cases
-- Employee with no cutoff rows: display `£0`
-- Employee with cutoff rows but all have `null` `totalPay`: display `£0`
+- Employee with no cutoff rows: display `£0.00`
+- Employee with cutoff rows but all have `null` `totalPay`: display `£0.00`
 
 ---
 
@@ -82,7 +87,6 @@ All data is already present in the `PayrollRow[]` array returned by the existing
 ```typescript
 interface PayrollSummaryBarProps {
   rows: PayrollRow[]
-  periodEnd: string // ISO date — full cycle planned hours sub-label
 }
 ```
 
@@ -90,7 +94,7 @@ interface PayrollSummaryBarProps {
 - Compute `today = getTodayIsoDate()` (uses existing dateUtils, London timezone)
 - Filter: `cutoffRows = rows.filter(r => r.date < today)`
 - Derive the four stats from `cutoffRows`
-- Derive `totalPlannedFullCycle = sum(plannedHours)` from all rows (for sub-label)
+- Derive `totalPlannedFullCycle = rows.reduce(...)` across all rows (for Planned tile sub-label)
 - Render four tiles
 
 **Component is pure display** — no server calls, no state, no effects.
@@ -99,9 +103,17 @@ interface PayrollSummaryBarProps {
 
 **File:** `src/app/(authenticated)/rota/payroll/PayrollClient.tsx` (existing)
 
-The existing employee summary section maps over a derived `employeeSummary` array. Add `earnedToDate` to that derivation by summing `totalPay` for each employee's cutoff rows.
-
-No new component required — small addition to existing map logic.
+1. Render `<PayrollSummaryBar rows={rows} />` between the approval banner and the action buttons.
+2. Derive `earnedByEmployee` from `rows` (not from `employees`):
+   ```typescript
+   const today = getTodayIsoDate()
+   const cutoff = rows.filter(r => r.date < today)
+   const earnedByEmployee = cutoff.reduce<Record<string, number>>((acc, r) => {
+     acc[r.employeeId] = (acc[r.employeeId] ?? 0) + (r.totalPay ?? 0)
+     return acc
+   }, {})
+   ```
+3. When rendering each employee card, look up `earnedByEmployee[emp.employeeId] ?? 0` for the earned-to-date line.
 
 ### Files changed
 | File | Change |
