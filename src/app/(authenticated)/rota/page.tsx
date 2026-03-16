@@ -125,7 +125,7 @@ export default async function RotaPage({ searchParams }: RotaPageProps) {
       navItems={rotaNavItems}
       headerActions={
         <div className="flex items-center gap-2">
-          <RotaFeedButton feedUrl={feedUrl} />
+          <RotaFeedButton feedUrl={feedUrl} showCalendarSync={Boolean(process.env.GOOGLE_CALENDAR_ROTA_ID)} />
           <LinkButton href="/rota/templates" size="sm" variant="secondary" leftIcon={<Cog6ToothIcon className="h-4 w-4" />}>
             Templates
           </LinkButton>
