@@ -123,6 +123,69 @@ export async function syncRotaWeekToCalendar(
     }
   }
 
+  // -- Rebuild mapping from Google Calendar extended properties ------------
+  // This recovers from partial syncs (e.g. server-action fire-and-forgets
+  // killed by Vercel before the mapping upsert could complete).
+  // List all events in the week's date range, find those tagged with a
+  // shiftId extended property, and fill in any gaps in the mapping table.
+  if (shifts.length > 0) {
+    const weekStart = shifts.reduce((min, s) => s.shift_date < min ? s.shift_date : min, shifts[0].shift_date)
+    const weekEnd   = shifts.reduce((max, s) => s.shift_date > max ? s.shift_date : max, shifts[0].shift_date)
+    // Add one day so timeMax is exclusive and covers overnight shifts ending at midnight
+    const timeMaxDate = new Date(weekEnd + 'T23:59:59Z')
+    timeMaxDate.setUTCDate(timeMaxDate.getUTCDate() + 1)
+    try {
+      const listRes = await calendar.events.list({
+        auth: auth as any,
+        calendarId,
+        timeMin: weekStart + 'T00:00:00Z',
+        timeMax: timeMaxDate.toISOString(),
+        singleEvents: true,
+        maxResults: 500,
+      })
+      // Build a set of google_event_ids already in the mapping table so we can
+      // spot events that are in GCal but not in the mapping (i.e. orphans).
+      const knownEventIds = new Set(existingMap.values())
+      const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? ''
+
+      for (const ev of listRes.data.items ?? []) {
+        if (!ev.id) continue
+        const evShiftId = ev.extendedProperties?.private?.shiftId
+
+        if (evShiftId) {
+          // Event has our shift tag — recover or clean up as appropriate.
+          if (currentShiftIds.has(evShiftId) && !existingMap.has(evShiftId)) {
+            existingMap.set(evShiftId, ev.id)
+            await admin.from('rota_google_calendar_events').upsert({
+              shift_id: evShiftId,
+              week_id: weekId,
+              google_event_id: ev.id,
+              updated_at: new Date().toISOString(),
+            })
+            console.log('[RotaCalendar] Recovered orphaned event', ev.id, 'for shift', evShiftId)
+          } else if (!currentShiftIds.has(evShiftId)) {
+            await safeDeleteEvent(auth, calendarId, ev.id, evShiftId)
+            console.log('[RotaCalendar] Cleaned up stale event', ev.id, 'for removed shift', evShiftId)
+          }
+        } else if (
+          !knownEventIds.has(ev.id) &&
+          appUrl &&
+          ev.description?.includes(appUrl + '/rota')
+        ) {
+          // Event was created by a previous sync (has our rota URL) but has no
+          // extended property (created before this fix) and is not in the
+          // mapping table — it's an orphan from a killed fire-and-forget.
+          // Safe to delete because this is a dedicated management-only calendar.
+          await safeDeleteEvent(auth, calendarId, ev.id, '(legacy-orphan)')
+          console.log('[RotaCalendar] Deleted legacy orphaned event', ev.id)
+        }
+      }
+    } catch (err: any) {
+      // Non-fatal: if listing fails we fall through to normal upsert logic
+      console.warn('[RotaCalendar] Event listing for orphan recovery failed:', err?.message)
+    }
+  }
+
   // -- Create / update events for current shifts ---------------------------
   for (const shift of shifts) {
     const existingEventId = existingMap.get(shift.id)
@@ -168,6 +231,12 @@ export async function syncRotaWeekToCalendar(
       start: { dateTime: startIso, timeZone: CALENDAR_TIME_ZONE },
       end: { dateTime: endIso, timeZone: CALENDAR_TIME_ZONE },
       colorId: shiftColour(shift.department, shift.status),
+      // Store shift_id as a private extended property so we can identify and
+      // clean up orphaned events (created by publish fire-and-forget calls that
+      // were killed before the mapping table upsert could complete).
+      extendedProperties: {
+        private: { shiftId: shift.id },
+      },
     }
 
     let googleEventId: string | null = null
