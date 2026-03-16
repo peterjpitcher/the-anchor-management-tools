@@ -55,11 +55,14 @@ export class MenuSettingsService {
   static async getMenuTargetGp(options: { client?: AnySupabaseClient } = {}): Promise<number> {
     const client = options.client ?? (await createClient());
 
-    const { data } = await client
+    const { data, error } = await client
       .from('system_settings')
       .select('value')
       .eq('key', MENU_TARGET_SETTING_KEY)
       .maybeSingle();
+    if (error) {
+      console.error('[MenuSettings] getMenuTargetGp: DB error — falling back to default GP target:', error);
+    }
 
     const parsed = normaliseTargetValue(data?.value);
     return clampTarget(parsed);
@@ -70,8 +73,8 @@ export class MenuSettingsService {
       return { success: false, error: 'Enter a valid number for the GP target.' };
     }
 
-    const numeric = rawTarget > 1 ? rawTarget / 100 : rawTarget;
-    if (numeric <= 0 || numeric >= 0.95) {
+    const numeric = rawTarget >= 1 ? rawTarget / 100 : rawTarget;
+    if (numeric <= 0 || numeric > 0.95) {
       return { success: false, error: 'GP target must be between 1% and 95%.' };
     }
 
