@@ -54,7 +54,6 @@ interface RotaGridProps {
   budgets: DepartmentBudget[];
   departments: Department[];
   dayInfo: Record<string, RotaDayInfo>;
-  showCalendarSync?: boolean;
 }
 
 type ActiveItem = { type: 'shift'; shift: RotaShift };
@@ -331,7 +330,6 @@ export default function RotaGrid({
   budgets,
   departments,
   dayInfo,
-  showCalendarSync,
 }: RotaGridProps) {
   const router = useRouter();
   const [shifts, setShifts] = useState<RotaShift[]>(initialShifts);
@@ -489,7 +487,7 @@ export default function RotaGrid({
     startPublishTransition(async () => {
       const result = await publishRotaWeek(week.id);
       if (!result.success) { toast.error((result as { success: false; error: string }).error); return; }
-      toast.success(showCalendarSync ? 'Rota published — click Sync calendar to update Google Calendar' : 'Rota published');
+      toast.success('Rota published');
       router.refresh();
     });
   };
