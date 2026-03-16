@@ -1022,3 +1022,40 @@ export async function publishRotaWeek(weekId: string): Promise<
   revalidatePath('/rota');
   return { success: true };
 }
+
+/**
+ * Re-sync all currently published rota weeks to the management Google Calendar.
+ * Safe to call at any time — creates or updates events without sending staff emails.
+ */
+export async function resyncRotaCalendar(): Promise<
+  { success: true; weeksSynced: number } | { success: false; error: string }
+> {
+  const canPublish = await checkUserPermission('rota', 'publish');
+  if (!canPublish) return { success: false, error: 'Permission denied' };
+
+  const admin = createAdminClient();
+
+  const { data: weeks, error } = await admin
+    .from('rota_weeks')
+    .select('id')
+    .eq('status', 'published');
+
+  if (error) return { success: false, error: error.message };
+
+  const { syncRotaWeekToCalendar } = await import('@/lib/google-calendar-rota');
+
+  for (const week of weeks ?? []) {
+    const { data: shifts } = await admin
+      .from('rota_published_shifts')
+      .select('id, week_id, employee_id, shift_date, start_time, end_time, department, status, notes, is_overnight, is_open_shift, name')
+      .eq('week_id', week.id);
+
+    try {
+      await syncRotaWeekToCalendar(week.id, shifts ?? []);
+    } catch (err) {
+      console.error('[RotaCalendar] resync failed for week', week.id, err);
+    }
+  }
+
+  return { success: true, weeksSynced: (weeks ?? []).length };
+}
