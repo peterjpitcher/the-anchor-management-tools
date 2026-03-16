@@ -42,10 +42,27 @@ async function fetchRtwDocument(storagePath: string): Promise<{ bytes: Buffer; m
     }
 
     const arrayBuffer = await data.arrayBuffer()
-    return {
-      bytes: Buffer.from(arrayBuffer),
-      mimeType: mimeTypeFromPath(storagePath),
+    const bytes = Buffer.from(arrayBuffer)
+    const mimeType = mimeTypeFromPath(storagePath)
+
+    // Compress images before embedding — resize to max 1400px wide and encode
+    // as JPEG at 82% quality. This keeps documents legible on A4 while avoiding
+    // multi-megabyte phone photos bloating the starter pack.
+    if (mimeType === 'image/jpeg' || mimeType === 'image/png') {
+      try {
+        const sharp = (await import('sharp')).default
+        const compressed = await sharp(bytes)
+          .resize({ width: 1400, withoutEnlargement: true })
+          .jpeg({ quality: 82 })
+          .toBuffer()
+        return { bytes: compressed, mimeType: 'image/jpeg' }
+      } catch (compressionErr) {
+        console.warn('[starter-pack] Image compression failed, using original:', compressionErr)
+        return { bytes, mimeType }
+      }
     }
+
+    return { bytes, mimeType }
   } catch (err) {
     console.error('[starter-pack] RTW document fetch error:', err)
     return null
