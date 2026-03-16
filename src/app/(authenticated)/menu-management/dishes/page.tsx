@@ -44,6 +44,8 @@ interface IngredientSummary {
   latest_unit_cost?: number | null;
   latest_pack_cost?: number | null;
   portions_per_pack?: number | null;
+  // DEFECT-013: track active status so inactive items can be filtered from selectors
+  is_active: boolean;
 }
 
 interface RecipeSummary {
@@ -52,6 +54,8 @@ interface RecipeSummary {
   portion_cost: number;
   yield_quantity: number;
   yield_unit: string;
+  // DEFECT-013: track active status so inactive items can be filtered from selectors
+  is_active: boolean;
 }
 
 interface MenuCategorySummary {
@@ -364,6 +368,8 @@ export default function MenuDishesPage() {
         latest_unit_cost: Number(ingredient.latest_unit_cost ?? 0),
         latest_pack_cost: Number(ingredient.latest_pack_cost ?? ingredient.pack_cost ?? 0),
         portions_per_pack: ingredient.portions_per_pack ?? null,
+        // DEFECT-013: include is_active so the selector can filter inactive items
+        is_active: ingredient.is_active !== false,
       }));
       setIngredients(mapped);
     } catch (err) {
@@ -384,6 +390,8 @@ export default function MenuDishesPage() {
         portion_cost: Number(recipe.portion_cost ?? 0),
         yield_quantity: Number(recipe.yield_quantity ?? 1),
         yield_unit: recipe.yield_unit || 'portion',
+        // DEFECT-013: include is_active so the selector can filter inactive items
+        is_active: recipe.is_active !== false,
       }));
       setRecipes(mapped);
     } catch (err) {
@@ -600,9 +608,10 @@ export default function MenuDishesPage() {
       if (!unitCost) return sum;
       const yieldFactor = yieldPct > 0 ? yieldPct / 100 : 1;
       const wastageFactor = 1 + (Number.isNaN(wastagePct) ? 0 : wastagePct / 100);
-      const lineCost = costOverride !== undefined && !Number.isNaN(costOverride)
-        ? costOverride
-        : (quantity / (yieldFactor || 1)) * unitCost * wastageFactor;
+      // DEFECT-004 fix: removed the costOverride shortcut that used the override as the FULL
+      // line cost instead of the per-unit cost. unitCost is already set to costOverride above,
+      // so (quantity / yieldFactor) * unitCost * wastageFactor is always correct.
+      const lineCost = (quantity / (yieldFactor || 1)) * unitCost * wastageFactor;
       return sum + lineCost;
     }, 0);
   }, [formIngredients, ingredientMap]);
@@ -623,9 +632,8 @@ export default function MenuDishesPage() {
       if (!unitCost) return sum;
       const yieldFactor = yieldPct > 0 ? yieldPct / 100 : 1;
       const wastageFactor = 1 + (Number.isNaN(wastagePct) ? 0 : wastagePct / 100);
-      const lineCost = costOverride !== undefined && !Number.isNaN(costOverride)
-        ? costOverride
-        : (quantity / (yieldFactor || 1)) * unitCost * wastageFactor;
+      // DEFECT-004 fix: same correction as ingredientCost — unitCost already holds the override.
+      const lineCost = (quantity / (yieldFactor || 1)) * unitCost * wastageFactor;
       return sum + lineCost;
     }, 0);
   }, [formRecipes, recipeMap]);
@@ -1209,11 +1217,15 @@ export default function MenuDishesPage() {
                         onChange={(e) => updateRecipeRow(index, { recipe_id: e.target.value })}
                       >
                         <option value="">Select recipe</option>
-                        {recipes.map(recipe => (
-                          <option key={recipe.id} value={recipe.id}>
-                            {recipe.name} (£{recipe.portion_cost.toFixed(2)} / {recipe.yield_unit})
-                          </option>
-                        ))}
+                        {/* DEFECT-013: show active recipes; also show currently-selected
+                            inactive recipe so existing data is preserved (with label). */}
+                        {recipes
+                          .filter(recipe => recipe.is_active || recipe.id === row.recipe_id)
+                          .map(recipe => (
+                            <option key={recipe.id} value={recipe.id}>
+                              {recipe.is_active ? '' : '(inactive) '}{recipe.name} (£{recipe.portion_cost.toFixed(2)} / {recipe.yield_unit})
+                            </option>
+                          ))}
                       </Select>
                     </FormGroup>
                     <FormGroup label="Quantity" required>
@@ -1293,9 +1305,15 @@ export default function MenuDishesPage() {
                         required
                       >
                         <option value="">Select ingredient</option>
-                        {ingredients.map(ingredient => (
-                          <option key={ingredient.id} value={ingredient.id}>{ingredient.name}</option>
-                        ))}
+                        {/* DEFECT-013: show active ingredients; also show currently-selected
+                            inactive ingredient so existing data is preserved (with label). */}
+                        {ingredients
+                          .filter(ingredient => ingredient.is_active || ingredient.id === row.ingredient_id)
+                          .map(ingredient => (
+                            <option key={ingredient.id} value={ingredient.id}>
+                              {ingredient.is_active ? '' : '(inactive) '}{ingredient.name}
+                            </option>
+                          ))}
                       </Select>
                     </FormGroup>
                     <FormGroup label="Quantity" required>

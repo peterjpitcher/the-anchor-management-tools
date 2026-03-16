@@ -372,9 +372,10 @@ export default function MenuRecipesPage() {
       const wastagePct = parseFloat(row.wastage_pct || '0');
       const yieldFactor = yieldPct > 0 ? yieldPct / 100 : 1;
       const wastageFactor = 1 + (Number.isNaN(wastagePct) ? 0 : wastagePct / 100);
-      const lineCost = costOverride !== undefined && !Number.isNaN(costOverride)
-        ? costOverride
-        : (quantity / (yieldFactor || 1)) * unitCost * wastageFactor;
+      // DEFECT-004 fix: removed the costOverride shortcut that used the override as the FULL
+      // line cost instead of the per-unit cost. unitCost is already set to costOverride above,
+      // so the formula (quantity / yieldFactor) * unitCost * wastageFactor is always correct.
+      const lineCost = (quantity / (yieldFactor || 1)) * unitCost * wastageFactor;
       return sum + lineCost;
     }, 0);
   }, [formIngredients, ingredientMap]);

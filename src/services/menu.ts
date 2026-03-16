@@ -345,7 +345,10 @@ export class MenuService {
         supplier_sku: input.supplier_sku || null,
       });
       if (priceHistoryError) {
+        // DEFECT-005 fix: compensating delete — remove the orphaned ingredient row before
+        // re-throwing, so the DB is never left with an ingredient that has no price history.
         console.error('createMenuIngredient price history error:', priceHistoryError);
+        await supabase.from('menu_ingredients').delete().eq('id', ingredient.id);
         throw new Error('Failed to record ingredient price history');
       }
     }
@@ -356,12 +359,18 @@ export class MenuService {
   static async updateIngredient(id: string, input: UpdateIngredientInput) {
     const supabase = await createClient();
 
-    const { data: existing } = await supabase
+    // DEFECT-006 fix: destructure the error from the SELECT so a DB failure is not
+    // silently swallowed and misreported as "Ingredient not found".
+    const { data: existing, error: fetchError } = await supabase
       .from('menu_ingredients')
       .select('id, pack_cost')
       .eq('id', id)
       .single();
 
+    if (fetchError) {
+      console.error('updateMenuIngredient fetch error:', fetchError);
+      throw new Error('Failed to fetch ingredient: ' + fetchError.message);
+    }
     if (!existing) {
       throw new Error('Ingredient not found');
     }
@@ -405,8 +414,13 @@ export class MenuService {
         supplier_sku: input.supplier_sku || null,
       });
       if (priceHistoryError) {
+        // DEFECT-007 fix: the ingredient update already committed; surface a specific error
+        // so the caller knows the price history record is missing and can retry manually.
+        // The ingredient's pack_cost in menu_ingredients is now updated; history is the gap.
         console.error('updateMenuIngredient price history error:', priceHistoryError);
-        throw new Error('Failed to record ingredient price history');
+        throw new Error(
+          'Ingredient updated but price history could not be recorded. Please record the price manually.'
+        );
       }
     }
 
@@ -685,7 +699,10 @@ export class MenuService {
 
   static async updateRecipe(id: string, input: UpdateRecipeInput) {
     const supabase = await createClient();
-    
+
+    // DEFECT-002 fix: replaced 4 sequential writes (update + delete + insert + rpc) with a single
+    // atomic RPC call. On any mid-step failure the implicit savepoint rolls back all changes,
+    // leaving the recipe with its original ingredients intact.
     const recipeData = {
       name: input.name,
       description: input.description || null,
@@ -696,55 +713,25 @@ export class MenuService {
       is_active: input.is_active,
     };
 
-    const { data: recipe, error: recipeError } = await supabase
-      .from('menu_recipes')
-      .update(recipeData)
-      .eq('id', id)
-      .select()
-      .maybeSingle();
+    const ingredientsPayload = (input.ingredients || []).map(ing => ({
+      ingredient_id: ing.ingredient_id,
+      quantity: ing.quantity,
+      unit: ing.unit,
+      yield_pct: ing.yield_pct ?? null,
+      wastage_pct: ing.wastage_pct ?? null,
+      cost_override: ing.cost_override ?? null,
+      notes: ing.notes || null,
+    }));
 
-    if (recipeError) {
-      console.error('updateMenuRecipe recipe error:', recipeError);
+    const { data: recipe, error } = await supabase.rpc('update_recipe_transaction', {
+      p_recipe_id: id,
+      p_recipe_data: recipeData,
+      p_ingredients: ingredientsPayload,
+    });
+
+    if (error) {
+      console.error('updateMenuRecipe transaction error:', error);
       throw new Error('Failed to update recipe');
-    }
-    if (!recipe) {
-      throw new Error('Recipe not found');
-    }
-
-    const { error: deleteIngredientsError } = await supabase
-      .from('menu_recipe_ingredients')
-      .delete()
-      .eq('recipe_id', id);
-
-    if (deleteIngredientsError) {
-      console.error('updateMenuRecipe delete ingredients error:', deleteIngredientsError);
-      throw new Error('Failed to update recipe ingredients');
-    }
-
-    if (input.ingredients && input.ingredients.length > 0) {
-      const { error: insertIngredientsError } = await supabase.from('menu_recipe_ingredients').insert(
-        input.ingredients.map(ing => ({
-          recipe_id: id,
-          ingredient_id: ing.ingredient_id,
-          quantity: ing.quantity,
-          unit: ing.unit,
-          yield_pct: ing.yield_pct,
-          wastage_pct: ing.wastage_pct,
-          cost_override: ing.cost_override ?? null,
-          notes: ing.notes || null,
-        }))
-      );
-
-      if (insertIngredientsError) {
-        console.error('updateMenuRecipe insert ingredients error:', insertIngredientsError);
-        throw new Error('Failed to update recipe ingredients');
-      }
-    }
-
-    const { error: refreshRecipeError } = await supabase.rpc('menu_refresh_recipe_calculations', { p_recipe_id: id });
-    if (refreshRecipeError) {
-      console.error('updateMenuRecipe refresh calculations error:', refreshRecipeError);
-      throw new Error('Failed to refresh recipe calculations');
     }
 
     return recipe;
@@ -1074,106 +1061,45 @@ export class MenuService {
 
   static async updateDish(id: string, input: UpdateDishInput) {
     const supabase = await createClient();
-    const payload = DishSchema.parse(input);
+    // DEFECT-015 fix: DishSchema.parse removed here — action layer pre-validates.
+    // DEFECT-001 fix: replaced 9 sequential writes with a single atomic RPC call.
+    // On any mid-step failure the implicit savepoint rolls back all changes,
+    // leaving the dish in its original pre-edit state.
     const targetGpPct = await MenuSettingsService.getMenuTargetGp({ client: supabase });
-    const { menuMap, categoryMap } = await this.getMenuAndCategoryIds(payload.assignments, createAdminClient());
+    const { menuMap, categoryMap } = await this.getMenuAndCategoryIds(input.assignments ?? [], createAdminClient());
 
-    const { data: dish, error: dishError } = await supabase
-      .from('menu_dishes')
-      .update({
-        name: payload.name,
-        description: payload.description || null,
-        selling_price: payload.selling_price,
-        target_gp_pct: targetGpPct,
-        calories: payload.calories ?? null,
-        is_active: payload.is_active,
-        is_sunday_lunch: payload.is_sunday_lunch,
-        image_url: payload.image_url || null,
-        notes: payload.notes || null,
-      })
-      .eq('id', id)
-      .select()
-      .maybeSingle();
+    const dishData = {
+      name: input.name,
+      description: input.description || null,
+      selling_price: input.selling_price,
+      target_gp_pct: targetGpPct,
+      calories: input.calories ?? null,
+      is_active: input.is_active,
+      is_sunday_lunch: input.is_sunday_lunch,
+      image_url: input.image_url || null,
+      notes: input.notes || null,
+    };
 
-    if (dishError) {
-      console.error('updateMenuDish dish error:', dishError);
-      throw new Error('Failed to update dish');
-    }
-    if (!dish) {
-      throw new Error('Dish not found');
-    }
+    const ingredientsPayload = (input.ingredients || []).map(ing => ({
+      ingredient_id: ing.ingredient_id,
+      quantity: ing.quantity,
+      unit: ing.unit,
+      yield_pct: ing.yield_pct ?? null,
+      wastage_pct: ing.wastage_pct ?? null,
+      cost_override: ing.cost_override ?? null,
+      notes: ing.notes || null,
+    }));
 
-    const { error: deleteIngredientsError } = await supabase
-      .from('menu_dish_ingredients')
-      .delete()
-      .eq('dish_id', id);
+    const recipesPayload = (input.recipes || []).map(recipe => ({
+      recipe_id: recipe.recipe_id,
+      quantity: recipe.quantity,
+      yield_pct: recipe.yield_pct ?? null,
+      wastage_pct: recipe.wastage_pct ?? null,
+      cost_override: recipe.cost_override ?? null,
+      notes: recipe.notes || null,
+    }));
 
-    if (deleteIngredientsError) {
-      console.error('updateMenuDish delete ingredients error:', deleteIngredientsError);
-      throw new Error('Failed to update dish ingredients');
-    }
-
-    if (payload.ingredients && payload.ingredients.length > 0) {
-      const { error: insertIngredientsError } = await supabase.from('menu_dish_ingredients').insert(
-        payload.ingredients.map(ing => ({
-          dish_id: id,
-          ingredient_id: ing.ingredient_id,
-          quantity: ing.quantity,
-          unit: ing.unit,
-          yield_pct: ing.yield_pct,
-          wastage_pct: ing.wastage_pct,
-          cost_override: ing.cost_override ?? null,
-          notes: ing.notes || null,
-        }))
-      );
-
-      if (insertIngredientsError) {
-        console.error('updateMenuDish insert ingredients error:', insertIngredientsError);
-        throw new Error('Failed to update dish ingredients');
-      }
-    }
-
-    const { error: deleteRecipesError } = await supabase
-      .from('menu_dish_recipes')
-      .delete()
-      .eq('dish_id', id);
-
-    if (deleteRecipesError) {
-      console.error('updateMenuDish delete recipes error:', deleteRecipesError);
-      throw new Error('Failed to update dish recipes');
-    }
-
-    if (payload.recipes && payload.recipes.length > 0) {
-      const { error: insertRecipesError } = await supabase.from('menu_dish_recipes').insert(
-        payload.recipes.map(recipe => ({
-          dish_id: id,
-          recipe_id: recipe.recipe_id,
-          quantity: recipe.quantity,
-          yield_pct: recipe.yield_pct,
-          wastage_pct: recipe.wastage_pct,
-          cost_override: recipe.cost_override ?? null,
-          notes: recipe.notes || null,
-        }))
-      );
-
-      if (insertRecipesError) {
-        console.error('updateMenuDish insert recipes error:', insertRecipesError);
-        throw new Error('Failed to update dish recipes');
-      }
-    }
-
-    const { error: deleteAssignmentsError } = await supabase
-      .from('menu_dish_menu_assignments')
-      .delete()
-      .eq('dish_id', id);
-
-    if (deleteAssignmentsError) {
-      console.error('updateMenuDish delete assignments error:', deleteAssignmentsError);
-      throw new Error('Failed to update dish assignments');
-    }
-
-    const assignmentsPayload = payload.assignments.map(assign => ({
-      dish_id: id,
+    const assignmentsPayload = (input.assignments ?? []).map(assign => ({
       menu_id: menuMap.get(assign.menu_code)!,
       category_id: categoryMap.get(assign.category_code)!,
       sort_order: assign.sort_order,
@@ -1183,19 +1109,17 @@ export class MenuService {
       available_until: assign.available_until ? new Date(assign.available_until).toISOString().slice(0, 10) : null,
     }));
 
-    const { error: assignmentsError } = await supabase
-      .from('menu_dish_menu_assignments')
-      .insert(assignmentsPayload);
+    const { data: dish, error } = await supabase.rpc('update_dish_transaction', {
+      p_dish_id: id,
+      p_dish_data: dishData,
+      p_ingredients: ingredientsPayload,
+      p_recipes: recipesPayload,
+      p_assignments: assignmentsPayload,
+    });
 
-    if (assignmentsError) {
-      console.error('updateMenuDish assignments error:', assignmentsError);
-      throw new Error('Failed to update dish assignments');
-    }
-
-    const { error: refreshDishError } = await supabase.rpc('menu_refresh_dish_calculations', { p_dish_id: id });
-    if (refreshDishError) {
-      console.error('updateMenuDish refresh calculations error:', refreshDishError);
-      throw new Error('Failed to refresh dish calculations');
+    if (error) {
+      console.error('updateMenuDish transaction error:', error);
+      throw new Error('Failed to update dish');
     }
 
     return dish;

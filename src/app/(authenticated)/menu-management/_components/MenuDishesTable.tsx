@@ -25,7 +25,9 @@ interface MenuDishesTableProps {
 }
 
 function formatGp(value: number | null | undefined) {
-  if (typeof value !== 'number') {
+  // DEFECT-009 fix: guard against both non-number and non-finite values (e.g. Infinity)
+  // which occur when portion_cost is 0 and division produces Infinity.
+  if (typeof value !== 'number' || !isFinite(value)) {
     return '—';
   }
   return `${Math.round(value * 100)}%`;
@@ -40,10 +42,12 @@ export function MenuDishesTable({ dishes: allDishes, loadError, standardTarget }
 
   const filteredDishes = showMissingIngredientsOnly ? dishesMissingIngredients : allDishes;
 
-  const gpSorted = useMemo(() => 
+  const gpSorted = useMemo(() =>
     [...filteredDishes].sort((a, b) => {
-      const aGp = typeof a.gp_pct === 'number' ? a.gp_pct : Infinity;
-      const bGp = typeof b.gp_pct === 'number' ? b.gp_pct : Infinity;
+      // DEFECT-011 fix: use -Infinity so null-GP dishes sort FIRST (before any numeric GP%),
+      // making it easy to spot dishes that need costing. Previously Infinity pushed them last.
+      const aGp = typeof a.gp_pct === 'number' ? a.gp_pct : -Infinity;
+      const bGp = typeof b.gp_pct === 'number' ? b.gp_pct : -Infinity;
       return aGp - bGp;
     })
   , [filteredDishes]);
