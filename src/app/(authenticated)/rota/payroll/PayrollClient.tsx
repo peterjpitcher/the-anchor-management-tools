@@ -12,6 +12,9 @@ import type { PayrollRow } from '@/lib/rota/excel-export';
 import type { PayrollEmployeeSummary } from '@/lib/rota/email-templates';
 import type { PayrollMonthApproval, PayrollPeriod } from '@/app/actions/payroll';
 import type { RotaDayInfo } from '@/app/actions/rota-day-info';
+import { getTodayIsoDate } from '@/lib/dateUtils';
+import { PayrollSummaryBar } from './PayrollSummaryBar';
+import { computeEmployeeCards } from './payrollCycleStats';
 
 interface PayrollClientProps {
   year: number;
@@ -239,11 +242,15 @@ export default function PayrollClient({
     return { byDate: map, sortedDates: [...map.keys()].sort() };
   }, [initialRows]);
 
-  const { totalPay, totalActual, totalPlanned } = useMemo(() => ({
-    totalPay: employees.reduce((s, e) => s + (e.totalPay ?? 0), 0),
+  const { totalActual, totalPlanned } = useMemo(() => ({
     totalActual: employees.reduce((s, e) => s + e.actualHours, 0),
     totalPlanned: employees.reduce((s, e) => s + e.plannedHours, 0),
   }), [employees]);
+
+  const employeeCards = useMemo(() => {
+    const today = getTodayIsoDate();
+    return computeEmployeeCards(initialRows, today);
+  }, [initialRows]);
 
   const handleApprove = () => {
     startApproveTransition(async () => {
@@ -362,21 +369,8 @@ export default function PayrollClient({
         </div>
       </div>
 
-      {/* Summary tiles */}
-      <div className="grid grid-cols-3 gap-3">
-        <div className="text-center bg-gray-50 rounded-lg p-3">
-          <p className="text-xl font-bold text-gray-900">{totalPlanned.toFixed(1)}h</p>
-          <p className="text-xs text-gray-500 mt-0.5">Planned hours</p>
-        </div>
-        <div className="text-center bg-gray-50 rounded-lg p-3">
-          <p className="text-xl font-bold text-gray-900">{totalActual.toFixed(1)}h</p>
-          <p className="text-xs text-gray-500 mt-0.5">Actual hours</p>
-        </div>
-        <div className="text-center bg-green-50 rounded-lg p-3">
-          <p className="text-xl font-bold text-green-800">£{totalPay.toFixed(2)}</p>
-          <p className="text-xs text-gray-500 mt-0.5">Total pay</p>
-        </div>
-      </div>
+      {/* Cycle stats bar — planned vs actual to date + earned */}
+      <PayrollSummaryBar rows={initialRows} />
 
       {/* Pivot table: dates → employees */}
       {initialRows.length === 0 ? (
@@ -651,6 +645,40 @@ export default function PayrollClient({
                 </tr>
               </tfoot>
             </table>
+          </div>
+        </div>
+      )}
+
+      {/* Employee summary cards */}
+      {employeeCards.length > 0 && (
+        <div>
+          <h3 className="text-sm font-semibold text-gray-700 mb-3">Employee summary</h3>
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+            {employeeCards.map(card => (
+              <div
+                key={card.employeeId}
+                className="bg-white border border-gray-200 rounded-lg p-3 text-sm"
+              >
+                <p className="font-semibold text-gray-900 truncate">{card.employeeName}</p>
+                {card.hourlyRate != null && (
+                  <p className="text-xs text-gray-400 mb-2">£{card.hourlyRate.toFixed(2)}/hr</p>
+                )}
+                <div className="space-y-1 text-xs text-gray-600">
+                  <div className="flex justify-between">
+                    <span>Planned</span>
+                    <span className="font-medium text-gray-800">{card.plannedHours.toFixed(1)}h</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Actual</span>
+                    <span className="font-medium text-gray-800">{card.actualHours.toFixed(1)}h</span>
+                  </div>
+                </div>
+                <div className="mt-2 pt-2 border-t border-gray-100 flex justify-between text-xs">
+                  <span className="font-medium text-gray-600">Earned to date</span>
+                  <span className="font-bold text-green-700">£{card.earnedToDate.toFixed(2)}</span>
+                </div>
+              </div>
+            ))}
           </div>
         </div>
       )}
