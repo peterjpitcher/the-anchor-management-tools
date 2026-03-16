@@ -966,15 +966,10 @@ export async function publishRotaWeek(weekId: string): Promise<
     if (insertError) return { success: false, error: insertError.message };
   }
 
-  // Sync to management Google Calendar — fire-and-forget, must not block publish
-  void (async () => {
-    try {
-      const { syncRotaWeekToCalendar } = await import('@/lib/google-calendar-rota');
-      await syncRotaWeekToCalendar(weekId, currentShifts ?? []);
-    } catch (err) {
-      console.error('[RotaCalendar] Sync threw unexpectedly:', err);
-    }
-  })();
+  // Calendar sync is intentionally NOT triggered here.
+  // A fire-and-forget void IIFE is killed by Vercel before the mapping-table
+  // upserts complete, leaving orphaned events that duplicate on every resync.
+  // Use the dedicated "Sync calendar" button (POST /api/rota/resync-calendar) instead.
 
   // Only update status after snapshot succeeds
   const { error } = await supabase

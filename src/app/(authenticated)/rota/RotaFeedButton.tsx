@@ -3,7 +3,6 @@
 import { useState } from 'react';
 import { CalendarDaysIcon, ClipboardDocumentIcon, CheckIcon, XMarkIcon, ArrowPathIcon } from '@heroicons/react/24/outline';
 import toast from 'react-hot-toast';
-import { resyncRotaCalendar } from '@/app/actions/rota';
 
 export default function RotaFeedButton({ feedUrl, showCalendarSync }: { feedUrl: string; showCalendarSync?: boolean }) {
   const [open, setOpen] = useState(false);
@@ -19,12 +18,15 @@ export default function RotaFeedButton({ feedUrl, showCalendarSync }: { feedUrl:
   const handleSync = async () => {
     setSyncing(true);
     try {
-      const result = await resyncRotaCalendar();
+      const res = await fetch('/api/rota/resync-calendar', { method: 'POST' });
+      const result = await res.json();
       if (result.success) {
         toast.success(`Synced ${result.weeksSynced} published ${result.weeksSynced === 1 ? 'week' : 'weeks'} to Google Calendar`);
       } else {
         toast.error(result.error || 'Sync failed');
       }
+    } catch {
+      toast.error('Sync failed — check logs');
     } finally {
       setSyncing(false);
     }
