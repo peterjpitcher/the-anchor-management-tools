@@ -1,5 +1,10 @@
 'use server';
 
+// Allow the calendar-sync after() callback up to 5 minutes to complete.
+// after() runs after the response is sent, so this does not affect response time.
+export const maxDuration = 300;
+
+import { after } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { checkUserPermission } from '@/app/actions/rbac';
@@ -1009,18 +1014,21 @@ export async function publishRotaWeek(weekId: string): Promise<
     }
   }
 
-  // Sync to management Google Calendar — awaited so it completes before the
-  // action returns. Parallelised GCal calls keep this to ~2-3s for a typical
-  // week. Errors are non-fatal: a failed sync must never block publish.
-  try {
-    const { syncRotaWeekToCalendar } = await import('@/lib/google-calendar-rota');
-    const syncResult = await syncRotaWeekToCalendar(weekId, currentShifts ?? []);
-    if (syncResult.failed > 0) {
-      console.warn('[RotaCalendar] Sync completed with failures after publish for week', weekId, syncResult);
+  // Sync to management Google Calendar after the response is sent.
+  // after() keeps the serverless function alive until the callback completes
+  // (up to maxDuration = 300s). This never blocks publish or causes 504s.
+  const shiftsForSync = currentShifts ?? [];
+  after(async () => {
+    try {
+      const { syncRotaWeekToCalendar } = await import('@/lib/google-calendar-rota');
+      const syncResult = await syncRotaWeekToCalendar(weekId, shiftsForSync);
+      if (syncResult.failed > 0) {
+        console.warn('[RotaCalendar] Sync completed with failures after publish for week', weekId, syncResult);
+      }
+    } catch (err) {
+      console.error('[RotaCalendar] Sync failed after publish for week', weekId, err);
     }
-  } catch (err) {
-    console.error('[RotaCalendar] Sync failed after publish for week', weekId, err);
-  }
+  });
 
   revalidatePath('/rota');
   return { success: true };
