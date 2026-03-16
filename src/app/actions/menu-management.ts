@@ -329,7 +329,7 @@ export async function updateMenuDish(id: string, input: UpdateDishInput) {
       return { error: 'You do not have permission to manage menu dishes' };
     }
 
-    const payload = DishSchema.parse(input);
+    const payload = DishSchema.partial().parse(input);
     const dish = await MenuService.updateDish(id, payload);
 
     await logAuditEvent({

@@ -345,10 +345,17 @@ export class MenuService {
         supplier_sku: input.supplier_sku || null,
       });
       if (priceHistoryError) {
-        // DEFECT-005 fix: compensating delete — remove the orphaned ingredient row before
-        // re-throwing, so the DB is never left with an ingredient that has no price history.
+        // Compensating delete — remove the orphaned ingredient row before re-throwing,
+        // so the DB is never left with an ingredient that has no price history.
         console.error('createMenuIngredient price history error:', priceHistoryError);
-        await supabase.from('menu_ingredients').delete().eq('id', ingredient.id);
+        try {
+          const { error: deleteError } = await supabase.from('menu_ingredients').delete().eq('id', ingredient.id);
+          if (deleteError) {
+            console.error('[MenuService] createIngredient: compensating delete failed — orphaned row requires manual cleanup:', { id: ingredient.id, error: deleteError });
+          }
+        } catch (deleteException) {
+          console.error('[MenuService] createIngredient: compensating delete threw — orphaned row requires manual cleanup:', { id: ingredient.id, error: deleteException });
+        }
         throw new Error('Failed to record ingredient price history');
       }
     }
@@ -406,7 +413,7 @@ export class MenuService {
     }
 
     // Only record new price if it actually changed
-    if (input.pack_cost !== existing.pack_cost && input.pack_cost !== undefined) {
+    if (Number(input.pack_cost) !== Number(existing.pack_cost) && input.pack_cost !== undefined) {
       const { error: priceHistoryError } = await supabase.from('menu_ingredient_prices').insert({
         ingredient_id: id,
         pack_cost: input.pack_cost,
@@ -458,6 +465,9 @@ export class MenuService {
       .maybeSingle();
     if (error) {
       console.error('deleteMenuIngredient error:', error);
+      if (error.code === '23503') {
+        throw new Error('Cannot delete: this ingredient is still used by other records. Remove those references first.');
+      }
       throw new Error('Failed to delete ingredient');
     }
     if (!deletedIngredient) {
@@ -748,6 +758,9 @@ export class MenuService {
       .maybeSingle();
     if (error) {
       console.error('deleteMenuRecipe error:', error);
+      if (error.code === '23503') {
+        throw new Error('Cannot delete: this recipe is still used by other records. Remove those references first.');
+      }
       throw new Error('Failed to delete recipe');
     }
     if (!deletedRecipe) {
@@ -980,12 +993,19 @@ export class MenuService {
         a.recipe_name.localeCompare(b.recipe_name)
       );
 
+      // cost_data_complete is false if any ingredient or recipe has no pricing data;
+      // null costs are silently treated as 0 by arithmetic, which inflates GP% silently.
+      const costDataComplete =
+        dishIngredients.every(ing => ing.latest_unit_cost !== null) &&
+        dishRecipes.every(rec => rec.portion_cost !== null);
+
       return {
         ...base,
         assignments: sortedAssignments,
         ingredients: dishIngredients,
         recipes: dishRecipes,
         target_gp_pct: targetGpPct,
+        cost_data_complete: costDataComplete,
       };
     });
 
@@ -1136,6 +1156,9 @@ export class MenuService {
       .maybeSingle();
     if (error) {
       console.error('deleteMenuDish error:', error);
+      if (error.code === '23503') {
+        throw new Error('Cannot delete: this dish is still used by other records. Remove those references first.');
+      }
       throw new Error('Failed to delete dish');
     }
     if (!deletedDish) {

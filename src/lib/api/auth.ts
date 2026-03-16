@@ -10,6 +10,7 @@ export interface ApiKey {
   permissions: string[];
   rate_limit: number;
   is_active: boolean;
+  expires_at?: string | null;
 }
 
 export async function hashApiKey(key: string): Promise<string> {
@@ -33,7 +34,7 @@ export async function validateApiKey(apiKey: string | null): Promise<ApiKey | nu
 
   const { data, error } = await supabase
     .from('api_keys')
-    .select('id, name, permissions, rate_limit, is_active')
+    .select('id, name, permissions, rate_limit, is_active, expires_at')
     .eq('key_hash', keyHash)
     .eq('is_active', true);
 
@@ -51,6 +52,12 @@ export async function validateApiKey(apiKey: string | null): Promise<ApiKey | nu
   }
 
   const keyData = data[0];
+
+  // Check expiry
+  if (keyData.expires_at && new Date(keyData.expires_at) < new Date()) {
+    console.warn('[API Auth] Rejected expired API key', { id: keyData.id });
+    return null;
+  }
 
   // Update last used timestamp
   const { data: updatedKey, error: updateError } = await supabase
