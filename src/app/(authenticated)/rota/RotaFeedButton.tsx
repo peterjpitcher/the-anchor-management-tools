@@ -1,11 +1,14 @@
 'use client';
 
 import { useState } from 'react';
-import { CalendarDaysIcon, ClipboardDocumentIcon, CheckIcon, XMarkIcon } from '@heroicons/react/24/outline';
+import { CalendarDaysIcon, ClipboardDocumentIcon, CheckIcon, XMarkIcon, ArrowPathIcon } from '@heroicons/react/24/outline';
+import toast from 'react-hot-toast';
+import { resyncRotaCalendar } from '@/app/actions/rota';
 
-export default function RotaFeedButton({ feedUrl }: { feedUrl: string }) {
+export default function RotaFeedButton({ feedUrl, showCalendarSync }: { feedUrl: string; showCalendarSync?: boolean }) {
   const [open, setOpen] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [syncing, setSyncing] = useState(false);
 
   const handleCopy = async () => {
     await navigator.clipboard.writeText(feedUrl);
@@ -13,8 +16,34 @@ export default function RotaFeedButton({ feedUrl }: { feedUrl: string }) {
     setTimeout(() => setCopied(false), 2000);
   };
 
+  const handleSync = async () => {
+    setSyncing(true);
+    try {
+      const result = await resyncRotaCalendar();
+      if (result.success) {
+        toast.success(`Synced ${result.weeksSynced} published ${result.weeksSynced === 1 ? 'week' : 'weeks'} to Google Calendar`);
+      } else {
+        toast.error(result.error || 'Sync failed');
+      }
+    } finally {
+      setSyncing(false);
+    }
+  };
+
   return (
-    <div className="relative">
+    <div className="relative flex items-center gap-2">
+      {showCalendarSync && (
+        <button
+          type="button"
+          onClick={handleSync}
+          disabled={syncing}
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50"
+        >
+          <ArrowPathIcon className={`h-4 w-4 ${syncing ? 'animate-spin' : ''}`} />
+          {syncing ? 'Syncing…' : 'Sync calendar'}
+        </button>
+      )}
+
       <button
         type="button"
         onClick={() => setOpen(v => !v)}
