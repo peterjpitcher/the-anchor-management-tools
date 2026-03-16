@@ -1,5 +1,9 @@
 'use server';
 
+// Allow the calendar-sync after() callback up to 5 minutes to complete.
+// after() runs after the response is sent, so this does not affect response time.
+export const maxDuration = 300;
+
 import { after } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
