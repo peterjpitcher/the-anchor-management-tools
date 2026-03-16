@@ -65,20 +65,26 @@ export interface RotaShiftRow {
   name: string | null
 }
 
+export interface SyncResult {
+  created: number
+  updated: number
+  failed: number
+}
+
 /**
  * Push a published rota week directly to the management Google Calendar.
- * Must be called fire-and-forget from publishRotaWeek — never awaited on the
- * critical path, and errors must not bubble up.
- *
- * Uses GOOGLE_CALENDAR_ROTA_ID and the existing GOOGLE_SERVICE_ACCOUNT_KEY.
+ * Returns counts of created/updated/failed events so callers can report
+ * completeness. Errors per shift are isolated — one bad shift never stops
+ * the others. Returns { created:0, updated:0, failed:0 } if not configured.
  */
 export async function syncRotaWeekToCalendar(
   weekId: string,
   shifts: RotaShiftRow[]
-): Promise<void> {
+): Promise<SyncResult> {
+  const result: SyncResult = { created: 0, updated: 0, failed: 0 }
   if (!isRotaCalendarConfigured()) {
     console.log('[RotaCalendar] GOOGLE_CALENDAR_ROTA_ID not configured — skipping sync')
-    return
+    return result
   }
 
   const calendarId = getRotaCalendarId()!
@@ -206,9 +212,7 @@ export async function syncRotaWeekToCalendar(
     }
   }
 
-  // -- Create / update events for current shifts ---------------------------
-  // Process in parallel batches of 10 to stay under GCal API rate limits.
-  // Each shift's GCal call and DB upsert are independent of other shifts.
+  // -- Delete calendar events for cancelled shifts ------------------------
   await Promise.all(
     shifts
       .filter(s => s.status === 'cancelled')
@@ -221,103 +225,139 @@ export async function syncRotaWeekToCalendar(
       })
   )
 
+  // -- Create / update events for active shifts ----------------------------
+  // Process in parallel batches of 10 to stay under GCal API rate limits.
+  // Each shift's entire processing (prep + API call + DB upsert) is wrapped
+  // in its own try/catch so that one bad shift (e.g. null time fields)
+  // never aborts the batch or any subsequent batches.
   const activeShifts = shifts.filter(s => s.status !== 'cancelled')
   for (let i = 0; i < activeShifts.length; i += 10) {
+    // Brief pause between batches to stay under GCal rate limits.
+    if (i > 0) await new Promise(resolve => setTimeout(resolve, 150))
+
     await Promise.all(activeShifts.slice(i, i + 10).map(async (shift) => {
-      const existingEventId = existingMap.get(shift.id)
-
-      const name = shift.is_open_shift
-        ? 'Open Shift'
-        : (shift.employee_id ? (empName.get(shift.employee_id) ?? 'Unknown') : 'Unknown')
-
-      const dept = shift.department
-        ? shift.department.charAt(0).toUpperCase() + shift.department.slice(1)
-        : ''
-
-      const timeRange = `${formatTime(shift.start_time)}–${formatTime(shift.end_time)}`
-      const sickTag = shift.status === 'sick' ? '[SICK] ' : ''
-      const shiftLabel = shift.name ? ` — ${shift.name}` : ''
-      const summary = `${sickTag}${name}${shiftLabel}${dept ? ` (${dept})` : ''} ${timeRange}`
-
-      // Auto-detect overnight: if end_time is lexically ≤ start_time (e.g. 23:00→02:00)
-      // the shift crosses midnight even if is_overnight wasn't set in the DB.
-      const effectivelyOvernight = shift.is_overnight || shift.end_time <= shift.start_time
-      const endDate = effectivelyOvernight ? addOneDay(shift.shift_date) : shift.shift_date
-      const startIso = toUtcIso(shift.shift_date, shift.start_time)
-      const endIso = toUtcIso(endDate, shift.end_time)
-
-      const description = [
-        `Employee: ${name}`,
-        dept ? `Department: ${dept}` : null,
-        shift.status === 'sick' ? 'Status: Sick' : null,
-        shift.notes ? `Notes: ${shift.notes}` : null,
-        '',
-        `${process.env.NEXT_PUBLIC_APP_URL}/rota`,
-      ].filter(Boolean).join('\n')
-
-      const eventBody = {
-        summary,
-        description,
-        start: { dateTime: startIso, timeZone: CALENDAR_TIME_ZONE },
-        end: { dateTime: endIso, timeZone: CALENDAR_TIME_ZONE },
-        colorId: shiftColour(shift.department, shift.status),
-        // Store shift_id as a private extended property so we can identify and
-        // clean up orphaned events (created by publish fire-and-forget calls that
-        // were killed before the mapping table upsert could complete).
-        extendedProperties: {
-          private: { shiftId: shift.id },
-        },
-      }
-
-      let googleEventId: string | null = null
-
       try {
-        if (existingEventId) {
-          const res = await calendar.events.update({
-            auth: auth as any,
-            calendarId,
-            eventId: existingEventId,
-            requestBody: eventBody,
+        // Guard against missing time fields — would crash formatTime/toUtcIso
+        // outside the API try/catch, aborting the whole batch.
+        if (!shift.start_time || !shift.end_time || !shift.shift_date) {
+          console.error('[RotaCalendar] Shift missing required fields — skipping', shift.id, {
+            shift_date: shift.shift_date,
+            start_time: shift.start_time,
+            end_time: shift.end_time,
           })
-          googleEventId = res.data.id ?? null
-        } else {
-          const res = await calendar.events.insert({
-            auth: auth as any,
-            calendarId,
-            requestBody: eventBody,
-          })
-          googleEventId = res.data.id ?? null
+          result.failed++
+          return
         }
-      } catch (err: any) {
-        // Existing event was deleted externally — re-create
-        if (existingEventId && (err?.code === 404 || err?.code === 410)) {
-          try {
+
+        const existingEventId = existingMap.get(shift.id)
+
+        const name = shift.is_open_shift
+          ? 'Open Shift'
+          : (shift.employee_id ? (empName.get(shift.employee_id) ?? 'Unknown') : 'Unknown')
+
+        const dept = shift.department
+          ? shift.department.charAt(0).toUpperCase() + shift.department.slice(1)
+          : ''
+
+        const timeRange = `${formatTime(shift.start_time)}–${formatTime(shift.end_time)}`
+        const sickTag = shift.status === 'sick' ? '[SICK] ' : ''
+        const shiftLabel = shift.name ? ` — ${shift.name}` : ''
+        const summary = `${sickTag}${name}${shiftLabel}${dept ? ` (${dept})` : ''} ${timeRange}`
+
+        // Auto-detect overnight: if end_time is lexically ≤ start_time (e.g. 23:00→02:00)
+        // the shift crosses midnight even if is_overnight wasn't set in the DB.
+        const effectivelyOvernight = shift.is_overnight || shift.end_time <= shift.start_time
+        const endDate = effectivelyOvernight ? addOneDay(shift.shift_date) : shift.shift_date
+        const startIso = toUtcIso(shift.shift_date, shift.start_time)
+        const endIso = toUtcIso(endDate, shift.end_time)
+
+        const description = [
+          `Employee: ${name}`,
+          dept ? `Department: ${dept}` : null,
+          shift.status === 'sick' ? 'Status: Sick' : null,
+          shift.notes ? `Notes: ${shift.notes}` : null,
+          '',
+          `${process.env.NEXT_PUBLIC_APP_URL}/rota`,
+        ].filter(Boolean).join('\n')
+
+        const eventBody = {
+          summary,
+          description,
+          start: { dateTime: startIso, timeZone: CALENDAR_TIME_ZONE },
+          end: { dateTime: endIso, timeZone: CALENDAR_TIME_ZONE },
+          colorId: shiftColour(shift.department, shift.status),
+          extendedProperties: {
+            private: { shiftId: shift.id },
+          },
+        }
+
+        let googleEventId: string | null = null
+
+        try {
+          if (existingEventId) {
+            const res = await calendar.events.update({
+              auth: auth as any,
+              calendarId,
+              eventId: existingEventId,
+              requestBody: eventBody,
+            })
+            googleEventId = res.data.id ?? null
+          } else {
             const res = await calendar.events.insert({
               auth: auth as any,
               calendarId,
               requestBody: eventBody,
             })
             googleEventId = res.data.id ?? null
-          } catch (err2: any) {
-            console.error('[RotaCalendar] Re-create failed for shift', shift.id, err2?.message)
           }
-        } else {
-          console.error('[RotaCalendar] Sync failed for shift', shift.id, err?.message)
+        } catch (err: any) {
+          // Existing event was deleted externally — re-create
+          if (existingEventId && (err?.code === 404 || err?.code === 410)) {
+            try {
+              const res = await calendar.events.insert({
+                auth: auth as any,
+                calendarId,
+                requestBody: eventBody,
+              })
+              googleEventId = res.data.id ?? null
+            } catch (err2: any) {
+              console.error('[RotaCalendar] Re-create failed for shift', shift.id, err2?.message)
+            }
+          } else {
+            console.error('[RotaCalendar] GCal API error for shift', shift.id,
+              `(${existingEventId ? 'update' : 'insert'})`, err?.code, err?.message)
+          }
         }
-      }
 
-      if (googleEventId) {
-        await admin.from('rota_google_calendar_events').upsert({
-          shift_id: shift.id,
-          week_id: weekId,
-          google_event_id: googleEventId,
-          updated_at: new Date().toISOString(),
-        })
+        if (googleEventId) {
+          if (existingEventId) {
+            result.updated++
+          } else {
+            result.created++
+          }
+          await admin.from('rota_google_calendar_events').upsert({
+            shift_id: shift.id,
+            week_id: weekId,
+            google_event_id: googleEventId,
+            updated_at: new Date().toISOString(),
+          })
+        } else {
+          result.failed++
+        }
+      } catch (err: any) {
+        // Catch anything not already handled (e.g. unexpected prep failures)
+        console.error('[RotaCalendar] Unexpected error for shift', shift.id, err?.message)
+        result.failed++
       }
     }))
   }
 
-  console.log('[RotaCalendar] Sync complete for week', weekId, `(${shifts.length} shifts)`)
+  console.log(
+    '[RotaCalendar] Sync complete for week', weekId,
+    `— ${result.created} created, ${result.updated} updated, ${result.failed} failed`,
+    `(${shifts.length} total shifts)`
+  )
+  return result
 }
 
 async function safeDeleteEvent(

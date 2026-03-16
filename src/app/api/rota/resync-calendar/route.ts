@@ -33,6 +33,9 @@ export async function POST(_req: NextRequest): Promise<NextResponse> {
   const { syncRotaWeekToCalendar } = await import('@/lib/google-calendar-rota')
 
   let weeksSynced = 0
+  let totalCreated = 0
+  let totalUpdated = 0
+  let totalFailed = 0
   const errors: string[] = []
 
   for (const week of weeks ?? []) {
@@ -42,13 +45,23 @@ export async function POST(_req: NextRequest): Promise<NextResponse> {
       .eq('week_id', week.id)
 
     try {
-      await syncRotaWeekToCalendar(week.id, shifts ?? [])
+      const result = await syncRotaWeekToCalendar(week.id, shifts ?? [])
       weeksSynced++
+      totalCreated += result.created
+      totalUpdated += result.updated
+      totalFailed += result.failed
     } catch (err: any) {
       console.error('[RotaCalendar] resync failed for week', week.id, err)
       errors.push(`Week ${week.id}: ${err?.message ?? 'unknown error'}`)
     }
   }
 
-  return NextResponse.json({ success: true, weeksSynced, errors })
+  return NextResponse.json({
+    success: true,
+    weeksSynced,
+    totalCreated,
+    totalUpdated,
+    totalFailed,
+    errors,
+  })
 }

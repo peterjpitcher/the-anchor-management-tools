@@ -1014,7 +1014,10 @@ export async function publishRotaWeek(weekId: string): Promise<
   // week. Errors are non-fatal: a failed sync must never block publish.
   try {
     const { syncRotaWeekToCalendar } = await import('@/lib/google-calendar-rota');
-    await syncRotaWeekToCalendar(weekId, currentShifts ?? []);
+    const syncResult = await syncRotaWeekToCalendar(weekId, currentShifts ?? []);
+    if (syncResult.failed > 0) {
+      console.warn('[RotaCalendar] Sync completed with failures after publish for week', weekId, syncResult);
+    }
   } catch (err) {
     console.error('[RotaCalendar] Sync failed after publish for week', weekId, err);
   }
