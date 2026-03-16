@@ -1,3 +1,5 @@
+'use server';
+
 import { getOpenAIConfig } from '@/lib/openai/config'
 import { retry, RetryConfigs } from '@/lib/retry'
 

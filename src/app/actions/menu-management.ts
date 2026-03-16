@@ -107,7 +107,19 @@ export async function recordMenuIngredientPrice(input: RecordIngredientPriceInpu
 
     await MenuService.recordIngredientPrice(input);
 
-    revalidatePath(`/menu-management/ingredients/${input.ingredient_id}`);
+    // DEFECT-008 fix: add missing audit log for price recording.
+    await logAuditEvent({
+      operation_type: 'create',
+      resource_type: 'menu_ingredient_price',
+      resource_id: input.ingredient_id,
+      operation_status: 'success',
+      additional_info: { pack_cost: input.pack_cost },
+    });
+
+    // DEFECT-010 fix: was revalidating a non-existent per-ingredient path; now correctly
+    // revalidates the list and dashboard pages that actually display price data.
+    revalidatePath('/menu-management/ingredients');
+    revalidatePath('/menu-management');
     return { success: true };
   } catch (error: any) {
     console.error('recordMenuIngredientPrice unexpected error:', error);
@@ -202,7 +214,9 @@ export async function updateMenuRecipe(id: string, input: UpdateRecipeInput) {
       return { error: 'You do not have permission to manage menu recipes' };
     }
 
-    const payload = RecipeSchema.parse(input);
+    // DEFECT-014 fix: use .partial() so callers can send partial updates (e.g. { is_active: false })
+    // without requiring all other fields to be present.
+    const payload = RecipeSchema.partial().parse(input);
     const recipe = await MenuService.updateRecipe(id, payload);
 
     await logAuditEvent({
@@ -215,8 +229,10 @@ export async function updateMenuRecipe(id: string, input: UpdateRecipeInput) {
       },
     });
 
+    // DEFECT-010 fix: was revalidating a non-existent per-recipe path; now correctly
+    // revalidates the list and dashboard pages that display recipe data.
     revalidatePath('/menu-management/recipes');
-    revalidatePath(`/menu-management/recipes/${id}`);
+    revalidatePath('/menu-management');
     return { success: true, data: recipe };
   } catch (error: any) {
     console.error('updateMenuRecipe unexpected error:', error);
