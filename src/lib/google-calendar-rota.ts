@@ -239,7 +239,10 @@ export async function syncRotaWeekToCalendar(
       const shiftLabel = shift.name ? ` — ${shift.name}` : ''
       const summary = `${sickTag}${name}${shiftLabel}${dept ? ` (${dept})` : ''} ${timeRange}`
 
-      const endDate = shift.is_overnight ? addOneDay(shift.shift_date) : shift.shift_date
+      // Auto-detect overnight: if end_time is lexically ≤ start_time (e.g. 23:00→02:00)
+      // the shift crosses midnight even if is_overnight wasn't set in the DB.
+      const effectivelyOvernight = shift.is_overnight || shift.end_time <= shift.start_time
+      const endDate = effectivelyOvernight ? addOneDay(shift.shift_date) : shift.shift_date
       const startIso = toUtcIso(shift.shift_date, shift.start_time)
       const endIso = toUtcIso(endDate, shift.end_time)
 
