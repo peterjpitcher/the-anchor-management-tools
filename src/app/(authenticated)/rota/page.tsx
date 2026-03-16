@@ -153,6 +153,7 @@ export default async function RotaPage({ searchParams }: RotaPageProps) {
         budgets={budgets}
         departments={departments}
         dayInfo={dayInfo}
+        showCalendarSync={Boolean(process.env.GOOGLE_CALENDAR_ROTA_ID)}
       />
     </PageLayout>
   );
