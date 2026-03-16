@@ -293,33 +293,57 @@ export async function syncRotaWeekToCalendar(
 
         let googleEventId: string | null = null
 
+        // One retry on per-user/per-project rate-limit (403 rateLimitExceeded).
+        // Waits 2 s then repeats. Throws on the second failure so the outer
+        // catch can log and count it as failed. Not used for 403 quotaExceeded
+        // (daily limit) — retrying the same day won't help.
+        const withRateLimitRetry = async (fn: () => Promise<string | null>): Promise<string | null> => {
+          try {
+            return await fn()
+          } catch (err: any) {
+            const reason = err?.errors?.[0]?.reason ?? ''
+            if (err?.code === 403 && (reason === 'rateLimitExceeded' || reason === 'userRateLimitExceeded')) {
+              console.warn('[RotaCalendar] Rate limit hit for shift', shift.id, '— retrying after 2 s')
+              await new Promise(resolve => setTimeout(resolve, 2000))
+              return await fn()
+            }
+            throw err
+          }
+        }
+
         try {
           if (existingEventId) {
-            const res = await calendar.events.update({
-              auth: auth as any,
-              calendarId,
-              eventId: existingEventId,
-              requestBody: eventBody,
+            googleEventId = await withRateLimitRetry(async () => {
+              const res = await calendar.events.update({
+                auth: auth as any,
+                calendarId,
+                eventId: existingEventId,
+                requestBody: eventBody,
+              })
+              return res.data.id ?? null
             })
-            googleEventId = res.data.id ?? null
           } else {
-            const res = await calendar.events.insert({
-              auth: auth as any,
-              calendarId,
-              requestBody: eventBody,
-            })
-            googleEventId = res.data.id ?? null
-          }
-        } catch (err: any) {
-          // Existing event was deleted externally — re-create
-          if (existingEventId && (err?.code === 404 || err?.code === 410)) {
-            try {
+            googleEventId = await withRateLimitRetry(async () => {
               const res = await calendar.events.insert({
                 auth: auth as any,
                 calendarId,
                 requestBody: eventBody,
               })
-              googleEventId = res.data.id ?? null
+              return res.data.id ?? null
+            })
+          }
+        } catch (err: any) {
+          // Existing event was deleted externally — re-create
+          if (existingEventId && (err?.code === 404 || err?.code === 410)) {
+            try {
+              googleEventId = await withRateLimitRetry(async () => {
+                const res = await calendar.events.insert({
+                  auth: auth as any,
+                  calendarId,
+                  requestBody: eventBody,
+                })
+                return res.data.id ?? null
+              })
             } catch (err2: any) {
               console.error('[RotaCalendar] Re-create failed for shift', shift.id, err2?.message)
             }
