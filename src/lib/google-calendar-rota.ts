@@ -116,12 +116,12 @@ export async function syncRotaWeekToCalendar(
   const currentShiftIds = new Set(shifts.map(s => s.id))
 
   // -- Delete events for shifts removed since last publish -----------------
-  for (const [shiftId, eventId] of existingMap) {
-    if (!currentShiftIds.has(shiftId)) {
-      await safeDeleteEvent(auth, calendarId, eventId, shiftId)
-      await admin.from('rota_google_calendar_events').delete().eq('shift_id', shiftId)
-    }
-  }
+  // Parallel: removed-shift deletes are independent of each other.
+  const removedShiftEntries = [...existingMap].filter(([shiftId]) => !currentShiftIds.has(shiftId))
+  await Promise.all(removedShiftEntries.map(async ([shiftId, eventId]) => {
+    await safeDeleteEvent(auth, calendarId, eventId, shiftId)
+    await admin.from('rota_google_calendar_events').delete().eq('shift_id', shiftId)
+  }))
 
   // -- Rebuild mapping from Google Calendar extended properties ------------
   // This recovers from partial syncs (e.g. server-action fire-and-forgets
@@ -148,24 +148,19 @@ export async function syncRotaWeekToCalendar(
       const knownEventIds = new Set(existingMap.values())
       const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? ''
 
+      // Collect actions before executing — allows parallel processing.
+      const toRecover: Array<{ evId: string; evShiftId: string }> = []
+      const toDelete: Array<{ evId: string; label: string }> = []
+
       for (const ev of listRes.data.items ?? []) {
         if (!ev.id) continue
         const evShiftId = ev.extendedProperties?.private?.shiftId
 
         if (evShiftId) {
-          // Event has our shift tag — recover or clean up as appropriate.
           if (currentShiftIds.has(evShiftId) && !existingMap.has(evShiftId)) {
-            existingMap.set(evShiftId, ev.id)
-            await admin.from('rota_google_calendar_events').upsert({
-              shift_id: evShiftId,
-              week_id: weekId,
-              google_event_id: ev.id,
-              updated_at: new Date().toISOString(),
-            })
-            console.log('[RotaCalendar] Recovered orphaned event', ev.id, 'for shift', evShiftId)
+            toRecover.push({ evId: ev.id, evShiftId })
           } else if (!currentShiftIds.has(evShiftId)) {
-            await safeDeleteEvent(auth, calendarId, ev.id, evShiftId)
-            console.log('[RotaCalendar] Cleaned up stale event', ev.id, 'for removed shift', evShiftId)
+            toDelete.push({ evId: ev.id, label: evShiftId })
           }
         } else if (
           !knownEventIds.has(ev.id) &&
@@ -176,8 +171,33 @@ export async function syncRotaWeekToCalendar(
           // extended property (created before this fix) and is not in the
           // mapping table — it's an orphan from a killed fire-and-forget.
           // Safe to delete because this is a dedicated management-only calendar.
-          await safeDeleteEvent(auth, calendarId, ev.id, '(legacy-orphan)')
-          console.log('[RotaCalendar] Deleted legacy orphaned event', ev.id)
+          toDelete.push({ evId: ev.id, label: '(legacy-orphan)' })
+        }
+      }
+
+      // Recover orphaned-but-valid events in parallel, updating existingMap
+      // so the create/update pass below knows which events already exist.
+      await Promise.all(toRecover.map(async ({ evId, evShiftId }) => {
+        existingMap.set(evShiftId, evId)
+        await admin.from('rota_google_calendar_events').upsert({
+          shift_id: evShiftId,
+          week_id: weekId,
+          google_event_id: evId,
+          updated_at: new Date().toISOString(),
+        })
+        console.log('[RotaCalendar] Recovered orphaned event', evId, 'for shift', evShiftId)
+      }))
+
+      // Delete stale/legacy-orphan events in parallel batches of 10
+      // to stay comfortably under Google Calendar API rate limits.
+      if (toDelete.length > 0) {
+        console.log('[RotaCalendar] Deleting', toDelete.length, 'orphan event(s) for week', weekId)
+        for (let i = 0; i < toDelete.length; i += 10) {
+          await Promise.all(
+            toDelete.slice(i, i + 10).map(({ evId, label }) =>
+              safeDeleteEvent(auth, calendarId, evId, label)
+            )
+          )
         }
       }
     } catch (err: any) {
@@ -187,103 +207,111 @@ export async function syncRotaWeekToCalendar(
   }
 
   // -- Create / update events for current shifts ---------------------------
-  for (const shift of shifts) {
-    const existingEventId = existingMap.get(shift.id)
+  // Process in parallel batches of 10 to stay under GCal API rate limits.
+  // Each shift's GCal call and DB upsert are independent of other shifts.
+  await Promise.all(
+    shifts
+      .filter(s => s.status === 'cancelled')
+      .map(async (shift) => {
+        const existingEventId = existingMap.get(shift.id)
+        if (existingEventId) {
+          await safeDeleteEvent(auth, calendarId, existingEventId, shift.id)
+          await admin.from('rota_google_calendar_events').delete().eq('shift_id', shift.id)
+        }
+      })
+  )
 
-    // Cancelled shifts: remove from calendar entirely
-    if (shift.status === 'cancelled') {
-      if (existingEventId) {
-        await safeDeleteEvent(auth, calendarId, existingEventId, shift.id)
-        await admin.from('rota_google_calendar_events').delete().eq('shift_id', shift.id)
+  const activeShifts = shifts.filter(s => s.status !== 'cancelled')
+  for (let i = 0; i < activeShifts.length; i += 10) {
+    await Promise.all(activeShifts.slice(i, i + 10).map(async (shift) => {
+      const existingEventId = existingMap.get(shift.id)
+
+      const name = shift.is_open_shift
+        ? 'Open Shift'
+        : (shift.employee_id ? (empName.get(shift.employee_id) ?? 'Unknown') : 'Unknown')
+
+      const dept = shift.department
+        ? shift.department.charAt(0).toUpperCase() + shift.department.slice(1)
+        : ''
+
+      const timeRange = `${formatTime(shift.start_time)}–${formatTime(shift.end_time)}`
+      const sickTag = shift.status === 'sick' ? '[SICK] ' : ''
+      const shiftLabel = shift.name ? ` — ${shift.name}` : ''
+      const summary = `${sickTag}${name}${shiftLabel}${dept ? ` (${dept})` : ''} ${timeRange}`
+
+      const endDate = shift.is_overnight ? addOneDay(shift.shift_date) : shift.shift_date
+      const startIso = toUtcIso(shift.shift_date, shift.start_time)
+      const endIso = toUtcIso(endDate, shift.end_time)
+
+      const description = [
+        `Employee: ${name}`,
+        dept ? `Department: ${dept}` : null,
+        shift.status === 'sick' ? 'Status: Sick' : null,
+        shift.notes ? `Notes: ${shift.notes}` : null,
+        '',
+        `${process.env.NEXT_PUBLIC_APP_URL}/rota`,
+      ].filter(Boolean).join('\n')
+
+      const eventBody = {
+        summary,
+        description,
+        start: { dateTime: startIso, timeZone: CALENDAR_TIME_ZONE },
+        end: { dateTime: endIso, timeZone: CALENDAR_TIME_ZONE },
+        colorId: shiftColour(shift.department, shift.status),
+        // Store shift_id as a private extended property so we can identify and
+        // clean up orphaned events (created by publish fire-and-forget calls that
+        // were killed before the mapping table upsert could complete).
+        extendedProperties: {
+          private: { shiftId: shift.id },
+        },
       }
-      continue
-    }
 
-    const name = shift.is_open_shift
-      ? 'Open Shift'
-      : (shift.employee_id ? (empName.get(shift.employee_id) ?? 'Unknown') : 'Unknown')
+      let googleEventId: string | null = null
 
-    const dept = shift.department
-      ? shift.department.charAt(0).toUpperCase() + shift.department.slice(1)
-      : ''
-
-    const timeRange = `${formatTime(shift.start_time)}–${formatTime(shift.end_time)}`
-    const sickTag = shift.status === 'sick' ? '[SICK] ' : ''
-    const shiftLabel = shift.name ? ` — ${shift.name}` : ''
-    const summary = `${sickTag}${name}${shiftLabel}${dept ? ` (${dept})` : ''} ${timeRange}`
-
-    const endDate = shift.is_overnight ? addOneDay(shift.shift_date) : shift.shift_date
-    const startIso = toUtcIso(shift.shift_date, shift.start_time)
-    const endIso = toUtcIso(endDate, shift.end_time)
-
-    const description = [
-      `Employee: ${name}`,
-      dept ? `Department: ${dept}` : null,
-      shift.status === 'sick' ? 'Status: Sick' : null,
-      shift.notes ? `Notes: ${shift.notes}` : null,
-      '',
-      `${process.env.NEXT_PUBLIC_APP_URL}/rota`,
-    ].filter(Boolean).join('\n')
-
-    const eventBody = {
-      summary,
-      description,
-      start: { dateTime: startIso, timeZone: CALENDAR_TIME_ZONE },
-      end: { dateTime: endIso, timeZone: CALENDAR_TIME_ZONE },
-      colorId: shiftColour(shift.department, shift.status),
-      // Store shift_id as a private extended property so we can identify and
-      // clean up orphaned events (created by publish fire-and-forget calls that
-      // were killed before the mapping table upsert could complete).
-      extendedProperties: {
-        private: { shiftId: shift.id },
-      },
-    }
-
-    let googleEventId: string | null = null
-
-    try {
-      if (existingEventId) {
-        const res = await calendar.events.update({
-          auth: auth as any,
-          calendarId,
-          eventId: existingEventId,
-          requestBody: eventBody,
-        })
-        googleEventId = res.data.id ?? null
-      } else {
-        const res = await calendar.events.insert({
-          auth: auth as any,
-          calendarId,
-          requestBody: eventBody,
-        })
-        googleEventId = res.data.id ?? null
-      }
-    } catch (err: any) {
-      // Existing event was deleted externally — re-create
-      if (existingEventId && (err?.code === 404 || err?.code === 410)) {
-        try {
+      try {
+        if (existingEventId) {
+          const res = await calendar.events.update({
+            auth: auth as any,
+            calendarId,
+            eventId: existingEventId,
+            requestBody: eventBody,
+          })
+          googleEventId = res.data.id ?? null
+        } else {
           const res = await calendar.events.insert({
             auth: auth as any,
             calendarId,
             requestBody: eventBody,
           })
           googleEventId = res.data.id ?? null
-        } catch (err2: any) {
-          console.error('[RotaCalendar] Re-create failed for shift', shift.id, err2?.message)
         }
-      } else {
-        console.error('[RotaCalendar] Sync failed for shift', shift.id, err?.message)
+      } catch (err: any) {
+        // Existing event was deleted externally — re-create
+        if (existingEventId && (err?.code === 404 || err?.code === 410)) {
+          try {
+            const res = await calendar.events.insert({
+              auth: auth as any,
+              calendarId,
+              requestBody: eventBody,
+            })
+            googleEventId = res.data.id ?? null
+          } catch (err2: any) {
+            console.error('[RotaCalendar] Re-create failed for shift', shift.id, err2?.message)
+          }
+        } else {
+          console.error('[RotaCalendar] Sync failed for shift', shift.id, err?.message)
+        }
       }
-    }
 
-    if (googleEventId) {
-      await admin.from('rota_google_calendar_events').upsert({
-        shift_id: shift.id,
-        week_id: weekId,
-        google_event_id: googleEventId,
-        updated_at: new Date().toISOString(),
-      })
-    }
+      if (googleEventId) {
+        await admin.from('rota_google_calendar_events').upsert({
+          shift_id: shift.id,
+          week_id: weekId,
+          google_event_id: googleEventId,
+          updated_at: new Date().toISOString(),
+        })
+      }
+    }))
   }
 
   console.log('[RotaCalendar] Sync complete for week', weekId, `(${shifts.length} shifts)`)
