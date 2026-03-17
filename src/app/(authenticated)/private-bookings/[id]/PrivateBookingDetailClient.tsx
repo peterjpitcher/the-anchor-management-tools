@@ -2339,7 +2339,7 @@ export default function PrivateBookingDetailClient({
                       {formatMoney(booking.deposit_amount ?? 250)}
                     </p>
                     {!booking.deposit_paid_date &&
-                      booking.status === "draft" &&
+                      (booking.status === "draft" || booking.status === "confirmed") &&
                       canManageDeposits && (
                         <div className="mt-1 flex flex-col gap-1 items-end">
                           <button

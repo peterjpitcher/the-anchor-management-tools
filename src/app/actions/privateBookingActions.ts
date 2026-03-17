@@ -1343,8 +1343,8 @@ export async function createDepositPaymentOrder(
     return { error: 'Booking not found' }
   }
 
-  if (booking.status !== 'draft') {
-    return { error: 'Deposits can only be recorded against draft bookings' }
+  if (booking.status === 'cancelled' || booking.status === 'completed') {
+    return { error: 'Deposits can only be recorded against draft or confirmed bookings' }
   }
 
   if (booking.deposit_paid_date) {
@@ -1636,7 +1636,7 @@ export async function sendDepositPaymentLink(
 
   if (fetchError) return { error: 'Failed to load booking' }
   if (!booking) return { error: 'Booking not found' }
-  if (booking.status !== 'draft') return { error: 'Deposit payments can only be sent for draft bookings' }
+  if (booking.status === 'cancelled' || booking.status === 'completed') return { error: 'Deposit payment links can only be sent for draft or confirmed bookings' }
   if (booking.deposit_paid_date) return { error: 'Deposit has already been paid' }
 
   const depositAmount = typeof booking.deposit_amount === 'number' ? booking.deposit_amount : 0
