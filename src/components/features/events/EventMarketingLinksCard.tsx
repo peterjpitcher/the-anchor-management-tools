@@ -176,15 +176,6 @@ export function EventMarketingLinksCard({
         <div className="rounded-md border border-red-200 bg-red-50 p-4 text-sm text-red-700">
           {error}
         </div>
-      ) : links.length === 0 ? (
-        <EmptyState
-          size="sm"
-          variant="minimal"
-          centered={false}
-          icon={<LinkIcon className="h-10 w-10 text-blue-400" />}
-          title="No marketing links"
-          description="Marketing links will appear here once generated."
-        />
       ) : (
         <div className="space-y-8">
           {/* Section 1: Always-on digital */}
