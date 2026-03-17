@@ -131,7 +131,7 @@ export class EventMarketingService {
       }
     }
 
-    for (const channel of EVENT_MARKETING_CHANNELS) {
+    for (const channel of EVENT_MARKETING_CHANNELS.filter(c => c.tier === 'always_on')) {
       const payload = buildEventMarketingLinkPayload(event, channel);
       const metadata = buildMetadata(payload, event);
       const existing = existingByChannel.get(channel.key);
@@ -238,5 +238,60 @@ export class EventMarketingService {
     );
 
     return withQRCodes;
+  }
+
+  static async generateSingleLink(
+    eventId: string,
+    channel: EventMarketingChannelKey
+  ): Promise<EventMarketingLink> {
+    const channelConfig = EVENT_MARKETING_CHANNEL_MAP.get(channel);
+    if (!channelConfig) {
+      throw new Error(`Unknown channel: ${channel}`);
+    }
+
+    const supabase = createAdminClient();
+
+    const { data: event, error: eventError } = await supabase
+      .from('events')
+      .select('id, slug, name, date')
+      .eq('id', eventId)
+      .single();
+
+    if (eventError || !event) {
+      throw new Error('Event not found for marketing link generation');
+    }
+
+    if (!event.slug) {
+      throw new Error('Event is missing a slug for marketing link generation');
+    }
+
+    const payload = buildEventMarketingLinkPayload(event, channelConfig);
+    const metadata = buildMetadata(payload, event);
+
+    const inserted = await insertShortLinkWithRetries(event, payload, metadata);
+    const shortUrl = buildShortUrl(inserted.short_code);
+
+    const link: EventMarketingLink = {
+      id: inserted.id,
+      channel: channelConfig.key,
+      label: channelConfig.label,
+      type: channelConfig.type,
+      description: channelConfig.description,
+      shortCode: inserted.short_code,
+      shortUrl,
+      destinationUrl: inserted.destination_url,
+      utm: inserted.metadata?.utm || {},
+      updatedAt: inserted.updated_at || undefined,
+    };
+
+    if (channelConfig.type === 'print') {
+      try {
+        link.qrCode = await QRCode.toDataURL(shortUrl, { margin: 1, scale: 8 });
+      } catch (err) {
+        console.error('Failed to generate QR for single link', channel, err);
+      }
+    }
+
+    return link;
   }
 }
