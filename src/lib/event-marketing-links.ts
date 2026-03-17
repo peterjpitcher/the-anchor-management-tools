@@ -4,6 +4,7 @@ export type EventMarketingChannelKey =
   | 'facebook'
   | 'lnk_bio'
   | 'google_business_profile'
+  | 'meta_ads'
   | 'newsletter'
   | 'sms'
   | 'whatsapp'
@@ -17,6 +18,7 @@ export interface EventMarketingChannelConfig {
   key: EventMarketingChannelKey
   label: string
   type: EventMarketingChannelType
+  tier: 'always_on' | 'on_demand'
   description?: string
   utmSource: string
   utmMedium: string
@@ -46,6 +48,7 @@ export const EVENT_MARKETING_CHANNELS: EventMarketingChannelConfig[] = [
     key: 'facebook',
     label: 'Facebook',
     type: 'digital',
+    tier: 'always_on',
     description: 'Use for Facebook page posts and ads',
     utmSource: 'facebook',
     utmMedium: 'social',
@@ -56,6 +59,7 @@ export const EVENT_MARKETING_CHANNELS: EventMarketingChannelConfig[] = [
     key: 'lnk_bio',
     label: 'Lnk.bio',
     type: 'digital',
+    tier: 'always_on',
     description: 'Use in the Instagram Lnk.bio top link',
     utmSource: 'instagram',
     utmMedium: 'lnk.bio',
@@ -66,6 +70,7 @@ export const EVENT_MARKETING_CHANNELS: EventMarketingChannelConfig[] = [
     key: 'google_business_profile',
     label: 'Google Business Profile',
     type: 'digital',
+    tier: 'always_on',
     description: 'For Google Business Profile event posts',
     utmSource: 'google',
     utmMedium: 'business_profile',
@@ -73,9 +78,21 @@ export const EVENT_MARKETING_CHANNELS: EventMarketingChannelConfig[] = [
     shortCodePrefix: 'gp',
   },
   {
+    key: 'meta_ads',
+    label: 'Meta Ads',
+    type: 'digital',
+    tier: 'always_on',
+    description: 'Paid social — paste as the destination URL in Meta Ads Manager',
+    utmSource: 'facebook',
+    utmMedium: 'paid_social',
+    utmContent: 'meta_ads_main',
+    shortCodePrefix: 'ma',
+  },
+  {
     key: 'newsletter',
     label: 'Newsletter',
     type: 'digital',
+    tier: 'on_demand',
     description: 'Use in email newsletters and campaigns',
     utmSource: 'newsletter',
     utmMedium: 'email',
@@ -86,6 +103,7 @@ export const EVENT_MARKETING_CHANNELS: EventMarketingChannelConfig[] = [
     key: 'sms',
     label: 'SMS',
     type: 'digital',
+    tier: 'on_demand',
     description: 'Use in SMS or text message campaigns',
     utmSource: 'sms',
     utmMedium: 'messaging',
@@ -96,6 +114,7 @@ export const EVENT_MARKETING_CHANNELS: EventMarketingChannelConfig[] = [
     key: 'whatsapp',
     label: 'WhatsApp',
     type: 'digital',
+    tier: 'on_demand',
     description: 'Use when sharing in WhatsApp groups',
     utmSource: 'whatsapp',
     utmMedium: 'messaging',
@@ -106,6 +125,7 @@ export const EVENT_MARKETING_CHANNELS: EventMarketingChannelConfig[] = [
     key: 'poster',
     label: 'Poster QR',
     type: 'print',
+    tier: 'on_demand',
     description: 'Poster artwork and printed flyers',
     utmSource: 'poster',
     utmMedium: 'print',
@@ -116,6 +136,7 @@ export const EVENT_MARKETING_CHANNELS: EventMarketingChannelConfig[] = [
     key: 'table_talker',
     label: 'Table Talker QR',
     type: 'print',
+    tier: 'on_demand',
     description: 'Table talkers placed inside the venue',
     utmSource: 'table_talker',
     utmMedium: 'print',
@@ -126,6 +147,7 @@ export const EVENT_MARKETING_CHANNELS: EventMarketingChannelConfig[] = [
     key: 'bar_strut',
     label: 'Bar Strut QR',
     type: 'print',
+    tier: 'on_demand',
     description: 'Bar strut menu inserts',
     utmSource: 'bar_strut',
     utmMedium: 'print',
