@@ -1,7 +1,8 @@
 import { createClient } from '@/lib/supabase/server'
 import { notFound, redirect } from 'next/navigation'
 import { checkUserPermission } from '@/app/actions/rbac'
-import { getEventMarketingLinks } from '@/app/actions/event-marketing-links'
+import { getEventMarketingLinks, generateEventMarketingLinks, type EventMarketingLink } from '@/app/actions/event-marketing-links'
+import { EVENT_MARKETING_CHANNELS } from '@/lib/event-marketing-links'
 import EventDetailClient from './EventDetailClient'
 import { Event } from '@/types/database'
 import { EventCategory } from '@/types/event-categories'
@@ -64,7 +65,23 @@ export default async function EventViewPage({
   // Cast types and handle nulls
   const event = eventData as EventWithCategory
 
-  const marketingLinks = marketingLinksResult.success ? (marketingLinksResult.links || []) : []
+  let marketingLinks: EventMarketingLink[] = marketingLinksResult.success
+    ? (marketingLinksResult.links || [])
+    : []
+
+  const alwaysOnKeys = EVENT_MARKETING_CHANNELS
+    .filter(c => c.tier === 'always_on')
+    .map(c => c.key)
+
+  const existingKeys = marketingLinks.map(l => l.channel)
+  const missingAlwaysOn = alwaysOnKeys.some(k => !existingKeys.includes(k))
+
+  if (missingAlwaysOn) {
+    await generateEventMarketingLinks(eventId)
+    const refreshed = await getEventMarketingLinks(eventId)
+    marketingLinks = refreshed.success ? (refreshed.links || []) : marketingLinks
+  }
+
   const { data: eventBookingsRaw, error: bookingsError } = await supabase
     .from('bookings')
     .select(
