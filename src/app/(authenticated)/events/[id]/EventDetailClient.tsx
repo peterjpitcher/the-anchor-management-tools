@@ -375,6 +375,10 @@ export default function EventDetailClient({
     }
   }, [])
 
+  const handleLinkGenerated = useCallback((link: EventMarketingLink) => {
+    setMarketingLinks(prev => [...prev, link])
+  }, [])
+
   const handleRegenerateMarketingLinks = useCallback(async () => {
     if (!canManageEvents) {
       toast.error('You do not have permission to refresh marketing links.')
@@ -1209,6 +1213,8 @@ export default function EventDetailClient({
               loading={marketingLoading}
               error={marketingError}
               onRegenerate={canManageEvents ? handleRegenerateMarketingLinks : undefined}
+              eventId={event.id}
+              onLinkGenerated={handleLinkGenerated}
             />
 
             <EventPromotionContentCard
