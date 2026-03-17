@@ -268,20 +268,34 @@ export class EventMarketingService {
     const payload = buildEventMarketingLinkPayload(event, channelConfig);
     const metadata = buildMetadata(payload, event);
 
-    const inserted = await insertShortLinkWithRetries(event, payload, metadata);
-    const shortUrl = buildShortUrl(inserted.short_code);
+    // Check if a link for this event+channel already exists to avoid duplicates
+    const { data: existingLinks, error: fetchError } = await supabase
+      .from('short_links')
+      .select('id, short_code, destination_url, metadata, updated_at')
+      .contains('metadata', { event_id: event.id, channel });
+
+    if (fetchError) {
+      throw new Error('Failed to check for existing marketing link');
+    }
+
+    const existing = (existingLinks && existingLinks.length > 0)
+      ? existingLinks[0] as ExistingShortLink
+      : null;
+
+    const record = existing ?? await insertShortLinkWithRetries(event, payload, metadata);
+    const shortUrl = buildShortUrl(record.short_code);
 
     const link: EventMarketingLink = {
-      id: inserted.id,
+      id: record.id,
       channel: channelConfig.key,
       label: channelConfig.label,
       type: channelConfig.type,
       description: channelConfig.description,
-      shortCode: inserted.short_code,
+      shortCode: record.short_code,
       shortUrl,
-      destinationUrl: inserted.destination_url,
-      utm: inserted.metadata?.utm || {},
-      updatedAt: inserted.updated_at || undefined,
+      destinationUrl: record.destination_url,
+      utm: record.metadata?.utm || {},
+      updatedAt: record.updated_at || undefined,
     };
 
     if (channelConfig.type === 'print') {
