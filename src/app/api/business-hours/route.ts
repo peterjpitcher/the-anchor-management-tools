@@ -31,7 +31,7 @@ export async function GET(_request: NextRequest) {
 
     const { data: specialHours, error: specialError } = await supabase
       .from('special_hours')
-      .select('date, opens, closes, kitchen_opens, kitchen_closes, is_closed')
+      .select('date, opens, closes, kitchen_opens, kitchen_closes, is_closed, is_kitchen_closed, schedule_config')
       .gte('date', format(today, 'yyyy-MM-dd'))
       .lte('date', format(thirtyDaysFromNow, 'yyyy-MM-dd'))
       .order('date', { ascending: true })

@@ -115,6 +115,7 @@ export async function GET(_request: NextRequest) {
       opens: special.kitchen_opens,
       closes: special.kitchen_closes,
     } : null),
+    is_kitchen_closed: special.is_kitchen_closed ?? false,
     status: special.is_closed ? 'closed' : 'modified',
     note: special.note,
     schedule_config: special.schedule_config || [] // Expose new config
