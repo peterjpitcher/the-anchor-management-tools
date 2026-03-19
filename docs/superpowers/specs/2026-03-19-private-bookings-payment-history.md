@@ -36,102 +36,173 @@ Add a unified, chronological transaction history to the private booking detail p
 
 ### New type: `PaymentHistoryEntry`
 
+Use a **discriminated union** to accurately represent what each entry type can carry:
+
 ```typescript
 // Add to src/types/private-bookings.ts
-type PaymentHistoryEntry = {
-  id: string                            // UUID of the row, or 'deposit' for the deposit entry
-  type: 'deposit' | 'balance'
+type DepositPaymentEntry = {
+  id: 'deposit'
+  type: 'deposit'
   amount: number
-  method: 'cash' | 'card' | 'invoice' | 'paypal'
-  // 'paypal' is valid only on type === 'deposit' entries.
-  // Balance rows only carry 'cash' | 'card' | 'invoice' (DB CHECK constraint).
-  date: string                          // YYYY-MM-DD (London timezone via toLocalIsoDate())
+  method: 'cash' | 'card' | 'invoice' | 'paypal'  // all methods valid for deposit
+  date: string  // YYYY-MM-DD
 }
+
+type BalancePaymentEntry = {
+  id: string    // UUID
+  type: 'balance'
+  amount: number
+  method: 'cash' | 'card' | 'invoice'  // 'paypal' never appears; DB CHECK constraint
+  date: string  // YYYY-MM-DD
+}
+
+type PaymentHistoryEntry = DepositPaymentEntry | BalancePaymentEntry
 ```
 
-**Notes on what's omitted:**
-- `notes` and `recorded_by` from `private_booking_payments` are intentionally excluded — neither column exists on `private_bookings` for the deposit, so they cannot be displayed uniformly. The four visible columns (Date · Type · Method · Amount) are sufficient.
-- If future requirements need per-row notes/recorded-by, the type can be extended.
-
 **Date handling:**
-- `private_bookings.deposit_paid_date` is a `timestamptz` — convert via `toLocalIsoDate(deposit_paid_date)` to get `YYYY-MM-DD` in London timezone.
-- `private_booking_payments.created_at` is a `timestamptz` — same conversion.
-- Sort ascending by `date`; deposit entry sorts before balance entries on the same date.
-- Include deposit entry only if `deposit_paid_date IS NOT NULL`.
+- Both `deposit_paid_date` and `private_booking_payments.created_at` are `timestamptz`
+- Convert both via `toLocalIsoDate()` to get `YYYY-MM-DD` in London timezone
+- Include deposit entry only if `deposit_paid_date IS NOT NULL`
+
+**Sort order:** Sort ascending by `date`, with deposit before balance on the same date. Use an explicit comparator:
+
+```typescript
+entries.sort((a, b) => {
+  if (a.date !== b.date) return a.date < b.date ? -1 : 1
+  if (a.type === 'deposit' && b.type === 'balance') return -1
+  if (a.type === 'balance' && b.type === 'deposit') return 1
+  return 0
+})
+```
 
 ### `getBookingPaymentHistory(bookingId: string): Promise<PaymentHistoryEntry[]>`
 
-Uses the **admin client** (`getDb()`) for consistency with the write methods and to avoid any RLS SELECT policy ambiguity on `private_booking_payments`. Access control is enforced at the server action / page layer (the page already requires `private_bookings/view` permission before rendering).
+Uses the **admin client** (`getDb()`) for consistency with write methods and to avoid RLS SELECT ambiguity. Access control is enforced at the page layer (page already requires `private_bookings/view`).
 
 Assembles:
-1. Deposit entry (if `deposit_paid_date IS NOT NULL`) — `id: 'deposit'`, `type: 'deposit'`, from `deposit_amount`, `deposit_payment_method`, `deposit_paid_date`
-2. All rows from `private_booking_payments` for the booking — `type: 'balance'`
+1. One `DepositPaymentEntry` with `id: 'deposit'` (if `deposit_paid_date IS NOT NULL`) from `deposit_amount`, `deposit_payment_method`, `deposit_paid_date` on `private_bookings`
+2. All `BalancePaymentEntry` rows from `private_booking_payments` for the booking
 
-Returns sorted ascending by `date`.
+The deposit entry **is present in the returned array** and can be found by `entries.find(e => e.id === 'deposit')`. This allows the client component to populate `editValues` from the same array for both deposit and balance rows.
+
+Returns sorted using the comparator above.
+
+### New Postgres RPC: `apply_balance_payment_status(p_booking_id uuid)`
+
+To avoid the TOCTOU race between balance calculation and method lookup, these operations must be atomic. Create a migration with the following function (called by `updateBalancePayment` and `deleteBalancePayment`):
+
+```sql
+CREATE OR REPLACE FUNCTION apply_balance_payment_status(p_booking_id uuid)
+RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+  v_total        numeric;
+  v_paid         numeric;
+  v_remaining    numeric;
+  v_last_method  text;
+BEGIN
+  -- Sum line items
+  SELECT COALESCE(SUM(line_total), 0) INTO v_total
+  FROM private_booking_items WHERE booking_id = p_booking_id;
+
+  -- Sum balance payments
+  SELECT COALESCE(SUM(amount), 0) INTO v_paid
+  FROM private_booking_payments WHERE booking_id = p_booking_id;
+
+  v_remaining := GREATEST(0, v_total - v_paid);
+
+  -- Only stamp final payment if booking actually has items (total > 0)
+  IF v_remaining = 0 AND v_total > 0 THEN
+    -- Get method of last remaining payment for final_payment_method
+    SELECT method INTO v_last_method
+    FROM private_booking_payments
+    WHERE booking_id = p_booking_id
+    ORDER BY created_at DESC, id DESC
+    LIMIT 1;
+
+    UPDATE private_bookings
+    SET final_payment_date   = now(),
+        final_payment_method = v_last_method  -- NULL if no payments remain
+    WHERE id = p_booking_id
+      AND final_payment_date IS NULL;
+
+  ELSIF v_remaining > 0 THEN
+    UPDATE private_bookings
+    SET final_payment_date   = NULL,
+        final_payment_method = NULL
+    WHERE id = p_booking_id
+      AND final_payment_date IS NOT NULL;
+  END IF;
+END;
+$$;
+```
+
+**File:** `supabase/migrations/<timestamp>_apply_balance_payment_status.sql`
 
 ### `updateBalancePayment(paymentId: string, bookingId: string, data: { amount: number; method: string; notes?: string })`
 
-Uses the **admin client** (`getDb()`) — no UPDATE RLS policy exists on `private_booking_payments`. Permission is pre-verified at the server action layer.
+Uses the **admin client** (`getDb()`).
 
-1. Fetch the row: `getDb().from('private_booking_payments').select().eq('id', paymentId).eq('booking_id', bookingId).single()` — abort with error if not found (ownership check)
+1. **Ownership check:** `getDb().from('private_booking_payments').select('id').eq('id', paymentId).eq('booking_id', bookingId).single()` — return error if not found. This ensures a manager cannot mutate a payment from a different booking by submitting an arbitrary `paymentId`.
 2. Update `amount`, `method`, `notes` on the row
-3. Recalculate balance and apply final-payment status rule (see Business Logic)
+3. **Assert row was updated:** verify the update returned `count === 1`; throw if not (catches silent RLS-like failures)
+4. Call `supabase.rpc('apply_balance_payment_status', { p_booking_id: bookingId })`
 
 ### `deleteBalancePayment(paymentId: string, bookingId: string)`
 
 Uses the **admin client** (`getDb()`).
 
-1. Fetch the row (ownership check as above)
-2. Delete the row
-3. Recalculate balance and apply final-payment status rule
+1. **Ownership check:** same `.eq('id', paymentId).eq('booking_id', bookingId)` guard as above
+2. Delete the row; assert `count === 1`
+3. Call `supabase.rpc('apply_balance_payment_status', { p_booking_id: bookingId })`
+
+The RPC handles all balance recalculation and `final_payment_date` stamping atomically, including the `ORDER BY created_at DESC, id DESC` method lookup after the deletion.
 
 ### `updateDeposit(bookingId: string, data: { amount: number; method: string })`
 
 Uses the **admin client** (`getDb()`).
 
 - Updates `deposit_amount` and `deposit_payment_method` on `private_bookings`
-- `deposit_paid_date` is **never modified** by this method
-- Does **not** trigger `final_payment_date` recalculation — the deposit is a returnable bond and is not deducted from the event cost balance
-- `method` is constrained to `'cash' | 'card' | 'invoice'` — PayPal is never editable
+- `deposit_paid_date` is **never modified**
+- Does **not** call `apply_balance_payment_status` — deposit is a returnable bond, not part of the balance
 
 ### `deleteDeposit(bookingId: string)`
 
 Uses the **admin client** (`getDb()`).
 
-- Clears `deposit_paid_date = NULL` and `deposit_payment_method = NULL`
-- `deposit_amount` is **not cleared** — the column is non-nullable with a default, and the amount represents the required deposit figure, not just the payment record. Only the "paid" markers are cleared.
-- Status reversion: if `booking.status === 'confirmed'` AND `COUNT(private_booking_payments WHERE booking_id = bookingId) === 0` → set `booking.status = 'draft'`
-  - After status reversion, if `isCalendarConfigured()` is true: fetch the **full booking record** via `getDb().from('private_bookings').select('*').eq('id', bookingId).single()` (the full row is required by `syncCalendarEvent`), then call `syncCalendarEvent(updatedBooking)` from `src/lib/google-calendar.ts`. Mirror the same full-select pattern used in `recordDeposit()`.
-- For `completed` or `cancelled` bookings: no status change
-- Does **not** trigger `final_payment_date` recalculation
+1. Fetch current booking status and deposit fields (needed for audit log and status logic)
+2. Set `deposit_paid_date = NULL`, `deposit_payment_method = NULL`
+   - `deposit_amount` is **not cleared** — non-nullable column; represents the required deposit amount, not the payment record
+3. If `booking.status === 'confirmed'` AND `COUNT(private_booking_payments WHERE booking_id) === 0` → set `booking.status = 'draft'`
+   - After status reversion, if `isCalendarConfigured()` is true:
+     - Fetch the full booking: `getDb().from('private_bookings').select('*').eq('id', bookingId).single()` using the same full-column select as `recordDeposit()` so `syncCalendarEvent` receives all required fields
+     - Call `syncCalendarEvent(booking)` from `src/lib/google-calendar.ts`
+4. For `completed` or `cancelled` bookings: no status change
+5. Does **not** call `apply_balance_payment_status`
 
 ### Server actions (in `privateBookingActions.ts`)
 
-#### Shared role check helper (inline in each action)
+#### Permission check — use existing RBAC system
 
-Use the same pattern as `src/app/(authenticated)/foh/page.tsx` — query `user_roles` with a `roles(name)` join via the admin client:
+Replace the raw role query with `checkUserPermission` for consistency with all other actions in this file:
 
 ```typescript
 const supabase = await getSupabaseServerClient()
 const { data: { user } } = await supabase.auth.getUser()
 if (!user) return { error: 'Unauthorized' }
 
-const { data: userRoles } = await getDb()
-  .from('user_roles')
-  .select('roles(name)')
-  .eq('user_id', user.id)
-
-// userRoles is Array<{ roles: { name: string } }>
-const isManagerOrAbove = userRoles?.some(
-  (r: { roles: { name: string } }) =>
-    r.roles?.name === 'manager' || r.roles?.name === 'super_admin'
-) ?? false
-if (!isManagerOrAbove) return { error: 'Forbidden' }
+// 'manage' action is held by manager and super_admin roles
+const canEdit = await checkUserPermission('private_bookings', 'manage', user.id)
+if (!canEdit) return { error: 'Forbidden' }
 ```
+
+Using `checkUserPermission('private_bookings', 'manage')` is consistent with the rest of the codebase, respects RBAC grants/overrides, and is equivalent to the manager/super_admin role check.
 
 #### `editPrivateBookingPayment(formData: FormData)`
 
-Dispatches on `type` field:
+Dispatches on `type` field after auth guard:
 
 ```typescript
 const editBalancePaymentSchema = z.object({
@@ -152,11 +223,11 @@ const editDepositSchema = z.object({
     message: 'Amount must be greater than £0',
   }),
   method: z.enum(['cash', 'card', 'invoice']),
-  // PayPal method is never editable — excluded from schema
+  // 'paypal' is never editable
 })
 ```
 
-On success: call `logAuditEvent()`, call `revalidatePath('/private-bookings/[id]')`.
+On success: `logAuditEvent()`, `revalidatePath('/private-bookings/[id]')`.
 
 #### `deletePrivateBookingPayment(formData: FormData)`
 
@@ -170,30 +241,32 @@ const deletePaymentSchema = z.object({
 
 Dispatches:
 - `type === 'balance'` → `deleteBalancePayment(paymentId, bookingId)`
-- `type === 'deposit'` → `deleteDeposit(bookingId)` (paymentId is ignored for deposit)
+- `type === 'deposit'` → `deleteDeposit(bookingId)` (`paymentId` ignored for deposit)
 
-On success: call `logAuditEvent()`, call `revalidatePath('/private-bookings/[id]')`.
+On success: `logAuditEvent()`, `revalidatePath('/private-bookings/[id]')`.
+
+> **Auth failures:** Follow existing codebase pattern — auth failures are not audit-logged (consistent with all other actions in `privateBookingActions.ts`).
 
 ### Audit logging
 
 ```typescript
-// editPrivateBookingPayment — balance path
+// editPrivateBookingPayment — balance
 logAuditEvent({ user_id, operation_type: 'update', action: 'edit_private_booking_payment',
   resource_type: 'private_booking_payment',
   additional_info: { booking_id, payment_id, payment_type: 'balance',
     old_amount, new_amount, old_method, new_method } })
 
-// editPrivateBookingPayment — deposit path
+// editPrivateBookingPayment — deposit
 logAuditEvent({ user_id, operation_type: 'update', action: 'edit_private_booking_deposit',
   resource_type: 'private_booking',
   additional_info: { booking_id, old_amount, new_amount, old_method, new_method } })
 
-// deletePrivateBookingPayment — balance path
+// deletePrivateBookingPayment — balance
 logAuditEvent({ user_id, operation_type: 'delete', action: 'delete_private_booking_payment',
   resource_type: 'private_booking_payment',
   additional_info: { booking_id, payment_id, payment_type: 'balance', amount, method } })
 
-// deletePrivateBookingPayment — deposit path
+// deletePrivateBookingPayment — deposit
 logAuditEvent({ user_id, operation_type: 'delete', action: 'delete_private_booking_deposit',
   resource_type: 'private_booking',
   additional_info: { booking_id, amount: deposit_amount, method: deposit_payment_method,
@@ -206,24 +279,15 @@ logAuditEvent({ user_id, operation_type: 'delete', action: 'delete_private_booki
 
 ### Final payment status recalculation
 
-Runs after `updateBalancePayment` and `deleteBalancePayment` **only** (not after deposit mutations):
+Handled entirely by the `apply_balance_payment_status(p_booking_id)` RPC (defined above). Called after `updateBalancePayment` and `deleteBalancePayment` only. Key guards in the RPC:
 
-```
-remainingBalance = calculate_private_booking_balance(bookingId)   // via supabase.rpc()
+- `v_total > 0` guard: prevents stamping `final_payment_date` on a booking with no line items
+- `ORDER BY created_at DESC, id DESC`: deterministic even when payments share the same `created_at`
+- Atomicity: balance calculation and `final_payment_date` update happen in a single transaction
 
-IF remainingBalance == 0 AND booking.final_payment_date IS NULL:
-  SET final_payment_date = now()
-  SET final_payment_method = <method of the balance payment just edited/deleted>
-  // For delete: use the method of the last remaining balance payment
-  // (query ORDER BY created_at DESC LIMIT 1 after deletion).
-  // If no balance payments remain, set final_payment_method = NULL.
+### Deposit deletion status rules
 
-IF remainingBalance > 0 AND booking.final_payment_date IS NOT NULL:
-  SET final_payment_date = NULL
-  SET final_payment_method = NULL
-```
-
-Both updates to `final_payment_date` / `final_payment_method` use the **admin client**.
+See `deleteDeposit` above. Status reverts to `'draft'` only when `status === 'confirmed'` AND no balance payments exist. `completed`/`cancelled` bookings are not modified.
 
 ---
 
@@ -236,17 +300,17 @@ Both updates to `final_payment_date` / `final_payment_method` use the **admin cl
 
 ```typescript
 type Props = {
-  payments: PaymentHistoryEntry[]
+  payments: PaymentHistoryEntry[]   // includes deposit entry with id='deposit' if deposit paid
   bookingId: string
-  canEditPayments: boolean  // true if current user is manager or super_admin
-  totalAmount: number       // from parent's calculateTotal() — the display total already shown on page
+  canEditPayments: boolean
+  totalAmount: number               // from parent's calculateTotal() call at render time
 }
 ```
 
 **Local state:**
 
 ```typescript
-editingId: string | null          // 'deposit' or a UUID
+editingId: string | null           // 'deposit' or a UUID
 editValues: { amount: string; method: string }
 savingId: string | null
 deletingId: string | null
@@ -254,16 +318,27 @@ confirmDeleteId: string | null
 error: string | null
 ```
 
-**Important:** No local copy of `payments`. The component is controlled — it re-renders from props after `router.refresh()` completes. During the save/delete operation, the row is shown in a loading state; the list updates when the server response arrives via `router.refresh()`. This avoids optimistic-vs-server-refresh race conditions.
+**No local payments copy** — controlled component. The `payments` prop is the source of truth. Updates arrive via `router.refresh()`.
 
-**State machine transitions:**
-- ✏️ on row X: `editingId = X.id`, clears `confirmDeleteId`, populates `editValues` from row
-- 🗑 on row X: `confirmDeleteId = X.id`, clears `editingId`
-- Cancel: clears `editingId`
-- Save: sets `savingId = editingId`, calls server action, on resolve: clears `savingId`/`editingId`, calls `router.refresh()`; on error: clears `savingId`, sets `error`
-- Confirm delete Yes: sets `deletingId = confirmDeleteId`, clears `confirmDeleteId`, calls server action, on resolve: clears `deletingId`, calls `router.refresh()`; on error: clears `deletingId`, sets `error`
-- New ✏️ or 🗑 click while `savingId` or `deletingId` is set: ignored (buttons disabled)
+**Populating `editValues`:** When ✏️ is clicked, find the row: `payments.find(p => p.id === editingId)`. The deposit entry is present in `payments` with `id: 'deposit'`, so this lookup works uniformly for both types.
+
+**State machine:**
+- ✏️ on row X: `editingId = X.id`, clear `confirmDeleteId`, `editValues = { amount: String(row.amount), method: row.method }`
+- 🗑 on row X: `confirmDeleteId = X.id`, clear `editingId`
+- Cancel: clear `editingId`
+- Save: `savingId = editingId`, call server action
+  - On success: clear `savingId` + `editingId`, call `router.refresh()`
+  - On error: clear `savingId`, set `error`, call `router.refresh()` (ensures UI shows current server state)
+- Confirm delete Yes: `deletingId = confirmDeleteId`, clear `confirmDeleteId`, call server action
+  - On success: clear `deletingId`, call `router.refresh()`
+  - On error: clear `deletingId`, set `error`, call `router.refresh()`
+- **Global lock:** while `savingId !== null` OR `deletingId !== null`, ALL action buttons across ALL rows are disabled — not just the row being saved/deleted
 - `error` clears on any new user interaction
+
+**Summary row** (above the table):
+- Total = `totalAmount` prop
+- Paid to date = `payments.reduce((sum, p) => sum + p.amount, 0)`
+- Outstanding = `Math.max(0, totalAmount - paidToDate)`
 
 ### Integration into `PrivateBookingDetailClient.tsx`
 
@@ -274,7 +349,7 @@ error: string | null
      payments={paymentHistory}
      bookingId={bookingId}
      canEditPayments={canEditPayments}
-     totalAmount={calculateTotal()}   // the same function already used on the page
+     totalAmount={calculateTotal()}
    />
    ```
 
@@ -285,58 +360,45 @@ error: string | null
    const paymentHistory = await getBookingPaymentHistory(bookingId)
    ```
 
-2. Derive `canEditPayments` (same pattern as the server action role check):
+2. Derive `canEditPayments` using the same RBAC system as other permissions:
    ```typescript
-   const { data: userRoles } = await getDb()
-     .from('user_roles')
-     .select('roles(name)')
-     .eq('user_id', user.id)
-   const canEditPayments = userRoles?.some(
-     (r: { roles: { name: string } }) =>
-       r.roles?.name === 'manager' || r.roles?.name === 'super_admin'
-   ) ?? false
+   const canEditPayments = await checkUserPermission('private_bookings', 'manage', user.id)
    ```
-   (`user` is already resolved earlier in `page.tsx` via `supabase.auth.getUser()`)
+   This is consistent with how `canEdit`, `canDelete`, and `canManageDeposits` are derived in the existing permission block.
 
-3. Pass both through `PrivateBookingDetailServer` → `PrivateBookingDetailClient` by adding them to the props chain. Update `PrivateBookingDetailServer.tsx` to accept and forward `paymentHistory` and `canEditPayments`.
+3. Forward `paymentHistory` and `canEditPayments` through `PrivateBookingDetailServer` → `PrivateBookingDetailClient`. Update `PrivateBookingDetailServer.tsx` to accept and pass through both props.
 
 ---
 
 ## Inline Edit UX
 
 ### Table columns
-Date · Type badge · Method · Amount · Actions (visible to `canEditPayments` only)
+Date · Type badge · Method · Amount · Actions (visible only when `canEditPayments === true`)
 
 ### Row states
 
 **Read state**
 - Type badge: blue pill "Deposit" / grey pill "Part payment"
-- Actions: ✏️ edit icon + 🗑 delete icon (only when `canEditPayments === true`)
+- Actions: ✏️ + 🗑 (only when `canEditPayments`, disabled when global lock is active)
 
 **Edit state** (amber tint `bg-amber-50`)
 - Method:
-  - `type === 'balance'` OR (`type === 'deposit'` AND `method !== 'paypal'`): `<select>` Cash / Card / Invoice
-  - `type === 'deposit'` AND `method === 'paypal'`: read-only text "PayPal" (no select — not editable)
+  - `type === 'balance'` or (`type === 'deposit'` and `method !== 'paypal'`): `<select>` Cash / Card / Invoice
+  - `type === 'deposit'` and `method === 'paypal'`: read-only text "PayPal" (not editable)
 - Amount: `<input type="text">` right-aligned
-- Actions: "Save" (primary) + "✕" Cancel
+- Actions: "Save" (primary) + "✕" Cancel; both disabled during global lock
 
-**Saving state**
-- Row: 60% opacity, inputs disabled, "saving…" in actions column
+**Saving state** — 60% opacity, inputs disabled, "saving…"
 
-**Delete confirmation state**
-- Row content replaced inline: "Delete this payment?" + "Yes" (destructive) + "No"
+**Delete confirmation** — "Delete this payment?" + "Yes" (destructive) + "No"
 
-**Deleting state**
-- Row: dimmed, "deleting…" — list updates after `router.refresh()`
+**Deleting state** — dimmed, "deleting…"
 
-**Error state**
-- Row reverts to read state
-- Red error callout below the table
-- Clears on next user interaction
+**Error state** — row reverts to read state (edit values lost); red callout below table; `router.refresh()` called so UI shows current server state; error clears on next interaction
 
-### Client-side validation (before calling server action)
-- Amount must parse as float > 0; show inline error beneath the input if not
-- No hard maximum (admin corrections may legitimately exceed the booking total)
+### Client-side validation
+- Amount must parse as float > 0 — inline error beneath input if not
+- No hard maximum
 
 ---
 
@@ -347,8 +409,10 @@ Date · Type badge · Method · Amount · Actions (visible to `canEditPayments` 
 | View transaction history | `private_bookings/view` (existing RLS) |
 | Record deposit | `private_bookings/manage_deposits` (existing) |
 | Record balance payment | `private_bookings/manage_deposits` (existing) |
-| Edit any payment | `Role.name === 'manager'` or `'super_admin'` |
-| Delete any payment | `Role.name === 'manager'` or `'super_admin'` |
+| Edit any payment | `checkUserPermission('private_bookings', 'manage')` |
+| Delete any payment | `checkUserPermission('private_bookings', 'manage')` |
+
+The `manage` action is held by `manager` and `super_admin` roles and is consistent with the rest of `privateBookingActions.ts`.
 
 ---
 
@@ -356,10 +420,11 @@ Date · Type badge · Method · Amount · Actions (visible to `canEditPayments` 
 
 | File | Change |
 |------|--------|
+| `supabase/migrations/<timestamp>_apply_balance_payment_status.sql` | **Create** — new `apply_balance_payment_status` RPC |
 | `src/app/(authenticated)/private-bookings/[id]/PaymentHistoryTable.tsx` | **Create** — new client component |
 | `src/services/private-bookings.ts` | **Modify** — add `getBookingPaymentHistory`, `updateBalancePayment`, `deleteBalancePayment`, `updateDeposit`, `deleteDeposit` |
 | `src/app/actions/privateBookingActions.ts` | **Modify** — add `editPrivateBookingPayment`, `deletePrivateBookingPayment` |
 | `src/app/(authenticated)/private-bookings/[id]/page.tsx` | **Modify** — fetch payment history, derive `canEditPayments`, pass as props |
-| `src/app/(authenticated)/private-bookings/PrivateBookingDetailServer.tsx` | **Modify** — add `paymentHistory` and `canEditPayments` to props interface and forwarding |
+| `src/app/(authenticated)/private-bookings/PrivateBookingDetailServer.tsx` | **Modify** — add `paymentHistory` and `canEditPayments` to props chain |
 | `src/app/(authenticated)/private-bookings/[id]/PrivateBookingDetailClient.tsx` | **Modify** — add props, replace payment summary block with `<PaymentHistoryTable />` |
-| `src/types/private-bookings.ts` | **Modify** — add `PaymentHistoryEntry` type |
+| `src/types/private-bookings.ts` | **Modify** — add `DepositPaymentEntry`, `BalancePaymentEntry`, `PaymentHistoryEntry` types |
