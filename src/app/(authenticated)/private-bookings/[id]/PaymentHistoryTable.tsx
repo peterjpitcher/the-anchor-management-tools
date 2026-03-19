@@ -20,7 +20,6 @@ interface PaymentHistoryTableProps {
   totalAmount: number
 }
 
-type BalanceMethod = 'cash' | 'card' | 'invoice'
 type DepositMethod = 'cash' | 'card' | 'invoice' | 'paypal'
 
 export default function PaymentHistoryTable({
@@ -94,7 +93,6 @@ export default function PaymentHistoryTable({
     } catch {
       setSavingId(null)
       setError('Failed to update payment')
-      router.refresh()
     }
   }
 
@@ -123,7 +121,6 @@ export default function PaymentHistoryTable({
     } catch {
       setDeletingId(null)
       setError('Failed to delete payment')
-      router.refresh()
     }
   }
 
@@ -147,13 +144,14 @@ export default function PaymentHistoryTable({
 
       <p className="text-xs font-medium text-gray-500 mb-2">Payment history</p>
 
+      {error && (
+        <p className="text-xs text-red-600 mb-2">{error}</p>
+      )}
+
       {payments.length === 0 ? (
         <p className="text-xs text-gray-400">No payments recorded yet.</p>
       ) : (
         <div className="space-y-2">
-          {error && (
-            <p className="text-xs text-red-600">{error}</p>
-          )}
           {payments.map((entry) => {
             const isEditing = editingId === entry.id
             const isDepositEntry = entry.type === 'deposit'
@@ -191,7 +189,7 @@ export default function PaymentHistoryTable({
                           onChange={(e) =>
                             setEditValues((prev) => ({
                               ...prev,
-                              method: e.target.value as DepositMethod | BalanceMethod,
+                              method: e.target.value as DepositMethod,
                             }))
                           }
                           disabled={isLocked}
