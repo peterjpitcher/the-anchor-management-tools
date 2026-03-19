@@ -19,7 +19,10 @@ import type {
   BookingItemFormData,
   PrivateBookingWithDetails,
   PrivateBookingAuditWithUser,
-  PrivateBookingPayment
+  PrivateBookingPayment,
+  PaymentHistoryEntry,
+  DepositPaymentEntry,
+  BalancePaymentEntry,
 } from '@/types/private-bookings';
 import { z } from 'zod'; // Import z for schemas
 
@@ -3213,4 +3216,55 @@ export class PrivateBookingService {
 
     return { success: true };
   }
+}
+
+export async function getBookingPaymentHistory(bookingId: string): Promise<PaymentHistoryEntry[]> {
+  const db = createAdminClient()
+
+  const { data: booking, error: bookingError } = await db
+    .from('private_bookings')
+    .select('deposit_paid_date, deposit_amount, deposit_payment_method')
+    .eq('id', bookingId)
+    .single()
+
+  if (bookingError) throw new Error(`Failed to fetch booking: ${bookingError.message}`)
+
+  const { data: payments, error: paymentsError } = await db
+    .from('private_booking_payments')
+    .select('id, amount, method, created_at')
+    .eq('booking_id', bookingId)
+    .order('created_at', { ascending: true })
+
+  if (paymentsError) throw new Error(`Failed to fetch payments: ${paymentsError.message}`)
+
+  const entries: PaymentHistoryEntry[] = []
+
+  if (booking.deposit_paid_date) {
+    entries.push({
+      id: 'deposit',
+      type: 'deposit',
+      amount: booking.deposit_amount,
+      method: booking.deposit_payment_method as DepositPaymentEntry['method'],
+      date: toLocalIsoDate(new Date(booking.deposit_paid_date)),
+    })
+  }
+
+  for (const payment of payments ?? []) {
+    entries.push({
+      id: payment.id,
+      type: 'balance',
+      amount: payment.amount,
+      method: payment.method as BalancePaymentEntry['method'],
+      date: toLocalIsoDate(new Date(payment.created_at)),
+    })
+  }
+
+  entries.sort((a, b) => {
+    if (a.date !== b.date) return a.date < b.date ? -1 : 1
+    if (a.type === 'deposit' && b.type === 'balance') return -1
+    if (a.type === 'balance' && b.type === 'deposit') return 1
+    return 0
+  })
+
+  return entries
 }
