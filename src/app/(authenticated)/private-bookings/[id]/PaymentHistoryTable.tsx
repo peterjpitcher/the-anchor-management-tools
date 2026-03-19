@@ -20,30 +20,31 @@ interface PaymentHistoryTableProps {
   totalAmount: number
 }
 
-type DepositMethod = 'cash' | 'card' | 'invoice' | 'paypal'
 type BalanceMethod = 'cash' | 'card' | 'invoice'
-
-interface EditState {
-  entryId: string
-  amount: string
-  method: DepositMethod | BalanceMethod
-  date: string
-}
+type DepositMethod = 'cash' | 'card' | 'invoice' | 'paypal'
 
 export default function PaymentHistoryTable({
   payments,
   bookingId,
   canEditPayments,
-}: PaymentHistoryTableProps): React.ReactElement | null {
+  totalAmount,
+}: PaymentHistoryTableProps): React.ReactElement {
   const router = useRouter()
-  const [editState, setEditState] = useState<EditState | null>(null)
-  const [saving, setSaving] = useState(false)
-  const [deletingId, setDeletingId] = useState<string | null>(null)
-  const [deleteTarget, setDeleteTarget] = useState<PaymentHistoryEntry | null>(null)
 
-  if (payments.length === 0) {
-    return null
-  }
+  // Spec-mandated state shape — no `date` field in editValues
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [editValues, setEditValues] = useState<{ amount: string; method: string }>({ amount: '', method: '' })
+  const [savingId, setSavingId] = useState<string | null>(null)
+  const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  // Global lock: while any save or delete is in flight, all action buttons are disabled
+  const isLocked = savingId !== null || deletingId !== null
+
+  // Summary figures — computed regardless of payments.length
+  const paidToDate = payments.reduce((sum, p) => sum + p.amount, 0)
+  const outstanding = Math.max(0, totalAmount - paidToDate)
 
   function formatMethodLabel(method: string): string {
     const labels: Record<string, string> = {
@@ -56,198 +57,230 @@ export default function PaymentHistoryTable({
   }
 
   function startEdit(entry: PaymentHistoryEntry): void {
-    setEditState({
-      entryId: entry.id,
-      amount: String(entry.amount),
-      method: entry.method,
-      date: entry.date,
-    })
+    setEditingId(entry.id)
+    setEditValues({ amount: String(entry.amount), method: entry.method })
+    setConfirmDeleteId(null)
+    setError(null)
   }
 
   function cancelEdit(): void {
-    setEditState(null)
+    setEditingId(null)
+    setError(null)
   }
 
   async function handleSave(entry: PaymentHistoryEntry): Promise<void> {
-    if (!editState) return
-    setSaving(true)
+    if (!editingId) return
+    setSavingId(editingId)
     try {
       const formData = new FormData()
       formData.set('paymentId', entry.id)
       formData.set('bookingId', bookingId)
       formData.set('type', entry.type)
-      formData.set('amount', editState.amount)
-      formData.set('method', editState.method)
-      formData.set('date', editState.date)
+      formData.set('amount', editValues.amount)
+      formData.set('method', editValues.method)
+      // No `date` field — editing the payment date is out of scope
       const result = await editPrivateBookingPayment(formData)
       if (result.success) {
         toast.success('Payment updated')
-        setEditState(null)
+        setSavingId(null)
+        setEditingId(null)
         router.refresh()
       } else {
+        setSavingId(null)
+        setError(result.error ?? 'Failed to update payment')
         toast.error(result.error ?? 'Failed to update payment')
+        router.refresh()
       }
-    } finally {
-      setSaving(false)
+    } catch {
+      setSavingId(null)
+      setError('Failed to update payment')
+      router.refresh()
     }
   }
 
   async function handleDeleteConfirm(): Promise<void> {
-    if (!deleteTarget) return
-    setDeletingId(deleteTarget.id)
+    if (!confirmDeleteId) return
+    const target = payments.find((p) => p.id === confirmDeleteId)
+    if (!target) return
+    setDeletingId(confirmDeleteId)
+    setConfirmDeleteId(null)
     try {
       const formData = new FormData()
-      formData.set('paymentId', deleteTarget.id)
+      formData.set('paymentId', target.id)
       formData.set('bookingId', bookingId)
-      formData.set('type', deleteTarget.type)
+      formData.set('type', target.type)
       const result = await deletePrivateBookingPayment(formData)
       if (result.success) {
         toast.success('Payment deleted')
+        setDeletingId(null)
         router.refresh()
       } else {
+        setDeletingId(null)
+        setError(result.error ?? 'Failed to delete payment')
         toast.error(result.error ?? 'Failed to delete payment')
+        router.refresh()
       }
-    } finally {
+    } catch {
       setDeletingId(null)
-      setDeleteTarget(null)
+      setError('Failed to delete payment')
+      router.refresh()
     }
   }
 
   return (
     <>
-      <p className="text-xs font-medium text-gray-500 mb-2">Payment history</p>
-      <div className="space-y-2">
-        {payments.map((entry) => {
-          const isEditing = editState?.entryId === entry.id
-          const isDeleting = deletingId === entry.id
-          const isDepositEntry = entry.type === 'deposit'
+      {/* Summary section — always rendered regardless of payments.length */}
+      <div className="rounded-md border border-gray-200 bg-gray-50 p-3 mb-3 text-xs">
+        <div className="flex justify-between text-gray-600">
+          <span>Total</span>
+          <span className="font-medium">{formatCurrency(totalAmount)}</span>
+        </div>
+        <div className="flex justify-between text-gray-600 mt-1">
+          <span>Paid to date</span>
+          <span className="font-medium">{formatCurrency(paidToDate)}</span>
+        </div>
+        <div className="flex justify-between mt-1 font-semibold text-gray-800">
+          <span>Outstanding</span>
+          <span>{formatCurrency(outstanding)}</span>
+        </div>
+      </div>
 
-          if (isEditing && editState) {
+      <p className="text-xs font-medium text-gray-500 mb-2">Payment history</p>
+
+      {payments.length === 0 ? (
+        <p className="text-xs text-gray-400">No payments recorded yet.</p>
+      ) : (
+        <div className="space-y-2">
+          {error && (
+            <p className="text-xs text-red-600">{error}</p>
+          )}
+          {payments.map((entry) => {
+            const isEditing = editingId === entry.id
+            const isDepositEntry = entry.type === 'deposit'
+            const isPayPalDeposit = isDepositEntry && entry.method === 'paypal'
+
+            if (isEditing) {
+              return (
+                <div
+                  key={entry.id}
+                  className="rounded-md border border-gray-200 bg-gray-50 p-2 space-y-2"
+                >
+                  <div className="flex gap-2">
+                    <div className="flex-1">
+                      <Input
+                        type="number"
+                        value={editValues.amount}
+                        onChange={(e) =>
+                          setEditValues((prev) => ({ ...prev, amount: e.target.value }))
+                        }
+                        disabled={isLocked}
+                        min="0.01"
+                        step="0.01"
+                        placeholder="Amount"
+                        aria-label="Payment amount"
+                        inputSize="sm"
+                      />
+                    </div>
+                    <div className="flex-1">
+                      {/* PayPal deposit: read-only; non-PayPal deposit or balance: select without PayPal */}
+                      {isPayPalDeposit ? (
+                        <span className="flex items-center h-full text-xs text-gray-700 px-2">PayPal</span>
+                      ) : (
+                        <Select
+                          value={editValues.method}
+                          onChange={(e) =>
+                            setEditValues((prev) => ({
+                              ...prev,
+                              method: e.target.value as DepositMethod | BalanceMethod,
+                            }))
+                          }
+                          disabled={isLocked}
+                          selectSize="sm"
+                          aria-label="Payment method"
+                        >
+                          <option value="cash">Cash</option>
+                          <option value="card">Card</option>
+                          <option value="invoice">Invoice</option>
+                        </Select>
+                      )}
+                    </div>
+                    <div className="flex gap-1">
+                      <Button
+                        variant="primary"
+                        size="sm"
+                        onClick={() => handleSave(entry)}
+                        loading={savingId === entry.id}
+                        disabled={isLocked}
+                        aria-label="Save payment"
+                      >
+                        <CheckIcon className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        onClick={cancelEdit}
+                        disabled={isLocked}
+                        type="button"
+                        aria-label="Cancel edit"
+                      >
+                        <XMarkIcon className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              )
+            }
+
             return (
               <div
                 key={entry.id}
-                className="rounded-md border border-gray-200 bg-gray-50 p-2 space-y-2"
+                className="flex items-center justify-between text-xs text-gray-600"
               >
-                <div className="flex gap-2">
-                  <div className="flex-1">
-                    <Input
-                      type="number"
-                      value={editState.amount}
-                      onChange={(e) =>
-                        setEditState((prev) => prev ? { ...prev, amount: e.target.value } : prev)
-                      }
-                      disabled={saving}
-                      min="0.01"
-                      step="0.01"
-                      placeholder="Amount"
-                      aria-label="Payment amount"
-                      inputSize="sm"
-                    />
-                  </div>
-                  <div className="flex-1">
-                    <Select
-                      value={editState.method}
-                      onChange={(e) =>
-                        setEditState((prev) =>
-                          prev ? { ...prev, method: e.target.value as DepositMethod | BalanceMethod } : prev
-                        )
-                      }
-                      disabled={saving}
-                      selectSize="sm"
-                      aria-label="Payment method"
-                    >
-                      <option value="cash">Cash</option>
-                      <option value="card">Card</option>
-                      <option value="invoice">Invoice</option>
-                      {isDepositEntry && <option value="paypal">PayPal</option>}
-                    </Select>
-                  </div>
-                </div>
-                <div className="flex gap-2">
-                  <div className="flex-1">
-                    <Input
-                      type="date"
-                      value={editState.date}
-                      onChange={(e) =>
-                        setEditState((prev) => prev ? { ...prev, date: e.target.value } : prev)
-                      }
-                      disabled={saving}
-                      aria-label="Payment date"
-                      inputSize="sm"
-                    />
-                  </div>
-                  <div className="flex gap-1">
-                    <Button
-                      variant="primary"
-                      size="sm"
-                      onClick={() => handleSave(entry)}
-                      loading={saving}
-                      disabled={saving}
-                      aria-label="Save payment"
-                    >
-                      <CheckIcon className="h-4 w-4" />
-                    </Button>
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      onClick={cancelEdit}
-                      disabled={saving}
-                      type="button"
-                      aria-label="Cancel edit"
-                    >
-                      <XMarkIcon className="h-4 w-4" />
-                    </Button>
-                  </div>
+                <span>
+                  {formatDateInLondon(entry.date, { day: 'numeric', month: 'short', year: 'numeric' })}
+                  {' — '}
+                  <span className="capitalize">{entry.type}</span>
+                  {' · '}
+                  {formatMethodLabel(entry.method)}
+                </span>
+                <div className="flex items-center gap-2">
+                  <span className="font-medium">{formatCurrency(entry.amount)}</span>
+                  {canEditPayments && (
+                    <div className="flex gap-1">
+                      <button
+                        type="button"
+                        onClick={() => startEdit(entry)}
+                        className="text-gray-400 hover:text-gray-600 focus:outline-none focus:ring-1 focus:ring-gray-400 rounded"
+                        aria-label={`Edit ${entry.type} payment`}
+                        disabled={isLocked}
+                      >
+                        <PencilIcon className="h-3.5 w-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setConfirmDeleteId(entry.id)
+                          setEditingId(null)
+                          setError(null)
+                        }}
+                        className="text-gray-400 hover:text-red-600 focus:outline-none focus:ring-1 focus:ring-red-400 rounded"
+                        aria-label={`Delete ${entry.type} payment`}
+                        disabled={isLocked}
+                      >
+                        <TrashIcon className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
             )
-          }
-
-          return (
-            <div
-              key={entry.id}
-              className="flex items-center justify-between text-xs text-gray-600"
-            >
-              <span>
-                {formatDateInLondon(entry.date, { day: 'numeric', month: 'short', year: 'numeric' })}
-                {' — '}
-                <span className="capitalize">{entry.type}</span>
-                {' · '}
-                {formatMethodLabel(entry.method)}
-              </span>
-              <div className="flex items-center gap-2">
-                <span className="font-medium">{formatCurrency(entry.amount)}</span>
-                {canEditPayments && (
-                  <div className="flex gap-1">
-                    <button
-                      type="button"
-                      onClick={() => startEdit(entry)}
-                      className="text-gray-400 hover:text-gray-600 focus:outline-none focus:ring-1 focus:ring-gray-400 rounded"
-                      aria-label={`Edit ${entry.type} payment`}
-                      disabled={isDeleting}
-                    >
-                      <PencilIcon className="h-3.5 w-3.5" />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setDeleteTarget(entry)}
-                      className="text-gray-400 hover:text-red-600 focus:outline-none focus:ring-1 focus:ring-red-400 rounded"
-                      aria-label={`Delete ${entry.type} payment`}
-                      disabled={isDeleting}
-                    >
-                      <TrashIcon className="h-3.5 w-3.5" />
-                    </button>
-                  </div>
-                )}
-              </div>
-            </div>
-          )
-        })}
-      </div>
+          })}
+        </div>
+      )}
 
       <ConfirmDialog
-        open={deleteTarget !== null}
-        onClose={() => setDeleteTarget(null)}
+        open={confirmDeleteId !== null}
+        onClose={() => setConfirmDeleteId(null)}
         onConfirm={handleDeleteConfirm}
         title="Delete payment"
         message="Are you sure you want to delete this payment? This cannot be undone."
