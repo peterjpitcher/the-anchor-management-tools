@@ -77,7 +77,9 @@ import type {
   Vendor,
   PrivateBookingItem,
   PrivateBookingPayment,
+  PaymentHistoryEntry,
 } from "@/types/private-bookings";
+import PaymentHistoryTable from './PaymentHistoryTable'
 // New UI components
 import { PageLayout } from "@/components/ui-v2/layout/PageLayout";
 import { Card } from "@/components/ui-v2/layout/Card";
@@ -143,7 +145,9 @@ interface PrivateBookingDetailClientProps {
     canManageSpaces: boolean;
     canManageCatering: boolean;
     canManageVendors: boolean;
+    canEditPayments: boolean;
   };
+  paymentHistory: PaymentHistoryEntry[];
   initialError?: string | null;
 }
 
@@ -1304,6 +1308,7 @@ export default function PrivateBookingDetailClient({
   bookingId,
   initialBooking,
   permissions,
+  paymentHistory,
   initialError,
 }: PrivateBookingDetailClientProps) {
   const router = useRouter();
@@ -1364,7 +1369,8 @@ export default function PrivateBookingDetailClient({
     canSendSms,
     canManageSpaces,
     canManageCatering,
-    canManageVendors
+    canManageVendors,
+    canEditPayments,
   } = permissions;
 
   const navItems = [
@@ -2421,17 +2427,14 @@ export default function PrivateBookingDetailClient({
                         </div>
                       </div>
 
-                      {payments.length > 0 && (
-                        <div className="mt-3 pt-3 border-t space-y-1">
-                          <p className="text-xs font-medium text-gray-500 mb-1">Payment history</p>
-                          {payments.map((p) => (
-                            <div key={p.id} className="flex items-center justify-between text-xs text-gray-600">
-                              <span>{formatDateFull(p.created_at)} — {p.method}</span>
-                              <span className="font-medium">{formatMoney(p.amount)}</span>
-                            </div>
-                          ))}
-                        </div>
-                      )}
+                      <div className="mt-3 pt-3 border-t">
+                        <PaymentHistoryTable
+                          payments={paymentHistory}
+                          bookingId={bookingId}
+                          canEditPayments={canEditPayments}
+                          totalAmount={calculateTotal()}
+                        />
+                      </div>
 
                       {booking.final_payment_date && (
                         <div className="pt-3 border-t">

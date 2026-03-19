@@ -19,7 +19,10 @@ import type {
   BookingItemFormData,
   PrivateBookingWithDetails,
   PrivateBookingAuditWithUser,
-  PrivateBookingPayment
+  PrivateBookingPayment,
+  PaymentHistoryEntry,
+  DepositPaymentEntry,
+  BalancePaymentEntry,
 } from '@/types/private-bookings';
 import { z } from 'zod'; // Import z for schemas
 
@@ -3213,4 +3216,154 @@ export class PrivateBookingService {
 
     return { success: true };
   }
+}
+
+export async function getBookingPaymentHistory(bookingId: string): Promise<PaymentHistoryEntry[]> {
+  const db = createAdminClient()
+
+  const { data: booking, error: bookingError } = await db
+    .from('private_bookings')
+    .select('deposit_paid_date, deposit_amount, deposit_payment_method')
+    .eq('id', bookingId)
+    .single()
+
+  if (bookingError) throw new Error(`Failed to fetch booking: ${bookingError.message}`)
+
+  const { data: payments, error: paymentsError } = await db
+    .from('private_booking_payments')
+    .select('id, amount, method, created_at')
+    .eq('booking_id', bookingId)
+    .order('created_at', { ascending: true })
+
+  if (paymentsError) throw new Error(`Failed to fetch payments: ${paymentsError.message}`)
+
+  const entries: PaymentHistoryEntry[] = []
+
+  if (booking.deposit_paid_date) {
+    entries.push({
+      id: 'deposit',
+      type: 'deposit',
+      amount: booking.deposit_amount,
+      method: booking.deposit_payment_method as DepositPaymentEntry['method'],
+      date: toLocalIsoDate(new Date(booking.deposit_paid_date)),
+    })
+  }
+
+  for (const payment of payments ?? []) {
+    entries.push({
+      id: payment.id,
+      type: 'balance',
+      amount: payment.amount,
+      method: payment.method as BalancePaymentEntry['method'],
+      date: toLocalIsoDate(new Date(payment.created_at)),
+    })
+  }
+
+  entries.sort((a, b) => {
+    if (a.date !== b.date) return a.date < b.date ? -1 : 1
+    if (a.type === 'deposit' && b.type === 'balance') return -1
+    if (a.type === 'balance' && b.type === 'deposit') return 1
+    return 0
+  })
+
+  return entries
+}
+
+export async function updateBalancePayment(
+  paymentId: string,
+  bookingId: string,
+  data: { amount: number; method: string; notes?: string }
+): Promise<void> {
+  const db = createAdminClient()
+  const { data: existing, error: checkError } = await db
+    .from('private_booking_payments')
+    .select('id')
+    .eq('id', paymentId)
+    .eq('booking_id', bookingId)
+    .single()
+  if (checkError || !existing) throw new Error('Payment not found or does not belong to this booking')
+
+  const updatePayload: Record<string, unknown> = { amount: data.amount, method: data.method }
+  if (data.notes !== undefined) updatePayload.notes = data.notes
+
+  const { count: updateCount, error: updateError } = await db
+    .from('private_booking_payments')
+    .update(updatePayload, { count: 'exact' })
+    .eq('id', paymentId)
+  if (updateError) throw new Error(`Failed to update payment: ${updateError.message}`)
+  if (updateCount !== 1) throw new Error(`Update affected ${updateCount} rows, expected 1`)
+
+  const { error: rpcError } = await db.rpc('apply_balance_payment_status', { p_booking_id: bookingId })
+  if (rpcError) throw new Error(`Failed to recalculate payment status: ${rpcError.message}`)
+}
+
+export async function deleteBalancePayment(paymentId: string, bookingId: string): Promise<void> {
+  const db = createAdminClient()
+  const { data: existing, error: checkError } = await db
+    .from('private_booking_payments')
+    .select('id')
+    .eq('id', paymentId)
+    .eq('booking_id', bookingId)
+    .single()
+  if (checkError || !existing) throw new Error('Payment not found or does not belong to this booking')
+
+  const { count: deleteCount, error: deleteError } = await db
+    .from('private_booking_payments')
+    .delete({ count: 'exact' })
+    .eq('id', paymentId)
+  if (deleteError) throw new Error(`Failed to delete payment: ${deleteError.message}`)
+  if (deleteCount !== 1) throw new Error(`Delete affected ${deleteCount} rows, expected 1`)
+
+  const { error: rpcError } = await db.rpc('apply_balance_payment_status', { p_booking_id: bookingId })
+  if (rpcError) throw new Error(`Failed to recalculate payment status: ${rpcError.message}`)
+}
+
+export async function updateDeposit(
+  bookingId: string,
+  data: { amount: number; method: string }
+): Promise<void> {
+  const db = createAdminClient()
+  const { error } = await db
+    .from('private_bookings')
+    .update({ deposit_amount: data.amount, deposit_payment_method: data.method })
+    .eq('id', bookingId)
+  if (error) throw new Error(`Failed to update deposit: ${error.message}`)
+}
+
+// Returns statusReverted so the calling server action can include it in the audit log.
+export async function deleteDeposit(bookingId: string): Promise<{ statusReverted: boolean }> {
+  const db = createAdminClient()
+  const { data: booking, error: fetchError } = await db
+    .from('private_bookings')
+    .select('status, deposit_paid_date, deposit_amount, deposit_payment_method')
+    .eq('id', bookingId)
+    .single()
+  if (fetchError || !booking) throw new Error('Booking not found')
+
+  const { error: updateError } = await db
+    .from('private_bookings')
+    .update({ deposit_paid_date: null, deposit_payment_method: null })
+    .eq('id', bookingId)
+  if (updateError) throw new Error(`Failed to clear deposit: ${updateError.message}`)
+
+  let statusReverted = false
+  if (booking.status === 'confirmed') {
+    const { count, error: countError } = await db
+      .from('private_booking_payments')
+      .select('id', { count: 'exact', head: true })
+      .eq('booking_id', bookingId)
+    if (!countError && count === 0) {
+      const { error: statusError } = await db
+        .from('private_bookings')
+        .update({ status: 'draft' })
+        .eq('id', bookingId)
+      if (statusError) throw new Error(`Failed to revert booking status: ${statusError.message}`)
+      statusReverted = true
+      if (isCalendarConfigured()) {
+        const { data: fullBooking } = await db.from('private_bookings').select('*').eq('id', bookingId).single()
+        if (fullBooking) syncCalendarEvent(fullBooking).catch(() => {})
+      }
+    }
+  }
+  return { statusReverted }
 }

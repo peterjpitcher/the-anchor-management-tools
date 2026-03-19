@@ -301,3 +301,21 @@ export interface BookingSummaryStats {
   pending_deposits: number
   overdue_payments: number
 }
+
+export type DepositPaymentEntry = {
+  id: 'deposit'
+  type: 'deposit'
+  amount: number
+  method: 'cash' | 'card' | 'invoice' | 'paypal'  // all methods valid for deposit
+  date: string  // YYYY-MM-DD (London timezone)
+}
+
+export type BalancePaymentEntry = {
+  id: string    // UUID from private_booking_payments.id
+  type: 'balance'
+  amount: number
+  method: 'cash' | 'card' | 'invoice'  // paypal never appears on balance; enforced by DB CHECK constraint
+  date: string  // YYYY-MM-DD (London timezone)
+}
+
+export type PaymentHistoryEntry = DepositPaymentEntry | BalancePaymentEntry
