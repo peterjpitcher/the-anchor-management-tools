@@ -1730,7 +1730,7 @@ export class PrivateBookingService {
       performed_by: userId
     });
 
-    if (error) throw new Error('Failed to save note');
+    if (error) throw new Error(`Failed to save note: ${error.message} (code: ${error.code})`);
 
     await logAuditEvent({
       user_id: userId,
