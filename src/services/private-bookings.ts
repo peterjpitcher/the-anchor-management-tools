@@ -3268,3 +3268,102 @@ export async function getBookingPaymentHistory(bookingId: string): Promise<Payme
 
   return entries
 }
+
+export async function updateBalancePayment(
+  paymentId: string,
+  bookingId: string,
+  data: { amount: number; method: string; notes?: string }
+): Promise<void> {
+  const db = createAdminClient()
+  const { data: existing, error: checkError } = await db
+    .from('private_booking_payments')
+    .select('id')
+    .eq('id', paymentId)
+    .eq('booking_id', bookingId)
+    .single()
+  if (checkError || !existing) throw new Error('Payment not found or does not belong to this booking')
+
+  const updatePayload: Record<string, unknown> = { amount: data.amount, method: data.method }
+  if (data.notes !== undefined) updatePayload.notes = data.notes
+
+  const { count: updateCount, error: updateError } = await db
+    .from('private_booking_payments')
+    .update(updatePayload, { count: 'exact' })
+    .eq('id', paymentId)
+  if (updateError) throw new Error(`Failed to update payment: ${updateError.message}`)
+  if (updateCount !== 1) throw new Error(`Update affected ${updateCount} rows, expected 1`)
+
+  const { error: rpcError } = await db.rpc('apply_balance_payment_status', { p_booking_id: bookingId })
+  if (rpcError) throw new Error(`Failed to recalculate payment status: ${rpcError.message}`)
+}
+
+export async function deleteBalancePayment(paymentId: string, bookingId: string): Promise<void> {
+  const db = createAdminClient()
+  const { data: existing, error: checkError } = await db
+    .from('private_booking_payments')
+    .select('id')
+    .eq('id', paymentId)
+    .eq('booking_id', bookingId)
+    .single()
+  if (checkError || !existing) throw new Error('Payment not found or does not belong to this booking')
+
+  const { count: deleteCount, error: deleteError } = await db
+    .from('private_booking_payments')
+    .delete({ count: 'exact' })
+    .eq('id', paymentId)
+  if (deleteError) throw new Error(`Failed to delete payment: ${deleteError.message}`)
+  if (deleteCount !== 1) throw new Error(`Delete affected ${deleteCount} rows, expected 1`)
+
+  const { error: rpcError } = await db.rpc('apply_balance_payment_status', { p_booking_id: bookingId })
+  if (rpcError) throw new Error(`Failed to recalculate payment status: ${rpcError.message}`)
+}
+
+export async function updateDeposit(
+  bookingId: string,
+  data: { amount: number; method: string }
+): Promise<void> {
+  const db = createAdminClient()
+  const { error } = await db
+    .from('private_bookings')
+    .update({ deposit_amount: data.amount, deposit_payment_method: data.method })
+    .eq('id', bookingId)
+  if (error) throw new Error(`Failed to update deposit: ${error.message}`)
+}
+
+// Returns statusReverted so the calling server action can include it in the audit log.
+export async function deleteDeposit(bookingId: string): Promise<{ statusReverted: boolean }> {
+  const db = createAdminClient()
+  const { data: booking, error: fetchError } = await db
+    .from('private_bookings')
+    .select('status, deposit_paid_date, deposit_amount, deposit_payment_method')
+    .eq('id', bookingId)
+    .single()
+  if (fetchError || !booking) throw new Error('Booking not found')
+
+  const { error: updateError } = await db
+    .from('private_bookings')
+    .update({ deposit_paid_date: null, deposit_payment_method: null })
+    .eq('id', bookingId)
+  if (updateError) throw new Error(`Failed to clear deposit: ${updateError.message}`)
+
+  let statusReverted = false
+  if (booking.status === 'confirmed') {
+    const { count, error: countError } = await db
+      .from('private_booking_payments')
+      .select('id', { count: 'exact', head: true })
+      .eq('booking_id', bookingId)
+    if (!countError && count === 0) {
+      const { error: statusError } = await db
+        .from('private_bookings')
+        .update({ status: 'draft' })
+        .eq('id', bookingId)
+      if (statusError) throw new Error(`Failed to revert booking status: ${statusError.message}`)
+      statusReverted = true
+      if (isCalendarConfigured()) {
+        const { data: fullBooking } = await db.from('private_bookings').select('*').eq('id', bookingId).single()
+        if (fullBooking) syncCalendarEvent(fullBooking).catch(() => {})
+      }
+    }
+  }
+  return { statusReverted }
+}
