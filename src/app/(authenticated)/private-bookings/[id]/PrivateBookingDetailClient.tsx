@@ -2427,16 +2427,14 @@ export default function PrivateBookingDetailClient({
                         </div>
                       </div>
 
-                      {paymentHistory.length > 0 && (
-                        <div className="mt-3 pt-3 border-t">
-                          <PaymentHistoryTable
-                            payments={paymentHistory}
-                            bookingId={bookingId}
-                            canEditPayments={canEditPayments}
-                            totalAmount={calculateTotal()}
-                          />
-                        </div>
-                      )}
+                      <div className="mt-3 pt-3 border-t">
+                        <PaymentHistoryTable
+                          payments={paymentHistory}
+                          bookingId={bookingId}
+                          canEditPayments={canEditPayments}
+                          totalAmount={calculateTotal()}
+                        />
+                      </div>
 
                       {booking.final_payment_date && (
                         <div className="pt-3 border-t">
