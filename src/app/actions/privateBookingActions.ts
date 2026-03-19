@@ -24,7 +24,11 @@ import {
   formatTimeToHHMM,
   ALLOWED_VENDOR_TYPES,
   CreatePrivateBookingInput,
-  UpdatePrivateBookingInput
+  UpdatePrivateBookingInput,
+  updateBalancePayment,
+  deleteBalancePayment,
+  updateDeposit,
+  deleteDeposit,
 } from '@/services/private-bookings'
 import { SmsQueueService } from '@/services/sms-queue' // Still needed for SMS actions
 import { sendBookingCalendarInvite, sendDepositPaymentLinkEmail } from '@/lib/email/private-booking-emails'
@@ -61,6 +65,33 @@ const getStringAllowEmpty = (formData: FormData, key: string): string | undefine
   }
   return value.trim()
 }
+
+const editBalancePaymentSchema = z.object({
+  paymentId: z.string().uuid(),
+  bookingId: z.string().uuid(),
+  type: z.literal('balance'),
+  amount: z.string().refine(v => !isNaN(parseFloat(v)) && parseFloat(v) > 0, {
+    message: 'Amount must be greater than £0',
+  }),
+  method: z.enum(['cash', 'card', 'invoice']),
+  notes: z.string().max(500).optional(),
+})
+
+const editDepositSchema = z.object({
+  bookingId: z.string().uuid(),
+  type: z.literal('deposit'),
+  amount: z.string().refine(v => !isNaN(parseFloat(v)) && parseFloat(v) > 0, {
+    message: 'Amount must be greater than £0',
+  }),
+  method: z.enum(['cash', 'card', 'invoice']),
+})
+
+const deletePaymentSchema = z.object({
+  // DELIBERATE: paymentId can be 'deposit' (not a UUID) so z.string() not z.string().uuid()
+  paymentId: z.string(),
+  type: z.enum(['deposit', 'balance']),
+  bookingId: z.string().uuid(),
+})
 
 type PrivateBookingsManageAction =
   | 'manage_catering'
@@ -1678,4 +1709,163 @@ export async function sendDepositPaymentLink(
     })
     return { error: error instanceof Error ? error.message : 'Failed to send payment link' }
   }
+}
+
+export async function editPrivateBookingPayment(
+  formData: FormData
+): Promise<{ success?: boolean; error?: string }> {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: 'Unauthorized' }
+
+  const canEdit = await checkUserPermission('private_bookings', 'manage', user.id)
+  if (!canEdit) return { error: 'Forbidden' }
+
+  const type = formData.get('type') as string
+
+  if (type === 'balance') {
+    const parsed = editBalancePaymentSchema.safeParse({
+      paymentId: formData.get('paymentId'),
+      bookingId: formData.get('bookingId'),
+      type: formData.get('type'),
+      amount: formData.get('amount'),
+      method: formData.get('method'),
+      notes: formData.get('notes') ?? undefined,
+    })
+    if (!parsed.success) return { error: parsed.error.errors[0].message }
+
+    const db = createAdminClient()
+    const { data: oldPayment } = await db.from('private_booking_payments').select('amount, method').eq('id', parsed.data.paymentId).single()
+
+    try {
+      await updateBalancePayment(parsed.data.paymentId, parsed.data.bookingId, {
+        amount: parseFloat(parsed.data.amount),
+        method: parsed.data.method,
+        notes: parsed.data.notes,
+      })
+    } catch (err) {
+      return { error: err instanceof Error ? err.message : 'Failed to update payment' }
+    }
+
+    await logAuditEvent({
+      user_id: user.id,
+      operation_type: 'update',
+      operation_status: 'success',
+      resource_type: 'private_booking_payment',
+      additional_info: {
+        action: 'edit_private_booking_payment',
+        booking_id: parsed.data.bookingId,
+        payment_id: parsed.data.paymentId,
+        payment_type: 'balance',
+        old_amount: oldPayment?.amount,
+        new_amount: parseFloat(parsed.data.amount),
+        old_method: oldPayment?.method,
+        new_method: parsed.data.method,
+      },
+    })
+    revalidatePath(`/private-bookings/${parsed.data.bookingId}`)
+    return { success: true }
+  }
+
+  if (type === 'deposit') {
+    const parsed = editDepositSchema.safeParse({
+      bookingId: formData.get('bookingId'),
+      type: formData.get('type'),
+      amount: formData.get('amount'),
+      method: formData.get('method'),
+    })
+    if (!parsed.success) return { error: parsed.error.errors[0].message }
+
+    const db = createAdminClient()
+    const { data: oldBooking } = await db.from('private_bookings').select('deposit_amount, deposit_payment_method').eq('id', parsed.data.bookingId).single()
+
+    try {
+      await updateDeposit(parsed.data.bookingId, {
+        amount: parseFloat(parsed.data.amount),
+        method: parsed.data.method,
+      })
+    } catch (err) {
+      return { error: err instanceof Error ? err.message : 'Failed to update deposit' }
+    }
+
+    await logAuditEvent({
+      user_id: user.id,
+      operation_type: 'update',
+      operation_status: 'success',
+      resource_type: 'private_booking',
+      additional_info: {
+        action: 'edit_private_booking_deposit',
+        booking_id: parsed.data.bookingId,
+        old_amount: oldBooking?.deposit_amount,
+        new_amount: parseFloat(parsed.data.amount),
+        old_method: oldBooking?.deposit_payment_method,
+        new_method: parsed.data.method,
+      },
+    })
+    revalidatePath(`/private-bookings/${parsed.data.bookingId}`)
+    return { success: true }
+  }
+
+  return { error: 'Invalid payment type' }
+}
+
+export async function deletePrivateBookingPayment(
+  formData: FormData
+): Promise<{ success?: boolean; error?: string }> {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: 'Unauthorized' }
+
+  const canDelete = await checkUserPermission('private_bookings', 'manage', user.id)
+  if (!canDelete) return { error: 'Forbidden' }
+
+  const parsed = deletePaymentSchema.safeParse({
+    paymentId: formData.get('paymentId'),
+    type: formData.get('type'),
+    bookingId: formData.get('bookingId'),
+  })
+  if (!parsed.success) return { error: parsed.error.errors[0].message }
+
+  const { paymentId, type, bookingId } = parsed.data
+
+  if (type === 'balance') {
+    const db = createAdminClient()
+    const { data: payment } = await db.from('private_booking_payments').select('amount, method').eq('id', paymentId).single()
+
+    try {
+      await deleteBalancePayment(paymentId, bookingId)
+    } catch (err) {
+      return { error: err instanceof Error ? err.message : 'Failed to delete payment' }
+    }
+
+    await logAuditEvent({
+      user_id: user.id,
+      operation_type: 'delete',
+      operation_status: 'success',
+      resource_type: 'private_booking_payment',
+      additional_info: { action: 'delete_private_booking_payment', booking_id: bookingId, payment_id: paymentId, payment_type: 'balance', amount: payment?.amount, method: payment?.method },
+    })
+  } else {
+    const db = createAdminClient()
+    const { data: booking } = await db.from('private_bookings').select('deposit_amount, deposit_payment_method, status').eq('id', bookingId).single()
+
+    let statusReverted = false
+    try {
+      const result = await deleteDeposit(bookingId)
+      statusReverted = result.statusReverted
+    } catch (err) {
+      return { error: err instanceof Error ? err.message : 'Failed to delete deposit' }
+    }
+
+    await logAuditEvent({
+      user_id: user.id,
+      operation_type: 'delete',
+      operation_status: 'success',
+      resource_type: 'private_booking',
+      additional_info: { action: 'delete_private_booking_deposit', booking_id: bookingId, amount: booking?.deposit_amount, method: booking?.deposit_payment_method, status_reverted: statusReverted },
+    })
+  }
+
+  revalidatePath(`/private-bookings/${bookingId}`)
+  return { success: true }
 }
