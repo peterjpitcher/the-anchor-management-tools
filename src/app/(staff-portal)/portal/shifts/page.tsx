@@ -4,7 +4,13 @@ import { getEmployeeShifts, getOpenShiftsForPortal } from '@/app/actions/rota';
 import type { RotaShift } from '@/app/actions/rota';
 import { formatTime12Hour, getTodayIsoDate } from '@/lib/dateUtils';
 import { generateCalendarToken } from '@/lib/portal/calendar-token';
+import { getBatchHourlyRates, calculatePaidHours, calculateActualPaidHours } from '@/lib/rota/pay-calculator';
+import type { RateResolver } from '@/lib/rota/pay-calculator';
+import { HOLIDAY_PAY_PERCENTAGE } from '@/lib/rota/constants';
+import { format, parseISO } from 'date-fns';
 import CalendarSubscribeButton from './CalendarSubscribeButton';
+import PaySummaryCard from './PaySummaryCard';
+import type { PeriodSummary } from './PaySummaryCard';
 
 export const dynamic = 'force-dynamic';
 
@@ -31,15 +37,6 @@ function isTomorrow(iso: string): boolean {
   return iso === d.toISOString().split('T')[0];
 }
 
-function paidHours(start: string, end: string, breakMins: number, overnight: boolean): number {
-  const [sh, sm] = start.split(':').map(Number);
-  const [eh, em] = end.split(':').map(Number);
-  const startM = sh * 60 + sm;
-  let endM = eh * 60 + em;
-  if (overnight || endM <= startM) endM += 24 * 60;
-  return Math.max(0, endM - startM - breakMins) / 60;
-}
-
 function dateLabel(iso: string): string {
   if (isToday(iso)) return 'Today';
   if (isTomorrow(iso)) return 'Tomorrow';
@@ -50,6 +47,108 @@ function deptColour(dept: string): string {
   return dept === 'bar'
     ? 'bg-blue-50 border-blue-200 text-blue-800'
     : 'bg-orange-50 border-orange-200 text-orange-800';
+}
+
+type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
+
+interface PayrollPeriod {
+  id: string;
+  year: number;
+  month: number;
+  period_start: string;
+  period_end: string;
+}
+
+async function buildPeriodSummary(
+  supabase: SupabaseServerClient,
+  employeeId: string,
+  period: Pick<PayrollPeriod, 'period_start' | 'period_end'>,
+  rateResolver: RateResolver,
+  todayIso: string,
+): Promise<PeriodSummary> {
+  const startLabel = format(parseISO(period.period_start), 'd MMM');
+  const endLabel = format(parseISO(period.period_end), 'd MMM');
+  const periodLabel = `${startLabel} - ${endLabel}`;
+
+  // Fetch shifts for this period (assigned to employee, scheduled or sick status)
+  const { data: shifts } = await supabase
+    .from('rota_shifts')
+    .select('shift_date, start_time, end_time, unpaid_break_minutes, is_overnight, status, week_id')
+    .eq('employee_id', employeeId)
+    .gte('shift_date', period.period_start)
+    .lte('shift_date', period.period_end)
+    .in('status', ['scheduled', 'sick']);
+
+  // Filter to only shifts from published weeks
+  const weekIds = [...new Set((shifts ?? []).map((s: { week_id: string }) => s.week_id))];
+  let publishedWeekIds: Set<string> = new Set();
+  if (weekIds.length > 0) {
+    const { data: weeks } = await supabase
+      .from('rota_weeks')
+      .select('id')
+      .in('id', weekIds)
+      .eq('status', 'published');
+    publishedWeekIds = new Set((weeks ?? []).map((w: { id: string }) => w.id));
+  }
+
+  const publishedShifts = (shifts ?? []).filter(
+    (s: { week_id: string }) => publishedWeekIds.has(s.week_id),
+  );
+
+  // Calculate planned hours and pay
+  let plannedHours = 0;
+  let plannedPay: number | null = null;
+
+  for (const shift of publishedShifts) {
+    const hours = calculatePaidHours(
+      shift.start_time, shift.end_time, shift.unpaid_break_minutes, shift.is_overnight,
+    );
+    plannedHours += hours;
+    const rateInfo = rateResolver.resolve(shift.shift_date);
+    if (rateInfo) {
+      plannedPay = (plannedPay ?? 0) + hours * rateInfo.rate;
+    }
+  }
+
+  // Fetch approved timeclock sessions up to today
+  const actualCutoff = period.period_end < todayIso ? period.period_end : todayIso;
+  const { data: sessions } = await supabase
+    .from('timeclock_sessions')
+    .select('work_date, clock_in_at, clock_out_at')
+    .eq('employee_id', employeeId)
+    .gte('work_date', period.period_start)
+    .lte('work_date', actualCutoff)
+    .eq('is_reviewed', true)
+    .not('clock_out_at', 'is', null);
+
+  let actualHours = 0;
+  let actualPay: number | null = null;
+
+  for (const session of sessions ?? []) {
+    // Note: timeclock_sessions does not store break duration — actual hours are wall-clock time.
+    // This may overstate paid time for sessions where an unpaid break was taken.
+    const hours = calculateActualPaidHours(session.clock_in_at, session.clock_out_at);
+    if (hours !== null) {
+      actualHours += hours;
+      const rateInfo = rateResolver.resolve(session.work_date);
+      if (rateInfo) {
+        actualPay = (actualPay ?? 0) + hours * rateInfo.rate;
+      }
+    }
+  }
+
+  const holidayPay = actualPay !== null
+    ? Math.round(actualPay * HOLIDAY_PAY_PERCENTAGE * 100) / 100
+    : null;
+
+  return {
+    periodLabel,
+    plannedHours: Math.round(plannedHours * 100) / 100,
+    actualHours: Math.round(actualHours * 100) / 100,
+    plannedPay: plannedPay !== null ? Math.round(plannedPay * 100) / 100 : null,
+    actualPay: actualPay !== null ? Math.round(actualPay * 100) / 100 : null,
+    holidayPay,
+  };
 }
 
 export default async function MyShiftsPage() {
@@ -74,8 +173,55 @@ export default async function MyShiftsPage() {
     );
   }
 
-  // Show shifts for today + 5 weeks ahead
   const today = getTodayIsoDate();
+
+  // Pay summary data (hourly employees only)
+  let currentSummary: PeriodSummary | null = null;
+  let previousSummary: PeriodSummary | null = null;
+
+  const { data: paySettings } = await supabase
+    .from('employee_pay_settings')
+    .select('pay_type')
+    .eq('employee_id', employee.employee_id)
+    .single();
+
+  // Default to hourly when no pay settings exist — must match the same default in pay-calculator.ts getBatchHourlyRates()
+  const isHourly = !paySettings || paySettings.pay_type === 'hourly';
+
+  if (isHourly) {
+    // Current period: must contain today (not just started before today)
+    const { data: currentPeriod } = await supabase
+      .from('payroll_periods')
+      .select('id, year, month, period_start, period_end')
+      .lte('period_start', today)
+      .gte('period_end', today)
+      .single();
+
+    if (currentPeriod) {
+      // Previous period: ends before current starts
+      const { data: previousPeriod } = await supabase
+        .from('payroll_periods')
+        .select('id, year, month, period_start, period_end')
+        .lt('period_end', currentPeriod.period_start)
+        .order('period_start', { ascending: false })
+        .limit(1)
+        .single();
+
+      const rateResolver = await getBatchHourlyRates(employee.employee_id);
+
+      currentSummary = await buildPeriodSummary(
+        supabase, employee.employee_id, currentPeriod, rateResolver, today,
+      );
+
+      if (previousPeriod) {
+        previousSummary = await buildPeriodSummary(
+          supabase, employee.employee_id, previousPeriod, rateResolver, today,
+        );
+      }
+    }
+  }
+
+  // Show shifts for today + 5 weeks ahead
   const fiveWeeksAhead = new Date();
   fiveWeeksAhead.setDate(fiveWeeksAhead.getDate() + 35);
   const toDate = fiveWeeksAhead.toISOString().split('T')[0];
@@ -116,6 +262,10 @@ export default async function MyShiftsPage() {
 
       <CalendarSubscribeButton feedUrl={feedUrl} />
 
+      {currentSummary && (
+        <PaySummaryCard current={currentSummary} previous={previousSummary} />
+      )}
+
       {dates.length === 0 ? (
         <div className="bg-white rounded-xl border border-gray-200 p-6 text-center">
           <p className="text-sm text-gray-500">No published shifts in the next 5 weeks.</p>
@@ -136,7 +286,7 @@ export default async function MyShiftsPage() {
               </div>
               <div className="divide-y divide-gray-50">
                 {byDate[date].map(shift => {
-                  const ph = paidHours(shift.start_time, shift.end_time, shift.unpaid_break_minutes, shift.is_overnight);
+                  const ph = calculatePaidHours(shift.start_time, shift.end_time, shift.unpaid_break_minutes, shift.is_overnight);
                   return (
                     <div key={shift.id} className="px-4 py-3 flex items-center justify-between">
                       <div>
@@ -175,7 +325,7 @@ export default async function MyShiftsPage() {
             <p className="text-xs text-gray-500 mt-0.5">These shifts are open — speak to your manager if you can cover one.</p>
           </div>
           {openShifts.map(shift => {
-            const ph = paidHours(shift.start_time, shift.end_time, shift.unpaid_break_minutes, shift.is_overnight);
+            const ph = calculatePaidHours(shift.start_time, shift.end_time, shift.unpaid_break_minutes, shift.is_overnight);
             return (
               <div key={shift.id} className="bg-amber-50 rounded-xl border border-amber-200 px-4 py-3 flex items-center justify-between">
                 <div>
@@ -195,6 +345,15 @@ export default async function MyShiftsPage() {
             );
           })}
         </div>
+      )}
+
+      {currentSummary && (
+        <p id="pay-disclaimer" className="text-xs text-gray-400 mt-8 leading-relaxed">
+          These figures are provided for guidance only. Your actual pay may differ due to required
+          statutory deductions including PAYE income tax, National Insurance contributions, student
+          loan repayments, and any other applicable deductions. Please refer to your payslip for
+          confirmed net pay.
+        </p>
       )}
     </div>
   );
