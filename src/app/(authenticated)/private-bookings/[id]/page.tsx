@@ -1,6 +1,8 @@
 import { notFound, redirect } from 'next/navigation'
 import { getCurrentUserModuleActions } from '@/app/actions/rbac'
 import { getPrivateBooking } from '@/app/actions/privateBookingActions'
+import { getBookingPaymentHistory } from '@/services/private-bookings'
+import type { PaymentHistoryEntry } from '@/types/private-bookings'
 import PrivateBookingDetailServer from '../PrivateBookingDetailServer'
 
 export const dynamic = 'force-dynamic'
@@ -29,6 +31,7 @@ export default async function PrivateBookingDetailPage({ params }: PageProps) {
   let canManageSpaces = false
   let canManageCatering = false
   let canManageVendors = false
+  let canEditPayments = false
 
   const permissionsResult = await getCurrentUserModuleActions('private_bookings')
 
@@ -50,6 +53,7 @@ export default async function PrivateBookingDetailPage({ params }: PageProps) {
     canManageSpaces = actions.has('manage_spaces') || actions.has('manage')
     canManageCatering = actions.has('manage_catering') || actions.has('manage')
     canManageVendors = actions.has('manage_vendors') || actions.has('manage')
+    canEditPayments = actions.has('manage')
   }
 
   if (!canView && errors.length === 0) {
@@ -76,6 +80,15 @@ export default async function PrivateBookingDetailPage({ params }: PageProps) {
     bookingData = result.data ?? null
   }
 
+  let paymentHistory: PaymentHistoryEntry[] = []
+  if (bookingData) {
+    try {
+      paymentHistory = await getBookingPaymentHistory(bookingData.id)
+    } catch (_err) {
+      // Non-fatal: page still renders, payment history will be empty
+    }
+  }
+
   if (!bookingData && errors.length === 0) {
     errors.push('We could not load this booking.')
   }
@@ -94,7 +107,9 @@ export default async function PrivateBookingDetailPage({ params }: PageProps) {
         canManageSpaces,
         canManageCatering,
         canManageVendors,
+        canEditPayments,
       }}
+      paymentHistory={paymentHistory}
       initialError={initialError}
     />
   )
