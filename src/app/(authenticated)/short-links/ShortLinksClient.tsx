@@ -1,13 +1,15 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import {
   ChartBarIcon,
   TrashIcon,
   ClipboardDocumentIcon,
   PencilIcon,
   QrCodeIcon,
-  PlusIcon
+  PlusIcon,
+  ChevronDownIcon,
+  ChevronRightIcon
 } from '@heroicons/react/24/outline'
 import { PageLayout } from '@/components/ui-v2/layout/PageLayout'
 import { DeleteConfirmDialog } from '@/components/ui-v2/overlay/ConfirmDialog'
@@ -23,10 +25,13 @@ import {
 } from '@/app/actions/short-links'
 import { ShortLinkAnalyticsModal } from './components/ShortLinkAnalyticsModal'
 import { ShortLinkFormModal } from './components/ShortLinkFormModal'
+import { UtmDropdown } from './components/UtmDropdown'
 import { buildShortLinkUrl } from '@/lib/short-links/base-url'
 import { formatDate } from '@/lib/dateUtils'
 import { useShortLinkClickToasts } from '@/hooks/useShortLinkClickToasts'
 import type { ShortLink } from '@/types/short-links'
+
+type DisplayLink = ShortLink & { isVariant?: boolean; variantCount?: number }
 
 interface Props {
   initialLinks: ShortLink[]
@@ -44,6 +49,41 @@ export default function ShortLinksClient({ initialLinks, initialTotal, canManage
   const [totalLinks, setTotalLinks] = useState(initialTotal)
   const pageSize = 50
   const totalPages = Math.ceil(totalLinks / pageSize)
+  const [expandedParents, setExpandedParents] = useState<Set<string>>(new Set())
+
+  const toggleExpanded = (parentId: string): void => {
+    setExpandedParents((prev) => {
+      const next = new Set(prev)
+      if (next.has(parentId)) next.delete(parentId)
+      else next.add(parentId)
+      return next
+    })
+  }
+
+  const displayLinks = useMemo<DisplayLink[]>(() => {
+    const parents = links.filter((l) => !l.parent_link_id)
+    const variantsByParent = new Map<string, ShortLink[]>()
+
+    for (const link of links) {
+      if (link.parent_link_id) {
+        const existing = variantsByParent.get(link.parent_link_id) || []
+        existing.push(link)
+        variantsByParent.set(link.parent_link_id, existing)
+      }
+    }
+
+    const result: DisplayLink[] = []
+    for (const parent of parents) {
+      const variants = variantsByParent.get(parent.id) || []
+      result.push({ ...parent, variantCount: variants.length })
+      if (expandedParents.has(parent.id)) {
+        for (const v of variants) {
+          result.push({ ...v, isVariant: true })
+        }
+      }
+    }
+    return result
+  }, [links, expandedParents])
 
   useShortLinkClickToasts({
     seedLinks: initialLinks,
@@ -188,8 +228,8 @@ export default function ShortLinksClient({ initialLinks, initialTotal, canManage
     >
       <div className="space-y-6">
         <Card id="links" variant="bordered">
-          <DataTable
-            data={links}
+          <DataTable<DisplayLink>
+            data={displayLinks}
             getRowKey={(link) => link.id}
             emptyMessage="No short links"
             emptyDescription="Get started by creating a new short link."
@@ -197,18 +237,53 @@ export default function ShortLinksClient({ initialLinks, initialTotal, canManage
               {
                 key: 'name',
                 header: 'Name',
-                cell: (link) =>
-                  link.name ? (
-                    <span className="text-sm">{link.name}</span>
-                  ) : (
-                    <span className="text-xs text-gray-400">(no name)</span>
-                  ),
+                cell: (link: DisplayLink) => {
+                  if (link.isVariant) {
+                    const channelLabel = link.name?.includes('\u2014')
+                      ? link.name.split('\u2014').pop()?.trim()
+                      : link.name
+                    return (
+                      <span className="pl-6 text-sm text-gray-500">
+                        <span className="text-gray-400 mr-1">{'\u21B3'}</span>
+                        {channelLabel || '(variant)'}
+                      </span>
+                    )
+                  }
+
+                  const variantCount = link.variantCount || 0
+                  return (
+                    <div className="flex items-center gap-1">
+                      {variantCount > 0 && (
+                        <button
+                          type="button"
+                          onClick={(e) => { e.stopPropagation(); toggleExpanded(link.id) }}
+                          className="p-0.5 rounded hover:bg-gray-100"
+                          title={expandedParents.has(link.id) ? 'Collapse variants' : `Show ${variantCount} variant(s)`}
+                        >
+                          {expandedParents.has(link.id) ? (
+                            <ChevronDownIcon className="h-4 w-4 text-gray-400" />
+                          ) : (
+                            <ChevronRightIcon className="h-4 w-4 text-gray-400" />
+                          )}
+                        </button>
+                      )}
+                      {link.name ? (
+                        <span className="text-sm">{link.name}</span>
+                      ) : (
+                        <span className="text-xs text-gray-400">(no name)</span>
+                      )}
+                      {variantCount > 0 && !expandedParents.has(link.id) && (
+                        <span className="text-xs text-gray-400 ml-1">({variantCount})</span>
+                      )}
+                    </div>
+                  )
+                },
                 sortable: true
               },
               {
                 key: 'short_code',
                 header: 'Short Link',
-                cell: (link) => (
+                cell: (link: DisplayLink) => (
                   <code className="text-sm font-mono bg-gray-100 px-2 py-1 rounded">
                     {buildShortLinkUrl(link.short_code).replace(/^https?:\/\//, '')}
                   </code>
@@ -217,39 +292,193 @@ export default function ShortLinksClient({ initialLinks, initialTotal, canManage
               {
                 key: 'destination_url',
                 header: 'Destination',
-                cell: (link) => (
-                  <div className="text-sm text-gray-900 truncate max-w-xs" title={link.destination_url}>
-                    {link.destination_url}
-                  </div>
-                )
+                cell: (link: DisplayLink) => {
+                  if (link.isVariant) {
+                    return (
+                      <div className="text-sm text-gray-400 truncate max-w-xs" title={link.destination_url}>
+                        {link.destination_url}
+                      </div>
+                    )
+                  }
+                  return (
+                    <div className="text-sm text-gray-900 truncate max-w-xs" title={link.destination_url}>
+                      {link.destination_url}
+                    </div>
+                  )
+                }
               },
               {
                 key: 'link_type',
                 header: 'Type',
-                cell: (link) => (
-                  <Badge variant="info" size="sm">
-                    {link.link_type}
-                  </Badge>
-                )
+                cell: (link: DisplayLink) => {
+                  if (link.isVariant) return null
+                  return (
+                    <Badge variant="info" size="sm">
+                      {link.link_type}
+                    </Badge>
+                  )
+                }
               },
               {
                 key: 'click_count',
                 header: 'Human Clicks',
-                cell: (link) => link.click_count ?? 0,
+                cell: (link: DisplayLink) => link.click_count ?? 0,
                 sortable: true
               },
               {
                 key: 'created_at',
                 header: 'Created',
-                cell: (link) => formatDate(link.created_at),
+                cell: (link: DisplayLink) => {
+                  if (link.isVariant) return null
+                  return formatDate(link.created_at)
+                },
                 sortable: true
               },
               {
                 key: 'actions',
                 header: 'Actions',
                 align: 'right',
-                cell: (link) => (
-                  <div className="flex items-center justify-end gap-1">
+                cell: (link: DisplayLink) => {
+                  if (link.isVariant) {
+                    return (
+                      <div className="flex items-center justify-end gap-1">
+                        <IconButton
+                          size="sm"
+                          variant="secondary"
+                          onClick={() => handleCopyLink(link)}
+                          title="Copy link"
+                        >
+                          <ClipboardDocumentIcon className="h-4 w-4 text-gray-600" />
+                        </IconButton>
+                      </div>
+                    )
+                  }
+
+                  return (
+                    <div className="flex items-center justify-end gap-1">
+                      {canManage && !link.parent_link_id && (
+                        <UtmDropdown parentId={link.id} parentShortCode={link.short_code} />
+                      )}
+                      <IconButton
+                        size="sm"
+                        variant="secondary"
+                        onClick={() => handleCopyQrCode(link)}
+                        title="Copy QR code"
+                      >
+                        <QrCodeIcon className="h-4 w-4 text-gray-600" />
+                      </IconButton>
+                      <IconButton
+                        size="sm"
+                        variant="secondary"
+                        onClick={() => handleCopyLink(link)}
+                        title="Copy link"
+                      >
+                        <ClipboardDocumentIcon className="h-4 w-4 text-gray-600" />
+                      </IconButton>
+                      <IconButton
+                        size="sm"
+                        variant="secondary"
+                        onClick={() => handleAnalyticsClick(link)}
+                        title="View analytics"
+                      >
+                        <ChartBarIcon className="h-4 w-4 text-gray-600" />
+                      </IconButton>
+                      {canManage && (
+                        <>
+                          <IconButton
+                            size="sm"
+                            variant="secondary"
+                            onClick={() => handleEditClick(link)}
+                            title="Edit"
+                          >
+                            <PencilIcon className="h-4 w-4 text-gray-600" />
+                          </IconButton>
+                          <IconButton
+                            size="sm"
+                            variant="secondary"
+                            onClick={() => handleDeleteClick(link)}
+                            title="Delete"
+                          >
+                            <TrashIcon className="h-4 w-4 text-red-600" />
+                          </IconButton>
+                        </>
+                      )}
+                    </div>
+                  )
+                }
+              }
+            ]}
+            renderMobileCard={(link: DisplayLink) => {
+              if (link.isVariant) {
+                const channelLabel = link.name?.includes('\u2014')
+                  ? link.name.split('\u2014').pop()?.trim()
+                  : link.name
+                return (
+                  <Card padding="sm">
+                    <div className="flex justify-between items-center">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className="text-gray-400">{'\u21B3'}</span>
+                        <span className="text-sm text-gray-500 truncate">{channelLabel || '(variant)'}</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-gray-400">{link.click_count ?? 0} clicks</span>
+                        <IconButton
+                          size="sm"
+                          variant="secondary"
+                          onClick={() => handleCopyLink(link)}
+                          title="Copy link"
+                        >
+                          <ClipboardDocumentIcon className="h-4 w-4 text-gray-600" />
+                        </IconButton>
+                      </div>
+                    </div>
+                  </Card>
+                )
+              }
+
+              const variantCount = link.variantCount || 0
+              return (
+                <Card padding="sm">
+                  <div className="flex justify-between items-start mb-3">
+                    <div className="flex-1 min-w-0 mr-4">
+                      <div className="flex items-center gap-1 mb-1">
+                        {variantCount > 0 && (
+                          <button
+                            type="button"
+                            onClick={(e) => { e.stopPropagation(); toggleExpanded(link.id) }}
+                            className="p-0.5 rounded hover:bg-gray-100"
+                          >
+                            {expandedParents.has(link.id) ? (
+                              <ChevronDownIcon className="h-4 w-4 text-gray-400" />
+                            ) : (
+                              <ChevronRightIcon className="h-4 w-4 text-gray-400" />
+                            )}
+                          </button>
+                        )}
+                        {link.name && <span className="text-sm font-medium">{link.name}</span>}
+                        {variantCount > 0 && !expandedParents.has(link.id) && (
+                          <span className="text-xs text-gray-400">({variantCount})</span>
+                        )}
+                      </div>
+                      <code className="text-sm font-mono bg-gray-100 px-2 py-1 rounded inline-block mb-2">
+                        {buildShortLinkUrl(link.short_code).replace(/^https?:\/\//, '')}
+                      </code>
+                      <p className="text-xs text-gray-600 truncate">{link.destination_url}</p>
+                    </div>
+                    <Badge variant="info" size="sm">
+                      {link.link_type}
+                    </Badge>
+                  </div>
+
+                  <div className="flex justify-between items-center text-sm text-gray-500 mb-3">
+                    <span>{link.click_count ?? 0} human clicks</span>
+                    <span>{formatDate(link.created_at)}</span>
+                  </div>
+
+                  <div className="flex justify-between border-t pt-3">
+                    {canManage && !link.parent_link_id && (
+                      <UtmDropdown parentId={link.id} parentShortCode={link.short_code} />
+                    )}
                     <IconButton
                       size="sm"
                       variant="secondary"
@@ -295,77 +524,9 @@ export default function ShortLinksClient({ initialLinks, initialTotal, canManage
                       </>
                     )}
                   </div>
-                )
-              }
-            ]}
-            renderMobileCard={(link) => (
-              <Card padding="sm">
-                <div className="flex justify-between items-start mb-3">
-                  <div className="flex-1 min-w-0 mr-4">
-                    {link.name && <div className="text-sm font-medium mb-1">{link.name}</div>}
-                    <code className="text-sm font-mono bg-gray-100 px-2 py-1 rounded inline-block mb-2">
-                      {buildShortLinkUrl(link.short_code).replace(/^https?:\/\//, '')}
-                    </code>
-                    <p className="text-xs text-gray-600 truncate">{link.destination_url}</p>
-                  </div>
-                  <Badge variant="info" size="sm">
-                    {link.link_type}
-                  </Badge>
-                </div>
-
-                <div className="flex justify-between items-center text-sm text-gray-500 mb-3">
-                  <span>{link.click_count ?? 0} human clicks</span>
-                  <span>{formatDate(link.created_at)}</span>
-                </div>
-
-                <div className="flex justify-between border-t pt-3">
-                  <IconButton
-                    size="sm"
-                    variant="secondary"
-                    onClick={() => handleCopyQrCode(link)}
-                    title="Copy QR code"
-                  >
-                    <QrCodeIcon className="h-4 w-4 text-gray-600" />
-                  </IconButton>
-                  <IconButton
-                    size="sm"
-                    variant="secondary"
-                    onClick={() => handleCopyLink(link)}
-                    title="Copy link"
-                  >
-                    <ClipboardDocumentIcon className="h-4 w-4 text-gray-600" />
-                  </IconButton>
-                  <IconButton
-                    size="sm"
-                    variant="secondary"
-                    onClick={() => handleAnalyticsClick(link)}
-                    title="View analytics"
-                  >
-                    <ChartBarIcon className="h-4 w-4 text-gray-600" />
-                  </IconButton>
-                  {canManage && (
-                    <>
-                      <IconButton
-                        size="sm"
-                        variant="secondary"
-                        onClick={() => handleEditClick(link)}
-                        title="Edit"
-                      >
-                        <PencilIcon className="h-4 w-4 text-gray-600" />
-                      </IconButton>
-                      <IconButton
-                        size="sm"
-                        variant="secondary"
-                        onClick={() => handleDeleteClick(link)}
-                        title="Delete"
-                      >
-                        <TrashIcon className="h-4 w-4 text-red-600" />
-                      </IconButton>
-                    </>
-                  )}
-                </div>
-              </Card>
-            )}
+                </Card>
+              )
+            }}
           />
         </Card>
 
