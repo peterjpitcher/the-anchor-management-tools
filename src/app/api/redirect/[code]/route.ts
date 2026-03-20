@@ -1,6 +1,7 @@
-import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
+import { waitUntil } from '@vercel/functions'
 import { logger } from '@/lib/logger'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { createTablePaymentToken, getTablePaymentPreviewByRawToken } from '@/lib/table-bookings/bookings'
 import { parseTablePaymentLinkFromUrl } from '@/lib/table-bookings/payment-link'
 import {
@@ -13,7 +14,6 @@ import {
 
 const FALLBACK_REDIRECT_URL = 'https://www.the-anchor.pub'
 const MISSING_RELATION_CODE = '42P01'
-let loggedMissingAliasTable = false
 
 type ShortLinkRow = {
   id: string
@@ -264,15 +264,7 @@ export async function GET(
       return NextResponse.redirect(FALLBACK_REDIRECT_URL)
     }
 
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-    const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
-
-    if (!supabaseUrl || !supabaseServiceKey) {
-      console.error('Missing Supabase configuration')
-      return NextResponse.redirect(FALLBACK_REDIRECT_URL)
-    }
-
-    const supabase = createClient(supabaseUrl, supabaseServiceKey)
+    const supabase = createAdminClient()
 
     const { data: link, error } = await supabase
       .from('short_links')
@@ -297,10 +289,7 @@ export async function GET(
 
       if (aliasError) {
         if (isMissingRelationError(aliasError)) {
-          if (!loggedMissingAliasTable) {
-            console.warn('Short link alias table missing. Apply latest Supabase migrations to enable aliases.')
-            loggedMissingAliasTable = true
-          }
+          console.warn('Short link alias table missing. Apply latest Supabase migrations to enable aliases.')
           return NextResponse.redirect(FALLBACK_REDIRECT_URL)
         }
         console.error('Short link alias lookup error:', shortCode, aliasError)
@@ -382,47 +371,48 @@ export async function GET(
       }
     }
 
-    try {
-      const userAgent = request.headers.get('user-agent')
-      const { deviceType, browser, os } = parseUserAgent(userAgent)
-      const utmParams = parseQueryParams(request.url)
-      const ipAddress = extractClientIp(request)
+    // Build redirect response FIRST — send it without waiting for click tracking
+    const response = NextResponse.redirect(redirectDestinationUrl)
 
-      const { error: clickInsertError } = await supabase
-        .from('short_link_clicks')
-        .insert({
-          short_link_id: resolvedLink.id,
-          user_agent: userAgent,
-          referrer: request.headers.get('referer'),
-          ip_address: ipAddress,
-          country: getCountryFromHeaders(request.headers),
-          city: getCityFromHeaders(request.headers),
-          region: getRegionFromHeaders(request.headers),
-          device_type: deviceType,
-          browser,
-          os,
-          utm_source: utmParams.utm_source,
-          utm_medium: utmParams.utm_medium,
-          utm_campaign: utmParams.utm_campaign,
-          metadata: resolvedViaAlias ? { alias_code: shortCode } : {}
-        })
-      if (clickInsertError) {
-        throw clickInsertError
-      }
+    // Fire click tracking in background — does NOT block the redirect
+    waitUntil((async () => {
+      try {
+        const userAgent = request.headers.get('user-agent')
+        const { deviceType, browser, os } = parseUserAgent(userAgent)
+        const utmParams = parseQueryParams(request.url)
+        const ipAddress = extractClientIp(request)
 
-      if (deviceType !== 'bot') {
-        const { error: incrementError } = await (supabase as any).rpc('increment_short_link_clicks', {
-          p_short_link_id: resolvedLink.id
-        })
-        if (incrementError) {
-          throw incrementError
+        const { error: clickInsertError } = await supabase
+          .from('short_link_clicks')
+          .insert({
+            short_link_id: resolvedLink.id,
+            user_agent: userAgent,
+            referrer: request.headers.get('referer'),
+            ip_address: ipAddress,
+            country: getCountryFromHeaders(request.headers),
+            city: getCityFromHeaders(request.headers),
+            region: getRegionFromHeaders(request.headers),
+            device_type: deviceType,
+            browser,
+            os,
+            utm_source: utmParams.utm_source,
+            utm_medium: utmParams.utm_medium,
+            utm_campaign: utmParams.utm_campaign,
+            metadata: resolvedViaAlias ? { alias_code: shortCode } : {}
+          })
+        if (clickInsertError) throw clickInsertError
+
+        if (deviceType !== 'bot') {
+          await supabase.rpc('increment_short_link_clicks', {
+            p_short_link_id: resolvedLink.id
+          })
         }
+      } catch (err) {
+        console.error('Error tracking click:', err)
       }
-    } catch (err) {
-      console.error('Error tracking click:', err)
-    }
+    })())
 
-    return NextResponse.redirect(redirectDestinationUrl)
+    return response
   } catch (error) {
     console.error('Redirect error:', error)
     return NextResponse.redirect(FALLBACK_REDIRECT_URL)
