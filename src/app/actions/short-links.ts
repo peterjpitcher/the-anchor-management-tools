@@ -9,7 +9,6 @@ import {
   ShortLinkService,
   CreateShortLinkSchema,
   UpdateShortLinkSchema,
-  ResolveShortLinkSchema,
   GetShortLinkVolumeAdvancedSchema,
 } from '@/services/short-links';
 
@@ -184,21 +183,6 @@ export async function createShortLinkInternal(data: {
   } catch (error: any) {
     console.error('Internal short link error:', error);
     return { error: `Failed to create short link: ${error.message}` };
-  }
-}
-
-// Resolve a short link to its destination
-export async function resolveShortLink(data: z.infer<typeof ResolveShortLinkSchema>) {
-  try {
-    const validatedData = ResolveShortLinkSchema.parse(data);
-    const result = await ShortLinkService.resolveShortLink(validatedData);
-    return { success: true, data: result };
-  } catch (error: any) {
-    console.error('Short link resolution error:', error);
-    if (error instanceof z.ZodError) {
-      return { error: error.errors[0].message };
-    }
-    return { error: error.message || 'An unexpected error occurred' };
   }
 }
 

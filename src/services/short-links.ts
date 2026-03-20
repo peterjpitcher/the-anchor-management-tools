@@ -34,10 +34,6 @@ export const UpdateShortLinkSchema = z.object({
   expires_at: z.string().nullable().optional()
 });
 
-export const ResolveShortLinkSchema = z.object({
-  short_code: z.string().min(1, 'Short code is required')
-});
-
 export const ShortLinkVolumeGranularitySchema = z.enum(['hour', 'day', 'week', 'month']);
 
 export const GetShortLinkVolumeAdvancedSchema = z.object({
@@ -64,7 +60,6 @@ export const GetShortLinkVolumeAdvancedSchema = z.object({
 
 export type CreateShortLinkInput = z.infer<typeof CreateShortLinkSchema>;
 export type UpdateShortLinkInput = z.infer<typeof UpdateShortLinkSchema>;
-export type ResolveShortLinkInput = z.infer<typeof ResolveShortLinkSchema>;
 export type GetShortLinkVolumeAdvancedInput = z.infer<typeof GetShortLinkVolumeAdvancedSchema>;
 
 export class ShortLinkService {
@@ -259,78 +254,6 @@ export class ShortLinkService {
       short_code: shortCode,
       full_url: buildShortLinkUrl(shortCode),
       already_exists: false,
-    };
-  }
-
-  static async resolveShortLink(input: ResolveShortLinkInput) {
-    const supabase = await createAdminClient();
-    
-    const { data: link, error } = await supabase
-      .from('short_links')
-      .select('*')
-      .eq('short_code', input.short_code)
-      .maybeSingle();
-    
-    if (error) throw new Error('Short link not found');
-
-    let resolvedLink = link;
-    let resolvedViaAlias = false;
-
-    if (!resolvedLink) {
-      const { data: alias, error: aliasError } = await supabase
-        .from('short_link_aliases')
-        .select('short_link_id')
-        .eq('alias_code', input.short_code)
-        .maybeSingle();
-
-      if (aliasError) throw new Error('Short link not found');
-      if (!alias) throw new Error('Short link not found');
-
-      const { data: targetLink, error: targetError } = await supabase
-        .from('short_links')
-        .select('*')
-        .eq('id', alias.short_link_id)
-        .maybeSingle();
-
-      if (targetError || !targetLink) throw new Error('Short link not found');
-
-      resolvedLink = targetLink;
-      resolvedViaAlias = true;
-    }
-    
-    if (resolvedLink.expires_at && new Date(resolvedLink.expires_at) < new Date()) {
-      throw new Error('This link has expired');
-    }
-    
-    // Track the click (fire and forget)
-    void (async () => {
-      const { error: clickInsertError } = await supabase
-        .from('short_link_clicks')
-        .insert({
-          short_link_id: resolvedLink.id,
-          metadata: resolvedViaAlias ? { alias_code: input.short_code } : {}
-        });
-
-        if (clickInsertError) {
-          console.error('Failed recording short link click event:', clickInsertError);
-          return;
-        }
-
-      const { error: incrementError } = await (supabase as any).rpc('increment_short_link_clicks', {
-        p_short_link_id: resolvedLink.id
-      });
-
-      if (incrementError) {
-        console.error('Failed incrementing short link click counter:', incrementError);
-      }
-    })().catch((clickTrackingError: unknown) => {
-        console.error('Unexpected short link click tracking failure:', clickTrackingError);
-      });
-    
-    return {
-      destination_url: resolvedLink.destination_url,
-      link_type: resolvedLink.link_type,
-      metadata: resolvedLink.metadata
     };
   }
 
