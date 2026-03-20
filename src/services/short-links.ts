@@ -151,15 +151,24 @@ export class ShortLinkService {
     };
   }
 
-  static async getShortLinks() {
+  static async getShortLinks(page: number = 1, pageSize: number = 50): Promise<{
+    data: any[];
+    total: number;
+    page: number;
+    pageSize: number;
+  }> {
     const supabase = await createClient();
-    const { data, error } = await supabase
+    const from = (page - 1) * pageSize;
+    const to = from + pageSize - 1;
+
+    const { data, error, count } = await supabase
       .from('short_links')
-      .select('*')
-      .order('created_at', { ascending: false });
+      .select('*', { count: 'exact' })
+      .order('created_at', { ascending: false })
+      .range(from, to);
 
     if (error) throw new Error('Failed to load short links');
-    return data;
+    return { data: data || [], total: count || 0, page, pageSize };
   }
 
   static async updateShortLink(input: UpdateShortLinkInput) {
