@@ -11,6 +11,15 @@ import { createShortLink, updateShortLink } from '@/app/actions/short-links'
 import toast from 'react-hot-toast'
 import type { ShortLink } from '@/types/short-links'
 
+const ALLOWED_LINK_TYPES = new Set([
+  'custom',
+  'booking_confirmation',
+  'event_checkin',
+  'loyalty_portal',
+  'promotion',
+  'reward_redemption',
+])
+
 interface Props {
   open: boolean
   onClose: () => void
@@ -24,16 +33,9 @@ export function ShortLinkFormModal({ open, onClose, onSuccess, link, canManage }
   const [destinationUrl, setDestinationUrl] = useState('')
   const [linkType, setLinkType] = useState('custom')
   const [customCode, setCustomCode] = useState('')
-  const [expiresIn, setExpiresIn] = useState('never')
+  const [hasExpiry, setHasExpiry] = useState(false)
+  const [expiryValue, setExpiryValue] = useState('')
   const [submitting, setSubmitting] = useState(false)
-
-  const allowedLinkTypes = new Set([
-    'custom',
-    'booking_confirmation',
-    'loyalty_portal',
-    'promotion',
-    'reward_redemption',
-  ])
 
   // Reset or populate form when opening/changing link
   useEffect(() => {
@@ -42,19 +44,16 @@ export function ShortLinkFormModal({ open, onClose, onSuccess, link, canManage }
         // Edit mode
         setName(link.name || '')
         setDestinationUrl(link.destination_url)
-        setLinkType(allowedLinkTypes.has(link.link_type) ? link.link_type : 'custom')
+        setLinkType(ALLOWED_LINK_TYPES.has(link.link_type) ? link.link_type : 'custom')
         setCustomCode(link.short_code)
 
         if (link.expires_at) {
-          const expiryDate = new Date(link.expires_at)
-          const now = new Date()
-          const diffDays = Math.ceil((expiryDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
-          if (diffDays <= 1) setExpiresIn('1d')
-          else if (diffDays <= 7) setExpiresIn('7d')
-          else if (diffDays <= 30) setExpiresIn('30d')
-          else setExpiresIn('never')
+          setHasExpiry(true)
+          const d = new Date(link.expires_at)
+          setExpiryValue(d.toISOString().slice(0, 16))
         } else {
-          setExpiresIn('never')
+          setHasExpiry(false)
+          setExpiryValue('')
         }
       } else {
         // Create mode
@@ -68,7 +67,8 @@ export function ShortLinkFormModal({ open, onClose, onSuccess, link, canManage }
     setDestinationUrl('')
     setCustomCode('')
     setLinkType('custom')
-    setExpiresIn('never')
+    setHasExpiry(false)
+    setExpiryValue('')
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -76,14 +76,7 @@ export function ShortLinkFormModal({ open, onClose, onSuccess, link, canManage }
     setSubmitting(true)
 
     try {
-      let expiresAt: string | undefined = undefined
-      if (expiresIn !== 'never') {
-        const date = new Date()
-        if (expiresIn === '1d') date.setDate(date.getDate() + 1)
-        else if (expiresIn === '7d') date.setDate(date.getDate() + 7)
-        else if (expiresIn === '30d') date.setDate(date.getDate() + 30)
-        expiresAt = date.toISOString()
-      }
+      const expiresAt = hasExpiry && expiryValue ? new Date(expiryValue).toISOString() : undefined
 
       let result
       if (link) {
@@ -115,7 +108,7 @@ export function ShortLinkFormModal({ open, onClose, onSuccess, link, canManage }
       toast.success(
         link ? 'Short link updated' : alreadyExists ? 'Short link already exists' : 'Short link created'
       )
-      
+
       // Special handling for create: copy to clipboard if available
       if (!link && result.data?.full_url && navigator.clipboard) {
          try {
@@ -176,6 +169,7 @@ export function ShortLinkFormModal({ open, onClose, onSuccess, link, canManage }
           <Select value={linkType} onChange={(e) => setLinkType(e.target.value)}>
             <option value="custom">Custom</option>
             <option value="booking_confirmation">Booking Confirmation</option>
+            <option value="event_checkin">Event Check-in</option>
             <option value="loyalty_portal">Loyalty Portal</option>
             <option value="promotion">Promotion</option>
             <option value="reward_redemption">Reward Redemption</option>
@@ -191,7 +185,7 @@ export function ShortLinkFormModal({ open, onClose, onSuccess, link, canManage }
             />
             </FormGroup>
         )}
-        
+
         {link && (
             <FormGroup label="Short Code">
                 <Input value={customCode} disabled className="bg-gray-100" />
@@ -200,12 +194,28 @@ export function ShortLinkFormModal({ open, onClose, onSuccess, link, canManage }
         )}
 
         <FormGroup label="Expires">
-          <Select value={expiresIn} onChange={(e) => setExpiresIn(e.target.value)}>
-            <option value="never">Never</option>
-            <option value="1d">In 1 day</option>
-            <option value="7d">In 7 days</option>
-            <option value="30d">In 30 days</option>
-          </Select>
+          <div className="flex items-center gap-3">
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={hasExpiry}
+                onChange={(e) => {
+                  setHasExpiry(e.target.checked)
+                  if (!e.target.checked) setExpiryValue('')
+                }}
+                className="rounded border-gray-300"
+              />
+              Set expiry date
+            </label>
+          </div>
+          {hasExpiry && (
+            <Input
+              type="datetime-local"
+              value={expiryValue}
+              onChange={(e) => setExpiryValue(e.target.value)}
+              className="mt-2"
+            />
+          )}
         </FormGroup>
 
         <ModalActions>
