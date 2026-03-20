@@ -10,6 +10,7 @@ import {
   PlusIcon
 } from '@heroicons/react/24/outline'
 import { PageLayout } from '@/components/ui-v2/layout/PageLayout'
+import { DeleteConfirmDialog } from '@/components/ui-v2/overlay/ConfirmDialog'
 import { Card } from '@/components/ui-v2/layout/Card'
 import { Button, IconButton } from '@/components/ui-v2/forms/Button'
 import { DataTable } from '@/components/ui-v2/display/DataTable'
@@ -36,6 +37,7 @@ export default function ShortLinksClient({ initialLinks, canManage }: Props) {
   const [showFormModal, setShowFormModal] = useState(false)
   const [showAnalyticsModal, setShowAnalyticsModal] = useState(false)
   const [selectedLink, setSelectedLink] = useState<ShortLink | null>(null)
+  const [deleteTarget, setDeleteTarget] = useState<ShortLink | null>(null)
 
   useShortLinkClickToasts({
     seedLinks: initialLinks,
@@ -124,21 +126,20 @@ export default function ShortLinksClient({ initialLinks, canManage }: Props) {
     }
   }
 
-  const handleDelete = async (linkId: string) => {
-    const link = links.find(l => l.id === linkId)
-    if (!link) return
+  const handleDeleteClick = (link: ShortLink) => {
+    setDeleteTarget(link)
+  }
 
-    const message = `Are you sure you want to delete this short link?\n\n${buildShortLinkUrl(link.short_code)}\n\nAfter deletion, anyone visiting this link will no longer be redirected.`
-    if (!confirm(message)) return
-
+  const handleDeleteConfirm = async () => {
+    if (!deleteTarget) return
     try {
-      const result = await deleteShortLink(linkId)
+      const result = await deleteShortLink(deleteTarget.id)
       if (!result || 'error' in result) {
         toast.error(result?.error || 'Failed to delete short link')
         return
       }
-
       toast.success('Short link deleted')
+      setDeleteTarget(null)
       await refreshLinks()
     } catch (error) {
       console.error('Failed to delete short link', error)
@@ -279,7 +280,7 @@ export default function ShortLinksClient({ initialLinks, canManage }: Props) {
                         <IconButton
                           size="sm"
                           variant="secondary"
-                          onClick={() => handleDelete(link.id)}
+                          onClick={() => handleDeleteClick(link)}
                           title="Delete"
                         >
                           <TrashIcon className="h-4 w-4 text-red-600" />
@@ -348,7 +349,7 @@ export default function ShortLinksClient({ initialLinks, canManage }: Props) {
                       <IconButton
                         size="sm"
                         variant="secondary"
-                        onClick={() => handleDelete(link.id)}
+                        onClick={() => handleDeleteClick(link)}
                         title="Delete"
                       >
                         <TrashIcon className="h-4 w-4 text-red-600" />
@@ -373,6 +374,14 @@ export default function ShortLinksClient({ initialLinks, canManage }: Props) {
           open={showAnalyticsModal}
           onClose={() => setShowAnalyticsModal(false)}
           link={selectedLink}
+        />
+
+        <DeleteConfirmDialog
+          open={!!deleteTarget}
+          onClose={() => setDeleteTarget(null)}
+          onDelete={handleDeleteConfirm}
+          itemName={deleteTarget ? buildShortLinkUrl(deleteTarget.short_code) : ''}
+          itemType="Short Link"
         />
       </div>
     </PageLayout>
