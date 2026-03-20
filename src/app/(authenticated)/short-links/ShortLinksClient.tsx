@@ -24,18 +24,7 @@ import { ShortLinkAnalyticsModal } from './components/ShortLinkAnalyticsModal'
 import { ShortLinkFormModal } from './components/ShortLinkFormModal'
 import { buildShortLinkUrl } from '@/lib/short-links/base-url'
 import { useShortLinkClickToasts } from '@/hooks/useShortLinkClickToasts'
-
-interface ShortLink {
-  id: string
-  name?: string | null
-  short_code: string
-  destination_url: string
-  link_type: string
-  click_count: number
-  created_at: string
-  expires_at: string | null
-  last_clicked_at: string | null
-}
+import type { ShortLink } from '@/types/short-links'
 
 interface Props {
   initialLinks: ShortLink[]

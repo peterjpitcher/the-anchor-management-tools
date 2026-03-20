@@ -9,18 +9,7 @@ import { FormGroup } from '@/components/ui-v2/forms/FormGroup'
 import { EmptyState } from '@/components/ui-v2/display/EmptyState'
 import { createShortLink, updateShortLink } from '@/app/actions/short-links'
 import toast from 'react-hot-toast'
-
-interface ShortLink {
-  id: string
-  name?: string | null
-  short_code: string
-  destination_url: string
-  link_type: string
-  click_count: number
-  created_at: string
-  expires_at: string | null
-  last_clicked_at: string | null
-}
+import type { ShortLink } from '@/types/short-links'
 
 interface Props {
   open: boolean
