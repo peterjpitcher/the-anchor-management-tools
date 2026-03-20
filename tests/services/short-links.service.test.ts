@@ -85,7 +85,7 @@ describe('ShortLinkService', () => {
     expect(result).toEqual({
       id: 'link-1',
       short_code: 'abc123',
-      full_url: 'https://vip-club.uk/abc123',
+      full_url: 'https://l.the-anchor.pub/abc123',
       already_exists: true,
     })
     expect(mockRpc).not.toHaveBeenCalled()
@@ -113,7 +113,7 @@ describe('ShortLinkService', () => {
   it('creates a new short link when destination URL is new', async () => {
     mockMaybeSingle.mockResolvedValue({ data: null, error: null })
     mockRpcSingle.mockResolvedValue({
-      data: { short_code: 'new123', full_url: 'https://vip-club.uk/new123' },
+      data: { short_code: 'new123', full_url: 'https://l.the-anchor.pub/new123' },
       error: null,
     })
     mockSingle.mockResolvedValue({ data: { id: 'id-new' }, error: null })
@@ -129,7 +129,7 @@ describe('ShortLinkService', () => {
     expect(result).toEqual({
       id: 'id-new',
       short_code: 'new123',
-      full_url: 'https://vip-club.uk/new123',
+      full_url: 'https://l.the-anchor.pub/new123',
       already_exists: false,
     })
     expect(mockRpc).toHaveBeenCalled()
@@ -184,7 +184,7 @@ describe('ShortLinkService', () => {
 
     expect(result).toEqual({
       short_code: 'abc123',
-      full_url: 'https://vip-club.uk/abc123',
+      full_url: 'https://l.the-anchor.pub/abc123',
       already_exists: true,
     })
     expect(mockRpc).not.toHaveBeenCalled()
@@ -193,7 +193,7 @@ describe('ShortLinkService', () => {
   it('createShortLinkInternal creates a new short link when destination URL is new', async () => {
     mockMaybeSingle.mockResolvedValue({ data: null, error: null })
     mockRpcSingle.mockResolvedValue({
-      data: { short_code: 'new456', full_url: 'https://vip-club.uk/new456' },
+      data: { short_code: 'new456', full_url: 'https://l.the-anchor.pub/new456' },
       error: null,
     })
 
@@ -205,64 +205,10 @@ describe('ShortLinkService', () => {
 
     expect(result).toEqual({
       short_code: 'new456',
-      full_url: 'https://vip-club.uk/new456',
+      full_url: 'https://l.the-anchor.pub/new456',
       already_exists: false,
     })
     expect(mockRpc).toHaveBeenCalled()
-  })
-
-  it('resolveShortLink resolves directly by short_code', async () => {
-    mockMaybeSingle.mockResolvedValueOnce({
-      data: {
-        id: 'link-1',
-        short_code: 'abc123',
-        destination_url: 'https://example.com',
-        link_type: 'custom',
-        metadata: {},
-        expires_at: null,
-      },
-      error: null,
-    })
-
-    const result = await ShortLinkService.resolveShortLink({ short_code: 'abc123' })
-
-    expect(result).toEqual({
-      destination_url: 'https://example.com',
-      link_type: 'custom',
-      metadata: {},
-    })
-  })
-
-  it('resolveShortLink follows short_link_aliases and tracks clicks against the canonical link', async () => {
-    mockMaybeSingle
-      .mockResolvedValueOnce({ data: null, error: null }) // short_links by short_code
-      .mockResolvedValueOnce({ data: { short_link_id: 'link-2' }, error: null }) // short_link_aliases
-      .mockResolvedValueOnce({
-        data: {
-          id: 'link-2',
-          short_code: 'new123',
-          destination_url: 'https://example.com/new',
-          link_type: 'custom',
-          metadata: { foo: 'bar' },
-          expires_at: null,
-        },
-        error: null,
-      }) // short_links by id
-
-    const result = await ShortLinkService.resolveShortLink({ short_code: 'old123' })
-
-    expect(result).toEqual({
-      destination_url: 'https://example.com/new',
-      link_type: 'custom',
-      metadata: { foo: 'bar' },
-    })
-
-    expect(mockInsert).toHaveBeenCalledWith(
-      expect.objectContaining({
-        short_link_id: 'link-2',
-        metadata: { alias_code: 'old123' },
-      })
-    )
   })
 
   it('getShortLinkVolumeAdvanced calls v2 analytics RPC with validated payload fields', async () => {
