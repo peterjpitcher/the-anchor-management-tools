@@ -48,19 +48,19 @@ describe('shortenUrlsInSmsBody', () => {
     createShortLinkInternalMock
       .mockResolvedValueOnce({
         short_code: 'aaa111',
-        full_url: 'https://vip-club.uk/aaa111',
+        full_url: 'https://l.the-anchor.pub/aaa111',
         already_exists: false
       })
       .mockResolvedValueOnce({
         short_code: 'bbb222',
-        full_url: 'https://vip-club.uk/bbb222',
+        full_url: 'https://l.the-anchor.pub/bbb222',
         already_exists: false
       })
 
     const body = 'Pay here: https://example.com/pay?booking=1. Manage: https://example.net/manage, thanks.'
     const result = await shortenUrlsInSmsBody(body)
 
-    expect(result).toBe('Pay here: https://vip-club.uk/aaa111. Manage: https://vip-club.uk/bbb222, thanks.')
+    expect(result).toBe('Pay here: https://l.the-anchor.pub/aaa111. Manage: https://l.the-anchor.pub/bbb222, thanks.')
     expect(createShortLinkInternalMock).toHaveBeenCalledTimes(2)
     expect(createShortLinkInternalMock).toHaveBeenNthCalledWith(1, {
       destination_url: 'https://example.com/pay?booking=1',
@@ -75,7 +75,7 @@ describe('shortenUrlsInSmsBody', () => {
   })
 
   it('does not re-shorten already-short links', async () => {
-    const body = 'Use https://vip-club.uk/abc123 or https://the-anchor.pub/l/xyz789'
+    const body = 'Use https://l.the-anchor.pub/abc123 or https://the-anchor.pub/l/xyz789'
     const result = await shortenUrlsInSmsBody(body)
 
     expect(result).toBe(body)
@@ -85,14 +85,14 @@ describe('shortenUrlsInSmsBody', () => {
   it('de-duplicates repeated destinations before creating short links', async () => {
     createShortLinkInternalMock.mockResolvedValue({
       short_code: 'abc123',
-      full_url: 'https://vip-club.uk/abc123',
+      full_url: 'https://l.the-anchor.pub/abc123',
       already_exists: false
     })
 
     const body = 'First: https://example.com/path. Second: https://example.com/path!'
     const result = await shortenUrlsInSmsBody(body)
 
-    expect(result).toBe('First: https://vip-club.uk/abc123. Second: https://vip-club.uk/abc123!')
+    expect(result).toBe('First: https://l.the-anchor.pub/abc123. Second: https://l.the-anchor.pub/abc123!')
     expect(createShortLinkInternalMock).toHaveBeenCalledTimes(1)
     expect(createShortLinkInternalMock).toHaveBeenCalledWith({
       destination_url: 'https://example.com/path',
@@ -138,14 +138,14 @@ describe('shortenUrlsInSmsBody', () => {
 
     createShortLinkInternalMock.mockResolvedValue({
       short_code: 'pay111',
-      full_url: 'https://vip-club.uk/pay111',
+      full_url: 'https://l.the-anchor.pub/pay111',
       already_exists: false
     })
 
     const body = `Pay now: https://management.orangejelly.co.uk/g/${rawToken}/table-payment`
     const result = await shortenUrlsInSmsBody(body)
 
-    expect(result).toBe('Pay now: https://vip-club.uk/pay111')
+    expect(result).toBe('Pay now: https://l.the-anchor.pub/pay111')
     expect(createShortLinkInternalMock).toHaveBeenCalledWith({
       destination_url: `https://management.orangejelly.co.uk/g/${rawToken}/table-payment`,
       link_type: 'custom',
