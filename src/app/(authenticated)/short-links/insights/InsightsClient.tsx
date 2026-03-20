@@ -91,6 +91,7 @@ function formatNumber(value: number) {
 export function InsightsClient() {
   useShortLinkClickToasts({ playSound: true })
 
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const defaultTimeframeRef = useRef(getDefaultInsightsTimeframe())
   const defaultTimeframe = defaultTimeframeRef.current
 
@@ -202,7 +203,13 @@ export function InsightsClient() {
   }, [startAt, endAt, granularity, includeBots])
 
   useEffect(() => {
-    void loadVolumeData()
+    if (debounceRef.current) clearTimeout(debounceRef.current)
+    debounceRef.current = setTimeout(() => {
+      void loadVolumeData()
+    }, 300)
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current)
+    }
   }, [loadVolumeData])
 
   const filteredData = useMemo(() => {
