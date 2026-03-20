@@ -170,7 +170,7 @@ export default function ShortLinksClient({ initialLinks, canManage }: Props) {
   return (
     <PageLayout
       title="Short Links"
-      subtitle="Create and manage vip-club.uk short links"
+      subtitle="Create and manage l.the-anchor.pub short links"
       backButton={{
         label: 'Back to Settings',
         href: '/settings'

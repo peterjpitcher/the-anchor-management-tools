@@ -1,5 +1,5 @@
 export function getShortLinkBaseUrl(): string {
-  return (process.env.NEXT_PUBLIC_SHORT_LINK_BASE_URL || 'https://vip-club.uk').replace(/\/$/, '')
+  return (process.env.NEXT_PUBLIC_SHORT_LINK_BASE_URL || 'https://l.the-anchor.pub').replace(/\/$/, '')
 }
 
 export function buildShortLinkUrl(shortCode: string): string {

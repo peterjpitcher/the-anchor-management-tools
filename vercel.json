@@ -22,6 +22,16 @@
       ]
     },
     {
+      "source": "/:code",
+      "destination": "/api/redirect/:code",
+      "has": [
+        {
+          "type": "host",
+          "value": "l.the-anchor.pub"
+        }
+      ]
+    },
+    {
       "source": "/",
       "destination": "/api/redirect",
       "has": [

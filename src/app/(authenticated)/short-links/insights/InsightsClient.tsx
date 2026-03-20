@@ -367,7 +367,7 @@ export function InsightsClient() {
   return (
     <PageLayout
       title="Short Links"
-      subtitle="Track click performance and trends for vip-club.uk short links"
+      subtitle="Track click performance and trends for l.the-anchor.pub short links"
       backButton={{
         label: 'Back to Settings',
         href: '/settings',
