@@ -63,6 +63,12 @@ export function useShortLinkClickToasts({
             const nextCount = updated.click_count ?? 0
             const previousCount = clickCountsRef.current.get(updated.id) ?? 0
 
+            // Skip if click_count hasn't changed (e.g. name edit, metadata update)
+            if (nextCount === previousCount) {
+              clickCountsRef.current.set(updated.id, nextCount)
+              return
+            }
+
             const delta = nextCount - previousCount
 
             if (delta > 0) {
