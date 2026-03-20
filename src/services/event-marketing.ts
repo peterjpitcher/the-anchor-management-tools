@@ -1,8 +1,7 @@
 import { createAdminClient } from '@/lib/supabase/admin';
 import { EVENT_MARKETING_CHANNELS, EVENT_MARKETING_CHANNEL_MAP, buildEventMarketingLinkPayload, buildShortCode, type EventMarketingChannelKey, type EventMarketingLinkPayload } from '@/lib/event-marketing-links';
+import { buildShortLinkUrl } from '@/lib/short-links/base-url';
 import QRCode from 'qrcode';
-
-const SHORT_LINK_BASE_URL = process.env.NEXT_PUBLIC_SHORT_LINK_BASE_URL || 'https://vip-club.uk';
 
 export interface EventMarketingLink {
   id: string;
@@ -44,10 +43,6 @@ function buildMetadata(payload: EventMarketingLinkPayload, event: EventRecord) {
     event_name: event.name,
     generated_at: new Date().toISOString()
   };
-}
-
-function buildShortUrl(shortCode: string): string {
-  return `${SHORT_LINK_BASE_URL.replace(/\/$/, '')}/${shortCode}`;
 }
 
 function needsUpdate(existing: ExistingShortLink, payload: EventMarketingLinkPayload, metadata: any): boolean {
@@ -196,7 +191,7 @@ export class EventMarketingService {
         const channel = EVENT_MARKETING_CHANNEL_MAP.get(channelKey);
         if (!channel) return null;
 
-        const shortUrl = buildShortUrl(link.short_code);
+        const shortUrl = buildShortLinkUrl(link.short_code);
 
         return {
           id: link.id,
@@ -283,7 +278,7 @@ export class EventMarketingService {
       : null;
 
     const record = existing ?? await insertShortLinkWithRetries(event, payload, metadata);
-    const shortUrl = buildShortUrl(record.short_code);
+    const shortUrl = buildShortLinkUrl(record.short_code);
 
     const link: EventMarketingLink = {
       id: record.id,
