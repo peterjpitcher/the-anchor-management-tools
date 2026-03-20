@@ -266,6 +266,83 @@ export class ShortLinkService {
     };
   }
 
+  static async getOrCreateUtmVariant(
+    parentId: string,
+    channelKey: string
+  ): Promise<{ id: string; short_code: string; full_url: string; already_exists: boolean }> {
+    const { CHANNEL_MAP } = await import('@/lib/short-links/channels');
+    const { buildUtmUrl, buildVariantName } = await import('@/lib/short-links/utm');
+
+    const channel = CHANNEL_MAP.get(channelKey);
+    if (!channel) throw new Error(`Unknown channel: ${channelKey}`);
+
+    const supabase = await createClient();
+
+    // Fetch parent link
+    const { data: parent, error: parentError } = await supabase
+      .from('short_links')
+      .select('id, name, destination_url, link_type, expires_at')
+      .eq('id', parentId)
+      .single();
+
+    if (parentError || !parent) throw new Error('Parent link not found');
+
+    const utmDestination = buildUtmUrl(parent.destination_url, channel, parent.name || parent.id);
+    const variantName = buildVariantName(parent.name || `/${parent.id.slice(0, 6)}`, channel.label);
+
+    // Check for existing variant by channel (more robust than URL matching)
+    const { data: existing } = await supabase
+      .from('short_links')
+      .select('id, short_code')
+      .eq('parent_link_id', parentId)
+      .contains('metadata', { channel: channelKey })
+      .maybeSingle();
+
+    if (existing) {
+      return {
+        id: existing.id,
+        short_code: existing.short_code,
+        full_url: buildShortLinkUrl(existing.short_code),
+        already_exists: true,
+      };
+    }
+
+    // Create new variant via RPC
+    const { data: result, error: createError } = await supabase
+      .rpc('create_short_link', {
+        p_destination_url: utmDestination,
+        p_link_type: parent.link_type,
+        p_metadata: { channel: channelKey, parent_link_id: parentId, utm_variant: true },
+        p_expires_at: parent.expires_at || null,
+        p_custom_code: null,
+      })
+      .single();
+
+    if (createError) throw new Error(createError.message || 'Failed to create variant');
+
+    const shortCode = (result as any).short_code as string;
+
+    // Set parent_link_id and name on the new variant
+    await supabase
+      .from('short_links')
+      .update({ parent_link_id: parentId, name: variantName })
+      .eq('short_code', shortCode);
+
+    // Fetch the created link's ID
+    const { data: created } = await supabase
+      .from('short_links')
+      .select('id')
+      .eq('short_code', shortCode)
+      .single();
+
+    return {
+      id: created?.id || '',
+      short_code: shortCode,
+      full_url: buildShortLinkUrl(shortCode),
+      already_exists: false,
+    };
+  }
+
   static async getShortLinkAnalytics(shortCode: string) {
     const supabase = await createClient();
     

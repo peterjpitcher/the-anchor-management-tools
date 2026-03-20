@@ -186,6 +186,43 @@ export async function createShortLinkInternal(data: {
   }
 }
 
+// Get or create a UTM variant for a parent short link
+export async function getOrCreateUtmVariant(parentId: string, channelKey: string) {
+  try {
+    const supabase = await createClient();
+    const [{ data: { user } }, canManage] = await Promise.all([
+      supabase.auth.getUser(),
+      checkUserPermission('short_links', 'manage'),
+    ]);
+    if (!user) return { error: 'Authentication required' };
+    if (!canManage) return { error: 'You do not have permission to manage short links' };
+
+    const result = await ShortLinkService.getOrCreateUtmVariant(parentId, channelKey);
+
+    if (!result.already_exists) {
+      await logAuditEvent({
+        operation_type: 'create',
+        resource_type: 'short_link',
+        resource_id: result.id,
+        operation_status: 'success',
+        user_id: user.id,
+        additional_info: {
+          short_code: result.short_code,
+          channel: channelKey,
+          parent_link_id: parentId,
+          type: 'utm_variant',
+        },
+      });
+    }
+
+    revalidatePath('/short-links');
+    return { success: true, data: result };
+  } catch (error: any) {
+    console.error('UTM variant creation error:', error);
+    return { error: error.message || 'Failed to create UTM variant' };
+  }
+}
+
 // Get analytics for a short link
 export async function getShortLinkAnalytics(shortCode: string) {
   try {
