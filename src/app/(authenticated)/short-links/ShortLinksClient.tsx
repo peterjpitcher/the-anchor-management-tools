@@ -24,6 +24,7 @@ import {
 import { ShortLinkAnalyticsModal } from './components/ShortLinkAnalyticsModal'
 import { ShortLinkFormModal } from './components/ShortLinkFormModal'
 import { buildShortLinkUrl } from '@/lib/short-links/base-url'
+import { formatDate } from '@/lib/dateUtils'
 import { useShortLinkClickToasts } from '@/hooks/useShortLinkClickToasts'
 import type { ShortLink } from '@/types/short-links'
 
@@ -234,7 +235,7 @@ export default function ShortLinksClient({ initialLinks, canManage }: Props) {
               {
                 key: 'created_at',
                 header: 'Created',
-                cell: (link) => new Date(link.created_at).toLocaleDateString(),
+                cell: (link) => formatDate(link.created_at),
                 sortable: true
               },
               {
@@ -308,7 +309,7 @@ export default function ShortLinksClient({ initialLinks, canManage }: Props) {
 
                 <div className="flex justify-between items-center text-sm text-gray-500 mb-3">
                   <span>{link.click_count ?? 0} human clicks</span>
-                  <span>{new Date(link.created_at).toLocaleDateString()}</span>
+                  <span>{formatDate(link.created_at)}</span>
                 </div>
 
                 <div className="flex justify-between border-t pt-3">

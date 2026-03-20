@@ -15,6 +15,7 @@ import {
 import { getShortLinkAnalytics, getShortLinkAnalyticsSummary } from '@/app/actions/short-links'
 import toast from 'react-hot-toast'
 import { buildShortLinkUrl } from '@/lib/short-links/base-url'
+import { formatDateTime } from '@/lib/dateUtils'
 import type { ShortLink } from '@/types/short-links'
 
 interface ShortLinkAnalytics {
@@ -154,7 +155,7 @@ export function ShortLinkAnalyticsModal({ link, open, onClose }: Props) {
               <p className="text-sm text-green-600">Last Clicked</p>
               <p className="text-sm font-medium text-green-900">
                 {analytics.last_clicked_at
-                  ? new Date(analytics.last_clicked_at).toLocaleString()
+                  ? formatDateTime(analytics.last_clicked_at)
                   : 'Never'}
               </p>
             </Card>
