@@ -9,5 +9,5 @@ export interface ShortLink {
   created_at: string
   expires_at: string | null
   last_clicked_at: string | null
-  // parent_link_id will be added in a later task after DB migration
+  parent_link_id: string | null
 }
