@@ -72,15 +72,15 @@ export async function createShortLink(data: z.infer<typeof CreateShortLinkSchema
   }
 }
 
-export async function getShortLinks() {
+export async function getShortLinks(page: number = 1, pageSize: number = 50) {
   try {
     const canView = await checkUserPermission('short_links', 'view');
     if (!canView) {
       return { error: 'You do not have permission to view short links' };
     }
 
-    const data = await ShortLinkService.getShortLinks();
-    return { success: true, data };
+    const result = await ShortLinkService.getShortLinks(page, pageSize);
+    return { success: true, data: result.data, total: result.total, page: result.page, pageSize: result.pageSize };
   } catch (error: any) {
     console.error('Failed to list short links:', error);
     return { error: error.message || 'An unexpected error occurred' };

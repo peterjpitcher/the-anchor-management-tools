@@ -30,15 +30,20 @@ import type { ShortLink } from '@/types/short-links'
 
 interface Props {
   initialLinks: ShortLink[]
+  initialTotal: number
   canManage: boolean
 }
 
-export default function ShortLinksClient({ initialLinks, canManage }: Props) {
+export default function ShortLinksClient({ initialLinks, initialTotal, canManage }: Props) {
   const [links, setLinks] = useState<ShortLink[]>(initialLinks)
   const [showFormModal, setShowFormModal] = useState(false)
   const [showAnalyticsModal, setShowAnalyticsModal] = useState(false)
   const [selectedLink, setSelectedLink] = useState<ShortLink | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<ShortLink | null>(null)
+  const [currentPage, setCurrentPage] = useState(1)
+  const [totalLinks, setTotalLinks] = useState(initialTotal)
+  const pageSize = 50
+  const totalPages = Math.ceil(totalLinks / pageSize)
 
   useShortLinkClickToasts({
     seedLinks: initialLinks,
@@ -58,15 +63,16 @@ export default function ShortLinksClient({ initialLinks, canManage }: Props) {
     },
   })
 
-  const refreshLinks = useCallback(async () => {
-    const result = await getShortLinks()
+  const refreshLinks = useCallback(async (page: number = currentPage) => {
+    const result = await getShortLinks(page, pageSize)
     if (!result || 'error' in result) {
       toast.error(result?.error || 'Failed to load short links')
       return
     }
-    const list = Array.isArray(result.data) ? result.data : []
-    setLinks(list as ShortLink[])
-  }, [])
+    setLinks(Array.isArray(result.data) ? result.data as ShortLink[] : [])
+    setTotalLinks(result.total ?? 0)
+    setCurrentPage(result.page ?? page)
+  }, [currentPage])
 
   useEffect(() => {
     setLinks(initialLinks)
@@ -362,6 +368,31 @@ export default function ShortLinksClient({ initialLinks, canManage }: Props) {
             )}
           />
         </Card>
+
+        {totalPages > 1 && (
+          <div className="flex items-center justify-between text-sm text-gray-600">
+            <span>{totalLinks} links total</span>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="secondary"
+                size="sm"
+                disabled={currentPage <= 1}
+                onClick={() => refreshLinks(currentPage - 1)}
+              >
+                Previous
+              </Button>
+              <span>Page {currentPage} of {totalPages}</span>
+              <Button
+                variant="secondary"
+                size="sm"
+                disabled={currentPage >= totalPages}
+                onClick={() => refreshLinks(currentPage + 1)}
+              >
+                Next
+              </Button>
+            </div>
+          </div>
+        )}
 
         <ShortLinkFormModal
           open={showFormModal}
