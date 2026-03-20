@@ -12,7 +12,7 @@ import {
   ComputerDesktopIcon,
   GlobeAltIcon
 } from '@heroicons/react/24/outline'
-import { getShortLinkAnalytics, getShortLinkAnalyticsSummary } from '@/app/actions/short-links'
+import { getShortLinkAnalyticsSummary } from '@/app/actions/short-links'
 import toast from 'react-hot-toast'
 import { buildShortLinkUrl } from '@/lib/short-links/base-url'
 import { formatDateTime } from '@/lib/dateUtils'
@@ -53,21 +53,11 @@ export function ShortLinkAnalyticsModal({ link, open, onClose }: Props) {
     setAnalytics(null)
 
     try {
-      const [detailResult, summaryResult] = await Promise.all([
-        getShortLinkAnalytics(link.short_code),
-        getShortLinkAnalyticsSummary(link.short_code, 30)
-      ])
-
-      if (!detailResult || 'error' in detailResult) {
-        toast.error(detailResult?.error || 'Failed to load analytics')
-        return
-      }
-
-      const detailData = (detailResult as any).data
+      const summaryResult = await getShortLinkAnalyticsSummary(link.short_code, 30)
 
       if (!summaryResult || 'error' in summaryResult) {
         toast.error(summaryResult?.error || 'Failed to load analytics summary')
-        setAnalytics({ ...(detailData || {}) })
+        setAnalytics({ click_count: link.click_count, last_clicked_at: link.last_clicked_at })
         return
       }
 
@@ -105,7 +95,8 @@ export function ShortLinkAnalyticsModal({ link, open, onClose }: Props) {
       })
 
       setAnalytics({
-        ...(detailData || {}),
+        click_count: link.click_count,
+        last_clicked_at: link.last_clicked_at,
         demographics,
         chartData: enhancedData.map((day: any) => ({
           date: day.click_date,
