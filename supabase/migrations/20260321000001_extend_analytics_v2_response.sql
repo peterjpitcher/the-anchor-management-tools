@@ -133,3 +133,7 @@ begin
   order by max(plb.total_clicks) desc, plb.short_code asc;
 end;
 $$;
+
+-- Re-grant execute after DROP + CREATE (the original grant was lost when the function was dropped)
+grant execute on function public.get_all_links_analytics_v2(timestamptz, timestamptz, text, boolean, text)
+  to authenticated, service_role;
