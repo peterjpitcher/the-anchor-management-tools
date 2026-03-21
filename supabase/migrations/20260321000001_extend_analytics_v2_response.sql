@@ -116,12 +116,12 @@ begin
      and lbc.bucket_local = bs.bucket_local
   )
   select
-    max(plb.short_link_id) as id,
+    plb.short_link_id as id,
     plb.short_code,
     plb.link_type,
     plb.destination_url,
     max(plb.link_name) as name,
-    max(plb.link_parent_id) as parent_link_id,
+    plb.link_parent_id as parent_link_id,
     max(plb.link_metadata) as metadata,
     max(plb.link_created_at) as created_at,
     array_agg((plb.bucket_local at time zone v_timezone) order by plb.bucket_local),
@@ -129,7 +129,7 @@ begin
     max(plb.total_clicks),
     max(plb.unique_visitors)
   from per_link_bucket plb
-  group by plb.short_code, plb.link_type, plb.destination_url
+  group by plb.short_link_id, plb.short_code, plb.link_type, plb.destination_url, plb.link_parent_id
   order by max(plb.total_clicks) desc, plb.short_code asc;
 end;
 $$;
