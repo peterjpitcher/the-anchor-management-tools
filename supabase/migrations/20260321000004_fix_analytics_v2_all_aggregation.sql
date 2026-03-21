@@ -1,9 +1,8 @@
--- Extend get_all_links_analytics_v2 with id, name, parent_link_id, metadata, created_at
--- Needed for campaign grouping in the insights page redesign.
--- Must DROP first because PostgreSQL cannot change return type with CREATE OR REPLACE.
+-- Fix: max(jsonb) and max(uuid) do not exist in PostgreSQL.
+-- All functionally dependent columns must be in GROUP BY, not wrapped in max().
 drop function if exists public.get_all_links_analytics_v2(timestamptz, timestamptz, text, boolean, text);
 
-create or replace function public.get_all_links_analytics_v2(
+create function public.get_all_links_analytics_v2(
   p_start_at timestamptz,
   p_end_at timestamptz,
   p_granularity text,
@@ -36,11 +35,9 @@ begin
   if p_start_at is null or p_end_at is null then
     raise exception 'p_start_at and p_end_at are required';
   end if;
-
   if p_end_at <= p_start_at then
     raise exception 'p_end_at must be greater than p_start_at';
   end if;
-
   if v_granularity not in ('hour', 'day', 'week', 'month') then
     raise exception 'Invalid p_granularity: %', p_granularity;
   end if;
@@ -120,20 +117,20 @@ begin
     plb.short_code,
     plb.link_type,
     plb.destination_url,
-    max(plb.link_name) as name,
+    plb.link_name as name,
     plb.link_parent_id as parent_link_id,
-    max(plb.link_metadata) as metadata,
-    max(plb.link_created_at) as created_at,
+    plb.link_metadata as metadata,
+    plb.link_created_at as created_at,
     array_agg((plb.bucket_local at time zone v_timezone) order by plb.bucket_local),
     array_agg(plb.bucket_clicks order by plb.bucket_local),
     max(plb.total_clicks),
     max(plb.unique_visitors)
   from per_link_bucket plb
-  group by plb.short_link_id, plb.short_code, plb.link_type, plb.destination_url, plb.link_parent_id
+  group by plb.short_link_id, plb.short_code, plb.link_type, plb.destination_url,
+           plb.link_name, plb.link_parent_id, plb.link_metadata, plb.link_created_at
   order by max(plb.total_clicks) desc, plb.short_code asc;
 end;
 $$;
 
--- Re-grant execute after DROP + CREATE (the original grant was lost when the function was dropped)
 grant execute on function public.get_all_links_analytics_v2(timestamptz, timestamptz, text, boolean, text)
   to authenticated, service_role;
