@@ -30,3 +30,22 @@ export const PRINT_CHANNELS: ShortLinkChannel[] = [
 export const ALL_CHANNELS: ShortLinkChannel[] = [...DIGITAL_CHANNELS, ...PRINT_CHANNELS]
 
 export const CHANNEL_MAP = new Map(ALL_CHANNELS.map((c) => [c.key, c]))
+
+/** Shared colour mapping for channel charts — digital=blue tones, print=amber tones */
+export const CHANNEL_COLOURS: Record<string, string> = {
+  facebook: '#3b82f6',
+  lnk_bio: '#6366f1',
+  google_business: '#2563eb',
+  meta_ads: '#818cf8',
+  newsletter: '#60a5fa',
+  sms: '#38bdf8',
+  whatsapp: '#34d399',
+  poster: '#f59e0b',
+  table_talker: '#fbbf24',
+  bar_strut: '#d97706',
+  flyer: '#fb923c',
+  menu_insert: '#f97316',
+}
+
+/** Fallback colour for unknown channels */
+export const CHANNEL_COLOUR_DEFAULT = '#9ca3af'
