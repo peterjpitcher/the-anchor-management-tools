@@ -8,6 +8,7 @@ import { Select } from '@/components/ui-v2/forms/Select'
 import { FormGroup } from '@/components/ui-v2/forms/FormGroup'
 import { EmptyState } from '@/components/ui-v2/display/EmptyState'
 import { createShortLink, updateShortLink } from '@/app/actions/short-links'
+import { buildShortLinkUrl } from '@/lib/short-links/base-url'
 import toast from 'react-hot-toast'
 import type { ShortLink } from '@/types/short-links'
 
@@ -36,6 +37,8 @@ export function ShortLinkFormModal({ open, onClose, onSuccess, link, canManage }
   const [hasExpiry, setHasExpiry] = useState(false)
   const [expiryValue, setExpiryValue] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  const [formError, setFormError] = useState<string | null>(null)
+  const [existingLinkUrl, setExistingLinkUrl] = useState<string | null>(null)
 
   // Reset or populate form when opening/changing link
   useEffect(() => {
@@ -69,18 +72,21 @@ export function ShortLinkFormModal({ open, onClose, onSuccess, link, canManage }
     setLinkType('custom')
     setHasExpiry(false)
     setExpiryValue('')
+    setFormError(null)
+    setExistingLinkUrl(null)
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setSubmitting(true)
+    setFormError(null)
+    setExistingLinkUrl(null)
 
     try {
       const expiresAt = hasExpiry && expiryValue ? new Date(expiryValue).toISOString() : undefined
 
       let result
       if (link) {
-        // Update
         result = await updateShortLink({
           id: link.id,
           name: name || null,
@@ -89,7 +95,6 @@ export function ShortLinkFormModal({ open, onClose, onSuccess, link, canManage }
           expires_at: expiresAt
         })
       } else {
-        // Create
         result = await createShortLink({
           name: name || undefined,
           destination_url: destinationUrl,
@@ -100,30 +105,44 @@ export function ShortLinkFormModal({ open, onClose, onSuccess, link, canManage }
       }
 
       if (!result || 'error' in result) {
-        toast.error(result?.error || `Failed to ${link ? 'update' : 'create'} short link`)
+        const errorMsg = result?.error || `Failed to ${link ? 'update' : 'create'} short link`
+        // Show inline error instead of toast for better UX
+        setFormError(errorMsg)
         return
       }
 
       const alreadyExists = !link && !!result.data?.already_exists
-      toast.success(
-        link ? 'Short link updated' : alreadyExists ? 'Short link already exists' : 'Short link created'
-      )
+      if (alreadyExists && result.data?.full_url) {
+        // Link already exists — show it to the user, copy to clipboard, close the modal
+        const url = result.data.full_url
+        toast.success(`Link already exists: ${url.replace(/^https?:\/\//, '')}`)
+        try {
+          await navigator.clipboard.writeText(url)
+          toast.success('Copied to clipboard!')
+        } catch {
+          // Ignore clipboard errors
+        }
+        onSuccess(result)
+        onClose()
+        return
+      }
 
-      // Special handling for create: copy to clipboard if available
-      if (!link && result.data?.full_url && navigator.clipboard) {
-         try {
-            await navigator.clipboard.writeText(result.data.full_url)
-            toast.success('Copied to clipboard!')
-         } catch (e) {
-             // Ignore clipboard errors
-         }
+      toast.success(link ? 'Short link updated' : 'Short link created')
+
+      if (!link && result.data?.full_url) {
+        try {
+          await navigator.clipboard.writeText(result.data.full_url)
+          toast.success('Copied to clipboard!')
+        } catch {
+          // Ignore clipboard errors
+        }
       }
 
       onSuccess(result)
       onClose()
     } catch (error) {
       console.error(`Failed to ${link ? 'update' : 'create'} short link`, error)
-      toast.error(`Failed to ${link ? 'update' : 'create'} short link`)
+      setFormError(`Failed to ${link ? 'update' : 'create'} short link. Please try again.`)
     } finally {
       setSubmitting(false)
     }
@@ -159,7 +178,7 @@ export function ShortLinkFormModal({ open, onClose, onSuccess, link, canManage }
           <Input
             type="url"
             value={destinationUrl}
-            onChange={(e) => setDestinationUrl(e.target.value)}
+            onChange={(e) => { setDestinationUrl(e.target.value); setFormError(null) }}
             required
             placeholder="https://"
           />
@@ -180,7 +199,7 @@ export function ShortLinkFormModal({ open, onClose, onSuccess, link, canManage }
             <FormGroup label="Custom Code (optional)">
             <Input
                 value={customCode}
-                onChange={(e) => setCustomCode(e.target.value)}
+                onChange={(e) => { setCustomCode(e.target.value); setFormError(null) }}
                 placeholder="Leave blank for auto-generated code"
             />
             </FormGroup>
@@ -217,6 +236,12 @@ export function ShortLinkFormModal({ open, onClose, onSuccess, link, canManage }
             />
           )}
         </FormGroup>
+
+        {formError && (
+          <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            {formError}
+          </div>
+        )}
 
         <ModalActions>
           <Button
