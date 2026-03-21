@@ -27,6 +27,34 @@ export function groupLinksIntoCampaigns(links: AnalyticsLinkRow[]): {
     }
   }
 
+  // Handle orphaned variants: their parent has 0 clicks and isn't in the RPC response.
+  // Create a synthetic parent from the variant metadata so they still group properly.
+  for (const [parentId, variants] of variantsByParent) {
+    if (!parentMap.has(parentId) && variants.length > 0) {
+      const firstVariant = variants[0]
+      // Extract event name from variant name (before the em-dash) or metadata
+      const meta = (firstVariant.metadata as Record<string, unknown>) || {}
+      const eventName = (meta.event_name as string) ||
+        (firstVariant.name?.includes('\u2014') ? firstVariant.name.split('\u2014')[0].trim() : null) ||
+        'Campaign'
+      // Strip UTM params from destination to get the base URL
+      const baseUrl = firstVariant.destinationUrl.split('?')[0]
+      parentMap.set(parentId, {
+        id: parentId,
+        shortCode: '',
+        linkType: firstVariant.linkType,
+        destinationUrl: baseUrl,
+        name: eventName,
+        parentLinkId: null,
+        metadata: meta,
+        createdAt: firstVariant.createdAt,
+        totalClicks: 0,
+        uniqueVisitors: 0,
+        data: [],
+      })
+    }
+  }
+
   const campaigns: CampaignGroup[] = []
   const channelTotalsMap = new Map<string, number>()
 
