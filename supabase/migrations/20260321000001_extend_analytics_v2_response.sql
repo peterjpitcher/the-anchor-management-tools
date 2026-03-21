@@ -1,5 +1,8 @@
 -- Extend get_all_links_analytics_v2 with id, name, parent_link_id, metadata, created_at
 -- Needed for campaign grouping in the insights page redesign.
+-- Must DROP first because PostgreSQL cannot change return type with CREATE OR REPLACE.
+drop function if exists public.get_all_links_analytics_v2(timestamptz, timestamptz, text, boolean, text);
+
 create or replace function public.get_all_links_analytics_v2(
   p_start_at timestamptz,
   p_end_at timestamptz,
