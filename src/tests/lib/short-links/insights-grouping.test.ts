@@ -56,6 +56,38 @@ describe('groupLinksIntoCampaigns', () => {
     expect(result.channelTotals).toHaveLength(0)
   })
 
+  it('should create synthetic parent for orphaned variants (parent not in response)', () => {
+    // Parent has 0 clicks so it's excluded from the INNER JOIN analytics RPC.
+    // Only variants appear in the response.
+    const links = [
+      makeLink({
+        id: 'variant-fb',
+        parentLinkId: 'missing-parent-id',
+        name: 'Easter Lunch \u2014 Facebook',
+        metadata: { channel: 'facebook', event_name: 'Easter Lunch' },
+        destinationUrl: 'https://example.com/events/easter?utm_source=facebook',
+        totalClicks: 30,
+        uniqueVisitors: 20,
+      }),
+      makeLink({
+        id: 'variant-sms',
+        parentLinkId: 'missing-parent-id',
+        metadata: { channel: 'sms', event_name: 'Easter Lunch' },
+        destinationUrl: 'https://example.com/events/easter?utm_source=sms',
+        totalClicks: 10,
+        uniqueVisitors: 8,
+      }),
+    ]
+    const result = groupLinksIntoCampaigns(links)
+    expect(result.campaigns).toHaveLength(1)
+    expect(result.standalone).toHaveLength(0)
+    expect(result.campaigns[0].parent.id).toBe('missing-parent-id')
+    expect(result.campaigns[0].parent.name).toBe('Easter Lunch')
+    expect(result.campaigns[0].parent.destinationUrl).toBe('https://example.com/events/easter')
+    expect(result.campaigns[0].totalClicks).toBe(40)
+    expect(result.campaigns[0].variants).toHaveLength(2)
+  })
+
   it('should sort campaigns by total clicks descending', () => {
     const links = [
       makeLink({ id: 'p1' }),
