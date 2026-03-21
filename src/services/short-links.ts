@@ -89,12 +89,6 @@ export class ShortLinkService {
 
     const existing = await this.findShortLinkByDestinationUrl(supabase, data.destination_url);
     if (existing) {
-      if (data.custom_code && existing.short_code !== data.custom_code) {
-        throw new Error(
-          `A short link already exists for this URL (${buildShortLinkUrl(existing.short_code)}). Short codes can't be changed; edit or delete the existing link instead.`
-        );
-      }
-
       return {
         id: existing.id,
         short_code: existing.short_code,
