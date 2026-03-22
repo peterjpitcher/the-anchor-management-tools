@@ -133,7 +133,7 @@ export default function EmployeeAttachmentsList({
     try {
       setDownloading(attachment.attachment_id)
 
-      const result = await getAttachmentSignedUrl(attachment.storage_path)
+      const result = await getAttachmentSignedUrl(attachment.attachment_id)
 
       if (result.error) {
         toast.error(result.error)
@@ -162,7 +162,7 @@ export default function EmployeeAttachmentsList({
     try {
       setViewing(attachment.attachment_id)
 
-      const result = await getAttachmentSignedUrl(attachment.storage_path)
+      const result = await getAttachmentSignedUrl(attachment.attachment_id)
 
       if (result.error) {
         toast.error(result.error)
