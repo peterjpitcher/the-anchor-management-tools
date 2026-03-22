@@ -1,5 +1,5 @@
 import { notFound, redirect } from 'next/navigation'
-import { formatDate } from '@/lib/dateUtils'
+import { formatDate, getTodayIsoDate } from '@/lib/dateUtils'
 import { calculateLengthOfService } from '@/lib/employeeUtils'
 import { Badge } from '@/components/ui-v2/display/Badge'
 import { PageLayout } from '@/components/ui-v2/layout/PageLayout'
@@ -93,8 +93,8 @@ export default async function EmployeeDetailPage({ params }: EmployeeDetailPageP
   const rateOverrides = rateOverridesResult.success ? rateOverridesResult.data : []
   const leaveRequests = leaveRequestsResult.success ? leaveRequestsResult.data : []
 
-  // Resolve current rate for display (today's date)
-  const today = new Date().toISOString().split('T')[0]
+  // Resolve current rate for display (today's date in London timezone)
+  const today = getTodayIsoDate()
   const currentRate = await getHourlyRate(employeeId, today)
 
   const attachmentCategoryMap = attachmentCategories.reduce<Record<string, string>>((acc, category) => {
