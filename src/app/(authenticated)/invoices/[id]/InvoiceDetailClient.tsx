@@ -13,8 +13,16 @@ import { DataTable } from '@/components/ui-v2/display/DataTable'
 import { toast } from '@/components/ui-v2/feedback/Toast'
 import { ConfirmDialog } from '@/components/ui-v2/overlay/ConfirmDialog'
 import { Download, Mail, Edit, Trash2, Copy, CheckCircle, XCircle, Clock } from 'lucide-react'
-import { EmailInvoiceModal } from '@/components/features/invoices/EmailInvoiceModal'
-import { ChasePaymentModal } from '@/components/modals/ChasePaymentModal'
+import dynamic from 'next/dynamic'
+
+const EmailInvoiceModal = dynamic(
+  () => import('@/components/features/invoices/EmailInvoiceModal').then(mod => mod.EmailInvoiceModal),
+  { ssr: false }
+)
+const ChasePaymentModal = dynamic(
+  () => import('@/components/modals/ChasePaymentModal').then(mod => mod.ChasePaymentModal),
+  { ssr: false }
+)
 import type { InvoiceWithDetails, InvoiceStatus } from '@/types/invoices'
 import { usePermissions } from '@/contexts/PermissionContext'
 import { calculateInvoiceTotals, type InvoiceTotalsResult } from '@/lib/invoiceCalculations'
