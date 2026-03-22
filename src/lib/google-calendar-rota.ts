@@ -36,6 +36,9 @@ export interface SyncOptions {
   employeeNames?: Map<string, string>
   /** Pre-created auth client — skips the per-week getOAuth2Client() call. */
   auth?: GoogleCalendarAuth
+  /** Canonical week start date (Monday) from rota_weeks.week_start.
+   *  Used for orphan recovery scan boundaries. Falls back to shift-span if not provided. */
+  weekStart?: string
 }
 
 // Each rota shift is colour-coded by department so the calendar is scannable at a glance.
@@ -66,6 +69,12 @@ function formatTime(t: string): string {
 function addOneDay(dateStr: string): string {
   const d = new Date(dateStr + 'T12:00:00Z')
   d.setUTCDate(d.getUTCDate() + 1)
+  return d.toISOString().split('T')[0]
+}
+
+function addDays(dateStr: string, days: number): string {
+  const d = new Date(dateStr + 'T12:00:00Z')
+  d.setUTCDate(d.getUTCDate() + days)
   return d.toISOString().split('T')[0]
 }
 
@@ -156,6 +165,14 @@ export async function syncRotaWeekToCalendar(
 
   const auth = options?.auth ?? await getOAuth2Client()
   const currentShiftIds = new Set(shifts.map(s => s.id))
+
+  // -- Guard: never delete all events when shifts array is empty ----------
+  // Protects against the delete/insert gap during republish where
+  // rota_published_shifts is momentarily empty between delete and insert.
+  if (shifts.length === 0 && existingMap.size > 0) {
+    console.warn('[RotaCalendar] Skipping sync — week has mapped events but no shifts provided (snapshot may be in progress)', weekId)
+    return result
+  }
 
   // -- Delete events for shifts removed since last publish -----------------
   // Parallel: removed-shift deletes are independent of each other.
@@ -323,7 +340,7 @@ export async function syncRotaWeekToCalendar(
           end: { dateTime: endIso, timeZone: CALENDAR_TIME_ZONE },
           colorId: shiftColour(shift.department, shift.status),
           extendedProperties: {
-            private: { shiftId: shift.id },
+            private: { shiftId: shift.id, weekId: weekId },
           },
         }
 
