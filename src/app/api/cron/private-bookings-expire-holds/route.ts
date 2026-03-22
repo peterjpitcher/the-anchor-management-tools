@@ -1,14 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { logger } from '@/lib/logger';
+import { authorizeCronRequest } from '@/lib/cron-auth';
 
 // Vercel Cron: runs at 06:00 UTC daily (cron: "0 6 * * *")
 // Cancels draft private bookings whose hold_expiry has passed.
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
-  const authHeader = request.headers.get('authorization');
-  if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const authResult = authorizeCronRequest(request);
+  if (!authResult.authorized) {
+    return NextResponse.json({ error: authResult.reason ?? 'Unauthorized' }, { status: 401 });
   }
 
   const supabase = createAdminClient();

@@ -2,12 +2,14 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { sendTableBookingCancelledSmsIfAllowed } from '@/lib/table-bookings/bookings'
 import { logAuditEvent } from '@/app/actions/audit'
+import { authorizeCronRequest } from '@/lib/cron-auth'
 
 export const maxDuration = 60
 
 export async function GET(request: NextRequest) {
-  if (request.headers.get('authorization') !== `Bearer ${process.env.CRON_SECRET}`) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const authResult = authorizeCronRequest(request)
+  if (!authResult.authorized) {
+    return NextResponse.json({ error: authResult.reason ?? 'Unauthorized' }, { status: 401 })
   }
 
   const supabase = createAdminClient()
