@@ -353,28 +353,16 @@ export async function POST(request: NextRequest) {
       params[key] = value;
     });
     
-    // Log the initial webhook receipt
-    if (publicClient) {
-      await logWebhookAttempt(publicClient, 'received', headers, body, params);
-    }
-    
-    // Always verify signature unless explicitly disabled in non-production environments.
+    // Always verify signature BEFORE logging to prevent attackers poisoning webhook_logs.
     const skipValidationRequested = skipTwilioSignatureValidation();
     const skipValidation = skipValidationRequested && process.env.NODE_ENV !== 'production';
-    
+
     if (!skipValidation) {
       const isValid = verifyTwilioSignature(request, body);
-      
+
       if (!isValid) {
         logger.warn('Invalid Twilio webhook signature');
-        
-        if (publicClient) {
-          await logWebhookAttempt(publicClient, 'signature_failed', headers, body, params, 'Invalid Twilio signature', {
-            url: request.url,
-            authTokenConfigured: !!process.env.TWILIO_AUTH_TOKEN,
-            signaturePresent: !!headers['x-twilio-signature']
-          });
-        }
+        // Do NOT log to webhook_logs — unverified payloads must not be persisted.
         return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
       }
     } else {
@@ -383,6 +371,11 @@ export async function POST(request: NextRequest) {
           env: process.env.NODE_ENV || 'unknown'
         }
       });
+    }
+
+    // Log the webhook receipt only after signature verification has passed.
+    if (publicClient) {
+      await logWebhookAttempt(publicClient, 'received', headers, body, params);
     }
     
     // Get admin client for database operations
@@ -807,11 +800,8 @@ async function handleStatusUpdate(
     }
 
     if ((existingMessage.twilio_status || '').toLowerCase() === messageStatus) {
-      await applySmsDeliveryOutcome(adminClient, {
-        customerId: existingMessage.customer_id,
-        messageStatus,
-        errorCode: errorCode || null
-      })
+      // Skip applySmsDeliveryOutcome — this status was already processed when first received.
+      // Calling it again on duplicate callbacks would inflate sms_delivery_failures counters.
 
       if (publicClient) {
         await logWebhookAttempt(
