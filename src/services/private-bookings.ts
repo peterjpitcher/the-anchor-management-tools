@@ -1788,7 +1788,45 @@ export class PrivateBookingService {
 
     let query = supabase
       .from('private_bookings_with_details')
-      .select('*', { count: 'exact' })
+      .select(
+        `
+          id,
+          customer_id,
+          customer_name,
+          customer_first_name,
+          customer_last_name,
+          customer_full_name,
+          contact_phone,
+          contact_email,
+          event_date,
+          start_time,
+          setup_date,
+          setup_time,
+          end_time,
+          end_time_next_day,
+          guest_count,
+          event_type,
+          status,
+          contract_version,
+          created_at,
+          updated_at,
+          deposit_amount,
+          deposit_paid_date,
+          total_amount,
+          balance_due_date,
+          final_payment_date,
+          final_payment_method,
+          discount_type,
+          discount_amount,
+          discount_reason,
+          internal_notes,
+          customer_requests,
+          calculated_total,
+          deposit_status,
+          days_until_event
+        `,
+        { count: 'estimated' }
+      )
       .order('event_date', { ascending: true, nullsFirst: true })
       .order('start_time', { ascending: true, nullsFirst: true });
 
