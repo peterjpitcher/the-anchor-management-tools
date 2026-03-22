@@ -140,11 +140,11 @@ export async function getPayrollMonthData(year: number, month: number): Promise<
   // pattern of calling getHourlyRate() per shift (which did 5 DB round-trips each).
   const [
     { data: shifts, error: shiftsError },
-    { data: sessions },
-    { data: paySettings },
-    { data: rateOverrides },
-    { data: ageBands },
-    { data: bandRates },
+    { data: sessions, error: sessionsError },
+    { data: paySettings, error: paySettingsError },
+    { data: rateOverrides, error: rateOverridesError },
+    { data: ageBands, error: ageBandsError },
+    { data: bandRates, error: bandRatesError },
   ] = await Promise.all([
     supabase
       .from('rota_shifts')
@@ -188,7 +188,17 @@ export async function getPayrollMonthData(year: number, month: number): Promise<
       .order('effective_from', { ascending: false }),
   ]);
 
-  if (shiftsError) return { success: false, error: shiftsError.message };
+  if (shiftsError || sessionsError || paySettingsError || rateOverridesError || ageBandsError || bandRatesError) {
+    const failedDatasets = [
+      shiftsError && 'shifts',
+      sessionsError && 'sessions',
+      paySettingsError && 'pay settings',
+      rateOverridesError && 'rate overrides',
+      ageBandsError && 'age bands',
+      bandRatesError && 'band rates',
+    ].filter(Boolean).join(', ');
+    return { success: false, error: `Failed to load payroll data: ${failedDatasets}` };
+  }
 
   const salaryEmployeeIds = new Set(
     (paySettings ?? [])
