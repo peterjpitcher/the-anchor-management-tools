@@ -316,6 +316,27 @@ export async function syncRotaWeekToCalendar(
           )
         }
       }
+
+      // -- Reverse-orphan detection: find stale DB mappings -----------------
+      // existingMap may contain google_event_ids that no longer exist in
+      // Google Calendar (e.g. deleted by the old cross-week bug). If we leave
+      // them, the create/update loop tries UPDATE → 404 → re-insert, which
+      // can fail under rate limiting. Instead, detect stale mappings here
+      // (we already have the full event listing) and remove them from
+      // existingMap so the create path fires cleanly with a simple INSERT.
+      const gcalEventIds = new Set(allEvents.map(ev => ev.id).filter(Boolean))
+      let staleCount = 0
+      for (const [shiftId, eventId] of existingMap) {
+        if (!gcalEventIds.has(eventId)) {
+          existingMap.delete(shiftId)
+          // Also clean up the stale DB mapping so it doesn't persist
+          await admin.from('rota_google_calendar_events').delete().eq('shift_id', shiftId)
+          staleCount++
+        }
+      }
+      if (staleCount > 0) {
+        console.info('[RotaCalendar] Removed', staleCount, 'stale mapping(s) for week', weekId, '— events will be re-created')
+      }
     } catch (err: unknown) {
       // Non-fatal: if listing fails we fall through to normal upsert logic
       console.warn('[RotaCalendar] Event listing for orphan recovery failed:', err instanceof Error ? err.message : String(err))
