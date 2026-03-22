@@ -7,7 +7,7 @@ import { getOAuth2Client } from '@/lib/google-calendar'
 import type { RotaShiftRow } from '@/lib/google-calendar-rota'
 
 export const dynamic = 'force-dynamic'
-export const maxDuration = 300
+export const maxDuration = 800
 
 /** Simple bounded-concurrency runner — processes items with at most `limit` in flight. */
 async function mapWithConcurrency<T, R>(
@@ -154,10 +154,10 @@ export async function POST(_req: NextRequest): Promise<NextResponse> {
     let totalFailed = 0
     const errors: string[] = []
 
-    // -- Process weeks sequentially to stay within Google Calendar API rate limits.
-    // Previously 3 concurrent × 10 shifts/batch = 30 in-flight writes caused
-    // widespread 403 rate limiting (~889 failures on a 68-week resync).
-    await mapWithConcurrency(weekIds, 1, async (weekId) => {
+    // -- Process weeks with bounded concurrency (2 at a time) ----------------
+    // Reduced from 3 to 2 to stay within Google Calendar API rate limits.
+    // Each week uses 5-shift batches with 500ms pause (see google-calendar-rota.ts).
+    await mapWithConcurrency(weekIds, 2, async (weekId) => {
       const shifts = shiftsByWeek.get(weekId) ?? []
       try {
         const result = await syncRotaWeekToCalendar(weekId, shifts, {
