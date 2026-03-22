@@ -1,0 +1,252 @@
+# Weekly Private Bookings Digest — Design Spec
+
+**Date:** 2026-03-22
+**Status:** Draft
+**Complexity:** M (4-6 files, moderate logic, no schema changes)
+
+---
+
+## Problem Statement
+
+The current daily private bookings email sends every morning with a flat list of all upcoming events. Every booking looks the same regardless of whether it needs action or is fully sorted. This creates noise — the manager has to mentally triage which events need attention, making the email less useful than it should be.
+
+## Success Criteria
+
+1. Email sends once per week (Monday 9 AM London time) instead of daily
+2. Events are classified into 3 priority tiers based on actionable triggers
+3. The email is scannable — a glance at the header tells you how many items need action
+4. Confirmed and paid events are deprioritised (compact list at the bottom)
+5. Each event needing action shows exactly *why* it needs attention
+6. All existing action detection (expired holds, overdue balances, etc.) is preserved
+7. New action triggers added: approaching draft events, stale bookings, missing details
+
+## Out of Scope
+
+- Database migrations or schema changes
+- Changes to the private bookings UI
+- Multi-recipient or personalised emails
+- New environment variables
+
+---
+
+## Schedule Change
+
+### Current
+- `vercel.json` cron: `0 * * * *` (hourly)
+- Route handler filters to 9 AM London time
+- Idempotency window: 24 hours
+
+### New
+- `vercel.json` cron: unchanged (keep hourly)
+- Route handler filters to 9 AM London time **AND Monday only** (day-of-week check in `Europe/London` timezone)
+- Idempotency window: 7 days
+- `?force=true` bypass still works for manual triggers
+
+### Rationale
+Keeping the hourly cron with timezone filtering (rather than a `0 9 * * 1` UTC cron) correctly handles BST/GMT transitions, matching the existing pattern.
+
+---
+
+## Email Structure
+
+### Subject Line
+
+```
+Private bookings weekly summary — w/c Mon 23 Mar 2026
+```
+
+### Header
+
+Top-line stats bar showing counts per tier:
+
+```
+3 Action Required | 2 Needs Attention | 8 On Track
+```
+
+Quick link to `/private-bookings` in the app.
+
+### Tier 1 — Action Required (red left-border accent)
+
+Events needing immediate action. Each event shows:
+- Customer name (bold)
+- Event date and time
+- Guest count
+- Event type
+- Action trigger labels (all that apply, as inline tags)
+
+An event appears in Tier 1 if it matches **any** of these triggers:
+
+| Trigger | Condition | Label |
+|---------|-----------|-------|
+| Draft hold expired | `status = 'draft'` AND `hold_expiry <= now` | `Hold expired` |
+| Draft event approaching | `status = 'draft'` AND `event_date` within 14 days | `Event in X days — still draft` |
+| Balance overdue | `balance_due_date < today` AND outstanding balance > 0 | `Balance overdue: £X.XX` |
+| Stale draft | `status = 'draft'` AND `updated_at` older than 7 days | `Not touched in X days` |
+| Missing details | `guest_count` is null, OR `event_type` is null, OR (`contact_email` is null AND `contact_phone` is null) | `Missing: [field list]` |
+| Balance due this week | `balance_due_date` between today and end of this week AND outstanding balance > 0 | `Balance due: £X.XX by [date]` |
+
+If a booking matches multiple triggers, all labels show on the same row — no duplicate entries.
+
+**Outstanding balance calculation** (existing logic): `total_amount - deposit_amount`, capped at 0. Only applies to bookings without `final_payment_date`.
+
+**Sort order:** Event date ascending (soonest first), then trigger count descending.
+
+### Tier 2 — Needs Attention (amber left-border accent)
+
+Same card format as Tier 1. Events appear here if they match **any** of:
+
+| Trigger | Condition | Label |
+|---------|-----------|-------|
+| Hold expiring soon | `status = 'draft'` AND `hold_expiry` within 48 hours (and not yet expired) | `Hold expires [date/time]` |
+| Pending SMS | Booking has entries in `private_booking_sms_queue` with `status = 'pending'` | `X SMS pending approval` |
+| Date/time unconfirmed | `internal_notes` contains "Event date/time to be confirmed" | `Date/time TBC` |
+| Confirmed but unpaid | `status = 'confirmed'` AND outstanding balance > 0 AND `balance_due_date >= today` (not yet overdue) | `Outstanding: £X.XX` |
+
+**Sort order:** Event date ascending, then trigger count descending.
+
+**Tier precedence:** If a booking qualifies for both Tier 1 and Tier 2, it appears in Tier 1 only.
+
+### Tier 3 — On Track (green left-border accent)
+
+Compact summary — no action labels. Header shows count:
+
+```
+8 events confirmed & paid
+```
+
+Each event as a single line: customer name, event date, guest count, event type. Simple list or table format — no cards.
+
+**Sort order:** Event date ascending.
+
+**Criteria:** Any upcoming non-cancelled booking that doesn't qualify for Tier 1 or Tier 2.
+
+### Pending SMS Section (separate)
+
+After the tiers, a standalone section listing all pending SMS approvals with a link to `/private-bookings/sms-queue`. This preserves the existing behaviour where SMS approvals are surfaced independently.
+
+### All Clear State
+
+When there are no upcoming events across any tier, send a short email:
+
+```
+Subject: Private bookings weekly summary — w/c Mon 23 Mar 2026
+
+All clear — no upcoming private events. Enjoy your week.
+```
+
+Stats bar shows `0 | 0 | 0`.
+
+### Footer
+
+```
+Sent every Monday at 9am · Manage in Anchor Management Tools
+[Link to /private-bookings]
+```
+
+---
+
+## Tier Classification Logic
+
+```
+for each upcoming non-cancelled booking:
+  triggers_t1 = []
+  triggers_t2 = []
+
+  // Tier 1 checks
+  if draft AND hold_expiry <= now:           triggers_t1.push("Hold expired")
+  if draft AND event within 14 days:         triggers_t1.push("Event in X days — still draft")
+  if balance_due_date < today AND balance > 0: triggers_t1.push("Balance overdue: £X.XX")
+  if draft AND updated_at < 7 days ago:      triggers_t1.push("Not touched in X days")
+  if missing guest_count/event_type/contact: triggers_t1.push("Missing: [fields]")
+  if balance_due this week AND balance > 0:  triggers_t1.push("Balance due: £X.XX by [date]")
+
+  // Tier 2 checks (only if not already Tier 1)
+  if draft AND hold_expiry within 48h (not expired): triggers_t2.push("Hold expires [time]")
+  if has pending SMS:                        triggers_t2.push("X SMS pending")
+  if notes contain date/time TBC:            triggers_t2.push("Date/time TBC")
+  if confirmed AND balance > 0 AND not overdue: triggers_t2.push("Outstanding: £X.XX")
+
+  // Assign tier
+  if triggers_t1.length > 0: → Tier 1 (with t1 labels)
+  else if triggers_t2.length > 0: → Tier 2 (with t2 labels)
+  else: → Tier 3
+```
+
+---
+
+## Rename Scope
+
+All references to "daily" become "weekly":
+
+| Current | New |
+|---------|-----|
+| `api/cron/private-bookings-daily-summary` | `api/cron/private-bookings-weekly-summary` |
+| `vercel.json` cron path | Updated to new route |
+| `sendManagerPrivateBookingsDailyDigestEmail()` | `sendManagerPrivateBookingsWeeklyDigestEmail()` |
+| `PrivateBookingDailyDigest*` types | `PrivateBookingWeeklyDigest*` types |
+| Idempotency key prefix | Updated from `daily` to `weekly` |
+
+---
+
+## Files Modified
+
+1. **`src/app/api/cron/private-bookings-daily-summary/route.ts`**
+   - Rename to `src/app/api/cron/private-bookings-weekly-summary/route.ts`
+   - Add Monday-only filter (London timezone day-of-week check)
+   - Change idempotency window to 7 days
+   - Add new queries: `updated_at` staleness, missing fields detection
+   - Build tiered classification logic
+   - Pass tiered data to email function
+
+2. **`src/lib/private-bookings/manager-notifications.ts`**
+   - Rename function and types from `Daily` to `Weekly`
+   - New HTML template: stats bar, 3-tier layout with coloured accents, action labels
+   - New plain text template: matching tiered structure
+   - Updated types: add `tier`, `triggerLabels` fields to digest event type
+
+3. **`vercel.json`**
+   - Update cron path from `private-bookings-daily-summary` to `private-bookings-weekly-summary`
+
+4. **Delete old route directory** (`src/app/api/cron/private-bookings-daily-summary/`)
+
+## Files NOT Changed
+
+- No database migrations
+- No new environment variables
+- No UI changes
+- No changes to the private bookings data model
+
+---
+
+## Risk Assessment
+
+**Risk level:** Low
+
+- Self-contained email change — no user-facing UI or data model impact
+- No new external dependencies
+- Worst case: one missed weekly email, recoverable via `?force=true`
+- All existing action detection preserved; new triggers are additive
+- Rollback: revert the 3-4 file changes and the cron path
+
+---
+
+## Testing Plan
+
+1. Unit tests for tier classification logic (pure function, easy to test):
+   - Booking with expired hold → Tier 1
+   - Draft within 14 days → Tier 1
+   - Multiple triggers on same booking → single Tier 1 entry with all labels
+   - Confirmed but unpaid, not overdue → Tier 2
+   - Confirmed and paid → Tier 3
+   - Booking matching both Tier 1 and Tier 2 triggers → appears in Tier 1 only
+
+2. Unit tests for email template generation:
+   - All three tiers populated
+   - Empty tiers (e.g. no Tier 1 items)
+   - All-clear state (no events)
+   - Missing fields label construction
+
+3. Manual verification:
+   - Trigger with `?force=true` on a non-Monday
+   - Verify HTML renders correctly in email client
+   - Verify plain text fallback is readable
