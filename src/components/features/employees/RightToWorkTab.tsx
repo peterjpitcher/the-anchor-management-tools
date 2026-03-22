@@ -70,7 +70,7 @@ export default function RightToWorkTab({
       }
 
       setLoadingPhoto(true)
-      const result = await getRightToWorkPhotoUrl(rightToWorkData.photo_storage_path)
+      const result = await getRightToWorkPhotoUrl(employeeId)
       if (result.url) {
         setPhotoUrl(result.url)
       } else {
