@@ -445,6 +445,14 @@ export async function syncRotaWeekToCalendar(
         } catch (err: unknown) {
           // Existing event was deleted externally — re-create
           const errCode = isGoogleApiError(err) ? getGoogleApiStatus(err) : undefined
+          console.info('[RotaCalendar] API error for shift', shift.id,
+            `existingEventId=${existingEventId ? 'yes' : 'no'}`,
+            `errCode=${errCode}`,
+            `isGoogleApiError=${isGoogleApiError(err)}`,
+            `errType=${err?.constructor?.name}`,
+            `errStatus=${isGoogleApiError(err) ? (err as Record<string, unknown>).status : 'N/A'}`,
+            `errCodeProp=${isGoogleApiError(err) ? (err as Record<string, unknown>).code : 'N/A'}`,
+          )
           if (existingEventId && (errCode === 404 || errCode === 410)) {
             try {
               googleEventId = await withRateLimitRetry(async () => {
