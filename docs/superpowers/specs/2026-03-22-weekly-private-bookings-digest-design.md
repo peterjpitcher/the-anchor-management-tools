@@ -1,7 +1,7 @@
 # Weekly Private Bookings Digest — Design Spec
 
 **Date:** 2026-03-22
-**Status:** Draft
+**Status:** Approved
 **Complexity:** M (4-6 files, moderate logic, no schema changes)
 
 ---
@@ -88,7 +88,7 @@ An event appears in Tier 1 if it matches **any** of these triggers:
 
 If a booking matches multiple triggers, all labels show on the same row — no duplicate entries.
 
-**Outstanding balance calculation:** Use `balance_remaining` from the `private_bookings_with_details` view (computed by `calculate_private_booking_balance()`, which accounts for all payments via `private_booking_payments`, not just the deposit). A booking has an outstanding balance when `balance_remaining > 0` and `final_payment_date` is null.
+**Outstanding balance calculation:** Use `balance_remaining` from the `private_bookings_with_details` view (computed by `calculate_private_booking_balance()`, which accounts for all payments via `private_booking_payments`, not just the deposit). A booking has an outstanding balance when `balance_remaining > 0` and `final_payment_date` is null. **The existing manual `calculated_total - deposit_amount` calculation in the route (route.ts:270-274) must be removed entirely — do not keep both.**
 
 **Sort order:** Event date ascending (soonest first), then trigger count descending.
 
@@ -188,6 +188,7 @@ All references to "daily" become "weekly":
 | `PrivateBookingDailyDigest*` types | `PrivateBookingWeeklyDigest*` types |
 | Idempotency key prefix | Updated from `daily` to `weekly` |
 | `PRIVATE_BOOKINGS_DAILY_DIGEST_HOUR_LONDON` env var | Renamed to `PRIVATE_BOOKINGS_WEEKLY_DIGEST_HOUR_LONDON` |
+| `tests/api/privateBookingsDailySummaryRoute.test.ts` | Renamed to `tests/api/privateBookingsWeeklySummaryRoute.test.ts` |
 
 ---
 
@@ -200,6 +201,12 @@ All references to "daily" become "weekly":
    - Add `updated_at`, `contact_email`, `contact_phone`, and `balance_remaining` to the select clause of the `private_bookings_with_details` query
    - Build tiered classification logic using these new fields
    - Pass tiered data to email function
+   - Add `export const maxDuration = 60` (matches other cron routes; prevents timeout if Graph API is slow)
+   - Eliminate the separate draft holds query — filter the main result set for `status = 'draft'` with non-null `hold_expiry` instead
+   - Simplify pending SMS handling: group by `booking_id` into a `Map<string, number>` and correlate with the main result set (eliminates the customer name follow-up query)
+   - Add `logAuditEvent()` for the weekly digest send (recipient, event count, tier counts)
+   - Refactor date formatting to use `dateUtils` utilities where possible (existing route defines inline formatting functions)
+   - Day-of-week check must use `Intl.DateTimeFormat` with `timeZone: 'Europe/London'`, not `Date.getDay()` (which uses UTC on Vercel)
    - Preserve existing `POST` handler that delegates to `GET`
 
 2. **`src/lib/private-bookings/manager-notifications.ts`**
@@ -208,10 +215,18 @@ All references to "daily" become "weekly":
    - New plain text template: matching tiered structure
    - Updated types: add `tier`, `triggerLabels` fields to digest event type
 
-3. **`vercel.json`**
+3. **`tests/api/privateBookingsDailySummaryRoute.test.ts`**
+   - Rename to `tests/api/privateBookingsWeeklySummaryRoute.test.ts`
+   - Update all references to daily summary route, function names, and idempotency keys
+   - Add new test cases for tier classification and weekly schedule logic
+
+4. **`vercel.json`**
    - Update cron path from `private-bookings-daily-summary` to `private-bookings-weekly-summary`
 
-4. **Delete old route directory** (`src/app/api/cron/private-bookings-daily-summary/`)
+5. **`CLAUDE.md`** (project-level)
+   - Add `private-bookings-weekly-summary` to the Scheduled Jobs table
+
+6. **Delete old route directory** (`src/app/api/cron/private-bookings-daily-summary/`)
 
 ## Files NOT Changed
 
@@ -236,6 +251,8 @@ All references to "daily" become "weekly":
 
 ## Testing Plan
 
+**Mock strategy:** Supabase client and email service (`sendEmail`) must be mocked per project standards. Use `vi.mock()` for module-level mocks, `vi.clearAllMocks()` in `beforeEach`.
+
 1. Unit tests for tier classification logic (pure function, easy to test):
    - Booking with expired hold → Tier 1
    - Draft within 14 days → Tier 1
@@ -243,6 +260,10 @@ All references to "daily" become "weekly":
    - Confirmed but unpaid, not overdue → Tier 2
    - Confirmed and paid → Tier 3
    - Booking matching both Tier 1 and Tier 2 triggers → appears in Tier 1 only
+   - Null `event_date` → handle gracefully (no crash)
+   - Null `balance_due_date` with `balance_remaining > 0` → falls to Tier 3 (known edge case)
+   - Negative or zero `balance_remaining` → no balance triggers fire
+   - Boundary dates: event_date exactly 14 days away, balance_due_date exactly today
 
 2. Unit tests for email template generation:
    - All three tiers populated
@@ -250,7 +271,21 @@ All references to "daily" become "weekly":
    - All-clear state (no events)
    - Missing fields label construction
 
-3. Manual verification:
+3. Route handler error cases:
+   - Supabase query failure → returns 500, releases idempotency claim
+   - Email send failure → returns 500, releases idempotency claim
+   - Auth rejection (missing/invalid CRON_SECRET) → returns 401
+   - Non-Monday invocation → returns 200 with "not Monday" message
+   - Duplicate invocation (idempotency hit) → returns cached response
+
+4. Manual verification:
    - Trigger with `?force=true` on a non-Monday
    - Verify HTML renders correctly in email client
    - Verify plain text fallback is readable
+
+## Deployment Checklist
+
+1. Rename `PRIVATE_BOOKINGS_DAILY_DIGEST_HOUR_LONDON` to `PRIVATE_BOOKINGS_WEEKLY_DIGEST_HOUR_LONDON` in Vercel environment variables (failing to do this is safe — falls back to default hour 9 — but the old variable becomes orphaned)
+2. Deploy the code changes
+3. Verify the old cron path is no longer in `vercel.json`
+4. Test with `?force=true` on first deployment to confirm email sends correctly
