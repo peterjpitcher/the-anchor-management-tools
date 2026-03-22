@@ -2,6 +2,9 @@ import { QuoteWithDetails } from '@/types/invoices'
 import { formatDateFull } from '@/lib/dateUtils'
 import { COMPANY_DETAILS } from '@/lib/company-details'
 
+const CONTACT_NAME = process.env.COMPANY_CONTACT_NAME || 'Peter Pitcher'
+const CONTACT_PHONE = process.env.COMPANY_CONTACT_PHONE || '07995087315'
+
 export interface QuoteTemplateData {
   quote: QuoteWithDetails
   logoUrl?: string
@@ -469,7 +472,7 @@ export function generateCompactQuoteHTML(data: QuoteTemplateData): string {
     <h3>How to Accept This Quote</h3>
     <p>To accept this quote and proceed with the work:</p>
     <p>• Email us at ${COMPANY_DETAILS.email} with your acceptance</p>
-    <p>• Call Peter Pitcher directly on 07995087315</p>
+    <p>• Call ${CONTACT_NAME} directly on ${CONTACT_PHONE}</p>
     <p>• Call our office on ${COMPANY_DETAILS.phone}</p>
     <p>• Reply to the email this quote was attached to</p>
     <p><strong>This quote is valid until ${formatDate(quote.valid_until)}</strong></p>
@@ -485,7 +488,7 @@ export function generateCompactQuoteHTML(data: QuoteTemplateData): string {
   <div class="footer">
     <p>${COMPANY_DETAILS.name} | Company Reg: ${COMPANY_DETAILS.companyNumber} | VAT: ${COMPANY_DETAILS.vatNumber}</p>
     <p>${COMPANY_DETAILS.fullAddress} | ${COMPANY_DETAILS.phone} | ${COMPANY_DETAILS.email}</p>
-    <p>Contact: Peter Pitcher | Mobile: 07995087315</p>
+    <p>Contact: ${CONTACT_NAME} | Mobile: ${CONTACT_PHONE}</p>
   </div>
 </body>
 </html>

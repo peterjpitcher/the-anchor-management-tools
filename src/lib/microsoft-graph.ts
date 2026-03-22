@@ -4,6 +4,9 @@ import type { InvoiceWithDetails, QuoteWithDetails } from '@/types/invoices'
 import { generateInvoicePDF, generateQuotePDF } from '@/lib/pdf-generator'
 import type { InvoiceDocumentKind, InvoiceRemittanceDetails } from '@/lib/invoice-template-compact'
 
+const CONTACT_NAME = process.env.COMPANY_CONTACT_NAME || 'Peter Pitcher'
+const CONTACT_PHONE = process.env.COMPANY_CONTACT_PHONE || '07995087315'
+
 // Initialize Microsoft Graph client
 async function getGraphClient() {
   // Check if Graph is configured
@@ -132,9 +135,9 @@ Reference: ${remittancePaymentReference}
 If you have any questions, just let me know.
 
 Many thanks,
-Peter Pitcher
+${CONTACT_NAME}
 Orange Jelly Limited
-07995087315
+${CONTACT_PHONE}
 
 P.S. The receipt is attached as a PDF for your records.`
       : `Hi ${recipientName},
@@ -149,9 +152,9 @@ Due Date: ${new Date(invoice.due_date).toLocaleDateString('en-GB')}
 ${invoice.notes ? `${invoice.notes}\n\n` : ''}If you have any questions or need anything at all, just let me know - I'm always happy to help!
 
 Many thanks,
-Peter Pitcher
+${CONTACT_NAME}
 Orange Jelly Limited
-07995087315
+${CONTACT_PHONE}
 
 P.S. The invoice is attached as a PDF for easy viewing and printing.`)
 
@@ -256,9 +259,9 @@ ${quote.notes ? `${quote.notes}\n\n` : ''}Please take your time to review everyt
 Looking forward to hearing from you!
 
 Best wishes,
-Peter Pitcher
+${CONTACT_NAME}
 Orange Jelly Limited
-07995087315
+${CONTACT_PHONE}
 
 P.S. The quote is attached as a PDF for your convenience.`
 
