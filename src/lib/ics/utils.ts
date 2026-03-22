@@ -4,6 +4,90 @@
  * Fixes: DEFECT-005 (foldLine UTF-8 boundary), DEFECT-007 (deduplication).
  */
 
+// ── Shared type definitions for published shift rows ──
+
+export interface PublishedShiftRow {
+  id: string;
+  shift_date: string;
+  start_time: string;
+  end_time: string;
+  department: string | null;
+  status: string;
+  notes: string | null;
+  is_overnight: boolean;
+  is_open_shift: boolean;
+  name: string | null;
+  published_at: string | null;
+}
+
+export interface PublishedShiftWithEmployee extends PublishedShiftRow {
+  employee: { first_name: string | null; last_name: string | null } | null;
+}
+
+// ── VEVENT builder ──
+
+export interface VEventInput {
+  shift: PublishedShiftRow;
+  /** e.g. 'shift' for rota feed, 'staff-shift' for portal feed */
+  uidPrefix: string;
+  /** Pre-formatted summary line (caller controls what name appears) */
+  summary: string;
+  /** Pre-formatted description parts (joined with \\n in output) */
+  descriptionParts: string[];
+}
+
+/**
+ * Build ICS VEVENT lines for a single shift.
+ * Extracts the shared logic from both feed routes (QA-016).
+ */
+export function buildVEvent(input: VEventInput): string[] {
+  const { shift, uidPrefix, summary, descriptionParts } = input;
+
+  const endDate = shift.is_overnight
+    ? addOneDay(shift.shift_date)
+    : shift.shift_date;
+  const dtStart = icsDate(shift.shift_date, shift.start_time);
+  const dtEnd = icsDate(endDate, shift.end_time);
+
+  const isCancelled = shift.status === 'cancelled' || shift.status === 'sick';
+  const eventDtstamp = shift.published_at
+    ? icsTimestamp(shift.published_at)
+    : icsTimestamp(new Date());
+  const lastModified = eventDtstamp;
+  const icsStatus = isCancelled ? 'CANCELLED' : 'CONFIRMED';
+
+  return [
+    'BEGIN:VEVENT',
+    `UID:${uidPrefix}-${shift.id}@anchor-management`,
+    `DTSTAMP:${eventDtstamp}`,
+    `DTSTART;TZID=Europe/London:${dtStart}`,
+    `DTEND;TZID=Europe/London:${dtEnd}`,
+    `SUMMARY:${escapeICS(summary)}`,
+    `DESCRIPTION:${escapeICS(descriptionParts.join('\\n'))}`,
+    `STATUS:${icsStatus}`,
+    `LAST-MODIFIED:${lastModified}`,
+    `SEQUENCE:${deriveSequence(shift.published_at, isCancelled)}`,
+    'END:VEVENT',
+  ];
+}
+
+// ── Utility: format department label (capitalise first letter) ──
+
+export function formatDeptLabel(department: string | null): string {
+  if (!department) return '';
+  return department.charAt(0).toUpperCase() + department.slice(1);
+}
+
+// ── Utility: find most recent published_at from shift rows (QA-018) ──
+
+export function findMostRecentPublish(shifts: PublishedShiftRow[]): Date | null {
+  return shifts.reduce<Date | null>((max, s) => {
+    if (!s.published_at) return max;
+    const d = new Date(s.published_at);
+    return !max || d > max ? d : max;
+  }, null);
+}
+
 /**
  * Format a shift date + time string into an ICS local datetime string (no Z suffix).
  * Output: YYYYMMDDTHHMMSS
@@ -46,6 +130,9 @@ export function escapeICS(str: string): string {
     .replace(/\r/g, '');
 }
 
+// Module-level TextEncoder instance (QA-014: avoid per-call allocation)
+const encoder = new TextEncoder();
+
 /**
  * Fold a single ICS content line to conform to RFC 5545 §3.1 line-length limits.
  * Max 75 octets for the first line, 74 octets for continuation lines (1 octet is the space).
@@ -55,9 +142,10 @@ export function escapeICS(str: string): string {
  * This implementation iterates character-by-character, tracking byte counts correctly.
  */
 export function foldLine(line: string): string {
-  const encoder = new TextEncoder();
+  // Fast path: if string length <= 75 and all ASCII, it's guaranteed <= 75 bytes
+  if (line.length <= 75) return line;
 
-  // Fast path: check total byte length first
+  // Check total byte length for non-short lines
   let totalBytes = 0;
   for (const char of line) {
     totalBytes += encoder.encode(char).length;

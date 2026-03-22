@@ -1,13 +1,39 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { CalendarDaysIcon, ClipboardDocumentIcon, CheckIcon, XMarkIcon, ArrowPathIcon } from '@heroicons/react/24/outline';
 import toast from 'react-hot-toast';
 
-export default function RotaFeedButton({ feedUrl, showCalendarSync }: { feedUrl: string; showCalendarSync?: boolean }) {
+interface RotaFeedButtonProps {
+  feedUrl: string;
+  showCalendarSync?: boolean;
+}
+
+export default function RotaFeedButton({ feedUrl, showCalendarSync }: RotaFeedButtonProps) {
   const [open, setOpen] = useState(false);
   const [copied, setCopied] = useState(false);
   const [syncing, setSyncing] = useState(false);
+  const popoverRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setOpen(false);
+      }
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [open]);
+
+  useEffect(() => {
+    if (open && popoverRef.current) {
+      const firstFocusable = popoverRef.current.querySelector<HTMLElement>(
+        'button, input, [tabindex]:not([tabindex="-1"])'
+      );
+      firstFocusable?.focus();
+    }
+  }, [open]);
 
   const handleCopy = async () => {
     await navigator.clipboard.writeText(feedUrl);
@@ -61,7 +87,7 @@ export default function RotaFeedButton({ feedUrl, showCalendarSync }: { feedUrl:
           <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
 
           {/* Popover */}
-          <div className="absolute right-0 top-full mt-2 z-50 w-96 bg-white border border-gray-200 rounded-xl shadow-lg p-4 space-y-3">
+          <div ref={popoverRef} role="dialog" aria-modal="true" className="absolute right-0 top-full mt-2 z-50 w-96 bg-white border border-gray-200 rounded-xl shadow-lg p-4 space-y-3">
             <div className="flex items-start justify-between">
               <div>
                 <p className="text-sm font-semibold text-gray-900">Calendar feed</p>
@@ -70,6 +96,7 @@ export default function RotaFeedButton({ feedUrl, showCalendarSync }: { feedUrl:
               <button
                 type="button"
                 onClick={() => setOpen(false)}
+                aria-label="Close calendar feed popover"
                 className="p-1 text-gray-400 hover:text-gray-600 rounded shrink-0 ml-2"
               >
                 <XMarkIcon className="h-4 w-4" />

@@ -1,12 +1,42 @@
 import 'server-only'
 
 import { google } from 'googleapis'
+import type { OAuth2Client } from 'google-auth-library'
 import { fromZonedTime } from 'date-fns-tz'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getOAuth2Client } from '@/lib/google-calendar'
 
 const calendar = google.calendar('v3')
 const CALENDAR_TIME_ZONE = 'Europe/London'
+
+/** Narrows an unknown error to a Google API error shape (has code + message). */
+function isGoogleApiError(err: unknown): err is { code: number; message: string; errors?: Array<{ reason: string }> } {
+  return typeof err === 'object' && err !== null && 'code' in err
+}
+
+/**
+ * Auth object returned by getOAuth2Client(). googleapis calendar methods
+ * accept OAuth2Client but getOAuth2Client() may return JWT or GoogleAuth client
+ * depending on config. All are structurally compatible — we cast to OAuth2Client
+ * at the function boundary (see calendarAuth() below) rather than scattering
+ * `as any` across every API call.
+ */
+type GoogleCalendarAuth = Awaited<ReturnType<typeof getOAuth2Client>>
+
+/** Cast auth to OAuth2Client for googleapis methods. All auth types returned by
+ *  getOAuth2Client() (OAuth2Client, JWT, GoogleAuth client) implement the same
+ *  credential interface that the Calendar API requires. */
+function calendarAuth(auth: GoogleCalendarAuth): OAuth2Client {
+  return auth as unknown as OAuth2Client
+}
+
+/** Options to avoid redundant fetches when syncing multiple weeks in a batch. */
+export interface SyncOptions {
+  /** Pre-fetched employee name map — skips the per-week employee query. */
+  employeeNames?: Map<string, string>
+  /** Pre-created auth client — skips the per-week getOAuth2Client() call. */
+  auth?: GoogleCalendarAuth
+}
 
 // Each rota shift is colour-coded by department so the calendar is scannable at a glance.
 // Google Calendar colour IDs: 1=Lavender 2=Sage 6=Tangerine 8=Graphite 11=Tomato
@@ -79,32 +109,38 @@ export interface SyncResult {
  */
 export async function syncRotaWeekToCalendar(
   weekId: string,
-  shifts: RotaShiftRow[]
+  shifts: RotaShiftRow[],
+  options?: SyncOptions
 ): Promise<SyncResult> {
   const result: SyncResult = { created: 0, updated: 0, failed: 0 }
   if (!isRotaCalendarConfigured()) {
-    console.log('[RotaCalendar] GOOGLE_CALENDAR_ROTA_ID not configured — skipping sync')
+    console.info('[RotaCalendar] GOOGLE_CALENDAR_ROTA_ID not configured — skipping sync')
     return result
   }
 
   const calendarId = getRotaCalendarId()!
   const admin = createAdminClient()
 
-  // -- Fetch employee names in one query -----------------------------------
-  const employeeIds = [...new Set(
-    shifts.filter(s => s.employee_id).map(s => s.employee_id!)
-  )]
-  const { data: employees } = await admin
-    .from('employees')
-    .select('employee_id, first_name, last_name')
-    .in('employee_id', employeeIds)
+  // -- Fetch employee names (skip if pre-fetched via options) ---------------
+  let empName: Map<string, string>
+  if (options?.employeeNames) {
+    empName = options.employeeNames
+  } else {
+    const employeeIds = [...new Set(
+      shifts.filter(s => s.employee_id).map(s => s.employee_id!)
+    )]
+    const { data: employees } = await admin
+      .from('employees')
+      .select('employee_id, first_name, last_name')
+      .in('employee_id', employeeIds)
 
-  const empName = new Map<string, string>()
-  for (const e of employees ?? []) {
-    empName.set(
-      e.employee_id,
-      [e.first_name, e.last_name].filter(Boolean).join(' ') || 'Unknown'
-    )
+    empName = new Map<string, string>()
+    for (const e of employees ?? []) {
+      empName.set(
+        e.employee_id,
+        [e.first_name, e.last_name].filter(Boolean).join(' ') || 'Unknown'
+      )
+    }
   }
 
   // -- Fetch existing event-ID mappings for this week ----------------------
@@ -118,7 +154,7 @@ export async function syncRotaWeekToCalendar(
     existingMap.set(row.shift_id, row.google_event_id)
   }
 
-  const auth = await getOAuth2Client()
+  const auth = options?.auth ?? await getOAuth2Client()
   const currentShiftIds = new Set(shifts.map(s => s.id))
 
   // -- Delete events for shifts removed since last publish -----------------
@@ -142,7 +178,7 @@ export async function syncRotaWeekToCalendar(
     timeMaxDate.setUTCDate(timeMaxDate.getUTCDate() + 1)
     try {
       const listRes = await calendar.events.list({
-        auth: auth as any,
+        auth: calendarAuth(auth),
         calendarId,
         timeMin: weekStart + 'T00:00:00Z',
         timeMax: timeMaxDate.toISOString(),
@@ -191,13 +227,13 @@ export async function syncRotaWeekToCalendar(
           google_event_id: evId,
           updated_at: new Date().toISOString(),
         })
-        console.log('[RotaCalendar] Recovered orphaned event', evId, 'for shift', evShiftId)
+        console.info('[RotaCalendar] Recovered orphaned event', evId, 'for shift', evShiftId)
       }))
 
       // Delete stale/legacy-orphan events in parallel batches of 10
       // to stay comfortably under Google Calendar API rate limits.
       if (toDelete.length > 0) {
-        console.log('[RotaCalendar] Deleting', toDelete.length, 'orphan event(s) for week', weekId)
+        console.info('[RotaCalendar] Deleting', toDelete.length, 'orphan event(s) for week', weekId)
         for (let i = 0; i < toDelete.length; i += 10) {
           await Promise.all(
             toDelete.slice(i, i + 10).map(({ evId, label }) =>
@@ -206,9 +242,9 @@ export async function syncRotaWeekToCalendar(
           )
         }
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       // Non-fatal: if listing fails we fall through to normal upsert logic
-      console.warn('[RotaCalendar] Event listing for orphan recovery failed:', err?.message)
+      console.warn('[RotaCalendar] Event listing for orphan recovery failed:', err instanceof Error ? err.message : String(err))
     }
   }
 
@@ -300,9 +336,9 @@ export async function syncRotaWeekToCalendar(
         const withRateLimitRetry = async (fn: () => Promise<string | null>): Promise<string | null> => {
           try {
             return await fn()
-          } catch (err: any) {
-            const reason = err?.errors?.[0]?.reason ?? ''
-            if (err?.code === 403 && (reason === 'rateLimitExceeded' || reason === 'userRateLimitExceeded')) {
+          } catch (err: unknown) {
+            const reason = isGoogleApiError(err) ? err.errors?.[0]?.reason ?? '' : ''
+            if (isGoogleApiError(err) && err.code === 403 && (reason === 'rateLimitExceeded' || reason === 'userRateLimitExceeded')) {
               console.warn('[RotaCalendar] Rate limit hit for shift', shift.id, '— retrying after 2 s')
               await new Promise(resolve => setTimeout(resolve, 2000))
               return await fn()
@@ -315,7 +351,7 @@ export async function syncRotaWeekToCalendar(
           if (existingEventId) {
             googleEventId = await withRateLimitRetry(async () => {
               const res = await calendar.events.update({
-                auth: auth as any,
+                auth: calendarAuth(auth),
                 calendarId,
                 eventId: existingEventId,
                 requestBody: eventBody,
@@ -325,31 +361,32 @@ export async function syncRotaWeekToCalendar(
           } else {
             googleEventId = await withRateLimitRetry(async () => {
               const res = await calendar.events.insert({
-                auth: auth as any,
+                auth: calendarAuth(auth),
                 calendarId,
                 requestBody: eventBody,
               })
               return res.data.id ?? null
             })
           }
-        } catch (err: any) {
+        } catch (err: unknown) {
           // Existing event was deleted externally — re-create
-          if (existingEventId && (err?.code === 404 || err?.code === 410)) {
+          const errCode = isGoogleApiError(err) ? err.code : undefined
+          if (existingEventId && (errCode === 404 || errCode === 410)) {
             try {
               googleEventId = await withRateLimitRetry(async () => {
                 const res = await calendar.events.insert({
-                  auth: auth as any,
+                  auth: calendarAuth(auth),
                   calendarId,
                   requestBody: eventBody,
                 })
                 return res.data.id ?? null
               })
-            } catch (err2: any) {
-              console.error('[RotaCalendar] Re-create failed for shift', shift.id, err2?.message)
+            } catch (err2: unknown) {
+              console.error('[RotaCalendar] Re-create failed for shift', shift.id, err2 instanceof Error ? err2.message : String(err2))
             }
           } else {
             console.error('[RotaCalendar] GCal API error for shift', shift.id,
-              `(${existingEventId ? 'update' : 'insert'})`, err?.code, err?.message)
+              `(${existingEventId ? 'update' : 'insert'})`, errCode, err instanceof Error ? err.message : String(err))
           }
         }
 
@@ -368,15 +405,15 @@ export async function syncRotaWeekToCalendar(
         } else {
           result.failed++
         }
-      } catch (err: any) {
+      } catch (err: unknown) {
         // Catch anything not already handled (e.g. unexpected prep failures)
-        console.error('[RotaCalendar] Unexpected error for shift', shift.id, err?.message)
+        console.error('[RotaCalendar] Unexpected error for shift', shift.id, err instanceof Error ? err.message : String(err))
         result.failed++
       }
     }))
   }
 
-  console.log(
+  console.info(
     '[RotaCalendar] Sync complete for week', weekId,
     `— ${result.created} created, ${result.updated} updated, ${result.failed} failed`,
     `(${shifts.length} total shifts)`
@@ -385,16 +422,17 @@ export async function syncRotaWeekToCalendar(
 }
 
 async function safeDeleteEvent(
-  auth: any,
+  auth: GoogleCalendarAuth,
   calendarId: string,
   eventId: string,
   shiftId: string
 ): Promise<void> {
   try {
-    await calendar.events.delete({ auth: auth as any, calendarId, eventId })
-  } catch (err: any) {
-    if (err?.code !== 404 && err?.code !== 410) {
-      console.error('[RotaCalendar] Delete failed for shift', shiftId, err?.message)
+    await calendar.events.delete({ auth: calendarAuth(auth), calendarId, eventId })
+  } catch (err: unknown) {
+    const errCode = isGoogleApiError(err) ? err.code : undefined
+    if (errCode !== 404 && errCode !== 410) {
+      console.error('[RotaCalendar] Delete failed for shift', shiftId, err instanceof Error ? err.message : String(err))
     }
   }
 }

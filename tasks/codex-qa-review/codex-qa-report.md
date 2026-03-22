@@ -1,270 +1,260 @@
-# QA Review Report
+# QA Review Report — Calendar Sync System
 
-**Scope:** Full application review — Anchor Management Tools (Next.js 15 + Supabase)
+**Scope:** Calendar sync function on /rota page (7 files)
 **Date:** 2026-03-22
-**Mode:** Code Review (Mode A)
-**Engines:** Claude + Codex CLI (v0.107.0)
-**Files reviewed:** ~902 TypeScript/TSX files across server actions, API routes, services, webhooks, cron jobs, and components
+**Mode:** Code Review
+**Engines:** Claude + Codex (dual-perspective)
+
+**Files reviewed:**
+- `src/lib/google-calendar-rota.ts` — Core Google Calendar sync engine
+- `src/app/api/rota/resync-calendar/route.ts` — POST endpoint triggering sync
+- `src/app/api/rota/feed/route.ts` — ICS feed endpoint (staff rota)
+- `src/app/api/portal/calendar-feed/route.ts` — ICS feed endpoint (employee portal)
+- `src/app/(authenticated)/rota/RotaFeedButton.tsx` — Client sync/subscribe UI
+- `src/lib/ics/utils.ts` — Shared ICS utilities (RFC 5545)
+- `src/lib/portal/calendar-token.ts` — HMAC token generation/verification
+
+---
 
 ## Executive Summary
 
-Four specialist reviewers (Bug Hunter via Codex, Security Auditor via Codex, Performance Analyst via Claude, Standards Enforcer via Claude) independently analysed the codebase. Together they found **70 findings**: 3 critical bugs, 8 high-severity bugs, 8 high-severity security issues, 3 high-severity performance issues, 3 high-severity standards gaps, plus 45 medium/low findings. The most urgent issues involve **payment data integrity** (invoices can be marked paid without payment records, PayPal deposits don't confirm bookings), **public endpoint security** (mass-assignment on booking API, unauthenticated timeclock), and **financial accuracy** (payroll can approve with missing data).
+22 unique findings across the calendar sync system: **1 critical, 5 high, 10 medium, 6 low**. The code is well-engineered with excellent error isolation per shift, proper RFC 5545 compliance, and timing-safe token comparison. However, the system has meaningful security concerns around non-revocable feed tokens derived from the service role key, a critical performance bottleneck in the resync endpoint (sequential N+1 pattern that can exceed the 300s timeout), and several standards gaps including missing audit logging and untyped auth parameters.
+
+The highest-confidence findings are those independently flagged by both engines (token security, missing audit logging, `any` types) — these should be addressed first.
 
 ---
 
 ## Critical Findings
 
-### CRIT-001: Invoice status can be set to "paid" without a payment record
-- **Engine:** Codex (BUG-001)
-- **File:** `src/app/actions/invoices.ts:415`, `src/services/invoices.ts:418`
-- **Category:** Data Integrity
-- **Description:** `updateInvoiceStatus` allows `paid` and `partially_paid` through the generic status path. `paid` writes `paid_amount = total_amount` with no `invoice_payments` row.
-- **Impact:** Ledger shows money received when no payment exists. Remittance advice emailed for nonexistent payments.
-- **Fix:** Block monetary statuses in generic status action; require `InvoiceService.recordPayment()` for payment-state transitions.
-
-### CRIT-002: PayPal deposit capture records payment but never confirms the booking
-- **Engine:** Codex (BUG-002)
-- **File:** `src/app/actions/privateBookingActions.ts:1498`, `src/app/api/webhooks/paypal/private-bookings/route.ts:346`
-- **Category:** Data Integrity
-- **Description:** PayPal capture paths only stamp `deposit_paid_date`/`deposit_payment_method`. The canonical deposit path also moves `draft -> confirmed` and triggers follow-up side effects.
-- **Impact:** Customer pays, booking stays `draft`, misses confirmation/calendar flows, can still be expired or cancelled.
-- **Fix:** Route PayPal captures through the same deposit-recording service used by manual deposits.
-
-### CRIT-003: Booking balance reminders cron is POST-only — Vercel cron never invokes it
-- **Engine:** Codex (BUG-003)
-- **File:** `src/app/api/cron/booking-balance-reminders/route.ts:13`
-- **Category:** Logic
-- **Description:** File only exports `POST`. Vercel cron jobs invoke `GET`.
-- **Impact:** Daily balance reminder SMSes never run in production.
-- **Fix:** Export `GET` for the cron entrypoint.
+### QA-001: Resync-calendar endpoint has N+1 waterfall that can exceed 300s timeout
+- **File:** `src/app/api/rota/resync-calendar/route.ts:41-56`, `src/lib/google-calendar-rota.ts:80-385`
+- **Engine(s):** Claude (Performance)
+- **Category:** Performance / Database / Network
+- **Description:** The resync endpoint loops through ALL published weeks sequentially. Each iteration fetches shifts (DB query), then calls `syncRotaWeekToCalendar` which internally re-fetches employees (DB query), re-creates the OAuth client, fetches existing event mappings (DB query), lists GCal events (API call), then processes shifts in batches of 10 with 150ms inter-batch pauses. For a venue with 20 published weeks x ~40 shifts each, this creates a waterfall of ~800 GCal API calls that easily exceeds `maxDuration: 300`.
+- **Impact:** Sync silently times out on Vercel, leaving some weeks unsynced with no error reported to the user. The button shows "success" because the function is killed mid-execution.
+- **Suggested fix:**
+  1. Fetch all shifts across all weeks in a single query: `.in('week_id', weekIds)` and group client-side
+  2. Fetch employee names once, create OAuth client once, pass both into sync function
+  3. Process multiple weeks with bounded concurrency (e.g., 3 concurrent weeks via `Promise.all` with limiter)
 
 ---
 
 ## High Findings
 
-### HIGH-001: Public booking endpoint allows mass-assignment of internal fields
-- **Engines:** Codex (BUG-004) + Codex (SEC-003) — **CROSS-ENGINE AGREEMENT**
-- **File:** `src/app/api/public/private-booking/route.ts:156`
-- **Category:** Data Integrity + Security (A01)
-- **Description:** Route spreads raw request body into `CreatePrivateBookingInput`, including `customer_id`, `deposit_amount`, `status`, `created_by`.
-- **Impact:** Public caller can tamper with internal booking/payment state or bind enquiry to wrong customer.
-- **Fix:** Replace spread with strict public schema and explicit field whitelist.
+### QA-002: Shared static feed token — one leaked URL gives indefinite org-wide access
+- **File:** `src/app/api/rota/feed/route.ts:21-29`, `src/lib/portal/calendar-token.ts:3-8`
+- **Engine(s):** Codex (Security) + Claude (Standards) — **both engines flagged**
+- **Category:** Security (Auth) — OWASP A01 Broken Access Control
+- **Description:** The rota feed uses a single global token derived from `ROTA_FEED_SECRET` or SHA-256 of `SUPABASE_SERVICE_ROLE_KEY`. This URL is rendered in the management UI for copy/paste. Anyone with the URL (from browser history, clipboard, screenshots, proxy logs, or the subscribed calendar provider) gets indefinite access to all published shifts, employee names, sick/cancelled status, and notes. The token cannot be scoped or revoked per-subscriber. The portal feed has the same design — HMAC tokens are deterministic and permanent with no expiry or revocation mechanism.
+- **Impact:** One leaked URL = indefinite organisation-wide PII exposure. Revoking a single subscriber requires rotating the global secret, breaking all other subscribers.
+- **Suggested fix:** Replace shared tokens with per-subscriber opaque random feed IDs stored server-side, with scope and revocation state. Support token rotation on credential reset or employee separation.
 
-### HIGH-002: Duplicate Twilio webhooks increment failure counters, deactivating valid customers
-- **Engine:** Codex (BUG-005)
-- **File:** `src/app/api/webhooks/twilio/route.ts:258`
-- **Category:** Data Integrity
-- **Description:** Duplicate status callbacks still call `applySmsDeliveryOutcome()`. Each retry increments `sms_delivery_failures`.
-- **Impact:** One failed SMS retried by Twilio can wrongly deactivate a customer from future SMS.
-- **Fix:** Deduplicate outcome application by status transition.
+### QA-003: Silent fallback on missing security-critical env vars
+- **File:** `src/lib/portal/calendar-token.ts:4`, `src/app/api/rota/feed/route.ts:25-28`
+- **Engine(s):** Codex (Security) + Claude (Standards) — **both engines flagged**
+- **Category:** Security (Crypto) — OWASP A07 Identification/Authentication Failures
+- **Description:** Both files use `process.env.SUPABASE_SERVICE_ROLE_KEY ?? 'fallback-no-key'` as their HMAC/hash secret. If the env var is missing, tokens become predictable and identical across all deployments using the same fallback string. The system appears to work but offers zero security.
+- **Impact:** An attacker who knows the fallback string (visible in source code) can forge valid feed tokens for any employee.
+- **Suggested fix:** Use a dedicated `CALENDAR_TOKEN_SECRET` env var. Throw an error when it's missing rather than falling back silently.
 
-### HIGH-003: Payroll approval can proceed with silently missing data
-- **Engine:** Codex (BUG-006)
-- **File:** `src/app/actions/payroll.ts:143`
-- **Category:** Partial Failure
-- **Description:** `getPayrollMonthData()` fetches shifts, sessions, pay settings in parallel but only checks `shiftsError`.
-- **Impact:** Approvable payroll snapshot with missing hours or null pay rates.
-- **Fix:** Fail the whole review when any required dataset errors.
+### QA-004: Missing audit logging on resync-calendar mutation
+- **File:** `src/app/api/rota/resync-calendar/route.ts` (entire file)
+- **Engine(s):** Claude (Standards)
+- **Category:** Standards — CLAUDE.md ("All mutations must call `logAuditEvent()`")
+- **Description:** The POST handler performs write operations (syncing shifts to Google Calendar, upserting/deleting `rota_google_calendar_events` rows) but never calls `logAuditEvent()`. Other mutation endpoints in the project consistently log audit events.
+- **Impact:** No audit trail for calendar sync operations. Impossible to trace who triggered a sync or diagnose sync-related issues from the audit log.
+- **Suggested fix:** Add `logAuditEvent({ user_id: user.id, operation_type: 'update', resource_type: 'rota_calendar_sync', operation_status: 'success' })` after sync completes.
 
-### HIGH-004: Parking capacity can be oversold under concurrent bookings
-- **Engine:** Codex (BUG-007)
-- **File:** `src/services/parking.ts:85`
-- **Category:** Race Condition
-- **Description:** Availability checked first, booking inserted separately. No transaction or DB guard.
-- **Impact:** Two simultaneous bookings for last space both confirmed.
-- **Fix:** Move to single transaction/RPC or add database-level constraint.
+### QA-005: ICS feeds compute full response before checking conditional GET (ETag/304)
+- **File:** `src/app/api/rota/feed/route.ts:62-170`, `src/app/api/portal/calendar-feed/route.ts:49-162`
+- **Engine(s):** Claude (Performance)
+- **Category:** Performance (Network/Database)
+- **Description:** Every calendar poll (potentially hourly per subscriber from Apple Calendar/Outlook) triggers a full database query, ICS string construction, SHA-256 hash, and string folding — even when data hasn't changed and a 304 would suffice. With 20 staff subscribed, that's 20 unnecessary full DB queries per hour.
+- **Impact:** Wasted compute and database load on ~90% of feed polls where data hasn't changed.
+- **Suggested fix:** Compute a lightweight ETag from DB metadata first: `SELECT MAX(published_at), COUNT(*) FROM rota_published_shifts WHERE shift_date BETWEEN ...`. Compare against `If-None-Match` before building the full response.
 
-### HIGH-005: Concurrent clock-ins create duplicate open sessions
-- **Engines:** Codex (BUG-008) + Codex (SEC-001) — **CROSS-ENGINE AGREEMENT**
-- **File:** `src/app/actions/timeclock.ts:84`
-- **Category:** Race Condition + Auth (timeclock is public with no PIN/secret)
-- **Description:** Read-then-insert with no lock or uniqueness guarantee. Plus the `/timeclock` route is public — anyone on the internet can clock in/out any employee.
-- **Impact:** Multiple open sessions per employee; `.single()` lookups fail. Public exposure allows attendance falsification.
-- **Fix:** Add unique partial index + atomic insert. Add kiosk secret + per-employee PIN.
-
-### HIGH-006: Booking APIs create pending_payment holds with no payment link
-- **Engine:** Codex (BUG-009)
-- **File:** `src/app/api/table-bookings/route.ts:234`, `src/app/api/event-bookings/route.ts:489`
-- **Category:** Partial Failure
-- **Description:** Both routes swallow payment-token creation failures and return success with `next_step_url: null`.
-- **Impact:** Inventory held, customer cannot pay, idempotency replays the dead-end.
-- **Fix:** Fail the request or roll back the hold when token generation fails.
-
-### HIGH-007: Hold-expiry cron can cancel recently confirmed bookings
-- **Engine:** Codex (BUG-010)
-- **File:** `src/app/api/cron/private-bookings-expire-holds/route.ts:18`
-- **Category:** Race Condition
-- **Description:** Cron snapshots expired draft IDs, then cancels by ID only. A booking confirmed between those two steps is cancelled incorrectly.
-- **Fix:** Use single guarded update with `status='draft'` condition.
-
-### HIGH-008: Recurring invoice schedules permanently wedged after partial success
-- **Engine:** Codex (BUG-011)
-- **File:** `src/app/api/cron/recurring-invoices/route.ts:58`
-- **Category:** Partial Failure
-- **Description:** If invoice creation succeeds but `next_invoice_date` advance fails, idempotency seals the key. Future runs skip the schedule forever.
-- **Fix:** Make both operations atomic or only seal after both succeed.
-
-### HIGH-009: Employee document actions sign arbitrary storage paths
-- **Engine:** Codex (SEC-004, SEC-005)
-- **File:** `src/app/actions/employeeActions.ts:812`
-- **Category:** Security (A01)
-- **Description:** `getAttachmentSignedUrl` accepts raw storage paths and creates signed URLs without verifying the file belongs to a record the caller may access.
-- **Impact:** Any user with `employees.view_documents` can retrieve hidden/orphaned HR documents by guessing paths.
-- **Fix:** Look up file by record ID, verify authorization, sign only resolved path.
-
-### HIGH-010: System roles mutable via permission assignment bypass
-- **Engine:** Codex (SEC-006)
-- **File:** `src/services/permission.ts:267`, `src/app/actions/rbac.ts:311`
-- **Category:** Security (A01)
-- **Description:** `updateRole()` blocks `is_system` roles, but `assignPermissionsToRole()` does not.
-- **Impact:** User with `roles.manage` can alter system roles and grant broader permissions.
-- **Fix:** Enforce `is_system` check in all role-mutation paths.
-
-### HIGH-011: Two cron routes fail open when CRON_SECRET unset
-- **Engine:** Codex (SEC-007)
-- **File:** `src/app/api/cron/table-booking-deposit-timeout/route.ts:9`, `src/app/api/cron/private-bookings-expire-holds/route.ts:10`
-- **Category:** Security (A05)
-- **Description:** If CRON_SECRET env var missing, `Bearer undefined` is accepted.
-- **Impact:** Destructive booking-expiry jobs exposed to public internet.
-- **Fix:** Shared helper that hard-fails when CRON_SECRET is absent.
-
-### HIGH-012: Public config endpoint leaks internal vendor/commercial data
-- **Engine:** Codex (SEC-002)
-- **File:** `src/app/api/public/private-booking/config/route.ts:10`
-- **Category:** Data Exposure (A01)
-- **Description:** Unauthenticated endpoint returns admin-backed vendor/package data including supplier contacts, finance fields.
-- **Fix:** Return explicit public allowlist only.
-
-### HIGH-013: `persistOverdueInvoices()` called on every invoice read
-- **Engine:** Claude (PERF-001)
-- **File:** `src/services/invoices.ts:276`
-- **Category:** Performance
-- **Description:** Every `getInvoices()` or `getInvoiceById()` first runs an UPDATE query on all overdue invoices. Adds 50-200ms write latency to every invoice page load.
-- **Fix:** Move to cron job or compute status in JS at read time (already partially done).
+### QA-006: `auth: any` type and 5 `as any` casts in Google Calendar sync
+- **File:** `src/lib/google-calendar-rota.ts:388` (parameter), lines 145, 318, 328, 341, 394 (casts)
+- **Engine(s):** Claude (Standards)
+- **Category:** Standards — TypeScript ("No `any` types without justifying comment")
+- **Description:** The `safeDeleteEvent` function and all `calendar.events.*` calls use `auth: any` / `auth as any`. This disables all type checking on the authentication object.
+- **Impact:** Type errors in auth configuration won't be caught at compile time. A misconfigured OAuth client would only surface at runtime.
+- **Suggested fix:** Type as `OAuth2Client` from `google-auth-library`. The `as any` casts can then be removed.
 
 ---
 
 ## Medium Findings
 
-| ID | Source | File | Summary |
-|----|--------|------|---------|
-| MED-001 | Codex BUG-012 | `receipts.ts:2573` | Bulk receipt rollback wipes prior vendor classification instead of restoring |
-| MED-002 | Codex BUG-013 | `cron/auto-send-invoices` | Auto-send emails draft invoice, then status change can fail — invoice stuck in draft |
-| MED-003 | Codex BUG-014 | `dateUtils.ts:27` | `getTodayIsoDate()` uses host timezone, not London — DST bugs |
-| MED-004 | Codex SEC-009 | `permission.ts:85` | RBAC revocation effective for up to 60s after admin removal (cache) |
-| MED-005 | Codex SEC-010 | `privateBookingActions.ts:802` | Booking discounts have no server-side bounds check |
-| MED-006 | Codex SEC-011 | `webhooks/paypal`, `webhooks/twilio` | Webhook handlers persist untrusted payloads before verification |
-| MED-007 | Codex SEC-008 | `privateBookingActions.ts:1624` | View-only staff can mint non-expiring booking portal links |
-| MED-008 | Claude PERF-002 | `messagesActions.ts:156` | Messages inbox fetches up to 900 rows to build 25 conversations |
-| MED-009 | Claude PERF-003 | `private-bookings.ts:1762` | `getBookings()` uses `select('*')` on view without pagination |
-| MED-010 | Claude PERF-009 | `dashboard-data.ts:1051` | Quotes dashboard fetches 3x1000 rows to sum in JS instead of SQL |
-| MED-011 | Claude PERF-015 | `dashboard-data.ts:886` | All unpaid invoices fetched to sum in JS — no limit |
-| MED-012 | Claude PERF-011 | `rbac.ts:64` | `checkUserPermission` creates new Supabase client each time |
-| MED-013 | Claude PERF-012 | Entire `src/` | Zero `next/dynamic` imports — all components eagerly loaded |
-| MED-014 | Claude STD-003 | 31 action files | 171 `error: any` occurrences — should be `error: unknown` |
-| MED-015 | Claude STD-004 | All services | No `fromDb` conversion layer exists despite documented standard |
-| MED-016 | Claude STD-005+006 | 10+ template files | Hardcoded personal phone/name PII in email templates |
-| MED-017 | Claude STD-007+008 | Multiple files | Raw `new Date()` bypassing dateUtils for user-facing dates |
-| MED-018 | Claude STD-012 | All auth routes | Zero `error.tsx` boundaries in entire authenticated route tree |
-| MED-019 | Claude STD-014 | `invoices.ts:414` | Unsafe `FormData.get() as Type` casts without validation |
-| MED-020 | Claude STD-010 | `receipts.ts`, `event-categories.ts` | `console.log` in production server actions |
+### QA-007: No server-side concurrency guard on resync
+- **File:** `src/app/api/rota/resync-calendar/route.ts`, `src/app/(authenticated)/rota/RotaFeedButton.tsx:18-33`
+- **Engine(s):** Claude (Performance)
+- **Description:** Client disables the button during sync, but no server-side lock. Multiple users (or tabs) can trigger concurrent resyncs, each making hundreds of GCal API calls, exhausting rate limits.
+- **Suggested fix:** Add a DB-backed mutex (`rota_sync_status` row) with staleness check.
+
+### QA-008: `SELECT *` in both ICS feed endpoints
+- **File:** `src/app/api/rota/feed/route.ts:62-68`, `src/app/api/portal/calendar-feed/route.ts:49-56`
+- **Engine(s):** Claude (Performance + Standards)
+- **Description:** Both feeds fetch all columns when only ~10 are used. Runs on every calendar poll from every subscriber.
+- **Suggested fix:** Use explicit column list matching the fields actually used in ICS generation.
+
+### QA-009: 24 `as string` type assertions across both feed routes
+- **File:** `src/app/api/rota/feed/route.ts` (12x), `src/app/api/portal/calendar-feed/route.ts` (12x)
+- **Engine(s):** Claude (Standards)
+- **Description:** `shift.department as string`, `shift.name as string`, etc. repeated throughout. Masks untyped Supabase query results.
+- **Suggested fix:** Define a `PublishedShiftRow` interface and use Supabase's `.select<PublishedShiftRow[]>(...)` generic.
+
+### QA-010: `catch (err: any)` used 7 times without justification
+- **File:** `src/lib/google-calendar-rota.ts` (6x), `src/app/api/rota/resync-calendar/route.ts` (1x)
+- **Engine(s):** Claude (Standards)
+- **Suggested fix:** Use `catch (err: unknown)` with a type guard or shared `getErrorMessage(err)` utility.
+
+### QA-011: `console.log` statements in production library code
+- **File:** `src/lib/google-calendar-rota.ts:86,194,200,379-382`
+- **Engine(s):** Claude (Standards)
+- **Description:** 4 informational `console.log` calls left in production code. The `console.error`/`console.warn` calls are acceptable.
+- **Suggested fix:** Remove or replace with structured logger.
+
+### QA-012: Popover does not trap focus or close on Escape
+- **File:** `src/app/(authenticated)/rota/RotaFeedButton.tsx:58-108`
+- **Engine(s):** Claude (Standards)
+- **Description:** Calendar feed popover closes on backdrop click but has no Escape key handler and no focus trap.
+- **Suggested fix:** Add `onKeyDown` handler for Escape. Consider using Radix/Headless UI popover.
+
+### QA-013: Missing `aria-label` on icon-only close button
+- **File:** `src/app/(authenticated)/rota/RotaFeedButton.tsx:70-76`
+- **Engine(s):** Claude (Standards)
+- **Suggested fix:** Add `aria-label="Close calendar feed popover"`.
+
+### QA-014: `foldLine` creates TextEncoder per call and encodes char-by-char
+- **File:** `src/lib/ics/utils.ts:57-88`
+- **Engine(s):** Claude (Performance)
+- **Description:** For a 500-shift feed with ~5000 lines, creates 5000 `TextEncoder` instances and encodes characters individually. Most lines are short ASCII strings that don't need folding.
+- **Suggested fix:** Module-scoped `TextEncoder`, ASCII fast path (`if (line.length <= 75) return line`).
+
+### QA-015: Raw `new Date()` for feed date ranges instead of `dateUtils`
+- **File:** `src/app/api/rota/feed/route.ts:54-57`, `src/app/api/portal/calendar-feed/route.ts:42-45`
+- **Engine(s):** Claude (Standards)
+- **Description:** `new Date().toISOString().split('T')[0]` returns UTC date, which at midnight during BST differs from London date. Feed window could shift by a day.
+- **Suggested fix:** Use `getTodayIsoDate()` from `src/lib/dateUtils.ts`.
+
+### QA-016: Duplicate ICS generation logic across two feed routes
+- **File:** `src/app/api/rota/feed/route.ts`, `src/app/api/portal/calendar-feed/route.ts`
+- **Engine(s):** Claude (Standards)
+- **Description:** ~80% shared logic: VEVENT generation, department formatting, DTSTAMP/SEQUENCE/STATUS, ETag/conditional-GET. Any future ICS fix must be applied to both files.
+- **Suggested fix:** Extract shared VEVENT builder into `src/lib/ics/utils.ts`.
 
 ---
 
 ## Low Findings
 
-| ID | Source | Summary |
-|----|--------|---------|
-| LOW-001 | Claude PERF-005 | Calendar notes fetched with 730-day horizon (up to 1000 rows) |
-| LOW-002 | Claude PERF-006 | Dashboard cashing-up section makes 4 sequential rounds instead of 2 |
-| LOW-003 | Claude PERF-008 | Rota shifts fetched with `select('*')` |
-| LOW-004 | Claude PERF-014 | `select('*')` used in 30+ service queries |
-| LOW-005 | Claude PERF-018 | Financials service sequential deletes in loop |
-| LOW-006 | Claude PERF-019 | Receipt pagination in sequential loop |
-| LOW-007 | Claude PERF-021 | Dashboard cache TTL only 60s for all metrics |
-| LOW-008 | Claude PERF-022 | `date-fns` barrel imports in 20+ files |
-| LOW-009 | Claude STD-009 | Hardcoded hex colours in calendar/rota print |
-| LOW-010 | Claude STD-011 | `console.log` in services |
-| LOW-011 | Claude STD-013 | Loading.tsx missing in 8+ route directories |
-| LOW-012 | Claude STD-015-017 | Various `any` types in GDPR service, private bookings, employee invite |
-| LOW-013 | Claude STD-019 | Inconsistent permission check patterns (3 different styles) |
-| LOW-014 | Claude STD-018 | Low test coverage — 21 test files for ~600 source files |
+### QA-017: Inline props type on RotaFeedButton
+- **File:** `src/app/(authenticated)/rota/RotaFeedButton.tsx:7`
+- **Engine(s):** Claude (Standards)
+- **Suggested fix:** Extract to `interface RotaFeedButtonProps`.
+
+### QA-018: Array sort to find max `published_at` (O(n log n) vs O(n))
+- **File:** `src/app/api/rota/feed/route.ts:149-152`, `src/app/api/portal/calendar-feed/route.ts:129-132`
+- **Engine(s):** Claude (Performance)
+- **Suggested fix:** Use `reduce` to find max in O(n).
+
+### QA-019: `RotaShiftRow` uses snake_case field names in TypeScript
+- **File:** `src/lib/google-calendar-rota.ts:53-66`
+- **Engine(s):** Claude (Standards)
+- **Description:** Per CLAUDE.md, TS types should be camelCase with `fromDb` conversion. However, the entire codebase uses snake_case — this is an architectural gap, not a per-file issue.
+- **Suggested fix:** Documented as known pattern; pragmatic approach is to update the standard.
+
+### QA-020: Employee names re-fetched per week during resync
+- **File:** `src/lib/google-calendar-rota.ts:94-108`
+- **Engine(s):** Claude (Performance)
+- **Description:** When syncing N weeks, the same employee list is fetched N times. Also re-creates OAuth client per week.
+- **Suggested fix:** Accept optional pre-fetched `employeeNames` and `auth` parameters; caller fetches once.
+
+### QA-021: `mostRecentPublish` computation duplicated in both feeds
+- **File:** Both feed routes
+- **Engine(s):** Claude (Performance + Standards)
+- **Description:** Identical `mostRecentPublish` computation copy-pasted. Related to QA-016 (duplicate ICS logic).
+
+### QA-022: London dateUtils helpers may use host timezone (BUG-014 from Codex)
+- **File:** `src/lib/dateUtils.ts:27,34`
+- **Engine(s):** Codex (Bug Hunter)
+- **Description:** `getTodayIsoDate()` and `toLocalIsoDate()` use `getTimezoneOffset()` from the server host, not Europe/London. On non-UK hosts or around DST boundaries, date-based operations can run a day early or late.
+- **Suggested fix:** Use London-zoned conversions (e.g., `date-fns-tz`) instead of host-local offsets. Affects the entire codebase, not just calendar sync.
 
 ---
 
 ## Cross-Engine Analysis
 
-### Agreed (both engines flagged independently)
+### Agreed (both Codex AND Claude flagged)
 
-These findings were identified by both Codex and Claude independently — **highest confidence**:
-
-1. **PUBLIC BOOKING MASS-ASSIGNMENT** (BUG-004 + SEC-003) — Both flagged the public private-booking endpoint accepting arbitrary internal fields
-2. **TIMECLOCK AUTH + RACE CONDITION** (BUG-008 + SEC-001) — Codex Bug Hunter found the race condition; Codex Security Auditor found the missing auth. Both independently flagged the same endpoint.
-3. **DATE HANDLING INCONSISTENCY** (BUG-014 + STD-007/008) — Codex found `getTodayIsoDate()` uses host TZ; Claude found components bypassing dateUtils entirely
+| Finding | Codex Specialist | Claude Specialist | Confidence |
+|---------|-----------------|-------------------|------------|
+| QA-002: Non-revocable shared feed tokens | Security Auditor (SEC-001, SEC-002) | Standards Enforcer (STD-011, STD-012) | **Very High** |
+| QA-003: Silent fallback on missing secrets | Security Auditor (SEC-001, SEC-002) | Standards Enforcer (STD-011, STD-012) | **Very High** |
 
 ### Codex-Only Findings
 
-These were uniquely caught by the different model perspective:
-
-- **CRIT-001** (invoice paid without payment) — Subtle business logic trace through two files
-- **CRIT-002** (PayPal deposit doesn't confirm) — Required understanding webhook vs manual deposit paths
-- **CRIT-003** (cron POST vs GET) — Simple but easy to miss
-- **HIGH-006** (payment link failures swallowed) — Required tracing partial failure paths
-- **HIGH-008** (recurring invoice wedge) — Complex idempotency interaction
-- All security findings (SEC-001 through SEC-011) — Codex performed systematic auth tracing
+| Finding | Notes |
+|---------|-------|
+| QA-022: dateUtils host timezone issue (BUG-014) | Valid concern — affects the entire codebase, not calendar sync specifically |
+| BUG-001 through BUG-013 (non-calendar-sync) | Codex reviewed the entire codebase. 3 Critical + 10 High findings in invoices, PayPal, parking, timeclock, crons. Outside requested scope but contain real bugs worth tracking separately. |
 
 ### Claude-Only Findings
 
-These required deep project context:
-
-- **All performance findings** — Required understanding query patterns, caching strategy, and dashboard architecture
-- **All standards findings** — Required comparing code against CLAUDE.md conventions
-- Specifically: `persistOverdueInvoices()` blocking reads, missing `next/dynamic`, `fromDb` gap
+| Finding | Notes |
+|---------|-------|
+| QA-001: Resync N+1 waterfall (Critical) | Codex didn't flag — likely missed the sequential processing pattern across files |
+| QA-004: Missing audit logging | Context-dependent — requires knowing the CLAUDE.md conventions |
+| QA-005 through QA-021 | Performance and standards findings requiring project convention knowledge |
 
 ---
 
 ## Recommendations — Priority Fix Order
 
-### Immediate (fix this week)
-1. **CRIT-001** — Block paid/partially_paid from generic status update path
-2. **CRIT-002** — Route PayPal captures through canonical deposit service
-3. **CRIT-003** — Export GET on booking-balance-reminders cron
-4. **HIGH-001** — Add strict schema to public booking endpoint
-5. **HIGH-003** — Check all dataset errors in payroll approval
-6. **HIGH-011** — Fix CRON_SECRET fail-open on two cron routes
+### Immediate (fix before next deploy)
+1. **QA-003**: Replace `'fallback-no-key'` with `throw new Error()` when `CALENDAR_TOKEN_SECRET` / `ROTA_FEED_SECRET` is missing
+2. **QA-004**: Add `logAuditEvent()` to resync-calendar POST handler
 
-### Short-term (next 2 weeks)
-7. **HIGH-005** — Add PIN/secret to timeclock + unique constraint on open sessions
-8. **HIGH-004** — Atomic parking capacity check
-9. **HIGH-006** — Fail on payment link generation error
-10. **HIGH-007** — Guarded update in hold-expiry cron
-11. **HIGH-010** — Enforce `is_system` check in permission assignment
-12. **HIGH-013** — Move `persistOverdueInvoices()` to cron
+### Short-term (next sprint)
+3. **QA-001**: Refactor resync to batch-fetch shifts and reuse employee names/OAuth client
+4. **QA-005**: Add lightweight ETag pre-check before building full ICS response
+5. **QA-006**: Type auth parameter as `OAuth2Client`, remove `as any` casts
+6. **QA-007**: Add server-side concurrency guard for resync
+7. **QA-009**: Define `PublishedShiftRow` interface, eliminate `as string` assertions
 
-### Medium-term (next month)
-13. **MED-016** — Extract hardcoded PII to env vars
-14. **MED-003** — Fix dateUtils to use London timezone properly
-15. **MED-008/009** — Optimise messages inbox and bookings queries
-16. **MED-014** — Project-wide `error: any` to `error: unknown` codemod
-17. **MED-018** — Add root `error.tsx` boundary
-18. **MED-019** — Add runtime validation for FormData casts
+### Medium-term (when touching these files)
+8. **QA-002**: Migrate to per-subscriber revocable feed tokens
+9. **QA-016**: Extract shared ICS logic into `src/lib/ics/utils.ts`
+10. **QA-012/QA-013**: Improve popover accessibility (focus trap, Escape, aria-label)
+11. **QA-015**: Use `dateUtils` instead of raw `new Date()` in feed routes
 
-### Long-term (tech debt backlog)
-19. **LOW-014** — Increase test coverage for core business logic
-20. **MED-015** — Decide on fromDb convention vs update standard
-21. **MED-013** — Add `next/dynamic` for heavy components
-22. Performance quick wins (PERF-009, PERF-015 — SQL aggregates)
+### Low priority
+12. QA-008, QA-010, QA-011, QA-014, QA-017, QA-018, QA-019, QA-020, QA-021, QA-022
 
 ---
 
-## Specialist Reports
+## Positive Findings
 
-Individual reports are available at:
-- `tasks/codex-qa-review/bug-hunter-report.md` (Codex — 14 bugs)
-- `tasks/codex-qa-review/security-auditor-report.md` (Codex — 11 vulnerabilities)
-- `tasks/codex-qa-review/performance-analyst-report.md` (Claude — 22 findings)
-- `tasks/codex-qa-review/standards-enforcer-report.md` (Claude — 23 deviations)
+Both engines noted several things done well:
+- **Excellent error isolation** — one bad shift never aborts the batch (per-shift try/catch)
+- **RFC 5545 compliance** — proper VTIMEZONE, SEQUENCE derivation, UTF-8-safe line folding
+- **Timing-safe token comparison** in both auth paths
+- **Proper auth + RBAC** — resync endpoint checks both session auth and `rota:publish` permission
+- **Good client UX** — loading/disabled states, proper button types, clear user messaging
+- `src/lib/ics/utils.ts` is exemplary: fully typed, well-documented with RFC references, no `any` types
 
 ---
 
-*Generated: 2026-03-22 | Engines: Claude Opus 4.6 + Codex CLI 0.107.0*
+## Bonus: Out-of-Scope Codex Findings
+
+The Bug Hunter (Codex) reviewed beyond the requested scope and found **3 Critical + 10 High** bugs elsewhere in the codebase. These are documented in `tasks/codex-qa-review/bug-hunter-report.md` and include:
+- **BUG-001 (Critical):** Invoice status can fabricate paid invoices without payment records
+- **BUG-002 (Critical):** PayPal deposit capture records payment but never confirms the booking
+- **BUG-003 (Critical):** `booking-balance-reminders` cron uses POST — Vercel cron only calls GET
+- Plus 10 High-severity findings across parking, timeclock, crons, and webhooks
+
+These warrant a separate review session.
+
+---
+
+*Generated by Codex QA Review (dual-engine: Claude + OpenAI Codex)*
+*Individual specialist reports available in `tasks/codex-qa-review/`*
