@@ -1495,13 +1495,21 @@ export async function captureDepositPayment(
   try {
     const captureResult = await capturePayPalPayment(orderId)
 
-    // Record deposit: mark deposit_paid_date, method=paypal, store capture ID
+    // Record deposit: mark deposit_paid_date, method=paypal, store capture ID.
+    // Transition draft bookings to confirmed, matching the manual deposit path
+    // (PrivateBookingService.recordDeposit).
+    const statusUpdate: Record<string, unknown> =
+      booking.status === 'draft'
+        ? { status: 'confirmed' as const, cancellation_reason: null }
+        : {}
+
     const { error: updateError } = await admin
       .from('private_bookings')
       .update({
         deposit_paid_date: new Date().toISOString(),
         deposit_payment_method: 'paypal',
         paypal_deposit_capture_id: captureResult.transactionId,
+        ...statusUpdate,
         updated_at: new Date().toISOString(),
       })
       .eq('id', bookingId)
@@ -1631,7 +1639,10 @@ export async function getBookingPortalLink(
     return { error: 'Not authenticated' }
   }
 
-  const hasPermission = await checkUserPermission('private_bookings', 'view')
+  // Generating a portal link exposes booking data to an external party via a
+  // public URL. This is a write-like operation (sharing data outside the app),
+  // so it requires edit permission rather than just view.
+  const hasPermission = await checkUserPermission('private_bookings', 'edit')
   if (!hasPermission) {
     return { error: 'Insufficient permissions' }
   }

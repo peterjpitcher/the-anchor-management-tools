@@ -245,12 +245,20 @@ export async function POST(request: NextRequest) {
           })
           nextStepUrl = token.url
         } catch (tokenError) {
-          logger.warn('Failed to create table payment token', {
+          // Payment link is critical for pending_payment bookings — the customer
+          // cannot complete payment without it. Return an error so the caller
+          // knows the booking was created but is unusable.
+          logger.error('Failed to create table payment token — returning error to caller', {
+            error: tokenError instanceof Error ? tokenError : new Error(String(tokenError)),
             metadata: {
               tableBookingId: bookingResult.table_booking_id,
-              error: tokenError instanceof Error ? tokenError.message : String(tokenError),
             },
           })
+          return createErrorResponse(
+            'Booking created but payment link generation failed. Please contact us.',
+            'PAYMENT_LINK_FAILED',
+            500
+          )
         }
       }
 

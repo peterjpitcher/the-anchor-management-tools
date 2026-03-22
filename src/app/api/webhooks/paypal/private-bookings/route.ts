@@ -343,12 +343,20 @@ async function handleDepositCaptureCompleted(
     return
   }
 
+  // Transition draft bookings to confirmed on deposit capture,
+  // matching the behaviour of the manual deposit path (PrivateBookingService.recordDeposit).
+  const statusUpdate: Record<string, unknown> =
+    booking.status === 'draft'
+      ? { status: 'confirmed', cancellation_reason: null }
+      : {}
+
   const { error: updateError } = await supabase
     .from('private_bookings')
     .update({
       deposit_paid_date: new Date().toISOString(),
       deposit_payment_method: 'paypal',
       paypal_deposit_capture_id: captureId,
+      ...statusUpdate,
       updated_at: new Date().toISOString(),
     })
     .eq('id', bookingId)
