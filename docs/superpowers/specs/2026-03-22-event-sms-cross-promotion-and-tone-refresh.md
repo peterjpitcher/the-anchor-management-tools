@@ -50,11 +50,14 @@ The tone refresh is materially larger than "update template records" because mos
 |------|----------|
 | `src/app/api/cron/event-guest-engagement/route.ts` | Event reminders, review followups |
 | `src/app/api/event-bookings/route.ts` | Event booking confirmations |
+| `src/app/api/foh/event-bookings/route.ts` | FOH event booking confirmations |
 | `src/lib/table-bookings/bookings.ts` | Table deposit confirmation, cancellation, Sunday preorder request |
-| `src/services/private-bookings.ts` | All private booking lifecycle messages |
+| `src/services/private-bookings.ts` | All private booking lifecycle messages (incl. `private_booking_final_payment`) |
 | `src/app/api/cron/private-booking-monitor/route.ts` | Private booking reminders, expiry, feedback |
 | `src/app/api/cron/sunday-preorder/route.ts` | Sunday preorder reminders, cancellation |
 | `src/lib/parking/notifications.ts` | All parking notifications |
+| `src/services/waitlist-offers.ts` | Waitlist offer SMS |
+| `src/app/api/event-waitlist/[id]/accept/route.ts` | Waitlist acceptance confirmations |
 
 This means the tone refresh requires modifying each of these files to update the inline message strings. There are no central template records to update.
 
@@ -108,7 +111,7 @@ Use the `payment_mode` field on the `events` table (NOT `is_free` — `payment_m
 | `{last_event_category}` | Event category name via join: `customer_category_stats.category_id` → `event_categories.name` (e.g., "Quiz Night", "Music Bingo") |
 | `{event_name}` | Upcoming event name |
 | `{event_date}` | Upcoming event date, formatted in London timezone |
-| `{event_link}` | Short-link to the event page on the website (paid events only) |
+| `{event_link}` | Short-link to the event page, generated via the existing event marketing short-link system (`src/services/event-marketing.ts` — `getOrCreateEventShortLink()`). Do NOT create a one-off link implementation. |
 
 #### Capacity Check
 
@@ -154,9 +157,15 @@ Extends the existing Twilio webhook (`/api/webhooks/twilio/route.ts`) to parse i
 
 #### Booking Service Extraction
 
-This is a **substantial refactoring task**, not a trivial extension. The event booking creation logic in `/api/event-bookings/route.ts` (POST handler) currently owns request validation, auth/idempotency wrapping, and the RPC call inline. A shared `EventBookingService.createBooking()` function must be extracted that can be called from both:
-- The existing API route (for web/admin bookings)
-- The Twilio webhook (for reply-to-book)
+This is a **substantial refactoring task**, not a trivial extension. Event booking creation is currently duplicated across:
+- `/api/event-bookings/route.ts` (public API — `p_source = 'brand_site'`)
+- `/api/foh/event-bookings/route.ts` (FOH API — `p_source = 'foh'`)
+
+Both inline request validation, auth wrapping, and the `create_event_booking_v05` RPC call. A shared `EventBookingService.createBooking()` function must be extracted that:
+- Takes an explicit `source` parameter (`'brand_site'`, `'foh'`, `'sms_reply'`)
+- Passes it through to the RPC as `p_source`
+- Can be called from the public route, FOH route, and Twilio webhook
+- Prevents FOH from drifting independently
 
 This extraction is its own implementation task and should be completed and tested before the reply-to-book webhook work begins.
 
@@ -208,6 +217,17 @@ All response SMS use template key `event_reply_booking_response` + appropriate s
 - Maximum 10 seats per reply booking
 - The booking is created through the shared `EventBookingService.createBooking()`, so all validation, audit logging, and confirmation flows apply
 
+#### Concurrency Handling
+
+Two rapid replies from the same customer (different Twilio MessageSids) could race past the `sms_promo_context.booking_created` check. The primary backstop is the **active-booking unique index** on the `bookings` table (enforced by `create_event_booking_v05`). If the RPC raises a unique constraint violation, catch it and return the "already booked" response. The flow is:
+
+1. Check `sms_promo_context.booking_created` — fast path, avoids RPC call
+2. If false, attempt `EventBookingService.createBooking()`
+3. If unique constraint violation → respond with "already booked" message
+4. If success → set `booking_created = true` on the promo context row
+
+This makes the system safe under concurrency without requiring distributed locks.
+
 #### Late Reply Handling
 
 If a customer replies after 48 hours (no matching promo context found), their message falls through to the normal inbound handling — it appears in the staff message thread as a regular customer message. No "too late" response is sent, as the customer may not even be replying to a promo.
@@ -218,22 +238,37 @@ If a customer replies after 48 hours (no matching promo context found), their me
 
 #### Change
 
-Before sending any review request SMS (event review, table review, private booking feedback), check whether the customer has previously engaged with a review/feedback link.
+Before sending any review request SMS, check whether the customer has previously engaged with a review link. Additionally, when review-once suppresses a send, persist a flag so the cron doesn't re-evaluate the same booking on every run.
+
+#### Private booking consolidation
+
+The app currently has two post-event private SMS flows:
+- `private_booking_post_event_followup` — asks for a Google review
+- `private_booking_feedback_followup` — asks for private feedback via a separate token flow
+
+**Decision**: Consolidate to one flow — `private_booking_post_event_followup` (Google review only). The `private_booking_feedback_followup` flow is retired. If detailed private feedback is needed, that's a personal conversation, not an automated SMS.
 
 #### Implementation
 
-Check across three sources:
+Check across two sources:
 
 1. `bookings` table: any record where `customer_id` matches AND `review_clicked_at IS NOT NULL`
 2. `table_bookings` table: any record where `customer_id` matches AND `review_clicked_at IS NOT NULL`
-3. Private booking feedback: `private_bookings` does NOT have a `review_clicked_at` field. Private feedback uses a separate token/feedback flow. Check whether the customer has a completed feedback submission via the private booking feedback route (`/app/api/private-bookings/[id]/feedback/`). The implementation should check for the existence of a feedback record linked to any of the customer's private bookings.
 
-If any engagement is found across any of these sources, skip the review SMS for this customer entirely. A customer who reviewed via any channel shouldn't be asked again via any other.
+If any engagement is found in either table, skip the review SMS for this customer entirely.
 
-This applies to all three review templates:
+#### Suppression persistence
+
+**Problem**: The event/table review crons only transition bookings out of the "eligible for review" pool when a review SMS is actually sent. If review-once suppresses the send, the booking stays eligible and will be re-evaluated on every cron run — wasting queries and risking future logic drift.
+
+**Solution**: When review-once suppresses a send, mark the booking with `review_sms_sent_at = NOW()` (or equivalent lifecycle flag) even though no SMS was sent. This moves the booking out of the eligible pool permanently. The field semantics shift from "SMS was sent" to "review stage was processed" — this is acceptable because the field's purpose is lifecycle progression, not delivery tracking.
+
+For the private-booking follow-up pass: the existing dedup is based on previously sent `private_booking_post_event_followup` messages. When review-once suppresses, insert a synthetic message record (direction = 'outbound', status = 'suppressed', template_key = 'private_booking_post_event_followup') so the dedup mechanism recognises this booking as processed. Alternatively, add a `review_processed_at` field to `private_bookings`.
+
+This applies to all review templates:
 - `event_review_followup`
 - `table_review_followup`
-- `private_booking_feedback_followup`
+- `private_booking_post_event_followup` (consolidated — replaces both previous private follow-up flows)
 
 ---
 
@@ -387,7 +422,12 @@ The Anchor: {first_name}, your booking on {event_date} has been cancelled. Hope 
 The Anchor: {first_name}! Thanks so much for choosing The Anchor for your event — hope it was everything you wanted!
 ```
 
-**Post-Event Feedback** (existing key: `private_booking_post_event_followup`) — subject to review-once rule
+**Final Payment Received** (existing key: `private_booking_final_payment`)
+```
+The Anchor: {first_name}! Final payment received — you're all set for {event_date}. We'll be in touch with final details! {manage_link}
+```
+
+**Post-Event Review** (existing key: `private_booking_post_event_followup`) — subject to review-once rule. Consolidates the previous `private_booking_feedback_followup` flow (retired).
 ```
 The Anchor: {first_name}! Hope your event was everything you wanted. Got 30 seconds? A quick review means the world to us: {review_link}
 ```
@@ -416,7 +456,24 @@ The Anchor: {first_name}! Your parking kicks off on {start_date} — just checki
 The Anchor: {first_name}! Heads up — your parking wraps up on {end_date}. Need to extend? Give us a shout on {venue_phone}.
 ```
 
-#### 4.6 Cross-Promotion (New)
+#### 4.6 Event Waitlist
+
+**Waitlist Offer** (existing key: preserved from `src/services/waitlist-offers.ts`)
+```
+The Anchor: {first_name}! A spot just opened up for {event_name} on {event_date}. Want it? Grab your seat here before it's gone: {offer_link}
+```
+
+**Waitlist Accepted — Free/Cash Event** (existing key: preserved from waitlist acceptance route)
+```
+The Anchor: {first_name}! You're in — {seats} seat(s) confirmed for {event_name} on {event_date}. See you there! {manage_link}
+```
+
+**Waitlist Accepted — Prepaid Event** (existing key: preserved from waitlist acceptance route)
+```
+The Anchor: {first_name}! {seats} seat(s) held for {event_name} — nice one! Complete your payment here: {payment_link}. {manage_link}
+```
+
+#### 4.7 Cross-Promotion (New)
 
 **Free/Cash Event Promo** (new key: `event_cross_promo_14d`)
 ```
@@ -428,7 +485,7 @@ The Anchor: {first_name}! Loved having you at {last_event_category} — {event_n
 The Anchor: {first_name}! Loved having you at {last_event_category} — {event_name} is coming up on {event_date}. Fancy it? Grab your seats here: {event_link}
 ```
 
-#### 4.7 Reply-to-Book Responses (New)
+#### 4.8 Reply-to-Book Responses (New)
 
 **Too Many Seats** (new key: `event_reply_too_many`)
 ```
@@ -592,7 +649,13 @@ Each phase is independently deployable and testable.
 |----------|----------|-----------|
 | `is_free` vs `payment_mode`? | `payment_mode` | `payment_mode` is what the booking API actually uses; `is_free` is a derived/display field |
 | Target booked or checked-in customers? | Booked | `customer_category_stats` tracks bookings; using check-ins would miss customers who booked but weren't explicitly checked in |
-| What counts as "already reviewed" for private bookings? | Feedback submitted | Private bookings use a separate feedback flow, not `review_clicked_at` |
+| What counts as "already reviewed" for private bookings? | N/A — consolidated to Google review only | `private_booking_feedback_followup` retired; only `private_booking_post_event_followup` (Google review) remains |
+| One or two private post-event flows? | One — `private_booking_post_event_followup` only | `private_booking_feedback_followup` retired. Private feedback is a personal conversation, not automated SMS |
 | Preserve or replace template keys? | Preserve existing, new keys only for new messages | Maintains send-guard history, idempotency continuity, and reporting |
 | One or three table cancellation keys? | One (existing `table_booking_cancelled`) | Splitting keys is a reporting/idempotency breaking change, not just a text refresh |
 | Extract customer resolution helper? | No — reuse existing `src/lib/sms/customers.ts` | Already centralised, creating a second extraction adds confusion |
+| Booking service extraction scope? | Include public route, FOH route, and SMS reply | All three share `create_event_booking_v05`; extracting only two leaves FOH drifting |
+| How to handle review-once suppression in cron lifecycle? | Persist `review_sms_sent_at` even when suppressed | Prevents re-evaluation on every cron run; semantics shift from "sent" to "processed" |
+| Waitlist SMS in tone refresh? | Yes — included | Spec says "ALL SMS"; waitlist offer and acceptance are customer-facing event messages |
+| Event short-link for paid promos? | Reuse existing `getOrCreateEventShortLink()` | Event marketing short-link system already exists; no one-off implementation |
+| Reply-to-book concurrency? | Catch unique constraint from booking RPC | `sms_promo_context.booking_created` is fast-path; unique index on bookings is the real backstop |
