@@ -1639,7 +1639,10 @@ export async function getBookingPortalLink(
     return { error: 'Not authenticated' }
   }
 
-  const hasPermission = await checkUserPermission('private_bookings', 'view')
+  // Generating a portal link exposes booking data to an external party via a
+  // public URL. This is a write-like operation (sharing data outside the app),
+  // so it requires edit permission rather than just view.
+  const hasPermission = await checkUserPermission('private_bookings', 'edit')
   if (!hasPermission) {
     return { error: 'Insufficient permissions' }
   }
