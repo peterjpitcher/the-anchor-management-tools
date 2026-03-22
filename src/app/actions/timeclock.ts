@@ -91,13 +91,14 @@ export type TimeclockSession = {
 export async function clockIn(employeeId: string, kioskSecret?: string): Promise<
   { success: true; data: TimeclockSession } | { success: false; error: string }
 > {
-  // Dual auth: kiosk secret for public timeclock page, or timeclock:edit
+  // Dual auth: kiosk secret for public timeclock page, or timeclock:clock
   // permission for authenticated users (e.g. FOH manager clock widget).
   const secretError = validateKioskSecret(kioskSecret);
   let authMethod: 'kiosk_secret' | 'permission' = 'kiosk_secret';
   if (secretError) {
-    const hasPermission = await canManageTimeclock();
-    if (!hasPermission) return { success: false, error: secretError };
+    const canClock = await checkUserPermission('timeclock', 'clock');
+    const canEdit = canClock || await canManageTimeclock();
+    if (!canEdit) return { success: false, error: secretError };
     authMethod = 'permission';
   }
 
@@ -165,13 +166,14 @@ export async function clockIn(employeeId: string, kioskSecret?: string): Promise
 export async function clockOut(employeeId: string, kioskSecret?: string): Promise<
   { success: true; data: TimeclockSession } | { success: false; error: string }
 > {
-  // Dual auth: kiosk secret for public timeclock page, or timeclock:edit
+  // Dual auth: kiosk secret for public timeclock page, or timeclock:clock
   // permission for authenticated users (e.g. FOH manager clock widget).
   const secretError = validateKioskSecret(kioskSecret);
   let authMethod: 'kiosk_secret' | 'permission' = 'kiosk_secret';
   if (secretError) {
-    const hasPermission = await canManageTimeclock();
-    if (!hasPermission) return { success: false, error: secretError };
+    const canClock = await checkUserPermission('timeclock', 'clock');
+    const canEdit = canClock || await canManageTimeclock();
+    if (!canEdit) return { success: false, error: secretError };
     authMethod = 'permission';
   }
 
