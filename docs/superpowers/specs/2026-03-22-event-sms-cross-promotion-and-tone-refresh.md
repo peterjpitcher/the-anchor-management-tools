@@ -56,8 +56,8 @@ The tone refresh is materially larger than "update template records" because mos
 | `src/app/api/cron/private-booking-monitor/route.ts` | Private booking reminders, expiry, feedback |
 | `src/app/api/cron/sunday-preorder/route.ts` | Sunday preorder reminders, cancellation |
 | `src/lib/parking/notifications.ts` | All parking notifications |
-| `src/services/waitlist-offers.ts` | Waitlist offer SMS |
-| `src/app/api/event-waitlist/[id]/accept/route.ts` | Waitlist acceptance confirmations |
+| `src/lib/events/waitlist-offers.ts` | Waitlist offer SMS |
+| `src/app/g/[token]/waitlist-offer/confirm/route.ts` | Waitlist acceptance confirmations |
 
 This means the tone refresh requires modifying each of these files to update the inline message strings. There are no central template records to update.
 
@@ -111,7 +111,7 @@ Use the `payment_mode` field on the `events` table (NOT `is_free` — `payment_m
 | `{last_event_category}` | Event category name via join: `customer_category_stats.category_id` → `event_categories.name` (e.g., "Quiz Night", "Music Bingo") |
 | `{event_name}` | Upcoming event name |
 | `{event_date}` | Upcoming event date, formatted in London timezone |
-| `{event_link}` | Short-link to the event page, generated via the existing event marketing short-link service (`src/services/event-marketing.ts` — `EventMarketingService.generateSingleLink()`). Do NOT create a one-off link implementation. |
+| `{event_link}` | Short-link to the event page, generated via the existing event marketing short-link service (`src/services/event-marketing.ts` — `EventMarketingService.generateSingleLink()`). Uses a new `sms_promo` channel (added to the marketing channels list) to keep SMS attribution separate from social/print channels. Do NOT create a one-off link implementation. |
 
 #### Capacity Check
 
@@ -159,7 +159,7 @@ Extends the existing Twilio webhook (`/api/webhooks/twilio/route.ts`) to parse i
 
 This is a **substantial refactoring task**, not a trivial extension. Event booking creation is currently duplicated across:
 - `/api/event-bookings/route.ts` (public API — `p_source = 'brand_site'`)
-- `/api/foh/event-bookings/route.ts` (FOH API — `p_source = 'foh'`)
+- `/api/foh/event-bookings/route.ts` (FOH API — `p_source = 'admin'` or `'walk-in'`)
 
 Both inline request validation, auth wrapping, and the `create_event_booking_v05` RPC call. A shared `EventBookingService.createBooking()` function must be extracted that:
 - Takes an explicit `source` parameter (preserving live values: `'brand_site'`, `'admin'`, `'walk-in'`, and new value `'sms_reply'`)
@@ -250,14 +250,25 @@ The app currently has two post-event private SMS flows:
 
 **Retirement steps**: The `private_booking_feedback_followup` template key, its send logic in the private-booking monitor cron, and the tokenised guest feedback flow (`src/lib/private-bookings/feedback.ts`, guest feedback route) should be disabled/removed. The token route can remain for any existing outstanding tokens but should not generate new ones.
 
+#### Private-booking review click tracking
+
+The existing review redirect route (`/app/r/[token]/route.ts`) sets `review_clicked_at` on `bookings` and `table_bookings`, but there is no equivalent for private bookings. Since `private_booking_post_event_followup` now sends a Google review link, the private review SMS must use the same redirect route pattern so clicks are trackable.
+
+**Design**: Add a `review_clicked_at TIMESTAMPTZ` column to `private_bookings`. The review link in the private-booking post-event SMS should go through the existing `/r/[token]` redirect route (or a parallel handler) which:
+1. Sets `private_bookings.review_clicked_at = NOW()` for the matching booking
+2. Redirects to the Google review URL
+
+This makes the review-once check fully cross-channel: event, table, AND private booking review clicks all contribute.
+
 #### Implementation
 
-Check across two sources:
+Check across three sources:
 
 1. `bookings` table: any record where `customer_id` matches AND `review_clicked_at IS NOT NULL`
 2. `table_bookings` table: any record where `customer_id` matches AND `review_clicked_at IS NOT NULL`
+3. `private_bookings` table: any record where `customer_id` matches AND `review_clicked_at IS NOT NULL`
 
-If any engagement is found in either table, skip the review SMS for this customer entirely.
+If any engagement is found in any table, skip the review SMS for this customer entirely.
 
 #### Suppression persistence
 
@@ -577,8 +588,9 @@ The codebase contains code that reads/writes `messages.metadata`, but the genera
 ALTER TABLE bookings ADD COLUMN review_suppressed_at TIMESTAMPTZ;
 ALTER TABLE table_bookings ADD COLUMN review_suppressed_at TIMESTAMPTZ;
 
--- Private booking review lifecycle (replaces message-table dedup for private feedback)
+-- Private booking review lifecycle
 ALTER TABLE private_bookings ADD COLUMN review_processed_at TIMESTAMPTZ;
+ALTER TABLE private_bookings ADD COLUMN review_clicked_at TIMESTAMPTZ;
 ```
 
 #### Existing tables leveraged
@@ -586,7 +598,7 @@ ALTER TABLE private_bookings ADD COLUMN review_processed_at TIMESTAMPTZ;
 - `customer_category_stats` — booking tracking by category (join to `event_categories` for category name)
 - `bookings` — `review_clicked_at` for review-once check, new `review_suppressed_at` for suppression tracking
 - `table_bookings` — `review_clicked_at` for review-once check, new `review_suppressed_at` for suppression tracking
-- `private_bookings` — new `review_processed_at` for review lifecycle tracking
+- `private_bookings` — new `review_processed_at` for lifecycle tracking, new `review_clicked_at` for click tracking (parallels bookings/table_bookings)
 - `idempotency_keys` — existing deduplication mechanism
 - `messages` — outbound/inbound SMS logging (no schema changes needed)
 
@@ -673,3 +685,5 @@ Each phase is independently deployable and testable.
 | How to handle review-once suppression in cron lifecycle? | New `review_suppressed_at` column (bookings/table_bookings), `review_processed_at` (private_bookings) | Keeps `review_sms_sent_at` clean for reporting; new columns track suppression separately |
 | Waitlist SMS in tone refresh? | Yes — included | Spec says "ALL SMS"; waitlist offer and acceptance are customer-facing event messages |
 | Reply-to-book concurrency? | Catch unique constraint from booking RPC | `sms_promo_context.booking_created` is fast-path; unique index on bookings is the real backstop |
+| Private-booking review click tracking? | Add `review_clicked_at` to `private_bookings`, use `/r/[token]` redirect pattern | Makes review-once genuinely cross-channel (event + table + private) |
+| SMS promo short-link channel? | New `sms_promo` channel | Prevents polluting existing social/print attribution data |
