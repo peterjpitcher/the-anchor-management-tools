@@ -33,7 +33,7 @@ The Anchor sends multiple automated SMS messages across events, table bookings, 
 - Review-once rule for review request SMS
 
 ### Out of scope
-- Changes to SMS infrastructure (rate limits, quiet hours, safety guards)
+- Changes to SMS infrastructure (rate limits, safety guards) — except quiet hours bypass for reply-to-book responses (see Section 2, Safety)
 - Changes to bulk SMS UI or admin messaging tools
 - New event categories or booking flow changes
 - Two-way conversational SMS beyond reply-to-book
@@ -74,15 +74,22 @@ Runs as a new stage within the existing `event-guest-engagement` cron (`/api/cro
 
 #### Audience Selection
 
-A **dedicated query/RPC** is needed (not a copy of the `/messages/bulk` route, which is a UI-facing customer fetch with different filtering logic):
+Implemented as a **Postgres RPC** (`get_cross_promo_audience`) — not client-side query chaining, which would cause N+1 round trips. The RPC performs the entire selection in a single SQL statement with proper JOINs:
 
-1. Query `customer_category_stats` for customers who have booked seats (not `is_reminder_only`) for the same event category as the upcoming event. Note: `customer_category_stats` tracks **bookings**, not check-ins. This is intentional — we want to target people who booked, regardless of whether they were marked as attended.
-2. Filter to `last_attended_date` within the last 6 months
-3. Exclude customers who already have an active booking (`status` in `pending_payment`, `confirmed`) for this specific event
-4. Require `marketing_sms_opt_in = true` (this is a promotional message, not transactional)
+1. Join `customer_category_stats` to `event_categories` for category-matching customers within 6 months
+2. Filter to `last_attended_date` within the last 6 months. Note: `customer_category_stats` tracks **bookings**, not check-ins. This is intentional — we want to target people who booked, regardless of whether they were marked as attended.
+3. Anti-join against `bookings` to exclude customers who already have an active booking (`status` in `pending_payment`, `confirmed`) for this specific event
+4. Join `customers` and require `marketing_sms_opt_in = true` (promotional message, not transactional)
 5. Require `sms_opt_in = true` and `sms_status` is null or `'active'`
-6. Exclude customers who received any cross-promo SMS in the last 7 days (per-customer frequency cap, checked via `sms_promo_context.created_at`)
+6. Anti-join against `sms_promo_context` to exclude customers who received any cross-promo SMS in the last 7 days (per-customer frequency cap)
 7. If multiple events are in the promo window for the same category, only promote the nearest event to each customer
+8. `ORDER BY last_attended_date DESC LIMIT {EVENT_PROMO_MAX_RECIPIENTS_PER_EVENT}` — cap enforced at DB level, prioritising most recent bookers
+
+**Required index** (not currently present):
+```sql
+CREATE INDEX idx_ccs_category_last_attended
+ON customer_category_stats (category_id, last_attended_date DESC);
+```
 
 #### Message Templates
 
@@ -111,7 +118,7 @@ Use the `payment_mode` field on the `events` table (NOT `is_free` — `payment_m
 | `{last_event_category}` | Event category name via join: `customer_category_stats.category_id` → `event_categories.name` (e.g., "Quiz Night", "Music Bingo") |
 | `{event_name}` | Upcoming event name |
 | `{event_date}` | Upcoming event date, formatted in London timezone |
-| `{event_link}` | Short-link to the event page, generated via the existing event marketing short-link service (`src/services/event-marketing.ts` — `EventMarketingService.generateSingleLink()`). Uses a new `sms_promo` channel (added to the marketing channels list) to keep SMS attribution separate from social/print channels. Do NOT create a one-off link implementation. |
+| `{event_link}` | Short-link to the event page, generated **once per event** (not per-customer) via the existing event marketing short-link service (`src/services/event-marketing.ts` — `EventMarketingService.generateSingleLink()`). Uses a new `sms_promo` channel (added to `EventMarketingChannelKey` type, `EVENT_MARKETING_CHANNELS` array, and `EVENT_MARKETING_CHANNEL_MAP` in `src/lib/event-marketing-links.ts`) to keep SMS attribution separate from social/print channels. Generated before the send loop, not inside it. Do NOT create a one-off link implementation. |
 
 #### Capacity Check
 
@@ -161,7 +168,7 @@ This is a **substantial refactoring task**, not a trivial extension. Event booki
 - `/api/event-bookings/route.ts` (public API — `p_source = 'brand_site'`)
 - `/api/foh/event-bookings/route.ts` (FOH API — `p_source = 'admin'` or `'walk-in'`)
 
-Both inline request validation, auth wrapping, and the `create_event_booking_v05` RPC call. A shared `EventBookingService.createBooking()` function must be extracted that:
+Both inline request validation, auth wrapping, and the `create_event_booking_v05` RPC call. A shared `export class EventBookingService` must be created in `src/services/event-bookings.ts` (following the class-based pattern used by all 20+ existing services) with a static `createBooking()` method that:
 - Takes an explicit `source` parameter (preserving live values: `'brand_site'`, `'admin'`, `'walk-in'`, and new value `'sms_reply'`)
 - Passes it through to the RPC as `p_source`
 - Can be called from the public route, FOH route, and Twilio webhook
@@ -536,13 +543,34 @@ Add a new stage to the existing cron pipeline:
 
 The promo stage uses a separate lookahead constant `EVENT_PROMO_LOOKAHEAD_DAYS` (default 14), independent of the existing `EVENT_ENGAGEMENT_LOOKAHEAD_DAYS` (8 days) used for reminders. This avoids changing the reminder query window.
 
+#### Stage Ordering
+
+Stages run in this order to prioritise transactional SMS and manage the global hourly budget:
+
+1. **Reminders** (transactional — must send)
+2. **Reviews** (transactional — should send)
+3. **Cross-promotion** (marketing — can wait for next run if budget exhausted)
+
+Before starting the promo stage, check elapsed time. If the function has been running for >240 seconds (of the 300s Vercel timeout), skip promos and log a warning. The cron runs every 15 minutes, so skipped promos will be picked up on the next run.
+
 #### Send Guards
 
-The promo stage uses its own send guard: `EVENT_PROMO_HOURLY_SEND_GUARD_LIMIT` (default 120), separate from the existing `EVENT_ENGAGEMENT_HOURLY_SEND_GUARD_LIMIT`. This allows promos to be throttled independently from transactional event SMS.
+The promo stage uses its own send guard with a **separate template key array**:
+- Existing: `EVENT_ENGAGEMENT_TEMPLATE_KEYS` = `['event_reminder_1d', 'event_review_followup', 'table_review_followup']` — unchanged
+- New: `EVENT_PROMO_TEMPLATE_KEYS` = `['event_cross_promo_14d', 'event_cross_promo_14d_paid']`
+
+The promo send guard (`EVENT_PROMO_HOURLY_SEND_GUARD_LIMIT`, default 120) counts only promo template keys. Promo volume never blocks transactional sends and vice versa.
+
+Additionally, before starting the promo stage, check remaining global SMS headroom (`SMS_SAFETY_GLOBAL_HOURLY_LIMIT` minus recent sends). If fewer than 30 slots remain, skip promos to preserve budget for transactional SMS.
+
+#### Per-Run and Per-Event Caps
+
+- `MAX_EVENT_PROMOS_PER_RUN` (default 100) — total promo SMS sent per cron execution, regardless of how many events are in the window. Bounds worst-case execution time.
+- `EVENT_PROMO_MAX_RECIPIENTS_PER_EVENT` (default 100) — per-event cap enforced at the DB level via LIMIT on the audience RPC. Prioritises most recent bookers (`ORDER BY last_attended_date DESC`).
 
 #### Per-Customer Promo Frequency
 
-To avoid over-messaging, a customer receives at most one cross-promotion SMS per 7-day period (checked via `sms_promo_context.created_at`). If two events of the same category are both within the promo window, only the nearest event is promoted to each customer.
+To avoid over-messaging, a customer receives at most one cross-promotion SMS per 7-day period (checked via `sms_promo_context.created_at` in the audience RPC). If two events of the same category are both within the promo window, only the nearest event is promoted to each customer.
 
 ---
 
@@ -574,7 +602,13 @@ WHERE booking_created = FALSE;
 CREATE INDEX idx_sms_promo_context_frequency
 ON sms_promo_context (customer_id, created_at DESC);
 
--- Cleanup: rows older than 30 days can be purged
+-- RLS: service-role only (accessed by crons and webhooks, never by authenticated users)
+ALTER TABLE sms_promo_context ENABLE ROW LEVEL SECURITY;
+-- No policies needed — service-role client bypasses RLS; authenticated users have no access.
+
+-- Cleanup: add a step to an existing cron (e.g., event-guest-engagement) that runs:
+-- DELETE FROM sms_promo_context WHERE created_at < NOW() - INTERVAL '30 days';
+-- Safe because: reply window is 48hrs, frequency cap looks back 7 days, messages table retains audit trail.
 ```
 
 #### Pre-implementation investigation: `messages.metadata`
@@ -617,6 +651,10 @@ No new required env vars. Optional additions:
 | `EVENT_PROMO_MIN_CAPACITY` | `10` | Minimum remaining capacity to send free event promos |
 | `EVENT_PROMO_HOURLY_SEND_GUARD_LIMIT` | `120` | Hourly send limit for promo SMS |
 | `EVENT_PROMO_FREQUENCY_CAP_DAYS` | `7` | Minimum days between promos per customer |
+| `MAX_EVENT_PROMOS_PER_RUN` | `100` | Total promo SMS per cron execution (bounds timeout risk) |
+| `EVENT_PROMO_MAX_RECIPIENTS_PER_EVENT` | `100` | Per-event cap, enforced at DB level via LIMIT |
+
+All env vars parsed using existing `parsePositiveIntEnv()` / `parseBooleanEnv()` helpers — no new parsing logic.
 
 ---
 
@@ -659,13 +697,13 @@ This is additive — no existing webhook behaviour changes.
 
 ## Rollout Plan
 
-1. **Phase 1**: Tone refresh — update all hardcoded message strings across server code. Low risk, immediately visible. Largest phase by file count.
-2. **Phase 2**: Review-once rule — add `review_suppressed_at` to bookings/table_bookings, `review_processed_at` to private_bookings. Add review-once check before all review SMS. Retire `private_booking_feedback_followup` flow. Low risk, reduces unnecessary messages.
-3. **Phase 3**: Booking service extraction — extract `EventBookingService.createBooking()` from the event-bookings route. Medium risk, prerequisite for Phase 4.
-4. **Phase 4**: Cross-promotion engine — new cron stage, audience selection query, promo templates, `sms_promo_context` table. Medium risk, new outbound messaging.
-5. **Phase 5**: Reply-to-book — inbound SMS parsing, webhook extension, booking creation via extracted service. Highest complexity, depends on Phases 3 and 4.
+1. **Phase 1**: Tone refresh — update all hardcoded message strings across server code. Low risk, immediately visible. Largest phase by file count. **No dependencies.**
+2. **Phase 2**: Review-once rule — add `review_suppressed_at` to bookings/table_bookings, `review_processed_at` + `review_clicked_at` to private_bookings. Add review-once check (batched: 3 bulk lookups building a Set, matching existing `loadSentTemplateSet` pattern) before all review SMS. Retire `private_booking_feedback_followup` flow. Low risk. **No dependencies.** Before implementation, audit all queries/functions referencing review-related columns on bookings, table_bookings, and private_bookings.
+3. **Phase 3**: Booking service extraction — extract `EventBookingService` class in `src/services/event-bookings.ts` from event-bookings route + FOH route. Medium risk. **No dependencies.** Can run in parallel with Phases 1 and 2.
+4. **Phase 4**: Cross-promotion engine — `get_cross_promo_audience` RPC, composite index, `sms_promo_context` table (with RLS), `sms_promo` marketing channel, cron stage with caps and budget-aware ordering. Medium risk. **No dependencies** (but benefits from Phase 1 being done so tone is consistent).
+5. **Phase 5**: Reply-to-book — inbound SMS parsing, webhook extension, booking creation via extracted service, concurrency handling. Highest complexity. **Depends on Phases 3 and 4.**
 
-Each phase is independently deployable and testable.
+Phases 1, 2, 3, and 4 can all run in parallel. Phase 5 is the only one with dependencies. Each phase is independently deployable and testable.
 
 ---
 
@@ -686,4 +724,10 @@ Each phase is independently deployable and testable.
 | Waitlist SMS in tone refresh? | Yes — included | Spec says "ALL SMS"; waitlist offer and acceptance are customer-facing event messages |
 | Reply-to-book concurrency? | Catch unique constraint from booking RPC | `sms_promo_context.booking_created` is fast-path; unique index on bookings is the real backstop |
 | Private-booking review click tracking? | Add `review_clicked_at` to `private_bookings`, use `/r/[token]` redirect pattern | Makes review-once genuinely cross-channel (event + table + private) |
-| SMS promo short-link channel? | New `sms_promo` channel | Prevents polluting existing social/print attribution data |
+| SMS promo short-link channel? | New `sms_promo` channel | Prevents polluting existing social/print attribution data. Must update `EventMarketingChannelKey` type + `EVENT_MARKETING_CHANNELS` + `EVENT_MARKETING_CHANNEL_MAP` |
+| Audience selection implementation? | Postgres RPC (`get_cross_promo_audience`) | Avoids N+1 client-side query chaining; composite index on `(category_id, last_attended_date DESC)` |
+| Cron stage ordering? | Transactional first, promos last with budget check | Preserves global SMS budget for confirmations/reminders |
+| Per-run/per-event caps? | 100 per run, 100 per event | Bounds timeout risk and SMS budget consumption |
+| Promo send guard keys? | Separate `EVENT_PROMO_TEMPLATE_KEYS` array | Prevents promo volume from blocking transactional send guard |
+| EventBookingService pattern? | Class-based (`export class`) in `src/services/event-bookings.ts` | Matches all 20+ existing services |
+| Review-once batch strategy? | 3 bulk lookups building a Set | Matches existing `loadSentTemplateSet` pattern; 3 queries vs 300 |
