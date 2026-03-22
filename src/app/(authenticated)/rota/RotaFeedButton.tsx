@@ -47,7 +47,11 @@ export default function RotaFeedButton({ feedUrl, showCalendarSync }: RotaFeedBu
       const res = await fetch('/api/rota/resync-calendar', { method: 'POST' });
       const result = await res.json();
       if (result.success) {
-        toast.success(`Synced ${result.weeksSynced} published ${result.weeksSynced === 1 ? 'week' : 'weeks'} to Google Calendar`);
+        const parts = [`Synced ${result.weeksSynced} ${result.weeksSynced === 1 ? 'week' : 'weeks'}`];
+        if (result.totalCreated > 0) parts.push(`${result.totalCreated} created`);
+        if (result.totalUpdated > 0) parts.push(`${result.totalUpdated} updated`);
+        if (result.totalFailed > 0) parts.push(`${result.totalFailed} failed`);
+        toast.success(parts.join(' · '));
       } else {
         toast.error(result.error || 'Sync failed');
       }
