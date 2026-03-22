@@ -144,6 +144,7 @@ Migrating from legacy `PageWrapper`/`Page` pattern to `PageLayout` + `HeaderNav`
 | `/api/cron/rota-auto-close` | 0 5 * * * |
 | `/api/cron/rota-manager-alert` | 0 18 * * 0 |
 | `/api/cron/rota-staff-email` | 0 21 * * 0 |
+| `/api/cron/private-bookings-weekly-summary` | 0 * * * * |
 
 ## Key Environment Variables
 
