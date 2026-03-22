@@ -473,42 +473,23 @@ export async function GET(request: Request) {
         }
 
       } catch (error) {
+        // Always release the idempotency claim on failure so the next cron run
+        // can retry. Previously, partial successes (invoice created but schedule
+        // not advanced) would seal the claim as processed_with_error, wedging the
+        // schedule permanently. Releasing allows the next run to retry both the
+        // invoice creation (which will get a new idempotency key for the same
+        // next_invoice_date since the schedule wasn't advanced) and the schedule
+        // advancement.
         if (claimHeld) {
-          if (createdInvoiceId) {
-            try {
-              await persistIdempotencyResponse(
-                supabase,
-                claimKey,
-                claimHash,
-                {
-                  state: 'processed_with_error',
-                  recurring_invoice_id: recurringInvoice.id,
-                  invoice_id: createdInvoiceId,
-                  invoice_number: createdInvoiceNumber,
-                  error: error instanceof Error ? error.message : String(error)
-                },
-                24 * 90
-              )
-              claimHeld = false
-            } catch (persistError) {
-              console.error(
-                `[Cron] Failed persisting recurring invoice idempotency response after partial success ${recurringInvoice.id}:`,
-                persistError
-              )
-              // Keep claim row in processing state to prevent duplicate invoice generation.
-              claimHeld = false
-            }
-          } else {
-            try {
-              await releaseIdempotencyClaim(supabase, claimKey, claimHash)
-            } catch (releaseError) {
-              console.error(
-                `[Cron] Failed releasing recurring invoice idempotency claim ${recurringInvoice.id}:`,
-                releaseError
-              )
-            } finally {
-              claimHeld = false
-            }
+          try {
+            await releaseIdempotencyClaim(supabase, claimKey, claimHash)
+          } catch (releaseError) {
+            console.error(
+              `[Cron] Failed releasing recurring invoice idempotency claim ${recurringInvoice.id}:`,
+              releaseError
+            )
+          } finally {
+            claimHeld = false
           }
         }
 
