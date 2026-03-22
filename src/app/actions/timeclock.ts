@@ -85,14 +85,21 @@ export type TimeclockSession = {
 
 // ---------------------------------------------------------------------------
 // Clock in
-// Uses the anon Supabase client (FOH page has no auth).
+// Uses the service-role (admin) client — the public kiosk has no auth session.
 // ---------------------------------------------------------------------------
 
 export async function clockIn(employeeId: string, kioskSecret?: string): Promise<
   { success: true; data: TimeclockSession } | { success: false; error: string }
 > {
+  // Dual auth: kiosk secret for public timeclock page, or timeclock:edit
+  // permission for authenticated users (e.g. FOH manager clock widget).
   const secretError = validateKioskSecret(kioskSecret);
-  if (secretError) return { success: false, error: secretError };
+  let authMethod: 'kiosk_secret' | 'permission' = 'kiosk_secret';
+  if (secretError) {
+    const hasPermission = await canManageTimeclock();
+    if (!hasPermission) return { success: false, error: secretError };
+    authMethod = 'permission';
+  }
 
   // Use service-role client — FOH kiosk page has no auth session
   const supabase = await createClient();
@@ -141,12 +148,13 @@ export async function clockIn(employeeId: string, kioskSecret?: string): Promise
     resource_type: 'timeclock_session',
     resource_id: data.id,
     operation_status: 'success',
-    additional_info: { employee_id: employeeId, work_date: workDate },
+    additional_info: { employee_id: employeeId, work_date: workDate, auth_method: authMethod },
   });
 
   await invalidatePayrollApprovalsForDate(supabase, workDate);
 
   revalidatePath('/timeclock');
+  revalidatePath('/rota/timeclock');
   return { success: true, data: data as TimeclockSession };
 }
 
@@ -157,8 +165,15 @@ export async function clockIn(employeeId: string, kioskSecret?: string): Promise
 export async function clockOut(employeeId: string, kioskSecret?: string): Promise<
   { success: true; data: TimeclockSession } | { success: false; error: string }
 > {
+  // Dual auth: kiosk secret for public timeclock page, or timeclock:edit
+  // permission for authenticated users (e.g. FOH manager clock widget).
   const secretError = validateKioskSecret(kioskSecret);
-  if (secretError) return { success: false, error: secretError };
+  let authMethod: 'kiosk_secret' | 'permission' = 'kiosk_secret';
+  if (secretError) {
+    const hasPermission = await canManageTimeclock();
+    if (!hasPermission) return { success: false, error: secretError };
+    authMethod = 'permission';
+  }
 
   const supabase = await createClient();
 
@@ -189,12 +204,13 @@ export async function clockOut(employeeId: string, kioskSecret?: string): Promis
     resource_type: 'timeclock_session',
     resource_id: data.id,
     operation_status: 'success',
-    additional_info: { employee_id: employeeId, clock_out_at: nowUtc.toISOString() },
+    additional_info: { employee_id: employeeId, clock_out_at: nowUtc.toISOString(), auth_method: authMethod },
   });
 
   await invalidatePayrollApprovalsForDate(supabase, openSession.work_date as string);
 
   revalidatePath('/timeclock');
+  revalidatePath('/rota/timeclock');
   return { success: true, data: data as TimeclockSession };
 }
 
