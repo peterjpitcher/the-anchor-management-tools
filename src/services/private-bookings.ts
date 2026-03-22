@@ -873,7 +873,36 @@ export class PrivateBookingService {
       discount_reason: string;
     }
   ) {
+    // Server-side discount validation
+    if (data.discount_type !== 'percent' && data.discount_type !== 'fixed') {
+      throw new Error('Invalid discount type — must be "percent" or "fixed"');
+    }
+    if (typeof data.discount_amount !== 'number' || !Number.isFinite(data.discount_amount) || data.discount_amount <= 0) {
+      throw new Error('Invalid discount value — must be a positive number');
+    }
+    if (data.discount_type === 'percent' && data.discount_amount > 100) {
+      throw new Error('Percentage discount cannot exceed 100%');
+    }
+
     const supabase = await createClient();
+
+    // For fixed discounts, validate against booking total
+    if (data.discount_type === 'fixed') {
+      const { data: booking, error: fetchError } = await supabase
+        .from('private_bookings')
+        .select('total_amount')
+        .eq('id', bookingId)
+        .maybeSingle();
+
+      if (fetchError || !booking) {
+        throw new Error('Booking not found');
+      }
+
+      const totalAmount = toNumber(booking.total_amount, 0);
+      if (totalAmount > 0 && data.discount_amount > totalAmount) {
+        throw new Error('Fixed discount cannot exceed the booking total');
+      }
+    }
 
     const { data: updatedBooking, error } = await supabase
       .from('private_bookings')
@@ -1759,7 +1788,45 @@ export class PrivateBookingService {
 
     let query = supabase
       .from('private_bookings_with_details')
-      .select('*', { count: 'exact' })
+      .select(
+        `
+          id,
+          customer_id,
+          customer_name,
+          customer_first_name,
+          customer_last_name,
+          customer_full_name,
+          contact_phone,
+          contact_email,
+          event_date,
+          start_time,
+          setup_date,
+          setup_time,
+          end_time,
+          end_time_next_day,
+          guest_count,
+          event_type,
+          status,
+          contract_version,
+          created_at,
+          updated_at,
+          deposit_amount,
+          deposit_paid_date,
+          total_amount,
+          balance_due_date,
+          final_payment_date,
+          final_payment_method,
+          discount_type,
+          discount_amount,
+          discount_reason,
+          internal_notes,
+          customer_requests,
+          calculated_total,
+          deposit_status,
+          days_until_event
+        `,
+        { count: 'estimated' }
+      )
       .order('event_date', { ascending: true, nullsFirst: true })
       .order('start_time', { ascending: true, nullsFirst: true });
 
