@@ -30,7 +30,7 @@ export default async function TimeclockPage() {
           style: { background: '#1f2937', color: '#f9fafb', border: '1px solid #374151' },
         }}
       />
-      <TimeclockKiosk employees={activeEmployees} openSessions={openSessions} />
+      <TimeclockKiosk employees={activeEmployees} openSessions={openSessions} kioskSecret={process.env.TIMECLOCK_KIOSK_SECRET ?? ''} />
     </>
   );
 }

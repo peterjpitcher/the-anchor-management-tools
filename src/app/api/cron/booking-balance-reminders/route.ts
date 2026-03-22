@@ -17,7 +17,7 @@ export const maxDuration = 60
  * SMS reminder via the existing SmsQueueService (which handles opt-in
  * checks, quiet-hours guards, and deduplication).
  */
-export async function POST(request: Request) {
+async function handler(request: Request) {
   const authResult = authorizeCronRequest(request)
   if (!authResult.authorized) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -148,3 +148,7 @@ export async function POST(request: Request) {
     )
   }
 }
+
+// Vercel cron invokes GET; keep POST for backward compatibility
+export const GET = handler
+export const POST = handler

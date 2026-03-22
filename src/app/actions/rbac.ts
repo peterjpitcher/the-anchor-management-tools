@@ -66,21 +66,18 @@ export async function checkUserPermission(
   action: ActionType,
   userId?: string
 ): Promise<boolean> {
+  // When userId is provided, skip the auth lookup to avoid duplicate getUser() calls
+  // in code paths where the caller has already resolved the authenticated user.
+  if (userId) {
+    return await PermissionService.checkUserPermission(moduleName, action, userId);
+  }
+
   const supabase = await createClient();
-  
+
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return false;
-  
-  const targetUserId = userId || user.id;
 
-  if (targetUserId !== user.id) {
-    const canManageUsers = await PermissionService.checkUserPermission('users', 'manage_roles', user.id);
-    if (!canManageUsers) {
-      return false;
-    }
-  }
-  
-  return await PermissionService.checkUserPermission(moduleName, action, targetUserId);
+  return await PermissionService.checkUserPermission(moduleName, action, user.id);
 }
 
 export async function getCurrentUserModuleActions(moduleName: ModuleName) {

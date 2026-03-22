@@ -8,9 +8,30 @@ import { checkUserPermission } from '@/app/actions/rbac';
 
 // Timeclock uses the service-role (admin) client so that clock in/out works
 // on the public FOH kiosk without Supabase auth session.
+// The kiosk page must pass TIMECLOCK_KIOSK_SECRET to prevent random internet access.
 const createClient = () => createAdminClient();
 
 const TIMEZONE = 'Europe/London';
+
+/**
+ * Validates the kiosk secret token. The timeclock is intentionally public
+ * (kiosk use case with no Supabase auth), so this shared secret is the
+ * primary access control preventing arbitrary internet callers.
+ */
+function validateKioskSecret(kioskSecret?: string): string | null {
+  const expected = process.env.TIMECLOCK_KIOSK_SECRET;
+  if (!expected) {
+    // If the env var is not set, allow access in non-production for dev convenience
+    if (process.env.NODE_ENV === 'production') {
+      return 'TIMECLOCK_KIOSK_SECRET is not configured';
+    }
+    return null;
+  }
+  if (!kioskSecret || kioskSecret !== expected) {
+    return 'Invalid kiosk secret';
+  }
+  return null;
+}
 
 async function canManageTimeclock(options?: { allowPayrollApprove?: boolean }): Promise<boolean> {
   const canEdit = await checkUserPermission('timeclock', 'edit');
@@ -67,10 +88,13 @@ export type TimeclockSession = {
 // Uses the anon Supabase client (FOH page has no auth).
 // ---------------------------------------------------------------------------
 
-export async function clockIn(employeeId: string): Promise<
+export async function clockIn(employeeId: string, kioskSecret?: string): Promise<
   { success: true; data: TimeclockSession } | { success: false; error: string }
 > {
-  // Use service-role or anon client — FOH page is open access
+  const secretError = validateKioskSecret(kioskSecret);
+  if (secretError) return { success: false, error: secretError };
+
+  // Use service-role client — FOH kiosk page has no auth session
   const supabase = await createClient();
 
   const { data: employee } = await supabase
@@ -81,13 +105,14 @@ export async function clockIn(employeeId: string): Promise<
   if (!employee) return { success: false, error: 'Employee not found' };
   if (employee.status !== 'Active') return { success: false, error: 'Employee is not active' };
 
-  // Prevent double clock-in
+  // Prevent double clock-in — explicit null check narrows the race window
   const { data: openSession } = await supabase
     .from('timeclock_sessions')
     .select('id')
     .eq('employee_id', employeeId)
     .is('clock_out_at', null)
-    .single();
+    .limit(1)
+    .maybeSingle();
 
   if (openSession) {
     return { success: false, error: 'Already clocked in. Please clock out first.' };
@@ -129,9 +154,12 @@ export async function clockIn(employeeId: string): Promise<
 // Clock out
 // ---------------------------------------------------------------------------
 
-export async function clockOut(employeeId: string): Promise<
+export async function clockOut(employeeId: string, kioskSecret?: string): Promise<
   { success: true; data: TimeclockSession } | { success: false; error: string }
 > {
+  const secretError = validateKioskSecret(kioskSecret);
+  if (secretError) return { success: false, error: secretError };
+
   const supabase = await createClient();
 
   const { data: openSession, error: findError } = await supabase

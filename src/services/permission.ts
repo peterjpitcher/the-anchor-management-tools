@@ -266,6 +266,22 @@ export class PermissionService {
 
   static async assignPermissionsToRole(roleId: string, permissionIds: string[]) {
     const admin = createAdminClient();
+
+    // Prevent modification of system roles (matches guards in updateRole/deleteRole)
+    const { data: role, error: roleFetchError } = await admin
+      .from('roles')
+      .select('is_system')
+      .eq('id', roleId)
+      .maybeSingle();
+
+    if (roleFetchError || !role) {
+      throw new Error('Role not found');
+    }
+
+    if (role.is_system) {
+      throw new Error('System role permissions cannot be modified');
+    }
+
     const dedupedPermissionIds = Array.from(new Set(permissionIds));
 
     const { data: existing, error: existingError } = await admin
