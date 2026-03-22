@@ -25,7 +25,7 @@ The current daily private bookings email sends every morning with a flat list of
 - Database migrations or schema changes
 - Changes to the private bookings UI
 - Multi-recipient or personalised emails
-- New environment variables
+- New environment variables (existing `PRIVATE_BOOKINGS_DAILY_DIGEST_HOUR_LONDON` env var will be renamed to `PRIVATE_BOOKINGS_WEEKLY_DIGEST_HOUR_LONDON`)
 
 ---
 
@@ -39,7 +39,8 @@ The current daily private bookings email sends every morning with a flat list of
 ### New
 - `vercel.json` cron: unchanged (keep hourly)
 - Route handler filters to 9 AM London time **AND Monday only** (day-of-week check in `Europe/London` timezone)
-- Idempotency window: 7 days
+- Idempotency key format: `cron:private-bookings-weekly-summary:${mondayDateKey}` (uses the Monday date, not the current date, so `?force=true` on a non-Monday still respects the weekly window)
+- Idempotency TTL: 7 days (`24 * 7` hours)
 - `?force=true` bypass still works for manual triggers
 
 ### Rationale
@@ -83,11 +84,11 @@ An event appears in Tier 1 if it matches **any** of these triggers:
 | Balance overdue | `balance_due_date < today` AND outstanding balance > 0 | `Balance overdue: £X.XX` |
 | Stale draft | `status = 'draft'` AND `updated_at` older than 7 days | `Not touched in X days` |
 | Missing details | `guest_count` is null, OR `event_type` is null, OR (`contact_email` is null AND `contact_phone` is null) | `Missing: [field list]` |
-| Balance due this week | `balance_due_date` between today and end of this week AND outstanding balance > 0 | `Balance due: £X.XX by [date]` |
+| Balance due this week | `balance_due_date` between today (Monday, inclusive) and Sunday of the same week (inclusive) AND outstanding balance > 0 | `Balance due: £X.XX by [date]` |
 
 If a booking matches multiple triggers, all labels show on the same row — no duplicate entries.
 
-**Outstanding balance calculation** (existing logic): `total_amount - deposit_amount`, capped at 0. Only applies to bookings without `final_payment_date`.
+**Outstanding balance calculation:** Use `balance_remaining` from the `private_bookings_with_details` view (computed by `calculate_private_booking_balance()`, which accounts for all payments via `private_booking_payments`, not just the deposit). A booking has an outstanding balance when `balance_remaining > 0` and `final_payment_date` is null.
 
 **Sort order:** Event date ascending (soonest first), then trigger count descending.
 
@@ -160,7 +161,8 @@ for each upcoming non-cancelled booking:
   if missing guest_count/event_type/contact: triggers_t1.push("Missing: [fields]")
   if balance_due this week AND balance > 0:  triggers_t1.push("Balance due: £X.XX by [date]")
 
-  // Tier 2 checks (only if not already Tier 1)
+  // Tier 2 checks — always computed, but only used if booking has no Tier 1 triggers.
+  // Tier 2 labels are NOT shown on Tier 1 bookings — each booking shows only its assigned tier's labels.
   if draft AND hold_expiry within 48h (not expired): triggers_t2.push("Hold expires [time]")
   if has pending SMS:                        triggers_t2.push("X SMS pending")
   if notes contain date/time TBC:            triggers_t2.push("Date/time TBC")
@@ -185,6 +187,7 @@ All references to "daily" become "weekly":
 | `sendManagerPrivateBookingsDailyDigestEmail()` | `sendManagerPrivateBookingsWeeklyDigestEmail()` |
 | `PrivateBookingDailyDigest*` types | `PrivateBookingWeeklyDigest*` types |
 | Idempotency key prefix | Updated from `daily` to `weekly` |
+| `PRIVATE_BOOKINGS_DAILY_DIGEST_HOUR_LONDON` env var | Renamed to `PRIVATE_BOOKINGS_WEEKLY_DIGEST_HOUR_LONDON` |
 
 ---
 
@@ -194,9 +197,10 @@ All references to "daily" become "weekly":
    - Rename to `src/app/api/cron/private-bookings-weekly-summary/route.ts`
    - Add Monday-only filter (London timezone day-of-week check)
    - Change idempotency window to 7 days
-   - Add new queries: `updated_at` staleness, missing fields detection
-   - Build tiered classification logic
+   - Add `updated_at`, `contact_email`, `contact_phone`, and `balance_remaining` to the select clause of the `private_bookings_with_details` query
+   - Build tiered classification logic using these new fields
    - Pass tiered data to email function
+   - Preserve existing `POST` handler that delegates to `GET`
 
 2. **`src/lib/private-bookings/manager-notifications.ts`**
    - Rename function and types from `Daily` to `Weekly`
