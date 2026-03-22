@@ -7,31 +7,10 @@ import { logAuditEvent } from '@/app/actions/audit';
 import { checkUserPermission } from '@/app/actions/rbac';
 
 // Timeclock uses the service-role (admin) client so that clock in/out works
-// on the public FOH kiosk without Supabase auth session.
-// The kiosk page must pass TIMECLOCK_KIOSK_SECRET to prevent random internet access.
+// on the public kiosk without Supabase auth session.
 const createClient = () => createAdminClient();
 
 const TIMEZONE = 'Europe/London';
-
-/**
- * Validates the kiosk secret token. The timeclock is intentionally public
- * (kiosk use case with no Supabase auth), so this shared secret is the
- * primary access control preventing arbitrary internet callers.
- */
-function validateKioskSecret(kioskSecret?: string): string | null {
-  const expected = process.env.TIMECLOCK_KIOSK_SECRET;
-  if (!expected) {
-    // If the env var is not set, allow access in non-production for dev convenience
-    if (process.env.NODE_ENV === 'production') {
-      return 'TIMECLOCK_KIOSK_SECRET is not configured';
-    }
-    return null;
-  }
-  if (!kioskSecret || kioskSecret !== expected) {
-    return 'Invalid kiosk secret';
-  }
-  return null;
-}
 
 async function canManageTimeclock(options?: { allowPayrollApprove?: boolean }): Promise<boolean> {
   const canEdit = await checkUserPermission('timeclock', 'edit');
@@ -88,21 +67,9 @@ export type TimeclockSession = {
 // Uses the service-role (admin) client — the public kiosk has no auth session.
 // ---------------------------------------------------------------------------
 
-export async function clockIn(employeeId: string, kioskSecret?: string): Promise<
+export async function clockIn(employeeId: string): Promise<
   { success: true; data: TimeclockSession } | { success: false; error: string }
 > {
-  // Dual auth: kiosk secret for public timeclock page, or timeclock:clock
-  // permission for authenticated users (e.g. FOH manager clock widget).
-  const secretError = validateKioskSecret(kioskSecret);
-  let authMethod: 'kiosk_secret' | 'permission' = 'kiosk_secret';
-  if (secretError) {
-    const canClock = await checkUserPermission('timeclock', 'clock');
-    const canEdit = canClock || await canManageTimeclock();
-    if (!canEdit) return { success: false, error: secretError };
-    authMethod = 'permission';
-  }
-
-  // Use service-role client — FOH kiosk page has no auth session
   const supabase = await createClient();
 
   const { data: employee } = await supabase
@@ -149,7 +116,7 @@ export async function clockIn(employeeId: string, kioskSecret?: string): Promise
     resource_type: 'timeclock_session',
     resource_id: data.id,
     operation_status: 'success',
-    additional_info: { employee_id: employeeId, work_date: workDate, auth_method: authMethod },
+    additional_info: { employee_id: employeeId, work_date: workDate },
   });
 
   await invalidatePayrollApprovalsForDate(supabase, workDate);
@@ -163,20 +130,9 @@ export async function clockIn(employeeId: string, kioskSecret?: string): Promise
 // Clock out
 // ---------------------------------------------------------------------------
 
-export async function clockOut(employeeId: string, kioskSecret?: string): Promise<
+export async function clockOut(employeeId: string): Promise<
   { success: true; data: TimeclockSession } | { success: false; error: string }
 > {
-  // Dual auth: kiosk secret for public timeclock page, or timeclock:clock
-  // permission for authenticated users (e.g. FOH manager clock widget).
-  const secretError = validateKioskSecret(kioskSecret);
-  let authMethod: 'kiosk_secret' | 'permission' = 'kiosk_secret';
-  if (secretError) {
-    const canClock = await checkUserPermission('timeclock', 'clock');
-    const canEdit = canClock || await canManageTimeclock();
-    if (!canEdit) return { success: false, error: secretError };
-    authMethod = 'permission';
-  }
-
   const supabase = await createClient();
 
   const { data: openSession, error: findError } = await supabase
@@ -206,7 +162,7 @@ export async function clockOut(employeeId: string, kioskSecret?: string): Promis
     resource_type: 'timeclock_session',
     resource_id: data.id,
     operation_status: 'success',
-    additional_info: { employee_id: employeeId, clock_out_at: nowUtc.toISOString(), auth_method: authMethod },
+    additional_info: { employee_id: employeeId, clock_out_at: nowUtc.toISOString() },
   });
 
   await invalidatePayrollApprovalsForDate(supabase, openSession.work_date as string);
