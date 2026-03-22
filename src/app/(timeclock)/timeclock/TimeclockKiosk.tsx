@@ -15,6 +15,7 @@ interface Employee {
 interface TimeclockKioskProps {
   employees: Employee[];
   openSessions: (TimeclockSession & { employee_name: string })[];
+  kioskSecret: string;
 }
 
 function empName(e: Employee): string {
@@ -25,7 +26,7 @@ function formatTime(iso: string): string {
   return new Date(iso).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
 }
 
-export default function TimeclockKiosk({ employees, openSessions: initialSessions }: TimeclockKioskProps) {
+export default function TimeclockKiosk({ employees, openSessions: initialSessions, kioskSecret }: TimeclockKioskProps) {
   const router = useRouter();
   const [sessions, setSessions] = useState(initialSessions);
   const [selectedId, setSelectedId] = useState<string>('');
@@ -51,7 +52,7 @@ export default function TimeclockKiosk({ employees, openSessions: initialSession
     if (isAlreadyClockedIn) { toast.error('You are already clocked in'); return; }
     startTransition(async () => {
       try {
-        const result = await clockIn(selectedId);
+        const result = await clockIn(selectedId, kioskSecret);
         if (!result.success) { toast.error(result.error); return; }
         toast.success(`Welcome in, ${empName(selectedEmp!)} 👋`);
         setSessions(prev => [...prev, { ...result.data, employee_name: empName(selectedEmp!) }]);
@@ -69,7 +70,7 @@ export default function TimeclockKiosk({ employees, openSessions: initialSession
     if (!isAlreadyClockedIn) { toast.error('You are not currently clocked in'); return; }
     startTransition(async () => {
       try {
-        const result = await clockOut(selectedId);
+        const result = await clockOut(selectedId, kioskSecret);
         if (!result.success) { toast.error(result.error); return; }
         toast.success(`See you later, ${empName(selectedEmp!)}! ✅`);
         setSessions(prev => prev.filter(s => s.employee_id !== selectedId));

@@ -809,24 +809,37 @@ export async function addEmployeeAttachment(
   }
 }
 
-export async function getAttachmentSignedUrl(storagePath: string): Promise<{ url: string | null; error: string | null }> {
+export async function getAttachmentSignedUrl(attachmentId: string): Promise<{ url: string | null; error: string | null }> {
   const hasPermission = await checkUserPermission('employees', 'view_documents');
   if (!hasPermission) {
     return { url: null, error: 'Insufficient permissions to view employee documents.' };
   }
 
   try {
-    const url = await EmployeeService.getAttachmentSignedUrl(storagePath);
+    // Look up the attachment record to get the verified storage path from the DB
+    const supabase = createAdminClient();
+    const { data: attachment, error: fetchError } = await supabase
+      .from('employee_attachments')
+      .select('storage_path, employee_id')
+      .eq('attachment_id', attachmentId)
+      .single();
+
+    if (fetchError || !attachment) {
+      return { url: null, error: 'Attachment not found.' };
+    }
+
+    const url = await EmployeeService.getAttachmentSignedUrl(attachment.storage_path);
     const userInfo = await getCurrentUser();
     await logAuditEvent({
       ...(userInfo.user_id && { user_id: userInfo.user_id }),
       ...(userInfo.user_email && { user_email: userInfo.user_email }),
       operation_type: 'view',
       resource_type: 'employee_attachment',
-      resource_id: storagePath,
+      resource_id: attachmentId,
       operation_status: 'success',
       additional_info: {
-        storage_path: storagePath
+        storage_path: attachment.storage_path,
+        employee_id: attachment.employee_id,
       }
     });
     return { url, error: null };
@@ -1249,14 +1262,26 @@ export async function upsertRightToWork(
   }
 }
 
-export async function getRightToWorkPhotoUrl(photoPath: string): Promise<{ url: string | null; error: string | null }> {
+export async function getRightToWorkPhotoUrl(employeeId: string): Promise<{ url: string | null; error: string | null }> {
   const hasPermission = await checkUserPermission('employees', 'view_documents');
   if (!hasPermission) {
     return { url: null, error: 'Insufficient permissions to view employee documents.' };
   }
 
   try {
-    const url = await EmployeeService.getRightToWorkPhotoUrl(photoPath);
+    // Look up the employee's right-to-work record to get the verified photo path
+    const supabase = createAdminClient();
+    const { data: rtw, error: fetchError } = await supabase
+      .from('employee_right_to_work')
+      .select('photo_storage_path')
+      .eq('employee_id', employeeId)
+      .single();
+
+    if (fetchError || !rtw?.photo_storage_path) {
+      return { url: null, error: 'Right to work photo not found.' };
+    }
+
+    const url = await EmployeeService.getRightToWorkPhotoUrl(rtw.photo_storage_path);
     return { url, error: null };
   } catch (error: any) {
     console.error('Error creating signed URL for right to work photo:', error);
