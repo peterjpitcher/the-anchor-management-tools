@@ -178,7 +178,7 @@
       "schedule": "0 1 * * *"
     },
     {
-      "path": "/api/cron/private-bookings-daily-summary",
+      "path": "/api/cron/private-bookings-weekly-summary",
       "schedule": "0 * * * *"
     },
     {
