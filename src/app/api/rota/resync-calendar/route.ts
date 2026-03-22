@@ -78,7 +78,7 @@ export async function POST(_req: NextRequest): Promise<NextResponse> {
   try {
     const { data: weeks, error } = await admin
       .from('rota_weeks')
-      .select('id')
+      .select('id, week_start')
       .eq('status', 'published')
 
     if (error) {
@@ -116,6 +116,11 @@ export async function POST(_req: NextRequest): Promise<NextResponse> {
       const arr = shiftsByWeek.get(shift.week_id) ?? []
       arr.push(shift)
       shiftsByWeek.set(shift.week_id, arr)
+    }
+
+    const weekStartMap = new Map<string, string>()
+    for (const w of weeks ?? []) {
+      weekStartMap.set(w.id, w.week_start as string)
     }
 
     // -- Fetch ALL employee names once --------------------------------------
@@ -156,6 +161,7 @@ export async function POST(_req: NextRequest): Promise<NextResponse> {
         const result = await syncRotaWeekToCalendar(weekId, shifts, {
           employeeNames,
           auth,
+          weekStart: weekStartMap.get(weekId),
         })
         weeksSynced++
         totalCreated += result.created
