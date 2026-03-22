@@ -2,6 +2,7 @@
 
 import { AuthService } from '@/services/auth';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { getErrorMessage } from '@/lib/errors';
 
 export async function signIn(email: string, password: string) {
   try {
@@ -23,12 +24,13 @@ export async function signIn(email: string, password: string) {
     }
 
     return { success: true as const };
-  } catch (error: any) {
-    if (error.message.includes('Too many requests')) {
+  } catch (error: unknown) {
+    const message = getErrorMessage(error);
+    if (message.includes('Too many requests')) {
       return { error: 'Too many login attempts. Please try again later.' };
     }
     console.error('Sign in error:', error);
-    return { error: error.message || 'An error occurred during sign in' };
+    return { error: message || 'An error occurred during sign in' };
   }
 }
 
@@ -46,7 +48,7 @@ export async function signUp(
 export async function signOut() {
   try {
     return await AuthService.signOut();
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Sign out error:', error);
     return { error: 'An error occurred during sign out' };
   }

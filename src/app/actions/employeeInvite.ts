@@ -6,6 +6,7 @@ import { z } from 'zod';
 import { checkUserPermission } from './rbac';
 import { logAuditEvent } from './audit';
 import { getCurrentUser } from '@/lib/audit-helpers';
+import { getErrorMessage } from '@/lib/errors';
 import {
   sendWelcomeEmail,
   sendChaseEmail,
@@ -103,9 +104,9 @@ export async function inviteEmployee(prevState: any, formData: FormData) {
 
     revalidatePath('/employees');
     return { type: 'success', message: `Invite sent to ${email}.`, employeeId: result.employee_id };
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error('[inviteEmployee] Unexpected error:', err);
-    return { type: 'error', message: err.message || 'An unexpected error occurred.' };
+    return { type: 'error', message: getErrorMessage(err) };
   }
 }
 
@@ -540,12 +541,12 @@ export async function saveOnboardingSection(
     }
 
     return { success: true };
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error(`[saveOnboardingSection] Section ${section} error:`, err);
     if (err instanceof z.ZodError) {
       return { success: false, error: err.errors[0]?.message || 'Validation failed.' };
     }
-    return { success: false, error: err.message || 'Failed to save. Please try again.' };
+    return { success: false, error: getErrorMessage(err) };
   }
 }
 
