@@ -7,7 +7,7 @@ import { getOAuth2Client } from '@/lib/google-calendar'
 import type { RotaShiftRow } from '@/lib/google-calendar-rota'
 
 export const dynamic = 'force-dynamic'
-export const maxDuration = 800
+export const maxDuration = 300
 
 /** Simple bounded-concurrency runner — processes items with at most `limit` in flight. */
 async function mapWithConcurrency<T, R>(
@@ -76,10 +76,21 @@ export async function POST(_req: NextRequest): Promise<NextResponse> {
   )
 
   try {
+    // Only sync recent weeks (8 weeks back + 4 weeks forward = 12 weeks).
+    // Historical weeks don't change — no need to re-sync them every time.
+    // The full 68-week resync was a one-off repair run locally on 2026-03-22.
+    const now = new Date()
+    const windowStart = new Date(now)
+    windowStart.setDate(windowStart.getDate() - 56) // 8 weeks back
+    const windowEnd = new Date(now)
+    windowEnd.setDate(windowEnd.getDate() + 28) // 4 weeks forward
+
     const { data: weeks, error } = await admin
       .from('rota_weeks')
       .select('id, week_start')
       .eq('status', 'published')
+      .gte('week_start', windowStart.toISOString().split('T')[0])
+      .lte('week_start', windowEnd.toISOString().split('T')[0])
 
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 })
