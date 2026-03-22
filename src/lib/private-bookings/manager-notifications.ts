@@ -30,35 +30,27 @@ export type PrivateBookingCreatedNotificationInput = {
   createdVia?: string
 }
 
-export type PrivateBookingDailyDigestEvent = {
+export type PrivateBookingWeeklyDigestEvent = {
   bookingId: string
   customerName: string
-  eventDate: NullableString
-  startTime: NullableString
-  status: NullableString
+  eventDate: string | null | undefined
+  startTime: string | null | undefined
+  status: string | null | undefined
   guestCount: number | null
-  eventType: NullableString
+  eventType: string | null | undefined
   outstandingBalance: number | null
   bookingUrl: string
+  tier: 1 | 2 | 3
+  triggerLabels: string[]
 }
 
-export type PrivateBookingDailyDigestActionItem = {
-  label: string
-  detail?: string
-  href?: string
-}
-
-export type PrivateBookingDailyDigestActionSection = {
-  title: string
-  summary?: string
-  items: PrivateBookingDailyDigestActionItem[]
-}
-
-export type PrivateBookingDailyDigestInput = {
+export type PrivateBookingWeeklyDigestInput = {
   runDateKey: string
+  weekLabel: string
   appBaseUrl: string
-  events: PrivateBookingDailyDigestEvent[]
-  actionSections: PrivateBookingDailyDigestActionSection[]
+  events: PrivateBookingWeeklyDigestEvent[]
+  pendingSmsCount: number
+  smsQueueUrl: string
 }
 
 function escapeHtml(value: string): string {
@@ -215,112 +207,160 @@ export async function sendManagerPrivateBookingCreatedEmail(
   return { sent: true }
 }
 
-export async function sendManagerPrivateBookingsDailyDigestEmail(
-  input: PrivateBookingDailyDigestInput
+export async function sendManagerPrivateBookingsWeeklyDigestEmail(
+  input: PrivateBookingWeeklyDigestInput
 ): Promise<{ sent: boolean; error?: string; actionCount?: number; eventCount?: number }> {
   const appBaseUrl = normalizeAppBaseUrl(input.appBaseUrl)
   const privateBookingsUrl = `${appBaseUrl}/private-bookings`
   const events = input.events
-  const actionSections = input.actionSections
-  const actionCount = actionSections.reduce((sum, section) => sum + section.items.length, 0)
-  const dateLabel = formatDateOnly(input.runDateKey)
-  const subject = `Private bookings daily summary - ${dateLabel}`
 
-  const eventRowsHtml = events.length
-    ? events
-      .map((event) => {
-        const line = [
-          `<strong>${escapeHtml(event.customerName)}</strong>`,
-          ` - ${escapeHtml(formatEventMoment(event.eventDate, event.startTime))}`,
-          ` - ${escapeHtml(humanizeToken(event.status))}`,
-          ` - ${escapeHtml(`${event.guestCount ?? 0} guests`)}`,
-          ` - ${escapeHtml(event.eventType?.trim() || 'Private event')}`
-        ].join('')
-        const balanceText =
-          typeof event.outstandingBalance === 'number' && event.outstandingBalance > 0
-            ? ` <em>(Outstanding: ${escapeHtml(formatCurrency(event.outstandingBalance))})</em>`
-            : ''
-        return `<li>${line}${balanceText} <a href="${escapeHtml(event.bookingUrl)}">Open</a></li>`
-      })
+  const tier1 = events.filter((e) => e.tier === 1)
+  const tier2 = events.filter((e) => e.tier === 2)
+  const tier3 = events.filter((e) => e.tier === 3)
+  const actionCount = tier1.length + tier2.length
+  const subject = `Private bookings weekly summary — ${input.weekLabel}`
+
+  // --- HTML builder ---
+
+  function renderEventCardHtml(event: PrivateBookingWeeklyDigestEvent): string {
+    const tagsHtml = event.triggerLabels.length
+      ? event.triggerLabels
+          .map(
+            (label) =>
+              `<span style="display:inline-block;background:#f3f4f6;color:#374151;font-size:12px;padding:2px 8px;border-radius:4px;margin-right:4px;margin-top:4px;">${escapeHtml(label)}</span>`
+          )
+          .join('')
+      : ''
+
+    return [
+      '<div style="padding:10px 12px;margin-bottom:8px;background:#fafafa;border-radius:4px;">',
+      `<div><strong>${escapeHtml(event.customerName)}</strong></div>`,
+      `<div style="font-size:14px;color:#4b5563;margin-top:2px;">${escapeHtml(formatEventMoment(event.eventDate, event.startTime))} · ${escapeHtml(`${event.guestCount ?? 0} guests`)} · ${escapeHtml(event.eventType?.trim() || 'Private event')}</div>`,
+      tagsHtml ? `<div style="margin-top:4px;">${tagsHtml}</div>` : '',
+      `<div style="margin-top:6px;"><a href="${escapeHtml(event.bookingUrl)}" style="color:#2563eb;font-size:13px;">View booking →</a></div>`,
+      '</div>'
+    ].join('')
+  }
+
+  function renderTierSectionHtml(
+    heading: string,
+    tierEvents: PrivateBookingWeeklyDigestEvent[],
+    borderColor: string
+  ): string {
+    if (tierEvents.length === 0) return ''
+    const cardsHtml = tierEvents.map(renderEventCardHtml).join('')
+    return [
+      `<div style="border-left:4px solid ${borderColor};padding-left:16px;margin-bottom:24px;">`,
+      `<h3 style="margin:0 0 8px 0;font-size:16px;">${escapeHtml(heading)} (${tierEvents.length})</h3>`,
+      cardsHtml,
+      '</div>'
+    ].join('')
+  }
+
+  function renderTier3SectionHtml(tierEvents: PrivateBookingWeeklyDigestEvent[]): string {
+    if (tierEvents.length === 0) return ''
+    const linesHtml = tierEvents
+      .map(
+        (event) =>
+          `<div style="font-size:14px;padding:4px 0;color:#374151;">${escapeHtml(event.customerName)} · ${escapeHtml(formatEventMoment(event.eventDate, event.startTime))} · ${escapeHtml(`${event.guestCount ?? 0} guests`)} · ${escapeHtml(event.eventType?.trim() || 'Private event')}</div>`
+      )
       .join('')
-    : '<li>No upcoming private events.</li>'
+    return [
+      '<div style="border-left:4px solid #16a34a;padding-left:16px;margin-bottom:24px;">',
+      `<h3 style="margin:0 0 8px 0;font-size:16px;">On Track (${tierEvents.length})</h3>`,
+      linesHtml,
+      '</div>'
+    ].join('')
+  }
 
-  const actionSectionsHtml = actionSections.length
-    ? actionSections
-      .map((section) => {
-        const itemsHtml = section.items.length
-          ? section.items
-            .map((item) => {
-              const detail = item.detail ? ` - ${escapeHtml(item.detail)}` : ''
-              const link = item.href ? ` <a href="${escapeHtml(item.href)}">Open</a>` : ''
-              return `<li>${escapeHtml(item.label)}${detail}${link}</li>`
-            })
-            .join('')
-          : '<li>None</li>'
+  const statsBarHtml = `<p style="font-size:16px;margin-bottom:16px;"><strong>${tier1.length}</strong> Action Required | <strong>${tier2.length}</strong> Needs Attention | <strong>${tier3.length}</strong> On Track</p>`
 
-        const summary = section.summary ? `<p>${escapeHtml(section.summary)}</p>` : ''
-        return `<div><h3>${escapeHtml(section.title)}</h3>${summary}<ul>${itemsHtml}</ul></div>`
-      })
-      .join('')
-    : '<p>No outstanding private-booking actions today.</p>'
+  const quickLinkHtml = `<p style="margin-bottom:20px;"><a href="${escapeHtml(privateBookingsUrl)}" style="color:#2563eb;">Open Private Bookings →</a></p>`
+
+  const pendingSmsHtml =
+    input.pendingSmsCount > 0
+      ? `<div style="margin-top:16px;padding:12px;background:#fef3c7;border-radius:6px;"><strong>${input.pendingSmsCount}</strong> SMS pending approval · <a href="${escapeHtml(input.smsQueueUrl)}" style="color:#2563eb;">Review queue →</a></div>`
+      : ''
+
+  const footerHtml = `<p style="margin-top:24px;font-size:12px;color:#9ca3af;">Sent every Monday at 9am · <a href="${escapeHtml(privateBookingsUrl)}" style="color:#9ca3af;">Manage in Anchor Management Tools</a></p>`
+
+  let bodyHtml: string
+  if (events.length === 0) {
+    bodyHtml = '<p style="margin-top:16px;color:#6b7280;">All clear — no upcoming private events. Enjoy your week.</p>'
+  } else {
+    bodyHtml = [
+      renderTierSectionHtml('Action Required', tier1, '#dc2626'),
+      renderTierSectionHtml('Needs Attention', tier2, '#d97706'),
+      renderTier3SectionHtml(tier3)
+    ].join('')
+  }
 
   const html = [
-    '<h2>Private bookings daily summary</h2>',
-    `<p><strong>Date:</strong> ${escapeHtml(dateLabel)}</p>`,
-    `<p><strong>Upcoming private events:</strong> ${events.length}</p>`,
-    `<p><strong>Outstanding actions:</strong> ${actionCount}</p>`,
-    `<p>Workspace: <a href="${escapeHtml(privateBookingsUrl)}">${escapeHtml(privateBookingsUrl)}</a></p>`,
-    '<h3>Upcoming private events</h3>',
-    `<ul>${eventRowsHtml}</ul>`,
-    '<h3>Outstanding actions</h3>',
-    actionSectionsHtml
+    `<h2 style="margin-bottom:8px;">Private bookings weekly summary</h2>`,
+    statsBarHtml,
+    quickLinkHtml,
+    bodyHtml,
+    pendingSmsHtml,
+    footerHtml
   ].join('')
 
+  // --- Plain text builder ---
+
   const textLines: string[] = [
-    'Private bookings daily summary',
+    `Private bookings weekly summary — ${input.weekLabel}`,
     '',
-    `Date: ${dateLabel}`,
-    `Upcoming private events: ${events.length}`,
-    `Outstanding actions: ${actionCount}`,
-    `Workspace: ${privateBookingsUrl}`,
-    '',
-    'Upcoming private events:'
+    `${tier1.length} Action Required | ${tier2.length} Needs Attention | ${tier3.length} On Track`
   ]
 
   if (events.length === 0) {
-    textLines.push('- No upcoming private events.')
+    textLines.push('', 'All clear — no upcoming private events. Enjoy your week.')
   } else {
-    events.forEach((event) => {
-      const balanceText =
-        typeof event.outstandingBalance === 'number' && event.outstandingBalance > 0
-          ? ` | Outstanding ${formatCurrency(event.outstandingBalance)}`
-          : ''
-      textLines.push(
-        `- ${event.customerName} | ${formatEventMoment(event.eventDate, event.startTime)} | ${humanizeToken(event.status)} | ${event.guestCount ?? 0} guests | ${event.eventType?.trim() || 'Private event'}${balanceText} | ${event.bookingUrl}`
-      )
-    })
+    if (tier1.length > 0) {
+      textLines.push('', '--- ACTION REQUIRED ---')
+      tier1.forEach((event) => {
+        textLines.push(
+          `${event.customerName} | ${formatEventMoment(event.eventDate, event.startTime)} | ${event.guestCount ?? 0} guests | ${event.eventType?.trim() || 'Private event'}`
+        )
+        event.triggerLabels.forEach((label) => {
+          textLines.push(`  → ${label}`)
+        })
+        textLines.push(`  ${event.bookingUrl}`)
+      })
+    }
+
+    if (tier2.length > 0) {
+      textLines.push('', '--- NEEDS ATTENTION ---')
+      tier2.forEach((event) => {
+        textLines.push(
+          `${event.customerName} | ${formatEventMoment(event.eventDate, event.startTime)} | ${event.guestCount ?? 0} guests | ${event.eventType?.trim() || 'Private event'}`
+        )
+        event.triggerLabels.forEach((label) => {
+          textLines.push(`  → ${label}`)
+        })
+        textLines.push(`  ${event.bookingUrl}`)
+      })
+    }
+
+    if (tier3.length > 0) {
+      textLines.push('', '--- ON TRACK ---')
+      tier3.forEach((event) => {
+        textLines.push(
+          `${event.customerName} | ${formatEventMoment(event.eventDate, event.startTime)} | ${event.guestCount ?? 0} guests | ${event.eventType?.trim() || 'Private event'}`
+        )
+      })
+    }
   }
 
-  textLines.push('', 'Outstanding actions:')
-  if (actionSections.length === 0) {
-    textLines.push('- No outstanding private-booking actions today.')
-  } else {
-    actionSections.forEach((section) => {
-      textLines.push(`- ${section.title}`)
-      if (section.summary) {
-        textLines.push(`  ${section.summary}`)
-      }
-      if (section.items.length === 0) {
-        textLines.push('  - None')
-      } else {
-        section.items.forEach((item) => {
-          const detail = item.detail ? ` | ${item.detail}` : ''
-          const href = item.href ? ` | ${item.href}` : ''
-          textLines.push(`  - ${item.label}${detail}${href}`)
-        })
-      }
-    })
+  if (input.pendingSmsCount > 0) {
+    textLines.push('', '--- PENDING SMS ---')
+    textLines.push(`${input.pendingSmsCount} SMS pending approval: ${input.smsQueueUrl}`)
   }
+
+  textLines.push(
+    '',
+    `Sent every Monday at 9am · Manage in Anchor Management Tools`,
+    privateBookingsUrl
+  )
 
   const result = await sendEmail({
     to: PRIVATE_BOOKINGS_MANAGER_EMAIL,
@@ -332,7 +372,7 @@ export async function sendManagerPrivateBookingsDailyDigestEmail(
   if (!result.success) {
     return {
       sent: false,
-      error: result.error || 'Failed to send private-bookings daily digest email',
+      error: result.error || 'Failed to send private-bookings weekly digest email',
       actionCount,
       eventCount: events.length
     }
