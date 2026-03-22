@@ -473,7 +473,7 @@ export async function categorizeHistoricalEvents() {
       throw error
     }
 
-    console.log('Categorize result:', count)
+    // Result logged via audit event below
 
     // Log audit event
     await logAuditEvent({
@@ -509,7 +509,7 @@ export async function rebuildCustomerCategoryStats() {
       throw error
     }
 
-    console.log('Rebuild stats result:', count)
+    // Result logged via audit event below
 
     // Log audit event
     await logAuditEvent({
