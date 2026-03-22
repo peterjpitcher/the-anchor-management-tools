@@ -134,9 +134,12 @@ export async function getWeekShifts(weekStart: string): Promise<
 
   const sundayIso = addDaysIso(weekStart, 6);
 
+  // Explicit column list matching RotaShift type — avoids fetching unnecessary columns
+  const ROTA_SHIFT_COLUMNS = 'id, week_id, employee_id, template_id, shift_date, start_time, end_time, unpaid_break_minutes, department, status, notes, is_overnight, is_open_shift, name, reassigned_from_id, reassigned_at, reassigned_by, reassignment_reason, created_at, updated_at' as const;
+
   const { data, error } = await supabase
     .from('rota_shifts')
-    .select('*')
+    .select(ROTA_SHIFT_COLUMNS)
     .gte('shift_date', weekStart)
     .lte('shift_date', sundayIso)
     .order('shift_date')
