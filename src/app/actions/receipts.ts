@@ -2570,7 +2570,7 @@ export async function applyReceiptGroupClassification(input: {
 
   const selection = supabase
     .from('receipt_transactions')
-    .select('id, status, amount_in, amount_out')
+    .select('id, status, amount_in, amount_out, vendor_name, vendor_source, vendor_rule_id, vendor_updated_at')
     .eq('details', parsed.data.details)
     .in('status', statuses)
 
@@ -2581,7 +2581,12 @@ export async function applyReceiptGroupClassification(input: {
     return { error: 'Failed to load matching transactions' }
   }
 
-  const matchRows = (matches ?? []) as Array<Pick<ReceiptTransaction, 'id' | 'status' | 'amount_in' | 'amount_out'>>
+  const matchRows = (matches ?? []) as Array<Pick<ReceiptTransaction, 'id' | 'status' | 'amount_in' | 'amount_out'> & {
+    vendor_name: string | null
+    vendor_source: string | null
+    vendor_rule_id: string | null
+    vendor_updated_at: string | null
+  }>
 
   if (!matchRows.length) {
     return { success: true, updated: 0, skippedIncomingCount: 0 }
@@ -2599,6 +2604,22 @@ export async function applyReceiptGroupClassification(input: {
     : 0
 
   const updatedIdSet = new Set<string>()
+
+  // Capture previous vendor values so rollback can restore originals (not null them).
+  const previousVendorValues = new Map<string, {
+    vendor_name: string | null
+    vendor_source: string | null
+    vendor_rule_id: string | null
+    vendor_updated_at: string | null
+  }>()
+  for (const row of matchRows) {
+    previousVendorValues.set(row.id, {
+      vendor_name: row.vendor_name,
+      vendor_source: row.vendor_source,
+      vendor_rule_id: row.vendor_rule_id,
+      vendor_updated_at: row.vendor_updated_at,
+    })
+  }
 
   // NOTE: Vendor applies to allIds; expense applies to expenseEligibleIds (excludes incoming-only rows).
   // Because the row sets differ, these cannot be merged into a single UPDATE call.
@@ -2650,21 +2671,29 @@ export async function applyReceiptGroupClassification(input: {
       if (expenseUpdateError) {
         console.error('Failed to apply expense bulk classification', expenseUpdateError)
 
-        // Compensating revert: if vendor was already committed, attempt to roll it back.
-        // This is best-effort — not guaranteed atomic. True atomicity requires an RPC (DEF-007).
+        // Compensating revert: if vendor was already committed, attempt to roll it back
+        // to the ORIGINAL values (not null). This is best-effort — not guaranteed atomic.
+        // True atomicity requires an RPC (DEF-007).
         if (vendorProvided && allIds.length > 0) {
-          const { error: revertError } = await supabase
-            .from('receipt_transactions')
-            .update({
-              vendor_name: null,
-              vendor_source: null,
-              vendor_rule_id: null,
-              vendor_updated_at: now,
-              updated_at: now,
-            })
-            .in('id', allIds)
-          if (revertError) {
-            console.error('Failed to revert vendor update after expense failure — transactions may be in partial state', revertError)
+          const revertErrors: string[] = []
+          for (const id of allIds) {
+            const prev = previousVendorValues.get(id)
+            const { error: revertError } = await supabase
+              .from('receipt_transactions')
+              .update({
+                vendor_name: prev?.vendor_name ?? null,
+                vendor_source: prev?.vendor_source ?? null,
+                vendor_rule_id: prev?.vendor_rule_id ?? null,
+                vendor_updated_at: prev?.vendor_updated_at ?? now,
+                updated_at: now,
+              })
+              .eq('id', id)
+            if (revertError) {
+              revertErrors.push(`${id}: ${revertError.message}`)
+            }
+          }
+          if (revertErrors.length > 0) {
+            console.error('Failed to revert vendor update after expense failure — transactions may be in partial state', revertErrors)
           }
         }
 
