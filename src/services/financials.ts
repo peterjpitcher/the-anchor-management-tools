@@ -73,19 +73,25 @@ async function deleteFinancialRowsByPair(
   pairs: DeletionPair[],
   fallbackErrorMessage: string
 ) {
-  for (const pair of pairs) {
-    const { error } = await supabase
-      .from(table)
-      .delete()
-      .eq('metric_key', pair.metric)
-      .eq('timeframe', pair.timeframe);
+  const results = await Promise.all(
+    pairs.map((pair) =>
+      supabase
+        .from(table)
+        .delete()
+        .eq('metric_key', pair.metric)
+        .eq('timeframe', pair.timeframe)
+    )
+  );
 
-    if (error) {
-      throw new Error(error.message || fallbackErrorMessage);
-    }
+  const firstError = results.find((r) => r.error);
+  if (firstError?.error) {
+    throw new Error(firstError.error.message || fallbackErrorMessage);
   }
 }
 
+// TODO: If total count is known upfront, parallelise page fetches with Promise.all
+// to reduce latency on large datasets. Currently sequential because the total is
+// discovered during iteration.
 async function fetchReceiptExpenseRows(
   supabase: ReturnType<typeof createAdminClient>,
   startDate: string
