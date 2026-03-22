@@ -2,6 +2,9 @@ import { InvoiceWithDetails } from '@/types/invoices'
 import { formatDateFull } from '@/lib/dateUtils'
 import { COMPANY_DETAILS } from '@/lib/company-details'
 
+const CONTACT_NAME = process.env.COMPANY_CONTACT_NAME || 'Peter Pitcher'
+const CONTACT_PHONE = process.env.COMPANY_CONTACT_PHONE || '07995087315'
+
 export type InvoiceDocumentKind = 'invoice' | 'remittance_advice'
 
 export interface InvoiceRemittanceDetails {
@@ -604,8 +607,8 @@ export function generateCompactInvoiceHTML(data: InvoiceTemplateData): string {
           <h4>Other Methods</h4>
           <p><strong>Card Payments:</strong> Subject to additional fees</p>
           <p>For payment queries or to arrange card payment:</p>
-          <p>Contact: Peter Pitcher</p>
-          <p>Mobile: 07995087315</p>
+          <p>Contact: ${CONTACT_NAME}</p>
+          <p>Mobile: ${CONTACT_PHONE}</p>
           <p>Office: ${COMPANY_DETAILS.phone}</p>
           <p>Email: ${COMPANY_DETAILS.email}</p>
         </div>
@@ -623,7 +626,7 @@ export function generateCompactInvoiceHTML(data: InvoiceTemplateData): string {
   <div class="footer">
     <p>${COMPANY_DETAILS.name} | Company Reg: ${COMPANY_DETAILS.companyNumber} | VAT: ${COMPANY_DETAILS.vatNumber}</p>
     <p>${COMPANY_DETAILS.fullAddress} | ${COMPANY_DETAILS.phone} | ${COMPANY_DETAILS.email}</p>
-    <p>Contact: Peter Pitcher | Mobile: 07995087315</p>
+    <p>Contact: ${CONTACT_NAME} | Mobile: ${CONTACT_PHONE}</p>
   </div>
 </body>
 </html>

@@ -16,6 +16,9 @@ import type {
 } from '@/types/invoices'
 import { InvoiceService, CreateInvoiceSchema } from '@/services/invoices'
 
+const CONTACT_NAME = process.env.COMPANY_CONTACT_NAME || 'Peter Pitcher'
+const CONTACT_PHONE = process.env.COMPANY_CONTACT_PHONE || '07995087315'
+
 type CreateInvoiceResult = { error: string } | { success: true; invoice: Invoice }
 type InvoiceEmailRecipients = { to: string | null; cc: string[] }
 type RemittanceAdviceResult = { sent: boolean; skippedReason?: string; error?: string }
@@ -188,9 +191,9 @@ ${latestPayment?.reference ? `Reference: ${latestPayment.reference}` : ''}
 If you have any questions, just let me know.
 
 Many thanks,
-Peter Pitcher
+${CONTACT_NAME}
 Orange Jelly Limited
-07995087315`
+${CONTACT_PHONE}`
 
   const emailResult = await sendInvoiceEmail(
     invoice,
