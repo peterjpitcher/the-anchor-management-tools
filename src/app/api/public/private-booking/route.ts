@@ -152,16 +152,29 @@ export async function POST(request: NextRequest) {
                 );
             }
 
-            // Ensure status is forced to draft and source is website
-            const bodyWithoutCountryCode = { ...(body as PublicBookingRequest) };
-            delete bodyWithoutCountryCode.default_country_code;
+            // Whitelist only the fields a public caller should be able to set.
+            // Explicitly exclude: customer_id, deposit_amount, balance_due_date,
+            // hold_expiry, status, created_by, source, internal_notes, contract_note.
             const bookingPayload: CreatePrivateBookingInput = {
-                ...bodyWithoutCountryCode,
+                customer_first_name: body.customer_first_name,
+                customer_last_name: body.customer_last_name || undefined,
                 contact_phone: normalizedPhone || body.contact_phone,
+                contact_email: typeof body.contact_email === 'string' ? body.contact_email : undefined,
+                event_date: typeof body.event_date === 'string' ? body.event_date : undefined,
+                start_time: typeof body.start_time === 'string' ? body.start_time : undefined,
+                end_time: typeof body.end_time === 'string' ? body.end_time : undefined,
+                setup_date: typeof body.setup_date === 'string' ? body.setup_date : undefined,
+                setup_time: typeof body.setup_time === 'string' ? body.setup_time : undefined,
+                guest_count: typeof body.guest_count === 'number' ? body.guest_count : undefined,
+                event_type: typeof body.event_type === 'string' ? body.event_type : undefined,
+                customer_requests: typeof body.customer_requests === 'string' ? body.customer_requests : undefined,
+                special_requirements: typeof body.special_requirements === 'string' ? body.special_requirements : undefined,
+                accessibility_needs: typeof body.accessibility_needs === 'string' ? body.accessibility_needs : undefined,
+                date_tbd: body.date_tbd === true ? true : undefined,
+                items: Array.isArray(body.items) ? body.items : undefined,
+                // Server-controlled fields — never trust the caller
                 status: 'draft',
                 source: 'website',
-                // Ensure items are properly typed even if passed from frontend
-                items: body.items
             };
 
             const booking = await PrivateBookingService.createBooking(bookingPayload);
