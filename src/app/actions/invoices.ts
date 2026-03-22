@@ -483,16 +483,14 @@ export async function updateInvoiceStatus(formData: FormData) {
       additional_info: { invoice_number: updatedInvoice.invoice_number }
     })
 
-    let remittanceAdvice: RemittanceAdviceResult | null = null
-    if (newStatus === 'paid' && oldStatus !== 'paid') {
-      remittanceAdvice = await sendRemittanceAdviceForPaidInvoice(invoiceId, user?.id || null)
-    }
+    // Remittance advice is handled by the dedicated payment recording flow,
+    // since 'paid' status is blocked from this generic status update path.
 
     revalidatePath('/invoices')
     revalidatePath(`/invoices/${invoiceId}`)
     revalidateTag('dashboard')
-    
-    return { success: true, remittanceAdvice }
+
+    return { success: true }
   } catch (error: any) {
     console.error('Error in updateInvoiceStatus:', error)
     return { error: error.message || 'An unexpected error occurred' }
