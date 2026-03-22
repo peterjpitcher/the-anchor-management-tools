@@ -62,7 +62,10 @@ type ConversationAccumulator = {
 }
 
 const RECENT_CONVERSATION_LIMIT = 25
-const RECENT_MESSAGE_FETCH_LIMIT = 400
+// 150 recent messages is sufficient to build 25 conversations (was 400).
+// TODO: Replace this JS-based conversation grouping with a `get_recent_conversations` RPC
+// that groups by customer_id in SQL for proper pagination and reduced payload size.
+const RECENT_MESSAGE_FETCH_LIMIT = 150
 const UNREAD_MESSAGE_FETCH_LIMIT = 500
 
 function toError(error: unknown): Error {
@@ -200,7 +203,7 @@ export async function getMessages(): Promise<InboxResponse> {
       .limit(UNREAD_MESSAGE_FETCH_LIMIT),
     supabase
       .from('messages')
-      .select('*', { count: 'exact', head: true })
+      .select('id', { count: 'exact', head: true })
       .eq('direction', 'inbound')
       .is('read_at', null),
   ])
