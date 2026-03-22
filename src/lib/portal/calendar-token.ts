@@ -1,7 +1,13 @@
 import { createHmac, timingSafeEqual } from 'crypto'
 
+function getTokenSecret(): string {
+  const secret = process.env.CALENDAR_TOKEN_SECRET ?? process.env.SUPABASE_SERVICE_ROLE_KEY
+  if (!secret) throw new Error('CALENDAR_TOKEN_SECRET or SUPABASE_SERVICE_ROLE_KEY must be set')
+  return secret
+}
+
 export function generateCalendarToken(employeeId: string): string {
-  return createHmac('sha256', process.env.SUPABASE_SERVICE_ROLE_KEY ?? 'fallback-no-key')
+  return createHmac('sha256', getTokenSecret())
     .update(employeeId)
     .digest('hex')
     .slice(0, 32)
