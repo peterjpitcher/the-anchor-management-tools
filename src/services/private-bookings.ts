@@ -873,7 +873,36 @@ export class PrivateBookingService {
       discount_reason: string;
     }
   ) {
+    // Server-side discount validation
+    if (data.discount_type !== 'percent' && data.discount_type !== 'fixed') {
+      throw new Error('Invalid discount type — must be "percent" or "fixed"');
+    }
+    if (typeof data.discount_amount !== 'number' || !Number.isFinite(data.discount_amount) || data.discount_amount <= 0) {
+      throw new Error('Invalid discount value — must be a positive number');
+    }
+    if (data.discount_type === 'percent' && data.discount_amount > 100) {
+      throw new Error('Percentage discount cannot exceed 100%');
+    }
+
     const supabase = await createClient();
+
+    // For fixed discounts, validate against booking total
+    if (data.discount_type === 'fixed') {
+      const { data: booking, error: fetchError } = await supabase
+        .from('private_bookings')
+        .select('total_amount')
+        .eq('id', bookingId)
+        .maybeSingle();
+
+      if (fetchError || !booking) {
+        throw new Error('Booking not found');
+      }
+
+      const totalAmount = toNumber(booking.total_amount, 0);
+      if (totalAmount > 0 && data.discount_amount > totalAmount) {
+        throw new Error('Fixed discount cannot exceed the booking total');
+      }
+    }
 
     const { data: updatedBooking, error } = await supabase
       .from('private_bookings')
