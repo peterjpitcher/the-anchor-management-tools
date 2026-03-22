@@ -16,7 +16,13 @@ vi.mock('@/lib/api/idempotency', () => ({
 }))
 
 vi.mock('@/lib/private-bookings/manager-notifications', () => ({
-  sendManagerPrivateBookingsDailyDigestEmail: vi.fn(),
+  sendManagerPrivateBookingsWeeklyDigestEmail: vi.fn(),
+}))
+
+vi.mock('@/services/audit', () => ({
+  AuditService: {
+    logAuditEvent: vi.fn().mockResolvedValue(undefined),
+  },
 }))
 
 const { error } = vi.hoisted(() => ({
@@ -37,8 +43,8 @@ import {
   persistIdempotencyResponse,
   releaseIdempotencyClaim,
 } from '@/lib/api/idempotency'
-import { sendManagerPrivateBookingsDailyDigestEmail } from '@/lib/private-bookings/manager-notifications'
-import { GET } from '@/app/api/cron/private-bookings-daily-summary/route'
+import { sendManagerPrivateBookingsWeeklyDigestEmail } from '@/lib/private-bookings/manager-notifications'
+import { GET } from '@/app/api/cron/private-bookings-weekly-summary/route'
 
 function createSupabaseMock() {
   const upcomingRows = [
@@ -47,34 +53,38 @@ function createSupabaseMock() {
       customer_name: 'Alex Morgan',
       customer_first_name: 'Alex',
       customer_last_name: 'Morgan',
-      event_date: '2026-02-20',
+      event_date: '2026-03-27',
       start_time: '19:00:00',
       status: 'confirmed',
       guest_count: 24,
       event_type: 'Birthday',
-      balance_due_date: '2026-02-17',
+      balance_due_date: '2026-03-24',
       final_payment_date: null,
-      calculated_total: 800,
-      total_amount: 800,
-      deposit_amount: 250,
       internal_notes: null,
+      updated_at: '2026-03-20T10:00:00.000Z',
+      contact_email: 'alex@example.com',
+      contact_phone: '+447700900001',
+      balance_remaining: 550,
+      hold_expiry: null,
     },
     {
       id: 'booking-2',
       customer_name: 'Jamie Lee',
       customer_first_name: 'Jamie',
       customer_last_name: 'Lee',
-      event_date: '2026-02-21',
+      event_date: '2026-03-28',
       start_time: '18:30:00',
       status: 'draft',
       guest_count: 40,
       event_type: 'Corporate',
       balance_due_date: null,
       final_payment_date: null,
-      calculated_total: 0,
-      total_amount: 0,
-      deposit_amount: 0,
       internal_notes: 'Event date/time to be confirmed',
+      updated_at: '2026-03-19T14:00:00.000Z',
+      contact_email: 'jamie@example.com',
+      contact_phone: '+447700900002',
+      balance_remaining: 0,
+      hold_expiry: '2026-03-25T10:00:00.000Z',
     },
   ]
 
@@ -83,31 +93,7 @@ function createSupabaseMock() {
       id: 'sms-1',
       booking_id: 'booking-2',
       trigger_type: 'manual',
-      created_at: '2026-02-18T08:30:00.000Z',
-    },
-  ]
-
-  const draftHoldRows = [
-    {
-      id: 'booking-2',
-      customer_name: 'Jamie Lee',
-      customer_first_name: 'Jamie',
-      customer_last_name: 'Lee',
-      event_date: '2026-02-21',
-      start_time: '18:30:00',
-      hold_expiry: '2026-02-18T10:00:00.000Z',
-    },
-  ]
-
-  const pendingLookupRows = [
-    {
-      id: 'booking-2',
-      customer_name: 'Jamie Lee',
-      customer_first_name: 'Jamie',
-      customer_last_name: 'Lee',
-      event_date: '2026-02-21',
-      start_time: '18:30:00',
-      status: 'draft',
+      created_at: '2026-03-22T08:30:00.000Z',
     },
   ]
 
@@ -147,49 +133,19 @@ function createSupabaseMock() {
         }
       }
 
-      if (table === 'private_bookings') {
-        return {
-          select: vi.fn((columns: string) => {
-            if (columns.includes('hold_expiry')) {
-              return {
-                eq: vi.fn(() => ({
-                  not: vi.fn(() => ({
-                    order: vi.fn(() => ({
-                      limit: vi.fn().mockResolvedValue({
-                        data: draftHoldRows,
-                        error: null,
-                      }),
-                    })),
-                  })),
-                })),
-              }
-            }
-
-            return {
-              in: vi.fn(() =>
-                Promise.resolve({
-                  data: pendingLookupRows,
-                  error: null,
-                })
-              ),
-            }
-          }),
-        }
-      }
-
       throw new Error(`Unexpected table: ${table}`)
     }),
   }
 }
 
-describe('private-bookings daily summary cron route', () => {
+describe('private-bookings weekly summary cron route', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     ;(computeIdempotencyRequestHash as unknown as vi.Mock).mockReturnValue('hash-1')
     ;(claimIdempotencyKey as unknown as vi.Mock).mockResolvedValue({ state: 'claimed' })
     ;(persistIdempotencyResponse as unknown as vi.Mock).mockResolvedValue(undefined)
     ;(releaseIdempotencyClaim as unknown as vi.Mock).mockResolvedValue(undefined)
-    ;(sendManagerPrivateBookingsDailyDigestEmail as unknown as vi.Mock).mockResolvedValue({
+    ;(sendManagerPrivateBookingsWeeklyDigestEmail as unknown as vi.Mock).mockResolvedValue({
       sent: true,
       actionCount: 3,
       eventCount: 2,
@@ -199,18 +155,18 @@ describe('private-bookings daily summary cron route', () => {
   it('rejects unauthorized cron calls', async () => {
     ;(authorizeCronRequest as unknown as vi.Mock).mockReturnValue({ authorized: false, reason: 'missing' })
 
-    const response = await GET(new Request('http://localhost/api/cron/private-bookings-daily-summary') as any)
+    const response = await GET(new Request('http://localhost/api/cron/private-bookings-weekly-summary') as any)
     expect(response.status).toBe(401)
     expect(createAdminClient).not.toHaveBeenCalled()
   })
 
   it('skips outside the 9am London window unless forced', async () => {
     vi.useFakeTimers()
-    vi.setSystemTime(new Date('2026-02-18T07:00:00.000Z'))
+    vi.setSystemTime(new Date('2026-03-23T07:00:00.000Z')) // Monday but 7am, not 9am
     ;(authorizeCronRequest as unknown as vi.Mock).mockReturnValue({ authorized: true })
 
     try {
-      const response = await GET(new Request('http://localhost/api/cron/private-bookings-daily-summary') as any)
+      const response = await GET(new Request('http://localhost/api/cron/private-bookings-weekly-summary') as any)
       const payload = await response.json()
 
       expect(response.status).toBe(200)
@@ -225,25 +181,56 @@ describe('private-bookings daily summary cron route', () => {
     }
   })
 
-  it('sends the digest and persists idempotency response during the 9am London window', async () => {
+  it('skips on non-Monday unless forced', async () => {
     vi.useFakeTimers()
-    vi.setSystemTime(new Date('2026-02-18T09:00:00.000Z'))
+    vi.setSystemTime(new Date('2026-03-25T09:00:00.000Z')) // Wednesday
+    ;(authorizeCronRequest as unknown as vi.Mock).mockReturnValue({ authorized: true })
+
+    try {
+      const response = await GET(new Request('http://localhost/api/cron/private-bookings-weekly-summary') as any)
+      const payload = await response.json()
+      expect(payload).toMatchObject({ skipped: true, reason: 'not_monday' })
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('sends digest on non-Monday when force=true', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-03-25T09:00:00.000Z')) // Wednesday
     ;(authorizeCronRequest as unknown as vi.Mock).mockReturnValue({ authorized: true })
     ;(createAdminClient as unknown as vi.Mock).mockReturnValue(createSupabaseMock())
 
     try {
-      const response = await GET(new Request('http://localhost/api/cron/private-bookings-daily-summary') as any)
+      const response = await GET(
+        new Request('http://localhost/api/cron/private-bookings-weekly-summary?force=true') as any
+      )
+      const payload = await response.json()
+      expect(payload).toMatchObject({ success: true, sent: true })
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('sends the digest and persists idempotency response during the 9am Monday window', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-03-23T09:00:00.000Z')) // Monday 9am GMT
+    ;(authorizeCronRequest as unknown as vi.Mock).mockReturnValue({ authorized: true })
+    ;(createAdminClient as unknown as vi.Mock).mockReturnValue(createSupabaseMock())
+
+    try {
+      const response = await GET(new Request('http://localhost/api/cron/private-bookings-weekly-summary') as any)
       const payload = await response.json()
 
       expect(response.status).toBe(200)
       expect(payload).toMatchObject({
         success: true,
         sent: true,
-        londonDate: '2026-02-18',
+        londonDate: '2026-03-23',
         events: 2,
         actions: 3,
       })
-      expect(sendManagerPrivateBookingsDailyDigestEmail).toHaveBeenCalledTimes(1)
+      expect(sendManagerPrivateBookingsWeeklyDigestEmail).toHaveBeenCalledTimes(1)
       expect(persistIdempotencyResponse).toHaveBeenCalledTimes(1)
       expect(releaseIdempotencyClaim).not.toHaveBeenCalled()
     } finally {
@@ -253,11 +240,11 @@ describe('private-bookings daily summary cron route', () => {
 
   it('releases idempotency claim when email send fails', async () => {
     vi.useFakeTimers()
-    vi.setSystemTime(new Date('2026-02-18T09:00:00.000Z'))
+    vi.setSystemTime(new Date('2026-03-23T09:00:00.000Z')) // Monday 9am GMT
     ;(authorizeCronRequest as unknown as vi.Mock).mockReturnValue({ authorized: true })
     const supabase = createSupabaseMock()
     ;(createAdminClient as unknown as vi.Mock).mockReturnValue(supabase)
-    ;(sendManagerPrivateBookingsDailyDigestEmail as unknown as vi.Mock).mockResolvedValueOnce({
+    ;(sendManagerPrivateBookingsWeeklyDigestEmail as unknown as vi.Mock).mockResolvedValueOnce({
       sent: false,
       error: 'smtp down',
       actionCount: 3,
@@ -265,12 +252,12 @@ describe('private-bookings daily summary cron route', () => {
     })
 
     try {
-      const response = await GET(new Request('http://localhost/api/cron/private-bookings-daily-summary') as any)
+      const response = await GET(new Request('http://localhost/api/cron/private-bookings-weekly-summary') as any)
 
       expect(response.status).toBe(500)
       expect(releaseIdempotencyClaim).toHaveBeenCalledWith(
         supabase,
-        'cron:private-bookings-daily-summary:2026-02-18',
+        'cron:private-bookings-weekly-summary:2026-03-23',
         'hash-1'
       )
       expect(persistIdempotencyResponse).not.toHaveBeenCalled()
