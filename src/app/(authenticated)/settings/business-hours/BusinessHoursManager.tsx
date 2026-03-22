@@ -8,9 +8,6 @@ import { Input } from '@/components/ui-v2/forms/Input'
 import { Checkbox } from '@/components/ui-v2/forms/Checkbox'
 import { Card } from '@/components/ui-v2/layout/Card'
 import { DataTable } from '@/components/ui-v2/display/DataTable'
-import { Modal } from '@/components/ui-v2/overlay/Modal'
-import { ScheduleConfigEditor } from './ScheduleConfigEditor'
-import { Settings } from 'lucide-react'
 import toast from 'react-hot-toast'
 
 interface BusinessHoursManagerProps {
@@ -30,18 +27,10 @@ export function BusinessHoursManager({ canManage, initialHours }: BusinessHoursM
 
   const [hours, setHours] = useState<BusinessHours[]>(sanitizedInitialHours)
   const [isSaving, setIsSaving] = useState(false)
-  const [editingConfigDay, setEditingConfigDay] = useState<number | null>(null)
 
   useEffect(() => {
     setHours(sanitizedInitialHours)
   }, [sanitizedInitialHours])
-
-  const handleConfigChange = (dayOfWeek: number, newConfig: any[]) => {
-    if (!canManage) return
-    setHours(prev => prev.map(h => 
-      h.day_of_week === dayOfWeek ? { ...h, schedule_config: newConfig } : h
-    ))
-  }
 
   const handleTimeChange = (dayOfWeek: number, field: keyof BusinessHours, value: string | boolean) => {
     if (!canManage) return
@@ -261,17 +250,6 @@ export function BusinessHoursManager({ canManage, initialHours }: BusinessHoursM
               />
             ) : <span className="text-gray-300 text-center block">-</span>
           ) },
-          { key: 'config', header: 'Slots', cell: (h: any) => (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setEditingConfigDay(h.day_of_week)}
-              disabled={!canManage || h.is_closed}
-              title="Configure Service Slots"
-            >
-              <Settings className="w-4 h-4" />
-            </Button>
-          ) },
         ]}
         renderMobileCard={(h: any) => (
           <Card variant="bordered" padding="sm">
@@ -337,25 +315,6 @@ export function BusinessHoursManager({ canManage, initialHours }: BusinessHoursM
           </Card>
         )}
       />
-
-      {editingConfigDay !== null && (
-        <Modal
-          open={true}
-          onClose={() => setEditingConfigDay(null)}
-          title={`Edit Service Slots for ${DAY_NAMES[editingConfigDay]}`}
-          size="lg"
-        >
-          <div className="p-6">
-            <ScheduleConfigEditor
-              config={hours.find(h => h.day_of_week === editingConfigDay)?.schedule_config || []}
-              onChange={(newConfig) => handleConfigChange(editingConfigDay, newConfig)}
-            />
-            <div className="mt-6 flex justify-end">
-              <Button onClick={() => setEditingConfigDay(null)}>Done</Button>
-            </div>
-          </div>
-        </Modal>
-      )}
 
       <div className="flex justify-end pt-4">
         <Button type="submit" loading={isSaving} fullWidth={false} disabled={!canManage || isSaving}>
