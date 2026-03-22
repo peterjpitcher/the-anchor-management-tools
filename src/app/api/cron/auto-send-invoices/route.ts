@@ -145,29 +145,14 @@ export async function GET(request: Request) {
       } catch (contactError) {
         console.warn('[Cron] Failed to load primary vendor contact:', contactError)
       }
-
-      const sendResult = await sendInvoiceEmail(
-        invoice as InvoiceWithDetails,
-        recipientEmail
-      )
       recipientEmailForClaim = recipientEmail
-
-      if (!sendResult.success) {
-        if (claimHeld) {
-          await releaseIdempotencyClaim(supabase, claimKey, claimHash)
-          claimHeld = false
-        }
-        results.skipped_errors++
-        results.errors.push({
-          invoice_number: invoice.invoice_number,
-          error: sendResult.error || 'Unknown error while sending invoice email'
-        })
-        continue
-      }
-      emailSent = true
 
       const subject = `Invoice ${invoice.invoice_number} from Orange Jelly Limited`
 
+      // MED-002: Status change (draft -> sent) happens BEFORE the email send.
+      // If the status change fails, we skip the email entirely.
+      // If the email fails after status change, we log the error but don't roll
+      // back — the invoice is correctly "sent" and the email can be retried manually.
       const { data: updatedInvoice, error: statusUpdateError } = await supabase
         .from('invoices')
         .update({
@@ -180,40 +165,65 @@ export async function GET(request: Request) {
         .maybeSingle()
 
       if (statusUpdateError || !updatedInvoice) {
-        console.error('[Cron] Failed to finalize invoice status after send:', statusUpdateError)
-        const { error: fallbackLogError } = await supabase
+        console.error('[Cron] Failed to update invoice status to sent:', statusUpdateError)
+        if (claimHeld) {
+          await releaseIdempotencyClaim(supabase, claimKey!, claimHash!)
+          claimHeld = false
+        }
+        results.skipped_errors++
+        results.errors.push({
+          invoice_number: invoice.invoice_number,
+          error: statusUpdateError?.message || 'Failed to transition invoice to sent status'
+        })
+        continue
+      }
+
+      // Status is now 'sent' — attempt to send the email
+      const sendResult = await sendInvoiceEmail(
+        invoice as InvoiceWithDetails,
+        recipientEmail
+      )
+
+      if (!sendResult.success) {
+        // Email failed but status is already correctly 'sent'. Log the failure
+        // so it can be retried manually — don't roll back the status.
+        console.error(
+          `[Cron] Email send failed for invoice ${invoice.invoice_number} after status update:`,
+          sendResult.error
+        )
+
+        const { error: failedLogError } = await supabase
           .from('invoice_email_logs')
           .insert({
             invoice_id: invoice.id,
             sent_to: recipientEmail,
             sent_by: null,
             subject,
-            body: 'Invoice email sent, but status update failed. Manual reconciliation required.',
-            status: 'sent'
+            body: 'Auto-send email delivery failed. Invoice status updated to sent. Email can be retried manually.',
+            status: 'failed'
           })
-
-        if (fallbackLogError) {
-          console.error('[Cron] Failed to write fallback invoice email log:', fallbackLogError)
+        if (failedLogError) {
+          console.error('[Cron] Failed to write failed email log:', failedLogError)
         }
 
         results.skipped_errors++
         results.errors.push({
           invoice_number: invoice.invoice_number,
-          error: 'Email sent but failed to finalize invoice status'
+          error: sendResult.error || 'Email send failed after status update (status is correct, email can be retried)'
         })
 
         if (claimHeld) {
           await persistIdempotencyResponse(
             supabase,
-            claimKey,
-            claimHash,
+            claimKey!,
+            claimHash!,
             {
               state: 'processed_with_error',
               invoice_id: invoice.id,
               invoice_number: invoice.invoice_number,
-              sent: true,
+              sent: false,
               recipient: recipientEmail,
-              error: 'status_update_failed'
+              error: 'email_send_failed'
             },
             24 * 90
           )
@@ -221,6 +231,7 @@ export async function GET(request: Request) {
         }
         continue
       }
+      emailSent = true
 
       const { error: emailLogError } = await supabase
         .from('invoice_email_logs')
@@ -256,8 +267,8 @@ export async function GET(request: Request) {
       if (claimHeld) {
         await persistIdempotencyResponse(
           supabase,
-          claimKey,
-          claimHash,
+          claimKey!,
+          claimHash!,
           {
             state: 'processed',
             invoice_id: invoice.id,

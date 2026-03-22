@@ -412,11 +412,25 @@ export async function updateInvoiceStatus(formData: FormData) {
     }
 
     const invoiceId = formData.get('invoiceId') as string
-    const newStatus = formData.get('status') as InvoiceStatus
+    const rawStatus = formData.get('status')
     const force = String(formData.get('force') || '') === 'true'
 
-    if (!invoiceId || !newStatus) {
+    if (!invoiceId || !rawStatus) {
       return { error: 'Invoice ID and status are required' }
+    }
+
+    // Runtime validation: ensure status is a known InvoiceStatus value
+    const VALID_INVOICE_STATUSES: readonly InvoiceStatus[] = [
+      'draft', 'sent', 'partially_paid', 'paid', 'overdue', 'void', 'written_off'
+    ] as const
+    const newStatus = String(rawStatus) as InvoiceStatus
+    if (!VALID_INVOICE_STATUSES.includes(newStatus)) {
+      return { error: 'Invalid status' }
+    }
+
+    // Payment statuses must only be set through the dedicated payment recording flow
+    if (newStatus === 'paid' || newStatus === 'partially_paid') {
+      return { error: 'Payment statuses must be set through the payment recording flow' }
     }
 
     // Prevent voiding invoices that have linked OJ Projects items, unless explicitly overridden.
@@ -469,16 +483,14 @@ export async function updateInvoiceStatus(formData: FormData) {
       additional_info: { invoice_number: updatedInvoice.invoice_number }
     })
 
-    let remittanceAdvice: RemittanceAdviceResult | null = null
-    if (newStatus === 'paid' && oldStatus !== 'paid') {
-      remittanceAdvice = await sendRemittanceAdviceForPaidInvoice(invoiceId, user?.id || null)
-    }
+    // Remittance advice is handled by the dedicated payment recording flow,
+    // since 'paid' status is blocked from this generic status update path.
 
     revalidatePath('/invoices')
     revalidatePath(`/invoices/${invoiceId}`)
     revalidateTag('dashboard')
-    
-    return { success: true, remittanceAdvice }
+
+    return { success: true }
   } catch (error: any) {
     console.error('Error in updateInvoiceStatus:', error)
     return { error: error.message || 'An unexpected error occurred' }

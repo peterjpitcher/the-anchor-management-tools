@@ -272,8 +272,10 @@ export class InvoiceService {
     search?: string
   ) {
     const supabase = await createClient();
-    
-    await this.persistOverdueInvoices(); // Ensure statuses are updated before fetching
+
+    // Overdue status is computed at read time via JS-side normalisation below (line ~314).
+    // The DB-level persistOverdueInvoices() write was removed from this read path to avoid
+    // mutations on every list fetch. It should run in a dedicated cron job instead.
 
     let query = supabase
       .from('invoices')
@@ -327,8 +329,10 @@ export class InvoiceService {
 
   static async getInvoiceById(invoiceId: string) {
     const supabase = await createClient();
-    
-    await this.persistOverdueInvoices();
+
+    // Overdue status is computed at read time via JS-side normalisation below.
+    // The DB-level persistOverdueInvoices() write was removed from this read path
+    // to avoid mutations on every detail fetch. It should run in a dedicated cron job instead.
 
     const { data: invoice, error } = await supabase
       .from('invoices')
