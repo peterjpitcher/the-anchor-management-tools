@@ -9,9 +9,19 @@ import { getOAuth2Client } from '@/lib/google-calendar'
 const calendar = google.calendar('v3')
 const CALENDAR_TIME_ZONE = 'Europe/London'
 
-/** Narrows an unknown error to a Google API error shape (has code + message). */
-function isGoogleApiError(err: unknown): err is { code: number; message: string; errors?: Array<{ reason: string }> } {
-  return typeof err === 'object' && err !== null && 'code' in err
+/** Narrows an unknown error to a Google API error shape.
+ *  GaxiosError uses `status` for HTTP status codes and `code` for system errors.
+ *  We check both so 404/410/403 detection works regardless of which property holds the value. */
+function isGoogleApiError(err: unknown): err is { code?: string | number; status?: number; message: string; errors?: Array<{ reason: string }> } {
+  return typeof err === 'object' && err !== null && ('code' in err || 'status' in err)
+}
+
+/** Extract the HTTP status code from a Google API error.
+ *  GaxiosError stores HTTP status on `status` (preferred) and may also have `code` as a number. */
+function getGoogleApiStatus(err: { code?: string | number; status?: number }): number | undefined {
+  if (typeof err.status === 'number') return err.status
+  if (typeof err.code === 'number') return err.code
+  return undefined
 }
 
 /**
@@ -402,7 +412,7 @@ export async function syncRotaWeekToCalendar(
             return await fn()
           } catch (err: unknown) {
             const reason = isGoogleApiError(err) ? err.errors?.[0]?.reason ?? '' : ''
-            if (isGoogleApiError(err) && err.code === 403 && (reason === 'rateLimitExceeded' || reason === 'userRateLimitExceeded')) {
+            if (isGoogleApiError(err) && getGoogleApiStatus(err) === 403 && (reason === 'rateLimitExceeded' || reason === 'userRateLimitExceeded')) {
               console.warn('[RotaCalendar] Rate limit hit for shift', shift.id, '— retrying after 2 s')
               await new Promise(resolve => setTimeout(resolve, 2000))
               return await fn()
@@ -434,7 +444,7 @@ export async function syncRotaWeekToCalendar(
           }
         } catch (err: unknown) {
           // Existing event was deleted externally — re-create
-          const errCode = isGoogleApiError(err) ? err.code : undefined
+          const errCode = isGoogleApiError(err) ? getGoogleApiStatus(err) : undefined
           if (existingEventId && (errCode === 404 || errCode === 410)) {
             try {
               googleEventId = await withRateLimitRetry(async () => {
@@ -494,7 +504,7 @@ async function safeDeleteEvent(
   try {
     await calendar.events.delete({ auth: calendarAuth(auth), calendarId, eventId })
   } catch (err: unknown) {
-    const errCode = isGoogleApiError(err) ? err.code : undefined
+    const errCode = isGoogleApiError(err) ? getGoogleApiStatus(err) : undefined
     if (errCode !== 404 && errCode !== 410) {
       console.error('[RotaCalendar] Delete failed for shift', shiftId, err instanceof Error ? err.message : String(err))
     }
