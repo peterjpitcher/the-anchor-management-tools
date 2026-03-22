@@ -5,7 +5,6 @@ import { Modal, ModalActions, ConfirmModal } from '@/components/ui-v2/overlay/Mo
 import { Button } from '@/components/ui-v2/forms/Button'
 import { Input } from '@/components/ui-v2/forms/Input'
 import { Checkbox } from '@/components/ui-v2/forms/Checkbox'
-import { ScheduleConfigEditor } from './ScheduleConfigEditor'
 import { createSpecialHours, updateSpecialHours, deleteSpecialHours, getBusinessHoursByDay } from '@/app/actions/business-hours'
 import { SpecialHours, ScheduleConfigItem } from '@/types/business-hours'
 import { format } from 'date-fns'
@@ -56,8 +55,9 @@ export function SpecialHoursModal({
       setKitchenOpens(initialData.kitchen_opens || '')
       setKitchenCloses(initialData.kitchen_closes || '')
       setNote(initialData.note || '')
+      // Retained: carries existing seeded schedule_config through save without overwriting
       setScheduleConfig(initialData.schedule_config || [])
-      
+
       // Extract Sunday Lunch from config
       const lunch = initialData.schedule_config?.find(c => c.booking_type === 'sunday_lunch')
       if (lunch) {
@@ -82,8 +82,9 @@ export function SpecialHoursModal({
       setSundayLunchOpens('')
       setSundayLunchCloses('')
       setNote('')
+      // Retained: reset schedule_config for new exceptions (preserves seeded data on save)
       setScheduleConfig([])
-      
+
       // Auto-fetch default hours for this day to pre-fill
       if (isOpen) {
         fetchDefaults(date)
@@ -104,6 +105,7 @@ export function SpecialHoursModal({
         setCloses(regular.closes || '')
         setKitchenOpens(regular.kitchen_opens || '')
         setKitchenCloses(regular.kitchen_closes || '')
+        // Retained: pre-fills with regular day's schedule_config so save doesn't overwrite seeded data
         setScheduleConfig(regular.schedule_config || [])
         setIsKitchenClosed(regular.is_kitchen_closed || false)
         
@@ -389,18 +391,6 @@ export function SpecialHoursModal({
           />
         </div>
 
-        {/* Service Slots */}
-        {!isClosed && (
-          <div className="pt-4 border-t border-gray-200">
-            <ScheduleConfigEditor
-              config={scheduleConfig}
-              onChange={setScheduleConfig}
-            />
-            <p className="text-xs text-gray-500 mt-2">
-              These slots determine customer booking availability for this specific date.
-            </p>
-          </div>
-        )}
       </div>
     </Modal>
     </>

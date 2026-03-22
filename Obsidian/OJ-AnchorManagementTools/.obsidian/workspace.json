@@ -1,0 +1,215 @@
+{
+  "main": {
+    "id": "6302d20271a30bed",
+    "type": "split",
+    "children": [
+      {
+        "id": "e3c33190f204b090",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "a9fefe15f0176c4e",
+            "type": "leaf",
+            "state": {
+              "type": "graph",
+              "state": {},
+              "icon": "lucide-git-fork",
+              "title": "Graph view"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "vertical"
+  },
+  "left": {
+    "id": "7b34b4f2e9e85296",
+    "type": "split",
+    "children": [
+      {
+        "id": "6f69419a13b358df",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "691978c2d4ad9a75",
+            "type": "leaf",
+            "state": {
+              "type": "file-explorer",
+              "state": {
+                "sortOrder": "alphabetical",
+                "autoReveal": false
+              },
+              "icon": "lucide-folder-closed",
+              "title": "Files"
+            }
+          },
+          {
+            "id": "56918625de6b4443",
+            "type": "leaf",
+            "state": {
+              "type": "search",
+              "state": {
+                "query": "",
+                "matchingCase": false,
+                "explainSearch": false,
+                "collapseAll": false,
+                "extraContext": false,
+                "sortOrder": "alphabetical"
+              },
+              "icon": "lucide-search",
+              "title": "Search"
+            }
+          },
+          {
+            "id": "af921ba1984630d1",
+            "type": "leaf",
+            "state": {
+              "type": "bookmarks",
+              "state": {},
+              "icon": "lucide-bookmark",
+              "title": "Bookmarks"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "horizontal",
+    "width": 300
+  },
+  "right": {
+    "id": "5dcf55001d809644",
+    "type": "split",
+    "children": [
+      {
+        "id": "477b84d05da13731",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "3ec68a1fe86d2614",
+            "type": "leaf",
+            "state": {
+              "type": "backlink",
+              "state": {
+                "collapseAll": false,
+                "extraContext": false,
+                "sortOrder": "alphabetical",
+                "showSearch": false,
+                "searchQuery": "",
+                "backlinkCollapsed": false,
+                "unlinkedCollapsed": true
+              },
+              "icon": "links-coming-in",
+              "title": "Backlinks"
+            }
+          },
+          {
+            "id": "6d7903dadf684d85",
+            "type": "leaf",
+            "state": {
+              "type": "outgoing-link",
+              "state": {
+                "linksCollapsed": false,
+                "unlinkedCollapsed": true
+              },
+              "icon": "links-going-out",
+              "title": "Outgoing links"
+            }
+          },
+          {
+            "id": "c48b5fecf4590d86",
+            "type": "leaf",
+            "state": {
+              "type": "tag",
+              "state": {
+                "sortOrder": "frequency",
+                "useHierarchy": true,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-tags",
+              "title": "Tags"
+            }
+          },
+          {
+            "id": "0a40cb0ea6a6e031",
+            "type": "leaf",
+            "state": {
+              "type": "all-properties",
+              "state": {
+                "sortOrder": "frequency",
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-archive",
+              "title": "All properties"
+            }
+          },
+          {
+            "id": "3ab8b346f19a75a7",
+            "type": "leaf",
+            "state": {
+              "type": "outline",
+              "state": {
+                "followCursor": false,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-list",
+              "title": "Outline"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "horizontal",
+    "width": 300,
+    "collapsed": true
+  },
+  "left-ribbon": {
+    "hiddenItems": {
+      "switcher:Open quick switcher": false,
+      "graph:Open graph view": false,
+      "canvas:Create new canvas": false,
+      "daily-notes:Open today's daily note": false,
+      "templates:Insert template": false,
+      "command-palette:Open command palette": false,
+      "bases:Create new base": false
+    }
+  },
+  "active": "a9fefe15f0176c4e",
+  "lastOpenFiles": [
+    "60-Roadmap/Roadmap MOC.md",
+    "60-Roadmap/Batch 8 - Customer Experience.md",
+    "60-Roadmap/Batch 7 - Global Search.md",
+    "60-Roadmap/Batch 6 - Automation.md",
+    "60-Roadmap/Batch 5 - Business Intelligence.md",
+    "60-Roadmap/Batch 4 - UI UX Polish.md",
+    "60-Roadmap/Batch 3 - Architecture.md",
+    "60-Roadmap/Batch 2 - Performance.md",
+    "60-Roadmap/Batch 1 - Security Fixes.md",
+    "60-Roadmap/Stream 3 - Business Automation.md",
+    "60-Roadmap/Stream 2 - Product Experience.md",
+    "60-Roadmap/Stream 1 - Platform Stability.md",
+    "60-Roadmap/Team Structure.md",
+    "60-Roadmap",
+    "50-Business-Rules/Deposits & Payments.md",
+    "50-Business-Rules/Employee Lifecycle.md",
+    "50-Business-Rules/SMS Policy.md",
+    "40-Operations/Environment Variables.md",
+    "40-Operations/Webhooks.md",
+    "40-Operations/Cron Jobs.md",
+    "30-Data-Models/Invoice Model.md",
+    "30-Data-Models/Employee Model.md",
+    "10-Modules/Users & Roles.md",
+    "30-Data-Models/Private Booking Model.md",
+    "10-Modules/Settings.md",
+    "30-Data-Models/Customer Model.md",
+    "20-Integrations/PayPal.md",
+    "50-Business-Rules",
+    "40-Operations",
+    "30-Data-Models",
+    "20-Integrations",
+    "10-Modules",
+    "00-Architecture"
+  ]
+}

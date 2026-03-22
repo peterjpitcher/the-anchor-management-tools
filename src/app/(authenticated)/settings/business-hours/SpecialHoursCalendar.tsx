@@ -154,7 +154,7 @@ export function SpecialHoursCalendar({ canManage, initialSpecialHours, initialOv
   return (
     <Section
       title="Exceptions & Holidays Calendar"
-      description="Click any date to close the venue, change hours, or adjust service slots."
+      description="Click any date to close the venue or change hours."
     >
       <Card padding="lg" className="space-y-4">
         <div className="flex items-center justify-between">
