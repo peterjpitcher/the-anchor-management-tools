@@ -60,26 +60,6 @@ function formatStatusLabel(value: string | null | undefined): string {
     .join(' ')
 }
 
-function formatComparisonDelta(current: number, previous: number): string {
-  const delta = current - previous
-  const deltaPrefix = delta > 0 ? '+' : ''
-
-  if (previous <= 0) {
-    return `${deltaPrefix}${delta}`
-  }
-
-  const percent = Math.round((delta / previous) * 100)
-  const percentPrefix = percent > 0 ? '+' : ''
-
-  return `${deltaPrefix}${delta} (${percentPrefix}${percent}%)`
-}
-
-function getComparisonToneClass(current: number, previous: number): string {
-  if (current > previous) return 'text-emerald-700'
-  if (current < previous) return 'text-red-600'
-  return 'text-gray-500'
-}
-
 function formatNoteDateRange(startDate: string, endDate: string): string {
   if (startDate === endDate) return formatDate(startDate)
   return `${formatDate(startDate)} to ${formatDate(endDate)}`
@@ -275,153 +255,6 @@ export default async function DashboardPage() {
     })
   }
 
-  const overviewCards: Array<{
-    key: string
-    href: string
-    title: string
-    value: React.ReactNode
-    description: React.ReactNode
-    icon: any
-    borderClassName: string
-    iconWrapperClassName: string
-  }> = []
-
-  if (snapshot.privateBookings.permitted) {
-    // B4: Revenue Today tile
-    overviewCards.push({
-      key: 'revenue-today',
-      href: '/private-bookings',
-      title: 'Revenue Today',
-      value: currencyFormatter.format(snapshot.revenueToday),
-      description: (
-        <span className="text-xs text-gray-500">
-          {privateToday.length > 0
-            ? `${privateToday.length} private booking${privateToday.length !== 1 ? 's' : ''} today`
-            : 'No private bookings today'}
-        </span>
-      ),
-      icon: CurrencyPoundIcon,
-      borderClassName: 'border-l-4 border-l-emerald-500',
-      iconWrapperClassName: 'bg-emerald-50 text-emerald-600',
-    })
-
-    // B3: Booking Pipeline tile
-    const pipeline = snapshot.bookingPipelineValue
-    overviewCards.push({
-      key: 'booking-pipeline',
-      href: '/private-bookings',
-      title: 'Booking Pipeline',
-      value: currencyFormatter.format(pipeline.total),
-      description: (
-        <div className="space-y-0.5 text-xs">
-          <p className="text-gray-500">
-            <span className="font-medium text-emerald-700">{currencyFormatter.format(pipeline.confirmed)}</span>
-            {' confirmed'}
-          </p>
-          <p className="text-gray-500">
-            <span className="font-medium text-indigo-600">{currencyFormatter.format(pipeline.draft)}</span>
-            {' draft'}
-          </p>
-        </div>
-      ),
-      icon: CurrencyPoundIcon,
-      borderClassName: 'border-l-4 border-l-violet-500',
-      iconWrapperClassName: 'bg-violet-50 text-violet-600',
-    })
-
-    overviewCards.push({
-      key: 'private-bookings-holds',
-      href: '/private-bookings',
-      title: 'Holds Expiring (7d)',
-      value: holdsExpiringSoon,
-      description: (
-        <span className="text-xs text-gray-500">
-          {balancesDueSoon > 0 ? `${balancesDueSoon} balances due in 14d` : 'No balances due soon'}
-        </span>
-      ),
-      icon: CurrencyPoundIcon,
-      borderClassName: 'border-l-4 border-l-indigo-500',
-      iconWrapperClassName: 'bg-indigo-50 text-indigo-600',
-    })
-  }
-
-  if (snapshot.tableBookings.permitted) {
-    overviewCards.push({
-      key: 'table-bookings',
-      href: '/table-bookings',
-      title: 'Table Bookings (Wk / Mo)',
-      value: `${snapshot.tableBookings.thisWeekTotal} / ${snapshot.tableBookings.thisMonthTotal}`,
-      description: (
-        <div className="space-y-0.5 text-xs">
-          <p className="text-gray-500">
-            <span>Vs last week: </span>
-            <span className={getComparisonToneClass(snapshot.tableBookings.thisWeekTotal, snapshot.tableBookings.lastWeekTotal)}>
-              {formatComparisonDelta(snapshot.tableBookings.thisWeekTotal, snapshot.tableBookings.lastWeekTotal)}
-            </span>
-          </p>
-          <p className="text-gray-500">
-            <span>Vs last month: </span>
-            <span className={getComparisonToneClass(snapshot.tableBookings.thisMonthTotal, snapshot.tableBookings.lastMonthTotal)}>
-              {formatComparisonDelta(snapshot.tableBookings.thisMonthTotal, snapshot.tableBookings.lastMonthTotal)}
-            </span>
-          </p>
-        </div>
-      ),
-      icon: CalendarIcon,
-      borderClassName: 'border-l-4 border-l-sky-500',
-      iconWrapperClassName: 'bg-sky-50 text-sky-600',
-    })
-  }
-
-  if (snapshot.parking.permitted) {
-    overviewCards.push({
-      key: 'parking-pending',
-      href: '/parking',
-      title: 'Parking Pending',
-      value: snapshot.parking.pendingPayments,
-      description: (
-        <span className="text-xs text-gray-500">
-          {snapshot.parking.arrivalsToday} arrivals today
-        </span>
-      ),
-      icon: TruckIcon,
-      borderClassName: 'border-l-4 border-l-gray-400',
-      iconWrapperClassName: 'bg-gray-100 text-gray-700',
-    })
-  }
-
-  if (snapshot.receipts.permitted) {
-    overviewCards.push({
-      key: 'receipts',
-      href: '/receipts',
-      title: 'Receipts to Resolve',
-      value: snapshot.receipts.needsAttention,
-      description: (
-        <span className="text-xs text-gray-500">
-          {snapshot.receipts.lastImportAt
-            ? `Last import ${londonTimeFormatter.format(new Date(snapshot.receipts.lastImportAt))}`
-            : 'No imports yet'}
-        </span>
-      ),
-      icon: ClipboardDocumentListIcon,
-      borderClassName: 'border-l-4 border-l-orange-500',
-      iconWrapperClassName: 'bg-orange-50 text-orange-600',
-    })
-  }
-
-  if (snapshot.messages.permitted) {
-    overviewCards.push({
-      key: 'messages',
-      href: '/messages',
-      title: 'Unread Messages',
-      value: snapshot.messages.unread,
-      description: <span className="text-xs text-gray-500">From customers</span>,
-      icon: ChatBubbleLeftIcon,
-      borderClassName: 'border-l-4 border-l-green-500',
-      iconWrapperClassName: 'bg-green-50 text-green-600',
-    })
-  }
-
   return (
     <PageLayout
       title="Dashboard"
@@ -438,26 +271,6 @@ export default async function DashboardPage() {
       padded={false}
     >
       <div className="p-4 sm:p-6 lg:p-8 space-y-6 max-w-[1600px] mx-auto">
-        {/* 1. Overview */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
-          {overviewCards.map((card) => (
-            <Link key={card.key} href={card.href} className="block">
-              <Card className={`hover:shadow-md transition-shadow cursor-pointer h-full ${card.borderClassName}`}>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-medium text-gray-500">{card.title}</p>
-                    <p className="text-2xl font-bold text-gray-900 mt-1">{card.value}</p>
-                    <div className="mt-1">{card.description}</div>
-                  </div>
-                  <div className={`p-2 rounded-lg ${card.iconWrapperClassName}`}>
-                    <card.icon className="h-6 w-6" />
-                  </div>
-                </div>
-              </Card>
-            </Link>
-          ))}
-        </div>
-
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 lg:gap-8">
           {/* Upcoming Schedule Calendar (Full Width) */}
           <div className="lg:col-span-3">

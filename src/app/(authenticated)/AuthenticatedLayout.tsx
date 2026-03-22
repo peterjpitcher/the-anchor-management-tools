@@ -6,7 +6,6 @@ import { usePathname, useRouter } from 'next/navigation'
 import Image from 'next/image'
 import React, { useState, useEffect, useMemo } from 'react'
 import AddNoteModal from '@/components/modals/AddNoteModal'
-import { GlobalSearch } from '@/components/ui-v2/GlobalSearch'
 import { useSupabase } from '@/components/providers/SupabaseProvider'
 import { PermissionProvider } from '@/contexts/PermissionContext'
 import type { User } from '@supabase/supabase-js'
@@ -178,9 +177,6 @@ async function handleSignOut() {
                     </div>
                     <h1 className="text-xl font-bold text-white text-center w-full">Management Tools</h1>
                   </div>
-                  <div className="mt-3 px-2">
-                    <GlobalSearch />
-                  </div>
                   <div className="mt-5 flex-1">
                     <AppNavigation onQuickAddNoteClick={openAddNoteModal} />
                   </div>
@@ -221,9 +217,6 @@ async function handleSignOut() {
                   </button>
                 </div>
                 <div className="flex-1 overflow-y-auto py-4 min-h-0">
-                  <div className="px-2 mb-3">
-                    <GlobalSearch />
-                  </div>
                   <AppNavigation
                     onQuickAddNoteClick={() => {
                       openAddNoteModal()

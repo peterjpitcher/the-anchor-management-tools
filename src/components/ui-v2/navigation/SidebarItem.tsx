@@ -26,7 +26,7 @@ export function SidebarItem({
   badge,
 }: SidebarItemProps) {
   const baseClasses = cn(
-    'sidebar-item group flex w-full min-h-10 items-center justify-start rounded-md px-2 py-1 text-left text-sm font-medium transition-colors duration-150',
+    'sidebar-item group flex w-full min-h-8 items-center justify-start rounded-md px-2 py-0.5 text-left text-sm font-medium transition-colors duration-150',
     active
       ? 'bg-green-700 text-white'
       : 'text-gray-100 hover:bg-green-700 hover:text-white',
@@ -35,7 +35,7 @@ export function SidebarItem({
   );
 
   const iconClasses = cn(
-    'mr-3 h-6 w-6',
+    'mr-3 h-5 w-5',
     active ? 'text-white' : 'text-green-200 group-hover:text-white'
   );
 
