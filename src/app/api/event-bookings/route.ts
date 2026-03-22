@@ -499,13 +499,21 @@ export async function POST(request: NextRequest) {
             appBaseUrl
           })
           nextStepUrl = paymentToken.url
-        } catch (error) {
-          logger.warn('Failed to create event payment token', {
+        } catch (tokenError) {
+          // Payment link is critical for pending_payment bookings — the customer
+          // cannot complete payment without it. Return an error so the caller
+          // knows the booking was created but is unusable.
+          logger.error('Failed to create event payment token — returning error to caller', {
+            error: tokenError instanceof Error ? tokenError : new Error(String(tokenError)),
             metadata: {
               bookingId: bookingResult.booking_id,
-              error: error instanceof Error ? error.message : String(error)
             }
           })
+          return createErrorResponse(
+            'Booking created but payment link generation failed. Please contact us.',
+            'PAYMENT_LINK_FAILED',
+            500
+          )
         }
       }
 
