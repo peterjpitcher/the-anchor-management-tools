@@ -7,6 +7,7 @@ import { getCurrentUser } from '@/lib/audit-helpers'
 import { recordAIUsage } from '@/lib/receipts/ai-classification'
 import { selectBestReceiptRule, getRuleMatch } from '@/lib/receipts/rule-matching'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { logger } from '@/lib/logger'
 import { jobQueue } from '@/lib/unified-job-queue'
 import {
   receiptRuleSchema,
@@ -680,9 +681,8 @@ async function applyAutomationRules(
     allowClosedStatusUpdates?: boolean
   } = {}
 ): Promise<AutomationResult> {
-  console.log('[retro] applyAutomationRules start', {
-    transactionCount: transactionIds.length,
-    options,
+  logger.debug('[retro] applyAutomationRules start', {
+    metadata: { transactionCount: transactionIds.length, ...options },
   })
 
   if (!transactionIds.length) {
@@ -992,7 +992,7 @@ async function applyAutomationRules(
       vendorIntended,
       expenseIntended,
     }
-    console.log('[receipts] applyAutomationRules summary', summary)
+    logger.debug('[receipts] applyAutomationRules summary', { metadata: summary })
 
     if (matchedCount === 0) {
       console.warn('[receipts] applyAutomationRules sample transactions', unmatchedSamples.slice(0, 10))
@@ -1124,20 +1124,22 @@ export async function runReceiptRuleRetroactivelyStep({
 
   const durationMs = Date.now() - startedAt
 
-  console.log('[retro-step] processed chunk', {
-    ruleId,
-    scope,
-    offset,
-    processed: ids.length,
-    matched: summary.matched,
-    statusAutoUpdated: summary.statusAutoUpdated,
-    classificationUpdated: summary.classificationUpdated,
-    vendorIntended: summary.vendorIntended,
-    expenseIntended: summary.expenseIntended,
-    nextOffset,
-    total,
-    done,
-    durationMs,
+  logger.debug('[retro-step] processed chunk', {
+    metadata: {
+      ruleId,
+      scope,
+      offset,
+      processed: ids.length,
+      matched: summary.matched,
+      statusAutoUpdated: summary.statusAutoUpdated,
+      classificationUpdated: summary.classificationUpdated,
+      vendorIntended: summary.vendorIntended,
+      expenseIntended: summary.expenseIntended,
+      nextOffset,
+      total,
+      done,
+      durationMs,
+    },
   })
 
   return {
