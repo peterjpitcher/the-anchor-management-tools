@@ -154,8 +154,10 @@ export async function POST(_req: NextRequest): Promise<NextResponse> {
     let totalFailed = 0
     const errors: string[] = []
 
-    // -- Process weeks with bounded concurrency (3 at a time) ---------------
-    await mapWithConcurrency(weekIds, 3, async (weekId) => {
+    // -- Process weeks sequentially to stay within Google Calendar API rate limits.
+    // Previously 3 concurrent × 10 shifts/batch = 30 in-flight writes caused
+    // widespread 403 rate limiting (~889 failures on a 68-week resync).
+    await mapWithConcurrency(weekIds, 1, async (weekId) => {
       const shifts = shiftsByWeek.get(weekId) ?? []
       try {
         const result = await syncRotaWeekToCalendar(weekId, shifts, {

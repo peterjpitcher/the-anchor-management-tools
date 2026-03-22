@@ -357,16 +357,17 @@ export async function syncRotaWeekToCalendar(
   )
 
   // -- Create / update events for active shifts ----------------------------
-  // Process in parallel batches of 10 to stay under GCal API rate limits.
+  // Process in batches of 5 with 500ms inter-batch pause to stay under
+  // Google Calendar API rate limits (~60 writes/min per user).
   // Each shift's entire processing (prep + API call + DB upsert) is wrapped
   // in its own try/catch so that one bad shift (e.g. null time fields)
   // never aborts the batch or any subsequent batches.
   const activeShifts = shifts.filter(s => s.status !== 'cancelled')
-  for (let i = 0; i < activeShifts.length; i += 10) {
-    // Brief pause between batches to stay under GCal rate limits.
-    if (i > 0) await new Promise(resolve => setTimeout(resolve, 150))
+  for (let i = 0; i < activeShifts.length; i += 5) {
+    // Pause between batches to stay under GCal rate limits.
+    if (i > 0) await new Promise(resolve => setTimeout(resolve, 500))
 
-    await Promise.all(activeShifts.slice(i, i + 10).map(async (shift) => {
+    await Promise.all(activeShifts.slice(i, i + 5).map(async (shift) => {
       try {
         // Guard against missing time fields — would crash formatTime/toUtcIso
         // outside the API try/catch, aborting the whole batch.
@@ -424,22 +425,36 @@ export async function syncRotaWeekToCalendar(
 
         let googleEventId: string | null = null
 
-        // One retry on per-user/per-project rate-limit (403 rateLimitExceeded).
-        // Waits 2 s then repeats. Throws on the second failure so the outer
-        // catch can log and count it as failed. Not used for 403 quotaExceeded
-        // (daily limit) — retrying the same day won't help.
+        // Retry on rate-limit errors (403 rateLimitExceeded or 429 Too Many Requests).
+        // Uses exponential backoff: 3s → 6s. Throws on the third failure.
+        // Not used for 403 quotaExceeded (daily limit) — retrying won't help.
         const withRateLimitRetry = async (fn: () => Promise<string | null>): Promise<string | null> => {
-          try {
-            return await fn()
-          } catch (err: unknown) {
-            const reason = isGoogleApiError(err) ? err.errors?.[0]?.reason ?? '' : ''
-            if (isGoogleApiError(err) && getGoogleApiStatus(err) === 403 && (reason === 'rateLimitExceeded' || reason === 'userRateLimitExceeded')) {
-              console.warn('[RotaCalendar] Rate limit hit for shift', shift.id, '— retrying after 2 s')
-              await new Promise(resolve => setTimeout(resolve, 2000))
+          for (let attempt = 0; attempt < 3; attempt++) {
+            try {
               return await fn()
+            } catch (err: unknown) {
+              const status = isGoogleApiError(err) ? getGoogleApiStatus(err) : undefined
+              // GaxiosError stores API error details in response.data, not top-level .errors
+              const apiErrors = isGoogleApiError(err) ? (err as Record<string, unknown>).response : undefined
+              const reason = (apiErrors && typeof apiErrors === 'object' && 'data' in apiErrors)
+                ? ((apiErrors as Record<string, unknown>).data as Record<string, unknown>)?.error
+                  ? (((apiErrors as Record<string, unknown>).data as Record<string, unknown>).error as Record<string, unknown>)?.errors
+                    ? ((((apiErrors as Record<string, unknown>).data as Record<string, unknown>).error as Record<string, unknown>).errors as Array<{ reason?: string }>)?.[0]?.reason ?? ''
+                    : ''
+                  : ''
+                : ''
+              const isRateLimit = (status === 403 && (reason === 'rateLimitExceeded' || reason === 'userRateLimitExceeded'))
+                || status === 429
+              if (isRateLimit && attempt < 2) {
+                const backoffMs = (attempt + 1) * 3000
+                console.warn('[RotaCalendar] Rate limit hit for shift', shift.id, `(${status}) — retrying after ${backoffMs}ms (attempt ${attempt + 1})`)
+                await new Promise(resolve => setTimeout(resolve, backoffMs))
+                continue
+              }
+              throw err
             }
-            throw err
           }
+          return null // unreachable, but satisfies TypeScript
         }
 
         try {
