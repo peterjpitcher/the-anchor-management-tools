@@ -1016,16 +1016,38 @@ export async function publishRotaWeek(weekId: string): Promise<
   // Sync to management Google Calendar after the response is sent.
   // after() keeps the serverless function alive until the callback completes
   // (up to maxDuration = 300s). This never blocks publish or causes 504s.
-  const shiftsForSync = currentShifts ?? [];
+  const weekStartDate = weekRow?.week_start as string | undefined
   after(async () => {
     try {
-      const { syncRotaWeekToCalendar } = await import('@/lib/google-calendar-rota');
-      const syncResult = await syncRotaWeekToCalendar(weekId, shiftsForSync);
-      if (syncResult.failed > 0) {
-        console.warn('[RotaCalendar] Sync completed with failures after publish for week', weekId, syncResult);
+      const syncAdmin = createAdminClient()
+      const { data: publishedShifts, error: readError } = await syncAdmin
+        .from('rota_published_shifts')
+        .select('id, week_id, employee_id, shift_date, start_time, end_time, department, status, notes, is_overnight, is_open_shift, name')
+        .eq('week_id', weekId)
+
+      // CRITICAL: Never sync an empty array on read failure — this would delete
+      // all mapped events for the week. Abort on error or null data.
+      if (readError || !publishedShifts) {
+        console.error('[RotaCalendar] Failed to read published shifts for sync — aborting', weekId, readError?.message)
+        return
       }
-    } catch (err) {
-      console.error('[RotaCalendar] Sync failed after publish for week', weekId, err);
+
+      // Guard against snapshot-in-progress: if the week is published but has
+      // zero shifts, a delete/insert snapshot replacement may be in progress.
+      if (publishedShifts.length === 0) {
+        console.info('[RotaCalendar] No published shifts found for week — skipping sync (snapshot may be in progress)', weekId)
+        return
+      }
+
+      const { syncRotaWeekToCalendar } = await import('@/lib/google-calendar-rota');
+      const syncResult = await syncRotaWeekToCalendar(weekId, publishedShifts, {
+        weekStart: weekStartDate,
+      })
+      if (syncResult.failed > 0) {
+        console.warn('[RotaCalendar] Sync completed with failures after publish for week', weekId, syncResult)
+      }
+    } catch (err: unknown) {
+      console.error('[RotaCalendar] Sync failed after publish for week', weekId, err)
     }
   });
 
@@ -1047,7 +1069,7 @@ export async function resyncRotaCalendar(): Promise<
 
   const { data: weeks, error } = await admin
     .from('rota_weeks')
-    .select('id')
+    .select('id, week_start')
     .eq('status', 'published');
 
   if (error) return { success: false, error: error.message };
@@ -1061,7 +1083,9 @@ export async function resyncRotaCalendar(): Promise<
       .eq('week_id', week.id);
 
     try {
-      await syncRotaWeekToCalendar(week.id, shifts ?? []);
+      await syncRotaWeekToCalendar(week.id, shifts ?? [], {
+        weekStart: week.week_start as string,
+      });
     } catch (err) {
       console.error('[RotaCalendar] resync failed for week', week.id, err);
     }
