@@ -293,7 +293,7 @@ async function fetchDashboardSnapshotImpl(userId: string): Promise<DashboardSnap
 
     const todayIso = getTodayIsoDate()
     const eventsLookbackIso = getLocalIsoDateDaysAgo(90)
-    const calendarNotesHorizonIso = getLocalIsoDateDaysAhead(730)
+    const calendarNotesHorizonIso = getLocalIsoDateDaysAhead(180)
     const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
     const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
     
@@ -489,8 +489,11 @@ async function fetchDashboardSnapshotImpl(userId: string): Promise<DashboardSnap
           // Slice this week's data to the completed cutoff
           const thisWeekCompleted = (thisWeekData ?? []).filter(s => s.session_date <= thisWeekEndStr)
 
-          // Fetch comparisons for the same number of completed days
-          const [lastWeekRes, lastYearRes] = await Promise.all([
+          // LOW-002: Parallelise comparison and targets queries — they are
+          // independent of each other (both only depend on site.id).
+          // The thisWeekData query above must run first because its results
+          // determine the date ranges for comparisons.
+          const [lastWeekRes, lastYearRes, targetsRes] = await Promise.all([
             supabase.from('cashup_sessions')
               .select('total_counted_amount')
               .eq('site_id', site.id)
@@ -500,22 +503,21 @@ async function fetchDashboardSnapshotImpl(userId: string): Promise<DashboardSnap
               .select('total_counted_amount')
               .eq('site_id', site.id)
               .gte('session_date', lastYearStartStr)
-              .lte('session_date', lastYearEndStr)
+              .lte('session_date', lastYearEndStr),
+            supabase.from('cashup_targets')
+              .select('*')
+              .eq('site_id', site.id)
+              .order('effective_from', { ascending: false })
           ])
-          
+          const targets = targetsRes.data
+
           // Sums
           cashingUp.thisWeekTotal = thisWeekCompleted.reduce((sum, s) => sum + (s.total_counted_amount || 0), 0)
           cashingUp.lastWeekTotal = lastWeekRes.data?.reduce((sum, s) => sum + (s.total_counted_amount || 0), 0) || 0
           cashingUp.lastYearTotal = lastYearRes.data?.reduce((sum, s) => sum + (s.total_counted_amount || 0), 0) || 0
-          
+
           // Count submitted (only completed range)
           cashingUp.sessionsSubmittedCount = thisWeekCompleted.filter(s => s.status !== 'draft').length
-
-          // Targets
-          const { data: targets } = await supabase.from('cashup_targets')
-            .select('*')
-            .eq('site_id', site.id)
-            .order('effective_from', { ascending: false })
 
           let targetSum = 0
           if (completedDaysThisWeek > 0) {
@@ -882,7 +884,9 @@ async function fetchDashboardSnapshotImpl(userId: string): Promise<DashboardSnap
               .is('deleted_at', null)
               .in('status', scheduleStatuses)
               .lt('due_date', todayIso),
-            // Total unpaid value (already there)
+            // Total unpaid value — fetches all rows for JS-side summation.
+            // No limit applied since we need the full sum. This should become
+            // an RPC aggregate (e.g. get_unpaid_invoice_totals) for efficiency.
             supabase
               .from('invoices')
               .select('total_amount, paid_amount')
@@ -1048,22 +1052,26 @@ async function fetchDashboardSnapshotImpl(userId: string): Promise<DashboardSnap
             return res
           }
 
+          // MED-010: Removed .limit(1000) caps that silently truncated sums.
+          // These queries only select total_amount for aggregation so row size
+          // is minimal. Ideally these should become a single RPC aggregate, but
+          // for now fetching all rows without a cap ensures correct sums.
           const [draftRes, pendingRes, expiredRes, acceptedRes] = await Promise.all([
             withDeletedAtFallback(
               supabase.from('quotes').select('id', { count: 'exact', head: true }).eq('status', 'draft').is('deleted_at', null),
               () => supabase.from('quotes').select('id', { count: 'exact', head: true }).eq('status', 'draft')
             ),
             withDeletedAtFallback(
-              supabase.from('quotes').select('total_amount').eq('status', 'sent').or(`valid_until.is.null,valid_until.gte.${todayIso}`).is('deleted_at', null).limit(1000),
-              () => supabase.from('quotes').select('total_amount').eq('status', 'sent').or(`valid_until.is.null,valid_until.gte.${todayIso}`).limit(1000)
+              supabase.from('quotes').select('total_amount').eq('status', 'sent').or(`valid_until.is.null,valid_until.gte.${todayIso}`).is('deleted_at', null),
+              () => supabase.from('quotes').select('total_amount').eq('status', 'sent').or(`valid_until.is.null,valid_until.gte.${todayIso}`)
             ),
             withDeletedAtFallback(
-              supabase.from('quotes').select('total_amount').eq('status', 'sent').lt('valid_until', todayIso).is('deleted_at', null).limit(1000),
-              () => supabase.from('quotes').select('total_amount').eq('status', 'sent').lt('valid_until', todayIso).limit(1000)
+              supabase.from('quotes').select('total_amount').eq('status', 'sent').lt('valid_until', todayIso).is('deleted_at', null),
+              () => supabase.from('quotes').select('total_amount').eq('status', 'sent').lt('valid_until', todayIso)
             ),
             withDeletedAtFallback(
-              supabase.from('quotes').select('total_amount').eq('status', 'accepted').is('deleted_at', null).limit(1000),
-              () => supabase.from('quotes').select('total_amount').eq('status', 'accepted').limit(1000)
+              supabase.from('quotes').select('total_amount').eq('status', 'accepted').is('deleted_at', null),
+              () => supabase.from('quotes').select('total_amount').eq('status', 'accepted')
             ),
           ])
 
@@ -1258,6 +1266,12 @@ export async function loadDashboardSnapshot(userId?: string): Promise<DashboardS
   const fetchForUser = unstable_cache(
     async () => fetchDashboardSnapshotImpl(resolvedUserId!),
     ['dashboard-snapshot', resolvedUserId],
+    // LOW-007: The 60s TTL is intentional. It acts as a short-lived fallback;
+    // most invalidation happens via revalidateTag('dashboard') calls from
+    // mutation server actions (bookings, invoices, rota, etc.), so stale data
+    // is rare in practice. Splitting into hot/cold cache segments was
+    // considered but adds complexity without measurable user-facing benefit
+    // given the tag-based invalidation already in place.
     { revalidate: 60, tags: ['dashboard', `dashboard-user-${resolvedUserId}`] }
   )
 
