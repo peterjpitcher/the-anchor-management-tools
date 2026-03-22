@@ -37,13 +37,15 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ ok: true, cancelled: 0 });
   }
 
+  // Re-check status='draft' to prevent cancelling bookings confirmed between snapshot and update
   const { error: updateError } = await supabase
     .from('private_bookings')
     .update({
       status: 'cancelled',
       cancellation_reason: 'Hold expired automatically',
     })
-    .in('id', ids);
+    .in('id', ids)
+    .eq('status', 'draft');
 
   if (updateError) {
     logger.error('private-bookings-expire-holds: update failed', {
