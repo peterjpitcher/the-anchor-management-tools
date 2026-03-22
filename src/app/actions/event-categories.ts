@@ -9,6 +9,7 @@ import type { EventCategory, CategoryFormData, CategoryRegular, CrossCategorySug
 import { toLocalIsoDate } from '@/lib/dateUtils'
 import type { User as SupabaseUser } from '@supabase/supabase-js'
 import { EventCategoryService } from '@/services/event-categories'
+import { getErrorMessage } from '@/lib/errors'
 
 // Helper function to format time to HH:MM
 function formatTimeToHHMM(time: string | undefined | null): string | undefined | null {
@@ -229,9 +230,9 @@ export async function createEventCategory(formData: CategoryFormData) {
 
     revalidatePath('/settings/event-categories')
     return { success: true, data: category }
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Unexpected error creating event category:', error)
-    return { error: error.message || 'An unexpected error occurred' }
+    return { error: getErrorMessage(error) }
   }
 }
 
@@ -265,9 +266,9 @@ export async function updateEventCategory(id: string, formData: CategoryFormData
 
     revalidatePath('/settings/event-categories')
     return { success: true, data: category }
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Unexpected error updating event category:', error)
-    return { error: error.message || 'An unexpected error occurred' }
+    return { error: getErrorMessage(error) }
   }
 }
 
@@ -295,9 +296,9 @@ export async function deleteEventCategory(id: string) {
 
     revalidatePath('/settings/event-categories')
     return { success: true }
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Unexpected error deleting event category:', error)
-    return { error: error.message || 'An unexpected error occurred' }
+    return { error: getErrorMessage(error) }
   }
 }
 
@@ -472,7 +473,7 @@ export async function categorizeHistoricalEvents() {
       throw error
     }
 
-    console.log('Categorize result:', count)
+    // Result logged via audit event below
 
     // Log audit event
     await logAuditEvent({
@@ -508,7 +509,7 @@ export async function rebuildCustomerCategoryStats() {
       throw error
     }
 
-    console.log('Rebuild stats result:', count)
+    // Result logged via audit event below
 
     // Log audit event
     await logAuditEvent({

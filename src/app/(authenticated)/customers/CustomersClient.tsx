@@ -4,7 +4,12 @@ import { useEffect, useState, useMemo, useCallback, useTransition } from 'react'
 import { useRouter, usePathname, useSearchParams } from 'next/navigation'
 import type { Customer } from '@/types/database'
 import { CustomerForm } from '@/components/features/customers/CustomerForm'
-import { CustomerImport } from '@/components/features/customers/CustomerImport'
+import dynamic from 'next/dynamic'
+
+const CustomerImport = dynamic(
+  () => import('@/components/features/customers/CustomerImport').then(mod => mod.CustomerImport),
+  { ssr: false }
+)
 import { CustomerName } from '@/components/features/customers/CustomerName'
 import { CustomerLabelDisplay } from '@/components/features/customers/CustomerLabelDisplay'
 import type { CustomerLabelAssignment } from '@/app/actions/customer-labels'

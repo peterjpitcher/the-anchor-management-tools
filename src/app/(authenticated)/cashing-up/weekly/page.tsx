@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server';
 import { PageLayout } from '@/components/ui-v2/layout/PageLayout';
 import { checkUserPermission } from '@/app/actions/rbac';
 import { redirect } from 'next/navigation';
+import { getTodayIsoDate } from '@/lib/dateUtils';
 
 export default async function WeeklyCashupPage({ searchParams }: { searchParams: Promise<{ siteId?: string; week?: string }> }) {
   const canView = await checkUserPermission('cashing_up', 'view');
@@ -14,15 +15,13 @@ export default async function WeeklyCashupPage({ searchParams }: { searchParams:
   
   const siteId = site?.id;
   
-  // Default to this week's Monday
-  const today = new Date();
-  const day = today.getDay() || 7; 
-  const d = new Date();
-  const dayOfWeek = d.getDay();
-  const diffToMon = d.getDate() - dayOfWeek + (dayOfWeek === 0 ? -6 : 1); // adjust when day is sunday
-  const monday = new Date(d.setDate(diffToMon));
-  // Use local date parts to avoid UTC toISOString() shift in BST
-  const defaultWeek = `${monday.getFullYear()}-${String(monday.getMonth() + 1).padStart(2, '0')}-${String(monday.getDate()).padStart(2, '0')}`;
+  // Default to this week's Monday (London timezone)
+  const todayIso = getTodayIsoDate()
+  const todayDate = new Date(todayIso + 'T12:00:00') // noon to avoid DST edge cases
+  const dayOfWeek = todayDate.getDay()
+  const diffToMon = todayDate.getDate() - dayOfWeek + (dayOfWeek === 0 ? -6 : 1)
+  todayDate.setDate(diffToMon)
+  const defaultWeek = `${todayDate.getFullYear()}-${String(todayDate.getMonth() + 1).padStart(2, '0')}-${String(todayDate.getDate()).padStart(2, '0')}`;
   
   const weekStart = paramWeek || defaultWeek;
   

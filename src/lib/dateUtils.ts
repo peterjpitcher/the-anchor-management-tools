@@ -24,18 +24,33 @@ export function formatDate(date: string | Date): string {
   })
 }
 
+/**
+ * Returns today's date as YYYY-MM-DD in the Europe/London timezone.
+ * On a UTC server during BST (UTC+1), e.g. 23:30 UTC = 00:30 London,
+ * this correctly returns tomorrow's date.
+ */
 export function getTodayIsoDate(): string {
-  const now = new Date()
-  const offsetMinutes = now.getTimezoneOffset()
-  now.setMinutes(now.getMinutes() - offsetMinutes)
-  return now.toISOString().split('T')[0]
+  return toLocalIsoDate(new Date())
 }
 
+/**
+ * Converts a Date to YYYY-MM-DD in the Europe/London timezone.
+ * Uses Intl.DateTimeFormat to get the correct London date regardless
+ * of the host machine's timezone.
+ */
 export function toLocalIsoDate(date: Date): string {
-  const copy = new Date(date.getTime())
-  const offsetMinutes = copy.getTimezoneOffset()
-  copy.setMinutes(copy.getMinutes() - offsetMinutes)
-  return copy.toISOString().split('T')[0]
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: LONDON_TIMEZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(date)
+
+  const year = parts.find(p => p.type === 'year')!.value
+  const month = parts.find(p => p.type === 'month')!.value
+  const day = parts.find(p => p.type === 'day')!.value
+
+  return `${year}-${month}-${day}`
 }
 
 export function getLocalIsoDateDaysAgo(days: number): string {

@@ -1,5 +1,6 @@
 import { checkUserPermission } from '@/app/actions/rbac';
 import { redirect } from 'next/navigation';
+import { formatDateTime } from '@/lib/dateUtils';
 import {
   getOrCreateRotaWeek,
   getWeekShifts,
@@ -167,10 +168,7 @@ export default async function RotaPrintPage({ searchParams }: PrintPageProps) {
   const leaveDays: LeaveDayWithRequest[] = leaveDaysResult.success ? leaveDaysResult.data : [];
   const openShifts = shifts.filter(s => s.is_open_shift || !s.employee_id);
 
-  const generatedAt = new Date().toLocaleDateString('en-GB', {
-    weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
-    hour: '2-digit', minute: '2-digit',
-  });
+  const generatedAt = formatDateTime(new Date());
 
   return (
     <>

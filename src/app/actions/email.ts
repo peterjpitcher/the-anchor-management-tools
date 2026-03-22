@@ -17,6 +17,9 @@ import {
   releaseIdempotencyClaim
 } from '@/lib/api/idempotency'
 
+const CONTACT_NAME = process.env.COMPANY_CONTACT_NAME || 'Peter Pitcher'
+const CONTACT_PHONE = process.env.COMPANY_CONTACT_PHONE || '07995087315'
+
 // Email validation schema
 const SendInvoiceEmailSchema = z.object({
   invoiceId: z.string().uuid('Invalid invoice ID'),
@@ -424,9 +427,9 @@ Amount Outstanding: £${outstandingAmount.toFixed(2)}
 I understand things can get busy, so this is just a friendly nudge. If there's anything I can help with or if you need to discuss payment arrangements, please don't hesitate to get in touch.
 
 Many thanks,
-Peter Pitcher
+${CONTACT_NAME}
 Orange Jelly Limited
-07995087315
+${CONTACT_PHONE}
 
 P.S. I've attached a copy of the invoice for your reference.`
 
