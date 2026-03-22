@@ -155,7 +155,7 @@ export async function syncRotaWeekToCalendar(
   // -- Fetch existing event-ID mappings for this week ----------------------
   const { data: existing } = await admin
     .from('rota_google_calendar_events')
-    .select('shift_id, google_event_id')
+    .select('shift_id, google_event_id, week_id')
     .eq('week_id', weekId)
 
   const existingMap = new Map<string, string>()
@@ -183,59 +183,107 @@ export async function syncRotaWeekToCalendar(
   }))
 
   // -- Rebuild mapping from Google Calendar extended properties ------------
-  // This recovers from partial syncs (e.g. server-action fire-and-forgets
-  // killed by Vercel before the mapping upsert could complete).
-  // List all events in the week's date range, find those tagged with a
-  // shiftId extended property, and fill in any gaps in the mapping table.
+  // Recovers from partial syncs and cleans up orphaned events.
+  // IMPORTANT: Only delete events that belong to THIS week (identified by
+  // weekId extended property or DB lookup). Never touch other weeks' events.
   if (shifts.length > 0) {
-    const weekStart = shifts.reduce((min, s) => s.shift_date < min ? s.shift_date : min, shifts[0].shift_date)
-    const weekEnd   = shifts.reduce((max, s) => s.shift_date > max ? s.shift_date : max, shifts[0].shift_date)
-    // Add one day so timeMax is exclusive and covers overnight shifts ending at midnight
-    const timeMaxDate = new Date(weekEnd + 'T23:59:59Z')
+    // Use canonical week boundaries if provided, fall back to shift-span
+    const scanStart = options?.weekStart
+      ?? shifts.reduce((min, s) => s.shift_date < min ? s.shift_date : min, shifts[0].shift_date)
+    const scanEnd = options?.weekStart
+      ? addDays(options.weekStart, 6)
+      : shifts.reduce((max, s) => s.shift_date > max ? s.shift_date : max, shifts[0].shift_date)
+
+    // Add one day so timeMax covers overnight shifts. Note: Google Calendar
+    // events.list applies timeMax to event START time, so this is a tolerance
+    // window rather than strict overnight coverage. The weekId filter makes
+    // this safe regardless of how wide the window is.
+    const timeMaxDate = new Date(scanEnd + 'T23:59:59Z')
     timeMaxDate.setUTCDate(timeMaxDate.getUTCDate() + 1)
+
     try {
-      const listRes = await calendar.events.list({
+      // Paginate through all events in the date range.
+      const firstPage = await calendar.events.list({
         auth: calendarAuth(auth),
         calendarId,
-        timeMin: weekStart + 'T00:00:00Z',
+        timeMin: scanStart + 'T00:00:00Z',
         timeMax: timeMaxDate.toISOString(),
         singleEvents: true,
-        maxResults: 500,
+        maxResults: 250,
       })
-      // Build a set of google_event_ids already in the mapping table so we can
-      // spot events that are in GCal but not in the mapping (i.e. orphans).
+      type GCalEventItem = NonNullable<typeof firstPage.data.items>[number]
+      const allEvents: GCalEventItem[] = [...(firstPage.data.items ?? [])]
+      let pageToken = firstPage.data.nextPageToken ?? undefined
+
+      while (pageToken) {
+        const nextPage = await calendar.events.list({
+          auth: calendarAuth(auth),
+          calendarId,
+          timeMin: scanStart + 'T00:00:00Z',
+          timeMax: timeMaxDate.toISOString(),
+          singleEvents: true,
+          maxResults: 250,
+          pageToken,
+        })
+        allEvents.push(...(nextPage.data.items ?? []))
+        pageToken = nextPage.data.nextPageToken ?? undefined
+      }
+
       const knownEventIds = new Set(existingMap.values())
       const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? ''
 
-      // Collect actions before executing — allows parallel processing.
       const toRecover: Array<{ evId: string; evShiftId: string }> = []
       const toDelete: Array<{ evId: string; label: string }> = []
 
-      for (const ev of listRes.data.items ?? []) {
+      for (const ev of allEvents) {
         if (!ev.id) continue
         const evShiftId = ev.extendedProperties?.private?.shiftId
+        const evWeekId = ev.extendedProperties?.private?.weekId
 
-        if (evShiftId) {
-          if (currentShiftIds.has(evShiftId) && !existingMap.has(evShiftId)) {
+        if (evWeekId) {
+          // --- Event has weekId (new-style) ---
+          if (evWeekId !== weekId) {
+            // Belongs to a different week — leave it alone
+            continue
+          }
+          // Belongs to this week
+          if (evShiftId && currentShiftIds.has(evShiftId) && !existingMap.has(evShiftId)) {
             toRecover.push({ evId: ev.id, evShiftId })
-          } else if (!currentShiftIds.has(evShiftId)) {
+          } else if (evShiftId && !currentShiftIds.has(evShiftId)) {
             toDelete.push({ evId: ev.id, label: evShiftId })
+          }
+        } else if (evShiftId) {
+          // --- Legacy event: has shiftId but no weekId ---
+          if (currentShiftIds.has(evShiftId)) {
+            // Shift belongs to this week — recover immediately (UUIDs are globally unique)
+            if (!existingMap.has(evShiftId)) {
+              toRecover.push({ evId: ev.id, evShiftId })
+            }
+          } else {
+            // Shift not in current week — check DB for ownership
+            const dbRow = (existing ?? []).find(r => r.shift_id === evShiftId)
+            if (dbRow && dbRow.week_id === weekId) {
+              // DB confirms it belongs to this week → genuine orphan, delete
+              toDelete.push({ evId: ev.id, label: evShiftId })
+            }
+            // If not in DB, or belongs to another week: skip (can't determine ownership safely)
           }
         } else if (
           !knownEventIds.has(ev.id) &&
           appUrl &&
           ev.description?.includes(appUrl + '/rota')
         ) {
-          // Event was created by a previous sync (has our rota URL) but has no
-          // extended property (created before this fix) and is not in the
-          // mapping table — it's an orphan from a killed fire-and-forget.
-          // Safe to delete because this is a dedicated management-only calendar.
-          toDelete.push({ evId: ev.id, label: '(legacy-orphan)' })
+          // --- Legacy event: no shiftId, no weekId, but has our /rota URL ---
+          // Only delete if the event's start time is within this week's canonical range
+          const evStart = ev.start?.dateTime ?? ev.start?.date ?? ''
+          const evStartDate = evStart.split('T')[0]
+          if (evStartDate >= scanStart && evStartDate <= scanEnd) {
+            toDelete.push({ evId: ev.id, label: '(legacy-orphan)' })
+          }
         }
       }
 
-      // Recover orphaned-but-valid events in parallel, updating existingMap
-      // so the create/update pass below knows which events already exist.
+      // Recover orphaned-but-valid events in parallel
       await Promise.all(toRecover.map(async ({ evId, evShiftId }) => {
         existingMap.set(evShiftId, evId)
         await admin.from('rota_google_calendar_events').upsert({
@@ -247,8 +295,7 @@ export async function syncRotaWeekToCalendar(
         console.info('[RotaCalendar] Recovered orphaned event', evId, 'for shift', evShiftId)
       }))
 
-      // Delete stale/legacy-orphan events in parallel batches of 10
-      // to stay comfortably under Google Calendar API rate limits.
+      // Delete genuine orphans in batches of 10
       if (toDelete.length > 0) {
         console.info('[RotaCalendar] Deleting', toDelete.length, 'orphan event(s) for week', weekId)
         for (let i = 0; i < toDelete.length; i += 10) {
