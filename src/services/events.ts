@@ -181,7 +181,7 @@ export const eventSchema = z.object({
   category_id: z.string().uuid().nullable().optional(),
   short_description: z.string().max(500).nullable().optional(),
   long_description: z.string().nullable().optional(),
-  brief: z.string().max(8000).nullable().optional(),
+  brief: z.string().max(50000).nullable().optional(),
   highlights: z.array(z.string()).default([]),
   keywords: z.array(z.string()).default([]),
   slug: z.string().regex(/^[a-z0-9-]+$/, 'Slug must only contain lowercase letters, numbers, and hyphens').nullable().optional(),
