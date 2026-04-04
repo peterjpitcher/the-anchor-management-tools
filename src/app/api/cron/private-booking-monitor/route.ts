@@ -15,6 +15,7 @@ import {
 import { recordAnalyticsEvent } from '@/lib/analytics/events'
 import { persistCronRunResult, recoverCronRunLock } from '@/lib/cron-run-results'
 import { getSmartFirstName } from '@/lib/sms/bulk'
+import { reportCronFailure } from '@/lib/cron/alerting'
 
 const JOB_NAME = 'private-booking-monitor'
 const LONDON_TZ = 'Europe/London'
@@ -1092,6 +1093,7 @@ export async function GET(request: Request) {
 
   } catch (error) {
     console.error('Error in private booking monitor:', error)
+    await reportCronFailure('private-booking-monitor', error)
     if (runContext) {
       const failureMessage = error instanceof Error ? error.message : 'Unknown error'
       await resolveCronRunResult(runContext.supabase, runContext.runId, 'failed', failureMessage)

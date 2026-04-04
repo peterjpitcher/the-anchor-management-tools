@@ -11,6 +11,7 @@ import { updateParkingBookingById } from '@/lib/parking/booking-updates'
 import type { ParkingBooking } from '@/types/parking'
 import { authorizeCronRequest } from '@/lib/cron-auth'
 import { persistCronRunResult, recoverCronRunLock } from '@/lib/cron-run-results'
+import { reportCronFailure } from '@/lib/cron/alerting'
 
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
@@ -469,6 +470,7 @@ export async function GET(request: Request) {
     resolvedStatus = 'failed'
     runErrorMessage = error instanceof Error ? error.message : String(error)
     console.error('Parking notifications cron failed:', error)
+    await reportCronFailure('parking-notifications', error)
     return NextResponse.json({ success: false, error: 'Internal error' }, { status: 500 })
   } finally {
     if (runContext?.shouldResolve && resolvedStatus) {

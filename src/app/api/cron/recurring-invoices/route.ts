@@ -8,6 +8,7 @@ import { isGraphConfigured, sendInvoiceEmail } from '@/lib/microsoft-graph'
 import { resolveVendorInvoiceRecipients } from '@/lib/invoice-recipients'
 import type { InvoiceLineItemInput, InvoiceWithDetails, RecurringFrequency } from '@/types/invoices'
 import { logAuditEvent } from '@/app/actions/audit'
+import { reportCronFailure } from '@/lib/cron/alerting'
 import {
   claimIdempotencyKey,
   computeIdempotencyRequestHash,
@@ -513,7 +514,8 @@ export async function GET(request: Request) {
 
   } catch (error) {
     console.error('[Cron] Fatal error in recurring invoices cron:', error)
-    return NextResponse.json({ 
+    await reportCronFailure('recurring-invoices', error)
+    return NextResponse.json({
       error: 'Failed to process recurring invoices',
       details: error instanceof Error ? error.message : 'Unknown error'
     }, { status: 500 })

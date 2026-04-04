@@ -5,6 +5,7 @@ import { isGraphConfigured } from '@/lib/microsoft-graph'
 import type { InvoiceWithDetails } from '@/types/invoices'
 import { authorizeCronRequest } from '@/lib/cron-auth'
 import { getTodayIsoDate } from '@/lib/dateUtils'
+import { reportCronFailure } from '@/lib/cron/alerting'
 import {
   claimIdempotencyKey,
   computeIdempotencyRequestHash,
@@ -510,7 +511,8 @@ Orange Jelly Limited
 
   } catch (error) {
     console.error('[Cron] Fatal error in invoice reminders cron:', error)
-    return NextResponse.json({ 
+    await reportCronFailure('invoice-reminders', error)
+    return NextResponse.json({
       error: 'Failed to process invoice reminders',
       details: error instanceof Error ? error.message : 'Unknown error'
     }, { status: 500 })
