@@ -29,18 +29,18 @@ export function buildPaymentReminderSmsForStage(
 ) {
   const amount = booking.override_price ?? booking.calculated_price ?? 0
 
-  const stagePrefix =
-    stage === 'week_before_expiry'
-      ? `The Anchor: Hi ${booking.customer_first_name}, this is your payment reminder for parking from ${formatDateTime(booking.start_at)} to ${formatDateTime(booking.end_at)}.`
-      : stage === 'day_before_expiry'
-        ? `The Anchor: Hi ${booking.customer_first_name}, your parking offer expires tomorrow for ${formatDateTime(booking.start_at)} to ${formatDateTime(booking.end_at)}.`
-        : `The Anchor: Hi ${booking.customer_first_name}, your parking offer has now expired for ${formatDateTime(booking.start_at)} to ${formatDateTime(booking.end_at)}.`
+  const urlPart = paymentUrl ? ` Sort it here: ${paymentUrl}` : ` We'll text your payment link shortly.`
 
-  const amountPart = ` Amount due: £${amount.toFixed(2)}.`
-  const linkPart = paymentUrl
-    ? ` Pay here: ${paymentUrl}.`
-    : " We'll text your payment link shortly."
-  return `${stagePrefix}${amountPart}${linkPart} Need help? Call ${CONTACT_NUMBER}.`
+  if (stage === 'week_before_expiry') {
+    return `The Anchor: ${booking.customer_first_name}! Just a nudge — your parking from ${formatDateTime(booking.start_at)} to ${formatDateTime(booking.end_at)} needs paying (£${amount.toFixed(2)}).${urlPart}`
+  }
+
+  if (stage === 'day_before_expiry') {
+    return `The Anchor: ${booking.customer_first_name}! Your parking offer expires tomorrow — £${amount.toFixed(2)} for ${formatDateTime(booking.start_at)} to ${formatDateTime(booking.end_at)}. Last chance:${urlPart}`
+  }
+
+  // overdue
+  return `The Anchor: ${booking.customer_first_name}! Your parking offer has now expired for ${formatDateTime(booking.start_at)} to ${formatDateTime(booking.end_at)}.${urlPart}`
 }
 
 export function buildPaymentReminderManagerEmail(booking: ParkingBooking, paymentUrl?: string) {
@@ -86,10 +86,10 @@ export function buildSessionEndSms(booking: ParkingBooking) {
 
 export function buildSessionThreeDayReminderSms(booking: ParkingBooking, type: 'start' | 'end') {
   if (type === 'start') {
-    return `The Anchor: Hi ${booking.customer_first_name}, your parking starts in 3 days on ${formatDateTime(booking.start_at)}. Registration ${booking.vehicle_registration}.`
+    return `The Anchor: ${booking.customer_first_name}! Your parking kicks off on ${formatDateTime(booking.start_at)} — just checking you've got ${booking.vehicle_registration} ready to go!`
   }
 
-  return `The Anchor: Hi ${booking.customer_first_name}, your parking ends in 3 days on ${formatDateTime(booking.end_at)}. Need extra time? Call ${CONTACT_NUMBER}.`
+  return `The Anchor: ${booking.customer_first_name}! Heads up — your parking wraps up on ${formatDateTime(booking.end_at)}. Need to extend? Give us a shout on ${CONTACT_NUMBER}.`
 }
 
 export function buildSessionManagerEmail(booking: ParkingBooking, type: 'start' | 'end') {
