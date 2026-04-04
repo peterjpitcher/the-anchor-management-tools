@@ -15,6 +15,13 @@ module.exports = [
       '@typescript-eslint/no-explicit-any': 'off',
       'react-hooks/exhaustive-deps': 'off',
       '@next/next/no-img-element': 'off',
+      'no-console': ['error', { allow: ['warn', 'error'] }],
+    },
+  },
+  {
+    files: ['src/scripts/**/*.{ts,tsx}'],
+    rules: {
+      'no-console': 'off',
     },
   },
   {

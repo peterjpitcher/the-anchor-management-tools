@@ -19,11 +19,11 @@ export function initializeApp() {
     return
   }
 
-  console.log('Initializing The Anchor Management Tools')
-  console.log(`Environment: ${config.name}`)
-  console.log(`App URL: ${config.app.url}`)
-  console.log(`SMS: ${config.features.sms ? 'Enabled' : 'Disabled'}`)
-  console.log(`Rate Limiting: ${config.features.rateLimiting ? 'Enabled' : 'Disabled'}`)
-  console.log(`Background Jobs: ${config.features.backgroundJobs ? 'Enabled' : 'Disabled'}`)
-  console.log('Application initialized successfully')
+  console.warn('Initializing The Anchor Management Tools')
+  console.warn(`Environment: ${config.name}`)
+  console.warn(`App URL: ${config.app.url}`)
+  console.warn(`SMS: ${config.features.sms ? 'Enabled' : 'Disabled'}`)
+  console.warn(`Rate Limiting: ${config.features.rateLimiting ? 'Enabled' : 'Disabled'}`)
+  console.warn(`Background Jobs: ${config.features.backgroundJobs ? 'Enabled' : 'Disabled'}`)
+  console.warn('Application initialized successfully')
 }

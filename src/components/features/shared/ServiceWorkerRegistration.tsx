@@ -11,7 +11,7 @@ export function ServiceWorkerRegistration() {
           navigator.serviceWorker
             .register('/sw.js')
             .then((registration) => {
-              console.log('Service Worker registered:', registration)
+              console.warn('Service Worker registered:', registration)
 
               // Trigger a single update check after registration
               registration.update().catch(() => {

@@ -23,9 +23,11 @@ class Logger {
     if (this.isDevelopment || level === 'error') {
       switch (level) {
         case 'debug':
+          // eslint-disable-next-line no-console
           console.debug(`\x1b[36m${formattedMessage}\x1b[0m`); // Cyan
           break;
         case 'info':
+          // eslint-disable-next-line no-console
           console.info(`\x1b[32m${formattedMessage}\x1b[0m`); // Green
           break;
         case 'warn':

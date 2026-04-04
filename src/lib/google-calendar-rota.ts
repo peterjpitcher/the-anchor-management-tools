@@ -133,7 +133,7 @@ export async function syncRotaWeekToCalendar(
 ): Promise<SyncResult> {
   const result: SyncResult = { created: 0, updated: 0, failed: 0 }
   if (!isRotaCalendarConfigured()) {
-    console.info('[RotaCalendar] GOOGLE_CALENDAR_ROTA_ID not configured — skipping sync')
+    console.warn('[RotaCalendar] GOOGLE_CALENDAR_ROTA_ID not configured — skipping sync')
     return result
   }
 
@@ -302,12 +302,12 @@ export async function syncRotaWeekToCalendar(
           google_event_id: evId,
           updated_at: new Date().toISOString(),
         })
-        console.info('[RotaCalendar] Recovered orphaned event', evId, 'for shift', evShiftId)
+        console.warn('[RotaCalendar] Recovered orphaned event', evId, 'for shift', evShiftId)
       }))
 
       // Delete genuine orphans in batches of 10
       if (toDelete.length > 0) {
-        console.info('[RotaCalendar] Deleting', toDelete.length, 'orphan event(s) for week', weekId)
+        console.warn('[RotaCalendar] Deleting', toDelete.length, 'orphan event(s) for week', weekId)
         for (let i = 0; i < toDelete.length; i += 10) {
           await Promise.all(
             toDelete.slice(i, i + 10).map(({ evId, label }) =>
@@ -335,7 +335,7 @@ export async function syncRotaWeekToCalendar(
         }
       }
       if (staleCount > 0) {
-        console.info('[RotaCalendar] Removed', staleCount, 'stale mapping(s) for week', weekId, '— events will be re-created')
+        console.warn('[RotaCalendar] Removed', staleCount, 'stale mapping(s) for week', weekId, '— events will be re-created')
       }
     } catch (err: unknown) {
       // Non-fatal: if listing fails we fall through to normal upsert logic
@@ -481,7 +481,7 @@ export async function syncRotaWeekToCalendar(
         } catch (err: unknown) {
           // Existing event was deleted externally — re-create
           const errCode = isGoogleApiError(err) ? getGoogleApiStatus(err) : undefined
-          console.info('[RotaCalendar] API error for shift', shift.id,
+          console.warn('[RotaCalendar] API error for shift', shift.id,
             `existingEventId=${existingEventId ? 'yes' : 'no'}`,
             `errCode=${errCode}`,
             `isGoogleApiError=${isGoogleApiError(err)}`,
@@ -531,7 +531,7 @@ export async function syncRotaWeekToCalendar(
     }))
   }
 
-  console.info(
+  console.warn(
     '[RotaCalendar] Sync complete for week', weekId,
     `— ${result.created} created, ${result.updated} updated, ${result.failed} failed`,
     `(${shifts.length} total shifts)`
