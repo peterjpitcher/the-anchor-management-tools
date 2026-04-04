@@ -192,61 +192,73 @@ describe('event guest engagement route error payloads', () => {
           }
 
           if (table === 'bookings') {
-            return {
-              select: vi.fn(() => ({
-                in: vi.fn(() => ({
-                  gte: vi.fn(() => ({
-                    lte: vi.fn(() => ({
-                      limit: vi.fn().mockResolvedValue({
-                        data: [
-                          {
-                            id: 'booking-1',
-                            customer_id: 'customer-1',
-                            event_id: 'event-1',
-                            seats: 2,
-                            is_reminder_only: false,
-                            status: 'confirmed',
-                            review_sms_sent_at: null,
-                            review_window_closes_at: null,
-                            event: {
-                              id: 'event-1',
-                              name: 'Test Event',
-                              start_datetime: eventStartIso,
-                              date: null,
-                              time: null,
-                              event_status: null,
-                            },
-                            customer: {
-                              id: 'customer-1',
-                              first_name: 'Alex',
-                              mobile_number: '+447700900111',
-                              sms_status: 'active',
-                            },
-                          },
-                        ],
-                        error: null,
-                      }),
-                    })),
-                  })),
-                })),
-              })),
+            // Shared chain helper that works for both loadEventBookingsForEngagement and hasCustomerReviewed
+            const makeChain = (finalResult: unknown) => {
+              const chain: Record<string, unknown> = {}
+              const anyFn = () => chain
+              const resolvedFn = () => Promise.resolve(finalResult)
+              chain.select = vi.fn(anyFn)
+              chain.in = vi.fn(anyFn)
+              chain.is = vi.fn(anyFn)
+              chain.not = vi.fn(resolvedFn)
+              chain.gte = vi.fn(anyFn)
+              chain.lte = vi.fn(anyFn)
+              chain.limit = vi.fn(resolvedFn)
+              return chain
             }
+            return makeChain({
+              data: [
+                {
+                  id: 'booking-1',
+                  customer_id: 'customer-1',
+                  event_id: 'event-1',
+                  seats: 2,
+                  is_reminder_only: false,
+                  status: 'confirmed',
+                  review_sms_sent_at: null,
+                  review_window_closes_at: null,
+                  review_suppressed_at: null,
+                  event: {
+                    id: 'event-1',
+                    name: 'Test Event',
+                    start_datetime: eventStartIso,
+                    date: null,
+                    time: null,
+                    event_status: null,
+                  },
+                  customer: {
+                    id: 'customer-1',
+                    first_name: 'Alex',
+                    mobile_number: '+447700900111',
+                    sms_status: 'active',
+                  },
+                },
+              ],
+              error: null,
+            })
           }
 
           if (table === 'table_bookings') {
-            return {
-              select: vi.fn(() => ({
-                eq: vi.fn(() => ({
-                  not: vi.fn(() => ({
-                    gte: vi.fn(() => ({
-                      lte: vi.fn(() => ({
-                        limit: vi.fn().mockResolvedValue({ data: [], error: null }),
-                      })),
-                    })),
-                  })),
-                })),
-              })),
-            }
+            const chain: Record<string, unknown> = {}
+            const anyFn = () => chain
+            const resolvedFn = () => Promise.resolve({ data: [], error: null })
+            chain.select = vi.fn(anyFn)
+            chain.eq = vi.fn(anyFn)
+            chain.is = vi.fn(anyFn)
+            chain.not = vi.fn(anyFn)
+            chain.gte = vi.fn(anyFn)
+            chain.lte = vi.fn(anyFn)
+            chain.limit = vi.fn(resolvedFn)
+            return chain
+          }
+
+          if (table === 'private_bookings') {
+            const chain: Record<string, unknown> = {}
+            const anyFn = () => chain
+            chain.select = vi.fn(anyFn)
+            chain.in = vi.fn(anyFn)
+            chain.not = vi.fn(() => Promise.resolve({ data: [], error: null }))
+            return chain
           }
 
           throw new Error(`Unexpected table: ${table}`)
@@ -340,61 +352,72 @@ describe('event guest engagement route error payloads', () => {
           }
 
           if (table === 'bookings') {
-            return {
-              select: vi.fn(() => ({
-                in: vi.fn(() => ({
-                  gte: vi.fn(() => ({
-                    lte: vi.fn(() => ({
-                      limit: vi.fn().mockResolvedValue({
-                        data: [
-                          {
-                            id: 'booking-1',
-                            customer_id: 'customer-1',
-                            event_id: 'event-1',
-                            seats: 2,
-                            is_reminder_only: false,
-                            status: 'confirmed',
-                            review_sms_sent_at: null,
-                            review_window_closes_at: null,
-                            event: {
-                              id: 'event-1',
-                              name: 'Test Event',
-                              start_datetime: eventStartIso,
-                              date: null,
-                              time: null,
-                              event_status: null,
-                            },
-                            customer: {
-                              id: 'customer-1',
-                              first_name: 'Alex',
-                              mobile_number: '+447700900111',
-                              sms_status: 'active',
-                            },
-                          },
-                        ],
-                        error: null,
-                      }),
-                    })),
-                  })),
-                })),
-              })),
+            const makeChain = (finalResult: unknown) => {
+              const chain: Record<string, unknown> = {}
+              const anyFn = () => chain
+              const resolvedFn = () => Promise.resolve(finalResult)
+              chain.select = vi.fn(anyFn)
+              chain.in = vi.fn(anyFn)
+              chain.is = vi.fn(anyFn)
+              chain.not = vi.fn(resolvedFn)
+              chain.gte = vi.fn(anyFn)
+              chain.lte = vi.fn(anyFn)
+              chain.limit = vi.fn(resolvedFn)
+              return chain
             }
+            return makeChain({
+              data: [
+                {
+                  id: 'booking-1',
+                  customer_id: 'customer-1',
+                  event_id: 'event-1',
+                  seats: 2,
+                  is_reminder_only: false,
+                  status: 'confirmed',
+                  review_sms_sent_at: null,
+                  review_window_closes_at: null,
+                  review_suppressed_at: null,
+                  event: {
+                    id: 'event-1',
+                    name: 'Test Event',
+                    start_datetime: eventStartIso,
+                    date: null,
+                    time: null,
+                    event_status: null,
+                  },
+                  customer: {
+                    id: 'customer-1',
+                    first_name: 'Alex',
+                    mobile_number: '+447700900111',
+                    sms_status: 'active',
+                  },
+                },
+              ],
+              error: null,
+            })
           }
 
           if (table === 'table_bookings') {
-            return {
-              select: vi.fn(() => ({
-                eq: vi.fn(() => ({
-                  not: vi.fn(() => ({
-                    gte: vi.fn(() => ({
-                      lte: vi.fn(() => ({
-                        limit: vi.fn().mockResolvedValue({ data: [], error: null }),
-                      })),
-                    })),
-                  })),
-                })),
-              })),
-            }
+            const chain: Record<string, unknown> = {}
+            const anyFn = () => chain
+            const resolvedFn = () => Promise.resolve({ data: [], error: null })
+            chain.select = vi.fn(anyFn)
+            chain.eq = vi.fn(anyFn)
+            chain.is = vi.fn(anyFn)
+            chain.not = vi.fn(anyFn)
+            chain.gte = vi.fn(anyFn)
+            chain.lte = vi.fn(anyFn)
+            chain.limit = vi.fn(resolvedFn)
+            return chain
+          }
+
+          if (table === 'private_bookings') {
+            const chain: Record<string, unknown> = {}
+            const anyFn = () => chain
+            chain.select = vi.fn(anyFn)
+            chain.in = vi.fn(anyFn)
+            chain.not = vi.fn(() => Promise.resolve({ data: [], error: null }))
+            return chain
           }
 
           throw new Error(`Unexpected table: ${table}`)

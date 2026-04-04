@@ -48,12 +48,12 @@ export async function GET(request: NextRequest, context: RouteContext) {
 
     const { data: guestToken, error: tokenError } = await supabase
       .from('guest_tokens')
-      .select('id, customer_id, event_booking_id, table_booking_id, expires_at')
+      .select('id, customer_id, event_booking_id, table_booking_id, private_booking_id, expires_at')
       .eq('hashed_token', hashedToken)
       .eq('action_type', 'review_redirect')
       .maybeSingle()
 
-    if (tokenError || !guestToken || (!guestToken.event_booking_id && !guestToken.table_booking_id)) {
+    if (tokenError || !guestToken || (!guestToken.event_booking_id && !guestToken.table_booking_id && !guestToken.private_booking_id)) {
       return NextResponse.redirect(fallbackTarget, { status: 302 })
     }
 
@@ -144,6 +144,39 @@ export async function GET(request: NextRequest, context: RouteContext) {
             customerId: guestToken.customer_id
           })
         }
+      }
+    }
+    if (guestToken.private_booking_id) {
+      const { error: privateBookingUpdateError } = await supabase
+        .from('private_bookings')
+        .update({
+          review_clicked_at: nowIso,
+          updated_at: nowIso
+        })
+        .eq('id', guestToken.private_booking_id)
+        .is('review_clicked_at', null)
+
+      if (privateBookingUpdateError) {
+        logger.warn('Failed updating private booking review-clicked status from token redirect', {
+          metadata: {
+            tokenId: guestToken.id,
+            privateBookingId: guestToken.private_booking_id,
+            error: privateBookingUpdateError.message
+          }
+        })
+      } else if (guestToken.customer_id) {
+        await recordReviewRedirectAnalyticsSafe(supabase, {
+          customerId: guestToken.customer_id,
+          privateBookingId: guestToken.private_booking_id,
+          eventType: 'review_link_clicked',
+          metadata: {
+            booking_type: 'private'
+          }
+        }, {
+          tokenId: guestToken.id,
+          privateBookingId: guestToken.private_booking_id,
+          customerId: guestToken.customer_id
+        })
       }
     }
   } catch (error) {

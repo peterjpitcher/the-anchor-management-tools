@@ -94,7 +94,7 @@ export async function recordDeposit(bookingId: string, amount: number, method: s
       day: 'numeric', month: 'long', year: 'numeric'
     });
 
-    const smsMessage = `The Anchor: Hi ${booking.customer_first_name}, deposit received. Your booking for ${eventDate} is now fully confirmed. We'll be in touch closer to the time for final details.`;
+    const smsMessage = `The Anchor: ${booking.customer_first_name}! Deposit received — your date on ${eventDate} is locked in. We'll be in touch closer to the time!`;
 
      
     let smsResult: any
@@ -242,7 +242,7 @@ export async function recordFinalPayment(bookingId: string, method: string, perf
       day: 'numeric', month: 'long', year: 'numeric'
     });
 
-    const smsMessage = `The Anchor: Hi ${booking.customer_first_name}, thank you for your final payment. Your private booking on ${eventDate} is fully paid.`;
+    const smsMessage = `The Anchor: ${booking.customer_first_name}! Final payment received — you're all set for ${eventDate}. We'll be in touch with final details!`;
 
      
     let smsResult: any
@@ -356,7 +356,7 @@ export async function recordBalancePayment(bookingId: string, amount: number, me
       day: 'numeric', month: 'long', year: 'numeric'
     });
 
-    const smsMessage = `The Anchor: Hi ${booking.customer_first_name}, thank you for your final payment. Your private booking on ${eventDate} is fully paid.`;
+    const smsMessage = `The Anchor: ${booking.customer_first_name}! Final payment received — you're all set for ${eventDate}. We'll be in touch with final details!`;
 
      
     let smsResult: any

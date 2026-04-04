@@ -150,13 +150,16 @@ async function sendAcceptanceSms(
     }
 
     if (paymentLink) {
-      message = `The Anchor: Hi ${firstName}, your waitlist offer is confirmed and ${seats} ${seatWord} are reserved for ${eventName}. Pay here: ${paymentLink}.${manageLink ? ` Manage booking: ${manageLink}` : ''}`
+      message = `The Anchor: ${firstName}! ${seats} ${seatWord} held for ${eventName} — nice one! Complete your payment here: ${paymentLink}.${manageLink ? ` ${manageLink}` : ''}`
     } else {
-      message = `The Anchor: Hi ${firstName}, your waitlist offer is confirmed and ${seats} ${seatWord} are reserved for ${eventName}. Your booking is pending payment and we'll text your payment link shortly.${manageLink ? ` Manage booking: ${manageLink}` : ''}`
+      message = `The Anchor: ${firstName}! ${seats} ${seatWord} held for ${eventName} — nice one! We'll ping you a payment link shortly.${manageLink ? ` ${manageLink}` : ''}`
     }
   } else {
-    const cashOnArrivalText = event.payment_mode === 'cash_only' ? ' Payment is cash on arrival.' : ''
-    message = `The Anchor: Hi ${firstName}, your waitlist offer is confirmed. You're booked for ${eventName} with ${seats} ${seatWord}.${cashOnArrivalText}${manageLink ? ` Manage booking: ${manageLink}` : ''}`
+    const eventDateFormatted = event.start_datetime
+      ? (() => { try { return new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/London', weekday: 'short', day: 'numeric', month: 'short' }).format(new Date(event.start_datetime)) } catch { return '' } })()
+      : ''
+    const eventDatePart = eventDateFormatted ? ` on ${eventDateFormatted}` : ''
+    message = `The Anchor: ${firstName}! You're in — ${seats} ${seatWord} confirmed for ${eventName}${eventDatePart}. See you there!${manageLink ? ` ${manageLink}` : ''}`
   }
 
   let smsResult: Awaited<ReturnType<typeof sendSMS>>

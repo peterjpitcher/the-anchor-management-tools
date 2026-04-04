@@ -54,6 +54,14 @@ vi.mock('@/lib/errors', () => ({
   getErrorMessage: vi.fn((e: unknown) => (e instanceof Error ? e.message : String(e))),
 }))
 
+vi.mock('@/lib/sms/reply-to-book', () => ({
+  handleReplyToBook: vi.fn().mockResolvedValue({ handled: false }),
+}))
+
+vi.mock('@/lib/twilio', () => ({
+  sendSMS: vi.fn().mockResolvedValue({ success: true }),
+}))
+
 // ---------------------------------------------------------------------------
 // Imports (after mocks)
 // ---------------------------------------------------------------------------
