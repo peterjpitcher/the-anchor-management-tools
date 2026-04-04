@@ -29,6 +29,22 @@ vi.mock('@/lib/cron-run-results', () => ({
   recoverCronRunLock: vi.fn().mockResolvedValue({ result: 'already_running', runId: 'run-1' }),
 }))
 
+vi.mock('@/lib/sms/review-once', () => ({
+  hasCustomerReviewed: vi.fn().mockResolvedValue(new Set()),
+}))
+
+vi.mock('@/lib/guest/tokens', () => ({
+  createGuestToken: vi.fn().mockResolvedValue({ rawToken: 'test-token', hashedToken: 'hashed' }),
+}))
+
+vi.mock('@/lib/events/review-link', () => ({
+  getGoogleReviewLink: vi.fn().mockResolvedValue('https://g.page/r/test'),
+}))
+
+vi.mock('@/lib/sms/support', () => ({
+  ensureReplyInstruction: vi.fn().mockImplementation((body: string) => body),
+}))
+
 import { authorizeCronRequest } from '@/lib/cron-auth'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { SmsQueueService } from '@/services/sms-queue'
@@ -154,6 +170,17 @@ describe('private booking monitor route error payloads', () => {
                         limit: vi.fn().mockResolvedValue({ data: [], error: null }),
                       })),
                     })),
+                  })),
+                })),
+              }
+            }
+
+            // Pass 5: post-event followup query
+            if (columns.includes('contact_phone, event_date, customer_id')) {
+              return {
+                in: vi.fn(() => ({
+                  eq: vi.fn(() => ({
+                    is: vi.fn().mockResolvedValue({ data: [], error: null }),
                   })),
                 })),
               }
@@ -322,10 +349,10 @@ describe('private booking monitor route error payloads', () => {
     }
   })
 
-  it('completes without sending private feedback SMS (pass 5 retired)', async () => {
-    // RETIRED: pass 5 (private_booking_feedback_followup) has been retired.
-    // This test verifies that the cron completes successfully without triggering
-    // any private feedback sends, even when private bookings with past event dates exist.
+  it('completes without sending review SMS when no eligible post-event bookings exist', async () => {
+    // Pass 5 (private_booking_post_event_followup) now runs but this test mocks
+    // private_bookings to return no eligible bookings — verifies the cron completes
+    // successfully without triggering any SMS sends.
     ;(authorizeCronRequest as unknown as vi.Mock).mockReturnValue({ authorized: true })
 
     vi.useFakeTimers()
@@ -399,24 +426,22 @@ describe('private booking monitor route error payloads', () => {
                         lt: vi.fn(() => ({
                           not: vi.fn(() => ({
                             limit: vi.fn().mockResolvedValue({
-                              // Past bookings exist but pass 5 is retired — no SMS should be sent
-                              data: [
-                                {
-                                  id: 'booking-1',
-                                  customer_id: 'customer-1',
-                                  customer_first_name: 'Test',
-                                  customer_last_name: 'User',
-                                  customer_name: 'Test User',
-                                  contact_phone: '+447700900123',
-                                  event_date: '2026-02-10',
-                                  start_time: '18:00',
-                                  status: 'completed',
-                                },
-                              ],
+                              data: [],
                               error: null,
                             }),
                           })),
                         })),
+                      })),
+                    })),
+                  }
+                }
+
+                // Pass 5: post-event followup query — returns empty so no SMS is sent
+                if (columns.includes('contact_phone, event_date, customer_id')) {
+                  return {
+                    in: vi.fn(() => ({
+                      eq: vi.fn(() => ({
+                        is: vi.fn().mockResolvedValue({ data: [], error: null }),
                       })),
                     })),
                   }
@@ -453,7 +478,7 @@ describe('private booking monitor route error payloads', () => {
       // Pass 5 is retired — no abort should occur
       expect(payload.aborted).toBe(false)
 
-      // sendSMS was used by pass 5 only — should never be called now
+      // Pass 5 now runs but returns no eligible bookings — sendSMS should not be called
       expect(sendSMS).not.toHaveBeenCalled()
       expect(persistCronRunResult).toHaveBeenCalledWith(
         supabase,

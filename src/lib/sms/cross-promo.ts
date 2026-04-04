@@ -204,12 +204,14 @@ export async function sendCrossPromoForEvent(event: {
       ? buildPaidMessage(firstName, lastEventCategory, event.name, eventDate, eventLink!)
       : buildFreeMessage(firstName, lastEventCategory, event.name, eventDate)
 
+    const idempotencyKey = `${templateKey}_${recipient.customer_id}_${event.id}`
     const smsResult = await sendSmsSafe(recipient.phone_number, messageBody, {
       customerId: recipient.customer_id,
       metadata: {
         event_id: event.id,
         template_key: templateKey,
         marketing: true,
+        idempotency_key: idempotencyKey,
       },
     })
 

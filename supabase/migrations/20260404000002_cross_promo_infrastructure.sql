@@ -21,6 +21,7 @@ CREATE INDEX idx_sms_promo_context_frequency
 ON sms_promo_context (customer_id, created_at DESC);
 
 ALTER TABLE sms_promo_context ENABLE ROW LEVEL SECURITY;
+-- No anon/authenticated policies: access is via service-role client only (crons and webhooks).
 
 -- Composite index for audience selection performance
 CREATE INDEX idx_ccs_category_last_attended
