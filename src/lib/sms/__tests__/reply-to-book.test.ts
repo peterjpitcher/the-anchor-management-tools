@@ -101,6 +101,7 @@ function buildDbMock(overrides: {
 
   chain.select = vi.fn().mockReturnThis()
   chain.eq = vi.fn().mockReturnThis()
+  chain.in = vi.fn().mockReturnThis()
   chain.gt = vi.fn().mockReturnThis()
   chain.order = vi.fn().mockReturnThis()
   chain.limit = vi.fn().mockReturnThis()

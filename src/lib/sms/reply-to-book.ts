@@ -195,7 +195,7 @@ export async function handleReplyToBook(
     .select('id')
     .eq('event_id', promo.event_id)
     .eq('customer_id', customerId)
-    .eq('status', 'confirmed')
+    .in('status', ['confirmed', 'pending_payment'])
     .maybeSingle()
 
   if (existingBookingError) {
