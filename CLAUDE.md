@@ -89,6 +89,8 @@ npm test         # Run Vitest tests
 npx supabase db push   # Apply pending migrations
 ```
 
+**Node version:** Use Node 20 LTS (as pinned in `.nvmrc`). Run `nvm use` before development. The `engines` field in `package.json` enforces `>=20 <23`.
+
 ## Architecture
 
 **Additional integrations**: Twilio (SMS), Microsoft Graph (email), Stripe, PayPal.
