@@ -33,7 +33,7 @@ export async function recordAIUsage(
 ) {
   if (!usage) return
 
-  const { error } = await (supabase.from('ai_usage_events') as any).insert([
+  const { error } = await supabase.from('ai_usage_events').insert([
     {
       context,
       model: usage.model,

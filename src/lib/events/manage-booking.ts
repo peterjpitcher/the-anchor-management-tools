@@ -290,7 +290,7 @@ export async function processEventRefund(
     }
   }
 
-  const { data: existingRefund, error: existingRefundError } = await (supabase.from('payments') as any)
+  const { data: existingRefund, error: existingRefundError } = await supabase.from('payments')
     .select('id, status, currency, metadata')
     .eq('event_booking_id', input.bookingId)
     .eq('charge_type', 'refund')

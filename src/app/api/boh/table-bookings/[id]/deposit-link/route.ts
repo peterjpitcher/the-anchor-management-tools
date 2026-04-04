@@ -17,7 +17,7 @@ export async function GET(
     return NextResponse.json({ error: 'Invalid booking ID' }, { status: 400 })
   }
 
-  const { data: booking } = await (auth.supabase.from('table_bookings') as any)
+  const { data: booking } = await auth.supabase.from('table_bookings')
     .select('id, customer_id, status, payment_status, hold_expires_at')
     .eq('id', id)
     .maybeSingle()

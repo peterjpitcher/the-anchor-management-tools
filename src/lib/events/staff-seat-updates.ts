@@ -1,6 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { updateEventBookingSeatsById } from '@/lib/events/manage-booking'
 import { sendEventBookingSeatUpdateSms } from '@/lib/events/event-payments'
+import { extractSmsSafetyInfo } from '@/lib/sms/safety-info'
 
 export type SeatUpdateSmsMeta = {
   success: boolean
@@ -22,8 +23,7 @@ export type TableBookingSeatUpdateResult = {
 }
 
 function normalizeThrownSmsSafety(error: unknown): { code: string; logFailure: boolean } {
-  const thrownCode = typeof (error as any)?.code === 'string' ? (error as any).code : null
-  const thrownLogFailure = (error as any)?.logFailure === true || thrownCode === 'logging_failed'
+  const { code: thrownCode, logFailure: thrownLogFailure } = extractSmsSafetyInfo(error)
 
   if (thrownLogFailure) {
     return {
@@ -77,7 +77,7 @@ export async function updateTableBookingPartySizeWithLinkedEventSeats(
     appBaseUrl?: string
   }
 ): Promise<TableBookingSeatUpdateResult> {
-  const { data: tableBooking, error: tableBookingError } = await (supabase.from('table_bookings') as any)
+  const { data: tableBooking, error: tableBookingError } = await supabase.from('table_bookings')
     .select('id, status, party_size, event_booking_id, event_id')
     .eq('id', input.tableBookingId)
     .maybeSingle()
@@ -131,7 +131,7 @@ export async function updateTableBookingPartySizeWithLinkedEventSeats(
     }
 
     const nowIso = new Date().toISOString()
-    const { data: updatedTableBooking, error: tableUpdateError } = await (supabase.from('table_bookings') as any)
+    const { data: updatedTableBooking, error: tableUpdateError } = await supabase.from('table_bookings')
       .update({
         party_size: newPartySize,
         committed_party_size: newPartySize,
@@ -200,7 +200,7 @@ export async function updateTableBookingPartySizeWithLinkedEventSeats(
 
   if (delta !== 0 || oldPartySize !== updatedSeats) {
     const nowIso = new Date().toISOString()
-    const { data: syncedTableRows, error: tableUpdateError } = await (supabase.from('table_bookings') as any)
+    const { data: syncedTableRows, error: tableUpdateError } = await supabase.from('table_bookings')
       .update({
         party_size: updatedSeats,
         committed_party_size: updatedSeats,

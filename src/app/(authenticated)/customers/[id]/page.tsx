@@ -303,7 +303,7 @@ export default function CustomerViewPage() {
           .select(CUSTOMER_DETAIL_SELECT)
           .eq('id', customerId)
           .single(),
-        (supabase.from('table_bookings') as any)
+        supabase.from('table_bookings')
           .select(
             'id, booking_reference, booking_date, booking_time, start_datetime, party_size, booking_type, booking_purpose, status, source, created_at'
           )
@@ -311,7 +311,7 @@ export default function CustomerViewPage() {
           .order('start_datetime', { ascending: false, nullsFirst: false })
           .order('booking_date', { ascending: false })
           .order('booking_time', { ascending: false }),
-        (supabase.from('bookings') as any)
+        supabase.from('bookings')
           .select(`
             id,
             event_id,
@@ -333,20 +333,20 @@ export default function CustomerViewPage() {
           `)
           .eq('customer_id', customerId)
           .order('created_at', { ascending: false }),
-        (supabase.from('private_bookings') as any)
+        supabase.from('private_bookings')
           .select(
             'id, event_date, start_time, status, event_type, guest_count, total_amount, deposit_amount, source, created_at'
           )
           .eq('customer_id', customerId)
           .order('event_date', { ascending: false })
           .order('start_time', { ascending: false }),
-        (supabase.from('parking_bookings') as any)
+        supabase.from('parking_bookings')
           .select(
             'id, reference, start_at, end_at, status, payment_status, vehicle_registration, created_at'
           )
           .eq('customer_id', customerId)
           .order('start_at', { ascending: false }),
-        (supabase.from('customer_category_stats') as any)
+        supabase.from('customer_category_stats')
           .select(`
             category_id,
             times_attended,

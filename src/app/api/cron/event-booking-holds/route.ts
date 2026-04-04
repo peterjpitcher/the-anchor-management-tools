@@ -125,7 +125,7 @@ export async function GET(request: NextRequest) {
       string,
       { customer_id: string | null; booking_type: string | null }
     >()
-    for (const row of (pendingTablePaymentRows || []) as any[]) {
+    for (const row of (pendingTablePaymentRows || [])) {
       if (row?.id) {
         pendingTablePaymentById.set(row.id, {
           customer_id: row.customer_id ?? null,
@@ -158,7 +158,7 @@ export async function GET(request: NextRequest) {
         continue
       }
 
-      for (const row of (expiredTablePayments || []) as any[]) {
+      for (const row of (expiredTablePayments || [])) {
         const bookingId = row?.id
         const customerId = row?.customer_id || pendingTablePaymentById.get(bookingId)?.customer_id || null
         const bookingType = row?.booking_type || pendingTablePaymentById.get(bookingId)?.booking_type || null
@@ -249,7 +249,7 @@ export async function GET(request: NextRequest) {
         waitlist_entry_id: string | null
       }
     >()
-    for (const offer of (expiredOffers || []) as any[]) {
+    for (const offer of (expiredOffers || [])) {
       if (offer?.id) {
         offerById.set(offer.id, {
           id: offer.id,

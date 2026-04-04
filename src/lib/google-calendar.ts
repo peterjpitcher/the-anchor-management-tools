@@ -352,7 +352,7 @@ export async function syncCalendarEvent(booking: PrivateBooking): Promise<string
       console.warn('[Google Calendar] Updating existing event:', booking.calendar_event_id)
       try {
         response = await calendar.events.update({
-          auth: auth as any,
+          auth: auth as InstanceType<typeof google.auth.OAuth2>,
           calendarId,
           eventId: booking.calendar_event_id,
           requestBody: event,
@@ -371,7 +371,7 @@ export async function syncCalendarEvent(booking: PrivateBooking): Promise<string
         })
 
         response = await calendar.events.insert({
-          auth: auth as any,
+          auth: auth as InstanceType<typeof google.auth.OAuth2>,
           calendarId,
           requestBody: event,
         })

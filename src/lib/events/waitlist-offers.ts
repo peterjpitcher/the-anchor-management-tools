@@ -6,6 +6,7 @@ import { createGuestToken, hashGuestToken } from '@/lib/guest/tokens'
 import { logger } from '@/lib/logger'
 import { recordAnalyticsEvent } from '@/lib/analytics/events'
 import { evaluateSmsQuietHours } from '@/lib/sms/quiet-hours'
+import { extractSmsSafetyInfo } from '@/lib/sms/safety-info'
 
 export type WaitlistOfferCreateResult = {
   state: 'offered' | 'none' | 'blocked'
@@ -106,8 +107,7 @@ function resolveEventStartDateTimeIso(
 }
 
 function normalizeThrownSmsSafety(error: unknown): { code: string; logFailure: boolean } {
-  const thrownCode = typeof (error as any)?.code === 'string' ? (error as any).code : null
-  const thrownLogFailure = (error as any)?.logFailure === true || thrownCode === 'logging_failed'
+  const { code: thrownCode, logFailure: thrownLogFailure } = extractSmsSafetyInfo(error)
 
   if (thrownLogFailure) {
     return {

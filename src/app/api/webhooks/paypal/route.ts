@@ -67,7 +67,7 @@ async function logPayPalWebhookEvent(
   if (error) {
     logger.error('Failed to store PayPal general webhook log', {
       error: new Error(
-        typeof (error as any)?.message === 'string' ? (error as any).message : String(error)
+        error instanceof Error ? error.message : String(error)
       ),
       metadata: {
         status: input.status,

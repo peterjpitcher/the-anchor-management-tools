@@ -11,6 +11,7 @@ import { createGuestToken } from '@/lib/guest/tokens'
 import { getGoogleReviewLink } from '@/lib/events/review-link'
 import { recordAnalyticsEvent } from '@/lib/analytics/events'
 import { persistCronRunResult, recoverCronRunLock } from '@/lib/cron-run-results'
+import { extractSmsSafetyInfo } from '@/lib/sms/safety-info'
 
 export const maxDuration = 300
 
@@ -128,8 +129,7 @@ function extractSmsSafetySignal(smsResult: Awaited<ReturnType<typeof sendSMS>>):
   code: string | null
   logFailure: boolean
 } {
-  const code = typeof (smsResult as any)?.code === 'string' ? ((smsResult as any).code as string) : null
-  const logFailure = (smsResult as any)?.logFailure === true
+  const { code, logFailure } = extractSmsSafetyInfo(smsResult)
   return { code, logFailure }
 }
 
@@ -507,8 +507,8 @@ async function loadSentTemplateSet(
     }
 
     for (const row of data || []) {
-      const bookingId = (row as any).event_booking_id
-      const templateKey = (row as any).template_key
+      const bookingId = row.event_booking_id
+      const templateKey = row.template_key
       if (typeof bookingId === 'string' && typeof templateKey === 'string') {
         sent.add(`${bookingId}:${templateKey}`)
       }
@@ -540,8 +540,8 @@ async function loadSentTableTemplateSet(
     }
 
     for (const row of data || []) {
-      const bookingId = (row as any).table_booking_id
-      const templateKey = (row as any).template_key
+      const bookingId = row.table_booking_id
+      const templateKey = row.template_key
       if (typeof bookingId === 'string' && typeof templateKey === 'string') {
         sent.add(`${bookingId}:${templateKey}`)
       }
@@ -558,7 +558,7 @@ async function evaluateEventEngagementSendGuard(
   const limit = EVENT_ENGAGEMENT_HOURLY_SEND_GUARD_LIMIT
   const sinceIso = new Date(Date.now() - windowMinutes * 60 * 1000).toISOString()
 
-  const { count, error } = await (supabase.from('messages') as any)
+  const { count, error } = await supabase.from('messages')
     .select('id', { count: 'exact', head: true })
     .eq('direction', 'outbound')
     .in('template_key', EVENT_ENGAGEMENT_TEMPLATE_KEYS)
@@ -633,7 +633,7 @@ async function loadEventBookingsForEngagement(
     throw error
   }
 
-  return ((data || []) as any[]).map((row) => ({
+  return ((data || [])).map((row) => ({
     ...row,
     event: Array.isArray(row.event) ? (row.event[0] || null) : (row.event || null),
     customer: Array.isArray(row.customer) ? (row.customer[0] || null) : (row.customer || null)
@@ -673,7 +673,7 @@ async function loadTableBookingsForEngagement(
     throw error
   }
 
-  return ((data || []) as any[]).map((row) => ({
+  return ((data || [])).map((row) => ({
     ...row,
     customer: Array.isArray(row.customer) ? (row.customer[0] || null) : (row.customer || null)
   })) as TableBookingWithCustomer[]
@@ -1158,7 +1158,7 @@ async function processTableReviewFollowups(
     const reviewSentAt = smsResult.scheduledFor || new Date().toISOString()
     const reviewWindowClosesAt = new Date(Date.parse(reviewSentAt) + 7 * 24 * 60 * 60 * 1000).toISOString()
 
-    const { data: updatedTableBooking, error: tableBookingUpdateError } = await (supabase.from('table_bookings') as any)
+    const { data: updatedTableBooking, error: tableBookingUpdateError } = await supabase.from('table_bookings')
       .update({
         status: 'visited_waiting_for_review',
         review_sms_sent_at: reviewSentAt,
@@ -1307,7 +1307,7 @@ async function processTableReviewWindowCompletion(
   const nowIso = new Date().toISOString()
   const result = { completed: 0 }
 
-  const { data: rows, error } = await (supabase.from('table_bookings') as any)
+  const { data: rows, error } = await supabase.from('table_bookings')
     .select('id, customer_id, booking_type, review_sms_sent_at')
     .in('status', ['visited_waiting_for_review', 'review_clicked'])
     .not('review_sms_sent_at', 'is', null)
@@ -1332,7 +1332,7 @@ async function processTableReviewWindowCompletion(
   }
 
   for (const idChunk of chunkArray(bookingRows.map((row) => row.id))) {
-    const { data: updatedRows, error: updateError } = await (supabase.from('table_bookings') as any)
+    const { data: updatedRows, error: updateError } = await supabase.from('table_bookings')
       .update({
         status: 'completed',
         completed_at: nowIso,

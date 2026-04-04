@@ -208,8 +208,8 @@ export async function sendOTPMessage(params: { phoneNumber: string; message: str
       createCustomerIfMissing: false // Don't create customer for OTP if not found
     })
 
-    const otpCode = typeof (result as any)?.code === 'string' ? (result as any).code : undefined
-    const otpLogFailure = (result as any)?.logFailure === true || otpCode === 'logging_failed'
+    const otpCode = typeof result?.code === 'string' ? result.code : undefined
+    const otpLogFailure = result?.logFailure === true || otpCode === 'logging_failed'
 
     if (otpLogFailure) {
       // Fail-safe: the OTP SMS may have been delivered but outbound logging failed. Do not throw,
@@ -319,8 +319,8 @@ export async function sendSms(params: SendSmsParams) {
       createCustomerIfMissing: true
     })
 
-    const smsCode = typeof (result as any)?.code === 'string' ? (result as any).code : undefined
-    const smsLogFailure = (result as any)?.logFailure === true || smsCode === 'logging_failed'
+    const smsCode = typeof result?.code === 'string' ? result.code : undefined
+    const smsLogFailure = result?.logFailure === true || smsCode === 'logging_failed'
 
     if (smsLogFailure) {
       // Fail-safe: the SMS may have been delivered but outbound logging failed. Do not return an

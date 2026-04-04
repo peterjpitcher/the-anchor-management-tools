@@ -84,7 +84,7 @@ export async function POST(
   }
 
   if (action === 'left') {
-    const { error: assignmentError } = await (auth.supabase.from('booking_table_assignments') as any)
+    const { error: assignmentError } = await auth.supabase.from('booking_table_assignments')
       .update({ end_datetime: nowIso })
       .eq('table_booking_id', id)
       .lt('start_datetime', nowIso)
@@ -106,7 +106,7 @@ export async function POST(
     return NextResponse.json({ error: transition.error }, { status: transition.status })
   }
 
-  const { data: updatedRow, error: updateError } = await (auth.supabase.from('table_bookings') as any)
+  const { data: updatedRow, error: updateError } = await auth.supabase.from('table_bookings')
     .update(transition.plan.update)
     .eq('id', id)
     .select(transition.plan.select)

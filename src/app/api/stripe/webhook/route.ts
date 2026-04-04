@@ -69,7 +69,7 @@ async function logStripeWebhook(
   }
 ): Promise<void> {
   try {
-    await (supabase.from('webhook_logs') as any).insert({
+    await supabase.from('webhook_logs').insert({
       webhook_type: 'stripe',
       status: input.status,
       headers: sanitizeStripeHeadersForLog(input.headers),
@@ -368,9 +368,7 @@ async function handleSeatIncreaseCheckoutCompleted(
       }
 
       const existingStatus =
-        typeof (existingPayment as any)?.status === 'string'
-          ? ((existingPayment as any).status as string)
-          : null
+        typeof existingPayment?.status === 'string' ? existingPayment.status as string : null
 
       if (existingStatus !== 'failed' && existingStatus !== 'refunded') {
         throw new Error(
@@ -579,7 +577,7 @@ async function handleCheckoutSessionCompleted(
           : null
       const customerId = candidateCustomerId || (
         await (async () => {
-          const { data: booking } = await (supabase.from('table_bookings') as any)
+          const { data: booking } = await supabase.from('table_bookings')
             .select('customer_id')
             .eq('id', tableBookingId)
             .maybeSingle()
@@ -790,7 +788,7 @@ async function handleApprovedChargePaymentIntentEvent(
         : 'payment_failed'
       : null
 
-  const { data: chargeRequest, error: chargeRequestError } = await (supabase.from('charge_requests') as any)
+  const { data: chargeRequest, error: chargeRequestError } = await supabase.from('charge_requests')
     .select('id, table_booking_id, metadata, charge_status')
     .eq('id', chargeRequestId)
     .maybeSingle()
@@ -803,9 +801,7 @@ async function handleApprovedChargePaymentIntentEvent(
     return
   }
 
-  const existingChargeStatus = typeof (chargeRequest as any)?.charge_status === 'string'
-    ? ((chargeRequest as any).charge_status as string)
-    : null
+  const existingChargeStatus = typeof chargeRequest?.charge_status === 'string' ? chargeRequest.charge_status as string : null
   const shouldSkipFailureDowngrade = mappedStatus === 'failed' && existingChargeStatus === 'succeeded'
   if (shouldSkipFailureDowngrade) {
     logger.warn('Ignoring Stripe payment failure webhook after approved charge already succeeded', {
@@ -818,13 +814,13 @@ async function handleApprovedChargePaymentIntentEvent(
     return
   }
 
-  const { data: updatedChargeRequest, error: chargeRequestUpdateError } = await (supabase.from('charge_requests') as any)
+  const { data: updatedChargeRequest, error: chargeRequestUpdateError } = await supabase.from('charge_requests')
     .update({
       charge_status: mappedStatus,
       stripe_payment_intent_id: paymentIntentId,
       updated_at: new Date().toISOString(),
       metadata: {
-        ...((chargeRequest as any)?.metadata || {}),
+        ...(chargeRequest?.metadata || {}),
         payment_kind: 'approved_charge',
         payment_intent_event: eventType,
         payment_intent_error: errorMessage
@@ -841,7 +837,7 @@ async function handleApprovedChargePaymentIntentEvent(
     throw new Error(`Charge request missing during approved charge webhook update: ${chargeRequestId}`)
   }
 
-  let paymentUpdateQuery = (supabase.from('payments') as any)
+  let paymentUpdateQuery = supabase.from('payments')
     .update({
       status: paymentStatus,
       metadata: {
@@ -865,7 +861,7 @@ async function handleApprovedChargePaymentIntentEvent(
     throw new Error(`Payment rows missing during approved charge webhook update: ${paymentIntentId}`)
   }
 
-  const { data: booking, error: bookingLookupError } = await (supabase.from('table_bookings') as any)
+  const { data: booking, error: bookingLookupError } = await supabase.from('table_bookings')
     .select('customer_id')
     .eq('id', chargeRequest.table_booking_id)
     .maybeSingle()
@@ -913,7 +909,7 @@ async function handleChargeRefunded(
   const fullyRefunded = charge?.refunded === true
   const newStatus = fullyRefunded ? 'refunded' : 'partial_refund'
 
-  const { data: payments, error: lookupError } = await (supabase.from('payments') as any)
+  const { data: payments, error: lookupError } = await supabase.from('payments')
     .select('id, table_booking_id, event_booking_id, customer_id')
     .eq('stripe_payment_intent_id', paymentIntentId)
 
@@ -925,7 +921,7 @@ async function handleChargeRefunded(
     return
   }
 
-  const { error: updateError } = await (supabase.from('payments') as any)
+  const { error: updateError } = await supabase.from('payments')
     .update({ status: newStatus })
     .eq('stripe_payment_intent_id', paymentIntentId)
 
@@ -1008,9 +1004,7 @@ async function handleCheckoutSessionFailure(
       }
 
       const existingStatus =
-        typeof (existingPayment as any)?.status === 'string'
-          ? ((existingPayment as any).status as string)
-          : null
+        typeof existingPayment?.status === 'string' ? existingPayment.status as string : null
 
       if (
         existingStatus !== 'failed' &&
@@ -1024,8 +1018,8 @@ async function handleCheckoutSessionFailure(
       }
 
       tableBookingId =
-        typeof (existingPayment as any)?.table_booking_id === 'string'
-          ? ((existingPayment as any).table_booking_id as string)
+        typeof existingPayment?.table_booking_id === 'string'
+          ? existingPayment.table_booking_id as string
           : undefined
     }
 
@@ -1033,7 +1027,7 @@ async function handleCheckoutSessionFailure(
       return
     }
 
-    const { data: booking, error: bookingLookupError } = await (supabase.from('table_bookings') as any)
+    const { data: booking, error: bookingLookupError } = await supabase.from('table_bookings')
       .select('id, customer_id')
       .eq('id', tableBookingId)
       .maybeSingle()
@@ -1103,9 +1097,7 @@ async function handleCheckoutSessionFailure(
     }
 
     const existingStatus =
-      typeof (existingPayment as any)?.status === 'string'
-        ? ((existingPayment as any).status as string)
-        : null
+      typeof existingPayment?.status === 'string' ? existingPayment.status as string : null
 
     if (
       existingStatus !== 'failed' &&

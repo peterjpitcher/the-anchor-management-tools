@@ -99,16 +99,16 @@ export function EventTemplateManager({ eventId }: Props) {
       
       if (existing) {
         // Update existing
-        const { error } = await (supabase
-          .from('event_message_templates') as any)
+        const { error } = await supabase
+          .from('event_message_templates')
           .update({ content, is_active: true })
           .eq('id', existing.id)
 
         if (error) throw error
       } else {
         // Create new
-        const { error } = await (supabase
-          .from('event_message_templates') as any)
+        const { error } = await supabase
+          .from('event_message_templates')
           .insert({
             event_id: eventId,
             template_type: templateType,
@@ -136,8 +136,8 @@ export function EventTemplateManager({ eventId }: Props) {
       const template = templates.find(t => t.template_type === templateType)
       if (!template) return
 
-      const { error } = await (supabase
-        .from('event_message_templates') as any)
+      const { error } = await supabase
+        .from('event_message_templates')
         .delete()
         .eq('id', template.id)
 

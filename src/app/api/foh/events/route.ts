@@ -72,7 +72,7 @@ export async function GET(request: NextRequest) {
   const dateParam = request.nextUrl.searchParams.get('date')
   const bookingDate = dateParam && isIsoDate(dateParam) ? dateParam : getLondonDateIso()
 
-  const { data: events, error } = await (auth.supabase.from('events') as any)
+  const { data: events, error } = await auth.supabase.from('events')
     .select(
       'id, name, date, time, end_time, start_datetime, duration_minutes, payment_mode, price_per_seat, price, capacity, booking_open, event_status, booking_mode'
     )

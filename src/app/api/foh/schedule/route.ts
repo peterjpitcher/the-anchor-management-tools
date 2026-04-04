@@ -169,11 +169,11 @@ export async function GET(request: NextRequest) {
   const { supabase } = auth
 
   const [tablesResult, bookingsResult, businessHoursResult, specialHoursResult, tableAreasResult] = await Promise.all([
-    (supabase.from('tables') as any)
+    supabase.from('tables')
       .select('id, table_number, name, capacity, area, area_id, is_bookable')
       .order('table_number', { ascending: true, nullsFirst: false })
       .order('name', { ascending: true, nullsFirst: false }),
-    (supabase.from('table_bookings') as any)
+    supabase.from('table_bookings')
       .select(
         'id, booking_reference, booking_date, booking_time, party_size, booking_type, booking_purpose, status, special_requirements, seated_at, left_at, no_show_at, start_datetime, end_datetime, event_id, deposit_waived, sunday_preorder_completed_at, customer:customers!table_bookings_customer_id_fkey(first_name,last_name)'
       )
@@ -187,15 +187,15 @@ export async function GET(request: NextRequest) {
       .not('status', 'in', '("cancelled","no_show")')
       .is('left_at', null)
       .order('booking_time', { ascending: true }),
-    (supabase.from('business_hours') as any)
+    supabase.from('business_hours')
       .select('opens, closes, is_closed, kitchen_opens, kitchen_closes, is_kitchen_closed')
       .eq('day_of_week', dayOfWeek)
       .maybeSingle(),
-    (supabase.from('special_hours') as any)
+    supabase.from('special_hours')
       .select('opens, closes, is_closed, kitchen_opens, kitchen_closes, is_kitchen_closed')
       .eq('date', date)
       .maybeSingle(),
-    (supabase.from('table_areas') as any)
+    supabase.from('table_areas')
       .select('id, name')
       .order('name', { ascending: true })
   ])
@@ -210,7 +210,7 @@ export async function GET(request: NextRequest) {
 
   const areaNameById = new Map<string, string>()
   if (!tableAreasResult.error) {
-    for (const row of ((tableAreasResult.data || []) as any[])) {
+    for (const row of (tableAreasResult.data || [])) {
       if (row?.id && row?.name) {
         areaNameById.set(row.id, row.name)
       }
@@ -264,7 +264,7 @@ export async function GET(request: NextRequest) {
   }
 
   const tableNumberCollator = new Intl.Collator('en', { numeric: true, sensitivity: 'base' })
-  const tables = ((tablesResult.data || []) as any[])
+  const tables = (tablesResult.data || [])
     .map((table) => {
       const areaName = table.area_id ? areaNameById.get(table.area_id) || null : null
       return {
@@ -295,7 +295,7 @@ export async function GET(request: NextRequest) {
     })
   const visibleTableIds = new Set(tables.map((table) => table.id))
 
-  const bookings = (bookingsResult.data || []) as any[]
+  const bookings = (bookingsResult.data || [])
   const eventIds = Array.from(
     new Set(
       bookings
@@ -310,14 +310,14 @@ export async function GET(request: NextRequest) {
   // Run all three follow-up queries in parallel (they only depend on the initial results, not each other)
   const [eventsResult, assignmentsResult, privateBookingsResult] = await Promise.all([
     eventIds.length > 0
-      ? (supabase.from('events') as any).select('id, name').in('id', eventIds)
+      ? supabase.from('events').select('id, name').in('id', eventIds)
       : { data: [], error: null },
     bookingIds.length > 0
-      ? (supabase.from('booking_table_assignments') as any)
+      ? supabase.from('booking_table_assignments')
           .select('table_booking_id, table_id, start_datetime, end_datetime')
           .in('table_booking_id', bookingIds)
       : { data: [], error: null },
-    (supabase.from('private_bookings') as any)
+    supabase.from('private_bookings')
       .select(
         'id, customer_name, customer_first_name, customer_last_name, event_type, status, event_date, start_time, end_time, setup_date, setup_time'
       )
@@ -328,7 +328,7 @@ export async function GET(request: NextRequest) {
 
   const eventNameById = new Map<string, string>()
   if (!eventsResult.error) {
-    for (const row of (eventsResult.data || []) as any[]) {
+    for (const row of (eventsResult.data || [])) {
       if (typeof row?.id === 'string' && typeof row?.name === 'string' && row.name.trim().length > 0) {
         eventNameById.set(row.id, row.name.trim())
       }
@@ -340,32 +340,32 @@ export async function GET(request: NextRequest) {
   }
 
   const assignmentsByBooking = new Map<string, any[]>()
-  for (const row of (assignmentsResult.data || []) as any[]) {
+  for (const row of (assignmentsResult.data || [])) {
     const current = assignmentsByBooking.get(row.table_booking_id) || []
     current.push(row)
     assignmentsByBooking.set(row.table_booking_id, current)
   }
 
   const privateBlocksByTableId = new Map<string, PrivateBlockForTable['block'][]>()
-  const privateBookingsRows = privateBookingsResult.data as any[] | null
+  const privateBookingsRows = privateBookingsResult.data as unknown[] | null
   const privateBookingsError = privateBookingsResult.error
 
   if (!privateBookingsError && Array.isArray(privateBookingsRows) && privateBookingsRows.length > 0) {
     const privateBookingIds = privateBookingsRows.map((row: any) => row.id).filter(Boolean)
 
     const [privateBookingItemsResult, spaceAreaLinksResult] = await Promise.all([
-      (supabase.from('private_booking_items') as any)
+      supabase.from('private_booking_items')
         .select('booking_id, space_id, item_type')
         .eq('item_type', 'space')
         .in('booking_id', privateBookingIds)
         .not('space_id', 'is', null),
-      (supabase.from('venue_space_table_areas') as any)
+      supabase.from('venue_space_table_areas')
         .select('venue_space_id, table_area_id')
     ])
 
     if (!privateBookingItemsResult.error && !spaceAreaLinksResult.error) {
       const areaIdsBySpaceId = new Map<string, Set<string>>()
-      for (const row of (spaceAreaLinksResult.data || []) as any[]) {
+      for (const row of (spaceAreaLinksResult.data || [])) {
         const venueSpaceId = row?.venue_space_id
         const tableAreaId = row?.table_area_id
         if (!venueSpaceId || !tableAreaId) continue
@@ -376,7 +376,7 @@ export async function GET(request: NextRequest) {
       }
 
       const spaceIdsByPrivateBookingId = new Map<string, Set<string>>()
-      for (const row of (privateBookingItemsResult.data || []) as any[]) {
+      for (const row of (privateBookingItemsResult.data || [])) {
         const bookingId = row?.booking_id
         const spaceId = row?.space_id
         if (!bookingId || !spaceId) continue

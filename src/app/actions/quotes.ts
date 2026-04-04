@@ -42,7 +42,7 @@ function normalizeQuoteLineItems(lineItems: InvoiceLineItemInput[]): InvoiceLine
 function isSoftDeletedRecord(record: Record<string, unknown> | null | undefined): boolean {
   if (!record) return false
   if (!Object.prototype.hasOwnProperty.call(record, 'deleted_at')) return false
-  return Boolean((record as any).deleted_at)
+  return Boolean(record.deleted_at)
 }
 
 // Get quote summary
@@ -641,7 +641,7 @@ export async function deleteQuote(formData: FormData) {
     const missingSoftDeleteColumns =
       softDeleteError &&
       (
-        (softDeleteError as any).code === '42703' ||
+        softDeleteError.code === '42703' ||
         /deleted_at|deleted_by/i.test(softDeleteError.message || '')
       )
 

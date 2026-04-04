@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 export const runtime = 'nodejs'
 import { createAdminClient } from '@/lib/supabase/admin';
 import { createClient } from '@supabase/supabase-js';
+import type { Database } from '@/types/database.generated';
 import twilio from 'twilio';
 import { retry, RetryConfigs } from '@/lib/retry';
 import { logger } from '@/lib/logger';
@@ -21,7 +22,7 @@ function getPublicSupabaseClient() {
     return null
   }
 
-  return createClient(supabaseUrl, supabaseAnonKey, {
+  return createClient<Database>(supabaseUrl, supabaseAnonKey, {
     auth: {
       persistSession: false,
       autoRefreshToken: false,
@@ -123,6 +124,7 @@ async function logWebhookAttempt(
       ...additionalData
     };
     
+    // justified: Supabase generated types resolve webhook_logs Insert to never due to version mismatch
     const { error: logError } = await (client
       .from('webhook_logs') as any)
       .insert(logEntry);

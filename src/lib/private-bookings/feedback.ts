@@ -141,7 +141,7 @@ async function loadFeedbackTokenContext(
   } | null
 } | null> {
   const hashedToken = hashGuestToken(rawToken)
-  const { data: tokenRow } = await (supabase.from('guest_tokens') as any)
+  const { data: tokenRow } = await supabase.from('guest_tokens')
     .select('id, customer_id, private_booking_id, expires_at, consumed_at')
     .eq('hashed_token', hashedToken)
     .eq('action_type', 'private_feedback')
@@ -151,7 +151,7 @@ async function loadFeedbackTokenContext(
     return null
   }
 
-  const { data: bookingRow } = await (supabase.from('private_bookings') as any)
+  const { data: bookingRow } = await supabase.from('private_bookings')
     .select('id, customer_id, customer_first_name, customer_last_name, customer_name, event_date, start_time, status, guest_count')
     .eq('id', tokenRow.private_booking_id)
     .maybeSingle()
@@ -160,7 +160,7 @@ async function loadFeedbackTokenContext(
     return null
   }
 
-  const { data: feedbackRow } = await (supabase.from('feedback') as any)
+  const { data: feedbackRow } = await supabase.from('feedback')
     .select('id, created_at')
     .eq('private_booking_id', bookingRow.id)
     .order('created_at', { ascending: false })
@@ -349,7 +349,7 @@ export async function submitPrivateBookingFeedbackByRawToken(
   const ratingService = input.ratingService == null ? null : parseNumber(input.ratingService)
   const tokenConsumedAt = new Date().toISOString()
 
-  const { data: consumedToken, error: tokenConsumeError } = await (supabase.from('guest_tokens') as any)
+  const { data: consumedToken, error: tokenConsumeError } = await supabase.from('guest_tokens')
     .update({ consumed_at: tokenConsumedAt })
     .eq('id', preview.token_id)
     .is('consumed_at', null)
@@ -361,7 +361,7 @@ export async function submitPrivateBookingFeedbackByRawToken(
   }
 
   if (!consumedToken) {
-    const { data: existingFeedback, error: existingFeedbackError } = await (supabase.from('feedback') as any)
+    const { data: existingFeedback, error: existingFeedbackError } = await supabase.from('feedback')
       .select('id')
       .eq('private_booking_id', preview.private_booking_id)
       .order('created_at', { ascending: false })
@@ -387,7 +387,7 @@ export async function submitPrivateBookingFeedbackByRawToken(
     }
   }
 
-  const { data: insertedFeedback, error: insertError } = await (supabase.from('feedback') as any)
+  const { data: insertedFeedback, error: insertError } = await supabase.from('feedback')
     .insert({
       private_booking_id: preview.private_booking_id,
       rating_overall: ratingOverall,
@@ -399,7 +399,7 @@ export async function submitPrivateBookingFeedbackByRawToken(
     .maybeSingle()
 
   if (insertError) {
-    const { data: rollbackToken, error: rollbackTokenConsumeError } = await (supabase.from('guest_tokens') as any)
+    const { data: rollbackToken, error: rollbackTokenConsumeError } = await supabase.from('guest_tokens')
       .update({ consumed_at: null })
       .eq('id', preview.token_id)
       .eq('consumed_at', tokenConsumedAt)

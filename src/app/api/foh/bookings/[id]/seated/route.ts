@@ -25,7 +25,7 @@ export async function POST(
   }
 
   if (hasUnpaidSundayLunchDeposit(booking)) {
-    const { data: currentBooking } = await (auth.supabase.from('table_bookings') as any)
+    const { data: currentBooking } = await auth.supabase.from('table_bookings')
       .select('id, status, seated_at, left_at, no_show_at, cancelled_at, updated_at')
       .eq('id', id)
       .maybeSingle()
@@ -46,7 +46,7 @@ export async function POST(
   })
 
   if (!transition.ok) {
-    const { data: currentBooking } = await (auth.supabase.from('table_bookings') as any)
+    const { data: currentBooking } = await auth.supabase.from('table_bookings')
       .select('id, status, seated_at, left_at, no_show_at, cancelled_at, updated_at')
       .eq('id', id)
       .maybeSingle()
@@ -56,7 +56,7 @@ export async function POST(
     )
   }
 
-  const { data, error } = await (auth.supabase.from('table_bookings') as any)
+  const { data, error } = await auth.supabase.from('table_bookings')
     .update(transition.plan.update)
     .eq('id', id)
     .select('id, status, seated_at, left_at, no_show_at, cancelled_at, updated_at')

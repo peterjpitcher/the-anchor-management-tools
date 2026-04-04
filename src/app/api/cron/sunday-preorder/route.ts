@@ -282,7 +282,7 @@ async function evaluateSundaySendGuard(
   const limit = SUNDAY_PREORDER_SEND_GUARD_LIMIT
   const sinceIso = new Date(Date.now() - windowMinutes * 60 * 1000).toISOString()
 
-  const { count, error } = await (supabase.from('messages') as any)
+  const { count, error } = await supabase.from('messages')
     .select('id', { count: 'exact', head: true })
     .eq('direction', 'outbound')
     .in('template_key', SUNDAY_PREORDER_TEMPLATE_KEYS)
@@ -462,7 +462,7 @@ async function loadSundayBookings(
     throw error
   }
 
-  return ((data || []) as any[]).map((row) => ({
+  return ((data || [])).map((row) => ({
     ...row,
     customer: Array.isArray(row.customer) ? (row.customer[0] || null) : (row.customer || null)
   })) as SundayBookingRow[]
@@ -603,7 +603,7 @@ export async function GET(request: NextRequest) {
       if (shouldCancelForMissingPreorder(nowMs, startMs)) {
         const nowIso = new Date().toISOString()
 
-        const { data: cancelledRows, error: cancelError } = await (supabase.from('table_bookings') as any)
+        const { data: cancelledRows, error: cancelError } = await supabase.from('table_bookings')
           .update({
             status: 'cancelled',
             cancelled_at: nowIso,

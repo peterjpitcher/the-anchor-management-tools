@@ -390,8 +390,8 @@ export async function updateParkingBookingStatus(
 
         // Only persist when we actually modified the payment status.
         if (
-          (paymentUpdates as any).status === 'failed' ||
-          (paymentUpdates as any).status === 'refunded'
+          paymentUpdates.status === 'failed' ||
+          paymentUpdates.status === 'refunded'
         ) {
           const { data: updatedPayment, error: paymentUpdateError } = await adminClient
             .from('parking_booking_payments')

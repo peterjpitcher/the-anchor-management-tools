@@ -89,7 +89,7 @@ export async function GET(request: NextRequest) {
     orFilters.push(`mobile_number.eq.${normalizedPhone}`)
   }
 
-  const { data, error } = await (auth.supabase.from('customers') as any)
+  const { data, error } = await auth.supabase.from('customers')
     .select('id, first_name, last_name, mobile_number, mobile_e164, created_at')
     .or(orFilters.join(','))
     .order('created_at', { ascending: false })

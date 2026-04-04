@@ -435,7 +435,7 @@ export async function getBookingByIdForItems(id: string): Promise<PrivateBooking
   }
 
    
-  const items = (data as any).items ?? [];
+  const items = data.items ?? [];
    
   const calculatedTotal = items.reduce((sum: number, item: any) => sum + toNumber(item.line_total), 0);
 

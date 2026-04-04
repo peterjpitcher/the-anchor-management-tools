@@ -170,7 +170,7 @@ async function createWalkInCustomer(
     const suffix = String(Math.floor(Math.random() * 1_000_000)).padStart(6, '0')
     const syntheticPhone = `+447000${suffix}`
 
-    const { data, error } = await (supabase.from('customers') as any)
+    const { data, error } = await supabase.from('customers')
       .insert({
         first_name: firstName,
         last_name: lastName,
@@ -238,7 +238,7 @@ async function sendBookingSmsIfAllowed(
   paymentLink?: string | null,
   manageLink?: string | null
 ): Promise<SmsSafetyMeta> {
-  const { data: customer, error } = await (supabase.from('customers') as any)
+  const { data: customer, error } = await supabase.from('customers')
     .select('id, first_name, mobile_number, sms_status')
     .eq('id', customerId)
     .maybeSingle()
@@ -342,7 +342,7 @@ async function cancelEventBookingAfterTableReservationFailure(
   const cancelledAt = new Date().toISOString()
   const rollbackErrors: string[] = []
   const [bookingCancelResult, holdReleaseResult] = await Promise.all([
-    (supabase.from('bookings') as any)
+    supabase.from('bookings')
       .update({
         status: 'cancelled',
         cancelled_at: cancelledAt,
@@ -352,7 +352,7 @@ async function cancelEventBookingAfterTableReservationFailure(
       .eq('id', bookingId)
       .select('id')
       .maybeSingle(),
-    (supabase.from('booking_holds') as any)
+    supabase.from('booking_holds')
       .update({
         status: 'released',
         released_at: cancelledAt,
@@ -376,7 +376,7 @@ async function cancelEventBookingAfterTableReservationFailure(
     rollbackErrors.push('payment_hold_release: mutation_result_unavailable')
   } else if (holdReleaseResult.data.length === 0) {
     const { data: remainingActiveHolds, error: remainingActiveHoldsError } = await (
-      supabase.from('booking_holds') as any
+      supabase.from('booking_holds')
     )
       .select('id')
       .eq('event_booking_id', bookingId)
@@ -402,7 +402,7 @@ async function markTableBookingSeated(
   tableBookingId: string
 ): Promise<void> {
   const nowIso = new Date().toISOString()
-  const { data: seatedRow, error } = await (supabase.from('table_bookings') as any)
+  const { data: seatedRow, error } = await supabase.from('table_bookings')
     .update({
       seated_at: nowIso,
       updated_at: nowIso
@@ -462,16 +462,16 @@ export async function POST(request: NextRequest) {
 
   if (
     isSundayLunchOnlyEvent({
-      id: (eventRow as any).id || null,
-      name: (eventRow as any).name || null,
-      date: (eventRow as any).date || null,
-      start_datetime: (eventRow as any).start_datetime || null
+      id: eventRow.id || null,
+      name: eventRow.name || null,
+      date: eventRow.date || null,
+      start_datetime: eventRow.start_datetime || null
     })
   ) {
     return NextResponse.json({ error: SUNDAY_LUNCH_ONLY_EVENT_MESSAGE }, { status: 409 })
   }
 
-  const bookingMode = normalizeEventBookingMode((eventRow as any).booking_mode)
+  const bookingMode = normalizeEventBookingMode(eventRow.booking_mode)
 
   let normalizedPhone: string | null = null
   let customerId: string | null = null

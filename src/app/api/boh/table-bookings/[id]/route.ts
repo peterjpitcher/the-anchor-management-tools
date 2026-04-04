@@ -20,7 +20,7 @@ export async function DELETE(
     return NextResponse.json({ error: 'Invalid booking ID' }, { status: 400 })
   }
 
-  const { data: existing, error: loadError } = await (auth.supabase.from('table_bookings') as any)
+  const { data: existing, error: loadError } = await auth.supabase.from('table_bookings')
     .select('id, customer_id, booking_reference, booking_date, status, payment_status')
     .eq('id', id)
     .maybeSingle()
@@ -47,7 +47,7 @@ export async function DELETE(
     existing.status === 'pending_payment' || existing.payment_status === 'pending'
   if (isPendingPayment && isStripeConfigured()) {
     try {
-      const { data: pendingPayment } = await (auth.supabase.from('payments') as any)
+      const { data: pendingPayment } = await auth.supabase.from('payments')
         .select('stripe_checkout_session_id')
         .eq('table_booking_id', id)
         .eq('charge_type', 'table_deposit')
@@ -69,7 +69,7 @@ export async function DELETE(
 
   const nowIso = new Date().toISOString()
   const cancellationReason = 'boh_soft_delete'
-  const { data: cancelledBooking, error: cancelError } = await (auth.supabase.from('table_bookings') as any)
+  const { data: cancelledBooking, error: cancelError } = await auth.supabase.from('table_bookings')
     .update({
       status: 'cancelled',
       cancelled_at: nowIso,

@@ -12,6 +12,7 @@ import type { ParkingBooking } from '@/types/parking'
 import { authorizeCronRequest } from '@/lib/cron-auth'
 import { persistCronRunResult, recoverCronRunLock } from '@/lib/cron-run-results'
 import { reportCronFailure } from '@/lib/cron/alerting'
+import { extractSmsSafetyInfo } from '@/lib/sms/safety-info'
 
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
@@ -300,7 +301,7 @@ async function evaluateParkingSendGuard(
   const limit = PARKING_SEND_GUARD_LIMIT
   const sinceIso = new Date(Date.now() - windowMinutes * 60 * 1000).toISOString()
 
-  const { count, error } = await (supabase.from('messages') as any)
+  const { count, error } = await supabase.from('messages')
     .select('id', { count: 'exact', head: true })
     .eq('direction', 'outbound')
     .in('template_key', PARKING_TEMPLATE_KEYS)
@@ -338,7 +339,7 @@ async function hasParkingReminderBeenSent(
     payload?: Record<string, unknown>
   }
 ): Promise<boolean> {
-  let query = (supabase.from('parking_booking_notifications') as any)
+  let query = supabase.from('parking_booking_notifications')
     .select('id')
     .eq('booking_id', input.bookingId)
     .eq('channel', 'sms')
@@ -897,8 +898,8 @@ async function sendParkingReminderSms(params: {
     return { sent: false, skipped: false }
   }
 
-  const smsCode = typeof (smsResult as any)?.code === 'string' ? ((smsResult as any).code as string) : null
-  const smsLogFailure = (smsResult as any)?.logFailure === true
+  const { code: smsCode } = extractSmsSafetyInfo(smsResult)
+  const smsLogFailure = extractSmsSafetyInfo(smsResult).logFailure
 
   try {
     await logParkingNotification(

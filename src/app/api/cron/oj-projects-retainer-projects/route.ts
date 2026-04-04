@@ -143,11 +143,11 @@ export async function GET(request: Request) {
   }> = []
 
   for (const row of retainerSettings || []) {
-    const vendorId = String((row as any)?.vendor_id || '')
+    const vendorId = String(row?.vendor_id || '')
     if (!vendorId) continue
 
     const vendorName = vendorNameById.get(vendorId) || ''
-    const hours = Number((row as any)?.retainer_included_hours_per_month || 0)
+    const hours = Number(row?.retainer_included_hours_per_month || 0)
 
     try {
       const { data: existing, error: existingError } = await supabase

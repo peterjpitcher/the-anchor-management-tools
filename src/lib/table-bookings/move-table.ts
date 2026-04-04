@@ -63,11 +63,11 @@ export async function getMoveTableAvailability(
   const partySize = Math.max(1, Number(booking.party_size || 1))
 
   const [tablesResult, existingAssignmentsResult] = await Promise.all([
-    (supabase.from('tables') as any)
+    supabase.from('tables')
       .select('id, table_number, name, capacity, is_bookable')
       .order('table_number', { ascending: true, nullsFirst: false })
       .order('name', { ascending: true, nullsFirst: false }),
-    (supabase.from('booking_table_assignments') as any)
+    supabase.from('booking_table_assignments')
       .select('table_id')
       .eq('table_booking_id', booking.id)
   ])
@@ -82,13 +82,13 @@ export async function getMoveTableAvailability(
 
   const assignedTableIds = Array.from(
     new Set(
-      ((existingAssignmentsResult.data || []) as any[])
+      (existingAssignmentsResult.data || [])
         .map((row) => (typeof row?.table_id === 'string' ? row.table_id : null))
         .filter((value): value is string => Boolean(value))
     )
   )
 
-  const candidates = ((tablesResult.data || []) as any[])
+  const candidates = (tablesResult.data || [])
     .filter((table) => table.is_bookable !== false)
     .filter((table) => Number(table.capacity || 0) >= partySize)
     .map((table) => ({
@@ -109,7 +109,7 @@ export async function getMoveTableAvailability(
 
   const candidateTableIds = candidates.map((table) => table.id)
 
-  const { data: overlappingAssignments, error: overlapError } = await (supabase.from('booking_table_assignments') as any)
+  const { data: overlappingAssignments, error: overlapError } = await supabase.from('booking_table_assignments')
     .select('table_id, table_booking_id')
     .in('table_id', candidateTableIds)
     .neq('table_booking_id', booking.id)
@@ -120,7 +120,7 @@ export async function getMoveTableAvailability(
     throw new Error('Failed to check table availability')
   }
 
-  const overlappingRows = (overlappingAssignments || []) as any[]
+  const overlappingRows = (overlappingAssignments || [])
   const overlappingBookingIds = Array.from(
     new Set(
       overlappingRows
@@ -131,7 +131,7 @@ export async function getMoveTableAvailability(
 
   const activeOverlappingBookingIds = new Set<string>()
   if (overlappingBookingIds.length > 0) {
-    const { data: overlappingBookings, error: overlappingBookingsError } = await (supabase.from('table_bookings') as any)
+    const { data: overlappingBookings, error: overlappingBookingsError } = await supabase.from('table_bookings')
       .select('id, status, left_at')
       .in('id', overlappingBookingIds)
 
@@ -139,7 +139,7 @@ export async function getMoveTableAvailability(
       throw new Error('Failed to check overlapping booking statuses')
     }
 
-    for (const row of (overlappingBookings || []) as any[]) {
+    for (const row of (overlappingBookings || [])) {
       // Match DB trigger logic: only count bookings that are still genuinely active
       // (not cancelled, not no-show, and the party hasn't departed).
       if (
@@ -229,7 +229,7 @@ export async function resolveMoveTableTarget(
     return { ok: true, target: null }
   }
 
-  const { data: tableRow, error: tableRowError } = await (supabase.from('tables') as any)
+  const { data: tableRow, error: tableRowError } = await supabase.from('tables')
     .select('id, table_number, name, capacity')
     .eq('id', tableId)
     .maybeSingle()
@@ -263,7 +263,7 @@ export async function moveBookingAssignmentToTable(
     nowIso: string
   }
 ): Promise<MoveTableMutationResult> {
-  const { data: existingAssignments, error: assignmentLookupError } = await (supabase.from('booking_table_assignments') as any)
+  const { data: existingAssignments, error: assignmentLookupError } = await supabase.from('booking_table_assignments')
     .select('table_booking_id, table_id')
     .eq('table_booking_id', input.bookingId)
 
@@ -271,7 +271,7 @@ export async function moveBookingAssignmentToTable(
     return { ok: false, status: 500, error: 'Failed to load current table assignment' }
   }
 
-  const assignmentRows = (existingAssignments || []) as any[]
+  const assignmentRows = (existingAssignments || [])
   const alreadyOnlyOnTarget =
     assignmentRows.length === 1 && assignmentRows[0].table_id === input.targetTableId
   const hasTargetAssignment = assignmentRows.some((row) => row.table_id === input.targetTableId)
@@ -281,7 +281,7 @@ export async function moveBookingAssignmentToTable(
   }
 
   if (hasTargetAssignment) {
-    const { data: updatedAssignment, error: updateError } = await (supabase.from('booking_table_assignments') as any)
+    const { data: updatedAssignment, error: updateError } = await supabase.from('booking_table_assignments')
       .update({
         start_datetime: input.startIso,
         end_datetime: input.endIso
@@ -310,7 +310,7 @@ export async function moveBookingAssignmentToTable(
       }
     }
   } else {
-    const { error: insertError } = await (supabase.from('booking_table_assignments') as any)
+    const { error: insertError } = await supabase.from('booking_table_assignments')
       .insert({
         table_booking_id: input.bookingId,
         table_id: input.targetTableId,
@@ -331,7 +331,7 @@ export async function moveBookingAssignmentToTable(
     }
   }
 
-  const { error: deleteError } = await (supabase.from('booking_table_assignments') as any)
+  const { error: deleteError } = await supabase.from('booking_table_assignments')
     .delete()
     .eq('table_booking_id', input.bookingId)
     .neq('table_id', input.targetTableId)

@@ -209,7 +209,7 @@ async function loadBookingsRows(
   let lastError: unknown | null = null
 
   for (const select of attempts) {
-    const result = await (supabase.from('table_bookings') as any)
+    const result = await supabase.from('table_bookings')
       .select(select)
       .gte('booking_date', input.startDate)
       .lte('booking_date', input.endDate)
@@ -217,7 +217,7 @@ async function loadBookingsRows(
       .order('booking_time', { ascending: true })
 
     if (!result.error) {
-      return { data: (result.data || []) as any[], error: null }
+      return { data: (result.data || []), error: null }
     }
 
     lastError = result.error
@@ -242,12 +242,12 @@ async function loadTablesRows(
   let lastError: unknown | null = null
 
   for (const select of attempts) {
-    const result = await (supabase.from('tables') as any)
+    const result = await supabase.from('tables')
       .select(select)
       .order('table_number', { ascending: true, nullsFirst: false })
 
     if (!result.error) {
-      return { data: (result.data || []) as any[], error: null }
+      return { data: (result.data || []), error: null }
     }
 
     lastError = result.error
@@ -278,7 +278,7 @@ export async function GET(request: NextRequest) {
       endDate: range.endDate
     }),
     loadTablesRows(auth.supabase),
-    (auth.supabase.from('table_areas') as any)
+    auth.supabase.from('table_areas')
       .select('id, name')
       .order('name', { ascending: true })
   ])
@@ -326,12 +326,12 @@ export async function GET(request: NextRequest) {
   // Run assignments and events queries in parallel (they only depend on bookingRows, not each other)
   const [assignmentsResult, eventsResult] = await Promise.all([
     bookingIds.length > 0
-      ? (auth.supabase.from('booking_table_assignments') as any)
+      ? auth.supabase.from('booking_table_assignments')
           .select('table_booking_id, table_id, start_datetime, end_datetime')
           .in('table_booking_id', bookingIds)
       : { data: [], error: null },
     eventIds.length > 0
-      ? (auth.supabase.from('events') as any).select('id, name').in('id', eventIds)
+      ? auth.supabase.from('events').select('id, name').in('id', eventIds)
       : { data: [], error: null }
   ])
 
@@ -344,7 +344,7 @@ export async function GET(request: NextRequest) {
       }
     })
   } else {
-    for (const row of (assignmentsResult.data || []) as any[]) {
+    for (const row of (assignmentsResult.data || [])) {
       const bookingId = row?.table_booking_id
       if (typeof bookingId !== 'string') continue
 
@@ -356,7 +356,7 @@ export async function GET(request: NextRequest) {
 
   const eventNameById = new Map<string, string>()
   if (!eventsResult.error) {
-    for (const row of (eventsResult.data || []) as any[]) {
+    for (const row of (eventsResult.data || [])) {
       if (typeof row?.id === 'string' && typeof row?.name === 'string' && row.name.trim().length > 0) {
         eventNameById.set(row.id, row.name.trim())
       }
@@ -365,7 +365,7 @@ export async function GET(request: NextRequest) {
 
   const areaNameById = new Map<string, string>()
   if (!tableAreasResult.error) {
-    for (const row of (tableAreasResult.data || []) as any[]) {
+    for (const row of (tableAreasResult.data || [])) {
       if (typeof row?.id === 'string' && typeof row?.name === 'string') {
         areaNameById.set(row.id, row.name)
       }

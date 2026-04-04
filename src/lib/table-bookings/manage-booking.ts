@@ -77,11 +77,11 @@ async function findTableAssignment(
   supabase: SupabaseClient<any, 'public', any>,
   bookingId: string
 ): Promise<{ table_id: string; table_ids: string[]; table_name: string | null; table_capacity: number | null } | null> {
-  const { data: assignments } = await (supabase.from('booking_table_assignments') as any)
+  const { data: assignments } = await supabase.from('booking_table_assignments')
     .select('table_id, table:tables!booking_table_assignments_table_id_fkey(id, table_number, name, capacity)')
     .eq('table_booking_id', bookingId)
 
-  const rows = (assignments || []) as any[]
+  const rows = (assignments || [])
   if (rows.length === 0) return null
 
   const tables = rows
@@ -110,7 +110,7 @@ async function getTableManageTokenRow(
 ): Promise<{ customer_id: string; table_booking_id: string } | null> {
   const tokenHash = hashGuestToken(rawToken)
 
-  const { data: tokenRow } = await (supabase.from('guest_tokens') as any)
+  const { data: tokenRow } = await supabase.from('guest_tokens')
     .select('customer_id, table_booking_id, expires_at, consumed_at')
     .eq('hashed_token', tokenHash)
     .eq('action_type', 'manage')
@@ -152,7 +152,7 @@ async function maybeMoveTableForPartySizeIncrease(
     ...(currentTableId ? [currentTableId] : [])
   ])
 
-  const { data: candidateTables } = await (supabase.from('tables') as any)
+  const { data: candidateTables } = await supabase.from('tables')
     .select('id, capacity, is_bookable')
     .eq('is_bookable', true)
     .gte('capacity', requiredPartySize)
@@ -171,7 +171,7 @@ async function maybeMoveTableForPartySizeIncrease(
       }
     }
 
-    const { data: overlappingAssignments } = await (supabase.from('booking_table_assignments') as any)
+    const { data: overlappingAssignments } = await supabase.from('booking_table_assignments')
       .select('table_booking_id')
       .eq('table_id', table.id)
       .neq('table_booking_id', bookingId)
@@ -179,18 +179,18 @@ async function maybeMoveTableForPartySizeIncrease(
       .gt('end_datetime', startIso)
 
     const overlapIds = Array.from(
-      new Set(((overlappingAssignments || []) as any[]).map((row) => row.table_booking_id))
+      new Set((overlappingAssignments || []).map((row) => row.table_booking_id))
     )
 
     if (overlapIds.length > 0) {
-      const { data: overlappingBookings } = await (supabase.from('table_bookings') as any)
+      const { data: overlappingBookings } = await supabase.from('table_bookings')
         .select('id, status, left_at')
         .in('id', overlapIds)
 
       // A table is only truly blocked by bookings that are still active:
       // - not cancelled, not a no-show, and the party hasn't left yet.
       // This matches the DB trigger logic in enforce_booking_table_assignment_integrity_v05.
-      const hasActiveOverlap = ((overlappingBookings || []) as any[]).some(
+      const hasActiveOverlap = (overlappingBookings || []).some(
         (row) => row.status !== 'cancelled' && row.status !== 'no_show' && !row.left_at
       )
       if (hasActiveOverlap) {
@@ -198,13 +198,13 @@ async function maybeMoveTableForPartySizeIncrease(
       }
     }
 
-    const { data: currentAssignment } = await (supabase.from('booking_table_assignments') as any)
+    const { data: currentAssignment } = await supabase.from('booking_table_assignments')
       .select('table_booking_id')
       .eq('table_booking_id', bookingId)
       .maybeSingle()
 
     if (currentAssignment) {
-      const { data: updatedAssignment, error: updateError } = await (supabase.from('booking_table_assignments') as any)
+      const { data: updatedAssignment, error: updateError } = await supabase.from('booking_table_assignments')
         .update({
           table_id: table.id,
           start_datetime: startIso,
@@ -218,7 +218,7 @@ async function maybeMoveTableForPartySizeIncrease(
         continue
       }
     } else {
-      const { error: insertError } = await (supabase.from('booking_table_assignments') as any)
+      const { error: insertError } = await supabase.from('booking_table_assignments')
         .insert({
           table_booking_id: bookingId,
           table_id: table.id,
@@ -254,12 +254,12 @@ async function computePerHeadFeeCapRemaining(
 ): Promise<number> {
   const totalCap = Math.max(0, input.committedPartySize * input.feePerHead)
 
-  const { data: existingRequests } = await (supabase.from('charge_requests') as any)
+  const { data: existingRequests } = await supabase.from('charge_requests')
     .select('amount, type, manager_decision, charge_status')
     .eq('table_booking_id', input.bookingId)
     .in('type', ['late_cancel', 'no_show', 'reduction_fee'])
 
-  const alreadyAllocated = ((existingRequests || []) as any[])
+  const alreadyAllocated = (existingRequests || [])
     .filter((row) => row.manager_decision !== 'waived' && row.charge_status !== 'waived')
     .reduce((sum, row) => sum + Number(row.amount || 0), 0)
 
@@ -282,7 +282,7 @@ async function createSystemChargeRequestWithApproval(
     return { chargeRequestId: null }
   }
 
-  const { data: chargeRequest, error } = await (supabase.from('charge_requests') as any)
+  const { data: chargeRequest, error } = await supabase.from('charge_requests')
     .insert({
       table_booking_id: input.bookingId,
       type: input.type,
@@ -389,7 +389,7 @@ export async function getTableManagePreviewByRawToken(
     return { state: 'blocked', reason: 'invalid_token' }
   }
 
-  const { data: booking } = await (supabase.from('table_bookings') as any)
+  const { data: booking } = await supabase.from('table_bookings')
     .select(
       'id, customer_id, booking_reference, status, party_size, committed_party_size, special_requirements, booking_type, booking_purpose, start_datetime, end_datetime'
     )
@@ -511,7 +511,7 @@ export async function updateTableBookingByRawToken(
   if (input.action === 'cancel') {
     const nowIso = new Date().toISOString()
 
-    const { data: cancelledBooking, error: cancelError } = await (supabase.from('table_bookings') as any)
+    const { data: cancelledBooking, error: cancelError } = await supabase.from('table_bookings')
       .update({
         status: 'cancelled',
         cancelled_at: nowIso,
@@ -710,7 +710,7 @@ export async function updateTableBookingByRawToken(
     }
   }
 
-  const { data: updatedBooking, error: updateError } = await (supabase.from('table_bookings') as any)
+  const { data: updatedBooking, error: updateError } = await supabase.from('table_bookings')
     .update({
       party_size: newPartySize,
       committed_party_size: nextCommittedSize,

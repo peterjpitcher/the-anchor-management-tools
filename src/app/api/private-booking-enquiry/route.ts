@@ -195,18 +195,18 @@ export async function POST(request: NextRequest) {
       })
       mutationCommitted = true
 
-      if ((booking as any)?.customer_id) {
+      if (booking?.customer_id) {
         await recordPrivateBookingEnquiryAnalyticsSafe(supabase, {
-          customerId: (booking as any).customer_id,
-          privateBookingId: (booking as any).id,
+          customerId: booking.customer_id,
+          privateBookingId: booking.id,
           eventType: 'private_booking_enquiry_created',
           metadata: {
             source: 'brand_site',
             via_endpoint: '/api/private-booking-enquiry'
           }
         }, {
-          privateBookingId: (booking as any).id,
-          customerId: (booking as any).customer_id
+          privateBookingId: booking.id,
+          customerId: booking.customer_id
         })
       }
 
@@ -219,7 +219,7 @@ export async function POST(request: NextRequest) {
         if (!managerEmailResult.sent && managerEmailResult.error) {
           logger.warn('Failed to send manager private booking created email (enquiry endpoint)', {
             metadata: {
-              privateBookingId: (booking as any)?.id || null,
+              privateBookingId: booking?.id || null,
               error: managerEmailResult.error
             }
           })
@@ -227,7 +227,7 @@ export async function POST(request: NextRequest) {
       } catch (managerEmailError) {
         logger.warn('Manager private booking created email task rejected unexpectedly (enquiry endpoint)', {
           metadata: {
-            privateBookingId: (booking as any)?.id || null,
+            privateBookingId: booking?.id || null,
             error: managerEmailError instanceof Error ? managerEmailError.message : String(managerEmailError)
           }
         })
@@ -236,8 +236,8 @@ export async function POST(request: NextRequest) {
       const responsePayload = {
         success: true,
         state: 'enquiry_created',
-        booking_id: (booking as any).id,
-        reference: (booking as any).booking_reference || (booking as any).id
+        booking_id: booking.id,
+        reference: booking.booking_reference || booking.id
       }
 
       try {

@@ -62,7 +62,7 @@ P.S. The quote is attached as a PDF for your convenience.`
         .map(s => s.trim())
         .filter(Boolean)
       const contactEmails = (contacts || []).map((c: any) => c.email).filter(Boolean)
-      const primaryEmail = ((contacts || []) as any[]).find((c: any) => c.is_primary)?.email || vendorEmails[0] || ''
+      const primaryEmail = ((contacts || [])).find((c: any) => c.is_primary)?.email || vendorEmails[0] || ''
       const all = Array.from(new Set([...vendorEmails, ...contactEmails]))
       const cc = all.filter(e => e && e !== primaryEmail)
       setToEmails(primaryEmail || '')
