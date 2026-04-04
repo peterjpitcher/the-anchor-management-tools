@@ -100,7 +100,7 @@ async function fetchReceiptExpenseRows(
 
   for (let from = 0; ; from += RECEIPT_PAGE_SIZE) {
     const to = from + RECEIPT_PAGE_SIZE - 1;
-    const { data, error } = await (supabase.from('receipt_transactions') as any)
+    const { data, error } = await supabase.from('receipt_transactions')
       .select('id, transaction_date, expense_category, amount_out')
       .gte('transaction_date', startDate)
       .in('status', INCLUDED_STATUSES)
