@@ -8,6 +8,7 @@ import { sendSMS } from '@/lib/twilio'
 import { getSmartFirstName } from '@/lib/sms/bulk'
 import { createEventManageToken } from '@/lib/events/manage-booking'
 import { createGuestToken } from '@/lib/guest/tokens'
+import { sendCrossPromoForEvent } from '@/lib/sms/cross-promo'
 import { getGoogleReviewLink } from '@/lib/events/review-link'
 import { recordAnalyticsEvent } from '@/lib/analytics/events'
 import { persistCronRunResult, recoverCronRunLock } from '@/lib/cron-run-results'
@@ -46,6 +47,10 @@ const EVENT_ENGAGEMENT_TEMPLATE_KEYS = [
   TEMPLATE_REVIEW_FOLLOWUP,
   TEMPLATE_TABLE_REVIEW_FOLLOWUP
 ]
+const EVENT_PROMO_LOOKAHEAD_DAYS = parsePositiveIntEnv('EVENT_PROMO_LOOKAHEAD_DAYS', 14)
+const MAX_EVENT_PROMOS_PER_RUN = parsePositiveIntEnv('MAX_EVENT_PROMOS_PER_RUN', 100)
+const EVENT_PROMO_HOURLY_SEND_GUARD_LIMIT = parsePositiveIntEnv('EVENT_PROMO_HOURLY_SEND_GUARD_LIMIT', 120)
+const EVENT_PROMO_TEMPLATE_KEYS = ['event_cross_promo_14d', 'event_cross_promo_14d_paid'] as const
 
 type BookingWithRelations = {
   id: string
@@ -1411,6 +1416,141 @@ async function processTableReviewWindowCompletion(
   return result
 }
 
+async function evaluateCrossPromoSendGuard(
+  supabase: ReturnType<typeof createAdminClient>
+): Promise<{ blocked: boolean; recentCount: number; limit: number }> {
+  const limit = EVENT_PROMO_HOURLY_SEND_GUARD_LIMIT
+  const sinceIso = new Date(Date.now() - 60 * 60 * 1000).toISOString()
+
+  const { count, error } = await supabase.from('messages')
+    .select('id', { count: 'exact', head: true })
+    .eq('direction', 'outbound')
+    .in('template_key', [...EVENT_PROMO_TEMPLATE_KEYS])
+    .gte('created_at', sinceIso)
+
+  if (error) {
+    const pgError = error as { code?: string; message?: string }
+    if (pgError?.code === '42703' || pgError?.code === '42P01') {
+      if (allowEventEngagementSendGuardSchemaGaps()) {
+        logger.warn('Cross-promo send guard skipped due to missing schema columns', {
+          metadata: { error: pgError.message }
+        })
+        return { blocked: false, recentCount: 0, limit }
+      }
+      logger.error('Cross-promo send guard blocked due to unavailable schema', {
+        metadata: { error: pgError.message }
+      })
+      return { blocked: true, recentCount: limit, limit }
+    }
+    throw error
+  }
+
+  const recentCount = count ?? 0
+  return { blocked: recentCount >= limit, recentCount, limit }
+}
+
+type UpcomingPromoEvent = {
+  id: string
+  name: string
+  date: string
+  payment_mode: string | null
+  category_id: string | null
+}
+
+async function loadUpcomingEventsForPromo(
+  supabase: ReturnType<typeof createAdminClient>
+): Promise<UpcomingPromoEvent[]> {
+  const nowIso = new Date().toISOString()
+  const windowEndIso = new Date(
+    Date.now() + EVENT_PROMO_LOOKAHEAD_DAYS * 24 * 60 * 60 * 1000
+  ).toISOString()
+
+  const { data, error } = await supabase
+    .from('events')
+    .select('id, name, date, payment_mode, category_id')
+    .eq('booking_open', true)
+    .gte('date', nowIso.slice(0, 10))
+    .lte('date', windowEndIso.slice(0, 10))
+    .not('category_id', 'is', null)
+    .order('date', { ascending: true })
+    .limit(50)
+
+  if (error) {
+    throw error
+  }
+
+  return (data || []) as UpcomingPromoEvent[]
+}
+
+async function processCrossPromo(
+  supabase: ReturnType<typeof createAdminClient>,
+  runStartMs: number
+): Promise<{ sent: number; skipped: number; errors: number; eventsProcessed: number }> {
+  const result = { sent: 0, skipped: 0, errors: 0, eventsProcessed: 0 }
+
+  // Guard: skip if too close to the Vercel function timeout (300s)
+  const elapsedSeconds = (Date.now() - runStartMs) / 1000
+  if (elapsedSeconds > 240) {
+    logger.warn('Cross-promo stage skipped: elapsed time exceeds 240s safety threshold', {
+      metadata: { elapsedSeconds }
+    })
+    return result
+  }
+
+  // Guard: check global SMS budget headroom
+  const { count: recentGlobal, error: globalCountError } = await supabase
+    .from('messages')
+    .select('id', { count: 'exact', head: true })
+    .eq('direction', 'outbound')
+    .gte('created_at', new Date(Date.now() - 60 * 60 * 1000).toISOString())
+
+  if (!globalCountError) {
+    const globalHourlyLimit = parsePositiveIntEnv('SMS_SAFETY_GLOBAL_HOURLY_LIMIT', 120)
+    const headroom = globalHourlyLimit - (recentGlobal ?? 0)
+    if (headroom < 30) {
+      logger.warn('Cross-promo stage skipped: insufficient global SMS budget headroom', {
+        metadata: { recentGlobal, globalHourlyLimit, headroom }
+      })
+      return result
+    }
+  }
+
+  // Guard: check promo-specific send guard
+  const promoGuard = await evaluateCrossPromoSendGuard(supabase)
+  if (promoGuard.blocked) {
+    logger.warn('Cross-promo stage skipped: promo send guard tripped', {
+      metadata: { recentCount: promoGuard.recentCount, limit: promoGuard.limit }
+    })
+    return result
+  }
+
+  const events = await loadUpcomingEventsForPromo(supabase)
+
+  for (const event of events) {
+    if (result.sent >= MAX_EVENT_PROMOS_PER_RUN) {
+      logger.info('Cross-promo: per-run cap reached', {
+        metadata: { maxPerRun: MAX_EVENT_PROMOS_PER_RUN, eventsProcessed: result.eventsProcessed }
+      })
+      break
+    }
+
+    const eventResult = await sendCrossPromoForEvent({
+      id: event.id,
+      name: event.name,
+      date: event.date,
+      payment_mode: event.payment_mode ?? 'free',
+      category_id: event.category_id,
+    })
+
+    result.sent += eventResult.sent
+    result.skipped += eventResult.skipped
+    result.errors += eventResult.errors
+    result.eventsProcessed += 1
+  }
+
+  return result
+}
+
 export async function GET(request: NextRequest) {
   let runContext: {
     supabase: ReturnType<typeof createAdminClient>
@@ -1429,6 +1569,7 @@ export async function GET(request: NextRequest) {
   }
 
   try {
+    const runStartMs = Date.now()
     const runKey = getLondonRunKey()
     const acquireResult = await acquireCronRun(runKey)
     const safetyState: EventEngagementCronSafetyState = {
@@ -1518,6 +1659,14 @@ export async function GET(request: NextRequest) {
     const tableReviews = await processTableReviewFollowups(supabase, tableBookings, appBaseUrl, safetyState)
     const tableCompletion = await processTableReviewWindowCompletion(supabase)
 
+    // Stage 3: Cross-promotion (marketing — runs last, after all transactional stages)
+    const crossPromo = await processCrossPromo(supabase, runStartMs)
+
+    // Cleanup: remove sms_promo_context rows older than 30 days
+    await supabase.from('sms_promo_context' as never)
+      .delete()
+      .lt('created_at', new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString())
+
     resolvedStatus = 'completed'
     return NextResponse.json({
       success: true,
@@ -1527,6 +1676,7 @@ export async function GET(request: NextRequest) {
       tableReviews,
       tableCompletion,
       marketing,
+      crossPromo,
       runKey,
       guard,
       processedAt: new Date().toISOString()
