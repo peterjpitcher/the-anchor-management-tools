@@ -640,7 +640,7 @@ export async function GET(request: NextRequest) {
         if (mobileNumber && !sentTemplateSet.has(cancellationKey)) {
           if (totalSundaySmsSent(counters) < MAX_SUNDAY_PREORDER_SMS_PER_RUN) {
             const message = ensureReplyInstruction(
-              `The Anchor: Hi ${getSmartFirstName(customer.first_name)}, your Sunday lunch booking ${booking.booking_reference || ''} has been cancelled because the required pre-order wasn't completed 24 hours before the booking. No charge has been applied.`,
+              `The Anchor: ${getSmartFirstName(customer.first_name)}, we've had to release your Sunday lunch booking as the pre-order wasn't completed in time. No charge applied — hope to see you another week!`,
               supportPhone
             )
 
@@ -729,18 +729,18 @@ export async function GET(request: NextRequest) {
         preorderUrl = null
       }
 
-      const intro = templateKey === TEMPLATE_REMINDER_26H
-        ? 'Final reminder: please complete your Sunday lunch pre-order.'
-        : 'please complete your Sunday lunch pre-order.'
+      const firstName = getSmartFirstName(customer.first_name)
+      const smsText = templateKey === TEMPLATE_REMINDER_26H
+        ? preorderUrl
+          ? `The Anchor: ${firstName}! Last chance to get your Sunday lunch pre-order in — we need it by tonight or we'll have to release your table: ${preorderUrl}`
+          : `The Anchor: ${firstName}! Last chance to get your Sunday lunch pre-order in — we need it by tonight or we'll have to release your table. Please use the link from your original booking text.`
+        : preorderUrl
+          ? `The Anchor: ${firstName}! Your Sunday lunch is coming up — get your pre-order in so we can have everything ready for you: ${preorderUrl}`
+          : `The Anchor: ${firstName}! Your Sunday lunch is coming up — please use the pre-order link from your original booking text.`
 
       const smsResult = await sendSmsSafe(
         mobileNumber,
-        ensureReplyInstruction(
-          preorderUrl
-            ? `The Anchor: Hi ${getSmartFirstName(customer.first_name)}, ${intro} Complete here: ${preorderUrl}`
-            : `The Anchor: Hi ${getSmartFirstName(customer.first_name)}, please use the Sunday pre-order link from your original booking text. If you can't find it, reply to this message and we'll resend it.`,
-          supportPhone
-        ),
+        ensureReplyInstruction(smsText, supportPhone),
         {
           customerId: customer.id,
           allowTransactionalOverride: true,
