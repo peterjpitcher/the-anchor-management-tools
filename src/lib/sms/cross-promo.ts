@@ -124,8 +124,8 @@ export async function sendCrossPromoForEvent(event: {
   )
 
   if (capacityRow) {
-    const seatsRemaining = capacityRow.seats_remaining ?? 0
-    if (seatsRemaining <= 0) {
+    const seatsRemaining = capacityRow.seats_remaining // null = unlimited capacity
+    if (seatsRemaining !== null && seatsRemaining !== undefined && seatsRemaining <= 0) {
       logger.info('Cross-promo skipped: event is sold out', {
         metadata: { eventId: event.id },
       })
@@ -133,7 +133,7 @@ export async function sendCrossPromoForEvent(event: {
       return stats
     }
 
-    if (!isPaidEvent(event.payment_mode) && seatsRemaining < EVENT_PROMO_MIN_CAPACITY) {
+    if (!isPaidEvent(event.payment_mode) && seatsRemaining !== null && seatsRemaining !== undefined && seatsRemaining < EVENT_PROMO_MIN_CAPACITY) {
       logger.info('Cross-promo skipped: insufficient remaining capacity for free/cash event', {
         metadata: { eventId: event.id, seatsRemaining },
       })
