@@ -18,7 +18,7 @@ export default function GlobalError({
             <h2 className="text-2xl font-bold text-red-600 mb-4">Something went wrong!</h2>
             <p className="text-gray-600 mb-6">Global Error Handler</p>
             <div className="flex gap-4">
-              <button
+              <button type="button"
                 className="px-4 py-2 bg-blue-600 text-white rounded"
                 onClick={() => reset()}
               >

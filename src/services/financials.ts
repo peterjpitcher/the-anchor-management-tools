@@ -89,9 +89,9 @@ async function deleteFinancialRowsByPair(
   }
 }
 
-// TODO: If total count is known upfront, parallelise page fetches with Promise.all
-// to reduce latency on large datasets. Currently sequential because the total is
-// discovered during iteration.
+// TODO(tech-debt): Parallelise page fetches with Promise.all for better performance — tracked in technical debt report PF-1
+// If total count is known upfront, parallelise page fetches to reduce latency on
+// large datasets. Currently sequential because the total is discovered during iteration.
 async function fetchReceiptExpenseRows(
   supabase: ReturnType<typeof createAdminClient>,
   startDate: string

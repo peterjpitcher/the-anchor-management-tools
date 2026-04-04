@@ -82,7 +82,7 @@ export async function createPendingParkingBooking(
     monthlyRate: monthly
   })
 
-  // TODO: TOCTOU race condition — the capacity check and booking insert are not atomic.
+  // TODO(tech-debt): TOCTOU race condition — capacity check and insert are not atomic — tracked in technical debt report PK-1
   // Under concurrent requests, two bookings could both pass the capacity check before
   // either inserts. For a single-pub system this is low-risk, but the proper fix is a
   // Supabase RPC that checks capacity and inserts atomically within a transaction,

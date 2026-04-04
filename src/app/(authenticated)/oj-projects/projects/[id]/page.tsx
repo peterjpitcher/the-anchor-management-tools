@@ -531,7 +531,7 @@ export default function OJProjectDetailPage() {
                       <div className="font-medium text-sm truncate">{tc.contact?.name || 'Unknown'}</div>
                       <div className="text-xs text-gray-500 truncate">{tc.contact?.email}</div>
                     </div>
-                    <button
+                    <button type="button"
                       onClick={() => removeContactTag(tc.id)}
                       disabled={!canEdit}
                       className="text-gray-400 hover:text-red-500 p-1"

@@ -261,7 +261,7 @@ export function Pagination({
   // Mobile view
   const mobileView = (
     <div className="flex flex-1 justify-between items-center sm:hidden">
-      <button
+      <button type="button"
         onClick={() => onPageChange(currentPage - 1)}
         disabled={currentPage === 1}
         className={buttonClasses}
@@ -274,7 +274,7 @@ export function Pagination({
         {page} {currentPage} {of} {totalPages}
       </span>
       
-      <button
+      <button type="button"
         onClick={() => onPageChange(currentPage + 1)}
         disabled={currentPage === totalPages}
         className={buttonClasses}
@@ -352,7 +352,7 @@ export function Pagination({
         <nav className="isolate inline-flex -space-x-px rounded-md shadow-sm" aria-label="Pagination">
           {/* First page button */}
           {showFirstLastButtons && (
-            <button
+            <button type="button"
               onClick={() => onPageChange(1)}
               disabled={currentPage === 1}
               className={cn(iconButtonClasses, 'rounded-l-md')}
@@ -363,7 +363,7 @@ export function Pagination({
           )}
           
           {/* Previous page button */}
-          <button
+          <button type="button"
             onClick={() => onPageChange(currentPage - 1)}
             disabled={currentPage === 1}
             className={cn(
@@ -393,7 +393,7 @@ export function Pagination({
             }
             
             return (
-              <button
+              <button type="button"
                 key={pageNum}
                 onClick={() => onPageChange(pageNum)}
                 aria-current={currentPage === pageNum ? 'page' : undefined}
@@ -405,7 +405,7 @@ export function Pagination({
           })}
           
           {/* Next page button */}
-          <button
+          <button type="button"
             onClick={() => onPageChange(currentPage + 1)}
             disabled={currentPage === totalPages}
             className={cn(
@@ -419,7 +419,7 @@ export function Pagination({
           
           {/* Last page button */}
           {showFirstLastButtons && (
-            <button
+            <button type="button"
               onClick={() => onPageChange(totalPages)}
               disabled={currentPage === totalPages}
               className={cn(iconButtonClasses, 'rounded-r-md')}
@@ -457,7 +457,7 @@ export function SimplePagination({
 }) {
   return (
     <div className={cn('flex items-center justify-center gap-2', className)}>
-      <button
+      <button type="button"
         onClick={() => onPageChange(currentPage - 1)}
         disabled={currentPage === 1}
         className="p-2 rounded-md border border-gray-300 bg-white text-gray-500 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
@@ -469,7 +469,7 @@ export function SimplePagination({
         Page {currentPage} of {totalPages}
       </span>
       
-      <button
+      <button type="button"
         onClick={() => onPageChange(currentPage + 1)}
         disabled={currentPage === totalPages}
         className="p-2 rounded-md border border-gray-300 bg-white text-gray-500 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
@@ -500,7 +500,7 @@ export function LoadMorePagination({
   
   return (
     <div className={cn('flex justify-center', className)}>
-      <button
+      <button type="button"
         onClick={onLoadMore}
         disabled={loading}
         className="inline-flex items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 disabled:opacity-50 disabled:cursor-not-allowed"

@@ -136,7 +136,7 @@ export default function OnboardingChecklistTab({ employeeId, canEdit }: Onboardi
             return (
               <li key={item.field} className="px-6 py-4">
                 <div className="flex items-start">
-                  <button
+                  <button type="button"
                     onClick={() => handleToggle(item.field, item.completed)}
                     disabled={isUpdating || !canEdit}
                     className="flex-shrink-0 mt-0.5"

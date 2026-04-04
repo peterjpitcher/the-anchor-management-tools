@@ -120,7 +120,7 @@ export function Page({
           description={errorMessage}
           actions={
             onRetry && (
-              <button
+              <button type="button"
                 onClick={onRetry}
                 className="text-sm font-medium text-red-600 hover:text-red-500"
               >
@@ -173,7 +173,7 @@ export function Page({
                             {item.label}
                           </a>
                         ) : item.onClick ? (
-                          <button
+                          <button type="button"
                             onClick={item.onClick}
                             className="text-gray-500 hover:text-gray-700"
                           >

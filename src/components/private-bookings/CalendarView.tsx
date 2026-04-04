@@ -154,7 +154,7 @@ export default function CalendarView({ bookings }: CalendarViewProps) {
           <div className="flex flex-wrap gap-2 w-full sm:w-auto">
             {/* View Mode Toggle - Mobile Only */}
             <div className="flex bg-gray-100 rounded-lg p-1 sm:hidden">
-              <button
+              <button type="button"
                 onClick={() => setViewMode('calendar')}
                 className={`px-3 py-1 text-sm font-medium rounded ${
                   viewMode === 'calendar' ? 'bg-white text-gray-900 shadow' : 'text-gray-600'
@@ -162,7 +162,7 @@ export default function CalendarView({ bookings }: CalendarViewProps) {
               >
                 Calendar
               </button>
-              <button
+              <button type="button"
                 onClick={() => setViewMode('agenda')}
                 className={`px-3 py-1 text-sm font-medium rounded ${
                   viewMode === 'agenda' ? 'bg-white text-gray-900 shadow' : 'text-gray-600'
@@ -171,20 +171,20 @@ export default function CalendarView({ bookings }: CalendarViewProps) {
                 Agenda
               </button>
             </div>
-            <button
+            <button type="button"
               onClick={() => setCurrentDate(new Date())}
               className="px-3 sm:px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
             >
               Today
             </button>
             <div className="flex">
-              <button
+              <button type="button"
                 onClick={() => navigateMonth('prev')}
                 className="p-2 text-gray-600 hover:bg-gray-100 rounded-l-lg border border-r-0 border-gray-300 transition-colors"
               >
                 <ChevronLeftIcon className="h-5 w-5" />
               </button>
-              <button
+              <button type="button"
                 onClick={() => navigateMonth('next')}
                 className="p-2 text-gray-600 hover:bg-gray-100 rounded-r-lg border border-gray-300 transition-colors"
               >

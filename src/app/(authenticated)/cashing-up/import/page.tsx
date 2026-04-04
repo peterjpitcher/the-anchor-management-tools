@@ -215,7 +215,7 @@ export default function ImportPage() {
             </ul>
           </div>
           <div className="mt-6">
-            <button
+            <button type="button"
               onClick={downloadTemplate}
               className="px-4 py-2 bg-blue-50 text-blue-600 rounded border border-blue-200 hover:bg-blue-100 text-sm font-medium flex items-center gap-2"
             >
@@ -288,7 +288,7 @@ export default function ImportPage() {
             <div className="space-y-4">
               <div className="flex justify-between items-center">
                 <h4 className="font-medium text-gray-700">Preview ({previewData.length} rows)</h4>
-                <button
+                <button type="button"
                   onClick={handleImport}
                   disabled={isPending}
                   className="bg-blue-600 text-white px-6 py-2 rounded hover:bg-blue-700 disabled:opacity-50 font-medium"

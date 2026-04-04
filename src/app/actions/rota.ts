@@ -1076,14 +1076,31 @@ export async function resyncRotaCalendar(): Promise<
 
   const { syncRotaWeekToCalendar } = await import('@/lib/google-calendar-rota');
 
-  for (const week of weeks ?? []) {
-    const { data: shifts } = await admin
-      .from('rota_published_shifts')
-      .select('id, week_id, employee_id, shift_date, start_time, end_time, department, status, notes, is_overnight, is_open_shift, name')
-      .eq('week_id', week.id);
+  const weekIds = (weeks ?? []).map((w) => w.id);
 
+  // Batch-fetch all shifts for every published week in a single query
+  const { data: allShifts } = weekIds.length
+    ? await admin
+        .from('rota_published_shifts')
+        .select('id, week_id, employee_id, shift_date, start_time, end_time, department, status, notes, is_overnight, is_open_shift, name')
+        .in('week_id', weekIds)
+    : { data: null };
+
+  // Group shifts by week_id in memory
+  const shiftsByWeek = new Map<string, typeof allShifts>();
+  for (const shift of allShifts ?? []) {
+    const existing = shiftsByWeek.get(shift.week_id);
+    if (existing) {
+      existing.push(shift);
+    } else {
+      shiftsByWeek.set(shift.week_id, [shift]);
+    }
+  }
+
+  for (const week of weeks ?? []) {
+    const shifts = shiftsByWeek.get(week.id) ?? [];
     try {
-      await syncRotaWeekToCalendar(week.id, shifts ?? [], {
+      await syncRotaWeekToCalendar(week.id, shifts, {
         weekStart: week.week_start as string,
       });
     } catch (err) {

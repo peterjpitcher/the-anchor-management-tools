@@ -53,7 +53,7 @@ export default function PrintTrigger() {
   }, []);
 
   return (
-    <button
+    <button type="button"
       onClick={() => window.print()}
       style={{
         padding: '8px 18px',

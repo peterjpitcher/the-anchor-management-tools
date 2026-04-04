@@ -435,7 +435,7 @@ export function DailyCashupForm({ site, sessionDate, initialSessionData, isBill 
                     <p className="font-bold text-sm">Warning: This is an {initialSessionData?.status || 'approved'} session.</p>
                     <p className="text-xs">Editing this record may affect historical data. Proceed with caution.</p>
                 </div>
-                <button 
+                <button type="button" 
                     onClick={() => { setIsFormLocked(false); setShowWarningMessage(false); }}
                     className="bg-yellow-200 hover:bg-yellow-300 text-yellow-900 text-sm px-4 py-2 rounded font-medium"
                 >
@@ -479,13 +479,13 @@ export function DailyCashupForm({ site, sessionDate, initialSessionData, isBill 
                       className="w-20 p-1 text-sm border rounded"
                       disabled={isFormLocked} // Disabled if locked
                     />
-                    <button onClick={handleSaveTarget} className="text-green-600 hover:text-green-800" disabled={isFormLocked}>✓</button>
-                    <button onClick={() => setIsEditingTarget(false)} className="text-red-600 hover:text-red-800" disabled={isFormLocked}>✕</button>
+                    <button type="button" onClick={handleSaveTarget} className="text-green-600 hover:text-green-800" disabled={isFormLocked}>✓</button>
+                    <button type="button" onClick={() => setIsEditingTarget(false)} className="text-red-600 hover:text-red-800" disabled={isFormLocked}>✕</button>
                   </div>
                 ) : (
                   <>
                     <span>£{dailyTarget}</span>
-                    <button 
+                    <button type="button" 
                       onClick={() => setIsEditingTarget(true)}
                       className="text-xs text-blue-600 hover:underline ml-1"
                       disabled={isFormLocked} // Disabled if locked
@@ -493,7 +493,7 @@ export function DailyCashupForm({ site, sessionDate, initialSessionData, isBill 
                       Edit
                     </button>
                     <span className="text-gray-300 mx-1">|</span>
-                    <button 
+                    <button type="button" 
                       onClick={() => setShowTargetModal(true)}
                       className="text-xs text-blue-600 hover:underline"
                       disabled={isFormLocked} // Disabled if locked
@@ -693,7 +693,7 @@ export function DailyCashupForm({ site, sessionDate, initialSessionData, isBill 
                         <span className="text-red-700 font-medium">
                           {format(parseISO(d), 'EEE dd MMM')}
                         </span>
-                        <button 
+                        <button type="button" 
                           onClick={() => window.location.href = `/cashing-up/daily?date=${d}&siteId=${siteId}`}
                           className="text-xs bg-white border border-red-200 px-2 py-0.5 rounded text-red-600 hover:bg-red-50"
                         >
@@ -788,14 +788,14 @@ export function DailyCashupForm({ site, sessionDate, initialSessionData, isBill 
         </div>
 
         <div className="flex justify-end gap-2 border-t pt-4">
-           <button 
+           <button type="button" 
             onClick={onSaveClick}
             disabled={isPending || isFormLocked}
             className="bg-gray-100 text-gray-800 px-6 py-2 rounded hover:bg-gray-200 disabled:opacity-50 font-medium"
           >
             {isPending ? 'Saving...' : 'Save Draft'}
           </button>
-          <button 
+          <button type="button" 
             onClick={onSubmitClick}
             disabled={isPending || isFormLocked}
             className="bg-blue-600 text-white px-6 py-2 rounded hover:bg-blue-700 disabled:opacity-50 font-medium"

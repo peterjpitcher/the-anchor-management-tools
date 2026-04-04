@@ -55,7 +55,7 @@ export default function AddEmergencyContactModal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 transition-opacity">
       <div className="relative w-full max-w-lg rounded-lg bg-white p-6 shadow-xl">
-        <button
+        <button type="button"
           onClick={onClose}
           className="absolute top-4 right-4 text-gray-400 hover:text-gray-600"
         >

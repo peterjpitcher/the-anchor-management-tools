@@ -51,7 +51,7 @@ export default function TaskSidebar({ todos, isOpen, toggle }: TaskSidebarProps)
 
     if (!isOpen) {
         return (
-            <button
+            <button type="button"
                 onClick={toggle}
                 className="fixed right-0 top-1/2 -translate-y-1/2 bg-white border border-l-gray-200 border-y-gray-200 p-2 rounded-l-md shadow-md hover:bg-gray-50 z-20"
                 title="Show Tasks"
@@ -66,20 +66,20 @@ export default function TaskSidebar({ todos, isOpen, toggle }: TaskSidebarProps)
             {/* Header */}
             <div className="p-4 border-b border-gray-100 flex items-center justify-between bg-gray-50">
                 <h2 className="font-semibold text-gray-900">Tasks</h2>
-                <button onClick={toggle} className="p-1 hover:bg-gray-200 rounded">
+                <button type="button" onClick={toggle} className="p-1 hover:bg-gray-200 rounded">
                     <ChevronRightIcon className="w-4 h-4 text-gray-500" />
                 </button>
             </div>
 
             {/* Toggles */}
             <div className="p-3 border-b border-gray-100 flex gap-2">
-                <button
+                <button type="button"
                     onClick={() => setFilterMode('urgent')}
                     className={`flex-1 py-1 text-xs font-medium rounded-md ${filterMode === 'urgent' ? 'bg-red-50 text-red-700 border border-red-100' : 'text-gray-500 hover:bg-gray-50'}`}
                 >
                     Urgent ({urgentTodos.length})
                 </button>
-                <button
+                <button type="button"
                     onClick={() => setFilterMode('all')}
                     className={`flex-1 py-1 text-xs font-medium rounded-md ${filterMode === 'all' ? 'bg-gray-100 text-gray-900' : 'text-gray-500 hover:bg-gray-50'}`}
                 >
