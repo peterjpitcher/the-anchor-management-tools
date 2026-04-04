@@ -188,7 +188,7 @@ export function EventTemplateManager({ eventId }: Props) {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h3 className="text-lg font-medium">Message Templates</h3>
-        <button
+        <button type="button"
           onClick={() => setShowHelp(!showHelp)}
           className="text-sm text-indigo-600 hover:text-indigo-700"
         >
@@ -232,7 +232,7 @@ export function EventTemplateManager({ eventId }: Props) {
                 </div>
                 <div className="flex items-center space-x-2">
                   {hasCustom && !isEditing && (
-                    <button
+                    <button type="button"
                       onClick={() => deleteTemplate(type)}
                       className="text-sm text-red-600 hover:text-red-700"
                     >
@@ -241,7 +241,7 @@ export function EventTemplateManager({ eventId }: Props) {
                   )}
                   {isEditing ? (
                     <>
-                      <button
+                      <button type="button"
                         onClick={() => {
                           setEditingType(null)
                           setContent('')
@@ -250,7 +250,7 @@ export function EventTemplateManager({ eventId }: Props) {
                       >
                         Cancel
                       </button>
-                      <button
+                      <button type="button"
                         onClick={() => saveTemplate(type)}
                         className="text-sm text-indigo-600 hover:text-indigo-700"
                       >
@@ -258,7 +258,7 @@ export function EventTemplateManager({ eventId }: Props) {
                       </button>
                     </>
                   ) : (
-                    <button
+                    <button type="button"
                       onClick={() => {
                         setEditingType(type)
                         setContent(currentContent)

@@ -182,7 +182,7 @@ async function handleSignOut() {
                   </div>
                 </div>
                 <div className="flex flex-shrink-0 border-t border-green-600 p-4">
-                  <button
+                  <button type="button"
                     onClick={handleSignOut}
                     disabled={isSigningOut}
                     className="group flex w-full items-center px-2 py-2 text-sm font-medium text-gray-100 hover:bg-green-700 hover:text-white rounded-md"
@@ -226,7 +226,7 @@ async function handleSignOut() {
                   />
                 </div>
                 <div className="flex flex-shrink-0 border-t border-green-600 p-4">
-                  <button
+                  <button type="button"
                     onClick={() => {
                       handleSignOut()
                       setIsMobileMenuOpen(false)

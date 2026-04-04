@@ -138,12 +138,12 @@ export function ReceiptList({
               <thead className="bg-gray-50 text-left text-sm font-semibold text-gray-600">
                 <tr>
                   <th className="px-4 py-3">
-                    <button className={`flex items-center gap-1 ${currentSortBy === 'transaction_date' ? 'text-emerald-700' : ''}`} onClick={() => onSort('transaction_date')}>
+                    <button type="button" className={`flex items-center gap-1 ${currentSortBy === 'transaction_date' ? 'text-emerald-700' : ''}`} onClick={() => onSort('transaction_date')}>
                         Date {currentSortBy === 'transaction_date' && (currentSortDirection === 'asc' ? '↑' : '↓')}
                     </button>
                   </th>
                   <th className="px-4 py-3">
-                    <button className={`flex items-center gap-1 ${currentSortBy === 'details' ? 'text-emerald-700' : ''}`} onClick={() => onSort('details')}>
+                    <button type="button" className={`flex items-center gap-1 ${currentSortBy === 'details' ? 'text-emerald-700' : ''}`} onClick={() => onSort('details')}>
                         Details {currentSortBy === 'details' && (currentSortDirection === 'asc' ? '↑' : '↓')}
                     </button>
                   </th>

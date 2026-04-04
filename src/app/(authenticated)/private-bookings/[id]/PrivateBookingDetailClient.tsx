@@ -2234,7 +2234,7 @@ export default function PrivateBookingDetailClient({
             title="Financial Summary"
             actions={
               canEdit ? (
-                <button
+                <button type="button"
                   onClick={() => setShowDiscountModal(true)}
                   className="text-sm text-blue-600 hover:text-blue-700"
                 >
@@ -2348,7 +2348,7 @@ export default function PrivateBookingDetailClient({
                       (booking.status === "draft" || booking.status === "confirmed") &&
                       canManageDeposits && (
                         <div className="mt-1 flex flex-col gap-1 items-end">
-                          <button
+                          <button type="button"
                             onClick={() => setShowDepositModal(true)}
                             className="text-xs px-2 py-1 bg-green-600 text-white rounded hover:bg-green-700"
                           >
@@ -2417,7 +2417,7 @@ export default function PrivateBookingDetailClient({
                             </>
                           )}
                           {!isDateTbd && !booking.final_payment_date && remaining > 0 && canManageDeposits && (
-                            <button
+                            <button type="button"
                               onClick={() => setShowFinalModal(true)}
                               className="mt-1 text-xs px-2 py-1 bg-green-600 text-white rounded hover:bg-green-700"
                             >
@@ -2483,7 +2483,7 @@ export default function PrivateBookingDetailClient({
                   <ChevronRightIcon className="h-4 w-4 text-gray-400" />
                 </Link>
 
-                <button
+                <button type="button"
                   disabled
                   className="flex items-center justify-between w-full px-4 py-3 text-sm font-medium text-gray-400 bg-gray-50 rounded-lg cursor-not-allowed opacity-50"
                 >

@@ -862,13 +862,13 @@ export default function ItemsPage() {
                       {formatMoney(item.line_total)}
                     </span>
                     <div className="flex items-center space-x-2">
-                      <button
+                      <button type="button"
                         onClick={() => setEditingItem(item)}
                         className="text-gray-400 hover:text-gray-500"
                       >
                         <PencilIcon className="h-5 w-5" />
                       </button>
-                      <button
+                      <button type="button"
                         onClick={() => setDeletingItemId(item.id)}
                         className="text-red-400 hover:text-red-500"
                       >

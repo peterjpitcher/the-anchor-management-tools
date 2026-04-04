@@ -217,7 +217,7 @@ export function EmptyStateSearch({
       }
       action={
         onClear && (
-          <button
+          <button type="button"
             onClick={onClear}
             className="text-sm text-green-600 hover:text-green-700"
           >
@@ -260,7 +260,7 @@ export function EmptyStateError({
       description="We couldn't load the data. Please try again."
       action={
         onRetry && (
-          <button
+          <button type="button"
             onClick={onRetry}
             className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
           >

@@ -215,7 +215,7 @@ export default function OnboardingClient({
         {/* Step dots */}
         <div className="flex items-center gap-2 mt-4">
           {visibleSteps.map((step, index) => (
-            <button
+            <button type="button"
               key={step.key}
               onClick={() => {
                 // Only allow going back to completed steps

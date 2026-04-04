@@ -290,7 +290,7 @@ export function actionToast({
           </div>
         </div>
         <div className="flex border-l" style={{ borderColor: color.border }}>
-          <button
+          <button type="button"
             onClick={() => {
               onAction()
               toast.dismiss(t.id)

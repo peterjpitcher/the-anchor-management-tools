@@ -133,7 +133,7 @@ export interface Vendor {
   contact_email?: string
   website?: string
   typical_rate?: string
-  typical_rate_normalized?: string | null // TODO: verify this field exists in DB
+  typical_rate_normalized?: string | null // TODO(tech-debt): Verify this field exists in DB — tracked in technical debt report PB-1
   notes?: string
   preferred: boolean
   active: boolean

@@ -192,7 +192,7 @@ export function MessageThread({ messages, customerId, canReply, onMessageSent }:
                 }}
                 disabled={sending}
               />
-              <button
+              <button type="button"
                 onClick={handleSend}
                 disabled={!newMessage.trim() || sending}
                 className={`absolute right-1 bottom-1.5 sm:bottom-1 p-2 sm:p-1.5 rounded-full transition-all touch-manipulation ${

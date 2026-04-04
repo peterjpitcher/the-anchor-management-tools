@@ -53,13 +53,13 @@ export default function ControlBar({
 
                 {/* Filters */}
                 <div className="hidden md:flex bg-gray-100 p-1 rounded-md">
-                    <button
+                    <button type="button"
                         onClick={() => setFilter('all')}
                         className={`px-3 py-1.5 text-xs font-medium rounded-sm transition-all ${filter === 'all' ? 'bg-white text-black shadow-sm' : 'text-gray-500 hover:text-gray-900'}`}
                     >
                         All
                     </button>
-                    <button
+                    <button type="button"
                         onClick={() => setFilter('attention_needed')}
                         className={`px-3 py-1.5 text-xs font-medium rounded-sm transition-all ${filter === 'attention_needed' ? 'bg-white text-black shadow-sm' : 'text-gray-500 hover:text-gray-900'}`}
                     >
@@ -83,21 +83,21 @@ export default function ControlBar({
 
                 {/* View Toggle */}
                 <div className="flex bg-gray-100 p-1 rounded-md">
-                    <button
+                    <button type="button"
                         onClick={() => setViewMode('calendar')}
                         title="Calendar View"
                         className={`p-1.5 rounded-sm transition-all ${viewMode === 'calendar' ? 'bg-white text-black shadow-sm' : 'text-gray-500 hover:text-gray-900'}`}
                     >
                         <CalendarDaysIcon className="w-4 h-4" />
                     </button>
-                    <button
+                    <button type="button"
                         onClick={() => setViewMode('grid')}
                         title="Grid View"
                         className={`p-1.5 rounded-sm transition-all ${viewMode === 'grid' ? 'bg-white text-black shadow-sm' : 'text-gray-500 hover:text-gray-900'}`}
                     >
                         <ViewColumnsIcon className="w-4 h-4" />
                     </button>
-                    <button
+                    <button type="button"
                         onClick={() => setViewMode('list')}
                         title="List View"
                         className={`p-1.5 rounded-sm transition-all ${viewMode === 'list' ? 'bg-white text-black shadow-sm' : 'text-gray-500 hover:text-gray-900'}`}
@@ -118,13 +118,13 @@ export default function ControlBar({
 
             {/* Mobile Filters (visible only on small screens) */}
             <div className="flex md:hidden w-full overflow-x-auto gap-2 pb-1">
-                <button
+                <button type="button"
                     onClick={() => setFilter('all')}
                     className={`px-3 py-1.5 text-xs font-medium rounded-full border whitespace-nowrap ${filter === 'all' ? 'bg-black text-white border-black' : 'bg-white text-gray-700 border-gray-200'}`}
                 >
                     All Events
                 </button>
-                <button
+                <button type="button"
                     onClick={() => setFilter('attention_needed')}
                     className={`px-3 py-1.5 text-xs font-medium rounded-full border whitespace-nowrap ${filter === 'attention_needed' ? 'bg-black text-white border-black' : 'bg-white text-gray-700 border-gray-200'}`}
                 >

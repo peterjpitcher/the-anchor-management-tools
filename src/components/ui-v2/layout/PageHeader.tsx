@@ -61,7 +61,7 @@ export function PageHeader({
         <div className={compact ? 'flex items-center gap-1.5 md:hidden' : 'flex items-center gap-2 md:hidden'}>
           {/* Back button if provided */}
           {backButton && (
-            <button
+            <button type="button"
               onClick={backButton.onBack || (backButton.href ? () => router.push(backButton.href!) : undefined)}
               className="rounded-md text-gray-500 hover:text-gray-900 hover:bg-gray-100 p-2 focus:outline-none focus:ring-2 focus:ring-gray-500/50"
             >

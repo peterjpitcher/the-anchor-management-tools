@@ -310,7 +310,7 @@ export function ReceiptTableRow({
           </div>
         ) : (
           <div className="flex flex-col gap-1">
-            <button className="text-left text-sm font-medium text-gray-900 hover:text-emerald-600" onClick={() => startEditing('vendor')} disabled={!canManageReceipts}>
+            <button type="button" className="text-left text-sm font-medium text-gray-900 hover:text-emerald-600" onClick={() => startEditing('vendor')} disabled={!canManageReceipts}>
               {transaction.vendor_name ?? <span className="text-gray-400 font-normal">Add vendor</span>}
             </button>
             <div className="flex items-center gap-2">
@@ -336,7 +336,7 @@ export function ReceiptTableRow({
           </div>
         ) : (
           <div className="flex flex-col gap-1">
-            <button className="text-left text-sm font-medium text-gray-900 hover:text-emerald-600" onClick={() => startEditing('expense')} disabled={!canManageReceipts}>
+            <button type="button" className="text-left text-sm font-medium text-gray-900 hover:text-emerald-600" onClick={() => startEditing('expense')} disabled={!canManageReceipts}>
               {transaction.expense_category ?? <span className="text-gray-400 font-normal">Add category</span>}
             </button>
             <div className="flex items-center gap-2">
@@ -361,8 +361,8 @@ export function ReceiptTableRow({
       <td className="px-4 py-3">
         {transaction.files.map(f => (
           <div key={f.id} className="flex items-center gap-2 mb-1">
-            <button onClick={() => handleReceiptDownload(f.id)} className="text-emerald-700 hover:underline text-xs truncate max-w-[100px]">{f.file_name || 'View'}</button>
-            <button onClick={() => handleReceiptDelete(f.id)} className="text-red-500 text-xs px-1 hover:bg-red-50 rounded" disabled={isPending}>×</button>
+            <button type="button" onClick={() => handleReceiptDownload(f.id)} className="text-emerald-700 hover:underline text-xs truncate max-w-[100px]">{f.file_name || 'View'}</button>
+            <button type="button" onClick={() => handleReceiptDelete(f.id)} className="text-red-500 text-xs px-1 hover:bg-red-50 rounded" disabled={isPending}>×</button>
           </div>
         ))}
         {transaction.files.length > 0 && (
@@ -396,7 +396,7 @@ export function ReceiptTableRow({
             ) : (
               <span className="text-xs text-gray-400 italic">No notes</span>
             )}
-            <button onClick={startNoteEdit} className="invisible group-hover:visible text-xs text-gray-500 flex items-center gap-1 hover:text-emerald-600" disabled={!canManageReceipts}>
+            <button type="button" onClick={startNoteEdit} className="invisible group-hover:visible text-xs text-gray-500 flex items-center gap-1 hover:text-emerald-600" disabled={!canManageReceipts}>
               <PencilSquareIcon className="h-3 w-3" /> Edit
             </button>
           </div>

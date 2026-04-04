@@ -77,7 +77,7 @@ export default function ReviewStep({ token, savedSections }: ReviewStepProps) {
 
       {error && <p className="text-sm text-red-600">{error}</p>}
 
-      <button
+      <button type="button"
         onClick={handleSubmit}
         disabled={loading || !allComplete}
         className="w-full rounded-md bg-green-600 px-4 py-2 text-sm font-semibold text-white hover:bg-green-500 disabled:opacity-50"

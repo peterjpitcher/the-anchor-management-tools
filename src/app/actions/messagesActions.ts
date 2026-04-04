@@ -63,8 +63,8 @@ type ConversationAccumulator = {
 
 const RECENT_CONVERSATION_LIMIT = 25
 // 150 recent messages is sufficient to build 25 conversations (was 400).
-// TODO: Replace this JS-based conversation grouping with a `get_recent_conversations` RPC
-// that groups by customer_id in SQL for proper pagination and reduced payload size.
+// TODO(tech-debt): Replace JS-based conversation grouping with a `get_recent_conversations` RPC — tracked in technical debt report MSG-1
+// Group by customer_id in SQL for proper pagination and reduced payload size.
 const RECENT_MESSAGE_FETCH_LIMIT = 150
 const UNREAD_MESSAGE_FETCH_LIMIT = 500
 

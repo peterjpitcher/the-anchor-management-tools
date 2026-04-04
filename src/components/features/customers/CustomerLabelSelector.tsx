@@ -140,7 +140,7 @@ export function CustomerLabelSelector({
                 <span className="ml-1 text-xs opacity-70">(auto)</span>
               )}
               {canEdit && !assignment.auto_assigned && (
-                <button
+                <button type="button"
                   onClick={() => handleRemoveLabel(label.id)}
                   className="ml-1 hover:opacity-70"
                 >
@@ -153,7 +153,7 @@ export function CustomerLabelSelector({
 
         {/* Add Label Button */}
         {canEdit && availableLabels.length > 0 && (
-          <button
+          <button type="button"
             onClick={() => setShowSelector(!showSelector)}
             className="inline-flex items-center rounded-full border border-gray-300 px-3 py-1 text-xs font-medium text-gray-600 hover:bg-gray-50"
           >
@@ -169,7 +169,7 @@ export function CustomerLabelSelector({
           <div className="absolute z-10 mt-1 w-64 rounded-md bg-white shadow-lg ring-1 ring-black ring-opacity-5">
             <div className="py-1">
               {availableLabels.map((label) => (
-                <button
+                <button type="button"
                   key={label.id}
                   onClick={() => handleAssignLabel(label.id)}
                   disabled={assigningLabel === label.id}

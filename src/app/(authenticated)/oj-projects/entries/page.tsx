@@ -443,7 +443,7 @@ export default function OJProjectsEntriesPage() {
                       <div className="flex items-center justify-end gap-2">
                         {entry.status === 'unbilled' && (
                           <>
-                            <button
+                            <button type="button"
                               onClick={() => openEdit(entry)}
                               disabled={!canEdit}
                               className="text-gray-400 hover:text-blue-600 disabled:opacity-30"
@@ -451,7 +451,7 @@ export default function OJProjectsEntriesPage() {
                             >
                               <Edit2 className="w-4 h-4" />
                             </button>
-                            <button
+                            <button type="button"
                               onClick={() => removeEntry(entry.id)}
                               disabled={!canDelete}
                               className="text-gray-400 hover:text-red-600 disabled:opacity-30"

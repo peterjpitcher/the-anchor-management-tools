@@ -278,7 +278,7 @@ export function ReceiptMobileCard({
                         </div>
                     </div>
                 ) : (
-                    <button onClick={() => startEditing('vendor')} className="text-left hover:text-emerald-600" disabled={!canManageReceipts}>
+                    <button type="button" onClick={() => startEditing('vendor')} className="text-left hover:text-emerald-600" disabled={!canManageReceipts}>
                         {transaction.vendor_name || <span className="text-gray-400">Add vendor</span>}
                         {transaction.vendor_source === 'ai' && <SparklesIcon className="inline h-3 w-3 ml-1 text-blue-500" />}
                     </button>
@@ -299,7 +299,7 @@ export function ReceiptMobileCard({
                         </div>
                     </div>
                 ) : (
-                    <button onClick={() => startEditing('expense')} className="text-left hover:text-emerald-600" disabled={!canManageReceipts}>
+                    <button type="button" onClick={() => startEditing('expense')} className="text-left hover:text-emerald-600" disabled={!canManageReceipts}>
                         {transaction.expense_category || <span className="text-gray-400">Add category</span>}
                          {transaction.expense_category_source === 'ai' && <SparklesIcon className="inline h-3 w-3 ml-1 text-blue-500" />}
                     </button>
@@ -317,7 +317,7 @@ export function ReceiptMobileCard({
                         </div>
                     </div>
                 ) : (
-                    <button onClick={startNoteEdit} className="text-left hover:text-emerald-600 w-full" disabled={!canManageReceipts}>
+                    <button type="button" onClick={startNoteEdit} className="text-left hover:text-emerald-600 w-full" disabled={!canManageReceipts}>
                         {transaction.notes ? transaction.notes.split(' — ').slice(1).join(' — ') || transaction.notes : <span className="text-gray-400 italic">Add note</span>}
                         <PencilSquareIcon className="inline h-3 w-3 ml-1 text-gray-400" />
                     </button>
@@ -331,8 +331,8 @@ export function ReceiptMobileCard({
              
              {transaction.files.map(f => (
                  <div key={f.id} className="inline-flex items-center gap-1 rounded-full border border-gray-200 px-2 py-0.5 bg-white text-[11px]">
-                     <button onClick={() => handleReceiptDownload(f.id)} className="text-emerald-700 truncate max-w-[80px]">{f.file_name || 'Receipt'}</button>
-                     <button onClick={() => handleReceiptDelete(f.id)} className="text-red-500 ml-1">×</button>
+                     <button type="button" onClick={() => handleReceiptDownload(f.id)} className="text-emerald-700 truncate max-w-[80px]">{f.file_name || 'Receipt'}</button>
+                     <button type="button" onClick={() => handleReceiptDelete(f.id)} className="text-red-500 ml-1">×</button>
                  </div>
              ))}
 
