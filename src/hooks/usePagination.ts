@@ -74,8 +74,8 @@ export function usePagination<T>(
 
     try {
       // Build the query
-      let countQuery = supabase.from(tableName).select('*', { count: countMode, head: true })
-      let dataQuery = supabase.from(tableName).select(query?.select || '*')
+      let countQuery = supabase.from(tableName as any).select('*', { count: countMode, head: true }) // tableName is dynamic; Supabase types require a literal union
+      let dataQuery = supabase.from(tableName as any).select(query?.select || '*')
 
       // Apply filters
       if (query?.filters) {
