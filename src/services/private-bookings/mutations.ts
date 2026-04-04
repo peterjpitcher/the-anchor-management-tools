@@ -56,17 +56,7 @@ async function sendCreationSms(booking: any, phone?: string | null): Promise<voi
   const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
   const isShortNotice = diffDays < 7;
 
-  let smsMessage = "";
-
-  if (depositAmount > 0) {
-    if (isShortNotice) {
-      smsMessage = `The Anchor: Hi ${booking.customer_first_name}, thanks for your enquiry for ${eventDateReadable} at The Anchor. As this is a short-notice private booking, we need to secure the deposit of £${formattedDeposit} as soon as possible to confirm the date. Please reply to arrange payment.`;
-    } else {
-      smsMessage = `The Anchor: Hi ${booking.customer_first_name}, thanks for your enquiry for ${eventDateReadable} at The Anchor. We are holding this date for you until ${expiryReadable}. To secure it permanently, a deposit of £${formattedDeposit} is required by this date.`;
-    }
-  } else {
-    smsMessage = `The Anchor: Hi ${booking.customer_first_name}, thanks for your enquiry about private hire at The Anchor on ${eventDateReadable}. We normally require a deposit to secure the date, but we've waived it for you.`;
-  }
+  const smsMessage = `The Anchor: ${booking.customer_first_name}! Your private booking for ${eventDateReadable} is in — we're excited to host you! We'll be in touch with next steps.`;
 
   try {
     const result = await SmsQueueService.queueAndSend({
@@ -509,7 +499,7 @@ export async function updateBooking(id: string, input: UpdatePrivateBookingInput
       day: 'numeric', month: 'long'
     });
 
-    const smsMessage = `The Anchor: Hi ${updatedBooking.customer_first_name}, we've moved your tentative booking to ${eventDateReadable}. We've updated the hold on this date, so your deposit is now due by ${expiryReadable}.`;
+    const smsMessage = `The Anchor: ${updatedBooking.customer_first_name}! Your booking has been moved to ${eventDateReadable}. All sorted on our end!`;
 
     const result = await SmsQueueService.queueAndSend({
       booking_id: updatedBooking.id,
@@ -557,7 +547,7 @@ export async function updateBooking(id: string, input: UpdatePrivateBookingInput
     const firstName =
       updatedBooking.customer_first_name || updatedBooking.customer_name?.split(' ')[0] || 'there';
 
-    const messageBody = `The Anchor: Hi ${firstName}, confirming setup for your event on ${eventDateReadable}. Your vendors/team can access the venue from ${setupTimeReadable}.`;
+    const messageBody = `The Anchor: ${firstName}! Your event on ${eventDateReadable} is nearly here — just a reminder to get any final details to us so we can make it perfect!`;
 
     const result = await SmsQueueService.queueAndSend({
       booking_id: updatedBooking.id,
@@ -622,7 +612,7 @@ export async function updateBooking(id: string, input: UpdatePrivateBookingInput
 
     if (!abortSmsSideEffects && updatedBooking.status === 'confirmed' && !updatedBooking.deposit_paid_date) {
       const eventType = updatedBooking.event_type || 'event';
-      const messageBody = `The Anchor: Hi ${firstName}, your private event booking at The Anchor on ${eventDateReadable} has been confirmed. We look forward to hosting your ${eventType}.`;
+      const messageBody = `The Anchor: ${firstName}! Everything's confirmed for your event on ${eventDateReadable}. We can't wait!`;
 
       const result = await SmsQueueService.queueAndSend({
         booking_id: updatedBooking.id,
@@ -646,7 +636,7 @@ export async function updateBooking(id: string, input: UpdatePrivateBookingInput
     }
 
     if (!abortSmsSideEffects && updatedBooking.status === 'cancelled') {
-      const messageBody = `The Anchor: Hi ${firstName}, your private booking on ${eventDateReadable} has been cancelled.`;
+      const messageBody = `The Anchor: ${firstName}, your booking on ${eventDateReadable} has been cancelled. Hope to see you for something else soon!`;
 
       const result = await SmsQueueService.queueAndSend({
         booking_id: updatedBooking.id,
@@ -670,7 +660,7 @@ export async function updateBooking(id: string, input: UpdatePrivateBookingInput
     }
 
     if (!abortSmsSideEffects && updatedBooking.status === 'completed' && !completedStatusAlreadyMessaged) {
-      const messageBody = `The Anchor: Hi ${firstName}, thank you for choosing The Anchor for your event. We hope you and your guests had a wonderful time. We'd love to welcome you back again soon.`;
+      const messageBody = `The Anchor: ${firstName}! Thanks so much for choosing The Anchor for your event — hope it was everything you wanted!`;
 
       const result = await SmsQueueService.queueAndSend({
         booking_id: updatedBooking.id,
@@ -944,7 +934,7 @@ export async function cancelBooking(id: string, reason: string, performedByUserI
     });
 
     const firstName = booking.customer_first_name || booking.customer_name?.split(' ')[0] || 'there';
-    const smsMessage = `The Anchor: Hi ${firstName}, your private booking on ${eventDate} has been cancelled. Reply to this message if you need help or call 01753 682 707 if you believe this was a mistake.`;
+    const smsMessage = `The Anchor: ${firstName}, your booking on ${eventDate} has been cancelled. Hope to see you for something else soon!`;
 
      
     let smsResult: any
@@ -1088,7 +1078,7 @@ export async function expireBooking(
       day: 'numeric', month: 'long', year: 'numeric'
     });
 
-    const smsMessage = `The Anchor: Hi ${booking.customer_first_name}, the hold on ${eventDate} has now expired and the date has been released. Please contact us if you'd like to re-book.`;
+    const smsMessage = `The Anchor: ${booking.customer_first_name}, your hold on ${eventDate} has been released. No worries — give us a shout if you'd like to rebook!`;
 
      
     let smsResult: any
@@ -1181,7 +1171,7 @@ export async function extendHold(
       ? new Date(booking.event_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })
       : 'your event';
 
-    const smsMessage = `The Anchor: Hi ${booking.customer_first_name}, we've extended your date hold for ${eventDateReadable}. Your deposit is now due by ${expiryReadable}. Please call us if you have any questions.`;
+    const smsMessage = `The Anchor: ${booking.customer_first_name}! Good news — we've extended your hold on ${eventDateReadable}. New deadline: ${expiryReadable}.`;
 
      
     let smsResult: any;
