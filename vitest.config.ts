@@ -13,6 +13,11 @@ export default defineConfig({
       provider: 'v8',
       reporter: ['text', 'html', 'lcov'],
       exclude: ['node_modules/', '.next/', 'tests/', '**/*.config.*'],
+      thresholds: {
+        lines: 42,
+        branches: 34,
+        functions: 52,
+      },
     },
   },
   resolve: {
