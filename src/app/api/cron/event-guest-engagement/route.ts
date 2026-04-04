@@ -12,6 +12,7 @@ import { getGoogleReviewLink } from '@/lib/events/review-link'
 import { recordAnalyticsEvent } from '@/lib/analytics/events'
 import { persistCronRunResult, recoverCronRunLock } from '@/lib/cron-run-results'
 import { extractSmsSafetyInfo } from '@/lib/sms/safety-info'
+import { hasCustomerReviewed } from '@/lib/sms/review-once'
 
 export const maxDuration = 300
 
@@ -55,6 +56,7 @@ type BookingWithRelations = {
   status: string
   review_sms_sent_at?: string | null
   review_window_closes_at?: string | null
+  review_suppressed_at?: string | null
   event: {
     id: string
     name: string
@@ -78,6 +80,7 @@ type TableBookingWithCustomer = {
   booking_type: string | null
   start_datetime: string | null
   review_sms_sent_at?: string | null
+  review_suppressed_at?: string | null
   customer: {
     id: string
     first_name: string | null
@@ -609,6 +612,7 @@ async function loadEventBookingsForEngagement(
       status,
       review_sms_sent_at,
       review_window_closes_at,
+      review_suppressed_at,
       event:events!inner(
         id,
         name,
@@ -625,6 +629,7 @@ async function loadEventBookingsForEngagement(
       )
     `)
     .in('status', ['confirmed'])
+    .is('review_suppressed_at', null)
     .gte('event.start_datetime', windowStartIso)
     .lte('event.start_datetime', windowEndIso)
     .limit(2000)
@@ -656,6 +661,7 @@ async function loadTableBookingsForEngagement(
       booking_type,
       start_datetime,
       review_sms_sent_at,
+      review_suppressed_at,
       customer:customers(
         id,
         first_name,
@@ -664,6 +670,7 @@ async function loadTableBookingsForEngagement(
       )
     `)
     .eq('status', 'confirmed')
+    .is('review_suppressed_at', null)
     .not('start_datetime', 'is', null)
     .gte('start_datetime', windowStartIso)
     .lte('start_datetime', windowEndIso)
@@ -867,7 +874,11 @@ async function processReviewFollowups(
     safety.throwSafetyAbort()
   }
 
-  const result = { sent: 0, skipped: 0 }
+  // Cross-channel review-once check: suppress SMS for customers who have already clicked a review link
+  const eligibleCustomerIds = [...new Set(boundedPastBookings.map((b) => b.customer_id).filter(Boolean))]
+  const alreadyReviewedSet = await hasCustomerReviewed(eligibleCustomerIds)
+
+  const result = { sent: 0, skipped: 0, suppressed: 0 }
 
   for (const booking of boundedPastBookings) {
     const customer = booking.customer
@@ -886,6 +897,21 @@ async function processReviewFollowups(
 
     if (sentSet.has(`${booking.id}:${TEMPLATE_REVIEW_FOLLOWUP}`)) {
       result.skipped += 1
+      continue
+    }
+
+    // Review-once: suppress if this customer has already clicked a review link on any booking
+    if (alreadyReviewedSet.has(booking.customer_id)) {
+      result.suppressed += 1
+      const nowIso = new Date().toISOString()
+      await supabase
+        .from('bookings')
+        .update({ review_suppressed_at: nowIso, updated_at: nowIso })
+        .eq('id', booking.id)
+        .is('review_suppressed_at', null)
+      logger.info('Event review SMS suppressed: customer already reviewed', {
+        metadata: { bookingId: booking.id, customerId: booking.customer_id }
+      })
       continue
     }
 
@@ -1083,7 +1109,11 @@ async function processTableReviewFollowups(
     safety.throwSafetyAbort()
   }
 
-  const result = { sent: 0, skipped: 0 }
+  // Cross-channel review-once check: suppress SMS for customers who have already clicked a review link
+  const tableEligibleCustomerIds = [...new Set(boundedEligibleBookings.map((b) => b.customer_id).filter(Boolean))]
+  const tableAlreadyReviewedSet = await hasCustomerReviewed(tableEligibleCustomerIds)
+
+  const result = { sent: 0, skipped: 0, suppressed: 0 }
 
   for (const booking of boundedEligibleBookings) {
     const customer = booking.customer
@@ -1094,6 +1124,21 @@ async function processTableReviewFollowups(
 
     if (sentSet.has(`${booking.id}:${TEMPLATE_TABLE_REVIEW_FOLLOWUP}`)) {
       result.skipped += 1
+      continue
+    }
+
+    // Review-once: suppress if this customer has already clicked a review link on any booking
+    if (tableAlreadyReviewedSet.has(booking.customer_id)) {
+      result.suppressed += 1
+      const nowIso = new Date().toISOString()
+      await supabase
+        .from('table_bookings')
+        .update({ review_suppressed_at: nowIso, updated_at: nowIso })
+        .eq('id', booking.id)
+        .is('review_suppressed_at', null)
+      logger.info('Table review SMS suppressed: customer already reviewed', {
+        metadata: { tableBookingId: booking.id, customerId: booking.customer_id }
+      })
       continue
     }
 
