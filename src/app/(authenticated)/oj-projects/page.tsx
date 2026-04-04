@@ -423,7 +423,7 @@ export default function OJProjectsDashboardPage() {
 
   const selectedProjectBudgetHours = useMemo(() => {
     if (!selectedProject) return null
-    const raw = (selectedProject as any)?.budget_hours
+    const raw = selectedProject?.budget_hours
     const num = raw != null ? Number(raw) : NaN
     if (!Number.isFinite(num) || num <= 0) return null
     return roundCurrency(num)
@@ -453,7 +453,7 @@ export default function OJProjectsDashboardPage() {
     }
 
     const hours = roundCurrency(minutes / 60)
-    const budgetRaw = (selectedVendorRetainerProject as any)?.budget_hours ?? null
+    const budgetRaw = selectedVendorRetainerProject?.budget_hours ?? null
     const budgetNum = budgetRaw != null ? Number(budgetRaw) : NaN
     const budgetHours = Number.isFinite(budgetNum) && budgetNum > 0 ? roundCurrency(budgetNum) : null
 
@@ -513,7 +513,7 @@ export default function OJProjectsDashboardPage() {
     const entryPeriod = entryDate.slice(0, 7)
     const current = projectId ? projects.find((p) => p.id === projectId) || null : null
     const shouldAutoSelect =
-      !projectId || (!!current?.is_retainer && String((current as any)?.retainer_period_yyyymm || '') !== entryPeriod)
+      !projectId || (!!current?.is_retainer && String(current?.retainer_period_yyyymm || '') !== entryPeriod)
 
     if (!shouldAutoSelect) return
 
@@ -557,8 +557,8 @@ export default function OJProjectsDashboardPage() {
 
       if (!emailStatusRes.error) {
         setEmailStatus({
-          configured: !!(emailStatusRes as any).configured,
-          senderEmail: (emailStatusRes as any).senderEmail ?? null,
+          configured: !!emailStatusRes.configured,
+          senderEmail: emailStatusRes.senderEmail ?? null,
         })
       } else {
         setEmailStatus(null)

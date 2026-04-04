@@ -22,13 +22,13 @@ function toPairKey(input: SpaceAreaLink): string {
 
 async function loadSpaceAreaLinkData(supabase: any) {
   const [spaceResult, areaResult, linkResult] = await Promise.all([
-    (supabase.from('venue_spaces') as any)
+    supabase.from('venue_spaces')
       .select('id, name, active')
       .order('name', { ascending: true }),
-    (supabase.from('table_areas') as any)
+    supabase.from('table_areas')
       .select('id, name')
       .order('name', { ascending: true }),
-    (supabase.from('venue_space_table_areas') as any)
+    supabase.from('venue_space_table_areas')
       .select('venue_space_id, table_area_id')
       .order('venue_space_id', { ascending: true })
       .order('table_area_id', { ascending: true })
@@ -47,9 +47,9 @@ async function loadSpaceAreaLinkData(supabase: any) {
   }
 
   return {
-    venue_spaces: (spaceResult.data || []) as any[],
-    areas: (areaResult.data || []) as any[],
-    space_area_links: (linkResult.data || []) as any[]
+    venue_spaces: (spaceResult.data || []),
+    areas: (areaResult.data || []),
+    space_area_links: (linkResult.data || [])
   }
 }
 
@@ -108,7 +108,7 @@ export async function PUT(request: NextRequest) {
   const desiredAreaIds = new Set(desiredRows.map((row) => row.table_area_id))
 
   if (desiredSpaceIds.size > 0) {
-    const { data: spaces, error: spaceError } = await (auth.supabase.from('venue_spaces') as any)
+    const { data: spaces, error: spaceError } = await auth.supabase.from('venue_spaces')
       .select('id')
       .in('id', Array.from(desiredSpaceIds))
 
@@ -116,7 +116,7 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ error: 'Failed to validate private-booking spaces' }, { status: 500 })
     }
 
-    const knownIds = new Set(((spaces || []) as any[]).map((row) => row.id as string))
+    const knownIds = new Set((spaces || []).map((row) => row.id as string))
     const unknownSpace = Array.from(desiredSpaceIds).find((id) => !knownIds.has(id))
     if (unknownSpace) {
       return NextResponse.json(
@@ -127,7 +127,7 @@ export async function PUT(request: NextRequest) {
   }
 
   if (desiredAreaIds.size > 0) {
-    const { data: areas, error: areaError } = await (auth.supabase.from('table_areas') as any)
+    const { data: areas, error: areaError } = await auth.supabase.from('table_areas')
       .select('id')
       .in('id', Array.from(desiredAreaIds))
 
@@ -135,7 +135,7 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ error: 'Failed to validate table areas' }, { status: 500 })
     }
 
-    const knownIds = new Set(((areas || []) as any[]).map((row) => row.id as string))
+    const knownIds = new Set((areas || []).map((row) => row.id as string))
     const unknownArea = Array.from(desiredAreaIds).find((id) => !knownIds.has(id))
     if (unknownArea) {
       return NextResponse.json(
@@ -145,7 +145,7 @@ export async function PUT(request: NextRequest) {
     }
   }
 
-  const { data: existingRows, error: existingError } = await (auth.supabase.from('venue_space_table_areas') as any)
+  const { data: existingRows, error: existingError } = await auth.supabase.from('venue_space_table_areas')
     .select('venue_space_id, table_area_id')
 
   if (existingError) {
@@ -153,7 +153,7 @@ export async function PUT(request: NextRequest) {
   }
 
   const existingMap = new Map<string, SpaceAreaLink>()
-  for (const row of (existingRows || []) as any[]) {
+  for (const row of (existingRows || [])) {
     const pair: SpaceAreaLink = {
       venue_space_id: row.venue_space_id,
       table_area_id: row.table_area_id
@@ -165,7 +165,7 @@ export async function PUT(request: NextRequest) {
   const toDelete = Array.from(existingMap.values()).filter((row) => !desiredMap.has(toPairKey(row)))
 
   if (toInsert.length > 0) {
-    const { error: insertError } = await (auth.supabase.from('venue_space_table_areas') as any)
+    const { error: insertError } = await auth.supabase.from('venue_space_table_areas')
       .insert(
         toInsert.map((row) => ({
           venue_space_id: row.venue_space_id,
@@ -183,7 +183,7 @@ export async function PUT(request: NextRequest) {
       .map((row) => `and(venue_space_id.eq.${row.venue_space_id},table_area_id.eq.${row.table_area_id})`)
       .join(',')
 
-    const { error: deleteError } = await (auth.supabase.from('venue_space_table_areas') as any)
+    const { error: deleteError } = await auth.supabase.from('venue_space_table_areas')
       .delete()
       .or(orFilter)
 

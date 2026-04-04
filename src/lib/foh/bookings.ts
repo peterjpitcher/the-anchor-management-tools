@@ -64,7 +64,7 @@ export async function getTableBookingForFoh(
   supabase: SupabaseClient<any, 'public', any>,
   bookingId: string
 ): Promise<TableBookingForFoh | null> {
-  const { data, error } = await (supabase.from('table_bookings') as any)
+  const { data, error } = await supabase.from('table_bookings')
     .select(
       'id, customer_id, booking_reference, status, booking_type, payment_status, party_size, committed_party_size, booking_date, booking_time, duration_minutes, start_datetime, end_datetime'
     )
@@ -112,7 +112,7 @@ export async function createChargeRequestForBooking(
 
   const isPerHeadCappedType = ['late_cancel', 'no_show', 'reduction_fee'].includes(input.type)
   if (isPerHeadCappedType) {
-    const { data: bookingRow, error: bookingLookupError } = await (supabase.from('table_bookings') as any)
+    const { data: bookingRow, error: bookingLookupError } = await supabase.from('table_bookings')
       .select('committed_party_size, party_size')
       .eq('id', input.bookingId)
       .maybeSingle()
@@ -132,7 +132,7 @@ export async function createChargeRequestForBooking(
     const feePerHead = await getFeePerHead(supabase)
     const totalCap = Number((committedPartySize * feePerHead).toFixed(2))
 
-    const { data: existingRows, error: existingChargeLookupError } = await (supabase.from('charge_requests') as any)
+    const { data: existingRows, error: existingChargeLookupError } = await supabase.from('charge_requests')
       .select('amount, manager_decision, charge_status, type')
       .eq('table_booking_id', input.bookingId)
       .in('type', ['late_cancel', 'no_show', 'reduction_fee'])
@@ -141,7 +141,7 @@ export async function createChargeRequestForBooking(
       throw new Error(`Failed to load existing capped charge requests: ${existingChargeLookupError.message}`)
     }
 
-    const alreadyAllocated = ((existingRows || []) as any[])
+    const alreadyAllocated = (existingRows || [])
       .filter((row) => row.manager_decision !== 'waived' && row.charge_status !== 'waived')
       .reduce((sum, row) => sum + Number(row.amount || 0), 0)
 
@@ -160,7 +160,7 @@ export async function createChargeRequestForBooking(
     }
   }
 
-  const { data, error } = await (supabase.from('charge_requests') as any)
+  const { data, error } = await supabase.from('charge_requests')
     .insert({
       table_booking_id: input.bookingId,
       type: input.type,
@@ -204,7 +204,7 @@ export async function createChargeRequestForBooking(
     }
   }
 
-  const chargeRequestId = (data as any)?.id || null
+  const chargeRequestId = data?.id || null
 
   if (chargeRequestId) {
     const appBaseUrl = process.env.NEXT_PUBLIC_APP_URL

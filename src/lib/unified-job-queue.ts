@@ -1030,8 +1030,8 @@ export class UnifiedJobQueue {
             metadata: Object.keys(baseMetadata).length > 0 ? baseMetadata : undefined
           })
 
-          const code = (result as any)?.code
-          const logFailure = (result as any)?.logFailure === true
+          const code = result?.code
+          const logFailure = result?.logFailure === true
 
           if (logFailure || code === 'logging_failed') {
             throw new FatalSmsSafetyError({

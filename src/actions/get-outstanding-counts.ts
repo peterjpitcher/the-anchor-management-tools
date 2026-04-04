@@ -87,12 +87,12 @@ export async function getOutstandingCounts(): Promise<OutstandingCounts> {
       .lte('session_date', format(subDays(new Date(), 1), 'yyyy-MM-dd')),
 
     // Table Bookings: unresolved booking states
-    (supabase.from('table_bookings') as any)
+    supabase.from('table_bookings')
       .select('*', { count: 'exact', head: true })
       .in('status', ['pending_payment']),
 
     // Table Bookings: manager approvals still pending for charge requests
-    (supabase.from('charge_requests') as any)
+    supabase.from('charge_requests')
       .select('*', { count: 'exact', head: true })
       .eq('charge_status', 'pending')
       .is('manager_decision', null)

@@ -4,6 +4,14 @@ import { Job, JobType, JobPayload, JobOptions } from './job-types'
 import { logger } from './logger'
 import { ensureReplyInstruction } from '@/lib/sms/support'
 
+/** Safely extract extended SMS result fields (code, logFailure, error, etc.). */
+function smsResultField(obj: unknown, key: string): unknown {
+  if (obj && typeof obj === 'object' && key in obj) {
+    return (obj as Record<string, unknown>)[key]
+  }
+  return undefined
+}
+
 const LEGACY_JOB_TYPES: JobType[] = [
   'sync_customer_stats',
   'cleanup_old_messages',
@@ -296,7 +304,7 @@ export class JobQueue {
   }
 
   private async processSendSms(payload: JobPayload['send_sms'], jobId?: string) {
-    const rawCustomerId = (payload as any)?.customerId ?? (payload as any)?.customer_id
+    const rawCustomerId = payload.customerId ?? payload.customer_id
     const customerId =
       typeof rawCustomerId === 'string' && rawCustomerId.trim().length > 0
         ? rawCustomerId.trim()
@@ -334,26 +342,26 @@ export class JobQueue {
       metadata
     })
 
-    if ((result as any)?.logFailure === true || (result as any)?.code === 'logging_failed') {
+    if (smsResultField(result, 'logFailure') === true || smsResultField(result, 'code') === 'logging_failed') {
       throw new Error('SMS sent but message persistence failed (logging_failed)')
     }
 
     if (!result.success) {
-      throw new Error((result as any).error || 'Failed to send SMS')
+      throw new Error((smsResultField(result, 'error') as string) || 'Failed to send SMS')
     }
 
     if (!result.sid) {
       // `sendSMS` can return success without a SID when it suppresses duplicates or defers delivery.
-      const suppressed = (result as any)?.suppressed === true
-      const deferred = (result as any)?.deferred === true
+      const suppressed = smsResultField(result, 'suppressed') === true
+      const deferred = smsResultField(result, 'deferred') === true
       if (suppressed || deferred) {
         return {
           success: true,
           sid: null,
           suppressed,
           deferred,
-          status: (result as any)?.status,
-          scheduledFor: (result as any)?.scheduledFor,
+          status: smsResultField(result, 'status') as string | undefined,
+          scheduledFor: smsResultField(result, 'scheduledFor') as string | undefined,
         }
       }
 

@@ -79,7 +79,7 @@ async function insertShortLinkWithRetries(event: EventRecord, payload: EventMark
       .single();
 
     if (error) {
-      if ((error as any).code === '23505') {
+      if (error.code === '23505') {
         continue;
       }
       throw error;

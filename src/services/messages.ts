@@ -113,8 +113,8 @@ export class MessageService {
       }
     });
 
-    const smsCode = (result as any)?.code;
-    const smsLogFailure = (result as any)?.logFailure === true || smsCode === 'logging_failed';
+    const smsCode = result?.code;
+    const smsLogFailure = result?.logFailure === true || smsCode === 'logging_failed';
 
     if (!result.success) {
       return {

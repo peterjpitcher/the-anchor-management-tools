@@ -203,17 +203,17 @@ export async function POST(request: NextRequest) {
                 });
             }
 
-            if ((booking as any)?.customer_id) {
+            if (booking?.customer_id) {
                 await recordPublicPrivateBookingAnalyticsSafe(supabase, {
-                    customerId: (booking as any).customer_id,
-                    privateBookingId: (booking as any).id,
+                    customerId: booking.customer_id,
+                    privateBookingId: booking.id,
                     eventType: 'private_booking_enquiry_created',
                     metadata: {
                         source: 'brand_site'
                     }
                 }, {
-                    privateBookingId: (booking as any).id,
-                    customerId: (booking as any).customer_id
+                    privateBookingId: booking.id,
+                    customerId: booking.customer_id
                 });
             }
 

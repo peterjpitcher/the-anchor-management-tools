@@ -171,7 +171,7 @@ export async function POST(request: NextRequest) {
         const responsePayload = {
           success: true,
           id: booking.id,
-          reference: (booking as any)?.booking_reference || booking.id
+          reference: booking?.booking_reference || booking.id
         };
         try {
           await persistIdempotencyResponse(supabase, idempotencyKey, requestHash, responsePayload);

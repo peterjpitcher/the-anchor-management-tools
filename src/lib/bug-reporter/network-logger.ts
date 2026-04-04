@@ -9,6 +9,17 @@ export interface NetworkRequest {
   responseHeaders?: Record<string, string>;
 }
 
+/** Tracking metadata attached to intercepted XMLHttpRequests. */
+interface XhrMeta {
+  method: string;
+  url: string;
+  startTime: number;
+  requestHeaders: Record<string, string>;
+}
+
+/** WeakMap to store per-XHR tracking data without mutating the native object. */
+const xhrMeta = new WeakMap<XMLHttpRequest, XhrMeta>();
+
 export class NetworkLogger {
   private requests: NetworkRequest[] = [];
   private maxRequests = 500;
@@ -73,37 +84,36 @@ export class NetworkLogger {
       username?: string | null,
       password?: string | null
     ) {
-      (this as any)._method = method;
-      (this as any)._url = url;
-      (this as any)._startTime = Date.now();
-      (this as any)._requestHeaders = {};
-      
+      xhrMeta.set(this, { method, url, startTime: Date.now(), requestHeaders: {} });
+
       // Store reference to setRequestHeader to capture headers
       const originalSetRequestHeader = this.setRequestHeader;
       this.setRequestHeader = function(name: string, value: string) {
-        (this as any)._requestHeaders[name] = value;
+        const meta = xhrMeta.get(this);
+        if (meta) meta.requestHeaders[name] = value;
         return originalSetRequestHeader.apply(this, [name, value]);
       };
-      
+
       return self.originalXHROpen.call(this, method, url, async ?? true, username, password);
     };
-    
+
     XMLHttpRequest.prototype.send = function(body?: Document | XMLHttpRequestBodyInit | null) {
       // eslint-disable-next-line @typescript-eslint/no-this-alias
       const xhr = this;
-      
+
       xhr.addEventListener('loadend', function() {
+        const meta = xhrMeta.get(xhr);
         self.logRequest({
-          url: (xhr as any)._url,
-          method: (xhr as any)._method,
+          url: meta?.url ?? '',
+          method: meta?.method ?? 'UNKNOWN',
           status: xhr.status,
-          duration: Date.now() - (xhr as any)._startTime,
-          timestamp: (xhr as any)._startTime,
-          requestHeaders: (xhr as any)._requestHeaders,
+          duration: Date.now() - (meta?.startTime ?? Date.now()),
+          timestamp: meta?.startTime ?? Date.now(),
+          requestHeaders: meta?.requestHeaders,
           error: xhr.status === 0 ? 'Network error' : undefined,
         });
       });
-      
+
       return self.originalXHRSend.call(this, body);
     };
   }

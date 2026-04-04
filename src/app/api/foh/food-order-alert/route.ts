@@ -3,6 +3,7 @@ import { requireFohPermission } from '@/lib/foh/api-auth'
 import { logger } from '@/lib/logger'
 import { sendSMS } from '@/lib/twilio'
 import { createRateLimiter } from '@/lib/rate-limit'
+import { extractSmsSafetyInfo } from '@/lib/sms/safety-info'
 
 const FOOD_ORDER_ALERT_NUMBER = '+447956315214'
 const FOOD_ORDER_ALERT_MESSAGE = 'Food order'
@@ -51,8 +52,8 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Failed to send food order alert' }, { status: 500 })
   }
 
-  const code = typeof (smsResult as any)?.code === 'string' ? ((smsResult as any).code as string) : null
-  const logFailure = (smsResult as any)?.logFailure === true || code === 'logging_failed'
+  const { code } = extractSmsSafetyInfo(smsResult)
+  const logFailure = extractSmsSafetyInfo(smsResult).logFailure
 
   if (logFailure) {
     logger.error('FOH food order SMS alert sent but outbound message logging failed', {

@@ -61,7 +61,7 @@ export async function POST(
   const appBaseUrl = (process.env.NEXT_PUBLIC_APP_URL || request.nextUrl.origin).replace(/\/+$/, '')
 
   // Read current booking state before the update so we can detect threshold crossings
-  const { data: currentBooking, error: fetchError } = await (auth.supabase.from('table_bookings') as any)
+  const { data: currentBooking, error: fetchError } = await auth.supabase.from('table_bookings')
     .select('id, party_size, status, payment_status, customer_id, booking_date, booking_reference, booking_type, start_datetime')
     .eq('id', id)
     .maybeSingle()
@@ -106,7 +106,7 @@ export async function POST(
       const isSundayLunch = currentBooking.booking_type === 'sunday_lunch'
 
       // 1. Move booking to pending_payment
-      await (auth.supabase.from('table_bookings') as any)
+      await auth.supabase.from('table_bookings')
         .update({ status: 'pending_payment', payment_status: 'pending' })
         .eq('id', id)
 
@@ -184,7 +184,7 @@ export async function POST(
 
     // Case 2: Party size decreased below threshold while booking is pending_payment — confirm it
     if (wasDepositRequired && !isNowDepositRequired && currentStatus === 'pending_payment') {
-      await (auth.supabase.from('table_bookings') as any)
+      await auth.supabase.from('table_bookings')
         .update({ status: 'confirmed', payment_status: null })
         .eq('id', id)
     }

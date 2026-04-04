@@ -113,7 +113,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
         .maybeSingle()
 
       if (tableBooking) {
-        const { error: tableBookingUpdateError } = await (supabase.from('table_bookings') as any)
+        const { error: tableBookingUpdateError } = await supabase.from('table_bookings')
           .update({
             status: tableBooking.status === 'completed' ? tableBooking.status : 'review_clicked',
             review_clicked_at: nowIso,

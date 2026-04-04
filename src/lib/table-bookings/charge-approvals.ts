@@ -206,7 +206,7 @@ export async function sendManagerChargeApprovalEmail(
     appBaseUrl?: string
   }
 ): Promise<{ sent: boolean; approvalUrl?: string | null; error?: string }> {
-  const { data: chargeRequest, error: chargeError } = await (supabase.from('charge_requests') as any)
+  const { data: chargeRequest, error: chargeError } = await supabase.from('charge_requests')
     .select('id, type, amount, currency, table_booking_id, manager_decision, charge_status')
     .eq('id', input.chargeRequestId)
     .maybeSingle()
@@ -225,7 +225,7 @@ export async function sendManagerChargeApprovalEmail(
     }
   }
 
-  const { data: booking, error: bookingError } = await (supabase.from('table_bookings') as any)
+  const { data: booking, error: bookingError } = await supabase.from('table_bookings')
     .select('id, customer_id, booking_reference, start_datetime, party_size, committed_party_size')
     .eq('id', chargeRequest.table_booking_id)
     .maybeSingle()
@@ -237,7 +237,7 @@ export async function sendManagerChargeApprovalEmail(
     }
   }
 
-  const { data: customer } = await (supabase.from('customers') as any)
+  const { data: customer } = await supabase.from('customers')
     .select('id, first_name, last_name, mobile_number, mobile_e164')
     .eq('id', booking.customer_id)
     .maybeSingle()
@@ -345,7 +345,7 @@ export async function attemptApprovedChargeFromDecision(
 
   if (!isStripeConfigured()) {
     const errorMessage = 'Stripe is not configured'
-    const { data: failedChargeRequest, error: chargeRequestUpdateError } = await (supabase.from('charge_requests') as any)
+    const { data: failedChargeRequest, error: chargeRequestUpdateError } = await supabase.from('charge_requests')
       .update({
         charge_status: 'failed',
         updated_at: nowIso,
@@ -366,7 +366,7 @@ export async function attemptApprovedChargeFromDecision(
       throw new Error('Charge request not found while persisting failure state')
     }
 
-    const { error: paymentInsertError } = await (supabase.from('payments') as any).insert({
+    const { error: paymentInsertError } = await supabase.from('payments').insert({
       table_booking_id: tableBookingId,
       charge_type: paymentChargeType,
       amount,
@@ -404,7 +404,7 @@ export async function attemptApprovedChargeFromDecision(
   if (!stripeCustomerId || !stripePaymentMethodId) {
     const errorMessage = 'No card on file for this booking'
 
-    const { data: failedChargeRequest, error: chargeRequestUpdateError } = await (supabase.from('charge_requests') as any)
+    const { data: failedChargeRequest, error: chargeRequestUpdateError } = await supabase.from('charge_requests')
       .update({
         charge_status: 'failed',
         updated_at: nowIso,
@@ -427,7 +427,7 @@ export async function attemptApprovedChargeFromDecision(
       throw new Error('Charge request not found while persisting failure state')
     }
 
-    const { error: paymentInsertError } = await (supabase.from('payments') as any).insert({
+    const { error: paymentInsertError } = await supabase.from('payments').insert({
       table_booking_id: tableBookingId,
       charge_type: paymentChargeType,
       amount,
@@ -461,7 +461,7 @@ export async function attemptApprovedChargeFromDecision(
 
   // Idempotency guard: if a non-failed Stripe payment intent already exists for
   // this charge request, return it instead of creating a duplicate charge.
-  const { data: existingRequest, error: existingRequestError } = await (supabase.from('charge_requests') as any)
+  const { data: existingRequest, error: existingRequestError } = await supabase.from('charge_requests')
     .select('stripe_payment_intent_id, charge_status')
     .eq('id', chargeRequestId)
     .maybeSingle()
@@ -510,7 +510,7 @@ export async function attemptApprovedChargeFromDecision(
 
     const mappedStatus = mapPaymentIntentStatus(stripeResult.status)
 
-    const { data: updatedChargeRequest, error: chargeRequestUpdateError } = await (supabase.from('charge_requests') as any)
+    const { data: updatedChargeRequest, error: chargeRequestUpdateError } = await supabase.from('charge_requests')
       .update({
         charge_status: mappedStatus,
         stripe_payment_intent_id: stripeResult.id,
@@ -533,7 +533,7 @@ export async function attemptApprovedChargeFromDecision(
       throw new Error('Charge request not found while persisting Stripe attempt state')
     }
 
-    const { error: paymentInsertError } = await (supabase.from('payments') as any).insert({
+    const { error: paymentInsertError } = await supabase.from('payments').insert({
       table_booking_id: tableBookingId,
       charge_type: paymentChargeType,
       stripe_payment_intent_id: stripeResult.id,
@@ -594,7 +594,7 @@ export async function attemptApprovedChargeFromDecision(
       }
     })
 
-    const { data: fallbackChargeRequest, error: chargeRequestUpdateError } = await (supabase.from('charge_requests') as any)
+    const { data: fallbackChargeRequest, error: chargeRequestUpdateError } = await supabase.from('charge_requests')
       .update({
         charge_status: fallbackStatus,
         stripe_payment_intent_id: attemptedStripeIntent?.id ?? null,
@@ -624,7 +624,7 @@ export async function attemptApprovedChargeFromDecision(
       })
     }
 
-    const { error: paymentInsertError } = await (supabase.from('payments') as any).insert({
+    const { error: paymentInsertError } = await supabase.from('payments').insert({
       table_booking_id: tableBookingId,
       charge_type: paymentChargeType,
       stripe_payment_intent_id: attemptedStripeIntent?.id ?? null,

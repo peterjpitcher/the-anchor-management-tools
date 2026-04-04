@@ -42,7 +42,7 @@ export async function GET(request: NextRequest) {
   const todayIso = getLondonDateIso()
   const nowMs = Date.now()
 
-  const { data, error } = await (auth.supabase.from('events') as any)
+  const { data, error } = await auth.supabase.from('events')
     .select('id, name, date, time, start_datetime, event_status')
     .eq('event_status', 'scheduled')
     .gte('date', todayIso)

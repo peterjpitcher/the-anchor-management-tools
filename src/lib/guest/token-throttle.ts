@@ -151,7 +151,7 @@ export async function checkGuestTokenThrottle(input: GuestTokenThrottleInput): P
     const supabase = createAdminClient()
     const windowStartMs = nowMs - windowMs
 
-    const { data: row, error: fetchError } = await (supabase.from('rate_limits') as any)
+    const { data: row, error: fetchError } = await supabase.from('rate_limits')
       .select('id, requests')
       .eq('key', key)
       .maybeSingle()
@@ -164,7 +164,7 @@ export async function checkGuestTokenThrottle(input: GuestTokenThrottleInput): P
     validRequests.push({ timestamp: nowMs })
 
     if (row?.id) {
-      const { data: updatedRow, error: updateError } = await (supabase.from('rate_limits') as any)
+      const { data: updatedRow, error: updateError } = await supabase.from('rate_limits')
         .update({
           requests: validRequests,
           window_ms: windowMs,
@@ -182,7 +182,7 @@ export async function checkGuestTokenThrottle(input: GuestTokenThrottleInput): P
         throw new Error('rate_limits row missing during throttle update')
       }
     } else {
-      const { error: insertError } = await (supabase.from('rate_limits') as any)
+      const { error: insertError } = await supabase.from('rate_limits')
         .insert({
           key,
           requests: validRequests,
@@ -194,7 +194,7 @@ export async function checkGuestTokenThrottle(input: GuestTokenThrottleInput): P
 
       if (insertError) {
         if ((insertError as any)?.code === '23505') {
-          const { data: retryRow, error: retryFetchError } = await (supabase.from('rate_limits') as any)
+          const { data: retryRow, error: retryFetchError } = await supabase.from('rate_limits')
             .select('id, requests')
             .eq('key', key)
             .maybeSingle()
@@ -206,7 +206,7 @@ export async function checkGuestTokenThrottle(input: GuestTokenThrottleInput): P
           const retryValid = normalizeRequestTimestamps(retryRow.requests, windowStartMs)
           retryValid.push({ timestamp: nowMs })
 
-          const { data: retryUpdatedRow, error: retryUpdateError } = await (supabase.from('rate_limits') as any)
+          const { data: retryUpdatedRow, error: retryUpdateError } = await supabase.from('rate_limits')
             .update({
               requests: retryValid,
               window_ms: windowMs,

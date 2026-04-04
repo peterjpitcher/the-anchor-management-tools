@@ -14,6 +14,7 @@ import {
 } from '@/lib/payments/stripe'
 import { logger } from '@/lib/logger'
 import { AuditService } from '@/services/audit'
+import { extractSmsSafetyInfo } from '@/lib/sms/safety-info'
 
 const DEPOSIT_PER_PERSON_GBP = 10
 
@@ -110,8 +111,7 @@ type CustomerNotificationRow = {
 export const MANAGER_TABLE_BOOKING_EMAIL = 'manager@the-anchor.pub'
 
 function normalizeThrownSmsSafety(error: unknown): { code: string; logFailure: boolean } {
-  const thrownCode = typeof (error as any)?.code === 'string' ? (error as any).code : null
-  const thrownLogFailure = (error as any)?.logFailure === true || thrownCode === 'logging_failed'
+  const { code: thrownCode, logFailure: thrownLogFailure } = extractSmsSafetyInfo(error)
 
   if (thrownLogFailure) {
     return {
@@ -274,7 +274,7 @@ export async function sendManagerTableBookingCreatedEmailIfAllowed(
     }
   }
 
-  const { data: bookingRaw, error: bookingError } = await (supabase.from('table_bookings') as any)
+  const { data: bookingRaw, error: bookingError } = await supabase.from('table_bookings')
     .select(
       `
         id,
@@ -441,7 +441,7 @@ export async function getTablePaymentPreviewByRawToken(
     return { state: 'blocked', reason: 'booking_not_found' }
   }
 
-  const { data: booking, error: bookingError } = await (supabase.from('table_bookings') as any)
+  const { data: booking, error: bookingError } = await supabase.from('table_bookings')
     .select(`
       id,
       customer_id,

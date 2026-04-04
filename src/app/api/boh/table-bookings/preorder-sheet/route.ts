@@ -495,7 +495,7 @@ export async function GET(request: NextRequest) {
   const supabase = auth.supabase
 
   // Fetch bookings for the day — only sunday_lunch or any with pre-orders
-  const { data: bookingRows, error: bookingsError } = await (supabase.from('table_bookings') as any)
+  const { data: bookingRows, error: bookingsError } = await supabase.from('table_bookings')
     .select(
       'id, booking_reference, booking_date, booking_time, party_size, status, special_requirements, start_datetime, booking_type, customer:customers!table_bookings_customer_id_fkey(first_name, last_name)'
     )
@@ -507,7 +507,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Failed to load bookings' }, { status: 500 })
   }
 
-  const rows = (bookingRows || []) as any[]
+  const rows = (bookingRows || [])
 
   if (rows.length === 0) {
     // Generate empty PDF
@@ -526,28 +526,28 @@ export async function GET(request: NextRequest) {
 
   // Fetch pre-order items and table assignments in parallel
   const [itemsResult, assignmentsResult] = await Promise.all([
-    (supabase.from('table_booking_items') as any)
+    supabase.from('table_booking_items')
       .select('booking_id, custom_item_name, quantity, item_type')
       .in('booking_id', bookingIds)
       .not('menu_dish_id', 'is', null),
-    (supabase.from('booking_table_assignments') as any)
+    supabase.from('booking_table_assignments')
       .select('table_booking_id, table_id')
       .in('table_booking_id', bookingIds),
   ])
 
   // Build table name map
   const tableIdSet = new Set<string>()
-  for (const row of (assignmentsResult.data || []) as any[]) {
+  for (const row of (assignmentsResult.data || [])) {
     if (typeof row.table_id === 'string') tableIdSet.add(row.table_id)
   }
 
   const tableNameById = new Map<string, string>()
   if (tableIdSet.size > 0) {
-    const { data: tableRows } = await (supabase.from('tables') as any)
+    const { data: tableRows } = await supabase.from('tables')
       .select('id, name, table_number')
       .in('id', Array.from(tableIdSet))
 
-    for (const row of (tableRows || []) as any[]) {
+    for (const row of (tableRows || [])) {
       if (typeof row.id === 'string') {
         tableNameById.set(row.id, row.name || row.table_number || 'Unknown')
       }
@@ -556,7 +556,7 @@ export async function GET(request: NextRequest) {
 
   // Group items and assignments by booking
   const itemsByBooking = new Map<string, PreorderItem[]>()
-  for (const item of (itemsResult.data || []) as any[]) {
+  for (const item of (itemsResult.data || [])) {
     const id = item.booking_id as string
     if (!itemsByBooking.has(id)) itemsByBooking.set(id, [])
     itemsByBooking.get(id)!.push({
@@ -567,7 +567,7 @@ export async function GET(request: NextRequest) {
   }
 
   const tablesByBooking = new Map<string, string[]>()
-  for (const row of (assignmentsResult.data || []) as any[]) {
+  for (const row of (assignmentsResult.data || [])) {
     const id = row.table_booking_id as string
     if (!tablesByBooking.has(id)) tablesByBooking.set(id, [])
     const name = tableNameById.get(row.table_id) ?? 'Unknown'

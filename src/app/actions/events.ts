@@ -423,7 +423,7 @@ async function rollbackEventBookingForTableFailure(
   const rollbackErrors: string[] = []
 
   const [bookingCancelResult, holdReleaseResult] = await Promise.all([
-    (supabase.from('bookings') as any)
+    supabase.from('bookings')
       .update({
         status: 'cancelled',
         cancelled_at: nowIso,
@@ -433,7 +433,7 @@ async function rollbackEventBookingForTableFailure(
       .eq('id', bookingId)
       .select('id')
       .maybeSingle(),
-    (supabase.from('booking_holds') as any)
+    supabase.from('booking_holds')
       .update({
         status: 'released',
         released_at: nowIso,
@@ -461,7 +461,7 @@ async function rollbackEventBookingForTableFailure(
     rollbackErrors.push('payment_hold_release:mutation_result_unavailable')
   } else if (holdReleaseResult.data.length === 0) {
     const { data: remainingActiveHolds, error: remainingActiveHoldsError } = await (
-      supabase.from('booking_holds') as any
+      supabase.from('booking_holds')
     )
       .select('id')
       .eq('event_booking_id', bookingId)
@@ -539,7 +539,7 @@ export async function createEventManualBooking(input: {
       return { error: 'Event not found.' }
     }
 
-    const bookingMode = normalizeEventBookingMode((eventRow as any).booking_mode)
+    const bookingMode = normalizeEventBookingMode(eventRow.booking_mode)
 
     const { data: bookingRpcRaw, error: bookingRpcError } = await supabase.rpc('create_event_booking_v05', {
       p_event_id: parsed.data.eventId,
@@ -692,7 +692,7 @@ export async function createEventManualBooking(input: {
             buildEventBookingCreatedSms({
               state,
               firstName: getSmartFirstName(parsed.data.firstName),
-              eventName: (eventRow as any).name || 'your event',
+              eventName: eventRow.name || 'your event',
               seats: parsed.data.seats,
               eventStartText: formatEventDateTimeForSms({
                 startDatetime: bookingResult.event_start_datetime ?? null
@@ -759,7 +759,7 @@ export async function createEventManualBooking(input: {
         eventBookingId: bookingId || undefined,
         metadata: {
           event_id: parsed.data.eventId,
-          event_name: (eventRow as any).name || null,
+          event_name: eventRow.name || null,
           seats: parsed.data.seats,
           state,
           source: 'admin',
@@ -946,7 +946,7 @@ export async function updateEventManualBookingSeats(input: {
 
     const supabase = createAdminClient()
 
-    const { data: bookingRow, error: bookingError } = await (supabase.from('bookings') as any)
+    const { data: bookingRow, error: bookingError } = await supabase.from('bookings')
       .select('id, event_id')
       .eq('id', parsed.data.bookingId)
       .maybeSingle()
@@ -984,7 +984,7 @@ export async function updateEventManualBookingSeats(input: {
     const newSeats = Math.max(1, Number(updateResult.new_seats ?? parsed.data.seats))
     const delta = Number(updateResult.delta ?? (newSeats - oldSeats))
 
-    const tableSyncPromise = (supabase.from('table_bookings') as any)
+    const tableSyncPromise = supabase.from('table_bookings')
       .update({
         party_size: newSeats,
         committed_party_size: newSeats,
@@ -1045,7 +1045,7 @@ export async function updateEventManualBookingSeats(input: {
         const {
           data: remainingActiveLinkedBookings,
           error: remainingActiveLinkedBookingsError
-        } = await (supabase.from('table_bookings') as any)
+        } = await supabase.from('table_bookings')
           .select('id')
           .eq('event_booking_id', updateResult.booking_id)
           .not('status', 'in', '(cancelled,no_show)')
@@ -1160,7 +1160,7 @@ export async function cancelEventManualBooking(input: {
     }
 
     const supabase = createAdminClient()
-    const { data: bookingRow, error: bookingError } = await (supabase.from('bookings') as any)
+    const { data: bookingRow, error: bookingError } = await supabase.from('bookings')
       .select(`
         id,
         event_id,
@@ -1204,7 +1204,7 @@ export async function cancelEventManualBooking(input: {
     }
 
     const nowIso = new Date().toISOString()
-    const { data: cancelledBooking, error: cancelError } = await (supabase.from('bookings') as any)
+    const { data: cancelledBooking, error: cancelError } = await supabase.from('bookings')
       .update({
         status: 'cancelled',
         cancelled_at: nowIso,
@@ -1224,7 +1224,7 @@ export async function cancelEventManualBooking(input: {
     }
 
     const [holdReleaseResult, tableBookingCancelResult] = await Promise.all([
-      (supabase.from('booking_holds') as any)
+      supabase.from('booking_holds')
         .update({
           status: 'released',
           released_at: nowIso,
@@ -1233,7 +1233,7 @@ export async function cancelEventManualBooking(input: {
         .eq('event_booking_id', bookingRow.id)
         .eq('status', 'active')
         .select('id'),
-      (supabase.from('table_bookings') as any)
+      supabase.from('table_bookings')
         .update({
           status: 'cancelled',
           cancellation_reason: 'event_booking_cancelled_admin',
@@ -1276,7 +1276,7 @@ export async function cancelEventManualBooking(input: {
     if (followupFailureSet.size === 0) {
       if (holdReleaseRows && holdReleaseRows.length === 0) {
         const { data: remainingActiveHolds, error: remainingActiveHoldsError } = await (
-          supabase.from('booking_holds') as any
+          supabase.from('booking_holds')
         )
           .select('id')
           .eq('event_booking_id', bookingRow.id)
@@ -1299,7 +1299,7 @@ export async function cancelEventManualBooking(input: {
         const {
           data: remainingActiveTableBookings,
           error: remainingActiveTableBookingsError
-        } = await (supabase.from('table_bookings') as any)
+        } = await supabase.from('table_bookings')
           .select('id')
           .eq('event_booking_id', bookingRow.id)
           .not('status', 'in', '(cancelled,no_show)')

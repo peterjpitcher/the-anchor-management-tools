@@ -24,7 +24,7 @@ export async function POST(
   }
 
   if (['cancelled', 'no_show', 'completed'].includes(booking.status)) {
-    const { data: currentBooking } = await (auth.supabase.from('table_bookings') as any)
+    const { data: currentBooking } = await auth.supabase.from('table_bookings')
       .select('id, status, seated_at, left_at, no_show_at, cancelled_at, updated_at')
       .eq('id', id)
       .maybeSingle()
@@ -35,7 +35,7 @@ export async function POST(
   }
 
   const nowIso = new Date().toISOString()
-  const { error: assignmentError } = await (auth.supabase.from('booking_table_assignments') as any)
+  const { error: assignmentError } = await auth.supabase.from('booking_table_assignments')
     .update({ end_datetime: nowIso })
     .eq('table_booking_id', id)
     .lt('start_datetime', nowIso)
@@ -44,7 +44,7 @@ export async function POST(
     return NextResponse.json({ error: 'Failed to update booking table assignment end time' }, { status: 500 })
   }
 
-  const { data, error } = await (auth.supabase.from('table_bookings') as any)
+  const { data, error } = await auth.supabase.from('table_bookings')
     .update({ left_at: nowIso, end_datetime: nowIso, updated_at: nowIso })
     .eq('id', id)
     .select('id, status, seated_at, left_at, no_show_at, cancelled_at, updated_at')

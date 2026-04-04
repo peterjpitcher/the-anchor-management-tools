@@ -31,7 +31,7 @@ export async function POST(
     booking.status === 'pending_payment' || booking.payment_status === 'pending'
   if (isPendingPayment && isStripeConfigured()) {
     try {
-      const { data: pendingPayment } = await (auth.supabase.from('payments') as any)
+      const { data: pendingPayment } = await auth.supabase.from('payments')
         .select('stripe_checkout_session_id')
         .eq('table_booking_id', id)
         .eq('charge_type', 'table_deposit')
@@ -60,7 +60,7 @@ export async function POST(
   })
 
   if (!transition.ok) {
-    const { data: currentBooking } = await (auth.supabase.from('table_bookings') as any)
+    const { data: currentBooking } = await auth.supabase.from('table_bookings')
       .select('id, status, seated_at, left_at, no_show_at, cancelled_at, updated_at')
       .eq('id', id)
       .maybeSingle()
@@ -70,7 +70,7 @@ export async function POST(
     )
   }
 
-  const { data, error } = await (auth.supabase.from('table_bookings') as any)
+  const { data, error } = await auth.supabase.from('table_bookings')
     .update(transition.plan.update)
     .eq('id', id)
     .select('id, status, seated_at, left_at, no_show_at, cancelled_at, updated_at')

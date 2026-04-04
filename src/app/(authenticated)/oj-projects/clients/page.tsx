@@ -229,8 +229,8 @@ export default function OJProjectsClientsPage() {
 
       if (!emailRes.error) {
         setEmailStatus({
-          configured: !!(emailRes as any).configured,
-          senderEmail: (emailRes as any).senderEmail ?? null,
+          configured: !!emailRes.configured,
+          senderEmail: emailRes.senderEmail ?? null,
         })
       } else {
         setEmailStatus(null)
@@ -474,8 +474,8 @@ export default function OJProjectsClientsPage() {
       toast.success('Client created')
       setVendorModalOpen(false)
       await loadVendors()
-      if ((res as any).vendor?.id) {
-        setVendorId((res as any).vendor.id)
+      if (res.vendor?.id) {
+        setVendorId(res.vendor.id)
       }
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to create client')

@@ -21,8 +21,24 @@ export type QueueSmsInput = {
   customer_id?: string;
   created_by?: string;
   priority?: number;
-  metadata?: any;
+  metadata?: Record<string, unknown>;
 };
+
+/** Extract optional safety properties from SMS result/error objects. */
+function extractSafetyInfo(obj: unknown): { code?: string; logFailure?: boolean } {
+  if (!obj || typeof obj !== 'object') return {};
+  const record = obj as Record<string, unknown>;
+  const code = typeof record.code === 'string' ? record.code : undefined;
+  const logFailure = record.logFailure === true || code === 'logging_failed';
+  return { code, logFailure };
+}
+
+/** Extract optional error string from an object. */
+function extractError(obj: unknown): string | undefined {
+  if (!obj || typeof obj !== 'object') return undefined;
+  const record = obj as Record<string, unknown>;
+  return typeof record.error === 'string' ? record.error : undefined;
+}
 
 const APPROVED_SMS_DISPATCH_STALE_MS = 10 * 60 * 1000;
 const PRIVATE_BOOKING_SMS_QUEUE_DEDUPE_LOCK_TTL_HOURS = 0.25; // 15 minutes
@@ -174,7 +190,7 @@ export class SmsQueueService {
 
       const normalizedTemplateKey = templateKey?.trim().length ? templateKey.trim() : `private_booking_${triggerType}`;
 
-      const customerResolution = await resolveCustomerIdForSms(admin as any, {
+      const customerResolution = await resolveCustomerIdForSms(admin, {
         bookingId,
         customerId,
         to: phone,
@@ -212,9 +228,7 @@ export class SmsQueueService {
         metadata,
         createCustomerIfMissing: false,
       });
-      const safetyCode = (result as any).code
-      const safetyLogFailure =
-        (result as any).logFailure === true || safetyCode === 'logging_failed'
+      const { code: safetyCode, logFailure: safetyLogFailure } = extractSafetyInfo(result);
 
       if (!result.success) {
         console.error('[SmsQueueService] Failed to send SMS:', result.error);
@@ -243,9 +257,7 @@ export class SmsQueueService {
         logFailure: safetyLogFailure
       };
     } catch (error) {
-      const safetyCode = typeof (error as any)?.code === 'string' ? (error as any).code : undefined;
-      const safetyLogFailure =
-        (error as any)?.logFailure === true || safetyCode === 'logging_failed';
+      const { code: safetyCode, logFailure: safetyLogFailure } = extractSafetyInfo(error);
       console.error('[SmsQueueService] Exception sending SMS:', error);
       return {
         error: 'Failed to send SMS',
@@ -304,7 +316,7 @@ export class SmsQueueService {
     let lockClaimed = false;
     try {
       const claim = await claimIdempotencyKey(
-        supabase as any,
+        supabase,
         lockKey,
         lockHash,
         PRIVATE_BOOKING_SMS_QUEUE_DEDUPE_LOCK_TTL_HOURS
@@ -373,7 +385,7 @@ export class SmsQueueService {
       console.error('[SmsQueueService] Failed to verify duplicate guard before queue insert:', duplicateLookupError);
       if (lockClaimed) {
         try {
-          await releaseIdempotencyClaim(supabase as any, lockKey, lockHash);
+          await releaseIdempotencyClaim(supabase, lockKey, lockHash);
         } catch (releaseError) {
           console.error('[SmsQueueService] Failed to release SMS queue lock after duplicate check error:', releaseError);
         }
@@ -404,7 +416,7 @@ export class SmsQueueService {
 
       if (lockClaimed) {
         try {
-          await releaseIdempotencyClaim(supabase as any, lockKey, lockHash);
+          await releaseIdempotencyClaim(supabase, lockKey, lockHash);
         } catch (releaseError) {
           console.error('[SmsQueueService] Failed to release SMS queue lock after suppression:', releaseError);
         }
@@ -443,7 +455,7 @@ export class SmsQueueService {
       console.error('[SmsQueueService] Failed to queue SMS:', insertError);
       if (lockClaimed) {
         try {
-          await releaseIdempotencyClaim(supabase as any, lockKey, lockHash);
+          await releaseIdempotencyClaim(supabase, lockKey, lockHash);
         } catch (releaseError) {
           console.error('[SmsQueueService] Failed to release SMS queue lock after insert error:', releaseError);
         }
@@ -475,7 +487,7 @@ export class SmsQueueService {
         if (idsToCancel.includes(smsRecord.id)) {
           if (lockClaimed) {
             try {
-              await releaseIdempotencyClaim(supabase as any, lockKey, lockHash);
+              await releaseIdempotencyClaim(supabase, lockKey, lockHash);
             } catch (releaseError) {
               console.error('[SmsQueueService] Failed to release SMS queue lock after insert:', releaseError);
             }
@@ -493,7 +505,7 @@ export class SmsQueueService {
 
     if (lockClaimed) {
       try {
-        await releaseIdempotencyClaim(supabase as any, lockKey, lockHash);
+        await releaseIdempotencyClaim(supabase, lockKey, lockHash);
       } catch (releaseError) {
         console.error('[SmsQueueService] Failed to release SMS queue lock after insert:', releaseError);
       }
@@ -543,8 +555,8 @@ export class SmsQueueService {
         ...(autoSendResult.customerId ? { customer_id: autoSendResult.customerId } : {}),
         ...(autoSendResult.messageId ? { message_id: autoSendResult.messageId } : {}),
         ...(autoSendResult.deliveryState ? { delivery_state: autoSendResult.deliveryState } : {}),
-        ...((autoSendResult as any).code ? { sms_code: (autoSendResult as any).code } : {}),
-        ...((autoSendResult as any).logFailure === true ? { sms_log_failure: true } : {})
+        ...(extractSafetyInfo(autoSendResult).code ? { sms_code: extractSafetyInfo(autoSendResult).code } : {}),
+        ...(extractSafetyInfo(autoSendResult).logFailure ? { sms_log_failure: true } : {})
       };
 
       // Update the queue record with sent status
@@ -602,12 +614,12 @@ export class SmsQueueService {
         queueId: smsRecord.id,
         sid: autoSendResult.sid || null,
         messageId: autoSendResult.messageId,
-        code: (autoSendResult as any).code,
-        logFailure: (autoSendResult as any).logFailure === true
+        code: extractSafetyInfo(autoSendResult).code,
+        logFailure: extractSafetyInfo(autoSendResult).logFailure
       };
     } else {
       // Failed to send
-      const sendError = (autoSendResult as any).error
+      const sendError = extractError(autoSendResult)
       const { data: failedQueueRow, error: failedUpdateError } = await supabase
         .from('private_booking_sms_queue')
         .update({
@@ -677,8 +689,8 @@ export class SmsQueueService {
       return { 
         error: sendError || 'Failed to send SMS',
         queueId: smsRecord.id,
-        ...((autoSendResult as any).code ? { code: (autoSendResult as any).code } : {}),
-        ...((autoSendResult as any).logFailure === true ? { logFailure: true } : {})
+        ...(extractSafetyInfo(autoSendResult).code ? { code: extractSafetyInfo(autoSendResult).code } : {}),
+        ...(extractSafetyInfo(autoSendResult).logFailure ? { logFailure: true } : {})
       };
     }
   }
@@ -716,21 +728,21 @@ export class SmsQueueService {
 
       if (
         existing?.status === 'pending' &&
-        typeof (existing as any).error_message === 'string' &&
-        (existing as any).error_message.startsWith('dispatching:')
+        typeof existing?.error_message === 'string' &&
+        existing.error_message.startsWith('dispatching:')
       ) {
         throw new Error('SMS dispatch already in progress for this queue item');
       }
 
       throw new Error('SMS not found or not pending');
     }
-    
+
     return { success: true };
   }
 
   static async rejectSms(smsId: string, userId: string) {
     const supabase = await createClient();
-    
+
     const { data: rejectedRow, error } = await supabase
       .from('private_booking_sms_queue')
       .update({
@@ -743,7 +755,7 @@ export class SmsQueueService {
       .is('error_message', null)
       .select('id')
       .maybeSingle();
-    
+
     if (error) {
       console.error('Error rejecting SMS:', error);
       throw new Error(error.message || 'Failed to reject SMS');
@@ -761,8 +773,8 @@ export class SmsQueueService {
 
       if (
         existing?.status === 'pending' &&
-        typeof (existing as any).error_message === 'string' &&
-        (existing as any).error_message.startsWith('dispatching:')
+        typeof existing?.error_message === 'string' &&
+        existing.error_message.startsWith('dispatching:')
       ) {
         throw new Error('SMS dispatch already in progress for this queue item');
       }
@@ -855,13 +867,13 @@ export class SmsQueueService {
           .from('messages')
           .select('id, twilio_message_sid, sent_at')
           // Prefer an exact queue correlation when possible.
-          .contains('metadata', { queue_job_id: queueJobId } as any)
+          .contains('metadata', { queue_job_id: queueJobId } as Record<string, unknown>)
           .order('sent_at', { ascending: false })
           .limit(1)
           .maybeSingle();
 
         if (!metadataEvidenceError && metadataEvidence) {
-          evidence = metadataEvidence as any
+          evidence = metadataEvidence
         } else {
           let fallbackQuery = admin
             .from('messages')
@@ -886,7 +898,7 @@ export class SmsQueueService {
             throw new Error(fallbackEvidenceError.message || 'Failed to verify stale SMS dispatch state');
           }
 
-          evidence = fallbackEvidence as any
+          evidence = fallbackEvidence
         }
 
         if (!evidence) {
@@ -896,7 +908,7 @@ export class SmsQueueService {
         }
 
         const reconciledMetadata = {
-          ...((staleSms.metadata as any) ?? {}),
+          ...((staleSms.metadata as Record<string, unknown>) ?? {}),
           delivery_state: 'sent',
           reconciled_from_stale_claim: true,
           message_id: evidence.id,
@@ -989,9 +1001,7 @@ export class SmsQueueService {
         triggerType
       });
     } catch (sendError) {
-      const thrownCode = typeof (sendError as any)?.code === 'string' ? (sendError as any).code : undefined
-      const thrownLogFailure =
-        (sendError as any)?.logFailure === true || thrownCode === 'logging_failed'
+      const { code: thrownCode, logFailure: thrownLogFailure } = extractSafetyInfo(sendError);
       result = {
         error: sendError instanceof Error ? sendError.message : 'Failed to send SMS',
         ...(thrownCode ? { code: thrownCode } : {}),
@@ -1046,16 +1056,12 @@ export class SmsQueueService {
         console.error('Error writing failed SMS audit log:', failedAuditError);
       }
 
-      const sendFailureCode = typeof (result as any)?.code === 'string' ? (result as any).code : undefined
-      const sendFailureLogFailure =
-        (result as any)?.logFailure === true || sendFailureCode === 'logging_failed'
-      const sendFailureError = new Error(result.error);
-      if (sendFailureCode) {
-        ;(sendFailureError as any).code = sendFailureCode
-      }
-      if (sendFailureLogFailure) {
-        ;(sendFailureError as any).logFailure = true
-      }
+      const { code: sendFailureCode, logFailure: sendFailureLogFailure } = extractSafetyInfo(result);
+      const sendFailureError: Error & { code?: string; logFailure?: boolean } = Object.assign(
+        new Error(result.error),
+        ...(sendFailureCode ? [{ code: sendFailureCode }] : []),
+        ...(sendFailureLogFailure ? [{ logFailure: true }] : [])
+      );
 
       throw sendFailureError;
     }
@@ -1065,8 +1071,8 @@ export class SmsQueueService {
       ...(sms.metadata ?? {}),
       ...(result.customerId ? { customer_id: result.customerId } : {}),
       ...(result.messageId ? { message_id: result.messageId } : {}),
-      ...((result as any).code ? { sms_code: (result as any).code } : {}),
-      ...((result as any).logFailure === true ? { sms_log_failure: true } : {}),
+      ...(extractSafetyInfo(result).code ? { sms_code: extractSafetyInfo(result).code } : {}),
+      ...(extractSafetyInfo(result).logFailure ? { sms_log_failure: true } : {}),
       ...(result.suppressed
         ? { delivery_state: 'suppressed_duplicate' }
         : result.deferred
@@ -1103,9 +1109,7 @@ export class SmsQueueService {
         return { success: true, code: 'logging_failed', logFailure: true };
       }
       if (existingSentState?.status === 'sent') {
-        const safetyCode = (result as any).code
-        const safetyLogFailure =
-          (result as any).logFailure === true || safetyCode === 'logging_failed'
+        const { code: safetyCode, logFailure: safetyLogFailure } = extractSafetyInfo(result);
         return { success: true, code: safetyCode, logFailure: safetyLogFailure };
       }
       return { success: true, code: 'logging_failed', logFailure: true };
@@ -1135,11 +1139,9 @@ export class SmsQueueService {
       console.error('Error writing sent SMS audit log:', sentAuditError);
     }
 
-    const safetyCode = (result as any).code
-    const safetyLogFailure =
-      (result as any).logFailure === true || safetyCode === 'logging_failed'
+    const { code: finalSafetyCode, logFailure: finalSafetyLogFailure } = extractSafetyInfo(result);
 
-    return { success: true, code: safetyCode, logFailure: safetyLogFailure };
+    return { success: true, code: finalSafetyCode, logFailure: finalSafetyLogFailure };
   }
 
   static async getQueue(statusFilter?: string[]) {

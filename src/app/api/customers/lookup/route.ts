@@ -129,7 +129,7 @@ export async function GET(request: NextRequest) {
       .filter((value): value is string => Boolean(value))
 
     const supabase = createAdminClient()
-    const { data: canonicalData, error: canonicalError } = await (supabase.from('customers') as any)
+    const { data: canonicalData, error: canonicalError } = await supabase.from('customers')
       .select('id, first_name, last_name, email, mobile_number, mobile_e164, created_at')
       .in('mobile_e164', mobileE164Variants)
       .order('created_at', { ascending: false })
@@ -144,7 +144,7 @@ export async function GET(request: NextRequest) {
       return createApiResponse(toLookupPayload(canonicalCustomer, normalizedPhone))
     }
 
-    const { data: legacyData, error: legacyError } = await (supabase.from('customers') as any)
+    const { data: legacyData, error: legacyError } = await supabase.from('customers')
       .select('id, first_name, last_name, email, mobile_number, mobile_e164, created_at')
       .in('mobile_number', uniqueVariants)
       .order('created_at', { ascending: false })
@@ -160,7 +160,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Legacy fallback: recover known customer context from older private bookings.
-    const { data: privateBookingData, error: privateBookingError } = await (supabase.from('private_bookings') as any)
+    const { data: privateBookingData, error: privateBookingError } = await supabase.from('private_bookings')
       .select(
         'id, customer_id, customer_first_name, customer_last_name, customer_name, contact_email, contact_phone, created_at'
       )
@@ -202,7 +202,7 @@ export async function GET(request: NextRequest) {
     }
 
     if (resolvedCustomerId) {
-      const { data: resolvedData, error: resolvedError } = await (supabase.from('customers') as any)
+      const { data: resolvedData, error: resolvedError } = await supabase.from('customers')
         .select('id, first_name, last_name, email, mobile_number, mobile_e164, created_at')
         .eq('id', resolvedCustomerId)
         .limit(1)

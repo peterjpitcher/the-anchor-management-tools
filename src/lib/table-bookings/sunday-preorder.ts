@@ -163,7 +163,7 @@ function isUuid(value: string): boolean {
 async function loadSundayLunchMenuItems(
   supabase: SupabaseClient<any, 'public', any>
 ): Promise<SundayMenuItem[] | null> {
-  const { data: sundayMenuRaw, error: sundayMenuError } = await (supabase.from('menu_menus') as any)
+  const { data: sundayMenuRaw, error: sundayMenuError } = await supabase.from('menu_menus')
     .select('id')
     .eq('code', 'sunday_lunch')
     .eq('is_active', true)
@@ -172,7 +172,7 @@ async function loadSundayLunchMenuItems(
   if (!sundayMenuError && sundayMenuRaw?.id) {
     const sundayMenu = sundayMenuRaw as MenuMenuRow
 
-    const { data: assignmentsRaw, error: assignmentsError } = await (supabase.from('menu_dish_menu_assignments') as any)
+    const { data: assignmentsRaw, error: assignmentsError } = await supabase.from('menu_dish_menu_assignments')
       .select('dish_id, category_id, sort_order')
       .eq('menu_id', sundayMenu.id)
 
@@ -185,12 +185,12 @@ async function loadSundayLunchMenuItems(
       const categoryIds = Array.from(new Set(assignmentRows.map((row) => row.category_id).filter(Boolean)))
 
       const [{ data: dishesRaw }, { data: categoriesRaw }] = await Promise.all([
-        (supabase.from('menu_dishes') as any)
+        supabase.from('menu_dishes')
           .select('id, name, selling_price, is_active')
           .in('id', dishIds)
           .eq('is_active', true),
         categoryIds.length > 0
-          ? (supabase.from('menu_categories') as any)
+          ? supabase.from('menu_categories')
               .select('id, code, name')
               .in('id', categoryIds)
           : Promise.resolve({ data: [] as MenuCategoryRow[] })
@@ -237,7 +237,7 @@ async function loadSundayLunchMenuItems(
 
   // Fallback for older data: use active Sunday-lunch flagged dishes even if the menu
   // assignment records are missing. This keeps "Capture now" usable.
-  const { data: fallbackDishesRaw, error: fallbackDishesError } = await (supabase.from('menu_dishes') as any)
+  const { data: fallbackDishesRaw, error: fallbackDishesError } = await supabase.from('menu_dishes')
     .select('id, name, selling_price')
     .eq('is_active', true)
     .eq('is_sunday_lunch', true)
@@ -252,7 +252,7 @@ async function loadSundayLunchMenuItems(
     return null
   }
 
-  const { data: legacyItemsRaw } = await (supabase.from('sunday_lunch_menu_items') as any)
+  const { data: legacyItemsRaw } = await supabase.from('sunday_lunch_menu_items')
     .select('name, category, display_order')
     .eq('is_active', true)
 
@@ -330,7 +330,7 @@ export async function getSundayPreorderPageDataByRawToken(
   const tokenHash = hashGuestToken(rawToken)
   const now = new Date()
 
-  const { data: tokenRow } = await (supabase.from('guest_tokens') as any)
+  const { data: tokenRow } = await supabase.from('guest_tokens')
     .select('id, customer_id, table_booking_id, expires_at, consumed_at, action_type')
     .eq('hashed_token', tokenHash)
     .eq('action_type', 'sunday_preorder')
@@ -348,7 +348,7 @@ export async function getSundayPreorderPageDataByRawToken(
     return { state: 'blocked', reason: 'token_expired' }
   }
 
-  const { data: booking } = await (supabase.from('table_bookings') as any)
+  const { data: booking } = await supabase.from('table_bookings')
     .select(
       'id, customer_id, booking_reference, booking_type, status, party_size, start_datetime, sunday_preorder_cutoff_at, sunday_preorder_completed_at'
     )
@@ -394,7 +394,7 @@ export async function getSundayPreorderPageDataByRawToken(
 
   const [menuItems, existingRows] = await Promise.all([
     loadSundayLunchMenuItems(supabase),
-    (supabase.from('table_booking_items') as any)
+    supabase.from('table_booking_items')
       .select('menu_dish_id, custom_item_name, price_at_booking, quantity, item_type')
       .eq('booking_id', booking.id)
       .not('menu_dish_id', 'is', null)
@@ -404,7 +404,7 @@ export async function getSundayPreorderPageDataByRawToken(
     return { state: 'blocked', reason: 'menu_unavailable' }
   }
 
-  const existingItems: SundayPreorderExistingItem[] = ((existingRows.data || []) as any[])
+  const existingItems: SundayPreorderExistingItem[] = (existingRows.data || [])
     .filter((row) => typeof row.menu_dish_id === 'string')
     .map((row) => ({
       menu_dish_id: row.menu_dish_id,
@@ -439,7 +439,7 @@ export async function getSundayPreorderPageDataByBookingId(
 ): Promise<SundayPreorderPageData> {
   const now = new Date()
 
-  const { data: booking } = await (supabase.from('table_bookings') as any)
+  const { data: booking } = await supabase.from('table_bookings')
     .select(
       'id, customer_id, booking_reference, booking_type, status, party_size, start_datetime, sunday_preorder_cutoff_at, sunday_preorder_completed_at'
     )
@@ -481,7 +481,7 @@ export async function getSundayPreorderPageDataByBookingId(
 
   const [menuItems, existingRows] = await Promise.all([
     loadSundayLunchMenuItems(supabase),
-    (supabase.from('table_booking_items') as any)
+    supabase.from('table_booking_items')
       .select('menu_dish_id, custom_item_name, price_at_booking, quantity, item_type')
       .eq('booking_id', booking.id)
       .not('menu_dish_id', 'is', null)
@@ -491,7 +491,7 @@ export async function getSundayPreorderPageDataByBookingId(
     return { state: 'blocked', reason: 'menu_unavailable' }
   }
 
-  const existingItems: SundayPreorderExistingItem[] = ((existingRows.data || []) as any[])
+  const existingItems: SundayPreorderExistingItem[] = (existingRows.data || [])
     .filter((row) => typeof row.menu_dish_id === 'string')
     .map((row) => ({
       menu_dish_id: row.menu_dish_id,
@@ -577,7 +577,7 @@ async function saveSundayPreorderFromPageData(
   // A full delete followed by insert creates a window where concurrent saves can
   // interleave: concurrent save A deletes, concurrent save B deletes, A inserts, B
   // inserts — one save silently wins. The incremental approach avoids that window.
-  const { data: existingItemRows, error: existingItemsError } = await (supabase.from('table_booking_items') as any)
+  const { data: existingItemRows, error: existingItemsError } = await supabase.from('table_booking_items')
     .select('id, menu_dish_id')
     .eq('booking_id', pageData.booking_id)
     .not('menu_dish_id', 'is', null)
@@ -596,7 +596,7 @@ async function saveSundayPreorderFromPageData(
     .map((row) => row.id)
 
   if (rowIdsToDelete.length > 0) {
-    const { error: deleteError } = await (supabase.from('table_booking_items') as any)
+    const { error: deleteError } = await supabase.from('table_booking_items')
       .delete()
       .in('id', rowIdsToDelete)
 
@@ -612,7 +612,7 @@ async function saveSundayPreorderFromPageData(
     const existingRowId = existingByDishId.get(dishId)
 
     if (existingRowId) {
-      const { error: updateError } = await (supabase.from('table_booking_items') as any)
+      const { error: updateError } = await supabase.from('table_booking_items')
         .update({
           custom_item_name: menuItem.name,
           price_at_booking: Number(menuItem.price.toFixed(2)),
@@ -626,7 +626,7 @@ async function saveSundayPreorderFromPageData(
         throw updateError
       }
     } else {
-      const { error: insertError } = await (supabase.from('table_booking_items') as any).insert({
+      const { error: insertError } = await supabase.from('table_booking_items').insert({
         booking_id: pageData.booking_id,
         menu_dish_id: dishId,
         custom_item_name: menuItem.name,
@@ -643,7 +643,7 @@ async function saveSundayPreorderFromPageData(
     }
   }
 
-  const { data: updatedBooking, error: bookingUpdateError } = await (supabase.from('table_bookings') as any)
+  const { data: updatedBooking, error: bookingUpdateError } = await supabase.from('table_bookings')
     .update({
       sunday_preorder_completed_at: nowIso,
       updated_at: nowIso

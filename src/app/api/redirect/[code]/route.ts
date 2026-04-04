@@ -144,7 +144,7 @@ async function attemptTablePaymentShortLinkRecovery(params: {
     }
   }
 
-  const { data: booking, error: bookingError } = await (params.supabase.from('table_bookings') as any)
+  const { data: booking, error: bookingError } = await params.supabase.from('table_bookings')
     .select('id, customer_id, status, hold_expires_at')
     .eq('id', tableBookingId)
     .maybeSingle()
@@ -218,7 +218,7 @@ async function attemptTablePaymentShortLinkRecovery(params: {
     last_reissued_at: nowIso,
   }
 
-  const { error: updateError } = await (params.supabase.from('short_links') as any)
+  const { error: updateError } = await params.supabase.from('short_links')
     .update({
       destination_url: replacementToken.url,
       metadata: updatedMetadata,

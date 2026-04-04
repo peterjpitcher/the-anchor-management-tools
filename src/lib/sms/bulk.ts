@@ -31,10 +31,10 @@ type BulkAbortSignal = {
 }
 
 function normalizePositiveInt(value: number | undefined, fallback: number, max: number): number {
-  if (!Number.isFinite(value)) {
+  if (value === undefined || !Number.isFinite(value)) {
     return fallback
   }
-  const normalized = Math.floor(value as number)
+  const normalized = Math.floor(value)
   if (normalized < 1) {
     return fallback
   }
@@ -42,10 +42,10 @@ function normalizePositiveInt(value: number | undefined, fallback: number, max: 
 }
 
 function normalizeNonNegativeInt(value: number | undefined, fallback: number, max: number): number {
-  if (!Number.isFinite(value)) {
+  if (value === undefined || !Number.isFinite(value)) {
     return fallback
   }
-  const normalized = Math.floor(value as number)
+  const normalized = Math.floor(value)
   if (normalized < 0) {
     return fallback
   }
@@ -112,18 +112,24 @@ function normalizeAbortErrorMessage(error: unknown): string {
     return error.message
   }
 
-  if (typeof (error as any)?.message === 'string' && (error as any).message.trim().length > 0) {
-    return (error as any).message
+  const record = (error && typeof error === 'object') ? error as Record<string, unknown> : null
+  if (record && typeof record.message === 'string' && record.message.trim().length > 0) {
+    return record.message
   }
 
   return 'Unexpected SMS send exception'
 }
 
+/** Extract safety-related fields from an SMS result or thrown error object. */
+function extractSafetyFields(obj: unknown): { code: string | null; logFailure: boolean } {
+  const record = (obj && typeof obj === 'object') ? obj as Record<string, unknown> : null
+  const code = record && typeof record.code === 'string' ? record.code : null
+  const logFailure = (record?.logFailure === true) || code === 'logging_failed'
+  return { code, logFailure }
+}
+
 function resolveAbortSignalFromThrownSendError(error: unknown): BulkAbortSignal {
-  const thrownCode = typeof (error as any)?.code === 'string'
-    ? (error as any).code
-    : null
-  const thrownLogFailure = (error as any)?.logFailure === true || thrownCode === 'logging_failed'
+  const { code: thrownCode, logFailure: thrownLogFailure } = extractSafetyFields(error)
   const errorMessage = normalizeAbortErrorMessage(error)
 
   if (thrownLogFailure) {
@@ -246,26 +252,26 @@ export async function sendBulkSms(request: BulkSmsRequest): Promise<BulkSmsResul
 
     const validCustomers = customers.filter(customer => {
       const recipient =
-        typeof (customer as any).mobile_e164 === 'string' && (customer as any).mobile_e164.trim().length > 0
-          ? (customer as any).mobile_e164
-          : typeof (customer as any).mobile_number === 'string' && (customer as any).mobile_number.trim().length > 0
-            ? (customer as any).mobile_number
+        typeof customer.mobile_e164 === 'string' && customer.mobile_e164.trim().length > 0
+          ? customer.mobile_e164
+          : typeof customer.mobile_number === 'string' && customer.mobile_number.trim().length > 0
+            ? customer.mobile_number
             : null
 
       if (!recipient) {
         logger.debug('Skipping customer with no mobile number', { metadata: { customerId: customer.id } })
         return false
       }
-      if ((customer as any).sms_opt_in !== true) {
+      if (customer.sms_opt_in !== true) {
         logger.debug('Skipping customer without SMS opt-in', { metadata: { customerId: customer.id } })
         return false
       }
-      if ((customer as any).marketing_sms_opt_in !== true) {
+      if (customer.marketing_sms_opt_in !== true) {
         logger.debug('Skipping customer without marketing SMS opt-in', { metadata: { customerId: customer.id } })
         return false
       }
 
-      const smsStatus = ((customer as any).sms_status ?? null) as string | null
+      const smsStatus = (customer.sms_status ?? null) as string | null
       if (smsStatus !== null && smsStatus !== 'active') {
         logger.debug('Skipping customer with blocked sms_status', {
           metadata: { customerId: customer.id, smsStatus },
@@ -321,9 +327,9 @@ export async function sendBulkSms(request: BulkSmsRequest): Promise<BulkSmsResul
               )
               const messageWithSupport = ensureReplyInstruction(personalized, contactPhone)
               const recipient =
-                typeof (customer as any).mobile_e164 === 'string' && (customer as any).mobile_e164.trim().length > 0
-                  ? (customer as any).mobile_e164
-                  : (customer as any).mobile_number
+                typeof customer.mobile_e164 === 'string' && customer.mobile_e164.trim().length > 0
+                  ? customer.mobile_e164
+                  : customer.mobile_number
 
               const sendResult = await sendSMS(recipient as string, messageWithSupport, {
                 customerId: customer.id,
@@ -337,15 +343,14 @@ export async function sendBulkSms(request: BulkSmsRequest): Promise<BulkSmsResul
                 }
               })
 
-              const fatalCode = (sendResult as any)?.code
-              const logFailure = (sendResult as any)?.logFailure === true
+              const { code: fatalCode, logFailure } = extractSafetyFields(sendResult)
 
               if (!abort.current && (logFailure || shouldAbortBulkSend(fatalCode))) {
                 abort.current = {
                   code: String(fatalCode ?? 'fatal'),
                   error: logFailure
                     ? 'SMS sent but message persistence failed'
-                    : (sendResult as any)?.error || 'Bulk send aborted by safety guard'
+                    : sendResult.error || 'Bulk send aborted by safety guard'
                 }
               }
 

@@ -108,24 +108,25 @@ export class ShortLinkService {
       .single();
     
     if (error) {
-      if ((error as any)?.code === '23505') {
+      if (error.code === '23505') {
         throw new Error('Custom code already in use. Please choose another.');
       }
-      if ((error as any)?.code === 'PGRST203') {
+      if (error.code === 'PGRST203') {
         throw new Error('Short link creation is temporarily unavailable (database RPC overload). Please apply the latest Supabase migrations.');
       }
-      throw new Error((error as any)?.message || 'Failed to create short link');
+      throw new Error(error.message || 'Failed to create short link');
     }
-    
-    if (data.name && (result as any)?.short_code) {
+
+    const rpcResult = result as Record<string, unknown> | null;
+    if (data.name && rpcResult?.short_code) {
       await supabase
         .from('short_links')
         .update({ name: data.name })
-        .eq('short_code', (result as any).short_code)
+        .eq('short_code', rpcResult.short_code as string)
         .is('name', null);
     }
 
-    const shortCode = (result as any).short_code as string;
+    const shortCode = rpcResult?.short_code as string;
 
     const { data: linkRow, error: linkFetchError } = await supabase
       .from('short_links')
@@ -146,7 +147,7 @@ export class ShortLinkService {
   }
 
   static async getShortLinks(page: number = 1, pageSize: number = 50): Promise<{
-    data: any[];
+    data: unknown[];
     total: number;
     page: number;
     pageSize: number;
@@ -246,13 +247,13 @@ export class ShortLinkService {
       .single();
 
     if (error) {
-      if ((error as any)?.code === '23505') {
+      if (error.code === '23505') {
         return this.createShortLinkInternal(data);
       }
-      throw new Error((error as any)?.message || 'Failed to create short link');
+      throw new Error(error.message || 'Failed to create short link');
     }
 
-    const shortCode = (result as any).short_code as string;
+    const shortCode = (result as Record<string, unknown>)?.short_code as string;
     return {
       short_code: shortCode,
       full_url: buildShortLinkUrl(shortCode),
@@ -314,7 +315,7 @@ export class ShortLinkService {
 
     if (createError) throw new Error(createError.message || 'Failed to create variant');
 
-    const shortCode = (result as any).short_code as string;
+    const shortCode = (result as Record<string, unknown>)?.short_code as string;
 
     // Set parent_link_id and name on the new variant
     await supabase
@@ -354,7 +355,7 @@ export class ShortLinkService {
   static async getShortLinkAnalyticsSummary(shortCode: string, days: number = 30) {
     const supabase = await createClient();
 
-    const { data, error } = await (supabase as any)
+    const { data, error } = await supabase
       .rpc('get_short_link_analytics', {
         p_short_code: shortCode,
         p_days: days
@@ -368,7 +369,7 @@ export class ShortLinkService {
   static async getShortLinkVolume(days: number = 30) {
     const supabase = await createClient();
 
-    const { data, error } = await (supabase as any)
+    const { data, error } = await supabase
       .rpc('get_all_links_analytics', {
         p_days: days
       });
@@ -381,7 +382,7 @@ export class ShortLinkService {
   static async getShortLinkVolumeAdvanced(input: GetShortLinkVolumeAdvancedInput) {
     const supabase = await createClient();
 
-    const { data, error } = await (supabase as any)
+    const { data, error } = await supabase
       .rpc('get_all_links_analytics_v2', {
         p_start_at: input.start_at,
         p_end_at: input.end_at,

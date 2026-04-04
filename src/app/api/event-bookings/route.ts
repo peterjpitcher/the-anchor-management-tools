@@ -256,7 +256,7 @@ async function cancelEventBookingAfterTableReservationFailure(
   const cancelledAt = new Date().toISOString()
   const rollbackErrors: string[] = []
   const [bookingCancelResult, holdReleaseResult] = await Promise.all([
-    (supabase.from('bookings') as any)
+    supabase.from('bookings')
       .update({
         status: 'cancelled',
         cancelled_at: cancelledAt,
@@ -266,7 +266,7 @@ async function cancelEventBookingAfterTableReservationFailure(
       .eq('id', bookingId)
       .select('id')
       .maybeSingle(),
-    (supabase.from('booking_holds') as any)
+    supabase.from('booking_holds')
       .update({
         status: 'released',
         released_at: cancelledAt,
@@ -290,7 +290,7 @@ async function cancelEventBookingAfterTableReservationFailure(
     rollbackErrors.push('payment_hold_release: mutation_result_unavailable')
   } else if (holdReleaseResult.data.length === 0) {
     const { data: remainingActiveHolds, error: remainingActiveHoldsError } = await (
-      supabase.from('booking_holds') as any
+      supabase.from('booking_holds')
     )
       .select('id')
       .eq('event_booking_id', bookingId)
@@ -401,10 +401,10 @@ export async function POST(request: NextRequest) {
 
       if (
         isSundayLunchOnlyEvent({
-          id: (eventRow as any).id || null,
-          name: (eventRow as any).name || null,
-          date: (eventRow as any).date || null,
-          start_datetime: (eventRow as any).start_datetime || null
+          id: eventRow.id || null,
+          name: eventRow.name || null,
+          date: eventRow.date || null,
+          start_datetime: eventRow.start_datetime || null
         })
       ) {
         return createErrorResponse(SUNDAY_LUNCH_ONLY_EVENT_MESSAGE, 'POLICY_VIOLATION', 409)
@@ -437,7 +437,7 @@ export async function POST(request: NextRequest) {
       const bookingResult = (rpcResultRaw ?? {}) as EventBookingResult
       const state = bookingResult.state || 'blocked'
       mutationCommitted = Boolean(bookingResult.booking_id)
-      const bookingMode = normalizeEventBookingMode((eventRow as any)?.booking_mode)
+      const bookingMode = normalizeEventBookingMode(eventRow?.booking_mode)
       let resolvedState: EventBookingResult['state'] = state
       let resolvedReason: string | null = bookingResult.reason ?? null
       const appBaseUrl = process.env.NEXT_PUBLIC_APP_URL || request.nextUrl.origin

@@ -62,7 +62,7 @@ async function resolveTableAreaSelection(
   }
 ): Promise<{ areaId: string | null; areaName: string | null; error?: string }> {
   if (input.areaId) {
-    const { data, error } = await (supabase.from('table_areas') as any)
+    const { data, error } = await supabase.from('table_areas')
       .select('id, name')
       .eq('id', input.areaId)
       .maybeSingle()
@@ -87,7 +87,7 @@ async function resolveTableAreaSelection(
   }
 
   const normalizedName = areaName.toLowerCase()
-  const { data, error } = await (supabase.from('table_areas') as any)
+  const { data, error } = await supabase.from('table_areas')
     .upsert(
       {
         name: areaName,
@@ -123,15 +123,15 @@ function canonicalizeJoinLink(input: CanonicalJoinLink): CanonicalJoinLink | nul
 
 async function loadTableSetupData(supabase: any) {
   const [tablesResult, linksResult, areasResult] = await Promise.all([
-    (supabase.from('tables') as any)
+    supabase.from('tables')
       .select('id, name, table_number, capacity, area, area_id, is_bookable')
       .order('table_number', { ascending: true, nullsFirst: false })
       .order('name', { ascending: true, nullsFirst: false }),
-    (supabase.from('table_join_links') as any)
+    supabase.from('table_join_links')
       .select('table_id, join_table_id')
       .order('table_id', { ascending: true })
       .order('join_table_id', { ascending: true }),
-    (supabase.from('table_areas') as any)
+    supabase.from('table_areas')
       .select('id, name')
       .order('name', { ascending: true })
   ])
@@ -149,9 +149,9 @@ async function loadTableSetupData(supabase: any) {
   }
 
   return {
-    tables: (tablesResult.data || []) as any[],
-    join_links: (linksResult.data || []) as any[],
-    areas: (areasResult.data || []) as any[]
+    tables: (tablesResult.data || []),
+    join_links: (linksResult.data || []),
+    areas: (areasResult.data || [])
   }
 }
 
@@ -207,7 +207,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: resolvedArea.error }, { status: 400 })
   }
 
-  const { data: inserted, error } = await (auth.supabase.from('tables') as any)
+  const { data: inserted, error } = await auth.supabase.from('tables')
     .insert({
       name: payload.name,
       table_number: payload.table_number,
@@ -279,7 +279,7 @@ export async function PATCH(request: NextRequest) {
     updateData.is_bookable = payload.is_bookable
   }
 
-  const { data: updated, error } = await (auth.supabase.from('tables') as any)
+  const { data: updated, error } = await auth.supabase.from('tables')
     .update(updateData)
     .eq('id', payload.id)
     .select('id, name, table_number, capacity, area, area_id, is_bookable')
@@ -342,7 +342,7 @@ export async function PUT(request: NextRequest) {
   }
 
   if (desiredTableIds.size > 0) {
-    const { data: tableRows, error: tableLookupError } = await (auth.supabase.from('tables') as any)
+    const { data: tableRows, error: tableLookupError } = await auth.supabase.from('tables')
       .select('id')
       .in('id', Array.from(desiredTableIds))
 
@@ -350,7 +350,7 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ error: 'Failed to validate join links' }, { status: 500 })
     }
 
-    const existingIds = new Set(((tableRows || []) as any[]).map((row) => row.id as string))
+    const existingIds = new Set((tableRows || []).map((row) => row.id as string))
     const unknownId = Array.from(desiredTableIds).find((id) => !existingIds.has(id))
 
     if (unknownId) {
@@ -361,7 +361,7 @@ export async function PUT(request: NextRequest) {
     }
   }
 
-  const { data: existingRows, error: existingError } = await (auth.supabase.from('table_join_links') as any)
+  const { data: existingRows, error: existingError } = await auth.supabase.from('table_join_links')
     .select('table_id, join_table_id')
 
   if (existingError) {
@@ -369,7 +369,7 @@ export async function PUT(request: NextRequest) {
   }
 
   const existingMap = new Map<string, CanonicalJoinLink>()
-  for (const row of (existingRows || []) as any[]) {
+  for (const row of (existingRows || [])) {
     const canonical = canonicalizeJoinLink({
       table_id: row.table_id,
       join_table_id: row.join_table_id
@@ -386,7 +386,7 @@ export async function PUT(request: NextRequest) {
   )
 
   if (toInsert.length > 0) {
-    const { error: insertError } = await (auth.supabase.from('table_join_links') as any)
+    const { error: insertError } = await auth.supabase.from('table_join_links')
       .insert(
         toInsert.map((row) => ({
           table_id: row.table_id,
@@ -406,7 +406,7 @@ export async function PUT(request: NextRequest) {
       .map((row) => `and(table_id.eq.${row.table_id},join_table_id.eq.${row.join_table_id})`)
       .join(',')
 
-    const { error: deleteError } = await (auth.supabase.from('table_join_links') as any)
+    const { error: deleteError } = await auth.supabase.from('table_join_links')
       .delete()
       .or(orFilter)
 

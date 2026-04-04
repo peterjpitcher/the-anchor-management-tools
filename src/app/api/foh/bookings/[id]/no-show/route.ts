@@ -38,7 +38,7 @@ export async function POST(
   })
 
   if (!transition.ok) {
-    const { data: currentBooking } = await (auth.supabase.from('table_bookings') as any)
+    const { data: currentBooking } = await auth.supabase.from('table_bookings')
       .select('id, status, seated_at, left_at, no_show_at, cancelled_at, updated_at')
       .eq('id', id)
       .maybeSingle()
@@ -55,7 +55,7 @@ export async function POST(
   const feePerHead = await getFeePerHead(auth.supabase)
   const suggestedAmount = committedPartySize * feePerHead
 
-  const { data: noShowRow, error: updateError } = await (auth.supabase.from('table_bookings') as any)
+  const { data: noShowRow, error: updateError } = await auth.supabase.from('table_bookings')
     .update(transition.plan.update)
     .eq('id', id)
     .select('id, status, seated_at, left_at, no_show_at, cancelled_at, updated_at')
@@ -70,7 +70,7 @@ export async function POST(
 
   // Idempotency: skip charge creation if a non-failed/non-waived charge request already
   // exists for this booking, so double-clicking "No show" does not create two charges.
-  const { data: existingChargeRequest } = await (auth.supabase.from('charge_requests') as any)
+  const { data: existingChargeRequest } = await auth.supabase.from('charge_requests')
     .select('id')
     .eq('table_booking_id', booking.id)
     .eq('type', 'no_show')

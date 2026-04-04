@@ -5,6 +5,7 @@ import { requireFohPermission } from '@/lib/foh/api-auth'
 import { ensureReplyInstruction } from '@/lib/sms/support'
 import { sendSMS } from '@/lib/twilio'
 import { logger } from '@/lib/logger'
+import { extractSmsSafetyInfo } from '@/lib/sms/safety-info'
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
@@ -65,7 +66,7 @@ export async function POST(
 
   // Per-booking SMS cooldown: max 3 messages per hour
   const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString()
-  const { count: recentSmsCount, error: countError } = await (auth.supabase.from('messages') as any)
+  const { count: recentSmsCount, error: countError } = await auth.supabase.from('messages')
     .select('id', { count: 'exact', head: true })
     .eq('table_booking_id', id)
     .eq('direction', 'outbound')
@@ -78,7 +79,7 @@ export async function POST(
     )
   }
 
-  const { data: booking, error: bookingError } = await (auth.supabase.from('table_bookings') as any)
+  const { data: booking, error: bookingError } = await auth.supabase.from('table_bookings')
     .select(
       'id, booking_reference, customer:customers!table_bookings_customer_id_fkey(id, first_name, mobile_number, sms_status)'
     )
@@ -134,7 +135,7 @@ export async function POST(
     return NextResponse.json({ error: 'Failed to send SMS' }, { status: 502 })
   }
 
-  const smsCode = typeof (smsResult as any)?.code === 'string' ? (smsResult as any).code : null
+  const { code: smsCode } = extractSmsSafetyInfo(smsResult)
   const smsLogFailure = smsResult.logFailure === true || smsCode === 'logging_failed'
 
   if (smsLogFailure) {

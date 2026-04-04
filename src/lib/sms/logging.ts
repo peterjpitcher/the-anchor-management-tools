@@ -91,7 +91,7 @@ export async function recordOutboundSmsMessage(params: RecordOutboundSmsParams):
   try {
     // insertPayload is built dynamically; cast required because Database type enforces
     // all required columns explicitly, but we build the object conditionally above.
-    const { data, error } = await (client.from('messages') as any)
+    const { data, error } = await client.from('messages')
       .insert(insertPayload)
       .select('id')
       .single()
@@ -109,7 +109,7 @@ export async function recordOutboundSmsMessage(params: RecordOutboundSmsParams):
       if (isMetadataMissing) {
         const { metadata: _removed, ...withoutMetadata } = insertPayload
 
-        const { data: fallbackData, error: fallbackError } = await (client.from('messages') as any)
+        const { data: fallbackData, error: fallbackError } = await client.from('messages')
           .insert(withoutMetadata)
           .select('id')
           .single()

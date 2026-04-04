@@ -10,6 +10,7 @@ import { ensureReplyInstruction } from '@/lib/sms/support'
 import { sendSMS } from '@/lib/twilio'
 import { getSmartFirstName } from '@/lib/sms/bulk'
 import { createEventManageToken } from '@/lib/events/manage-booking'
+import { extractSmsSafetyInfo } from '@/lib/sms/safety-info'
 
 export type EventPaymentTokenResult = {
   rawToken: string
@@ -67,8 +68,7 @@ function isDuplicateKeyError(error: unknown): boolean {
 }
 
 function normalizeThrownSmsSafety(error: unknown): { code: string; logFailure: boolean } {
-  const thrownCode = typeof (error as any)?.code === 'string' ? (error as any).code : null
-  const thrownLogFailure = (error as any)?.logFailure === true || thrownCode === 'logging_failed'
+  const { code: thrownCode, logFailure: thrownLogFailure } = extractSmsSafetyInfo(error)
 
   if (thrownLogFailure) {
     return {

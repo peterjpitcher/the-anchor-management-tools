@@ -119,7 +119,7 @@ async function ensureSystemLabels(
     }
 
     for (const row of data || []) {
-      labelByName.set((row as any).name, (row as any).id)
+      labelByName.set(row.name, row.id)
     }
   }
 
@@ -146,7 +146,7 @@ async function ensureSystemLabels(
       }
 
       for (const row of data || []) {
-        labelByName.set((row as any).name, (row as any).id)
+        labelByName.set(row.name, row.id)
       }
     }
   }

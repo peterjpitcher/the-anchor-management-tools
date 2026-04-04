@@ -71,7 +71,7 @@ async function logWebhook(
   if (error) {
     logger.error('Failed to store PayPal table-bookings webhook log', {
       error: new Error(
-        typeof (error as any)?.message === 'string' ? (error as any).message : String(error), // Supabase error shape is not fully typed
+        error instanceof Error ? error.message : String(error), // Supabase error shape is not fully typed
       ),
       metadata: {
         status: input.status,
