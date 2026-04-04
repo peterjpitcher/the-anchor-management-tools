@@ -1,12 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const { warn } = vi.hoisted(() => ({
-  warn: vi.fn(),
-}))
-
 vi.mock('@/lib/logger', () => ({
   logger: {
-    warn,
+    warn: vi.fn(),
     info: vi.fn(),
     error: vi.fn(),
   },
@@ -37,9 +33,12 @@ vi.mock('@/lib/table-bookings/sunday-preorder', () => ({
   createSundayPreorderToken: vi.fn(),
 }))
 
-import { alignTableCardCaptureHoldToScheduledSend } from '@/lib/table-bookings/bookings'
+import { alignTablePaymentHoldToScheduledSend } from '@/lib/table-bookings/bookings'
 
-describe('alignTableCardCaptureHoldToScheduledSend reliability guards', () => {
+// Updated: function was renamed from alignTableCardCaptureHoldToScheduledSend
+// and now only updates table_bookings + booking_holds (card_captures removed).
+// It no longer logs warnings — it just throws with failure details.
+describe('alignTablePaymentHoldToScheduledSend reliability guards', () => {
   beforeEach(() => {
     vi.clearAllMocks()
   })
@@ -61,13 +60,6 @@ describe('alignTableCardCaptureHoldToScheduledSend reliability guards', () => {
     const holdEqType = vi.fn().mockReturnValue({ eq: holdEqStatus })
     const holdEqBooking = vi.fn().mockReturnValue({ eq: holdEqType })
 
-    const captureSelect = vi.fn().mockResolvedValue({
-      data: [],
-      error: { message: 'capture write failed' },
-    })
-    const captureEqStatus = vi.fn().mockReturnValue({ select: captureSelect })
-    const captureEqBooking = vi.fn().mockReturnValue({ eq: captureEqStatus })
-
     const supabase = {
       from: vi.fn((table: string) => {
         if (table === 'table_bookings') {
@@ -82,39 +74,21 @@ describe('alignTableCardCaptureHoldToScheduledSend reliability guards', () => {
           }
         }
 
-        if (table === 'card_captures') {
-          return {
-            update: vi.fn().mockReturnValue({ eq: captureEqBooking }),
-          }
-        }
-
         throw new Error(`Unexpected table: ${table}`)
       }),
     }
 
-    const alignmentPromise = alignTableCardCaptureHoldToScheduledSend(supabase as any, {
+    const alignmentPromise = alignTablePaymentHoldToScheduledSend(supabase as any, {
       tableBookingId: 'booking-1',
       scheduledSendIso: '2026-02-14T12:00:00.000Z',
     })
 
     await expect(alignmentPromise).rejects.toThrow(
-      'Failed to align table card-capture hold state to scheduled SMS send time'
+      'Failed to align table payment hold state to scheduled SMS send time'
     )
     const alignmentError = await alignmentPromise.catch((error: unknown) => error as Error)
     expect(alignmentError.message).toContain('table_bookings_update_failed')
-
-    expect(warn).toHaveBeenCalledWith(
-      'Failed to align table booking hold expiry to deferred card-capture SMS send time',
-      expect.any(Object)
-    )
-    expect(warn).toHaveBeenCalledWith(
-      'Failed to align booking-hold expiry to deferred card-capture SMS send time',
-      expect.any(Object)
-    )
-    expect(warn).toHaveBeenCalledWith(
-      'Failed to align card-capture expiry to deferred card-capture SMS send time',
-      expect.any(Object)
-    )
+    expect(alignmentError.message).toContain('booking_holds_update_failed')
   })
 
   it('fails closed when alignment updates affect no rows', async () => {
@@ -134,13 +108,6 @@ describe('alignTableCardCaptureHoldToScheduledSend reliability guards', () => {
     const holdEqType = vi.fn().mockReturnValue({ eq: holdEqStatus })
     const holdEqBooking = vi.fn().mockReturnValue({ eq: holdEqType })
 
-    const captureSelect = vi.fn().mockResolvedValue({
-      data: [],
-      error: null,
-    })
-    const captureEqStatus = vi.fn().mockReturnValue({ select: captureSelect })
-    const captureEqBooking = vi.fn().mockReturnValue({ eq: captureEqStatus })
-
     const supabase = {
       from: vi.fn((table: string) => {
         if (table === 'table_bookings') {
@@ -155,38 +122,20 @@ describe('alignTableCardCaptureHoldToScheduledSend reliability guards', () => {
           }
         }
 
-        if (table === 'card_captures') {
-          return {
-            update: vi.fn().mockReturnValue({ eq: captureEqBooking }),
-          }
-        }
-
         throw new Error(`Unexpected table: ${table}`)
       }),
     }
 
-    const alignmentPromise = alignTableCardCaptureHoldToScheduledSend(supabase as any, {
+    const alignmentPromise = alignTablePaymentHoldToScheduledSend(supabase as any, {
       tableBookingId: 'booking-1',
       scheduledSendIso: '2026-02-14T12:00:00.000Z',
     })
 
     await expect(alignmentPromise).rejects.toThrow(
-      'Failed to align table card-capture hold state to scheduled SMS send time'
+      'Failed to align table payment hold state to scheduled SMS send time'
     )
     const alignmentError = await alignmentPromise.catch((error: unknown) => error as Error)
     expect(alignmentError.message).toContain('table_bookings_update_no_rows')
-
-    expect(warn).toHaveBeenCalledWith(
-      'Table booking hold-expiry alignment affected no rows',
-      expect.any(Object)
-    )
-    expect(warn).toHaveBeenCalledWith(
-      'Booking-hold expiry alignment affected no rows',
-      expect.any(Object)
-    )
-    expect(warn).toHaveBeenCalledWith(
-      'Card-capture expiry alignment affected no rows',
-      expect.any(Object)
-    )
+    expect(alignmentError.message).toContain('booking_holds_update_no_rows')
   })
 })

@@ -30,7 +30,7 @@ vi.mock('@/lib/table-bookings/sunday-preorder', () => ({
 }))
 
 import { sendSMS } from '@/lib/twilio'
-import { sendTableBookingConfirmedAfterCardCaptureSmsIfAllowed } from '@/lib/table-bookings/bookings'
+import { sendTableBookingConfirmedAfterDepositSmsIfAllowed } from '@/lib/table-bookings/bookings'
 
 describe('table booking post-card-capture SMS safety meta', () => {
   beforeEach(() => {
@@ -84,7 +84,7 @@ describe('table booking post-card-capture SMS safety meta', () => {
       }),
     }
 
-    const result = await sendTableBookingConfirmedAfterCardCaptureSmsIfAllowed(
+    const result = await sendTableBookingConfirmedAfterDepositSmsIfAllowed(
       supabase as any,
       'table-booking-1'
     )
@@ -95,7 +95,7 @@ describe('table booking post-card-capture SMS safety meta', () => {
       logFailure: false,
     })
     expect(warn).toHaveBeenCalledWith(
-      'Table booking post-card-capture SMS threw unexpectedly',
+      'Table booking post-deposit SMS threw unexpectedly',
       expect.objectContaining({
         metadata: expect.objectContaining({
           code: 'idempotency_conflict',

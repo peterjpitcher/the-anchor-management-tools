@@ -30,9 +30,15 @@ function buildUpdateNoRowSupabase() {
   const eq = vi.fn().mockReturnValue({ select })
   const update = vi.fn().mockReturnValue({ eq })
 
+  // Updated: routes now also call .from('table_bookings').select(...) for
+  // diagnostic booking state on rejected transitions, so we include select.
+  const readMaybeSingle = vi.fn().mockResolvedValue({ data: null, error: null })
+  const readEq = vi.fn().mockReturnValue({ maybeSingle: readMaybeSingle })
+  const readSelect = vi.fn().mockReturnValue({ eq: readEq })
+
   return {
     supabase: {
-      from: vi.fn().mockReturnValue({ update }),
+      from: vi.fn().mockReturnValue({ update, select: readSelect }),
     },
     update,
     eq,
@@ -147,10 +153,12 @@ describe('Table-booking mutation row-effect guards', () => {
     expect(createChargeRequestForBooking).not.toHaveBeenCalled()
   })
 
-  it('clears no-show markers and normalizes pending_card_capture when seating via FOH', async () => {
+  // Updated: pending_card_capture renamed to pending_payment. Status stays
+  // as pending_payment when seated (only no_show bookings normalize to confirmed).
+  it('clears no-show markers when seating a pending_payment booking via FOH', async () => {
     const { supabase, update } = buildUpdateSuccessSupabase({
       id: BOOKING_UUID,
-      status: 'confirmed',
+      status: 'pending_payment',
       seated_at: '2026-02-23T10:00:00.000Z',
       left_at: null,
       no_show_at: null,
@@ -165,7 +173,7 @@ describe('Table-booking mutation row-effect guards', () => {
     })
     ;(getTableBookingForFoh as unknown as vi.Mock).mockResolvedValue({
       id: BOOKING_UUID,
-      status: 'pending_card_capture',
+      status: 'pending_payment',
     })
 
     const response = await postFohSeated({} as any, {
@@ -175,7 +183,7 @@ describe('Table-booking mutation row-effect guards', () => {
     expect(response.status).toBe(200)
     expect(update).toHaveBeenCalledWith(
       expect.objectContaining({
-        status: 'confirmed',
+        status: 'pending_payment',
         left_at: null,
         no_show_at: null,
         no_show_marked_at: null,
@@ -184,10 +192,10 @@ describe('Table-booking mutation row-effect guards', () => {
     )
   })
 
-  it('clears no-show markers and normalizes pending_card_capture when seating via BOH', async () => {
+  it('clears no-show markers when seating a pending_payment booking via BOH', async () => {
     const { supabase, update } = buildUpdateSuccessSupabase({
       id: BOOKING_UUID,
-      status: 'confirmed',
+      status: 'pending_payment',
       seated_at: '2026-02-23T10:00:00.000Z',
       left_at: null,
       no_show_at: null,
@@ -202,7 +210,7 @@ describe('Table-booking mutation row-effect guards', () => {
     })
     ;(getTableBookingForFoh as unknown as vi.Mock).mockResolvedValue({
       id: BOOKING_UUID,
-      status: 'pending_card_capture',
+      status: 'pending_payment',
     })
 
     const request = new Request('http://localhost/api/boh/table-bookings/booking-1/status', {
@@ -218,7 +226,7 @@ describe('Table-booking mutation row-effect guards', () => {
     expect(response.status).toBe(200)
     expect(update).toHaveBeenCalledWith(
       expect.objectContaining({
-        status: 'confirmed',
+        status: 'pending_payment',
         left_at: null,
         no_show_at: null,
         no_show_marked_at: null,
@@ -260,7 +268,8 @@ describe('Table-booking mutation row-effect guards', () => {
 
     expect(fohResponse.status).toBe(409)
     expect(bohResponse.status).toBe(409)
-    expect(fohPayload).toEqual({ error: 'Cannot mark booking as seated from current status' })
+    // Updated: FOH seated route now includes booking diagnostic state in rejection response
+    expect(fohPayload).toEqual({ error: 'Cannot mark booking as seated from current status', booking: null })
     expect(bohPayload).toEqual({ error: 'Cannot mark booking as seated from current status' })
     expect(update).not.toHaveBeenCalled()
   })
@@ -301,7 +310,8 @@ describe('Table-booking mutation row-effect guards', () => {
 
     expect(fohResponse.status).toBe(409)
     expect(bohResponse.status).toBe(409)
-    expect(fohPayload).toEqual({ error: 'Cannot mark booking as no-show from current status' })
+    // Updated: FOH no-show route now includes booking diagnostic state in rejection response
+    expect(fohPayload).toEqual({ error: 'Cannot mark booking as no-show from current status', booking: null })
     expect(bohPayload).toEqual({ error: 'Cannot mark booking as no-show from current status' })
     expect(update).not.toHaveBeenCalled()
     expect(createChargeRequestForBooking).not.toHaveBeenCalled()

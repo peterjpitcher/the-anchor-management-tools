@@ -63,20 +63,13 @@ describe('MenuService delete guards', () => {
     await expect(MenuService.deleteDish('dish-1')).rejects.toThrow('Dish not found')
   })
 
-  it('returns not-found when recipe update affects no rows', async () => {
-    const maybeSingle = vi.fn().mockResolvedValue({ data: null, error: null })
-    const select = vi.fn().mockReturnValue({ maybeSingle })
-    const eq = vi.fn().mockReturnValue({ select })
-
+  // Updated: updateRecipe now uses supabase.rpc('update_recipe_transaction')
+  // instead of direct table operations. A null return from the RPC means no recipe found.
+  it('returns error when recipe update RPC fails', async () => {
     mockedCreateClient.mockResolvedValue({
-      from: vi.fn((table: string) => {
-        if (table !== 'menu_recipes') {
-          throw new Error(`Unexpected table: ${table}`)
-        }
-
-        return {
-          update: vi.fn().mockReturnValue({ eq }),
-        }
+      rpc: vi.fn().mockResolvedValue({
+        data: null,
+        error: { message: 'Recipe not found' },
       }),
     })
 
@@ -87,29 +80,22 @@ describe('MenuService delete guards', () => {
         yield_unit: 'portion',
         is_active: true,
       })
-    ).rejects.toThrow('Recipe not found')
+    ).rejects.toThrow('Failed to update recipe')
   })
 
-  it('returns not-found when dish update affects no rows', async () => {
+  // Updated: updateDish now uses supabase.rpc('update_dish_transaction')
+  // instead of direct table operations. An RPC error indicates failure.
+  it('returns error when dish update RPC fails', async () => {
     vi.spyOn(MenuSettingsService, 'getMenuTargetGp').mockResolvedValue(70)
     vi.spyOn(MenuService, 'getMenuAndCategoryIds').mockResolvedValue({
       menuMap: new Map([['main', 'menu-1']]),
       categoryMap: new Map([['food', 'cat-1']]),
     })
 
-    const maybeSingle = vi.fn().mockResolvedValue({ data: null, error: null })
-    const select = vi.fn().mockReturnValue({ maybeSingle })
-    const eq = vi.fn().mockReturnValue({ select })
-
     mockedCreateClient.mockResolvedValue({
-      from: vi.fn((table: string) => {
-        if (table !== 'menu_dishes') {
-          throw new Error(`Unexpected table: ${table}`)
-        }
-
-        return {
-          update: vi.fn().mockReturnValue({ eq }),
-        }
+      rpc: vi.fn().mockResolvedValue({
+        data: null,
+        error: { message: 'Dish not found' },
       }),
     })
 
@@ -121,6 +107,6 @@ describe('MenuService delete guards', () => {
         is_sunday_lunch: false,
         assignments: [{ menu_code: 'main', category_code: 'food', sort_order: 0 }],
       })
-    ).rejects.toThrow('Dish not found')
+    ).rejects.toThrow('Failed to update dish')
   })
 })

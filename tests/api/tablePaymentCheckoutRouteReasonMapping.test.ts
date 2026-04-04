@@ -1,93 +1,36 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { describe, expect, it } from 'vitest'
 
-vi.mock('@/lib/supabase/admin', () => ({
-  createAdminClient: vi.fn(),
-}))
-
-vi.mock('@/lib/table-bookings/bookings', () => ({
-  createTableCheckoutSessionByRawToken: vi.fn(),
-}))
-
-vi.mock('@/lib/guest/token-throttle', () => ({
-  checkGuestTokenThrottle: vi.fn(),
-}))
-
-vi.mock('@/lib/logger', () => ({
-  logger: {
-    error: vi.fn(),
-    warn: vi.fn(),
-    info: vi.fn(),
-    debug: vi.fn(),
-  },
-}))
-
-import { createAdminClient } from '@/lib/supabase/admin'
-import { createTableCheckoutSessionByRawToken } from '@/lib/table-bookings/bookings'
-import { checkGuestTokenThrottle } from '@/lib/guest/token-throttle'
-import { logger } from '@/lib/logger'
-import { POST } from '@/app/g/[token]/table-payment/checkout/route'
+// Updated: the original POST route at @/app/g/[token]/table-payment/checkout/route
+// was deleted when table booking deposits switched from Stripe checkout to PayPal.
+// This test now verifies the blocked-reason mapping utility that was used by that route,
+// ensuring the stripe_unavailable and internal_error reasons produce correct messages.
+import { tablePaymentBlockedReasonMessage } from '@/lib/table-bookings/table-payment-blocked-reason'
 
 describe('table payment checkout blocked-reason mapping', () => {
-  beforeEach(() => {
-    vi.clearAllMocks()
-    ;(checkGuestTokenThrottle as unknown as vi.Mock).mockResolvedValue({
-      allowed: true,
-      retryAfterSeconds: 60,
-      remaining: 7,
-    })
-    ;(createAdminClient as unknown as vi.Mock).mockReturnValue({})
+  it('maps stripe_unavailable to a user-facing message about payment service', () => {
+    const message = tablePaymentBlockedReasonMessage('stripe_unavailable')
+
+    expect(message).toContain('payment service')
+    expect(message).toContain('temporarily unavailable')
   })
 
-  async function callCheckoutRoute() {
-    const request = new Request(
-      'https://management.orangejelly.co.uk/g/token-123/table-payment/checkout',
-      { method: 'POST' }
-    )
-    const nextRequestLike = Object.assign(request, { nextUrl: new URL(request.url) })
-    return POST(nextRequestLike as any, {
-      params: Promise.resolve({ token: 'token-123' }),
-    } as any)
-  }
+  it('maps internal_error to a user-facing message about an internal error', () => {
+    const message = tablePaymentBlockedReasonMessage('internal_error')
 
-  it('maps Stripe expires_at validation errors to stripe_unavailable', async () => {
-    ;(createTableCheckoutSessionByRawToken as unknown as vi.Mock).mockRejectedValue(
-      new Error('The `expires_at` timestamp must be less than 24 hours from Checkout Session creation.')
-    )
-
-    const response = await callCheckoutRoute()
-    const location = response.headers.get('location')
-
-    expect(response.status).toBe(303)
-    expect(location).toContain('/g/token-123/table-payment?state=blocked&reason=stripe_unavailable')
-    expect(logger.error).toHaveBeenCalledWith(
-      'Failed to create Stripe checkout for table payment token',
-      expect.objectContaining({
-        metadata: expect.objectContaining({
-          blockedReason: 'stripe_unavailable',
-          error_name: 'Error',
-          error_message: expect.stringContaining('expires_at'),
-        }),
-      })
-    )
+    expect(message).toContain('internal error')
   })
 
-  it('maps unknown errors to internal_error', async () => {
-    ;(createTableCheckoutSessionByRawToken as unknown as vi.Mock).mockRejectedValue(new Error('unexpected failure'))
+  it('maps unknown reasons to a generic fallback message', () => {
+    const message = tablePaymentBlockedReasonMessage('some_unknown_reason')
 
-    const response = await callCheckoutRoute()
-    const location = response.headers.get('location')
+    expect(message).toBeTruthy()
+    expect(message.length).toBeGreaterThan(10)
+  })
 
-    expect(response.status).toBe(303)
-    expect(location).toContain('/g/token-123/table-payment?state=blocked&reason=internal_error')
-    expect(logger.error).toHaveBeenCalledWith(
-      'Failed to create Stripe checkout for table payment token',
-      expect.objectContaining({
-        metadata: expect.objectContaining({
-          blockedReason: 'internal_error',
-          error_name: 'Error',
-          error_message: 'unexpected failure',
-        }),
-      })
-    )
+  it('maps undefined reason to a generic fallback message', () => {
+    const message = tablePaymentBlockedReasonMessage(undefined)
+
+    expect(message).toBeTruthy()
+    expect(message.length).toBeGreaterThan(10)
   })
 })
