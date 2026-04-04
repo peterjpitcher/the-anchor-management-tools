@@ -162,16 +162,16 @@ export async function handleReplyToBook(
   const eventName = event?.name ?? 'this event'
 
   if (capacityRow) {
-    const seatsRemaining = capacityRow.seats_remaining ?? 0
+    const seatsRemaining = capacityRow.seats_remaining // null = unlimited capacity
 
-    if (seatsRemaining <= 0) {
+    if (seatsRemaining !== null && seatsRemaining !== undefined && seatsRemaining <= 0) {
       return {
         handled: true,
         response: `Gutted — ${eventName} is fully booked! Keep an eye out for the next one.`,
       }
     }
 
-    if (seatsRemaining < seats) {
+    if (seatsRemaining !== null && seatsRemaining !== undefined && seatsRemaining < seats) {
       return {
         handled: true,
         response: `We've only got ${seatsRemaining} seats left for ${eventName}. Reply ${seatsRemaining} or less and we'll get you in!`,
