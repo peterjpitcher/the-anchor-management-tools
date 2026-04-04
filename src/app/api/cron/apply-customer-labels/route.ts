@@ -8,7 +8,7 @@ function isHealthCheck(request: NextRequest): boolean {
 }
 
 export async function GET(request: NextRequest) {
-  console.log('[Cron] Customer labels endpoint called')
+  console.warn('[Cron] Customer labels endpoint called')
   
   try {
     // Verify this is a Vercel cron request
@@ -30,23 +30,23 @@ export async function GET(request: NextRequest) {
       })
     }
 
-    console.log('[Cron] Starting customer label application')
+    console.warn('[Cron] Starting customer label application')
     
     const supabase = createAdminClient()
     
     // First, rebuild customer category stats to ensure they're up to date
-    console.log('[Cron] Rebuilding customer category stats...')
+    console.warn('[Cron] Rebuilding customer category stats...')
     const { data: backfillData, error: backfillError } = await supabase.rpc('rebuild_customer_category_stats')
     
     if (backfillError) {
       console.error('[Cron] Error rebuilding customer stats:', backfillError)
       // Continue anyway - partial data is better than none
     } else {
-      console.log(`[Cron] Rebuilt ${backfillData || 0} customer category stats`)
+      console.warn(`[Cron] Rebuilt ${backfillData || 0} customer category stats`)
     }
     
     // Call the database function to apply labels retroactively
-    console.log('[Cron] Applying customer labels retroactively...')
+    console.warn('[Cron] Applying customer labels retroactively...')
     const { data, error } = await supabase.rpc('apply_customer_labels_retroactively')
     
     if (error) {
@@ -68,7 +68,7 @@ export async function GET(request: NextRequest) {
       }
     })
     
-    console.log('[Cron] Customer labels applied successfully')
+    console.warn('[Cron] Customer labels applied successfully')
     
     return NextResponse.json({
       success: true,

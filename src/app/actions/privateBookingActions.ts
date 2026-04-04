@@ -8,6 +8,7 @@ import { checkUserPermission } from '@/app/actions/rbac'
 import { generateBookingToken } from '@/lib/private-bookings/booking-token'
 import { revalidatePath, revalidateTag } from 'next/cache'
 import { z } from 'zod'
+import { getErrorMessage } from '@/lib/errors'
 import type {
   PrivateBookingWithDetails,
   BookingStatus,
@@ -139,9 +140,9 @@ export async function getPrivateBookings(filters?: {
     }
     const { data } = await PrivateBookingService.getBookings(filters);
     return { data };
-  } catch (error: any) {
+  } catch (error: unknown) {
     logPrivateBookingActionError('Error fetching private bookings:', error);
-    return { error: error.message || 'An error occurred' };
+    return { error: getErrorMessage(error) };
   }
 }
 
@@ -165,9 +166,9 @@ export async function getPrivateBooking(
             ? await PrivateBookingService.getBookingByIdForMessages(id)
             : await PrivateBookingService.getBookingById(id)
     return { data };
-  } catch (error: any) {
+  } catch (error: unknown) {
     logPrivateBookingActionError('Error fetching private booking:', error);
-    return { error: error.message || 'An error occurred' };
+    return { error: getErrorMessage(error) };
   }
 }
 
@@ -264,9 +265,9 @@ export async function createPrivateBooking(formData: FormData) {
     revalidatePath('/private-bookings')
     revalidateTag('dashboard')
     return { success: true, data: booking }
-  } catch (error: any) {
+  } catch (error: unknown) {
     logPrivateBookingActionError('Error creating private booking:', error)
-    return { error: error.message || 'An error occurred' }
+    return { error: getErrorMessage(error) }
   }
 }
 
@@ -365,9 +366,9 @@ export async function updatePrivateBooking(id: string, formData: FormData) {
     revalidatePath(`/private-bookings/${id}`)
     revalidateTag('dashboard')
     return { success: true, data: booking }
-  } catch (error: any) {
+  } catch (error: unknown) {
     logPrivateBookingActionError('Error updating private booking:', error)
-    return { error: error.message || 'An error occurred' }
+    return { error: getErrorMessage(error) }
   }
 }
 
@@ -394,9 +395,9 @@ export async function updateBookingStatus(id: string, status: BookingStatus) {
     revalidatePath(`/private-bookings/${id}`)
     revalidateTag('dashboard')
     return { success: true }
-  } catch (error: any) {
+  } catch (error: unknown) {
     logPrivateBookingActionError('Error updating booking status:', error)
-    return { error: error.message || 'An error occurred' }
+    return { error: getErrorMessage(error) }
   }
 }
 
@@ -427,9 +428,9 @@ export async function addPrivateBookingNote(bookingId: string, note: string) {
     revalidatePath(`/private-bookings/${bookingId}`)
     revalidateTag('dashboard')
     return { success: true }
-  } catch (error: any) {
+  } catch (error: unknown) {
     logPrivateBookingActionError('Error recording booking note:', error)
-    return { error: error.message || 'Failed to save note' }
+    return { error: getErrorMessage(error) }
   }
 }
 
@@ -460,9 +461,9 @@ export async function deletePrivateBooking(id: string) {
     revalidatePath(`/private-bookings/${id}`)
     revalidateTag('dashboard')
     return { success: true }
-  } catch (error: any) {
+  } catch (error: unknown) {
     logPrivateBookingActionError('Error deleting private booking:', error)
-    return { error: error.message || 'An error occurred' }
+    return { error: getErrorMessage(error) }
   }
 }
 
@@ -476,9 +477,9 @@ export async function getVenueSpaces(activeOnly = true) {
   try {
     const data = await PrivateBookingService.getVenueSpaces(activeOnly);
     return { data };
-  } catch (error: any) {
+  } catch (error: unknown) {
     logPrivateBookingActionError('Error fetching venue spaces:', error);
-    return { error: error.message || 'An error occurred' };
+    return { error: getErrorMessage(error) };
   }
 }
 
@@ -491,9 +492,9 @@ export async function getVenueSpacesForManagement() {
   try {
     const data = await PrivateBookingService.getVenueSpacesForManagement();
     return { data };
-  } catch (error: any) {
+  } catch (error: unknown) {
     logPrivateBookingActionError('Error fetching venue spaces for management:', error)
-    return { error: error.message || 'An error occurred' }
+    return { error: getErrorMessage(error) }
   }
 }
 
@@ -507,9 +508,9 @@ export async function getCateringPackages(activeOnly = true) {
   try {
     const data = await PrivateBookingService.getCateringPackages(activeOnly);
     return { data };
-  } catch (error: any) {
+  } catch (error: unknown) {
     logPrivateBookingActionError('Error fetching catering packages:', error);
-    return { error: error.message || 'An error occurred' };
+    return { error: getErrorMessage(error) };
   }
 }
 
@@ -522,9 +523,9 @@ export async function getCateringPackagesForManagement() {
   try {
     const data = await PrivateBookingService.getCateringPackagesForManagement();
     return { data };
-  } catch (error: any) {
+  } catch (error: unknown) {
     logPrivateBookingActionError('Error fetching catering packages for management:', error)
-    return { error: error.message || 'An error occurred' }
+    return { error: getErrorMessage(error) }
   }
 }
 
@@ -547,9 +548,9 @@ export async function getVendors(serviceType?: string, activeOnly = true) {
     })
 
     return { data: normalizedData };
-  } catch (error: any) {
+  } catch (error: unknown) {
     logPrivateBookingActionError('Error fetching vendors:', error);
-    return { error: error.message || 'An error occurred' };
+    return { error: getErrorMessage(error) };
   }
 }
 
@@ -566,9 +567,9 @@ export async function getVendorsForManagement() {
       typical_rate_normalized: sanitizeMoneyString(vendor.typical_rate)
     }))
     return { data: normalizedData }
-  } catch (error: any) {
+  } catch (error: unknown) {
     logPrivateBookingActionError('Error fetching vendors for management:', error)
-    return { error: error.message || 'An error occurred' }
+    return { error: getErrorMessage(error) }
   }
 }
 
@@ -592,9 +593,9 @@ export async function getVendorRate(vendorId: string) {
         typical_rate_normalized: normalizedRate
       }
     }
-  } catch (error: any) {
+  } catch (error: unknown) {
     logPrivateBookingActionError('Error fetching vendor rate:', error)
-    return { error: error.message || 'Vendor not found' }
+    return { error: getErrorMessage(error) }
   }
 }
 
@@ -654,12 +655,12 @@ export async function recordDepositPayment(bookingId: string, formData: FormData
     revalidatePath(`/private-bookings/${bookingId}`)
     revalidateTag('dashboard')
     return result
-  } catch (error: any) {
+  } catch (error: unknown) {
     logger.error('Error recording deposit payment', {
       error: error instanceof Error ? error : new Error(String(error)),
       metadata: { bookingId }
     })
-    return { success: false, error: error.message || 'An error occurred' }
+    return { success: false, error: getErrorMessage(error) }
   }
 }
 
@@ -718,12 +719,12 @@ export async function recordFinalPayment(bookingId: string, formData: FormData) 
     revalidatePath(`/private-bookings/${bookingId}`)
     revalidateTag('dashboard')
     return result
-  } catch (error: any) {
+  } catch (error: unknown) {
     logger.error('Error recording balance payment', {
       error: error instanceof Error ? error : new Error(String(error)),
       metadata: { bookingId }
     })
-    return { success: false, error: error.message || 'An error occurred' }
+    return { success: false, error: getErrorMessage(error) }
   }
 }
 
@@ -749,12 +750,12 @@ export async function cancelPrivateBooking(bookingId: string, reason?: string) {
     revalidatePath(`/private-bookings/${bookingId}`)
     revalidateTag('dashboard')
     return result
-  } catch (error: any) {
+  } catch (error: unknown) {
     logger.error('Error cancelling private booking', {
       error: error instanceof Error ? error : new Error(String(error)),
       metadata: { bookingId }
     })
-    return { success: false, error: error.message || 'Failed to cancel booking' }
+    return { success: false, error: getErrorMessage(error) }
   }
 }
 
@@ -792,9 +793,9 @@ export async function extendBookingHold(bookingId: string, days: 7 | 14 | 30) {
     revalidatePath('/private-bookings')
     revalidatePath(`/private-bookings/${bookingId}`)
     return result
-  } catch (error: any) {
+  } catch (error: unknown) {
     logPrivateBookingActionError('Error extending booking hold', error, { bookingId, days })
-    return { error: error.message || 'Failed to extend booking hold' }
+    return { error: getErrorMessage(error) }
   }
 }
 
@@ -840,9 +841,9 @@ export async function applyBookingDiscount(bookingId: string, data: {
     revalidatePath(`/private-bookings/${bookingId}`)
     revalidateTag('dashboard')
     return { success: true }
-  } catch (error: any) {
+  } catch (error: unknown) {
     logPrivateBookingActionError('Error applying discount: ', error)
-    return { error: error.message || 'Failed to apply discount' }
+    return { error: getErrorMessage(error) }
   }
 }
 
@@ -865,11 +866,11 @@ export async function getPrivateBookingSmsQueue(statusFilter?: string[]) {
   try {
     const queue = await SmsQueueService.getQueue(statusFilter)
     return { success: true, data: queue }
-  } catch (error: any) {
+  } catch (error: unknown) {
     logger.error('Error fetching private booking SMS queue', {
       error: error instanceof Error ? error : new Error(String(error))
     })
-    return { error: error.message || 'Failed to fetch SMS queue' }
+    return { error: getErrorMessage(error) }
   }
 }
 
@@ -892,12 +893,12 @@ export async function approveSms(smsId: string) {
     await SmsQueueService.approveSms(smsId, user.id)
     revalidatePath('/private-bookings/sms-queue')
     return { success: true }
-  } catch (error: any) {
+  } catch (error: unknown) {
     logger.error('Error approving SMS queue item', {
       error: error instanceof Error ? error : new Error(String(error)),
       metadata: { smsId }
     })
-    return { error: error.message || 'Failed to approve SMS' }
+    return { error: getErrorMessage(error) }
   }
 }
 
@@ -920,12 +921,12 @@ export async function rejectSms(smsId: string) {
     await SmsQueueService.rejectSms(smsId, user.id)
     revalidatePath('/private-bookings/sms-queue')
     return { success: true }
-  } catch (error: any) {
+  } catch (error: unknown) {
     logger.error('Error rejecting SMS queue item', {
       error: error instanceof Error ? error : new Error(String(error)),
       metadata: { smsId }
     })
-    return { error: error.message || 'Failed to reject SMS' }
+    return { error: getErrorMessage(error) }
   }
 }
 
@@ -956,12 +957,12 @@ export async function sendApprovedSms(smsId: string) {
       })
     }
     return { ...result, error: null }
-  } catch (error: any) {
+  } catch (error: unknown) {
     logger.error('Error sending approved SMS queue item', {
       error: error instanceof Error ? error : new Error(String(error)),
       metadata: { smsId }
     })
-    return { success: false, error: error.message || 'Failed to send SMS' }
+    return { success: false, error: getErrorMessage(error) }
   }
 }
 
@@ -985,9 +986,9 @@ export async function createVenueSpace(data: {
     await PrivateBookingService.createVenueSpace(data, user.id, user.email || undefined)
     revalidatePath('/private-bookings/settings/spaces')
     return { success: true }
-  } catch (error: any) {
+  } catch (error: unknown) {
     logPrivateBookingActionError('Error creating venue space:', error)
-    return { error: error.message || 'Failed to create venue space' }
+    return { error: getErrorMessage(error) }
   }
 }
 
@@ -1010,9 +1011,9 @@ export async function updateVenueSpace(id: string, data: {
     await PrivateBookingService.updateVenueSpace(id, data, user.id, user.email || undefined)
     revalidatePath('/private-bookings/settings/spaces')
     return { success: true }
-  } catch (error: any) {
+  } catch (error: unknown) {
     logPrivateBookingActionError('Error updating venue space:', error)
-    return { error: error.message || 'Failed to update venue space' }
+    return { error: getErrorMessage(error) }
   }
 }
 
@@ -1028,9 +1029,9 @@ export async function deleteVenueSpace(id: string) {
     await PrivateBookingService.deleteVenueSpace(id, user.id, user.email || undefined)
     revalidatePath('/private-bookings/settings/spaces')
     return { success: true }
-  } catch (error: any) {
+  } catch (error: unknown) {
     logPrivateBookingActionError('Error deleting venue space:', error)
-    return { error: error.message || 'Failed to delete venue space' }
+    return { error: getErrorMessage(error) }
   }
 }
 
@@ -1061,9 +1062,9 @@ export async function createCateringPackage(data: {
     await PrivateBookingService.createCateringPackage(data, user.id, user.email || undefined)
     revalidatePath('/private-bookings/settings/catering')
     return { success: true }
-  } catch (error: any) {
+  } catch (error: unknown) {
     logPrivateBookingActionError('Error creating catering package:', error)
-    return { error: error.message || 'An unexpected error occurred' }
+    return { error: getErrorMessage(error) }
   }
 }
 
@@ -1093,9 +1094,9 @@ export async function updateCateringPackage(id: string, data: {
     await PrivateBookingService.updateCateringPackage(id, data, user.id, user.email || undefined)
     revalidatePath('/private-bookings/settings/catering')
     return { success: true }
-  } catch (error: any) {
+  } catch (error: unknown) {
     logPrivateBookingActionError('Error updating catering package:', error)
-    return { error: error.message || 'An unexpected error occurred' }
+    return { error: getErrorMessage(error) }
   }
 }
 
@@ -1111,9 +1112,9 @@ export async function deleteCateringPackage(id: string) {
     await PrivateBookingService.deleteCateringPackage(id, user.id, user.email || undefined)
     revalidatePath('/private-bookings/settings/catering')
     return { success: true }
-  } catch (error: any) {
+  } catch (error: unknown) {
     logPrivateBookingActionError('Error deleting catering package:', error)
-    return { error: error.message || 'An unexpected error occurred' }
+    return { error: getErrorMessage(error) }
   }
 }
 
@@ -1139,7 +1140,7 @@ export async function getBookingItems(bookingId: string) {
 
   if (error) {
     logPrivateBookingActionError('Error fetching booking items:', error)
-    return { error: error.message || 'Failed to fetch booking items' }
+    return { error: getErrorMessage(error) }
   }
 
   return { data }
@@ -1182,9 +1183,9 @@ export async function addBookingItem(data: {
     revalidatePath(`/private-bookings/${data.booking_id}/items`)
     revalidateTag('dashboard')
     return { success: true }
-  } catch (error: any) {
+  } catch (error: unknown) {
     logPrivateBookingActionError('Error adding booking item:', error)
-    return { error: error.message || 'An error occurred' }
+    return { error: getErrorMessage(error) }
   }
 }
 
@@ -1209,9 +1210,9 @@ export async function updateBookingItem(itemId: string, data: {
     revalidatePath(`/private-bookings/${bookingId}/items`)
     revalidateTag('dashboard')
     return { success: true }
-  } catch (error: any) {
+  } catch (error: unknown) {
     logPrivateBookingActionError('Error updating booking item:', error)
-    return { error: error.message || 'An error occurred' }
+    return { error: getErrorMessage(error) }
   }
 }
 
@@ -1228,9 +1229,9 @@ export async function deleteBookingItem(itemId: string) {
     revalidatePath(`/private-bookings/${result.bookingId}/items`)
     revalidateTag('dashboard')
     return { success: true }
-  } catch (error: any) {
+  } catch (error: unknown) {
     logPrivateBookingActionError('Error deleting booking item:', error)
-    return { error: error.message || 'Failed to delete booking item' }
+    return { error: getErrorMessage(error) }
   }
 }
 
@@ -1247,9 +1248,9 @@ export async function reorderBookingItems(bookingId: string, orderedIds: string[
     revalidatePath(`/private-bookings/${bookingId}/items`)
     revalidateTag('dashboard')
     return { success: true }
-  } catch (error: any) {
+  } catch (error: unknown) {
     logPrivateBookingActionError('Error updating booking item order:', error)
-    return { error: error.message || 'An error occurred' }
+    return { error: getErrorMessage(error) }
   }
 }
 
@@ -1281,9 +1282,9 @@ export async function createVendor(data: {
     await PrivateBookingService.createVendor(data, user.id, user.email || undefined)
     revalidatePath('/private-bookings/settings/vendors')
     return { success: true }
-  } catch (error: any) {
+  } catch (error: unknown) {
     logPrivateBookingActionError('Error creating vendor:', error)
-    return { error: error.message || 'Failed to create vendor' }
+    return { error: getErrorMessage(error) }
   }
 }
 
@@ -1314,9 +1315,9 @@ export async function updateVendor(id: string, data: {
     await PrivateBookingService.updateVendor(id, data, user.id, user.email || undefined)
     revalidatePath('/private-bookings/settings/vendors')
     return { success: true }
-  } catch (error: any) {
+  } catch (error: unknown) {
     logPrivateBookingActionError('Error updating vendor:', error)
-    return { error: error.message || 'Failed to update vendor' }
+    return { error: getErrorMessage(error) }
   }
 }
 
@@ -1332,9 +1333,9 @@ export async function deleteVendor(id: string) {
     await PrivateBookingService.deleteVendor(id, user.id, user.email || undefined)
     revalidatePath('/private-bookings/settings/vendors')
     return { success: true }
-  } catch (error: any) {
+  } catch (error: unknown) {
     logPrivateBookingActionError('Error deleting vendor:', error)
-    return { error: error.message || 'Failed to delete vendor' }
+    return { error: getErrorMessage(error) }
   }
 }
 
@@ -1438,12 +1439,12 @@ export async function createDepositPaymentOrder(
     }
 
     return { success: true, approveUrl: result.approveUrl, orderId: result.orderId }
-  } catch (error: any) {
+  } catch (error: unknown) {
     logger.error('Error creating PayPal deposit order', {
       error: error instanceof Error ? error : new Error(String(error)),
       metadata: { bookingId }
     })
-    return { error: error.message || 'Failed to create PayPal payment order' }
+    return { error: getErrorMessage(error) }
   }
 }
 
@@ -1549,12 +1550,12 @@ export async function captureDepositPayment(
     revalidatePath('/private-bookings')
     revalidateTag('dashboard')
     return { success: true }
-  } catch (error: any) {
+  } catch (error: unknown) {
     logger.error('Error capturing PayPal deposit payment', {
       error: error instanceof Error ? error : new Error(String(error)),
       metadata: { bookingId, orderId }
     })
-    return { error: error.message || 'Failed to capture PayPal payment' }
+    return { error: getErrorMessage(error) }
   }
 }
 

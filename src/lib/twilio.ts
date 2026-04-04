@@ -9,6 +9,7 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import { evaluateSmsQuietHours } from '@/lib/sms/quiet-hours';
 import { shortenUrlsInSmsBody } from '@/lib/sms/link-shortening';
 import { formatPhoneForStorage, generatePhoneVariants } from '@/lib/utils';
+import { getErrorMessage, getErrorCode } from '@/lib/errors';
 import {
   buildSmsDedupContext,
   claimSmsIdempotency,
@@ -608,13 +609,14 @@ export const sendSMS = async (to: string, body: string, options: SendSMSOptions 
         deferred: shouldScheduleWithTwilio,
         deferredBy: shouldScheduleWithTwilio ? 'twilio' : undefined
       };
-    } catch (error: any) {
+    } catch (error: unknown) {
       if (claimedDedupContext && dedupContext) {
         await releaseSmsIdempotencyClaim(supabase, dedupContext);
       }
+      const errCode = getErrorCode(error);
       logger.error('Failed to send SMS after retries', {
-        error,
-        metadata: { to, errorCode: error.code }
+        error: error instanceof Error ? error : new Error(getErrorMessage(error)),
+        metadata: { to, errorCode: errCode }
       });
 
       // Record failed attempt so downstream logic can enforce failure limits
@@ -627,10 +629,10 @@ export const sendSMS = async (to: string, body: string, options: SendSMSOptions 
             sid: failureSid,
             customerId: resolvedCustomerId ?? options.customerId,
             status: 'failed',
-            twilioStatus: String(error.code ?? 'failed'),
+            twilioStatus: String(errCode ?? 'failed'),
             metadata: {
-              error_code: error.code,
-              error_message: error.message
+              error_code: errCode,
+              error_message: getErrorMessage(error)
             }
           })
         } catch (logError: unknown) {
@@ -640,18 +642,18 @@ export const sendSMS = async (to: string, body: string, options: SendSMSOptions 
           })
         }
       }
-      
+
       // Provide user-friendly error messages
       let userMessage = 'Failed to send message';
-      if (error.code === 21211) {
+      if (errCode === 21211) {
         userMessage = 'Invalid phone number format';
-      } else if (error.code === 21610) {
+      } else if (errCode === 21610) {
         userMessage = 'This number has opted out of messages';
-      } else if (error.code === 20429) {
+      } else if (errCode === 20429) {
         userMessage = 'Too many messages sent. Please try again later';
       }
-      
-      return { success: false, error: userMessage, code: error.code };
+
+      return { success: false, error: userMessage, code: errCode !== undefined ? String(errCode) : undefined };
     }
   } catch (unexpectedError: unknown) {
     if (claimedDedupContext && dedupContext && supabase) {

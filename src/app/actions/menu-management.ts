@@ -11,6 +11,7 @@ import {
   RecipeSchema, CreateRecipeInput, UpdateRecipeInput,
   DishSchema, CreateDishInput, UpdateDishInput,
 } from '@/services/menu';
+import { getErrorMessage } from '@/lib/errors';
 
 export async function listMenuIngredients() {
   try {
@@ -20,9 +21,9 @@ export async function listMenuIngredients() {
     }
     const { data } = await MenuService.listIngredients();
     return { data };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('listMenuIngredients unexpected error:', error);
-    return { error: error.message || 'An unexpected error occurred' };
+    return { error: getErrorMessage(error) };
   }
 }
 
@@ -34,9 +35,9 @@ export async function getMenuIngredientPrices(ingredientId: string) {
     }
     const { data } = await MenuService.getIngredientPrices(ingredientId);
     return { data };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('getMenuIngredientPrices unexpected error:', error);
-    return { error: error.message || 'An unexpected error occurred' };
+    return { error: getErrorMessage(error) };
   }
 }
 
@@ -63,9 +64,9 @@ export async function createMenuIngredient(input: CreateIngredientInput) {
 
     revalidatePath('/menu-management/ingredients');
     return { success: true, data: ingredient };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('createMenuIngredient unexpected error:', error);
-    return { error: error.message || 'An unexpected error occurred' };
+    return { error: getErrorMessage(error) };
   }
 }
 
@@ -92,9 +93,9 @@ export async function updateMenuIngredient(id: string, input: UpdateIngredientIn
 
     revalidatePath('/menu-management/ingredients');
     return { success: true, data: ingredient };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('updateMenuIngredient unexpected error:', error);
-    return { error: error.message || 'An unexpected error occurred' };
+    return { error: getErrorMessage(error) };
   }
 }
 
@@ -121,9 +122,9 @@ export async function recordMenuIngredientPrice(input: RecordIngredientPriceInpu
     revalidatePath('/menu-management/ingredients');
     revalidatePath('/menu-management');
     return { success: true };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('recordMenuIngredientPrice unexpected error:', error);
-    return { error: error.message || 'An unexpected error occurred' };
+    return { error: getErrorMessage(error) };
   }
 }
 
@@ -145,9 +146,9 @@ export async function deleteMenuIngredient(id: string) {
 
     revalidatePath('/menu-management/ingredients');
     return { success: true };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('deleteMenuIngredient unexpected error:', error);
-    return { error: error.message || 'An unexpected error occurred' };
+    return { error: getErrorMessage(error) };
   }
 }
 
@@ -159,9 +160,9 @@ export async function listMenuRecipes(options?: { includeIngredients?: boolean; 
     }
     const { data } = await MenuService.listRecipes(options);
     return { data };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('listMenuRecipes unexpected error:', error);
-    return { error: error.message || 'An unexpected error occurred' };
+    return { error: getErrorMessage(error) };
   }
 }
 
@@ -173,9 +174,9 @@ export async function getMenuRecipeDetail(id: string) {
     }
     const { recipe, ingredients, usage } = await MenuService.getRecipeDetail(id);
     return { data: { recipe, ingredients, usage } };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('getMenuRecipeDetail unexpected error:', error);
-    return { error: error.message || 'An unexpected error occurred' };
+    return { error: getErrorMessage(error) };
   }
 }
 
@@ -201,9 +202,9 @@ export async function createMenuRecipe(input: CreateRecipeInput) {
 
     revalidatePath('/menu-management/recipes');
     return { success: true, data: recipe };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('createMenuRecipe unexpected error:', error);
-    return { error: error.message || 'An unexpected error occurred' };
+    return { error: getErrorMessage(error) };
   }
 }
 
@@ -234,9 +235,9 @@ export async function updateMenuRecipe(id: string, input: UpdateRecipeInput) {
     revalidatePath('/menu-management/recipes');
     revalidatePath('/menu-management');
     return { success: true, data: recipe };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('updateMenuRecipe unexpected error:', error);
-    return { error: error.message || 'An unexpected error occurred' };
+    return { error: getErrorMessage(error) };
   }
 }
 
@@ -258,9 +259,9 @@ export async function deleteMenuRecipe(id: string) {
 
     revalidatePath('/menu-management/recipes');
     return { success: true };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('deleteMenuRecipe unexpected error:', error);
-    return { error: error.message || 'An unexpected error occurred' };
+    return { error: getErrorMessage(error) };
   }
 }
 
@@ -272,9 +273,9 @@ export async function listMenuDishes(menuCode?: string) {
     }
     const { data, target_gp_pct } = await MenuService.listDishes(menuCode);
     return { data, target_gp_pct };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('listMenuDishes unexpected error:', error);
-    return { error: error.message || 'An unexpected error occurred' };
+    return { error: getErrorMessage(error) };
   }
 }
 
@@ -286,9 +287,9 @@ export async function getMenuDishDetail(dishId: string) {
     }
     const { dish, ingredients, recipes, assignments } = await MenuService.getDishDetail(dishId);
     return { data: { dish, ingredients, recipes, assignments } };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('getMenuDishDetail unexpected error:', error);
-    return { error: error.message || 'An unexpected error occurred' };
+    return { error: getErrorMessage(error) };
   }
 }
 
@@ -316,9 +317,9 @@ export async function createMenuDish(input: CreateDishInput) {
     revalidatePath('/menu-management/dishes');
     revalidatePath('/menu-management');
     return { success: true, data: dish };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('createMenuDish unexpected error:', error);
-    return { error: error.message || 'An unexpected error occurred' };
+    return { error: getErrorMessage(error) };
   }
 }
 
@@ -347,9 +348,9 @@ export async function updateMenuDish(id: string, input: UpdateDishInput) {
     revalidatePath(`/menu-management/dishes/${id}`);
     revalidatePath('/menu-management');
     return { success: true, data: dish };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('updateMenuDish unexpected error:', error);
-    return { error: error.message || 'An unexpected error occurred' };
+    return { error: getErrorMessage(error) };
   }
 }
 
@@ -372,9 +373,9 @@ export async function deleteMenuDish(id: string) {
     revalidatePath('/menu-management/dishes');
     revalidatePath('/menu-management');
     return { success: true };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('deleteMenuDish unexpected error:', error);
-    return { error: error.message || 'An unexpected error occurred' };
+    return { error: getErrorMessage(error) };
   }
 }
 
@@ -386,8 +387,8 @@ export async function listMenusWithCategories() {
     }
     const { data } = await MenuService.listMenusWithCategories();
     return { data };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('listMenusWithCategories unexpected error:', error);
-    return { error: error.message || 'An unexpected error occurred' };
+    return { error: getErrorMessage(error) };
   }
 }

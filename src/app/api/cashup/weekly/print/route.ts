@@ -71,7 +71,7 @@ export async function GET(request: NextRequest) {
       },
     });
 
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('PDF Generation Error:', error);
     return new NextResponse('Failed to generate PDF', { status: 500 });
   }

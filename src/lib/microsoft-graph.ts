@@ -3,6 +3,7 @@
 import type { InvoiceWithDetails, QuoteWithDetails } from '@/types/invoices'
 import { generateInvoicePDF, generateQuotePDF } from '@/lib/pdf-generator'
 import type { InvoiceDocumentKind, InvoiceRemittanceDetails } from '@/lib/invoice-template-compact'
+import { getErrorMessage, getErrorStatusCode } from '@/lib/errors'
 
 const CONTACT_NAME = process.env.COMPANY_CONTACT_NAME || 'Peter Pitcher'
 const CONTACT_PHONE = process.env.COMPANY_CONTACT_PHONE || '07995087315'
@@ -212,11 +213,11 @@ P.S. The invoice is attached as a PDF for easy viewing and printing.`)
       success: true,
       messageId: response?.id
     }
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error sending invoice email:', error)
     return {
       success: false,
-      error: error.message || 'Failed to send email'
+      error: getErrorMessage(error)
     }
   }
 }
@@ -305,11 +306,11 @@ P.S. The quote is attached as a PDF for your convenience.`
       success: true,
       messageId: response?.id
     }
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error sending quote email:', error)
     return {
       success: false,
-      error: error.message || 'Failed to send email'
+      error: getErrorMessage(error)
     }
   }
 }
@@ -369,11 +370,11 @@ export async function sendInternalReminder(
       })
 
     return { success: true }
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error sending internal reminder:', error)
     return {
       success: false,
-      error: error.message || 'Failed to send reminder'
+      error: getErrorMessage(error)
     }
   }
 }
@@ -416,17 +417,18 @@ export async function testEmailConnection(): Promise<{
         userId: user.id
       }
     }
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Email connection test failed:', error)
 
     let errorMessage = 'Failed to connect to Microsoft Graph'
-    const details = { error: error.message }
+    const details = { error: getErrorMessage(error) }
+    const statusCode = getErrorStatusCode(error)
 
-    if (error.statusCode === 401) {
+    if (statusCode === 401) {
       errorMessage = 'Authentication failed. Check your client credentials.'
-    } else if (error.statusCode === 403) {
+    } else if (statusCode === 403) {
       errorMessage = 'Permission denied. Ensure the app has Mail.Send permission.'
-    } else if (error.statusCode === 404) {
+    } else if (statusCode === 404) {
       errorMessage = 'User not found. Check MICROSOFT_USER_EMAIL.'
     }
 

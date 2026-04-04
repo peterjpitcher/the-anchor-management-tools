@@ -3,6 +3,7 @@
 import { checkUserPermission } from './rbac'
 import { EmployeeService } from '@/services/employees'
 import type { Employee } from '@/types/database'
+import { getErrorMessage } from '@/lib/errors';
 
 type EmployeeStatus = 'all' | 'Active' | 'Former' | 'Onboarding' | 'Started Separation'
 
@@ -87,11 +88,11 @@ export async function getEmployeesRoster(
     })
 
     return result;
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('[getEmployeesRoster] Failed to fetch employees roster:', error)
     return {
       ...emptyResult,
-      error: error.message || 'Failed to load employees.'
+      error: getErrorMessage(error)
     }
   }
 }

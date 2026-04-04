@@ -6,6 +6,7 @@ import type { Employee } from '@/types/database'
 import { getTodayIsoDate } from '@/lib/dateUtils'
 import { checkUserPermission } from './rbac'
 import { EmployeeService } from '@/services/employees'
+import { getErrorMessage } from '@/lib/errors';
 
 interface ExportOptions {
   format: 'csv' | 'json'
@@ -55,8 +56,8 @@ export async function exportEmployees(options: ExportOptions): Promise<{ data?: 
     }
 
     return { data: exportData, filename }
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Export error:', error)
-    return { error: error.message || 'Failed to export employees' }
+    return { error: getErrorMessage(error) }
   }
 }

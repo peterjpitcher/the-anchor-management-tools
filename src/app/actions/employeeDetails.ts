@@ -17,6 +17,7 @@ export type { EmployeeNoteWithAuthor } from '@/services/employees';
 
 
 import { EmployeeService, type EmployeeDetailData, type EmployeeEditData } from '@/services/employees'
+import { getErrorMessage } from '@/lib/errors';
 
 export interface EmployeePermissions {
   canView: boolean
@@ -113,12 +114,12 @@ export async function getEmployeeDetailData(employeeId: string): Promise<Employe
         permissions
       }
     };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('[employeeDetail] unexpected error', error);
-    if (error.message === 'Employee not found.') {
+    if (getErrorMessage(error) === 'Employee not found.') {
       return { notFound: true };
     }
-    return { error: error.message || 'Failed to load employee.' };
+    return { error: getErrorMessage(error) };
   }
 }
 
@@ -134,11 +135,11 @@ export async function getEmployeeEditData(employeeId: string): Promise<EmployeeE
   try {
     const employeeData = await EmployeeService.getEmployeeByIdForEdit(employeeId);
     return { data: employeeData };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('[employeeEdit] unexpected error', error);
-    if (error.message === 'Employee not found.') {
+    if (getErrorMessage(error) === 'Employee not found.') {
       return { notFound: true };
     }
-    return { error: error.message || 'Failed to load employee.' };
+    return { error: getErrorMessage(error) };
   }
 }

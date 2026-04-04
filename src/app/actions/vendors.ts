@@ -5,6 +5,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { checkUserPermission } from '@/app/actions/rbac'
 import { logAuditEvent } from './audit'
 import { z } from 'zod'
+import { getErrorMessage } from '@/lib/errors'
 import { revalidatePath } from 'next/cache'
 import type { InvoiceVendor } from '@/types/invoices'
 import { parsePaymentTermsValue } from '@/lib/vendors/paymentTerms'
@@ -83,12 +84,12 @@ export async function createVendor(formData: FormData) {
     revalidatePath('/invoices/new')
     
     return { vendor, success: true }
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error in createVendor:', error)
     if (error instanceof z.ZodError) {
       return { error: error.errors[0].message }
     }
-    return { error: error.message || 'An unexpected error occurred' }
+    return { error: getErrorMessage(error) }
   }
 }
 
@@ -131,12 +132,12 @@ export async function updateVendor(formData: FormData) {
     revalidatePath('/invoices')
     
     return { vendor, success: true }
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error in updateVendor:', error)
     if (error instanceof z.ZodError) {
       return { error: error.errors[0].message }
     }
-    return { error: error.message || 'An unexpected error occurred' }
+    return { error: getErrorMessage(error) }
   }
 }
 
@@ -167,8 +168,8 @@ export async function deleteVendor(formData: FormData) {
     revalidatePath('/invoices/vendors')
     
     return { success: true }
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error in deleteVendor:', error)
-    return { error: error.message || 'An unexpected error occurred' }
+    return { error: getErrorMessage(error) }
   }
 }

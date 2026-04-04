@@ -4,6 +4,7 @@ import { mapTwilioStatus, isMessageStuck, formatErrorMessage, isStatusUpgrade } 
 import { authorizeCronRequest } from '@/lib/cron-auth'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { logger } from '@/lib/logger'
+import { getErrorCode } from '@/lib/errors'
 
 function resolveIsoTimestamp(value: Date | string | null | undefined): string {
   if (!value) {
@@ -298,7 +299,7 @@ export async function GET(request: NextRequest) {
         // Small delay for rate limiting
         await new Promise(resolve => setTimeout(resolve, 100))
 
-      } catch (error: any) {
+      } catch (error: unknown) {
         logger.error('Error reconciling SMS delivery state', {
           error: error instanceof Error ? error : new Error(String(error)),
           metadata: {
@@ -308,11 +309,12 @@ export async function GET(request: NextRequest) {
         })
         
         // Handle message not found
+        const rawCode = getErrorCode(error)
         const twilioErrorCode =
-          typeof error?.code === 'number'
-            ? error.code
-            : typeof error?.code === 'string'
-              ? Number.parseInt(error.code, 10)
+          typeof rawCode === 'number'
+            ? rawCode
+            : typeof rawCode === 'string'
+              ? Number.parseInt(rawCode, 10)
               : Number.NaN
         if (twilioErrorCode === 20404) {
           const { data: notFoundRow, error: notFoundUpdateError } = await supabase
@@ -386,7 +388,7 @@ export async function GET(request: NextRequest) {
     logger.info('SMS reconciliation complete', { metadata: result })
     return NextResponse.json(result)
 
-  } catch (error: any) {
+  } catch (error: unknown) {
     logger.error('SMS reconciliation unexpected error', {
       error: error instanceof Error ? error : new Error(String(error))
     })

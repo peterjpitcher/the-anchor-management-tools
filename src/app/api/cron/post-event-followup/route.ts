@@ -25,7 +25,7 @@ async function handler(request: Request) {
   }
 
   try {
-    console.log('[Cron] Starting post-event-followup')
+    console.warn('[Cron] Starting post-event-followup')
 
     const supabase = createAdminClient()
 
@@ -60,7 +60,7 @@ async function handler(request: Request) {
       )
     }
 
-    console.log(
+    console.warn(
       `[Cron] Found ${bookings?.length ?? 0} completed bookings from ${twoDaysAgoIso} requiring a follow-up`
     )
 
@@ -120,7 +120,7 @@ async function handler(request: Request) {
       }
     }
 
-    console.log('[Cron] post-event-followup completed:', results)
+    console.warn('[Cron] post-event-followup completed:', results)
 
     return NextResponse.json({ success: true, results })
   } catch (error) {

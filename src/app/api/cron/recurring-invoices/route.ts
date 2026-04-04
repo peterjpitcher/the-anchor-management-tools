@@ -27,7 +27,7 @@ export async function GET(request: Request) {
   }
 
   try {
-    console.log('[Cron] Starting recurring invoices processing')
+    console.warn('[Cron] Starting recurring invoices processing')
     
     const supabase = createAdminClient()
     const emailConfigured = isGraphConfigured()
@@ -66,7 +66,7 @@ export async function GET(request: Request) {
       }, { status: 500 })
     }
 
-    console.log(`[Cron] Found ${dueRecurringInvoices?.length || 0} recurring invoices to process`)
+    console.warn(`[Cron] Found ${dueRecurringInvoices?.length || 0} recurring invoices to process`)
 
     const results = {
       processed: 0,
@@ -97,11 +97,11 @@ export async function GET(request: Request) {
       let createdInvoiceNumber: string | null = null
       
       try {
-        console.log(`[Cron] Processing recurring invoice ${recurringInvoice.id}`)
+        console.warn(`[Cron] Processing recurring invoice ${recurringInvoice.id}`)
         
         // Check if end date has passed
         if (recurringInvoice.end_date && recurringInvoice.end_date < todayIso) {
-          console.log(`[Cron] Recurring invoice ${recurringInvoice.id} has passed end date, deactivating`)
+          console.warn(`[Cron] Recurring invoice ${recurringInvoice.id} has passed end date, deactivating`)
           
           const { data: deactivatedRecurringInvoice, error: deactivateError } = await supabase
             .from('recurring_invoices')
@@ -136,7 +136,7 @@ export async function GET(request: Request) {
         }
 
         if (claim.state === 'in_progress' || claim.state === 'replay') {
-          console.log(
+          console.warn(
             `[Cron] Recurring invoice ${recurringInvoice.id} for ${scheduledInvoiceDate} already processing/processed; skipping duplicate`
           )
           continue
@@ -197,7 +197,7 @@ export async function GET(request: Request) {
           throw new Error('Recurring invoice not found while updating schedule')
         }
 
-        console.log(`[Cron] Successfully generated invoice ${newInvoice.invoice_number}`)
+        console.warn(`[Cron] Successfully generated invoice ${newInvoice.invoice_number}`)
 
         await logAuditEvent({
           operation_type: 'create',
@@ -503,7 +503,7 @@ export async function GET(request: Request) {
       }
     }
 
-    console.log('[Cron] Recurring invoices processing completed:', results)
+    console.warn('[Cron] Recurring invoices processing completed:', results)
 
     return NextResponse.json({
       success: true,

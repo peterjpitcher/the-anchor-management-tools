@@ -11,16 +11,16 @@ export async function GET(request: Request) {
     const authResult = authorizeCronRequest(request);
 
     if (!authResult.authorized) {
-      console.log('Unauthorized request - invalid cron credentials', authResult.reason);
+      console.error('Unauthorized request - invalid cron credentials', authResult.reason);
       return new NextResponse('Unauthorized', { status: 401 });
     }
 
-    console.log('Starting rate limit cleanup...');
+    console.warn('Starting rate limit cleanup...');
 
     // Clean up old rate limit entries
     await cleanupRateLimits();
     
-    console.log('Rate limit cleanup completed successfully');
+    console.warn('Rate limit cleanup completed successfully');
     
     return new NextResponse(
       JSON.stringify({

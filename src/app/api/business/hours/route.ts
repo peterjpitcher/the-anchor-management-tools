@@ -156,7 +156,7 @@ export async function GET(_request: NextRequest) {
   const sundayOverrides = serviceOverrides['sunday_lunch'] || [];
   const sundayLunchEnabled = sundayLunchStatus ? sundayLunchStatus.isEnabled : true;
 
-  console.log('[BusinessHours API] Sunday Lunch Status:', {
+  console.warn('[BusinessHours API] Sunday Lunch Status:', {
     status: sundayLunchStatus,
     enabled: sundayLunchEnabled,
     overridesCount: sundayOverrides.length

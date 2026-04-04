@@ -1,6 +1,7 @@
 import { isGraphConfigured } from '@/lib/microsoft-graph';
 import { Client } from '@microsoft/microsoft-graph-client';
 import { ClientSecretCredential } from '@azure/identity';
+import { getErrorMessage } from '@/lib/errors';
 
 interface EmailOptions {
   to: string;
@@ -82,11 +83,11 @@ export async function sendEmail(options: EmailOptions): Promise<{ success: boole
       success: true,
       messageId: response?.id
     };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error sending email:', error);
     return {
       success: false,
-      error: error.message || 'Failed to send email'
+      error: getErrorMessage(error)
     };
   }
 }

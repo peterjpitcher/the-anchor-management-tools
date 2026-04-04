@@ -4,6 +4,7 @@ import { checkUserPermission } from './rbac'
 import { revalidatePath, revalidateTag } from 'next/cache'
 import { MessageService } from '@/services/messages'
 import { logger } from '@/lib/logger'
+import { getErrorMessage } from '@/lib/errors';
 
 export async function getUnreadMessageCounts(customerIds?: string[]) {
   try {
@@ -54,12 +55,12 @@ export async function markMessagesAsRead(customerId: string) {
     revalidateTag('dashboard')
     
     return { success: true }
-  } catch (error: any) {
+  } catch (error: unknown) {
     logger.error('Error marking messages as read', {
       error: error instanceof Error ? error : new Error(String(error)),
       metadata: { customerId },
     })
-    return { error: error.message || 'Failed to mark messages as read' }
+    return { error: getErrorMessage(error) }
   }
 }
 
@@ -77,11 +78,11 @@ export async function sendSmsReply(customerId: string, message: string) {
 
     const result = await MessageService.sendReply(customerId, message);
     return result;
-  } catch (error: any) {
+  } catch (error: unknown) {
     logger.error('Failed to send SMS reply', {
       error: error instanceof Error ? error : new Error(String(error)),
       metadata: { customerId },
     })
-    return { error: error.message || 'Failed to send message' }
+    return { error: getErrorMessage(error) }
   }
 }
