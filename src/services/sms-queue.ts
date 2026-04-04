@@ -162,7 +162,7 @@ export class SmsQueueService {
     queueId?: string
   ) {
     if (!shouldAutoSendPrivateBookingSms(triggerType)) {
-      console.log(`[SmsQueueService] Trigger type ${triggerType} requires manual approval`);
+      console.warn(`[SmsQueueService] Trigger type ${triggerType} requires manual approval`);
       return { requiresApproval: true };
     }
     
@@ -231,7 +231,7 @@ export class SmsQueueService {
           ? 'deferred'
           : 'sent';
       
-      console.log(`[SmsQueueService] Successfully sent ${triggerType} SMS for booking ${bookingId}`);
+      console.warn(`[SmsQueueService] Successfully sent ${triggerType} SMS for booking ${bookingId}`);
       return {
         success: true,
         sid: result.sid ?? null,

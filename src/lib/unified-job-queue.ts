@@ -18,7 +18,7 @@ function logQueueDebug(message: string, metadata?: Record<string, unknown>) {
   }
 
   if (DEBUG_JOB_QUEUE) {
-    console.log(`[job-queue] ${message}`, metadata ?? {})
+    console.warn(`[job-queue] ${message}`, metadata ?? {})
   }
 }
 

@@ -18,8 +18,10 @@ export class ConsoleLogger {
     const methods: Array<'log' | 'warn' | 'error' | 'info' | 'debug'> = ['log', 'warn', 'error', 'info', 'debug'];
     
     methods.forEach((method) => {
+      // eslint-disable-next-line no-console
       this.originalMethods[method] = console[method];
-      
+
+      // eslint-disable-next-line no-console
       console[method] = (...args: unknown[]) => {
         // Call original method
         this.originalMethods[method].apply(console, args);

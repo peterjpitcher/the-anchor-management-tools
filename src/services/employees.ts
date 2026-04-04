@@ -556,7 +556,7 @@ export class EmployeeService {
       if (removeError) {
         console.error(`CRITICAL ALERT: Failed to remove orphaned file '${storagePath}'. Manual cleanup required.`, removeError);
       } else {
-        console.log(`Orphaned file '${storagePath}' successfully removed.`);
+        console.warn(`Orphaned file '${storagePath}' successfully removed.`);
       }
       throw new Error(`Failed to save attachment details to the database: ${dbInsertError.message}`);
     }

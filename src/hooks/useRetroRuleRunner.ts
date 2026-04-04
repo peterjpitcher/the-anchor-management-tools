@@ -88,8 +88,11 @@ export function useRetroRuleRunner(): RetroRunnerReturn {
             )
 
             if (lastSamples.length) {
+              // eslint-disable-next-line no-console
               console.groupCollapsed(`Receipt rule analysis (${lastSamples.length} sample transactions)`)
+              // eslint-disable-next-line no-console
               console.table(lastSamples)
+              // eslint-disable-next-line no-console
               console.groupEnd()
             }
 

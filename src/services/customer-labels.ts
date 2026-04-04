@@ -4,7 +4,7 @@ export class CustomerLabelService {
   static async applyLabelsRetroactively() {
     const admin = createAdminClient();
 
-    console.log('Backfilling customer category stats...');
+    console.warn('Backfilling customer category stats...');
     const { data: backfillData, error: backfillError } = await admin
       .rpc('backfill_customer_category_stats');
     
@@ -12,7 +12,7 @@ export class CustomerLabelService {
       console.error('Error backfilling customer stats:', backfillError);
       // Continue anyway - partial data is better than none
     } else {
-      console.log(`Backfilled ${backfillData || 0} customer category stats`);
+      console.warn(`Backfilled ${backfillData || 0} customer category stats`);
     }
 
     // Call the RPC function
