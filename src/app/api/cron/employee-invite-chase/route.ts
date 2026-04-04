@@ -88,7 +88,7 @@ export async function GET(request: NextRequest) {
       ...result,
       processedAt: nowIso,
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('[employee-invite-chase] Failed:', error);
     return NextResponse.json(
       { success: false, error: 'Failed to process employee invite chase' },

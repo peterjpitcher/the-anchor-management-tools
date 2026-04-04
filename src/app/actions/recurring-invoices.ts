@@ -8,6 +8,7 @@ import { revalidatePath } from 'next/cache'
 import type { RecurringInvoiceWithDetails, RecurringFrequency, InvoiceLineItemInput } from '@/types/invoices'
 import { InvoiceService } from '@/services/invoices'
 import { addDaysIsoDate, calculateNextInvoiceIsoDate } from '@/lib/recurringInvoiceSchedule'
+import { getErrorMessage } from '@/lib/errors';
 
 // Validation schemas
 const RecurringInvoiceSchemaBase = z.object({
@@ -583,9 +584,9 @@ export async function generateInvoiceFromRecurring(
     revalidatePath('/invoices/recurring')
     
     return { success: true, invoice: newInvoice }
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error in generateInvoiceFromRecurring:', error)
-    return { error: error.message || 'An unexpected error occurred' }
+    return { error: getErrorMessage(error) }
   }
 }
 

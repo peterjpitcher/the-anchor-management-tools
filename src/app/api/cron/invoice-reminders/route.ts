@@ -44,7 +44,7 @@ export async function GET(request: Request) {
   }
 
   try {
-    console.log('[Cron] Starting invoice reminders processing')
+    console.warn('[Cron] Starting invoice reminders processing')
     
     const supabase = createAdminClient()
     const todayIso = getTodayIsoDate()
@@ -81,7 +81,7 @@ export async function GET(request: Request) {
       }, { status: 500 })
     }
 
-    console.log(`[Cron] Found ${overdueInvoices?.length || 0} invoices to process`)
+    console.warn(`[Cron] Found ${overdueInvoices?.length || 0} invoices to process`)
 
     const results = {
       processed: 0,
@@ -123,7 +123,7 @@ export async function GET(request: Request) {
 
         const daysOverdue = Math.floor((todayUtcMs - dueDateUtcMs) / (1000 * 60 * 60 * 24))
         
-        console.log(`[Cron] Invoice ${invoice.invoice_number} is ${daysOverdue} days overdue`)
+        console.warn(`[Cron] Invoice ${invoice.invoice_number} is ${daysOverdue} days overdue`)
 
         // Update status to overdue if not already and actually overdue
         if (daysOverdue > 0 && invoice.status !== 'overdue') {
@@ -194,7 +194,7 @@ export async function GET(request: Request) {
           }
 
           if (reminderClaim.state === 'in_progress' || reminderClaim.state === 'replay') {
-            console.log(
+            console.warn(
               `[Cron] Reminder already processed/in progress for invoice ${invoice.invoice_number} (${reminderType}); skipping duplicate`
             )
             continue
@@ -243,7 +243,7 @@ View invoice: ${process.env.NEXT_PUBLIC_APP_URL || 'https://management.orangejel
             }
 
             if (existingInternalReminder) {
-              console.log(`[Cron] Internal reminder already sent for invoice ${invoice.invoice_number} (${reminderType}); skipping duplicate`)
+              console.warn(`[Cron] Internal reminder already sent for invoice ${invoice.invoice_number} (${reminderType}); skipping duplicate`)
             } else {
               // Create a simple invoice object for internal notification
               const internalInvoice = {
@@ -259,7 +259,7 @@ View invoice: ${process.env.NEXT_PUBLIC_APP_URL || 'https://management.orangejel
               )
 
               if (internalResult.success) {
-                console.log(`[Cron] Internal reminder sent for invoice ${invoice.invoice_number}`)
+                console.warn(`[Cron] Internal reminder sent for invoice ${invoice.invoice_number}`)
                 results.internal_notifications++
                 internalReminderSent = true
 
@@ -341,7 +341,7 @@ Orange Jelly Limited
             }
 
             if (existingCustomerReminder) {
-              console.log(`[Cron] Customer reminder already sent for invoice ${invoice.invoice_number} (${reminderType}); skipping duplicate`)
+              console.warn(`[Cron] Customer reminder already sent for invoice ${invoice.invoice_number} (${reminderType}); skipping duplicate`)
             } else {
               // Support multiple recipients — first as To, others as CC
               const raw = String(vendorEmail)
@@ -363,7 +363,7 @@ Orange Jelly Limited
               )
 
               if (customerResult.success) {
-                console.log(`[Cron] Customer reminder sent for invoice ${invoice.invoice_number}`)
+                console.warn(`[Cron] Customer reminder sent for invoice ${invoice.invoice_number}`)
                 results.reminders_sent++
                 customerReminderSent = true
 
@@ -500,7 +500,7 @@ Orange Jelly Limited
       }
     }
 
-    console.log('[Cron] Invoice reminders processing completed:', results)
+    console.warn('[Cron] Invoice reminders processing completed:', results)
 
     return NextResponse.json({
       success: true,

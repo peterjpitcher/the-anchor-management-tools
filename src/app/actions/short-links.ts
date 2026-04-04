@@ -2,7 +2,8 @@
 
 import { createClient } from '@/lib/supabase/server';
 import { revalidatePath, revalidateTag } from 'next/cache';
-import { z } from 'zod';
+import { z } from 'zod'
+import { getErrorMessage } from '@/lib/errors';
 import { checkUserPermission } from './rbac';
 import { logAuditEvent } from './audit';
 import {
@@ -63,12 +64,12 @@ export async function createShortLink(data: z.infer<typeof CreateShortLinkSchema
         already_exists: result.already_exists === true
       }
     };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Short link creation error:', error);
     if (error instanceof z.ZodError) {
       return { error: error.errors[0].message };
     }
-    return { error: error.message || 'An unexpected error occurred' };
+    return { error: getErrorMessage(error) };
   }
 }
 
@@ -81,9 +82,9 @@ export async function getShortLinks(page: number = 1, pageSize: number = 50) {
 
     const result = await ShortLinkService.getShortLinks(page, pageSize);
     return { success: true, data: result.data, total: result.total, page: result.page, pageSize: result.pageSize };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Failed to list short links:', error);
-    return { error: error.message || 'An unexpected error occurred' };
+    return { error: getErrorMessage(error) };
   }
 }
 
@@ -122,12 +123,12 @@ export async function updateShortLink(input: z.infer<typeof UpdateShortLinkSchem
     revalidateTag('dashboard')
 
     return { success: true, data: updated };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Short link update error:', error);
     if (error instanceof z.ZodError) {
       return { error: error.errors[0].message };
     }
-    return { error: error.message || 'An unexpected error occurred' };
+    return { error: getErrorMessage(error) };
   }
 }
 
@@ -164,9 +165,9 @@ export async function deleteShortLink(id: string) {
     revalidateTag('dashboard')
 
     return { success: true };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Short link delete error:', error);
-    return { error: error.message || 'An unexpected error occurred' };
+    return { error: getErrorMessage(error) };
   }
 }
 
@@ -180,9 +181,9 @@ export async function createShortLinkInternal(data: {
   try {
     const result = await ShortLinkService.createShortLinkInternal(data);
     return { success: true, data: result };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Internal short link error:', error);
-    return { error: `Failed to create short link: ${error.message}` };
+    return { error: `Failed to create short link: $\{getErrorMessage(error)\}` };
   }
 }
 
@@ -217,9 +218,9 @@ export async function getOrCreateUtmVariant(parentId: string, channelKey: string
 
     revalidatePath('/short-links');
     return { success: true, data: result };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('UTM variant creation error:', error);
-    return { error: error.message || 'Failed to create UTM variant' };
+    return { error: getErrorMessage(error) };
   }
 }
 
@@ -241,9 +242,9 @@ export async function getShortLinkAnalytics(shortCode: string) {
     
     const data = await ShortLinkService.getShortLinkAnalytics(shortCode);
     return { success: true, data };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Analytics error:', error);
-    return { error: error.message || 'Failed to load analytics' };
+    return { error: getErrorMessage(error) };
   }
 }
 
@@ -256,9 +257,9 @@ export async function getShortLinkAnalyticsSummary(shortCode: string, days: numb
 
     const data = await ShortLinkService.getShortLinkAnalyticsSummary(shortCode, days);
     return { success: true, data };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Analytics summary error:', error);
-    return { error: error.message || 'Failed to load analytics summary' };
+    return { error: getErrorMessage(error) };
   }
 }
 
@@ -271,9 +272,9 @@ export async function getShortLinkVolume(days: number = 30) {
 
     const data = await ShortLinkService.getShortLinkVolume(days);
     return { success: true, data };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Short link volume error:', error);
-    return { error: error.message || 'Failed to load analytics' };
+    return { error: getErrorMessage(error) };
   }
 }
 
@@ -289,11 +290,11 @@ export async function getShortLinkVolumeAdvanced(
     const validated = GetShortLinkVolumeAdvancedSchema.parse(input);
     const data = await ShortLinkService.getShortLinkVolumeAdvanced(validated);
     return { success: true, data };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Short link advanced volume error:', error);
     if (error instanceof z.ZodError) {
       return { error: error.errors[0]?.message || 'Invalid analytics range' };
     }
-    return { error: error.message || 'Failed to load analytics' };
+    return { error: getErrorMessage(error) };
   }
 }

@@ -30,7 +30,7 @@ function standardizePhoneNumber(phone: string): string | null {
 export async function analyzePhoneNumbers() {
   const supabase = createAdminClient()
   
-  console.log('=== ANALYZING PHONE NUMBERS ===')
+  console.warn('=== ANALYZING PHONE NUMBERS ===')
   
   // Get all unique phone numbers from customers
   const { data: customers, error: customersError } = await supabase
@@ -113,14 +113,14 @@ export async function analyzePhoneNumbers() {
     if (msg.to_number) messagePhoneNumbers.add(msg.to_number)
   })
   
-  console.log('\n=== PHONE NUMBER ANALYSIS ===')
-  console.log(`Total customers with phone numbers: ${phoneAnalysis.total}`)
-  console.log(`Already in E.164 format (+44...): ${phoneAnalysis.e164Format}`)
-  console.log(`UK numbers starting with 0: ${phoneAnalysis.ukWithZero}`)
-  console.log(`UK numbers without + prefix: ${phoneAnalysis.ukWithoutPlus}`)
-  console.log(`Non-standard but fixable: ${phoneAnalysis.nonStandard}`)
-  console.log(`Invalid/unfixable: ${phoneAnalysis.invalid}`)
-  console.log(`\nUnique phone formats in messages table: ${messagePhoneNumbers.size}`)
+  console.warn('\n=== PHONE NUMBER ANALYSIS ===')
+  console.warn(`Total customers with phone numbers: ${phoneAnalysis.total}`)
+  console.warn(`Already in E.164 format (+44...): ${phoneAnalysis.e164Format}`)
+  console.warn(`UK numbers starting with 0: ${phoneAnalysis.ukWithZero}`)
+  console.warn(`UK numbers without + prefix: ${phoneAnalysis.ukWithoutPlus}`)
+  console.warn(`Non-standard but fixable: ${phoneAnalysis.nonStandard}`)
+  console.warn(`Invalid/unfixable: ${phoneAnalysis.invalid}`)
+  console.warn(`\nUnique phone formats in messages table: ${messagePhoneNumbers.size}`)
   
   return phoneAnalysis
 }
@@ -128,7 +128,7 @@ export async function analyzePhoneNumbers() {
 export async function fixPhoneNumbers(dryRun: boolean = true) {
   const supabase = createAdminClient()
   
-  console.log(`=== ${dryRun ? 'DRY RUN' : 'FIXING'} PHONE NUMBERS ===`)
+  console.warn(`=== ${dryRun ? 'DRY RUN' : 'FIXING'} PHONE NUMBERS ===`)
   
   // Get all customers with non-standard phone numbers
   const { data: customers, error: customersError } = await supabase
@@ -180,14 +180,14 @@ export async function fixPhoneNumbers(dryRun: boolean = true) {
     }
   })
   
-  console.log(`\nFound ${updates.length} phone numbers to update`)
-  console.log(`Found ${unfixable.length} unfixable phone numbers`)
+  console.warn(`\nFound ${updates.length} phone numbers to update`)
+  console.warn(`Found ${unfixable.length} unfixable phone numbers`)
 
   let successCount = 0
   let errorCount = 0
   
   if (!dryRun && updates.length > 0) {
-    console.log('\nApplying updates...')
+    console.warn('\nApplying updates...')
 
     for (const update of updates) {
       const { data: updatedCustomer, error } = await supabase
@@ -208,8 +208,8 @@ export async function fixPhoneNumbers(dryRun: boolean = true) {
       }
     }
     
-    console.log(`\nSuccessfully updated: ${successCount}`)
-    console.log(`Failed updates: ${errorCount}`)
+    console.warn(`\nSuccessfully updated: ${successCount}`)
+    console.warn(`Failed updates: ${errorCount}`)
   }
   
   return {

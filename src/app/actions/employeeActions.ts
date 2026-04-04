@@ -26,6 +26,7 @@ import {
   ONBOARDING_FIELD_CONFIG,
   OnboardingChecklistField
 	} from '@/services/employees';
+import { getErrorMessage } from '@/lib/errors';
 
 const EMPLOYEE_ATTACHMENTS_BUCKET_NAME = 'employee-attachments';
 
@@ -346,7 +347,7 @@ export async function addEmployee(prevState: ActionFormState, formData: FormData
 
       revalidatePath('/employees');
       return { type: 'success', message: 'Employee created successfully.', employeeId: newEmployee.employee_id };
-    } catch (error: any) {
+    } catch (error: unknown) {
         const message = isPostgrestError(error) ? getConstraintErrorMessage(error) : 'Database error';
         await logAuditEvent({
             ...(userInfo.user_id && { user_id: userInfo.user_id }),
@@ -410,7 +411,7 @@ export async function updateEmployee(prevState: ActionFormState, formData: FormD
       revalidatePath(`/employees`);
       revalidatePath(`/employees/${employeeId}`);
       return { type: 'success', message: 'Employee updated successfully.', employeeId };
-    } catch (error: any) {
+    } catch (error: unknown) {
         const message = isPostgrestError(error) ? getConstraintErrorMessage(error) : 'Database error';
         await logAuditEvent({
             ...(userInfo.user_id && { user_id: userInfo.user_id }),
@@ -458,7 +459,7 @@ export async function deleteEmployee(prevState: DeleteState, formData: FormData)
 
       revalidatePath('/employees');
       return { type: 'success', message: 'Employee deleted successfully' };
-    } catch (error: any) {
+    } catch (error: unknown) {
         const message = isPostgrestError(error) ? getConstraintErrorMessage(error) : 'Database error';
         await logAuditEvent({
             ...(userInfo.user_id && { user_id: userInfo.user_id }),
@@ -523,8 +524,8 @@ export async function addEmployeeNote(prevState: NoteFormState, formData: FormDa
 
       revalidatePath(`/employees/${notePayload.employee_id}`);
       return { type: 'success', message: 'Note added successfully.' };
-    } catch (error: any) {
-      return { type: 'error', message: `Database error: ${error.message}` };
+    } catch (error: unknown) {
+      return { type: 'error', message: `Database error: ${getErrorMessage(error)}` };
     }
 }
 
@@ -545,7 +546,7 @@ export async function createEmployeeAttachmentUploadUrl(
     const { checkRateLimit } = await import('@/lib/rate-limit-server')
     await checkRateLimit('api', 10) // 10 uploads per minute
   } catch (error) {
-    if (error instanceof Error && error.message.includes('Too many requests')) {
+    if (error instanceof Error && getErrorMessage(error).includes('Too many requests')) {
       return { type: 'error', message: 'Too many file uploads. Please try again later.' }
     }
   }
@@ -684,7 +685,7 @@ export async function saveEmployeeAttachmentRecord(
       throw new Error(`Database insert failed: ${dbError.message}`)
     }
     metadataSaved = true
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Attachment record save error:', error)
 
     if (!metadataSaved) {
@@ -694,7 +695,7 @@ export async function saveEmployeeAttachmentRecord(
       }
     }
 
-    return { type: 'error', message: error?.message || 'An unexpected error occurred during upload.' }
+    return { type: 'error', message: getErrorMessage(error) }
   }
 
   try {
@@ -747,7 +748,7 @@ export async function addEmployeeAttachment(
     const { checkRateLimit } = await import('@/lib/rate-limit-server')
     await checkRateLimit('api', 10) // 10 uploads per minute
   } catch (error) {
-    if (error instanceof Error && error.message.includes('Too many requests')) {
+    if (error instanceof Error && getErrorMessage(error).includes('Too many requests')) {
       return { type: 'error', message: 'Too many file uploads. Please try again later.' };
     }
   }
@@ -760,7 +761,7 @@ export async function addEmployeeAttachment(
   const cleanedData = cleanFormDataForEmployee(formData, true); // Pass true to include files
   const result = addAttachmentSchema.safeParse(cleanedData);
   if (!result.success) {
-    console.log('Validation failed:', result.error.flatten().fieldErrors);
+    console.error('Validation failed:', result.error.flatten().fieldErrors);
     return { type: 'error', message: "Validation failed.", errors: result.error.flatten().fieldErrors };
   }
 
@@ -803,9 +804,9 @@ export async function addEmployeeAttachment(
 
     revalidatePath(`/employees/${employee_id}`);
     return { type: 'success', message: 'Attachment uploaded successfully!' };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Attachment upload error:', error);
-    return { type: 'error', message: error.message || 'An unexpected error occurred during upload.' };
+    return { type: 'error', message: getErrorMessage(error) };
   }
 }
 
@@ -843,9 +844,9 @@ export async function getAttachmentSignedUrl(attachmentId: string): Promise<{ ur
       }
     });
     return { url, error: null };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error creating signed URL:', error);
-    return { url: null, error: error.message };
+    return { url: null, error: getErrorMessage(error) };
   }
 }
 
@@ -882,9 +883,9 @@ export async function deleteEmployeeAttachment(prevState: DeleteState, formData:
 
       revalidatePath(`/employees/${employee_id}`);
       return { type: 'success', message: 'Attachment deleted successfully.' };
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Error deleting employee attachment:', error);
-      return { type: 'error', message: error.message || 'Failed to delete attachment.' };
+      return { type: 'error', message: getErrorMessage(error) };
     }
 }
 
@@ -935,7 +936,7 @@ export async function addEmergencyContact(
       type: 'success',
       message: 'Emergency contact added successfully.',
     };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error adding emergency contact:', error);
     const message = isPostgrestError(error) ? getConstraintErrorMessage(error) : 'Database error: Could not add emergency contact.';
     return {
@@ -981,7 +982,7 @@ export async function updateEmergencyContact(
 
     revalidatePath(`/employees/${validatedFields.data.employee_id}`);
     return { type: 'success', message: 'Emergency contact updated successfully.' };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error updating emergency contact:', error);
     const message = isPostgrestError(error) ? getConstraintErrorMessage(error) : 'Database error: Could not update emergency contact.';
     return { type: 'error', message };
@@ -1019,7 +1020,7 @@ export async function deleteEmergencyContact(
 
     revalidatePath(`/employees/${employeeId}`);
     return { type: 'success', message: 'Emergency contact deleted.' };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error deleting emergency contact:', error);
     const message = isPostgrestError(error) ? getConstraintErrorMessage(error) : 'Database error: Could not delete emergency contact.';
     return { type: 'error', message };
@@ -1071,7 +1072,7 @@ export async function upsertFinancialDetails(
       type: 'success',
       message: 'Financial details saved successfully.',
     };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error upserting financial details:', error);
     const message = isPostgrestError(error) ? getConstraintErrorMessage(error) : 'Database error: Could not save financial details.';
     return {
@@ -1172,7 +1173,7 @@ export async function upsertHealthRecord(
       type: 'success',
       message: 'Health record saved successfully.',
     };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error upserting health record:', error);
     const message = isPostgrestError(error) ? getConstraintErrorMessage(error) : 'Database error: Could not save health record.';
     return {
@@ -1253,11 +1254,11 @@ export async function upsertRightToWork(
       type: 'success',
       message: 'Right to work information saved successfully.',
     };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error upserting right to work:', error);
     return {
       type: 'error',
-      message: error.message || 'Database error: Could not save right to work information.',
+      message: getErrorMessage(error),
     };
   }
 }
@@ -1283,9 +1284,9 @@ export async function getRightToWorkPhotoUrl(employeeId: string): Promise<{ url:
 
     const url = await EmployeeService.getRightToWorkPhotoUrl(rtw.photo_storage_path);
     return { url, error: null };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error creating signed URL for right to work photo:', error);
-    return { url: null, error: error.message };
+    return { url: null, error: getErrorMessage(error) };
   }
 }
 
@@ -1314,9 +1315,9 @@ export async function deleteRightToWorkPhoto(employeeId: string): Promise<{ erro
 
     revalidatePath(`/employees/${employeeId}`);
     return { success: true };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error deleting right to work photo:', error);
-    return { error: error.message || 'Failed to delete photo.' };
+    return { error: getErrorMessage(error) };
   }
 }
 
@@ -1350,9 +1351,9 @@ export async function updateOnboardingChecklist(
 
     revalidatePath(`/employees/${employeeId}`);
     return { success: true };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error updating onboarding checklist:', error);
-    return { error: error.message || 'Failed to update onboarding checklist.' };
+    return { error: getErrorMessage(error) };
   }
 }
 
@@ -1367,8 +1368,8 @@ export async function getOnboardingProgress(
   try {
     const result = await EmployeeService.getOnboardingProgress(employeeId);
     return { data: result };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error fetching onboarding progress:', error);
-    return { data: null, error: error.message || 'Failed to fetch onboarding progress.' };
+    return { data: null, error: getErrorMessage(error) };
   }
 }

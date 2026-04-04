@@ -4,6 +4,7 @@ import { createClient } from '@/lib/supabase/server'
 import type { PrivateBookingWithDetails, BookingStatus } from '@/types/private-bookings'
 import { PrivateBookingService } from '@/services/private-bookings'
 import { PermissionService } from '@/services/permission'
+import { getErrorMessage } from '@/lib/errors';
 
 interface FetchOptions {
   status?: BookingStatus | 'all'
@@ -54,9 +55,9 @@ export async function fetchPrivateBookings(options: FetchOptions) {
       data: data,
       totalCount: totalCount,
     };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Unexpected error fetching private bookings', error)
-    return { error: error.message || 'Failed to load bookings' }
+    return { error: getErrorMessage(error) }
   }
 }
 
@@ -92,8 +93,8 @@ export async function fetchPrivateBookingsForCalendar() {
       success: true as const,
       data: calendarData
     }
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error fetching bookings for calendar', error)
-    return { error: error.message || 'Failed to load bookings' }
+    return { error: getErrorMessage(error) }
   }
 }

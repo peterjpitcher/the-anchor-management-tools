@@ -4,6 +4,7 @@ import { createClient } from '@/lib/supabase/server'
 import { logAuditEvent } from './audit'
 import { GdprService } from '@/services/gdpr'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { getErrorMessage } from '@/lib/errors';
 
 /**
  * Export all user data for GDPR compliance
@@ -57,9 +58,9 @@ export async function exportUserData(userId?: string) {
       fileName,
       mimeType
     }
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error exporting user data:', error)
-    return { error: error.message || 'Failed to export user data' }
+    return { error: getErrorMessage(error) }
   }
 }
 
@@ -124,8 +125,8 @@ export async function deleteUserData(confirmEmail: string) {
       message: result.message
     }
 
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error deleting user data:', error)
-    return { error: error.message || 'Failed to process deletion request' }
+    return { error: getErrorMessage(error) }
   }
 }

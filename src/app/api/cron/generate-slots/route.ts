@@ -16,7 +16,7 @@ export async function GET(request: NextRequest) {
       );
     }
     
-    console.log('[Cron] Starting service slot generation...');
+    console.warn('[Cron] Starting service slot generation...');
     
     const supabase = createAdminClient();
     
@@ -31,7 +31,7 @@ export async function GET(request: NextRequest) {
       );
     }
     
-    console.log('[Cron] Service slots generated:', data);
+    console.warn('[Cron] Service slots generated:', data);
     
     // Also cleanup old slots
     const { data: cleanupData, error: cleanupError } = await supabase.rpc('cleanup_old_service_slots');
@@ -39,7 +39,7 @@ export async function GET(request: NextRequest) {
     if (cleanupError) {
       console.error('[Cron] Error cleaning up old slots:', cleanupError);
     } else {
-      console.log(`[Cron] Cleaned up ${cleanupData} old slots`);
+      console.warn(`[Cron] Cleaned up ${cleanupData} old slots`);
     }
     
     return NextResponse.json({

@@ -3,6 +3,7 @@
 import { checkUserPermission } from '@/app/actions/rbac'
 import { EventMarketingService, type EventMarketingLink } from '@/services/event-marketing'
 import { EVENT_MARKETING_CHANNELS, type EventMarketingChannelKey } from '@/lib/event-marketing-links'
+import { getErrorMessage } from '@/lib/errors';
 
 export type { EventMarketingLink }
 
@@ -21,9 +22,9 @@ export async function generateEventMarketingLinks(eventId: string): Promise<Even
 
     const links = await EventMarketingService.generateLinks(eventId)
     return { success: true, links }
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Unexpected error generating marketing links', error)
-    return { success: false, error: error.message || 'Unexpected error generating marketing links' }
+    return { success: false, error: getErrorMessage(error) }
   }
 }
 
@@ -36,9 +37,9 @@ export async function getEventMarketingLinks(eventId: string): Promise<EventMark
 
     const links = await EventMarketingService.getLinks(eventId)
     return { success: true, links }
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Unexpected error loading marketing links', error)
-    return { success: false, error: error.message || 'Unexpected error loading marketing links' }
+    return { success: false, error: getErrorMessage(error) }
   }
 }
 
@@ -64,7 +65,7 @@ export async function generateSingleMarketingLink(
     const link = await EventMarketingService.generateSingleLink(eventId, channel)
     return { success: true, link }
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : 'Unexpected error generating link'
+    const message = error instanceof Error ? getErrorMessage(error) : 'Unexpected error generating link'
     console.error('Unexpected error generating single marketing link', error)
     return { error: message }
   }

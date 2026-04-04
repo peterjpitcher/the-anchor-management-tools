@@ -59,7 +59,7 @@ export default async function DailyCashupPage(props: { searchParams: Promise<{ d
   if (sessionDate && siteId) {
     try {
       initialSessionData = await CashingUpService.getSessionByDateAndSite(supabase, siteId, sessionDate);
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Error fetching session data:', error);
       // Continue without session data, will show empty form
     }

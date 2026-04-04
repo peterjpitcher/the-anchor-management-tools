@@ -323,7 +323,7 @@ export async function GET(request: Request) {
     const authResult = authorizeCronRequest(request)
 
     if (!authResult.authorized) {
-      console.log('Unauthorized request', authResult.reason)
+      console.error('Unauthorized request', authResult.reason)
       return new NextResponse('Unauthorized', { status: 401 })
     }
 
@@ -362,7 +362,7 @@ export async function GET(request: Request) {
       )
     }
 
-    console.log('Starting private booking monitor...')
+    console.warn('Starting private booking monitor...')
 
     const now = new Date()
     const stats = {
@@ -1069,7 +1069,7 @@ export async function GET(request: Request) {
       }
     }
 
-    console.log('Private booking monitor completed:', stats)
+    console.warn('Private booking monitor completed:', stats)
     await resolveCronRunResult(
       supabase,
       runId,

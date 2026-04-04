@@ -1035,7 +1035,7 @@ export async function publishRotaWeek(weekId: string): Promise<
       // Guard against snapshot-in-progress: if the week is published but has
       // zero shifts, a delete/insert snapshot replacement may be in progress.
       if (publishedShifts.length === 0) {
-        console.info('[RotaCalendar] No published shifts found for week — skipping sync (snapshot may be in progress)', weekId)
+        console.warn('[RotaCalendar] No published shifts found for week — skipping sync (snapshot may be in progress)', weekId)
         return
       }
 

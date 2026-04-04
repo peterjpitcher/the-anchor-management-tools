@@ -2,6 +2,7 @@
 
 import { createClient } from '@/lib/supabase/server';
 import { eachDayOfInterval, subDays, format } from 'date-fns';
+import { getErrorMessage } from '@/lib/errors';
 
 export async function getMissingCashupDatesAction(siteId: string, daysBack = 365) {
   const supabase = await createClient();
@@ -69,8 +70,8 @@ export async function getMissingCashupDatesAction(siteId: string, daysBack = 365
 
     return { success: true, dates: missingDates };
 
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error checking missing dates:', error);
-    return { success: false, error: error.message };
+    return { success: false, error: getErrorMessage(error) };
   }
 }

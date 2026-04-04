@@ -9,6 +9,7 @@ import { mapTwilioStatus, isStatusUpgrade, formatErrorMessage } from '@/lib/sms-
 import { skipTwilioSignatureValidation } from '@/lib/env';
 import { formatPhoneForStorage, generatePhoneVariants } from '@/lib/utils';
 import { recordAnalyticsEvent } from '@/lib/analytics/events';
+import { getErrorMessage } from '@/lib/errors';
 
 // Create public Supabase client for logging (no auth required)
 function getPublicSupabaseClient() {
@@ -318,7 +319,7 @@ async function findMessageBySid(
     .maybeSingle()
 
   if (error) {
-    throw new Error(`Failed to look up message by SID: ${error.message}`)
+    throw new Error(`Failed to look up message by SID: ${getErrorMessage(error)}`)
   }
 
   return data ?? null
@@ -398,7 +399,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: true, message: 'Unknown webhook type' });
     }
     
-  } catch (error: any) {
+  } catch (error: unknown) {
     logger.error('Twilio webhook handler failed', {
       error: error instanceof Error ? error : new Error(String(error))
     });
@@ -411,8 +412,8 @@ export async function POST(request: NextRequest) {
         headers, 
         body, 
         params, 
-        error.message, 
-        { stack: error.stack, name: error.name }
+        getErrorMessage(error),
+        { stack: error instanceof Error ? error.stack : undefined, name: error instanceof Error ? error.name : undefined }
       );
     }
     
@@ -696,10 +697,10 @@ async function handleInboundSMS(
     
     return NextResponse.json({ success: true, messageId: savedMessage.id });
     
-  } catch (error: any) {
-    const errorMessage = error instanceof Error ? error.message : String(error)
+  } catch (error: unknown) {
+    const errorMessage = getErrorMessage(error)
     logger.error('Inbound Twilio webhook handling failed', {
-      error: error instanceof Error ? error : new Error(String(error))
+      error: error instanceof Error ? error : new Error(errorMessage)
     });
     
     if (publicClient) {
@@ -710,7 +711,7 @@ async function handleInboundSMS(
         body,
         params,
         errorMessage,
-        { stack: error?.stack }
+        { stack: error instanceof Error ? error.stack : undefined }
       );
     }
     
@@ -958,10 +959,10 @@ async function handleStatusUpdate(
     
     return NextResponse.json({ success: true });
     
-  } catch (error: any) {
-    const errorMessage = error instanceof Error ? error.message : String(error)
+  } catch (error: unknown) {
+    const errorMessage = getErrorMessage(error)
     logger.error('Twilio status webhook handling failed', {
-      error: error instanceof Error ? error : new Error(String(error))
+      error: error instanceof Error ? error : new Error(errorMessage)
     });
     
     if (publicClient) {
@@ -972,7 +973,7 @@ async function handleStatusUpdate(
         body,
         params,
         errorMessage,
-        { stack: error?.stack }
+        { stack: error instanceof Error ? error.stack : undefined }
       );
     }
     

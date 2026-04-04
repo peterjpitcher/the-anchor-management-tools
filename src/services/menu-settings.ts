@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { getErrorMessage } from '@/lib/errors';
 
 const MENU_TARGET_SETTING_KEY = 'menu_target_gp_pct';
 const DEFAULT_MENU_TARGET = 0.7; // 70%
@@ -95,9 +96,9 @@ export class MenuSettingsService {
       // The RPC returns { success: true, new_target_gp: ... }
       return { success: data.success, target: data.new_target_gp };
 
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Error in MenuSettingsService.updateMenuTargetGp:', error);
-      return { success: false, error: error.message || 'Failed to update the GP target.' };
+      return { success: false, error: getErrorMessage(error) };
     }
   }
 }

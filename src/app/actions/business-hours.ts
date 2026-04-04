@@ -7,6 +7,7 @@ import { logAuditEvent } from '@/app/actions/audit'
 import type { BusinessHours, SpecialHours, ServiceStatus, ServiceStatusOverride } from '@/types/business-hours'
 import type { User as SupabaseUser } from '@supabase/supabase-js'
 import { BusinessHoursService } from '@/services/business-hours'
+import { getErrorMessage } from '@/lib/errors';
 
 type SettingsManagePermissionResult =
   | { error: string }
@@ -50,9 +51,9 @@ export async function getBusinessHours(): Promise<{ data?: BusinessHours[], erro
 
     const data = await BusinessHoursService.getBusinessHours()
     return { data }
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error fetching business hours:', error)
-    return { error: error.message || 'Failed to fetch business hours' }
+    return { error: getErrorMessage(error) }
   }
 }
 
@@ -61,9 +62,9 @@ export async function getBusinessHoursByDay(dayOfWeek: number): Promise<{ data?:
     const data = await BusinessHoursService.getBusinessHoursByDay(dayOfWeek)
     if (!data) return { error: 'Business hours not found for day' }
     return { data }
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error fetching business hours for day:', error)
-    return { error: error.message || 'Failed to fetch business hours' }
+    return { error: getErrorMessage(error) }
   }
 }
 
@@ -91,9 +92,9 @@ export async function updateBusinessHours(formData: FormData) {
     revalidatePath('/api/business/hours')
 
     return { success: true }
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error updating business hours:', error)
-    return { error: error.message || 'Failed to update business hours' }
+    return { error: getErrorMessage(error) }
   }
 }
 
@@ -106,9 +107,9 @@ export async function getServiceStatuses(serviceCodes?: string[]): Promise<{ dat
 
     const data = await BusinessHoursService.getServiceStatuses(serviceCodes)
     return { data }
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error fetching service statuses:', error)
-    return { error: error.message || 'Failed to fetch service statuses' }
+    return { error: getErrorMessage(error) }
   }
 }
 
@@ -125,9 +126,9 @@ export async function getServiceStatusOverrides(
 
     const data = await BusinessHoursService.getServiceStatusOverrides(serviceCode, startDate, endDate)
     return { data }
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error fetching service status overrides:', error)
-    return { error: error.message || 'Failed to fetch service status overrides' }
+    return { error: getErrorMessage(error) }
   }
 }
 
@@ -163,9 +164,9 @@ export async function createServiceStatusOverride(
     revalidatePath('/api/business/hours')
 
     return { success: true, data }
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error creating service status override:', error)
-    return { error: error.message || 'Failed to create service status override' }
+    return { error: getErrorMessage(error) }
   }
 }
 
@@ -200,9 +201,9 @@ export async function deleteServiceStatusOverride(
     revalidatePath('/api/business/hours')
 
     return { success: true }
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error deleting service status override:', error)
-    return { error: error.message || 'Failed to delete service status override' }
+    return { error: getErrorMessage(error) }
   }
 }
 
@@ -234,9 +235,9 @@ export async function updateServiceStatus(
     revalidatePath('/api/business/hours')
 
     return { success: true, data: updated }
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error updating service status:', error)
-    return { error: error.message || 'Failed to update service status' }
+    return { error: getErrorMessage(error) }
   }
 }
 
@@ -249,9 +250,9 @@ export async function getSpecialHours(startDate?: string, endDate?: string): Pro
 
     const data = await BusinessHoursService.getSpecialHours(startDate, endDate)
     return { data }
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error fetching special hours:', error)
-    return { error: error.message || 'Failed to fetch special hours' }
+    return { error: getErrorMessage(error) }
   }
 }
 
@@ -282,9 +283,9 @@ export async function createSpecialHours(formData: FormData) {
     revalidatePath('/api/business/hours')
     
     return { success: true, data: createdRecords }
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error creating special hours:', error)
-    return { error: error.message || 'Failed to create special hours' }
+    return { error: getErrorMessage(error) }
   }
 }
 
@@ -313,9 +314,9 @@ export async function updateSpecialHours(id: string, formData: FormData) {
     revalidatePath('/api/business/hours')
     
     return { success: true, data: updated }
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error updating special hours:', error)
-    return { error: error.message || 'Failed to update special hours' }
+    return { error: getErrorMessage(error) }
   }
 }
 
@@ -343,8 +344,8 @@ export async function deleteSpecialHours(id: string) {
     revalidatePath('/api/business/hours')
     
     return { success: true }
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error deleting special hours:', error)
-    return { error: error.message || 'Failed to delete special hours' }
+    return { error: getErrorMessage(error) }
   }
 }

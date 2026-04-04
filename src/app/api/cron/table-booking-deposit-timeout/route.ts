@@ -83,6 +83,6 @@ export async function GET(request: NextRequest) {
     cancelled++
   }
 
-  console.log(`[deposit-timeout] cancelled ${cancelled} booking(s)`)
+  console.warn(`[deposit-timeout] cancelled ${cancelled} booking(s)`)
   return NextResponse.json({ cancelled })
 }

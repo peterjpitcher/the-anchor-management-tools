@@ -2,6 +2,7 @@ import { google } from 'googleapis'
 import { addDays, addHours } from 'date-fns'
 import { formatInTimeZone, fromZonedTime } from 'date-fns-tz'
 import type { PrivateBooking } from '@/types/private-bookings'
+import { getErrorMessage, getErrorCode, getErrorDetails } from '@/lib/errors'
 
 // Initialize the calendar API
 const calendar = google.calendar('v3')
@@ -18,7 +19,7 @@ function parseServiceAccountKey(jsonString: string): any {
     if (parsed.private_key && typeof parsed.private_key === 'string') {
       // Check if the private key has escaped newlines that need to be converted
       if (parsed.private_key.includes('\\n') && !parsed.private_key.includes('\n')) {
-        console.log('[Google Calendar] Converting escaped newlines in private key')
+        console.warn('[Google Calendar] Converting escaped newlines in private key')
         parsed.private_key = parsed.private_key.replace(/\\n/g, '\n')
       }
     }
@@ -38,7 +39,7 @@ function parseServiceAccountKey(jsonString: string): any {
       // Fix escaped newlines in private key if needed
       if (parsed.private_key && typeof parsed.private_key === 'string') {
         if (parsed.private_key.includes('\\n') && !parsed.private_key.includes('\n')) {
-          console.log('[Google Calendar] Converting escaped newlines in private key')
+          console.warn('[Google Calendar] Converting escaped newlines in private key')
           parsed.private_key = parsed.private_key.replace(/\\n/g, '\n')
         }
       }
@@ -66,7 +67,7 @@ function parseServiceAccountKey(jsonString: string): any {
         // Fix escaped newlines in private key if needed
         if (parsed.private_key && typeof parsed.private_key === 'string') {
           if (parsed.private_key.includes('\\n') && !parsed.private_key.includes('\n')) {
-            console.log('[Google Calendar] Converting escaped newlines in private key')
+            console.warn('[Google Calendar] Converting escaped newlines in private key')
             parsed.private_key = parsed.private_key.replace(/\\n/g, '\n')
           }
         }
@@ -112,9 +113,9 @@ function canInviteCalendarAttendees(): boolean {
   return hasOAuth
 }
 
-function isServiceAccountAttendeeError(error: any): boolean {
-  const message = String(error?.message || error?.response?.data?.error?.message || '')
-  return error?.code === 403 && /service accounts/i.test(message) && /invite attendees/i.test(message)
+function isServiceAccountAttendeeError(error: unknown): boolean {
+  const message = getErrorMessage(error)
+  return getErrorCode(error) === 403 && /service accounts/i.test(message) && /invite attendees/i.test(message)
 }
 
 function formatCalendarIdForLog(calendarId?: string): string {
@@ -138,7 +139,7 @@ function getInterviewCalendarId(): string | undefined {
 
 // Initialize OAuth2 client
 export async function getOAuth2Client() {
-  console.log('[Google Calendar] Getting OAuth2 client...')
+  console.warn('[Google Calendar] Getting OAuth2 client...')
 
   try {
     // Check for OAuth2 configuration first
@@ -150,7 +151,7 @@ export async function getOAuth2Client() {
 
     // Use service account if available (recommended for server-to-server)
     if (process.env.GOOGLE_SERVICE_ACCOUNT_KEY) {
-      console.log('[Google Calendar] Using service account authentication')
+      console.warn('[Google Calendar] Using service account authentication')
       try {
         const serviceAccount = parseServiceAccountKey(process.env.GOOGLE_SERVICE_ACCOUNT_KEY)
 
@@ -167,7 +168,7 @@ export async function getOAuth2Client() {
 
       const delegatedUser = getDelegatedCalendarUser()
       if (delegatedUser) {
-        console.log('[Google Calendar] Using service account with domain-wide delegation:', {
+        console.warn('[Google Calendar] Using service account with domain-wide delegation:', {
           delegatedUser
         })
         const auth = new google.auth.JWT({
@@ -185,23 +186,23 @@ export async function getOAuth2Client() {
           scopes: ['https://www.googleapis.com/auth/calendar']
         })
 
-        console.log('[Google Calendar] Service account initialized:', {
+        console.warn('[Google Calendar] Service account initialized:', {
           clientEmail: serviceAccount.client_email,
           projectId: serviceAccount.project_id
         })
 
         const client = await auth.getClient()
-        console.log('[Google Calendar] Auth client obtained successfully')
+        console.warn('[Google Calendar] Auth client obtained successfully')
         return client
-      } catch (error: any) {
+      } catch (error: unknown) {
         console.error('Error initializing Google Service Account: ', error)
-        throw new Error(`Failed to initialize Google Calendar with service account: ${error.message || error}`)
+        throw new Error(`Failed to initialize Google Calendar with service account: ${getErrorMessage(error)}`)
       }
     }
 
     // Otherwise use OAuth2 with refresh token
     if (process.env.GOOGLE_REFRESH_TOKEN) {
-      console.log('[Google Calendar] Using OAuth2 with refresh token')
+      console.warn('[Google Calendar] Using OAuth2 with refresh token')
       oauth2Client.setCredentials({
         refresh_token: process.env.GOOGLE_REFRESH_TOKEN
       })
@@ -270,7 +271,7 @@ function formatBookingDetails(booking: PrivateBooking): string {
 
 // Create or update calendar event
 export async function syncCalendarEvent(booking: PrivateBooking): Promise<string | null> {
-  console.log('[Google Calendar] Starting calendar sync for booking:', {
+  console.warn('[Google Calendar] Starting calendar sync for booking:', {
     bookingId: booking.id,
     status: booking.status,
     eventDate: booking.event_date,
@@ -294,10 +295,10 @@ export async function syncCalendarEvent(booking: PrivateBooking): Promise<string
       return null
     }
 
-    console.log('[Google Calendar] Getting auth client...')
+    console.warn('[Google Calendar] Getting auth client...')
     const auth = await getOAuth2Client()
     const calendarId = process.env.GOOGLE_CALENDAR_ID || 'primary'
-    console.log('[Google Calendar] Using calendar ID:', calendarId)
+    console.warn('[Google Calendar] Using calendar ID:', calendarId)
 
     const startUtc = combineDateAndTime(booking.event_date, booking.start_time)
     let endUtc = booking.end_time
@@ -337,7 +338,7 @@ export async function syncCalendarEvent(booking: PrivateBooking): Promise<string
       },
     }
 
-    console.log('[Google Calendar] Event object prepared:', {
+    console.warn('[Google Calendar] Event object prepared:', {
       summary: event.summary,
       startDateTime,
       endDateTime,
@@ -348,7 +349,7 @@ export async function syncCalendarEvent(booking: PrivateBooking): Promise<string
 
     if (booking.calendar_event_id) {
       // Update existing event
-      console.log('[Google Calendar] Updating existing event:', booking.calendar_event_id)
+      console.warn('[Google Calendar] Updating existing event:', booking.calendar_event_id)
       try {
         response = await calendar.events.update({
           auth: auth as any,
@@ -356,9 +357,9 @@ export async function syncCalendarEvent(booking: PrivateBooking): Promise<string
           eventId: booking.calendar_event_id,
           requestBody: event,
         })
-        console.log('[Google Calendar] Event updated successfully:', response.data.id)
-      } catch (error: any) {
-        const code = error?.code
+        console.warn('[Google Calendar] Event updated successfully:', response.data.id)
+      } catch (error: unknown) {
+        const code = getErrorCode(error)
         if (code !== 404 && code !== 410) {
           throw error
         }
@@ -375,53 +376,56 @@ export async function syncCalendarEvent(booking: PrivateBooking): Promise<string
           requestBody: event,
         })
 
-        console.log('[Google Calendar] Event created successfully:', {
+        console.warn('[Google Calendar] Event created successfully:', {
           id: response.data.id,
           link: response.data.htmlLink,
         })
       }
     } else {
       // Create new event
-      console.log('[Google Calendar] Creating new event...')
+      console.warn('[Google Calendar] Creating new event...')
       response = await calendar.events.insert({
         auth: auth as any,
         calendarId,
         requestBody: event,
       })
-      console.log('[Google Calendar] Event created successfully:', {
+      console.warn('[Google Calendar] Event created successfully:', {
         id: response.data.id,
         link: response.data.htmlLink
       })
     }
 
     return response.data.id || null
-  } catch (error: any) {
+  } catch (error: unknown) {
     // Provide more detailed error information
+    const errorMsg = getErrorMessage(error)
+    const errorCode = getErrorCode(error)
     console.error('[Google Calendar] Sync failed:', {
-      errorCode: error.code,
-      errorMessage: error.message,
-      errorDetails: error.errors,
-      stack: error.stack
+      errorCode,
+      errorMessage: errorMsg,
+      errorDetails: getErrorDetails(error),
+      stack: error instanceof Error ? error.stack : undefined
     })
 
-    if (error.message?.includes('authentication')) {
-      console.error('[Google Calendar] Authentication error:', error.message)
+    if (errorMsg.includes('authentication')) {
+      console.error('[Google Calendar] Authentication error:', errorMsg)
       console.error('Please check your Google Calendar configuration in environment variables.')
-    } else if (error.code === 404) {
+    } else if (errorCode === 404) {
       console.error('[Google Calendar] Calendar not found. Please check GOOGLE_CALENDAR_ID:', process.env.GOOGLE_CALENDAR_ID)
       console.error('Ensure the calendar exists and is accessible by the service account.')
-    } else if (error.code === 403) {
-      console.error('[Google Calendar] Permission denied. Service account email:', error.email)
+    } else if (errorCode === 403) {
+      const email = typeof error === 'object' && error !== null && 'email' in error ? (error as { email: string }).email : 'unknown'
+      console.error('[Google Calendar] Permission denied. Service account email:', email)
       console.error('Please ensure the service account has been granted access to the calendar.')
       console.error('1. Go to Google Calendar settings')
       console.error('2. Find the calendar and click "Settings and sharing"')
       console.error('3. Under "Share with specific people", add the service account email')
       console.error('4. Grant "Make changes to events" permission')
-    } else if (error.code === 400) {
+    } else if (errorCode === 400) {
       console.error('[Google Calendar] Bad request. Check the event data format.')
-      console.error('Error details:', error.errors)
+      console.error('Error details:', getErrorDetails(error))
     } else {
-      console.error('[Google Calendar] Unexpected error:', error.message || error)
+      console.error('[Google Calendar] Unexpected error:', errorMsg)
     }
 
     // Don't throw the error, just return null to allow the booking to proceed
@@ -448,20 +452,24 @@ export async function deleteCalendarEvent(eventId: string): Promise<boolean> {
     })
 
     return true
-  } catch (error: any) {
+  } catch (error: unknown) {
     // Handle specific errors
-    if (error.code === 404) {
+    const code = getErrorCode(error)
+    if (code === 404) {
       // Event not found - this is okay, it may have been deleted already
       console.warn('Calendar event not found (may have been deleted already)')
       return true
-    } else if (error.code === 410) {
+    } else if (code === 410) {
       // Event was already deleted
       console.warn('Calendar event was already deleted')
       return true
-    } else if (error.message?.includes('authentication')) {
-      console.error('Google Calendar authentication error during delete:', error.message)
     } else {
-      console.error('Error deleting calendar event:', error.message || error)
+      const msg = getErrorMessage(error)
+      if (msg.includes('authentication')) {
+        console.error('Google Calendar authentication error during delete:', msg)
+      } else {
+        console.error('Error deleting calendar event:', msg)
+      }
     }
 
     // Return false for actual errors, but don't throw to avoid blocking operations
@@ -492,7 +500,7 @@ export function isCalendarConfigured(): boolean {
   const usesPrimaryCalendar = hasOAuth && !hasCalendarId
   const isConfigured = (hasCalendarId || usesPrimaryCalendar) && (hasServiceAccount || hasOAuth)
 
-  console.log('[Google Calendar] Configuration check:', {
+  console.warn('[Google Calendar] Configuration check:', {
     hasCalendarId,
     calendarId: process.env.GOOGLE_CALENDAR_ID ? `${process.env.GOOGLE_CALENDAR_ID.substring(0, 10)}...` : 'NOT SET',
     hasServiceAccount,
@@ -518,7 +526,7 @@ export function isInterviewCalendarConfigured(): boolean {
   const calendarLabel = formatCalendarIdForLog(calendarIdValue)
   const isConfigured = (hasInterviewCalendarId || hasCalendarId || usesPrimaryCalendar) && (hasServiceAccount || hasOAuth)
 
-  console.log('[Google Calendar] Interview configuration check:', {
+  console.warn('[Google Calendar] Interview configuration check:', {
     hasInterviewCalendarId,
     hasCalendarId,
     calendarId: calendarLabel,
@@ -535,14 +543,15 @@ async function verifyInterviewCalendarAccess(auth: any, calendarId: string): Pro
   try {
     await calendar.calendars.get({ auth, calendarId })
     return null
-  } catch (error: any) {
-    if (error?.code === 404) {
+  } catch (error: unknown) {
+    const code = getErrorCode(error)
+    if (code === 404) {
       return 'Interview scheduled, but the Ops calendar was not found or is not shared with the service account. Check GOOGLE_CALENDAR_INTERVIEW_ID and calendar sharing.'
     }
-    if (error?.code === 403) {
+    if (code === 403) {
       return 'Interview scheduled, but access to the Ops calendar was denied. Share it with the service account (Make changes to events).'
     }
-    const fallback = error?.code ? `Calendar error (${error.code}).` : 'Calendar access check failed.'
+    const fallback = code ? `Calendar error (${code}).` : 'Calendar access check failed.'
     return `Interview scheduled, but Google Calendar access failed. ${fallback}`
   }
 }
@@ -562,10 +571,9 @@ export function formatServiceAccountForEnv(serviceAccountJson: string | object):
       .replace(/\r/g, '\\r')
       .replace(/\t/g, '\\t')
 
-    console.log('Formatted service account key for .env.local:')
-    console.log('GOOGLE_SERVICE_ACCOUNT_KEY=' + formatted)
-    console.log('')
-    console.log('Copy the line above to your .env.local file')
+    console.warn('Formatted service account key for .env.local:')
+    console.warn('GOOGLE_SERVICE_ACCOUNT_KEY=' + formatted)
+    console.warn('Copy the line above to your .env.local file')
 
     return formatted
   } catch (error) {
@@ -580,7 +588,7 @@ export async function testCalendarConnection(): Promise<{
   message: string
   details?: any
 }> {
-  console.log('[Google Calendar] Testing calendar connection...')
+  console.warn('[Google Calendar] Testing calendar connection...')
 
   try {
     if (!isCalendarConfigured()) {
@@ -600,7 +608,7 @@ export async function testCalendarConnection(): Promise<{
     const auth = await getOAuth2Client()
     const calendarId = process.env.GOOGLE_CALENDAR_ID || 'primary'
 
-    console.log('[Google Calendar] Testing calendar access for:', calendarId)
+    console.warn('[Google Calendar] Testing calendar access for:', calendarId)
 
     // Try to get calendar details
     try {
@@ -609,7 +617,7 @@ export async function testCalendarConnection(): Promise<{
         calendarId: calendarId
       })
 
-      console.log('[Google Calendar] Calendar access successful:', {
+      console.warn('[Google Calendar] Calendar access successful:', {
         summary: calendarResponse.data.summary,
         timeZone: calendarResponse.data.timeZone
       })
@@ -636,7 +644,7 @@ export async function testCalendarConnection(): Promise<{
         timeMin: new Date().toISOString()
       })
 
-      console.log('[Google Calendar] Successfully listed events:', {
+      console.warn('[Google Calendar] Successfully listed events:', {
         count: eventsResponse.data.items?.length || 0
       })
 
@@ -684,12 +692,13 @@ export async function testCalendarConnection(): Promise<{
         }
       }
     }
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('[Google Calendar] Connection test failed:', error)
+    const msg = getErrorMessage(error)
     return {
       success: false,
-      message: `Failed to connect: ${error.message}`,
-      details: { error: error.message }
+      message: `Failed to connect: ${msg}`,
+      details: { error: msg }
     }
   }
 }
@@ -729,7 +738,7 @@ export async function createInterviewEvent(options: InterviewEventOptions): Prom
     attendees = []
   } = options
 
-  console.log('[Google Calendar] Creating interview event:', {
+  console.warn('[Google Calendar] Creating interview event:', {
     candidateName,
     jobTitle,
     startTime,
@@ -822,7 +831,7 @@ export async function createInterviewEvent(options: InterviewEventOptions): Prom
     let response
     try {
       response = await insertEvent(requestBody, allowAttendees && eventAttendees.length > 0)
-    } catch (error: any) {
+    } catch (error: unknown) {
       if (allowAttendees && eventAttendees.length > 0 && isServiceAccountAttendeeError(error)) {
         warning = 'Interview scheduled, but attendee invites were not sent. Configure Google Calendar domain-wide delegation or OAuth to send invites.'
         response = await insertEvent(event, false)
@@ -831,14 +840,14 @@ export async function createInterviewEvent(options: InterviewEventOptions): Prom
       }
     }
 
-    console.log('[Google Calendar] Interview event created:', response.data.id)
+    console.warn('[Google Calendar] Interview event created:', response.data.id)
     return {
       id: response.data.id || null,
       htmlLink: response.data.htmlLink || null,
       warning,
     }
 
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('[Google Calendar] Interview creation failed:', error)
     return null
   }

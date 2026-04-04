@@ -6,6 +6,7 @@ import { CashingUpService } from '@/services/cashing-up.service';
 import { UpsertCashupSessionDTO } from '@/types/cashing-up';
 import { revalidatePath, revalidateTag } from 'next/cache';
 import { logAuditEvent } from '@/app/actions/audit';
+import { getErrorMessage } from '@/lib/errors';
 
 export async function getSessionByIdAction(id: string) {
   const supabase = await createClient();
@@ -23,8 +24,8 @@ export async function getSessionByIdAction(id: string) {
   try {
     const data = await CashingUpService.getSession(supabase, id);
     return { success: true, data };
-  } catch (error: any) {
-    return { success: false, error: error.message };
+  } catch (error: unknown) {
+    return { success: false, error: getErrorMessage(error) };
   }
 }
 
@@ -48,9 +49,9 @@ export async function upsertSessionAction(data: UpsertCashupSessionDTO, existing
     revalidateTag('dashboard');
     void logAuditEvent({ operation_type: existingId ? 'update' : 'create', resource_type: 'cashup_session', operation_status: 'success' });
     return { success: true, data: result };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Upsert error:', error);
-    return { success: false, error: error.message };
+    return { success: false, error: getErrorMessage(error) };
   }
 }
 
@@ -69,8 +70,8 @@ export async function submitSessionAction(id: string) {
     revalidateTag('dashboard');
     void logAuditEvent({ operation_type: 'update', resource_type: 'cashup_session', operation_status: 'success' });
     return { success: true, data: result };
-  } catch (error: any) {
-    return { success: false, error: error.message };
+  } catch (error: unknown) {
+    return { success: false, error: getErrorMessage(error) };
   }
 }
 
@@ -89,8 +90,8 @@ export async function approveSessionAction(id: string) {
     revalidateTag('dashboard');
     void logAuditEvent({ operation_type: 'update', resource_type: 'cashup_session', operation_status: 'success' });
     return { success: true, data: result };
-  } catch (error: any) {
-    return { success: false, error: error.message };
+  } catch (error: unknown) {
+    return { success: false, error: getErrorMessage(error) };
   }
 }
 
@@ -109,8 +110,8 @@ export async function lockSessionAction(id: string) {
     revalidateTag('dashboard');
     void logAuditEvent({ operation_type: 'update', resource_type: 'cashup_session', operation_status: 'success' });
     return { success: true, data: result };
-  } catch (error: any) {
-    return { success: false, error: error.message };
+  } catch (error: unknown) {
+    return { success: false, error: getErrorMessage(error) };
   }
 }
 
@@ -129,8 +130,8 @@ export async function unlockSessionAction(id: string) {
     revalidateTag('dashboard');
     void logAuditEvent({ operation_type: 'update', resource_type: 'cashup_session', operation_status: 'success' });
     return { success: true, data: result };
-  } catch (error: any) {
-    return { success: false, error: error.message };
+  } catch (error: unknown) {
+    return { success: false, error: getErrorMessage(error) };
   }
 }
 
@@ -146,8 +147,8 @@ export async function getWeeklyDataAction(siteId: string, weekStartDate: string)
   try {
     const data = await CashingUpService.getWeeklyData(supabase, siteId, weekStartDate);
     return { success: true, data };
-  } catch (error: any) {
-    return { success: false, error: error.message };
+  } catch (error: unknown) {
+    return { success: false, error: getErrorMessage(error) };
   }
 }
 
@@ -211,9 +212,9 @@ export async function getDailyTargetAction(siteId: string, date: string) {
   try {
     const target = await CashingUpService.getDailyTarget(supabase, siteId, date);
     return { success: true, data: target };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error getting daily target:', error);
-    return { success: false, error: error.message };
+    return { success: false, error: getErrorMessage(error) };
   }
 }
 
@@ -229,9 +230,9 @@ export async function setDailyTargetAction(siteId: string, date: string, amount:
     await CashingUpService.setDailyTarget(supabase, siteId, date, amount, user.id);
     void logAuditEvent({ operation_type: 'update', resource_type: 'cashup_target', operation_status: 'success' });
     return { success: true };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error setting daily target:', error);
-    return { success: false, error: error.message };
+    return { success: false, error: getErrorMessage(error) };
   }
 }
 
@@ -252,9 +253,9 @@ export async function updateWeeklyTargetsAction(siteId: string, targets: Record<
     await CashingUpService.setWeeklyTargets(supabase, siteId, targetArray, effectiveDate, user.id);
     void logAuditEvent({ operation_type: 'update', resource_type: 'cashup_targets', operation_status: 'success' });
     return { success: true };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error setting weekly targets:', error);
-    return { success: false, error: error.message };
+    return { success: false, error: getErrorMessage(error) };
   }
 }
 
@@ -269,8 +270,8 @@ export async function getWeeklyProgressAction(siteId: string, date: string) {
   try {
     const data = await CashingUpService.getWeeklyProgress(supabase, siteId, date);
     return { success: true, data };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error getting weekly progress:', error);
-    return { success: false, error: error.message };
+    return { success: false, error: getErrorMessage(error) };
   }
 }

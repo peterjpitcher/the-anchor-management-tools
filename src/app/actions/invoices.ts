@@ -6,6 +6,7 @@ import { checkUserPermission } from '@/app/actions/rbac'
 import { logAuditEvent } from './audit'
 import { isGraphConfigured, sendInvoiceEmail } from '@/lib/microsoft-graph'
 import { z } from 'zod'
+import { getErrorMessage } from '@/lib/errors'
 import { revalidatePath, revalidateTag } from 'next/cache'
 import type {
   Invoice,
@@ -73,7 +74,7 @@ async function resolveInvoiceRecipientsForVendor(
     .order('created_at', { ascending: true })
 
   if (error) {
-    return { error: error.message || 'Failed to resolve invoice recipients' }
+    return { error: getErrorMessage(error) }
   }
 
   const contactEmails = (contacts || [])
@@ -119,8 +120,8 @@ async function sendRemittanceAdviceForPaidInvoice(
   let invoice: InvoiceWithDetails
   try {
     invoice = await InvoiceService.getInvoiceById(invoiceId)
-  } catch (error: any) {
-    const message = error?.message || 'Failed to load invoice for receipt'
+  } catch (error: unknown) {
+    const message = getErrorMessage(error)
     console.error('[Invoices] Receipt dispatch aborted:', message)
     return { sent: false, skippedReason: 'invoice_lookup_failed', error: message }
   }
@@ -307,9 +308,9 @@ export async function getInvoices(
 
     const { invoices, total } = await InvoiceService.getInvoices(status, page, limit, search)
     return { invoices, total }
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error in getInvoices:', error)
-    return { error: error.message || 'An unexpected error occurred' }
+    return { error: getErrorMessage(error) }
   }
 }
 
@@ -322,9 +323,9 @@ export async function getInvoice(invoiceId: string) {
 
     const invoice = await InvoiceService.getInvoiceById(invoiceId)
     return { invoice }
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error in getInvoice:', error)
-    return { error: error.message || 'An unexpected error occurred' }
+    return { error: getErrorMessage(error) }
   }
 }
 
@@ -397,12 +398,12 @@ export async function createInvoice(formData: FormData): Promise<CreateInvoiceRe
     revalidateTag('dashboard')
 
     return { success: true, invoice }
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error in createInvoice:', error)
     if (error instanceof z.ZodError) {
       return { error: error.errors[0].message }
     }
-    return { error: error.message || 'An unexpected error occurred' }
+    return { error: getErrorMessage(error) }
   }
 }
 
@@ -494,9 +495,9 @@ export async function updateInvoiceStatus(formData: FormData) {
     revalidateTag('dashboard')
 
     return { success: true }
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error in updateInvoiceStatus:', error)
-    return { error: error.message || 'An unexpected error occurred' }
+    return { error: getErrorMessage(error) }
   }
 }
 
@@ -529,9 +530,9 @@ export async function deleteInvoice(formData: FormData) {
     revalidateTag('dashboard')
     
     return { success: true }
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error in deleteInvoice:', error)
-    return { error: error.message || 'An unexpected error occurred' }
+    return { error: getErrorMessage(error) }
   }
 }
 
@@ -544,9 +545,9 @@ export async function getInvoiceSummary() {
 
     const summary = await InvoiceService.getInvoiceSummary()
     return { summary }
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error in getInvoiceSummary:', error)
-    return { error: error.message || 'An unexpected error occurred' }
+    return { error: getErrorMessage(error) }
   }
 }
 
@@ -559,9 +560,9 @@ export async function getLineItemCatalog() {
 
     const items = await InvoiceService.getLineItemCatalog()
     return { items: items as LineItemCatalogItem[] }
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error fetching line item catalog:', error)
-    return { error: error.message || 'An unexpected error occurred' }
+    return { error: getErrorMessage(error) }
   }
 }
 
@@ -594,9 +595,9 @@ export async function createCatalogItem(formData: FormData) {
     revalidatePath('/invoices/catalog')
     
     return { item, success: true }
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error in createCatalogItem:', error)
-    return { error: error.message || 'An unexpected error occurred' }
+    return { error: getErrorMessage(error) }
   }
 }
 
@@ -630,9 +631,9 @@ export async function updateCatalogItem(formData: FormData) {
     revalidatePath('/invoices/catalog')
     
     return { item, success: true }
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error in updateCatalogItem:', error)
-    return { error: error.message || 'An unexpected error occurred' }
+    return { error: getErrorMessage(error) }
   }
 }
 
@@ -660,9 +661,9 @@ export async function deleteCatalogItem(formData: FormData) {
     revalidatePath('/invoices/catalog')
     
     return { success: true }
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error in deleteCatalogItem:', error)
-    return { error: error.message || 'An unexpected error occurred' }
+    return { error: getErrorMessage(error) }
   }
 }
 
@@ -751,9 +752,9 @@ export async function recordPayment(formData: FormData) {
     revalidateTag('dashboard')
 
     return { payment, success: true, remittanceAdvice }
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error in recordPayment:', error)
-    return { error: error.message || 'An unexpected error occurred' }
+    return { error: getErrorMessage(error) }
   }
 }
 
@@ -844,11 +845,11 @@ export async function updateInvoice(formData: FormData) {
     revalidatePath(`/invoices/${invoiceId}`)
     
     return { invoice: updatedInvoice, success: true }
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error in updateInvoice:', error)
     if (error instanceof z.ZodError) {
       return { error: error.errors[0].message }
     }
-    return { error: error.message || 'An unexpected error occurred' }
+    return { error: getErrorMessage(error) }
   }
 }

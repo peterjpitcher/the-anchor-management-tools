@@ -2,6 +2,7 @@ import { isCalendarConfigured, getOAuth2Client } from './google-calendar';
 import type { Employee } from '@/types/database';
 import { format, getYear } from 'date-fns';
 import { createHash } from 'crypto';
+import { getErrorMessage, getErrorCode, getErrorDetails } from '@/lib/errors';
 
 // Minimal employee type for birthday sync
 interface EmployeeBirthday {
@@ -30,7 +31,7 @@ function generateBirthdayEventId(employeeId: string): string {
 
 // Create or update a birthday calendar event
 export async function syncBirthdayCalendarEvent(employee: EmployeeBirthday | Employee): Promise<string | null> {
-  console.log('[Birthday Calendar] Starting calendar sync for employee:', {
+  console.warn('[Birthday Calendar] Starting calendar sync for employee:', {
     employeeId: employee.employee_id,
     name: `${employee.first_name} ${employee.last_name}`,
     hasDOB: !!employee.date_of_birth,
@@ -51,10 +52,10 @@ export async function syncBirthdayCalendarEvent(employee: EmployeeBirthday | Emp
     // Get calendar client dynamically
     const calendar = await getCalendarClient();
 
-    console.log('[Birthday Calendar] Getting auth client...');
+    console.warn('[Birthday Calendar] Getting auth client...');
     const auth = await getOAuth2Client();
     const calendarId = process.env.GOOGLE_CALENDAR_ID || 'primary';
-    console.log('[Birthday Calendar] Using calendar ID:', calendarId);
+    console.warn('[Birthday Calendar] Using calendar ID:', calendarId);
 
     // Parse date of birth
     const dob = new Date(employee.date_of_birth);
@@ -110,7 +111,7 @@ export async function syncBirthdayCalendarEvent(employee: EmployeeBirthday | Emp
       }
     };
 
-    console.log('[Birthday Calendar] Event object prepared:', {
+    console.warn('[Birthday Calendar] Event object prepared:', {
       summary: event.summary,
       eventId: eventId,
       startDate: format(startDate, 'yyyy-MM-dd'),
@@ -121,7 +122,7 @@ export async function syncBirthdayCalendarEvent(employee: EmployeeBirthday | Emp
 
     try {
       // Try to get existing event
-      console.log('[Birthday Calendar] Checking for existing event:', eventId);
+      console.warn('[Birthday Calendar] Checking for existing event:', eventId);
       const existingEvent = await calendar.events.get({
         auth: auth as any,
         calendarId,
@@ -129,24 +130,24 @@ export async function syncBirthdayCalendarEvent(employee: EmployeeBirthday | Emp
       });
 
       // Update existing event
-      console.log('[Birthday Calendar] Updating existing event:', eventId);
+      console.warn('[Birthday Calendar] Updating existing event:', eventId);
       response = await calendar.events.update({
         auth: auth as any,
         calendarId,
         eventId,
         requestBody: event
       });
-      console.log('[Birthday Calendar] Event updated successfully:', response.data.id);
-    } catch (error: any) {
-      if (error.code === 404) {
+      console.warn('[Birthday Calendar] Event updated successfully:', response.data.id);
+    } catch (error: unknown) {
+      if (getErrorCode(error) === 404) {
         // Create new event
-        console.log('[Birthday Calendar] Creating new event...');
+        console.warn('[Birthday Calendar] Creating new event...');
         response = await calendar.events.insert({
           auth: auth as any,
           calendarId,
           requestBody: event
         });
-        console.log('[Birthday Calendar] Event created successfully:', {
+        console.warn('[Birthday Calendar] Event created successfully:', {
           id: response.data.id,
           link: response.data.htmlLink
         });
@@ -156,33 +157,36 @@ export async function syncBirthdayCalendarEvent(employee: EmployeeBirthday | Emp
     }
 
     return response.data.id || null;
-  } catch (error: any) {
+  } catch (error: unknown) {
     // Provide more detailed error information
+    const errorMsg = getErrorMessage(error);
+    const errorCode = getErrorCode(error);
     console.error('[Birthday Calendar] Sync failed:', {
-      errorCode: error.code,
-      errorMessage: error.message,
-      errorDetails: error.errors,
-      stack: error.stack
+      errorCode,
+      errorMessage: errorMsg,
+      errorDetails: getErrorDetails(error),
+      stack: error instanceof Error ? error.stack : undefined
     });
 
-    if (error.message?.includes('authentication')) {
-      console.error('[Birthday Calendar] Authentication error:', error.message);
+    if (errorMsg.includes('authentication')) {
+      console.error('[Birthday Calendar] Authentication error:', errorMsg);
       console.error('Please check your Google Calendar configuration in environment variables.');
-    } else if (error.code === 404) {
+    } else if (errorCode === 404) {
       console.error('[Birthday Calendar] Calendar not found. Please check GOOGLE_CALENDAR_ID:', process.env.GOOGLE_CALENDAR_ID);
       console.error('Ensure the calendar exists and is accessible by the service account.');
-    } else if (error.code === 403) {
-      console.error('[Birthday Calendar] Permission denied. Service account email:', error.email);
+    } else if (errorCode === 403) {
+      const email = typeof error === 'object' && error !== null && 'email' in error ? (error as { email: string }).email : 'unknown';
+      console.error('[Birthday Calendar] Permission denied. Service account email:', email);
       console.error('Please ensure the service account has been granted access to the calendar.');
       console.error('1. Go to Google Calendar settings');
       console.error('2. Find the calendar and click "Settings and sharing"');
       console.error('3. Under "Share with specific people", add the service account email');
       console.error('4. Grant "Make changes to events" permission');
-    } else if (error.code === 400) {
+    } else if (errorCode === 400) {
       console.error('[Birthday Calendar] Bad request. Check the event data format.');
-      console.error('Error details:', error.errors);
+      console.error('Error details:', getErrorDetails(error));
     } else {
-      console.error('[Birthday Calendar] Unexpected error:', error.message || error);
+      console.error('[Birthday Calendar] Unexpected error:', errorMsg);
     }
 
     // Don't throw the error, just return null to allow the operation to proceed
@@ -211,20 +215,21 @@ export async function deleteBirthdayCalendarEvent(employeeId: string): Promise<b
         eventId
       });
 
-      console.log('[Birthday Calendar] Deleted birthday event:', eventId);
+      console.warn('[Birthday Calendar] Deleted birthday event:', eventId);
       return true;
-    } catch (error: any) {
-      if (error.code === 404 || error.code === 410) {
+    } catch (error: unknown) {
+      const code = getErrorCode(error);
+      if (code === 404 || code === 410) {
         // Event not found or already deleted - that's okay
-        console.log('[Birthday Calendar] Event not found (may not exist):', eventId);
+        console.warn('[Birthday Calendar] Event not found (may not exist):', eventId);
         return false;
       } else {
-        console.error('[Birthday Calendar] Error deleting event:', error.message);
+        console.error('[Birthday Calendar] Error deleting event:', getErrorMessage(error));
         throw error;
       }
     }
-  } catch (error: any) {
-    console.error('[Birthday Calendar] Delete failed:', error.message);
+  } catch (error: unknown) {
+    console.error('[Birthday Calendar] Delete failed:', getErrorMessage(error));
     return false;
   }
 }
@@ -273,9 +278,9 @@ export async function syncAllBirthdaysToCalendar(): Promise<{
           failed++;
           errors.push(`Failed to sync ${employee.first_name} ${employee.last_name}`);
         }
-      } catch (error: any) {
+      } catch (error: unknown) {
         failed++;
-        errors.push(`Error syncing ${employee.first_name} ${employee.last_name}: ${error.message}`);
+        errors.push(`Error syncing ${employee.first_name} ${employee.last_name}: ${getErrorMessage(error)}`);
       }
     }
 
@@ -285,12 +290,12 @@ export async function syncAllBirthdaysToCalendar(): Promise<{
       failed,
       errors
     };
-  } catch (error: any) {
+  } catch (error: unknown) {
     return {
       success: false,
       synced: 0,
       failed: 0,
-      errors: [error.message]
+      errors: [getErrorMessage(error)]
     };
   }
 }

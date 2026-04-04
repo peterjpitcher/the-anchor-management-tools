@@ -6,6 +6,7 @@ import { revalidatePath } from 'next/cache'
 import { FinancialService, type PnlDashboardData } from '@/services/financials'
 import { type PLTimeframe } from '@/types/database'
 import { PNL_TIMEFRAMES, type PnlTimeframeKey } from '@/lib/pnl/constants' // Exported from service? No, import from lib
+import { getErrorMessage } from '@/lib/errors';
 // Actually PnlDashboardData exports PNL_TIMEFRAMES type info implicitly via typeof, but we might need the constant for type usage?
 // The original action imported it.
 
@@ -53,9 +54,9 @@ export async function savePlTargetsAction(formData: FormData) {
       operation_status: 'success',
     })
     return { success: true }
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Failed to save P&L targets:', error)
-    return { error: error.message || 'Failed to save targets' }
+    return { error: getErrorMessage(error) }
   }
 }
 
@@ -72,8 +73,8 @@ export async function savePlManualActualsAction(formData: FormData) {
       operation_status: 'success',
     })
     return { success: true }
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Failed to save manual P&L inputs:', error)
-    return { error: error.message || 'Failed to save manual inputs' }
+    return { error: getErrorMessage(error) }
   }
 }

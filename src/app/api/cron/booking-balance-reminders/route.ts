@@ -24,7 +24,7 @@ async function handler(request: Request) {
   }
 
   try {
-    console.log('[Cron] Starting booking-balance-reminders')
+    console.warn('[Cron] Starting booking-balance-reminders')
 
     const supabase = createAdminClient()
 
@@ -66,7 +66,7 @@ async function handler(request: Request) {
       )
     }
 
-    console.log(`[Cron] Found ${bookings?.length ?? 0} bookings requiring a balance reminder`)
+    console.warn(`[Cron] Found ${bookings?.length ?? 0} bookings requiring a balance reminder`)
 
     const results = {
       processed: 0,
@@ -137,7 +137,7 @@ async function handler(request: Request) {
       }
     }
 
-    console.log('[Cron] booking-balance-reminders completed:', results)
+    console.warn('[Cron] booking-balance-reminders completed:', results)
 
     return NextResponse.json({ success: true, results })
   } catch (error) {

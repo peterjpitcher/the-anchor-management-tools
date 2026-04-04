@@ -21,7 +21,7 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    console.log(`Birthday reminders sent: ${result.sent} employees`);
+    console.warn(`Birthday reminders sent: ${result.sent} employees`);
 
     return NextResponse.json({
       success: true,
