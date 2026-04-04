@@ -215,10 +215,10 @@ function buildEventBookingSms(
 
   if (state === 'pending_payment') {
     if (payload.paymentLink) {
-      return `The Anchor: Hi ${payload.firstName}, we're holding ${payload.seats} ${seatWord} for ${payload.eventName}. Pay here: ${payload.paymentLink}.${payload.manageLink ? ` Manage booking: ${payload.manageLink}` : ''}`
+      return `The Anchor: ${payload.firstName}! ${payload.seats} ${seatWord} held for ${payload.eventName} — nice one! We'll ping you a payment link shortly.${payload.manageLink ? ` ${payload.manageLink}` : ''}`
     }
 
-    return `The Anchor: Hi ${payload.firstName}, we're holding ${payload.seats} ${seatWord} for ${payload.eventName}. Your booking is pending payment and we'll text your payment link shortly.${payload.manageLink ? ` Manage booking: ${payload.manageLink}` : ''}`
+    return `The Anchor: ${payload.firstName}! ${payload.seats} ${seatWord} held for ${payload.eventName} — nice one! We'll ping you a payment link shortly.${payload.manageLink ? ` ${payload.manageLink}` : ''}`
   }
 
   const confirmedTail =
@@ -226,7 +226,7 @@ function buildEventBookingSms(
       ? ' Payment is cash on arrival.'
       : ''
 
-  return `The Anchor: Hi ${payload.firstName}, your booking for ${payload.eventName} on ${payload.eventStart} is confirmed for ${payload.seats} ${seatWord}.${confirmedTail}${payload.manageLink ? ` Manage booking: ${payload.manageLink}` : ''}`
+  return `The Anchor: ${payload.firstName}! You're in — ${payload.seats} ${seatWord} locked in for ${payload.eventName} on ${payload.eventStart}. See you there!${confirmedTail}${payload.manageLink ? ` ${payload.manageLink}` : ''}`
 }
 
 async function sendBookingSmsIfAllowed(
