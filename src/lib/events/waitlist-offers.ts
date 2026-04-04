@@ -243,7 +243,7 @@ export async function sendWaitlistOfferSms(
   const supportPhone = process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || process.env.TWILIO_PHONE_NUMBER || undefined
 
   const messageBody = ensureReplyInstruction(
-    `The Anchor: Hi ${firstName}, seats are now available for ${eventName} on ${eventStart}. We're holding ${seatCount} ${seatWord} for 24 hours. Review and confirm here: ${confirmUrl}`,
+    `The Anchor: ${firstName}! A spot just opened up for ${eventName} on ${eventStart}. Want it? Grab your seat here before it's gone: ${confirmUrl}`,
     supportPhone
   )
 
