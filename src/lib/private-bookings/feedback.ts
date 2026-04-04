@@ -184,22 +184,10 @@ export async function createPrivateBookingFeedbackToken(
     bookingStartIso?: string | null
     appBaseUrl?: string
   }
-): Promise<{ rawToken: string; url: string; expiresAt: string }> {
-  const bookingStartIso = input.bookingStartIso || resolvePrivateBookingStartIso(input.eventDate, input.startTime)
-  const expiresAt = computeFeedbackTokenExpiry(bookingStartIso)
-  const { rawToken } = await createGuestToken(supabase, {
-    customerId: input.customerId,
-    actionType: 'private_feedback',
-    privateBookingId: input.privateBookingId,
-    expiresAt
-  })
-
-  const appBaseUrl = resolveAppBaseUrl(input.appBaseUrl)
-  return {
-    rawToken,
-    url: `${appBaseUrl}/g/${rawToken}/private-feedback`,
-    expiresAt
-  }
+): Promise<{ rawToken: string; url: string; expiresAt: string } | null> {
+  // RETIRED: private booking feedback consolidated to Google review only.
+  // Existing tokens continue to work, but no new ones are generated.
+  return Promise.resolve(null)
 }
 
 export async function getPrivateBookingFeedbackPreviewByRawToken(

@@ -900,17 +900,17 @@ function buildEventBookingCreatedSms(input: {
 
   if (input.state === 'pending_payment') {
     if (input.paymentLink) {
-      return `The Anchor: Hi ${input.firstName}, we're holding ${input.seats} ${seatWord} for ${input.eventName}. Pay here: ${input.paymentLink}.${input.manageLink ? ` Manage booking: ${input.manageLink}` : ''}`
+      return `The Anchor: ${input.firstName}! ${input.seats} ${seatWord} held for ${input.eventName} — nice one! We'll ping you a payment link shortly.${input.manageLink ? ` ${input.manageLink}` : ''}`
     }
 
-    return `The Anchor: Hi ${input.firstName}, we're holding ${input.seats} ${seatWord} for ${input.eventName}. Your booking is pending payment and we'll text your payment link shortly.${input.manageLink ? ` Manage booking: ${input.manageLink}` : ''}`
+    return `The Anchor: ${input.firstName}! ${input.seats} ${seatWord} held for ${input.eventName} — nice one! We'll ping you a payment link shortly.${input.manageLink ? ` ${input.manageLink}` : ''}`
   }
 
   const confirmedTail = input.paymentMode === 'cash_only'
     ? ' Payment is cash on arrival.'
     : ''
 
-  return `The Anchor: Hi ${input.firstName}, your booking for ${input.eventName} on ${input.eventStartText} is confirmed for ${input.seats} ${seatWord}.${confirmedTail}${input.manageLink ? ` Manage booking: ${input.manageLink}` : ''}`
+  return `The Anchor: ${input.firstName}! You're in — ${input.seats} ${seatWord} locked in for ${input.eventName} on ${input.eventStartText}. See you there!${confirmedTail}${input.manageLink ? ` ${input.manageLink}` : ''}`
 }
 
 function buildEventBookingCancelledSms(input: {
@@ -921,11 +921,11 @@ function buildEventBookingCancelledSms(input: {
   isReminderOnly: boolean
 }): string {
   if (input.isReminderOnly) {
-    return `The Anchor: Hi ${input.firstName}, your reminder guest entry for ${input.eventName} on ${input.eventStartText} has been removed. Reply if you need help rejoining.`
+    return `The Anchor: ${input.firstName}, your reminder guest entry for ${input.eventName} on ${input.eventStartText} has been removed. Reply if you need help rejoining.`
   }
 
   const seatWord = input.seats === 1 ? 'seat' : 'seats'
-  return `The Anchor: Hi ${input.firstName}, your booking for ${input.eventName} on ${input.eventStartText} has been cancelled (${input.seats} ${seatWord}). Reply if you need help rebooking.`
+  return `The Anchor: ${input.firstName}, your booking for ${input.eventName} on ${input.eventStartText} has been cancelled (${input.seats} ${seatWord}). Reply if you need help rebooking.`
 }
 
 export async function updateEventManualBookingSeats(input: {

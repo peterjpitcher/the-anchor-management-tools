@@ -11,6 +11,7 @@ export type EventMarketingChannelKey =
   | 'poster'
   | 'table_talker'
   | 'bar_strut'
+  | 'sms_promo'
 
 export type EventMarketingChannelType = 'digital' | 'print'
 
@@ -153,6 +154,17 @@ export const EVENT_MARKETING_CHANNELS: EventMarketingChannelConfig[] = [
     utmMedium: 'print',
     utmContent: 'bar_strut_qr',
     shortCodePrefix: 'bs',
+  },
+  {
+    key: 'sms_promo',
+    label: 'SMS Promo',
+    type: 'digital',
+    tier: 'on_demand',
+    description: 'Automated cross-promotion SMS to past event attendees',
+    utmSource: 'sms',
+    utmMedium: 'messaging',
+    utmContent: 'sms_promo',
+    shortCodePrefix: 'sp',
   },
 ]
 

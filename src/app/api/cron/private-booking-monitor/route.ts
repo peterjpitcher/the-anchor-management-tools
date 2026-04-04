@@ -1,26 +1,22 @@
 import { NextResponse } from 'next/server'
-import { fromZonedTime } from 'date-fns-tz'
 import { authorizeCronRequest } from '@/lib/cron-auth'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { logger } from '@/lib/logger'
 import { SmsQueueService } from '@/services/sms-queue'
 import { PrivateBookingService } from '@/services/private-bookings'
-import { ensureReplyInstruction } from '@/lib/sms/support'
-import { ensureCustomerForPhone } from '@/lib/sms/customers'
-import { sendSMS } from '@/lib/twilio'
-import {
-  createPrivateBookingFeedbackToken,
-  PRIVATE_BOOKING_FEEDBACK_TEMPLATE_KEY
-} from '@/lib/private-bookings/feedback'
-import { recordAnalyticsEvent } from '@/lib/analytics/events'
+import { PRIVATE_BOOKING_FEEDBACK_TEMPLATE_KEY } from '@/lib/private-bookings/feedback'
 import { persistCronRunResult, recoverCronRunLock } from '@/lib/cron-run-results'
 import { getSmartFirstName } from '@/lib/sms/bulk'
 import { reportCronFailure } from '@/lib/cron/alerting'
+import { hasCustomerReviewed } from '@/lib/sms/review-once'
+import { createGuestToken } from '@/lib/guest/tokens'
+import { getGoogleReviewLink } from '@/lib/events/review-link'
+import { sendSMS } from '@/lib/twilio'
+import { ensureReplyInstruction } from '@/lib/sms/support'
 
 const JOB_NAME = 'private-booking-monitor'
 const LONDON_TZ = 'Europe/London'
 const STALE_RUN_WINDOW_MINUTES = 30
-const PRIVATE_FEEDBACK_LOOKBACK_DAYS = 7
 const MAX_PRIVATE_BOOKING_SMS_PER_RUN = parsePositiveIntEnv('MAX_PRIVATE_BOOKING_SMS_PER_RUN', 120)
 const PRIVATE_BOOKING_SEND_GUARD_WINDOW_MINUTES = parsePositiveIntEnv(
   'PRIVATE_BOOKING_SEND_GUARD_WINDOW_MINUTES',
@@ -44,6 +40,7 @@ const PRIVATE_BOOKING_MONITOR_TEMPLATE_KEYS = [
   'private_booking_balance_reminder_14day',
   'private_booking_event_reminder_1d',
   'private_booking_expired',
+  'private_booking_post_event_followup',
   PRIVATE_BOOKING_FEEDBACK_TEMPLATE_KEY
 ]
 
@@ -78,65 +75,6 @@ function getLondonRunKey(now: Date = new Date()): string {
     month: '2-digit',
     day: '2-digit'
   }).format(now)
-}
-
-function computePrivateFeedbackDueAt(eventDate?: string | null): Date | null {
-  if (!eventDate) return null
-  try {
-    const [yearRaw, monthRaw, dayRaw] = eventDate.split('-').map((value) => Number.parseInt(value, 10))
-    if (!Number.isFinite(yearRaw) || !Number.isFinite(monthRaw) || !Number.isFinite(dayRaw)) {
-      return null
-    }
-
-    const nextDayUtc = new Date(Date.UTC(yearRaw, monthRaw - 1, dayRaw + 1))
-    const nextDateKey = [
-      String(nextDayUtc.getUTCFullYear()),
-      String(nextDayUtc.getUTCMonth() + 1).padStart(2, '0'),
-      String(nextDayUtc.getUTCDate()).padStart(2, '0')
-    ].join('-')
-
-    const londonNextMorning = fromZonedTime(`${nextDateKey}T09:00`, LONDON_TZ)
-    return Number.isFinite(londonNextMorning.getTime()) ? londonNextMorning : null
-  } catch {
-    return null
-  }
-}
-
-async function loadSentPrivateFeedbackSet(
-  supabase: ReturnType<typeof createAdminClient>,
-  bookingIds: string[]
-): Promise<Set<string>> {
-  const sent = new Set<string>()
-  if (bookingIds.length === 0) {
-    return sent
-  }
-
-  for (const bookingChunk of chunkArray(bookingIds)) {
-    const { data, error } = await supabase
-      .from('messages')
-      .select('private_booking_id, metadata')
-      .in('private_booking_id', bookingChunk)
-      .eq('template_key', PRIVATE_BOOKING_FEEDBACK_TEMPLATE_KEY)
-
-    if (error) {
-      // Fail closed: running without a complete dedupe view can cause duplicate sends.
-      logger.error('Failed loading private-booking feedback dedupe set', {
-        metadata: {
-          error: error.message
-        }
-      })
-      throw error
-    }
-
-    for (const row of data || []) {
-      const bookingId = (row as any).private_booking_id || (row as any)?.metadata?.private_booking_id
-      if (typeof bookingId === 'string') {
-        sent.add(bookingId)
-      }
-    }
-  }
-
-  return sent
 }
 
 function shouldAbortPrivateBookingSmsRun(result: unknown): boolean {
@@ -373,6 +311,7 @@ export async function GET(request: Request) {
       balanceRemindersSent: 0,
       eventRemindersSent: 0,
       privateFeedbackSmsSent: 0,
+      postEventFollowupSent: 0,
       smsCapReached: false
     }
     const totalSmsSent = () =>
@@ -380,7 +319,8 @@ export async function GET(request: Request) {
       stats.expirationSmsSent +
       stats.balanceRemindersSent +
       stats.eventRemindersSent +
-      stats.privateFeedbackSmsSent
+      stats.privateFeedbackSmsSent +
+      stats.postEventFollowupSent
     const canSendMoreSms = () => totalSmsSent() < MAX_PRIVATE_BOOKING_SMS_PER_RUN
     const abortState = {
       safetyAborts: 0,
@@ -524,7 +464,7 @@ export async function GET(request: Request) {
 
           if ((count ?? 0) === 0) {
             const smartName = getSmartFirstName(booking.customer_first_name)
-            const messageBody = `The Anchor: Hi ${smartName}, just a reminder that your hold on ${eventDateReadable} expires in ${diffDays} days. Please pay the deposit soon to secure the date.`
+            const messageBody = `The Anchor: ${smartName}! Your hold on ${eventDateReadable} expires in ${diffDays} days — get your deposit in and the date's all yours.`
 
             const result = await SmsQueueService.queueAndSend({
               booking_id: booking.id,
@@ -588,7 +528,7 @@ export async function GET(request: Request) {
               month: 'long'
             })
             const smartName = getSmartFirstName(booking.customer_first_name)
-            const messageBody = `The Anchor: Hi ${smartName}, your hold on ${eventDateReadable} expires soon (by ${expiryReadable}). Please pay the deposit to prevent the date being released.`
+            const messageBody = `The Anchor: ${smartName}! Your hold on ${eventDateReadable} expires tomorrow — we'd hate to lose you! Get your deposit in today.`
 
             const result = await SmsQueueService.queueAndSend({
               booking_id: booking.id,
@@ -751,9 +691,10 @@ export async function GET(request: Request) {
                 })
                 : null
 
-              const duePart = dueDateReadable ? ` is due by ${dueDateReadable}` : ' is now due'
               const smartName = getSmartFirstName(booking.customer_first_name)
-              const messageBody = `The Anchor: Hi ${smartName}, your event at The Anchor is coming up on ${eventDateReadable}. Your remaining balance of £${balanceDue.toFixed(2)}${duePart}. Please arrange payment.`
+              const duePart = dueDateReadable ? ` by ${dueDateReadable}` : ''
+              // Note: no payment link variable available in this pass — spec payment_link omitted until a payment token is generated here
+              const messageBody = `The Anchor: ${smartName}! Your event on ${eventDateReadable} is getting close — just the £${balanceDue.toFixed(2)} balance left to pay${duePart}.`
 
               const result = await SmsQueueService.queueAndSend({
                 booking_id: booking.id,
@@ -835,11 +776,9 @@ export async function GET(request: Request) {
 
           const rawFirstName = booking.customer_first_name || booking.customer_name?.split(' ')[0]
           const firstName = getSmartFirstName(rawFirstName)
-          const startTimeReadable = booking.start_time ? String(booking.start_time).slice(0, 5) : null
-          const timePart = startTimeReadable ? ` at ${startTimeReadable}` : ''
           const guestPart = booking.guest_count ? ` for your ${booking.guest_count} guests` : ''
 
-          const messageBody = `The Anchor: Hi ${firstName}, reminder: your event at The Anchor is tomorrow${timePart}. We're all set${guestPart}. See you tomorrow!`
+          const messageBody = `The Anchor: ${firstName}! Tomorrow's the big day — everything's ready${guestPart}. Can't wait to see you!`
 
           const result = await SmsQueueService.queueAndSend({
             booking_id: booking.id,
@@ -872,199 +811,132 @@ export async function GET(request: Request) {
       }
     }
 
-    if (!abortState.aborted) {
-      // --- PASS 5: PRIVATE FEEDBACK FOLLOW-UP (next morning) ---
+    // RETIRED: consolidated into private_booking_post_event_followup
+    // Pass 5 (private_booking_feedback_followup) has been retired. The feedback form flow
+    // (createPrivateBookingFeedbackToken / /g/[token]/private-feedback) continues to work for
+    // existing tokens, but no new tokens are generated. Private booking review SMS now sends
+    // a direct Google review link via the review-once system.
+
+    if (!abortState.aborted && PRIVATE_BOOKING_UPCOMING_EVENT_SMS_ENABLED) {
+      // --- PASS 5: POST-EVENT FOLLOWUP (Google review request — morning after event) ---
+      const yesterdayLondon = getLondonRunKey(new Date(now.getTime() - 24 * 60 * 60 * 1000))
+      const appBaseUrl = process.env.NEXT_PUBLIC_APP_URL || ''
+      const reviewLinkTarget = await getGoogleReviewLink(supabase)
       const supportPhone =
         process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || process.env.TWILIO_PHONE_NUMBER || undefined
-      const appBaseUrl = process.env.NEXT_PUBLIC_APP_URL || new URL(request.url).origin
-      const todayLondon = getLondonRunKey(now)
-      const lookbackDate = new Date(now)
-      lookbackDate.setDate(lookbackDate.getDate() - PRIVATE_FEEDBACK_LOOKBACK_DAYS)
-      const lookbackLondon = getLondonRunKey(lookbackDate)
 
-      const { data: privateFeedbackCandidates } = await supabase
+      const { data: yesterdayBookings } = await supabase
         .from('private_bookings')
-        .select(
-          'id, customer_id, customer_first_name, customer_last_name, customer_name, contact_phone, event_date, start_time, status'
-        )
+        .select('id, customer_first_name, customer_name, contact_phone, event_date, customer_id')
         .in('status', ['confirmed', 'completed'])
-        .gte('event_date', lookbackLondon)
-        .lt('event_date', todayLondon)
-        .not('event_date', 'is', null)
-        .limit(2000)
+        .eq('event_date', yesterdayLondon)
+        .is('review_processed_at', null)
 
-      if (privateFeedbackCandidates && privateFeedbackCandidates.length > 0) {
-        let sentPrivateFeedback: Set<string>
-        try {
-          sentPrivateFeedback = await loadSentPrivateFeedbackSet(
-            supabase,
-            privateFeedbackCandidates.map((booking) => booking.id)
-          )
-        } catch (dedupeError) {
-          recordSafetyAbort({
-            stage: 'pass5:feedback_dedupe',
-            reason: 'dedupe_unavailable',
-            result: { code: 'dedupe_unavailable' }
-          })
-          sentPrivateFeedback = new Set()
-        }
+      if (yesterdayBookings && yesterdayBookings.length > 0) {
+        // Batch review-once check for all eligible customers
+        const customerIds = yesterdayBookings
+          .map((b) => b.customer_id)
+          .filter((id): id is string => typeof id === 'string' && id.length > 0)
+        const alreadyReviewedSet = await hasCustomerReviewed(customerIds)
+        const nowIso = new Date().toISOString()
 
-        if (!abortState.aborted) {
-          for (const booking of privateFeedbackCandidates) {
-            try {
-              if (!canSendMoreSms()) {
-                stats.smsCapReached = true
-                break
-              }
+        for (const booking of yesterdayBookings) {
+          if (!canSendMoreSms()) {
+            stats.smsCapReached = true
+            break
+          }
 
-              if (sentPrivateFeedback.has(booking.id)) {
-                continue
-              }
+          const customerId = booking.customer_id
+          const contactPhone = booking.contact_phone
 
-              const feedbackDueAt = computePrivateFeedbackDueAt(booking.event_date)
-              if (!feedbackDueAt || feedbackDueAt.getTime() > now.getTime()) {
-                continue
-              }
+          // Mark processed regardless of send outcome (avoid re-processing)
+          const markProcessed = async () => {
+            await supabase
+              .from('private_bookings')
+              .update({ review_processed_at: nowIso, updated_at: nowIso })
+              .eq('id', booking.id)
+              .is('review_processed_at', null)
+          }
 
-              let customerId = booking.customer_id as string | null
-              let mobileNumber = booking.contact_phone as string | null
-              let customerFirstName = booking.customer_first_name as string | null
-              let customerLastName = booking.customer_last_name as string | null
-              let smsStatus: string | null = null
+          // If no customer_id or phone, skip but mark processed
+          if (!customerId || !contactPhone) {
+            await markProcessed()
+            continue
+          }
 
-              if (customerId) {
-                const { data: linkedCustomer } = await supabase
-                  .from('customers')
-                  .select('id, first_name, last_name, mobile_number, sms_status')
-                  .eq('id', customerId)
-                  .maybeSingle()
+          // Review-once: suppress if customer already left a review on any booking
+          if (alreadyReviewedSet.has(customerId)) {
+            logger.info('Private booking post-event review SMS suppressed: customer already reviewed', {
+              metadata: { bookingId: booking.id, customerId }
+            })
+            await markProcessed()
+            continue
+          }
 
-                if (linkedCustomer) {
-                  mobileNumber = mobileNumber || linkedCustomer.mobile_number || null
-                  customerFirstName = customerFirstName || linkedCustomer.first_name || null
-                  customerLastName = customerLastName || linkedCustomer.last_name || null
-                  smsStatus = linkedCustomer.sms_status || null
-                }
-              }
-
-              if (!mobileNumber || smsStatus === 'opted_out' || smsStatus === 'sms_deactivated') {
-                continue
-              }
-
-              if (!customerId) {
-                const ensured = await ensureCustomerForPhone(supabase, mobileNumber, {
-                  firstName:
-                    customerFirstName || booking.customer_name?.split(' ')[0] || undefined,
-                  lastName: customerLastName || undefined
-                })
-
-                customerId = ensured.customerId
-
-                if (customerId) {
-                  const { data: linkedBookingRow, error: linkBookingError } = await supabase
-                    .from('private_bookings')
-                    .update({
-                      customer_id: customerId
-                    })
-                    .eq('id', booking.id)
-                    .select('id')
-                    .maybeSingle()
-
-                  if (linkBookingError) {
-                    logger.warn('Failed linking private booking to ensured customer during feedback pass', {
-                      metadata: {
-                        bookingId: booking.id,
-                        customerId,
-                        error: linkBookingError.message
-                      }
-                    })
-                  } else if (!linkedBookingRow) {
-                    logger.warn('Private booking customer link update no-op during feedback pass', {
-                      metadata: {
-                        bookingId: booking.id,
-                        customerId
-                      }
-                    })
-                  }
-                }
-              }
-
-              if (!customerId) {
-                continue
-              }
-
-              const feedbackToken = await createPrivateBookingFeedbackToken(supabase, {
-                customerId,
-                privateBookingId: booking.id,
-                eventDate: booking.event_date,
-                startTime: booking.start_time,
-                appBaseUrl
-              })
-
-              const rawFirstName = customerFirstName || booking.customer_name?.split(' ')[0]
-              const firstName = getSmartFirstName(rawFirstName)
-              const smsBody = ensureReplyInstruction(
-                `The Anchor: Hi ${firstName}, thanks for your private booking at The Anchor. We'd love your feedback: ${feedbackToken.url}`,
-                supportPhone
-              )
-
-              const smsResult = await sendSMS(mobileNumber, smsBody, {
-                customerId,
-                metadata: {
-                  private_booking_id: booking.id,
-                  trigger_type: 'private_feedback_followup',
-                  template_key: PRIVATE_BOOKING_FEEDBACK_TEMPLATE_KEY
-                }
-              })
-
-              maybeAbortFromSmsResult(smsResult, {
-                stage: 'pass5:private_feedback_followup',
+          // Generate review redirect token
+          let redirectUrl: string
+          try {
+            const provisionalExpiry = new Date(now.getTime() + 8 * 24 * 60 * 60 * 1000).toISOString()
+            const { rawToken } = await createGuestToken(supabase, {
+              customerId,
+              actionType: 'review_redirect',
+              privateBookingId: booking.id,
+              expiresAt: provisionalExpiry
+            })
+            redirectUrl = `${appBaseUrl}/r/${rawToken}`
+          } catch (tokenError) {
+            logger.warn('Private booking post-event: failed to create review redirect token; skipping', {
+              metadata: {
                 bookingId: booking.id,
-                triggerType: 'private_feedback_followup',
-                templateKey: PRIVATE_BOOKING_FEEDBACK_TEMPLATE_KEY
-              })
-
-              if (!smsResult.success) {
-                if (abortState.aborted) {
-                  break
-                }
-                continue
+                customerId,
+                error: tokenError instanceof Error ? tokenError.message : String(tokenError)
               }
+            })
+            await markProcessed()
+            continue
+          }
 
-              sentPrivateFeedback.add(booking.id)
-              stats.privateFeedbackSmsSent += 1
+          const rawFirstName = booking.customer_first_name || booking.customer_name?.split(' ')[0]
+          const firstName = getSmartFirstName(rawFirstName)
+          const messageBody = ensureReplyInstruction(
+            `The Anchor: ${firstName}! Hope your event was everything you wanted. Got 30 seconds? A quick review means the world to us: ${redirectUrl}`,
+            supportPhone
+          )
 
-              try {
-                await recordAnalyticsEvent(supabase, {
-                  customerId,
-                  privateBookingId: booking.id,
-                  eventType: 'review_sms_sent',
-                  metadata: {
-                    booking_type: 'private',
-                    template_key: PRIVATE_BOOKING_FEEDBACK_TEMPLATE_KEY
-                  }
-                })
-              } catch (analyticsError) {
-                logger.warn('Failed to record private feedback review SMS analytics event', {
-                  metadata: {
-                    bookingId: booking.id,
-                    customerId,
-                    error: analyticsError instanceof Error ? analyticsError.message : String(analyticsError)
-                  }
-                })
-              }
-
-              if (abortState.aborted) {
-                break
-              }
-            } catch (candidateError) {
-              logger.warn('Failed processing private feedback SMS candidate', {
-                metadata: {
-                  bookingId: booking.id,
-                  error: candidateError instanceof Error ? candidateError.message : String(candidateError)
-                }
-              })
+          const smsResult = await sendSMS(contactPhone, messageBody, {
+            customerId,
+            metadata: {
+              private_booking_id: booking.id,
+              template_key: 'private_booking_post_event_followup',
+              review_redirect_target: reviewLinkTarget
             }
+          })
+
+          if (smsResult.success) {
+            stats.postEventFollowupSent++
+          } else {
+            logger.warn('Failed to send private booking post-event review SMS', {
+              metadata: {
+                bookingId: booking.id,
+                customerId,
+                error: smsResult.error || 'Unknown error',
+                code: typeof (smsResult as any).code === 'string' ? (smsResult as any).code : null
+              }
+            })
+          }
+
+          // Mark processed after send attempt (success or failure)
+          await markProcessed()
+
+          maybeAbortFromSmsResult(smsResult, {
+            stage: 'pass5:post_event_followup',
+            bookingId: booking.id,
+            triggerType: 'post_event_followup',
+            templateKey: 'private_booking_post_event_followup'
+          })
+
+          if (abortState.aborted) {
+            break
           }
         }
       }
