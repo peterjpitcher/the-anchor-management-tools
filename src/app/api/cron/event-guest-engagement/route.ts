@@ -773,9 +773,9 @@ async function processReminders(
 
     const firstName = getSmartFirstName(customer.first_name)
     const eventDateText = formatEventDateTime(eventStartIso)
-    const baseBody = `The Anchor: Hi ${firstName}, reminder: ${event.name} is tomorrow at ${eventDateText}.`
+    const baseBody = `The Anchor: ${firstName}! ${event.name} is tomorrow at ${eventDateText} — don't be late!`
     const messageBody = ensureReplyInstruction(
-      manageLink ? `${baseBody} Manage booking: ${manageLink}` : baseBody,
+      manageLink ? `${baseBody} ${manageLink}` : baseBody,
       supportPhone
     )
 
@@ -900,7 +900,7 @@ async function processReviewFollowups(
     const redirectUrl = `${appBaseUrl}/r/${rawToken}`
     const firstName = getSmartFirstName(customer.first_name)
     const messageBody = ensureReplyInstruction(
-      `The Anchor: Hi ${firstName}, thanks for booking ${event.name}. We'd love your feedback: ${redirectUrl}`,
+      `The Anchor: ${firstName}! Hope you had a belter at ${event.name} last night. Got 30 seconds? A quick review means the world to us: ${redirectUrl}`,
       supportPhone
     )
 
@@ -1108,7 +1108,7 @@ async function processTableReviewFollowups(
     const redirectUrl = `${appBaseUrl}/r/${rawToken}`
     const firstName = getSmartFirstName(customer.first_name)
     const messageBody = ensureReplyInstruction(
-      `The Anchor: Hi ${firstName}, thanks for visiting The Anchor. We'd love your feedback: ${redirectUrl}`,
+      `The Anchor: ${firstName}! Thanks for popping in. Got 30 seconds? A quick review means the world to us: ${redirectUrl}`,
       supportPhone
     )
 
