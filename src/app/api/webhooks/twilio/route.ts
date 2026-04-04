@@ -11,6 +11,8 @@ import { skipTwilioSignatureValidation } from '@/lib/env';
 import { formatPhoneForStorage, generatePhoneVariants } from '@/lib/utils';
 import { recordAnalyticsEvent } from '@/lib/analytics/events';
 import { getErrorMessage } from '@/lib/errors';
+import { handleReplyToBook } from '@/lib/sms/reply-to-book';
+import { sendSMS } from '@/lib/twilio';
 
 // Create public Supabase client for logging (no auth required)
 function getPublicSupabaseClient() {
@@ -478,7 +480,33 @@ async function handleInboundSMS(
       throw new Error('Failed to normalize inbound sender phone number');
     }
     const normalizedFromNumber = canonicalFromNumber;
-    
+
+    // ── Reply-to-book: attempt to handle before normal inbound processing ──
+    // When a customer replies to a cross-promotion SMS with a seat count, we
+    // book them automatically and short-circuit the normal message thread.
+    try {
+      const replyResult = await handleReplyToBook(normalizedFromNumber, messageBody);
+      if (replyResult.handled) {
+        if (replyResult.response) {
+          // Edge-case response (sold out, too many seats, already booked).
+          // Customer is actively replying so bypass quiet hours for immediate feedback.
+          await sendSMS(normalizedFromNumber, replyResult.response, {
+            skipQuietHours: true,
+            createCustomerIfMissing: false,
+            metadata: { template_key: 'event_reply_booking_response' },
+          });
+        }
+        return NextResponse.json({ success: true });
+      }
+    } catch (replyError) {
+      // Non-fatal: log and fall through to standard inbound handling.
+      logger.warn('reply-to-book handler threw unexpectedly; falling through to standard inbound handling', {
+        error: replyError instanceof Error ? replyError : new Error(String(replyError)),
+        metadata: { from: normalizedFromNumber },
+      });
+    }
+    // ── End reply-to-book ──────────────────────────────────────────────────
+
     // Look up or create customer
     let customer;
     
