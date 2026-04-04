@@ -903,8 +903,7 @@ export async function sendTableBookingConfirmedAfterDepositSmsIfAllowed(
     }
   }
 
-  const depositPhrase = booking.booking_type === 'sunday_lunch' ? 'Sunday lunch deposit' : 'table deposit'
-  let composedMessage = `The Anchor: Hi ${firstName}, your ${depositPhrase} is received and your table booking for ${partySize} ${seatWord} on ${bookingMoment} is confirmed.${manageLink ? ` Manage booking: ${manageLink}` : ''}`
+  let composedMessage = `The Anchor: ${firstName}! Deposit sorted — your table for ${partySize} ${seatWord} on ${bookingMoment} is locked in. See you then!${manageLink ? ` ${manageLink}` : ''}`
   let templateKey = 'table_booking_deposit_confirmed'
 
   if (sundayPreorderLink) {
@@ -1039,9 +1038,8 @@ export async function sendSundayPreorderLinkSmsIfAllowed(
 
   const supportPhone = process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || process.env.TWILIO_PHONE_NUMBER || undefined
   const firstName = getSmartFirstName(customer.first_name)
-  const referenceSnippet = input.bookingReference ? ` for booking ${input.bookingReference}` : ''
   const message = ensureReplyInstruction(
-    `The Anchor: Hi ${firstName}, please complete your Sunday lunch pre-order${referenceSnippet}. Complete here: ${tokenUrl}`,
+    `The Anchor: ${firstName}! Time to pick what you're having for Sunday lunch — get your pre-order in here: ${tokenUrl}`,
     supportPhone
   )
 
@@ -1175,6 +1173,7 @@ export async function sendTableBookingCancelledSmsIfAllowed(
       // fall back to raw date string
     }
 
+    const firstName = getSmartFirstName(customer.first_name)
     let smsBody: string
     if (params.refundResult.refunded) {
       const amountGbp = new Intl.NumberFormat('en-GB', {
@@ -1182,15 +1181,11 @@ export async function sendTableBookingCancelledSmsIfAllowed(
         currency: 'GBP',
       }).format(params.refundResult.amountPence / 100)
 
-      if (params.refundResult.tier === 'full') {
-        smsBody = `The Anchor: Your booking on ${dateLabel} has been cancelled. A full refund of ${amountGbp} will appear within 5-10 days.`
-      } else {
-        smsBody = `The Anchor: Your booking on ${dateLabel} has been cancelled. A 50% refund of ${amountGbp} will appear within 5-10 days.`
-      }
+      smsBody = `The Anchor: ${firstName}, your booking on ${dateLabel} has been cancelled. Your ${amountGbp} refund will land within 5-10 days. Hope to see you again soon!`
     } else if (params.refundResult.reason === 'zero_tier') {
-      smsBody = `The Anchor: Your booking on ${dateLabel} has been cancelled. As this is within 3 days, your deposit cannot be refunded.`
+      smsBody = `The Anchor: ${firstName}, your booking on ${dateLabel} has been cancelled. As it's within 3 days, the deposit can't be refunded. Hope to see you another time!`
     } else {
-      smsBody = `The Anchor: Your booking on ${dateLabel} has been cancelled. We hope to see you again soon.`
+      smsBody = `The Anchor: ${firstName}, your booking on ${dateLabel} has been cancelled. Hope to see you again soon!`
     }
 
     const supportPhone = process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || process.env.TWILIO_PHONE_NUMBER || undefined
