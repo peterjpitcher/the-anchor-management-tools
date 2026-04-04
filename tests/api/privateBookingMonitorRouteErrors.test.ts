@@ -322,7 +322,10 @@ describe('private booking monitor route error payloads', () => {
     }
   })
 
-  it('fails closed when private feedback dedupe lookup errors', async () => {
+  it('completes without sending private feedback SMS (pass 5 retired)', async () => {
+    // RETIRED: pass 5 (private_booking_feedback_followup) has been retired.
+    // This test verifies that the cron completes successfully without triggering
+    // any private feedback sends, even when private bookings with past event dates exist.
     ;(authorizeCronRequest as unknown as vi.Mock).mockReturnValue({ authorized: true })
 
     vi.useFakeTimers()
@@ -353,18 +356,6 @@ describe('private booking monitor route error payloads', () => {
                     })),
                   }
                 }
-
-                if (columns.includes('private_booking_id')) {
-                  return {
-                    in: vi.fn(() => ({
-                      eq: vi.fn().mockResolvedValue({
-                        data: null,
-                        error: { message: 'messages lookup failed' },
-                      }),
-                    })),
-                  }
-                }
-
                 throw new Error(`Unexpected messages select: ${columns}`)
               }),
             }
@@ -408,6 +399,7 @@ describe('private booking monitor route error payloads', () => {
                         lt: vi.fn(() => ({
                           not: vi.fn(() => ({
                             limit: vi.fn().mockResolvedValue({
+                              // Past bookings exist but pass 5 is retired — no SMS should be sent
                               data: [
                                 {
                                   id: 'booking-1',
@@ -458,16 +450,14 @@ describe('private booking monitor route error payloads', () => {
 
       expect(response.status).toBe(200)
       expect(payload.success).toBe(true)
-      expect(payload.aborted).toBe(true)
-      expect(payload.abortReason).toBe('dedupe_unavailable')
-      expect(payload.abortStage).toBe('pass5:feedback_dedupe')
-      expect(payload.safetyAborts).toBe(1)
+      // Pass 5 is retired — no abort should occur
+      expect(payload.aborted).toBe(false)
 
+      // sendSMS was used by pass 5 only — should never be called now
       expect(sendSMS).not.toHaveBeenCalled()
-      expect((SmsQueueService.queueAndSend as unknown as vi.Mock).mock.calls.length).toBe(0)
       expect(persistCronRunResult).toHaveBeenCalledWith(
         supabase,
-        expect.objectContaining({ runId: 'run-1', status: 'failed', errorMessage: 'dedupe_unavailable' })
+        expect.objectContaining({ runId: 'run-1', status: 'completed' })
       )
     } finally {
       vi.useRealTimers()
