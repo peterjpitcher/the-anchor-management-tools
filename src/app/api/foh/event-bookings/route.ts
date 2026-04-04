@@ -4,11 +4,6 @@ import { requireFohPermission } from '@/lib/foh/api-auth'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { formatPhoneForStorage } from '@/lib/utils'
 import { ensureCustomerForPhone } from '@/lib/sms/customers'
-import { createEventPaymentToken } from '@/lib/events/event-payments'
-import { createEventManageToken } from '@/lib/events/manage-booking'
-import { ensureReplyInstruction } from '@/lib/sms/support'
-import { sendSMS } from '@/lib/twilio'
-import { getSmartFirstName } from '@/lib/sms/bulk'
 import { recordAnalyticsEvent } from '@/lib/analytics/events'
 import { sendManagerTableBookingCreatedEmailIfAllowed } from '@/lib/table-bookings/bookings'
 import { logger } from '@/lib/logger'
@@ -16,6 +11,7 @@ import {
   isSundayLunchOnlyEvent,
   SUNDAY_LUNCH_ONLY_EVENT_MESSAGE
 } from '@/lib/events/sunday-lunch-only-policy'
+import { EventBookingService } from '@/services/event-bookings'
 
 const CreateFohEventBookingSchema = z.object({
   customer_id: z.string().uuid().optional(),
@@ -39,29 +35,6 @@ const CreateFohEventBookingSchema = z.object({
   }
 })
 
-type EventBookingResult = {
-  state: 'confirmed' | 'pending_payment' | 'full_with_waitlist_option' | 'blocked'
-  booking_id?: string
-  status?: string
-  payment_mode?: 'free' | 'cash_only' | 'prepaid'
-  event_id?: string
-  event_name?: string
-  event_start_datetime?: string
-  hold_expires_at?: string
-  seats_remaining?: number
-  reason?: string
-}
-
-type EventTableReservationResult = {
-  state?: 'confirmed' | 'blocked'
-  reason?: string
-  table_booking_id?: string
-  booking_reference?: string
-  table_name?: string
-  start_datetime?: string
-  end_datetime?: string
-}
-
 type FohEventBookingResponseData = {
   state: 'confirmed' | 'pending_payment' | 'full_with_waitlist_option' | 'blocked'
   booking_id: string | null
@@ -76,55 +49,7 @@ type FohEventBookingResponseData = {
   table_name: string | null
 }
 
-type SmsSafetyMeta =
-  | {
-    success: boolean
-    code: string | null
-    logFailure: boolean
-  }
-  | null
-
-async function recordFohEventBookingAnalyticsSafe(
-  supabase: ReturnType<typeof createAdminClient>,
-  payload: Parameters<typeof recordAnalyticsEvent>[1],
-  context: Record<string, unknown>
-) {
-  try {
-    await recordAnalyticsEvent(supabase, payload)
-  } catch (analyticsError) {
-    logger.warn('Failed to record FOH event booking analytics event', {
-      metadata: {
-        ...context,
-        error: analyticsError instanceof Error ? analyticsError.message : String(analyticsError)
-      }
-    })
-  }
-}
-
-function normalizeEventBookingMode(value: unknown): 'table' | 'general' | 'mixed' {
-  if (value === 'general' || value === 'mixed' || value === 'table') {
-    return value
-  }
-  return 'table'
-}
-
-function formatLondonDateTime(isoDateTime: string | null | undefined): string {
-  if (!isoDateTime) return 'your event time'
-
-  try {
-    return new Intl.DateTimeFormat('en-GB', {
-      timeZone: 'Europe/London',
-      weekday: 'short',
-      day: 'numeric',
-      month: 'short',
-      hour: 'numeric',
-      minute: '2-digit',
-      hour12: true
-    }).format(new Date(isoDateTime))
-  } catch {
-    return 'your event time'
-  }
-}
+// ─── FOH-specific helpers ─────────────────────────────────────────────────────
 
 function splitWalkInGuestName(fullName: string | null | undefined): {
   firstName?: string
@@ -199,204 +124,6 @@ async function createWalkInCustomer(
   throw new Error('Failed to reserve a walk-in customer profile')
 }
 
-function buildEventBookingSms(
-  state: EventBookingResult['state'],
-  payload: {
-    firstName: string
-    eventName: string
-    seats: number
-    eventStart: string
-    paymentMode?: EventBookingResult['payment_mode']
-    paymentLink?: string | null
-    manageLink?: string | null
-  }
-): string {
-  const seatWord = payload.seats === 1 ? 'seat' : 'seats'
-
-  if (state === 'pending_payment') {
-    if (payload.paymentLink) {
-      return `The Anchor: ${payload.firstName}! ${payload.seats} ${seatWord} held for ${payload.eventName} — nice one! We'll ping you a payment link shortly.${payload.manageLink ? ` ${payload.manageLink}` : ''}`
-    }
-
-    return `The Anchor: ${payload.firstName}! ${payload.seats} ${seatWord} held for ${payload.eventName} — nice one! We'll ping you a payment link shortly.${payload.manageLink ? ` ${payload.manageLink}` : ''}`
-  }
-
-  const confirmedTail =
-    payload.paymentMode === 'cash_only'
-      ? ' Payment is cash on arrival.'
-      : ''
-
-  return `The Anchor: ${payload.firstName}! You're in — ${payload.seats} ${seatWord} locked in for ${payload.eventName} on ${payload.eventStart}. See you there!${confirmedTail}${payload.manageLink ? ` ${payload.manageLink}` : ''}`
-}
-
-async function sendBookingSmsIfAllowed(
-  supabase: ReturnType<typeof createAdminClient>,
-  customerId: string,
-  normalizedPhone: string,
-  bookingResult: EventBookingResult,
-  seats: number,
-  paymentLink?: string | null,
-  manageLink?: string | null
-): Promise<SmsSafetyMeta> {
-  const { data: customer, error } = await supabase.from('customers')
-    .select('id, first_name, mobile_number, sms_status')
-    .eq('id', customerId)
-    .maybeSingle()
-
-  if (error || !customer) {
-    logger.warn('Unable to load customer for FOH event booking SMS', {
-      metadata: { customerId, error: error?.message }
-    })
-    return null
-  }
-
-  if (customer.sms_status !== 'active') {
-    return null
-  }
-
-  const supportPhone = process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || process.env.TWILIO_PHONE_NUMBER || undefined
-  const eventName = bookingResult.event_name || 'your event'
-  const eventStart = formatLondonDateTime(bookingResult.event_start_datetime)
-  const firstName = getSmartFirstName(customer.first_name)
-
-  const smsBody = ensureReplyInstruction(
-    buildEventBookingSms(bookingResult.state, {
-      firstName,
-      eventName,
-      seats,
-      eventStart,
-      paymentMode: bookingResult.payment_mode,
-      paymentLink,
-      manageLink
-    }),
-    supportPhone
-  )
-
-  const to = customer.mobile_number || normalizedPhone
-
-  let smsResult: Awaited<ReturnType<typeof sendSMS>>
-  try {
-    smsResult = await sendSMS(to, smsBody, {
-      customerId,
-      metadata: {
-        event_booking_id: bookingResult.booking_id,
-        event_id: bookingResult.event_id,
-        template_key: bookingResult.state === 'pending_payment' ? 'event_booking_pending_payment' : 'event_booking_confirmed'
-      }
-    })
-  } catch (smsError) {
-    logger.warn('FOH event booking SMS threw unexpectedly', {
-      metadata: {
-        customerId,
-        bookingId: bookingResult.booking_id,
-        state: bookingResult.state,
-        error: smsError instanceof Error ? smsError.message : String(smsError)
-      }
-    })
-    return {
-      success: false,
-      code: 'unexpected_exception',
-      logFailure: false,
-    }
-  }
-
-  const smsCode = typeof smsResult.code === 'string' ? smsResult.code : null
-  const smsLogFailure = smsResult.logFailure === true || smsCode === 'logging_failed'
-  const smsDeliveredOrUnknown = smsResult.success === true || smsLogFailure
-
-  if (smsLogFailure) {
-    logger.error('FOH event booking SMS sent but outbound message logging failed', {
-      metadata: {
-        customerId,
-        bookingId: bookingResult.booking_id,
-        state: bookingResult.state,
-        code: smsCode,
-        logFailure: smsLogFailure,
-      },
-    })
-  }
-
-  if (!smsResult.success && !smsLogFailure) {
-    logger.warn('Failed to send FOH event booking SMS', {
-      metadata: {
-        customerId,
-        bookingId: bookingResult.booking_id,
-        state: bookingResult.state,
-        error: smsResult.error || 'Unknown SMS error',
-        code: smsCode,
-      }
-    })
-  }
-
-  return {
-    success: smsDeliveredOrUnknown,
-    code: smsCode,
-    logFailure: smsLogFailure,
-  }
-}
-
-async function cancelEventBookingAfterTableReservationFailure(
-  supabase: ReturnType<typeof createAdminClient>,
-  bookingId: string
-): Promise<void> {
-  const cancelledAt = new Date().toISOString()
-  const rollbackErrors: string[] = []
-  const [bookingCancelResult, holdReleaseResult] = await Promise.all([
-    supabase.from('bookings')
-      .update({
-        status: 'cancelled',
-        cancelled_at: cancelledAt,
-        cancelled_by: 'system',
-        updated_at: cancelledAt
-      })
-      .eq('id', bookingId)
-      .select('id')
-      .maybeSingle(),
-    supabase.from('booking_holds')
-      .update({
-        status: 'released',
-        released_at: cancelledAt,
-        updated_at: cancelledAt
-      })
-      .eq('event_booking_id', bookingId)
-      .eq('hold_type', 'payment_hold')
-      .eq('status', 'active')
-      .select('id')
-  ])
-
-  if (bookingCancelResult?.error?.message) {
-    rollbackErrors.push(`booking_cancel: ${bookingCancelResult.error.message}`)
-  } else if (!bookingCancelResult?.data) {
-    rollbackErrors.push('booking_cancel: booking row no longer exists')
-  }
-
-  if (holdReleaseResult?.error?.message) {
-    rollbackErrors.push(`payment_hold_release: ${holdReleaseResult.error.message}`)
-  } else if (!Array.isArray(holdReleaseResult?.data)) {
-    rollbackErrors.push('payment_hold_release: mutation_result_unavailable')
-  } else if (holdReleaseResult.data.length === 0) {
-    const { data: remainingActiveHolds, error: remainingActiveHoldsError } = await (
-      supabase.from('booking_holds')
-    )
-      .select('id')
-      .eq('event_booking_id', bookingId)
-      .eq('hold_type', 'payment_hold')
-      .eq('status', 'active')
-
-    if (remainingActiveHoldsError?.message) {
-      rollbackErrors.push(`payment_hold_release: verification_error:${remainingActiveHoldsError.message}`)
-    } else if (!Array.isArray(remainingActiveHolds)) {
-      rollbackErrors.push('payment_hold_release: verification_result_unavailable')
-    } else if (remainingActiveHolds.length > 0) {
-      rollbackErrors.push(`payment_hold_release: active_rows_remaining:${remainingActiveHolds.length}`)
-    }
-  }
-
-  if (rollbackErrors.length > 0) {
-    throw new Error(`Failed rolling back event booking after table reservation failure: ${rollbackErrors.join('; ')}`)
-  }
-}
-
 async function markTableBookingSeated(
   supabase: ReturnType<typeof createAdminClient>,
   tableBookingId: string
@@ -420,6 +147,25 @@ async function markTableBookingSeated(
     throw new Error('Table booking could not be marked as seated')
   }
 }
+
+async function recordFohAnalyticsSafe(
+  supabase: ReturnType<typeof createAdminClient>,
+  payload: Parameters<typeof recordAnalyticsEvent>[1],
+  context: Record<string, unknown>
+): Promise<void> {
+  try {
+    await recordAnalyticsEvent(supabase, payload)
+  } catch (analyticsError) {
+    logger.warn('Failed to record FOH event booking analytics event', {
+      metadata: {
+        ...context,
+        error: analyticsError instanceof Error ? analyticsError.message : String(analyticsError)
+      }
+    })
+  }
+}
+
+// ─── Route handler ────────────────────────────────────────────────────────────
 
 export async function POST(request: NextRequest) {
   const auth = await requireFohPermission('edit')
@@ -471,8 +217,9 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: SUNDAY_LUNCH_ONLY_EVENT_MESSAGE }, { status: 409 })
   }
 
-  const bookingMode = normalizeEventBookingMode(eventRow.booking_mode)
+  const bookingMode = EventBookingService.normalizeBookingMode(eventRow.booking_mode)
 
+  // ── Resolve customer ────────────────────────────────────────────────────────
   let normalizedPhone: string | null = null
   let customerId: string | null = null
   let shouldSendBookingSms = true
@@ -558,128 +305,59 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Failed to resolve customer' }, { status: 500 })
   }
 
-  const { data: rpcResultRaw, error: rpcError } = await auth.supabase.rpc('create_event_booking_v05', {
-    p_event_id: payload.event_id,
-    p_customer_id: customerId,
-    p_seats: payload.seats,
-    p_source: payload.walk_in === true ? 'walk-in' : 'admin'
+  // ── Delegate booking creation to shared service ─────────────────────────────
+  const appBaseUrl = process.env.NEXT_PUBLIC_APP_URL || request.nextUrl.origin
+  const source = payload.walk_in === true ? 'walk-in' : 'admin'
+
+  const result = await EventBookingService.createBooking({
+    eventId: payload.event_id,
+    customerId,
+    normalizedPhone: normalizedPhone ?? '',
+    seats: payload.seats,
+    source,
+    bookingMode,
+    appBaseUrl,
+    shouldSendSms: shouldSendBookingSms && Boolean(normalizedPhone),
+    supabaseClient: auth.supabase,
+    logTag: 'FOH event booking'  // lowercase; capitalised automatically in service log messages
   })
 
-  if (rpcError) {
+  if (result.rpcFailed) {
     logger.error('create_event_booking_v05 RPC failed for FOH create', {
-      error: new Error(rpcError.message),
       metadata: { userId: auth.userId, eventId: payload.event_id, customerId }
     })
     return NextResponse.json({ error: 'Failed to create event booking' }, { status: 500 })
   }
 
-  const bookingResult = (rpcResultRaw ?? {}) as EventBookingResult
-  const state = bookingResult.state || 'blocked'
-  let resolvedState: FohEventBookingResponseData['state'] = state
-  let resolvedReason = bookingResult.reason || null
-  let tableBookingId: string | null = null
-  let tableName: string | null = null
-  const appBaseUrl = process.env.NEXT_PUBLIC_APP_URL || request.nextUrl.origin
-  let nextStepUrl: string | null = null
-  let manageUrl: string | null = null
-
-  if (
-    state === 'pending_payment' &&
-    bookingResult.booking_id &&
-    bookingResult.hold_expires_at
-  ) {
-    try {
-      const paymentToken = await createEventPaymentToken(auth.supabase, {
-        customerId,
-        bookingId: bookingResult.booking_id,
-        holdExpiresAt: bookingResult.hold_expires_at,
-        appBaseUrl
-      })
-      nextStepUrl = paymentToken.url
-    } catch (error) {
-      logger.warn('Failed to create event payment token for FOH create', {
-        metadata: {
-          bookingId: bookingResult.booking_id,
-          error: error instanceof Error ? error.message : String(error)
-        }
-      })
-    }
-  }
-
-  if (
-    (state === 'confirmed' || state === 'pending_payment') &&
-    bookingResult.booking_id &&
-    bookingResult.event_start_datetime
-  ) {
-    try {
-      const manageToken = await createEventManageToken(auth.supabase, {
-        customerId,
-        bookingId: bookingResult.booking_id,
-        eventStartIso: bookingResult.event_start_datetime,
-        appBaseUrl
-      })
-      manageUrl = manageToken.url
-    } catch (error) {
-      logger.warn('Failed to create event manage token for FOH create', {
-        metadata: {
-          bookingId: bookingResult.booking_id,
-          error: error instanceof Error ? error.message : String(error)
-        }
-      })
-    }
-  }
-
-  if (
-    (resolvedState === 'confirmed' || resolvedState === 'pending_payment') &&
-    bookingMode !== 'general' &&
-    bookingResult.booking_id
-  ) {
-    const { data: tableReservationRaw, error: tableReservationError } = await auth.supabase.rpc(
-      'create_event_table_reservation_v05',
-      {
-        p_event_id: payload.event_id,
-        p_event_booking_id: bookingResult.booking_id,
-        p_customer_id: customerId,
-        p_party_size: payload.seats,
-        p_source: payload.walk_in === true ? 'walk-in' : 'admin',
-        p_notes: `Event booking ${bookingResult.booking_id}`
-      }
+  if (result.rollbackFailed) {
+    return NextResponse.json(
+      { error: 'Failed to finalize booking after table reservation conflict' },
+      { status: 500 }
     )
-
-    const tableReservation = (tableReservationRaw || {}) as EventTableReservationResult
-    const tableReservationState = tableReservation.state || 'blocked'
-
-    if (tableReservationError || tableReservationState !== 'confirmed') {
-      try {
-        await cancelEventBookingAfterTableReservationFailure(auth.supabase, bookingResult.booking_id)
-      } catch (rollbackError) {
-        logger.error('Failed to rollback event booking after table reservation failure', {
-          error: rollbackError instanceof Error ? rollbackError : new Error(String(rollbackError)),
-          metadata: {
-            bookingId: bookingResult.booking_id,
-            eventId: payload.event_id,
-            customerId,
-            tableReservationState,
-            tableReservationReason: tableReservation.reason || null
-          }
-        })
-        return NextResponse.json(
-          { error: 'Failed to finalize booking after table reservation conflict' },
-          { status: 500 }
-        )
-      }
-      resolvedState = 'blocked'
-      resolvedReason =
-        tableReservation.reason ||
-        (tableReservationError ? 'no_table' : bookingResult.reason || 'no_table')
-      nextStepUrl = null
-      manageUrl = null
-    } else {
-      tableBookingId = tableReservation.table_booking_id || null
-      tableName = tableReservation.table_name || null
-    }
   }
 
+  // For FOH, payment link failure is a warning (not a hard error) — the manager
+  // can still see the booking and send the link manually.
+  if (result.paymentLinkFailed) {
+    logger.warn('Failed to create event payment token for FOH create', {
+      metadata: { bookingId: result.bookingId }
+    })
+  }
+
+  const {
+    resolvedState,
+    resolvedReason,
+    bookingId,
+    seatsRemaining,
+    nextStepUrl,
+    manageUrl,
+    smsMeta,
+    tableBookingId,
+    tableName,
+    rpcResult
+  } = result
+
+  // ── Walk-in: auto-mark table booking as seated ──────────────────────────────
   if (
     payload.walk_in === true &&
     resolvedState === 'confirmed' &&
@@ -698,24 +376,24 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  let smsMeta: SmsSafetyMeta = null
+  // ── FOH-specific side effects (analytics + manager email) ───────────────────
   if (resolvedState === 'confirmed' || resolvedState === 'pending_payment') {
     type SideEffectTask = { label: string; promise: Promise<unknown> }
 
     const sideEffectTasks: SideEffectTask[] = [
       {
         label: 'analytics:event_booking_created',
-        promise: recordFohEventBookingAnalyticsSafe(
+        promise: recordFohAnalyticsSafe(
           auth.supabase,
           {
             customerId,
             eventType: 'event_booking_created',
-            eventBookingId: bookingResult.booking_id,
+            eventBookingId: bookingId ?? undefined,
             metadata: {
               event_id: payload.event_id,
               seats: payload.seats,
               state: resolvedState,
-              payment_mode: bookingResult.payment_mode || null,
+              payment_mode: rpcResult.payment_mode || null,
               booking_mode: bookingMode,
               table_booking_id: tableBookingId,
               source: 'foh'
@@ -724,7 +402,7 @@ export async function POST(request: NextRequest) {
           {
             userId: auth.userId,
             customerId,
-            eventBookingId: bookingResult.booking_id || null,
+            eventBookingId: bookingId,
             eventId: payload.event_id,
             state: resolvedState
           }
@@ -735,7 +413,7 @@ export async function POST(request: NextRequest) {
     if (tableBookingId) {
       sideEffectTasks.push({
         label: 'analytics:table_booking_created',
-        promise: recordFohEventBookingAnalyticsSafe(
+        promise: recordFohAnalyticsSafe(
           auth.supabase,
           {
             customerId,
@@ -743,7 +421,7 @@ export async function POST(request: NextRequest) {
             eventType: 'table_booking_created',
             metadata: {
               booking_purpose: 'event',
-              linked_event_booking_id: bookingResult.booking_id,
+              linked_event_booking_id: bookingId,
               event_id: payload.event_id,
               source: 'foh'
             }
@@ -752,7 +430,7 @@ export async function POST(request: NextRequest) {
             userId: auth.userId,
             customerId,
             tableBookingId,
-            eventBookingId: bookingResult.booking_id || null,
+            eventBookingId: bookingId,
             eventId: payload.event_id
           }
         )
@@ -764,50 +442,17 @@ export async function POST(request: NextRequest) {
           tableBookingId,
           fallbackCustomerId: customerId,
           createdVia: payload.walk_in === true ? 'foh_event_walk_in' : 'foh_event'
-        }).then((result) => {
-          if (!result.sent && result.error) {
+        }).then((emailResult) => {
+          if (!emailResult.sent && emailResult.error) {
             logger.warn('Failed to send manager booking-created email for FOH event booking', {
               metadata: {
                 userId: auth.userId,
                 tableBookingId,
-                error: result.error
+                error: emailResult.error
               }
             })
           }
         })
-      })
-    }
-
-    if (shouldSendBookingSms && normalizedPhone) {
-      sideEffectTasks.push({
-        label: 'sms:booking_created',
-        promise: sendBookingSmsIfAllowed(
-          auth.supabase,
-          customerId,
-          normalizedPhone,
-          bookingResult,
-          payload.seats,
-          nextStepUrl,
-          manageUrl
-        )
-          .then((meta) => {
-            smsMeta = meta
-          })
-          .catch((smsError) => {
-            const message = smsError instanceof Error ? smsError.message : String(smsError)
-            logger.warn('FOH event booking SMS task rejected unexpectedly', {
-              metadata: {
-                bookingId: bookingResult.booking_id,
-                state: resolvedState,
-                error: message,
-              },
-            })
-            smsMeta = {
-              success: false,
-              code: 'unexpected_exception',
-              logFailure: false,
-            }
-          })
       })
     }
 
@@ -820,12 +465,12 @@ export async function POST(request: NextRequest) {
         logger.warn('FOH event booking side-effect task rejected unexpectedly', {
           metadata: {
             label: sideEffectTasks[index]?.label || `task_${index}`,
-            bookingId: bookingResult.booking_id,
+            bookingId,
             customerId,
             tableBookingId,
             state: resolvedState,
-            error: reason,
-          },
+            error: reason
+          }
         })
       }
     })
@@ -838,21 +483,21 @@ export async function POST(request: NextRequest) {
       success: true,
       data: {
         state: resolvedState,
-        booking_id: bookingResult.booking_id ?? null,
+        booking_id: bookingId ?? null,
         reason: resolvedReason,
-        seats_remaining: bookingResult.seats_remaining ?? null,
+        seats_remaining: seatsRemaining ?? null,
         next_step_url: nextStepUrl,
         manage_booking_url: manageUrl,
-        event_name: bookingResult.event_name ?? null,
-        payment_mode: bookingResult.payment_mode ?? null,
+        event_name: rpcResult.event_name ?? null,
+        payment_mode: rpcResult.payment_mode ?? null,
         booking_mode: bookingMode,
         table_booking_id: tableBookingId,
         table_name: tableName
       } satisfies FohEventBookingResponseData,
       meta: {
         status_code: responseStatus,
-        sms: smsMeta,
-      },
+        sms: smsMeta
+      }
     },
     { status: responseStatus }
   )
