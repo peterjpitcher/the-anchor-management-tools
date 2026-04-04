@@ -91,22 +91,28 @@ describe('ShortLinkService', () => {
     expect(mockRpc).not.toHaveBeenCalled()
   })
 
-  it('throws when destination URL exists but a different custom code is requested', async () => {
+  // Updated: createShortLink now returns the existing link for any duplicate
+  // destination URL, even when a different custom_code is requested.
+  it('returns existing link when destination URL exists even with a different custom code', async () => {
     mockMaybeSingle.mockResolvedValue({
       data: { id: 'link-1', short_code: 'abc123', created_at: '2026-01-01T00:00:00Z' },
       error: null,
     })
 
-    await expect(
-      ShortLinkService.createShortLink({
-        destination_url: 'https://example.com',
-        link_type: 'custom' as any,
-        metadata: {},
-        expires_at: null,
-        custom_code: 'different',
-      })
-    ).rejects.toThrow('already exists')
+    const result = await ShortLinkService.createShortLink({
+      destination_url: 'https://example.com',
+      link_type: 'custom' as any,
+      metadata: {},
+      expires_at: null,
+      custom_code: 'different',
+    })
 
+    expect(result).toEqual({
+      id: 'link-1',
+      short_code: 'abc123',
+      full_url: 'https://l.the-anchor.pub/abc123',
+      already_exists: true,
+    })
     expect(mockRpc).not.toHaveBeenCalled()
   })
 

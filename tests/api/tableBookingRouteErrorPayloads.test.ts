@@ -130,9 +130,30 @@ describe('table-booking route 500 payload sanitization', () => {
   })
 
   it('returns generic BOH party-size error payload when linked seat update throws', async () => {
+    // Updated: BOH party-size route now reads booking state before calling
+    // updateTableBookingPartySizeWithLinkedEventSeats, so supabase mock must support from().
+    const bookingMaybeSingle = vi.fn().mockResolvedValue({
+      data: {
+        id: '00000000-0000-4000-8000-000000000001',
+        party_size: 2,
+        status: 'confirmed',
+        payment_status: null,
+        customer_id: 'customer-1',
+        booking_date: '2024-01-01',
+        booking_reference: 'REF-1',
+        booking_type: 'standard',
+        start_datetime: null,
+      },
+      error: null,
+    })
+    const bookingEq = vi.fn().mockReturnValue({ maybeSingle: bookingMaybeSingle })
+    const bookingSelect = vi.fn().mockReturnValue({ eq: bookingEq })
+
     ;(requireFohPermission as unknown as vi.Mock).mockResolvedValue({
       ok: true,
-      supabase: {},
+      supabase: {
+        from: vi.fn().mockReturnValue({ select: bookingSelect }),
+      },
     })
     ;(updateTableBookingPartySizeWithLinkedEventSeats as unknown as vi.Mock).mockRejectedValue(
       new Error('sensitive seat sync diagnostics')

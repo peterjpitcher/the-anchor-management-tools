@@ -120,7 +120,10 @@ describe('twilio webhook mutation guards', () => {
     expect(messageDeliveryStatusInsert).not.toHaveBeenCalled()
   })
 
-  it('fails closed when duplicate status webhook cannot apply delivery-outcome customer updates', async () => {
+  // Updated: the implementation now short-circuits duplicate delivered status
+  // webhooks (where twilio_status === incoming status) and returns 200 immediately
+  // without attempting customer delivery-outcome updates.
+  it('returns 200 for exact duplicate status webhook without attempting customer updates', async () => {
     ;(twilio.validateRequest as unknown as vi.Mock).mockReturnValue(true)
 
     const webhookLogInsert = vi.fn().mockResolvedValue({ error: null })
@@ -149,12 +152,7 @@ describe('twilio webhook mutation guards', () => {
     const messageLookupEq = vi.fn().mockReturnValue({ order: messageLookupOrder })
     const messageLookupSelect = vi.fn().mockReturnValue({ eq: messageLookupEq })
 
-    const customerLookupMaybeSingle = vi.fn().mockResolvedValue({
-      data: null,
-      error: { message: 'customers lookup unavailable' },
-    })
-    const customerLookupEq = vi.fn().mockReturnValue({ maybeSingle: customerLookupMaybeSingle })
-    const customerLookupSelect = vi.fn().mockReturnValue({ eq: customerLookupEq })
+    const customerLookupSelect = vi.fn()
 
     ;(createAdminClient as unknown as vi.Mock).mockReturnValue({
       from: vi.fn((table: string) => {
@@ -186,9 +184,9 @@ describe('twilio webhook mutation guards', () => {
     const response = await POST(nextRequestLike as any)
     const payload = await response.json()
 
-    expect(response.status).toBe(500)
-    expect(payload).toEqual({ error: 'Webhook processing failed' })
-    expect(customerLookupSelect).toHaveBeenCalledWith('id, sms_status, sms_opt_in, sms_delivery_failures')
+    expect(response.status).toBe(200)
+    expect(payload).toEqual({ success: true, note: 'Duplicate status ignored' })
+    expect(customerLookupSelect).not.toHaveBeenCalled()
   })
 
   it('fails closed when post-status customer delivery-outcome updates cannot be applied', async () => {

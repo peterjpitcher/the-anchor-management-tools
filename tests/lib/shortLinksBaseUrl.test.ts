@@ -13,10 +13,11 @@ afterEach(() => {
 })
 
 describe('short link base URL', () => {
-  it('defaults to vip-club.uk when unset', () => {
+  // Updated: default changed from vip-club.uk to l.the-anchor.pub
+  it('defaults to l.the-anchor.pub when unset', () => {
     delete process.env.NEXT_PUBLIC_SHORT_LINK_BASE_URL
-    expect(getShortLinkBaseUrl()).toBe('https://vip-club.uk')
-    expect(buildShortLinkUrl('abc123')).toBe('https://vip-club.uk/abc123')
+    expect(getShortLinkBaseUrl()).toBe('https://l.the-anchor.pub')
+    expect(buildShortLinkUrl('abc123')).toBe('https://l.the-anchor.pub/abc123')
   })
 
   it('strips trailing slashes from the configured base', () => {

@@ -166,7 +166,16 @@ describe('PrivateBookingService mutation row-effect guards', () => {
     ).rejects.toThrow('Item not found')
   })
 
+  // Updated: applyBookingDiscount now reads booking total_amount before
+  // applying fixed discounts. The mock must support both select and update.
   it('applyBookingDiscount throws not-found when update affects no rows', async () => {
+    const fetchMaybeSingle = vi.fn().mockResolvedValue({
+      data: { total_amount: 200 },
+      error: null,
+    })
+    const fetchEq = vi.fn().mockReturnValue({ maybeSingle: fetchMaybeSingle })
+    const fetchSelect = vi.fn().mockReturnValue({ eq: fetchEq })
+
     const updateMaybeSingle = vi.fn().mockResolvedValue({ data: null, error: null })
     const updateSelect = vi.fn().mockReturnValue({ maybeSingle: updateMaybeSingle })
     const updateEq = vi.fn().mockReturnValue({ select: updateSelect })
@@ -178,6 +187,7 @@ describe('PrivateBookingService mutation row-effect guards', () => {
         }
 
         return {
+          select: fetchSelect,
           update: vi.fn().mockReturnValue({ eq: updateEq }),
         }
       }),

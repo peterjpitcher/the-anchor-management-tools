@@ -28,10 +28,11 @@ vi.mock('@/lib/supabase/admin', () => ({
   })),
 }));
 
+// Updated: route now uses createInlinePayPalOrder instead of createSimplePayPalOrder
 const mockCreateSimplePayPalOrder = vi.fn();
 
 vi.mock('@/lib/paypal', () => ({
-  createSimplePayPalOrder: mockCreateSimplePayPalOrder,
+  createInlinePayPalOrder: mockCreateSimplePayPalOrder,
 }));
 
 vi.mock('@/app/actions/audit', () => ({

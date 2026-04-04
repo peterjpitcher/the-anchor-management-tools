@@ -35,7 +35,7 @@ vi.mock('@/lib/events/event-payments', () => ({
 }))
 
 vi.mock('@/lib/table-bookings/bookings', () => ({
-  sendTableBookingConfirmedAfterCardCaptureSmsIfAllowed: vi.fn(),
+  sendTableBookingConfirmedAfterDepositSmsIfAllowed: vi.fn(),
 }))
 
 import { createAdminClient } from '@/lib/supabase/admin'
@@ -48,7 +48,7 @@ import {
 } from '@/lib/api/idempotency'
 import { retrieveStripeSetupIntent, verifyStripeWebhookSignature } from '@/lib/payments/stripe'
 import { sendEventBookingSeatUpdateSms, sendEventPaymentConfirmationSms, sendEventPaymentRetrySms } from '@/lib/events/event-payments'
-import { sendTableBookingConfirmedAfterCardCaptureSmsIfAllowed } from '@/lib/table-bookings/bookings'
+import { sendTableBookingConfirmedAfterDepositSmsIfAllowed } from '@/lib/table-bookings/bookings'
 import { POST } from '@/app/api/stripe/webhook/route'
 
 describe('stripe webhook mutation guards', () => {
@@ -678,32 +678,19 @@ describe('stripe webhook mutation guards', () => {
     expect(releaseIdempotencyClaim).not.toHaveBeenCalled()
   })
 
-  it('logs customer stripe_customer_id update error on table card capture confirmation without failing the webhook', async () => {
+  // Updated: stripe_customer_id update logic was removed from table_deposit flow.
+  // This test now verifies that the RPC error causes the webhook to fail closed.
+  it('fails closed when table deposit RPC returns an error', async () => {
     ;(verifyStripeWebhookSignature as unknown as vi.Mock).mockReturnValue(true)
     ;(computeIdempotencyRequestHash as unknown as vi.Mock).mockReturnValue('hash-4')
     ;(claimIdempotencyKey as unknown as vi.Mock).mockResolvedValue({ state: 'claimed' })
-    ;(persistIdempotencyResponse as unknown as vi.Mock).mockResolvedValue(undefined)
     ;(releaseIdempotencyClaim as unknown as vi.Mock).mockResolvedValue(undefined)
-    ;(retrieveStripeSetupIntent as unknown as vi.Mock).mockResolvedValue({
-      payment_method: 'pm_test_1',
-      customer: 'cus_test_1',
-    })
-    ;(sendTableBookingConfirmedAfterCardCaptureSmsIfAllowed as unknown as vi.Mock).mockResolvedValue(undefined)
 
     const webhookLogInsert = vi.fn().mockResolvedValue({ error: null })
-    const customersUpdateSelect = vi.fn().mockResolvedValue({ data: null, error: { message: 'db down' } })
-    const customersUpdateIs = vi.fn().mockReturnValue({ select: customersUpdateSelect })
-    const customersUpdateEq = vi.fn().mockReturnValue({ is: customersUpdateIs })
-    const customersUpdate = vi.fn().mockReturnValue({ eq: customersUpdateEq })
 
     const rpc = vi.fn().mockResolvedValue({
-      data: {
-        state: 'confirmed',
-        table_booking_id: 'table-booking-1',
-        customer_id: 'customer-1',
-        booking_reference: 'REF-1',
-      },
-      error: null,
+      data: null,
+      error: { message: 'rpc confirm_table_payment_v05 failed' },
     })
 
     ;(createAdminClient as unknown as vi.Mock).mockReturnValue({
@@ -712,26 +699,22 @@ describe('stripe webhook mutation guards', () => {
           return { insert: webhookLogInsert }
         }
 
-        if (table === 'customers') {
-          return {
-            update: customersUpdate,
-          }
-        }
-
         throw new Error(`Unexpected table: ${table}`)
       }),
       rpc,
     })
 
     const eventPayload = {
-      id: 'evt_table_card_capture_1',
+      id: 'evt_table_deposit_rpc_error_1',
       type: 'checkout.session.completed',
       data: {
         object: {
-          id: 'cs_table_card_capture_1',
-          setup_intent: 'seti_test_1',
+          id: 'cs_table_deposit_rpc_error_1',
+          payment_intent: 'pi_test_1',
+          amount_total: 4000,
+          currency: 'gbp',
           metadata: {
-            payment_kind: 'table_card_capture',
+            payment_kind: 'table_deposit',
             table_booking_id: 'table-booking-1',
           },
         },
@@ -751,49 +734,26 @@ describe('stripe webhook mutation guards', () => {
     const response = await POST(nextRequestLike as any)
     const payload = await response.json()
 
-    expect(response.status).toBe(200)
-    expect(payload).toEqual({ received: true })
-    expect(customersUpdate).toHaveBeenCalledTimes(1)
-    expect(customersUpdateIs).toHaveBeenCalledTimes(1)
-    expect(customersUpdateSelect).toHaveBeenCalledWith('id')
-    expect(logger.error).toHaveBeenCalledWith(
-      'Table card capture failed to update customer with stripe_customer_id',
-      expect.objectContaining({
-        metadata: expect.objectContaining({
-          customerId: 'customer-1',
-          tableBookingId: 'table-booking-1',
-          checkoutSessionId: 'cs_table_card_capture_1',
-        }),
-      })
-    )
-    expect(persistIdempotencyResponse).toHaveBeenCalledTimes(1)
-    expect(releaseIdempotencyClaim).not.toHaveBeenCalled()
+    expect(response.status).toBe(500)
+    expect(payload).toEqual({ error: 'Webhook processing failed' })
+    expect(rpc).toHaveBeenCalledTimes(1)
+    expect(releaseIdempotencyClaim).toHaveBeenCalledTimes(1)
+    expect(persistIdempotencyResponse).not.toHaveBeenCalled()
   })
 
-  it('logs zero-row customer stripe_customer_id updates that remain unset on table card capture confirmation without failing the webhook', async () => {
+  // Updated: stripe_customer_id update logic was removed from table_deposit flow.
+  // This test now verifies that a confirmed table deposit with SMS succeeds end-to-end.
+  it('returns 200 and sends SMS on successful table deposit confirmation', async () => {
     ;(verifyStripeWebhookSignature as unknown as vi.Mock).mockReturnValue(true)
     ;(computeIdempotencyRequestHash as unknown as vi.Mock).mockReturnValue('hash-10')
     ;(claimIdempotencyKey as unknown as vi.Mock).mockResolvedValue({ state: 'claimed' })
     ;(persistIdempotencyResponse as unknown as vi.Mock).mockResolvedValue(undefined)
     ;(releaseIdempotencyClaim as unknown as vi.Mock).mockResolvedValue(undefined)
-    ;(retrieveStripeSetupIntent as unknown as vi.Mock).mockResolvedValue({
-      payment_method: 'pm_test_4',
-      customer: 'cus_test_4',
+    ;(sendTableBookingConfirmedAfterDepositSmsIfAllowed as unknown as vi.Mock).mockResolvedValue({
+      success: true,
     })
-    ;(sendTableBookingConfirmedAfterCardCaptureSmsIfAllowed as unknown as vi.Mock).mockResolvedValue(undefined)
 
     const webhookLogInsert = vi.fn().mockResolvedValue({ error: null })
-    const customersUpdateSelect = vi.fn().mockResolvedValue({ data: [], error: null })
-    const customersUpdateIs = vi.fn().mockReturnValue({ select: customersUpdateSelect })
-    const customersUpdateEq = vi.fn().mockReturnValue({ is: customersUpdateIs })
-    const customersUpdate = vi.fn().mockReturnValue({ eq: customersUpdateEq })
-
-    const customersLookupMaybeSingle = vi.fn().mockResolvedValue({
-      data: { id: 'customer-4', stripe_customer_id: null },
-      error: null,
-    })
-    const customersLookupEq = vi.fn().mockReturnValue({ maybeSingle: customersLookupMaybeSingle })
-    const customersSelect = vi.fn().mockReturnValue({ eq: customersLookupEq })
 
     const rpc = vi.fn().mockResolvedValue({
       data: {
@@ -811,27 +771,22 @@ describe('stripe webhook mutation guards', () => {
           return { insert: webhookLogInsert }
         }
 
-        if (table === 'customers') {
-          return {
-            update: customersUpdate,
-            select: customersSelect,
-          }
-        }
-
         throw new Error(`Unexpected table: ${table}`)
       }),
       rpc,
     })
 
     const eventPayload = {
-      id: 'evt_table_card_capture_4',
+      id: 'evt_table_deposit_success_1',
       type: 'checkout.session.completed',
       data: {
         object: {
-          id: 'cs_table_card_capture_4',
-          setup_intent: 'seti_test_4',
+          id: 'cs_table_deposit_success_1',
+          payment_intent: 'pi_test_4',
+          amount_total: 4000,
+          currency: 'gbp',
           metadata: {
-            payment_kind: 'table_card_capture',
+            payment_kind: 'table_deposit',
             table_booking_id: 'table-booking-4',
           },
         },
@@ -853,19 +808,8 @@ describe('stripe webhook mutation guards', () => {
 
     expect(response.status).toBe(200)
     expect(payload).toEqual({ received: true })
-    expect(customersUpdateSelect).toHaveBeenCalledWith('id')
-    expect(customersSelect).toHaveBeenCalledWith('id, stripe_customer_id')
-    expect(logger.error).toHaveBeenCalledWith(
-      'Table card capture zero-row stripe_customer_id update left customer unset',
-      expect.objectContaining({
-        metadata: expect.objectContaining({
-          customerId: 'customer-4',
-          tableBookingId: 'table-booking-4',
-          checkoutSessionId: 'cs_table_card_capture_4',
-          stripeCustomerId: 'cus_test_4',
-        }),
-      })
-    )
+    expect(rpc).toHaveBeenCalledTimes(1)
+    expect(sendTableBookingConfirmedAfterDepositSmsIfAllowed).toHaveBeenCalledTimes(1)
     expect(persistIdempotencyResponse).toHaveBeenCalledTimes(1)
     expect(releaseIdempotencyClaim).not.toHaveBeenCalled()
   })
@@ -876,7 +820,7 @@ describe('stripe webhook mutation guards', () => {
     ;(claimIdempotencyKey as unknown as vi.Mock).mockResolvedValue({ state: 'claimed' })
     ;(persistIdempotencyResponse as unknown as vi.Mock).mockResolvedValue(undefined)
     ;(releaseIdempotencyClaim as unknown as vi.Mock).mockResolvedValue(undefined)
-    ;(sendTableBookingConfirmedAfterCardCaptureSmsIfAllowed as unknown as vi.Mock).mockResolvedValue({
+    ;(sendTableBookingConfirmedAfterDepositSmsIfAllowed as unknown as vi.Mock).mockResolvedValue({
       success: false,
       code: 'provider_unavailable',
       logFailure: false,
@@ -912,7 +856,7 @@ describe('stripe webhook mutation guards', () => {
         object: {
           id: 'cs_table_card_capture_2',
           metadata: {
-            payment_kind: 'table_card_capture',
+            payment_kind: 'table_deposit',
             table_booking_id: 'table-booking-2',
           },
         },
@@ -934,9 +878,9 @@ describe('stripe webhook mutation guards', () => {
 
     expect(response.status).toBe(200)
     expect(payload).toEqual({ received: true })
-    expect(sendTableBookingConfirmedAfterCardCaptureSmsIfAllowed).toHaveBeenCalledTimes(1)
+    expect(sendTableBookingConfirmedAfterDepositSmsIfAllowed).toHaveBeenCalledTimes(1)
     expect(logger.warn).toHaveBeenCalledWith(
-      'Table card capture confirmation SMS send returned non-success',
+      'Table deposit confirmation SMS send returned non-success',
       expect.objectContaining({
         metadata: expect.objectContaining({
           tableBookingId: 'table-booking-2',
@@ -957,7 +901,7 @@ describe('stripe webhook mutation guards', () => {
     ;(claimIdempotencyKey as unknown as vi.Mock).mockResolvedValue({ state: 'claimed' })
     ;(persistIdempotencyResponse as unknown as vi.Mock).mockResolvedValue(undefined)
     ;(releaseIdempotencyClaim as unknown as vi.Mock).mockResolvedValue(undefined)
-    ;(sendTableBookingConfirmedAfterCardCaptureSmsIfAllowed as unknown as vi.Mock).mockResolvedValue({
+    ;(sendTableBookingConfirmedAfterDepositSmsIfAllowed as unknown as vi.Mock).mockResolvedValue({
       success: false,
       code: 'logging_failed',
       logFailure: true,
@@ -993,7 +937,7 @@ describe('stripe webhook mutation guards', () => {
         object: {
           id: 'cs_table_card_capture_3',
           metadata: {
-            payment_kind: 'table_card_capture',
+            payment_kind: 'table_deposit',
             table_booking_id: 'table-booking-3',
           },
         },
@@ -1015,9 +959,9 @@ describe('stripe webhook mutation guards', () => {
 
     expect(response.status).toBe(200)
     expect(payload).toEqual({ received: true })
-    expect(sendTableBookingConfirmedAfterCardCaptureSmsIfAllowed).toHaveBeenCalledTimes(1)
+    expect(sendTableBookingConfirmedAfterDepositSmsIfAllowed).toHaveBeenCalledTimes(1)
     expect(logger.error).toHaveBeenCalledWith(
-      'Table card capture confirmation SMS reported logging failure',
+      'Table deposit confirmation SMS reported logging failure',
       expect.objectContaining({
         metadata: expect.objectContaining({
           tableBookingId: 'table-booking-3',
