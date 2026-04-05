@@ -101,6 +101,7 @@ export function MgdClient({
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [showReopenConfirm, setShowReopenConfirm] = useState(false)
   const [showPayDialog, setShowPayDialog] = useState(false)
+  const [showHmrcFormat, setShowHmrcFormat] = useState(false)
   const [datePaid, setDatePaid] = useState('')
   const [submitting, setSubmitting] = useState(false)
 
@@ -263,6 +264,13 @@ export function MgdClient({
                 </Badge>
               </div>
               <div className="flex flex-wrap gap-2">
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => setShowHmrcFormat(true)}
+                >
+                  HMRC Format
+                </Button>
                 {viewingReturn.status === 'open' && (
                   <Button
                     variant="primary"
@@ -619,6 +627,61 @@ export function MgdClient({
             </Button>
           </div>
         </div>
+      </Modal>
+
+      {/* HMRC Submission Format Modal */}
+      <Modal
+        open={showHmrcFormat}
+        onClose={() => setShowHmrcFormat(false)}
+        title="HMRC Submission Format"
+      >
+        {viewingReturn && (() => {
+          const netTake = Math.round(viewingReturn.total_net_take ?? 0)
+          const mgd = Math.round(viewingReturn.total_mgd ?? 0)
+          const fmtWhole = (v: number): string => `£${v.toFixed(2)}`
+          const lines = [
+            { box: 1, label: 'Number of machines available for play at the end of the period', value: '1' },
+            { box: 2, label: 'Total net takings liable to higher rate of duty', value: fmtWhole(0) },
+            { box: 3, label: 'MGD due at higher rate', value: fmtWhole(0) },
+            { box: 4, label: 'Total net takings liable to standard rate of duty', value: fmtWhole(netTake) },
+            { box: 5, label: 'MGD due at standard rate', value: fmtWhole(mgd) },
+            { box: 6, label: 'Total net takings liable to lower rate of duty', value: fmtWhole(0) },
+            { box: 7, label: 'MGD due at lower rate', value: fmtWhole(0) },
+            { box: 8, label: 'Duty payable before any adjustments', value: fmtWhole(mgd) },
+            { box: 9, label: 'Under declared duty from previous MGD periods', value: fmtWhole(0) },
+            { box: 10, label: 'Amount of duty brought forward', value: fmtWhole(0) },
+            { box: 11, label: 'Negative amount of duty to carry forward to next return', value: fmtWhole(0) },
+            { box: 12, label: 'Net duty payable on this return', value: fmtWhole(mgd) },
+          ]
+          return (
+            <div className="space-y-2">
+              <p className="text-sm text-gray-500 mb-4">
+                {periodLabel(viewingReturn.period_start, viewingReturn.period_end)}
+              </p>
+              {lines.map((line) => (
+                <div key={line.box} className="flex items-baseline gap-2 py-1 border-b border-gray-100 last:border-0">
+                  <span className="text-sm font-medium text-gray-500 whitespace-nowrap">Box {line.box}</span>
+                  <span className="text-sm text-gray-400">—</span>
+                  <span className="text-sm text-gray-700 flex-1">{line.label}:</span>
+                  <span className="text-sm font-semibold text-gray-900 font-mono">{line.value}</span>
+                </div>
+              ))}
+              <div className="mt-4">
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => {
+                    const text = lines.map(l => `Box ${l.box} - ${l.label}:${l.value}`).join('\n')
+                    navigator.clipboard.writeText(text)
+                    toast.success('Copied to clipboard')
+                  }}
+                >
+                  Copy to Clipboard
+                </Button>
+              </div>
+            </div>
+          )
+        })()}
       </Modal>
     </div>
   )
