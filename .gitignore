@@ -75,3 +75,4 @@ tests/auth.json
 gha-creds-*.json
 .worktrees/
 .superpowers/
+.claude/worktrees/
