@@ -55,6 +55,7 @@ export type ModuleName =
   | 'leave'
   | 'timeclock'
   | 'payroll'
+  | 'mgd'
 ;
 
 export type ActionType = 
