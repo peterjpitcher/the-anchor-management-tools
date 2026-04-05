@@ -3,6 +3,70 @@
 import { checkUserPermission } from '@/app/actions/rbac'
 import { createClient } from '@/lib/supabase/server'
 import { getOpenAIConfig } from '@/lib/openai/config'
+import { retry, RetryConfigs } from '@/lib/retry'
+
+const OPENAI_TIMEOUT_MS = 30_000
+
+function openAIErrorMessage(status: number, body: string): string {
+  let detail = ''
+  try {
+    const parsed = JSON.parse(body)
+    detail = parsed?.error?.message ?? ''
+  } catch { /* ignore parse failure */ }
+
+  switch (true) {
+    case status === 401:
+      return 'OpenAI API key is invalid or expired. Check the API key in Settings.'
+    case status === 403:
+      return 'OpenAI access denied. The API key may not have permission for this model.'
+    case status === 404:
+      return `The configured AI model was not found. ${detail || 'Check model settings.'}`
+    case status === 429:
+      return 'AI rate limit reached. Please wait a moment and try again.'
+    case status >= 500:
+      return 'The AI service is temporarily unavailable. Please try again shortly.'
+    default:
+      return `AI request failed (${status}). ${detail || 'Please try again.'}`
+  }
+}
+
+async function callOpenAI(
+  baseUrl: string,
+  apiKey: string,
+  body: Record<string, unknown>
+): Promise<Response> {
+  return retry(
+    async () => {
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), OPENAI_TIMEOUT_MS)
+
+      try {
+        const response = await fetch(`${baseUrl}/chat/completions`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${apiKey}`,
+          },
+          body: JSON.stringify(body),
+          signal: controller.signal,
+        })
+
+        if (response.status >= 500) {
+          const text = await response.text()
+          const err = new Error(`OpenAI ${response.status}: ${text}`)
+          ;(err as any).status = response.status
+          ;(err as any).responseBody = text
+          throw err
+        }
+
+        return response
+      } finally {
+        clearTimeout(timeoutId)
+      }
+    },
+    RetryConfigs.api
+  )
+}
 
 type EventSeoContentInput = {
   eventId?: string | null
@@ -159,13 +223,9 @@ export async function generateEventSeoContent(input: EventSeoContentInput): Prom
 
   const summary = buildEventSummary(mergedInput)
 
-  const response = await fetch(`${baseUrl}/chat/completions`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({
+  let response: Response
+  try {
+    response = await callOpenAI(baseUrl, apiKey, {
       model: eventsModel,
       temperature: 0.7,
       messages: [
@@ -227,13 +287,27 @@ export async function generateEventSeoContent(input: EventSeoContentInput): Prom
           },
         },
       },
-      max_tokens: 900,
-    }),
-  })
+      max_tokens: 1500,
+    })
+  } catch (err) {
+    if (err instanceof DOMException && err.name === 'AbortError') {
+      console.error('OpenAI SEO generation timed out')
+      return { success: false, error: 'AI request timed out. Please try again.' }
+    }
+    const status = (err as any)?.status
+    const body = (err as any)?.responseBody ?? ''
+    if (typeof status === 'number') {
+      console.error(`OpenAI SEO generation failed (${status})`, body)
+      return { success: false, error: openAIErrorMessage(status, body) }
+    }
+    console.error('OpenAI SEO generation network error', err)
+    return { success: false, error: 'Unable to reach the AI service. Check your network connection and try again.' }
+  }
 
   if (!response.ok) {
-    console.error('OpenAI SEO generation failed', await response.text())
-    return { success: false, error: 'OpenAI request failed.' }
+    const body = await response.text()
+    console.error('OpenAI SEO generation failed', body)
+    return { success: false, error: openAIErrorMessage(response.status, body) }
   }
 
   const payload = await response.json()
@@ -378,24 +452,38 @@ export async function generateEventPromotionContent({
             {
               role: 'system',
               content:
-                'You are an expert hospitality marketer. Write high-performing Facebook Event copy in UK English that is vivid, clear, and conversion-focused.',
+                'You are a top-tier hospitality copywriter who writes irresistible Facebook Event listings for pubs and venues. Your copy makes people stop scrolling and hit "Interested". You write in UK English. You use emojis naturally to add energy and visual appeal — in the event name and throughout the description. You NEVER use markdown — no asterisks, no bold, no italic, no bullet symbols. Plain text only.',
             },
             {
               role: 'user',
               content: [
                 'Write ONE Facebook Event name and ONE Facebook Event description for the event details below.',
                 '',
-                'Best practices to follow:',
-                '- Hook quickly in the first 1-2 lines (mobile-first).',
-                '- Use short paragraphs and line breaks for readability.',
-                '- Include a short "Need to know" section with only facts provided (no guessing).',
-                '- End with a clear call to action (but do NOT include any URL).',
+                'Tone & style:',
+                '- Write like you are talking to a mate, not a customer. Warm, fun, confident.',
+                '- Open with a hook that creates excitement or curiosity in the first line.',
+                '- Paint a picture — what will the evening feel, sound, taste like?',
+                '- Keep it tight. Short punchy paragraphs. No waffle.',
+                '- Use emojis to add energy and break up the text visually (in the event name too).',
+                '- Build urgency naturally — make people feel they will miss out.',
+                '- End with a single clear call to action (but do NOT include any URL).',
+                '',
+                'Structure (use blank lines between every section for readability when pasted into Facebook):',
+                '- 1-2 lines of hook / atmosphere.',
+                '',
+                '- A short paragraph selling the experience.',
+                '',
+                '- A "Need to know" section with an emoji header line, then each detail on its own line prefixed with an emoji (e.g. 📅 Date: ...). Use a blank line before and after this section.',
+                '',
+                '- A punchy closing CTA line.',
                 '',
                 'Hard constraints:',
-                '- Output must be plain text (no markdown).',
+                '- STRICTLY plain text. No markdown whatsoever: no **, no *, no _, no #, no - bullets, no []().',
                 '- Do not include raw URLs anywhere.',
-                '- Do not invent missing details (no ages, dress codes, set times, pricing, inclusions unless provided).',
-                '- Keep the event name concise (aim < 70 characters).',
+                '- Do not invent details not provided (no ages, dress codes, set times, pricing unless given).',
+                '- Stay faithful to the brief — do not exaggerate or add claims not supported by the details.',
+                '- When mentioning a host or performer, use their FIRST NAME only (e.g. "Peter" not "Peter Pitcher").',
+                '- Keep the event name concise and enticing (aim < 70 characters).',
                 '',
                 'Event details:',
                 detailLines.join('\n'),
@@ -423,25 +511,34 @@ export async function generateEventPromotionContent({
             {
               role: 'system',
               content:
-                'You are an expert hospitality marketer. Write conversion-focused Google Business Profile Event copy in UK English.',
+                'You are a top-tier hospitality copywriter who writes compelling Google Business Profile Event listings for pubs and venues. Your copy drives clicks and bookings. You write in UK English. You use emojis naturally to add energy and visual appeal. You NEVER use markdown — no asterisks, no bold, no italic, no bullet symbols. Plain text only.',
             },
             {
               role: 'user',
               content: [
                 'Write ONE Google Business Profile (GBP) Event title and ONE GBP Event description for the event details below.',
                 '',
-                'Best practices to follow:',
-                '- Make the first 120 characters compelling (it often appears as the preview).',
-                '- Be scannable: 1-2 short paragraphs, then a compact details block if useful.',
-                '- Include "The Anchor" naturally (already provided in details).',
+                'Tone & style:',
+                '- Warm, confident, inviting. Make people want to be there.',
+                '- First 120 characters must hook — this is often the only preview shown.',
+                '- Sell the experience, not just the facts.',
+                '- Use emojis to add energy and visual appeal.',
+                '- Stay faithful to the brief — do not exaggerate or invent.',
+                '- When mentioning a host or performer, use their FIRST NAME only (e.g. "Peter" not "Peter Pitcher").',
+                '- Include "The Anchor" naturally.',
                 '- End with a clear call to action (but do NOT include any URL).',
                 '',
+                'Structure (use blank lines between sections for readability):',
+                '- 1-2 short paragraphs selling the experience.',
+                '- A compact details block with each detail on its own line prefixed with an emoji (e.g. 📅 Date: ...). Blank line before and after this block.',
+                '- A punchy closing CTA.',
+                '',
                 'Hard constraints:',
-                '- Output must be plain text (no markdown).',
+                '- STRICTLY plain text. No markdown whatsoever: no **, no *, no _, no #, no - bullets, no []().',
                 '- Do not include raw URLs anywhere.',
                 '- Do not invent missing details.',
                 '- Keep the description under 1500 characters.',
-                '- Keep the title concise (aim < 80 characters).',
+                '- Keep the title concise and enticing (aim < 80 characters).',
                 '',
                 'Event details:',
                 detailLines.join('\n'),
@@ -454,13 +551,9 @@ export async function generateEventPromotionContent({
     }
   })()
 
-  const response = await fetch(`${baseUrl}/chat/completions`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({
+  let response: Response
+  try {
+    response = await callOpenAI(baseUrl, apiKey, {
       model: eventsModel,
       temperature,
       messages,
@@ -472,12 +565,26 @@ export async function generateEventPromotionContent({
         },
       },
       max_tokens: maxTokens,
-    }),
-  })
+    })
+  } catch (err) {
+    if (err instanceof DOMException && err.name === 'AbortError') {
+      console.error('OpenAI promotion generation timed out')
+      return { success: false, error: 'AI request timed out. Please try again.' }
+    }
+    const status = (err as any)?.status
+    const body = (err as any)?.responseBody ?? ''
+    if (typeof status === 'number') {
+      console.error(`OpenAI promotion generation failed (${status})`, body)
+      return { success: false, error: openAIErrorMessage(status, body) }
+    }
+    console.error('OpenAI promotion generation network error', err)
+    return { success: false, error: 'Unable to reach the AI service. Check your network connection and try again.' }
+  }
 
   if (!response.ok) {
-    console.error('OpenAI promotion generation failed', await response.text())
-    return { success: false, error: 'OpenAI request failed.' }
+    const body = await response.text()
+    console.error('OpenAI promotion generation failed', body)
+    return { success: false, error: openAIErrorMessage(response.status, body) }
   }
 
   const payload = await response.json()
