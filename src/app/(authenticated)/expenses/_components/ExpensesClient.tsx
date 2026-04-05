@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback, useTransition, useEffect } from 'react'
+import { useState, useCallback, useTransition, useEffect, useMemo } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { formatDateInLondon } from '@/lib/dateUtils'
 import {
@@ -19,6 +19,8 @@ import {
 } from '@/app/actions/expenses'
 import { ExpenseForm, type ExpenseFormData, type ExistingFile } from './ExpenseForm'
 import { ExpenseFileViewer } from './ExpenseFileViewer'
+import { useSort } from '@/hooks/useSort'
+import { SortableHeader } from '@/components/ui/SortableHeader'
 
 // ---------------------------------------------------------------------------
 // Currency formatter
@@ -53,6 +55,29 @@ export function ExpensesClient({
     return { dateFrom: from, dateTo: to }
   })
   const [isPending, startTransition] = useTransition()
+
+  // ---------------------------------------------------------------------------
+  // Sorting
+  // ---------------------------------------------------------------------------
+
+  type ExpenseSortKey = 'date' | 'company' | 'justification' | 'amount' | 'vat'
+
+  const expenseComparators = useMemo(
+    () => ({
+      date: (a: Expense, b: Expense) => a.expense_date.localeCompare(b.expense_date),
+      company: (a: Expense, b: Expense) => a.company_ref.localeCompare(b.company_ref),
+      justification: (a: Expense, b: Expense) => a.justification.localeCompare(b.justification),
+      amount: (a: Expense, b: Expense) => a.amount - b.amount,
+      vat: (a: Expense, b: Expense) => a.vat_amount - b.vat_amount,
+    }),
+    []
+  )
+
+  const {
+    sortedData: sortedExpenses,
+    sort: expenseSort,
+    toggleSort: toggleExpenseSort,
+  } = useSort<Expense, ExpenseSortKey>(expenses, 'date', 'desc', expenseComparators)
 
   // Apply URL search params as initial filters on mount
   useEffect(() => {
@@ -311,21 +336,46 @@ export function ExpensesClient({
         <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
           <thead className="bg-gray-50 dark:bg-gray-800">
             <tr>
-              <th scope="col" className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">
-                Date
-              </th>
-              <th scope="col" className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">
-                Company
-              </th>
-              <th scope="col" className="hidden px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400 sm:table-cell">
-                Justification
-              </th>
-              <th scope="col" className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">
-                Amount
-              </th>
-              <th scope="col" className="hidden px-4 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400 md:table-cell">
-                VAT
-              </th>
+              <SortableHeader
+                label="Date"
+                column="date"
+                currentColumn={expenseSort.column}
+                currentDirection={expenseSort.direction}
+                onSort={toggleExpenseSort}
+                className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400"
+              />
+              <SortableHeader
+                label="Company"
+                column="company"
+                currentColumn={expenseSort.column}
+                currentDirection={expenseSort.direction}
+                onSort={toggleExpenseSort}
+                className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400"
+              />
+              <SortableHeader
+                label="Justification"
+                column="justification"
+                currentColumn={expenseSort.column}
+                currentDirection={expenseSort.direction}
+                onSort={toggleExpenseSort}
+                className="hidden px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400 sm:table-cell"
+              />
+              <SortableHeader
+                label="Amount"
+                column="amount"
+                currentColumn={expenseSort.column}
+                currentDirection={expenseSort.direction}
+                onSort={toggleExpenseSort}
+                className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400"
+              />
+              <SortableHeader
+                label="VAT"
+                column="vat"
+                currentColumn={expenseSort.column}
+                currentDirection={expenseSort.direction}
+                onSort={toggleExpenseSort}
+                className="hidden px-4 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400 md:table-cell"
+              />
               <th scope="col" className="px-4 py-3 text-center text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">
                 Receipt
               </th>
@@ -342,7 +392,7 @@ export function ExpensesClient({
                 </td>
               </tr>
             )}
-            {expenses.map((expense) => (
+            {sortedExpenses.map((expense) => (
               <tr
                 key={expense.id}
                 className="cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800/50"

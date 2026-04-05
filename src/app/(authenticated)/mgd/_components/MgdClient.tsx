@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback, useEffect, useMemo } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { Card } from '@/components/ui-v2/layout/Card'
 import { Badge } from '@/components/ui-v2/display/Badge'
@@ -29,6 +29,8 @@ import {
   TrashIcon,
   LockClosedIcon,
 } from '@heroicons/react/24/outline'
+import { useSort } from '@/hooks/useSort'
+import { SortableHeader } from '@/components/ui/SortableHeader'
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -118,6 +120,51 @@ export function MgdClient({
     : currentReturn
 
   const locked = isLocked(viewingReturn)
+
+  // ---------------------------------------------------------------------------
+  // Sorting — Collections table
+  // ---------------------------------------------------------------------------
+
+  type CollectionSortKey = 'date' | 'netTake' | 'mgdAmount' | 'vatOnSupplier'
+
+  const collectionComparators = useMemo(
+    () => ({
+      date: (a: MgdCollection, b: MgdCollection) => a.collection_date.localeCompare(b.collection_date),
+      netTake: (a: MgdCollection, b: MgdCollection) => a.net_take - b.net_take,
+      mgdAmount: (a: MgdCollection, b: MgdCollection) => a.mgd_amount - b.mgd_amount,
+      vatOnSupplier: (a: MgdCollection, b: MgdCollection) => a.vat_on_supplier - b.vat_on_supplier,
+    }),
+    []
+  )
+
+  const {
+    sortedData: sortedCollections,
+    sort: collectionSort,
+    toggleSort: toggleCollectionSort,
+  } = useSort<MgdCollection, CollectionSortKey>(collections, 'date', 'desc', collectionComparators)
+
+  // ---------------------------------------------------------------------------
+  // Sorting — Return History table
+  // ---------------------------------------------------------------------------
+
+  type ReturnSortKey = 'period' | 'netTake' | 'mgd' | 'status' | 'datePaid'
+
+  const returnComparators = useMemo(
+    () => ({
+      period: (a: MgdReturn, b: MgdReturn) => a.period_start.localeCompare(b.period_start),
+      netTake: (a: MgdReturn, b: MgdReturn) => (a.total_net_take ?? 0) - (b.total_net_take ?? 0),
+      mgd: (a: MgdReturn, b: MgdReturn) => (a.total_mgd ?? 0) - (b.total_mgd ?? 0),
+      status: (a: MgdReturn, b: MgdReturn) => a.status.localeCompare(b.status),
+      datePaid: (a: MgdReturn, b: MgdReturn) => (a.date_paid ?? '').localeCompare(b.date_paid ?? ''),
+    }),
+    []
+  )
+
+  const {
+    sortedData: sortedReturns,
+    sort: returnSort,
+    toggleSort: toggleReturnSort,
+  } = useSort<MgdReturn, ReturnSortKey>(allReturns, 'period', 'desc', returnComparators)
 
   // ---------------------------------------------------------------------------
   // Data refresh
@@ -387,25 +434,45 @@ export function MgdClient({
             <table className="min-w-full divide-y divide-gray-200">
               <thead>
                 <tr>
-                  <th scope="col" className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
-                    Date
-                  </th>
-                  <th scope="col" className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500">
-                    Net Take
-                  </th>
-                  <th scope="col" className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500">
-                    MGD (20%)
-                  </th>
-                  <th scope="col" className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500">
-                    VAT on Supplier
-                  </th>
+                  <SortableHeader
+                    label="Date"
+                    column="date"
+                    currentColumn={collectionSort.column}
+                    currentDirection={collectionSort.direction}
+                    onSort={toggleCollectionSort}
+                    className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500"
+                  />
+                  <SortableHeader
+                    label="Net Take"
+                    column="netTake"
+                    currentColumn={collectionSort.column}
+                    currentDirection={collectionSort.direction}
+                    onSort={toggleCollectionSort}
+                    className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500"
+                  />
+                  <SortableHeader
+                    label="MGD (20%)"
+                    column="mgdAmount"
+                    currentColumn={collectionSort.column}
+                    currentDirection={collectionSort.direction}
+                    onSort={toggleCollectionSort}
+                    className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500"
+                  />
+                  <SortableHeader
+                    label="VAT on Supplier"
+                    column="vatOnSupplier"
+                    currentColumn={collectionSort.column}
+                    currentDirection={collectionSort.direction}
+                    onSort={toggleCollectionSort}
+                    className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500"
+                  />
                   <th scope="col" className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500">
                     Actions
                   </th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {collections.map((c) => (
+                {sortedCollections.map((c) => (
                   <tr key={c.id} className="hover:bg-gray-50">
                     <td className="whitespace-nowrap px-4 py-3 text-sm text-gray-900">
                       {formatDateInLondon(c.collection_date, {
@@ -482,25 +549,50 @@ export function MgdClient({
             <table className="min-w-full divide-y divide-gray-200">
               <thead>
                 <tr>
-                  <th scope="col" className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
-                    Period
-                  </th>
-                  <th scope="col" className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500">
-                    Net Take
-                  </th>
-                  <th scope="col" className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500">
-                    MGD
-                  </th>
-                  <th scope="col" className="px-4 py-3 text-center text-xs font-medium uppercase tracking-wider text-gray-500">
-                    Status
-                  </th>
-                  <th scope="col" className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
-                    Date Paid
-                  </th>
+                  <SortableHeader
+                    label="Period"
+                    column="period"
+                    currentColumn={returnSort.column}
+                    currentDirection={returnSort.direction}
+                    onSort={toggleReturnSort}
+                    className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500"
+                  />
+                  <SortableHeader
+                    label="Net Take"
+                    column="netTake"
+                    currentColumn={returnSort.column}
+                    currentDirection={returnSort.direction}
+                    onSort={toggleReturnSort}
+                    className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500"
+                  />
+                  <SortableHeader
+                    label="MGD"
+                    column="mgd"
+                    currentColumn={returnSort.column}
+                    currentDirection={returnSort.direction}
+                    onSort={toggleReturnSort}
+                    className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500"
+                  />
+                  <SortableHeader
+                    label="Status"
+                    column="status"
+                    currentColumn={returnSort.column}
+                    currentDirection={returnSort.direction}
+                    onSort={toggleReturnSort}
+                    className="px-4 py-3 text-center text-xs font-medium uppercase tracking-wider text-gray-500"
+                  />
+                  <SortableHeader
+                    label="Date Paid"
+                    column="datePaid"
+                    currentColumn={returnSort.column}
+                    currentDirection={returnSort.direction}
+                    onSort={toggleReturnSort}
+                    className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500"
+                  />
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {allReturns.map((r) => {
+                {sortedReturns.map((r) => {
                   const isSelected =
                     selectedPeriod?.periodStart === r.period_start &&
                     selectedPeriod?.periodEnd === r.period_end
