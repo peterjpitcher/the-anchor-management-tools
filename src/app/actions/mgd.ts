@@ -137,31 +137,36 @@ export async function getReturns(): ActionResult<MgdReturn[]> {
   const db = createAdminClient()
   const { data, error } = await db
     .from('mgd_returns')
-    .select('*, mgd_collections(count)')
+    .select('*')
     .order('period_start', { ascending: false })
 
   if (error) return { error: error.message }
 
-  const returns: MgdReturn[] = (data ?? []).map((r: Record<string, unknown>) => {
-    const collectionAgg = r.mgd_collections as
-      | Array<{ count: number }>
-      | undefined
-    return {
+  // Count collections per return period using date ranges (no FK relationship)
+  const returns: MgdReturn[] = []
+  for (const r of data ?? []) {
+    const { count } = await db
+      .from('mgd_collections')
+      .select('*', { count: 'exact', head: true })
+      .gte('collection_date', r.period_start)
+      .lte('collection_date', r.period_end)
+
+    returns.push({
       id: r.id as string,
       period_start: r.period_start as string,
       period_end: r.period_end as string,
-      total_net_take: r.total_net_take as number,
-      total_mgd: r.total_mgd as number,
-      total_vat_on_supplier: r.total_vat_on_supplier as number,
+      total_net_take: (r.total_net_take ?? 0) as number,
+      total_mgd: (r.total_mgd ?? 0) as number,
+      total_vat_on_supplier: (r.total_vat_on_supplier ?? 0) as number,
       status: r.status as MgdReturn['status'],
       submitted_at: r.submitted_at as string | null,
       submitted_by: r.submitted_by as string | null,
       date_paid: r.date_paid as string | null,
       created_at: r.created_at as string,
       updated_at: r.updated_at as string,
-      collection_count: collectionAgg?.[0]?.count ?? 0,
-    }
-  })
+      collection_count: count ?? 0,
+    })
+  }
 
   return { success: true, data: returns }
 }
@@ -180,7 +185,7 @@ export async function getCurrentReturn(): ActionResult<MgdReturn | null> {
 
   const { data, error } = await db
     .from('mgd_returns')
-    .select('*, mgd_collections(count)')
+    .select('*')
     .eq('period_start', periodStart)
     .eq('period_end', periodEnd)
     .maybeSingle()
@@ -188,15 +193,29 @@ export async function getCurrentReturn(): ActionResult<MgdReturn | null> {
   if (error) return { error: error.message }
   if (!data) return { success: true, data: null }
 
-  const collectionAgg = data.mgd_collections as
-    | Array<{ count: number }>
-    | undefined
+  // Count collections in this period using date range (no FK relationship)
+  const { count } = await db
+    .from('mgd_collections')
+    .select('*', { count: 'exact', head: true })
+    .gte('collection_date', periodStart)
+    .lte('collection_date', periodEnd)
 
   return {
     success: true,
     data: {
-      ...data,
-      collection_count: collectionAgg?.[0]?.count ?? 0,
+      id: data.id as string,
+      period_start: data.period_start as string,
+      period_end: data.period_end as string,
+      total_net_take: (data.total_net_take ?? 0) as number,
+      total_mgd: (data.total_mgd ?? 0) as number,
+      total_vat_on_supplier: (data.total_vat_on_supplier ?? 0) as number,
+      status: data.status as MgdReturn['status'],
+      submitted_at: data.submitted_at as string | null,
+      submitted_by: data.submitted_by as string | null,
+      date_paid: data.date_paid as string | null,
+      created_at: data.created_at as string,
+      updated_at: data.updated_at as string,
+      collection_count: count ?? 0,
     } as MgdReturn,
   }
 }
