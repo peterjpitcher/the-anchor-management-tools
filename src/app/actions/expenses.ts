@@ -272,8 +272,9 @@ export async function createExpense(formData: {
       user_id: userId,
       operation_type: 'create',
       resource_type: 'expense',
+      resource_id: data.id,
       operation_status: 'success',
-      additional_info: { expense_id: data.id, amount: parsed.data.amount },
+      additional_info: { amount: parsed.data.amount },
     })
 
     revalidateExpensePaths()
@@ -331,8 +332,8 @@ export async function updateExpense(formData: {
       user_id: userId,
       operation_type: 'update',
       resource_type: 'expense',
+      resource_id: id,
       operation_status: 'success',
-      additional_info: { expense_id: id },
     })
 
     revalidateExpensePaths()
@@ -391,8 +392,8 @@ export async function deleteExpense(
       user_id: userId,
       operation_type: 'delete',
       resource_type: 'expense',
+      resource_id: id,
       operation_status: 'success',
-      additional_info: { expense_id: id },
     })
 
     revalidateExpensePaths()
@@ -540,10 +541,11 @@ export async function uploadExpenseFile(
         user_id: userId,
         operation_type: 'create',
         resource_type: 'expense_file',
+        resource_id: expenseId,
         operation_status: 'success',
         additional_info: {
-          expense_id: expenseId,
           file_count: uploaded.length,
+          file_ids: uploaded.map((f) => f.id),
         },
       })
     }
@@ -623,8 +625,9 @@ export async function deleteExpenseFile(
       user_id: userId,
       operation_type: 'delete',
       resource_type: 'expense_file',
+      resource_id: fileId,
       operation_status: 'success',
-      additional_info: { file_id: fileId, expense_id: file.expense_id },
+      additional_info: { expense_id: file.expense_id },
     })
 
     revalidateExpensePaths()
