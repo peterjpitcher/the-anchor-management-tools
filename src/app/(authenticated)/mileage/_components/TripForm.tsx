@@ -124,12 +124,25 @@ export function TripForm({
   )
 
   function handleDestinationChange(index: number, destId: string): void {
-    const newStops = [...stops]
-    newStops[index] = { ...newStops[index], destinationId: destId }
-    setStops(newStops)
+    setStops((prev) => {
+      const newStops = [...prev]
+      // Clear miles for the leg TO this stop (affected by destination change)
+      newStops[index] = { ...newStops[index], destinationId: destId, miles: '' }
+      // Clear miles for the leg FROM this stop (next stop's miles), if it exists
+      if (index + 1 < newStops.length) {
+        newStops[index + 1] = { ...newStops[index + 1], miles: '' }
+      }
+      return newStops
+    })
 
-    // Prefill miles from cache
+    // Also clear return miles if this is the last stop
+    if (index === stops.length - 1) {
+      setReturnMiles('')
+    }
+
+    // Attempt to re-fetch cached distances for the new pairs
     if (destId && homeBase) {
+      // Leg TO this stop: from previous destination to new destination
       const prevDestId = index === 0 ? homeBase.id : stops[index - 1]?.destinationId
       if (prevDestId) {
         fetchCachedDistance(destId, prevDestId).then((cachedMiles) => {
@@ -141,6 +154,29 @@ export function TripForm({
               }
               return updated
             })
+          }
+        })
+      }
+
+      // Leg FROM this stop: from new destination to next stop (or home base for return)
+      const nextDestId = index + 1 < stops.length ? stops[index + 1]?.destinationId : null
+      if (nextDestId) {
+        fetchCachedDistance(nextDestId, destId).then((cachedMiles) => {
+          if (cachedMiles != null) {
+            setStops((prev) => {
+              const updated = [...prev]
+              if (updated[index + 1] && !updated[index + 1].miles) {
+                updated[index + 1] = { ...updated[index + 1], miles: String(cachedMiles) }
+              }
+              return updated
+            })
+          }
+        })
+      } else {
+        // This is the last stop; re-fetch return miles to home base
+        fetchCachedDistance(homeBase.id, destId).then((cachedMiles) => {
+          if (cachedMiles != null) {
+            setReturnMiles((prev) => (prev === '' ? String(cachedMiles) : prev))
           }
         })
       }
@@ -158,7 +194,52 @@ export function TripForm({
   }
 
   function removeStop(index: number): void {
-    setStops((prev) => prev.filter((_, i) => i !== index))
+    setStops((prev) => {
+      const newStops = prev.filter((_, i) => i !== index)
+      // After removal, the stop that now occupies position `index` (previously index+1)
+      // has a new predecessor, so its miles are stale -- clear them for re-entry/re-fetch.
+      if (index < newStops.length) {
+        newStops[index] = { ...newStops[index], miles: '' }
+      }
+      return newStops
+    })
+
+    // If the removed stop was the last one, the return leg's predecessor changed
+    // so clear the return miles too.
+    if (index === stops.length - 1) {
+      setReturnMiles('')
+    }
+
+    // Attempt to re-fetch cached distance for the newly adjacent pair
+    if (homeBase) {
+      const prevDestId = index === 0 ? homeBase.id : stops[index - 1]?.destinationId
+      // The stop that now sits at `index` is the old stops[index + 1]
+      const nextStop = stops[index + 1]
+      if (prevDestId && nextStop?.destinationId) {
+        fetchCachedDistance(nextStop.destinationId, prevDestId).then((cachedMiles) => {
+          if (cachedMiles != null) {
+            setStops((prev) => {
+              const updated = [...prev]
+              if (updated[index] && !updated[index].miles) {
+                updated[index] = { ...updated[index], miles: String(cachedMiles) }
+              }
+              return updated
+            })
+          }
+        })
+      }
+      // If the removed stop was the last, re-fetch return miles
+      if (index === stops.length - 1 && index > 0) {
+        const newLastDestId = stops[index - 1]?.destinationId
+        if (newLastDestId) {
+          fetchCachedDistance(homeBase.id, newLastDestId).then((cachedMiles) => {
+            if (cachedMiles != null) {
+              setReturnMiles((prev) => (prev === '' ? String(cachedMiles) : prev))
+            }
+          })
+        }
+      }
+    }
   }
 
   // Build legs from stops for the form model:
@@ -229,18 +310,32 @@ export function TripForm({
   const crossesThreshold =
     rateSplit.milesAtStandardRate > 0 && rateSplit.milesAtReducedRate > 0
 
+  // Per-stop validation errors
+  const [stopErrors, setStopErrors] = useState<Map<number, string>>(new Map())
+
   function handleSubmit(): void {
     setError(null)
+    setStopErrors(new Map())
 
     if (!homeBase) {
       setError('Home base not configured')
       return
     }
 
-    // Validate stops
-    const validStops = stops.filter((s) => s.destinationId && parseFloat(s.miles) > 0)
-    if (validStops.length === 0) {
-      setError('Add at least one stop with miles')
+    // Validate ALL rendered stops — never silently drop incomplete ones
+    const errors = new Map<number, string>()
+    for (let i = 0; i < stops.length; i++) {
+      const stop = stops[i]
+      if (!stop.destinationId) {
+        errors.set(i, 'Select a destination')
+      } else if (!stop.miles || parseFloat(stop.miles) <= 0) {
+        errors.set(i, 'Enter miles')
+      }
+    }
+
+    if (errors.size > 0) {
+      setStopErrors(errors)
+      setError('Please complete all stops before saving')
       return
     }
 
@@ -250,28 +345,28 @@ export function TripForm({
       return
     }
 
-    // Build legs
+    // Build legs — all stops are validated at this point
     const legs: Array<{ fromDestinationId: string; toDestinationId: string; miles: number }> = []
 
     // First leg: Anchor -> first stop
     legs.push({
       fromDestinationId: homeBase.id,
-      toDestinationId: validStops[0].destinationId,
-      miles: parseFloat(validStops[0].miles),
+      toDestinationId: stops[0].destinationId,
+      miles: parseFloat(stops[0].miles),
     })
 
     // Middle legs
-    for (let i = 1; i < validStops.length; i++) {
+    for (let i = 1; i < stops.length; i++) {
       legs.push({
-        fromDestinationId: validStops[i - 1].destinationId,
-        toDestinationId: validStops[i].destinationId,
-        miles: parseFloat(validStops[i].miles),
+        fromDestinationId: stops[i - 1].destinationId,
+        toDestinationId: stops[i].destinationId,
+        miles: parseFloat(stops[i].miles),
       })
     }
 
     // Return leg: last stop -> Anchor
     legs.push({
-      fromDestinationId: validStops[validStops.length - 1].destinationId,
+      fromDestinationId: stops[stops.length - 1].destinationId,
       toDestinationId: homeBase.id,
       miles: returnMilesNum,
     })
@@ -363,41 +458,46 @@ export function TripForm({
           {/* Stops */}
           <div className="space-y-3">
             {stops.map((stop, index) => (
-              <div key={stop.key} className="flex items-center gap-2">
-                <ArrowRightIcon className="h-4 w-4 shrink-0 text-gray-400" />
-                <select
-                  className="block w-full rounded-md border border-gray-400 px-3 py-2 text-sm shadow-sm focus:border-primary-600 focus:ring-1 focus:ring-primary-600 min-h-[44px] sm:min-h-[40px]"
-                  value={stop.destinationId}
-                  onChange={(e) => handleDestinationChange(index, e.target.value)}
-                  aria-label={`Stop ${index + 1} destination`}
-                >
-                  <option value="">Select destination...</option>
-                  {nonHomeDestinations.map((d) => (
-                    <option key={d.id} value={d.id}>
-                      {d.name}
-                    </option>
-                  ))}
-                </select>
-                <Input
-                  wrapperClassName="w-28 shrink-0"
-                  value={stop.miles}
-                  onChange={(e) => handleMilesChange(index, e.target.value)}
-                  placeholder="Miles"
-                  type="number"
-                  min="0.1"
-                  step="0.1"
-                  aria-label={`Stop ${index + 1} miles`}
-                />
-                {stops.length > 1 && (
-                  <Button
-                    variant="ghost"
-                    size="xs"
-                    iconOnly
-                    aria-label={`Remove stop ${index + 1}`}
-                    onClick={() => removeStop(index)}
+              <div key={stop.key}>
+                <div className="flex items-center gap-2">
+                  <ArrowRightIcon className="h-4 w-4 shrink-0 text-gray-400" />
+                  <select
+                    className={`block w-full rounded-md border px-3 py-2 text-sm shadow-sm focus:border-primary-600 focus:ring-1 focus:ring-primary-600 min-h-[44px] sm:min-h-[40px] ${stopErrors.has(index) ? 'border-red-400' : 'border-gray-400'}`}
+                    value={stop.destinationId}
+                    onChange={(e) => handleDestinationChange(index, e.target.value)}
+                    aria-label={`Stop ${index + 1} destination`}
                   >
-                    <TrashIcon className="h-4 w-4 text-red-400" />
-                  </Button>
+                    <option value="">Select destination...</option>
+                    {nonHomeDestinations.map((d) => (
+                      <option key={d.id} value={d.id}>
+                        {d.name}
+                      </option>
+                    ))}
+                  </select>
+                  <Input
+                    wrapperClassName="w-28 shrink-0"
+                    value={stop.miles}
+                    onChange={(e) => handleMilesChange(index, e.target.value)}
+                    placeholder="Miles"
+                    type="number"
+                    min="0.1"
+                    step="0.1"
+                    aria-label={`Stop ${index + 1} miles`}
+                  />
+                  {stops.length > 1 && (
+                    <Button
+                      variant="ghost"
+                      size="xs"
+                      iconOnly
+                      aria-label={`Remove stop ${index + 1}`}
+                      onClick={() => removeStop(index)}
+                    >
+                      <TrashIcon className="h-4 w-4 text-red-400" />
+                    </Button>
+                  )}
+                </div>
+                {stopErrors.has(index) && (
+                  <p className="mt-1 ml-6 text-xs text-red-600">{stopErrors.get(index)}</p>
                 )}
               </div>
             ))}
