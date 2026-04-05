@@ -62,6 +62,7 @@ const financeNavigation: NavigationItemWithPermission[] = [
   { name: 'Work Types', href: '/oj-projects/work-types', icon: BriefcaseIcon, permission: { module: 'oj_projects', action: 'view' }, subItem: true },
   { name: 'Time Entries', href: '/oj-projects/entries', icon: BriefcaseIcon, permission: { module: 'oj_projects', action: 'view' }, subItem: true },
   { name: 'Receipts', href: '/receipts', icon: ReceiptRefundIcon, permission: { module: 'receipts', action: 'view' } },
+  { name: 'Expenses', href: '/expenses', icon: BanknotesIcon, permission: { module: 'expenses', action: 'view' } },
   { name: 'Short Links', href: '/short-links', icon: LinkIcon, permission: { module: 'short_links', action: 'view' } },
 ];
 
