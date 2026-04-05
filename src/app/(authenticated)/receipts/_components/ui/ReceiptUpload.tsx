@@ -69,34 +69,26 @@ export function ReceiptUpload({ lastImport }: ReceiptUploadProps) {
   }
 
   return (
-    <Card className="md:col-span-3" header={<div className="flex items-center justify-between">
-      <div>
-        <h2 className="text-lg font-semibold text-gray-900">Upload bank statement</h2>
-        <p className="text-sm text-gray-500">Import CSV statements and auto-match recurring items.</p>
-      </div>
-    </div>}>
-      <form onSubmit={handleStatementSubmit} className="space-y-4">
-        <div>
-          <Input
-            type="file"
-            accept=".csv"
-            onChange={(event) => setStatementFile(event.target.files?.[0] ?? null)}
-          />
-          {statementFile && (
-            <p className="mt-2 text-sm text-gray-500">{statementFile.name}</p>
-          )}
-        </div>
+    <Card padding="sm">
+      <h2 className="text-sm font-semibold text-gray-900">Upload bank statement</h2>
+      <p className="text-xs text-gray-500 mb-3">Import CSV and auto-match recurring items.</p>
+      <form onSubmit={handleStatementSubmit} className="space-y-3">
+        <Input
+          type="file"
+          accept=".csv"
+          onChange={(event) => setStatementFile(event.target.files?.[0] ?? null)}
+        />
         <div className="flex flex-wrap gap-2">
-          <Button type="submit" disabled={isStatementPending || !canManageReceipts}>
-            {isStatementPending && <Spinner className="mr-2 h-4 w-4" />}Upload statement
+          <Button type="submit" size="sm" disabled={isStatementPending || !canManageReceipts}>
+            {isStatementPending && <Spinner className="mr-2 h-4 w-4" />}Upload
           </Button>
-          <Button type="button" variant="secondary" onClick={() => setStatementFile(null)} disabled={!statementFile || isStatementPending || !canManageReceipts}>
-            Clear selection
+          <Button type="button" variant="secondary" size="sm" onClick={() => setStatementFile(null)} disabled={!statementFile || isStatementPending || !canManageReceipts}>
+            Clear
           </Button>
         </div>
         {lastImport && (
-          <p className="text-sm text-gray-500">
-            Last upload: {formatDate(lastImport.uploaded_at)} · {lastImport.original_filename}
+          <p className="text-xs text-gray-500">
+            Last: {formatDate(lastImport.uploaded_at)} · {lastImport.original_filename}
           </p>
         )}
       </form>
