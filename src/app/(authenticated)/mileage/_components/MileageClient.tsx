@@ -79,8 +79,6 @@ export function MileageClient({
       setShowFilters(true)
       refreshTrips({ dateFrom: from ?? undefined, dateTo: to ?? undefined })
     }
-    // Only run once on mount
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   function openNewTrip(): void {
