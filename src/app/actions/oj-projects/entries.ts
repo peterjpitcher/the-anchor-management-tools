@@ -3,6 +3,8 @@
 import { createClient } from '@/lib/supabase/server'
 import { checkUserPermission } from '@/app/actions/rbac'
 import { logAuditEvent } from '@/app/actions/audit'
+import { recalculateTaxYearMileage } from '@/lib/mileage/recalculateTaxYear'
+import { getTaxYearBounds } from '@/lib/mileage/hmrcRates'
 import { z } from 'zod'
 
 const TimeEntrySchema = z.object({
@@ -283,6 +285,11 @@ export async function createMileageEntry(formData: FormData) {
     new_values: { entry_type: 'mileage', project_id: data.project_id, entry_date: data.entry_date, miles: data.miles },
   })
 
+  // Trigger has synced this mileage entry to mileage_trips with default rates.
+  // Recalculate HMRC rate splits for the entire tax year so cumulative thresholds
+  // are applied correctly across all trips.
+  await recalculateTaxYearMileage(parsed.data.entry_date)
+
   return { entry: data, success: true as const }
 }
 
@@ -375,7 +382,7 @@ export async function updateEntry(formData: FormData) {
 
   const { data: existing, error: fetchError } = await supabase
     .from('oj_entries')
-    .select('id, status, start_at, end_at')
+    .select('id, status, start_at, end_at, entry_type, entry_date')
     .eq('id', parsed.data.id)
     .single()
 
@@ -441,6 +448,12 @@ export async function updateEntry(formData: FormData) {
       new_values: { entry_type: 'time', duration_minutes_rounded: roundedMinutes },
     })
 
+    // If the entry was previously mileage, the trigger deleted the synced
+    // mileage_trips row. Recalculate the affected tax year.
+    if (existing.entry_type === 'mileage') {
+      await recalculateTaxYearMileage(existing.entry_date)
+    }
+
     return { entry: data, success: true as const }
   }
 
@@ -479,6 +492,12 @@ export async function updateEntry(formData: FormData) {
       operation_status: 'success',
       new_values: { entry_type: 'one_off', amount_ex_vat_snapshot: parsed.data.amount_ex_vat },
     })
+
+    // If the entry was previously mileage, the trigger deleted the synced
+    // mileage_trips row. Recalculate the affected tax year.
+    if (existing.entry_type === 'mileage') {
+      await recalculateTaxYearMileage(existing.entry_date)
+    }
 
     return { entry: data, success: true as const }
   }
@@ -519,6 +538,18 @@ export async function updateEntry(formData: FormData) {
     new_values: { entry_type: 'mileage', miles: parsed.data.miles },
   })
 
+  // Trigger has updated the synced mileage_trips row with default rates.
+  // Recalculate HMRC rate splits for the affected tax year.
+  // If the date moved across a tax year boundary, recalculate both years.
+  await recalculateTaxYearMileage(parsed.data.entry_date)
+  if (existing.entry_type === 'mileage' && existing.entry_date !== parsed.data.entry_date) {
+    const oldBounds = getTaxYearBounds(existing.entry_date)
+    const newBounds = getTaxYearBounds(parsed.data.entry_date)
+    if (oldBounds.start !== newBounds.start) {
+      await recalculateTaxYearMileage(existing.entry_date)
+    }
+  }
+
   return { entry: data, success: true as const }
 }
 
@@ -537,7 +568,7 @@ export async function deleteEntry(formData: FormData) {
 
   const { data: entry, error: fetchError } = await supabase
     .from('oj_entries')
-    .select('id, status')
+    .select('id, status, entry_type, entry_date')
     .eq('id', id)
     .single()
 
@@ -562,6 +593,12 @@ export async function deleteEntry(formData: FormData) {
     resource_id: id,
     operation_status: 'success',
   })
+
+  // If the deleted entry was mileage, the trigger removed the synced
+  // mileage_trips row. Recalculate the affected tax year.
+  if (entry.entry_type === 'mileage') {
+    await recalculateTaxYearMileage(entry.entry_date)
+  }
 
   return { success: true as const }
 }
