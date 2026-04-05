@@ -26,29 +26,28 @@ export function ReceiptExport({ canExport = false }: { canExport?: boolean }) {
   }
 
   return (
-    <Card className="md:col-span-2" header={<div className="flex items-center justify-between">
-      <div>
-        <h2 className="text-lg font-semibold text-gray-900">Quarterly export</h2>
-        <p className="text-sm text-gray-500">Download a PDF summary and all receipts as a ZIP.</p>
-      </div>
-    </div>}>
-      <form onSubmit={handleExportSubmit} className="grid gap-3 sm:grid-cols-2">
-        <Select name="year" defaultValue={String(currentYear)}>
-          <option value="" disabled>Year</option>
-          {exportYears.map((yearOption) => (
-            <option key={yearOption} value={yearOption}>{yearOption}</option>
-          ))}
-        </Select>
-        <Select name="quarter" defaultValue={String(Math.ceil((new Date().getUTCMonth() + 1) / 3))}>
-          <option value="" disabled>Quarter</option>
-          <option value="1">Q1 (January to March)</option>
-          <option value="2">Q2 (April to June)</option>
-          <option value="3">Q3 (July to September)</option>
-          <option value="4">Q4 (October to December)</option>
-        </Select>
-        <Button type="submit" className="sm:col-span-2">
-          <DocumentArrowDownIcon className="mr-2 h-5 w-5" />
-          Download receipts bundle
+    <Card padding="sm">
+      <h2 className="text-sm font-semibold text-gray-900">Quarterly export</h2>
+      <p className="text-xs text-gray-500 mb-3">Download PDF summary and receipts as ZIP.</p>
+      <form onSubmit={handleExportSubmit} className="space-y-3">
+        <div className="grid grid-cols-2 gap-2">
+          <Select name="year" defaultValue={String(currentYear)}>
+            <option value="" disabled>Year</option>
+            {exportYears.map((yearOption) => (
+              <option key={yearOption} value={yearOption}>{yearOption}</option>
+            ))}
+          </Select>
+          <Select name="quarter" defaultValue={String(Math.ceil((new Date().getUTCMonth() + 1) / 3))}>
+            <option value="" disabled>Quarter</option>
+            <option value="1">Q1 (Jan–Mar)</option>
+            <option value="2">Q2 (Apr–Jun)</option>
+            <option value="3">Q3 (Jul–Sep)</option>
+            <option value="4">Q4 (Oct–Dec)</option>
+          </Select>
+        </div>
+        <Button type="submit" size="sm" className="w-full">
+          <DocumentArrowDownIcon className="mr-2 h-4 w-4" />
+          Download bundle
         </Button>
       </form>
     </Card>
