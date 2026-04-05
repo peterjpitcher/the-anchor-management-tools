@@ -113,7 +113,7 @@ export default function OJProjectsClientsPage() {
     monthly_cap_inc_vat: '',
     hourly_rate_ex_vat: '75',
     vat_rate: '20',
-    mileage_rate: '0.42',
+    mileage_rate: '0.45',
     retainer_included_hours_per_month: '',
     statement_mode: false,
   })
@@ -267,7 +267,7 @@ export default function OJProjectsClientsPage() {
         monthly_cap_inc_vat: s?.monthly_cap_inc_vat != null ? String(s.monthly_cap_inc_vat) : '',
         hourly_rate_ex_vat: s?.hourly_rate_ex_vat != null ? String(s.hourly_rate_ex_vat) : '75',
         vat_rate: s?.vat_rate != null ? String(s.vat_rate) : '20',
-        mileage_rate: s?.mileage_rate != null ? String(s.mileage_rate) : '0.42',
+        mileage_rate: s?.mileage_rate != null ? String(s.mileage_rate) : '0.45',
         retainer_included_hours_per_month:
           s?.retainer_included_hours_per_month != null ? String(s.retainer_included_hours_per_month) : '',
         statement_mode: !!s?.statement_mode,
