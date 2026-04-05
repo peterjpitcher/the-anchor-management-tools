@@ -97,6 +97,16 @@ export async function GET(request: NextRequest) {
 
     archive.pipe(passthrough)
 
+    // Collect chunks as they arrive to avoid backpressure deadlock
+    const chunks: Buffer[] = []
+    passthrough.on('data', (chunk: Buffer | Uint8Array) => {
+      chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk))
+    })
+    const streamDone = new Promise<void>((resolve, reject) => {
+      passthrough.on('end', resolve)
+      passthrough.on('error', reject)
+    })
+
     // Append summary CSV
     archive.append(summaryCsv, {
       name: `Receipts_Q${parsed.data.quarter}_${parsed.data.year}.csv`,
@@ -172,12 +182,8 @@ export async function GET(request: NextRequest) {
     }
 
     await archive.finalize()
+    await streamDone
 
-    // Collect the complete zip into a buffer before responding
-    const chunks: Buffer[] = []
-    for await (const chunk of passthrough) {
-      chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk))
-    }
     const zipBuffer = Buffer.concat(chunks)
 
     return new NextResponse(zipBuffer, {
