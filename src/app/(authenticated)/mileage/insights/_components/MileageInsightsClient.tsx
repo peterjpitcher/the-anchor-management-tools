@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useTransition } from 'react'
+import { useState, useTransition, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { TabNav } from '@/components/ui-v2/navigation/TabNav'
 import { StatGroup } from '@/components/ui-v2/display/Stat'
@@ -12,6 +12,8 @@ import {
   type MileageInsightsData,
   type MileageGranularity,
 } from '@/app/actions/mileage'
+import { useSort } from '@/hooks/useSort'
+import { SortableHeader } from '@/components/ui/SortableHeader'
 
 const PERIOD_TABS = [
   { key: 'monthly' as const, label: 'Monthly' },
@@ -49,6 +51,37 @@ export function MileageInsightsClient({ initialData }: MileageInsightsClientProp
   const [granularity, setGranularity] = useState<MileageGranularity>('monthly')
   const [data, setData] = useState<MileageInsightsData>(initialData)
   const [isPending, startTransition] = useTransition()
+
+  // ---------------------------------------------------------------------------
+  // Sorting — By Destination table
+  // ---------------------------------------------------------------------------
+
+  type DestinationSortKey = 'destination' | 'miles' | 'amount' | 'trips'
+
+  const destinationComparators = useMemo(
+    () => ({
+      destination: (a: MileageInsightsData['byDestination'][number], b: MileageInsightsData['byDestination'][number]) =>
+        a.destinationName.localeCompare(b.destinationName),
+      miles: (a: MileageInsightsData['byDestination'][number], b: MileageInsightsData['byDestination'][number]) =>
+        a.totalMiles - b.totalMiles,
+      amount: (a: MileageInsightsData['byDestination'][number], b: MileageInsightsData['byDestination'][number]) =>
+        a.amountDue - b.amountDue,
+      trips: (a: MileageInsightsData['byDestination'][number], b: MileageInsightsData['byDestination'][number]) =>
+        a.tripCount - b.tripCount,
+    }),
+    []
+  )
+
+  const {
+    sortedData: sortedByDestination,
+    sort: destinationSort,
+    toggleSort: toggleDestinationSort,
+  } = useSort<MileageInsightsData['byDestination'][number], DestinationSortKey>(
+    data.byDestination,
+    'miles',
+    'desc',
+    destinationComparators
+  )
 
   function handlePeriodChange(key: string): void {
     const newGranularity = key as MileageGranularity
@@ -122,14 +155,42 @@ export function MileageInsightsClient({ initialData }: MileageInsightsClientProp
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-gray-200">
-                  <th className="text-left py-2 pr-4 font-medium text-gray-500">Destination</th>
-                  <th className="text-right py-2 px-4 font-medium text-gray-500">Miles</th>
-                  <th className="text-right py-2 px-4 font-medium text-gray-500">Amount Due</th>
-                  <th className="text-right py-2 pl-4 font-medium text-gray-500">Trips</th>
+                  <SortableHeader
+                    label="Destination"
+                    column="destination"
+                    currentColumn={destinationSort.column}
+                    currentDirection={destinationSort.direction}
+                    onSort={toggleDestinationSort}
+                    className="text-left py-2 pr-4 font-medium text-gray-500"
+                  />
+                  <SortableHeader
+                    label="Miles"
+                    column="miles"
+                    currentColumn={destinationSort.column}
+                    currentDirection={destinationSort.direction}
+                    onSort={toggleDestinationSort}
+                    className="text-right py-2 px-4 font-medium text-gray-500"
+                  />
+                  <SortableHeader
+                    label="Amount Due"
+                    column="amount"
+                    currentColumn={destinationSort.column}
+                    currentDirection={destinationSort.direction}
+                    onSort={toggleDestinationSort}
+                    className="text-right py-2 px-4 font-medium text-gray-500"
+                  />
+                  <SortableHeader
+                    label="Trips"
+                    column="trips"
+                    currentColumn={destinationSort.column}
+                    currentDirection={destinationSort.direction}
+                    onSort={toggleDestinationSort}
+                    className="text-right py-2 pl-4 font-medium text-gray-500"
+                  />
                 </tr>
               </thead>
               <tbody>
-                {data.byDestination.map((dest) => (
+                {sortedByDestination.map((dest) => (
                   <tr key={dest.destinationName} className="border-b border-gray-100">
                     <td className="py-2 pr-4">{dest.destinationName}</td>
                     <td className="text-right py-2 px-4">{dest.totalMiles.toLocaleString('en-GB', { maximumFractionDigits: 1 })}</td>

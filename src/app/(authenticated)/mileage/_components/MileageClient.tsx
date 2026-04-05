@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useTransition, useCallback, useEffect } from 'react'
+import { useState, useTransition, useCallback, useEffect, useMemo } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { Button } from '@/components/ui-v2/forms/Button'
 import { Input } from '@/components/ui-v2/forms/Input'
@@ -14,6 +14,8 @@ import {
 import type { TaxYearStats } from '@/lib/mileage/hmrcRates'
 import { TripForm } from './TripForm'
 import { formatDateInLondon } from '@/lib/dateUtils'
+import { useSort } from '@/hooks/useSort'
+import { SortableHeader } from '@/components/ui/SortableHeader'
 import {
   PlusIcon,
   PencilSquareIcon,
@@ -50,6 +52,30 @@ export function MileageClient({
   const [editingTrip, setEditingTrip] = useState<MileageTrip | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<MileageTrip | null>(null)
   const [deleteError, setDeleteError] = useState<string | null>(null)
+
+  // ---------------------------------------------------------------------------
+  // Sorting
+  // ---------------------------------------------------------------------------
+
+  type TripSortKey = 'date' | 'route' | 'miles' | 'rate' | 'amount' | 'source'
+
+  const tripComparators = useMemo(
+    () => ({
+      date: (a: MileageTrip, b: MileageTrip) => a.tripDate.localeCompare(b.tripDate),
+      route: (a: MileageTrip, b: MileageTrip) => a.routeSummary.localeCompare(b.routeSummary),
+      miles: (a: MileageTrip, b: MileageTrip) => a.totalMiles - b.totalMiles,
+      rate: (a: MileageTrip, b: MileageTrip) => a.milesAtStandardRate - b.milesAtStandardRate,
+      amount: (a: MileageTrip, b: MileageTrip) => a.amountDue - b.amountDue,
+      source: (a: MileageTrip, b: MileageTrip) => a.source.localeCompare(b.source),
+    }),
+    []
+  )
+
+  const {
+    sortedData: sortedTrips,
+    sort: tripSort,
+    toggleSort: toggleTripSort,
+  } = useSort<MileageTrip, TripSortKey>(trips, 'date', 'desc', tripComparators)
 
   // Filter state — initialised from URL search params if present
   const [showFilters, setShowFilters] = useState(false)
@@ -230,24 +256,54 @@ export function MileageClient({
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
               <tr>
-                <th scope="col" className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
-                  Date
-                </th>
-                <th scope="col" className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
-                  Route
-                </th>
-                <th scope="col" className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500">
-                  Miles
-                </th>
-                <th scope="col" className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500">
-                  Rate
-                </th>
-                <th scope="col" className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500">
-                  Amount
-                </th>
-                <th scope="col" className="px-4 py-3 text-center text-xs font-medium uppercase tracking-wider text-gray-500">
-                  Source
-                </th>
+                <SortableHeader
+                  label="Date"
+                  column="date"
+                  currentColumn={tripSort.column}
+                  currentDirection={tripSort.direction}
+                  onSort={toggleTripSort}
+                  className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500"
+                />
+                <SortableHeader
+                  label="Route"
+                  column="route"
+                  currentColumn={tripSort.column}
+                  currentDirection={tripSort.direction}
+                  onSort={toggleTripSort}
+                  className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500"
+                />
+                <SortableHeader
+                  label="Miles"
+                  column="miles"
+                  currentColumn={tripSort.column}
+                  currentDirection={tripSort.direction}
+                  onSort={toggleTripSort}
+                  className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500"
+                />
+                <SortableHeader
+                  label="Rate"
+                  column="rate"
+                  currentColumn={tripSort.column}
+                  currentDirection={tripSort.direction}
+                  onSort={toggleTripSort}
+                  className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500"
+                />
+                <SortableHeader
+                  label="Amount"
+                  column="amount"
+                  currentColumn={tripSort.column}
+                  currentDirection={tripSort.direction}
+                  onSort={toggleTripSort}
+                  className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500"
+                />
+                <SortableHeader
+                  label="Source"
+                  column="source"
+                  currentColumn={tripSort.column}
+                  currentDirection={tripSort.direction}
+                  onSort={toggleTripSort}
+                  className="px-4 py-3 text-center text-xs font-medium uppercase tracking-wider text-gray-500"
+                />
                 {canManage && (
                   <th scope="col" className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500">
                     Actions
@@ -256,7 +312,7 @@ export function MileageClient({
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200">
-              {trips.map((trip) => {
+              {sortedTrips.map((trip) => {
                 const isOjProjects = trip.source === 'oj_projects'
                 const hasMixedRates = trip.milesAtStandardRate > 0 && trip.milesAtReducedRate > 0
                 return (

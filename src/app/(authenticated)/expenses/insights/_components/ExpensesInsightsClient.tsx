@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useTransition } from 'react'
+import { useState, useTransition, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { TabNav } from '@/components/ui-v2/navigation/TabNav'
 import { StatGroup, Stat } from '@/components/ui-v2/display/Stat'
@@ -11,6 +11,8 @@ import {
   type ExpenseInsightsData,
   type ExpenseGranularity,
 } from '@/app/actions/expenses'
+import { useSort } from '@/hooks/useSort'
+import { SortableHeader } from '@/components/ui/SortableHeader'
 
 const PERIOD_TABS = [
   { key: 'monthly' as const, label: 'Monthly' },
@@ -48,6 +50,37 @@ export function ExpensesInsightsClient({ initialData }: ExpensesInsightsClientPr
   const [granularity, setGranularity] = useState<ExpenseGranularity>('monthly')
   const [data, setData] = useState<ExpenseInsightsData>(initialData)
   const [isPending, startTransition] = useTransition()
+
+  // ---------------------------------------------------------------------------
+  // Sorting — By Company table
+  // ---------------------------------------------------------------------------
+
+  type CompanySortKey = 'company' | 'total' | 'vat' | 'count'
+
+  const companyComparators = useMemo(
+    () => ({
+      company: (a: ExpenseInsightsData['byCompany'][number], b: ExpenseInsightsData['byCompany'][number]) =>
+        a.companyRef.localeCompare(b.companyRef),
+      total: (a: ExpenseInsightsData['byCompany'][number], b: ExpenseInsightsData['byCompany'][number]) =>
+        a.totalAmount - b.totalAmount,
+      vat: (a: ExpenseInsightsData['byCompany'][number], b: ExpenseInsightsData['byCompany'][number]) =>
+        a.totalVat - b.totalVat,
+      count: (a: ExpenseInsightsData['byCompany'][number], b: ExpenseInsightsData['byCompany'][number]) =>
+        a.count - b.count,
+    }),
+    []
+  )
+
+  const {
+    sortedData: sortedByCompany,
+    sort: companySort,
+    toggleSort: toggleCompanySort,
+  } = useSort<ExpenseInsightsData['byCompany'][number], CompanySortKey>(
+    data.byCompany,
+    'total',
+    'desc',
+    companyComparators
+  )
 
   function handlePeriodChange(key: string): void {
     const newGranularity = key as ExpenseGranularity
@@ -121,14 +154,42 @@ export function ExpensesInsightsClient({ initialData }: ExpensesInsightsClientPr
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-gray-200">
-                  <th className="text-left py-2 pr-4 font-medium text-gray-500">Company</th>
-                  <th className="text-right py-2 px-4 font-medium text-gray-500">Total</th>
-                  <th className="text-right py-2 px-4 font-medium text-gray-500">VAT</th>
-                  <th className="text-right py-2 pl-4 font-medium text-gray-500">Count</th>
+                  <SortableHeader
+                    label="Company"
+                    column="company"
+                    currentColumn={companySort.column}
+                    currentDirection={companySort.direction}
+                    onSort={toggleCompanySort}
+                    className="text-left py-2 pr-4 font-medium text-gray-500"
+                  />
+                  <SortableHeader
+                    label="Total"
+                    column="total"
+                    currentColumn={companySort.column}
+                    currentDirection={companySort.direction}
+                    onSort={toggleCompanySort}
+                    className="text-right py-2 px-4 font-medium text-gray-500"
+                  />
+                  <SortableHeader
+                    label="VAT"
+                    column="vat"
+                    currentColumn={companySort.column}
+                    currentDirection={companySort.direction}
+                    onSort={toggleCompanySort}
+                    className="text-right py-2 px-4 font-medium text-gray-500"
+                  />
+                  <SortableHeader
+                    label="Count"
+                    column="count"
+                    currentColumn={companySort.column}
+                    currentDirection={companySort.direction}
+                    onSort={toggleCompanySort}
+                    className="text-right py-2 pl-4 font-medium text-gray-500"
+                  />
                 </tr>
               </thead>
               <tbody>
-                {data.byCompany.map((company) => (
+                {sortedByCompany.map((company) => (
                   <tr key={company.companyRef} className="border-b border-gray-100">
                     <td className="py-2 pr-4">{company.companyRef}</td>
                     <td className="text-right py-2 px-4">{formatCurrency(company.totalAmount)}</td>
