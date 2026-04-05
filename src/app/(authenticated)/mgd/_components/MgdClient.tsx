@@ -307,19 +307,19 @@ export function MgdClient({
               <div className="rounded-lg bg-gray-50 p-4">
                 <p className="text-sm text-gray-500">Net Takings</p>
                 <p className="text-xl font-semibold text-gray-900">
-                  {formatCurrency(viewingReturn.total_net_take)}
+                  {formatCurrency(viewingReturn.total_net_take ?? 0)}
                 </p>
               </div>
               <div className="rounded-lg bg-gray-50 p-4">
                 <p className="text-sm text-gray-500">MGD Due (20%)</p>
                 <p className="text-xl font-semibold text-gray-900">
-                  {formatCurrency(viewingReturn.total_mgd)}
+                  {formatCurrency(viewingReturn.total_mgd ?? 0)}
                 </p>
               </div>
               <div className="rounded-lg bg-gray-50 p-4">
                 <p className="text-sm text-gray-500">VAT on Supplier</p>
                 <p className="text-xl font-semibold text-gray-900">
-                  {formatCurrency(viewingReturn.total_vat_on_supplier)}
+                  {formatCurrency(viewingReturn.total_vat_on_supplier ?? 0)}
                 </p>
               </div>
             </div>
@@ -496,10 +496,10 @@ export function MgdClient({
                         {periodLabel(r.period_start, r.period_end)}
                       </td>
                       <td className="whitespace-nowrap px-4 py-3 text-right text-sm text-gray-900">
-                        {formatCurrency(r.total_net_take)}
+                        {formatCurrency(r.total_net_take ?? 0)}
                       </td>
                       <td className="whitespace-nowrap px-4 py-3 text-right text-sm text-gray-900">
-                        {formatCurrency(r.total_mgd)}
+                        {formatCurrency(r.total_mgd ?? 0)}
                       </td>
                       <td className="whitespace-nowrap px-4 py-3 text-center">
                         <Badge variant={statusBadgeVariant(r.status)} size="sm">
