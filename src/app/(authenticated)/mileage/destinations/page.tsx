@@ -3,6 +3,13 @@ import { checkUserPermission } from '@/app/actions/rbac'
 import { getDestinations } from '@/app/actions/mileage'
 import { redirect } from 'next/navigation'
 import { DestinationsClient } from '../_components/DestinationsClient'
+import type { HeaderNavItem } from '@/components/ui-v2/navigation/HeaderNav'
+
+const navItems: HeaderNavItem[] = [
+  { label: 'Trips', href: '/mileage' },
+  { label: 'Destinations', href: '/mileage/destinations' },
+  { label: 'Insights', href: '/mileage/insights' },
+]
 
 export default async function MileageDestinationsPage(): Promise<React.JSX.Element> {
   const canView = await checkUserPermission('mileage', 'view')
@@ -14,9 +21,9 @@ export default async function MileageDestinationsPage(): Promise<React.JSX.Eleme
 
   return (
     <PageLayout
-      title="Saved Destinations"
-      subtitle="Manage your frequently visited destinations."
-      backButton={{ label: 'Back to mileage', href: '/mileage' }}
+      title="Mileage"
+      subtitle="Destinations"
+      navItems={navItems}
     >
       <DestinationsClient
         initialDestinations={destinations}
