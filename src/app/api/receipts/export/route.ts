@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import archiver, { type ArchiverError } from 'archiver'
-import { PassThrough, Readable } from 'stream'
+import { PassThrough } from 'stream'
 import Papa from 'papaparse'
 import { checkUserPermission } from '@/app/actions/rbac'
 import { createAdminClient } from '@/lib/supabase/admin'
@@ -83,118 +83,112 @@ export async function GET(request: NextRequest) {
     const archive = archiver('zip', { zlib: { level: 1 } })
     const passthrough = new PassThrough()
 
-    const handleArchiveError = (error: unknown) => {
-      console.error('Receipts export stream failed:', error)
-      passthrough.destroy(error instanceof Error ? error : new Error('Receipts export failed'))
-    }
-
     archive.on('warning', (warning) => {
       const archiverWarning = warning as ArchiverError
       if (archiverWarning?.code === 'ENOENT') {
         console.warn('Archiver warning:', warning)
         return
       }
-      handleArchiveError(warning)
+      console.error('Archiver warning (non-ENOENT):', warning)
     })
-    archive.on('error', handleArchiveError)
-    passthrough.on('error', (streamError) => {
-      console.error('Receipts export passthrough error:', streamError)
+    archive.on('error', (error) => {
+      console.error('Receipts export archive error:', error)
     })
 
     archive.pipe(passthrough)
 
-    const stream = Readable.toWeb(passthrough) as unknown as ReadableStream<Uint8Array>
-    const response = new NextResponse(stream, {
+    // Append summary CSV
+    archive.append(summaryCsv, {
+      name: `Receipts_Q${parsed.data.quarter}_${parsed.data.year}.csv`,
+    })
+
+    // Append receipt files with concurrency limit
+    const downloadTasks: Array<() => Promise<void>> = []
+
+    for (const transaction of rows) {
+      const files = transaction.receipt_files ?? []
+      if (!files?.length) continue
+
+      for (const [index, file] of files.entries()) {
+        downloadTasks.push(async () => {
+          const download = await supabase.storage.from(RECEIPT_BUCKET).download(file.storage_path)
+          if (download.error || !download.data) {
+            console.warn(`Failed to download receipt ${file.storage_path}:`, download.error)
+            return
+          }
+
+          const buffer = await normaliseToBuffer(download.data)
+          const name = buildReceiptFileName(transaction, file, index)
+
+          archive.append(buffer, { name })
+        })
+      }
+    }
+
+    await runWithConcurrency(downloadTasks, DOWNLOAD_CONCURRENCY)
+
+    // --- Enhanced bundle for super_admin users ---
+    if (isSuperAdmin) {
+      const q = parsed.data.quarter as 1 | 2 | 3 | 4
+      const y = parsed.data.year
+
+      // Generate mileage, expenses, and MGD CSVs in parallel
+      const [mileageResult, expensesResult, mgdResult] = await Promise.all([
+        buildMileageCsv(supabase, startDate, endDate, y, q),
+        buildExpensesCsv(supabase, startDate, endDate, y, q),
+        buildMgdCsv(supabase, y, q),
+      ])
+
+      // Append CSVs to archive
+      archive.append(mileageResult.csv, {
+        name: `Mileage_Q${q}_${y}.csv`,
+      })
+      archive.append(expensesResult.csv, {
+        name: `Expenses_Q${q}_${y}.csv`,
+      })
+      archive.append(mgdResult.csv, {
+        name: mgdResult.fileName,
+      })
+
+      // Append expense receipt images using the same IDs from the CSV generation
+      // to ensure CSV and images represent the same snapshot of data
+      const expenseImageCount = await appendExpenseImages(supabase, expensesResult.summary.expenseIds, archive)
+
+      // Generate and append Claim Summary PDF
+      await appendClaimSummaryPdf(archive, {
+        year: y,
+        quarter: q,
+        mileage: mileageResult.summary,
+        expenses: expensesResult.summary,
+        mgd: mgdResult.summary,
+        mgdFileName: mgdResult.fileName,
+        hasExpenseImages: expenseImageCount > 0,
+      })
+    }
+
+    if (!rows.length && !isSuperAdmin) {
+      const placeholder = Buffer.from('No transactions found for this quarter.', 'utf-8')
+      archive.append(placeholder, { name: 'README.txt' })
+    }
+
+    await archive.finalize()
+
+    // Collect the complete zip into a buffer before responding
+    const chunks: Buffer[] = []
+    for await (const chunk of passthrough) {
+      chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk))
+    }
+    const zipBuffer = Buffer.concat(chunks)
+
+    return new NextResponse(zipBuffer, {
       status: 200,
       headers: {
         'Content-Type': 'application/zip',
         'Content-Disposition': `attachment; filename="receipts_q${parsed.data.quarter}_${parsed.data.year}.zip"`,
         'Cache-Control': 'no-store',
-        'X-Accel-Buffering': 'no',
+        'Content-Length': String(zipBuffer.length),
       },
     })
-
-    void (async () => {
-      try {
-        archive.append(summaryCsv, {
-          name: `Receipts_Q${parsed.data.quarter}_${parsed.data.year}.csv`,
-        })
-
-        const downloadTasks: Array<() => Promise<void>> = []
-
-        for (const transaction of rows) {
-          const files = transaction.receipt_files ?? []
-          if (!files?.length) continue
-
-          for (const [index, file] of files.entries()) {
-            downloadTasks.push(async () => {
-              const download = await supabase.storage.from(RECEIPT_BUCKET).download(file.storage_path)
-              if (download.error || !download.data) {
-                console.warn(`Failed to download receipt ${file.storage_path}:`, download.error)
-                return
-              }
-
-              const buffer = await normaliseToBuffer(download.data)
-              const name = buildReceiptFileName(transaction, file, index)
-
-              archive.append(buffer, { name })
-            })
-          }
-        }
-
-        await runWithConcurrency(downloadTasks, DOWNLOAD_CONCURRENCY)
-
-        // --- Enhanced bundle for super_admin users ---
-        if (isSuperAdmin) {
-          const q = parsed.data.quarter as 1 | 2 | 3 | 4
-          const y = parsed.data.year
-
-          // Generate mileage, expenses, and MGD CSVs in parallel
-          const [mileageResult, expensesResult, mgdResult] = await Promise.all([
-            buildMileageCsv(supabase, startDate, endDate, y, q),
-            buildExpensesCsv(supabase, startDate, endDate, y, q),
-            buildMgdCsv(supabase, y, q),
-          ])
-
-          // Append CSVs to archive
-          archive.append(mileageResult.csv, {
-            name: `Mileage_Q${q}_${y}.csv`,
-          })
-          archive.append(expensesResult.csv, {
-            name: `Expenses_Q${q}_${y}.csv`,
-          })
-          archive.append(mgdResult.csv, {
-            name: mgdResult.fileName,
-          })
-
-          // Append expense receipt images using the same IDs from the CSV generation
-          // to ensure CSV and images represent the same snapshot of data
-          const expenseImageCount = await appendExpenseImages(supabase, expensesResult.summary.expenseIds, archive)
-
-          // Generate and append Claim Summary PDF
-          await appendClaimSummaryPdf(archive, {
-            year: y,
-            quarter: q,
-            mileage: mileageResult.summary,
-            expenses: expensesResult.summary,
-            mgd: mgdResult.summary,
-            mgdFileName: mgdResult.fileName,
-            hasExpenseImages: expenseImageCount > 0,
-          })
-        }
-
-        if (!rows.length && !isSuperAdmin) {
-          const placeholder = Buffer.from('No transactions found for this quarter.', 'utf-8')
-          archive.append(placeholder, { name: 'README.txt' })
-        }
-
-        await archive.finalize()
-      } catch (streamError) {
-        handleArchiveError(streamError)
-      }
-    })()
-
-    return response
   } catch (err) {
     console.error('Receipts export failed:', err)
     return NextResponse.json({ error: 'Failed to generate receipts export.' }, { status: 500 })
