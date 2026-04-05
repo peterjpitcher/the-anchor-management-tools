@@ -68,8 +68,6 @@ export function ExpensesClient({
         if (result.success && result.data) setExpenses(result.data)
       })
     }
-    // Only run once on mount
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   // Modal state
