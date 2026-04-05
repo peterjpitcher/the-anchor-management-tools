@@ -95,6 +95,7 @@ export interface OptimiseResult {
 }
 
 const MAX_DIMENSION = 2000
+const MAX_MEGAPIXELS = 50_000_000
 const JPEG_QUALITY = 80
 const WEBP_QUALITY = 80
 const PNG_COMPRESSION_LEVEL = 6
@@ -133,6 +134,13 @@ export async function optimiseImage(
   // Get metadata for dimension check
   const metadata = await pipeline.metadata()
   const { width = 0, height = 0 } = metadata
+
+  // Reject images over 50 megapixels to prevent decompression bombs
+  if (width * height > MAX_MEGAPIXELS) {
+    throw new Error(
+      `Image is too large (${Math.round((width * height) / 1_000_000)}MP). Maximum is 50MP.`
+    )
+  }
 
   // Resize if either dimension exceeds the max
   if (width > MAX_DIMENSION || height > MAX_DIMENSION) {
