@@ -4,8 +4,16 @@ import { PassThrough, Readable } from 'stream'
 import Papa from 'papaparse'
 import { checkUserPermission } from '@/app/actions/rbac'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { createClient } from '@/lib/supabase/server'
 import { receiptQuarterExportSchema } from '@/lib/validation'
 import type { ReceiptTransaction, ReceiptFile } from '@/types/database'
+import {
+  buildMileageCsv,
+  buildExpensesCsv,
+  buildMgdCsv,
+  appendExpenseImages,
+  appendClaimSummaryPdf,
+} from '@/lib/receipts/export'
 
 export const runtime = 'nodejs'
 export const maxDuration = 300
@@ -50,6 +58,10 @@ export async function GET(request: NextRequest) {
     }
 
     const { startDate, endDate } = deriveQuarterRange(parsed.data.year, parsed.data.quarter)
+
+    // Determine if the user is a super_admin — enhanced bundle includes
+    // mileage, expenses, MGD CSVs, expense receipt images, and claim PDF.
+    const isSuperAdmin = await checkIsSuperAdmin()
 
     const supabase = createAdminClient()
     const { data: transactions, error } = await supabase
@@ -132,7 +144,46 @@ export async function GET(request: NextRequest) {
 
         await runWithConcurrency(downloadTasks, DOWNLOAD_CONCURRENCY)
 
-        if (!rows.length) {
+        // --- Enhanced bundle for super_admin users ---
+        if (isSuperAdmin) {
+          const q = parsed.data.quarter as 1 | 2 | 3 | 4
+          const y = parsed.data.year
+
+          // Generate mileage, expenses, and MGD CSVs in parallel
+          const [mileageResult, expensesResult, mgdResult] = await Promise.all([
+            buildMileageCsv(supabase, startDate, endDate, y, q),
+            buildExpensesCsv(supabase, startDate, endDate, y, q),
+            buildMgdCsv(supabase, y, q),
+          ])
+
+          // Append CSVs to archive
+          archive.append(mileageResult.csv, {
+            name: `Mileage_Q${q}_${y}.csv`,
+          })
+          archive.append(expensesResult.csv, {
+            name: `Expenses_Q${q}_${y}.csv`,
+          })
+          archive.append(mgdResult.csv, {
+            name: mgdResult.fileName,
+          })
+
+          // Append expense receipt images using the same IDs from the CSV generation
+          // to ensure CSV and images represent the same snapshot of data
+          const expenseImageCount = await appendExpenseImages(supabase, expensesResult.summary.expenseIds, archive)
+
+          // Generate and append Claim Summary PDF
+          await appendClaimSummaryPdf(archive, {
+            year: y,
+            quarter: q,
+            mileage: mileageResult.summary,
+            expenses: expensesResult.summary,
+            mgd: mgdResult.summary,
+            mgdFileName: mgdResult.fileName,
+            hasExpenseImages: expenseImageCount > 0,
+          })
+        }
+
+        if (!rows.length && !isSuperAdmin) {
           const placeholder = Buffer.from('No transactions found for this quarter.', 'utf-8')
           archive.append(placeholder, { name: 'README.txt' })
         }
@@ -365,3 +416,31 @@ function sanitizePathSegment(value: string, fallback: string): string {
 
   return cleaned || fallback
 }
+
+/**
+ * Checks whether the current authenticated user has the super_admin role.
+ * Uses the cookie-based auth client to identify the user, then queries
+ * user_roles + roles via the admin client.
+ */
+async function checkIsSuperAdmin(): Promise<boolean> {
+  try {
+    const authClient = await createClient()
+    const { data: { user } } = await authClient.auth.getUser()
+    if (!user) return false
+
+    const admin = createAdminClient()
+    const { data: roles, error } = await admin
+      .from('user_roles')
+      .select('roles!inner ( name )')
+      .eq('user_id', user.id)
+
+    if (error || !roles) return false
+
+    return roles.some(
+      (r) => (r as unknown as { roles: { name: string } }).roles?.name === 'super_admin'
+    )
+  } catch {
+    return false
+  }
+}
+

@@ -29,6 +29,7 @@ export interface ExpensesSummary {
   totalEntries: number
   grossTotal: number
   vatTotal: number
+  expenseIds: string[]
 }
 
 /**
@@ -59,7 +60,8 @@ export async function buildExpensesCsv(
   const grossTotal = rows.reduce((sum, e) => sum + Number(e.amount), 0)
   const vatTotal = rows.reduce((sum, e) => sum + (e.vat_applicable ? Number(e.vat_amount) : 0), 0)
 
-  const summary: ExpensesSummary = { totalEntries, grossTotal, vatTotal }
+  const expenseIds = rows.map((e) => e.id)
+  const summary: ExpensesSummary = { totalEntries, grossTotal, vatTotal, expenseIds }
 
   // Build CSV rows
   const summaryRows: string[][] = [
