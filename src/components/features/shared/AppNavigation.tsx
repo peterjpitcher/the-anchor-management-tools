@@ -1,7 +1,7 @@
 'use client'
 
 import { usePathname } from 'next/navigation'
-import { CalendarIcon, UserGroupIcon, HomeIcon, IdentificationIcon, PencilSquareIcon, CogIcon, EnvelopeIcon, BuildingOfficeIcon, DocumentTextIcon, LinkIcon, ReceiptRefundIcon, TruckIcon, Squares2X2Icon, BanknotesIcon, MicrophoneIcon, BriefcaseIcon, CalendarDaysIcon, UserCircleIcon, UsersIcon, ShieldCheckIcon, DocumentDuplicateIcon, ChevronRightIcon } from '@heroicons/react/24/outline'
+import { CalendarIcon, UserGroupIcon, HomeIcon, IdentificationIcon, PencilSquareIcon, CogIcon, EnvelopeIcon, BuildingOfficeIcon, DocumentTextIcon, LinkIcon, ReceiptRefundIcon, TruckIcon, Squares2X2Icon, BanknotesIcon, MicrophoneIcon, BriefcaseIcon, CalendarDaysIcon, UserCircleIcon, UsersIcon, ShieldCheckIcon, DocumentDuplicateIcon, ChevronRightIcon, MapIcon, MapPinIcon, CurrencyPoundIcon } from '@heroicons/react/24/outline'
 import { useMemo, useState } from 'react'
 import { cn } from '@/lib/utils'
 import { usePermissions } from '@/contexts/PermissionContext'
@@ -62,6 +62,10 @@ const financeNavigation: NavigationItemWithPermission[] = [
   { name: 'Work Types', href: '/oj-projects/work-types', icon: BriefcaseIcon, permission: { module: 'oj_projects', action: 'view' }, subItem: true },
   { name: 'Time Entries', href: '/oj-projects/entries', icon: BriefcaseIcon, permission: { module: 'oj_projects', action: 'view' }, subItem: true },
   { name: 'Receipts', href: '/receipts', icon: ReceiptRefundIcon, permission: { module: 'receipts', action: 'view' } },
+  { name: 'Mileage', href: '/mileage', icon: MapIcon, permission: { module: 'mileage', action: 'view' } },
+  { name: 'Destinations', href: '/mileage/destinations', icon: MapPinIcon, permission: { module: 'mileage', action: 'view' }, subItem: true },
+  { name: 'Expenses', href: '/expenses', icon: BanknotesIcon, permission: { module: 'expenses', action: 'view' } },
+  { name: 'MGD', href: '/mgd', icon: CurrencyPoundIcon, permission: { module: 'mgd', action: 'view' } },
   { name: 'Short Links', href: '/short-links', icon: LinkIcon, permission: { module: 'short_links', action: 'view' } },
 ];
 
