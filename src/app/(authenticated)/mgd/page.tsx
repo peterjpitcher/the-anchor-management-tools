@@ -5,6 +5,12 @@ import { PageLayout } from '@/components/ui-v2/layout/PageLayout'
 import { Alert } from '@/components/ui-v2/feedback/Alert'
 import { Card } from '@/components/ui-v2/layout/Card'
 import { MgdClient } from './_components/MgdClient'
+import type { HeaderNavItem } from '@/components/ui-v2/navigation/HeaderNav'
+
+const navItems: HeaderNavItem[] = [
+  { label: 'Collections', href: '/mgd' },
+  { label: 'Insights', href: '/mgd/insights' },
+]
 
 export default async function MgdPage(): Promise<React.ReactElement> {
   const canView = await checkUserPermission('mgd', 'view')
@@ -22,7 +28,7 @@ export default async function MgdPage(): Promise<React.ReactElement> {
       ('error' in currentReturnResult ? currentReturnResult.error : '') ||
       ('error' in returnsResult ? returnsResult.error : '')
     return (
-      <PageLayout title="Machine Games Duty">
+      <PageLayout title="Machine Games Duty" navItems={navItems}>
         <Card>
           <Alert
             variant="error"
@@ -54,7 +60,7 @@ export default async function MgdPage(): Promise<React.ReactElement> {
   }
 
   return (
-    <PageLayout title="Machine Games Duty" subtitle="Track collections and quarterly MGD returns">
+    <PageLayout title="Machine Games Duty" subtitle="Track collections and quarterly MGD returns" navItems={navItems}>
       <MgdClient
         initialReturn={currentReturn}
         initialCollections={initialCollections}
