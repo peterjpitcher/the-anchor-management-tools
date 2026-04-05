@@ -124,7 +124,7 @@ export function ExpensesClient({
   }, [])
 
   const handleSubmit = useCallback(
-    async (data: ExpenseFormData): Promise<{ success?: boolean; error?: string }> => {
+    async (data: ExpenseFormData): Promise<{ success?: boolean; error?: string; createdId?: string }> => {
       if (editingExpense) {
         const result = await updateExpense({ ...data, id: editingExpense.id })
         if (result.success) {
@@ -138,6 +138,8 @@ export function ExpensesClient({
           setCreatedExpenseId(result.data.id)
           refreshData()
           // Don't close form yet — let file upload complete
+          // Return the created ID so the form can pass it synchronously to upload
+          return { success: true, createdId: result.data.id }
         }
         return { success: result.success, error: result.error }
       }
@@ -146,8 +148,8 @@ export function ExpensesClient({
   )
 
   const handleUploadFiles = useCallback(
-    async (files: File[]): Promise<{ success?: boolean; error?: string }> => {
-      const targetId = editingExpense?.id ?? createdExpenseId
+    async (files: File[], expenseId?: string): Promise<{ success?: boolean; error?: string }> => {
+      const targetId = expenseId ?? editingExpense?.id ?? createdExpenseId
       if (!targetId) return { error: 'No expense to attach files to' }
 
       const formData = new FormData()
