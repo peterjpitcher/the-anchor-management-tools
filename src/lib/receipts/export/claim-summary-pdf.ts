@@ -54,6 +54,7 @@ export async function appendClaimSummaryPdf(
     })
 
     passthrough.on('error', reject)
+    doc.on('error', reject)
 
     // ---- Header ----
     doc

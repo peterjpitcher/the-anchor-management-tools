@@ -196,7 +196,7 @@ export async function GET(request: NextRequest) {
       },
     })
   } catch (err) {
-    console.error('Receipts export failed:', err)
+    console.error('Receipts export failed:', err instanceof Error ? { message: err.message, stack: err.stack, name: err.name } : err)
     return NextResponse.json({ error: 'Failed to generate receipts export.' }, { status: 500 })
   }
 }
