@@ -1,5 +1,5 @@
 {
-  "buildCommand": "rm -rf .next && npm run build",
+  "buildCommand": "npm run build",
   "rewrites": [
     {
       "source": "/l/:code",
