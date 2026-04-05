@@ -30,10 +30,10 @@ interface ExpenseFormProps {
   initialData?: ExpenseFormData
   /** Existing files when editing */
   existingFiles?: ExistingFile[]
-  /** Called when the form is submitted with field values */
-  onSubmit: (data: ExpenseFormData) => Promise<{ success?: boolean; error?: string }>
-  /** Called when files are selected for upload */
-  onUploadFiles?: (files: File[]) => Promise<{ success?: boolean; error?: string }>
+  /** Called when the form is submitted with field values. Returns createdId for new expenses. */
+  onSubmit: (data: ExpenseFormData) => Promise<{ success?: boolean; error?: string; createdId?: string }>
+  /** Called when files are selected for upload. Optional expenseId for newly created expenses. */
+  onUploadFiles?: (files: File[], expenseId?: string) => Promise<{ success?: boolean; error?: string }>
   /** Called when an existing file should be deleted */
   onDeleteFile?: (fileId: string) => Promise<{ success?: boolean; error?: string }>
   /** Called when the form should close/cancel */
@@ -173,10 +173,10 @@ export function ExpenseForm({
         return
       }
 
-      // Upload pending files if any
+      // Upload pending files if any — pass createdId directly to avoid stale closure
       if (pendingFiles.length > 0 && onUploadFiles) {
         setUploading(true)
-        const uploadResult = await onUploadFiles(pendingFiles)
+        const uploadResult = await onUploadFiles(pendingFiles, result.createdId)
         if (uploadResult.error) {
           setFileError(uploadResult.error)
           // Don't return — expense was already saved
