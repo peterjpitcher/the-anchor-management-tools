@@ -19,7 +19,7 @@ export interface MgdCollection {
   mgd_amount: number
   vat_on_supplier: number
   notes: string | null
-  return_id: string
+  created_by: string | null
   created_at: string
   updated_at: string
 }
@@ -121,19 +121,10 @@ export async function getCollections(
     .order('collection_date', { ascending: false })
 
   if (periodStart && periodEnd) {
-    // Filter collections whose return matches this period
-    // First get the return id for this period
-    const { data: ret } = await db
-      .from('mgd_returns')
-      .select('id')
-      .eq('period_start', periodStart)
-      .eq('period_end', periodEnd)
-      .maybeSingle()
-
-    if (!ret) {
-      return { success: true, data: [] }
-    }
-    query = query.eq('return_id', ret.id)
+    // Filter collections by date range (no FK between tables)
+    query = query
+      .gte('collection_date', periodStart)
+      .lte('collection_date', periodEnd)
   }
 
   const { data, error } = await query
@@ -326,21 +317,28 @@ export async function updateCollection(formData: {
   const { id, collection_date, net_take, vat_on_supplier, notes } = parsed.data
   const db = createAdminClient()
 
-  // Fetch current collection to find its return
+  // Fetch current collection
   const { data: existing, error: fetchErr } = await db
     .from('mgd_collections')
-    .select('*, mgd_returns!inner(status)')
+    .select('*')
     .eq('id', id)
     .single()
 
   if (fetchErr || !existing) return { error: 'Collection not found' }
 
-  const returnStatus = (
-    existing.mgd_returns as unknown as { status: string }
-  )?.status
-  if (returnStatus === 'submitted' || returnStatus === 'paid') {
+  // Check if the source period is locked
+  const [ey, em] = (existing.collection_date as string).split('-').map(Number)
+  const sourceQuarter = getMgdQuarter(new Date(ey, em - 1, 1))
+  const { data: sourceReturn } = await db
+    .from('mgd_returns')
+    .select('id, status')
+    .eq('period_start', sourceQuarter.periodStart)
+    .eq('period_end', sourceQuarter.periodEnd)
+    .maybeSingle()
+
+  if (sourceReturn && (sourceReturn.status === 'submitted' || sourceReturn.status === 'paid')) {
     return {
-      error: `Cannot edit collections in a ${returnStatus} return. Reopen the return first.`,
+      error: `Cannot edit collections in a ${sourceReturn.status} return. Reopen the return first.`,
     }
   }
 
@@ -407,18 +405,25 @@ export async function deleteCollection(id: string): ActionResult {
 
   const { data: existing, error: fetchErr } = await db
     .from('mgd_collections')
-    .select('*, mgd_returns!inner(status)')
+    .select('*')
     .eq('id', id)
     .single()
 
   if (fetchErr || !existing) return { error: 'Collection not found' }
 
-  const returnStatus = (
-    existing.mgd_returns as unknown as { status: string }
-  )?.status
-  if (returnStatus === 'submitted' || returnStatus === 'paid') {
+  // Check if the period is locked
+  const [dy, dm] = (existing.collection_date as string).split('-').map(Number)
+  const delQuarter = getMgdQuarter(new Date(dy, dm - 1, 1))
+  const { data: delReturn } = await db
+    .from('mgd_returns')
+    .select('id, status')
+    .eq('period_start', delQuarter.periodStart)
+    .eq('period_end', delQuarter.periodEnd)
+    .maybeSingle()
+
+  if (delReturn && (delReturn.status === 'submitted' || delReturn.status === 'paid')) {
     return {
-      error: `Cannot delete collections from a ${returnStatus} return. Reopen the return first.`,
+      error: `Cannot delete collections from a ${delReturn.status} return. Reopen the return first.`,
     }
   }
 
