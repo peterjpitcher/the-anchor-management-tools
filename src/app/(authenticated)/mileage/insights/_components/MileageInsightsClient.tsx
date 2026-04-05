@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useTransition } from 'react'
+import { useRouter } from 'next/navigation'
 import { TabNav } from '@/components/ui-v2/navigation/TabNav'
 import { StatGroup } from '@/components/ui-v2/display/Stat'
 import { Stat } from '@/components/ui-v2/display/Stat'
@@ -23,11 +24,28 @@ function formatCurrency(value: number): string {
   return new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP' }).format(value)
 }
 
+function getPeriodEnd(periodStart: string, granularity: MileageGranularity): string {
+  const [y, m] = periodStart.split('-').map(Number)
+  if (granularity === 'annually' || granularity === 'all') {
+    return `${y}-12-31`
+  }
+  if (granularity === 'quarterly') {
+    // periodStart is first day of a calendar quarter (Jan, Apr, Jul, Oct)
+    const endMonth = m + 2
+    const lastDay = new Date(y, endMonth, 0).getDate()
+    return `${y}-${String(endMonth).padStart(2, '0')}-${lastDay}`
+  }
+  // monthly — last day of the month
+  const lastDay = new Date(y, m, 0).getDate()
+  return `${y}-${String(m).padStart(2, '0')}-${lastDay}`
+}
+
 interface MileageInsightsClientProps {
   initialData: MileageInsightsData
 }
 
 export function MileageInsightsClient({ initialData }: MileageInsightsClientProps): React.ReactElement {
+  const router = useRouter()
   const [granularity, setGranularity] = useState<MileageGranularity>('monthly')
   const [data, setData] = useState<MileageInsightsData>(initialData)
   const [isPending, startTransition] = useTransition()
@@ -41,6 +59,13 @@ export function MileageInsightsClient({ initialData }: MileageInsightsClientProp
         setData(result.data)
       }
     })
+  }
+
+  function handleBarClick(index: number): void {
+    const bar = data.bars[index]
+    if (!bar) return
+    const periodEnd = getPeriodEnd(bar.periodStart, granularity)
+    router.push(`/mileage?from=${bar.periodStart}&to=${periodEnd}`)
   }
 
   const chartData = data.bars.map((bar) => ({
@@ -83,6 +108,7 @@ export function MileageInsightsClient({ initialData }: MileageInsightsClientProp
             height={300}
             color="#10B981"
             formatType="number"
+            onBarClick={handleBarClick}
           />
         ) : (
           <p className="text-gray-500 text-center py-12">No mileage data available.</p>
