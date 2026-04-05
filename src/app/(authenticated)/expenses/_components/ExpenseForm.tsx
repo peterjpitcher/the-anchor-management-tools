@@ -43,7 +43,9 @@ interface ExpenseFormProps {
 }
 
 const ACCEPTED_TYPES = '.jpg,.jpeg,.png,.webp,.heic,.heif,.pdf'
+const ACCEPTED_EXTENSIONS = new Set(['jpg', 'jpeg', 'png', 'webp', 'heic', 'heif', 'pdf'])
 const MAX_FILE_SIZE_MB = 20
+const MAX_FILES_PER_EXPENSE = 10
 
 // ---------------------------------------------------------------------------
 // Component
@@ -83,7 +85,23 @@ export function ExpenseForm({
     const validFiles: File[] = []
     const fileArray = Array.from(files)
 
+    // Check total count limit (existing + already pending + new)
+    const currentTotal = existingFiles.length + pendingFiles.length
+    if (currentTotal + fileArray.length > MAX_FILES_PER_EXPENSE) {
+      setFileError(
+        `Maximum ${MAX_FILES_PER_EXPENSE} files per expense. You already have ${currentTotal} — can only add ${Math.max(0, MAX_FILES_PER_EXPENSE - currentTotal)} more.`
+      )
+      return
+    }
+
     for (const file of fileArray) {
+      // Validate file extension
+      const ext = file.name.split('.').pop()?.toLowerCase() ?? ''
+      if (!ACCEPTED_EXTENSIONS.has(ext)) {
+        setFileError(`"${file.name}" is not a supported file type. Accepted: JPEG, PNG, WebP, HEIC, PDF.`)
+        return
+      }
+
       if (file.size > MAX_FILE_SIZE_MB * 1024 * 1024) {
         setFileError(`"${file.name}" exceeds ${MAX_FILE_SIZE_MB}MB limit`)
         return
@@ -93,7 +111,7 @@ export function ExpenseForm({
 
     setFileError(null)
     setPendingFiles((prev) => [...prev, ...validFiles])
-  }, [])
+  }, [existingFiles.length, pendingFiles.length])
 
   const handleDragOver = useCallback((e: DragEvent) => {
     e.preventDefault()
