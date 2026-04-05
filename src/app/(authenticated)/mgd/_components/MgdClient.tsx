@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
+import { useSearchParams } from 'next/navigation'
 import { Card } from '@/components/ui-v2/layout/Card'
 import { Badge } from '@/components/ui-v2/display/Badge'
 import { Button } from '@/components/ui-v2/forms/Button'
@@ -81,6 +82,8 @@ export function MgdClient({
   initialCollections,
   initialReturns,
 }: MgdClientProps): React.ReactElement {
+  const searchParams = useSearchParams()
+
   // State
   const [currentReturn, setCurrentReturn] = useState<MgdReturn | null>(initialReturn)
   const [collections, setCollections] = useState<MgdCollection[]>(initialCollections)
@@ -159,6 +162,17 @@ export function MgdClient({
       setCollections(result.data ?? [])
     }
   }
+
+  // Apply URL search params as initial period on mount
+  useEffect(() => {
+    const from = searchParams.get('from')
+    const to = searchParams.get('to')
+    if (from && to) {
+      void switchPeriod(from, to)
+    }
+    // Only run once on mount
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   // ---------------------------------------------------------------------------
   // Status transitions

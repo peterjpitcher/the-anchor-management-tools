@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useTransition, useCallback } from 'react'
+import { useState, useTransition, useCallback, useEffect } from 'react'
+import { useSearchParams } from 'next/navigation'
 import { Button } from '@/components/ui-v2/forms/Button'
 import { Input } from '@/components/ui-v2/forms/Input'
 import { ConfirmModal } from '@/components/ui-v2/overlay/Modal'
@@ -39,6 +40,7 @@ export function MileageClient({
   destinations,
   canManage,
 }: MileageClientProps): React.JSX.Element {
+  const searchParams = useSearchParams()
   const [trips, setTrips] = useState(initialTrips)
   const [stats, setStats] = useState(initialStats)
   const [isPending, startTransition] = useTransition()
@@ -49,10 +51,10 @@ export function MileageClient({
   const [deleteTarget, setDeleteTarget] = useState<MileageTrip | null>(null)
   const [deleteError, setDeleteError] = useState<string | null>(null)
 
-  // Filter state
+  // Filter state — initialised from URL search params if present
   const [showFilters, setShowFilters] = useState(false)
-  const [dateFrom, setDateFrom] = useState('')
-  const [dateTo, setDateTo] = useState('')
+  const [dateFrom, setDateFrom] = useState(() => searchParams.get('from') ?? '')
+  const [dateTo, setDateTo] = useState(() => searchParams.get('to') ?? '')
 
   const refreshTrips = useCallback(
     (filters?: { dateFrom?: string; dateTo?: string }) => {
@@ -68,6 +70,18 @@ export function MileageClient({
     },
     []
   )
+
+  // Apply URL search params as initial filters on mount
+  useEffect(() => {
+    const from = searchParams.get('from')
+    const to = searchParams.get('to')
+    if (from || to) {
+      setShowFilters(true)
+      refreshTrips({ dateFrom: from ?? undefined, dateTo: to ?? undefined })
+    }
+    // Only run once on mount
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   function openNewTrip(): void {
     setEditingTrip(null)

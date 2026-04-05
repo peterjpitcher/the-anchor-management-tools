@@ -17,18 +17,28 @@ interface BarChartProps {
   showValues?: boolean;
   horizontal?: boolean;
   formatType?: 'number' | 'currency' | 'shorthandCurrency';
+  onBarClick?: (index: number) => void;
 }
 
-export function BarChart({ 
-  data, 
-  height = 300, 
+export function BarChart({
+  data,
+  height = 300,
   color = '#3B82F6',
   showGrid = true,
   showValues = true,
   horizontal = false,
-  formatType = 'number'
+  formatType = 'number',
+  onBarClick,
 }: BarChartProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+
+  // Store chart layout dimensions so the click handler can use them without
+  // being re-created inside the useEffect.
+  const chartLayoutRef = useRef<{
+    paddingLeft: number;
+    chartWidth: number;
+    barCount: number;
+  }>({ paddingLeft: 70, chartWidth: 0, barCount: 0 });
 
   // Helper function for shorthand currency formatting
   const toKValue = (num: number, currency: string = '£') => {
@@ -71,14 +81,21 @@ export function BarChart({
     ctx.clearRect(0, 0, rect.width, rect.height);
 
     // Calculate dimensions
-    const padding = { 
+    const padding = {
       top: 30, // Increased top padding for labels
       right: horizontal ? 60 : 20, // Increased right padding for horizontal value labels
-      bottom: horizontal ? 50 : 80, 
+      bottom: horizontal ? 50 : 80,
       left: horizontal ? 100 : 70 // Increased left padding for Y-axis labels
     };
     const chartWidth = rect.width - padding.left - padding.right;
     const chartHeight = rect.height - padding.top - padding.bottom;
+
+    // Keep layout ref up to date for the click handler
+    chartLayoutRef.current = {
+      paddingLeft: padding.left,
+      chartWidth,
+      barCount: data.length,
+    };
 
     // Find min/max value, considering negative values for variance
     const allValues = data.map(d => d.value);
@@ -291,11 +308,31 @@ export function BarChart({
     });
   }, [data, color, showGrid, showValues, horizontal, formatType]);
 
+  function handleCanvasClick(e: React.MouseEvent<HTMLCanvasElement>): void {
+    if (!onBarClick || horizontal) return;
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const rect = canvas.getBoundingClientRect();
+    const mouseX = e.clientX - rect.left;
+    const { paddingLeft, chartWidth, barCount } = chartLayoutRef.current;
+    if (barCount === 0 || chartWidth === 0) return;
+    const barWidth = chartWidth / barCount;
+    const barIndex = Math.floor((mouseX - paddingLeft) / barWidth);
+    if (barIndex >= 0 && barIndex < barCount) {
+      onBarClick(barIndex);
+    }
+  }
+
   return (
     <canvas
       ref={canvasRef}
-      style={{ width: '100%', height: `${height}px` }}
+      style={{
+        width: '100%',
+        height: `${height}px`,
+        cursor: onBarClick && !horizontal ? 'pointer' : 'default',
+      }}
       className="max-w-full"
+      onClick={handleCanvasClick}
     />
   );
 }
