@@ -85,6 +85,32 @@ export interface DistanceCacheEntry {
 }
 
 // ---------------------------------------------------------------------------
+// Insight Types
+// ---------------------------------------------------------------------------
+
+export type MileageGranularity = 'monthly' | 'quarterly' | 'annually' | 'all'
+
+export interface MileageInsightBar {
+  label: string
+  periodStart: string
+  totalMiles: number
+  amountDue: number
+}
+
+export interface MileageDestinationBreakdown {
+  destinationName: string
+  totalMiles: number
+  amountDue: number
+  tripCount: number
+}
+
+export interface MileageInsightsData {
+  bars: MileageInsightBar[]
+  totals: { totalMiles: number; totalAmountDue: number; tripCount: number }
+  byDestination: MileageDestinationBreakdown[]
+}
+
+// ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
@@ -881,5 +907,145 @@ async function cacheDistances(
     } catch {
       // Non-critical: distance cache failure should not block trip creation
     }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// INSIGHTS
+// ---------------------------------------------------------------------------
+
+/**
+ * Fetch mileage trip data aggregated by period for insights charts,
+ * plus a breakdown by destination.
+ */
+export async function getMileageInsights(
+  granularity: MileageGranularity = 'monthly'
+): Promise<{ success: boolean; data?: MileageInsightsData; error?: string }> {
+  try {
+    await requireMileagePermission('view')
+    const supabase = createAdminClient()
+
+    // Fetch all trips
+    const { data: trips, error: tripError } = await supabase
+      .from('mileage_trips')
+      .select('id, trip_date, total_miles, amount_due')
+      .order('trip_date', { ascending: true })
+
+    if (tripError) return { success: false, error: 'Failed to fetch mileage trips' }
+
+    if (!trips || trips.length === 0) {
+      return {
+        success: true,
+        data: {
+          bars: [],
+          totals: { totalMiles: 0, totalAmountDue: 0, tripCount: 0 },
+          byDestination: [],
+        },
+      }
+    }
+
+    // Group trips into period buckets
+    const buckets = new Map<string, { label: string; periodStart: string; totalMiles: number; amountDue: number }>()
+
+    for (const trip of trips) {
+      const dateStr = trip.trip_date as string
+      const [y, m] = dateStr.split('-').map(Number)
+      let key: string
+      let label: string
+      let periodStart: string
+
+      if (granularity === 'annually') {
+        key = `${y}`
+        label = `${y}`
+        periodStart = `${y}-01-01`
+      } else if (granularity === 'quarterly') {
+        const q = Math.ceil(m / 3)
+        const qStart = (q - 1) * 3 + 1
+        key = `${y}-Q${q}`
+        label = `Q${q} ${y}`
+        periodStart = `${y}-${String(qStart).padStart(2, '0')}-01`
+      } else {
+        // monthly (default) and 'all' both show monthly bars
+        const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+        key = `${y}-${String(m).padStart(2, '0')}`
+        label = `${monthNames[m - 1]} ${y}`
+        periodStart = `${y}-${String(m).padStart(2, '0')}-01`
+      }
+
+      const miles = Number(trip.total_miles)
+      const amt = Number(trip.amount_due)
+
+      const existing = buckets.get(key)
+      if (existing) {
+        existing.totalMiles += miles
+        existing.amountDue += amt
+      } else {
+        buckets.set(key, { label, periodStart, totalMiles: miles, amountDue: amt })
+      }
+    }
+
+    const bars: MileageInsightBar[] = Array.from(buckets.values()).sort(
+      (a, b) => a.periodStart.localeCompare(b.periodStart)
+    )
+
+    // Fetch trip legs with destination names for breakdown
+    const tripIds = trips.map((t) => t.id as string)
+    const { data: legs, error: legError } = await supabase
+      .from('mileage_trip_legs')
+      .select('trip_id, miles, to_destination_id, mileage_destinations!mileage_trip_legs_to_destination_id_fkey(name, is_home_base)')
+      .in('trip_id', tripIds)
+
+    if (legError) return { success: false, error: 'Failed to fetch trip legs' }
+
+    // Build trip lookup for amount_due proportioning
+    const tripLookup = new Map(trips.map((t) => [t.id as string, { totalMiles: Number(t.total_miles), amountDue: Number(t.amount_due) }]))
+
+    // Group legs by destination (excluding home base)
+    const destMap = new Map<string, { totalMiles: number; amountDue: number; tripIds: Set<string> }>()
+
+    for (const leg of legs ?? []) {
+      const dest = leg.mileage_destinations as unknown as { name: string; is_home_base: boolean } | null
+      if (!dest || dest.is_home_base) continue
+
+      const destName = dest.name
+      const legMiles = Number(leg.miles)
+      const trip = tripLookup.get(leg.trip_id as string)
+      const legAmountDue = trip && trip.totalMiles > 0
+        ? (legMiles / trip.totalMiles) * trip.amountDue
+        : 0
+
+      const existing = destMap.get(destName)
+      if (existing) {
+        existing.totalMiles += legMiles
+        existing.amountDue += legAmountDue
+        existing.tripIds.add(leg.trip_id as string)
+      } else {
+        destMap.set(destName, {
+          totalMiles: legMiles,
+          amountDue: legAmountDue,
+          tripIds: new Set([leg.trip_id as string]),
+        })
+      }
+    }
+
+    const byDestination: MileageDestinationBreakdown[] = Array.from(destMap.entries())
+      .map(([destinationName, vals]) => ({
+        destinationName,
+        totalMiles: Math.round(vals.totalMiles * 10) / 10,
+        amountDue: Math.round(vals.amountDue * 100) / 100,
+        tripCount: vals.tripIds.size,
+      }))
+      .sort((a, b) => b.totalMiles - a.totalMiles)
+
+    const totals = {
+      totalMiles: trips.reduce((sum, t) => sum + Number(t.total_miles), 0),
+      totalAmountDue: trips.reduce((sum, t) => sum + Number(t.amount_due), 0),
+      tripCount: trips.length,
+    }
+
+    return { success: true, data: { bars, totals, byDestination } }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Failed to fetch mileage insights'
+    return { success: false, error: message }
   }
 }
