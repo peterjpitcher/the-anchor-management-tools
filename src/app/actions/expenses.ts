@@ -7,6 +7,7 @@ import { logAuditEvent } from '@/app/actions/audit'
 import { getCurrentUser } from '@/lib/audit-helpers'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { logger } from '@/lib/logger'
+import { getTodayIsoDate } from '@/lib/dateUtils'
 import {
   validateFileType,
   optimiseImage,
@@ -172,14 +173,17 @@ export async function getExpenseStats(): Promise<{
     await requireExpensePermission('view')
     const supabase = createAdminClient()
 
-    // Determine current quarter boundaries
-    const now = new Date()
-    const quarterMonth = Math.floor(now.getMonth() / 3) * 3
-    const quarterStart = new Date(now.getFullYear(), quarterMonth, 1)
-    const quarterEnd = new Date(now.getFullYear(), quarterMonth + 3, 0)
+    // Determine current quarter boundaries using London timezone
+    const todayStr = getTodayIsoDate() // YYYY-MM-DD in Europe/London
+    const [yearStr, monthStr] = todayStr.split('-')
+    const year = parseInt(yearStr, 10)
+    const month = parseInt(monthStr, 10) - 1 // 0-indexed
 
-    const qStartStr = quarterStart.toISOString().slice(0, 10)
-    const qEndStr = quarterEnd.toISOString().slice(0, 10)
+    const quarterMonth = Math.floor(month / 3) * 3
+    const qStartStr = `${year}-${String(quarterMonth + 1).padStart(2, '0')}-01`
+    // Last day of quarter: day 0 of the month after the quarter
+    const qEndDate = new Date(year, quarterMonth + 3, 0)
+    const qEndStr = `${year}-${String(quarterMonth + 3).padStart(2, '0')}-${String(qEndDate.getDate()).padStart(2, '0')}`
 
     // Fetch all expenses for this quarter with file info
     const { data, error } = await supabase
