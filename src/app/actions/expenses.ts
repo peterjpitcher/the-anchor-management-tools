@@ -59,6 +59,32 @@ export interface ExpenseFilters {
 }
 
 // ---------------------------------------------------------------------------
+// Insight Types
+// ---------------------------------------------------------------------------
+
+export type ExpenseGranularity = 'monthly' | 'quarterly' | 'annually' | 'all'
+
+export interface ExpenseInsightBar {
+  label: string
+  periodStart: string
+  amount: number
+  vatAmount: number
+}
+
+export interface ExpenseCompanyBreakdown {
+  companyRef: string
+  totalAmount: number
+  totalVat: number
+  count: number
+}
+
+export interface ExpenseInsightsData {
+  bars: ExpenseInsightBar[]
+  totals: { totalAmount: number; totalVat: number; count: number }
+  byCompany: ExpenseCompanyBreakdown[]
+}
+
+// ---------------------------------------------------------------------------
 // Validation schemas
 // ---------------------------------------------------------------------------
 
@@ -695,6 +721,119 @@ export async function getExpenseFiles(
     return { success: true, data: filesWithUrls }
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Failed to fetch files'
+    return { success: false, error: message }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// INSIGHTS
+// ---------------------------------------------------------------------------
+
+/**
+ * Fetch expense data aggregated by period for insights charts,
+ * plus a breakdown by company.
+ */
+export async function getExpenseInsights(
+  granularity: ExpenseGranularity = 'monthly'
+): Promise<{ success: boolean; data?: ExpenseInsightsData; error?: string }> {
+  try {
+    await requireExpensePermission('view')
+    const supabase = createAdminClient()
+
+    const { data, error } = await supabase
+      .from('expenses')
+      .select('expense_date, amount, vat_applicable, vat_amount, company_ref')
+      .order('expense_date', { ascending: true })
+
+    if (error) {
+      logger.error('Failed to fetch expense insights', { error: error as unknown as Error })
+      return { success: false, error: 'Failed to fetch expense insights' }
+    }
+
+    if (!data || data.length === 0) {
+      return {
+        success: true,
+        data: {
+          bars: [],
+          totals: { totalAmount: 0, totalVat: 0, count: 0 },
+          byCompany: [],
+        },
+      }
+    }
+
+    // Group by period
+    const buckets = new Map<string, { label: string; periodStart: string; amount: number; vatAmount: number }>()
+
+    for (const row of data) {
+      const dateStr = row.expense_date as string
+      const [y, m] = dateStr.split('-').map(Number)
+      let key: string
+      let label: string
+      let periodStart: string
+
+      if (granularity === 'annually') {
+        key = `${y}`
+        label = `${y}`
+        periodStart = `${y}-01-01`
+      } else if (granularity === 'quarterly') {
+        const q = Math.ceil(m / 3)
+        const qStart = (q - 1) * 3 + 1
+        key = `${y}-Q${q}`
+        label = `Q${q} ${y}`
+        periodStart = `${y}-${String(qStart).padStart(2, '0')}-01`
+      } else {
+        // monthly (default) and 'all' both show monthly bars
+        const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+        key = `${y}-${String(m).padStart(2, '0')}`
+        label = `${monthNames[m - 1]} ${y}`
+        periodStart = `${y}-${String(m).padStart(2, '0')}-01`
+      }
+
+      const amt = Number(row.amount)
+      const vat = row.vat_applicable ? Number(row.vat_amount) : 0
+
+      const existing = buckets.get(key)
+      if (existing) {
+        existing.amount += amt
+        existing.vatAmount += vat
+      } else {
+        buckets.set(key, { label, periodStart, amount: amt, vatAmount: vat })
+      }
+    }
+
+    const bars: ExpenseInsightBar[] = Array.from(buckets.values()).sort(
+      (a, b) => a.periodStart.localeCompare(b.periodStart)
+    )
+
+    // Group by company
+    const companyMap = new Map<string, { totalAmount: number; totalVat: number; count: number }>()
+    for (const row of data) {
+      const ref = (row.company_ref as string).trim()
+      const existing = companyMap.get(ref)
+      const amt = Number(row.amount)
+      const vat = row.vat_applicable ? Number(row.vat_amount) : 0
+      if (existing) {
+        existing.totalAmount += amt
+        existing.totalVat += vat
+        existing.count += 1
+      } else {
+        companyMap.set(ref, { totalAmount: amt, totalVat: vat, count: 1 })
+      }
+    }
+
+    const byCompany: ExpenseCompanyBreakdown[] = Array.from(companyMap.entries())
+      .map(([companyRef, vals]) => ({ companyRef, ...vals }))
+      .sort((a, b) => b.totalAmount - a.totalAmount)
+
+    const totals = {
+      totalAmount: data.reduce((sum, row) => sum + Number(row.amount), 0),
+      totalVat: data.reduce((sum, row) => sum + (row.vat_applicable ? Number(row.vat_amount) : 0), 0),
+      count: data.length,
+    }
+
+    return { success: true, data: { bars, totals, byCompany } }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Failed to fetch expense insights'
     return { success: false, error: message }
   }
 }
