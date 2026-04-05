@@ -5,8 +5,10 @@
 
 -- -------------------------------------------------------
 -- Shared: is_super_admin() function for RLS
+-- Drop and recreate to avoid parameter name conflict with any existing version
 -- -------------------------------------------------------
-CREATE OR REPLACE FUNCTION public.is_super_admin(check_user_id UUID)
+DROP FUNCTION IF EXISTS public.is_super_admin(UUID);
+CREATE FUNCTION public.is_super_admin(check_user_id UUID)
 RETURNS BOOLEAN
 LANGUAGE sql
 SECURITY DEFINER
