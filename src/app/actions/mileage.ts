@@ -160,7 +160,7 @@ export async function getDestinations(): Promise<{
     }
 
     // Get distance cache for Anchor -> each destination
-    let distanceMap = new Map<string, number>()
+    const distanceMap = new Map<string, number>()
     if (homeBase) {
       const { data: distances } = await db
         .from('mileage_destination_distances')
