@@ -7,8 +7,8 @@ import { Card } from '@/components/ui-v2/layout/Card'
 import { MgdClient } from './_components/MgdClient'
 
 export default async function MgdPage(): Promise<React.ReactElement> {
-  const canManage = await checkUserPermission('mgd', 'manage')
-  if (!canManage) {
+  const canView = await checkUserPermission('mgd', 'view')
+  if (!canView) {
     redirect('/unauthorized')
   }
 

@@ -48,7 +48,22 @@ type ActionResult<T = undefined> = Promise<
 // Helpers
 // ---------------------------------------------------------------------------
 
-async function requireMgdPermission(): Promise<
+async function requireMgdViewPermission(): Promise<
+  { userId: string } | { error: string }
+> {
+  const supabase = await createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+  if (!user) return { error: 'Not authenticated' }
+
+  const allowed = await checkUserPermission('mgd', 'view', user.id)
+  if (!allowed) return { error: 'Insufficient permissions' }
+
+  return { userId: user.id }
+}
+
+async function requireMgdManagePermission(): Promise<
   { userId: string } | { error: string }
 > {
   const supabase = await createClient()
@@ -96,7 +111,7 @@ export async function getCollections(
   periodStart?: string,
   periodEnd?: string
 ): ActionResult<MgdCollection[]> {
-  const auth = await requireMgdPermission()
+  const auth = await requireMgdViewPermission()
   if ('error' in auth) return { error: auth.error }
 
   const db = createAdminClient()
@@ -131,7 +146,7 @@ export async function getCollections(
  * Fetch all returns ordered by period_start DESC, with collection count.
  */
 export async function getReturns(): ActionResult<MgdReturn[]> {
-  const auth = await requireMgdPermission()
+  const auth = await requireMgdViewPermission()
   if ('error' in auth) return { error: auth.error }
 
   const db = createAdminClient()
@@ -177,7 +192,7 @@ export async function getReturns(): ActionResult<MgdReturn[]> {
  * when the first collection is inserted.
  */
 export async function getCurrentReturn(): ActionResult<MgdReturn | null> {
-  const auth = await requireMgdPermission()
+  const auth = await requireMgdViewPermission()
   if ('error' in auth) return { error: auth.error }
 
   const { periodStart, periodEnd } = getCurrentMgdQuarter()
@@ -234,7 +249,7 @@ export async function createCollection(formData: {
   vat_on_supplier: number
   notes?: string | null
 }): ActionResult<MgdCollection> {
-  const auth = await requireMgdPermission()
+  const auth = await requireMgdManagePermission()
   if ('error' in auth) return { error: auth.error }
 
   const parsed = collectionSchema.safeParse(formData)
@@ -300,7 +315,7 @@ export async function updateCollection(formData: {
   vat_on_supplier: number
   notes?: string | null
 }): ActionResult<MgdCollection> {
-  const auth = await requireMgdPermission()
+  const auth = await requireMgdManagePermission()
   if ('error' in auth) return { error: auth.error }
 
   const parsed = updateCollectionSchema.safeParse(formData)
@@ -381,7 +396,7 @@ export async function updateCollection(formData: {
  * Delete a collection. Rejects if return is submitted/paid.
  */
 export async function deleteCollection(id: string): ActionResult {
-  const auth = await requireMgdPermission()
+  const auth = await requireMgdManagePermission()
   if ('error' in auth) return { error: auth.error }
 
   if (!id || !z.string().uuid().safeParse(id).success) {
@@ -443,7 +458,7 @@ export async function updateReturnStatus(formData: {
   date_paid?: string | null
   confirm_reopen_from_paid?: boolean
 }): ActionResult<MgdReturn> {
-  const auth = await requireMgdPermission()
+  const auth = await requireMgdManagePermission()
   if ('error' in auth) return { error: auth.error }
 
   const parsed = updateReturnStatusSchema.safeParse(formData)
