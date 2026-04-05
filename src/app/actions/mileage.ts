@@ -9,10 +9,11 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { getTodayIsoDate } from '@/lib/dateUtils'
 import {
   getTaxYearBounds,
-  calculateHmrcRateSplit,
   THRESHOLD_MILES,
+  STANDARD_RATE,
   type TaxYearStats,
 } from '@/lib/mileage/hmrcRates'
+import { recalculateTaxYearMileage } from '@/lib/mileage/recalculateTaxYear'
 
 // ---------------------------------------------------------------------------
 // Zod Schemas
@@ -609,38 +610,17 @@ export async function createTrip(input: {
       return { error: 'Total miles must be greater than 0' }
     }
 
-    // Calculate HMRC rate split
-    const { start: taxYearStart, end: taxYearEnd } = getTaxYearBounds(tripDate)
-
-    // Get cumulative miles for all trips in this tax year that are BEFORE this trip
-    const { data: priorTrips, error: priorError } = await db
-      .from('mileage_trips')
-      .select('total_miles')
-      .gte('trip_date', taxYearStart)
-      .lte('trip_date', taxYearEnd)
-      .lte('trip_date', tripDate)
-      .order('trip_date', { ascending: true })
-      .order('created_at', { ascending: true })
-
-    if (priorError) throw priorError
-
-    const cumulativeMilesBefore = (priorTrips ?? []).reduce(
-      (sum, t) => sum + Number(t.total_miles),
-      0
-    )
-
-    const rateSplit = calculateHmrcRateSplit(cumulativeMilesBefore, totalMiles)
-
-    // Insert trip
+    // Insert trip with default rates; the shared recalculation below will
+    // apply the correct cumulative HMRC threshold split for the whole tax year.
     const { data: newTrip, error: tripError } = await db
       .from('mileage_trips')
       .insert({
         trip_date: tripDate,
         description: description?.trim() || null,
         total_miles: totalMiles,
-        miles_at_standard_rate: rateSplit.milesAtStandardRate,
-        miles_at_reduced_rate: rateSplit.milesAtReducedRate,
-        amount_due: rateSplit.amountDue,
+        miles_at_standard_rate: totalMiles,
+        miles_at_reduced_rate: 0,
+        amount_due: Math.round(totalMiles * STANDARD_RATE * 100) / 100,
         source: 'manual',
         created_by: userId,
       })
@@ -667,6 +647,9 @@ export async function createTrip(input: {
     // Cache new distances
     await cacheDistances(db, legs)
 
+    // Recalculate HMRC rate splits for all trips in the affected tax year
+    await recalculateTaxYearMileage(tripDate)
+
     await logAuditEvent({
       user_id: userId,
       operation_type: 'create',
@@ -676,7 +659,6 @@ export async function createTrip(input: {
       new_values: {
         trip_date: tripDate,
         total_miles: totalMiles,
-        amount_due: rateSplit.amountDue,
         legs: legs.length,
       },
     })
@@ -747,34 +729,21 @@ export async function updateTrip(input: {
     const totalMiles = legs.reduce((sum, leg) => sum + leg.miles, 0)
     if (totalMiles <= 0) return { error: 'Total miles must be greater than 0' }
 
-    // Recalculate HMRC rate — exclude THIS trip from cumulative
-    const { start: taxYearStart, end: taxYearEnd } = getTaxYearBounds(tripDate)
+    // Save the old trip date before updating, so we can recalculate BOTH tax years
+    // if the date moved across the 6 April boundary.
+    const oldTripDate = existing.trip_date
 
-    const { data: priorTrips } = await db
-      .from('mileage_trips')
-      .select('id, total_miles')
-      .gte('trip_date', taxYearStart)
-      .lte('trip_date', taxYearEnd)
-      .lte('trip_date', tripDate)
-      .order('trip_date', { ascending: true })
-      .order('created_at', { ascending: true })
-
-    const cumulativeMilesBefore = (priorTrips ?? [])
-      .filter((t) => t.id !== input.id)
-      .reduce((sum, t) => sum + Number(t.total_miles), 0)
-
-    const rateSplit = calculateHmrcRateSplit(cumulativeMilesBefore, totalMiles)
-
-    // Update trip
+    // Update trip with default rates; the shared recalculation below will
+    // apply the correct cumulative HMRC threshold split for the whole tax year.
     const { error: updateError } = await db
       .from('mileage_trips')
       .update({
         trip_date: tripDate,
         description: description?.trim() || null,
         total_miles: totalMiles,
-        miles_at_standard_rate: rateSplit.milesAtStandardRate,
-        miles_at_reduced_rate: rateSplit.milesAtReducedRate,
-        amount_due: rateSplit.amountDue,
+        miles_at_standard_rate: totalMiles,
+        miles_at_reduced_rate: 0,
+        amount_due: Math.round(totalMiles * STANDARD_RATE * 100) / 100,
       })
       .eq('id', input.id)
 
@@ -805,6 +774,16 @@ export async function updateTrip(input: {
     // Cache new distances
     await cacheDistances(db, legs)
 
+    // Recalculate HMRC rate splits for the new tax year
+    await recalculateTaxYearMileage(tripDate)
+
+    // If the date changed across a tax year boundary, also recalculate the old tax year
+    const oldTaxYear = getTaxYearBounds(oldTripDate)
+    const newTaxYear = getTaxYearBounds(tripDate)
+    if (oldTaxYear.start !== newTaxYear.start) {
+      await recalculateTaxYearMileage(oldTripDate)
+    }
+
     await logAuditEvent({
       user_id: userId,
       operation_type: 'update',
@@ -818,7 +797,6 @@ export async function updateTrip(input: {
       new_values: {
         trip_date: tripDate,
         total_miles: totalMiles,
-        amount_due: rateSplit.amountDue,
       },
     })
 
@@ -854,6 +832,9 @@ export async function deleteTrip(
       .eq('id', id)
 
     if (deleteError) throw deleteError
+
+    // Recalculate HMRC rate splits for remaining trips in the affected tax year
+    await recalculateTaxYearMileage(existing.trip_date)
 
     await logAuditEvent({
       user_id: userId,
