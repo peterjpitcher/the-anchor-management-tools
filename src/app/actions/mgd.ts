@@ -45,6 +45,31 @@ type ActionResult<T = undefined> = Promise<
 >
 
 // ---------------------------------------------------------------------------
+// Insight Types
+// ---------------------------------------------------------------------------
+
+export type MgdGranularity = 'quarterly' | 'annually' | 'all'
+
+export interface MgdInsightBar {
+  label: string
+  periodStart: string
+  netTake: number
+  mgdAmount: number
+  vatOnSupplier: number
+}
+
+export interface MgdInsightTotals {
+  totalNetTake: number
+  totalMgd: number
+  totalVatOnSupplier: number
+}
+
+export interface MgdInsightsData {
+  bars: MgdInsightBar[]
+  totals: MgdInsightTotals
+}
+
+// ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
@@ -549,4 +574,78 @@ export async function updateReturnStatus(formData: {
 
   revalidatePath('/mgd')
   return { success: true, data: updated as MgdReturn }
+}
+
+/**
+ * Fetch MGD collection data aggregated by period for insights charts.
+ */
+export async function getMgdInsights(
+  granularity: MgdGranularity = 'quarterly'
+): ActionResult<MgdInsightsData> {
+  const auth = await requireMgdViewPermission()
+  if ('error' in auth) return { error: auth.error }
+
+  const db = createAdminClient()
+  const { data, error } = await db
+    .from('mgd_collections')
+    .select('collection_date, net_take, mgd_amount, vat_on_supplier')
+    .order('collection_date', { ascending: true })
+
+  if (error) return { error: 'Failed to fetch MGD collections' }
+  if (!data || data.length === 0) {
+    return { success: true, data: { bars: [], totals: { totalNetTake: 0, totalMgd: 0, totalVatOnSupplier: 0 } } }
+  }
+
+  // Group collections into buckets based on granularity
+  const buckets = new Map<string, { label: string; periodStart: string; netTake: number; mgdAmount: number; vatOnSupplier: number }>()
+
+  for (const row of data) {
+    const [y, m, d] = (row.collection_date as string).split('-').map(Number)
+    const date = new Date(y, m - 1, d)
+    let key: string
+    let label: string
+    let periodStart: string
+
+    if (granularity === 'annually') {
+      key = `${y}`
+      label = `${y}`
+      periodStart = `${y}-01-01`
+    } else {
+      // quarterly (default) and 'all' both show quarterly bars
+      const q = getMgdQuarter(date)
+      key = q.periodStart
+      label = q.label
+      periodStart = q.periodStart
+    }
+
+    const existing = buckets.get(key)
+    if (existing) {
+      existing.netTake += Number(row.net_take)
+      existing.mgdAmount += Number(row.mgd_amount)
+      existing.vatOnSupplier += Number(row.vat_on_supplier)
+    } else {
+      buckets.set(key, {
+        label,
+        periodStart,
+        netTake: Number(row.net_take),
+        mgdAmount: Number(row.mgd_amount),
+        vatOnSupplier: Number(row.vat_on_supplier),
+      })
+    }
+  }
+
+  const bars: MgdInsightBar[] = Array.from(buckets.values()).sort(
+    (a, b) => a.periodStart.localeCompare(b.periodStart)
+  )
+
+  const totals: MgdInsightTotals = bars.reduce(
+    (acc, bar) => ({
+      totalNetTake: acc.totalNetTake + bar.netTake,
+      totalMgd: acc.totalMgd + bar.mgdAmount,
+      totalVatOnSupplier: acc.totalVatOnSupplier + bar.vatOnSupplier,
+    }),
+    { totalNetTake: 0, totalMgd: 0, totalVatOnSupplier: 0 }
+  )
+
+  return { success: true, data: { bars, totals } }
 }
