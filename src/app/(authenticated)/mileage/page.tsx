@@ -8,6 +8,7 @@ import type { HeaderNavItem } from '@/components/ui-v2/navigation/HeaderNav'
 const navItems: HeaderNavItem[] = [
   { label: 'Trips', href: '/mileage' },
   { label: 'Destinations', href: '/mileage/destinations' },
+  { label: 'Insights', href: '/mileage/insights' },
 ]
 
 export default async function MileagePage(): Promise<React.JSX.Element> {
