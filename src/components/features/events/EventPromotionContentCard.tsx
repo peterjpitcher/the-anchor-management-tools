@@ -200,6 +200,7 @@ export function EventPromotionContentCard({
   }, [ctaState, selectedMarketingLink])
 
   const handleGenerate = async () => {
+    setAiUnavailableMessage(null)
     setIsGenerating(true)
     try {
       const response = await generateEventPromotionContent({
@@ -210,8 +211,14 @@ export function EventPromotionContentCard({
       if (!response.success) {
         const errorMessage = response.error ?? 'Failed to generate content'
         const lowerCase = errorMessage.toLowerCase()
-        if (lowerCase.includes('openai') && lowerCase.includes('configure')) {
-          setAiUnavailableMessage('AI copy generation is disabled. Add an OpenAI API key on the settings page to enable it.')
+        if (
+          (lowerCase.includes('api key') && (lowerCase.includes('invalid') || lowerCase.includes('expired'))) ||
+          (lowerCase.includes('openai') && lowerCase.includes('configure')) ||
+          lowerCase.includes('not configured')
+        ) {
+          setAiUnavailableMessage(
+            'AI copy generation is unavailable. Check the OpenAI API key on the Settings page.'
+          )
         }
         toast.error(errorMessage)
         return
