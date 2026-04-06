@@ -13,7 +13,7 @@ import {
 } from './csv-helpers'
 import { getCalendarQuarterMgdOverlap } from '@/lib/mgd/quarterMapping'
 
-interface MgdCollectionRow {
+export interface MgdCollectionRow {
   id: string
   collection_date: string
   net_take: number
@@ -59,7 +59,7 @@ export async function buildMgdCsv(
   supabase: SupabaseClient,
   year: number,
   quarter: 1 | 2 | 3 | 4
-): Promise<{ csv: Buffer; summary: MgdSummary; fileName: string }> {
+): Promise<{ csv: Buffer; summary: MgdSummary; fileName: string; rows: MgdCollectionRow[] }> {
   const { periodStart, periodEnd } = getCalendarQuarterMgdOverlap(year, quarter)
 
   const { data: collections, error } = await supabase
@@ -126,5 +126,5 @@ export async function buildMgdCsv(
   const csvRows = [...summaryRows, headerRow, ...dataRows]
   const csv = buildCsvBuffer(csvRows)
 
-  return { csv, summary, fileName }
+  return { csv, summary, fileName, rows }
 }

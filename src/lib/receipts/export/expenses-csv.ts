@@ -13,7 +13,7 @@ import {
   buildCsvBuffer,
 } from './csv-helpers'
 
-interface ExpenseRow {
+export interface ExpenseRow {
   id: string
   expense_date: string
   company_ref: string
@@ -41,7 +41,7 @@ export async function buildExpensesCsv(
   endDate: string,
   year: number,
   quarter: number
-): Promise<{ csv: Buffer; summary: ExpensesSummary }> {
+): Promise<{ csv: Buffer; summary: ExpensesSummary; rows: ExpenseRow[] }> {
   const { data: expenses, error } = await supabase
     .from('expenses')
     .select('id, expense_date, company_ref, justification, amount, vat_applicable, vat_amount, notes, expense_files ( id )')
@@ -102,5 +102,5 @@ export async function buildExpensesCsv(
   const csvRows = [...summaryRows, headerRow, ...dataRows]
   const csv = buildCsvBuffer(csvRows)
 
-  return { csv, summary }
+  return { csv, summary, rows }
 }
