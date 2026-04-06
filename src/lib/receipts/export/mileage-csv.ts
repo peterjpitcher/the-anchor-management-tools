@@ -14,7 +14,7 @@ import {
 } from './csv-helpers'
 import { getTaxYearBounds, STANDARD_RATE, REDUCED_RATE } from '@/lib/mileage/hmrcRates'
 
-interface MileageTripRow {
+export interface MileageTripRow {
   id: string
   trip_date: string
   description: string | null
@@ -26,7 +26,7 @@ interface MileageTripRow {
   mileage_trip_legs?: MileageTripLegRow[] | null
 }
 
-interface MileageTripLegRow {
+export interface MileageTripLegRow {
   id: string
   leg_order: number
   from_destination: { name: string } | { name: string }[] | null
@@ -51,7 +51,7 @@ export async function buildMileageCsv(
   endDate: string,
   year: number,
   quarter: number
-): Promise<{ csv: Buffer; summary: MileageSummary }> {
+): Promise<{ csv: Buffer; summary: MileageSummary; rows: MileageTripRow[] }> {
   // Fetch trips with legs (including destination names)
   const { data: trips, error } = await supabase
     .from('mileage_trips')
@@ -162,7 +162,7 @@ export async function buildMileageCsv(
   const csvRows = [...summaryRows, headerRow, ...dataRows]
   const csv = buildCsvBuffer(csvRows)
 
-  return { csv, summary }
+  return { csv, summary, rows }
 }
 
 /**

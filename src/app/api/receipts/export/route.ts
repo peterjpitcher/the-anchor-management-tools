@@ -173,6 +173,9 @@ export async function GET(request: NextRequest) {
         mgd: mgdResult.summary,
         mgdFileName: mgdResult.fileName,
         hasExpenseImages: expenseImageCount > 0,
+        mileageRows: mileageResult.rows,
+        expenseRows: expensesResult.rows,
+        mgdRows: mgdResult.rows,
       })
     }
 
