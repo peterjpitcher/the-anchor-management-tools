@@ -12,6 +12,7 @@ import {
 } from '@/lib/api/idempotency'
 import { formatPhoneForStorage } from '@/lib/utils'
 import { createRateLimiter } from '@/lib/rate-limit'
+import { logAuditEvent } from '@/app/actions/audit'
 import { logger } from '@/lib/logger'
 import { sendManagerPrivateBookingCreatedEmail } from '@/lib/private-bookings/manager-notifications'
 import { verifyTurnstileToken, getClientIp } from '@/lib/turnstile'
@@ -28,7 +29,7 @@ const EnquirySchema = z.object({
       if (typeof value === 'number') return value
       if (typeof value === 'string' && value.length > 0) return Number.parseInt(value, 10)
       return undefined
-    }, z.number().int().min(1).max(200))
+    }, z.number().int().min(1).max(50))
     .optional(),
   notes: z.string().max(2000).optional()
 })
@@ -245,6 +246,27 @@ export async function POST(request: NextRequest) {
         })
       }
 
+      // Audit log for successful private booking enquiry creation
+      try {
+        await logAuditEvent({
+          operation_type: 'create',
+          resource_type: 'private_booking',
+          resource_id: booking.id,
+          operation_status: 'success',
+          additional_info: {
+            source: 'website',
+            endpoint: '/api/private-booking-enquiry',
+          },
+        })
+      } catch (auditError) {
+        logger.warn('Failed to log audit event for private booking enquiry creation', {
+          metadata: {
+            privateBookingId: booking.id,
+            error: auditError instanceof Error ? auditError.message : String(auditError),
+          },
+        })
+      }
+
       const responsePayload = {
         success: true,
         state: 'enquiry_created',
@@ -264,7 +286,7 @@ export async function POST(request: NextRequest) {
             idempotencyKey,
           }
         })
-        return NextResponse.json(responsePayload, { status: 201 })
+        return NextResponse.json(responsePayload, { status: 202 })
       }
 
       return NextResponse.json(responsePayload, { status: 201 })

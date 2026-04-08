@@ -24,6 +24,7 @@ import {
   sendTableBookingCreatedSmsIfAllowed,
   type TableBookingRpcResult
 } from '@/lib/table-bookings/bookings'
+import { logAuditEvent } from '@/app/actions/audit'
 import { logger } from '@/lib/logger'
 import { verifyTurnstileToken, getClientIp } from '@/lib/turnstile'
 import { createRateLimiter } from '@/lib/rate-limit'
@@ -408,6 +409,31 @@ export async function POST(request: NextRequest) {
         }
 
         await Promise.all(analyticsPromises)
+      }
+
+      // Audit log for successful booking creation
+      if (bookingResult.table_booking_id) {
+        try {
+          await logAuditEvent({
+            operation_type: 'create',
+            resource_type: 'table_booking',
+            resource_id: bookingResult.table_booking_id,
+            operation_status: 'success',
+            additional_info: {
+              booking_state: bookingResult.state,
+              party_size: payload.party_size,
+              booking_date: payload.date,
+              source: 'api',
+            },
+          })
+        } catch (auditError) {
+          logger.warn('Failed to log audit event for table booking creation', {
+            metadata: {
+              tableBookingId: bookingResult.table_booking_id,
+              error: auditError instanceof Error ? auditError.message : String(auditError),
+            },
+          })
+        }
       }
 
       const responseState: TableBookingResponseData['state'] =
