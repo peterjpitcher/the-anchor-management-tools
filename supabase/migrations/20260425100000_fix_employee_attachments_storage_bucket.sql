@@ -39,6 +39,8 @@ ON CONFLICT (id) DO UPDATE SET
 --    migration but never bound to a trigger. Now that bucket-level constraints
 --    handle validation via allowed_mime_types, this custom trigger is redundant
 --    and could conflict. Remove any manual binding if it exists.
+-- NOTE: The actual trigger name has a _trigger suffix. This statement used the
+-- wrong name and silently did nothing. Fixed in 20260425200000.
 DROP TRIGGER IF EXISTS validate_employee_attachment_upload ON storage.objects;
 
 -- 3. Storage RLS policies — signed-URL uploads bypass RLS, but these policies
