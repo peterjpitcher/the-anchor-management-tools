@@ -530,58 +530,6 @@ export async function addEmployeeNote(prevState: NoteFormState, formData: FormDa
 }
 
 // Attachment Actions
-// L2 fix: permission check moved before rate-limit check
-export async function createEmployeeAttachmentUploadUrl(
-  employeeId: string,
-  fileName: string,
-  fileType: string,
-  fileSize: number
-): Promise<{ type: 'success'; path: string; token: string } | { type: 'error'; message: string }> {
-  const hasPermission = await checkUserPermission('employees', 'upload_documents')
-  if (!hasPermission) {
-    return { type: 'error', message: 'Insufficient permissions to upload employee documents.' }
-  }
-
-  try {
-    const { checkRateLimit } = await import('@/lib/rate-limit-server')
-    await checkRateLimit('api', 10) // 10 uploads per minute
-  } catch (error) {
-    if (error instanceof Error && getErrorMessage(error).includes('Too many requests')) {
-      return { type: 'error', message: 'Too many file uploads. Please try again later.' }
-    }
-  }
-
-  const employeeIdResult = z.string().uuid().safeParse(employeeId)
-  if (!employeeIdResult.success) {
-    return { type: 'error', message: 'Invalid employee ID.' }
-  }
-
-  if (!EMPLOYEE_ATTACHMENT_ALLOWED_MIME_TYPES.includes(fileType as (typeof EMPLOYEE_ATTACHMENT_ALLOWED_MIME_TYPES)[number])) {
-    return { type: 'error', message: 'Invalid file type. Only PDF, Word, JPG, PNG, TIFF, and TXT files are allowed.' }
-  }
-
-  if (!Number.isFinite(fileSize) || fileSize <= 0) {
-    return { type: 'error', message: 'Invalid file size.' }
-  }
-
-  if (fileSize >= MAX_FILE_SIZE) {
-    return { type: 'error', message: 'File size must be less than 10MB.' }
-  }
-
-  const finalFileName = sanitizeFileName(fileName, 'unnamed_file')
-  const uniqueFileName = `${employeeId}/${Date.now()}_${finalFileName}`
-
-  const adminClient = createAdminClient()
-  const { data, error } = await adminClient.storage
-    .from(EMPLOYEE_ATTACHMENTS_BUCKET_NAME)
-    .createSignedUploadUrl(uniqueFileName, { upsert: false })
-
-  if (error || !data?.token) {
-    return { type: 'error', message: error?.message || 'Failed to create signed upload URL.' }
-  }
-
-  return { type: 'success', path: data.path, token: data.token }
-}
 
 export async function createRightToWorkDocumentUploadUrl(
   employeeId: string,
@@ -626,120 +574,6 @@ export async function createRightToWorkDocumentUploadUrl(
   return { type: 'success', path: data.path, token: data.token }
 }
 
-const employeeAttachmentRecordSchema = z.object({
-  employee_id: z.string().uuid(),
-  category_id: z.string().uuid('A valid category must be selected.'),
-  storage_path: z.string().min(1),
-  file_name: z.string().min(1),
-  mime_type: z
-    .string()
-    .min(1)
-    .refine(
-      (value) => EMPLOYEE_ATTACHMENT_ALLOWED_MIME_TYPES.includes(value as (typeof EMPLOYEE_ATTACHMENT_ALLOWED_MIME_TYPES)[number]),
-      'Invalid file type. Only PDF, Word, JPG, PNG, TIFF, and TXT files are allowed.'
-    ),
-  file_size_bytes: z.preprocess(
-    (value) => (typeof value === 'string' ? Number(value) : value),
-    z.number().int().positive().max(MAX_FILE_SIZE - 1, 'File size must be less than 10MB.')
-  ),
-  description: z
-    .preprocess((value) => (typeof value === 'string' && value.trim() === '' ? undefined : value), z.string().optional())
-    .optional(),
-})
-
-export async function saveEmployeeAttachmentRecord(
-  prevState: AttachmentFormState,
-  formData: FormData
-): Promise<AttachmentFormState> {
-  const hasPermission = await checkUserPermission('employees', 'upload_documents')
-  if (!hasPermission) {
-    return { type: 'error', message: 'Insufficient permissions to upload employee documents.' }
-  }
-
-  const raw = Object.fromEntries(formData.entries())
-  const parsed = employeeAttachmentRecordSchema.safeParse(raw)
-  if (!parsed.success) {
-    return { type: 'error', message: 'Validation failed.', errors: parsed.error.flatten().fieldErrors }
-  }
-
-  const { employee_id, category_id, storage_path, file_name, mime_type, file_size_bytes, description } = parsed.data
-  if (!storage_path.startsWith(`${employee_id}/`)) {
-    return { type: 'error', message: 'Invalid upload path.' }
-  }
-
-  const adminClient = createAdminClient()
-  let metadataSaved = false
-
-  try {
-    const { error: dbError } = await adminClient.from('employee_attachments').insert({
-      employee_id,
-      category_id,
-      file_name,
-      storage_path,
-      mime_type,
-      file_size_bytes,
-      description: description || null,
-    })
-
-    if (dbError) {
-      throw new Error(`Database insert failed: ${dbError.message}`)
-    }
-    metadataSaved = true
-  } catch (error: unknown) {
-    console.error('Attachment record save error:', error)
-
-    if (!metadataSaved) {
-      const { error: removeError } = await adminClient.storage.from(EMPLOYEE_ATTACHMENTS_BUCKET_NAME).remove([storage_path])
-      if (removeError) {
-        console.error(`Failed to clean up uploaded file '${storage_path}' after DB error`, removeError)
-      }
-    }
-
-    return { type: 'error', message: getErrorMessage(error) }
-  }
-
-  try {
-    const userInfo = await getCurrentUser()
-    await logAuditEvent({
-      ...(userInfo.user_id && { user_id: userInfo.user_id }),
-      ...(userInfo.user_email && { user_email: userInfo.user_email }),
-      operation_type: 'add_attachment',
-      resource_type: 'employee',
-      resource_id: employee_id,
-      operation_status: 'success',
-      additional_info: {
-        file_name,
-        category: category_id,
-        file_size: file_size_bytes,
-        storage_path,
-      },
-    })
-  } catch (auditError) {
-    console.error('Failed to write employee attachment audit event:', auditError)
-  }
-
-  try {
-    const emailResult = await maybeSendEmployeeAttachmentEmail({
-      adminClient,
-      employeeId: employee_id,
-      categoryId: category_id,
-      storagePath: storage_path,
-      fileName: file_name,
-      mimeType: mime_type,
-      fileSizeBytes: file_size_bytes,
-    });
-
-    if (emailResult.attempted && !emailResult.success) {
-      console.error('Employee attachment email failed:', emailResult.error);
-    }
-  } catch (emailError) {
-    console.error('Unexpected employee attachment email error:', emailError)
-  }
-
-  revalidatePath(`/employees/${employee_id}`)
-  return { type: 'success', message: 'Attachment uploaded successfully!' }
-}
-
 export async function addEmployeeAttachment(
   prevState: AttachmentFormState,
   formData: FormData
@@ -761,15 +595,20 @@ export async function addEmployeeAttachment(
   const cleanedData = cleanFormDataForEmployee(formData, true); // Pass true to include files
   const result = addAttachmentSchema.safeParse(cleanedData);
   if (!result.success) {
-    console.error('Validation failed:', result.error.flatten().fieldErrors);
     return { type: 'error', message: "Validation failed.", errors: result.error.flatten().fieldErrors };
   }
 
   const { employee_id, attachment_file, category_id, description } = result.data;
 
+  let attachment;
   try {
-    const attachment = await EmployeeService.addEmployeeAttachment(employee_id, attachment_file, category_id, description);
+    attachment = await EmployeeService.addEmployeeAttachment(employee_id, attachment_file, category_id, description);
+  } catch (error: unknown) {
+    console.error('Attachment upload error:', error);
+    return { type: 'error', message: 'Failed to upload attachment. Please try again.' };
+  }
 
+  try {
     const userInfo = await getCurrentUser();
     await logAuditEvent({
       ...(userInfo.user_id && { user_id: userInfo.user_id }),
@@ -782,10 +621,13 @@ export async function addEmployeeAttachment(
         file_name: attachment_file.name,
         category: category_id,
         file_size: attachment_file.size,
-        // storage_path: result.storagePath // Cannot expose storage path via action return
       }
     });
+  } catch (auditError) {
+    console.error('Failed to write employee attachment audit event:', auditError);
+  }
 
+  try {
     if (attachment?.storagePath) {
       const emailResult = await maybeSendEmployeeAttachmentEmail({
         adminClient: createAdminClient(),
@@ -801,13 +643,12 @@ export async function addEmployeeAttachment(
         console.error('Employee attachment email failed:', emailResult.error);
       }
     }
-
-    revalidatePath(`/employees/${employee_id}`);
-    return { type: 'success', message: 'Attachment uploaded successfully!' };
-  } catch (error: unknown) {
-    console.error('Attachment upload error:', error);
-    return { type: 'error', message: getErrorMessage(error) };
+  } catch (emailError) {
+    console.error('Unexpected employee attachment email error:', emailError);
   }
+
+  revalidatePath(`/employees/${employee_id}`);
+  return { type: 'success', message: 'Attachment uploaded successfully!' };
 }
 
 export async function getAttachmentSignedUrl(attachmentId: string): Promise<{ url: string | null; error: string | null }> {
@@ -885,7 +726,7 @@ export async function deleteEmployeeAttachment(prevState: DeleteState, formData:
       return { type: 'success', message: 'Attachment deleted successfully.' };
     } catch (error: unknown) {
       console.error('Error deleting employee attachment:', error);
-      return { type: 'error', message: getErrorMessage(error) };
+      return { type: 'error', message: 'Failed to delete attachment. Please try again.' };
     }
 }
 

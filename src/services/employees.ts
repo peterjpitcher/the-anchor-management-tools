@@ -549,7 +549,7 @@ export class EmployeeService {
         throw new Error(`Database insert failed: ${dbError.message}`);
       }
       return { storagePath, fileName: attachmentFile.name, categoryId, description };
-    } catch (dbInsertError: any) {
+    } catch (dbInsertError: unknown) {
       console.error('Database insert failed after file upload. Initiating cleanup.', dbInsertError);
       const { error: removeError } = await adminClient.storage.from(ATTACHMENT_BUCKET_NAME).remove([storagePath]);
 
@@ -558,7 +558,7 @@ export class EmployeeService {
       } else {
         console.warn(`Orphaned file '${storagePath}' successfully removed.`);
       }
-      throw new Error(`Failed to save attachment details to the database: ${dbInsertError.message}`);
+      throw new Error(`Failed to save attachment details to the database: ${dbInsertError instanceof Error ? dbInsertError.message : 'Unknown error'}`);
     }
   }
 
@@ -594,20 +594,22 @@ export class EmployeeService {
       throw new Error('Attachment storage path is missing.');
     }
 
-    const { error: storageError } = await adminClient.storage
-      .from(ATTACHMENT_BUCKET_NAME)
-      .remove([attachment.storage_path]);
-    
-    if (storageError) {
-      console.error('Error deleting file from storage:', storageError);
-      throw new Error(`Storage error: ${storageError.message}`);
-    }
-
+    // Delete DB record first — if this fails, storage file is still referenced (safe to retry)
     const { error: dbError } = await adminClient.from('employee_attachments').delete().eq('attachment_id', attachmentId);
     if (dbError) {
       console.error('Error deleting attachment metadata:', dbError);
-      throw new Error(`Database error: ${dbError.message}`);
+      throw new Error('Failed to delete attachment record.');
     }
+
+    // Delete storage file — if this fails, orphan file is harmless (no DB reference)
+    const { error: storageError } = await adminClient.storage
+      .from(ATTACHMENT_BUCKET_NAME)
+      .remove([attachment.storage_path]);
+
+    if (storageError) {
+      console.warn(`Failed to delete storage file '${attachment.storage_path}' after DB record removed. Manual cleanup may be needed.`, storageError);
+    }
+
     return attachment;
   }
 

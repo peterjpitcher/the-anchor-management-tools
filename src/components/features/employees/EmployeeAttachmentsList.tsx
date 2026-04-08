@@ -7,6 +7,7 @@ import type { EmployeeAttachment } from '@/types/database'
 import { deleteEmployeeAttachment, getAttachmentSignedUrl } from '@/app/actions/employeeActions'
 import { PaperClipIcon, ArrowDownTrayIcon, TrashIcon, ExclamationTriangleIcon, EyeIcon } from '@heroicons/react/24/outline'
 import { formatBytes } from '@/lib/utils'
+import { formatDateInLondon } from '@/lib/dateUtils'
 import { toast } from '@/components/ui-v2/feedback/Toast'
 
 interface EmployeeAttachmentsListProps {
@@ -81,7 +82,6 @@ function DeleteAttachmentButton({
               >
                 <input type="hidden" name="employee_id" value={employeeId} />
                 <input type="hidden" name="attachment_id" value={attachmentId} />
-                <input type="hidden" name="storage_path" value={storagePath} />
                 <div className="sm:flex sm:items-start">
                   <div className="mx-auto flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-full bg-red-100 sm:mx-0 sm:h-10 sm:w-10">
                     <ExclamationTriangleIcon className="h-6 w-6 text-red-600" aria-hidden="true" />
@@ -213,7 +213,7 @@ export default function EmployeeAttachmentsList({
                   <p className="text-sm font-medium text-gray-900">{attachment.file_name}</p>
                   <p className="text-xs text-gray-500">
                     {categoryName} • {formatBytes(attachment.file_size_bytes || 0)} •{' '}
-                    {new Date(attachment.uploaded_at).toLocaleDateString()}
+                    {formatDateInLondon(attachment.uploaded_at)}
                   </p>
                 </div>
               </div>
