@@ -2,8 +2,7 @@
 
 import { useRef, useState, useTransition, type FormEvent } from 'react'
 import { useRouter } from 'next/navigation'
-import { createEmployeeAttachmentUploadUrl, saveEmployeeAttachmentRecord } from '@/app/actions/employeeActions'
-import { useSupabase } from '@/components/providers/SupabaseProvider'
+import { addEmployeeAttachment } from '@/app/actions/employeeActions'
 import type { AttachmentFormState } from '@/types/actions'
 import type { AttachmentCategory } from '@/types/database'
 import { Button } from '@/components/ui-v2/forms/Button'
@@ -38,7 +37,6 @@ export default function AddEmployeeAttachmentForm({
   employeeId,
   categories
 }: AddEmployeeAttachmentFormProps) {
-  const supabase = useSupabase()
   const hasCategories = categories.length > 0
   const router = useRouter()
   const [state, setState] = useState<AttachmentFormState>(null)
@@ -57,49 +55,16 @@ export default function AddEmployeeAttachmentForm({
       return
     }
 
-    const rawFormData = new FormData(event.currentTarget)
-    const categoryId = String(rawFormData.get('category_id') || '')
-    const description = String(rawFormData.get('description') || '')
-
     startTransition(async () => {
       try {
-        const signedUpload = await createEmployeeAttachmentUploadUrl(employeeId, file.name, file.type, file.size)
-        if (signedUpload.type === 'error') {
-          setState({ type: 'error', message: signedUpload.message || 'Failed to prepare attachment upload.' })
-          return
-        }
+        const formData = new FormData()
+        formData.append('employee_id', employeeId)
+        formData.append('attachment_file', file)
+        formData.append('category_id', String(new FormData(formRef.current!).get('category_id') || ''))
+        const description = String(new FormData(formRef.current!).get('description') || '')
+        if (description.trim()) formData.append('description', description)
 
-        const uploadResult = await supabase.storage
-          .from('employee-attachments')
-          .uploadToSignedUrl(signedUpload.path, signedUpload.token, file, {
-            upsert: false,
-            contentType: file.type,
-          })
-
-        if (uploadResult.error) {
-          console.error('Attachment upload failed:', uploadResult.error)
-          const rawMsg = uploadResult.error.message || ''
-          const friendlyMsg = rawMsg.includes('mime') || rawMsg.includes('type')
-            ? `File type "${file.type || 'unknown'}" is not allowed. Please upload a PDF, Word, image, or text file.`
-            : rawMsg.includes('size')
-              ? 'File is too large. Maximum size is 10 MB.'
-              : rawMsg.includes('P0001') || rawMsg.includes('violates')
-                ? 'Upload rejected by the database. Please check the file type and size, then try again.'
-                : rawMsg || 'Failed to upload attachment.'
-          setState({ type: 'error', message: friendlyMsg })
-          return
-        }
-
-        const saveForm = new FormData()
-        saveForm.append('employee_id', employeeId)
-        saveForm.append('category_id', categoryId)
-        if (description.trim()) saveForm.append('description', description)
-        saveForm.append('storage_path', signedUpload.path)
-        saveForm.append('file_name', file.name)
-        saveForm.append('mime_type', file.type)
-        saveForm.append('file_size_bytes', String(file.size))
-
-        const result = await saveEmployeeAttachmentRecord(null, saveForm)
+        const result = await addEmployeeAttachment(null, formData)
         setState(result)
 
         if (result?.type === 'success') {
