@@ -115,16 +115,22 @@ export async function POST(request: NextRequest) {
     return ipRateLimitResponse
   }
 
-  // Turnstile CAPTCHA verification — blocks bots even with a valid API key
-  const turnstileToken = request.headers.get('x-turnstile-token')
-  const clientIp = getClientIp(request)
-  const turnstile = await verifyTurnstileToken(turnstileToken, clientIp)
-  if (!turnstile.success) {
-    return createErrorResponse(
-      turnstile.error || 'Bot verification failed',
-      'TURNSTILE_FAILED',
-      403
-    )
+  // Turnstile CAPTCHA verification — only for direct browser requests.
+  // API-key-authenticated requests (e.g. from the website proxy) skip Turnstile
+  // because the website has its own Turnstile widget with a different secret key
+  // and handles verification before proxying.
+  const hasApiKey = Boolean(request.headers.get('x-api-key') || request.headers.get('authorization'))
+  if (!hasApiKey) {
+    const turnstileToken = request.headers.get('x-turnstile-token')
+    const clientIp = getClientIp(request)
+    const turnstile = await verifyTurnstileToken(turnstileToken, clientIp)
+    if (!turnstile.success) {
+      return createErrorResponse(
+        turnstile.error || 'Bot verification failed',
+        'TURNSTILE_FAILED',
+        403
+      )
+    }
   }
 
   return withApiAuth(async (req) => {

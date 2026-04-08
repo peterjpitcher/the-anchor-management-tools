@@ -97,15 +97,18 @@ export async function POST(request: NextRequest) {
             return rateLimitResponse;
         }
 
-        // Turnstile CAPTCHA verification
-        const turnstileToken = request.headers.get('x-turnstile-token');
-        const clientIp = getClientIp(request);
-        const turnstile = await verifyTurnstileToken(turnstileToken, clientIp);
-        if (!turnstile.success) {
-            return NextResponse.json(
-                { success: false, error: turnstile.error || 'Bot verification failed' },
-                { status: 403 }
-            );
+        // Turnstile CAPTCHA verification — skip for API-key-authenticated requests
+        const hasApiKey = Boolean(request.headers.get('x-api-key') || request.headers.get('authorization'));
+        if (!hasApiKey) {
+            const turnstileToken = request.headers.get('x-turnstile-token');
+            const clientIp = getClientIp(request);
+            const turnstile = await verifyTurnstileToken(turnstileToken, clientIp);
+            if (!turnstile.success) {
+                return NextResponse.json(
+                    { success: false, error: turnstile.error || 'Bot verification failed' },
+                    { status: 403 }
+                );
+            }
         }
 
         let rawPayload: unknown;
