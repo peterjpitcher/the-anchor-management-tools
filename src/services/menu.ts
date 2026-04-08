@@ -83,7 +83,7 @@ export const DishAssignmentSchema = z.object({
 
 export const DishSchema = z.object({
   name: z.string().min(1),
-  description: z.string().optional(),
+  description: z.string().nullable().optional(),
   selling_price: z.number().nonnegative(),
   calories: z.number().int().optional().nullable(),
   is_active: z.boolean().default(true),
@@ -1080,13 +1080,13 @@ export class MenuService {
   }
 
   static async updateDish(id: string, input: UpdateDishInput) {
-    const supabase = await createClient();
+    const adminClient = createAdminClient();
     // DEFECT-015 fix: DishSchema.parse removed here — action layer pre-validates.
     // DEFECT-001 fix: replaced 9 sequential writes with a single atomic RPC call.
     // On any mid-step failure the implicit savepoint rolls back all changes,
     // leaving the dish in its original pre-edit state.
-    const targetGpPct = await MenuSettingsService.getMenuTargetGp({ client: supabase });
-    const { menuMap, categoryMap } = await this.getMenuAndCategoryIds(input.assignments ?? [], createAdminClient());
+    const targetGpPct = await MenuSettingsService.getMenuTargetGp({ client: adminClient });
+    const { menuMap, categoryMap } = await this.getMenuAndCategoryIds(input.assignments ?? [], adminClient);
 
     const dishData = {
       name: input.name,
@@ -1129,7 +1129,7 @@ export class MenuService {
       available_until: assign.available_until ? new Date(assign.available_until).toISOString().slice(0, 10) : null,
     }));
 
-    const { data: dish, error } = await supabase.rpc('update_dish_transaction', {
+    const { data: dish, error } = await adminClient.rpc('update_dish_transaction', {
       p_dish_id: id,
       p_dish_data: dishData,
       p_ingredients: ingredientsPayload,
@@ -1139,7 +1139,7 @@ export class MenuService {
 
     if (error) {
       console.error('updateMenuDish transaction error:', error);
-      throw new Error('Failed to update dish');
+      throw new Error(error.message || 'Failed to update dish');
     }
 
     return dish;
