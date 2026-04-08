@@ -78,7 +78,15 @@ export default function AddEmployeeAttachmentForm({
 
         if (uploadResult.error) {
           console.error('Attachment upload failed:', uploadResult.error)
-          setState({ type: 'error', message: uploadResult.error.message || 'Failed to upload attachment.' })
+          const rawMsg = uploadResult.error.message || ''
+          const friendlyMsg = rawMsg.includes('mime') || rawMsg.includes('type')
+            ? `File type "${file.type || 'unknown'}" is not allowed. Please upload a PDF, Word, image, or text file.`
+            : rawMsg.includes('size')
+              ? 'File is too large. Maximum size is 10 MB.'
+              : rawMsg.includes('P0001') || rawMsg.includes('violates')
+                ? 'Upload rejected by the database. Please check the file type and size, then try again.'
+                : rawMsg || 'Failed to upload attachment.'
+          setState({ type: 'error', message: friendlyMsg })
           return
         }
 
