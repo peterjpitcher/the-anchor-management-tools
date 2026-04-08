@@ -25,6 +25,14 @@ import {
   type TableBookingRpcResult
 } from '@/lib/table-bookings/bookings'
 import { logger } from '@/lib/logger'
+import { verifyTurnstileToken, getClientIp } from '@/lib/turnstile'
+import { createRateLimiter } from '@/lib/rate-limit'
+
+const tableBookingIpLimiter = createRateLimiter({
+  windowMs: 60 * 60 * 1000, // 1 hour
+  max: 10,
+  message: 'Too many booking requests from this address. Please try again later.'
+})
 
 type SmsSafetyMeta = Awaited<ReturnType<typeof sendTableBookingCreatedSmsIfAllowed>>['sms']
 
@@ -100,6 +108,24 @@ export async function OPTIONS(_request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  // IP-based rate limiting — first line of defence before any DB work
+  const ipRateLimitResponse = await tableBookingIpLimiter(request)
+  if (ipRateLimitResponse) {
+    return ipRateLimitResponse
+  }
+
+  // Turnstile CAPTCHA verification — blocks bots even with a valid API key
+  const turnstileToken = request.headers.get('x-turnstile-token')
+  const clientIp = getClientIp(request)
+  const turnstile = await verifyTurnstileToken(turnstileToken, clientIp)
+  if (!turnstile.success) {
+    return createErrorResponse(
+      turnstile.error || 'Bot verification failed',
+      'TURNSTILE_FAILED',
+      403
+    )
+  }
+
   return withApiAuth(async (req) => {
     const idempotencyKey = getIdempotencyKey(req)
     if (!idempotencyKey) {

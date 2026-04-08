@@ -14,6 +14,7 @@ import { formatPhoneForStorage } from '@/lib/utils'
 import { createRateLimiter } from '@/lib/rate-limit'
 import { logger } from '@/lib/logger'
 import { sendManagerPrivateBookingCreatedEmail } from '@/lib/private-bookings/manager-notifications'
+import { verifyTurnstileToken, getClientIp } from '@/lib/turnstile'
 
 const EnquirySchema = z.object({
   phone: z.string().min(5),
@@ -101,6 +102,17 @@ export async function POST(request: NextRequest) {
     const rateLimitResponse = await privateBookingEnquiryLimiter(request)
     if (rateLimitResponse) {
       return rateLimitResponse
+    }
+
+    // Turnstile CAPTCHA verification
+    const turnstileToken = request.headers.get('x-turnstile-token')
+    const clientIp = getClientIp(request)
+    const turnstile = await verifyTurnstileToken(turnstileToken, clientIp)
+    if (!turnstile.success) {
+      return NextResponse.json(
+        { error: turnstile.error || 'Bot verification failed' },
+        { status: 403 }
+      )
     }
 
     const supabase = createAdminClient()

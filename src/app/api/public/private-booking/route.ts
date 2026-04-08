@@ -14,6 +14,7 @@ import {
 import { createRateLimiter } from '@/lib/rate-limit';
 import { logger } from '@/lib/logger';
 import { sendManagerPrivateBookingCreatedEmail } from '@/lib/private-bookings/manager-notifications';
+import { verifyTurnstileToken, getClientIp } from '@/lib/turnstile';
 
 // Schema for public booking requests
 // Simplified version of the internal types but stricter validation could be added here
@@ -60,6 +61,17 @@ export async function POST(request: NextRequest) {
         const rateLimitResponse = await privateBookingPublicLimiter(request);
         if (rateLimitResponse) {
             return rateLimitResponse;
+        }
+
+        // Turnstile CAPTCHA verification
+        const turnstileToken = request.headers.get('x-turnstile-token');
+        const clientIp = getClientIp(request);
+        const turnstile = await verifyTurnstileToken(turnstileToken, clientIp);
+        if (!turnstile.success) {
+            return NextResponse.json(
+                { success: false, error: turnstile.error || 'Bot verification failed' },
+                { status: 403 }
+            );
         }
 
         let body: any;
