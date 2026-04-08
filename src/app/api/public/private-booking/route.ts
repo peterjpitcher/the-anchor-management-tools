@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { z } from 'zod';
 import { PrivateBookingService, type CreatePrivateBookingInput } from '@/services/private-bookings';
-import type { BookingItemFormData } from '@/types/private-bookings';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { recordAnalyticsEvent } from '@/lib/analytics/events';
 import { formatPhoneForStorage } from '@/lib/utils';
@@ -12,16 +12,50 @@ import {
     releaseIdempotencyClaim
 } from '@/lib/api/idempotency';
 import { createRateLimiter } from '@/lib/rate-limit';
+import { logAuditEvent } from '@/app/actions/audit';
 import { logger } from '@/lib/logger';
 import { sendManagerPrivateBookingCreatedEmail } from '@/lib/private-bookings/manager-notifications';
 import { verifyTurnstileToken, getClientIp } from '@/lib/turnstile';
 
-// Schema for public booking requests
-// Simplified version of the internal types but stricter validation could be added here
-interface PublicBookingRequest extends CreatePrivateBookingInput {
-    items?: BookingItemFormData[];
-    default_country_code?: string;
-}
+const BookingItemSchema = z.object({
+    item_type: z.enum(['space', 'catering', 'vendor', 'other']),
+    space_id: z.string().optional(),
+    package_id: z.string().optional(),
+    vendor_id: z.string().optional(),
+    description: z.string().min(1).max(500),
+    quantity: z.number().int().min(1).max(1000),
+    unit_price: z.number().min(0).max(100000),
+    discount_type: z.enum(['percent', 'fixed']).optional(),
+    discount_value: z.number().min(0).optional(),
+    discount_reason: z.string().max(500).optional(),
+    notes: z.string().max(2000).optional(),
+});
+
+const PublicBookingSchema = z.object({
+    customer_first_name: z.string().min(1, 'First name is required').max(100),
+    customer_last_name: z.string().min(1).max(100).optional(),
+    contact_phone: z.string().min(5, 'Phone number is required'),
+    contact_email: z.string().email().max(320).optional(),
+    default_country_code: z.string().regex(/^\d{1,4}$/, 'default_country_code must be 1 to 4 digits').optional(),
+    event_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'event_date must be YYYY-MM-DD').optional(),
+    start_time: z.string().regex(/^([0-1][0-9]|2[0-3]):[0-5][0-9]$/, 'start_time must be HH:MM').optional(),
+    end_time: z.string().regex(/^([0-1][0-9]|2[0-3]):[0-5][0-9]$/, 'end_time must be HH:MM').optional(),
+    setup_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'setup_date must be YYYY-MM-DD').optional(),
+    setup_time: z.string().regex(/^([0-1][0-9]|2[0-3]):[0-5][0-9]$/, 'setup_time must be HH:MM').optional(),
+    guest_count: z
+        .preprocess((value) => {
+            if (typeof value === 'number') return value;
+            if (typeof value === 'string' && value.length > 0) return Number.parseInt(value, 10);
+            return undefined;
+        }, z.number().int().min(1).max(50))
+        .optional(),
+    event_type: z.string().min(1).max(100).optional(),
+    customer_requests: z.string().max(2000).optional(),
+    special_requirements: z.string().max(2000).optional(),
+    accessibility_needs: z.string().max(2000).optional(),
+    date_tbd: z.boolean().optional(),
+    items: z.array(BookingItemSchema).max(50).optional(),
+});
 
 const DEPRECATION_HEADERS = {
     Deprecation: 'true',
@@ -74,9 +108,9 @@ export async function POST(request: NextRequest) {
             );
         }
 
-        let body: any;
+        let rawPayload: unknown;
         try {
-            body = await request.json();
+            rawPayload = await request.json();
         } catch {
             return NextResponse.json(
                 { success: false, error: 'Invalid JSON body' },
@@ -93,24 +127,20 @@ export async function POST(request: NextRequest) {
             );
         }
 
-        if (
-            body.default_country_code !== undefined &&
-            (typeof body.default_country_code !== 'string' || !/^\d{1,4}$/.test(body.default_country_code))
-        ) {
+        const parsed = PublicBookingSchema.safeParse(rawPayload);
+        if (!parsed.success) {
             return NextResponse.json(
-                { success: false, error: 'default_country_code must be 1 to 4 digits' },
+                { success: false, error: parsed.error.issues[0]?.message || 'Invalid booking payload' },
                 { status: 400 }
             );
         }
+        const body = parsed.data;
 
         let normalizedPhone: string | undefined;
-        if (typeof body.contact_phone === 'string' && body.contact_phone.trim().length > 0) {
+        if (body.contact_phone.trim().length > 0) {
             try {
                 normalizedPhone = formatPhoneForStorage(body.contact_phone, {
-                    defaultCountryCode:
-                        typeof body.default_country_code === 'string'
-                            ? body.default_country_code
-                            : undefined
+                    defaultCountryCode: body.default_country_code
                 });
             } catch {
                 return NextResponse.json(
@@ -156,34 +186,26 @@ export async function POST(request: NextRequest) {
         let claimHeld = true;
         let createdBookingId: string | null = null;
         try {
-            // Basic validation
-            if (!body.customer_first_name || !(normalizedPhone || body.contact_phone)) {
-                return NextResponse.json(
-                    { success: false, error: 'Missing required fields' },
-                    { status: 400 }
-                );
-            }
-
-            // Whitelist only the fields a public caller should be able to set.
+            // Whitelist only the Zod-validated fields a public caller should set.
             // Explicitly exclude: customer_id, deposit_amount, balance_due_date,
             // hold_expiry, status, created_by, source, internal_notes, contract_note.
             const bookingPayload: CreatePrivateBookingInput = {
                 customer_first_name: body.customer_first_name,
-                customer_last_name: body.customer_last_name || undefined,
+                customer_last_name: body.customer_last_name,
                 contact_phone: normalizedPhone || body.contact_phone,
-                contact_email: typeof body.contact_email === 'string' ? body.contact_email : undefined,
-                event_date: typeof body.event_date === 'string' ? body.event_date : undefined,
-                start_time: typeof body.start_time === 'string' ? body.start_time : undefined,
-                end_time: typeof body.end_time === 'string' ? body.end_time : undefined,
-                setup_date: typeof body.setup_date === 'string' ? body.setup_date : undefined,
-                setup_time: typeof body.setup_time === 'string' ? body.setup_time : undefined,
-                guest_count: typeof body.guest_count === 'number' ? body.guest_count : undefined,
-                event_type: typeof body.event_type === 'string' ? body.event_type : undefined,
-                customer_requests: typeof body.customer_requests === 'string' ? body.customer_requests : undefined,
-                special_requirements: typeof body.special_requirements === 'string' ? body.special_requirements : undefined,
-                accessibility_needs: typeof body.accessibility_needs === 'string' ? body.accessibility_needs : undefined,
-                date_tbd: body.date_tbd === true ? true : undefined,
-                items: Array.isArray(body.items) ? body.items : undefined,
+                contact_email: body.contact_email,
+                event_date: body.event_date,
+                start_time: body.start_time,
+                end_time: body.end_time,
+                setup_date: body.setup_date,
+                setup_time: body.setup_time,
+                guest_count: body.guest_count,
+                event_type: body.event_type,
+                customer_requests: body.customer_requests,
+                special_requirements: body.special_requirements,
+                accessibility_needs: body.accessibility_needs,
+                date_tbd: body.date_tbd,
+                items: body.items,
                 // Server-controlled fields — never trust the caller
                 status: 'draft',
                 source: 'website',
@@ -226,6 +248,27 @@ export async function POST(request: NextRequest) {
                 }, {
                     privateBookingId: booking.id,
                     customerId: booking.customer_id
+                });
+            }
+
+            // Audit log for successful private booking creation
+            try {
+                await logAuditEvent({
+                    operation_type: 'create',
+                    resource_type: 'private_booking',
+                    resource_id: booking.id,
+                    operation_status: 'success',
+                    additional_info: {
+                        source: 'website',
+                        endpoint: '/api/public/private-booking',
+                    },
+                });
+            } catch (auditError) {
+                logger.warn('Failed to log audit event for public private booking creation', {
+                    metadata: {
+                        privateBookingId: booking.id,
+                        error: auditError instanceof Error ? auditError.message : String(auditError),
+                    },
                 });
             }
 

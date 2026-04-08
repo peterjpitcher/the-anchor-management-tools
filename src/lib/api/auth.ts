@@ -59,19 +59,27 @@ export async function validateApiKey(apiKey: string | null): Promise<ApiKey | nu
     return null;
   }
 
-  // Update last used timestamp
-  const { data: updatedKey, error: updateError } = await supabase
-    .from('api_keys')
-    .update({ last_used_at: new Date().toISOString() })
-    .eq('id', keyData.id)
-    .select('id')
-    .maybeSingle();
-
-  if (updateError) {
-    console.error('[API Auth] Failed to update API key last_used_at');
-  } else if (!updatedKey) {
-    console.error('[API Auth] API key disappeared before last_used_at could be updated');
-  }
+  // Fire-and-forget — don't block the response for observational timestamp update
+  Promise.resolve(
+    supabase
+      .from('api_keys')
+      .update({ last_used_at: new Date().toISOString() })
+      .eq('id', keyData.id)
+      .select('id')
+      .maybeSingle()
+  )
+    .then(({ error: updateError, data: updatedKey }) => {
+      if (updateError) {
+        console.error('[API Auth] Failed to update API key last_used_at');
+      } else if (!updatedKey) {
+        console.error('[API Auth] API key disappeared before last_used_at could be updated');
+      }
+    })
+    .catch((err: unknown) =>
+      console.warn('[API Auth] Failed to update last_used_at', {
+        error: err instanceof Error ? err.message : String(err),
+      })
+    );
 
   return keyData as ApiKey;
 }
@@ -302,27 +310,36 @@ export async function withApiAuth(
     const response = await handler(req, validatedKey);
     const responseTime = Date.now() - startTime;
     
-    // Log usage
-    await safeLogApiUsage(
+    // Fire-and-forget — don't block the response for observational logging
+    safeLogApiUsage(
       validatedKey.id,
       safePathname(req.url),
       req.method || fallbackMethod,
       response.status,
       responseTime
+    ).catch(err =>
+      console.warn('[API Auth] Failed to log API usage', {
+        error: err instanceof Error ? err.message : String(err),
+      })
     );
-    
+
     return response;
   } catch (error) {
     const responseTime = Date.now() - startTime;
 
-    await safeLogApiUsage(
+    // Fire-and-forget — don't block the error response for observational logging
+    safeLogApiUsage(
       validatedKey.id,
       safePathname(request?.url || headersList.get('x-url')),
       headersList.get('x-method') || 'GET',
       500,
       responseTime
+    ).catch(err =>
+      console.warn('[API Auth] Failed to log API usage', {
+        error: err instanceof Error ? err.message : String(err),
+      })
     );
-    
+
     return createErrorResponse(
       'Internal server error',
       'INTERNAL_ERROR',
