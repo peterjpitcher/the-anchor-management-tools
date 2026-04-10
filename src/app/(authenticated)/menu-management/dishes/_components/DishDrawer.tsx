@@ -477,6 +477,7 @@ export function DishDrawer({
           recipeMap={recipeMap}
           sellingPrice={parseFloat(formState.selling_price || '0')}
           targetGpPct={targetGpPct}
+          dish={dish}
         />
       ),
     },
