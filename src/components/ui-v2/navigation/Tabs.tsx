@@ -402,8 +402,8 @@ export function Tabs({
               id={`tabpanel-${item.key}`}
               role="tabpanel"
               aria-labelledby={`tab-${item.key}`}
-              hidden={!isActive}
               className={cn(
+                !isActive && 'hidden',
                 bordered && 'border border-gray-200 rounded-lg',
                 padded && 'p-4',
                 tabPanelClassName
