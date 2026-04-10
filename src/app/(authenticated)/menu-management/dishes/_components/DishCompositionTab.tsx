@@ -16,54 +16,104 @@ import type { IngredientSummary, RecipeSummary } from './DishExpandedRow';
 // Cost calculation helpers
 // ---------------------------------------------------------------------------
 
+export interface CostBreakdown {
+  total: number;
+  fixedTotal: number;
+  groups: Map<string, { maxCost: number; items: Array<{ name: string; cost: number }> }>;
+}
+
 export function computeIngredientCost(
   rows: DishIngredientFormRow[],
   ingredientMap: Map<string, IngredientSummary>,
-): number {
-  return rows.reduce((sum, row) => {
-    if (!row.ingredient_id) return sum;
+): CostBreakdown {
+  let fixedTotal = 0;
+  const groups = new Map<string, { maxCost: number; items: Array<{ name: string; cost: number }> }>();
+
+  for (const row of rows) {
+    if (!row.ingredient_id) continue;
     const base = ingredientMap.get(row.ingredient_id);
-    if (!base) return sum;
+    if (!base) continue;
     const quantity = parseFloat(row.quantity || '0');
-    if (!quantity || Number.isNaN(quantity)) return sum;
+    if (!quantity || Number.isNaN(quantity)) continue;
     const costOverride = row.cost_override ? parseFloat(row.cost_override) : undefined;
     const unitCost =
       costOverride !== undefined && !Number.isNaN(costOverride)
         ? costOverride
         : Number(base.latest_unit_cost ?? 0);
-    if (!unitCost) return sum;
+    if (!unitCost) continue;
     const yieldPct = parseFloat(row.yield_pct || '100');
     const wastagePct = parseFloat(row.wastage_pct || '0');
     const yieldFactor = yieldPct > 0 ? yieldPct / 100 : 1;
     const wastageFactor = 1 + (Number.isNaN(wastagePct) ? 0 : wastagePct / 100);
     const lineCost = (quantity / (yieldFactor || 1)) * unitCost * wastageFactor;
-    return sum + lineCost;
-  }, 0);
+
+    const groupName = row.option_group?.trim();
+    if (groupName) {
+      let group = groups.get(groupName);
+      if (!group) {
+        group = { maxCost: 0, items: [] };
+        groups.set(groupName, group);
+      }
+      group.items.push({ name: base.name, cost: lineCost });
+      group.maxCost = Math.max(group.maxCost, lineCost);
+    } else {
+      fixedTotal += lineCost;
+    }
+  }
+
+  let total = fixedTotal;
+  for (const group of groups.values()) {
+    total += group.maxCost;
+  }
+
+  return { total, fixedTotal, groups };
 }
 
 export function computeRecipeCost(
   rows: DishRecipeFormRow[],
   recipeMap: Map<string, RecipeSummary>,
-): number {
-  return rows.reduce((sum, row) => {
-    if (!row.recipe_id) return sum;
+): CostBreakdown {
+  let fixedTotal = 0;
+  const groups = new Map<string, { maxCost: number; items: Array<{ name: string; cost: number }> }>();
+
+  for (const row of rows) {
+    if (!row.recipe_id) continue;
     const recipe = recipeMap.get(row.recipe_id);
-    if (!recipe) return sum;
+    if (!recipe) continue;
     const quantity = parseFloat(row.quantity || '0');
-    if (!quantity || Number.isNaN(quantity)) return sum;
+    if (!quantity || Number.isNaN(quantity)) continue;
     const costOverride = row.cost_override ? parseFloat(row.cost_override) : undefined;
     const unitCost =
       costOverride !== undefined && !Number.isNaN(costOverride)
         ? costOverride
         : Number(recipe.portion_cost ?? 0);
-    if (!unitCost) return sum;
+    if (!unitCost) continue;
     const yieldPct = parseFloat(row.yield_pct || '100');
     const wastagePct = parseFloat(row.wastage_pct || '0');
     const yieldFactor = yieldPct > 0 ? yieldPct / 100 : 1;
     const wastageFactor = 1 + (Number.isNaN(wastagePct) ? 0 : wastagePct / 100);
     const lineCost = (quantity / (yieldFactor || 1)) * unitCost * wastageFactor;
-    return sum + lineCost;
-  }, 0);
+
+    const groupName = row.option_group?.trim();
+    if (groupName) {
+      let group = groups.get(groupName);
+      if (!group) {
+        group = { maxCost: 0, items: [] };
+        groups.set(groupName, group);
+      }
+      group.items.push({ name: recipe.name, cost: lineCost });
+      group.maxCost = Math.max(group.maxCost, lineCost);
+    } else {
+      fixedTotal += lineCost;
+    }
+  }
+
+  let total = fixedTotal;
+  for (const group of groups.values()) {
+    total += group.maxCost;
+  }
+
+  return { total, fixedTotal, groups };
 }
 
 // ---------------------------------------------------------------------------
@@ -124,17 +174,27 @@ export function DishCompositionTab({
   );
 
   // Cost subtotals
-  const recipesCost = useMemo(
+  const recipesResult = useMemo(
     () => computeRecipeCost(formRecipes, recipeMap),
     [formRecipes, recipeMap]
   );
 
-  const ingredientsCost = useMemo(
+  const ingredientsResult = useMemo(
     () => computeIngredientCost(formIngredients, ingredientMap),
     [formIngredients, ingredientMap]
   );
 
-  const totalPortionCost = recipesCost + ingredientsCost;
+  const totalPortionCost = recipesResult.total + ingredientsResult.total;
+
+  // Collect existing option group names across both lists
+  const existingGroups = useMemo(() => {
+    const groups = new Set<string>();
+    formIngredients.forEach((r) => { if (r.option_group?.trim()) groups.add(r.option_group.trim()); });
+    formRecipes.forEach((r) => { if (r.option_group?.trim()) groups.add(r.option_group.trim()); });
+    return Array.from(groups).sort();
+  }, [formIngredients, formRecipes]);
+
+  const hasAnyGroups = recipesResult.groups.size > 0 || ingredientsResult.groups.size > 0;
 
   // Warning: ingredient appears both directly and via a recipe
   const duplicateWarnings = useMemo(() => {
@@ -164,7 +224,7 @@ export function DishCompositionTab({
   function addIngredientRow() {
     onIngredientsChange([
       ...formIngredients,
-      { ingredient_id: '', quantity: '', unit: 'portion', yield_pct: '100', wastage_pct: '0', cost_override: '', notes: '' },
+      { ingredient_id: '', quantity: '', unit: 'portion', yield_pct: '100', wastage_pct: '0', cost_override: '', notes: '', option_group: '' },
     ]);
   }
 
@@ -182,7 +242,7 @@ export function DishCompositionTab({
   function addRecipeRow() {
     onRecipesChange([
       ...formRecipes,
-      { recipe_id: '', quantity: '', yield_pct: '100', wastage_pct: '0', cost_override: '', notes: '' },
+      { recipe_id: '', quantity: '', yield_pct: '100', wastage_pct: '0', cost_override: '', notes: '', option_group: '' },
     ]);
   }
 
@@ -204,7 +264,7 @@ export function DishCompositionTab({
         <div className="flex items-center justify-between mb-2">
           <h4 className="text-sm font-semibold text-gray-900">Recipes</h4>
           <span className="text-sm text-gray-600">
-            Recipes: £{recipesCost.toFixed(2)}
+            Recipes: £{recipesResult.total.toFixed(2)}
           </span>
         </div>
 
@@ -223,6 +283,7 @@ export function DishCompositionTab({
               options={recipeOptions}
               linkedIds={linkedRecipeIds}
               canRemove={formRecipes.length > 1}
+              existingGroups={existingGroups}
               onChange={updateRecipeRow}
               onRemove={removeRecipeRow}
             />
@@ -239,7 +300,7 @@ export function DishCompositionTab({
         <div className="flex items-center justify-between mb-2">
           <h4 className="text-sm font-semibold text-gray-900">Direct Ingredients</h4>
           <span className="text-sm text-gray-600">
-            Direct ingredients: £{ingredientsCost.toFixed(2)}
+            Direct ingredients: £{ingredientsResult.total.toFixed(2)}
           </span>
         </div>
 
@@ -252,6 +313,7 @@ export function DishCompositionTab({
               options={ingredientOptions}
               linkedIds={linkedIngredientIds}
               canRemove={formIngredients.length > 1}
+              existingGroups={existingGroups}
               onChange={updateIngredientRow}
               onRemove={removeIngredientRow}
             />
@@ -273,10 +335,43 @@ export function DishCompositionTab({
 
       {/* Footer: total cost */}
       <div className="space-y-2 rounded-lg border border-dashed border-gray-300 bg-gray-50 p-4">
-        <div className="flex items-center justify-between">
-          <span className="text-sm font-medium text-gray-900">Total portion cost</span>
-          <span className="text-lg font-semibold">£{totalPortionCost.toFixed(2)}</span>
-        </div>
+        {hasAnyGroups ? (
+          <>
+            {/* Recipe breakdown */}
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-gray-700">Recipes (fixed)</span>
+              <span className="text-sm font-medium">£{recipesResult.fixedTotal.toFixed(2)}</span>
+            </div>
+            {Array.from(recipesResult.groups.entries()).map(([groupName, group]) => (
+              <div key={`rg-${groupName}`} className="flex items-center justify-between">
+                <span className="text-sm text-gray-700">Recipes — {groupName} (worst case)</span>
+                <span className="text-sm font-medium">£{group.maxCost.toFixed(2)}</span>
+              </div>
+            ))}
+
+            {/* Ingredient breakdown */}
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-gray-700">Fixed ingredients</span>
+              <span className="text-sm font-medium">£{ingredientsResult.fixedTotal.toFixed(2)}</span>
+            </div>
+            {Array.from(ingredientsResult.groups.entries()).map(([groupName, group]) => (
+              <div key={`ig-${groupName}`} className="flex items-center justify-between">
+                <span className="text-sm text-gray-700">{groupName} (worst case)</span>
+                <span className="text-sm font-medium">£{group.maxCost.toFixed(2)}</span>
+              </div>
+            ))}
+
+            <div className="border-t border-gray-300 pt-2 flex items-center justify-between">
+              <span className="text-sm font-medium text-gray-900">Total portion cost (worst case)</span>
+              <span className="text-lg font-semibold">£{totalPortionCost.toFixed(2)}</span>
+            </div>
+          </>
+        ) : (
+          <div className="flex items-center justify-between">
+            <span className="text-sm font-medium text-gray-900">Total portion cost</span>
+            <span className="text-lg font-semibold">£{totalPortionCost.toFixed(2)}</span>
+          </div>
+        )}
         <p className="text-xs text-gray-600">
           Figures update instantly as you tweak quantities.
         </p>

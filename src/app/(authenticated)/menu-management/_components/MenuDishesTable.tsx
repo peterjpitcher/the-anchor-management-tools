@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useCallback } from 'react';
+import { useMemo, useCallback, useState } from 'react';
 import { Card } from '@/components/ui-v2/layout/Card';
 import { Badge } from '@/components/ui-v2/display/Badge';
 import { Input } from '@/components/ui-v2/forms/Input';
@@ -12,6 +12,29 @@ import { useTablePipeline } from './useTablePipeline';
 // Types
 // ---------------------------------------------------------------------------
 
+export interface DishIngredientForCost {
+  ingredient_id: string;
+  quantity: number;
+  unit?: string | null;
+  yield_pct?: number | null;
+  wastage_pct?: number | null;
+  cost_override?: number | null;
+  option_group?: string | null;
+  latest_unit_cost?: number | null;
+  ingredient_name?: string;
+}
+
+export interface DishRecipeForCost {
+  recipe_id: string;
+  quantity: number;
+  yield_pct?: number | null;
+  wastage_pct?: number | null;
+  cost_override?: number | null;
+  option_group?: string | null;
+  portion_cost?: number | null;
+  recipe_name?: string;
+}
+
 interface DishDisplayItem {
   id: string;
   name: string;
@@ -22,8 +45,8 @@ interface DishDisplayItem {
   is_gp_alert: boolean;
   is_active: boolean;
   assignments: Array<{ menu_code: string }>;
-  ingredients: unknown[];
-  recipes: unknown[];
+  ingredients: DishIngredientForCost[];
+  recipes: DishRecipeForCost[];
 }
 
 export type MenuDishesFilter = 'all' | 'below-target' | 'missing-costing';
@@ -34,6 +57,188 @@ interface MenuDishesTableProps {
   standardTarget: number;
   filter?: MenuDishesFilter;
   onDishClick?: (dish: DishDisplayItem) => void;
+}
+
+// ---------------------------------------------------------------------------
+// Cost computation helpers (numeric types — not form row strings)
+// ---------------------------------------------------------------------------
+
+function computeLineCost(
+  quantity: number,
+  unitCost: number,
+  yieldPct: number,
+  wastagePct: number,
+): number {
+  const yieldFactor = yieldPct > 0 ? yieldPct / 100 : 1;
+  const wastageFactor = 1 + wastagePct / 100;
+  return (quantity / yieldFactor) * unitCost * wastageFactor;
+}
+
+interface GroupItem {
+  name: string;
+  cost: number;
+}
+
+/** Cartesian product of arrays -- pick one from each */
+function cartesianProduct<T>(arrays: T[][]): T[][] {
+  if (arrays.length === 0) return [[]];
+  return arrays.reduce<T[][]>(
+    (acc, curr) => acc.flatMap((combo) => curr.map((item) => [...combo, item])),
+    [[]],
+  );
+}
+
+const MAX_COMBINATIONS = 100;
+
+interface CombinationRow {
+  dishId: string;
+  dishName: string;
+  comboLabel: string | null; // null = no groups / single row
+  sellingPrice: number;
+  portionCost: number;
+  gpPct: number | null;
+  targetGpPct: number;
+  belowTarget: boolean;
+  isGpAlert: boolean;
+  assignments: Array<{ menu_code: string }>;
+  // Keep a reference to the original dish for onDishClick
+  originalDish: DishDisplayItem;
+}
+
+/**
+ * Expand a dish into combination rows. When `expand` is false, returns a
+ * single row using stored worst-case gp_pct. When `expand` is true, computes
+ * all option-group combinations client-side.
+ */
+function expandDish(dish: DishDisplayItem, standardTarget: number, expand: boolean): CombinationRow[] {
+  const targetValue = typeof dish.target_gp_pct === 'number' ? dish.target_gp_pct : standardTarget;
+
+  // No expansion requested or no ingredients/recipes -- single row
+  if (!expand) {
+    const gpValue = typeof dish.gp_pct === 'number' ? dish.gp_pct : null;
+    const belowTarget = gpValue !== null && gpValue < targetValue;
+    return [{
+      dishId: dish.id,
+      dishName: dish.name,
+      comboLabel: null,
+      sellingPrice: dish.selling_price,
+      portionCost: dish.portion_cost,
+      gpPct: gpValue,
+      targetGpPct: targetValue,
+      belowTarget,
+      isGpAlert: dish.is_gp_alert,
+      assignments: dish.assignments,
+      originalDish: dish,
+    }];
+  }
+
+  // Compute fixed costs and grouped items
+  let fixedCost = 0;
+  const groupedItems = new Map<string, GroupItem[]>();
+
+  for (const ing of dish.ingredients) {
+    const unitCost = ing.cost_override ?? ing.latest_unit_cost ?? 0;
+    const cost = computeLineCost(
+      ing.quantity,
+      unitCost,
+      ing.yield_pct ?? 100,
+      ing.wastage_pct ?? 0,
+    );
+    const groupName = ing.option_group;
+    if (groupName) {
+      const existing = groupedItems.get(groupName) ?? [];
+      existing.push({ name: ing.ingredient_name ?? ing.ingredient_id, cost });
+      groupedItems.set(groupName, existing);
+    } else {
+      fixedCost += cost;
+    }
+  }
+
+  for (const rec of dish.recipes) {
+    const unitCost = rec.cost_override ?? rec.portion_cost ?? 0;
+    const cost = computeLineCost(
+      rec.quantity,
+      unitCost,
+      rec.yield_pct ?? 100,
+      rec.wastage_pct ?? 0,
+    );
+    const groupName = rec.option_group;
+    if (groupName) {
+      const existing = groupedItems.get(groupName) ?? [];
+      existing.push({ name: rec.recipe_name ?? rec.recipe_id, cost });
+      groupedItems.set(groupName, existing);
+    } else {
+      fixedCost += cost;
+    }
+  }
+
+  // No groups -- single row using stored values
+  if (groupedItems.size === 0) {
+    const gpValue = typeof dish.gp_pct === 'number' ? dish.gp_pct : null;
+    const belowTarget = gpValue !== null && gpValue < targetValue;
+    return [{
+      dishId: dish.id,
+      dishName: dish.name,
+      comboLabel: null,
+      sellingPrice: dish.selling_price,
+      portionCost: dish.portion_cost,
+      gpPct: gpValue,
+      targetGpPct: targetValue,
+      belowTarget,
+      isGpAlert: dish.is_gp_alert,
+      assignments: dish.assignments,
+      originalDish: dish,
+    }];
+  }
+
+  // Build cartesian product
+  const groupNames = Array.from(groupedItems.keys()).sort();
+  const groupArrays = groupNames.map((name) => groupedItems.get(name)!);
+  const combos = cartesianProduct(groupArrays);
+
+  // Explosion guard
+  if (combos.length > MAX_COMBINATIONS) {
+    // Fall back to single worst-case row
+    const gpValue = typeof dish.gp_pct === 'number' ? dish.gp_pct : null;
+    const belowTarget = gpValue !== null && gpValue < targetValue;
+    return [{
+      dishId: dish.id,
+      dishName: dish.name,
+      comboLabel: `(${combos.length} combinations -- showing worst case)`,
+      sellingPrice: dish.selling_price,
+      portionCost: dish.portion_cost,
+      gpPct: gpValue,
+      targetGpPct: targetValue,
+      belowTarget,
+      isGpAlert: dish.is_gp_alert,
+      assignments: dish.assignments,
+      originalDish: dish,
+    }];
+  }
+
+  // Generate a row per combination
+  return combos.map((combo) => {
+    const selectedCost = combo.reduce((sum, item) => sum + item.cost, 0);
+    const portionCost = fixedCost + selectedCost;
+    const gpPct = dish.selling_price > 0
+      ? (dish.selling_price - portionCost) / dish.selling_price
+      : 0;
+    const belowTarget = gpPct < targetValue;
+    const label = combo.map((item) => item.name).join(' + ');
+    return {
+      dishId: dish.id,
+      dishName: dish.name,
+      comboLabel: label,
+      sellingPrice: dish.selling_price,
+      portionCost,
+      gpPct,
+      targetGpPct: targetValue,
+      belowTarget,
+      isGpAlert: belowTarget,
+      assignments: dish.assignments,
+      originalDish: dish,
+    };
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -63,6 +268,8 @@ export function MenuDishesTable({
   filter = 'all',
   onDishClick,
 }: MenuDishesTableProps): React.ReactElement {
+  const [showAllCombinations, setShowAllCombinations] = useState(false);
+
   // Pre-filter by stat card selection
   const preFiltered = useMemo(() => {
     if (filter === 'below-target') {
@@ -74,19 +281,38 @@ export function MenuDishesTable({
     return allDishes;
   }, [allDishes, filter]);
 
+  // Check if any dishes have option groups (to decide whether to show the toggle)
+  const hasAnyOptionGroups = useMemo(() => {
+    return allDishes.some((d) =>
+      d.ingredients.some((i) => !!i.option_group) ||
+      d.recipes.some((r) => !!r.option_group)
+    );
+  }, [allDishes]);
+
+  // Expand dishes into combination rows when toggle is active
+  const displayRows = useMemo(() => {
+    const rows: CombinationRow[] = [];
+    for (const dish of preFiltered) {
+      rows.push(...expandDish(dish, standardTarget, showAllCombinations));
+    }
+    return rows;
+  }, [preFiltered, standardTarget, showAllCombinations]);
+
   // Search fields for pipeline
   const searchFields = useCallback(
     (item: Record<string, unknown>) => {
-      const dish = item as unknown as DishDisplayItem;
-      return [dish.name];
+      const row = item as unknown as CombinationRow;
+      const fields = [row.dishName];
+      if (row.comboLabel) fields.push(row.comboLabel);
+      return fields;
     },
     []
   );
 
   const pipeline = useTablePipeline<Record<string, unknown>>({
-    data: preFiltered as unknown as Record<string, unknown>[],
+    data: displayRows as unknown as Record<string, unknown>[],
     searchFields,
-    defaultSortKey: 'gp_pct',
+    defaultSortKey: 'gpPct',
     defaultSortDirection: 'asc',
     itemsPerPage: 25,
   });
@@ -122,24 +348,28 @@ export function MenuDishesTable({
 
   // Custom sort comparators for the pipeline data
   const sorted = useMemo(() => {
-    const data = pipeline.pageData as unknown as DishDisplayItem[];
+    const data = pipeline.pageData as unknown as CombinationRow[];
     if (!pipeline.sortKey) return data;
 
     return [...data].sort((a, b) => {
       let comparison = 0;
       switch (pipeline.sortKey) {
         case 'name':
-          comparison = a.name.localeCompare(b.name);
+        case 'dishName':
+          comparison = a.dishName.localeCompare(b.dishName);
           break;
         case 'selling_price':
-          comparison = a.selling_price - b.selling_price;
+        case 'sellingPrice':
+          comparison = a.sellingPrice - b.sellingPrice;
           break;
         case 'portion_cost':
-          comparison = a.portion_cost - b.portion_cost;
+        case 'portionCost':
+          comparison = a.portionCost - b.portionCost;
           break;
-        case 'gp_pct': {
-          const aGp = typeof a.gp_pct === 'number' ? a.gp_pct : -Infinity;
-          const bGp = typeof b.gp_pct === 'number' ? b.gp_pct : -Infinity;
+        case 'gp_pct':
+        case 'gpPct': {
+          const aGp = typeof a.gpPct === 'number' ? a.gpPct : -Infinity;
+          const bGp = typeof b.gpPct === 'number' ? b.gpPct : -Infinity;
           comparison = aGp - bGp;
           break;
         }
@@ -152,22 +382,37 @@ export function MenuDishesTable({
 
   return (
     <div className="space-y-3">
-      {/* Search */}
-      <div className="max-w-sm">
-        <Input
-          placeholder="Search dishes..."
-          value={pipeline.searchQuery}
-          onChange={(e) => pipeline.setSearchQuery(e.target.value)}
-          leftIcon={<MagnifyingGlassIcon className="h-4 w-4 text-gray-400" />}
-          inputSize="sm"
-        />
+      {/* Search + combination toggle */}
+      <div className="flex items-center gap-3 flex-wrap">
+        <div className="max-w-sm flex-1">
+          <Input
+            placeholder="Search dishes..."
+            value={pipeline.searchQuery}
+            onChange={(e) => pipeline.setSearchQuery(e.target.value)}
+            leftIcon={<MagnifyingGlassIcon className="h-4 w-4 text-gray-400" />}
+            inputSize="sm"
+          />
+        </div>
+        {hasAnyOptionGroups && (
+          <button
+            type="button"
+            onClick={() => setShowAllCombinations((prev) => !prev)}
+            className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
+              showAllCombinations
+                ? 'bg-green-100 text-green-800 hover:bg-green-200'
+                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+            }`}
+          >
+            {showAllCombinations ? 'Show worst case only' : 'Show all combinations'}
+          </button>
+        )}
       </div>
 
       {/* Filter label */}
       {filter !== 'all' && (
         <div className="text-sm text-gray-500">
           Showing: <span className="font-medium">{filter === 'below-target' ? 'Below GP Target' : 'Missing Costing'}</span>
-          {' '}({pipeline.totalItems} dish{pipeline.totalItems !== 1 ? 'es' : ''})
+          {' '}({pipeline.totalItems} {showAllCombinations ? 'row' : 'dish'}{pipeline.totalItems !== 1 ? (showAllCombinations ? 's' : 'es') : ''})
         </div>
       )}
 
@@ -196,33 +441,35 @@ export function MenuDishesTable({
             <table className="min-w-full divide-y divide-gray-200 text-sm">
               <thead className="bg-gray-50">
                 <tr>
-                  <SortHeader label="Dish" sortKey="name" className="px-4 py-2 text-left" />
-                  <SortHeader label="Price" sortKey="selling_price" className="px-4 py-2 text-left" />
-                  <SortHeader label="Portion Cost" sortKey="portion_cost" className="px-4 py-2 text-left" />
-                  <SortHeader label="GP%" sortKey="gp_pct" className="px-4 py-2 text-left" />
+                  <SortHeader label="Dish" sortKey="dishName" className="px-4 py-2 text-left" />
+                  <SortHeader label="Price" sortKey="sellingPrice" className="px-4 py-2 text-left" />
+                  <SortHeader label="Portion Cost" sortKey="portionCost" className="px-4 py-2 text-left" />
+                  <SortHeader label="GP%" sortKey="gpPct" className="px-4 py-2 text-left" />
                   <th scope="col" className="px-4 py-2 text-left font-medium text-gray-600">Target</th>
                   <th scope="col" className="px-4 py-2 text-left font-medium text-gray-600">Status</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {sorted.map((dish) => {
-                  const gpValue = typeof dish.gp_pct === 'number' ? dish.gp_pct : Infinity;
-                  const targetValue =
-                    typeof dish.target_gp_pct === 'number' ? dish.target_gp_pct : standardTarget;
-                  const belowTarget = gpValue !== Infinity && gpValue < targetValue;
+                {sorted.map((row, idx) => {
+                  const gpValue = typeof row.gpPct === 'number' ? row.gpPct : Infinity;
+                  const belowTarget = gpValue !== Infinity && row.belowTarget;
 
                   // Calculate required price for target GP
                   let targetPriceHint: string | null = null;
-                  if (belowTarget && targetValue > 0) {
-                    const requiredPrice = dish.portion_cost / (1 - targetValue);
+                  if (belowTarget && row.targetGpPct > 0) {
+                    const requiredPrice = row.portionCost / (1 - row.targetGpPct);
                     if (Number.isFinite(requiredPrice) && requiredPrice > 0) {
-                      targetPriceHint = `sell at \u00A3${requiredPrice.toFixed(2)} for ${Math.round(targetValue * 100)}%`;
+                      targetPriceHint = `sell at \u00A3${requiredPrice.toFixed(2)} for ${Math.round(row.targetGpPct * 100)}%`;
                     }
                   }
 
+                  const rowKey = row.comboLabel
+                    ? `${row.dishId}-${idx}`
+                    : row.dishId;
+
                   return (
                     <tr
-                      key={dish.id}
+                      key={rowKey}
                       className={belowTarget ? 'bg-red-50/60' : ''}
                     >
                       <td className="px-4 py-2">
@@ -230,24 +477,27 @@ export function MenuDishesTable({
                           <button
                             type="button"
                             className="text-left font-medium text-green-700 hover:text-green-900 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-green-500 rounded"
-                            onClick={() => onDishClick(dish)}
+                            onClick={() => onDishClick(row.originalDish)}
                           >
-                            {dish.name}
+                            {row.dishName}
                           </button>
                         ) : (
-                          <div className="font-medium text-gray-900">{dish.name}</div>
+                          <div className="font-medium text-gray-900">{row.dishName}</div>
                         )}
-                        {dish.assignments.length > 0 && (
+                        {row.comboLabel && (
+                          <div className="text-xs text-indigo-600">{row.comboLabel}</div>
+                        )}
+                        {!row.comboLabel && row.assignments.length > 0 && (
                           <div className="text-xs text-gray-500">
-                            {dish.assignments.map((a) => a.menu_code).join(', ')}
+                            {row.assignments.map((a) => a.menu_code).join(', ')}
                           </div>
                         )}
                       </td>
                       <td className="px-4 py-2 text-gray-700">
-                        &pound;{dish.selling_price.toFixed(2)}
+                        &pound;{row.sellingPrice.toFixed(2)}
                       </td>
                       <td className="px-4 py-2 text-gray-700">
-                        &pound;{dish.portion_cost.toFixed(2)}
+                        &pound;{row.portionCost.toFixed(2)}
                       </td>
                       <td className="px-4 py-2">
                         <div className="flex flex-col">
@@ -267,11 +517,11 @@ export function MenuDishesTable({
                           )}
                         </div>
                       </td>
-                      <td className="px-4 py-2 text-gray-700">{formatGp(targetValue)}</td>
+                      <td className="px-4 py-2 text-gray-700">{formatGp(row.targetGpPct)}</td>
                       <td className="px-4 py-2">
-                        {dish.is_gp_alert ? (
+                        {belowTarget ? (
                           <Badge variant="error">Alert</Badge>
-                        ) : isMissingCosting(dish) ? (
+                        ) : isMissingCosting(row.originalDish) ? (
                           <Badge variant="warning">No cost</Badge>
                         ) : (
                           <Badge variant="success">OK</Badge>

@@ -18,6 +18,7 @@ import {
 } from '@/app/actions/menu-management';
 import { DishOverviewTab, type DishFormState, defaultDishForm } from './DishOverviewTab';
 import { DishCompositionTab, computeIngredientCost, computeRecipeCost } from './DishCompositionTab';
+import { DishGpAnalysisTab } from './DishGpAnalysisTab';
 import { DishMenusTab, type DishAssignmentFormRow, defaultAssignmentRow } from './DishMenusTab';
 import {
   type DishIngredientFormRow,
@@ -106,17 +107,17 @@ export function DishDrawer({
   }, [dish]);
 
   // Cost calculations
-  const ingredientCostTotal = useMemo(
+  const ingredientCostResult = useMemo(
     () => computeIngredientCost(formIngredients, ingredientMap),
     [formIngredients, ingredientMap]
   );
 
-  const recipeCostTotal = useMemo(
+  const recipeCostResult = useMemo(
     () => computeRecipeCost(formRecipes, recipeMap),
     [formRecipes, recipeMap]
   );
 
-  const computedPortionCost = ingredientCostTotal + recipeCostTotal;
+  const computedPortionCost = ingredientCostResult.total + recipeCostResult.total;
   const sellingPrice = parseFloat(formState.selling_price || '0');
   const computedGp = sellingPrice > 0 ? (sellingPrice - computedPortionCost) / sellingPrice : null;
   const gpBelowTarget = computedGp !== null && computedGp < targetGpPct;
@@ -196,6 +197,7 @@ export function DishDrawer({
             wastage_pct: String(row.wastage_pct ?? 0),
             cost_override: row.cost_override ? String(row.cost_override) : '',
             notes: (row.notes as string) || '',
+            option_group: (row.option_group as string) || '',
           }))
         : [defaultIngredientRow];
 
@@ -207,6 +209,7 @@ export function DishDrawer({
             wastage_pct: String(row.wastage_pct ?? 0),
             cost_override: row.cost_override ? String(row.cost_override) : '',
             notes: (row.notes as string) || '',
+            option_group: (row.option_group as string) || '',
           }))
         : [defaultRecipeRow];
 
@@ -308,6 +311,7 @@ export function DishDrawer({
             wastage_pct: parseFloat(row.wastage_pct || '0') || 0,
             cost_override: row.cost_override ? parseFloat(row.cost_override) : undefined,
             notes: row.notes || undefined,
+            option_group: row.option_group?.trim() || undefined,
           })),
         recipes: formRecipes
           .filter((row) => row.recipe_id && parseFloat(row.quantity || '0') > 0)
@@ -318,6 +322,7 @@ export function DishDrawer({
             wastage_pct: parseFloat(row.wastage_pct || '0') || 0,
             cost_override: row.cost_override ? parseFloat(row.cost_override) : undefined,
             notes: row.notes || undefined,
+            option_group: row.option_group?.trim() || undefined,
           })),
         assignments: formAssignments
           .filter((row) => row.menu_code && row.category_code)
@@ -417,6 +422,20 @@ export function DishDrawer({
             menus={menus}
             selectedMenuCode={selectedMenuCode}
             onChange={setFormAssignments}
+          />
+        ),
+      },
+      {
+        key: 'gp-analysis',
+        label: 'GP Analysis',
+        content: (
+          <DishGpAnalysisTab
+            formIngredients={formIngredients}
+            formRecipes={formRecipes}
+            ingredientMap={ingredientMap}
+            recipeMap={recipeMap}
+            sellingPrice={parseFloat(formState.selling_price || '0')}
+            targetGpPct={targetGpPct}
           />
         ),
       },
