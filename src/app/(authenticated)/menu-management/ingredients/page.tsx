@@ -236,7 +236,7 @@ export default function MenuIngredientsPage(): React.ReactElement {
       return;
     }
     void loadIngredients();
-  }, [permissionsLoading]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [permissionsLoading]);  
 
   // ---- Pipeline ----
 

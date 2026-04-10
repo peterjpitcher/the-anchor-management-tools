@@ -186,7 +186,7 @@ export function RecipeDrawer({
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [open, formState, formIngredients, saving]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [open, formState, formIngredients, saving]);  
 
   // beforeunload guard
   useEffect(() => {

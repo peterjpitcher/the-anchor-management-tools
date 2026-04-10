@@ -185,7 +185,7 @@ export default function MenuRecipesPage(): React.ReactElement {
       return;
     }
     void loadData();
-  }, [permissionsLoading]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [permissionsLoading]);
 
   // ---- Pipeline ----
 
@@ -340,7 +340,7 @@ export default function MenuRecipesPage(): React.ReactElement {
         },
       },
     ],
-    [canManage, loadData] // eslint-disable-line react-hooks/exhaustive-deps
+    [canManage, loadData]
   );
 
   // ---- Header actions ----
