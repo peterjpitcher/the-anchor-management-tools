@@ -17,17 +17,36 @@ import type { IngredientSummary, RecipeSummary } from './DishExpandedRow';
 // ---------------------------------------------------------------------------
 
 export interface CostBreakdown {
-  total: number;
-  fixedTotal: number;
-  groups: Map<string, { maxCost: number; items: Array<{ name: string; cost: number }> }>;
+  includedTotal: number;
+  removableTotal: number;
+  choiceGroups: Map<string, {
+    maxCost: number;
+    minCost: number;
+    items: Array<{ name: string; cost: number }>;
+  }>;
+  upgradeGroups: Map<string, {
+    maxCost: number;
+    maxPrice: number;
+    items: Array<{ name: string; cost: number; price: number }>;
+  }>;
+  ungroupedUpgrades: Array<{
+    name: string;
+    cost: number;
+    price: number;
+  }>;
+  baseTotal: number;
+  upgradeTotal: number;
 }
 
 export function computeIngredientCost(
   rows: DishIngredientFormRow[],
   ingredientMap: Map<string, IngredientSummary>,
 ): CostBreakdown {
-  let fixedTotal = 0;
-  const groups = new Map<string, { maxCost: number; items: Array<{ name: string; cost: number }> }>();
+  let includedTotal = 0;
+  let removableTotal = 0;
+  const choiceGroups = new Map<string, { maxCost: number; minCost: number; items: Array<{ name: string; cost: number }> }>();
+  const upgradeGroups = new Map<string, { maxCost: number; maxPrice: number; items: Array<{ name: string; cost: number; price: number }> }>();
+  const ungroupedUpgrades: Array<{ name: string; cost: number; price: number }> = [];
 
   for (const row of rows) {
     if (!row.ingredient_id) continue;
@@ -47,34 +66,64 @@ export function computeIngredientCost(
     const wastageFactor = 1 + (Number.isNaN(wastagePct) ? 0 : wastagePct / 100);
     const lineCost = (quantity / (yieldFactor || 1)) * unitCost * wastageFactor;
 
-    const groupName = row.option_group?.trim();
-    if (groupName) {
-      let group = groups.get(groupName);
+    const inclusionType = row.inclusion_type || 'included';
+    const groupName = row.option_group?.trim() || '';
+
+    if (inclusionType === 'included') {
+      includedTotal += lineCost;
+    } else if (inclusionType === 'removable') {
+      removableTotal += lineCost;
+    } else if (inclusionType === 'choice') {
+      let group = choiceGroups.get(groupName);
       if (!group) {
-        group = { maxCost: 0, items: [] };
-        groups.set(groupName, group);
+        group = { maxCost: 0, minCost: Infinity, items: [] };
+        choiceGroups.set(groupName, group);
       }
       group.items.push({ name: base.name, cost: lineCost });
       group.maxCost = Math.max(group.maxCost, lineCost);
-    } else {
-      fixedTotal += lineCost;
+      group.minCost = Math.min(group.minCost, lineCost);
+    } else if (inclusionType === 'upgrade') {
+      const price = parseFloat(row.upgrade_price || '0');
+      if (groupName) {
+        let group = upgradeGroups.get(groupName);
+        if (!group) {
+          group = { maxCost: 0, maxPrice: 0, items: [] };
+          upgradeGroups.set(groupName, group);
+        }
+        group.items.push({ name: base.name, cost: lineCost, price });
+        group.maxCost = Math.max(group.maxCost, lineCost);
+        group.maxPrice = Math.max(group.maxPrice, price);
+      } else {
+        ungroupedUpgrades.push({ name: base.name, cost: lineCost, price });
+      }
     }
   }
 
-  let total = fixedTotal;
-  for (const group of groups.values()) {
-    total += group.maxCost;
+  let baseTotal = includedTotal + removableTotal;
+  for (const group of choiceGroups.values()) {
+    baseTotal += group.maxCost;
   }
 
-  return { total, fixedTotal, groups };
+  let upgradeTotal = baseTotal;
+  for (const group of upgradeGroups.values()) {
+    upgradeTotal += group.maxCost;
+  }
+  for (const u of ungroupedUpgrades) {
+    upgradeTotal += u.cost;
+  }
+
+  return { includedTotal, removableTotal, choiceGroups, upgradeGroups, ungroupedUpgrades, baseTotal, upgradeTotal };
 }
 
 export function computeRecipeCost(
   rows: DishRecipeFormRow[],
   recipeMap: Map<string, RecipeSummary>,
 ): CostBreakdown {
-  let fixedTotal = 0;
-  const groups = new Map<string, { maxCost: number; items: Array<{ name: string; cost: number }> }>();
+  let includedTotal = 0;
+  let removableTotal = 0;
+  const choiceGroups = new Map<string, { maxCost: number; minCost: number; items: Array<{ name: string; cost: number }> }>();
+  const upgradeGroups = new Map<string, { maxCost: number; maxPrice: number; items: Array<{ name: string; cost: number; price: number }> }>();
+  const ungroupedUpgrades: Array<{ name: string; cost: number; price: number }> = [];
 
   for (const row of rows) {
     if (!row.recipe_id) continue;
@@ -94,26 +143,53 @@ export function computeRecipeCost(
     const wastageFactor = 1 + (Number.isNaN(wastagePct) ? 0 : wastagePct / 100);
     const lineCost = (quantity / (yieldFactor || 1)) * unitCost * wastageFactor;
 
-    const groupName = row.option_group?.trim();
-    if (groupName) {
-      let group = groups.get(groupName);
+    const inclusionType = row.inclusion_type || 'included';
+    const groupName = row.option_group?.trim() || '';
+
+    if (inclusionType === 'included') {
+      includedTotal += lineCost;
+    } else if (inclusionType === 'removable') {
+      removableTotal += lineCost;
+    } else if (inclusionType === 'choice') {
+      let group = choiceGroups.get(groupName);
       if (!group) {
-        group = { maxCost: 0, items: [] };
-        groups.set(groupName, group);
+        group = { maxCost: 0, minCost: Infinity, items: [] };
+        choiceGroups.set(groupName, group);
       }
       group.items.push({ name: recipe.name, cost: lineCost });
       group.maxCost = Math.max(group.maxCost, lineCost);
-    } else {
-      fixedTotal += lineCost;
+      group.minCost = Math.min(group.minCost, lineCost);
+    } else if (inclusionType === 'upgrade') {
+      const price = parseFloat(row.upgrade_price || '0');
+      if (groupName) {
+        let group = upgradeGroups.get(groupName);
+        if (!group) {
+          group = { maxCost: 0, maxPrice: 0, items: [] };
+          upgradeGroups.set(groupName, group);
+        }
+        group.items.push({ name: recipe.name, cost: lineCost, price });
+        group.maxCost = Math.max(group.maxCost, lineCost);
+        group.maxPrice = Math.max(group.maxPrice, price);
+      } else {
+        ungroupedUpgrades.push({ name: recipe.name, cost: lineCost, price });
+      }
     }
   }
 
-  let total = fixedTotal;
-  for (const group of groups.values()) {
-    total += group.maxCost;
+  let baseTotal = includedTotal + removableTotal;
+  for (const group of choiceGroups.values()) {
+    baseTotal += group.maxCost;
   }
 
-  return { total, fixedTotal, groups };
+  let upgradeTotal = baseTotal;
+  for (const group of upgradeGroups.values()) {
+    upgradeTotal += group.maxCost;
+  }
+  for (const u of ungroupedUpgrades) {
+    upgradeTotal += u.cost;
+  }
+
+  return { includedTotal, removableTotal, choiceGroups, upgradeGroups, ungroupedUpgrades, baseTotal, upgradeTotal };
 }
 
 // ---------------------------------------------------------------------------
@@ -129,6 +205,7 @@ interface DishCompositionTabProps {
   recipeMap: Map<string, RecipeSummary>;
   linkedIngredientIds: Set<string>;
   linkedRecipeIds: Set<string>;
+  sellingPrice: number;
   onIngredientsChange: (rows: DishIngredientFormRow[]) => void;
   onRecipesChange: (rows: DishRecipeFormRow[]) => void;
 }
@@ -146,6 +223,7 @@ export function DishCompositionTab({
   recipeMap,
   linkedIngredientIds,
   linkedRecipeIds,
+  sellingPrice,
   onIngredientsChange,
   onRecipesChange,
 }: DishCompositionTabProps): React.ReactElement {
@@ -184,7 +262,7 @@ export function DishCompositionTab({
     [formIngredients, ingredientMap]
   );
 
-  const totalPortionCost = recipesResult.total + ingredientsResult.total;
+  const totalPortionCost = recipesResult.baseTotal + ingredientsResult.baseTotal;
 
   // Collect existing option group names across both lists
   const existingGroups = useMemo(() => {
@@ -194,7 +272,14 @@ export function DishCompositionTab({
     return Array.from(groups).sort();
   }, [formIngredients, formRecipes]);
 
-  const hasAnyGroups = recipesResult.groups.size > 0 || ingredientsResult.groups.size > 0;
+  const hasAnyChoices =
+    recipesResult.choiceGroups.size > 0 || ingredientsResult.choiceGroups.size > 0;
+  const hasAnyUpgrades =
+    recipesResult.upgradeGroups.size > 0 || ingredientsResult.upgradeGroups.size > 0 ||
+    recipesResult.ungroupedUpgrades.length > 0 || ingredientsResult.ungroupedUpgrades.length > 0;
+  const hasBreakdown =
+    hasAnyChoices || hasAnyUpgrades ||
+    recipesResult.removableTotal > 0 || ingredientsResult.removableTotal > 0;
 
   // Warning: ingredient appears both directly and via a recipe
   const duplicateWarnings = useMemo(() => {
@@ -264,7 +349,7 @@ export function DishCompositionTab({
         <div className="flex items-center justify-between mb-2">
           <h4 className="text-sm font-semibold text-gray-900">Recipes</h4>
           <span className="text-sm text-gray-600">
-            Recipes: £{recipesResult.total.toFixed(2)}
+            Recipes: £{recipesResult.baseTotal.toFixed(2)}
           </span>
         </div>
 
@@ -300,7 +385,7 @@ export function DishCompositionTab({
         <div className="flex items-center justify-between mb-2">
           <h4 className="text-sm font-semibold text-gray-900">Direct Ingredients</h4>
           <span className="text-sm text-gray-600">
-            Direct ingredients: £{ingredientsResult.total.toFixed(2)}
+            Direct ingredients: £{ingredientsResult.baseTotal.toFixed(2)}
           </span>
         </div>
 
@@ -334,48 +419,176 @@ export function DishCompositionTab({
       )}
 
       {/* Footer: total cost */}
-      <div className="space-y-2 rounded-lg border border-dashed border-gray-300 bg-gray-50 p-4">
-        {hasAnyGroups ? (
-          <>
-            {/* Recipe breakdown */}
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-gray-700">Recipes (fixed)</span>
-              <span className="text-sm font-medium">£{recipesResult.fixedTotal.toFixed(2)}</span>
-            </div>
-            {Array.from(recipesResult.groups.entries()).map(([groupName, group]) => (
-              <div key={`rg-${groupName}`} className="flex items-center justify-between">
-                <span className="text-sm text-gray-700">Recipes — {groupName} (worst case)</span>
-                <span className="text-sm font-medium">£{group.maxCost.toFixed(2)}</span>
-              </div>
-            ))}
+      <CostBreakdownFooter
+        ingredientsResult={ingredientsResult}
+        recipesResult={recipesResult}
+        totalPortionCost={totalPortionCost}
+        hasBreakdown={hasBreakdown}
+        hasAnyUpgrades={hasAnyUpgrades}
+        sellingPrice={sellingPrice}
+      />
+    </div>
+  );
+}
 
-            {/* Ingredient breakdown */}
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-gray-700">Fixed ingredients</span>
-              <span className="text-sm font-medium">£{ingredientsResult.fixedTotal.toFixed(2)}</span>
-            </div>
-            {Array.from(ingredientsResult.groups.entries()).map(([groupName, group]) => (
-              <div key={`ig-${groupName}`} className="flex items-center justify-between">
-                <span className="text-sm text-gray-700">{groupName} (worst case)</span>
-                <span className="text-sm font-medium">£{group.maxCost.toFixed(2)}</span>
-              </div>
-            ))}
+// ---------------------------------------------------------------------------
+// Cost breakdown footer
+// ---------------------------------------------------------------------------
 
-            <div className="border-t border-gray-300 pt-2 flex items-center justify-between">
-              <span className="text-sm font-medium text-gray-900">Total portion cost (worst case)</span>
-              <span className="text-lg font-semibold">£{totalPortionCost.toFixed(2)}</span>
-            </div>
-          </>
-        ) : (
-          <div className="flex items-center justify-between">
-            <span className="text-sm font-medium text-gray-900">Total portion cost</span>
-            <span className="text-lg font-semibold">£{totalPortionCost.toFixed(2)}</span>
+interface CostBreakdownFooterProps {
+  ingredientsResult: CostBreakdown;
+  recipesResult: CostBreakdown;
+  totalPortionCost: number;
+  hasBreakdown: boolean;
+  hasAnyUpgrades: boolean;
+  sellingPrice: number;
+}
+
+function CostBreakdownFooter({
+  ingredientsResult,
+  recipesResult,
+  totalPortionCost,
+  hasBreakdown,
+  hasAnyUpgrades,
+  sellingPrice,
+}: CostBreakdownFooterProps): React.ReactElement {
+  // Merge the two results for display
+  const coreIncluded = ingredientsResult.includedTotal + recipesResult.includedTotal;
+  const coreRemovable = ingredientsResult.removableTotal + recipesResult.removableTotal;
+
+  // Merge choice groups from both
+  const allChoiceGroups = new Map<string, { maxCost: number }>();
+  for (const [name, g] of ingredientsResult.choiceGroups) {
+    const existing = allChoiceGroups.get(name);
+    allChoiceGroups.set(name, { maxCost: (existing?.maxCost ?? 0) + g.maxCost });
+  }
+  for (const [name, g] of recipesResult.choiceGroups) {
+    const existing = allChoiceGroups.get(name);
+    allChoiceGroups.set(name, { maxCost: (existing?.maxCost ?? 0) + g.maxCost });
+  }
+
+  // Merge upgrade groups
+  const allUpgradeGroups = new Map<string, { maxCost: number; maxPrice: number }>();
+  for (const [name, g] of ingredientsResult.upgradeGroups) {
+    const existing = allUpgradeGroups.get(name);
+    allUpgradeGroups.set(name, {
+      maxCost: (existing?.maxCost ?? 0) + g.maxCost,
+      maxPrice: Math.max(existing?.maxPrice ?? 0, g.maxPrice),
+    });
+  }
+  for (const [name, g] of recipesResult.upgradeGroups) {
+    const existing = allUpgradeGroups.get(name);
+    allUpgradeGroups.set(name, {
+      maxCost: (existing?.maxCost ?? 0) + g.maxCost,
+      maxPrice: Math.max(existing?.maxPrice ?? 0, g.maxPrice),
+    });
+  }
+
+  const allUngroupedUpgrades = [
+    ...ingredientsResult.ungroupedUpgrades,
+    ...recipesResult.ungroupedUpgrades,
+  ];
+
+  const baseGp = sellingPrice > 0
+    ? (sellingPrice - totalPortionCost) / sellingPrice
+    : null;
+
+  // Upgrade GP calc
+  let totalUpgradeRevenue = 0;
+  let totalUpgradeCost = totalPortionCost; // starts from base
+  for (const g of allUpgradeGroups.values()) {
+    totalUpgradeRevenue += g.maxPrice;
+    totalUpgradeCost += g.maxCost;
+  }
+  for (const u of allUngroupedUpgrades) {
+    totalUpgradeRevenue += u.price;
+    totalUpgradeCost += u.cost;
+  }
+  const upgradeGp = (sellingPrice + totalUpgradeRevenue) > 0
+    ? ((sellingPrice + totalUpgradeRevenue) - totalUpgradeCost) / (sellingPrice + totalUpgradeRevenue)
+    : null;
+
+  return (
+    <div className="space-y-2 rounded-lg border border-dashed border-gray-300 bg-gray-50 p-4">
+      {hasBreakdown ? (
+        <>
+          <Row label="Core ingredients" value={coreIncluded} />
+          {coreRemovable > 0 && <Row label="Removable ingredients" value={coreRemovable} />}
+          {Array.from(allChoiceGroups.entries()).map(([name, g]) => (
+            <Row key={`cg-${name}`} label={`Choice \u2014 ${name} (worst case)`} value={g.maxCost} />
+          ))}
+
+          <div className="border-t border-gray-300 pt-2 flex items-center justify-between">
+            <span className="text-sm font-medium text-gray-900">
+              Base portion cost
+            </span>
+            <span className="text-sm font-semibold">
+              £{totalPortionCost.toFixed(2)}
+              {baseGp !== null && (
+                <span className="ml-2 text-gray-600 font-normal">
+                  | Base GP: {(baseGp * 100).toFixed(1)}%
+                </span>
+              )}
+            </span>
           </div>
-        )}
-        <p className="text-xs text-gray-600">
-          Figures update instantly as you tweak quantities.
-        </p>
-      </div>
+
+          {hasAnyUpgrades && (
+            <>
+              <div className="mt-2 mb-1 text-xs font-semibold uppercase tracking-wide text-amber-700">
+                Upgrades
+              </div>
+              {Array.from(allUpgradeGroups.entries()).map(([name, g]) => (
+                <div key={`ug-${name}`} className="flex items-center justify-between">
+                  <span className="text-sm text-gray-700">
+                    {name} (+£{g.maxPrice.toFixed(2)})
+                  </span>
+                  <span className="text-sm font-medium">cost £{g.maxCost.toFixed(2)}</span>
+                </div>
+              ))}
+              {allUngroupedUpgrades.map((u, i) => (
+                <div key={`uu-${i}`} className="flex items-center justify-between">
+                  <span className="text-sm text-gray-700">
+                    {u.name} (+£{u.price.toFixed(2)})
+                  </span>
+                  <span className="text-sm font-medium">cost £{u.cost.toFixed(2)}</span>
+                </div>
+              ))}
+              {upgradeGp !== null && (
+                <div className="flex items-center justify-between border-t border-gray-200 pt-1">
+                  <span className="text-sm text-amber-800 font-medium">Upgrade GP (all upgrades)</span>
+                  <span className="text-sm font-semibold text-amber-800">
+                    {(upgradeGp * 100).toFixed(1)}%
+                  </span>
+                </div>
+              )}
+            </>
+          )}
+        </>
+      ) : (
+        <div className="flex items-center justify-between">
+          <span className="text-sm font-medium text-gray-900">Total portion cost</span>
+          <span className="text-lg font-semibold">
+            £{totalPortionCost.toFixed(2)}
+            {baseGp !== null && (
+              <span className="ml-2 text-sm text-gray-600 font-normal">
+                GP: {(baseGp * 100).toFixed(1)}%
+              </span>
+            )}
+          </span>
+        </div>
+      )}
+      <p className="text-xs text-gray-600">
+        Figures update instantly as you tweak quantities.
+      </p>
+    </div>
+  );
+}
+
+function Row({ label, value }: { label: string; value: number }): React.ReactElement {
+  return (
+    <div className="flex items-center justify-between">
+      <span className="text-sm text-gray-700">{label}</span>
+      <span className="text-sm font-medium">£{value.toFixed(2)}</span>
     </div>
   );
 }

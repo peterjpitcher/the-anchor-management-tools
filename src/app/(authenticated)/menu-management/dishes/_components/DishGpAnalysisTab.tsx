@@ -65,17 +65,18 @@ export function DishGpAnalysisTab({
     const ingResult = computeIngredientCost(formIngredients, ingredientMap);
     const recResult = computeRecipeCost(formRecipes, recipeMap);
 
-    // 2. Fixed cost = sum of both ungrouped totals
-    const fixedCost = ingResult.fixedTotal + recResult.fixedTotal;
+    // 2. Fixed cost = included + removable from both sources
+    const fixedCost = ingResult.includedTotal + ingResult.removableTotal
+      + recResult.includedTotal + recResult.removableTotal;
 
-    // 3. Merge groups from both sources
+    // 3. Merge choice groups from both sources (these are the combinatorial groups)
     const mergedGroups = new Map<string, GroupItem[]>();
-    for (const [groupName, group] of ingResult.groups) {
+    for (const [groupName, group] of ingResult.choiceGroups) {
       const existing = mergedGroups.get(groupName) ?? [];
       existing.push(...group.items);
       mergedGroups.set(groupName, existing);
     }
-    for (const [groupName, group] of recResult.groups) {
+    for (const [groupName, group] of recResult.choiceGroups) {
       const existing = mergedGroups.get(groupName) ?? [];
       existing.push(...group.items);
       mergedGroups.set(groupName, existing);
