@@ -5,6 +5,7 @@ import { Input } from '@/components/ui-v2/forms/Input';
 import { Select } from '@/components/ui-v2/forms/Select';
 import { FormGroup } from '@/components/ui-v2/forms/FormGroup';
 import { ChevronDownIcon, ChevronUpIcon, TrashIcon } from '@heroicons/react/20/solid';
+import { cn } from '@/lib/utils';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -27,6 +28,48 @@ const UNITS = [
 ];
 
 // ---------------------------------------------------------------------------
+// Option group visual helpers
+// ---------------------------------------------------------------------------
+
+const GROUP_COLORS = ['blue', 'purple', 'amber', 'emerald', 'rose', 'cyan', 'orange', 'teal'] as const;
+
+type GroupColor = (typeof GROUP_COLORS)[number];
+
+function getGroupColor(group: string): GroupColor {
+  let hash = 0;
+  for (let i = 0; i < group.length; i++) hash = group.charCodeAt(i) + ((hash << 5) - hash);
+  return GROUP_COLORS[Math.abs(hash) % GROUP_COLORS.length];
+}
+
+function borderColorClass(color: GroupColor): string {
+  const map: Record<GroupColor, string> = {
+    blue: 'border-l-blue-400',
+    purple: 'border-l-purple-400',
+    amber: 'border-l-amber-400',
+    emerald: 'border-l-emerald-400',
+    rose: 'border-l-rose-400',
+    cyan: 'border-l-cyan-400',
+    orange: 'border-l-orange-400',
+    teal: 'border-l-teal-400',
+  };
+  return map[color];
+}
+
+function badgeClasses(color: GroupColor): string {
+  const map: Record<GroupColor, string> = {
+    blue: 'bg-blue-100 text-blue-700',
+    purple: 'bg-purple-100 text-purple-700',
+    amber: 'bg-amber-100 text-amber-700',
+    emerald: 'bg-emerald-100 text-emerald-700',
+    rose: 'bg-rose-100 text-rose-700',
+    cyan: 'bg-cyan-100 text-cyan-700',
+    orange: 'bg-orange-100 text-orange-700',
+    teal: 'bg-teal-100 text-teal-700',
+  };
+  return map[color];
+}
+
+// ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
@@ -38,6 +81,7 @@ export interface DishIngredientFormRow {
   wastage_pct: string;
   cost_override: string;
   notes: string;
+  option_group: string;
 }
 
 export interface DishRecipeFormRow {
@@ -47,6 +91,7 @@ export interface DishRecipeFormRow {
   wastage_pct: string;
   cost_override: string;
   notes: string;
+  option_group: string;
 }
 
 export const defaultIngredientRow: DishIngredientFormRow = {
@@ -57,6 +102,7 @@ export const defaultIngredientRow: DishIngredientFormRow = {
   wastage_pct: '0',
   cost_override: '',
   notes: '',
+  option_group: '',
 };
 
 export const defaultRecipeRow: DishRecipeFormRow = {
@@ -66,6 +112,7 @@ export const defaultRecipeRow: DishRecipeFormRow = {
   wastage_pct: '0',
   cost_override: '',
   notes: '',
+  option_group: '',
 };
 
 // ---------------------------------------------------------------------------
@@ -94,6 +141,7 @@ interface IngredientCompositionRowProps {
   options: SelectOption[];
   linkedIds: Set<string>;
   canRemove: boolean;
+  existingGroups: string[];
   onChange: (index: number, updates: Partial<DishIngredientFormRow>) => void;
   onRemove: (index: number) => void;
 }
@@ -104,6 +152,7 @@ export function IngredientCompositionRow({
   options,
   linkedIds,
   canRemove,
+  existingGroups,
   onChange,
   onRemove,
 }: IngredientCompositionRowProps): React.ReactElement {
@@ -122,9 +171,26 @@ export function IngredientCompositionRow({
     onChange(index, updates);
   }
 
+  const groupTrimmed = row.option_group?.trim() || '';
+  const groupColor = groupTrimmed ? getGroupColor(groupTrimmed) : null;
+
   return (
-    <div className="rounded-lg border border-gray-200 bg-white p-3 shadow-sm">
-      {/* Compact row: ingredient, quantity, unit, expand/remove */}
+    <div className={cn(
+      'rounded-lg border border-gray-200 bg-white p-3 shadow-sm',
+      groupColor && 'border-l-4',
+      groupColor && borderColorClass(groupColor),
+    )}>
+      {groupTrimmed && groupColor && (
+        <div className="mb-1">
+          <span className={cn(
+            'inline-block rounded-full px-2 py-0.5 text-xs font-medium',
+            badgeClasses(groupColor),
+          )}>
+            {groupTrimmed}
+          </span>
+        </div>
+      )}
+      {/* Compact row: ingredient, quantity, unit, group, expand/remove */}
       <div className="flex items-end gap-2">
         <FormGroup label="Ingredient" required className="min-w-0 flex-1">
           <Select
@@ -163,6 +229,21 @@ export function IngredientCompositionRow({
             ))}
           </Select>
         </FormGroup>
+
+        <input
+          type="text"
+          value={row.option_group}
+          onChange={(e) => onChange(index, { option_group: e.target.value })}
+          className="w-24 shrink-0 rounded border border-gray-300 px-2 py-1 text-sm placeholder:text-gray-400 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+          placeholder="Fixed"
+          list={`ing-groups-${index}`}
+          aria-label="Option group"
+        />
+        {existingGroups.length > 0 && (
+          <datalist id={`ing-groups-${index}`}>
+            {existingGroups.map((g) => <option key={g} value={g} />)}
+          </datalist>
+        )}
 
         <div className="flex shrink-0 items-center gap-1 pb-0.5">
           <button
@@ -231,6 +312,7 @@ interface RecipeCompositionRowProps {
   options: SelectOption[];
   linkedIds: Set<string>;
   canRemove: boolean;
+  existingGroups: string[];
   onChange: (index: number, updates: Partial<DishRecipeFormRow>) => void;
   onRemove: (index: number) => void;
 }
@@ -241,6 +323,7 @@ export function RecipeCompositionRow({
   options,
   linkedIds,
   canRemove,
+  existingGroups,
   onChange,
   onRemove,
 }: RecipeCompositionRowProps): React.ReactElement {
@@ -250,9 +333,26 @@ export function RecipeCompositionRow({
     (o) => o.is_active || linkedIds.has(o.id)
   );
 
+  const groupTrimmed = row.option_group?.trim() || '';
+  const groupColor = groupTrimmed ? getGroupColor(groupTrimmed) : null;
+
   return (
-    <div className="rounded-lg border border-gray-200 bg-white p-3 shadow-sm">
-      {/* Compact row: recipe, quantity, expand/remove */}
+    <div className={cn(
+      'rounded-lg border border-gray-200 bg-white p-3 shadow-sm',
+      groupColor && 'border-l-4',
+      groupColor && borderColorClass(groupColor),
+    )}>
+      {groupTrimmed && groupColor && (
+        <div className="mb-1">
+          <span className={cn(
+            'inline-block rounded-full px-2 py-0.5 text-xs font-medium',
+            badgeClasses(groupColor),
+          )}>
+            {groupTrimmed}
+          </span>
+        </div>
+      )}
+      {/* Compact row: recipe, quantity, group, expand/remove */}
       <div className="flex items-end gap-2">
         <FormGroup label="Recipe" required className="min-w-0 flex-1">
           <Select
@@ -280,6 +380,21 @@ export function RecipeCompositionRow({
             required
           />
         </FormGroup>
+
+        <input
+          type="text"
+          value={row.option_group}
+          onChange={(e) => onChange(index, { option_group: e.target.value })}
+          className="w-24 shrink-0 rounded border border-gray-300 px-2 py-1 text-sm placeholder:text-gray-400 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+          placeholder="Fixed"
+          list={`rec-groups-${index}`}
+          aria-label="Option group"
+        />
+        {existingGroups.length > 0 && (
+          <datalist id={`rec-groups-${index}`}>
+            {existingGroups.map((g) => <option key={g} value={g} />)}
+          </datalist>
+        )}
 
         <div className="flex shrink-0 items-center gap-1 pb-0.5">
           <button
