@@ -381,72 +381,66 @@ export function DishDrawer({
   const gpDisplayPct = computedGp !== null ? `${Math.round(computedGp * 100)}%` : '\u2014';
 
   // ---- Tab items ----
-  const tabItems = useMemo(
-    () => [
-      {
-        key: 'overview',
-        label: 'Overview',
-        content: (
-          <DishOverviewTab
-            formState={formState}
-            onChange={update}
-            targetGpPct={targetGpPct}
-            computedPortionCost={computedPortionCost}
-          />
-        ),
-      },
-      {
-        key: 'composition',
-        label: 'Composition',
-        content: (
-          <DishCompositionTab
-            formIngredients={formIngredients}
-            formRecipes={formRecipes}
-            ingredients={ingredients}
-            recipes={recipes}
-            ingredientMap={ingredientMap}
-            recipeMap={recipeMap}
-            linkedIngredientIds={linkedIngredientIds}
-            linkedRecipeIds={linkedRecipeIds}
-            onIngredientsChange={setFormIngredients}
-            onRecipesChange={setFormRecipes}
-          />
-        ),
-      },
-      {
-        key: 'menus',
-        label: 'Menus',
-        content: (
-          <DishMenusTab
-            formAssignments={formAssignments}
-            menus={menus}
-            selectedMenuCode={selectedMenuCode}
-            onChange={setFormAssignments}
-          />
-        ),
-      },
-      {
-        key: 'gp-analysis',
-        label: 'GP Analysis',
-        content: (
-          <DishGpAnalysisTab
-            formIngredients={formIngredients}
-            formRecipes={formRecipes}
-            ingredientMap={ingredientMap}
-            recipeMap={recipeMap}
-            sellingPrice={parseFloat(formState.selling_price || '0')}
-            targetGpPct={targetGpPct}
-          />
-        ),
-      },
-    ],
-    [
-      formState, update, targetGpPct, computedPortionCost,
-      formIngredients, formRecipes, ingredients, recipes,
-      ingredientMap, recipeMap, linkedIngredientIds, linkedRecipeIds,
-      formAssignments, menus, selectedMenuCode,
-    ]
-  );
+  // Not memoised — the items contain JSX which creates new references every render,
+  // and the massive dependency array was causing reconciliation issues that broke tab clicks.
+  const tabItems = [
+    {
+      key: 'overview',
+      label: 'Overview',
+      content: (
+        <DishOverviewTab
+          formState={formState}
+          onChange={update}
+          targetGpPct={targetGpPct}
+          computedPortionCost={computedPortionCost}
+        />
+      ),
+    },
+    {
+      key: 'composition',
+      label: 'Composition',
+      content: (
+        <DishCompositionTab
+          formIngredients={formIngredients}
+          formRecipes={formRecipes}
+          ingredients={ingredients}
+          recipes={recipes}
+          ingredientMap={ingredientMap}
+          recipeMap={recipeMap}
+          linkedIngredientIds={linkedIngredientIds}
+          linkedRecipeIds={linkedRecipeIds}
+          onIngredientsChange={setFormIngredients}
+          onRecipesChange={setFormRecipes}
+        />
+      ),
+    },
+    {
+      key: 'menus',
+      label: 'Menus',
+      content: (
+        <DishMenusTab
+          formAssignments={formAssignments}
+          menus={menus}
+          selectedMenuCode={selectedMenuCode}
+          onChange={setFormAssignments}
+        />
+      ),
+    },
+    {
+      key: 'gp-analysis',
+      label: 'GP Analysis',
+      content: (
+        <DishGpAnalysisTab
+          formIngredients={formIngredients}
+          formRecipes={formRecipes}
+          ingredientMap={ingredientMap}
+          recipeMap={recipeMap}
+          sellingPrice={parseFloat(formState.selling_price || '0')}
+          targetGpPct={targetGpPct}
+        />
+      ),
+    },
+  ];
 
   return (
     <>
