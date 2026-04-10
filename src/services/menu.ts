@@ -1364,4 +1364,163 @@ export class MenuService {
 
       }
 
+  // Field-level updates --------------------------------------------------------------------------------------------
+
+  /**
+   * Update only the pack_cost of an ingredient and record price history.
+   * Bypasses the replace-all transaction RPC — safe for inline editing.
+   */
+  static async updateIngredientPackCost(id: string, packCost: number): Promise<{ previousValue: number }> {
+    const supabase = createAdminClient();
+
+    // Get current value
+    const { data: existing, error: fetchError } = await supabase
+      .from('menu_ingredients')
+      .select('pack_cost')
+      .eq('id', id)
+      .single();
+
+    if (fetchError || !existing) {
+      throw new Error('Ingredient not found');
+    }
+
+    const previousValue = Number(existing.pack_cost);
+
+    // Update the column directly
+    const { error: updateError } = await supabase
+      .from('menu_ingredients')
+      .update({ pack_cost: packCost })
+      .eq('id', id);
+
+    if (updateError) {
+      console.error('updateIngredientPackCost error:', updateError);
+      throw new Error('Failed to update ingredient pack cost');
+    }
+
+    // Record price history if the value actually changed
+    if (packCost !== previousValue) {
+      const { error: priceError } = await supabase
+        .from('menu_ingredient_prices')
+        .insert({
+          ingredient_id: id,
+          pack_cost: packCost,
+        });
+
+      if (priceError) {
+        console.error('updateIngredientPackCost price history error:', priceError);
+        throw new Error(
+          'Pack cost updated but price history could not be recorded. Please record the price manually.'
+        );
+      }
+    }
+
+    return { previousValue };
+  }
+
+  /**
+   * Toggle the is_active flag on an ingredient.
+   * Bypasses the replace-all transaction RPC — safe for inline editing.
+   */
+  static async toggleIngredientActive(id: string): Promise<{ previousValue: boolean; newValue: boolean }> {
+    const supabase = createAdminClient();
+
+    const { data: existing, error: fetchError } = await supabase
+      .from('menu_ingredients')
+      .select('is_active')
+      .eq('id', id)
+      .single();
+
+    if (fetchError || !existing) {
+      throw new Error('Ingredient not found');
+    }
+
+    const previousValue = existing.is_active;
+    const newValue = !previousValue;
+
+    const { error: updateError } = await supabase
+      .from('menu_ingredients')
+      .update({ is_active: newValue })
+      .eq('id', id);
+
+    if (updateError) {
+      console.error('toggleIngredientActive error:', updateError);
+      throw new Error('Failed to toggle ingredient active status');
+    }
+
+    return { previousValue, newValue };
+  }
+
+  /**
+   * Update only the selling_price of a dish and recalculate GP%.
+   * Bypasses the replace-all transaction RPC — safe for inline editing.
+   */
+  static async updateDishPrice(id: string, sellingPrice: number): Promise<{ previousValue: number }> {
+    const supabase = createAdminClient();
+
+    const { data: existing, error: fetchError } = await supabase
+      .from('menu_dishes')
+      .select('selling_price')
+      .eq('id', id)
+      .single();
+
+    if (fetchError || !existing) {
+      throw new Error('Dish not found');
+    }
+
+    const previousValue = Number(existing.selling_price);
+
+    const { error: updateError } = await supabase
+      .from('menu_dishes')
+      .update({ selling_price: sellingPrice })
+      .eq('id', id);
+
+    if (updateError) {
+      console.error('updateDishPrice error:', updateError);
+      throw new Error('Failed to update dish selling price');
+    }
+
+    // Recalculate GP% via the database function
+    const { error: rpcError } = await supabase.rpc('menu_refresh_dish_calculations', { p_dish_id: id });
+
+    if (rpcError) {
+      console.error('updateDishPrice recalculation error:', rpcError);
+      // Price is updated but GP% may be stale — not fatal
+    }
+
+    return { previousValue };
+  }
+
+  /**
+   * Toggle the is_active flag on a dish.
+   * Bypasses the replace-all transaction RPC — safe for inline editing.
+   */
+  static async toggleDishActive(id: string): Promise<{ previousValue: boolean; newValue: boolean }> {
+    const supabase = createAdminClient();
+
+    const { data: existing, error: fetchError } = await supabase
+      .from('menu_dishes')
+      .select('is_active')
+      .eq('id', id)
+      .single();
+
+    if (fetchError || !existing) {
+      throw new Error('Dish not found');
+    }
+
+    const previousValue = existing.is_active;
+    const newValue = !previousValue;
+
+    const { error: updateError } = await supabase
+      .from('menu_dishes')
+      .update({ is_active: newValue })
+      .eq('id', id);
+
+    if (updateError) {
+      console.error('toggleDishActive error:', updateError);
+      throw new Error('Failed to toggle dish active status');
+    }
+
+    return { previousValue, newValue };
+  }
+
     }
