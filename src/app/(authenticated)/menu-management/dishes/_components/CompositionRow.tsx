@@ -235,7 +235,8 @@ export function IngredientCompositionRow({
           value={row.option_group}
           onChange={(e) => onChange(index, { option_group: e.target.value })}
           className="w-24 shrink-0 rounded border border-gray-300 px-2 py-1 text-sm placeholder:text-gray-400 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
-          placeholder="Fixed"
+          placeholder="Included"
+          title="Leave blank if always part of the dish. Enter a group name (e.g. Chips, Peas) to mark as one of several options the customer chooses from."
           list={`ing-groups-${index}`}
           aria-label="Option group"
         />
@@ -386,7 +387,8 @@ export function RecipeCompositionRow({
           value={row.option_group}
           onChange={(e) => onChange(index, { option_group: e.target.value })}
           className="w-24 shrink-0 rounded border border-gray-300 px-2 py-1 text-sm placeholder:text-gray-400 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
-          placeholder="Fixed"
+          placeholder="Included"
+          title="Leave blank if always part of the dish. Enter a group name (e.g. Chips, Peas) to mark as one of several options the customer chooses from."
           list={`rec-groups-${index}`}
           aria-label="Option group"
         />
