@@ -342,7 +342,7 @@ export function Drawer({
                     {/* Swipe indicator for mobile */}
                     {swipeToClose && (
                       <div className={cn(
-                        'absolute inset-x-0 flex justify-center',
+                        'absolute inset-x-0 flex justify-center pointer-events-none',
                         position === 'top' && 'bottom-2',
                         position === 'bottom' && 'top-2',
                         position === 'left' && 'right-2 inset-y-0 items-center',
