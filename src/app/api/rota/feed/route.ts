@@ -1,10 +1,9 @@
-import { createHash, timingSafeEqual } from 'crypto';
+import { createHash } from 'crypto';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { getTodayIsoDate } from '@/lib/dateUtils';
 import { NextRequest } from 'next/server';
 import {
   foldLine,
-  escapeICS,
   formatDeptLabel,
   buildVEvent,
   findMostRecentPublish,
@@ -12,43 +11,28 @@ import {
   ICS_CALENDAR_REFRESH_LINES,
   type PublishedShiftWithEmployee,
 } from '@/lib/ics/utils';
+import { verifyRotaFeedToken } from '@/lib/portal/calendar-token';
+import { PermissionService } from '@/services/permission';
 
 export const dynamic = 'force-dynamic';
 
-// Returns the expected feed token.
-// Prefer ROTA_FEED_SECRET (dedicated secret, easier to rotate without affecting Supabase).
-// Falls back to SHA-256(service role key) so existing calendar subscriptions continue to work
-// until operators set ROTA_FEED_SECRET and re-subscribe.
-function getFeedToken(): string {
-  if (process.env.ROTA_FEED_SECRET) {
-    return process.env.ROTA_FEED_SECRET;
-  }
-  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!serviceKey) throw new Error('ROTA_FEED_SECRET or SUPABASE_SERVICE_ROLE_KEY must be set');
-  return createHash('sha256')
-    .update(serviceKey)
-    .digest('hex')
-    .substring(0, 32);
-}
-
-/**
- * Timing-safe token comparison (fixes DEFECT-006).
- * Differing lengths return false immediately — no timing leak since
- * we are not revealing which byte position differs.
- */
-function isValidToken(provided: string, expected: string): boolean {
-  if (provided.length !== expected.length) return false;
-  try {
-    return timingSafeEqual(Buffer.from(provided), Buffer.from(expected));
-  } catch {
-    return false;
-  }
-}
-
 export async function GET(req: NextRequest): Promise<Response> {
   const token = req.nextUrl.searchParams.get('token');
-  if (!token || !isValidToken(token, getFeedToken())) {
+  const userId = req.nextUrl.searchParams.get('uid');
+
+  if (!token || !userId) {
     return new Response('Unauthorized', { status: 401 });
+  }
+
+  // Verify the per-user HMAC token
+  if (!verifyRotaFeedToken(userId, token)) {
+    return new Response('Unauthorized', { status: 401 });
+  }
+
+  // Verify the user still has rota:view permission
+  const hasPermission = await PermissionService.checkUserPermission('rota', 'view', userId);
+  if (!hasPermission) {
+    return new Response('Forbidden', { status: 403 });
   }
 
   const supabase = createAdminClient();

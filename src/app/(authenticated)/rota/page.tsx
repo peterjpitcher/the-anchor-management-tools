@@ -1,6 +1,7 @@
-import { createHash } from 'crypto';
 import { checkUserPermission } from '@/app/actions/rbac';
 import { redirect } from 'next/navigation';
+import { generateRotaFeedToken } from '@/lib/portal/calendar-token';
+import { createClient } from '@/lib/supabase/server';
 import { PageLayout } from '@/components/ui-v2/layout/PageLayout';
 import { LinkButton } from '@/components/ui-v2/navigation/LinkButton';
 import { Cog6ToothIcon } from '@heroicons/react/24/outline';
@@ -41,11 +42,15 @@ interface RotaPageProps {
 }
 
 export default async function RotaPage({ searchParams }: RotaPageProps) {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect('/');
+
   const [canView, canEdit, canPublish, canManageSettings] = await Promise.all([
-    checkUserPermission('rota', 'view'),
-    checkUserPermission('rota', 'edit'),
-    checkUserPermission('rota', 'publish'),
-    checkUserPermission('settings', 'manage'),
+    checkUserPermission('rota', 'view', user.id),
+    checkUserPermission('rota', 'edit', user.id),
+    checkUserPermission('rota', 'publish', user.id),
+    checkUserPermission('settings', 'manage', user.id),
   ]);
   if (!canView) redirect('/');
 
@@ -109,15 +114,9 @@ export default async function RotaPage({ searchParams }: RotaPageProps) {
   const departments = deptResult.success ? deptResult.data : [];
   const dayInfo: Record<string, RotaDayInfo> = dayInfoResult ?? {};
 
-  // Mirror the token derivation in /api/rota/feed/route.ts:
-  // prefer ROTA_FEED_SECRET (dedicated env var) over SHA-256(service role key).
-  const feedToken = process.env.ROTA_FEED_SECRET
-    ? process.env.ROTA_FEED_SECRET
-    : createHash('sha256')
-        .update(process.env.SUPABASE_SERVICE_ROLE_KEY ?? 'fallback-no-key')
-        .digest('hex')
-        .substring(0, 32);
-  const feedUrl = `${process.env.NEXT_PUBLIC_APP_URL}/api/rota/feed?token=${feedToken}`;
+  // Per-user HMAC token — no global secret reaches the browser
+  const feedToken = generateRotaFeedToken(user.id);
+  const feedUrl = `${process.env.NEXT_PUBLIC_APP_URL}/api/rota/feed?token=${feedToken}&uid=${user.id}`;
 
   return (
     <PageLayout
