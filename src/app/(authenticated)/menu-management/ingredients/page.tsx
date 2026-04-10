@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState, useRef } from 'react';
+import { useEffect, useState, useMemo, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { PageLayout } from '@/components/ui-v2/layout/PageLayout';
 import { Section } from '@/components/ui-v2/layout/Section';
@@ -8,37 +8,74 @@ import { Card } from '@/components/ui-v2/layout/Card';
 import { Button } from '@/components/ui-v2/forms/Button';
 import { DataTable, type Column } from '@/components/ui-v2/display/DataTable';
 import { Badge } from '@/components/ui-v2/display/Badge';
-import { Input } from '@/components/ui-v2/forms/Input';
-import { Select } from '@/components/ui-v2/forms/Select';
-import { Checkbox } from '@/components/ui-v2/forms/Checkbox';
-import { Textarea } from '@/components/ui-v2/forms/Textarea';
-import { FormGroup } from '@/components/ui-v2/forms/FormGroup';
-import { Modal } from '@/components/ui-v2/overlay/Modal';
+import { FilterPanel, type FilterDefinition } from '@/components/ui-v2/display/FilterPanel';
+import { Pagination } from '@/components/ui-v2/navigation/Pagination';
+import { EmptyState } from '@/components/ui-v2/display/EmptyState';
 import { ConfirmDialog } from '@/components/ui-v2/overlay/ConfirmDialog';
-import { Alert } from '@/components/ui-v2/feedback/Alert';
 import { toast } from '@/components/ui-v2/feedback/Toast';
+import { LinkButton } from '@/components/ui-v2/navigation/LinkButton';
 import { usePermissions } from '@/contexts/PermissionContext';
 import { SmartImportModal } from '@/components/features/menu/SmartImportModal';
-import { LinkButton } from '@/components/ui-v2/navigation/LinkButton';
-import { reviewIngredientWithAI, type ReviewResult, type ReviewSuggestion } from '@/app/actions/ai-menu-parsing';
+import { useTablePipeline } from '../_components/useTablePipeline';
+import { EditableCurrencyCell } from '../_components/EditableCurrencyCell';
+import { StatusToggleCell } from '../_components/StatusToggleCell';
+import { IngredientExpandedRow, type Ingredient } from './_components/IngredientExpandedRow';
+import { IngredientDrawer } from './_components/IngredientDrawer';
+import { PriceHistoryPopover } from './_components/PriceHistoryPopover';
+import { listMenuIngredients, deleteMenuIngredient, updateIngredientPackCost, toggleIngredientActive } from '@/app/actions/menu-management';
+import type { AiParsedIngredient } from '@/app/actions/ai-menu-parsing';
 
-const UNITS = [
-  { value: 'each', label: 'Each' },
-  { value: 'portion', label: 'Portion' },
-  { value: 'gram', label: 'Gram' },
-  { value: 'kilogram', label: 'Kilogram' },
-  { value: 'millilitre', label: 'Millilitre' },
-  { value: 'litre', label: 'Litre' },
-  { value: 'ounce', label: 'Ounce' },
-  { value: 'pound', label: 'Pound' },
-  { value: 'teaspoon', label: 'Teaspoon' },
-  { value: 'tablespoon', label: 'Tablespoon' },
-  { value: 'cup', label: 'Cup' },
-  { value: 'slice', label: 'Slice' },
-  { value: 'piece', label: 'Piece' },
+// ---------------------------------------------------------------------------
+// Helpers (shared with expanded row / drawer via re-export in types)
+// ---------------------------------------------------------------------------
+
+const ALLERGEN_VALUES = [
+  'celery','gluten','crustaceans','eggs','fish','lupin','milk',
+  'molluscs','mustard','nuts','peanuts','sesame','soya','sulphites',
 ];
+const DIETARY_VALUES = ['vegan','vegetarian','gluten_free','dairy_free','halal','kosher'];
 
-const STORAGE_TYPES = [
+function orderByOptions(values: string[], preferredOrder: string[]): string[] {
+  const unique = Array.from(new Set(values));
+  const ordered = preferredOrder.filter((v) => unique.includes(v));
+  const remainder = unique.filter((v) => !preferredOrder.includes(v));
+  return [...ordered, ...remainder];
+}
+
+function normalizeSelection(values: unknown, allowed: string[]): string[] {
+  if (!Array.isArray(values)) return [];
+  const lower = values
+    .map((v: unknown) => (v ?? '').toString().trim().toLowerCase())
+    .filter(Boolean);
+  return orderByOptions(
+    lower.filter((v: string) => allowed.includes(v)),
+    allowed
+  );
+}
+
+function calculatePortionCost(ingredient: Ingredient): number | null {
+  const packCostSource = ingredient.latest_pack_cost ?? ingredient.pack_cost;
+  if (packCostSource == null) return null;
+  const packCost = Number(packCostSource);
+  if (ingredient.portions_per_pack == null) return null;
+  const portions = Number(ingredient.portions_per_pack);
+  if (Number.isNaN(packCost) || Number.isNaN(portions) || portions <= 0) return null;
+  return packCost / portions;
+}
+
+function formatRoundedCost(value: number | null | undefined): string {
+  if (value == null || Number.isNaN(value)) return '\u2014';
+  const pennies = Math.round(value * 100);
+  if (!Number.isFinite(pennies)) return '\u2014';
+  if (Math.abs(pennies) < 100) return `${pennies}p`;
+  return `\u00a3${(pennies / 100).toFixed(2)}`;
+}
+
+// ---------------------------------------------------------------------------
+// Filter definitions
+// ---------------------------------------------------------------------------
+
+const STORAGE_TYPE_OPTIONS = [
   { value: 'ambient', label: 'Ambient' },
   { value: 'chilled', label: 'Chilled' },
   { value: 'frozen', label: 'Frozen' },
@@ -46,214 +83,151 @@ const STORAGE_TYPES = [
   { value: 'other', label: 'Other' },
 ];
 
-const ALLERGEN_OPTIONS = [
-  { value: 'celery', label: 'Celery' },
-  { value: 'gluten', label: 'Gluten (cereals)' },
-  { value: 'crustaceans', label: 'Crustaceans' },
-  { value: 'eggs', label: 'Eggs' },
-  { value: 'fish', label: 'Fish' },
-  { value: 'lupin', label: 'Lupin' },
-  { value: 'milk', label: 'Milk' },
-  { value: 'molluscs', label: 'Molluscs' },
-  { value: 'mustard', label: 'Mustard' },
-  { value: 'nuts', label: 'Tree nuts' },
-  { value: 'peanuts', label: 'Peanuts' },
-  { value: 'sesame', label: 'Sesame' },
-  { value: 'soya', label: 'Soya' },
-  { value: 'sulphites', label: 'Sulphites' },
+const STATUS_OPTIONS = [
+  { value: 'active', label: 'Active' },
+  { value: 'inactive', label: 'Inactive' },
 ];
 
-const DIETARY_OPTIONS = [
-  { value: 'vegan', label: 'Vegan' },
-  { value: 'vegetarian', label: 'Vegetarian' },
-  { value: 'gluten_free', label: 'Gluten Free' },
-  { value: 'dairy_free', label: 'Dairy Free' },
-  { value: 'halal', label: 'Halal' },
-  { value: 'kosher', label: 'Kosher' },
+const ALLERGEN_FILTER_OPTIONS = ALLERGEN_VALUES.map((v) => ({
+  value: v,
+  label: v.charAt(0).toUpperCase() + v.slice(1),
+}));
+
+const filterDefinitions: FilterDefinition[] = [
+  { id: 'status', label: 'Status', type: 'select', options: STATUS_OPTIONS, pinned: true },
+  { id: 'storage_type', label: 'Storage Type', type: 'select', options: STORAGE_TYPE_OPTIONS },
+  { id: 'supplier_name', label: 'Supplier', type: 'text', placeholder: 'Filter by supplier...' },
+  { id: 'allergens', label: 'Allergens', type: 'multiselect', options: ALLERGEN_FILTER_OPTIONS },
 ];
 
-const ALLERGEN_VALUES = ALLERGEN_OPTIONS.map(option => option.value);
-const DIETARY_VALUES = DIETARY_OPTIONS.map(option => option.value);
+function ingredientFilterFn(item: Record<string, unknown>, filters: Record<string, unknown>): boolean {
+  const ingredient = item as unknown as Ingredient;
 
-function orderByOptions(values: string[], preferredOrder: string[]) {
-  const unique = Array.from(new Set(values));
-  const ordered = preferredOrder.filter(value => unique.includes(value));
-  const remainder = unique.filter(value => !preferredOrder.includes(value));
-  return [...ordered, ...remainder];
-}
-
-function normalizeSelection(values: any, allowed: string[]) {
-  if (!Array.isArray(values)) {
-    return [];
+  if (filters.status) {
+    const wantActive = filters.status === 'active';
+    if (ingredient.is_active !== wantActive) return false;
   }
-  const lower = values
-    .map((value) => (value ?? '').toString().trim().toLowerCase())
-    .filter(Boolean);
-  const filtered = lower.filter((value) => allowed.includes(value));
-  return orderByOptions(filtered, allowed);
-}
 
-interface DishAssignmentSummary {
-  menu_code: string;
-  menu_name: string;
-  category_code: string;
-  category_name: string;
-  sort_order: number;
-  is_special: boolean;
-  is_default_side: boolean;
-}
-
-interface IngredientDishUsage {
-  dish_id: string;
-  dish_name: string;
-  dish_selling_price: number;
-  dish_portion_cost: number;
-  dish_gp_pct: number | null;
-  dish_is_gp_alert: boolean;
-  dish_is_active: boolean;
-  quantity: number;
-  unit?: string | null;
-  yield_pct?: number | null;
-  wastage_pct?: number | null;
-  cost_override?: number | null;
-  notes?: string | null;
-  assignments: DishAssignmentSummary[];
-}
-
-interface Ingredient {
-  id: string;
-  name: string;
-  description?: string | null;
-  default_unit: string;
-  storage_type: string;
-  supplier_name?: string | null;
-  supplier_sku?: string | null;
-  brand?: string | null;
-  pack_size?: number | null;
-  pack_size_unit?: string | null;
-  pack_cost: number;
-  portions_per_pack?: number | null;
-  wastage_pct: number;
-  shelf_life_days?: number | null;
-  allergens: string[];
-  dietary_flags: string[];
-  notes?: string | null;
-  is_active: boolean;
-  latest_pack_cost?: number | null;
-  latest_unit_cost?: number | null;
-  dishes: IngredientDishUsage[];
-}
-
-interface IngredientPriceEntry {
-  id: string;
-  pack_cost: number;
-  effective_from: string;
-  supplier_name?: string | null;
-  supplier_sku?: string | null;
-  notes?: string | null;
-  created_at: string;
-}
-
-type IngredientFormState = {
-  name: string;
-  description: string;
-  default_unit: string;
-  storage_type: string;
-  supplier_name: string;
-  supplier_sku: string;
-  brand: string;
-  pack_size: string;
-  pack_size_unit: string;
-  pack_cost: string;
-  portions_per_pack: string;
-  wastage_pct: string;
-  shelf_life_days: string;
-  allergens: string[];
-  dietary_flags: string[];
-  notes: string;
-  is_active: boolean;
-};
-
-function calculatePortionCost(ingredient: Ingredient): number | null {
-  const packCostSource = ingredient.latest_pack_cost ?? ingredient.pack_cost;
-  if (packCostSource == null) {
-    return null;
+  if (filters.storage_type && typeof filters.storage_type === 'string') {
+    if (ingredient.storage_type !== filters.storage_type) return false;
   }
-  const packCost = Number(packCostSource);
-  const portionsValue = ingredient.portions_per_pack;
-  if (portionsValue == null) {
-    return null;
+
+  if (filters.supplier_name && typeof filters.supplier_name === 'string') {
+    const term = filters.supplier_name.toLowerCase();
+    if (!ingredient.supplier_name?.toLowerCase().includes(term)) return false;
   }
-  const portions = Number(portionsValue);
-  if (Number.isNaN(packCost) || Number.isNaN(portions) || portions <= 0) {
-    return null;
+
+  if (Array.isArray(filters.allergens) && filters.allergens.length > 0) {
+    const required = filters.allergens as string[];
+    if (!required.every((a) => ingredient.allergens.includes(a))) return false;
   }
-  return packCost / portions;
+
+  return true;
 }
 
-function formatRoundedCost(value: number | null | undefined): string {
-  if (value == null || Number.isNaN(value)) {
-    return '—';
-  }
-  const pennies = Math.round(value * 100);
-  if (!Number.isFinite(pennies)) {
-    return '—';
-  }
-  if (Math.abs(pennies) < 100) {
-    return `${pennies}p`;
-  }
-  return `£${(pennies / 100).toFixed(2)}`;
+// ---------------------------------------------------------------------------
+// Map API result to Ingredient type
+// ---------------------------------------------------------------------------
+
+function mapApiIngredient(raw: Record<string, unknown>): Ingredient {
+  const rawDishes = (raw.dishes ?? []) as Record<string, unknown>[];
+  return {
+    id: raw.id as string,
+    name: raw.name as string,
+    description: raw.description as string | null | undefined,
+    default_unit: (raw.default_unit as string) || 'portion',
+    storage_type: (raw.storage_type as string) || 'ambient',
+    supplier_name: raw.supplier_name as string | null | undefined,
+    supplier_sku: raw.supplier_sku as string | null | undefined,
+    brand: raw.brand as string | null | undefined,
+    pack_size: raw.pack_size != null ? Number(raw.pack_size) : null,
+    pack_size_unit: raw.pack_size_unit as string | null | undefined,
+    pack_cost: Number(raw.pack_cost ?? 0),
+    portions_per_pack: raw.portions_per_pack != null ? Number(raw.portions_per_pack) : null,
+    wastage_pct: Number(raw.wastage_pct ?? 0),
+    shelf_life_days: raw.shelf_life_days != null ? Number(raw.shelf_life_days) : null,
+    allergens: normalizeSelection(raw.allergens, ALLERGEN_VALUES),
+    dietary_flags: normalizeSelection(raw.dietary_flags, DIETARY_VALUES),
+    notes: raw.notes as string | null | undefined,
+    is_active: (raw.is_active as boolean) ?? true,
+    latest_pack_cost: raw.latest_pack_cost != null ? Number(raw.latest_pack_cost) : null,
+    latest_unit_cost: raw.latest_unit_cost != null ? Number(raw.latest_unit_cost) : null,
+    dishes: rawDishes.map((dish) => {
+      const rawAssignments = (dish.assignments ?? []) as Record<string, unknown>[];
+      return {
+        dish_id: dish.dish_id as string,
+        dish_name: dish.dish_name as string,
+        dish_selling_price: Number(dish.dish_selling_price ?? 0),
+        dish_portion_cost: Number(dish.dish_portion_cost ?? 0),
+        dish_gp_pct: (dish.dish_gp_pct as number | null) ?? null,
+        dish_is_gp_alert: (dish.dish_is_gp_alert as boolean) ?? false,
+        dish_is_active: (dish.dish_is_active as boolean) ?? false,
+        quantity: Number(dish.quantity ?? 0),
+        unit: dish.unit as string | null | undefined,
+        yield_pct: dish.yield_pct as number | null | undefined,
+        wastage_pct: dish.wastage_pct as number | null | undefined,
+        cost_override: dish.cost_override as number | null | undefined,
+        notes: dish.notes as string | null | undefined,
+        assignments: rawAssignments.map((a) => ({
+          menu_code: a.menu_code as string,
+          menu_name: a.menu_name as string,
+          category_code: a.category_code as string,
+          category_name: a.category_name as string,
+          sort_order: (a.sort_order as number) ?? 0,
+          is_special: (a.is_special as boolean) ?? false,
+          is_default_side: (a.is_default_side as boolean) ?? false,
+        })),
+      };
+    }),
+  };
 }
 
-const createDefaultFormState = (): IngredientFormState => ({
-  name: '',
-  description: '',
-  default_unit: 'each',
-  storage_type: 'ambient',
-  supplier_name: '',
-  supplier_sku: '',
-  brand: '',
-  pack_size: '',
-  pack_size_unit: 'each',
-  pack_cost: '0',
-  portions_per_pack: '',
-  wastage_pct: '0',
-  shelf_life_days: '',
-  allergens: [],
-  dietary_flags: [],
-  notes: '',
-  is_active: true,
-});
+// ---------------------------------------------------------------------------
+// Page Component
+// ---------------------------------------------------------------------------
 
-export default function MenuIngredientsPage() {
+export default function MenuIngredientsPage(): React.ReactElement {
   const router = useRouter();
   const { hasPermission, loading: permissionsLoading } = usePermissions();
+
+  // Data
   const [ingredients, setIngredients] = useState<Ingredient[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
-  const [showModal, setShowModal] = useState(false);
-  const [editingIngredient, setEditingIngredient] = useState<Ingredient | null>(null);
-  const [formState, setFormState] = useState<IngredientFormState>(createDefaultFormState());
-  const [ingredientToDelete, setIngredientToDelete] = useState<Ingredient | null>(null);
-  const [priceHistoryModal, setPriceHistoryModal] = useState<{ open: boolean; ingredient: Ingredient | null }>({ open: false, ingredient: null });
-  const [priceHistory, setPriceHistory] = useState<IngredientPriceEntry[]>([]);
-  const [priceHistoryLoading, setPriceHistoryLoading] = useState(false);
-  const [showImportModal, setShowImportModal] = useState(false);
-  const [reviewing, setReviewing] = useState(false);
-  const [reviewResult, setReviewResult] = useState<ReviewResult | null>(null);
-  const canManage = hasPermission('menu_management', 'manage');
-  const [quickFilter, setQuickFilter] = useState('');
-  const unknownAllergens = useMemo(
-    () => formState.allergens.filter(value => !ALLERGEN_VALUES.includes(value)),
-    [formState.allergens],
-  );
-  const unknownDietaryFlags = useMemo(
-    () => formState.dietary_flags.filter(value => !DIETARY_VALUES.includes(value)),
-    [formState.dietary_flags],
-  );
 
-  const modalTopRef = useRef<HTMLDivElement>(null);
+  // Drawer state
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [editingIngredient, setEditingIngredient] = useState<Ingredient | null>(null);
+  const [importData, setImportData] = useState<AiParsedIngredient | null>(null);
+
+  // Delete state
+  const [ingredientToDelete, setIngredientToDelete] = useState<Ingredient | null>(null);
+
+  // Smart import modal
+  const [showImportModal, setShowImportModal] = useState(false);
+
+  const canManage = hasPermission('menu_management', 'manage');
+
+  // ---- Data loading ----
+
+  const loadIngredients = useCallback(async () => {
+    try {
+      setLoading(true);
+      const result = await listMenuIngredients();
+      if (result.error) {
+        throw new Error(result.error);
+      }
+      const mapped = ((result.data ?? []) as Record<string, unknown>[]).map(mapApiIngredient);
+      setIngredients(mapped);
+      setError(null);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Failed to load ingredients';
+      console.error('loadIngredients error:', err);
+      setError(message);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
     if (permissionsLoading) return;
@@ -261,344 +235,261 @@ export default function MenuIngredientsPage() {
       router.replace('/unauthorized');
       return;
     }
-    loadIngredients();
-  }, [permissionsLoading]);
+    void loadIngredients();
+  }, [permissionsLoading]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  async function loadIngredients() {
-    try {
-      setLoading(true);
-      const response = await fetch('/api/menu-management/ingredients');
-      const result = await response.json();
-      if (!response.ok) {
-        throw new Error(result.error || 'Failed to load ingredients');
-      }
-      const mapped: Ingredient[] = (result.data || []).map((ingredient: any) => ({
-        id: ingredient.id,
-        name: ingredient.name,
-        description: ingredient.description,
-        default_unit: ingredient.default_unit || 'portion',
-        storage_type: ingredient.storage_type || 'ambient',
-        supplier_name: ingredient.supplier_name,
-        supplier_sku: ingredient.supplier_sku,
-        brand: ingredient.brand,
-        pack_size: ingredient.pack_size != null ? Number(ingredient.pack_size) : null,
-        pack_size_unit: ingredient.pack_size_unit,
-        pack_cost: Number(ingredient.pack_cost ?? 0),
-        portions_per_pack: ingredient.portions_per_pack != null ? Number(ingredient.portions_per_pack) : null,
-        wastage_pct: Number(ingredient.wastage_pct ?? 0),
-        shelf_life_days: ingredient.shelf_life_days != null ? Number(ingredient.shelf_life_days) : null,
-        allergens: normalizeSelection(ingredient.allergens, ALLERGEN_VALUES),
-        dietary_flags: normalizeSelection(ingredient.dietary_flags, DIETARY_VALUES),
-        notes: ingredient.notes,
-        is_active: ingredient.is_active ?? true,
-        latest_pack_cost: ingredient.latest_pack_cost != null ? Number(ingredient.latest_pack_cost) : null,
-        latest_unit_cost: ingredient.latest_unit_cost != null ? Number(ingredient.latest_unit_cost) : null,
-        dishes: (ingredient.dishes || []).map((dish: any) => ({
-          dish_id: dish.dish_id,
-          dish_name: dish.dish_name,
-          dish_selling_price: Number(dish.dish_selling_price ?? 0),
-          dish_portion_cost: Number(dish.dish_portion_cost ?? 0),
-          dish_gp_pct: dish.dish_gp_pct ?? null,
-          dish_is_gp_alert: dish.dish_is_gp_alert ?? false,
-          dish_is_active: dish.dish_is_active ?? false,
-          quantity: Number(dish.quantity ?? 0),
-          unit: dish.unit,
-          yield_pct: dish.yield_pct,
-          wastage_pct: dish.wastage_pct,
-          cost_override: dish.cost_override,
-          notes: dish.notes,
-          assignments: (dish.assignments || []).map((assignment: any) => ({
-            menu_code: assignment.menu_code,
-            menu_name: assignment.menu_name,
-            category_code: assignment.category_code,
-            category_name: assignment.category_name,
-            sort_order: assignment.sort_order ?? 0,
-            is_special: assignment.is_special ?? false,
-            is_default_side: assignment.is_default_side ?? false,
-          })),
-        })),
-      }));
-      setIngredients(mapped);
-      setError(null);
-    } catch (err: any) {
-      console.error('loadIngredients error:', err);
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
-  }
+  // ---- Pipeline ----
 
-  function toggleAllergen(value: string) {
-    setFormState(prev => {
-      const exists = prev.allergens.includes(value);
-      const next = exists ? prev.allergens.filter(item => item !== value) : [...prev.allergens, value];
-      return { ...prev, allergens: orderByOptions(next, ALLERGEN_VALUES) };
-    });
-  }
+  const searchFields = useCallback(
+    (item: Record<string, unknown>) => {
+      const ingredient = item as unknown as Ingredient;
+      return [
+        ingredient.name,
+        ingredient.brand ?? '',
+        ingredient.supplier_name ?? '',
+        ingredient.supplier_sku ?? '',
+        ...ingredient.allergens,
+        ...ingredient.dietary_flags,
+      ];
+    },
+    []
+  );
 
-  function toggleDietaryFlag(value: string) {
-    setFormState(prev => {
-      const exists = prev.dietary_flags.includes(value);
-      const next = exists ? prev.dietary_flags.filter(item => item !== value) : [...prev.dietary_flags, value];
-      return { ...prev, dietary_flags: orderByOptions(next, DIETARY_VALUES) };
-    });
-  }
+  const pipeline = useTablePipeline<Record<string, unknown>>({
+    data: ingredients as unknown as Record<string, unknown>[],
+    searchFields,
+    defaultSortKey: 'name',
+    defaultSortDirection: 'asc',
+    itemsPerPage: 25,
+    filterFn: ingredientFilterFn,
+  });
 
-  function clearUnknownAllergens() {
-    setFormState(prev => ({
-      ...prev,
-      allergens: prev.allergens.filter(value => ALLERGEN_VALUES.includes(value)),
-    }));
-  }
+  // ---- Actions ----
 
-  function clearUnknownDietaryFlags() {
-    setFormState(prev => ({
-      ...prev,
-      dietary_flags: prev.dietary_flags.filter(value => DIETARY_VALUES.includes(value)),
-    }));
-  }
-
-  function openCreateModal() {
+  function openCreate() {
     setEditingIngredient(null);
-    setFormState(createDefaultFormState());
-    setReviewResult(null);
-    setShowModal(true);
+    setImportData(null);
+    setDrawerOpen(true);
   }
 
-  function openEditModal(ingredient: Ingredient) {
+  function openEdit(ingredient: Ingredient) {
     setEditingIngredient(ingredient);
-    setFormState({
-      name: ingredient.name,
-      description: ingredient.description || '',
-      default_unit: ingredient.default_unit || 'each',
-      storage_type: ingredient.storage_type || 'ambient',
-      supplier_name: ingredient.supplier_name || '',
-      supplier_sku: ingredient.supplier_sku || '',
-      brand: ingredient.brand || '',
-      pack_size: ingredient.pack_size ? ingredient.pack_size.toString() : '',
-      pack_size_unit: ingredient.pack_size_unit || ingredient.default_unit || 'each',
-      pack_cost: ingredient.pack_cost?.toString() ?? '0',
-      portions_per_pack: ingredient.portions_per_pack ? ingredient.portions_per_pack.toString() : '',
-      wastage_pct: ingredient.wastage_pct?.toString() ?? '0',
-      shelf_life_days: ingredient.shelf_life_days ? ingredient.shelf_life_days.toString() : '',
-      allergens: normalizeSelection(ingredient.allergens, ALLERGEN_VALUES),
-      dietary_flags: normalizeSelection(ingredient.dietary_flags, DIETARY_VALUES),
-      notes: ingredient.notes || '',
-      is_active: ingredient.is_active,
-    });
-    setReviewResult(null);
-    setShowModal(true);
+    setImportData(null);
+    setDrawerOpen(true);
   }
 
-  async function handleReview() {
-    setReviewing(true);
-    setReviewResult(null);
-    try {
-      const payload = {
-        name: formState.name,
-        description: formState.description || null,
-        supplier_name: formState.supplier_name || null,
-        supplier_sku: formState.supplier_sku || null,
-        brand: formState.brand || null,
-        pack_size: parseFloat(formState.pack_size) || null,
-        pack_size_unit: formState.pack_size_unit,
-        pack_cost: parseFloat(formState.pack_cost) || null,
-        portions_per_pack: parseFloat(formState.portions_per_pack) || null,
-        wastage_pct: parseFloat(formState.wastage_pct) || 0,
-        storage_type: formState.storage_type,
-        allergens: formState.allergens,
-        dietary_flags: formState.dietary_flags,
-        notes: formState.notes || null,
-      };
-
-      const result = await reviewIngredientWithAI(payload);
-      setReviewResult(result);
-      
-      if (result.valid && result.issues.length === 0 && result.suggestions.length === 0) {
-        toast.success('AI Review passed: No logical issues found.');
-      } else {
-        toast.error('AI Review found potential issues.');
-      }
-      
-      // Scroll to top to show alerts
-      setTimeout(() => {
-        modalTopRef.current?.scrollIntoView({ behavior: 'smooth' });
-      }, 100);
-
-    } catch (err) {
-      console.error(err);
-      toast.error('Review failed');
-    } finally {
-      setReviewing(false);
-    }
-  }
-
-  function applySuggestion(suggestion: ReviewSuggestion) {
-    setFormState((prev) => {
-      const next = { ...prev };
-      const val = suggestion.suggestedValue;
-      
-      // Handle specific conversions if needed (e.g. array to string, number to string)
-      if (suggestion.field === 'allergens' || suggestion.field === 'dietary_flags') {
-        (next as any)[suggestion.field] = Array.isArray(val) ? val : [];
-      } else if (typeof val === 'number') {
-        (next as any)[suggestion.field] = val.toString();
-      } else {
-        (next as any)[suggestion.field] = val ?? '';
-      }
-      
-      return next;
-    });
-
-    // Remove applied suggestion from the list
-    setReviewResult((prev) => {
-      if (!prev) return null;
-      return {
-        ...prev,
-        suggestions: prev.suggestions.filter((s) => s !== suggestion),
-      };
-    });
-    
-    toast.success(`Applied change to ${suggestion.field}`);
-  }
-
-  function formatValue(val: any): string {
-    if (Array.isArray(val)) return val.join(', ');
-    if (val === null || val === undefined) return '—';
-    return val.toString();
-  }
-
-  async function handleSave() {
-    try {
-      setSaving(true);
-
-      const orderedAllergens = orderByOptions(formState.allergens, ALLERGEN_VALUES);
-      const orderedDietaryFlags = orderByOptions(formState.dietary_flags, DIETARY_VALUES);
-
-      const payload = {
-        name: formState.name.trim(),
-        description: formState.description || null,
-        default_unit: formState.default_unit,
-        storage_type: formState.storage_type,
-        supplier_name: formState.supplier_name || null,
-        supplier_sku: formState.supplier_sku || null,
-        brand: formState.brand || null,
-        pack_size: formState.pack_size ? parseFloat(formState.pack_size) : null,
-        pack_size_unit: formState.pack_size_unit || null,
-        pack_cost: parseFloat(formState.pack_cost || '0') || 0,
-        portions_per_pack: formState.portions_per_pack ? parseFloat(formState.portions_per_pack) : null,
-        wastage_pct: parseFloat(formState.wastage_pct || '0') || 0,
-        shelf_life_days: formState.shelf_life_days ? parseInt(formState.shelf_life_days, 10) : null,
-        allergens: orderedAllergens,
-        dietary_flags: orderedDietaryFlags,
-        notes: formState.notes || null,
-        is_active: formState.is_active,
-      };
-
-      let response: Response;
-      if (editingIngredient) {
-        response = await fetch(`/api/menu-management/ingredients/${editingIngredient.id}`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload),
-        });
-      } else {
-        response = await fetch('/api/menu-management/ingredients', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload),
-        });
-      }
-
-      const result = await response.json();
-      if (!response.ok) {
-        throw new Error(result.error || 'Failed to save ingredient');
-      }
-
-      toast.success(editingIngredient ? 'Ingredient updated' : 'Ingredient added');
-      setShowModal(false);
-      setEditingIngredient(null);
-      setFormState(createDefaultFormState());
-      await loadIngredients();
-    } catch (err: any) {
-      console.error('handleSave error:', err);
-      toast.error(err.message || 'Failed to save ingredient');
-    } finally {
-      setSaving(false);
-    }
+  function handleImport(data: AiParsedIngredient) {
+    setEditingIngredient(null);
+    setImportData(data);
+    setDrawerOpen(true);
   }
 
   async function handleDelete() {
     if (!ingredientToDelete) return;
     try {
-      const response = await fetch(`/api/menu-management/ingredients/${ingredientToDelete.id}`, {
-        method: 'DELETE',
-      });
-      const result = await response.json();
-      if (!response.ok) {
-        throw new Error(result.error || 'Failed to delete ingredient');
+      const result = await deleteMenuIngredient(ingredientToDelete.id);
+      if (result.error) {
+        throw new Error(result.error);
       }
       toast.success('Ingredient deleted');
       setIngredientToDelete(null);
       await loadIngredients();
-    } catch (err: any) {
-      console.error('handleDelete error:', err);
-      toast.error(err.message || 'Failed to delete ingredient');
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Failed to delete ingredient';
+      toast.error(message);
     }
   }
 
-  async function openPriceHistory(ingredient: Ingredient) {
-    try {
-      setPriceHistoryModal({ open: true, ingredient });
-      setPriceHistoryLoading(true);
-      const response = await fetch(`/api/menu-management/ingredients/${ingredient.id}/prices`);
-      const result = await response.json();
-      if (!response.ok) {
-        throw new Error(result.error || 'Failed to load price history');
-      }
-      setPriceHistory(result.data || []);
-    } catch (err: any) {
-      console.error('openPriceHistory error:', err);
-      toast.error(err.message || 'Failed to load price history');
-    } finally {
-      setPriceHistoryLoading(false);
-    }
-  }
+  // ---- Columns ----
 
-  function handleImport(data: any) {
-    const newState = createDefaultFormState();
-    newState.name = data.name || '';
-    newState.supplier_name = data.supplier_name || '';
-    newState.supplier_sku = data.supplier_sku || '';
-    newState.brand = data.brand || '';
-    newState.pack_cost = data.pack_cost ? data.pack_cost.toString() : '0';
-    newState.storage_type = data.storage_type || 'ambient';
-    newState.description = data.description || '';
-    newState.notes = data.notes || '';
-    newState.pack_size = data.pack_size ? data.pack_size.toString() : '';
-    newState.pack_size_unit = data.pack_size_unit || 'each';
-    newState.portions_per_pack = data.portions_per_pack ? data.portions_per_pack.toString() : '';
-    newState.wastage_pct = data.wastage_pct ? data.wastage_pct.toString() : '0';
-    
-    if (data.allergens) {
-        newState.allergens = normalizeSelection(data.allergens, ALLERGEN_VALUES);
-    }
+  const columns: Column<Record<string, unknown>>[] = useMemo(
+    () => [
+      {
+        key: 'name',
+        header: 'Name',
+        sortable: true,
+        cell: (row) => {
+          const ingredient = row as unknown as Ingredient;
+          return (
+            <div>
+              <div className="font-medium">{ingredient.name}</div>
+              {ingredient.brand && (
+                <div className="text-xs text-gray-500">{ingredient.brand}</div>
+              )}
+            </div>
+          );
+        },
+      },
+      {
+        key: 'supplier',
+        header: 'Supplier',
+        sortable: true,
+        sortFn: (a, b) => {
+          const ia = a as unknown as Ingredient;
+          const ib = b as unknown as Ingredient;
+          return (ia.supplier_name || '').localeCompare(ib.supplier_name || '');
+        },
+        cell: (row) => {
+          const ingredient = row as unknown as Ingredient;
+          return ingredient.supplier_name ? (
+            <div className="text-sm">
+              <div>{ingredient.supplier_name}</div>
+              {ingredient.supplier_sku && (
+                <div className="text-xs text-gray-500">SKU: {ingredient.supplier_sku}</div>
+              )}
+            </div>
+          ) : (
+            <span className="text-sm text-gray-500">&mdash;</span>
+          );
+        },
+      },
+      {
+        key: 'pack',
+        header: 'Pack',
+        cell: (row) => {
+          const ingredient = row as unknown as Ingredient;
+          const size = ingredient.pack_size
+            ? `${ingredient.pack_size} ${ingredient.pack_size_unit || ingredient.default_unit}`
+            : '\u2014';
+          const portions = ingredient.portions_per_pack
+            ? `${ingredient.portions_per_pack} portions`
+            : '\u2014';
+          return (
+            <div className="text-sm space-y-1">
+              <div>{size}</div>
+              <div className="text-xs text-gray-500">{portions}</div>
+            </div>
+          );
+        },
+      },
+      {
+        key: 'costs',
+        header: 'Pack Cost',
+        sortable: true,
+        sortFn: (a, b) => {
+          const ia = a as unknown as Ingredient;
+          const ib = b as unknown as Ingredient;
+          return Number(ia.latest_pack_cost ?? ia.pack_cost) - Number(ib.latest_pack_cost ?? ib.pack_cost);
+        },
+        cell: (row) => {
+          const ingredient = row as unknown as Ingredient;
+          return canManage ? (
+            <EditableCurrencyCell
+              value={Number(ingredient.latest_pack_cost ?? ingredient.pack_cost)}
+              entityName={ingredient.name}
+              fieldLabel="pack cost"
+              onSave={(val) => updateIngredientPackCost(ingredient.id, val)}
+              onSaved={() => void loadIngredients()}
+            />
+          ) : (
+            <span className="text-sm">
+              £{Number(ingredient.latest_pack_cost ?? ingredient.pack_cost).toFixed(2)}
+            </span>
+          );
+        },
+      },
+      {
+        key: 'portionCost',
+        header: 'Portion Cost',
+        sortable: true,
+        sortFn: (a, b) => {
+          const costA = calculatePortionCost(a as unknown as Ingredient) ?? -1;
+          const costB = calculatePortionCost(b as unknown as Ingredient) ?? -1;
+          return costA - costB;
+        },
+        cell: (row) => {
+          const ingredient = row as unknown as Ingredient;
+          return <span className="text-sm">{formatRoundedCost(calculatePortionCost(ingredient))}</span>;
+        },
+      },
+      {
+        key: 'usage',
+        header: 'Dishes',
+        sortable: true,
+        sortFn: (a, b) => {
+          const ia = a as unknown as Ingredient;
+          const ib = b as unknown as Ingredient;
+          return ia.dishes.length - ib.dishes.length;
+        },
+        cell: (row) => {
+          const ingredient = row as unknown as Ingredient;
+          return <Badge variant="secondary">{ingredient.dishes.length}</Badge>;
+        },
+      },
+      {
+        key: 'status',
+        header: 'Status',
+        sortable: true,
+        sortFn: (a, b) => {
+          const ia = a as unknown as Ingredient;
+          const ib = b as unknown as Ingredient;
+          return ia.is_active === ib.is_active ? 0 : ia.is_active ? -1 : 1;
+        },
+        cell: (row) => {
+          const ingredient = row as unknown as Ingredient;
+          return canManage ? (
+            <StatusToggleCell
+              isActive={ingredient.is_active}
+              entityName={ingredient.name}
+              onToggle={() => toggleIngredientActive(ingredient.id)}
+              onToggled={() => void loadIngredients()}
+            />
+          ) : (
+            <Badge variant={ingredient.is_active ? 'success' : 'error'}>
+              {ingredient.is_active ? 'Active' : 'Inactive'}
+            </Badge>
+          );
+        },
+      },
+      {
+        key: 'actions',
+        header: 'Actions',
+        align: 'right' as const,
+        cell: (row) => {
+          const ingredient = row as unknown as Ingredient;
+          return (
+            <div className="flex items-center justify-end gap-2">
+              <PriceHistoryPopover
+                ingredientId={ingredient.id}
+                ingredientName={ingredient.name}
+                trigger={
+                  <Button variant="ghost" size="sm">
+                    Prices
+                  </Button>
+                }
+              />
+              {canManage && (
+                <>
+                  <Button variant="secondary" size="sm" onClick={() => openEdit(ingredient)}>
+                    Edit
+                  </Button>
+                  <Button
+                    variant="danger"
+                    size="sm"
+                    onClick={() => setIngredientToDelete(ingredient)}
+                  >
+                    Delete
+                  </Button>
+                </>
+              )}
+            </div>
+          );
+        },
+      },
+    ],
+    [canManage, loadIngredients]
+  );
 
-    if (data.dietary_flags) {
-      newState.dietary_flags = normalizeSelection(data.dietary_flags, DIETARY_VALUES);
-    }
-
-    setFormState(newState);
-    setEditingIngredient(null);
-    setShowModal(true);
-  }
+  // ---- Header actions ----
 
   const headerActions = (
     <div className="flex items-center gap-2">
       {canManage && (
         <>
-          <Button variant="secondary" onClick={() => setShowImportModal(true)}>Smart Import</Button>
-          <Button onClick={openCreateModal}>Add Ingredient</Button>
+          <Button variant="secondary" onClick={() => setShowImportModal(true)}>
+            Smart Import
+          </Button>
+          <Button onClick={openCreate}>Add Ingredient</Button>
         </>
       )}
       {canManage && (
@@ -609,189 +500,7 @@ export default function MenuIngredientsPage() {
     </div>
   );
 
-  const rows = useMemo(() => {
-    const term = quickFilter.trim().toLowerCase();
-    if (!term) {
-      return ingredients;
-    }
-    return ingredients.filter(ingredient => {
-      if (ingredient.name.toLowerCase().includes(term)) return true;
-      if (ingredient.brand && ingredient.brand.toLowerCase().includes(term)) return true;
-      if (ingredient.supplier_name && ingredient.supplier_name.toLowerCase().includes(term)) return true;
-      if (ingredient.supplier_sku && ingredient.supplier_sku.toLowerCase().includes(term)) return true;
-      if (ingredient.dietary_flags.some(flag => flag.toLowerCase().includes(term))) return true;
-      if (ingredient.allergens.some(flag => flag.toLowerCase().includes(term))) return true;
-      return false;
-    });
-  }, [ingredients, quickFilter]);
-
-  const columns: Column<Ingredient>[] = [
-    {
-      key: 'name',
-      header: 'Name',
-      sortable: true,
-      cell: (ingredient: Ingredient) => (
-        <div>
-          <div className="font-medium">{ingredient.name}</div>
-          {ingredient.brand && <div className="text-xs text-gray-500">{ingredient.brand}</div>}
-        </div>
-      ),
-    },
-    {
-      key: 'supplier',
-      header: 'Supplier',
-      sortable: true,
-      sortFn: (a, b) => (a.supplier_name || '').localeCompare(b.supplier_name || ''),
-      cell: (ingredient: Ingredient) =>
-        ingredient.supplier_name ? (
-          <div className="text-sm">
-            <div>{ingredient.supplier_name}</div>
-            {ingredient.supplier_sku && <div className="text-xs text-gray-500">SKU: {ingredient.supplier_sku}</div>}
-          </div>
-        ) : (
-          <span className="text-sm text-gray-500">—</span>
-        ),
-    },
-    {
-      key: 'pack',
-      header: 'Pack',
-      cell: (ingredient: Ingredient) => {
-        const size = ingredient.pack_size ? `${ingredient.pack_size} ${ingredient.pack_size_unit || ingredient.default_unit}` : '—';
-        const portions = ingredient.portions_per_pack ? `${ingredient.portions_per_pack} portions` : '—';
-        return (
-          <div className="text-sm space-y-1">
-            <div>{size}</div>
-            <div className="text-xs text-gray-500">{portions}</div>
-          </div>
-        );
-      },
-    },
-    {
-      key: 'costs',
-      header: 'Costs',
-      sortable: true,
-      sortFn: (a, b) => Number(a.latest_pack_cost ?? a.pack_cost) - Number(b.latest_pack_cost ?? b.pack_cost),
-      cell: (ingredient: Ingredient) => (
-        <div className="text-sm">
-          <div>Pack: £{Number(ingredient.latest_pack_cost ?? ingredient.pack_cost).toFixed(2)}</div>
-        </div>
-      ),
-    },
-    {
-      key: 'portionCost',
-      header: 'Portion cost',
-      sortable: true,
-      sortFn: (a, b) => {
-        const costA = calculatePortionCost(a) ?? -1;
-        const costB = calculatePortionCost(b) ?? -1;
-        return costA - costB;
-      },
-      cell: (ingredient: Ingredient) => {
-        const portionCost = calculatePortionCost(ingredient);
-        return <span className="text-sm">{formatRoundedCost(portionCost)}</span>;
-      },
-    },
-    {
-      key: 'usage',
-      header: 'Dishes',
-      sortable: true,
-      sortFn: (a, b) => a.dishes.length - b.dishes.length,
-      cell: (ingredient: Ingredient) => (
-        <Badge variant="secondary">{ingredient.dishes.length}</Badge>
-      ),
-    },
-    {
-      key: 'status',
-      header: 'Status',
-      sortable: true,
-      sortFn: (a, b) => (a.is_active === b.is_active ? 0 : a.is_active ? -1 : 1),
-      cell: (ingredient: Ingredient) => (
-        <Badge variant={ingredient.is_active ? 'success' : 'error'}>
-          {ingredient.is_active ? 'Active' : 'Inactive'}
-        </Badge>
-      ),
-    },
-    {
-      key: 'actions',
-      header: 'Actions',
-      align: 'right' as const,
-      cell: (ingredient: Ingredient) => (
-        <div className="flex items-center justify-end gap-2">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => openPriceHistory(ingredient)}
-          >
-            Prices
-          </Button>
-          {canManage && (
-            <>
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={() => openEditModal(ingredient)}
-              >
-                Edit
-              </Button>
-              <Button
-                variant="danger"
-                size="sm"
-                onClick={() => setIngredientToDelete(ingredient)}
-              >
-                Delete
-              </Button>
-            </>
-          )}
-        </div>
-      ),
-    },
-  ];
-
-  const renderIngredientDishes = (ingredient: Ingredient) => {
-    if (!ingredient.dishes.length) {
-      return <p className="text-sm text-gray-500">This ingredient is not used in any dishes yet.</p>;
-    }
-
-    return (
-      <div className="space-y-3">
-        {ingredient.dishes.map((dish) => (
-          <div key={dish.dish_id} className="rounded-lg border border-gray-200 bg-white p-3 shadow-sm">
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-              <div>
-                <div className="font-medium text-gray-900">{dish.dish_name}</div>
-                <div className="mt-1 text-xs text-gray-500">
-                  Quantity: {dish.quantity}
-                  {dish.unit ? ` ${dish.unit}` : ''}
-                </div>
-              </div>
-              <div className="flex flex-col items-start sm:items-end text-xs text-gray-500">
-                <span>Price: £{dish.dish_selling_price.toFixed(2)}</span>
-                <span>Portion cost: £{dish.dish_portion_cost.toFixed(2)}</span>
-                <span className={dish.dish_is_gp_alert ? 'text-red-600 font-semibold' : ''}>
-                  GP: {dish.dish_gp_pct !== null ? `${Math.round(dish.dish_gp_pct * 100)}%` : '—'}
-                </span>
-              </div>
-            </div>
-            {dish.assignments.length > 0 && (
-              <div className="mt-2 flex flex-wrap gap-1">
-                {dish.assignments.map((assignment, idx) => (
-                  <Badge
-                    key={`${dish.dish_id}-${assignment.menu_code}-${assignment.category_code}-${idx}`}
-                    variant={assignment.is_special ? 'warning' : 'neutral'}
-                  >
-                    {assignment.menu_code}/{assignment.category_name || assignment.category_code}
-                  </Badge>
-                ))}
-              </div>
-            )}
-            {dish.notes && (
-              <div className="mt-2 text-xs text-gray-600">Notes: {dish.notes}</div>
-            )}
-          </div>
-        ))}
-      </div>
-    );
-  };
+  // ---- Render ----
 
   return (
     <PageLayout
@@ -810,363 +519,85 @@ export default function MenuIngredientsPage() {
       onRetry={loadIngredients}
     >
       <Section>
-        <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-          <div className="text-sm text-gray-600">
-            Filter the ingredient catalogue to jump straight to the item you need.
-          </div>
-          <div className="w-full sm:w-64 space-y-1">
-            <label className="block text-sm font-medium text-gray-700">Quick filter</label>
-            <Input
-              value={quickFilter}
-              onChange={(event) => setQuickFilter(event.target.value)}
-              placeholder="Search name, supplier, allergens..."
+        {/* Filter panel with integrated search */}
+        <FilterPanel
+          filters={filterDefinitions}
+          values={pipeline.filters}
+          onChange={pipeline.setFilters}
+          showSearch
+          searchValue={pipeline.searchQuery}
+          onSearchChange={pipeline.setSearchQuery}
+          searchPlaceholder="Search name, supplier, allergens..."
+          layout="horizontal"
+          onReset={pipeline.clearFilters}
+        />
+
+        {/* Data table */}
+        <Card className="mt-4">
+          {!loading && ingredients.length === 0 ? (
+            <EmptyState
+              title="No ingredients yet"
+              description="Add your first ingredient or use Smart Import to bulk-add from a supplier list."
+              icon="inbox"
+              action={
+                canManage ? (
+                  <div className="flex gap-2">
+                    <Button variant="secondary" onClick={() => setShowImportModal(true)}>
+                      Smart Import
+                    </Button>
+                    <Button onClick={openCreate}>Add Ingredient</Button>
+                  </div>
+                ) : undefined
+              }
             />
-          </div>
-        </div>
-        <Card>
-          <DataTable
-            data={rows}
-            columns={columns}
-            getRowKey={(ingredient) => ingredient.id}
-            emptyMessage={quickFilter ? 'No ingredients match your filter' : 'No ingredients configured yet'}
-            expandable
-            renderExpandedContent={renderIngredientDishes}
-          />
+          ) : (
+            <DataTable
+              data={pipeline.pageData}
+              columns={columns}
+              getRowKey={(row) => (row as unknown as Ingredient).id}
+              emptyMessage={
+                pipeline.searchQuery || Object.keys(pipeline.filters).length > 0
+                  ? 'No ingredients match your filters'
+                  : 'No ingredients configured yet'
+              }
+              expandable
+              renderExpandedContent={(row) => (
+                <IngredientExpandedRow ingredient={row as unknown as Ingredient} />
+              )}
+            />
+          )}
         </Card>
+
+        {/* Pagination */}
+        {pipeline.totalPages > 1 && (
+          <Pagination
+            currentPage={pipeline.currentPage}
+            totalPages={pipeline.totalPages}
+            totalItems={pipeline.totalItems}
+            itemsPerPage={pipeline.itemsPerPage}
+            onPageChange={pipeline.setCurrentPage}
+            onItemsPerPageChange={pipeline.setItemsPerPage}
+            showItemsPerPage
+            showItemCount
+            className="mt-2"
+          />
+        )}
       </Section>
 
-      <Alert variant="info">
-        Ingredient costs automatically update dish GP calculations. Maintain accurate pack sizes, portion counts, and price history to track profitability.
-      </Alert>
-
-      <Modal
-        open={showModal}
+      {/* Ingredient drawer (create / edit) */}
+      <IngredientDrawer
+        open={drawerOpen}
         onClose={() => {
-          setShowModal(false);
+          setDrawerOpen(false);
           setEditingIngredient(null);
+          setImportData(null);
         }}
-        title={editingIngredient ? 'Edit Ingredient' : 'Add Ingredient'}
-        size="xl"
-        className="sm:max-w-5xl"
-      >
-        <div ref={modalTopRef} />
-        <form
-          onSubmit={(event) => {
-            event.preventDefault();
-            handleSave();
-          }}
-          className="space-y-8"
-        >
-          {reviewResult && (
-            <div className="space-y-4 mb-6">
-              {reviewResult.issues.length > 0 && (
-                <Alert variant="warning" title="AI Review Findings">
-                  <ul className="list-disc list-inside text-sm space-y-1">
-                    {reviewResult.issues.map((issue, idx) => (
-                      <li key={idx}>{issue}</li>
-                    ))}
-                  </ul>
-                </Alert>
-              )}
+        ingredient={editingIngredient}
+        importData={importData}
+        onSaved={() => void loadIngredients()}
+      />
 
-              {reviewResult.suggestions.length > 0 && (
-                <Alert variant="info" title="Suggested Corrections">
-                  <div className="mt-2 space-y-2">
-                    {reviewResult.suggestions.map((suggestion, idx) => (
-                      <div key={idx} className="flex items-start justify-between gap-4 bg-white p-2 rounded border border-blue-100">
-                        <div className="text-sm">
-                          <div className="font-medium text-gray-900">
-                            {suggestion.field}: <span className="text-gray-500 line-through">{formatValue((formState as any)[suggestion.field])}</span> <span className="text-blue-600">→ {formatValue(suggestion.suggestedValue)}</span>
-                          </div>
-                          <div className="text-gray-600 text-xs mt-0.5">{suggestion.reason}</div>
-                        </div>
-                        <Button size="xs" variant="secondary" onClick={() => applySuggestion(suggestion)}>
-                          Apply
-                        </Button>
-                      </div>
-                    ))}
-                  </div>
-                </Alert>
-              )}
-
-              {!reviewResult.valid && reviewResult.issues.length === 0 && reviewResult.suggestions.length === 0 && (
-                <Alert variant="error" title="Review Failed">
-                  The AI marked this data as invalid but provided no specific reasons. Please check the fields manually.
-                </Alert>
-              )}
-
-              {reviewResult.valid && reviewResult.issues.length === 0 && reviewResult.suggestions.length === 0 && (
-                <Alert variant="success" title="AI Review Passed">
-                  No logical inconsistencies found.
-                </Alert>
-              )}
-            </div>
-          )}
-
-          <div className="rounded-lg border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-900">
-            <div>
-              <h3 className="text-lg font-semibold text-gray-900">Ingredient basics</h3>
-              <p className="text-sm text-gray-600">
-                Set the core details once so the team can quickly reuse this ingredient across dishes.
-              </p>
-            </div>
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <FormGroup label="Name" required help="Appears in dish builders and cost reports.">
-                <Input
-                  value={formState.name}
-                  onChange={(e) => setFormState({ ...formState, name: e.target.value })}
-                  required
-                />
-              </FormGroup>
-              <FormGroup label="Brand" help="Optional brand or range to help the kitchen pick the right product.">
-                <Input
-                  value={formState.brand}
-                  onChange={(e) => setFormState({ ...formState, brand: e.target.value })}
-                />
-              </FormGroup>
-              <FormGroup
-                label="Default Unit"
-                required
-                help="Used when adding the ingredient to dishes. Choose how you portion it most often."
-              >
-                <Select
-                  value={formState.default_unit}
-                  onChange={(e) => setFormState({ ...formState, default_unit: e.target.value })}
-                >
-                  {UNITS.map(unit => (
-                    <option key={unit.value} value={unit.value}>{unit.label}</option>
-                  ))}
-                </Select>
-              </FormGroup>
-              <FormGroup
-                label="Storage Type"
-                required
-                help="Appears on prep sheets so the team knows where to find it."
-              >
-                <Select
-                  value={formState.storage_type}
-                  onChange={(e) => setFormState({ ...formState, storage_type: e.target.value })}
-                >
-                  {STORAGE_TYPES.map(type => (
-                    <option key={type.value} value={type.value}>{type.label}</option>
-                  ))}
-                </Select>
-              </FormGroup>
-            </div>
-          </div>
-
-          <FormGroup label="Description" help="Optional supplier or tasting notes for quick reference.">
-            <Textarea
-              rows={2}
-              value={formState.description}
-              onChange={(e) => setFormState({ ...formState, description: e.target.value })}
-            />
-          </FormGroup>
-          <div className="space-y-4">
-            <div>
-              <h3 className="text-lg font-semibold text-gray-900">Supplier & costing</h3>
-              <p className="text-sm text-gray-600">
-                These fields power cost tracking, GP reporting, and purchase orders.
-              </p>
-            </div>
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <FormGroup label="Supplier Name" help="Who you usually buy this from.">
-                <Input
-                  value={formState.supplier_name}
-                  onChange={(e) => setFormState({ ...formState, supplier_name: e.target.value })}
-                />
-              </FormGroup>
-              <FormGroup label="Supplier SKU" help="Optional stock code to speed up re-ordering.">
-                <Input
-                  value={formState.supplier_sku}
-                  onChange={(e) => setFormState({ ...formState, supplier_sku: e.target.value })}
-                />
-              </FormGroup>
-              <FormGroup label="Pack Size" help="Full case size as supplied (e.g. 2.5 for 2.5kg).">
-                <Input
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  value={formState.pack_size}
-                  onChange={(e) => setFormState({ ...formState, pack_size: e.target.value })}
-                />
-              </FormGroup>
-              <FormGroup label="Pack Size Unit" help="Matches the measurement above.">
-                <Select
-                  value={formState.pack_size_unit}
-                  onChange={(e) => setFormState({ ...formState, pack_size_unit: e.target.value })}
-                >
-                  {UNITS.map(unit => (
-                    <option key={unit.value} value={unit.value}>{unit.label}</option>
-                  ))}
-                </Select>
-              </FormGroup>
-              <FormGroup label="Pack Cost (£)" required help="Latest price paid, excluding VAT if reclaimable.">
-                <Input
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  value={formState.pack_cost}
-                  onChange={(e) => setFormState({ ...formState, pack_cost: e.target.value })}
-                  required
-                />
-              </FormGroup>
-              <FormGroup label="Portions Per Pack" help="How many usable portions you usually prep from one pack.">
-                <Input
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  value={formState.portions_per_pack}
-                  onChange={(e) => setFormState({ ...formState, portions_per_pack: e.target.value })}
-                />
-              </FormGroup>
-              <FormGroup label="Wastage %" help="Allowance for trim or loss during prep.">
-                <Input
-                  type="number"
-                  step="0.1"
-                  min="0"
-                  max="100"
-                  value={formState.wastage_pct}
-                  onChange={(e) => setFormState({ ...formState, wastage_pct: e.target.value })}
-                />
-              </FormGroup>
-              <FormGroup label="Shelf Life (days)" help="Optional. Helps with prep planning and rotation.">
-                <Input
-                  type="number"
-                  min="0"
-                  value={formState.shelf_life_days}
-                  onChange={(e) => setFormState({ ...formState, shelf_life_days: e.target.value })}
-                />
-              </FormGroup>
-            </div>
-          </div>
-
-          <div className="space-y-4">
-            <div>
-              <h3 className="text-lg font-semibold text-gray-900">Allergens & dietary info</h3>
-              <p className="text-sm text-gray-600">
-                These tags flow through to every dish that uses the ingredient, so keep them accurate and lower-case.
-              </p>
-            </div>
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <FormGroup
-                label="Allergens"
-                help="Tick every allergen present in the supplied product. This feeds dish allergen disclosures."
-              >
-                <div className="space-y-2">
-                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                    {ALLERGEN_OPTIONS.map(option => (
-                      <Checkbox
-                        key={option.value}
-                        checked={formState.allergens.includes(option.value)}
-                        onChange={() => toggleAllergen(option.value)}
-                      >
-                        {option.label}
-                      </Checkbox>
-                    ))}
-                  </div>
-                  {unknownAllergens.length > 0 && (
-                    <div className="flex flex-wrap items-center gap-2 rounded-md border border-amber-200 bg-amber-50 px-2 py-1">
-                      <p className="text-xs text-amber-700">
-                        Additional tags already stored: {unknownAllergens.join(', ')}.
-                      </p>
-                      <Button
-                        type="button"
-                        size="xs"
-                        variant="ghost"
-                        className="text-xs text-amber-700 hover:bg-amber-100"
-                        onClick={clearUnknownAllergens}
-                      >
-                        Remove extras
-                      </Button>
-                    </div>
-                  )}
-                </div>
-              </FormGroup>
-              <FormGroup
-                label="Dietary Flags"
-                help="Tick how the ingredient should be treated when it appears on customer menus."
-              >
-                <div className="space-y-2">
-                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                    {DIETARY_OPTIONS.map(option => (
-                      <Checkbox
-                        key={option.value}
-                        checked={formState.dietary_flags.includes(option.value)}
-                        onChange={() => toggleDietaryFlag(option.value)}
-                      >
-                        {option.label}
-                      </Checkbox>
-                    ))}
-                  </div>
-                  {unknownDietaryFlags.length > 0 && (
-                    <div className="flex flex-wrap items-center gap-2 rounded-md border border-amber-200 bg-amber-50 px-2 py-1">
-                      <p className="text-xs text-amber-700">
-                        Additional tags already stored: {unknownDietaryFlags.join(', ')}.
-                      </p>
-                      <Button
-                        type="button"
-                        size="xs"
-                        variant="ghost"
-                        className="text-xs text-amber-700 hover:bg-amber-100"
-                        onClick={clearUnknownDietaryFlags}
-                      >
-                        Remove extras
-                      </Button>
-                    </div>
-                  )}
-                </div>
-              </FormGroup>
-            </div>
-          </div>
-
-          <FormGroup label="Internal Notes" help="Optional prep tips, storage reminders, or ordering instructions.">
-            <Textarea
-              rows={3}
-              value={formState.notes}
-              onChange={(e) => setFormState({ ...formState, notes: e.target.value })}
-            />
-          </FormGroup>
-
-          <div className="space-y-2 rounded-lg border border-gray-200 bg-white p-4">
-            <div className="text-sm font-medium text-gray-900">Ingredient availability</div>
-            <p className="text-sm text-gray-600">
-              Only active ingredients can be added to dishes. Deactivate when stock is discontinued.
-            </p>
-            <Checkbox
-              checked={formState.is_active}
-              onChange={(e) => setFormState({ ...formState, is_active: e.target.checked })}
-            >
-              Ingredient is active
-            </Checkbox>
-          </div>
-
-          <div className="flex justify-end gap-2">
-            <Button
-              type="button"
-              variant="secondary"
-              onClick={handleReview}
-              disabled={reviewing || saving}
-            >
-              {reviewing ? 'Reviewing...' : 'Review Data'}
-            </Button>
-            <Button
-              type="button"
-              variant="secondary"
-              onClick={() => {
-                setShowModal(false);
-                setEditingIngredient(null);
-              }}
-            >
-              Cancel
-            </Button>
-            <Button type="submit" disabled={saving || reviewing}>
-              {saving ? 'Saving...' : editingIngredient ? 'Update Ingredient' : 'Add Ingredient'}
-            </Button>
-          </div>
-        </form>
-      </Modal>
-
+      {/* Delete confirmation */}
       <ConfirmDialog
         open={Boolean(ingredientToDelete)}
         title="Delete ingredient"
@@ -1177,43 +608,7 @@ export default function MenuIngredientsPage() {
         onConfirm={handleDelete}
       />
 
-      <Modal
-        open={priceHistoryModal.open}
-        onClose={() => {
-          setPriceHistoryModal({ open: false, ingredient: null });
-          setPriceHistory([]);
-        }}
-        title={`Price history – ${priceHistoryModal.ingredient?.name ?? ''}`}
-      >
-        <div className="space-y-4">
-          {priceHistoryLoading ? (
-            <p className="text-sm text-gray-500">Loading price history...</p>
-          ) : priceHistory.length === 0 ? (
-            <p className="text-sm text-gray-500">No price history recorded yet.</p>
-          ) : (
-            <div className="space-y-3">
-              {priceHistory.map(entry => (
-                <div key={entry.id} className="border border-gray-200 rounded-lg p-3">
-                  <div className="flex items-center justify-between">
-                    <div className="font-medium">£{entry.pack_cost.toFixed(2)} per pack</div>
-                    <div className="text-xs text-gray-500">
-                      Effective {new Date(entry.effective_from).toLocaleDateString()}
-                    </div>
-                  </div>
-                  {entry.supplier_name && (
-                    <div className="text-sm mt-1">
-                      Supplier: {entry.supplier_name}
-                      {entry.supplier_sku ? ` (SKU ${entry.supplier_sku})` : ''}
-                    </div>
-                  )}
-                  {entry.notes && <div className="text-sm text-gray-600 mt-1">{entry.notes}</div>}
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      </Modal>
-
+      {/* Smart import modal (kept as-is) */}
       <SmartImportModal
         open={showImportModal}
         onClose={() => setShowImportModal(false)}
