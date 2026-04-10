@@ -39,7 +39,7 @@ export const IngredientPriceSchema = z.object({
   notes: z.string().optional(),
 });
 
-export const DishIngredientSchema = z.object({
+const BaseIngredientLinkSchema = z.object({
   ingredient_id: z.string().uuid(),
   quantity: z.number().positive(),
   unit: z.enum(UNITS),
@@ -50,7 +50,12 @@ export const DishIngredientSchema = z.object({
   option_group: z.string().nullable().optional(),
 });
 
-export const RecipeIngredientSchema = DishIngredientSchema.extend({});
+export const DishIngredientSchema = BaseIngredientLinkSchema.extend({
+  inclusion_type: z.enum(['included', 'removable', 'choice', 'upgrade']).default('included'),
+  upgrade_price: z.number().nonnegative().nullable().optional(),
+});
+
+export const RecipeIngredientSchema = BaseIngredientLinkSchema.extend({});
 
 export const DishRecipeSchema = z.object({
   recipe_id: z.string().uuid(),
@@ -60,6 +65,8 @@ export const DishRecipeSchema = z.object({
   cost_override: z.number().nonnegative().nullable().optional(),
   notes: z.string().nullable().optional(),
   option_group: z.string().nullable().optional(),
+  inclusion_type: z.enum(['included', 'removable', 'choice', 'upgrade']).default('included'),
+  upgrade_price: z.number().nonnegative().nullable().optional(),
 });
 
 export const RecipeSchema = z.object({
@@ -809,6 +816,10 @@ export class MenuService {
           is_active: row.is_active ?? false,
           dietary_flags: row.dietary_flags || [],
           allergen_flags: row.allergen_flags || [],
+          removable_allergens: row.removable_allergens || [],
+          is_modifiable_for: row.is_modifiable_for || {},
+          allergen_verified: row.allergen_verified ?? false,
+          allergen_verified_at: row.allergen_verified_at ?? null,
           assignments: [],
           assignmentKeys: new Set<string>(),
         });
@@ -847,6 +858,8 @@ export class MenuService {
           cost_override,
           notes,
           option_group,
+          inclusion_type,
+          upgrade_price,
           ingredient:menu_ingredients(
             id,
             name,
@@ -894,7 +907,7 @@ export class MenuService {
     if (dishIds.length > 0) {
       const { data: recipeData, error: recipeError } = await supabase
         .from('menu_dish_recipes')
-        .select('dish_id, recipe_id, quantity, yield_pct, wastage_pct, cost_override, notes, option_group')
+        .select('dish_id, recipe_id, quantity, yield_pct, wastage_pct, cost_override, notes, option_group, inclusion_type, upgrade_price')
         .in('dish_id', dishIds);
 
       if (recipeError) {
@@ -947,6 +960,8 @@ export class MenuService {
         dietary_flags: row.ingredient.dietary_flags || [],
         allergens: row.ingredient.allergens || [],
         option_group: row.option_group ?? null,
+        inclusion_type: row.inclusion_type ?? 'included',
+        upgrade_price: row.upgrade_price ?? null,
       };
 
       const existing = ingredientsByDish.get(row.dish_id) || [];
@@ -974,6 +989,8 @@ export class MenuService {
         allergen_flags: recipeMeta.allergen_flags || [],
         recipe_is_active: recipeMeta.is_active ?? true,
         option_group: row.option_group ?? null,
+        inclusion_type: row.inclusion_type ?? 'included',
+        upgrade_price: row.upgrade_price ?? null,
       };
 
       const existing = recipesByDish.get(row.dish_id) || [];
@@ -1030,7 +1047,7 @@ export class MenuService {
       supabase.from('menu_dishes').select('*').eq('id', dishId).single(),
       supabase
         .from('menu_dish_ingredients')
-        .select('id, ingredient_id, quantity, unit, yield_pct, wastage_pct, cost_override, notes, option_group, ingredient:menu_ingredients(name, default_unit)')
+        .select('id, ingredient_id, quantity, unit, yield_pct, wastage_pct, cost_override, notes, option_group, inclusion_type, upgrade_price, ingredient:menu_ingredients(name, default_unit)')
         .eq('dish_id', dishId),
       supabase
         .from('menu_dish_menu_assignments')
@@ -1038,7 +1055,7 @@ export class MenuService {
         .eq('dish_id', dishId),
       supabase
         .from('menu_dish_recipes')
-        .select('id, recipe_id, quantity, yield_pct, wastage_pct, cost_override, notes, option_group')
+        .select('id, recipe_id, quantity, yield_pct, wastage_pct, cost_override, notes, option_group, inclusion_type, upgrade_price')
         .eq('dish_id', dishId),
     ]);
 
@@ -1114,6 +1131,8 @@ export class MenuService {
       cost_override: ing.cost_override ?? null,
       notes: ing.notes || null,
       option_group: ing.option_group ?? null,
+      inclusion_type: ing.inclusion_type ?? 'included',
+      upgrade_price: ing.upgrade_price ?? null,
     }));
 
     const recipesPayload = (input.recipes || []).map(recipe => ({
@@ -1124,6 +1143,8 @@ export class MenuService {
       cost_override: recipe.cost_override ?? null,
       notes: recipe.notes || null,
       option_group: recipe.option_group ?? null,
+      inclusion_type: recipe.inclusion_type ?? 'included',
+      upgrade_price: recipe.upgrade_price ?? null,
     }));
 
     const assignmentsPayload = (input.assignments ?? []).map(assign => ({

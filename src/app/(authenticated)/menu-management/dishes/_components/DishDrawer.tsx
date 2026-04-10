@@ -198,6 +198,8 @@ export function DishDrawer({
             cost_override: row.cost_override ? String(row.cost_override) : '',
             notes: (row.notes as string) || '',
             option_group: (row.option_group as string) || '',
+            inclusion_type: (row.inclusion_type as string) || 'included',
+            upgrade_price: row.upgrade_price != null ? String(row.upgrade_price) : '',
           }))
         : [defaultIngredientRow];
 
@@ -210,6 +212,8 @@ export function DishDrawer({
             cost_override: row.cost_override ? String(row.cost_override) : '',
             notes: (row.notes as string) || '',
             option_group: (row.option_group as string) || '',
+            inclusion_type: (row.inclusion_type as string) || 'included',
+            upgrade_price: row.upgrade_price != null ? String(row.upgrade_price) : '',
           }))
         : [defaultRecipeRow];
 
@@ -311,7 +315,9 @@ export function DishDrawer({
             wastage_pct: parseFloat(row.wastage_pct || '0') || 0,
             cost_override: row.cost_override ? parseFloat(row.cost_override) : undefined,
             notes: row.notes || undefined,
-            option_group: row.option_group?.trim() || undefined,
+            inclusion_type: (row.inclusion_type || 'included') as 'included' | 'removable' | 'choice' | 'upgrade',
+            upgrade_price: row.inclusion_type === 'upgrade' && row.upgrade_price ? parseFloat(row.upgrade_price) : undefined,
+            option_group: ['choice', 'upgrade'].includes(row.inclusion_type) ? (row.option_group?.trim() || undefined) : undefined,
           })),
         recipes: formRecipes
           .filter((row) => row.recipe_id && parseFloat(row.quantity || '0') > 0)
@@ -322,7 +328,9 @@ export function DishDrawer({
             wastage_pct: parseFloat(row.wastage_pct || '0') || 0,
             cost_override: row.cost_override ? parseFloat(row.cost_override) : undefined,
             notes: row.notes || undefined,
-            option_group: row.option_group?.trim() || undefined,
+            inclusion_type: (row.inclusion_type || 'included') as 'included' | 'removable' | 'choice' | 'upgrade',
+            upgrade_price: row.inclusion_type === 'upgrade' && row.upgrade_price ? parseFloat(row.upgrade_price) : undefined,
+            option_group: ['choice', 'upgrade'].includes(row.inclusion_type) ? (row.option_group?.trim() || undefined) : undefined,
           })),
         assignments: formAssignments
           .filter((row) => row.menu_code && row.category_code)
