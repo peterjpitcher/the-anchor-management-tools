@@ -181,6 +181,10 @@ function AddItemModal({ isOpen, onClose, bookingId, onItemAdded }: AddItemModalP
       return
     }
 
+    // Only hydrate if customPrice is still empty — don't overwrite user input.
+    // The onChange handler above sets customPrice synchronously from the vendor's
+    // typical_rate. This effect is a fallback for cases where the inline rate
+    // was empty but a remote lookup might find one.
     let cancelled = false
 
     const hydrateRate = async () => {
@@ -189,14 +193,14 @@ function AddItemModal({ isOpen, onClose, bookingId, onItemAdded }: AddItemModalP
       const normalized = vendor.typical_rate_normalized ?? sanitizeMoneyString(vendor.typical_rate)
 
       if (normalized) {
-        setCustomPrice((current) => (current === normalized ? current : normalized))
+        setCustomPrice((current) => current !== '' ? current : normalized)
         return
       }
 
       const rateResult = await getVendorRate(vendor.id)
       if (cancelled) return
       const remoteRate = rateResult.data?.typical_rate_normalized ?? null
-      setCustomPrice(remoteRate ?? '')
+      setCustomPrice((current) => current !== '' ? current : (remoteRate ?? ''))
     }
 
     hydrateRate()
@@ -423,6 +427,9 @@ function AddItemModal({ isOpen, onClose, bookingId, onItemAdded }: AddItemModalP
                   setCustomPrice(sanitizeMoneyString(item.rate_per_hour))
                 } else if (itemType === 'catering' && 'cost_per_head' in item) {
                   setCustomPrice(sanitizeMoneyString(item.cost_per_head))
+                } else if (itemType === 'vendor' && 'typical_rate' in item) {
+                  const rate = sanitizeMoneyString(item.typical_rate)
+                  if (rate) setCustomPrice(rate)
                 }
               }}
               options={[
