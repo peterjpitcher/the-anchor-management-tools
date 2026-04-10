@@ -82,6 +82,8 @@ export interface DishIngredientFormRow {
   cost_override: string;
   notes: string;
   option_group: string;
+  inclusion_type: string;
+  upgrade_price: string;
 }
 
 export interface DishRecipeFormRow {
@@ -92,6 +94,8 @@ export interface DishRecipeFormRow {
   cost_override: string;
   notes: string;
   option_group: string;
+  inclusion_type: string;
+  upgrade_price: string;
 }
 
 export const defaultIngredientRow: DishIngredientFormRow = {
@@ -103,6 +107,8 @@ export const defaultIngredientRow: DishIngredientFormRow = {
   cost_override: '',
   notes: '',
   option_group: '',
+  inclusion_type: 'included',
+  upgrade_price: '',
 };
 
 export const defaultRecipeRow: DishRecipeFormRow = {
@@ -113,6 +119,8 @@ export const defaultRecipeRow: DishRecipeFormRow = {
   cost_override: '',
   notes: '',
   option_group: '',
+  inclusion_type: 'included',
+  upgrade_price: '',
 };
 
 // ---------------------------------------------------------------------------

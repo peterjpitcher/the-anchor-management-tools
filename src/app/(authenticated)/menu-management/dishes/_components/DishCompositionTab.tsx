@@ -224,7 +224,7 @@ export function DishCompositionTab({
   function addIngredientRow() {
     onIngredientsChange([
       ...formIngredients,
-      { ingredient_id: '', quantity: '', unit: 'portion', yield_pct: '100', wastage_pct: '0', cost_override: '', notes: '', option_group: '' },
+      { ingredient_id: '', quantity: '', unit: 'portion', yield_pct: '100', wastage_pct: '0', cost_override: '', notes: '', option_group: '', inclusion_type: 'included', upgrade_price: '' },
     ]);
   }
 
@@ -242,7 +242,7 @@ export function DishCompositionTab({
   function addRecipeRow() {
     onRecipesChange([
       ...formRecipes,
-      { recipe_id: '', quantity: '', yield_pct: '100', wastage_pct: '0', cost_override: '', notes: '', option_group: '' },
+      { recipe_id: '', quantity: '', yield_pct: '100', wastage_pct: '0', cost_override: '', notes: '', option_group: '', inclusion_type: 'included', upgrade_price: '' },
     ]);
   }
 
