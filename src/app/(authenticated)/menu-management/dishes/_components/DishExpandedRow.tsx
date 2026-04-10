@@ -49,6 +49,8 @@ export interface DishIngredientDetail {
   cost_override?: number | null;
   notes?: string | null;
   option_group?: string | null;
+  inclusion_type?: string;
+  upgrade_price?: number | null;
   latest_unit_cost?: number | null;
   latest_pack_cost?: number | null;
   default_unit?: string | null;
@@ -65,6 +67,8 @@ export interface DishRecipeDetail {
   cost_override?: number | null;
   notes?: string | null;
   option_group?: string | null;
+  inclusion_type?: string;
+  upgrade_price?: number | null;
   portion_cost?: number | null;
   yield_quantity?: number | null;
   yield_unit?: string | null;
@@ -99,6 +103,10 @@ export interface DishListItem {
   is_sunday_lunch: boolean;
   dietary_flags: string[];
   allergen_flags: string[];
+  removable_allergens?: string[];
+  is_modifiable_for?: Record<string, boolean>;
+  allergen_verified?: boolean;
+  allergen_verified_at?: string | null;
   assignments: DishAssignment[];
   ingredients: DishIngredientDetail[];
   recipes: DishRecipeDetail[];

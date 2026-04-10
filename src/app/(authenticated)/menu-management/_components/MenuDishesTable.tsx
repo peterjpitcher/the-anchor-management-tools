@@ -22,6 +22,8 @@ export interface DishIngredientForCost {
   option_group?: string | null;
   latest_unit_cost?: number | null;
   ingredient_name?: string;
+  inclusion_type?: string;
+  upgrade_price?: number | null;
 }
 
 export interface DishRecipeForCost {
@@ -33,6 +35,8 @@ export interface DishRecipeForCost {
   option_group?: string | null;
   portion_cost?: number | null;
   recipe_name?: string;
+  inclusion_type?: string;
+  upgrade_price?: number | null;
 }
 
 interface DishDisplayItem {
@@ -132,11 +136,18 @@ function expandDish(dish: DishDisplayItem, standardTarget: number, expand: boole
     }];
   }
 
-  // Compute fixed costs and grouped items
+  // Compute fixed costs and grouped items.
+  // Only 'choice' items contribute to option-group combinations.
+  // 'included' and 'removable' items are fixed cost.
+  // 'upgrade' items are excluded entirely (they don't affect base GP%).
   let fixedCost = 0;
   const groupedItems = new Map<string, GroupItem[]>();
 
   for (const ing of dish.ingredients) {
+    const iType = ing.inclusion_type || 'included';
+    // Upgrades are excluded from base cost computation
+    if (iType === 'upgrade') continue;
+
     const unitCost = ing.cost_override ?? ing.latest_unit_cost ?? 0;
     const cost = computeLineCost(
       ing.quantity,
@@ -144,7 +155,9 @@ function expandDish(dish: DishDisplayItem, standardTarget: number, expand: boole
       ing.yield_pct ?? 100,
       ing.wastage_pct ?? 0,
     );
-    const groupName = ing.option_group;
+
+    // Only 'choice' items go into option groups for cartesian product
+    const groupName = iType === 'choice' ? ing.option_group : null;
     if (groupName) {
       const existing = groupedItems.get(groupName) ?? [];
       existing.push({ name: ing.ingredient_name ?? ing.ingredient_id, cost });
@@ -155,6 +168,10 @@ function expandDish(dish: DishDisplayItem, standardTarget: number, expand: boole
   }
 
   for (const rec of dish.recipes) {
+    const iType = rec.inclusion_type || 'included';
+    // Upgrades are excluded from base cost computation
+    if (iType === 'upgrade') continue;
+
     const unitCost = rec.cost_override ?? rec.portion_cost ?? 0;
     const cost = computeLineCost(
       rec.quantity,
@@ -162,7 +179,9 @@ function expandDish(dish: DishDisplayItem, standardTarget: number, expand: boole
       rec.yield_pct ?? 100,
       rec.wastage_pct ?? 0,
     );
-    const groupName = rec.option_group;
+
+    // Only 'choice' items go into option groups for cartesian product
+    const groupName = iType === 'choice' ? rec.option_group : null;
     if (groupName) {
       const existing = groupedItems.get(groupName) ?? [];
       existing.push({ name: rec.recipe_name ?? rec.recipe_id, cost });
@@ -281,11 +300,11 @@ export function MenuDishesTable({
     return allDishes;
   }, [allDishes, filter]);
 
-  // Check if any dishes have option groups (to decide whether to show the toggle)
+  // Check if any dishes have choice option groups (to decide whether to show the toggle)
   const hasAnyOptionGroups = useMemo(() => {
     return allDishes.some((d) =>
-      d.ingredients.some((i) => !!i.option_group) ||
-      d.recipes.some((r) => !!r.option_group)
+      d.ingredients.some((i) => !!i.option_group && (i.inclusion_type || 'included') === 'choice') ||
+      d.recipes.some((r) => !!r.option_group && (r.inclusion_type || 'included') === 'choice')
     );
   }, [allDishes]);
 

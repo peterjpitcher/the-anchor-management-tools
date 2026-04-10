@@ -27,6 +27,13 @@ const UNITS = [
   { value: 'piece', label: 'Piece' },
 ];
 
+const INCLUSION_TYPES = [
+  { value: 'included', label: 'Included' },
+  { value: 'removable', label: 'Removable' },
+  { value: 'choice', label: 'Choice' },
+  { value: 'upgrade', label: 'Upgrade' },
+];
+
 // ---------------------------------------------------------------------------
 // Option group visual helpers
 // ---------------------------------------------------------------------------
@@ -82,6 +89,8 @@ export interface DishIngredientFormRow {
   cost_override: string;
   notes: string;
   option_group: string;
+  inclusion_type: string;
+  upgrade_price: string;
 }
 
 export interface DishRecipeFormRow {
@@ -92,6 +101,8 @@ export interface DishRecipeFormRow {
   cost_override: string;
   notes: string;
   option_group: string;
+  inclusion_type: string;
+  upgrade_price: string;
 }
 
 export const defaultIngredientRow: DishIngredientFormRow = {
@@ -103,6 +114,8 @@ export const defaultIngredientRow: DishIngredientFormRow = {
   cost_override: '',
   notes: '',
   option_group: '',
+  inclusion_type: 'included',
+  upgrade_price: '',
 };
 
 export const defaultRecipeRow: DishRecipeFormRow = {
@@ -113,6 +126,8 @@ export const defaultRecipeRow: DishRecipeFormRow = {
   cost_override: '',
   notes: '',
   option_group: '',
+  inclusion_type: 'included',
+  upgrade_price: '',
 };
 
 // ---------------------------------------------------------------------------
@@ -171,16 +186,49 @@ export function IngredientCompositionRow({
     onChange(index, updates);
   }
 
+  function handleInclusionTypeChange(newType: string) {
+    const updates: Partial<DishIngredientFormRow> = { inclusion_type: newType };
+    if (newType === 'included' || newType === 'removable') {
+      updates.option_group = '';
+      updates.upgrade_price = '';
+    } else if (newType === 'choice') {
+      updates.upgrade_price = '';
+    } else if (newType === 'upgrade') {
+      if (!row.upgrade_price) updates.upgrade_price = '0';
+    }
+    onChange(index, updates);
+  }
+
+  const inclusionType = row.inclusion_type || 'included';
+  const showGroup = inclusionType === 'choice' || inclusionType === 'upgrade';
+  const showUpgradePrice = inclusionType === 'upgrade';
+
   const groupTrimmed = row.option_group?.trim() || '';
-  const groupColor = groupTrimmed ? getGroupColor(groupTrimmed) : null;
+  const groupColor = (inclusionType === 'choice' && groupTrimmed) ? getGroupColor(groupTrimmed) : null;
+
+  // Visual styling per inclusion type
+  const borderStyle = inclusionType === 'removable'
+    ? 'border-l-4 border-dashed border-l-gray-400'
+    : inclusionType === 'upgrade'
+      ? 'border-l-4 border-l-amber-400'
+      : groupColor
+        ? cn('border-l-4', borderColorClass(groupColor))
+        : '';
 
   return (
     <div className={cn(
       'rounded-lg border border-gray-200 bg-white p-3 shadow-sm',
-      groupColor && 'border-l-4',
-      groupColor && borderColorClass(groupColor),
+      borderStyle,
     )}>
-      {groupTrimmed && groupColor && (
+      {/* Badge row */}
+      {inclusionType === 'removable' && (
+        <div className="mb-1">
+          <span className="inline-block rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-600">
+            (removable)
+          </span>
+        </div>
+      )}
+      {inclusionType === 'choice' && groupTrimmed && groupColor && (
         <div className="mb-1">
           <span className={cn(
             'inline-block rounded-full px-2 py-0.5 text-xs font-medium',
@@ -190,8 +238,16 @@ export function IngredientCompositionRow({
           </span>
         </div>
       )}
-      {/* Compact row: ingredient, quantity, unit, group, expand/remove */}
-      <div className="flex items-end gap-2">
+      {inclusionType === 'upgrade' && (
+        <div className="mb-1">
+          <span className="inline-block rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700">
+            Upgrade +£{parseFloat(row.upgrade_price || '0').toFixed(2)}
+          </span>
+        </div>
+      )}
+
+      {/* Compact row: ingredient, quantity, unit, type, [group], [price], expand/remove */}
+      <div className="flex items-end gap-2 flex-wrap">
         <FormGroup label="Ingredient" required className="min-w-0 flex-1">
           <Select
             value={row.ingredient_id}
@@ -230,20 +286,47 @@ export function IngredientCompositionRow({
           </Select>
         </FormGroup>
 
-        <input
-          type="text"
-          value={row.option_group}
-          onChange={(e) => onChange(index, { option_group: e.target.value })}
-          className="w-24 shrink-0 rounded border border-gray-300 px-2 py-1 text-sm placeholder:text-gray-400 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
-          placeholder="Included"
-          title="Leave blank if always part of the dish. Enter a group name (e.g. Chips, Peas) to mark as one of several options the customer chooses from."
-          list={`ing-groups-${index}`}
-          aria-label="Option group"
-        />
-        {existingGroups.length > 0 && (
-          <datalist id={`ing-groups-${index}`}>
-            {existingGroups.map((g) => <option key={g} value={g} />)}
-          </datalist>
+        <FormGroup label="Type" className="w-28 shrink-0">
+          <Select
+            value={inclusionType}
+            onChange={(e) => handleInclusionTypeChange(e.target.value)}
+          >
+            {INCLUSION_TYPES.map((t) => (
+              <option key={t.value} value={t.value}>{t.label}</option>
+            ))}
+          </Select>
+        </FormGroup>
+
+        {showGroup && (
+          <>
+            <input
+              type="text"
+              value={row.option_group}
+              onChange={(e) => onChange(index, { option_group: e.target.value })}
+              className="w-24 shrink-0 rounded border border-gray-300 px-2 py-1 text-sm placeholder:text-gray-400 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+              placeholder="Group"
+              title="Enter a group name (e.g. Chips, Peas) to mark as one of several options."
+              list={`ing-groups-${index}`}
+              aria-label="Option group"
+            />
+            {existingGroups.length > 0 && (
+              <datalist id={`ing-groups-${index}`}>
+                {existingGroups.map((g) => <option key={g} value={g} />)}
+              </datalist>
+            )}
+          </>
+        )}
+
+        {showUpgradePrice && (
+          <FormGroup label="£ extra" className="w-20 shrink-0">
+            <Input
+              type="number"
+              min="0"
+              step="0.01"
+              value={row.upgrade_price}
+              onChange={(e) => onChange(index, { upgrade_price: e.target.value })}
+            />
+          </FormGroup>
         )}
 
         <div className="flex shrink-0 items-center gap-1 pb-0.5">
@@ -334,16 +417,49 @@ export function RecipeCompositionRow({
     (o) => o.is_active || linkedIds.has(o.id)
   );
 
+  function handleInclusionTypeChange(newType: string) {
+    const updates: Partial<DishRecipeFormRow> = { inclusion_type: newType };
+    if (newType === 'included' || newType === 'removable') {
+      updates.option_group = '';
+      updates.upgrade_price = '';
+    } else if (newType === 'choice') {
+      updates.upgrade_price = '';
+    } else if (newType === 'upgrade') {
+      if (!row.upgrade_price) updates.upgrade_price = '0';
+    }
+    onChange(index, updates);
+  }
+
+  const inclusionType = row.inclusion_type || 'included';
+  const showGroup = inclusionType === 'choice' || inclusionType === 'upgrade';
+  const showUpgradePrice = inclusionType === 'upgrade';
+
   const groupTrimmed = row.option_group?.trim() || '';
-  const groupColor = groupTrimmed ? getGroupColor(groupTrimmed) : null;
+  const groupColor = (inclusionType === 'choice' && groupTrimmed) ? getGroupColor(groupTrimmed) : null;
+
+  // Visual styling per inclusion type
+  const borderStyle = inclusionType === 'removable'
+    ? 'border-l-4 border-dashed border-l-gray-400'
+    : inclusionType === 'upgrade'
+      ? 'border-l-4 border-l-amber-400'
+      : groupColor
+        ? cn('border-l-4', borderColorClass(groupColor))
+        : '';
 
   return (
     <div className={cn(
       'rounded-lg border border-gray-200 bg-white p-3 shadow-sm',
-      groupColor && 'border-l-4',
-      groupColor && borderColorClass(groupColor),
+      borderStyle,
     )}>
-      {groupTrimmed && groupColor && (
+      {/* Badge row */}
+      {inclusionType === 'removable' && (
+        <div className="mb-1">
+          <span className="inline-block rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-600">
+            (removable)
+          </span>
+        </div>
+      )}
+      {inclusionType === 'choice' && groupTrimmed && groupColor && (
         <div className="mb-1">
           <span className={cn(
             'inline-block rounded-full px-2 py-0.5 text-xs font-medium',
@@ -353,8 +469,16 @@ export function RecipeCompositionRow({
           </span>
         </div>
       )}
-      {/* Compact row: recipe, quantity, group, expand/remove */}
-      <div className="flex items-end gap-2">
+      {inclusionType === 'upgrade' && (
+        <div className="mb-1">
+          <span className="inline-block rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700">
+            Upgrade +£{parseFloat(row.upgrade_price || '0').toFixed(2)}
+          </span>
+        </div>
+      )}
+
+      {/* Compact row: recipe, quantity, type, [group], [price], expand/remove */}
+      <div className="flex items-end gap-2 flex-wrap">
         <FormGroup label="Recipe" required className="min-w-0 flex-1">
           <Select
             value={row.recipe_id}
@@ -382,20 +506,47 @@ export function RecipeCompositionRow({
           />
         </FormGroup>
 
-        <input
-          type="text"
-          value={row.option_group}
-          onChange={(e) => onChange(index, { option_group: e.target.value })}
-          className="w-24 shrink-0 rounded border border-gray-300 px-2 py-1 text-sm placeholder:text-gray-400 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
-          placeholder="Included"
-          title="Leave blank if always part of the dish. Enter a group name (e.g. Chips, Peas) to mark as one of several options the customer chooses from."
-          list={`rec-groups-${index}`}
-          aria-label="Option group"
-        />
-        {existingGroups.length > 0 && (
-          <datalist id={`rec-groups-${index}`}>
-            {existingGroups.map((g) => <option key={g} value={g} />)}
-          </datalist>
+        <FormGroup label="Type" className="w-28 shrink-0">
+          <Select
+            value={inclusionType}
+            onChange={(e) => handleInclusionTypeChange(e.target.value)}
+          >
+            {INCLUSION_TYPES.map((t) => (
+              <option key={t.value} value={t.value}>{t.label}</option>
+            ))}
+          </Select>
+        </FormGroup>
+
+        {showGroup && (
+          <>
+            <input
+              type="text"
+              value={row.option_group}
+              onChange={(e) => onChange(index, { option_group: e.target.value })}
+              className="w-24 shrink-0 rounded border border-gray-300 px-2 py-1 text-sm placeholder:text-gray-400 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+              placeholder="Group"
+              title="Enter a group name (e.g. Chips, Peas) to mark as one of several options."
+              list={`rec-groups-${index}`}
+              aria-label="Option group"
+            />
+            {existingGroups.length > 0 && (
+              <datalist id={`rec-groups-${index}`}>
+                {existingGroups.map((g) => <option key={g} value={g} />)}
+              </datalist>
+            )}
+          </>
+        )}
+
+        {showUpgradePrice && (
+          <FormGroup label="£ extra" className="w-20 shrink-0">
+            <Input
+              type="number"
+              min="0"
+              step="0.01"
+              value={row.upgrade_price}
+              onChange={(e) => onChange(index, { upgrade_price: e.target.value })}
+            />
+          </FormGroup>
         )}
 
         <div className="flex shrink-0 items-center gap-1 pb-0.5">
