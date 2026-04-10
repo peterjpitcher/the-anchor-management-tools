@@ -48,6 +48,7 @@ export interface DishIngredientDetail {
   wastage_pct?: number | null;
   cost_override?: number | null;
   notes?: string | null;
+  option_group?: string | null;
   latest_unit_cost?: number | null;
   latest_pack_cost?: number | null;
   default_unit?: string | null;
@@ -63,6 +64,7 @@ export interface DishRecipeDetail {
   wastage_pct?: number | null;
   cost_override?: number | null;
   notes?: string | null;
+  option_group?: string | null;
   portion_cost?: number | null;
   yield_quantity?: number | null;
   yield_unit?: string | null;
