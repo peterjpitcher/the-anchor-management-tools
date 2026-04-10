@@ -47,6 +47,7 @@ export const DishIngredientSchema = z.object({
   wastage_pct: z.number().min(0).max(100).default(0),
   cost_override: z.number().nonnegative().nullable().optional(),
   notes: z.string().nullable().optional(),
+  option_group: z.string().nullable().optional(),
 });
 
 export const RecipeIngredientSchema = DishIngredientSchema.extend({});
@@ -58,6 +59,7 @@ export const DishRecipeSchema = z.object({
   wastage_pct: z.number().min(0).max(100).default(0),
   cost_override: z.number().nonnegative().nullable().optional(),
   notes: z.string().nullable().optional(),
+  option_group: z.string().nullable().optional(),
 });
 
 export const RecipeSchema = z.object({
@@ -844,6 +846,7 @@ export class MenuService {
           wastage_pct,
           cost_override,
           notes,
+          option_group,
           ingredient:menu_ingredients(
             id,
             name,
@@ -891,7 +894,7 @@ export class MenuService {
     if (dishIds.length > 0) {
       const { data: recipeData, error: recipeError } = await supabase
         .from('menu_dish_recipes')
-        .select('dish_id, recipe_id, quantity, yield_pct, wastage_pct, cost_override, notes')
+        .select('dish_id, recipe_id, quantity, yield_pct, wastage_pct, cost_override, notes, option_group')
         .in('dish_id', dishIds);
 
       if (recipeError) {
@@ -943,6 +946,7 @@ export class MenuService {
         default_unit: pricing?.default_unit ?? row.ingredient.default_unit ?? null,
         dietary_flags: row.ingredient.dietary_flags || [],
         allergens: row.ingredient.allergens || [],
+        option_group: row.option_group ?? null,
       };
 
       const existing = ingredientsByDish.get(row.dish_id) || [];
@@ -969,6 +973,7 @@ export class MenuService {
         dietary_flags: recipeMeta.dietary_flags || [],
         allergen_flags: recipeMeta.allergen_flags || [],
         recipe_is_active: recipeMeta.is_active ?? true,
+        option_group: row.option_group ?? null,
       };
 
       const existing = recipesByDish.get(row.dish_id) || [];
@@ -1025,7 +1030,7 @@ export class MenuService {
       supabase.from('menu_dishes').select('*').eq('id', dishId).single(),
       supabase
         .from('menu_dish_ingredients')
-        .select('id, ingredient_id, quantity, unit, yield_pct, wastage_pct, cost_override, notes, ingredient:menu_ingredients(name, default_unit)')
+        .select('id, ingredient_id, quantity, unit, yield_pct, wastage_pct, cost_override, notes, option_group, ingredient:menu_ingredients(name, default_unit)')
         .eq('dish_id', dishId),
       supabase
         .from('menu_dish_menu_assignments')
@@ -1033,7 +1038,7 @@ export class MenuService {
         .eq('dish_id', dishId),
       supabase
         .from('menu_dish_recipes')
-        .select('id, recipe_id, quantity, yield_pct, wastage_pct, cost_override, notes')
+        .select('id, recipe_id, quantity, yield_pct, wastage_pct, cost_override, notes, option_group')
         .eq('dish_id', dishId),
     ]);
 
@@ -1108,6 +1113,7 @@ export class MenuService {
       wastage_pct: ing.wastage_pct ?? null,
       cost_override: ing.cost_override ?? null,
       notes: ing.notes || null,
+      option_group: ing.option_group ?? null,
     }));
 
     const recipesPayload = (input.recipes || []).map(recipe => ({
@@ -1117,6 +1123,7 @@ export class MenuService {
       wastage_pct: recipe.wastage_pct ?? null,
       cost_override: recipe.cost_override ?? null,
       notes: recipe.notes || null,
+      option_group: recipe.option_group ?? null,
     }));
 
     const assignmentsPayload = (input.assignments ?? []).map(assign => ({

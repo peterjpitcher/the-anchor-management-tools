@@ -196,6 +196,7 @@ export function DishDrawer({
             wastage_pct: String(row.wastage_pct ?? 0),
             cost_override: row.cost_override ? String(row.cost_override) : '',
             notes: (row.notes as string) || '',
+            option_group: (row.option_group as string) || '',
           }))
         : [defaultIngredientRow];
 
@@ -207,6 +208,7 @@ export function DishDrawer({
             wastage_pct: String(row.wastage_pct ?? 0),
             cost_override: row.cost_override ? String(row.cost_override) : '',
             notes: (row.notes as string) || '',
+            option_group: (row.option_group as string) || '',
           }))
         : [defaultRecipeRow];
 
@@ -308,6 +310,7 @@ export function DishDrawer({
             wastage_pct: parseFloat(row.wastage_pct || '0') || 0,
             cost_override: row.cost_override ? parseFloat(row.cost_override) : undefined,
             notes: row.notes || undefined,
+            option_group: row.option_group?.trim() || undefined,
           })),
         recipes: formRecipes
           .filter((row) => row.recipe_id && parseFloat(row.quantity || '0') > 0)
@@ -318,6 +321,7 @@ export function DishDrawer({
             wastage_pct: parseFloat(row.wastage_pct || '0') || 0,
             cost_override: row.cost_override ? parseFloat(row.cost_override) : undefined,
             notes: row.notes || undefined,
+            option_group: row.option_group?.trim() || undefined,
           })),
         assignments: formAssignments
           .filter((row) => row.menu_code && row.category_code)

@@ -76,6 +76,7 @@ function mapApiDish(raw: Record<string, unknown>, fallbackTarget: number): DishL
       default_unit: (i.default_unit as string) ?? null,
       dietary_flags: (i.dietary_flags as string[]) || [],
       allergens: (i.allergens as string[]) || [],
+      option_group: (i.option_group as string) ?? null,
     })),
     recipes: ((raw.recipes ?? []) as Record<string, unknown>[]).map((r) => ({
       recipe_id: r.recipe_id as string,
@@ -91,6 +92,7 @@ function mapApiDish(raw: Record<string, unknown>, fallbackTarget: number): DishL
       dietary_flags: (r.dietary_flags as string[]) || [],
       allergen_flags: (r.allergen_flags as string[]) || [],
       recipe_is_active: (r.recipe_is_active as boolean) ?? true,
+      option_group: (r.option_group as string) ?? null,
     })),
   };
 }

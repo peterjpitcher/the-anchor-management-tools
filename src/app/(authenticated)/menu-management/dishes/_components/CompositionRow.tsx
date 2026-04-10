@@ -38,6 +38,7 @@ export interface DishIngredientFormRow {
   wastage_pct: string;
   cost_override: string;
   notes: string;
+  option_group: string;
 }
 
 export interface DishRecipeFormRow {
@@ -47,6 +48,7 @@ export interface DishRecipeFormRow {
   wastage_pct: string;
   cost_override: string;
   notes: string;
+  option_group: string;
 }
 
 export const defaultIngredientRow: DishIngredientFormRow = {
@@ -57,6 +59,7 @@ export const defaultIngredientRow: DishIngredientFormRow = {
   wastage_pct: '0',
   cost_override: '',
   notes: '',
+  option_group: '',
 };
 
 export const defaultRecipeRow: DishRecipeFormRow = {
@@ -66,6 +69,7 @@ export const defaultRecipeRow: DishRecipeFormRow = {
   wastage_pct: '0',
   cost_override: '',
   notes: '',
+  option_group: '',
 };
 
 // ---------------------------------------------------------------------------
