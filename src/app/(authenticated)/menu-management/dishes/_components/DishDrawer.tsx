@@ -106,17 +106,17 @@ export function DishDrawer({
   }, [dish]);
 
   // Cost calculations
-  const ingredientCostTotal = useMemo(
+  const ingredientCostResult = useMemo(
     () => computeIngredientCost(formIngredients, ingredientMap),
     [formIngredients, ingredientMap]
   );
 
-  const recipeCostTotal = useMemo(
+  const recipeCostResult = useMemo(
     () => computeRecipeCost(formRecipes, recipeMap),
     [formRecipes, recipeMap]
   );
 
-  const computedPortionCost = ingredientCostTotal + recipeCostTotal;
+  const computedPortionCost = ingredientCostResult.total + recipeCostResult.total;
   const sellingPrice = parseFloat(formState.selling_price || '0');
   const computedGp = sellingPrice > 0 ? (sellingPrice - computedPortionCost) / sellingPrice : null;
   const gpBelowTarget = computedGp !== null && computedGp < targetGpPct;
