@@ -50,6 +50,10 @@ function mapApiDish(raw: Record<string, unknown>, fallbackTarget: number): DishL
     is_sunday_lunch: (raw.is_sunday_lunch as boolean) ?? false,
     dietary_flags: (raw.dietary_flags as string[]) || [],
     allergen_flags: (raw.allergen_flags as string[]) || [],
+    removable_allergens: (raw.removable_allergens as string[]) || [],
+    is_modifiable_for: (raw.is_modifiable_for as Record<string, boolean>) || {},
+    allergen_verified: (raw.allergen_verified as boolean) ?? false,
+    allergen_verified_at: (raw.allergen_verified_at as string) ?? null,
     notes: raw.notes as string | null | undefined,
     assignments: ((raw.assignments ?? []) as Record<string, unknown>[]).map((a) => ({
       menu_code: a.menu_code as string,
@@ -77,6 +81,8 @@ function mapApiDish(raw: Record<string, unknown>, fallbackTarget: number): DishL
       dietary_flags: (i.dietary_flags as string[]) || [],
       allergens: (i.allergens as string[]) || [],
       option_group: (i.option_group as string) ?? null,
+      inclusion_type: (i.inclusion_type as string) ?? 'included',
+      upgrade_price: i.upgrade_price != null ? Number(i.upgrade_price) : null,
     })),
     recipes: ((raw.recipes ?? []) as Record<string, unknown>[]).map((r) => ({
       recipe_id: r.recipe_id as string,
@@ -93,6 +99,8 @@ function mapApiDish(raw: Record<string, unknown>, fallbackTarget: number): DishL
       allergen_flags: (r.allergen_flags as string[]) || [],
       recipe_is_active: (r.recipe_is_active as boolean) ?? true,
       option_group: (r.option_group as string) ?? null,
+      inclusion_type: (r.inclusion_type as string) ?? 'included',
+      upgrade_price: r.upgrade_price != null ? Number(r.upgrade_price) : null,
     })),
   };
 }

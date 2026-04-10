@@ -492,6 +492,49 @@ export async function updateDishPrice(id: string, sellingPrice: number) {
   }
 }
 
+export async function verifyDishAllergens(id: string) {
+  try {
+    const hasPermission = await checkUserPermission('menu_management', 'manage');
+    if (!hasPermission) {
+      return { error: 'You do not have permission to manage dishes' };
+    }
+
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+
+    const { createAdminClient } = await import('@/lib/supabase/admin');
+    const admin = createAdminClient();
+    const { error } = await admin
+      .from('menu_dishes')
+      .update({
+        allergen_verified: true,
+        allergen_verified_at: new Date().toISOString(),
+      })
+      .eq('id', id);
+
+    if (error) throw error;
+
+    await logAuditEvent({
+      operation_type: 'update',
+      resource_type: 'menu_dish',
+      resource_id: id,
+      operation_status: 'success',
+      additional_info: {
+        field: 'allergen_verified',
+        new_value: true,
+        verified_by: user?.email,
+      },
+    });
+
+    revalidatePath('/menu-management/dishes');
+    revalidatePath('/menu-management');
+    return { success: true };
+  } catch (error: unknown) {
+    console.error('verifyDishAllergens error:', error);
+    return { error: getErrorMessage(error) };
+  }
+}
+
 export async function toggleDishActive(id: string) {
   try {
     const hasPermission = await checkUserPermission('menu_management', 'manage');
