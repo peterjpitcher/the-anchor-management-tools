@@ -315,12 +315,23 @@ export default function TimeclockManager({
                           {/* Clock In */}
                           <td className="px-3 py-2">
                             {isEditing ? (
-                              <input
-                                type="time"
-                                value={editIn}
-                                onChange={e => setEditIn(e.target.value)}
-                                className="border border-gray-300 rounded px-1.5 py-0.5 text-xs w-24"
-                              />
+                              <div>
+                                <input
+                                  type="time"
+                                  value={editIn}
+                                  onChange={e => setEditIn(e.target.value)}
+                                  className="border border-gray-300 rounded px-1.5 py-0.5 text-xs w-24"
+                                />
+                                {s.planned_start && (
+                                  <button
+                                    type="button"
+                                    onClick={() => setEditIn(s.planned_start!)}
+                                    className="block text-xs text-blue-600 hover:text-blue-800 cursor-pointer mt-0.5"
+                                  >
+                                    Use planned ({formatTime12Hour(s.planned_start)})
+                                  </button>
+                                )}
+                              </div>
                             ) : (
                               <>
                                 <span className="text-gray-800">{formatTime12Hour(s.clock_in_local)}</span>
@@ -336,12 +347,23 @@ export default function TimeclockManager({
                           {/* Clock Out */}
                           <td className="px-3 py-2">
                             {isEditing ? (
-                              <input
-                                type="time"
-                                value={editOut}
-                                onChange={e => setEditOut(e.target.value)}
-                                className="border border-gray-300 rounded px-1.5 py-0.5 text-xs w-24"
-                              />
+                              <div>
+                                <input
+                                  type="time"
+                                  value={editOut}
+                                  onChange={e => setEditOut(e.target.value)}
+                                  className="border border-gray-300 rounded px-1.5 py-0.5 text-xs w-24"
+                                />
+                                {s.planned_end && s.clock_out_local && (
+                                  <button
+                                    type="button"
+                                    onClick={() => setEditOut(s.planned_end!)}
+                                    className="block text-xs text-blue-600 hover:text-blue-800 cursor-pointer mt-0.5"
+                                  >
+                                    Use planned ({formatTime12Hour(s.planned_end)})
+                                  </button>
+                                )}
+                              </div>
                             ) : (
                               <>
                                 <span className={s.clock_out_at ? 'text-gray-800' : 'text-amber-600 font-medium'}>
