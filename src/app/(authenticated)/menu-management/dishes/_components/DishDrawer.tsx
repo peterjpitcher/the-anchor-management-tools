@@ -9,12 +9,13 @@ import { Alert } from '@/components/ui-v2/feedback/Alert';
 import { ConfirmDialog } from '@/components/ui-v2/overlay/ConfirmDialog';
 import { toast } from '@/components/ui-v2/feedback/Toast';
 import { useMediaQuery } from '@/hooks/use-media-query';
-import { ExclamationTriangleIcon } from '@heroicons/react/20/solid';
+import { ExclamationTriangleIcon, CheckCircleIcon } from '@heroicons/react/20/solid';
 import {
   createMenuDish,
   updateMenuDish,
   deleteMenuDish,
   getMenuDishDetail,
+  verifyDishAllergens,
 } from '@/app/actions/menu-management';
 import { DishOverviewTab, type DishFormState, defaultDishForm } from './DishOverviewTab';
 import { DishCompositionTab, computeIngredientCost, computeRecipeCost } from './DishCompositionTab';
@@ -78,6 +79,11 @@ export function DishDrawer({
   const currentSnapshot = JSON.stringify({ formState, formIngredients, formRecipes, formAssignments });
   const isDirty = currentSnapshot !== initialSnapshot;
 
+  // Allergen verification state
+  const [verifying, setVerifying] = useState(false);
+  const [allergenVerified, setAllergenVerified] = useState(false);
+  const [allergenVerifiedAt, setAllergenVerifiedAt] = useState<string | null>(null);
+
   // Unsaved changes / delete confirmations
   const [showUnsavedConfirm, setShowUnsavedConfirm] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -117,7 +123,7 @@ export function DishDrawer({
     [formRecipes, recipeMap]
   );
 
-  const computedPortionCost = ingredientCostResult.total + recipeCostResult.total;
+  const computedPortionCost = ingredientCostResult.baseTotal + recipeCostResult.baseTotal;
   const sellingPrice = parseFloat(formState.selling_price || '0');
   const computedGp = sellingPrice > 0 ? (sellingPrice - computedPortionCost) / sellingPrice : null;
   const gpBelowTarget = computedGp !== null && computedGp < targetGpPct;
@@ -139,6 +145,8 @@ export function DishDrawer({
     setFormIngredients(newIngredients);
     setFormRecipes(newRecipes);
     setFormAssignments(newAssignments);
+    setAllergenVerified(false);
+    setAllergenVerifiedAt(null);
     setActiveTab('overview');
     setServerError(null);
     return { newState, newIngredients, newRecipes, newAssignments };
@@ -237,6 +245,8 @@ export function DishDrawer({
       setFormIngredients(newIngredients);
       setFormRecipes(newRecipes);
       setFormAssignments(newAssignments);
+      setAllergenVerified((dishData.allergen_verified as boolean) ?? false);
+      setAllergenVerifiedAt((dishData.allergen_verified_at as string) ?? null);
       setActiveTab('overview');
       setInitialSnapshot(JSON.stringify({
         formState: newState,
@@ -365,6 +375,27 @@ export function DishDrawer({
     }
   }
 
+  // ---- Verify allergens ----
+  async function handleVerifyAllergens() {
+    if (!dish || verifying) return;
+    try {
+      setVerifying(true);
+      const result = await verifyDishAllergens(dish.id);
+      if (result.error) {
+        toast.error(result.error);
+        return;
+      }
+      setAllergenVerified(true);
+      setAllergenVerifiedAt(new Date().toISOString());
+      toast.success('Allergens verified');
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Failed to verify allergens';
+      toast.error(message);
+    } finally {
+      setVerifying(false);
+    }
+  }
+
   // ---- Delete ----
   async function handleDelete() {
     if (!dish) return;
@@ -417,6 +448,7 @@ export function DishDrawer({
           recipeMap={recipeMap}
           linkedIngredientIds={linkedIngredientIds}
           linkedRecipeIds={linkedRecipeIds}
+          sellingPrice={sellingPrice}
           onIngredientsChange={setFormIngredients}
           onRecipesChange={setFormRecipes}
         />
@@ -518,7 +550,7 @@ export function DishDrawer({
             )}
           </span>
 
-          {/* Active / Sunday lunch toggles */}
+          {/* Active / Sunday lunch toggles + allergen verification */}
           <div className="ml-auto flex items-center gap-3">
             <Checkbox
               checked={formState.is_active}
@@ -532,6 +564,25 @@ export function DishDrawer({
             >
               <span className="text-sm">Sunday lunch</span>
             </Checkbox>
+
+            {isEditing && (
+              allergenVerified ? (
+                <span className="inline-flex items-center gap-1 rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-medium text-green-800" title={allergenVerifiedAt ? `Verified ${new Date(allergenVerifiedAt).toLocaleDateString('en-GB')}` : undefined}>
+                  <CheckCircleIcon className="h-3.5 w-3.5" />
+                  Allergens Verified
+                </span>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => void handleVerifyAllergens()}
+                  disabled={verifying}
+                  className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-medium text-amber-800 hover:bg-amber-200 disabled:opacity-50"
+                >
+                  <ExclamationTriangleIcon className="h-3.5 w-3.5" />
+                  {verifying ? 'Verifying...' : 'Verify Allergens'}
+                </button>
+              )
+            )}
           </div>
         </div>
 
