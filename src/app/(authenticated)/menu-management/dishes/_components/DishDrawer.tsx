@@ -160,7 +160,7 @@ export function DishDrawer({
         formAssignments: newAssignments,
       }));
     }
-  }, [open, dish]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [open, dish]);  
 
   async function loadDishDetail(dishId: string) {
     try {
@@ -256,7 +256,7 @@ export function DishDrawer({
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [open, formState, formIngredients, formRecipes, formAssignments, saving]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [open, formState, formIngredients, formRecipes, formAssignments, saving]);  
 
   // ---- beforeunload guard ----
   useEffect(() => {

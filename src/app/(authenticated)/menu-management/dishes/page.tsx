@@ -287,11 +287,11 @@ export default function MenuDishesPage(): React.ReactElement {
       return;
     }
     void loadSupportData();
-  }, [permissionsLoading]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [permissionsLoading]);  
 
   useEffect(() => {
     void loadDishes();
-  }, [activeMenuFilter]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [activeMenuFilter]);  
 
   // Validate menu filter still exists
   useEffect(() => {
@@ -351,7 +351,7 @@ export default function MenuDishesPage(): React.ReactElement {
     } else if (pipeline.filters.menu) {
       pipeline.updateFilter('menu', undefined);
     }
-  }, [activeMenuFilter]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [activeMenuFilter]);  
 
   // ---- Drawer actions ----
 
@@ -548,7 +548,7 @@ export default function MenuDishesPage(): React.ReactElement {
         },
       },
     ],
-    [canManage, targetGpPct, loadDishes] // eslint-disable-line react-hooks/exhaustive-deps
+    [canManage, targetGpPct, loadDishes]  
   );
 
   // ---- Header ----
