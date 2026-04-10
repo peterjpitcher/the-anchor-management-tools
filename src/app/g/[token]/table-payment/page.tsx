@@ -250,7 +250,7 @@ export default async function TablePaymentPage({ params, searchParams }: TablePa
   }
 
   const guestFirstName = await getCustomerFirstNameById(supabase, preview.customerId)
-  const paypalClientId = process.env.NEXT_PUBLIC_PAYPAL_CLIENT_ID ?? ''
+  const paypalClientId = process.env.PAYPAL_CLIENT_ID ?? ''
   const paypalEnvironment = process.env.PAYPAL_ENVIRONMENT ?? 'live'
 
   return (
