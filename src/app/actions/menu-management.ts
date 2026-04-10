@@ -77,7 +77,7 @@ export async function updateMenuIngredient(id: string, input: UpdateIngredientIn
       return { error: 'You do not have permission to manage menu ingredients' };
     }
 
-    const payload = IngredientSchema.parse(input);
+    const payload = IngredientSchema.partial().parse(input);
     const ingredient = await MenuService.updateIngredient(id, payload);
 
     await logAuditEvent({
@@ -389,6 +389,135 @@ export async function listMenusWithCategories() {
     return { data };
   } catch (error: unknown) {
     console.error('listMenusWithCategories unexpected error:', error);
+    return { error: getErrorMessage(error) };
+  }
+}
+
+// Field-level actions --------------------------------------------------------------------------------------------
+// These bypass the replace-all transaction RPCs and update single columns directly.
+// Critical for inline editing safety — sending partial data through updateMenuDish/updateMenuIngredient
+// would wipe all child records (ingredients, recipes, assignments).
+
+const FieldPriceSchema = z.number().nonnegative();
+
+export async function updateIngredientPackCost(id: string, packCost: number) {
+  try {
+    const hasPermission = await checkUserPermission('menu_management', 'manage');
+    if (!hasPermission) {
+      return { error: 'You do not have permission to manage menu ingredients' };
+    }
+
+    const validatedPrice = FieldPriceSchema.parse(packCost);
+    const { previousValue } = await MenuService.updateIngredientPackCost(id, validatedPrice);
+
+    await logAuditEvent({
+      operation_type: 'update',
+      resource_type: 'menu_ingredient',
+      resource_id: id,
+      operation_status: 'success',
+      additional_info: {
+        field: 'pack_cost',
+        previous_value: previousValue,
+        new_value: validatedPrice,
+      },
+    });
+
+    revalidatePath('/menu-management/ingredients');
+    revalidatePath('/menu-management');
+    return { success: true };
+  } catch (error: unknown) {
+    console.error('updateIngredientPackCost unexpected error:', error);
+    return { error: getErrorMessage(error) };
+  }
+}
+
+export async function toggleIngredientActive(id: string) {
+  try {
+    const hasPermission = await checkUserPermission('menu_management', 'manage');
+    if (!hasPermission) {
+      return { error: 'You do not have permission to manage menu ingredients' };
+    }
+
+    const { previousValue, newValue } = await MenuService.toggleIngredientActive(id);
+
+    await logAuditEvent({
+      operation_type: 'update',
+      resource_type: 'menu_ingredient',
+      resource_id: id,
+      operation_status: 'success',
+      additional_info: {
+        field: 'is_active',
+        previous_value: previousValue,
+        new_value: newValue,
+      },
+    });
+
+    revalidatePath('/menu-management/ingredients');
+    revalidatePath('/menu-management');
+    return { success: true };
+  } catch (error: unknown) {
+    console.error('toggleIngredientActive unexpected error:', error);
+    return { error: getErrorMessage(error) };
+  }
+}
+
+export async function updateDishPrice(id: string, sellingPrice: number) {
+  try {
+    const hasPermission = await checkUserPermission('menu_management', 'manage');
+    if (!hasPermission) {
+      return { error: 'You do not have permission to manage menu dishes' };
+    }
+
+    const validatedPrice = FieldPriceSchema.parse(sellingPrice);
+    const { previousValue } = await MenuService.updateDishPrice(id, validatedPrice);
+
+    await logAuditEvent({
+      operation_type: 'update',
+      resource_type: 'menu_dish',
+      resource_id: id,
+      operation_status: 'success',
+      additional_info: {
+        field: 'selling_price',
+        previous_value: previousValue,
+        new_value: validatedPrice,
+      },
+    });
+
+    revalidatePath('/menu-management/dishes');
+    revalidatePath('/menu-management');
+    return { success: true };
+  } catch (error: unknown) {
+    console.error('updateDishPrice unexpected error:', error);
+    return { error: getErrorMessage(error) };
+  }
+}
+
+export async function toggleDishActive(id: string) {
+  try {
+    const hasPermission = await checkUserPermission('menu_management', 'manage');
+    if (!hasPermission) {
+      return { error: 'You do not have permission to manage menu dishes' };
+    }
+
+    const { previousValue, newValue } = await MenuService.toggleDishActive(id);
+
+    await logAuditEvent({
+      operation_type: 'update',
+      resource_type: 'menu_dish',
+      resource_id: id,
+      operation_status: 'success',
+      additional_info: {
+        field: 'is_active',
+        previous_value: previousValue,
+        new_value: newValue,
+      },
+    });
+
+    revalidatePath('/menu-management/dishes');
+    revalidatePath('/menu-management');
+    return { success: true };
+  } catch (error: unknown) {
+    console.error('toggleDishActive unexpected error:', error);
     return { error: getErrorMessage(error) };
   }
 }
