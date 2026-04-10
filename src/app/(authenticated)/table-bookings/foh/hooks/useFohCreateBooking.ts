@@ -311,7 +311,7 @@ export function useFohCreateBooking(input: {
       notes: '', waive_deposit: false, is_venue_event: false
     }))
     setCreateMode('booking'); setWalkInTargetTable(null); setCustomerQuery(''); setCustomerResults([])
-    setSelectedCustomer(null); setHasLoadedSundayMenu(false); setSundayMenuItems([]); setSundayPreorderQuantities({})
+    setSelectedCustomer(null); setHasLoadedSundayMenu(false); setLoadingSundayMenu(false); setSundayMenuItems([]); setSundayPreorderQuantities({})
     setSundayMenuError(null); setEventOptions([]); setEventOptionsError(null)
     setWalkInPurposeAutoSelectionEnabled(false); setTableEventPromptAcknowledgedEventId(null)
   }
@@ -505,6 +505,6 @@ export function useFohCreateBooking(input: {
     setSundayPreorderQuantities, setTableEventPromptAcknowledgedEventId,
     setWalkInPurposeAutoSelectionEnabled,
     openCreateModal, closeCreateModal, handleCreateBooking,
-    retrySundayMenu: () => { setSundayMenuError(null); setHasLoadedSundayMenu(false) },
+    retrySundayMenu: () => { setSundayMenuError(null); setLoadingSundayMenu(false); setHasLoadedSundayMenu(false) },
   }
 }
