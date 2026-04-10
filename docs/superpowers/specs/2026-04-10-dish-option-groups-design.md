@@ -1,7 +1,7 @@
 # Dish Option Groups — Design Spec
 
 **Date:** 2026-04-10
-**Status:** Draft
+**Status:** Approved (revised after Codex QA review)
 **Scope:** Option groups for dish ingredients/recipes, GP% analysis tab, dashboard expansion, tabs fix
 
 ## Problem Statement
@@ -39,6 +39,8 @@ ALTER TABLE menu_dish_recipes ADD COLUMN option_group TEXT;
 | Mushy peas | Peas | £0.35 |
 
 Headline GP% uses most expensive per group: £2.10 + £0.60 + £0.35 = £3.05
+
+**UNIQUE constraint note:** The existing UNIQUE constraint on `(dish_id, ingredient_id)` prevents adding the same ingredient twice to a dish (e.g. once as fixed and once in a group). This is acceptable — each ingredient should only appear once. If a user needs "regular chips" as both fixed and optional, they should model it differently (e.g. make it fixed with zero quantity override, or use a recipe wrapper).
 
 ---
 
@@ -82,17 +84,24 @@ Add a small text input to each ingredient and recipe row in the compact view:
 
 ### Subtotal Display
 
-Current: `Direct ingredients: £X.XX` (sums all)
+Current: `Recipes: £X.XX` + `Direct ingredients: £X.XX` + `Total portion cost: £X.XX`
 
 New:
 ```
+Recipes (fixed): £X.XX
+Recipes — Sauce (worst case): £X.XX
 Fixed ingredients: £X.XX
 Chips (worst case): £0.60
 Peas (worst case): £0.35
 Total portion cost (worst case): £3.05
 ```
 
-Each group line shows the most expensive option's cost. The total is the conservative/headline figure.
+Each group line shows the most expensive option's cost. The total is the conservative/headline figure. Both recipe and ingredient groups are shown separately.
+
+### Preserved Features
+
+- **Duplicate ingredient warning** — the existing warning when the same ingredient appears both directly and via a recipe must be preserved
+- **Recipe subtotal** — must still show recipe costs distinctly from ingredient costs
 
 ---
 
@@ -132,13 +141,21 @@ If the cartesian product exceeds 100 combinations (e.g. 5 groups with 4 options 
 
 The dashboard Menu Health Table expands to show option variants:
 
+### Data Flow for Combinations
+
+The stored `portion_cost` and `gp_pct` on `menu_dishes` uses the worst-case calculation (server-side via `menu_refresh_dish_calculations`). For the expanded combinations view, the dashboard must compute per-combination GP% **client-side** from the raw ingredient/recipe data.
+
+This requires `listDishes` to return ingredient and recipe rows **with `option_group`** and with enough cost data (unit costs, yield%, wastage%, cost overrides) for the client to compute line costs. The dashboard page already receives this data (currently typed as `unknown[]`) — the types need updating to include `option_group` and be properly typed instead of `unknown[]`.
+
+The combination computation reuses the same `computeIngredientCost` / `computeRecipeCost` functions from `DishCompositionTab`, called once per combination with the appropriate subset of rows.
+
 ### Default View: Worst Case Only
 
-One row per dish showing the worst-case combination GP% (most expensive options from each group). Same as today for dishes without groups.
+One row per dish showing the worst-case combination GP% (most expensive options from each group). Same as today for dishes without groups. Uses the stored `gp_pct` from the database.
 
 ### Expanded View: All Combinations
 
-Toggle to expand dishes with option groups to show one row per combination:
+Toggle to expand dishes with option groups to show one row per combination (computed client-side):
 
 | Dish | Combination | Price | Cost | GP% | Status |
 |------|------------|-------|------|-----|--------|
@@ -198,6 +215,17 @@ Add to `DishRecipeSchema`:
 option_group: z.string().nullable().optional()
 ```
 
+### Form Row Types
+
+Add `option_group: string` to both `DishIngredientFormRow` and `DishRecipeFormRow` in `CompositionRow.tsx`. Empty string in the form maps to `null` in the Zod schema (convert on save: `option_group: row.option_group?.trim() || undefined`).
+
+### Shared Detail Types
+
+Add `option_group` to the shared types in `DishExpandedRow.tsx`:
+- `DishIngredientDetail` — add `option_group?: string | null`
+- `DishRecipeDetail` — add `option_group?: string | null`
+- `DishListItem` — ensure ingredient/recipe sub-arrays include `option_group`
+
 ### Service Layer (`src/services/menu.ts`)
 
 - `getDishDetail` — include `option_group` in select for dish ingredients and recipes
@@ -214,15 +242,17 @@ No new server actions needed. The existing `createMenuDish` and `updateMenuDish`
 
 | File | Change |
 |------|--------|
-| `supabase/migrations/XXXXXXXX_add_option_groups.sql` | New migration |
-| `src/services/menu.ts` | Add option_group to schemas, getDishDetail, listDishes |
-| `src/app/actions/menu-management.ts` | No changes (schemas flow through) |
-| `src/app/(authenticated)/menu-management/dishes/_components/CompositionRow.tsx` | Add option_group input with auto-suggest |
-| `src/app/(authenticated)/menu-management/dishes/_components/DishCompositionTab.tsx` | Update cost calculation, update subtotal display, add visual grouping |
-| `src/app/(authenticated)/menu-management/dishes/_components/DishGpAnalysisTab.tsx` | New component — combinations table |
-| `src/app/(authenticated)/menu-management/dishes/_components/DishDrawer.tsx` | Add 4th tab, pass option_group data |
-| `src/app/(authenticated)/menu-management/_components/MenuDishesTable.tsx` | Add combination expansion, toggle view |
-| `src/app/(authenticated)/menu-management/page.tsx` | Update stat card counting for combinations |
+| `supabase/migrations/XXXXXXXX_add_option_groups.sql` | New migration: ALTER TABLE x2, CREATE OR REPLACE FUNCTION x3 |
+| `src/services/menu.ts` | Add option_group to DishIngredientSchema, DishRecipeSchema, getDishDetail selects, listDishes selects, createDish/updateDish ingredient/recipe payload mapping |
+| `src/app/actions/menu-management.ts` | No new actions (schemas flow through once updated) |
+| `src/app/(authenticated)/menu-management/dishes/_components/CompositionRow.tsx` | Add option_group field to DishIngredientFormRow and DishRecipeFormRow types, add Group input with auto-suggest, add visual group border/badge |
+| `src/app/(authenticated)/menu-management/dishes/_components/DishCompositionTab.tsx` | Update computeIngredientCost/computeRecipeCost for max-per-group, update subtotal display with group breakdown, preserve duplicate ingredient warning and recipe subtotal |
+| `src/app/(authenticated)/menu-management/dishes/_components/DishGpAnalysisTab.tsx` | New component — combinations table with cartesian product, explosion guard |
+| `src/app/(authenticated)/menu-management/dishes/_components/DishDrawer.tsx` | Add 4th tab (GP Analysis), add option_group to form state hydration and save mapping |
+| `src/app/(authenticated)/menu-management/dishes/_components/DishExpandedRow.tsx` | Add option_group to shared types (DishIngredientDetail, DishRecipeDetail, DishListItem) |
+| `src/app/(authenticated)/menu-management/dishes/page.tsx` | Update dish data mapping to include option_group |
+| `src/app/(authenticated)/menu-management/_components/MenuDishesTable.tsx` | Add combination expansion, toggle view, type ingredient/recipe arrays properly (not unknown[]) |
+| `src/app/(authenticated)/menu-management/page.tsx` | Update stat card counting for combinations, update data mapping, pass typed ingredient/recipe data |
 | `src/components/ui-v2/navigation/Tabs.tsx` | Fix hidden attribute (already applied) |
 
 ---
