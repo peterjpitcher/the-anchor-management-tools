@@ -18,6 +18,7 @@ import {
 } from '@/app/actions/menu-management';
 import { DishOverviewTab, type DishFormState, defaultDishForm } from './DishOverviewTab';
 import { DishCompositionTab, computeIngredientCost, computeRecipeCost } from './DishCompositionTab';
+import { DishGpAnalysisTab } from './DishGpAnalysisTab';
 import { DishMenusTab, type DishAssignmentFormRow, defaultAssignmentRow } from './DishMenusTab';
 import {
   type DishIngredientFormRow,
@@ -421,6 +422,20 @@ export function DishDrawer({
             menus={menus}
             selectedMenuCode={selectedMenuCode}
             onChange={setFormAssignments}
+          />
+        ),
+      },
+      {
+        key: 'gp-analysis',
+        label: 'GP Analysis',
+        content: (
+          <DishGpAnalysisTab
+            formIngredients={formIngredients}
+            formRecipes={formRecipes}
+            ingredientMap={ingredientMap}
+            recipeMap={recipeMap}
+            sellingPrice={parseFloat(formState.selling_price || '0')}
+            targetGpPct={targetGpPct}
           />
         ),
       },
