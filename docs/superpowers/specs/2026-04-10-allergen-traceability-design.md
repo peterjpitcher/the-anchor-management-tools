@@ -1,7 +1,7 @@
 # Allergen Traceability & Ingredient Classification — Design Spec
 
 **Date:** 2026-04-10
-**Status:** Draft
+**Status:** Approved (revised after Codex QA review)
 **Scope:** Add `inclusion_type` to dish ingredients/recipes for allergen traceability, correct GP% calculation, and website-ready allergen data. Replaces the standalone `option_group`-only approach with a richer model.
 
 ## Problem Statement
@@ -85,8 +85,39 @@ Same as base but uses min cost per `choice` group.
 Shows worst case with all paid upgrades:
 - Start with base portion cost
 - Add max cost per `upgrade` group (or individual upgrade cost if not grouped)
-- Add all `upgrade_price` values to the selling price
-- `upgrade_gp = (selling_price + total_upgrade_prices - total_cost_with_upgrades) / (selling_price + total_upgrade_prices)`
+- **Revenue per upgrade group:** max(`upgrade_price`) in that group (a customer picks ONE per group, not all). For ungrouped upgrades: add each `upgrade_price` individually.
+- `total_upgrade_revenue = sum of max(upgrade_price) per upgrade group + sum of ungrouped upgrade prices`
+- `upgrade_gp = (selling_price + total_upgrade_revenue - total_cost_with_upgrades) / (selling_price + total_upgrade_revenue)`
+
+### Client-side CostBreakdown Interface
+
+The existing `CostBreakdown` interface (`{ total, fixedTotal, groups }`) must be restructured to support the new inclusion types:
+
+```typescript
+interface CostBreakdown {
+  includedTotal: number;       // sum of 'included' items
+  removableTotal: number;      // sum of 'removable' items
+  choiceGroups: Map<string, {  // 'choice' items grouped by option_group
+    maxCost: number;
+    minCost: number;
+    items: Array<{ name: string; cost: number }>;
+  }>;
+  upgradeGroups: Map<string, { // 'upgrade' items grouped by option_group
+    maxCost: number;
+    maxPrice: number;          // max upgrade_price in group
+    items: Array<{ name: string; cost: number; price: number }>;
+  }>;
+  ungroupedUpgrades: Array<{   // 'upgrade' items without option_group
+    name: string;
+    cost: number;
+    price: number;
+  }>;
+  baseTotal: number;           // includedTotal + removableTotal + sum(choiceGroups maxCost)
+  upgradeTotal: number;        // baseTotal + sum(upgradeGroups maxCost) + sum(ungroupedUpgrades cost)
+}
+```
+
+The same logic must be mirrored in the SQL `menu_refresh_dish_calculations` function.
 
 ### Stored values on `menu_dishes`
 
@@ -96,10 +127,16 @@ Shows worst case with all paid upgrades:
 
 ## 3. Allergen Traceability
 
+### Recipe Atomicity
+
+Recipes linked to a dish are treated as **atomic components**. A recipe is classified as `included`, `removable`, or `choice` as a whole unit. The system traces allergens TO the recipe level ("contains gluten from Beef & Ale Pie recipe") but NOT into individual recipe sub-ingredients. This matches real-world behaviour — you cannot remove pastry from a pie.
+
+Recipes store pre-aggregated `allergen_flags` and `dietary_flags`. These are used directly for allergen traceability without drilling into the recipe's ingredient list.
+
 ### What the system can answer per dish
 
-1. **"Does this dish contain gluten?"** — Check all non-upgrade ingredients (included + removable + choice items)
-2. **"Can it be made gluten-free?"** — Check if ALL gluten-containing ingredients are either `removable` or in a `choice` group with a gluten-free alternative
+1. **"Does this dish contain gluten?"** — Check all non-upgrade ingredients AND recipes (included + removable + choice items)
+2. **"Can it be made gluten-free?"** — Check if ALL gluten-containing components (ingredients and recipes) are either `removable` or in a `choice` group with a gluten-free alternative
 3. **"What needs to change?"** — List removable items to remove and choice swaps to make
 4. **"What about upgrades?"** — Separately flag upgrade options that contain the allergen
 
@@ -113,7 +150,11 @@ Shows worst case with all paid upgrades:
 - `removable` (can be left off), OR
 - In a `choice` group where at least one alternative doesn't contain the allergen
 
-**`is_modifiable_for`** — for each dietary category (gluten_free, dairy_free, nut_free, vegan, vegetarian), whether the dish can be modified to meet it. Computed by checking if all allergens/flags that conflict with that diet are in `removable_allergens`.
+**`is_modifiable_for`** — for each allergen-based diet, whether the dish can be modified to avoid that allergen. Supported diets (one per UK allergen): `gluten_free`, `dairy_free`, `egg_free`, `nut_free`, `peanut_free`, `fish_free`, `crustacean_free`, `sesame_free`, `soya_free`, `celery_free`, `mustard_free`, `sulphite_free`, `lupin_free`, `mollusc_free`. Computed by checking if the corresponding allergen is in `removable_allergens`.
+
+**Excluded from automatic computation:** `vegan` and `vegetarian` require non-allergen ingredient metadata (meat, gelatin, honey, animal stock) that is not currently tracked. These are excluded until ingredient-level dietary flags are comprehensive enough to support them deterministically.
+
+**Computation source:** `is_modifiable_for` must be computed from ingredient-level `allergens` arrays directly, NOT from the dish-level `dietary_flags` field. The current dish `dietary_flags` are incorrect — they union positive flags from individual ingredients, producing nonsensical results (e.g. a beef burger marked "vegan" because the chips ingredient is vegan).
 
 ### API output structure (for website integration later)
 
@@ -143,6 +184,18 @@ Shows worst case with all paid upgrades:
   ]
 }
 ```
+
+### Allergen Verification Gate
+
+Add `allergen_verified BOOLEAN DEFAULT FALSE` and `allergen_verified_at TIMESTAMPTZ` to `menu_dishes`.
+
+- Staff must review and verify the computed allergen data for each dish before it is exposed via the website API
+- The API returns `is_modifiable_for` and `modifications` data ONLY for dishes where `allergen_verified = true`
+- Unverified dishes return `allergen_flags` only (the flat list) with a note: "Please ask at the bar for allergen information"
+- Any change to a dish's ingredients or recipes **resets `allergen_verified` to `false`** — requiring re-verification
+- Audit logging records who verified and when
+
+This prevents incorrect automatic computations from reaching customers with allergies.
 
 ---
 
@@ -207,13 +260,28 @@ Table showing each upgrade option with cost impact:
 Single migration:
 1. Add `inclusion_type TEXT NOT NULL DEFAULT 'included'` to `menu_dish_ingredients` and `menu_dish_recipes`
 2. Add `upgrade_price NUMERIC(8,2)` to both tables
-3. Add `removable_allergens TEXT[]` and `is_modifiable_for JSONB` to `menu_dishes`
-4. Update `create_dish_transaction` and `update_dish_transaction` to include `inclusion_type` and `upgrade_price`
-5. Update `menu_refresh_dish_calculations` for new costing logic and allergen computation
+3. Add `removable_allergens TEXT[]`, `is_modifiable_for JSONB`, `allergen_verified BOOLEAN DEFAULT FALSE`, `allergen_verified_at TIMESTAMPTZ` to `menu_dishes`
+4. **Backfill existing option_group rows:** `UPDATE menu_dish_ingredients SET inclusion_type = 'choice' WHERE option_group IS NOT NULL; UPDATE menu_dish_recipes SET inclusion_type = 'choice' WHERE option_group IS NOT NULL;` — must run BEFORE the updated SQL functions are deployed
+5. Add DB constraints:
+   - `CHECK (inclusion_type IN ('included','removable','choice','upgrade'))`
+   - `CHECK (inclusion_type = 'upgrade' OR upgrade_price IS NULL)` — only upgrades have a price
+   - `CHECK (inclusion_type NOT IN ('included','removable') OR option_group IS NULL)` — included/removable items can't be in groups
+6. Update `create_dish_transaction` and `update_dish_transaction` to include `inclusion_type` and `upgrade_price`
+7. Update `menu_refresh_dish_calculations` for new costing logic, allergen computation, and to reset `allergen_verified = false` on any ingredient change
 
 ### Data reclassification
 
-One-time script to reclassify existing ingredient links based on the March 2026 menu:
+One-time script to reclassify existing ingredient links based on the March 2026 menu.
+
+**Script requirements:**
+- Match rows by **UUID** (dish ID + ingredient ID), not by dish name — live DB names differ from menu document names (e.g. "Sausage & Mash" not "Bangers & Mash", "Beef Burger" not "Classic Beef Burger")
+- Assert expected row counts before and after each dish update
+- Run in a **single database transaction** with rollback on any assertion failure
+- Support `--dry-run` mode that reports planned changes without applying them
+- Produce a before/after report showing each dish's old and new GP%
+- **Audit missing data:** some menu items don't have the correct ingredients in the DB (e.g. no tartare sauce on fish dishes, no cucumber on Katsu Burger). The script must add missing links AND reclassify existing ones.
+
+**Reclassification rules (by dish category):**
 
 **British Pub Classics (Fish & Chips, Half Fish, Scampi, Jumbo Sausage):**
 - Mushy peas → `removable`
@@ -329,6 +397,8 @@ Add to `DishListItem` dish-level fields:
 ```typescript
 removable_allergens?: string[];
 is_modifiable_for?: Record<string, boolean>;
+allergen_verified?: boolean;
+allergen_verified_at?: string | null;
 ```
 
 ---
@@ -337,16 +407,16 @@ is_modifiable_for?: Record<string, boolean>;
 
 | File | Change |
 |------|--------|
-| `supabase/migrations/XXXXXXXX_add_inclusion_type.sql` | New migration: columns, RPC updates, refresh function |
-| `scripts/database/reclassify-dish-compositions.ts` | One-time data reclassification script |
-| `src/services/menu.ts` | Add inclusion_type + upgrade_price to schemas, selects, payloads |
+| `supabase/migrations/XXXXXXXX_add_inclusion_type.sql` | New migration: columns, backfill, constraints, RPC updates, refresh function with allergen computation |
+| `scripts/database/reclassify-dish-compositions.ts` | One-time data reclassification script with UUID matching, dry-run, transaction, assertions |
+| `src/services/menu.ts` | Add inclusion_type + upgrade_price to schemas, selects, payloads; add allergen_verified + removable_allergens + is_modifiable_for to dish selects |
 | `src/app/(authenticated)/menu-management/dishes/_components/CompositionRow.tsx` | Replace Group input with Type dropdown + conditional Group/Price inputs, update visual styling |
-| `src/app/(authenticated)/menu-management/dishes/_components/DishCompositionTab.tsx` | Update cost calculation for inclusion_type, update subtotal display |
+| `src/app/(authenticated)/menu-management/dishes/_components/DishCompositionTab.tsx` | Restructure CostBreakdown, update cost calculation for inclusion_type, update subtotal display |
 | `src/app/(authenticated)/menu-management/dishes/_components/DishGpAnalysisTab.tsx` | Add upgrade impact section and allergen summary section |
-| `src/app/(authenticated)/menu-management/dishes/_components/DishDrawer.tsx` | Add inclusion_type + upgrade_price to hydration/save, update header cost display |
-| `src/app/(authenticated)/menu-management/dishes/_components/DishExpandedRow.tsx` | Add inclusion_type, upgrade_price, removable_allergens, is_modifiable_for to shared types |
+| `src/app/(authenticated)/menu-management/dishes/_components/DishDrawer.tsx` | Add inclusion_type + upgrade_price to hydration/save, update header cost display, add allergen verification button |
+| `src/app/(authenticated)/menu-management/dishes/_components/DishExpandedRow.tsx` | Add inclusion_type, upgrade_price, removable_allergens, is_modifiable_for, allergen_verified to shared types |
 | `src/app/(authenticated)/menu-management/dishes/page.tsx` | Update data mapping |
-| `src/app/(authenticated)/menu-management/_components/MenuDishesTable.tsx` | Update types, combination logic for inclusion_type |
+| `src/app/(authenticated)/menu-management/_components/MenuDishesTable.tsx` | Update types, combination logic for inclusion_type (choice groups only, exclude upgrades from base) |
 | `src/app/(authenticated)/menu-management/page.tsx` | Update data mapping and types |
 
 ---
