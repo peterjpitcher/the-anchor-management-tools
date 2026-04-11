@@ -1418,8 +1418,11 @@ export default function PrivateBookingDetailClient({
     if (!bookingId) {
       return;
     }
+    // Full page refresh ensures both booking state AND server-provided
+    // paymentHistory prop are updated (loadBooking only refreshes component state)
+    router.refresh();
     loadBooking(bookingId);
-  }, [bookingId, loadBooking]);
+  }, [bookingId, loadBooking, router]);
 
   // Handle PayPal return URL — capture the payment when PayPal redirects back
   useEffect(() => {
