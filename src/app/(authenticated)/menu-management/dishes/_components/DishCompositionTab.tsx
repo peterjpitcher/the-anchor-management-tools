@@ -264,6 +264,23 @@ export function DishCompositionTab({
 
   const totalPortionCost = recipesResult.baseTotal + ingredientsResult.baseTotal;
 
+  // Build cost lookup maps for inline display on rows
+  const unitCostMap = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const [id, ing] of ingredientMap) {
+      if (ing.latest_unit_cost != null) map.set(id, Number(ing.latest_unit_cost));
+    }
+    return map;
+  }, [ingredientMap]);
+
+  const recipeCostMap = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const [id, rec] of recipeMap) {
+      if (rec.portion_cost != null) map.set(id, Number(rec.portion_cost));
+    }
+    return map;
+  }, [recipeMap]);
+
   // Collect existing option group names across both lists
   const existingGroups = useMemo(() => {
     const groups = new Set<string>();
@@ -371,6 +388,7 @@ export function DishCompositionTab({
               existingGroups={existingGroups}
               onChange={updateRecipeRow}
               onRemove={removeRecipeRow}
+              recipeCostMap={recipeCostMap}
             />
           ))}
         </div>
@@ -401,6 +419,7 @@ export function DishCompositionTab({
               existingGroups={existingGroups}
               onChange={updateIngredientRow}
               onRemove={removeIngredientRow}
+              unitCostMap={unitCostMap}
             />
           ))}
         </div>
