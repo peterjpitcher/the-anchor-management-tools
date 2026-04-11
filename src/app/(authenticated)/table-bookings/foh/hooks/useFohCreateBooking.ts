@@ -181,7 +181,6 @@ export function useFohCreateBooking(input: {
     }
     void loadSundayMenu()
     return () => { cancelled = true; if (timeoutId != null) window.clearTimeout(timeoutId); controller.abort() }
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- loadingSundayMenu intentionally excluded: it is a guard, not a trigger; including it causes the effect to re-run and abort the in-flight fetch
   }, [createForm.booking_date, createForm.sunday_lunch, hasLoadedSundayMenu, isCreateModalOpen])
 
   // --- Event options loader ---
