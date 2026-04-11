@@ -7,6 +7,8 @@ import EventDetailClient from './EventDetailClient'
 import { Event } from '@/types/database'
 import { EventCategory } from '@/types/event-categories'
 
+export const maxDuration = 60
+
 type EventWithCategory = Event & {
   category?: EventCategory | null
 }
