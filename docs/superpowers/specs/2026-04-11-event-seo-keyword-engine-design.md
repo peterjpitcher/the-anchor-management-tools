@@ -16,7 +16,8 @@ Optimise the event data published to brand sites by adding a three-tier keyword 
 - Per-field regeneration buttons (single generation covers all)
 - SERP preview or keyword density analysis tooling
 - Automated keyword research within the app
-- Changes to the brand site rendering (it already consumes the fields we'll populate)
+- Changes to the brand site rendering (separate project, out of scope)
+- Fixing unrelated existing bugs (except where they directly block this feature)
 
 ---
 
@@ -46,9 +47,23 @@ In the **Basic Information** section of the event edit form (`EventFormGrouped.t
 - Display chip/tag count below: "6 keywords entered"
 - Visually grouped in a subtle bordered card labelled "Keyword Strategy"
 
-### Backwards Compatibility
+### Keyword Validation
 
-The existing flat `keywords` column is auto-populated as the union of all three keyword arrays on save. This ensures the `/api/events` endpoint and Schema.org output continue to work unchanged. The `keywords` field is removed from the SEO & Content section UI but remains in the database and API response.
+All three keyword fields enforce:
+- Maximum 10 items per tier
+- Maximum 100 characters per keyword
+- Trim whitespace, collapse internal whitespace
+- Case-preserved (no forced lowercasing — keywords may include proper nouns)
+- Reject HTML tags and control characters
+- Deduplicate within each tier (case-insensitive comparison)
+
+### Backwards Compatibility & Migration
+
+The existing flat `keywords` column is auto-populated as the **derived union** of all three keyword arrays on save (deduplicated, ordered: primary first, then secondary, then local). The `keywords` field is removed from the SEO & Content section UI but remains in the database and API response.
+
+**Precedence rule:** The three-tier keyword inputs are the source of truth. The flat `keywords` column is always a derived output — never an input. Remove `keywords` from category cascade sources.
+
+**Legacy data migration:** On first edit of an existing event that has flat `keywords` but empty keyword tiers, pre-populate `secondary_keywords` from the existing `keywords` array. This preserves existing SEO data while migrating to the three-tier model. No bulk migration — happens lazily on edit.
 
 ---
 
@@ -82,12 +97,12 @@ Existing fields, now keyword-aware:
 |-------|-----------|---------|-----------|---------|
 | Image Alt Text | ~125 | `image_alt_text TEXT` | Primary + local keywords, event type, venue name | Expertise |
 | FAQs | 3-5 Q&A pairs | `event_faqs` table (existing) | Event logistics + keywords. Q: 10-15 words, A: 30-60 words | Expertise + Trust |
-| Facebook Copy | ~300 | `social_copy_facebook TEXT` | Engaging hook, key details, CTA. Uses secondary keywords | Distribution |
-| WhatsApp Copy | ~200 | `social_copy_whatsapp TEXT` | Short, emoji-friendly, essential info. Uses local keywords | Distribution |
-| Previous Event Summary | ~200 | `previous_event_summary TEXT` | 1-2 sentence recap of last occurrence. From brief/prompt | Experience |
-| Attendance Note | ~150 | `attendance_note TEXT` | Social proof from capacity/history data | Authority |
-| Cancellation Policy | ~200 | `cancellation_policy TEXT` | Generated from event type/price (free vs ticketed) | Trust |
-| Accessibility Notes | ~300 | `accessibility_notes TEXT` | NOT AI-generated. Manual, defaults from venue-level setting | Trust |
+| Facebook Copy | ~300 | Existing `facebook_event_name` + `facebook_event_description` | Engaging hook, key details, CTA. Uses secondary keywords | Distribution |
+| WhatsApp Copy | ~200 | `social_copy_whatsapp TEXT` (new) | Short, emoji-friendly, essential info. Uses local keywords | Distribution |
+| Previous Event Summary | ~200 | `previous_event_summary TEXT` (new) | **Manual field** with optional AI-suggested template. User must edit with real details. | Experience |
+| Attendance Note | ~150 | `attendance_note TEXT` (new) | **Manual field** — not AI-generated. User enters real attendance/social proof data. | Authority |
+| Cancellation Policy | ~200 | `cancellation_policy TEXT` (new) | AI suggests a draft based on event type/price, but marked as **draft requiring approval**. Category-level default takes precedence if set. | Trust |
+| Accessibility Notes | ~300 | `accessibility_notes TEXT` (new) | **Not AI-generated.** Manual, defaults from category-level setting. | Trust |
 
 ### Group 4: SEO Health Indicator
 
@@ -100,6 +115,7 @@ Non-editable summary bar at the bottom of the section:
   - 41-70: Amber — functional but room for improvement
   - 71-100: Green — well optimised
 - **Not a blocking gate** — events can be published at any score
+- **Execution:** Client-side only. Recomputes on field change (debounced 500ms). Not persisted to database. Not returned by API.
 
 #### Scoring Weights
 
@@ -132,13 +148,17 @@ Single "Generate All Content" button in the SEO & Content section header. Replac
 All inputs passed to the AI in a single call:
 
 ```
-Event Brief (required for generation)
+Event Brief (required — if empty, show warning: "Add an event brief for better AI content" but allow generation with degraded output)
 Primary Keywords (optional but recommended)
 Secondary Keywords (optional)
 Local SEO Keywords (optional)
 Event Name, Date, Time, Category, Performer, Price, Capacity
 Booking Mode, Is Free, Event Status
 ```
+
+**Important:** All DebouncedTextarea fields (brief, descriptions) must be flushed before generation to avoid reading stale parent state. Call a flush/sync method on debounced inputs before triggering the AI call.
+
+**Note on existing events:** When `eventId` is provided, the current AI action re-reads saved DB values for core fields (name, date, time, etc.), overriding unsaved form edits. This behaviour is preserved — the user should save the event first if they want AI to use updated core fields. Document this in the UI with a tooltip: "AI uses saved event details. Save changes first if you've updated event basics."
 
 ### Output
 
@@ -154,11 +174,10 @@ Single structured JSON response containing all fields:
   highlights: string[]
   imageAltText: string
   faqs: { question: string; answer: string }[]
-  socialCopyFacebook: string
+  facebookEventName: string          // Maps to existing facebook_event_name column
+  facebookEventDescription: string   // Maps to existing facebook_event_description column
   socialCopyWhatsapp: string
-  previousEventSummary: string | null
-  attendanceNote: string | null
-  cancellationPolicy: string
+  cancellationPolicy: string | null  // Draft suggestion only — requires user approval
 }
 ```
 
@@ -192,20 +211,29 @@ AI generates 3-5 FAQs covering:
 
 ### Social Copy Generation
 
-- **Facebook:** 2-3 sentences. Engaging hook, key details (date/time/price), CTA to book. ~250-300 chars. Uses secondary keywords.
-- **WhatsApp:** Single message format. Emoji-friendly, essential info only (what/when/where), link placeholder `[LINK]`. ~150-200 chars. Uses local keywords.
+- **Facebook:** AI populates the existing `facebook_event_name` (short title, ~100 chars) and `facebook_event_description` (2-3 sentences, ~300 chars, engaging hook, key details, CTA). Uses secondary keywords. This repurposes the existing promotion copy fields rather than adding new columns.
+- **WhatsApp:** Single message format. Emoji-friendly, essential info only (what/when/where), link placeholder `[LINK]`. ~150-200 chars. Uses local keywords. New `social_copy_whatsapp` column.
 
-### Previous Event Summary Logic
+### Previous Event Summary (Manual Field)
 
-- AI generates a 1-2 sentence recap suggesting what a past occurrence might have looked like
-- Phrased as a template the user should edit with real details: "Last [day]'s [event name] saw [X] teams compete, with [Team Name] taking the [prize]. Update this with real details from your last event."
-- If the event has never run before, this field is left null
+- **Not AI-generated.** This is a manual text field where the user enters a real recap of the last occurrence.
+- Placeholder text guides the user: "e.g. Last Wednesday's quiz night saw 12 teams compete, with Team Brainwave taking the £50 cash prize."
+- If the event has never run before, leave empty.
+
+### Attendance Note (Manual Field)
+
+- **Not AI-generated.** This is a manual text field for real social proof data.
+- Placeholder text: "e.g. Over 200 people attended last month's Six Nations screening" or "Sold out 3 weeks running"
+- Only the user can provide factual attendance claims.
 
 ### Cancellation Policy Logic
 
-- Free events: "Free entry — no booking or registration required."
-- Ticketed/paid events: "Tickets are non-refundable but may be transferred to another person. Please contact us at least 24 hours before the event for any changes."
-- User should edit to match actual venue policy
+- AI generates a **draft suggestion** based on event type/price:
+  - Free events: "Free entry — no booking or registration required."
+  - Ticketed/paid events: "Tickets are non-refundable but may be transferred to another person. Please contact us at least 24 hours before the event for any changes."
+- **Category-level default takes precedence:** If the event's category has a `cancellation_policy` set, use that instead of AI generation.
+- The field is marked as "Draft — review before publishing" in the UI until the user explicitly confirms or edits it.
+- **Legal note:** This is a suggestion, not legal advice. The user must verify it matches actual venue policy.
 
 ---
 
@@ -218,13 +246,14 @@ ALTER TABLE events ADD COLUMN primary_keywords JSONB DEFAULT '[]';
 ALTER TABLE events ADD COLUMN secondary_keywords JSONB DEFAULT '[]';
 ALTER TABLE events ADD COLUMN local_seo_keywords JSONB DEFAULT '[]';
 ALTER TABLE events ADD COLUMN image_alt_text TEXT;
-ALTER TABLE events ADD COLUMN social_copy_facebook TEXT;
 ALTER TABLE events ADD COLUMN social_copy_whatsapp TEXT;
 ALTER TABLE events ADD COLUMN previous_event_summary TEXT;
 ALTER TABLE events ADD COLUMN attendance_note TEXT;
 ALTER TABLE events ADD COLUMN cancellation_policy TEXT;
 ALTER TABLE events ADD COLUMN accessibility_notes TEXT;
 ```
+
+Note: No `social_copy_facebook` column — Facebook copy uses the existing `facebook_event_name` and `facebook_event_description` columns.
 
 ### New Columns on `event_categories` Table
 
@@ -235,18 +264,21 @@ ALTER TABLE event_categories ADD COLUMN primary_keywords JSONB DEFAULT '[]';
 ALTER TABLE event_categories ADD COLUMN secondary_keywords JSONB DEFAULT '[]';
 ALTER TABLE event_categories ADD COLUMN local_seo_keywords JSONB DEFAULT '[]';
 ALTER TABLE event_categories ADD COLUMN image_alt_text TEXT;
-ALTER TABLE event_categories ADD COLUMN social_copy_facebook TEXT;
-ALTER TABLE event_categories ADD COLUMN social_copy_whatsapp TEXT;
 ALTER TABLE event_categories ADD COLUMN cancellation_policy TEXT;
 ALTER TABLE event_categories ADD COLUMN accessibility_notes TEXT;
 ```
 
-Note: `previous_event_summary` and `attendance_note` are event-instance-specific, so no category default.
+Note: `previous_event_summary`, `attendance_note`, and `social_copy_whatsapp` are event-instance-specific, so no category default.
+
+### RPC Function Updates (Required)
+
+The PostgreSQL functions `create_event_transaction` and `update_event_transaction` enumerate columns explicitly. They **must** be updated via `CREATE OR REPLACE FUNCTION` in the same migration to include all new columns. Without this, new columns will be silently ignored on create/update.
 
 ### Existing Columns — No Changes
 
-- `keywords JSONB` — stays, auto-populated as union of three keyword arrays on save
+- `keywords JSONB` — stays, auto-populated as derived union of three keyword arrays on save
 - `event_faqs` table — stays, FAQs continue to use this existing relationship
+- `facebook_event_name`, `facebook_event_description` — stays, now also populated by AI generation
 - `slug`, `meta_title`, `meta_description`, `short_description`, `long_description`, `highlights` — all stay as-is
 
 ---
@@ -254,6 +286,8 @@ Note: `previous_event_summary` and `attendance_note` are event-instance-specific
 ## 5. API Changes
 
 ### `/api/events` Response
+
+**Important:** Both `/api/events/route.ts` and `/api/events/[id]/route.ts` manually shape their responses — they do NOT spread raw DB rows. New columns will NOT appear automatically. Both routes must be explicitly updated to include new fields in their response objects.
 
 New fields added to the event object in the API response:
 
@@ -264,7 +298,6 @@ New fields added to the event object in the API response:
   secondary_keywords: string[]
   local_seo_keywords: string[]
   image_alt_text: string | null
-  social_copy_facebook: string | null
   social_copy_whatsapp: string | null
   previous_event_summary: string | null
   attendance_note: string | null
@@ -273,7 +306,7 @@ New fields added to the event object in the API response:
 }
 ```
 
-The existing `keywords` field continues to be the union of all three keyword arrays (deduplicated, ordered: primary first, then secondary, then local).
+The existing `keywords` field continues to be the union of all three keyword arrays (deduplicated, ordered: primary first, then secondary, then local). The existing `facebook_event_name` and `facebook_event_description` fields are already in the API response.
 
 ### Schema.org Output Enhancement
 
@@ -307,33 +340,42 @@ The FAQ schema output already works via the `event_faqs` table.
 ### New Form State
 
 ```typescript
-// Added to form state
-primaryKeywords: string[]
-secondaryKeywords: string[]
-localSeoKeywords: string[]
+// Added to form state (individual useState per field, matching existing pattern)
+primaryKeywords: string       // Raw textarea value (comma/newline separated)
+secondaryKeywords: string     // Raw textarea value
+localSeoKeywords: string      // Raw textarea value
 imageAltText: string
-socialCopyFacebook: string
 socialCopyWhatsapp: string
-previousEventSummary: string
-attendanceNote: string
+previousEventSummary: string  // Manual field
+attendanceNote: string        // Manual field
 cancellationPolicy: string
 accessibilityNotes: string
+// FAQs: loaded from event_faqs, managed as { question: string; answer: string }[]
+faqs: { question: string; answer: string }[]
 ```
+
+Note: Facebook copy uses existing `facebookEventName` and `facebookEventDescription` state (already in the form for the promotion copy feature). Keyword textareas store raw input; parsing to arrays happens on save/generate.
 
 ---
 
 ## 7. Type Changes
 
-### `src/types/event.ts`
+### Primary type source: `src/types/database.generated.ts`
 
-Add to `Event` interface:
+**Important:** The live app imports `Event` from `src/types/database.ts`, which re-exports from `database.generated.ts`. The file `src/types/event.ts` is **stale** (still has removed columns like `description`, `price_currency`, `image_urls`) and is not used by the event form/actions. Do NOT target `event.ts` for type changes.
+
+New columns added via migration will automatically appear in `database.generated.ts` after running `npx supabase gen types typescript`. The generated types are the source of truth.
+
+### `src/types/database.ts`
+
+If any manual type extensions are needed (e.g. joined types, form-specific types), add them here. The new fields from the migration will be:
 
 ```typescript
-primary_keywords: string[] | null
-secondary_keywords: string[] | null
-local_seo_keywords: string[] | null
+// These will be auto-generated in database.generated.ts from the migration:
+primary_keywords: string[] | null    // JSONB
+secondary_keywords: string[] | null  // JSONB
+local_seo_keywords: string[] | null  // JSONB
 image_alt_text: string | null
-social_copy_facebook: string | null
 social_copy_whatsapp: string | null
 previous_event_summary: string | null
 attendance_note: string | null
@@ -343,7 +385,7 @@ accessibility_notes: string | null
 
 ### `src/types/event-categories.ts`
 
-Add matching fields (excluding event-instance-specific ones).
+Same approach — types generated from migration. Category-level fields only (no `previous_event_summary`, `attendance_note`, or `social_copy_whatsapp`).
 
 ---
 
@@ -364,15 +406,17 @@ localSeoKeywords?: string[]
   // ... existing fields ...
   imageAltText: string | null
   faqs: { question: string; answer: string }[]
-  socialCopyFacebook: string | null
+  facebookEventName: string | null         // Maps to existing column
+  facebookEventDescription: string | null  // Maps to existing column
   socialCopyWhatsapp: string | null
-  previousEventSummary: string | null
-  attendanceNote: string | null
-  cancellationPolicy: string | null
+  cancellationPolicy: string | null        // Draft suggestion only
+  // NOTE: previousEventSummary and attendanceNote are NOT AI-generated
 }
 ```
 
-**Updated AI prompt:** Incorporates keyword placement rules and E-E-A-T field generation as specified in Section 3.
+**Updated AI prompt:** Incorporates keyword placement rules as specified in Section 3. Keywords are clearly delimited as data (not instructions) in the prompt to mitigate prompt injection. Post-generation validation rejects any output containing HTML tags, URLs not in the input, or text exceeding field limits.
+
+**Token budget:** The current AI call uses `max_tokens: 1500` for 7 fields. With the expanded output (FAQ Q&A pairs + additional fields), increase to `max_tokens: 3500`. Prototype with real event data to verify quality and latency are acceptable.
 
 ### `createEvent()` / `updateEvent()` in `src/app/actions/events.ts`
 
@@ -385,57 +429,93 @@ localSeoKeywords?: string[]
 Add new fields to `eventSchema` in `src/services/events.ts`:
 
 ```typescript
-primary_keywords: z.array(z.string()).default([]),
-secondary_keywords: z.array(z.string()).default([]),
-local_seo_keywords: z.array(z.string()).default([]),
+// Keyword validation helper — shared across all three tiers
+const keywordArray = z.array(
+  z.string()
+    .max(100, 'Keyword must be under 100 characters')
+    .transform(s => s.trim().replace(/\s+/g, ' '))  // collapse whitespace
+    .refine(s => !/<[^>]+>/.test(s), 'Keywords must not contain HTML')
+).max(10, 'Maximum 10 keywords per tier').default([]);
+
+primary_keywords: keywordArray,
+secondary_keywords: keywordArray,
+local_seo_keywords: keywordArray,
 image_alt_text: z.string().max(200).nullable().optional(),
-social_copy_facebook: z.string().max(500).nullable().optional(),
 social_copy_whatsapp: z.string().max(300).nullable().optional(),
-previous_event_summary: z.string().max(500).nullable().optional(),
-attendance_note: z.string().max(300).nullable().optional(),
-cancellation_policy: z.string().max(500).nullable().optional(),
-accessibility_notes: z.string().max(500).nullable().optional(),
+previous_event_summary: z.string().max(300).nullable().optional(),
+attendance_note: z.string().max(200).nullable().optional(),
+cancellation_policy: z.string().max(300).nullable().optional(),
+accessibility_notes: z.string().max(300).nullable().optional(),
 ```
+
+Note: `social_copy_facebook` is not needed — Facebook copy uses existing `facebook_event_name` / `facebook_event_description` fields which already have validation.
 
 ---
 
 ## 9. Category Cascading
 
-When a user selects a category on the event form, empty keyword and content fields auto-populate from the category defaults. This extends the existing cascading pattern to include:
+### Prerequisite: Fix existing cascade bugs
+
+Before extending, fix these existing defects in `prepareEventDataFromFormData()` (`src/app/actions/events.ts`):
+- Fix `event_categories.image_url` → should be `default_image_url` (matches actual schema)
+- Remove reference to non-existent `event_categories.brief`
+- Remove `keywords` from cascade sources (now a derived field, not a cascade target)
+
+### Extended cascade fields
+
+When a user selects a category on the event form, empty keyword and content fields auto-populate from the category defaults:
 
 - `primary_keywords` — e.g. "Live Music" category defaults: `["live music Heathrow", "live band near me"]`
 - `secondary_keywords` — category-level defaults
 - `local_seo_keywords` — category-level defaults (likely same across categories since venue is constant)
 - `cancellation_policy` — category-level default
-- `accessibility_notes` — category-level default (venue constant)
+- `accessibility_notes` — category-level default (venue-wide constant, set once per category but typically identical)
 - `image_alt_text` — category-level default template
+
+### Category edit form
+
+The category edit form (`EventCategoryFormGrouped.tsx`) and category actions must also be updated to support editing the new default fields. This is in scope for this feature.
 
 ---
 
 ## 10. Brand Site Consumption
 
-The brand site at `OJ-The-Anchor.pub` already consumes event data via the `/api/events` endpoint. The new fields will be available in the API response automatically. The brand site will need separate updates to render the new fields, but that is **out of scope** for this spec. The management tool changes are self-contained.
+The brand site at `OJ-The-Anchor.pub` consumes event data via the `/api/events` endpoint. New fields will be available in the API response **only after the API routes are explicitly updated** (see Section 5). The brand site will need separate updates to render the new fields — that is **out of scope** for this spec.
 
 Fields the brand site can consume when ready:
 - `image_alt_text` — for `<img alt>` attributes
-- `social_copy_facebook` / `social_copy_whatsapp` — for social share buttons
+- `social_copy_whatsapp` — for WhatsApp share button
+- `facebook_event_name` / `facebook_event_description` — already consumed, now keyword-optimised
 - `previous_event_summary` — for "Last time..." section
 - `attendance_note` — for social proof display
 - `cancellation_policy` — for terms section
 - `accessibility_notes` — for accessibility info section
 - FAQs — already consumed via existing `event_faqs` relationship
 
+**Security note:** The brand site must render all text fields safely (React's default text rendering is safe; avoid `dangerouslySetInnerHTML` or unescaped markdown rendering for these fields).
+
 ---
 
 ## 11. Migration Strategy
 
-1. Database migration adds all new columns (non-breaking, all nullable/defaulted)
-2. Update RPC functions (`create_event_transaction`, `update_event_transaction`) to handle new columns
-3. Update types, Zod schemas, and server actions
-4. Update form component with keyword inputs and restructured SEO section
-5. Update AI generation prompt and response handling
-6. Add SEO health indicator component
-7. Update API response to include new fields
-8. Update Schema.org output
+### Prerequisites (fix existing bugs that block this feature)
 
-All changes are additive. No existing data is modified. No breaking changes to the API.
+0a. **Fix FAQ persistence on edit** — the edit page must load `event_faqs`, the form must manage FAQ state, `prepareEventDataFromFormData` must distinguish "no FAQs sent" (preserve existing) from "empty FAQs sent" (delete all), and the RPC must only delete/replace FAQs when explicitly changed. Without this, AI-generated FAQs will be wiped on every subsequent edit save.
+
+0b. **Fix category cascade field names** — repair `image_url` → `default_image_url` and remove non-existent `brief` reference in `prepareEventDataFromFormData`.
+
+### Implementation steps
+
+1. Database migration: add all new columns on `events` and `event_categories` (non-breaking, all nullable/defaulted)
+2. Database migration: `CREATE OR REPLACE FUNCTION` for `create_event_transaction` and `update_event_transaction` to include all new columns in their INSERT/UPDATE statements
+3. Regenerate types: `npx supabase gen types typescript` to update `database.generated.ts`
+4. Update Zod schemas in `src/services/events.ts` with new field validation (including keyword array validation)
+5. Update server actions (`events.ts`, `event-content.ts`) — add keyword union logic, pass new fields to RPCs, flush DebouncedTextarea before generation
+6. Update form component (`EventFormGrouped.tsx`) — keyword inputs in Basic Information, restructured SEO section with new fields
+7. Update category edit form (`EventCategoryFormGrouped.tsx`) — add new default fields
+8. Update AI generation prompt and response handling — keyword placement rules, expanded output schema, increased token budget
+9. Add SEO health indicator component (client-side only)
+10. Update API routes (`/api/events/route.ts`, `/api/events/[id]/route.ts`) — explicitly add new fields to response shapers
+11. Update Schema.org output (`src/lib/api/schema.ts`) — add `accessibilityFeature`, `refundPolicy`, image alt text
+
+All changes are additive. No existing data is modified. No breaking changes to the API. Legacy `keywords` field continues to work as a derived union.
