@@ -773,6 +773,7 @@ export type Database = {
           notes: string | null
           review_clicked_at: string | null
           review_sms_sent_at: string | null
+          review_suppressed_at: string | null
           review_window_closes_at: string | null
           seats: number | null
           source: string
@@ -795,6 +796,7 @@ export type Database = {
           notes?: string | null
           review_clicked_at?: string | null
           review_sms_sent_at?: string | null
+          review_suppressed_at?: string | null
           review_window_closes_at?: string | null
           seats?: number | null
           source?: string
@@ -817,6 +819,7 @@ export type Database = {
           notes?: string | null
           review_clicked_at?: string | null
           review_sms_sent_at?: string | null
+          review_suppressed_at?: string | null
           review_window_closes_at?: string | null
           seats?: number | null
           source?: string
@@ -2336,6 +2339,8 @@ export type Database = {
       }
       event_categories: {
         Row: {
+          accessibility_notes: string | null
+          cancellation_policy: string | null
           color: string
           created_at: string | null
           default_booking_url: string | null
@@ -2359,15 +2364,19 @@ export type Database = {
           highlights: Json | null
           icon: string | null
           id: string
+          image_alt_text: string | null
           is_active: boolean | null
           is_default: boolean | null
           keywords: Json | null
+          local_seo_keywords: Json | null
           long_description: string | null
           meta_description: string | null
           meta_title: string | null
           name: string
           poster_image_url: string | null
+          primary_keywords: Json | null
           promo_video_url: string | null
+          secondary_keywords: Json | null
           short_description: string | null
           slug: string
           sort_order: number | null
@@ -2375,6 +2384,8 @@ export type Database = {
           updated_at: string | null
         }
         Insert: {
+          accessibility_notes?: string | null
+          cancellation_policy?: string | null
           color?: string
           created_at?: string | null
           default_booking_url?: string | null
@@ -2398,15 +2409,19 @@ export type Database = {
           highlights?: Json | null
           icon?: string | null
           id?: string
+          image_alt_text?: string | null
           is_active?: boolean | null
           is_default?: boolean | null
           keywords?: Json | null
+          local_seo_keywords?: Json | null
           long_description?: string | null
           meta_description?: string | null
           meta_title?: string | null
           name: string
           poster_image_url?: string | null
+          primary_keywords?: Json | null
           promo_video_url?: string | null
+          secondary_keywords?: Json | null
           short_description?: string | null
           slug: string
           sort_order?: number | null
@@ -2414,6 +2429,8 @@ export type Database = {
           updated_at?: string | null
         }
         Update: {
+          accessibility_notes?: string | null
+          cancellation_policy?: string | null
           color?: string
           created_at?: string | null
           default_booking_url?: string | null
@@ -2437,15 +2454,19 @@ export type Database = {
           highlights?: Json | null
           icon?: string | null
           id?: string
+          image_alt_text?: string | null
           is_active?: boolean | null
           is_default?: boolean | null
           keywords?: Json | null
+          local_seo_keywords?: Json | null
           long_description?: string | null
           meta_description?: string | null
           meta_title?: string | null
           name?: string
           poster_image_url?: string | null
+          primary_keywords?: Json | null
           promo_video_url?: string | null
+          secondary_keywords?: Json | null
           short_description?: string | null
           slug?: string
           sort_order?: number | null
@@ -2783,10 +2804,13 @@ export type Database = {
       }
       events: {
         Row: {
+          accessibility_notes: string | null
+          attendance_note: string | null
           booking_mode: string
           booking_open: boolean
           booking_url: string | null
           brief: string | null
+          cancellation_policy: string | null
           capacity: number | null
           category_id: string | null
           created_at: string
@@ -2805,9 +2829,11 @@ export type Database = {
           highlight_video_urls: Json | null
           highlights: Json | null
           id: string
+          image_alt_text: string | null
           is_free: boolean | null
           keywords: Json | null
           last_entry_time: string | null
+          local_seo_keywords: Json | null
           long_description: string | null
           meta_description: string | null
           meta_title: string | null
@@ -2818,20 +2844,27 @@ export type Database = {
           performer_name: string | null
           performer_type: string | null
           poster_image_url: string | null
+          previous_event_summary: string | null
           price: number | null
           price_per_seat: number | null
+          primary_keywords: Json | null
           promo_video_url: string | null
+          secondary_keywords: Json | null
           short_description: string | null
           slug: string
+          social_copy_whatsapp: string | null
           start_datetime: string | null
           thumbnail_image_url: string | null
           time: string
         }
         Insert: {
+          accessibility_notes?: string | null
+          attendance_note?: string | null
           booking_mode?: string
           booking_open?: boolean
           booking_url?: string | null
           brief?: string | null
+          cancellation_policy?: string | null
           capacity?: number | null
           category_id?: string | null
           created_at?: string
@@ -2850,9 +2883,11 @@ export type Database = {
           highlight_video_urls?: Json | null
           highlights?: Json | null
           id?: string
+          image_alt_text?: string | null
           is_free?: boolean | null
           keywords?: Json | null
           last_entry_time?: string | null
+          local_seo_keywords?: Json | null
           long_description?: string | null
           meta_description?: string | null
           meta_title?: string | null
@@ -2863,20 +2898,27 @@ export type Database = {
           performer_name?: string | null
           performer_type?: string | null
           poster_image_url?: string | null
+          previous_event_summary?: string | null
           price?: number | null
           price_per_seat?: number | null
+          primary_keywords?: Json | null
           promo_video_url?: string | null
+          secondary_keywords?: Json | null
           short_description?: string | null
           slug: string
+          social_copy_whatsapp?: string | null
           start_datetime?: string | null
           thumbnail_image_url?: string | null
           time: string
         }
         Update: {
+          accessibility_notes?: string | null
+          attendance_note?: string | null
           booking_mode?: string
           booking_open?: boolean
           booking_url?: string | null
           brief?: string | null
+          cancellation_policy?: string | null
           capacity?: number | null
           category_id?: string | null
           created_at?: string
@@ -2895,9 +2937,11 @@ export type Database = {
           highlight_video_urls?: Json | null
           highlights?: Json | null
           id?: string
+          image_alt_text?: string | null
           is_free?: boolean | null
           keywords?: Json | null
           last_entry_time?: string | null
+          local_seo_keywords?: Json | null
           long_description?: string | null
           meta_description?: string | null
           meta_title?: string | null
@@ -2908,11 +2952,15 @@ export type Database = {
           performer_name?: string | null
           performer_type?: string | null
           poster_image_url?: string | null
+          previous_event_summary?: string | null
           price?: number | null
           price_per_seat?: number | null
+          primary_keywords?: Json | null
           promo_video_url?: string | null
+          secondary_keywords?: Json | null
           short_description?: string | null
           slug?: string
+          social_copy_whatsapp?: string | null
           start_datetime?: string | null
           thumbnail_image_url?: string | null
           time?: string
@@ -2923,6 +2971,104 @@ export type Database = {
             columns: ["category_id"]
             isOneToOne: false
             referencedRelation: "event_categories"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      expense_files: {
+        Row: {
+          expense_id: string
+          file_name: string
+          file_size_bytes: number | null
+          id: string
+          mime_type: string
+          storage_path: string
+          uploaded_at: string
+          uploaded_by: string | null
+        }
+        Insert: {
+          expense_id: string
+          file_name: string
+          file_size_bytes?: number | null
+          id?: string
+          mime_type: string
+          storage_path: string
+          uploaded_at?: string
+          uploaded_by?: string | null
+        }
+        Update: {
+          expense_id?: string
+          file_name?: string
+          file_size_bytes?: number | null
+          id?: string
+          mime_type?: string
+          storage_path?: string
+          uploaded_at?: string
+          uploaded_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "expense_files_expense_id_fkey"
+            columns: ["expense_id"]
+            isOneToOne: false
+            referencedRelation: "expenses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "expense_files_uploaded_by_fkey"
+            columns: ["uploaded_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users_view"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      expenses: {
+        Row: {
+          amount: number
+          company_ref: string
+          created_at: string
+          created_by: string | null
+          expense_date: string
+          id: string
+          justification: string
+          notes: string | null
+          updated_at: string
+          vat_amount: number
+          vat_applicable: boolean
+        }
+        Insert: {
+          amount: number
+          company_ref: string
+          created_at?: string
+          created_by?: string | null
+          expense_date: string
+          id?: string
+          justification: string
+          notes?: string | null
+          updated_at?: string
+          vat_amount?: number
+          vat_applicable?: boolean
+        }
+        Update: {
+          amount?: number
+          company_ref?: string
+          created_at?: string
+          created_by?: string | null
+          expense_date?: string
+          id?: string
+          justification?: string
+          notes?: string | null
+          updated_at?: string
+          vat_amount?: number
+          vat_applicable?: boolean
+        }
+        Relationships: [
+          {
+            foreignKeyName: "expenses_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users_view"
             referencedColumns: ["id"]
           },
         ]
@@ -4458,11 +4604,15 @@ export type Database = {
           created_at: string
           dish_id: string
           id: string
+          inclusion_type: string
           ingredient_id: string
+          measure_ml: number | null
           notes: string | null
+          option_group: string | null
           quantity: number
           unit: Database["public"]["Enums"]["menu_unit"]
           updated_at: string
+          upgrade_price: number | null
           wastage_pct: number
           yield_pct: number
         }
@@ -4471,11 +4621,15 @@ export type Database = {
           created_at?: string
           dish_id: string
           id?: string
+          inclusion_type?: string
           ingredient_id: string
+          measure_ml?: number | null
           notes?: string | null
+          option_group?: string | null
           quantity?: number
           unit: Database["public"]["Enums"]["menu_unit"]
           updated_at?: string
+          upgrade_price?: number | null
           wastage_pct?: number
           yield_pct?: number
         }
@@ -4484,11 +4638,15 @@ export type Database = {
           created_at?: string
           dish_id?: string
           id?: string
+          inclusion_type?: string
           ingredient_id?: string
+          measure_ml?: number | null
           notes?: string | null
+          option_group?: string | null
           quantity?: number
           unit?: Database["public"]["Enums"]["menu_unit"]
           updated_at?: string
+          upgrade_price?: number | null
           wastage_pct?: number
           yield_pct?: number
         }
@@ -4600,10 +4758,13 @@ export type Database = {
           created_at: string
           dish_id: string
           id: string
+          inclusion_type: string
           notes: string | null
+          option_group: string | null
           quantity: number
           recipe_id: string
           updated_at: string
+          upgrade_price: number | null
           wastage_pct: number
           yield_pct: number
         }
@@ -4612,10 +4773,13 @@ export type Database = {
           created_at?: string
           dish_id: string
           id?: string
+          inclusion_type?: string
           notes?: string | null
+          option_group?: string | null
           quantity?: number
           recipe_id: string
           updated_at?: string
+          upgrade_price?: number | null
           wastage_pct?: number
           yield_pct?: number
         }
@@ -4624,10 +4788,13 @@ export type Database = {
           created_at?: string
           dish_id?: string
           id?: string
+          inclusion_type?: string
           notes?: string | null
+          option_group?: string | null
           quantity?: number
           recipe_id?: string
           updated_at?: string
+          upgrade_price?: number | null
           wastage_pct?: number
           yield_pct?: number
         }
@@ -4658,6 +4825,8 @@ export type Database = {
       menu_dishes: {
         Row: {
           allergen_flags: string[]
+          allergen_verified: boolean | null
+          allergen_verified_at: string | null
           calories: number | null
           created_at: string
           description: string | null
@@ -4667,10 +4836,12 @@ export type Database = {
           image_url: string | null
           is_active: boolean
           is_gp_alert: boolean
+          is_modifiable_for: Json | null
           is_sunday_lunch: boolean
           name: string
           notes: string | null
           portion_cost: number
+          removable_allergens: string[] | null
           selling_price: number
           slug: string | null
           target_gp_pct: number
@@ -4678,6 +4849,8 @@ export type Database = {
         }
         Insert: {
           allergen_flags?: string[]
+          allergen_verified?: boolean | null
+          allergen_verified_at?: string | null
           calories?: number | null
           created_at?: string
           description?: string | null
@@ -4687,10 +4860,12 @@ export type Database = {
           image_url?: string | null
           is_active?: boolean
           is_gp_alert?: boolean
+          is_modifiable_for?: Json | null
           is_sunday_lunch?: boolean
           name: string
           notes?: string | null
           portion_cost?: number
+          removable_allergens?: string[] | null
           selling_price?: number
           slug?: string | null
           target_gp_pct?: number
@@ -4698,6 +4873,8 @@ export type Database = {
         }
         Update: {
           allergen_flags?: string[]
+          allergen_verified?: boolean | null
+          allergen_verified_at?: string | null
           calories?: number | null
           created_at?: string
           description?: string | null
@@ -4707,10 +4884,12 @@ export type Database = {
           image_url?: string | null
           is_active?: boolean
           is_gp_alert?: boolean
+          is_modifiable_for?: Json | null
           is_sunday_lunch?: boolean
           name?: string
           notes?: string | null
           portion_cost?: number
+          removable_allergens?: string[] | null
           selling_price?: number
           slug?: string | null
           target_gp_pct?: number
@@ -4768,6 +4947,7 @@ export type Database = {
       }
       menu_ingredients: {
         Row: {
+          abv: number | null
           allergens: string[]
           brand: string | null
           created_at: string
@@ -4790,6 +4970,7 @@ export type Database = {
           wastage_pct: number
         }
         Insert: {
+          abv?: number | null
           allergens?: string[]
           brand?: string | null
           created_at?: string
@@ -4812,6 +4993,7 @@ export type Database = {
           wastage_pct?: number
         }
         Update: {
+          abv?: number | null
           allergens?: string[]
           brand?: string | null
           created_at?: string
@@ -5374,6 +5556,289 @@ export type Database = {
             columns: ["table_booking_id"]
             isOneToOne: false
             referencedRelation: "table_bookings"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      mgd_collections: {
+        Row: {
+          collection_date: string
+          created_at: string
+          created_by: string | null
+          id: string
+          mgd_amount: number | null
+          net_take: number
+          notes: string | null
+          updated_at: string
+          vat_on_supplier: number
+        }
+        Insert: {
+          collection_date: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          mgd_amount?: number | null
+          net_take: number
+          notes?: string | null
+          updated_at?: string
+          vat_on_supplier: number
+        }
+        Update: {
+          collection_date?: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          mgd_amount?: number | null
+          net_take?: number
+          notes?: string | null
+          updated_at?: string
+          vat_on_supplier?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "mgd_collections_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users_view"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      mgd_returns: {
+        Row: {
+          created_at: string
+          date_paid: string | null
+          id: string
+          period_end: string
+          period_start: string
+          status: string
+          submitted_at: string | null
+          submitted_by: string | null
+          total_mgd: number
+          total_net_take: number
+          total_vat_on_supplier: number
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          date_paid?: string | null
+          id?: string
+          period_end: string
+          period_start: string
+          status?: string
+          submitted_at?: string | null
+          submitted_by?: string | null
+          total_mgd?: number
+          total_net_take?: number
+          total_vat_on_supplier?: number
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          date_paid?: string | null
+          id?: string
+          period_end?: string
+          period_start?: string
+          status?: string
+          submitted_at?: string | null
+          submitted_by?: string | null
+          total_mgd?: number
+          total_net_take?: number
+          total_vat_on_supplier?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "mgd_returns_submitted_by_fkey"
+            columns: ["submitted_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users_view"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      mileage_destination_distances: {
+        Row: {
+          from_destination_id: string
+          id: string
+          last_used_at: string
+          miles: number
+          to_destination_id: string
+        }
+        Insert: {
+          from_destination_id: string
+          id?: string
+          last_used_at?: string
+          miles: number
+          to_destination_id: string
+        }
+        Update: {
+          from_destination_id?: string
+          id?: string
+          last_used_at?: string
+          miles?: number
+          to_destination_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "mileage_destination_distances_from_destination_id_fkey"
+            columns: ["from_destination_id"]
+            isOneToOne: false
+            referencedRelation: "mileage_destinations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "mileage_destination_distances_to_destination_id_fkey"
+            columns: ["to_destination_id"]
+            isOneToOne: false
+            referencedRelation: "mileage_destinations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      mileage_destinations: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          id: string
+          is_home_base: boolean
+          name: string
+          postcode: string | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          is_home_base?: boolean
+          name: string
+          postcode?: string | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          is_home_base?: boolean
+          name?: string
+          postcode?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "mileage_destinations_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users_view"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      mileage_trip_legs: {
+        Row: {
+          from_destination_id: string
+          id: string
+          leg_order: number
+          miles: number
+          to_destination_id: string
+          trip_id: string
+        }
+        Insert: {
+          from_destination_id: string
+          id?: string
+          leg_order: number
+          miles: number
+          to_destination_id: string
+          trip_id: string
+        }
+        Update: {
+          from_destination_id?: string
+          id?: string
+          leg_order?: number
+          miles?: number
+          to_destination_id?: string
+          trip_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "mileage_trip_legs_from_destination_id_fkey"
+            columns: ["from_destination_id"]
+            isOneToOne: false
+            referencedRelation: "mileage_destinations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "mileage_trip_legs_to_destination_id_fkey"
+            columns: ["to_destination_id"]
+            isOneToOne: false
+            referencedRelation: "mileage_destinations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "mileage_trip_legs_trip_id_fkey"
+            columns: ["trip_id"]
+            isOneToOne: false
+            referencedRelation: "mileage_trips"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      mileage_trips: {
+        Row: {
+          amount_due: number
+          created_at: string
+          created_by: string | null
+          description: string | null
+          id: string
+          miles_at_reduced_rate: number
+          miles_at_standard_rate: number
+          oj_entry_id: string | null
+          source: string
+          total_miles: number
+          trip_date: string
+          updated_at: string
+        }
+        Insert: {
+          amount_due: number
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          miles_at_reduced_rate?: number
+          miles_at_standard_rate?: number
+          oj_entry_id?: string | null
+          source: string
+          total_miles: number
+          trip_date: string
+          updated_at?: string
+        }
+        Update: {
+          amount_due?: number
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          miles_at_reduced_rate?: number
+          miles_at_standard_rate?: number
+          oj_entry_id?: string | null
+          source?: string
+          total_miles?: number
+          trip_date?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "mileage_trips_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users_view"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "mileage_trips_oj_entry_id_fkey"
+            columns: ["oj_entry_id"]
+            isOneToOne: true
+            referencedRelation: "oj_entries"
             referencedColumns: ["id"]
           },
         ]
@@ -7109,6 +7574,8 @@ export type Database = {
           internal_notes: string | null
           paypal_deposit_capture_id: string | null
           paypal_deposit_order_id: string | null
+          review_clicked_at: string | null
+          review_processed_at: string | null
           setup_date: string | null
           setup_time: string | null
           source: string | null
@@ -7154,6 +7621,8 @@ export type Database = {
           internal_notes?: string | null
           paypal_deposit_capture_id?: string | null
           paypal_deposit_order_id?: string | null
+          review_clicked_at?: string | null
+          review_processed_at?: string | null
           setup_date?: string | null
           setup_time?: string | null
           source?: string | null
@@ -7199,6 +7668,8 @@ export type Database = {
           internal_notes?: string | null
           paypal_deposit_capture_id?: string | null
           paypal_deposit_order_id?: string | null
+          review_clicked_at?: string | null
+          review_processed_at?: string | null
           setup_date?: string | null
           setup_time?: string | null
           source?: string | null
@@ -8265,6 +8736,27 @@ export type Database = {
           },
         ]
       }
+      rota_google_calendar_events: {
+        Row: {
+          google_event_id: string
+          shift_id: string
+          updated_at: string | null
+          week_id: string
+        }
+        Insert: {
+          google_event_id: string
+          shift_id: string
+          updated_at?: string | null
+          week_id: string
+        }
+        Update: {
+          google_event_id?: string
+          shift_id?: string
+          updated_at?: string | null
+          week_id?: string
+        }
+        Relationships: []
+      }
       rota_published_shifts: {
         Row: {
           department: string
@@ -8826,6 +9318,7 @@ export type Database = {
           link_type: string
           metadata: Json | null
           name: string | null
+          parent_link_id: string | null
           short_code: string
           updated_at: string | null
         }
@@ -8840,6 +9333,7 @@ export type Database = {
           link_type: string
           metadata?: Json | null
           name?: string | null
+          parent_link_id?: string | null
           short_code: string
           updated_at?: string | null
         }
@@ -8854,6 +9348,7 @@ export type Database = {
           link_type?: string
           metadata?: Json | null
           name?: string | null
+          parent_link_id?: string | null
           short_code?: string
           updated_at?: string | null
         }
@@ -8863,6 +9358,20 @@ export type Database = {
             columns: ["created_by"]
             isOneToOne: false
             referencedRelation: "admin_users_view"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "short_links_parent_link_id_fkey"
+            columns: ["parent_link_id"]
+            isOneToOne: false
+            referencedRelation: "short_link_daily_stats"
+            referencedColumns: ["short_link_id"]
+          },
+          {
+            foreignKeyName: "short_links_parent_link_id_fkey"
+            columns: ["parent_link_id"]
+            isOneToOne: false
+            referencedRelation: "short_links"
             referencedColumns: ["id"]
           },
         ]
@@ -8884,6 +9393,71 @@ export type Database = {
           name?: string
         }
         Relationships: []
+      }
+      sms_promo_context: {
+        Row: {
+          booking_created: boolean | null
+          created_at: string | null
+          customer_id: string
+          event_id: string
+          id: string
+          message_id: string | null
+          phone_number: string
+          reply_window_expires_at: string
+          template_key: string
+        }
+        Insert: {
+          booking_created?: boolean | null
+          created_at?: string | null
+          customer_id: string
+          event_id: string
+          id?: string
+          message_id?: string | null
+          phone_number: string
+          reply_window_expires_at: string
+          template_key: string
+        }
+        Update: {
+          booking_created?: boolean | null
+          created_at?: string | null
+          customer_id?: string
+          event_id?: string
+          id?: string
+          message_id?: string | null
+          phone_number?: string
+          reply_window_expires_at?: string
+          template_key?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sms_promo_context_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customer_messaging_health"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sms_promo_context_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sms_promo_context_event_id_fkey"
+            columns: ["event_id"]
+            isOneToOne: false
+            referencedRelation: "events"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sms_promo_context_message_id_fkey"
+            columns: ["message_id"]
+            isOneToOne: false
+            referencedRelation: "messages"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       special_hours: {
         Row: {
@@ -9310,6 +9884,7 @@ export type Database = {
           reminder_sent: boolean | null
           review_clicked_at: string | null
           review_sms_sent_at: string | null
+          review_suppressed_at: string | null
           seated_at: string | null
           source: string | null
           special_requirements: string | null
@@ -9367,6 +9942,7 @@ export type Database = {
           reminder_sent?: boolean | null
           review_clicked_at?: string | null
           review_sms_sent_at?: string | null
+          review_suppressed_at?: string | null
           seated_at?: string | null
           source?: string | null
           special_requirements?: string | null
@@ -9424,6 +10000,7 @@ export type Database = {
           reminder_sent?: boolean | null
           review_clicked_at?: string | null
           review_sms_sent_at?: string | null
+          review_suppressed_at?: string | null
           seated_at?: string | null
           source?: string | null
           special_requirements?: string | null
@@ -10463,6 +11040,7 @@ export type Database = {
       }
       menu_ingredients_with_prices: {
         Row: {
+          abv: number | null
           allergens: string[] | null
           brand: string | null
           created_at: string | null
@@ -10488,6 +11066,7 @@ export type Database = {
           wastage_pct: number | null
         }
         Insert: {
+          abv?: number | null
           allergens?: string[] | null
           brand?: string | null
           created_at?: string | null
@@ -10513,6 +11092,7 @@ export type Database = {
           wastage_pct?: number | null
         }
         Update: {
+          abv?: number | null
           allergens?: string[] | null
           brand?: string | null
           created_at?: string | null
@@ -10850,6 +11430,10 @@ export type Database = {
         Args: { p_hashed_token: string; p_source?: string }
         Returns: Json
       }
+      apply_balance_payment_status: {
+        Args: { p_booking_id: string }
+        Returns: undefined
+      }
       apply_customer_labels_retroactively: { Args: never; Returns: undefined }
       apply_event_seat_increase_payment_v05: {
         Args: {
@@ -10861,6 +11445,88 @@ export type Database = {
           p_target_seats: number
         }
         Returns: Json
+      }
+      atomic_insert_parking_booking: {
+        Args: {
+          p_calculated_price: number
+          p_capacity_override: boolean
+          p_capacity_override_reason: string
+          p_created_by: string
+          p_customer_email: string
+          p_customer_first_name: string
+          p_customer_id: string
+          p_customer_last_name: string
+          p_customer_mobile: string
+          p_duration_minutes: number
+          p_end_at: string
+          p_expires_at: string
+          p_initial_request_sms_sent: boolean
+          p_notes: string
+          p_override_price: number
+          p_override_reason: string
+          p_paid_end_three_day_sms_sent: boolean
+          p_paid_start_three_day_sms_sent: boolean
+          p_payment_due_at: string
+          p_payment_status: string
+          p_pricing_breakdown: Json
+          p_start_at: string
+          p_status: string
+          p_unpaid_day_before_sms_sent: boolean
+          p_unpaid_week_before_sms_sent: boolean
+          p_updated_by: string
+          p_vehicle_colour: string
+          p_vehicle_make: string
+          p_vehicle_model: string
+          p_vehicle_registration: string
+        }
+        Returns: {
+          calculated_price: number
+          cancelled_at: string | null
+          capacity_override: boolean | null
+          capacity_override_reason: string | null
+          completed_at: string | null
+          confirmed_at: string | null
+          created_at: string
+          created_by: string | null
+          customer_email: string | null
+          customer_first_name: string
+          customer_id: string | null
+          customer_last_name: string | null
+          customer_mobile: string
+          duration_minutes: number
+          end_at: string
+          end_notification_sent: boolean | null
+          expires_at: string | null
+          id: string
+          initial_request_sms_sent: boolean
+          notes: string | null
+          override_price: number | null
+          override_reason: string | null
+          paid_end_three_day_sms_sent: boolean
+          paid_start_three_day_sms_sent: boolean
+          payment_due_at: string | null
+          payment_overdue_notified: boolean | null
+          payment_status: Database["public"]["Enums"]["parking_payment_status"]
+          pricing_breakdown: Json
+          reference: string
+          start_at: string
+          start_notification_sent: boolean | null
+          status: Database["public"]["Enums"]["parking_booking_status"]
+          unpaid_day_before_sms_sent: boolean
+          unpaid_week_before_sms_sent: boolean
+          updated_at: string
+          updated_by: string | null
+          vehicle_colour: string | null
+          vehicle_make: string | null
+          vehicle_model: string | null
+          vehicle_registration: string
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "parking_bookings"
+          isOneToOne: false
+          isSetofReturn: true
+        }
       }
       auto_close_past_event_tasks: { Args: never; Returns: undefined }
       auto_generate_weekly_slots: { Args: never; Returns: Json }
@@ -11286,8 +11952,13 @@ export type Database = {
         Returns: {
           click_counts: number[]
           click_dates: string[]
+          created_at: string
           destination_url: string
+          id: string
           link_type: string
+          metadata: Json
+          name: string
+          parent_link_id: string
           short_code: string
           total_clicks: number
           unique_visitors: number
@@ -11317,6 +11988,10 @@ export type Database = {
         Returns: {
           next_sequence: number
         }[]
+      }
+      get_booking_discounted_total: {
+        Args: { p_booking_id: string }
+        Returns: number
       }
       get_bookings_needing_reminders: {
         Args: never
@@ -11360,6 +12035,23 @@ export type Database = {
           mobile_number: string
           source_last_attended: string
           source_times_attended: number
+        }[]
+      }
+      get_cross_promo_audience: {
+        Args: {
+          p_category_id: string
+          p_event_id: string
+          p_frequency_cap_days?: number
+          p_max_recipients?: number
+          p_recency_months?: number
+        }
+        Returns: {
+          customer_id: string
+          first_name: string
+          last_event_category: string
+          last_name: string
+          phone_number: string
+          times_attended: number
         }[]
       }
       get_customer_labels: {
@@ -11588,7 +12280,7 @@ export type Database = {
           last_clicked_at: string
         }[]
       }
-      is_super_admin: { Args: { p_user_id: string }; Returns: boolean }
+      is_super_admin: { Args: { check_user_id: string }; Returns: boolean }
       is_table_blocked_by_private_booking_v05: {
         Args: {
           p_exclude_private_booking_id?: string
@@ -11747,6 +12439,16 @@ export type Database = {
         }
         Returns: boolean
       }
+      update_dish_transaction: {
+        Args: {
+          p_assignments?: Json
+          p_dish_data: Json
+          p_dish_id: string
+          p_ingredients?: Json
+          p_recipes?: Json
+        }
+        Returns: Json
+      }
       update_event_booking_seats_staff_v05: {
         Args: { p_actor?: string; p_booking_id: string; p_new_seats: number }
         Returns: Json
@@ -11801,6 +12503,10 @@ export type Database = {
         }
         Returns: Json
       }
+      update_recipe_transaction: {
+        Args: { p_ingredients?: Json; p_recipe_data: Json; p_recipe_id: string }
+        Returns: Json
+      }
       user_has_permission: {
         Args: { p_action: string; p_module_name: string; p_user_id: string }
         Returns: boolean
@@ -11835,6 +12541,9 @@ export type Database = {
         | "cup"
         | "slice"
         | "piece"
+        | "pint"
+        | "measure"
+        | "glass"
       parking_booking_status:
         | "pending_payment"
         | "confirmed"
@@ -12032,6 +12741,9 @@ export const Constants = {
         "cup",
         "slice",
         "piece",
+        "pint",
+        "measure",
+        "glass",
       ],
       parking_booking_status: [
         "pending_payment",
