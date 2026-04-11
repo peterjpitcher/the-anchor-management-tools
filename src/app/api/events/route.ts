@@ -174,6 +174,15 @@ export async function GET(_request: NextRequest) {
           ? event.booking_mode
           : 'table',
         price,
+        primary_keywords: event.primary_keywords || [],
+        secondary_keywords: event.secondary_keywords || [],
+        local_seo_keywords: event.local_seo_keywords || [],
+        image_alt_text: event.image_alt_text || null,
+        social_copy_whatsapp: event.social_copy_whatsapp || null,
+        previous_event_summary: event.previous_event_summary || null,
+        attendance_note: event.attendance_note || null,
+        cancellation_policy: event.cancellation_policy || null,
+        accessibility_notes: event.accessibility_notes || null,
         ...eventToSchema(event, faqs),
       };
     });
