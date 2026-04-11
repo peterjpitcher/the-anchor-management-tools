@@ -271,9 +271,6 @@ export function EventFormGrouped({ event, categories, onSubmit, onCancel }: Even
       if (!metaDescription && selectedCategory.meta_description) {
         setMetaDescription(selectedCategory.meta_description)
       }
-      if (!keywords && selectedCategory.keywords) {
-        setKeywords(selectedCategory.keywords.join(', '))
-      }
       // Cascade keyword tiers from category
       const cat = selectedCategory as any
       if (!primaryKeywords && cat.primary_keywords?.length) setPrimaryKeywords(keywordsToDisplay(cat.primary_keywords))
@@ -358,7 +355,10 @@ export function EventFormGrouped({ event, categories, onSubmit, onCancel }: Even
         existingMetaTitle: metaTitle || null,
         existingMetaDescription: metaDescription || null,
         existingHighlights: highlights ? highlights.split(',').map(h => h.trim()).filter(Boolean) : [],
-        existingKeywords: keywords ? keywords.split(',').map(k => k.trim()).filter(Boolean) : []
+        existingKeywords: keywords ? keywords.split(',').map(k => k.trim()).filter(Boolean) : [],
+        primaryKeywords: parseKeywords(primaryKeywords),
+        secondaryKeywords: parseKeywords(secondaryKeywords),
+        localSeoKeywords: parseKeywords(localSeoKeywords),
       })
 
       if (!result.success) {
@@ -375,6 +375,15 @@ export function EventFormGrouped({ event, categories, onSubmit, onCancel }: Even
       if (nextHighlights) setHighlights(nextHighlights.join(', '))
       if (nextKeywords) setKeywords(nextKeywords.join(', '))
       if (nextSlug) setSlug(nextSlug)
+      if (result.data.imageAltText) setImageAltText(result.data.imageAltText)
+      if (result.data.faqs?.length) {
+        setFaqs(result.data.faqs.map((faq: any, i: number) => ({ ...faq, sort_order: i })))
+        setFaqsModified(true)
+      }
+      if (result.data.facebookEventName) setFacebookEventName(result.data.facebookEventName)
+      if (result.data.facebookEventDescription) setFacebookEventDescription(result.data.facebookEventDescription)
+      if (result.data.socialCopyWhatsapp) setSocialCopyWhatsapp(result.data.socialCopyWhatsapp)
+      if (result.data.cancellationPolicy) setCancellationPolicy(result.data.cancellationPolicy)
 
       toast.success('SEO content drafted')
     } catch (error) {

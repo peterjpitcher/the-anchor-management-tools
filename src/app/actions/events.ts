@@ -145,7 +145,7 @@ async function prepareEventDataFromFormData(formData: FormData, _existingEventId
     category_id: categoryId,
     short_description: rawData.short_description as string || categoryDefaults.short_description || null,
     long_description: rawData.long_description as string || categoryDefaults.long_description || null,
-    brief: (rawData.brief as string)?.trim() || categoryDefaults.brief || null,
+    brief: (rawData.brief as string)?.trim() || null,
     highlights: rawData.highlights ? JSON.parse(rawData.highlights as string) : categoryDefaults.highlights || [],
     keywords: rawData.keywords ? JSON.parse(rawData.keywords as string) : [],
     primary_keywords: rawData.primary_keywords ? JSON.parse(rawData.primary_keywords as string) : categoryDefaults.primary_keywords || [],
