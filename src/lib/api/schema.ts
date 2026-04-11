@@ -28,6 +28,8 @@ export interface SchemaEvent {
   review?: SchemaReview[];
   aggregateRating?: SchemaAggregateRating;
   faq?: SchemaFAQ[];
+  accessibilityFeature?: string[];
+  refundPolicy?: string;
 }
 
 export interface SchemaPlace {
@@ -254,6 +256,16 @@ export function eventToSchema(event: any, faqs?: any[]): SchemaEvent {
     video: videos.length > 0 ? videos : undefined,
   };
   
+  // Accessibility features from accessibility_notes
+  if (event.accessibility_notes) {
+    schema.accessibilityFeature = [event.accessibility_notes]
+  }
+
+  // Refund policy from cancellation_policy
+  if (event.cancellation_policy) {
+    schema.refundPolicy = event.cancellation_policy
+  }
+
   // Add FAQs if provided
   if (faqs && faqs.length > 0) {
     schema.faq = faqs.map(faq => ({
