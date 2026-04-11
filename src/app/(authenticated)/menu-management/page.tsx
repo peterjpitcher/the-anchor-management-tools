@@ -93,6 +93,26 @@ function mapApiDish(raw: Record<string, unknown>, fallbackTarget: number): DishL
 }
 
 // ---------------------------------------------------------------------------
+// GP% helpers
+// ---------------------------------------------------------------------------
+
+/** Returns true if a dish has meaningful GP data (excludes 0% and 100%) */
+function hasMeaningfulGp(d: DishListItem): boolean {
+  if (typeof d.gp_pct !== 'number' || !isFinite(d.gp_pct)) return false;
+  // Exclude 0% (no cost data entered) and 100% (zero portion cost / no ingredients)
+  if (d.gp_pct <= 0 || d.gp_pct >= 1) return false;
+  return true;
+}
+
+function computeAvgGp(items: DishListItem[]): number | null {
+  const withGp = items.filter(hasMeaningfulGp);
+  if (withGp.length === 0) return null;
+  return (
+    withGp.reduce((sum, d) => sum + (d.gp_pct as number), 0) / withGp.length
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Navigation cards
 // ---------------------------------------------------------------------------
 
@@ -134,7 +154,13 @@ export default function MenuManagementHomePage(): React.ReactElement {
   const [error, setError] = useState<string | null>(null);
   const [targetGpPct, setTargetGpPct] = useState(0.7);
 
-  // Table filter from stat card click
+  // Filter state
+  const [selectedMenu, setSelectedMenu] = useState<string>('all');
+  const [selectedCategory, setSelectedCategory] = useState<string>('all');
+  const [gpStatusFilter, setGpStatusFilter] = useState<'all' | 'below-target' | 'at-target' | 'missing-costing'>('all');
+  const [showActive, setShowActive] = useState<'active' | 'all'>('active');
+
+  // Table filter from stat card click (legacy — now integrated)
   const [tableFilter, setTableFilter] = useState<MenuDishesFilter>('all');
 
   // Drawer state
@@ -223,40 +249,122 @@ export default function MenuManagementHomePage(): React.ReactElement {
     void loadSupportData();
   }, [permissionsLoading, hasPermission, router, loadDishes, loadSupportData]);
 
-  // ---- Stats computation ----
+  // ---- Derive available menus and categories from dish data ----
+
+  const availableMenus = useMemo(() => {
+    const menuMap = new Map<string, string>();
+    for (const dish of dishes) {
+      for (const a of dish.assignments) {
+        if (a.menu_code && a.menu_name) {
+          menuMap.set(a.menu_code, a.menu_name);
+        }
+      }
+    }
+    return Array.from(menuMap.entries())
+      .map(([code, name]) => ({ code, name }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [dishes]);
+
+  const availableCategories = useMemo(() => {
+    if (selectedMenu === 'all') return [];
+    const catMap = new Map<string, string>();
+    for (const dish of dishes) {
+      for (const a of dish.assignments) {
+        if (a.menu_code === selectedMenu && a.category_code && a.category_name) {
+          catMap.set(a.category_code, a.category_name);
+        }
+      }
+    }
+    return Array.from(catMap.entries())
+      .map(([code, name]) => ({ code, name }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [dishes, selectedMenu]);
+
+  // Reset category when menu changes
+  useEffect(() => {
+    setSelectedCategory('all');
+  }, [selectedMenu]);
+
+  // ---- Filtered dishes ----
+
+  const filteredDishes = useMemo(() => {
+    let result = dishes;
+
+    // Active filter
+    if (showActive === 'active') {
+      result = result.filter((d) => d.is_active);
+    }
+
+    // Menu filter
+    if (selectedMenu !== 'all') {
+      result = result.filter((d) =>
+        d.assignments.some((a) => a.menu_code === selectedMenu)
+      );
+    }
+
+    // Category filter
+    if (selectedCategory !== 'all') {
+      result = result.filter((d) =>
+        d.assignments.some(
+          (a) => a.menu_code === selectedMenu && a.category_code === selectedCategory
+        )
+      );
+    }
+
+    // GP status filter
+    if (gpStatusFilter === 'below-target') {
+      result = result.filter((d) => d.is_gp_alert);
+    } else if (gpStatusFilter === 'at-target') {
+      result = result.filter((d) => !d.is_gp_alert && hasMeaningfulGp(d));
+    } else if (gpStatusFilter === 'missing-costing') {
+      result = result.filter(
+        (d) =>
+          (!d.ingredients || d.ingredients.length === 0) &&
+          (!d.recipes || d.recipes.length === 0)
+      );
+    }
+
+    return result;
+  }, [dishes, selectedMenu, selectedCategory, gpStatusFilter, showActive]);
+
+  // ---- Stats (computed from filtered dishes) ----
 
   const stats = useMemo(() => {
-    const activeDishes = dishes.filter((d) => d.is_active);
-    const inactiveDishes = dishes.filter((d) => !d.is_active);
-    const belowTarget = dishes.filter((d) => d.is_gp_alert);
-    const missingCosting = dishes.filter(
+    const activeDishes = filteredDishes.filter((d) => d.is_active);
+    const inactiveDishes = filteredDishes.filter((d) => !d.is_active);
+    const belowTarget = filteredDishes.filter((d) => d.is_gp_alert);
+    const missingCosting = filteredDishes.filter(
       (d) =>
         (!d.ingredients || d.ingredients.length === 0) &&
         (!d.recipes || d.recipes.length === 0)
     );
 
-    // Average GP% across active dishes that have GP data
-    const activeDishesWithGp = activeDishes.filter(
-      (d) => typeof d.gp_pct === 'number' && isFinite(d.gp_pct)
-    );
-    const avgGp =
-      activeDishesWithGp.length > 0
-        ? Math.round(
-            (activeDishesWithGp.reduce((sum, d) => sum + (d.gp_pct as number), 0) /
-              activeDishesWithGp.length) *
-              100
-          )
-        : 0;
+    const avgGp = computeAvgGp(filteredDishes);
 
     return {
-      totalDishes: dishes.length,
+      totalDishes: filteredDishes.length,
       activeDishes: activeDishes.length,
       inactiveDishes: inactiveDishes.length,
       belowTargetCount: belowTarget.length,
       missingCostingCount: missingCosting.length,
       avgGp,
     };
-  }, [dishes]);
+  }, [filteredDishes]);
+
+  // ---- Per-menu GP% breakdown ----
+
+  const menuBreakdown = useMemo(() => {
+    return availableMenus.map((menu) => {
+      const menuDishes = dishes.filter(
+        (d) => d.is_active && d.assignments.some((a) => a.menu_code === menu.code)
+      );
+      const avgGp = computeAvgGp(menuDishes);
+      const belowTarget = menuDishes.filter((d) => d.is_gp_alert).length;
+      const total = menuDishes.length;
+      const costed = menuDishes.filter(hasMeaningfulGp).length;
+      return { ...menu, avgGp, belowTarget, total, costed };
+    });
+  }, [dishes, availableMenus]);
 
   // ---- Dish drawer handlers ----
 
@@ -278,15 +386,48 @@ export default function MenuManagementHomePage(): React.ReactElement {
     void loadDishes();
   }, [loadDishes]);
 
-  // ---- Stat card click handlers ----
+  // ---- Filter handlers ----
+
+  const handleMenuBreakdownClick = useCallback((menuCode: string) => {
+    setSelectedMenu((prev) => (prev === menuCode ? 'all' : menuCode));
+    setGpStatusFilter('all');
+  }, []);
 
   const handleBelowTargetClick = useCallback(() => {
-    setTableFilter((prev) => (prev === 'below-target' ? 'all' : 'below-target'));
+    setGpStatusFilter((prev) => (prev === 'below-target' ? 'all' : 'below-target'));
   }, []);
 
   const handleMissingCostingClick = useCallback(() => {
-    setTableFilter((prev) => (prev === 'missing-costing' ? 'all' : 'missing-costing'));
+    setGpStatusFilter((prev) => (prev === 'missing-costing' ? 'all' : 'missing-costing'));
   }, []);
+
+  const clearFilters = useCallback(() => {
+    setSelectedMenu('all');
+    setSelectedCategory('all');
+    setGpStatusFilter('all');
+    setShowActive('active');
+  }, []);
+
+  const hasActiveFilters =
+    selectedMenu !== 'all' ||
+    selectedCategory !== 'all' ||
+    gpStatusFilter !== 'all' ||
+    showActive !== 'active';
+
+  // Map gpStatusFilter to the table's filter type
+  const effectiveTableFilter: MenuDishesFilter =
+    gpStatusFilter === 'below-target' || gpStatusFilter === 'missing-costing'
+      ? gpStatusFilter
+      : 'all';
+
+  // ---- GP% colour helper ----
+
+  function gpColour(gp: number | null, target: number): 'success' | 'warning' | 'error' | undefined {
+    if (gp === null) return undefined;
+    if (gp >= target) return 'success';
+    if (gp >= target - 0.05) return 'warning';
+    return 'error';
+  }
 
   // ---- Render ----
 
@@ -311,7 +452,11 @@ export default function MenuManagementHomePage(): React.ReactElement {
           <Stat
             label="Total Dishes"
             value={stats.totalDishes}
-            description={`${stats.activeDishes} active, ${stats.inactiveDishes} inactive`}
+            description={
+              showActive === 'active'
+                ? `${stats.activeDishes} active${hasActiveFilters ? ' (filtered)' : ''}`
+                : `${stats.activeDishes} active, ${stats.inactiveDishes} inactive`
+            }
             variant="filled"
             size="sm"
           />
@@ -333,29 +478,155 @@ export default function MenuManagementHomePage(): React.ReactElement {
           />
           <Stat
             label="Avg GP%"
-            value={`${stats.avgGp}%`}
+            value={stats.avgGp !== null ? `${Math.round(stats.avgGp * 100)}%` : '--'}
             description={`Target: ${Math.round(targetGpPct * 100)}%`}
+            color={gpColour(stats.avgGp, targetGpPct)}
             variant="filled"
             size="sm"
           />
         </StatGroup>
       </Section>
 
-      {/* Row 2: Enhanced Health Table */}
+      {/* Row 2: Per-menu GP% breakdown */}
+      {menuBreakdown.length > 0 && (
+        <Section>
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
+            {menuBreakdown.map((menu) => {
+              const isSelected = selectedMenu === menu.code;
+              const gpDisplay =
+                menu.avgGp !== null
+                  ? `${Math.round(menu.avgGp * 100)}%`
+                  : '--';
+              const colour = gpColour(menu.avgGp, targetGpPct);
+              const colourClasses: Record<string, string> = {
+                success: 'text-green-700',
+                warning: 'text-amber-600',
+                error: 'text-red-600',
+              };
+
+              return (
+                <button
+                  key={menu.code}
+                  type="button"
+                  onClick={() => handleMenuBreakdownClick(menu.code)}
+                  className={`rounded-lg border p-3 text-left transition-all ${
+                    isSelected
+                      ? 'border-green-500 bg-green-50 ring-1 ring-green-500'
+                      : 'border-gray-200 bg-white hover:border-gray-300 hover:bg-gray-50'
+                  }`}
+                >
+                  <p className="text-xs font-medium text-gray-500 truncate">
+                    {menu.name}
+                  </p>
+                  <p className={`text-lg font-bold ${colour ? colourClasses[colour] : 'text-gray-400'}`}>
+                    {gpDisplay}
+                  </p>
+                  <p className="text-xs text-gray-400">
+                    {menu.costed}/{menu.total} costed
+                    {menu.belowTarget > 0 && (
+                      <span className="text-red-500 ml-1">
+                        ({menu.belowTarget} alert{menu.belowTarget !== 1 ? 's' : ''})
+                      </span>
+                    )}
+                  </p>
+                </button>
+              );
+            })}
+          </div>
+        </Section>
+      )}
+
+      {/* Row 3: Filter bar */}
+      <Section>
+        <div className="flex flex-wrap items-center gap-3">
+          {/* Menu dropdown */}
+          <select
+            value={selectedMenu}
+            onChange={(e) => setSelectedMenu(e.target.value)}
+            className="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm text-gray-700 shadow-sm focus:border-green-500 focus:outline-none focus:ring-1 focus:ring-green-500"
+          >
+            <option value="all">All Menus</option>
+            {availableMenus.map((m) => (
+              <option key={m.code} value={m.code}>
+                {m.name}
+              </option>
+            ))}
+          </select>
+
+          {/* Category dropdown (only shown when a menu is selected) */}
+          {selectedMenu !== 'all' && availableCategories.length > 0 && (
+            <select
+              value={selectedCategory}
+              onChange={(e) => setSelectedCategory(e.target.value)}
+              className="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm text-gray-700 shadow-sm focus:border-green-500 focus:outline-none focus:ring-1 focus:ring-green-500"
+            >
+              <option value="all">All Categories</option>
+              {availableCategories.map((c) => (
+                <option key={c.code} value={c.code}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+          )}
+
+          {/* GP Status dropdown */}
+          <select
+            value={gpStatusFilter}
+            onChange={(e) =>
+              setGpStatusFilter(
+                e.target.value as 'all' | 'below-target' | 'at-target' | 'missing-costing'
+              )
+            }
+            className="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm text-gray-700 shadow-sm focus:border-green-500 focus:outline-none focus:ring-1 focus:ring-green-500"
+          >
+            <option value="all">All GP Status</option>
+            <option value="below-target">Below Target</option>
+            <option value="at-target">At Target</option>
+            <option value="missing-costing">Missing Costing</option>
+          </select>
+
+          {/* Active toggle */}
+          <select
+            value={showActive}
+            onChange={(e) => setShowActive(e.target.value as 'active' | 'all')}
+            className="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm text-gray-700 shadow-sm focus:border-green-500 focus:outline-none focus:ring-1 focus:ring-green-500"
+          >
+            <option value="active">Active Only</option>
+            <option value="all">All (incl. inactive)</option>
+          </select>
+
+          {/* Clear filters */}
+          {hasActiveFilters && (
+            <button
+              type="button"
+              onClick={clearFilters}
+              className="rounded-md px-3 py-1.5 text-sm font-medium text-gray-500 hover:text-gray-700 hover:bg-gray-100"
+            >
+              Clear filters
+            </button>
+          )}
+        </div>
+      </Section>
+
+      {/* Row 4: Health Table */}
       <Section
         title="Menu Health"
-        subtitle={`Track profitability and highlight data gaps. Standard target: ${Math.round(targetGpPct * 100)}%.`}
+        subtitle={
+          hasActiveFilters
+            ? `Showing ${filteredDishes.length} dishes (filtered). Target: ${Math.round(targetGpPct * 100)}%.`
+            : `Track profitability and highlight data gaps. Standard target: ${Math.round(targetGpPct * 100)}%.`
+        }
       >
         <MenuDishesTable
-          dishes={dishes}
+          dishes={filteredDishes}
           loadError={error}
           standardTarget={targetGpPct}
-          filter={tableFilter}
+          filter={effectiveTableFilter}
           onDishClick={handleDishClick}
         />
       </Section>
 
-      {/* Row 3: Compact Navigation Cards */}
+      {/* Row 5: Compact Navigation Cards */}
       <Section>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {navigationCards.map((card) => (
