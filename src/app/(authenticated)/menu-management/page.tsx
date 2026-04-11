@@ -366,6 +366,47 @@ export default function MenuManagementHomePage(): React.ReactElement {
     });
   }, [dishes, availableMenus]);
 
+  // ---- Per-category GP% breakdown (visible when a menu is selected) ----
+
+  const categoryBreakdown = useMemo(() => {
+    if (selectedMenu === 'all') return [];
+    const catMap = new Map<string, { name: string; dishes: DishListItem[] }>();
+    for (const dish of filteredDishes) {
+      for (const a of dish.assignments) {
+        if (a.menu_code !== selectedMenu) continue;
+        const key = a.category_code || 'uncategorised';
+        if (!catMap.has(key)) {
+          catMap.set(key, { name: a.category_name || key, dishes: [] });
+        }
+        catMap.get(key)!.dishes.push(dish);
+      }
+    }
+    return Array.from(catMap.entries())
+      .map(([code, { name, dishes: catDishes }]) => {
+        const avgGp = computeAvgGp(catDishes);
+        const belowTarget = catDishes.filter((d) => d.is_gp_alert).length;
+        return { code, name, avgGp, belowTarget, dishes: catDishes };
+      })
+      .sort((a, b) => {
+        // Sort by avg GP ascending (worst first), nulls last
+        const aGp = a.avgGp ?? Infinity;
+        const bGp = b.avgGp ?? Infinity;
+        return aGp - bGp;
+      });
+  }, [filteredDishes, selectedMenu]);
+
+  // Track which categories are expanded
+  const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
+
+  const toggleCategory = useCallback((code: string) => {
+    setExpandedCategories((prev) => {
+      const next = new Set(prev);
+      if (next.has(code)) next.delete(code);
+      else next.add(code);
+      return next;
+    });
+  }, []);
+
   // ---- Dish drawer handlers ----
 
   const handleDishClick = useCallback(
@@ -608,7 +649,100 @@ export default function MenuManagementHomePage(): React.ReactElement {
         </div>
       </Section>
 
-      {/* Row 4: Health Table */}
+      {/* Row 4: Category breakdown (when a menu is selected) */}
+      {categoryBreakdown.length > 0 && (
+        <Section
+          title="GP% by Category"
+          subtitle={`Sorted by GP% (worst first). Click to expand and see individual dishes.`}
+        >
+          <div className="space-y-2">
+            {categoryBreakdown.map((cat) => {
+              const isExpanded = expandedCategories.has(cat.code);
+              const gpDisplay = cat.avgGp !== null ? `${Math.round(cat.avgGp * 100)}%` : '--';
+              const colour = gpColour(cat.avgGp, targetGpPct);
+              const colourText = colour === 'success'
+                ? 'text-green-700'
+                : colour === 'warning'
+                  ? 'text-amber-600'
+                  : colour === 'error'
+                    ? 'text-red-600'
+                    : 'text-gray-400';
+
+              return (
+                <div key={cat.code} className="rounded-lg border border-gray-200 bg-white overflow-hidden">
+                  <button
+                    type="button"
+                    onClick={() => toggleCategory(cat.code)}
+                    className="w-full flex items-center justify-between px-4 py-3 hover:bg-gray-50 transition-colors"
+                  >
+                    <div className="flex items-center gap-3">
+                      <svg
+                        className={`h-4 w-4 text-gray-400 transition-transform ${isExpanded ? 'rotate-90' : ''}`}
+                        fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"
+                      >
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
+                      </svg>
+                      <span className="text-sm font-medium text-gray-900">{cat.name}</span>
+                      <span className="text-xs text-gray-400">{cat.dishes.length} items</span>
+                    </div>
+                    <div className="flex items-center gap-4">
+                      {cat.belowTarget > 0 && (
+                        <span className="text-xs text-red-500">{cat.belowTarget} alert{cat.belowTarget !== 1 ? 's' : ''}</span>
+                      )}
+                      <span className={`text-sm font-bold ${colourText}`}>{gpDisplay}</span>
+                    </div>
+                  </button>
+
+                  {isExpanded && (
+                    <div className="border-t border-gray-100">
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="bg-gray-50 text-xs text-gray-500">
+                            <th className="px-4 py-2 text-left font-medium">Dish</th>
+                            <th className="px-4 py-2 text-right font-medium">Price</th>
+                            <th className="px-4 py-2 text-right font-medium">Cost</th>
+                            <th className="px-4 py-2 text-right font-medium">GP%</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-50">
+                          {cat.dishes
+                            .sort((a, b) => (a.gp_pct ?? Infinity) - (b.gp_pct ?? Infinity))
+                            .map((dish) => {
+                              const dishGp = hasMeaningfulGp(dish)
+                                ? `${Math.round((dish.gp_pct as number) * 100)}%`
+                                : '--';
+                              const dishColour = dish.is_gp_alert ? 'text-red-600 font-semibold' : '';
+                              return (
+                                <tr
+                                  key={dish.id}
+                                  className="hover:bg-gray-50 cursor-pointer"
+                                  onClick={() => handleDishClick(dish)}
+                                >
+                                  <td className="px-4 py-2 text-gray-900">{dish.name}</td>
+                                  <td className="px-4 py-2 text-right text-gray-600">
+                                    £{dish.selling_price.toFixed(2)}
+                                  </td>
+                                  <td className="px-4 py-2 text-right text-gray-600">
+                                    {dish.portion_cost > 0 ? `£${dish.portion_cost.toFixed(2)}` : '--'}
+                                  </td>
+                                  <td className={`px-4 py-2 text-right ${dishColour}`}>
+                                    {dishGp}
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </Section>
+      )}
+
+      {/* Row 5: Health Table */}
       <Section
         title="Menu Health"
         subtitle={

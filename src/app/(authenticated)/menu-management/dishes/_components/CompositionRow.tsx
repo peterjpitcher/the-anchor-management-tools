@@ -161,6 +161,28 @@ interface IngredientCompositionRowProps {
   existingGroups: string[];
   onChange: (index: number, updates: Partial<DishIngredientFormRow>) => void;
   onRemove: (index: number) => void;
+  /** Unit cost lookup: ingredient_id → latest_unit_cost */
+  unitCostMap?: Map<string, number>;
+}
+
+function computeLineCostForRow(
+  row: DishIngredientFormRow,
+  unitCostMap?: Map<string, number>,
+): number | null {
+  if (!row.ingredient_id || !unitCostMap) return null;
+  const quantity = parseFloat(row.quantity || '0');
+  if (!quantity || Number.isNaN(quantity)) return null;
+  const costOverride = row.cost_override ? parseFloat(row.cost_override) : undefined;
+  const unitCost =
+    costOverride !== undefined && !Number.isNaN(costOverride)
+      ? costOverride
+      : (unitCostMap.get(row.ingredient_id) ?? 0);
+  if (!unitCost) return null;
+  const yieldPct = parseFloat(row.yield_pct || '100');
+  const wastagePct = parseFloat(row.wastage_pct || '0');
+  const yieldFactor = yieldPct > 0 ? yieldPct / 100 : 1;
+  const wastageFactor = 1 + (Number.isNaN(wastagePct) ? 0 : wastagePct / 100);
+  return (quantity / (yieldFactor || 1)) * unitCost * wastageFactor;
 }
 
 export function IngredientCompositionRow({
@@ -172,8 +194,11 @@ export function IngredientCompositionRow({
   existingGroups,
   onChange,
   onRemove,
+  unitCostMap,
 }: IngredientCompositionRowProps): React.ReactElement {
   const [expanded, setExpanded] = useState(false);
+  const lineCost = computeLineCostForRow(row, unitCostMap);
+  const unitCost = unitCostMap?.get(row.ingredient_id) ?? null;
 
   const visibleOptions = options.filter(
     (o) => o.is_active || linkedIds.has(o.id)
@@ -331,6 +356,17 @@ export function IngredientCompositionRow({
           </FormGroup>
         )}
 
+        {/* Line cost display */}
+        {lineCost !== null && (
+          <div className="shrink-0 pb-0.5 text-right">
+            <p className="text-xs text-gray-400">Cost</p>
+            <p className="text-sm font-semibold text-gray-700">£{lineCost.toFixed(2)}</p>
+            {unitCost !== null && (
+              <p className="text-[10px] text-gray-400">@ £{unitCost.toFixed(4)}/unit</p>
+            )}
+          </div>
+        )}
+
         <div className="flex shrink-0 items-center gap-1 pb-0.5">
           <button
             type="button"
@@ -409,6 +445,8 @@ interface RecipeCompositionRowProps {
   existingGroups: string[];
   onChange: (index: number, updates: Partial<DishRecipeFormRow>) => void;
   onRemove: (index: number) => void;
+  /** Portion cost lookup: recipe_id → portion_cost */
+  recipeCostMap?: Map<string, number>;
 }
 
 export function RecipeCompositionRow({
@@ -420,8 +458,27 @@ export function RecipeCompositionRow({
   existingGroups,
   onChange,
   onRemove,
+  recipeCostMap,
 }: RecipeCompositionRowProps): React.ReactElement {
   const [expanded, setExpanded] = useState(false);
+
+  // Compute line cost for this recipe row
+  const recipeLineCost = (() => {
+    if (!row.recipe_id || !recipeCostMap) return null;
+    const quantity = parseFloat(row.quantity || '0');
+    if (!quantity || Number.isNaN(quantity)) return null;
+    const costOverride = row.cost_override ? parseFloat(row.cost_override) : undefined;
+    const unitCost = costOverride !== undefined && !Number.isNaN(costOverride)
+      ? costOverride
+      : (recipeCostMap.get(row.recipe_id) ?? 0);
+    if (!unitCost) return null;
+    const yieldPct = parseFloat(row.yield_pct || '100');
+    const wastagePct = parseFloat(row.wastage_pct || '0');
+    const yieldFactor = yieldPct > 0 ? yieldPct / 100 : 1;
+    const wastageFactor = 1 + (Number.isNaN(wastagePct) ? 0 : wastagePct / 100);
+    return (quantity / (yieldFactor || 1)) * unitCost * wastageFactor;
+  })();
+  const recipeUnitCost = recipeCostMap?.get(row.recipe_id) ?? null;
 
   const visibleOptions = options.filter(
     (o) => o.is_active || linkedIds.has(o.id)
@@ -557,6 +614,17 @@ export function RecipeCompositionRow({
               onChange={(e) => onChange(index, { upgrade_price: e.target.value })}
             />
           </FormGroup>
+        )}
+
+        {/* Line cost display */}
+        {recipeLineCost !== null && (
+          <div className="shrink-0 pb-0.5 text-right">
+            <p className="text-xs text-gray-400">Cost</p>
+            <p className="text-sm font-semibold text-gray-700">£{recipeLineCost.toFixed(2)}</p>
+            {recipeUnitCost !== null && (
+              <p className="text-[10px] text-gray-400">@ £{recipeUnitCost.toFixed(4)}/portion</p>
+            )}
+          </div>
         )}
 
         <div className="flex shrink-0 items-center gap-1 pb-0.5">
