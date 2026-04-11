@@ -124,6 +124,7 @@ type IngredientFormState = {
   dietary_flags: string[];
   notes: string;
   is_active: boolean;
+  abv: string;
 };
 
 const createDefaultFormState = (): IngredientFormState => ({
@@ -144,6 +145,7 @@ const createDefaultFormState = (): IngredientFormState => ({
   dietary_flags: [],
   notes: '',
   is_active: true,
+  abv: '',
 });
 
 function ingredientToFormState(ingredient: Ingredient): IngredientFormState {
@@ -165,6 +167,7 @@ function ingredientToFormState(ingredient: Ingredient): IngredientFormState {
     dietary_flags: normalizeSelection(ingredient.dietary_flags, DIETARY_VALUES),
     notes: ingredient.notes || '',
     is_active: ingredient.is_active,
+    abv: ingredient.abv != null ? ingredient.abv.toString() : '',
   };
 }
 
@@ -417,6 +420,7 @@ export function IngredientDrawer({
         dietary_flags: orderedDietaryFlags,
         notes: formState.notes || null,
         is_active: formState.is_active,
+        abv: formState.abv ? parseFloat(formState.abv) : null,
       };
 
       const result = isEditing
@@ -624,6 +628,20 @@ export function IngredientDrawer({
                   </option>
                 ))}
               </Select>
+            </FormGroup>
+            <FormGroup
+              label="ABV %"
+              help="Alcohol by volume. Only relevant for drinks ingredients."
+            >
+              <Input
+                type="number"
+                step="0.1"
+                min="0"
+                max="100"
+                value={formState.abv}
+                onChange={(e) => update({ abv: e.target.value })}
+                placeholder="e.g. 4.6"
+              />
             </FormGroup>
           </div>
           <FormGroup label="Description" help="Optional supplier or tasting notes.">

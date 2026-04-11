@@ -48,6 +48,7 @@ export interface Ingredient {
   dietary_flags: string[];
   notes?: string | null;
   is_active: boolean;
+  abv?: number | null;
   latest_pack_cost?: number | null;
   latest_unit_cost?: number | null;
   dishes: IngredientDishUsage[];
