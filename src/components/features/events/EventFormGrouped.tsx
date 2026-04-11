@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { Event } from '@/types/database'
 import { EventCategory } from '@/types/event-categories'
@@ -8,6 +8,11 @@ import { Button } from '@/components/ui-v2/forms/Button'
 import { Input } from '@/components/ui-v2/forms/Input'
 import { Select } from '@/components/ui-v2/forms/Select'
 import { DebouncedTextarea } from '@/components/ui-v2/forms/DebouncedTextarea'
+import type { DebouncedTextareaRef } from '@/components/ui-v2/forms/DebouncedTextarea'
+import { KeywordStrategyCard } from './KeywordStrategyCard'
+import { FaqEditor } from './FaqEditor'
+import { SeoHealthIndicator } from './SeoHealthIndicator'
+import { parseKeywords, keywordsToDisplay, buildKeywordsUnion } from '@/lib/keywords'
 import { SquareImageUpload } from '@/components/features/shared/SquareImageUpload'
 import toast from 'react-hot-toast'
 import {
@@ -111,6 +116,40 @@ export function EventFormGrouped({ event, categories, onSubmit, onCancel }: Even
   )
   const [faqsModified, setFaqsModified] = useState(false)
 
+  // Keyword strategy (raw textarea values)
+  const [primaryKeywords, setPrimaryKeywords] = useState(keywordsToDisplay((event as any)?.primary_keywords))
+  const [secondaryKeywords, setSecondaryKeywords] = useState(keywordsToDisplay((event as any)?.secondary_keywords))
+  const [localSeoKeywords, setLocalSeoKeywords] = useState(keywordsToDisplay((event as any)?.local_seo_keywords))
+
+  // New SEO fields
+  const [imageAltText, setImageAltText] = useState((event as any)?.image_alt_text ?? '')
+  const [facebookEventName, setFacebookEventName] = useState(event?.facebook_event_name ?? '')
+  const [facebookEventDescription, setFacebookEventDescription] = useState(event?.facebook_event_description ?? '')
+  const [socialCopyWhatsapp, setSocialCopyWhatsapp] = useState((event as any)?.social_copy_whatsapp ?? '')
+  const [previousEventSummary, setPreviousEventSummary] = useState((event as any)?.previous_event_summary ?? '')
+  const [attendanceNote, setAttendanceNote] = useState((event as any)?.attendance_note ?? '')
+  const [cancellationPolicy, setCancellationPolicy] = useState((event as any)?.cancellation_policy ?? '')
+  const [accessibilityNotes, setAccessibilityNotes] = useState((event as any)?.accessibility_notes ?? '')
+
+  // DebouncedTextarea refs for flushing before AI generation
+  const briefRef = useRef<DebouncedTextareaRef>(null)
+  const shortDescRef = useRef<DebouncedTextareaRef>(null)
+  const longDescRef = useRef<DebouncedTextareaRef>(null)
+
+  // Legacy keyword migration: if event has flat keywords but no tiers, pre-populate secondary
+  const [legacyMigrated] = useState(() => {
+    if (event?.keywords?.length && !(event as any)?.primary_keywords?.length && !(event as any)?.secondary_keywords?.length && !(event as any)?.local_seo_keywords?.length) {
+      return keywordsToDisplay(event.keywords)
+    }
+    return ''
+  })
+
+  useEffect(() => {
+    if (legacyMigrated) {
+      setSecondaryKeywords(legacyMigrated)
+    }
+  }, [legacyMigrated])
+
   const [isGeneratingSeo, setIsGeneratingSeo] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
 
@@ -129,7 +168,8 @@ export function EventFormGrouped({ event, categories, onSubmit, onCancel }: Even
 
     setIsSubmitting(true)
     try {
-      const eventData: Partial<Event> = {
+      // Cast to allow new fields not yet in the Event type definition
+      const eventData: Partial<Event> & Record<string, unknown> = {
         name: name.trim(),
         date,
         time,
@@ -153,7 +193,18 @@ export function EventFormGrouped({ event, categories, onSubmit, onCancel }: Even
         highlights: highlights ? highlights.split(',').map(h => h.trim()).filter(h => h) : [],
         meta_title: metaTitle.trim() || undefined,
         meta_description: metaDescription.trim() || undefined,
-        keywords: keywords ? keywords.split(',').map(k => k.trim()).filter(k => k) : [],
+        keywords: buildKeywordsUnion(parseKeywords(primaryKeywords), parseKeywords(secondaryKeywords), parseKeywords(localSeoKeywords)),
+        primary_keywords: parseKeywords(primaryKeywords),
+        secondary_keywords: parseKeywords(secondaryKeywords),
+        local_seo_keywords: parseKeywords(localSeoKeywords),
+        image_alt_text: imageAltText || null,
+        facebook_event_name: facebookEventName.trim() || null,
+        facebook_event_description: facebookEventDescription.trim() || null,
+        social_copy_whatsapp: socialCopyWhatsapp || null,
+        previous_event_summary: previousEventSummary || null,
+        attendance_note: attendanceNote || null,
+        cancellation_policy: cancellationPolicy || null,
+        accessibility_notes: accessibilityNotes || null,
         // Additional timing and booking fields
         booking_url: bookingUrl.trim() || undefined,
         doors_time: doorsTime || null,
@@ -223,6 +274,14 @@ export function EventFormGrouped({ event, categories, onSubmit, onCancel }: Even
       if (!keywords && selectedCategory.keywords) {
         setKeywords(selectedCategory.keywords.join(', '))
       }
+      // Cascade keyword tiers from category
+      const cat = selectedCategory as any
+      if (!primaryKeywords && cat.primary_keywords?.length) setPrimaryKeywords(keywordsToDisplay(cat.primary_keywords))
+      if (!secondaryKeywords && cat.secondary_keywords?.length) setSecondaryKeywords(keywordsToDisplay(cat.secondary_keywords))
+      if (!localSeoKeywords && cat.local_seo_keywords?.length) setLocalSeoKeywords(keywordsToDisplay(cat.local_seo_keywords))
+      if (!cancellationPolicy && cat.cancellation_policy) setCancellationPolicy(cat.cancellation_policy)
+      if (!accessibilityNotes && cat.accessibility_notes) setAccessibilityNotes(cat.accessibility_notes)
+      if (!imageAltText && cat.image_alt_text) setImageAltText(cat.image_alt_text)
       // Auto-populate additional timing fields
       if (!durationMinutes && selectedCategory.default_duration_minutes) {
         setDurationMinutes(selectedCategory.default_duration_minutes.toString())
@@ -263,6 +322,11 @@ export function EventFormGrouped({ event, categories, onSubmit, onCancel }: Even
   }, [time, endTime])
 
   const handleGenerateSeo = async () => {
+    // Flush debounced fields so latest values are available
+    briefRef.current?.flush()
+    shortDescRef.current?.flush()
+    longDescRef.current?.flush()
+
     if (!name.trim()) {
       toast.error('Add an event name before generating content')
       return
@@ -441,6 +505,7 @@ export function EventFormGrouped({ event, categories, onSubmit, onCancel }: Even
             </label>
             <div className="mt-2">
               <DebouncedTextarea
+                ref={briefRef}
                 id="brief"
                 rows={6}
                 value={brief}
@@ -452,6 +517,18 @@ export function EventFormGrouped({ event, categories, onSubmit, onCancel }: Even
             <p className="mt-1 text-xs text-gray-500">
               The brief feeds into SEO, marketing copy, and future content tools—keep it up to date.
             </p>
+          </div>
+
+          {/* Keyword Strategy */}
+          <div className="col-span-full">
+            <KeywordStrategyCard
+              primaryKeywords={primaryKeywords}
+              secondaryKeywords={secondaryKeywords}
+              localSeoKeywords={localSeoKeywords}
+              onPrimaryChange={setPrimaryKeywords}
+              onSecondaryChange={setSecondaryKeywords}
+              onLocalChange={setLocalSeoKeywords}
+            />
           </div>
         </div>
       </CollapsibleSection>
@@ -664,7 +741,7 @@ export function EventFormGrouped({ event, categories, onSubmit, onCancel }: Even
         icon={MegaphoneIcon}
         defaultOpen={false}
       >
-        <div className="col-span-full mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="col-span-full mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <p className="text-sm text-gray-500">
             Draft optimized copy using your event details and brief. Fine-tune anything after the AI pass.
           </p>
@@ -675,129 +752,291 @@ export function EventFormGrouped({ event, categories, onSubmit, onCancel }: Even
             onClick={handleGenerateSeo}
             disabled={isGeneratingSeo}
           >
-            {isGeneratingSeo ? 'Generating...' : 'Generate with AI'}
+            {isGeneratingSeo ? 'Generating...' : 'Generate All Content'}
           </Button>
         </div>
-        <div className="grid grid-cols-1 gap-x-6 gap-y-8 sm:grid-cols-6">
-          <div className="sm:col-span-3">
-            <label htmlFor="slug" className="block text-sm font-medium leading-6 text-gray-900">
-              URL Slug
-            </label>
-            <div className="mt-2">
-              <Input
-                type="text"
-                id="slug"
-                value={slug}
-                onChange={(e) => setSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '-'))}
-                placeholder="event-name-2024-01-01"
-                fullWidth
-              />
-            </div>
-          </div>
 
-          <div className="sm:col-span-3">
-            <label htmlFor="meta_title" className="block text-sm font-medium leading-6 text-gray-900">
-              Meta Title
-            </label>
-            <div className="mt-2">
-              <Input
-                type="text"
-                id="meta_title"
-                value={metaTitle}
-                onChange={(e) => setMetaTitle(e.target.value)}
-                maxLength={60}
-                placeholder="SEO page title"
-                fullWidth
-              />
-              <p className="mt-1 text-xs text-gray-500">{metaTitle.length}/60 characters</p>
+        {/* Group 1: Meta & URL */}
+        <div className="mb-8">
+          <h4 className="text-sm font-semibold text-gray-700 mb-4">Meta &amp; URL</h4>
+          <div className="grid grid-cols-1 gap-x-6 gap-y-8 sm:grid-cols-6">
+            <div className="sm:col-span-3">
+              <label htmlFor="slug" className="block text-sm font-medium leading-6 text-gray-900">
+                URL Slug
+              </label>
+              <div className="mt-2">
+                <Input
+                  type="text"
+                  id="slug"
+                  value={slug}
+                  onChange={(e) => setSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '-'))}
+                  placeholder="event-name-2024-01-01"
+                  fullWidth
+                />
+              </div>
             </div>
-          </div>
 
-          <div className="col-span-full">
-            <label htmlFor="meta_description" className="block text-sm font-medium leading-6 text-gray-900">
-              Meta Description
-            </label>
-            <div className="mt-2">
-              <DebouncedTextarea
-                id="meta_description"
-                rows={2}
-                value={metaDescription}
-                onValueChange={setMetaDescription}
-                maxLength={160}
-                placeholder="SEO page description"
-                fullWidth
-              />
-              <p className="mt-1 text-xs text-gray-500">{metaDescription.length}/160 characters</p>
+            <div className="sm:col-span-3">
+              <label htmlFor="meta_title" className="block text-sm font-medium leading-6 text-gray-900">
+                Meta Title
+              </label>
+              <div className="mt-2">
+                <Input
+                  type="text"
+                  id="meta_title"
+                  value={metaTitle}
+                  onChange={(e) => setMetaTitle(e.target.value)}
+                  maxLength={60}
+                  placeholder="SEO page title"
+                  fullWidth
+                />
+                <p className="mt-1 text-xs text-gray-500">{metaTitle.length}/60 characters</p>
+              </div>
             </div>
-          </div>
 
-          <div className="col-span-full">
-            <label htmlFor="short_description" className="block text-sm font-medium leading-6 text-gray-900">
-              Short Description
-            </label>
-            <div className="mt-2">
-              <DebouncedTextarea
-                id="short_description"
-                rows={2}
-                value={shortDescription}
-                onValueChange={setShortDescription}
-                maxLength={500}
-                placeholder="Brief description for event listings"
-                fullWidth
-              />
-              <p className="mt-1 text-xs text-gray-500">{shortDescription.length}/500 characters</p>
+            <div className="col-span-full">
+              <label htmlFor="meta_description" className="block text-sm font-medium leading-6 text-gray-900">
+                Meta Description
+              </label>
+              <div className="mt-2">
+                <DebouncedTextarea
+                  id="meta_description"
+                  rows={2}
+                  value={metaDescription}
+                  onValueChange={setMetaDescription}
+                  maxLength={160}
+                  placeholder="SEO page description"
+                  fullWidth
+                />
+                <p className="mt-1 text-xs text-gray-500">{metaDescription.length}/160 characters</p>
+              </div>
             </div>
           </div>
+        </div>
 
-          <div className="col-span-full">
-            <label htmlFor="long_description" className="block text-sm font-medium leading-6 text-gray-900">
-              Long Description
-            </label>
-            <div className="mt-2">
-              <DebouncedTextarea
-                id="long_description"
-                rows={6}
-                value={longDescription}
-                onValueChange={setLongDescription}
-                placeholder="Detailed description for the event page"
-                fullWidth
-              />
+        {/* Group 2: Content */}
+        <div className="mb-8">
+          <h4 className="text-sm font-semibold text-gray-700 mb-4">Content</h4>
+          <div className="grid grid-cols-1 gap-x-6 gap-y-8 sm:grid-cols-6">
+            <div className="col-span-full">
+              <label htmlFor="short_description" className="block text-sm font-medium leading-6 text-gray-900">
+                Short Description
+              </label>
+              <div className="mt-2">
+                <DebouncedTextarea
+                  ref={shortDescRef}
+                  id="short_description"
+                  rows={2}
+                  value={shortDescription}
+                  onValueChange={setShortDescription}
+                  maxLength={500}
+                  placeholder="Brief description for event listings"
+                  fullWidth
+                />
+                <p className="mt-1 text-xs text-gray-500">{shortDescription.length}/500 characters</p>
+              </div>
             </div>
-          </div>
 
-          <div className="col-span-full">
-            <label htmlFor="highlights" className="block text-sm font-medium leading-6 text-gray-900">
-              Highlights
-            </label>
-            <div className="mt-2">
-              <Input
-                type="text"
-                id="highlights"
-                value={highlights}
-                onChange={(e) => setHighlights(e.target.value)}
-                placeholder="Great prizes, Fun atmosphere, Live music"
-                fullWidth
-              />
-              <p className="mt-1 text-xs text-gray-500">Separate multiple highlights with commas</p>
+            <div className="col-span-full">
+              <label htmlFor="long_description" className="block text-sm font-medium leading-6 text-gray-900">
+                Long Description
+              </label>
+              <div className="mt-2">
+                <DebouncedTextarea
+                  ref={longDescRef}
+                  id="long_description"
+                  rows={6}
+                  value={longDescription}
+                  onValueChange={setLongDescription}
+                  placeholder="Detailed description for the event page"
+                  fullWidth
+                />
+              </div>
             </div>
-          </div>
 
-          <div className="col-span-full">
-            <label htmlFor="keywords" className="block text-sm font-medium leading-6 text-gray-900">
-              Keywords
-            </label>
-            <div className="mt-2">
-              <Input
-                type="text"
-                id="keywords"
-                value={keywords}
-                onChange={(e) => setKeywords(e.target.value)}
-                placeholder="music, live band, entertainment, pub"
-                fullWidth
-              />
-              <p className="mt-1 text-xs text-gray-500">Separate keywords with commas for better SEO</p>
+            <div className="col-span-full">
+              <label htmlFor="highlights" className="block text-sm font-medium leading-6 text-gray-900">
+                Highlights
+              </label>
+              <div className="mt-2">
+                <Input
+                  type="text"
+                  id="highlights"
+                  value={highlights}
+                  onChange={(e) => setHighlights(e.target.value)}
+                  placeholder="Great prizes, Fun atmosphere, Live music"
+                  fullWidth
+                />
+                <p className="mt-1 text-xs text-gray-500">Separate multiple highlights with commas</p>
+              </div>
             </div>
           </div>
+        </div>
+
+        {/* Group 3: AI-Generated & E-E-A-T Content */}
+        <div className="mb-8">
+          <h4 className="text-sm font-semibold text-gray-700 mb-4">AI-Generated &amp; E-E-A-T Content</h4>
+          <div className="grid grid-cols-1 gap-x-6 gap-y-8 sm:grid-cols-6">
+            <div className="col-span-full">
+              <label htmlFor="image_alt_text" className="block text-sm font-medium leading-6 text-gray-900">
+                Image Alt Text
+              </label>
+              <div className="mt-2">
+                <Input
+                  type="text"
+                  id="image_alt_text"
+                  value={imageAltText}
+                  onChange={(e) => setImageAltText(e.target.value)}
+                  maxLength={200}
+                  placeholder="Descriptive alt text for the event image"
+                  fullWidth
+                />
+                <p className="mt-1 text-xs text-gray-500">{imageAltText.length}/200 characters</p>
+              </div>
+            </div>
+
+            <div className="col-span-full">
+              <FaqEditor
+                faqs={faqs}
+                onChange={setFaqs}
+                onModified={() => setFaqsModified(true)}
+              />
+            </div>
+
+            <div className="sm:col-span-3">
+              <label htmlFor="facebook_event_name" className="block text-sm font-medium leading-6 text-gray-900">
+                Facebook Event Name
+              </label>
+              <div className="mt-2">
+                <Input
+                  type="text"
+                  id="facebook_event_name"
+                  value={facebookEventName}
+                  onChange={(e) => setFacebookEventName(e.target.value)}
+                  placeholder="Event name for Facebook"
+                  fullWidth
+                />
+              </div>
+            </div>
+
+            <div className="sm:col-span-3">
+              <label htmlFor="facebook_event_description" className="block text-sm font-medium leading-6 text-gray-900">
+                Facebook Event Description
+              </label>
+              <div className="mt-2">
+                <Input
+                  type="text"
+                  id="facebook_event_description"
+                  value={facebookEventDescription}
+                  onChange={(e) => setFacebookEventDescription(e.target.value)}
+                  placeholder="Description for Facebook event"
+                  fullWidth
+                />
+              </div>
+            </div>
+
+            <div className="col-span-full">
+              <label htmlFor="social_copy_whatsapp" className="block text-sm font-medium leading-6 text-gray-900">
+                WhatsApp Copy
+              </label>
+              <div className="mt-2">
+                <DebouncedTextarea
+                  id="social_copy_whatsapp"
+                  rows={3}
+                  value={socialCopyWhatsapp}
+                  onValueChange={setSocialCopyWhatsapp}
+                  maxLength={300}
+                  placeholder="Short, shareable message for WhatsApp groups"
+                  fullWidth
+                />
+                <p className="mt-1 text-xs text-gray-500">{socialCopyWhatsapp.length}/300 characters</p>
+              </div>
+            </div>
+
+            <div className="col-span-full">
+              <label htmlFor="previous_event_summary" className="block text-sm font-medium leading-6 text-gray-900">
+                Previous Event Summary
+              </label>
+              <div className="mt-2">
+                <DebouncedTextarea
+                  id="previous_event_summary"
+                  rows={3}
+                  value={previousEventSummary}
+                  onValueChange={setPreviousEventSummary}
+                  placeholder="What happened last time? Crowd size, highlights, memorable moments..."
+                  fullWidth
+                />
+              </div>
+              <p className="mt-1 text-xs text-gray-500">Manual — adds E-E-A-T experience signal</p>
+            </div>
+
+            <div className="sm:col-span-3">
+              <label htmlFor="attendance_note" className="block text-sm font-medium leading-6 text-gray-900">
+                Attendance Note
+              </label>
+              <div className="mt-2">
+                <Input
+                  type="text"
+                  id="attendance_note"
+                  value={attendanceNote}
+                  onChange={(e) => setAttendanceNote(e.target.value)}
+                  placeholder='e.g., "Arrive early — this event regularly sells out"'
+                  fullWidth
+                />
+              </div>
+            </div>
+
+            <div className="col-span-full">
+              <label htmlFor="cancellation_policy" className="block text-sm font-medium leading-6 text-gray-900">
+                Cancellation Policy
+                <span className="ml-2 text-xs font-normal text-amber-600">Draft — review before publishing</span>
+              </label>
+              <div className="mt-2">
+                <DebouncedTextarea
+                  id="cancellation_policy"
+                  rows={3}
+                  value={cancellationPolicy}
+                  onValueChange={setCancellationPolicy}
+                  placeholder="Cancellation and refund policy for this event..."
+                  fullWidth
+                />
+              </div>
+            </div>
+
+            <div className="col-span-full">
+              <label htmlFor="accessibility_notes" className="block text-sm font-medium leading-6 text-gray-900">
+                Accessibility Notes
+              </label>
+              <div className="mt-2">
+                <DebouncedTextarea
+                  id="accessibility_notes"
+                  rows={3}
+                  value={accessibilityNotes}
+                  onValueChange={setAccessibilityNotes}
+                  placeholder="Wheelchair access, hearing loop, accessible parking, etc."
+                  fullWidth
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Group 4: SEO Health Indicator */}
+        <div>
+          <h4 className="text-sm font-semibold text-gray-700 mb-4">SEO Health</h4>
+          <SeoHealthIndicator
+            metaTitle={metaTitle}
+            metaDescription={metaDescription}
+            shortDescription={shortDescription}
+            longDescription={longDescription}
+            slug={slug}
+            highlights={highlights}
+            primaryKeywords={parseKeywords(primaryKeywords)}
+            imageAltText={imageAltText}
+            faqCount={faqs.length}
+            socialCopyPresent={!!(socialCopyWhatsapp || facebookEventDescription)}
+            accessibilityNotes={accessibilityNotes}
+          />
         </div>
       </CollapsibleSection>
 
