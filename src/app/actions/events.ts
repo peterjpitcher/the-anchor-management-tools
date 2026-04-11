@@ -23,7 +23,7 @@ import { logger } from '@/lib/logger'
 
 type CreateEventResult = { error: string } | { success: true; data: Event }
 type EventFaqInput = NonNullable<CreateEventInput['faqs']>[number]
-type PreparedEventData = Partial<CreateEventInput> & { faqs: EventFaqInput[] }
+type PreparedEventData = Partial<CreateEventInput> & { faqs?: EventFaqInput[] }
 
 type SmsSafetyMeta =
   | {
@@ -74,12 +74,11 @@ async function prepareEventDataFromFormData(formData: FormData, _existingEventId
         default_is_free,
         short_description,
         long_description,
-        brief,
         highlights,
         keywords,
         meta_title,
         meta_description,
-        image_url,
+        default_image_url,
         promo_video_url,
         highlight_video_urls,
         gallery_image_urls,
@@ -101,12 +100,11 @@ async function prepareEventDataFromFormData(formData: FormData, _existingEventId
         is_free: category.default_is_free,
         short_description: category.short_description,
         long_description: category.long_description,
-        brief: category.brief,
         highlights: category.highlights,
         keywords: category.keywords,
         meta_title: category.meta_title,
         meta_description: category.meta_description,
-        hero_image_url: category.image_url,
+        hero_image_url: category.default_image_url,
         promo_video_url: category.promo_video_url,
         highlight_video_urls: category.highlight_video_urls,
         gallery_image_urls: category.gallery_image_urls,
@@ -160,24 +158,23 @@ async function prepareEventDataFromFormData(formData: FormData, _existingEventId
     gallery_image_urls: rawData.gallery_image_urls ? JSON.parse(rawData.gallery_image_urls as string) : categoryDefaults.gallery_image_urls || []
   };
 
-  // Handle FAQs
-  let faqs: EventFaqInput[] = [];
-  try {
-    const faqsJson = formData.get('faqs') as string;
-    if (faqsJson) {
+  // Handle FAQs — undefined means "not provided, preserve existing"; array means "replace with these"
+  const faqsJson = formData.get('faqs') as string | null;
+  if (faqsJson !== null) {
+    try {
       const parsed = JSON.parse(faqsJson);
-      if (Array.isArray(parsed) && parsed.length > 0) {
-        faqs = parsed.filter(faq => faq.question && faq.answer);
+      if (Array.isArray(parsed)) {
+        data.faqs = parsed.filter((faq: EventFaqInput) => faq.question && faq.answer);
       }
+    } catch (e) {
+      logger.warn('Failed to parse FAQs from event form data', {
+        metadata: {
+          error: e instanceof Error ? e.message : String(e),
+        },
+      })
     }
-  } catch (e) {
-    logger.warn('Failed to parse FAQs from event form data', {
-      metadata: {
-        error: e instanceof Error ? e.message : String(e),
-      },
-    })
   }
-  data.faqs = faqs;
+  // If faqsJson was null (not in FormData), data.faqs remains undefined — service layer will skip FAQ replacement
 
   return data as PreparedEventData;
 }
