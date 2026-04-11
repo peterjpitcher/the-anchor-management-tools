@@ -27,7 +27,7 @@ export default async function EditEventPage({ params }: PageProps) {
   const [eventResult, categoriesResult] = await Promise.all([
     supabase
       .from('events')
-      .select('*')
+      .select('*, event_faqs(id, question, answer, sort_order)')
       .eq('id', id)
       .single(),
     getActiveEventCategories()

@@ -105,6 +105,12 @@ export function EventFormGrouped({ event, categories, onSubmit, onCancel }: Even
   const [durationMinutes, setDurationMinutes] = useState(event?.duration_minutes?.toString() ?? '')
   const [lastEntryTime, setLastEntryTime] = useState(event?.last_entry_time ?? '')
 
+  // FAQ state — load existing FAQs from event, track whether modified
+  const [faqs, setFaqs] = useState<{ question: string; answer: string; sort_order?: number }[]>(
+    (event as any)?.event_faqs?.sort((a: any, b: any) => (a.sort_order ?? 0) - (b.sort_order ?? 0)) ?? []
+  )
+  const [faqsModified, setFaqsModified] = useState(false)
+
   const [isGeneratingSeo, setIsGeneratingSeo] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
 
@@ -154,6 +160,8 @@ export function EventFormGrouped({ event, categories, onSubmit, onCancel }: Even
         duration_minutes: durationMinutes && durationMinutes !== '' ? parseInt(durationMinutes) : null,
         last_entry_time: lastEntryTime || null,
         brief: brief.trim() ? brief.trim() : null,
+        // Only include FAQs when they have been explicitly modified
+        ...(faqsModified ? { faqs } : {}),
       }
 
       await onSubmit(eventData)
