@@ -835,6 +835,7 @@ export class MenuService {
       if (row.menu_code && !dishEntry.assignmentKeys.has(assignmentKey)) {
         dishEntry.assignments.push({
           menu_code: row.menu_code,
+          menu_name: row.menu_name,
           category_code: row.category_code,
           category_name: row.category_name,
           sort_order: row.sort_order ?? 0,
