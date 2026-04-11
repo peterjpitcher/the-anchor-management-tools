@@ -14,6 +14,7 @@ export interface IngredientSummary {
   latest_pack_cost?: number | null;
   portions_per_pack?: number | null;
   is_active: boolean;
+  abv?: number | null;
 }
 
 export interface RecipeSummary {
@@ -56,6 +57,8 @@ export interface DishIngredientDetail {
   default_unit?: string | null;
   dietary_flags: string[];
   allergens: string[];
+  abv?: number | null;
+  measure_ml?: number | null;
 }
 
 export interface DishRecipeDetail {
@@ -217,7 +220,10 @@ export function DishExpandedRow({ dish }: DishExpandedRowProps): React.ReactElem
                     </div>
                     <div className="flex flex-col items-start sm:items-end">
                       <Badge variant="primary">Qty {quantityLabel}</Badge>
-                      <span className="mt-2 text-xs text-gray-500">{unitCostLabel}</span>
+                      {ingredient.measure_ml != null && (
+                        <span className="mt-1 text-xs text-gray-500">{ingredient.measure_ml}ml</span>
+                      )}
+                      <span className="mt-1 text-xs text-gray-500">{unitCostLabel}</span>
                     </div>
                   </div>
                   <div className="mt-3 grid gap-2 text-xs text-gray-600 sm:grid-cols-3">

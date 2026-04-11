@@ -208,6 +208,7 @@ export function DishDrawer({
             option_group: (row.option_group as string) || '',
             inclusion_type: (row.inclusion_type as string) || 'included',
             upgrade_price: row.upgrade_price != null ? String(row.upgrade_price) : '',
+            measure_ml: row.measure_ml != null ? String(row.measure_ml) : '',
           }))
         : [defaultIngredientRow];
 
@@ -328,6 +329,7 @@ export function DishDrawer({
             inclusion_type: (row.inclusion_type || 'included') as 'included' | 'removable' | 'choice' | 'upgrade',
             upgrade_price: row.inclusion_type === 'upgrade' && row.upgrade_price ? parseFloat(row.upgrade_price) : undefined,
             option_group: ['choice', 'upgrade'].includes(row.inclusion_type) ? (row.option_group?.trim() || undefined) : undefined,
+            measure_ml: row.measure_ml ? parseFloat(row.measure_ml) : undefined,
           })),
         recipes: formRecipes
           .filter((row) => row.recipe_id && parseFloat(row.quantity || '0') > 0)

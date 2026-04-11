@@ -91,6 +91,7 @@ export interface DishIngredientFormRow {
   option_group: string;
   inclusion_type: string;
   upgrade_price: string;
+  measure_ml: string;
 }
 
 export interface DishRecipeFormRow {
@@ -116,6 +117,7 @@ export const defaultIngredientRow: DishIngredientFormRow = {
   option_group: '',
   inclusion_type: 'included',
   upgrade_price: '',
+  measure_ml: '',
 };
 
 export const defaultRecipeRow: DishRecipeFormRow = {
@@ -352,7 +354,7 @@ export function IngredientCompositionRow({
 
       {/* Expanded: advanced fields */}
       {expanded && (
-        <div className="mt-3 grid grid-cols-2 gap-3 border-t border-gray-100 pt-3 sm:grid-cols-4">
+        <div className="mt-3 grid grid-cols-2 gap-3 border-t border-gray-100 pt-3 sm:grid-cols-5">
           <FormGroup label="Yield %">
             <Input
               type="number" min="0" max="100" step="1"
@@ -372,6 +374,14 @@ export function IngredientCompositionRow({
               type="number" min="0" step="0.01"
               value={row.cost_override}
               onChange={(e) => onChange(index, { cost_override: e.target.value })}
+            />
+          </FormGroup>
+          <FormGroup label="Measure (ml)">
+            <Input
+              type="number" min="0" step="1"
+              value={row.measure_ml}
+              onChange={(e) => onChange(index, { measure_ml: e.target.value })}
+              placeholder="e.g. 568"
             />
           </FormGroup>
           <FormGroup label="Notes">

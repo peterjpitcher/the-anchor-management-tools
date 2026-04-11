@@ -309,7 +309,7 @@ export function DishCompositionTab({
   function addIngredientRow() {
     onIngredientsChange([
       ...formIngredients,
-      { ingredient_id: '', quantity: '', unit: 'portion', yield_pct: '100', wastage_pct: '0', cost_override: '', notes: '', option_group: '', inclusion_type: 'included', upgrade_price: '' },
+      { ingredient_id: '', quantity: '', unit: 'portion', yield_pct: '100', wastage_pct: '0', cost_override: '', notes: '', option_group: '', inclusion_type: 'included', upgrade_price: '', measure_ml: '' },
     ]);
   }
 

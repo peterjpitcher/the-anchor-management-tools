@@ -83,6 +83,8 @@ function mapApiDish(raw: Record<string, unknown>, fallbackTarget: number): DishL
       option_group: (i.option_group as string) ?? null,
       inclusion_type: (i.inclusion_type as string) ?? 'included',
       upgrade_price: i.upgrade_price != null ? Number(i.upgrade_price) : null,
+      abv: i.abv != null ? Number(i.abv) : null,
+      measure_ml: i.measure_ml != null ? Number(i.measure_ml) : null,
     })),
     recipes: ((raw.recipes ?? []) as Record<string, unknown>[]).map((r) => ({
       recipe_id: r.recipe_id as string,
