@@ -292,6 +292,12 @@ export default function MenuManagementHomePage(): React.ReactElement {
     <PageLayout
       title="Menu Management"
       subtitle="Control ingredients, dishes, and menu structure from one place"
+      navItems={[
+        { label: 'Overview', href: '/menu-management' },
+        { label: 'Dishes', href: '/menu-management/dishes' },
+        { label: 'Recipes', href: '/menu-management/recipes' },
+        { label: 'Ingredients', href: '/menu-management/ingredients' },
+      ]}
       loading={loading}
       loadingLabel="Loading menu data..."
       error={error}

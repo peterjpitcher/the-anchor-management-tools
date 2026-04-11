@@ -584,6 +584,7 @@ export default function MenuDishesPage(): React.ReactElement {
       subtitle="Build dishes from ingredients, manage GP%, and configure menu placement"
       backButton={{ label: 'Back to Menu Management', href: '/menu-management' }}
       navItems={[
+        { label: 'Overview', href: '/menu-management' },
         { label: 'Dishes', href: '/menu-management/dishes' },
         { label: 'Recipes', href: '/menu-management/recipes' },
         { label: 'Ingredients', href: '/menu-management/ingredients' },
