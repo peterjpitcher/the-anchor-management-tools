@@ -378,6 +378,7 @@ export default function MenuRecipesPage(): React.ReactElement {
       subtitle="Build prep recipes from ingredients once, then reuse them across multiple dishes."
       backButton={{ label: 'Back to Menu Management', href: '/menu-management' }}
       navItems={[
+        { label: 'Overview', href: '/menu-management' },
         { label: 'Dishes', href: '/menu-management/dishes' },
         { label: 'Recipes', href: '/menu-management/recipes' },
         { label: 'Ingredients', href: '/menu-management/ingredients' },
