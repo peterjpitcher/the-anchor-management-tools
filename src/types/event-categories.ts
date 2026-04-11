@@ -41,6 +41,12 @@ export interface EventCategory {
     answer: string
     sort_order: number
   }>
+  primary_keywords?: string[] | null
+  secondary_keywords?: string[] | null
+  local_seo_keywords?: string[] | null
+  image_alt_text?: string | null
+  cancellation_policy?: string | null
+  accessibility_notes?: string | null
 }
 
 export interface CustomerCategoryStats {
@@ -122,6 +128,12 @@ export interface CategoryFormData {
     answer: string
     sort_order: number
   }>
+  primary_keywords?: string[]
+  secondary_keywords?: string[]
+  local_seo_keywords?: string[]
+  image_alt_text?: string
+  cancellation_policy?: string
+  accessibility_notes?: string
 }
 
 import {
