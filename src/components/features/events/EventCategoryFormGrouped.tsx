@@ -2,6 +2,8 @@
 
 import { useState } from 'react'
 import { EventCategory } from '@/types/event-categories'
+import { KeywordStrategyCard } from './KeywordStrategyCard'
+import { parseKeywords, keywordsToDisplay } from '@/lib/keywords'
 import { Button } from '@/components/ui-v2/forms/Button'
 import { Input } from '@/components/ui-v2/forms/Input'
 import { Select } from '@/components/ui-v2/forms/Select'
@@ -111,6 +113,14 @@ export function EventCategoryFormGrouped({ category, onSubmit, onCancel }: Event
   const [defaultBookingUrl, setDefaultBookingUrl] = useState(category?.default_booking_url ?? '')
   
   
+  // Keyword strategy fields
+  const [primaryKeywords, setPrimaryKeywords] = useState(keywordsToDisplay((category as any)?.primary_keywords))
+  const [secondaryKeywords, setSecondaryKeywords] = useState(keywordsToDisplay((category as any)?.secondary_keywords))
+  const [localSeoKeywords, setLocalSeoKeywords] = useState(keywordsToDisplay((category as any)?.local_seo_keywords))
+  const [imageAltText, setImageAltText] = useState((category as any)?.image_alt_text ?? '')
+  const [cancellationPolicy, setCancellationPolicy] = useState((category as any)?.cancellation_policy ?? '')
+  const [accessibilityNotes, setAccessibilityNotes] = useState((category as any)?.accessibility_notes ?? '')
+
   const [isSubmitting, setIsSubmitting] = useState(false)
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -159,7 +169,14 @@ export function EventCategoryFormGrouped({ category, onSubmit, onCancel }: Event
         default_doors_time: defaultDoorsTime.trim() || undefined,
         default_last_entry_time: defaultLastEntryTime || undefined,
         default_booking_url: defaultBookingUrl.trim() || undefined,
-      }
+        // Keyword strategy fields
+        primary_keywords: parseKeywords(primaryKeywords),
+        secondary_keywords: parseKeywords(secondaryKeywords),
+        local_seo_keywords: parseKeywords(localSeoKeywords),
+        image_alt_text: imageAltText || null,
+        cancellation_policy: cancellationPolicy || null,
+        accessibility_notes: accessibilityNotes || null,
+      } as Partial<EventCategory>
 
       await onSubmit(categoryData)
     } catch (error) {
@@ -647,6 +664,72 @@ export function EventCategoryFormGrouped({ category, onSubmit, onCancel }: Event
                 fullWidth
               />
               <p className="mt-1 text-xs text-gray-500">Separate keywords with commas for better SEO</p>
+            </div>
+          </div>
+
+          {/* Keyword Strategy */}
+          <div className="col-span-full">
+            <KeywordStrategyCard
+              primaryKeywords={primaryKeywords}
+              secondaryKeywords={secondaryKeywords}
+              localSeoKeywords={localSeoKeywords}
+              onPrimaryChange={setPrimaryKeywords}
+              onSecondaryChange={setSecondaryKeywords}
+              onLocalChange={setLocalSeoKeywords}
+            />
+          </div>
+
+          {/* Image Alt Text Default */}
+          <div className="col-span-full">
+            <label htmlFor="image_alt_text" className="block text-sm font-medium leading-6 text-gray-900">
+              Image Alt Text Default
+            </label>
+            <div className="mt-2">
+              <Input
+                type="text"
+                id="image_alt_text"
+                value={imageAltText}
+                onChange={(e) => setImageAltText(e.target.value)}
+                placeholder="e.g., Live music at The Anchor pub"
+                fullWidth
+              />
+              <p className="mt-1 text-xs text-gray-500">Default alt text for event images in this category</p>
+            </div>
+          </div>
+
+          {/* Cancellation Policy Default */}
+          <div className="col-span-full">
+            <label htmlFor="cancellation_policy" className="block text-sm font-medium leading-6 text-gray-900">
+              Cancellation Policy Default
+            </label>
+            <div className="mt-2">
+              <Textarea
+                id="cancellation_policy"
+                rows={3}
+                value={cancellationPolicy}
+                onChange={(e) => setCancellationPolicy(e.target.value)}
+                placeholder="e.g., Tickets are non-refundable but may be transferred to another person."
+                fullWidth
+              />
+              <p className="mt-1 text-xs text-gray-500">Default cancellation policy shown on event pages</p>
+            </div>
+          </div>
+
+          {/* Accessibility Notes Default */}
+          <div className="col-span-full">
+            <label htmlFor="accessibility_notes" className="block text-sm font-medium leading-6 text-gray-900">
+              Accessibility Notes Default
+            </label>
+            <div className="mt-2">
+              <Textarea
+                id="accessibility_notes"
+                rows={3}
+                value={accessibilityNotes}
+                onChange={(e) => setAccessibilityNotes(e.target.value)}
+                placeholder="e.g., Venue is wheelchair accessible. Hearing loop available."
+                fullWidth
+              />
+              <p className="mt-1 text-xs text-gray-500">Default accessibility information for events in this category</p>
             </div>
           </div>
         </div>
