@@ -20,6 +20,7 @@ import { sendSMS } from '@/lib/twilio'
 import { ensureReplyInstruction } from '@/lib/sms/support'
 import { getSmartFirstName } from '@/lib/sms/bulk'
 import { logger } from '@/lib/logger'
+import { buildKeywordsUnion } from '@/lib/keywords'
 
 type CreateEventResult = { error: string } | { success: true; data: Event }
 type EventFaqInput = NonNullable<CreateEventInput['faqs']>[number]
@@ -75,7 +76,12 @@ async function prepareEventDataFromFormData(formData: FormData, _existingEventId
         short_description,
         long_description,
         highlights,
-        keywords,
+        primary_keywords,
+        secondary_keywords,
+        local_seo_keywords,
+        image_alt_text,
+        cancellation_policy,
+        accessibility_notes,
         meta_title,
         meta_description,
         default_image_url,
@@ -101,7 +107,12 @@ async function prepareEventDataFromFormData(formData: FormData, _existingEventId
         short_description: category.short_description,
         long_description: category.long_description,
         highlights: category.highlights,
-        keywords: category.keywords,
+        primary_keywords: category.primary_keywords,
+        secondary_keywords: category.secondary_keywords,
+        local_seo_keywords: category.local_seo_keywords,
+        image_alt_text: category.image_alt_text,
+        cancellation_policy: category.cancellation_policy,
+        accessibility_notes: category.accessibility_notes,
         meta_title: category.meta_title,
         meta_description: category.meta_description,
         hero_image_url: category.default_image_url,
@@ -136,7 +147,16 @@ async function prepareEventDataFromFormData(formData: FormData, _existingEventId
     long_description: rawData.long_description as string || categoryDefaults.long_description || null,
     brief: (rawData.brief as string)?.trim() || categoryDefaults.brief || null,
     highlights: rawData.highlights ? JSON.parse(rawData.highlights as string) : categoryDefaults.highlights || [],
-    keywords: rawData.keywords ? JSON.parse(rawData.keywords as string) : categoryDefaults.keywords || [],
+    keywords: rawData.keywords ? JSON.parse(rawData.keywords as string) : [],
+    primary_keywords: rawData.primary_keywords ? JSON.parse(rawData.primary_keywords as string) : categoryDefaults.primary_keywords || [],
+    secondary_keywords: rawData.secondary_keywords ? JSON.parse(rawData.secondary_keywords as string) : categoryDefaults.secondary_keywords || [],
+    local_seo_keywords: rawData.local_seo_keywords ? JSON.parse(rawData.local_seo_keywords as string) : categoryDefaults.local_seo_keywords || [],
+    image_alt_text: rawData.image_alt_text as string || null,
+    social_copy_whatsapp: rawData.social_copy_whatsapp as string || null,
+    previous_event_summary: rawData.previous_event_summary as string || null,
+    attendance_note: rawData.attendance_note as string || null,
+    cancellation_policy: rawData.cancellation_policy as string || categoryDefaults.cancellation_policy || null,
+    accessibility_notes: rawData.accessibility_notes as string || categoryDefaults.accessibility_notes || null,
     slug: (rawData.slug as string)?.trim() || null,
     meta_title: rawData.meta_title as string || categoryDefaults.meta_title || null,
     meta_description: rawData.meta_description as string || categoryDefaults.meta_description || null,
@@ -157,6 +177,14 @@ async function prepareEventDataFromFormData(formData: FormData, _existingEventId
     highlight_video_urls: rawData.highlight_video_urls ? JSON.parse(rawData.highlight_video_urls as string) : categoryDefaults.highlight_video_urls || [],
     gallery_image_urls: rawData.gallery_image_urls ? JSON.parse(rawData.gallery_image_urls as string) : categoryDefaults.gallery_image_urls || []
   };
+
+  // Derive flat keywords as union of three tiers (primary > secondary > local)
+  const primaryKw = (data.primary_keywords as string[]) || [];
+  const secondaryKw = (data.secondary_keywords as string[]) || [];
+  const localKw = (data.local_seo_keywords as string[]) || [];
+  if (primaryKw.length > 0 || secondaryKw.length > 0 || localKw.length > 0) {
+    data.keywords = buildKeywordsUnion(primaryKw, secondaryKw, localKw);
+  }
 
   // Handle FAQs — undefined means "not provided, preserve existing"; array means "replace with these"
   const faqsJson = formData.get('faqs') as string | null;
