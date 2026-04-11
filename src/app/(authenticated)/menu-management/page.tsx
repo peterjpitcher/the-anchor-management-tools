@@ -9,7 +9,7 @@ import { Card } from '@/components/ui-v2/layout/Card';
 import { Stat, StatGroup } from '@/components/ui-v2/display/Stat';
 import { Badge } from '@/components/ui-v2/display/Badge';
 import { usePermissions } from '@/contexts/PermissionContext';
-import { listMenuDishes } from '@/app/actions/menu-management';
+import { listMenuDishes, listMenuIngredients } from '@/app/actions/menu-management';
 import { MenuDishesTable, type MenuDishesFilter } from './_components/MenuDishesTable';
 import { DishDrawer } from './dishes/_components/DishDrawer';
 import type { DishListItem, IngredientSummary, RecipeSummary, MenuSummary } from './dishes/_components/DishExpandedRow';
@@ -204,11 +204,16 @@ export default function MenuManagementHomePage(): React.ReactElement {
 
   const loadSupportData = useCallback(async () => {
     try {
+      // Use server action for ingredients (faster than API route, avoids HTTP timeout)
       const [ingredientRes, recipeRes, menuRes] = await Promise.all([
-        fetch('/api/menu-management/ingredients').then((r) => r.json()),
+        listMenuIngredients(),
         fetch('/api/menu-management/recipes?summary=1').then((r) => r.json()),
         fetch('/api/menu-management/menus').then((r) => r.json()),
       ]);
+
+      if (ingredientRes.error) {
+        console.error('Failed to load ingredients:', ingredientRes.error);
+      }
 
       setIngredients(
         ((ingredientRes.data ?? []) as Record<string, unknown>[]).map((i) => ({
@@ -219,6 +224,7 @@ export default function MenuManagementHomePage(): React.ReactElement {
           latest_pack_cost: i.latest_pack_cost != null ? Number(i.latest_pack_cost ?? i.pack_cost) : null,
           portions_per_pack: (i.portions_per_pack as number) ?? null,
           is_active: (i.is_active as boolean) !== false,
+          abv: i.abv != null ? Number(i.abv) : null,
         }))
       );
 
