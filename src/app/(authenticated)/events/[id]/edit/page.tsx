@@ -9,6 +9,8 @@ interface PageProps {
   params: Promise<{ id: string }>
 }
 
+export const maxDuration = 60
+
 export const metadata = {
   title: 'Edit Event',
 }
