@@ -16,6 +16,7 @@ import { ConfirmDialog } from '@/components/ui-v2/overlay/ConfirmDialog';
 import { toast } from '@/components/ui-v2/feedback/Toast';
 import { LinkButton } from '@/components/ui-v2/navigation/LinkButton';
 import { usePermissions } from '@/contexts/PermissionContext';
+import { Stat, StatGroup } from '@/components/ui-v2/display/Stat';
 import { ExclamationTriangleIcon } from '@heroicons/react/20/solid';
 import { useTablePipeline } from '../_components/useTablePipeline';
 import { EditableCurrencyCell } from '../_components/EditableCurrencyCell';
@@ -578,6 +579,35 @@ export default function MenuDishesPage(): React.ReactElement {
     </div>
   );
 
+  // ---- Stats ----
+
+  const dishStats = useMemo(() => {
+    const active = dishes.filter((d) => d.is_active);
+    const inactive = dishes.filter((d) => !d.is_active);
+    const belowTarget = dishes.filter((d) => d.is_gp_alert);
+    const missingCosting = dishes.filter(
+      (d) =>
+        (!d.ingredients || d.ingredients.length === 0) &&
+        (!d.recipes || d.recipes.length === 0)
+    );
+    const withMeaningfulGp = active.filter(
+      (d) => typeof d.gp_pct === 'number' && isFinite(d.gp_pct) && d.gp_pct > 0 && d.gp_pct < 1
+    );
+    const avgGp =
+      withMeaningfulGp.length > 0
+        ? withMeaningfulGp.reduce((sum, d) => sum + (d.gp_pct as number), 0) / withMeaningfulGp.length
+        : null;
+
+    return {
+      total: dishes.length,
+      active: active.length,
+      inactive: inactive.length,
+      belowTarget: belowTarget.length,
+      missingCosting: missingCosting.length,
+      avgGp,
+    };
+  }, [dishes]);
+
   // ---- Render ----
 
   return (
@@ -597,6 +627,40 @@ export default function MenuDishesPage(): React.ReactElement {
       error={error}
       onRetry={loadDishes}
     >
+      {/* Stat Cards */}
+      <Section>
+        <StatGroup columns={4}>
+          <Stat
+            label="Total Dishes"
+            value={dishStats.total}
+            description={`${dishStats.active} active, ${dishStats.inactive} inactive`}
+            variant="filled"
+            size="sm"
+          />
+          <Stat
+            label="Below GP Target"
+            value={dishStats.belowTarget}
+            color={dishStats.belowTarget > 0 ? 'error' : 'success'}
+            variant="filled"
+            size="sm"
+          />
+          <Stat
+            label="Missing Costing"
+            value={dishStats.missingCosting}
+            color={dishStats.missingCosting > 0 ? 'warning' : 'success'}
+            variant="filled"
+            size="sm"
+          />
+          <Stat
+            label="Avg GP%"
+            value={dishStats.avgGp !== null ? `${Math.round(dishStats.avgGp * 100)}%` : '--'}
+            description={`Target: ${Math.round(targetGpPct * 100)}%`}
+            variant="filled"
+            size="sm"
+          />
+        </StatGroup>
+      </Section>
+
       <Section>
         {/* Filter panel with integrated search */}
         <FilterPanel
