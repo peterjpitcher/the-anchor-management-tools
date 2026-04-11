@@ -24,6 +24,15 @@ export type CreateEventInput = {
   brief?: string | null;
   highlights?: string[];
   keywords?: string[];
+  primary_keywords?: string[];
+  secondary_keywords?: string[];
+  local_seo_keywords?: string[];
+  image_alt_text?: string | null;
+  social_copy_whatsapp?: string | null;
+  previous_event_summary?: string | null;
+  attendance_note?: string | null;
+  cancellation_policy?: string | null;
+  accessibility_notes?: string | null;
   slug?: string | null;
   meta_title?: string | null;
   meta_description?: string | null;
@@ -153,6 +162,13 @@ function formatTimeToHHMM(time: string | undefined | null): string | undefined |
   return `${formattedHours}:${formattedMinutes}`
 }
 
+const keywordArraySchema = z.array(
+  z.string()
+    .max(100, 'Keyword must be under 100 characters')
+    .transform(s => s.trim().replace(/\s+/g, ' '))
+    .refine(s => !/<[^>]+>/.test(s), 'Keywords must not contain HTML')
+).max(10, 'Maximum 10 keywords per tier').default([])
+
 // Event validation schema
 export const eventSchema = z.object({
   name: z.string().min(1, 'Event name is required').max(200, 'Event name too long'),
@@ -184,6 +200,15 @@ export const eventSchema = z.object({
   brief: z.string().max(50000).nullable().optional(),
   highlights: z.array(z.string()).default([]),
   keywords: z.array(z.string()).default([]),
+  primary_keywords: keywordArraySchema,
+  secondary_keywords: keywordArraySchema,
+  local_seo_keywords: keywordArraySchema,
+  image_alt_text: z.string().max(200).nullable().optional(),
+  social_copy_whatsapp: z.string().max(300).nullable().optional(),
+  previous_event_summary: z.string().max(300).nullable().optional(),
+  attendance_note: z.string().max(200).nullable().optional(),
+  cancellation_policy: z.string().max(300).nullable().optional(),
+  accessibility_notes: z.string().max(300).nullable().optional(),
   slug: z.string().regex(/^[a-z0-9-]+$/, 'Slug must only contain lowercase letters, numbers, and hyphens').nullable().optional(),
   meta_title: z.string().max(255).nullable().optional(),
   meta_description: z.string().max(500).nullable().optional(),
