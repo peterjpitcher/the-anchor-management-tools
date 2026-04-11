@@ -465,7 +465,7 @@ export class EventService {
     const { data: event, error } = await supabase.rpc('update_event_transaction', {
       p_event_id: id,
       p_event_data: eventData,
-      p_faqs: input.faqs // If undefined, SQL will ignore. If [], SQL will delete all.
+      p_faqs: input.faqs !== undefined ? input.faqs : null // null = preserve existing; array = replace
     });
 
     if (error) {
