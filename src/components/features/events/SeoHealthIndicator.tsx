@@ -12,7 +12,6 @@ interface SeoHealthProps {
   primaryKeywords: string[]   // parsed keyword array
   imageAltText: string
   faqCount: number
-  socialCopyPresent: boolean
   accessibilityNotes: string
 }
 
@@ -48,7 +47,6 @@ export function SeoHealthIndicator({
   primaryKeywords,
   imageAltText,
   faqCount,
-  socialCopyPresent,
   accessibilityNotes,
 }: SeoHealthProps) {
   const checks = useMemo((): SeoCheck[] => {
@@ -108,13 +106,8 @@ export function SeoHealthIndicator({
         points: 5,
       },
       {
-        label: 'Social copy present (at least one platform)',
-        passed: socialCopyPresent,
-        points: 5,
-      },
-      {
         label: 'Slug is keyword-rich (contains primary keyword)',
-        passed: containsKeyword(slug, primaryKeywords),
+        passed: containsKeyword(slug.replace(/-/g, ' '), primaryKeywords),
         points: 5,
       },
       {
@@ -133,7 +126,6 @@ export function SeoHealthIndicator({
     primaryKeywords,
     imageAltText,
     faqCount,
-    socialCopyPresent,
     accessibilityNotes,
   ])
 

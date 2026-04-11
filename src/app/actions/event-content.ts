@@ -104,9 +104,6 @@ type EventSeoContentResult = {
     slug: string | null
     imageAltText: string | null
     faqs: { question: string; answer: string }[]
-    facebookEventName: string | null
-    facebookEventDescription: string | null
-    socialCopyWhatsapp: string | null
     cancellationPolicy: string | null
   }
 } | {
@@ -234,8 +231,8 @@ export async function generateEventSeoContent(input: EventSeoContentInput): Prom
 
   const keywordContext = [
     mergedInput.primaryKeywords?.length ? `PRIMARY KEYWORDS (MUST appear in: title, meta description, slug, first paragraph of long description, image alt text): ${mergedInput.primaryKeywords.join(', ')}` : '',
-    mergedInput.secondaryKeywords?.length ? `SECONDARY KEYWORDS (MUST appear in: long description body, at least 2 highlights, at least 2 FAQ questions, Facebook copy): ${mergedInput.secondaryKeywords.join(', ')}` : '',
-    mergedInput.localSeoKeywords?.length ? `LOCAL SEO KEYWORDS (MUST appear in: long description venue paragraph, at least 1 FAQ answer, WhatsApp copy): ${mergedInput.localSeoKeywords.join(', ')}` : '',
+    mergedInput.secondaryKeywords?.length ? `SECONDARY KEYWORDS (MUST appear in: long description body, at least 2 highlights, at least 2 FAQ questions): ${mergedInput.secondaryKeywords.join(', ')}` : '',
+    mergedInput.localSeoKeywords?.length ? `LOCAL SEO KEYWORDS (MUST appear in: long description venue paragraph, at least 1 FAQ answer): ${mergedInput.localSeoKeywords.join(', ')}` : '',
   ].filter(Boolean).join('\n')
 
   let response: Response
@@ -269,8 +266,8 @@ export async function generateEventSeoContent(input: EventSeoContentInput): Prom
             ...(keywordContext ? [
               'KEYWORD PLACEMENT RULES:',
               '- Primary keywords: front-load in meta title, use in first clause of meta description, include in slug, place in first paragraph of long description, include in image alt text',
-              '- Secondary keywords: weave into long description body paragraphs, include in at least 2 highlights, use in at least 2 FAQ questions, include in Facebook description',
-              '- Local SEO keywords: use in venue/directions paragraph of long description, include in at least 1 FAQ answer, include in WhatsApp copy',
+              '- Secondary keywords: weave into long description body paragraphs, include in at least 2 highlights, use in at least 2 FAQ questions',
+              '- Local SEO keywords: use in venue/directions paragraph of long description, include in at least 1 FAQ answer',
               '- No keyword stuffing — each keyword used 1-2 times maximum per field',
               '- Natural language only — skip a keyword rather than force it',
               '',
@@ -285,11 +282,6 @@ export async function generateEventSeoContent(input: EventSeoContentInput): Prom
             '- Pricing/value (cost, what\'s included): use primary keywords naturally',
             '- Questions should be 10-15 words, answers 30-60 words',
             '',
-            'FACEBOOK EVENT NAME: A short, catchy event title for Facebook (~100 chars). Include the event name and venue.',
-            'FACEBOOK EVENT DESCRIPTION: 2-3 sentences for Facebook event promotion (~300 chars). Engaging hook, key details (date/time/price), CTA. Use secondary keywords.',
-            '',
-            'WHATSAPP COPY: A single WhatsApp message (~200 chars). Emoji-friendly, essential info (what/when/where). End with [LINK] placeholder. Use local keywords.',
-            '',
             'CANCELLATION POLICY: Based on the event type:',
             '- If free entry: "Free entry — no booking or registration required."',
             '- If paid/ticketed: "Tickets are non-refundable but may be transferred to another person. Please contact us at least 24 hours before the event for any changes."',
@@ -297,7 +289,7 @@ export async function generateEventSeoContent(input: EventSeoContentInput): Prom
             '',
             summary,
             '',
-            'Return JSON with keys metaTitle, metaDescription, shortDescription, longDescription, highlights (string array), keywords (string array), slug (string), imageAltText (string), faqs (array of {question, answer}), facebookEventName (string), facebookEventDescription (string), socialCopyWhatsapp (string), cancellationPolicy (string or null). All fields must be strings (or arrays); use "" for missing values.',
+            'Return JSON with keys metaTitle, metaDescription, shortDescription, longDescription, highlights (string array), keywords (string array), slug (string), imageAltText (string), faqs (array of {question, answer}), cancellationPolicy (string or null). All fields must be strings (or arrays); use "" for missing values.',
           ].join('\n'),
         },
       ],
@@ -340,12 +332,9 @@ export async function generateEventSeoContent(input: EventSeoContentInput): Prom
                 minItems: 3,
                 maxItems: 5,
               },
-              facebookEventName: { type: ['string', 'null'] },
-              facebookEventDescription: { type: ['string', 'null'] },
-              socialCopyWhatsapp: { type: ['string', 'null'] },
               cancellationPolicy: { type: ['string', 'null'] },
             },
-            required: ['metaTitle', 'metaDescription', 'shortDescription', 'longDescription', 'highlights', 'keywords', 'slug', 'imageAltText', 'faqs', 'facebookEventName', 'facebookEventDescription', 'socialCopyWhatsapp'],
+            required: ['metaTitle', 'metaDescription', 'shortDescription', 'longDescription', 'highlights', 'keywords', 'slug', 'imageAltText', 'faqs'],
             additionalProperties: false,
           },
         },
@@ -389,9 +378,6 @@ export async function generateEventSeoContent(input: EventSeoContentInput): Prom
     slug: string | null
     imageAltText: string | null
     faqs: { question: string; answer: string }[]
-    facebookEventName: string | null
-    facebookEventDescription: string | null
-    socialCopyWhatsapp: string | null
     cancellationPolicy: string | null
   }
   try {
@@ -413,9 +399,6 @@ export async function generateEventSeoContent(input: EventSeoContentInput): Prom
       slug: parsed.slug ?? null,
       imageAltText: parsed.imageAltText || null,
       faqs: Array.isArray(parsed.faqs) ? parsed.faqs : [],
-      facebookEventName: parsed.facebookEventName || null,
-      facebookEventDescription: parsed.facebookEventDescription || null,
-      socialCopyWhatsapp: parsed.socialCopyWhatsapp || null,
       cancellationPolicy: parsed.cancellationPolicy || null,
     },
   }

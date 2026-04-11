@@ -123,11 +123,6 @@ export function EventFormGrouped({ event, categories, onSubmit, onCancel }: Even
 
   // New SEO fields
   const [imageAltText, setImageAltText] = useState((event as any)?.image_alt_text ?? '')
-  const [facebookEventName, setFacebookEventName] = useState(event?.facebook_event_name ?? '')
-  const [facebookEventDescription, setFacebookEventDescription] = useState(event?.facebook_event_description ?? '')
-  const [socialCopyWhatsapp, setSocialCopyWhatsapp] = useState((event as any)?.social_copy_whatsapp ?? '')
-  const [previousEventSummary, setPreviousEventSummary] = useState((event as any)?.previous_event_summary ?? '')
-  const [attendanceNote, setAttendanceNote] = useState((event as any)?.attendance_note ?? '')
   const [cancellationPolicy, setCancellationPolicy] = useState((event as any)?.cancellation_policy ?? '')
   const [accessibilityNotes, setAccessibilityNotes] = useState((event as any)?.accessibility_notes ?? '')
 
@@ -198,11 +193,6 @@ export function EventFormGrouped({ event, categories, onSubmit, onCancel }: Even
         secondary_keywords: parseKeywords(secondaryKeywords),
         local_seo_keywords: parseKeywords(localSeoKeywords),
         image_alt_text: imageAltText || null,
-        facebook_event_name: facebookEventName.trim() || null,
-        facebook_event_description: facebookEventDescription.trim() || null,
-        social_copy_whatsapp: socialCopyWhatsapp || null,
-        previous_event_summary: previousEventSummary || null,
-        attendance_note: attendanceNote || null,
         cancellation_policy: cancellationPolicy || null,
         accessibility_notes: accessibilityNotes || null,
         // Additional timing and booking fields
@@ -380,9 +370,6 @@ export function EventFormGrouped({ event, categories, onSubmit, onCancel }: Even
         setFaqs(result.data.faqs.map((faq: any, i: number) => ({ ...faq, sort_order: i })))
         setFaqsModified(true)
       }
-      if (result.data.facebookEventName) setFacebookEventName(result.data.facebookEventName)
-      if (result.data.facebookEventDescription) setFacebookEventDescription(result.data.facebookEventDescription)
-      if (result.data.socialCopyWhatsapp) setSocialCopyWhatsapp(result.data.socialCopyWhatsapp)
       if (result.data.cancellationPolicy) setCancellationPolicy(result.data.cancellationPolicy)
 
       toast.success('SEO content drafted')
@@ -912,89 +899,6 @@ export function EventFormGrouped({ event, categories, onSubmit, onCancel }: Even
               />
             </div>
 
-            <div className="sm:col-span-3">
-              <label htmlFor="facebook_event_name" className="block text-sm font-medium leading-6 text-gray-900">
-                Facebook Event Name
-              </label>
-              <div className="mt-2">
-                <Input
-                  type="text"
-                  id="facebook_event_name"
-                  value={facebookEventName}
-                  onChange={(e) => setFacebookEventName(e.target.value)}
-                  placeholder="Event name for Facebook"
-                  fullWidth
-                />
-              </div>
-            </div>
-
-            <div className="sm:col-span-3">
-              <label htmlFor="facebook_event_description" className="block text-sm font-medium leading-6 text-gray-900">
-                Facebook Event Description
-              </label>
-              <div className="mt-2">
-                <Input
-                  type="text"
-                  id="facebook_event_description"
-                  value={facebookEventDescription}
-                  onChange={(e) => setFacebookEventDescription(e.target.value)}
-                  placeholder="Description for Facebook event"
-                  fullWidth
-                />
-              </div>
-            </div>
-
-            <div className="col-span-full">
-              <label htmlFor="social_copy_whatsapp" className="block text-sm font-medium leading-6 text-gray-900">
-                WhatsApp Copy
-              </label>
-              <div className="mt-2">
-                <DebouncedTextarea
-                  id="social_copy_whatsapp"
-                  rows={3}
-                  value={socialCopyWhatsapp}
-                  onValueChange={setSocialCopyWhatsapp}
-                  maxLength={300}
-                  placeholder="Short, shareable message for WhatsApp groups"
-                  fullWidth
-                />
-                <p className="mt-1 text-xs text-gray-500">{socialCopyWhatsapp.length}/300 characters</p>
-              </div>
-            </div>
-
-            <div className="col-span-full">
-              <label htmlFor="previous_event_summary" className="block text-sm font-medium leading-6 text-gray-900">
-                Previous Event Summary
-              </label>
-              <div className="mt-2">
-                <DebouncedTextarea
-                  id="previous_event_summary"
-                  rows={3}
-                  value={previousEventSummary}
-                  onValueChange={setPreviousEventSummary}
-                  placeholder="What happened last time? Crowd size, highlights, memorable moments..."
-                  fullWidth
-                />
-              </div>
-              <p className="mt-1 text-xs text-gray-500">Manual — adds E-E-A-T experience signal</p>
-            </div>
-
-            <div className="sm:col-span-3">
-              <label htmlFor="attendance_note" className="block text-sm font-medium leading-6 text-gray-900">
-                Attendance Note
-              </label>
-              <div className="mt-2">
-                <Input
-                  type="text"
-                  id="attendance_note"
-                  value={attendanceNote}
-                  onChange={(e) => setAttendanceNote(e.target.value)}
-                  placeholder='e.g., "Arrive early — this event regularly sells out"'
-                  fullWidth
-                />
-              </div>
-            </div>
-
             <div className="col-span-full">
               <label htmlFor="cancellation_policy" className="block text-sm font-medium leading-6 text-gray-900">
                 Cancellation Policy
@@ -1043,7 +947,6 @@ export function EventFormGrouped({ event, categories, onSubmit, onCancel }: Even
             primaryKeywords={parseKeywords(primaryKeywords)}
             imageAltText={imageAltText}
             faqCount={faqs.length}
-            socialCopyPresent={!!(socialCopyWhatsapp || facebookEventDescription)}
             accessibilityNotes={accessibilityNotes}
           />
         </div>
