@@ -136,9 +136,10 @@ export async function sendDepositReceivedEmail(booking: {
     const subject = `Deposit Received — ${eventLabel} on ${dateFormatted}`;
 
     const depositPaid = booking.deposit_amount != null ? formatCurrency(booking.deposit_amount) : '—';
+    // Security deposit is a returnable bond — the full event total is still owed.
     const remainingBalance =
-      booking.total_amount != null && booking.deposit_amount != null
-        ? formatCurrency(booking.total_amount - booking.deposit_amount)
+      booking.total_amount != null
+        ? formatCurrency(booking.total_amount)
         : null;
 
     const balanceDueRow =

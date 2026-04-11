@@ -351,7 +351,8 @@ describe('PrivateBookingService mutation row-effect guards', () => {
 
     const updateMaybeSingle = vi.fn().mockResolvedValue({ data: null, error: null })
     const updateSelect = vi.fn().mockReturnValue({ maybeSingle: updateMaybeSingle })
-    const updateEq = vi.fn().mockReturnValue({ select: updateSelect })
+    const updateIs = vi.fn().mockReturnValue({ select: updateSelect })
+    const updateEq = vi.fn().mockReturnValue({ is: updateIs })
 
     mockedCreateClient.mockResolvedValue({
       from: vi.fn((table: string) => {
@@ -368,7 +369,7 @@ describe('PrivateBookingService mutation row-effect guards', () => {
 
     await expect(
       PrivateBookingService.recordDeposit('booking-1', 100, 'card')
-    ).rejects.toThrow('Booking not found')
+    ).rejects.toThrow('Deposit has already been recorded (concurrent update)')
   })
 
   it('recordFinalPayment throws not-found when booking update affects no rows', async () => {

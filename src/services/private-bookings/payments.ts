@@ -53,21 +53,25 @@ export async function recordDeposit(bookingId: string, amount: number, method: s
       ? { status: 'confirmed', cancellation_reason: null }
       : {};
 
+  // WF-2: Atomic guard — only update if deposit_paid_date is still NULL.
+  // Prevents concurrent deposit recordings from both succeeding.
+  // ID-5: Do NOT overwrite deposit_amount — it's the configured requirement.
+  // The amount parameter is for audit/display only; the configured deposit stays intact.
   const { data: updatedBooking, error } = await supabase
     .from('private_bookings')
     .update({
       deposit_paid_date: new Date().toISOString(),
       deposit_payment_method: method,
-      deposit_amount: amount,
       ...statusUpdate,
       updated_at: new Date().toISOString()
     })
     .eq('id', bookingId)
+    .is('deposit_paid_date', null)
     .select()
     .maybeSingle();
 
   if (error) throw new Error('Failed to record deposit');
-  if (!updatedBooking) throw new Error('Booking not found');
+  if (!updatedBooking) throw new Error('Deposit has already been recorded (concurrent update)');
 
   if (booking.customer_id) {
     try {

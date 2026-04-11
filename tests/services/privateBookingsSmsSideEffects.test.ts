@@ -166,7 +166,8 @@ describe('PrivateBookingService SMS side-effect meta', () => {
       error: null,
     })
     const updateSelect = vi.fn().mockReturnValue({ maybeSingle: updateMaybeSingle })
-    const updateEq = vi.fn().mockReturnValue({ select: updateSelect })
+    const updateIs = vi.fn().mockReturnValue({ select: updateSelect })
+    const updateEq = vi.fn().mockReturnValue({ is: updateIs })
     const update = vi.fn().mockReturnValue({ eq: updateEq })
 
     mockedCreateClient.mockResolvedValue({

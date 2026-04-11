@@ -42,7 +42,8 @@ export default function PaymentHistoryTable({
   const isLocked = savingId !== null || deletingId !== null
 
   // Summary figures — computed regardless of payments.length
-  const paidToDate = payments.reduce((sum, p) => sum + p.amount, 0)
+  // Security deposit is a returnable bond — only balance payments reduce the outstanding amount
+  const paidToDate = payments.filter(p => p.type === 'balance').reduce((sum, p) => sum + p.amount, 0)
   const outstanding = Math.max(0, totalAmount - paidToDate)
 
   function formatMethodLabel(method: string): string {

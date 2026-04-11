@@ -650,8 +650,8 @@ export async function GET(request: Request) {
             const triggerType = 'balance_reminder_14day';
 
             const totalAmount = Number(booking.calculated_total ?? booking.total_amount ?? 0)
-            const depositAmount = Number(booking.deposit_amount ?? 0)
-            const balanceDue = Math.max(totalAmount - depositAmount, 0)
+            // Security deposit is a returnable bond — NOT deducted from event cost
+            const balanceDue = Math.max(totalAmount, 0)
             if (!Number.isFinite(balanceDue) || balanceDue <= 0) continue
 
             // Check duplicate

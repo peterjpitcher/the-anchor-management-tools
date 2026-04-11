@@ -840,6 +840,14 @@ export async function applyBookingDiscount(
     throw new Error('Booking not found');
   }
 
+  // Reconcile payment status — discount changes can affect whether booking is still fully paid
+  try {
+    const admin = createAdminClient();
+    await admin.rpc('apply_balance_payment_status', { p_booking_id: bookingId });
+  } catch (reconcileError) {
+    logger.error('Failed to reconcile payment status after discount change:', { error: reconcileError instanceof Error ? reconcileError : new Error(String(reconcileError)) });
+  }
+
   return { success: true };
 }
 
@@ -1341,6 +1349,14 @@ export async function addBookingItem(data: {
     throw new Error(error.message || 'Failed to add booking item');
   }
 
+  // Reconcile payment status — item changes can affect whether booking is still fully paid
+  try {
+    const admin = createAdminClient();
+    await admin.rpc('apply_balance_payment_status', { p_booking_id: data.booking_id });
+  } catch (reconcileError) {
+    logger.error('Failed to reconcile payment status after item add:', { error: reconcileError instanceof Error ? reconcileError : new Error(String(reconcileError)) });
+  }
+
   return { success: true };
 }
 
@@ -1388,6 +1404,14 @@ export async function updateBookingItem(itemId: string, data: {
     throw new Error('Item not found');
   }
 
+  // Reconcile payment status — item changes can affect whether booking is still fully paid
+  try {
+    const admin = createAdminClient();
+    await admin.rpc('apply_balance_payment_status', { p_booking_id: currentItem.booking_id });
+  } catch (reconcileError) {
+    logger.error('Failed to reconcile payment status after item update:', { error: reconcileError instanceof Error ? reconcileError : new Error(String(reconcileError)) });
+  }
+
   return { success: true, bookingId: currentItem.booking_id };
 }
 
@@ -1418,6 +1442,14 @@ export async function deleteBookingItem(itemId: string): Promise<{ success: true
 
   if (!deletedItem) {
     throw new Error('Item not found');
+  }
+
+  // Reconcile payment status — item changes can affect whether booking is still fully paid
+  try {
+    const admin = createAdminClient();
+    await admin.rpc('apply_balance_payment_status', { p_booking_id: item.booking_id });
+  } catch (reconcileError) {
+    logger.error('Failed to reconcile payment status after item delete:', { error: reconcileError instanceof Error ? reconcileError : new Error(String(reconcileError)) });
   }
 
   return { success: true, bookingId: item.booking_id };

@@ -1496,6 +1496,16 @@ export async function captureDepositPayment(
   try {
     const captureResult = await capturePayPalPayment(orderId)
 
+    // SEC-3: Validate captured amount matches expected deposit
+    const capturedAmount = parseFloat(captureResult.amount)
+    const expectedAmount = Number(booking.deposit_amount ?? 0)
+    if (expectedAmount > 0 && Math.abs(capturedAmount - expectedAmount) > 0.01) {
+      logger.error('PayPal capture amount mismatch', {
+        metadata: { bookingId, orderId, capturedAmount, expectedAmount }
+      })
+      return { error: `Payment amount mismatch: captured £${capturedAmount.toFixed(2)} but expected £${expectedAmount.toFixed(2)}. Please contact support.` }
+    }
+
     // Record deposit: mark deposit_paid_date, method=paypal, store capture ID.
     // Transition draft bookings to confirmed, matching the manual deposit path
     // (PrivateBookingService.recordDeposit).

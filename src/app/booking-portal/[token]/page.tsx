@@ -154,9 +154,9 @@ export default async function BookingPortalPage({ params, searchParams }: PagePr
   const depositPaid = !!b.deposit_paid_date
   const balancePaid = !!b.final_payment_date
   const depositRequired = b.deposit_amount > 0
-  const balanceRemaining = depositPaid
-    ? Math.max(0, b.total_amount - b.deposit_amount)
-    : b.total_amount
+  // Security deposit is a returnable bond — it does NOT reduce the event cost.
+  // Balance remaining is the full event total regardless of deposit status.
+  const balanceRemaining = b.total_amount
 
   // Format end time, accounting for next-day events
   let endTimeDisplay: string | null = null
