@@ -119,7 +119,13 @@ const categorySchema = z.object({
     question: z.string(),
     answer: z.string(),
     sort_order: z.number()
-  })).optional()
+  })).optional(),
+  primary_keywords: z.array(z.string().max(100)).max(10).default([]).optional(),
+  secondary_keywords: z.array(z.string().max(100)).max(10).default([]).optional(),
+  local_seo_keywords: z.array(z.string().max(100)).max(10).default([]).optional(),
+  image_alt_text: z.string().max(200).nullable().optional(),
+  cancellation_policy: z.string().max(300).nullable().optional(),
+  accessibility_notes: z.string().max(300).nullable().optional(),
 })
 
 const ACTIVE_CATEGORY_FILTER = 'is_active.eq.true,is_active.is.null'
@@ -634,8 +640,15 @@ export async function createEventCategoryFromFormData(formData: FormData) {
     default_last_entry_time: formatTimeToHHMM(formData.get('default_last_entry_time') as string) || undefined,
     default_booking_url: getOptionalStringFromForm(formData, 'default_booking_url'),
     faqs: parseFAQs(),
+    // SEO default fields
+    primary_keywords: parseArrayField('primary_keywords'),
+    secondary_keywords: parseArrayField('secondary_keywords'),
+    local_seo_keywords: parseArrayField('local_seo_keywords'),
+    image_alt_text: getOptionalStringFromForm(formData, 'image_alt_text', 200),
+    cancellation_policy: getOptionalStringFromForm(formData, 'cancellation_policy', 300),
+    accessibility_notes: getOptionalStringFromForm(formData, 'accessibility_notes', 300),
   }
-  
+
   return createEventCategory(categoryData)
 }
 
@@ -697,7 +710,14 @@ export async function updateEventCategoryFromFormData(id: string, formData: Form
     default_last_entry_time: formatTimeToHHMM(formData.get('default_last_entry_time') as string) || undefined,
     default_booking_url: getOptionalStringFromForm(formData, 'default_booking_url'),
     faqs: parseFAQs(),
+    // SEO default fields
+    primary_keywords: parseArrayField('primary_keywords'),
+    secondary_keywords: parseArrayField('secondary_keywords'),
+    local_seo_keywords: parseArrayField('local_seo_keywords'),
+    image_alt_text: getOptionalStringFromForm(formData, 'image_alt_text', 200),
+    cancellation_policy: getOptionalStringFromForm(formData, 'cancellation_policy', 300),
+    accessibility_notes: getOptionalStringFromForm(formData, 'accessibility_notes', 300),
   }
-  
+
   return updateEventCategory(id, categoryData)
 }
