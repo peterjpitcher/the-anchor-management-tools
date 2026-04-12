@@ -32,7 +32,8 @@ const CreateEventBookingSchema = z.object({
   seats: z.preprocess(
     (value) => (typeof value === 'string' ? Number.parseInt(value, 10) : value),
     z.number().int().min(1).max(20)
-  )
+  ),
+  expected_event_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
 })
 
 export async function POST(request: NextRequest) {
@@ -75,7 +76,8 @@ export async function POST(request: NextRequest) {
       first_name: parsed.data.first_name || null,
       last_name: parsed.data.last_name || null,
       email: parsed.data.email || null,
-      seats: parsed.data.seats
+      seats: parsed.data.seats,
+      expected_event_date: parsed.data.expected_event_date || null,
     })
 
     const supabase = createAdminClient()
@@ -134,6 +136,26 @@ export async function POST(request: NextRequest) {
         return createErrorResponse(SUNDAY_LUNCH_ONLY_EVENT_MESSAGE, 'POLICY_VIOLATION', 409)
       }
 
+      // Validate expected_event_date if provided (defensive guard against stale event_id)
+      if (parsed.data.expected_event_date) {
+        const eventStartIso = eventRow.start_datetime || (eventRow.date ? `${eventRow.date}T00:00:00` : null)
+        if (eventStartIso) {
+          const eventLondonDate = new Intl.DateTimeFormat('en-CA', {
+            timeZone: 'Europe/London',
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit',
+          }).format(new Date(eventStartIso))
+          if (eventLondonDate !== parsed.data.expected_event_date) {
+            return createErrorResponse(
+              `Event date mismatch: expected ${parsed.data.expected_event_date} but event is on ${eventLondonDate}`,
+              'EVENT_DATE_MISMATCH',
+              409
+            )
+          }
+        }
+      }
+
       const customerResolution = await ensureCustomerForPhone(supabase, normalizedPhone, {
         firstName: parsed.data.first_name,
         lastName: parsed.data.last_name,
@@ -154,7 +176,8 @@ export async function POST(request: NextRequest) {
         source: 'brand_site',
         bookingMode,
         appBaseUrl,
-        shouldSendSms: true
+        shouldSendSms: true,
+        firstName: parsed.data.first_name || customerResolution.resolvedFirstName
       })
 
       if (result.rpcFailed) {

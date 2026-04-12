@@ -319,7 +319,8 @@ export async function POST(request: NextRequest) {
     appBaseUrl,
     shouldSendSms: shouldSendBookingSms && Boolean(normalizedPhone),
     supabaseClient: auth.supabase,
-    logTag: 'FOH event booking'  // lowercase; capitalised automatically in service log messages
+    logTag: 'FOH event booking',  // lowercase; capitalised automatically in service log messages
+    firstName: fallbackFirstName || undefined
   })
 
   if (result.rpcFailed) {

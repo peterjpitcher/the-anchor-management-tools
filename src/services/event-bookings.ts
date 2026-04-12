@@ -2,6 +2,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { sendSMS } from '@/lib/twilio'
 import { ensureReplyInstruction } from '@/lib/sms/support'
 import { getSmartFirstName } from '@/lib/sms/bulk'
+import { isPlaceholderName } from '@/lib/sms/name-utils'
 import { createEventPaymentToken } from '@/lib/events/event-payments'
 import { createEventManageToken } from '@/lib/events/manage-booking'
 import { recordAnalyticsEvent } from '@/lib/analytics/events'
@@ -75,6 +76,11 @@ export type CreateBookingParams = {
    * FOH route passes: "FOH event booking".
    */
   logTag?: string
+  /**
+   * Caller-provided first name for SMS greeting fallback.
+   * Used when the customer DB record has a placeholder name.
+   */
+  firstName?: string
 }
 
 export type CreateBookingResult = {
@@ -148,12 +154,12 @@ function buildEventBookingSms(
   if (state === 'pending_payment') {
     const managePart = payload.manageLink ? ` ${payload.manageLink}` : ''
     if (payload.paymentLink) {
-      return `The Anchor: ${payload.firstName}! ${payload.seats} seat(s) held for ${payload.eventName} — nice one! Pay here: ${payload.paymentLink}.${managePart}`
+      return `The Anchor: ${payload.firstName}! ${payload.seats} ${seatWord} held for ${payload.eventName} — nice one! Pay here: ${payload.paymentLink}.${managePart}`
     }
-    return `The Anchor: ${payload.firstName}! ${payload.seats} seat(s) held for ${payload.eventName} — nice one! We'll ping you a payment link shortly.${managePart}`
+    return `The Anchor: ${payload.firstName}! ${payload.seats} ${seatWord} held for ${payload.eventName} — nice one! We'll ping you a payment link shortly.${managePart}`
   }
 
-  return `The Anchor: ${payload.firstName}! You're in — ${payload.seats} seat(s) locked in for ${payload.eventName} on ${payload.eventStart}. See you there!${payload.manageLink ? ` ${payload.manageLink}` : ''}`
+  return `The Anchor: ${payload.firstName}! You're in — ${payload.seats} ${seatWord} locked in for ${payload.eventName} on ${payload.eventStart}. See you there!${payload.manageLink ? ` ${payload.manageLink}` : ''}`
 }
 
 async function sendBookingSmsIfAllowed(
@@ -165,7 +171,8 @@ async function sendBookingSmsIfAllowed(
   paymentLink: string | null | undefined,
   manageLink: string | null | undefined,
   /** Log tag, e.g. "event booking" or "FOH event booking" */
-  logTag: string
+  logTag: string,
+  callerFirstName?: string
 ): Promise<SmsSafetyMeta> {
   // Capitalise first char for sentence-start messages; preserve acronyms like "FOH".
   const logTagCap = logTag.charAt(0).toUpperCase() + logTag.slice(1)
@@ -193,7 +200,10 @@ async function sendBookingSmsIfAllowed(
     process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || process.env.TWILIO_PHONE_NUMBER || undefined
   const eventName = bookingResult.event_name || 'your event'
   const eventStart = formatLondonDateTime(bookingResult.event_start_datetime)
-  const firstName = getSmartFirstName(customer.first_name)
+  // Name precedence: DB name if real > caller-provided name > "there"
+  const dbFirstName = customer.first_name
+  const bestName = !isPlaceholderName(dbFirstName) ? dbFirstName : callerFirstName
+  const firstName = getSmartFirstName(bestName)
 
   const smsBody = ensureReplyInstruction(
     buildEventBookingSms(bookingResult.state, {
@@ -387,7 +397,8 @@ export class EventBookingService {
       appBaseUrl,
       shouldSendSms = true,
       supabaseClient,
-      logTag = 'event booking'
+      logTag = 'event booking',
+      firstName
     } = params
 
     // Capitalised form used when logTag starts a log message.
@@ -593,7 +604,8 @@ export class EventBookingService {
             seats,
             nextStepUrl,
             manageUrl,
-            logTag
+            logTag,
+            firstName
           )
             .then((meta) => {
               smsMeta = meta

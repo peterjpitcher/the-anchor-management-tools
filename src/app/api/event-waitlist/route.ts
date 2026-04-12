@@ -17,6 +17,7 @@ import { formatPhoneForStorage } from '@/lib/utils'
 import { ensureCustomerForPhone } from '@/lib/sms/customers'
 import { sendSMS } from '@/lib/twilio'
 import { ensureReplyInstruction } from '@/lib/sms/support'
+import { getSmartFirstName } from '@/lib/sms/bulk'
 import { recordAnalyticsEvent } from '@/lib/analytics/events'
 import { logger } from '@/lib/logger'
 
@@ -92,7 +93,7 @@ async function sendWaitlistSmsIfAllowed(
   }
 
   const seatWord = requestedSeats === 1 ? 'seat' : 'seats'
-  const firstName = customer.first_name || 'there'
+  const firstName = getSmartFirstName(customer.first_name)
   const supportPhone = process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || process.env.TWILIO_PHONE_NUMBER || undefined
   const smsBody = ensureReplyInstruction(
     `The Anchor: Hi ${firstName}, you're on the waitlist for ${requestedSeats} ${seatWord}. If seats become available, we'll text you with a hold link.`,

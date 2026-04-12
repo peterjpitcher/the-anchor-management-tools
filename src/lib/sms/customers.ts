@@ -1,5 +1,6 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { formatPhoneForStorage, generatePhoneVariants } from '@/lib/utils'
+import { isPlaceholderName } from '@/lib/sms/name-utils'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Database } from '@/types/database.generated'
 
@@ -13,6 +14,7 @@ type ResolvedCustomerResult = {
   customerId: string | null
   standardizedPhone?: string | null
   resolutionError?: string
+  resolvedFirstName?: string
 }
 
 type CustomerLookupRow = {
@@ -55,11 +57,6 @@ function normalizeFallbackNameParts(input: {
   }
 }
 
-function isPlaceholderFirstName(value: string | null | undefined): boolean {
-  const cleaned = value?.trim().toLowerCase()
-  return !cleaned || cleaned === 'unknown'
-}
-
 function isPlaceholderLastName(value: string | null | undefined): boolean {
   const cleaned = value?.trim().toLowerCase()
   if (!cleaned) {
@@ -89,7 +86,7 @@ async function enrichMatchedCustomer(
     updatePayload.mobile_e164 = input.standardizedPhone
   }
 
-  if (input.fallbackFirstName && isPlaceholderFirstName(input.existingCustomer.first_name)) {
+  if (input.fallbackFirstName && isPlaceholderName(input.existingCustomer.first_name)) {
     updatePayload.first_name = input.fallbackFirstName
   }
 
@@ -231,7 +228,11 @@ export async function ensureCustomerForPhone(
         fallbackEmail: sanitizedEmail
       })
 
-      return { customerId: existingMatch.id, standardizedPhone }
+      return {
+        customerId: existingMatch.id,
+        standardizedPhone,
+        resolvedFirstName: providedFirstName || existingMatch.first_name || undefined
+      }
     }
 
     if (lookup.lookupError) {
@@ -278,7 +279,11 @@ export async function ensureCustomerForPhone(
             fallbackEmail: sanitizedEmail
           })
 
-          return { customerId: conflictMatch.id, standardizedPhone }
+          return {
+            customerId: conflictMatch.id,
+            standardizedPhone,
+            resolvedFirstName: providedFirstName || conflictMatch.first_name || undefined
+          }
         }
 
         if (conflictLookup.lookupError) {
@@ -290,7 +295,11 @@ export async function ensureCustomerForPhone(
       return { customerId: null, standardizedPhone, resolutionError: 'insert_failed' }
     }
 
-    return { customerId: inserted?.id ?? null, standardizedPhone }
+    return {
+      customerId: inserted?.id ?? null,
+      standardizedPhone,
+      resolvedFirstName: providedFirstName || undefined
+    }
   } catch (error) {
     console.error('Failed to resolve customer for phone:', error)
     return { customerId: null, standardizedPhone: null, resolutionError: 'unexpected_error' }

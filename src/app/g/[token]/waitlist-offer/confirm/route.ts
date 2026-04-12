@@ -6,6 +6,7 @@ import { checkGuestTokenThrottle } from '@/lib/guest/token-throttle'
 import { recordAnalyticsEvent } from '@/lib/analytics/events'
 import { ensureReplyInstruction } from '@/lib/sms/support'
 import { sendSMS } from '@/lib/twilio'
+import { getSmartFirstName } from '@/lib/sms/bulk'
 import { createEventPaymentToken } from '@/lib/events/event-payments'
 import { createEventManageToken } from '@/lib/events/manage-booking'
 
@@ -104,7 +105,7 @@ async function sendAcceptanceSms(
     return
   }
 
-  const firstName = customer.first_name || 'there'
+  const firstName = getSmartFirstName(customer.first_name)
   const eventName = event.name || 'your event'
   const seats = Math.max(1, Number(booking.seats ?? 1))
   const seatWord = seats === 1 ? 'seat' : 'seats'
