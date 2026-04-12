@@ -29,6 +29,7 @@ import {
   updateBalancePayment,
   deleteBalancePayment,
   updateDeposit,
+  updateDepositAmount,
   deleteDeposit,
 } from '@/services/private-bookings'
 import { SmsQueueService } from '@/services/sms-queue' // Still needed for SMS actions
@@ -1741,9 +1742,13 @@ export async function editPrivateBookingPayment(
   if (!user) return { error: 'Unauthorized' }
 
   const canEdit = await checkUserPermission('private_bookings', 'manage', user.id)
-  if (!canEdit) return { error: 'Forbidden' }
-
   const type = formData.get('type') as string
+  if (!canEdit) {
+    // For deposit edits, also accept manage_deposits permission (AI-1)
+    if (type !== 'deposit' || !(await checkUserPermission('private_bookings', 'manage_deposits', user.id))) {
+      return { error: 'Forbidden' }
+    }
+  }
 
   if (type === 'balance') {
     const parsed = editBalancePaymentSchema.safeParse({
@@ -1799,13 +1804,19 @@ export async function editPrivateBookingPayment(
     if (!parsed.success) return { error: parsed.error.errors[0].message }
 
     const db = createAdminClient()
-    const { data: oldBooking } = await db.from('private_bookings').select('deposit_amount, deposit_payment_method').eq('id', parsed.data.bookingId).single()
+    const { data: oldBooking } = await db.from('private_bookings').select('deposit_amount, deposit_payment_method, deposit_paid_date').eq('id', parsed.data.bookingId).single()
 
     try {
-      await updateDeposit(parsed.data.bookingId, {
-        amount: parseFloat(parsed.data.amount),
-        method: parsed.data.method,
-      })
+      if (oldBooking?.deposit_paid_date) {
+        // Paid deposit: update amount + method (existing behaviour)
+        await updateDeposit(parsed.data.bookingId, {
+          amount: parseFloat(parsed.data.amount),
+          method: parsed.data.method,
+        })
+      } else {
+        // Unpaid deposit: update amount only, clear PayPal order (CR-1, ID-1)
+        await updateDepositAmount(parsed.data.bookingId, parseFloat(parsed.data.amount))
+      }
     } catch (err) {
       return { error: err instanceof Error ? err.message : 'Failed to update deposit' }
     }
@@ -1821,7 +1832,8 @@ export async function editPrivateBookingPayment(
         old_amount: oldBooking?.deposit_amount,
         new_amount: parseFloat(parsed.data.amount),
         old_method: oldBooking?.deposit_payment_method,
-        new_method: parsed.data.method,
+        new_method: oldBooking?.deposit_paid_date ? parsed.data.method : oldBooking?.deposit_payment_method,
+        deposit_paid: !!oldBooking?.deposit_paid_date,
       },
     })
     revalidatePath(`/private-bookings/${parsed.data.bookingId}`)
