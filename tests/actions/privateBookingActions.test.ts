@@ -123,6 +123,7 @@ vi.mock('@/services/private-bookings', async () => {
     updateBalancePayment: vi.fn(),
     deleteBalancePayment: vi.fn(),
     updateDeposit: vi.fn(),
+    updateDepositAmount: vi.fn(),
     deleteDeposit: vi.fn(),
   }
 })
@@ -135,7 +136,7 @@ import { checkUserPermission } from '@/app/actions/rbac'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { logAuditEvent } from '@/app/actions/audit'
-import { PrivateBookingService, updateBalancePayment, deleteBalancePayment, updateDeposit, deleteDeposit } from '@/services/private-bookings'
+import { PrivateBookingService, updateBalancePayment, deleteBalancePayment, updateDeposit, updateDepositAmount, deleteDeposit } from '@/services/private-bookings'
 
 import {
   createPrivateBooking,
@@ -177,6 +178,7 @@ const mockedApplyDiscount = PrivateBookingService.applyBookingDiscount as unknow
 const mockedUpdateBalancePayment = updateBalancePayment as unknown as Mock
 const mockedDeleteBalancePayment = deleteBalancePayment as unknown as Mock
 const mockedUpdateDeposit = updateDeposit as unknown as Mock
+const mockedUpdateDepositAmount = updateDepositAmount as unknown as Mock
 const mockedDeleteDeposit = deleteDeposit as unknown as Mock
 
 // ---------------------------------------------------------------------------
@@ -885,7 +887,7 @@ describe('privateBookingActions', () => {
         from: vi.fn().mockReturnValue({
           select: vi.fn().mockReturnValue({
             eq: vi.fn().mockReturnValue({
-              single: vi.fn().mockResolvedValue({ data: { deposit_amount: 80, deposit_payment_method: 'cash' }, error: null }),
+              single: vi.fn().mockResolvedValue({ data: { deposit_amount: 80, deposit_payment_method: 'cash', deposit_paid_date: '2026-03-15T00:00:00Z' }, error: null }),
             }),
           }),
         }),
@@ -976,6 +978,103 @@ describe('privateBookingActions', () => {
       const result = await editPrivateBookingPayment(fd)
 
       expect(result).toEqual({ error: 'Row not found' })
+    })
+
+    it('should use updateDepositAmount for unpaid deposit (no method pollution)', async () => {
+      const adminClient = {
+        from: vi.fn().mockReturnValue({
+          select: vi.fn().mockReturnValue({
+            eq: vi.fn().mockReturnValue({
+              single: vi.fn().mockResolvedValue({
+                data: { deposit_amount: 250, deposit_payment_method: null, deposit_paid_date: null },
+                error: null,
+              }),
+            }),
+          }),
+        }),
+      }
+      mockedCreateAdminClient.mockReturnValue(adminClient)
+      mockedUpdateDepositAmount.mockResolvedValue(undefined)
+
+      const fd = new FormData()
+      fd.set('bookingId', '660e8400-e29b-41d4-a716-446655440000')
+      fd.set('type', 'deposit')
+      fd.set('amount', '150')
+      fd.set('method', 'cash')
+
+      const result = await editPrivateBookingPayment(fd)
+
+      expect(result).toEqual({ success: true })
+      expect(mockedUpdateDepositAmount).toHaveBeenCalledWith(
+        '660e8400-e29b-41d4-a716-446655440000',
+        150
+      )
+      expect(mockedUpdateDeposit).not.toHaveBeenCalled()
+    })
+
+    it('should use updateDeposit for paid deposit (preserves existing behaviour)', async () => {
+      const adminClient = {
+        from: vi.fn().mockReturnValue({
+          select: vi.fn().mockReturnValue({
+            eq: vi.fn().mockReturnValue({
+              single: vi.fn().mockResolvedValue({
+                data: { deposit_amount: 250, deposit_payment_method: 'cash', deposit_paid_date: '2026-04-01T00:00:00Z' },
+                error: null,
+              }),
+            }),
+          }),
+        }),
+      }
+      mockedCreateAdminClient.mockReturnValue(adminClient)
+      mockedUpdateDeposit.mockResolvedValue(undefined)
+
+      const fd = new FormData()
+      fd.set('bookingId', '660e8400-e29b-41d4-a716-446655440000')
+      fd.set('type', 'deposit')
+      fd.set('amount', '300')
+      fd.set('method', 'card')
+
+      const result = await editPrivateBookingPayment(fd)
+
+      expect(result).toEqual({ success: true })
+      expect(mockedUpdateDeposit).toHaveBeenCalledWith(
+        '660e8400-e29b-41d4-a716-446655440000',
+        { amount: 300, method: 'card' }
+      )
+      expect(mockedUpdateDepositAmount).not.toHaveBeenCalled()
+    })
+
+    it('should allow manage_deposits permission for deposit edits', async () => {
+      mockedPermission
+        .mockResolvedValueOnce(false)
+        .mockResolvedValueOnce(true)
+
+      const adminClient = {
+        from: vi.fn().mockReturnValue({
+          select: vi.fn().mockReturnValue({
+            eq: vi.fn().mockReturnValue({
+              single: vi.fn().mockResolvedValue({
+                data: { deposit_amount: 250, deposit_payment_method: null, deposit_paid_date: null },
+                error: null,
+              }),
+            }),
+          }),
+        }),
+      }
+      mockedCreateAdminClient.mockReturnValue(adminClient)
+      mockedUpdateDepositAmount.mockResolvedValue(undefined)
+
+      const fd = new FormData()
+      fd.set('bookingId', '660e8400-e29b-41d4-a716-446655440000')
+      fd.set('type', 'deposit')
+      fd.set('amount', '200')
+      fd.set('method', 'cash')
+
+      const result = await editPrivateBookingPayment(fd)
+
+      expect(result).toEqual({ success: true })
+      expect(mockedPermission).toHaveBeenCalledWith('private_bookings', 'manage', expect.any(String))
+      expect(mockedPermission).toHaveBeenCalledWith('private_bookings', 'manage_deposits', expect.any(String))
     })
   })
 

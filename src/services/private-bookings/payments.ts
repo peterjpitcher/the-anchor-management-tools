@@ -587,6 +587,23 @@ export async function updateDeposit(
   if (error) throw new Error(`Failed to update deposit: ${error.message}`)
 }
 
+/**
+ * Update only the deposit amount for an unpaid deposit.
+ * Unlike updateDeposit, this does NOT write deposit_payment_method (avoids method pollution).
+ * Also clears paypal_deposit_order_id to invalidate any in-flight PayPal order (CR-1).
+ */
+export async function updateDepositAmount(
+  bookingId: string,
+  amount: number
+): Promise<void> {
+  const db = createAdminClient()
+  const { error } = await db
+    .from('private_bookings')
+    .update({ deposit_amount: amount, paypal_deposit_order_id: null })
+    .eq('id', bookingId)
+  if (error) throw new Error(`Failed to update deposit amount: ${error.message}`)
+}
+
 // Returns statusReverted so the calling server action can include it in the audit log.
 export async function deleteDeposit(bookingId: string): Promise<{ statusReverted: boolean }> {
   const db = createAdminClient()

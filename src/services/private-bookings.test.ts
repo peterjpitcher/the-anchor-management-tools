@@ -19,6 +19,7 @@ import {
   updateBalancePayment,
   deleteBalancePayment,
   updateDeposit,
+  updateDepositAmount,
   deleteDeposit,
 } from './private-bookings'
 
@@ -190,6 +191,37 @@ describe('updateDeposit', () => {
     })
     await updateDeposit('booking-id', { amount: 150, method: 'card' })
     expect(rpcMock).not.toHaveBeenCalled()
+  })
+})
+
+describe('updateDepositAmount', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  it('should update only deposit_amount and clear paypal_deposit_order_id', async () => {
+    const mockUpdate = vi.fn().mockReturnValue({
+      eq: vi.fn().mockResolvedValue({ error: null }),
+    })
+    const mockFrom = vi.fn().mockReturnValue({ update: mockUpdate })
+    ;(createAdminClient as ReturnType<typeof vi.fn>).mockReturnValue({ from: mockFrom } as any)
+
+    await updateDepositAmount('booking-123', 350)
+
+    expect(mockFrom).toHaveBeenCalledWith('private_bookings')
+    expect(mockUpdate).toHaveBeenCalledWith({
+      deposit_amount: 350,
+      paypal_deposit_order_id: null,
+    })
+  })
+
+  it('should throw when supabase update fails', async () => {
+    const mockUpdate = vi.fn().mockReturnValue({
+      eq: vi.fn().mockResolvedValue({ error: { message: 'DB error' } }),
+    })
+    ;(createAdminClient as ReturnType<typeof vi.fn>).mockReturnValue({
+      from: vi.fn().mockReturnValue({ update: mockUpdate }),
+    } as any)
+
+    await expect(updateDepositAmount('booking-123', 200)).rejects.toThrow('Failed to update deposit amount: DB error')
   })
 })
 

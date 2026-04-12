@@ -12,6 +12,7 @@ import {
   EnvelopeIcon,
   PhoneIcon,
   ClockIcon,
+  CheckIcon,
   CheckCircleIcon,
   BanknotesIcon,
   CreditCardIcon,
@@ -68,6 +69,7 @@ import {
   resendCalendarInvite,
   getBookingPortalLink,
   sendDepositPaymentLink,
+  editPrivateBookingPayment,
 } from '@/app/actions/privateBookingActions'
 import type {
   PrivateBookingWithDetails,
@@ -1340,6 +1342,10 @@ export default function PrivateBookingDetailClient({
   const [paypalDepositLoading, setPaypalDepositLoading] = useState(false);
   const [paypalCaptureHandled, setPaypalCaptureHandled] = useState(false);
   const [sendingDepositLink, setSendingDepositLink] = useState(false);
+  // Inline deposit amount edit state
+  const [editingDeposit, setEditingDeposit] = useState(false);
+  const [editDepositAmount, setEditDepositAmount] = useState('');
+  const [savingDeposit, setSavingDeposit] = useState(false);
   // Share portal link state
   const [isCopyingLink, setIsCopyingLink] = useState(false);
   const sensors = useSensors(
@@ -1489,6 +1495,30 @@ export default function PrivateBookingDetailClient({
       setSendingDepositLink(false);
     }
   }, [bookingId, sendingDepositLink]);
+
+  const handleSaveDepositAmount = useCallback(async () => {
+    if (savingDeposit) return;
+    setSavingDeposit(true);
+    try {
+      const formData = new FormData();
+      formData.set('bookingId', bookingId);
+      formData.set('type', 'deposit');
+      formData.set('amount', editDepositAmount);
+      formData.set('method', booking?.deposit_payment_method ?? 'cash');
+      const result = await editPrivateBookingPayment(formData);
+      if (result.success) {
+        toast.success('Deposit amount updated');
+        setEditingDeposit(false);
+        router.refresh();
+      } else {
+        toast.error(result.error ?? 'Failed to update deposit amount');
+      }
+    } catch {
+      toast.error('Failed to update deposit amount');
+    } finally {
+      setSavingDeposit(false);
+    }
+  }, [bookingId, editDepositAmount, savingDeposit, booking?.deposit_payment_method, router]);
 
   const handleAddNote = useCallback(async () => {
     if (addingNote) {
@@ -2344,9 +2374,61 @@ export default function PrivateBookingDetailClient({
                       </p>
                     </div>
                   <div className="text-right">
-                    <p className="text-sm font-medium text-gray-900">
-                      {formatMoney(booking.deposit_amount ?? 250)}
-                    </p>
+                    {editingDeposit ? (
+                      <div className="flex items-center gap-1 justify-end">
+                        <Input
+                          type="number"
+                          value={editDepositAmount}
+                          onChange={(e) => setEditDepositAmount(e.target.value)}
+                          disabled={savingDeposit}
+                          min="0.01"
+                          step="0.01"
+                          placeholder="Amount"
+                          aria-label="Deposit amount"
+                          inputSize="sm"
+                          className="w-24"
+                        />
+                        <Button
+                          variant="primary"
+                          size="sm"
+                          onClick={handleSaveDepositAmount}
+                          loading={savingDeposit}
+                          disabled={savingDeposit}
+                          aria-label="Save deposit amount"
+                        >
+                          <CheckIcon className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          onClick={() => setEditingDeposit(false)}
+                          disabled={savingDeposit}
+                          type="button"
+                          aria-label="Cancel edit"
+                        >
+                          <XMarkIcon className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-1 justify-end">
+                        <p className="text-sm font-medium text-gray-900">
+                          {formatMoney(booking.deposit_amount ?? 250)}
+                        </p>
+                        {!booking.deposit_paid_date && canManageDeposits && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEditDepositAmount(String(booking.deposit_amount ?? 250));
+                              setEditingDeposit(true);
+                            }}
+                            className="text-gray-400 hover:text-gray-600 focus:outline-none focus:ring-1 focus:ring-gray-400 rounded"
+                            aria-label="Edit deposit amount"
+                          >
+                            <PencilIcon className="h-3.5 w-3.5" />
+                          </button>
+                        )}
+                      </div>
+                    )}
                     {!booking.deposit_paid_date &&
                       (booking.status === "draft" || booking.status === "confirmed") &&
                       canManageDeposits && (
