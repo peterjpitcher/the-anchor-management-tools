@@ -716,7 +716,7 @@ export async function createEventManualBooking(input: {
           const smsBody = ensureReplyInstruction(
             buildEventBookingCreatedSms({
               state,
-              firstName: getSmartFirstName(parsed.data.firstName),
+              firstName: getSmartFirstName(customerResolution.resolvedFirstName || parsed.data.firstName),
               eventName: eventRow.name || 'your event',
               seats: parsed.data.seats,
               eventStartText: formatEventDateTimeForSms({
@@ -924,11 +924,12 @@ function buildEventBookingCreatedSms(input: {
   const seatWord = input.seats === 1 ? 'seat' : 'seats'
 
   if (input.state === 'pending_payment') {
+    const managePart = input.manageLink ? ` ${input.manageLink}` : ''
     if (input.paymentLink) {
-      return `The Anchor: ${input.firstName}! ${input.seats} ${seatWord} held for ${input.eventName} — nice one! We'll ping you a payment link shortly.${input.manageLink ? ` ${input.manageLink}` : ''}`
+      return `The Anchor: ${input.firstName}! ${input.seats} ${seatWord} held for ${input.eventName} — nice one! Pay here: ${input.paymentLink}.${managePart}`
     }
 
-    return `The Anchor: ${input.firstName}! ${input.seats} ${seatWord} held for ${input.eventName} — nice one! We'll ping you a payment link shortly.${input.manageLink ? ` ${input.manageLink}` : ''}`
+    return `The Anchor: ${input.firstName}! ${input.seats} ${seatWord} held for ${input.eventName} — nice one! We'll ping you a payment link shortly.${managePart}`
   }
 
   const confirmedTail = input.paymentMode === 'cash_only'

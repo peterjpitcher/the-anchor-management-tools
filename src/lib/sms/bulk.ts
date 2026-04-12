@@ -4,6 +4,7 @@ import { ensureReplyInstruction } from '@/lib/sms/support'
 import { logger } from '@/lib/logger'
 import { sendSMS } from '@/lib/twilio'
 import { normalizeBulkRecipientIds, validateBulkSmsRecipientCount } from '@/lib/sms/bulk-dispatch-key'
+import { getSmartFirstName, buildSmartFullName } from '@/lib/sms/name-utils'
 
 type BulkSmsRequest = {
   customerIds: string[]
@@ -52,14 +53,8 @@ function normalizeNonNegativeInt(value: number | undefined, fallback: number, ma
   return Math.min(normalized, max)
 }
 
-// Helper to get a smart first name (e.g., "there" for "Guest")
-export function getSmartFirstName(firstName: string | null | undefined): string {
-  const name = firstName || ''
-  const isPlaceholderName = /^(guest|unknown|customer|client|user|admin)$/i.test(name)
-  return isPlaceholderName ? 'there' : (name || 'there')
-}
+export { getSmartFirstName, buildSmartFullName } from '@/lib/sms/name-utils'
 
-// Helper to build personalized message with smart greeting
 export function applySmartVariables(
   base: string,
   customer: { first_name: string; last_name: string | null },
@@ -67,15 +62,10 @@ export function applySmartVariables(
   categoryDetails?: { name: string | null },
   contactPhone?: string
 ) {
-  const fullName = [customer.first_name, customer.last_name ?? ''].filter(Boolean).join(' ').trim()
   let personalized = base
 
-  // Smart Greeting Logic
   const smartFirstName = getSmartFirstName(customer.first_name)
-
-  // For full name, if it's a placeholder, use a generic term
-  const isPlaceholderName = smartFirstName === 'there'
-  const smartFullName = isPlaceholderName ? 'Customer' : (fullName || 'Customer')
+  const smartFullName = buildSmartFullName(customer.first_name, customer.last_name)
 
   personalized = personalized.replace(/{{customer_name}}/g, smartFullName)
   personalized = personalized.replace(/{{first_name}}/g, smartFirstName)

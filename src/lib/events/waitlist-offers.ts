@@ -97,9 +97,25 @@ function resolveEventStartDateTimeIso(
   }
 
   if (event?.date && event?.time) {
-    const parsed = Date.parse(`${event.date}T${event.time}:00Z`)
-    if (Number.isFinite(parsed)) {
-      return new Date(parsed).toISOString()
+    // date+time from the events table represent London local time, not UTC.
+    // Interpret as London time and convert to a UTC ISO string, matching the
+    // PostgreSQL booking RPC's AT TIME ZONE 'Europe/London' logic.
+    const naiveMs = Date.parse(`${event.date}T${event.time}:00Z`)
+    if (Number.isFinite(naiveMs)) {
+      // Determine the London UTC offset for this particular date by comparing
+      // what London's wall-clock shows at naiveMs (treated as UTC) vs naiveMs itself.
+      const fmt = new Intl.DateTimeFormat('en-GB', {
+        timeZone: 'Europe/London',
+        year: 'numeric', month: '2-digit', day: '2-digit',
+        hour: '2-digit', minute: '2-digit', second: '2-digit',
+        hour12: false
+      })
+      const parts = fmt.formatToParts(new Date(naiveMs))
+      const p = (type: string): string => parts.find(x => x.type === type)!.value
+      const londonWall = Date.parse(`${p('year')}-${p('month')}-${p('day')}T${p('hour')}:${p('minute')}:${p('second')}Z`)
+      const offsetMs = londonWall - naiveMs // positive during BST (+1h), zero during GMT
+      const utcMs = naiveMs - offsetMs
+      return new Date(utcMs).toISOString()
     }
   }
 

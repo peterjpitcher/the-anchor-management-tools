@@ -228,6 +228,7 @@ export async function handleReplyToBook(
       appBaseUrl,
       shouldSendSms: true,
       logTag: 'sms reply booking',
+      firstName: undefined,
     })
   } catch (err) {
     logger.error('reply-to-book: createBooking threw unexpectedly', {
