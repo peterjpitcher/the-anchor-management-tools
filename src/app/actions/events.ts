@@ -21,6 +21,7 @@ import { ensureReplyInstruction } from '@/lib/sms/support'
 import { getSmartFirstName } from '@/lib/sms/bulk'
 import { logger } from '@/lib/logger'
 import { buildKeywordsUnion } from '@/lib/keywords'
+import { buildEventRescheduledSms, buildEventCancelledSms, buildRefundNote } from '@/lib/sms/templates'
 
 type CreateEventResult = { error: string } | { success: true; data: Event }
 type EventFaqInput = NonNullable<CreateEventInput['faqs']>[number]
@@ -261,6 +262,158 @@ export async function createEvent(formData: FormData): Promise<CreateEventResult
   }
 }
 
+// ─── Reschedule Notification Dispatch (fire-and-forget) ─────────────────────
+
+function formatLondonDateTime(isoDateTime: string | null | undefined): string {
+  if (!isoDateTime) return 'your event time'
+  try {
+    return new Intl.DateTimeFormat('en-GB', {
+      timeZone: 'Europe/London',
+      weekday: 'short',
+      day: 'numeric',
+      month: 'short',
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true
+    }).format(new Date(isoDateTime))
+  } catch {
+    return 'your event time'
+  }
+}
+
+async function dispatchRescheduleNotifications(params: {
+  eventId: string
+  eventName: string
+  oldDate: string | null
+  oldTime: string | null
+  newDate: string
+  newTime: string
+  userId: string
+}): Promise<void> {
+  const { eventId, eventName, oldDate, oldTime, newDate, newTime, userId } = params
+  const db = createAdminClient()
+
+  // 1. Query affected bookings with customer data
+  const { data: bookings, error } = await db
+    .from('bookings')
+    .select('id, customer_id, seats, status, customers!inner(id, first_name, mobile_number, sms_status)')
+    .eq('event_id', eventId)
+    .in('status', ['confirmed', 'pending_payment'])
+
+  if (error || !bookings || bookings.length === 0) return
+
+  // 2. Compute new formatted datetime for SMS
+  const newStartIso = `${newDate}T${newTime || '00:00'}:00`
+  const formattedNewDate = formatLondonDateTime(newStartIso)
+
+  // 3. Recalculate hold_expires_at for pending-payment bookings (D10)
+  const pendingBookingIds = bookings
+    .filter(b => b.status === 'pending_payment')
+    .map(b => b.id)
+
+  if (pendingBookingIds.length > 0) {
+    const newStartDatetime = new Date(newStartIso).toISOString()
+
+    // Update bookings.hold_expires_at — only extend, don't shorten past the 24h window
+    await db
+      .from('bookings')
+      .update({ hold_expires_at: newStartDatetime })
+      .in('id', pendingBookingIds)
+      .lt('hold_expires_at', newStartDatetime)
+
+    // Update booking_holds.expires_at
+    await db
+      .from('booking_holds')
+      .update({ expires_at: newStartDatetime })
+      .in('event_booking_id', pendingBookingIds)
+      .eq('status', 'active')
+  }
+
+  // 4. Send reschedule SMS in batches of 20
+  const BATCH_SIZE = 20
+  const smsTargets = bookings.filter(b => {
+    const customer = b.customers as unknown as {
+      id: string
+      first_name: string | null
+      mobile_number: string | null
+      sms_status: string | null
+    }
+    return customer?.sms_status === 'active' && customer?.mobile_number
+  })
+
+  for (let i = 0; i < smsTargets.length; i += BATCH_SIZE) {
+    const batch = smsTargets.slice(i, i + BATCH_SIZE)
+
+    await Promise.allSettled(
+      batch.map(async (booking) => {
+        const customer = booking.customers as unknown as {
+          id: string
+          first_name: string | null
+          mobile_number: string | null
+          sms_status: string | null
+        }
+
+        // Generate fresh manage-booking token
+        let manageLink: string | null = null
+        try {
+          const manageToken = await createEventManageToken(db, {
+            customerId: customer.id,
+            bookingId: booking.id,
+            eventStartIso: newStartIso,
+            appBaseUrl: process.env.NEXT_PUBLIC_APP_URL || ''
+          })
+          manageLink = manageToken.url
+        } catch {
+          // Non-fatal: send SMS without manage link
+        }
+
+        const smsBody = buildEventRescheduledSms({
+          firstName: customer.first_name,
+          eventName,
+          newDate: formattedNewDate,
+          seats: booking.seats || 1,
+          manageLink
+        })
+
+        await sendSMS(customer.mobile_number!, smsBody, {
+          customerId: customer.id,
+          metadata: {
+            template_key: 'event_rescheduled',
+            event_id: eventId,
+            event_booking_id: booking.id,
+            old_date: oldDate,
+            new_date: newDate
+          }
+        })
+      })
+    )
+
+    // Throttle between batches
+    if (i + BATCH_SIZE < smsTargets.length) {
+      await new Promise(resolve => setTimeout(resolve, 1000))
+    }
+  }
+
+  // 5. Audit log for reschedule notification dispatch
+  await logAuditEvent({
+    user_id: userId,
+    operation_type: 'reschedule',
+    resource_type: 'event',
+    resource_id: eventId,
+    operation_status: 'success',
+    additional_info: {
+      old_date: oldDate,
+      old_time: oldTime,
+      new_date: newDate,
+      new_time: newTime,
+      bookings_notified: smsTargets.length,
+      total_bookings_affected: bookings.length
+    }
+  })
+}
+
+// ─── Update Event ───────────────────────────────────────────────────────────
+
 export async function updateEvent(id: string, formData: FormData) {
   try {
     const supabase = await createClient();
@@ -284,7 +437,10 @@ export async function updateEvent(id: string, formData: FormData) {
       return { error: validationResult.error.errors[0].message };
     }
 
-    const event = await EventService.updateEvent(id, validationResult.data as UpdateEventInput);
+    const eventResult = await EventService.updateEvent(id, validationResult.data as UpdateEventInput);
+
+    // Extract old values returned by the service (underscore-prefixed meta fields)
+    const { _oldDate, _oldTime, _oldName, _oldStatus, ...event } = eventResult
 
     await logAuditEvent({
       user_id: user.id,
@@ -299,6 +455,54 @@ export async function updateEvent(id: string, formData: FormData) {
         slug: event.slug
       }
     });
+
+    // Detect date/time change and dispatch reschedule notifications asynchronously
+    const newDate = validationResult.data.date
+    const newTime = validationResult.data.time
+    const dateChanged =
+      (newDate && newDate !== _oldDate) || (newTime && newTime !== _oldTime)
+
+    if (dateChanged) {
+      void dispatchRescheduleNotifications({
+        eventId: id,
+        eventName: event.name || _oldName || 'your event',
+        oldDate: _oldDate,
+        oldTime: _oldTime,
+        newDate: newDate || _oldDate || '',
+        newTime: newTime || _oldTime || '',
+        userId: user.id,
+      }).catch((err) => {
+        logger.error('Failed to dispatch reschedule notifications', {
+          error: err instanceof Error ? err : new Error(String(err)),
+          metadata: { eventId: id },
+        })
+      })
+    }
+
+    // Detect cancellation and run cascade synchronously
+    const statusChangedToCancelled =
+      validationResult.data.event_status === 'cancelled' && _oldStatus !== 'cancelled'
+
+    if (statusChangedToCancelled) {
+      const db = createAdminClient()
+      const cascadeResult = await EventService.cancelEventBookings({
+        eventId: id,
+        eventName: validationResult.data.name || _oldName || 'Event',
+        eventDate: _oldDate || validationResult.data.date || '',
+        eventTime: _oldTime || validationResult.data.time || '',
+        cancelledBy: user.id,
+        supabase: db
+      })
+
+      await logAuditEvent({
+        user_id: user.id,
+        operation_type: 'cancel_event',
+        resource_type: 'event',
+        resource_id: id,
+        operation_status: 'success',
+        additional_info: cascadeResult
+      })
+    }
 
     revalidatePath('/events');
     revalidatePath(`/events/${id}`);
@@ -328,7 +532,13 @@ export async function deleteEvent(id: string) {
       return { error: 'Unauthorized' };
     }
 
-    const event = await EventService.deleteEvent(id);
+    const result = await EventService.deleteEvent(id);
+
+    if ('error' in result) {
+      return { error: result.error }
+    }
+
+    const event = result
 
     await logAuditEvent({
       user_id: user.id,

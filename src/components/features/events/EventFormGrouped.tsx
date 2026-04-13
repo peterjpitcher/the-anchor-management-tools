@@ -14,6 +14,7 @@ import { FaqEditor } from './FaqEditor'
 import { SeoHealthIndicator } from './SeoHealthIndicator'
 import { parseKeywords, keywordsToDisplay, buildKeywordsUnion } from '@/lib/keywords'
 import { SquareImageUpload } from '@/components/features/shared/SquareImageUpload'
+import { ConfirmDialog } from '@/components/ui-v2/overlay/ConfirmDialog'
 import toast from 'react-hot-toast'
 import {
   ChevronDownIcon,
@@ -32,6 +33,7 @@ interface EventFormGroupedProps {
   categories: EventCategory[]
   onSubmit: (data: Partial<Event>) => Promise<void>
   onCancel: () => void
+  activeBookingCount?: number
 }
 
 interface SectionProps {
@@ -74,7 +76,7 @@ function CollapsibleSection({ title, description, icon: Icon, children, defaultO
   )
 }
 
-export function EventFormGrouped({ event, categories, onSubmit, onCancel }: EventFormGroupedProps) {
+export function EventFormGrouped({ event, categories, onSubmit, onCancel, activeBookingCount = 0 }: EventFormGroupedProps) {
   const router = useRouter()
 
   // Basic fields
@@ -152,6 +154,12 @@ export function EventFormGrouped({ event, categories, onSubmit, onCancel }: Even
   const [isGeneratingSeo, setIsGeneratingSeo] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
 
+  // Confirmation dialog state for edits affecting active bookings
+  const [showConfirmDialog, setShowConfirmDialog] = useState(false)
+  const [confirmDialogMessage, setConfirmDialogMessage] = useState('')
+  const [confirmDialogType, setConfirmDialogType] = useState<'warning' | 'danger'>('warning')
+  const [pendingSubmitData, setPendingSubmitData] = useState<(Partial<Event> & Record<string, unknown>) | null>(null)
+
   // Date constraints
   const minDate = getTodayIsoDate()
   // Server validation allows scheduling up to one year ahead; keep client aligned.
@@ -211,6 +219,33 @@ export function EventFormGrouped({ event, categories, onSubmit, onCancel }: Even
         ...(faqsModified ? { faqs } : {}),
       }
 
+      // Check if confirmation is needed before submitting
+      const dateChanged = event && (date !== event.date || time !== event.time)
+      const statusChangedToCancelled = event && eventStatus === 'cancelled' && event.event_status !== 'cancelled'
+      const needsConfirmation = activeBookingCount > 0 && (dateChanged || statusChangedToCancelled)
+
+      if (needsConfirmation && !pendingSubmitData) {
+        // Show confirmation dialog instead of submitting immediately
+        if (statusChangedToCancelled) {
+          setConfirmDialogMessage(
+            `This will cancel all ${activeBookingCount} booking${activeBookingCount !== 1 ? 's' : ''} and notify customers. Refunds will be processed for prepaid bookings. Are you sure?`
+          )
+          setConfirmDialogType('danger')
+        } else {
+          setConfirmDialogMessage(
+            `This event has ${activeBookingCount} active booking${activeBookingCount !== 1 ? 's' : ''}. Changing the date/time will trigger notifications to all booked customers. Continue?`
+          )
+          setConfirmDialogType('warning')
+        }
+        setPendingSubmitData(eventData)
+        setShowConfirmDialog(true)
+        setIsSubmitting(false)
+        return
+      }
+
+      // Clear pending state if we're here from confirmation
+      setPendingSubmitData(null)
+
       await onSubmit(eventData)
     } catch (error) {
       console.error('Error submitting form:', error)
@@ -218,6 +253,26 @@ export function EventFormGrouped({ event, categories, onSubmit, onCancel }: Even
     } finally {
       setIsSubmitting(false)
     }
+  }
+
+  const handleConfirmSubmit = async (): Promise<void> => {
+    if (!pendingSubmitData) return
+    setShowConfirmDialog(false)
+    setIsSubmitting(true)
+    try {
+      await onSubmit(pendingSubmitData)
+    } catch (error) {
+      console.error('Error submitting form:', error)
+      toast.error('Failed to save event')
+    } finally {
+      setIsSubmitting(false)
+      setPendingSubmitData(null)
+    }
+  }
+
+  const handleCancelConfirm = (): void => {
+    setShowConfirmDialog(false)
+    setPendingSubmitData(null)
   }
 
   // Auto-populate fields when category is selected
@@ -389,6 +444,13 @@ export function EventFormGrouped({ event, categories, onSubmit, onCancel }: Even
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
+      {/* Active booking count warning */}
+      {event && activeBookingCount > 0 && (
+        <div className="rounded-md bg-amber-50 p-3 text-sm text-amber-800 border border-amber-200">
+          <strong>{activeBookingCount}</strong> active booking{activeBookingCount !== 1 ? 's' : ''} for this event
+        </div>
+      )}
+
       {/* Basic Information Section */}
       <CollapsibleSection
         title="Basic Information"
@@ -1016,6 +1078,19 @@ export function EventFormGrouped({ event, categories, onSubmit, onCancel }: Even
           </Button>
         </div>
       </div>
+
+      {/* Confirmation dialog for changes affecting active bookings */}
+      <ConfirmDialog
+        open={showConfirmDialog}
+        onClose={handleCancelConfirm}
+        onConfirm={handleConfirmSubmit}
+        title={confirmDialogType === 'danger' ? 'Cancel Event?' : 'Confirm Changes'}
+        message={confirmDialogMessage}
+        type={confirmDialogType}
+        confirmText={confirmDialogType === 'danger' ? 'Yes, Cancel Event' : 'Yes, Continue'}
+        cancelText="Go Back"
+        destructive={confirmDialogType === 'danger'}
+      />
     </form>
   )
 }
