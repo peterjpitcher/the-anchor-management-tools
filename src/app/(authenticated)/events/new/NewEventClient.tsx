@@ -39,6 +39,9 @@ export default function NewEventClient({ categories }: NewEventClientProps) {
                 toast.error(result.error)
             } else if ('success' in result && result.success && 'data' in result && result.data) {
                 toast.success('Event created successfully')
+                if ('warning' in result && result.warning) {
+                    toast.warning(result.warning)
+                }
                 router.push(`/events/${result.data.id}`)
             } else {
                 toast.error('Failed to create event')

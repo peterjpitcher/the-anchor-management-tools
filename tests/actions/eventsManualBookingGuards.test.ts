@@ -19,8 +19,29 @@ vi.mock('@/services/events', () => ({
   eventSchema: {},
 }))
 
+const { createBooking: mockedCreateBooking } = vi.hoisted(() => ({
+  createBooking: vi.fn(),
+}))
+
+vi.mock('@/services/event-bookings', () => ({
+  EventBookingService: {
+    createBooking: mockedCreateBooking,
+    normalizeBookingMode: (value: unknown) => {
+      if (value === 'general' || value === 'mixed' || value === 'table') return value
+      return 'table'
+    },
+  },
+}))
+
 vi.mock('@/lib/supabase/server', () => ({
-  createClient: vi.fn(),
+  createClient: vi.fn().mockResolvedValue({
+    auth: {
+      getUser: vi.fn().mockResolvedValue({
+        data: { user: { id: 'admin-user-1', email: 'admin@test.com' } },
+        error: null,
+      }),
+    },
+  }),
 }))
 
 vi.mock('@/lib/supabase/admin', () => ({
@@ -815,18 +836,9 @@ describe('Event manual booking creation SMS safety guards', () => {
     })
   })
 
-  it('treats logging_failed as sent when creation SMS returns non-success', async () => {
+  it('treats logging_failed as sent when service returns smsMeta with logFailure', async () => {
     const eventId = '550e8400-e29b-41d4-a716-446655440250'
     const bookingId = '550e8400-e29b-41d4-a716-446655440252'
-    const customerId = '550e8400-e29b-41d4-a716-446655440251'
-
-    ;(sendSMS as unknown as Mock).mockResolvedValueOnce({
-      success: false,
-      sid: 'SM3',
-      code: 'logging_failed',
-      logFailure: true,
-      error: 'DB insert failed',
-    })
 
     const eventMaybeSingle = vi.fn().mockResolvedValue({
       data: { id: eventId, name: 'Test Event', booking_mode: 'general' },
@@ -835,29 +847,35 @@ describe('Event manual booking creation SMS safety guards', () => {
     const eventEq = vi.fn().mockReturnValue({ maybeSingle: eventMaybeSingle })
     const eventSelect = vi.fn().mockReturnValue({ eq: eventEq })
 
-    const rpc = vi.fn(async (fnName: string) => {
-      if (fnName === 'create_event_booking_v05') {
-        return {
-          data: {
-            state: 'confirmed',
-            booking_id: bookingId,
-            event_start_datetime: null,
-            payment_mode: 'free',
-          },
-          error: null,
-        }
-      }
-      throw new Error(`Unexpected rpc: ${fnName}`)
-    })
+    const dupCheckMaybeSingle = vi.fn().mockResolvedValue({ data: null, error: null })
+    const dupCheckIn = vi.fn().mockReturnValue({ maybeSingle: dupCheckMaybeSingle })
+    const dupCheckEq2 = vi.fn().mockReturnValue({ in: dupCheckIn })
+    const dupCheckEq1 = vi.fn().mockReturnValue({ eq: dupCheckEq2 })
+    const dupCheckSelect = vi.fn().mockReturnValue({ eq: dupCheckEq1 })
 
     mockedCreateAdminClient.mockReturnValue({
-      rpc,
       from: vi.fn((table: string) => {
         if (table === 'events') {
           return { select: eventSelect }
         }
+        if (table === 'bookings') {
+          return { select: dupCheckSelect }
+        }
         throw new Error(`Unexpected table: ${table}`)
       }),
+    })
+
+    mockedCreateBooking.mockResolvedValue({
+      resolvedState: 'confirmed',
+      resolvedReason: null,
+      bookingId,
+      seatsRemaining: 8,
+      nextStepUrl: null,
+      manageUrl: 'https://example.test/manage',
+      smsMeta: { success: true, code: 'logging_failed', logFailure: true },
+      tableBookingId: null,
+      tableName: null,
+      rpcResult: { state: 'confirmed', booking_id: bookingId, payment_mode: 'free' },
     })
 
     const result = await createEventManualBooking({
@@ -882,18 +900,6 @@ describe('Event manual booking creation SMS safety guards', () => {
         },
       },
     })
-
-    expect(error).toHaveBeenCalledWith(
-      'Event manual booking SMS sent but outbound message logging failed',
-      expect.objectContaining({
-        metadata: expect.objectContaining({
-          bookingId,
-          customerId,
-          code: 'logging_failed',
-          logFailure: true,
-        }),
-      })
-    )
   })
 })
 
@@ -905,72 +911,54 @@ describe('Event manual booking table-reservation rollback guards', () => {
       customerId: '550e8400-e29b-41d4-a716-446655440011',
       resolutionError: undefined,
     })
-    mockedCreateEventManageToken.mockResolvedValue({ url: 'https://example.test/manage' })
   })
 
-  it('fails closed when rollback cancellation update affects no rows', async () => {
+  /**
+   * After the D05 consolidation, createEventManualBooking delegates to
+   * EventBookingService.createBooking which handles rollback internally.
+   * These tests now verify the admin action correctly maps service results.
+   */
+
+  it('returns error when service reports rollbackFailed', async () => {
+    const eventId = '550e8400-e29b-41d4-a716-446655440001'
+
     const eventMaybeSingle = vi.fn().mockResolvedValue({
-      data: { id: '550e8400-e29b-41d4-a716-446655440001', name: 'Test Event', booking_mode: 'table' },
+      data: { id: eventId, name: 'Test Event', booking_mode: 'table' },
       error: null,
     })
     const eventEq = vi.fn().mockReturnValue({ maybeSingle: eventMaybeSingle })
     const eventSelect = vi.fn().mockReturnValue({ eq: eventEq })
 
-    const cancelMaybeSingle = vi.fn().mockResolvedValue({ data: null, error: null })
-    const cancelSelect = vi.fn().mockReturnValue({ maybeSingle: cancelMaybeSingle })
-    const cancelEq = vi.fn().mockReturnValue({ select: cancelSelect })
-
-    const holdReleaseSelect = vi.fn().mockResolvedValue({ data: [], error: null })
-    const holdReleaseEq3 = vi.fn().mockReturnValue({ select: holdReleaseSelect })
-    const holdReleaseEq2 = vi.fn().mockReturnValue({ eq: holdReleaseEq3 })
-    const holdReleaseEq1 = vi.fn().mockReturnValue({ eq: holdReleaseEq2 })
-
-    const rpc = vi.fn(async (fnName: string) => {
-      if (fnName === 'create_event_booking_v05') {
-        return {
-          data: {
-            state: 'confirmed',
-            booking_id: '550e8400-e29b-41d4-a716-446655440100',
-            event_start_datetime: '2026-03-01T12:00:00.000Z',
-          },
-          error: null,
-        }
-      }
-
-      if (fnName === 'create_event_table_reservation_v05') {
-        return {
-          data: {
-            state: 'blocked',
-            reason: 'no_table',
-          },
-          error: null,
-        }
-      }
-
-      throw new Error(`Unexpected rpc: ${fnName}`)
-    })
+    const dupCheckMaybeSingle = vi.fn().mockResolvedValue({ data: null, error: null })
+    const dupCheckIn = vi.fn().mockReturnValue({ maybeSingle: dupCheckMaybeSingle })
+    const dupCheckEq2 = vi.fn().mockReturnValue({ in: dupCheckIn })
+    const dupCheckEq1 = vi.fn().mockReturnValue({ eq: dupCheckEq2 })
+    const dupCheckSelect = vi.fn().mockReturnValue({ eq: dupCheckEq1 })
 
     mockedCreateAdminClient.mockReturnValue({
-      rpc,
       from: vi.fn((table: string) => {
-        if (table === 'events') {
-          return { select: eventSelect }
-        }
-
-        if (table === 'bookings') {
-          return { update: vi.fn().mockReturnValue({ eq: cancelEq }) }
-        }
-
-        if (table === 'booking_holds') {
-          return { update: vi.fn().mockReturnValue({ eq: holdReleaseEq1 }) }
-        }
-
+        if (table === 'events') return { select: eventSelect }
+        if (table === 'bookings') return { select: dupCheckSelect }
         throw new Error(`Unexpected table: ${table}`)
       }),
     })
 
+    mockedCreateBooking.mockResolvedValue({
+      resolvedState: 'blocked',
+      resolvedReason: null,
+      bookingId: null,
+      seatsRemaining: null,
+      nextStepUrl: null,
+      manageUrl: null,
+      smsMeta: null,
+      tableBookingId: null,
+      tableName: null,
+      rpcResult: {},
+      rollbackFailed: true,
+    })
+
     const result = await createEventManualBooking({
-      eventId: '550e8400-e29b-41d4-a716-446655440001',
+      eventId,
       phone: '+447700900001',
       seats: 2,
       firstName: 'Pat',
@@ -980,175 +968,108 @@ describe('Event manual booking table-reservation rollback guards', () => {
     expect(result).toEqual({ error: 'Failed to rollback booking after table reservation failure.' })
   })
 
-  it('fails closed when rollback hold release update errors', async () => {
+  it('returns error when service reports rpcFailed', async () => {
+    const eventId = '550e8400-e29b-41d4-a716-446655440002'
+
     const eventMaybeSingle = vi.fn().mockResolvedValue({
-      data: { id: '550e8400-e29b-41d4-a716-446655440002', name: 'Test Event', booking_mode: 'table' },
+      data: { id: eventId, name: 'Test Event', booking_mode: 'table' },
       error: null,
     })
     const eventEq = vi.fn().mockReturnValue({ maybeSingle: eventMaybeSingle })
     const eventSelect = vi.fn().mockReturnValue({ eq: eventEq })
 
-    const cancelMaybeSingle = vi.fn().mockResolvedValue({ data: { id: 'booking-1' }, error: null })
-    const cancelSelect = vi.fn().mockReturnValue({ maybeSingle: cancelMaybeSingle })
-    const cancelEq = vi.fn().mockReturnValue({ select: cancelSelect })
-
-    const holdReleaseSelect = vi.fn().mockResolvedValue({
-      data: null,
-      error: { message: 'db_down' },
-    })
-    const holdReleaseEq3 = vi.fn().mockReturnValue({ select: holdReleaseSelect })
-    const holdReleaseEq2 = vi.fn().mockReturnValue({ eq: holdReleaseEq3 })
-    const holdReleaseEq1 = vi.fn().mockReturnValue({ eq: holdReleaseEq2 })
-
-    const rpc = vi.fn(async (fnName: string) => {
-      if (fnName === 'create_event_booking_v05') {
-        return {
-          data: {
-            state: 'confirmed',
-            booking_id: 'booking-1',
-            event_start_datetime: '2026-03-02T12:00:00.000Z',
-          },
-          error: null,
-        }
-      }
-
-      if (fnName === 'create_event_table_reservation_v05') {
-        return {
-          data: {
-            state: 'blocked',
-            reason: 'no_table',
-          },
-          error: null,
-        }
-      }
-
-      throw new Error(`Unexpected rpc: ${fnName}`)
-    })
+    const dupCheckMaybeSingle = vi.fn().mockResolvedValue({ data: null, error: null })
+    const dupCheckIn = vi.fn().mockReturnValue({ maybeSingle: dupCheckMaybeSingle })
+    const dupCheckEq2 = vi.fn().mockReturnValue({ in: dupCheckIn })
+    const dupCheckEq1 = vi.fn().mockReturnValue({ eq: dupCheckEq2 })
+    const dupCheckSelect = vi.fn().mockReturnValue({ eq: dupCheckEq1 })
 
     mockedCreateAdminClient.mockReturnValue({
-      rpc,
       from: vi.fn((table: string) => {
-        if (table === 'events') {
-          return { select: eventSelect }
-        }
-
-        if (table === 'bookings') {
-          return { update: vi.fn().mockReturnValue({ eq: cancelEq }) }
-        }
-
-        if (table === 'booking_holds') {
-          return { update: vi.fn().mockReturnValue({ eq: holdReleaseEq1 }) }
-        }
-
+        if (table === 'events') return { select: eventSelect }
+        if (table === 'bookings') return { select: dupCheckSelect }
         throw new Error(`Unexpected table: ${table}`)
       }),
     })
 
+    mockedCreateBooking.mockResolvedValue({
+      resolvedState: 'blocked',
+      resolvedReason: null,
+      bookingId: null,
+      seatsRemaining: null,
+      nextStepUrl: null,
+      manageUrl: null,
+      smsMeta: null,
+      tableBookingId: null,
+      tableName: null,
+      rpcResult: {},
+      rpcFailed: true,
+    })
+
     const result = await createEventManualBooking({
-      eventId: '550e8400-e29b-41d4-a716-446655440002',
+      eventId,
       phone: '+447700900002',
       seats: 2,
       firstName: 'Pat',
       lastName: 'Test',
     })
 
-    expect(result).toEqual({ error: 'Failed to rollback booking after table reservation failure.' })
+    expect(result).toEqual({ error: 'Failed to create booking.' })
   })
 
-  it('fails closed when rollback hold release updates zero rows but active holds still remain', async () => {
+  it('returns blocked state when service resolves to blocked', async () => {
+    const eventId = '550e8400-e29b-41d4-a716-446655440003'
+
     const eventMaybeSingle = vi.fn().mockResolvedValue({
-      data: { id: '550e8400-e29b-41d4-a716-446655440003', name: 'Test Event', booking_mode: 'table' },
+      data: { id: eventId, name: 'Test Event', booking_mode: 'table' },
       error: null,
     })
     const eventEq = vi.fn().mockReturnValue({ maybeSingle: eventMaybeSingle })
     const eventSelect = vi.fn().mockReturnValue({ eq: eventEq })
 
-    const cancelMaybeSingle = vi.fn().mockResolvedValue({ data: { id: 'booking-2' }, error: null })
-    const cancelSelect = vi.fn().mockReturnValue({ maybeSingle: cancelMaybeSingle })
-    const cancelEq = vi.fn().mockReturnValue({ select: cancelSelect })
-
-    const holdReleaseSelect = vi.fn().mockResolvedValue({
-      data: [],
-      error: null,
-    })
-    const holdReleaseEq3 = vi.fn().mockReturnValue({ select: holdReleaseSelect })
-    const holdReleaseEq2 = vi.fn().mockReturnValue({ eq: holdReleaseEq3 })
-    const holdReleaseEq1 = vi.fn().mockReturnValue({ eq: holdReleaseEq2 })
-
-    const remainingHoldEq3 = vi.fn().mockResolvedValue({
-      data: [{ id: 'hold-remaining-1' }],
-      error: null,
-    })
-    const remainingHoldEq2 = vi.fn().mockReturnValue({ eq: remainingHoldEq3 })
-    const remainingHoldEq1 = vi.fn().mockReturnValue({ eq: remainingHoldEq2 })
-    const remainingHoldSelect = vi.fn().mockReturnValue({ eq: remainingHoldEq1 })
-
-    const rpc = vi.fn(async (fnName: string) => {
-      if (fnName === 'create_event_booking_v05') {
-        return {
-          data: {
-            state: 'confirmed',
-            booking_id: 'booking-2',
-            event_start_datetime: '2026-03-03T12:00:00.000Z',
-          },
-          error: null,
-        }
-      }
-
-      if (fnName === 'create_event_table_reservation_v05') {
-        return {
-          data: {
-            state: 'blocked',
-            reason: 'no_table',
-          },
-          error: null,
-        }
-      }
-
-      throw new Error(`Unexpected rpc: ${fnName}`)
-    })
+    const dupCheckMaybeSingle = vi.fn().mockResolvedValue({ data: null, error: null })
+    const dupCheckIn = vi.fn().mockReturnValue({ maybeSingle: dupCheckMaybeSingle })
+    const dupCheckEq2 = vi.fn().mockReturnValue({ in: dupCheckIn })
+    const dupCheckEq1 = vi.fn().mockReturnValue({ eq: dupCheckEq2 })
+    const dupCheckSelect = vi.fn().mockReturnValue({ eq: dupCheckEq1 })
 
     mockedCreateAdminClient.mockReturnValue({
-      rpc,
       from: vi.fn((table: string) => {
-        if (table === 'events') {
-          return { select: eventSelect }
-        }
-
-        if (table === 'bookings') {
-          return { update: vi.fn().mockReturnValue({ eq: cancelEq }) }
-        }
-
-        if (table === 'booking_holds') {
-          return {
-            update: vi.fn().mockReturnValue({ eq: holdReleaseEq1 }),
-            select: remainingHoldSelect,
-          }
-        }
-
+        if (table === 'events') return { select: eventSelect }
+        if (table === 'bookings') return { select: dupCheckSelect }
         throw new Error(`Unexpected table: ${table}`)
       }),
     })
 
+    mockedCreateBooking.mockResolvedValue({
+      resolvedState: 'blocked',
+      resolvedReason: 'no_table',
+      bookingId: null,
+      seatsRemaining: null,
+      nextStepUrl: null,
+      manageUrl: null,
+      smsMeta: null,
+      tableBookingId: null,
+      tableName: null,
+      rpcResult: { state: 'blocked', reason: 'no_table' },
+    })
+
     const result = await createEventManualBooking({
-      eventId: '550e8400-e29b-41d4-a716-446655440003',
+      eventId,
       phone: '+447700900003',
       seats: 2,
       firstName: 'Pat',
       lastName: 'Test',
     })
 
-    expect(result).toEqual({ error: 'Failed to rollback booking after table reservation failure.' })
-    expect(remainingHoldSelect).toHaveBeenCalledWith('id')
-    expect(error).toHaveBeenCalledWith(
-      'Failed rolling back event booking after table reservation failure',
-      expect.objectContaining({
-        error: expect.any(Error),
-        metadata: expect.objectContaining({
-          bookingId: 'booking-2',
-        }),
-      })
-    )
+    expect(result).toMatchObject({
+      success: true,
+      data: {
+        state: 'blocked',
+        reason: 'no_table',
+        booking_id: null,
+      },
+    })
   })
 })
 
@@ -1176,27 +1097,24 @@ describe('Event manual booking phone normalization', () => {
     const eventEq = vi.fn().mockReturnValue({ maybeSingle: eventMaybeSingle })
     const eventSelect = vi.fn().mockReturnValue({ eq: eventEq })
 
-    const rpc = vi.fn(async (fnName: string) => {
-      if (fnName === 'create_event_booking_v05') {
-        return {
-          data: {
-            state: 'blocked',
-            reason: 'customer_conflict',
-            booking_id: null,
-          },
-          error: null,
-        }
-      }
-      throw new Error(`Unexpected rpc: ${fnName}`)
+    // Duplicate check returns an existing booking — triggers early return
+    const dupCheckMaybeSingle = vi.fn().mockResolvedValue({
+      data: { id: 'existing-booking-1' },
+      error: null,
     })
+    const dupCheckIn = vi.fn().mockReturnValue({ maybeSingle: dupCheckMaybeSingle })
+    const dupCheckEq2 = vi.fn().mockReturnValue({ in: dupCheckIn })
+    const dupCheckEq1 = vi.fn().mockReturnValue({ eq: dupCheckEq2 })
+    const dupCheckSelect = vi.fn().mockReturnValue({ eq: dupCheckEq1 })
 
     mockedCreateAdminClient.mockReturnValue({
-      rpc,
       from: vi.fn((table: string) => {
         if (table === 'events') {
           return { select: eventSelect }
         }
-
+        if (table === 'bookings') {
+          return { select: dupCheckSelect }
+        }
         throw new Error(`Unexpected table: ${table}`)
       }),
     })
@@ -1213,6 +1131,7 @@ describe('Event manual booking phone normalization', () => {
       success: true,
       data: {
         state: 'blocked',
+        reason: 'customer_conflict',
       },
     })
 

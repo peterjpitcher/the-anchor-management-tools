@@ -417,14 +417,19 @@ export class EventService {
       throw new Error('Failed to create event');
     }
 
-    // Trigger side effect (marketing links) - fire and forget or await?
-    // In service, we usually just return data. Side effects can be here or in action.
-    // Let's do it here as it's closely tied to event creation success.
-    void generateEventMarketingLinks(event.id).catch((e) => {
-      logger.error('Failed to generate marketing links', { error: e instanceof Error ? e : new Error(String(e)) });
-    });
+    // Attempt marketing link generation — non-blocking for save, but capture failures
+    let marketingLinksWarning: string | null = null
+    try {
+      await generateEventMarketingLinks(event.id)
+    } catch (e) {
+      logger.warn('Failed to generate marketing links', {
+        error: e instanceof Error ? e : new Error(String(e)),
+        metadata: { eventId: event.id }
+      })
+      marketingLinksWarning = 'Event saved but marketing links failed to generate. You can retry from the event detail page.'
+    }
 
-    return event;
+    return { ...event, marketingLinksWarning };
   }
 
   static async updateEvent(id: string, input: UpdateEventInput) {
@@ -536,9 +541,17 @@ export class EventService {
       throw new Error('Failed to update event');
     }
 
-    void generateEventMarketingLinks(event.id).catch((e) => {
-      logger.error('Failed to refresh marketing links', { error: e instanceof Error ? e : new Error(String(e)) });
-    });
+    // Attempt marketing link refresh — non-blocking for save, but capture failures
+    let marketingLinksWarning: string | null = null
+    try {
+      await generateEventMarketingLinks(event.id)
+    } catch (e) {
+      logger.warn('Failed to refresh marketing links', {
+        error: e instanceof Error ? e : new Error(String(e)),
+        metadata: { eventId: event.id }
+      })
+      marketingLinksWarning = 'Event saved but marketing links failed to generate. You can retry from the event detail page.'
+    }
 
     return {
       ...event,
@@ -546,6 +559,7 @@ export class EventService {
       _oldTime: currentEvent.time as string | null,
       _oldName: currentEvent.name as string | null,
       _oldStatus: currentEvent.event_status as string | null,
+      marketingLinksWarning,
     };
   }
 
