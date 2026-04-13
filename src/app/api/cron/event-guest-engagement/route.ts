@@ -983,28 +983,69 @@ async function processReviewFollowups(
     const reviewSentAt = smsResult.scheduledFor || new Date().toISOString()
     const reviewWindowClosesAt = new Date(Date.parse(reviewSentAt) + 7 * 24 * 60 * 60 * 1000).toISOString()
 
-    const { data: updatedBooking, error: bookingUpdateError } = await supabase
+    // STEP 1: Set the dedup flag + review window independently of status transition.
+    // review_window_closes_at is included here because processReviewWindowCompletion()
+    // depends on it, and it must survive even if the status transition fails.
+    const { data: flaggedBooking, error: sentAtError } = await supabase
+      .from('bookings')
+      .update({
+        review_sms_sent_at: reviewSentAt,
+        review_window_closes_at: reviewWindowClosesAt,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', booking.id)
+      .is('review_sms_sent_at', null)
+      .select('id')
+      .maybeSingle()
+
+    if (sentAtError || !flaggedBooking) {
+      logger.error('CRITICAL: Review SMS sent but failed to set review_sms_sent_at dedup flag', {
+        metadata: {
+          bookingId: booking.id,
+          customerId: customer.id,
+          error: sentAtError?.message ?? 'zero rows updated (concurrent run or already flagged)',
+        }
+      })
+      if (sentAtError) {
+        safety.recordSafetyAbort({
+          stage: 'reviews:dedup_flag',
+          bookingId: booking.id,
+          tableBookingId: null,
+          customerId: customer.id,
+          eventId: event.id,
+          templateKey: TEMPLATE_REVIEW_FOLLOWUP,
+          code: 'dedup_flag_failed',
+          logFailure: false,
+        })
+      }
+      result.sent += 1
+      if (safety.primaryAbort) {
+        safety.throwSafetyAbort()
+      }
+      continue
+    }
+
+    // STEP 2: Lifecycle status transition — desirable but not critical for dedup.
+    const { data: updatedBooking, error: bookingStatusError } = await supabase
       .from('bookings')
       .update({
         status: 'visited_waiting_for_review',
-        review_sms_sent_at: reviewSentAt,
-        review_window_closes_at: reviewWindowClosesAt,
         updated_at: new Date().toISOString()
       })
       .eq('id', booking.id)
       .eq('status', 'confirmed')
       .select('id')
       .maybeSingle()
-    if (bookingUpdateError) {
-      logger.warn('Failed updating event booking review follow-up state after SMS send', {
+    if (bookingStatusError) {
+      logger.error('Event booking status transition failed after review SMS (dedup flag IS set)', {
         metadata: {
           bookingId: booking.id,
           customerId: customer.id,
-          error: bookingUpdateError.message
+          error: bookingStatusError.message
         }
       })
     } else if (!updatedBooking) {
-      logger.warn('Review follow-up state update affected no booking rows after SMS send', {
+      logger.warn('Event booking status transition affected no rows (status may have changed concurrently)', {
         metadata: {
           bookingId: booking.id,
           customerId: customer.id
@@ -1208,26 +1249,70 @@ async function processTableReviewFollowups(
     const reviewSentAt = smsResult.scheduledFor || new Date().toISOString()
     const reviewWindowClosesAt = new Date(Date.parse(reviewSentAt) + 7 * 24 * 60 * 60 * 1000).toISOString()
 
-    const { data: updatedTableBooking, error: tableBookingUpdateError } = await supabase.from('table_bookings')
+    // STEP 1: Set the dedup flag independently — this is the primary guard against re-sends.
+    // Decoupled from the status transition so that if the enum/status change fails,
+    // the booking is still marked as "review SMS sent" and won't be re-processed.
+    const { data: flaggedTableBooking, error: sentAtError } = await supabase
+      .from('table_bookings')
+      .update({
+        review_sms_sent_at: reviewSentAt,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', booking.id)
+      .is('review_sms_sent_at', null)
+      .select('id')
+      .maybeSingle()
+
+    if (sentAtError || !flaggedTableBooking) {
+      logger.error('CRITICAL: Review SMS sent but failed to set review_sms_sent_at dedup flag', {
+        metadata: {
+          tableBookingId: booking.id,
+          customerId: customer.id,
+          error: sentAtError?.message ?? 'zero rows updated (concurrent run or already flagged)',
+        }
+      })
+      if (sentAtError) {
+        safety.recordSafetyAbort({
+          stage: 'table_reviews:dedup_flag',
+          bookingId: null,
+          tableBookingId: booking.id,
+          customerId: customer.id,
+          eventId: null,
+          templateKey: TEMPLATE_TABLE_REVIEW_FOLLOWUP,
+          code: 'dedup_flag_failed',
+          logFailure: false,
+        })
+      }
+      result.sent += 1
+      if (safety.primaryAbort) {
+        safety.throwSafetyAbort()
+      }
+      continue
+    }
+
+    // STEP 2: Lifecycle status transition — desirable but not critical for dedup.
+    // If this fails, the booking stays 'confirmed' with review_sms_sent_at set,
+    // which prevents re-sends. The review link redirect can still transition to 'review_clicked'.
+    const { data: updatedTableBooking, error: tableBookingStatusError } = await supabase
+      .from('table_bookings')
       .update({
         status: 'visited_waiting_for_review',
-        review_sms_sent_at: reviewSentAt,
         updated_at: new Date().toISOString()
       })
       .eq('id', booking.id)
       .eq('status', 'confirmed')
       .select('id')
       .maybeSingle()
-    if (tableBookingUpdateError) {
-      logger.warn('Failed updating table booking review follow-up state after SMS send', {
+    if (tableBookingStatusError) {
+      logger.error('Table booking status transition failed after review SMS (dedup flag IS set)', {
         metadata: {
           tableBookingId: booking.id,
           customerId: customer.id,
-          error: tableBookingUpdateError.message
+          error: tableBookingStatusError.message
         }
       })
     } else if (!updatedTableBooking) {
-      logger.warn('Table-booking review follow-up state update affected no rows after SMS send', {
+      logger.warn('Table booking status transition affected no rows (status may have changed concurrently)', {
         metadata: {
           tableBookingId: booking.id,
           customerId: customer.id
