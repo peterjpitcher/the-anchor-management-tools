@@ -76,3 +76,4 @@ gha-creds-*.json
 .worktrees/
 .superpowers/
 .claude/worktrees/
+.claude/session-context.md

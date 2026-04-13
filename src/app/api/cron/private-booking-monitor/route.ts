@@ -914,6 +914,9 @@ export async function GET(request: Request) {
 
           if (smsResult.success) {
             stats.postEventFollowupSent++
+            // Mark processed immediately after successful send — this is the primary
+            // guard against re-sends if the cron times out before completing other work.
+            await markProcessed()
           } else {
             logger.warn('Failed to send private booking post-event review SMS', {
               metadata: {
@@ -923,10 +926,9 @@ export async function GET(request: Request) {
                 code: typeof (smsResult as any).code === 'string' ? (smsResult as any).code : null
               }
             })
+            // Mark processed even on failure to avoid retrying a blocked send
+            await markProcessed()
           }
-
-          // Mark processed after send attempt (success or failure)
-          await markProcessed()
 
           maybeAbortFromSmsResult(smsResult, {
             stage: 'pass5:post_event_followup',
