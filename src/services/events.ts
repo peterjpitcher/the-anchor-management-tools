@@ -16,6 +16,7 @@ export type CreateEventInput = {
   date: string;
   time: string;
   capacity?: number | null;
+  payment_mode?: 'free' | 'cash_only' | 'prepaid' | null;
   booking_mode?: 'table' | 'general' | 'mixed' | null;
   event_type?: string | null;
   category_id?: string | null;
@@ -87,6 +88,7 @@ type PublishValidationInput = {
   poster_image_url?: string | null
   is_free?: boolean | null
   price?: number | null
+  payment_mode?: string | null
 }
 
 function hasValue(value: unknown): boolean {
@@ -133,6 +135,10 @@ export function getPublishValidationIssues(input: PublishValidationInput): strin
 
   if (!isFree && (price === null || price <= 0)) {
     missing.push('ticket price (or mark event as free)')
+  }
+
+  if (input.payment_mode === 'prepaid' && (price === null || price <= 0)) {
+    missing.push('Prepaid events must have a price set')
   }
 
   return missing
@@ -236,6 +242,7 @@ export const eventSchema = z.object({
   }),
   event_status: z.enum(['scheduled', 'cancelled', 'postponed', 'rescheduled', 'sold_out', 'draft']).default('scheduled'),
   booking_mode: z.enum(['table', 'general', 'mixed']).default('table'),
+  payment_mode: z.enum(['free', 'cash_only', 'prepaid']).nullable().optional(),
   event_type: z.string().trim().max(120).nullable().optional().transform((val) => {
     if (!val) return null
     return val.length > 0 ? val : null
@@ -343,7 +350,8 @@ export class EventService {
       thumbnail_image_url: input.thumbnail_image_url,
       poster_image_url: input.poster_image_url,
       is_free: input.is_free,
-      price: input.price
+      price: input.price,
+      payment_mode: input.payment_mode
     })
 
     if (publishIssues.length > 0) {
@@ -412,7 +420,8 @@ export class EventService {
         thumbnail_image_url,
         poster_image_url,
         is_free,
-        price
+        price,
+        payment_mode
       `)
       .eq('id', id)
       .maybeSingle()
@@ -431,6 +440,7 @@ export class EventService {
     const nextPosterImage = input.poster_image_url ?? currentEvent.poster_image_url
     const nextIsFree = input.is_free ?? currentEvent.is_free
     const nextPrice = input.price ?? currentEvent.price
+    const nextPaymentMode = input.payment_mode ?? currentEvent.payment_mode
 
     let slug: string | undefined
 
@@ -457,7 +467,8 @@ export class EventService {
       thumbnail_image_url: nextThumbnailImage,
       poster_image_url: nextPosterImage,
       is_free: nextIsFree,
-      price: typeof nextPrice === 'number' ? nextPrice : Number(nextPrice || 0)
+      price: typeof nextPrice === 'number' ? nextPrice : Number(nextPrice || 0),
+      payment_mode: nextPaymentMode
     })
 
     if (publishIssues.length > 0) {

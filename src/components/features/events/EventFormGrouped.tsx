@@ -92,6 +92,10 @@ export function EventFormGrouped({ event, categories, onSubmit, onCancel }: Even
   const [performerType, setPerformerType] = useState(event?.performer_type ?? '')
   const [price, setPrice] = useState(event?.price?.toString() ?? '0')
   const [isFree, setIsFree] = useState(event?.is_free ?? true)
+  const [capacity, setCapacity] = useState(event?.capacity?.toString() ?? '')
+  const [paymentMode, setPaymentMode] = useState<'free' | 'cash_only' | 'prepaid'>(
+    (event?.payment_mode as 'free' | 'cash_only' | 'prepaid') ?? 'free'
+  )
   const [imageUrl, setImageUrl] = useState(event?.hero_image_url ?? '')
   const [brief, setBrief] = useState(event?.brief ?? '')
 
@@ -177,6 +181,8 @@ export function EventFormGrouped({ event, categories, onSubmit, onCancel }: Even
         performer_type: performerType.trim() || null,
         price: price && price !== '' ? parseFloat(price) : 0,
         is_free: isFree,
+        capacity: capacity && capacity !== '' ? parseInt(capacity) : null,
+        payment_mode: paymentMode,
         hero_image_url: imageUrl || null,
         // Set other image URLs to match the single image (for backwards compatibility)
         thumbnail_image_url: imageUrl || null,
@@ -333,7 +339,7 @@ export function EventFormGrouped({ event, categories, onSubmit, onCancel }: Even
         date: date || null,
         time: time || null,
         categoryName: selectedCategory?.name ?? null,
-        capacity: null,
+        capacity: event?.capacity ?? null,
         brief: brief.trim() ? brief.trim() : null,
         performerName: performerName.trim() || null,
         performerType: performerType.trim() || null,
@@ -643,6 +649,52 @@ export function EventFormGrouped({ event, categories, onSubmit, onCancel }: Even
                 step="0.01"
                 fullWidth
               />
+            </div>
+          </div>
+
+          <div className="sm:col-span-2">
+            <label htmlFor="capacity" className="block text-sm font-medium leading-6 text-gray-900">
+              Capacity
+            </label>
+            <div className="mt-2">
+              <Input
+                type="number"
+                id="capacity"
+                value={capacity}
+                onChange={(e) => setCapacity(e.target.value)}
+                min="1"
+                max="10000"
+                placeholder="Unlimited"
+                fullWidth
+              />
+              <p className="mt-1 text-xs text-gray-500">Leave blank for unlimited</p>
+            </div>
+          </div>
+
+          <div className="sm:col-span-2">
+            <label htmlFor="payment_mode" className="block text-sm font-medium leading-6 text-gray-900">
+              Payment mode
+            </label>
+            <div className="mt-2">
+              <Select
+                id="payment_mode"
+                value={paymentMode}
+                onChange={(e) => {
+                  const mode = e.target.value as 'free' | 'cash_only' | 'prepaid'
+                  setPaymentMode(mode)
+                  if (mode === 'free') {
+                    setPrice('0')
+                    setIsFree(true)
+                  } else {
+                    setIsFree(false)
+                  }
+                }}
+                fullWidth
+              >
+                <option value="free">Free</option>
+                <option value="cash_only">Cash on arrival</option>
+                <option value="prepaid">Prepaid (online payment required)</option>
+              </Select>
             </div>
           </div>
 
