@@ -3,6 +3,24 @@ import { authorizeCronRequest } from '@/lib/cron-auth'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { logger } from '@/lib/logger'
 import { recordAnalyticsEvent } from '@/lib/analytics/events'
+import { sendSMS } from '@/lib/twilio'
+import { getSmartFirstName } from '@/lib/sms/name-utils'
+
+function formatLondonDateTime(dateStr: string): string {
+  try {
+    return new Intl.DateTimeFormat('en-GB', {
+      timeZone: 'Europe/London',
+      weekday: 'short',
+      day: 'numeric',
+      month: 'short',
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true,
+    }).format(new Date(dateStr))
+  } catch {
+    return 'the scheduled date'
+  }
+}
 
 function chunkIds(ids: string[], size = 200): string[][] {
   const chunks: string[][] = []
@@ -87,6 +105,52 @@ export async function GET(request: NextRequest) {
       }
 
       result.expiredPaymentHolds += (expiredHolds || []).length
+
+      // Send SMS notifications to customers whose booking holds expired
+      for (const expiredBookingId of expiredBookingIds) {
+        try {
+          const { data: bookingDetail } = await supabase
+            .from('bookings')
+            .select('id, seats, customer_id, event_id, customers!inner(id, first_name, mobile_number, sms_status), events!inner(id, name, date, time, start_datetime, booking_url)')
+            .eq('id', expiredBookingId)
+            .maybeSingle()
+
+          // Supabase types infer arrays for joined relations; extract first element
+          const customerRaw = bookingDetail?.customers
+          const eventRaw = bookingDetail?.events
+          const customer = Array.isArray(customerRaw) ? customerRaw[0] : customerRaw
+          const event = Array.isArray(eventRaw) ? eventRaw[0] : eventRaw
+
+          if (
+            customer?.sms_status === 'active' &&
+            customer?.mobile_number
+          ) {
+            const firstName = getSmartFirstName(customer.first_name)
+            const eventDate = formatLondonDateTime(
+              event?.start_datetime || event?.date || ''
+            )
+            const bookingUrl = event?.booking_url || ''
+            const eventName = event?.name || 'your event'
+
+            const smsBody = `The Anchor: Hi ${firstName}, your held seats for ${eventName} on ${eventDate} have been released as payment wasn't completed in time.${bookingUrl ? ` If you'd still like to attend, please rebook at ${bookingUrl}.` : ''}`
+
+            await sendSMS(customer.mobile_number, smsBody, {
+              customerId: customer.id,
+              metadata: {
+                template_key: 'event_hold_expired',
+                event_id: event?.id,
+                event_booking_id: expiredBookingId,
+              },
+            }).catch((err) => {
+              // Non-fatal: log and continue
+              console.error('Failed to send hold expiry SMS:', err)
+            })
+          }
+        } catch (smsErr) {
+          // Non-fatal: log and continue processing other bookings
+          console.error('Failed to load booking detail for hold expiry SMS:', smsErr)
+        }
+      }
 
       const { data: cancelledTables, error: cancelTablesError } = await supabase
         .from('table_bookings')

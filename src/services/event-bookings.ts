@@ -154,9 +154,9 @@ function buildEventBookingSms(
   if (state === 'pending_payment') {
     const managePart = payload.manageLink ? ` ${payload.manageLink}` : ''
     if (payload.paymentLink) {
-      return `The Anchor: ${payload.firstName}! ${payload.seats} ${seatWord} held for ${payload.eventName} — nice one! Pay here: ${payload.paymentLink}.${managePart}`
+      return `The Anchor: ${payload.firstName}! ${payload.seats} ${seatWord} held for ${payload.eventName} on ${payload.eventStart} — nice one! Pay here: ${payload.paymentLink}.${managePart}`
     }
-    return `The Anchor: ${payload.firstName}! ${payload.seats} ${seatWord} held for ${payload.eventName} — nice one! We'll ping you a payment link shortly.${managePart}`
+    return `The Anchor: ${payload.firstName}! ${payload.seats} ${seatWord} held for ${payload.eventName} on ${payload.eventStart} — nice one! We'll ping you a payment link shortly.${managePart}`
   }
 
   return `The Anchor: ${payload.firstName}! You're in — ${payload.seats} ${seatWord} locked in for ${payload.eventName} on ${payload.eventStart}. See you there!${payload.manageLink ? ` ${payload.manageLink}` : ''}`

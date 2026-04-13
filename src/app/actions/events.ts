@@ -927,69 +927,86 @@ export async function createEventManualBooking(input: {
     if (state === 'confirmed' || state === 'pending_payment') {
       let smsSent = false
       if (bookingId) {
-        try {
-          const smsBody = ensureReplyInstruction(
-            buildEventBookingCreatedSms({
-              state,
-              firstName: getSmartFirstName(customerResolution.resolvedFirstName || parsed.data.firstName),
-              eventName: eventRow.name || 'your event',
-              seats: parsed.data.seats,
-              eventStartText: formatEventDateTimeForSms({
-                startDatetime: bookingResult.event_start_datetime ?? null
-              }),
-              paymentMode: bookingResult.payment_mode,
-              paymentLink: nextStepUrl,
-              manageLink: manageBookingUrl
-            }),
-            process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || process.env.TWILIO_PHONE_NUMBER || undefined
-          )
+        // Check sms_status before sending — skip if customer opted out
+        const { data: customerSmsCheck } = await supabase
+          .from('customers')
+          .select('sms_status')
+          .eq('id', customerResolution.customerId)
+          .maybeSingle()
 
-          const smsResult = await sendSMS(normalizedPhone, smsBody, {
-            customerId: customerResolution.customerId,
-            metadata: {
-              event_booking_id: bookingId,
-              event_id: parsed.data.eventId,
-              template_key: state === 'pending_payment' ? 'event_booking_pending_payment' : 'event_booking_confirmed'
-            }
-          })
-
-          const smsCode = typeof smsResult.code === 'string' ? smsResult.code : null
-          const smsLogFailure = smsResult.logFailure === true || smsCode === 'logging_failed'
-          const smsDeliveredOrUnknown = smsResult.success === true || smsLogFailure
-
-          smsSent = smsDeliveredOrUnknown
-          smsMeta = { success: smsDeliveredOrUnknown, code: smsCode, logFailure: smsLogFailure }
-
-          if (smsLogFailure) {
-            logger.error('Event manual booking SMS sent but outbound message logging failed', {
-              metadata: {
-                bookingId,
-                customerId: customerResolution.customerId,
-                code: smsCode,
-                logFailure: smsLogFailure,
-              },
-            })
-          }
-
-          if (!smsResult.success && !smsLogFailure) {
-            logger.warn('Failed to send event booking confirmation SMS', {
-              metadata: {
-                bookingId,
-                customerId: customerResolution.customerId,
-                code: smsCode,
-                error: smsResult.error,
-              },
-            })
-          }
-        } catch (smsError) {
-          logger.warn('Event booking confirmation SMS threw unexpectedly', {
+        if (customerSmsCheck?.sms_status !== 'active') {
+          logger.info('Skipped admin event booking SMS due to sms_status', {
             metadata: {
               bookingId,
               customerId: customerResolution.customerId,
-              error: smsError instanceof Error ? smsError.message : String(smsError),
+              sms_status: customerSmsCheck?.sms_status ?? 'unknown',
             },
           })
-          smsMeta = { success: false, code: 'unexpected_exception', logFailure: false }
+        } else {
+          try {
+            const smsBody = ensureReplyInstruction(
+              buildEventBookingCreatedSms({
+                state,
+                firstName: getSmartFirstName(customerResolution.resolvedFirstName || parsed.data.firstName),
+                eventName: eventRow.name || 'your event',
+                seats: parsed.data.seats,
+                eventStartText: formatEventDateTimeForSms({
+                  startDatetime: bookingResult.event_start_datetime ?? null
+                }),
+                paymentMode: bookingResult.payment_mode,
+                paymentLink: nextStepUrl,
+                manageLink: manageBookingUrl
+              }),
+              process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || process.env.TWILIO_PHONE_NUMBER || undefined
+            )
+
+            const smsResult = await sendSMS(normalizedPhone, smsBody, {
+              customerId: customerResolution.customerId,
+              metadata: {
+                event_booking_id: bookingId,
+                event_id: parsed.data.eventId,
+                template_key: state === 'pending_payment' ? 'event_booking_pending_payment' : 'event_booking_confirmed'
+              }
+            })
+
+            const smsCode = typeof smsResult.code === 'string' ? smsResult.code : null
+            const smsLogFailure = smsResult.logFailure === true || smsCode === 'logging_failed'
+            const smsDeliveredOrUnknown = smsResult.success === true || smsLogFailure
+
+            smsSent = smsDeliveredOrUnknown
+            smsMeta = { success: smsDeliveredOrUnknown, code: smsCode, logFailure: smsLogFailure }
+
+            if (smsLogFailure) {
+              logger.error('Event manual booking SMS sent but outbound message logging failed', {
+                metadata: {
+                  bookingId,
+                  customerId: customerResolution.customerId,
+                  code: smsCode,
+                  logFailure: smsLogFailure,
+                },
+              })
+            }
+
+            if (!smsResult.success && !smsLogFailure) {
+              logger.warn('Failed to send event booking confirmation SMS', {
+                metadata: {
+                  bookingId,
+                  customerId: customerResolution.customerId,
+                  code: smsCode,
+                  error: smsResult.error,
+                },
+              })
+            }
+          } catch (smsError) {
+            logger.warn('Event booking confirmation SMS threw unexpectedly', {
+              metadata: {
+                bookingId,
+                customerId: customerResolution.customerId,
+                error: smsError instanceof Error ? smsError.message : String(smsError),
+              },
+            })
+            smsMeta = { success: false, code: 'unexpected_exception', logFailure: false }
+          }
         }
       }
 
@@ -1147,11 +1164,7 @@ function buildEventBookingCreatedSms(input: {
     return `The Anchor: ${input.firstName}! ${input.seats} ${seatWord} held for ${input.eventName} — nice one! We'll ping you a payment link shortly.${managePart}`
   }
 
-  const confirmedTail = input.paymentMode === 'cash_only'
-    ? ' Payment is cash on arrival.'
-    : ''
-
-  return `The Anchor: ${input.firstName}! You're in — ${input.seats} ${seatWord} locked in for ${input.eventName} on ${input.eventStartText}. See you there!${confirmedTail}${input.manageLink ? ` ${input.manageLink}` : ''}`
+  return `The Anchor: ${input.firstName}! You're in — ${input.seats} ${seatWord} locked in for ${input.eventName} on ${input.eventStartText}. See you there!${input.manageLink ? ` ${input.manageLink}` : ''}`
 }
 
 function buildEventBookingCancelledSms(input: {

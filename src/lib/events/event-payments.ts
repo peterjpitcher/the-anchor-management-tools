@@ -392,6 +392,7 @@ export async function sendEventPaymentConfirmationSms(
   const seatWord = input.seats === 1 ? 'seat' : 'seats'
   const supportPhone = process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || process.env.TWILIO_PHONE_NUMBER || undefined
   let manageLink: string | null = null
+  let eventDateFormatted: string | null = null
   try {
     const { data: eventRow } = await supabase
       .from('events')
@@ -399,6 +400,22 @@ export async function sendEventPaymentConfirmationSms(
       .eq('id', booking.event_id)
       .maybeSingle()
     const eventStartIso = eventRow?.start_datetime || null
+
+    if (eventStartIso) {
+      try {
+        eventDateFormatted = new Intl.DateTimeFormat('en-GB', {
+          timeZone: 'Europe/London',
+          weekday: 'short',
+          day: 'numeric',
+          month: 'short',
+          hour: 'numeric',
+          minute: '2-digit',
+          hour12: true
+        }).format(new Date(eventStartIso))
+      } catch {
+        eventDateFormatted = null
+      }
+    }
 
     const manageToken = await createEventManageToken(supabase, {
       customerId: customer.id,
@@ -411,8 +428,9 @@ export async function sendEventPaymentConfirmationSms(
     manageLink = null
   }
 
+  const datePart = eventDateFormatted ? ` on ${eventDateFormatted}` : ''
   const body = ensureReplyInstruction(
-    `The Anchor: Hi ${firstName}, payment received. Your booking for ${input.eventName} is confirmed for ${input.seats} ${seatWord}.${manageLink ? ` Manage booking: ${manageLink}` : ''}`,
+    `The Anchor: Hi ${firstName}, payment received. Your booking for ${input.eventName}${datePart} is confirmed for ${input.seats} ${seatWord}.${manageLink ? ` Manage booking: ${manageLink}` : ''}`,
     supportPhone
   )
 

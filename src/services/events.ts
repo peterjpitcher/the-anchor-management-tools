@@ -94,6 +94,12 @@ type PublishValidationInput = {
   is_free?: boolean | null
   price?: number | null
   payment_mode?: string | null
+  booking_mode?: string | null
+}
+
+export type PublishValidationResult = {
+  errors: string[]
+  warnings: string[]
 }
 
 function hasValue(value: unknown): boolean {
@@ -113,18 +119,19 @@ function normalizeSlugValue(value: string): string {
     .replace(/^-+|-+$/g, '')
 }
 
-export function getPublishValidationIssues(input: PublishValidationInput): string[] {
+export function getPublishValidationIssues(input: PublishValidationInput): PublishValidationResult {
   if (!isPublishedStatus(input.status || null)) {
-    return []
+    return { errors: [], warnings: [] }
   }
 
-  const missing: string[] = []
+  const errors: string[] = []
+  const warnings: string[] = []
 
-  if (!hasValue(input.name)) missing.push('event name')
-  if (!hasValue(input.date)) missing.push('event date')
-  if (!hasValue(input.time)) missing.push('event start time')
-  if (!hasValue(input.slug)) missing.push('URL slug')
-  if (!hasValue(input.short_description)) missing.push('short description')
+  if (!hasValue(input.name)) errors.push('event name')
+  if (!hasValue(input.date)) errors.push('event date')
+  if (!hasValue(input.time)) errors.push('event start time')
+  if (!hasValue(input.slug)) errors.push('URL slug')
+  if (!hasValue(input.short_description)) errors.push('short description')
 
   const hasImage =
     hasValue(input.hero_image_url) ||
@@ -132,21 +139,25 @@ export function getPublishValidationIssues(input: PublishValidationInput): strin
     hasValue(input.poster_image_url)
 
   if (!hasImage) {
-    missing.push('event image')
+    errors.push('event image')
   }
 
   const isFree = input.is_free === true
   const price = typeof input.price === 'number' && Number.isFinite(input.price) ? input.price : null
 
   if (!isFree && (price === null || price <= 0)) {
-    missing.push('ticket price (or mark event as free)')
+    errors.push('ticket price (or mark event as free)')
   }
 
   if (input.payment_mode === 'prepaid' && (price === null || price <= 0)) {
-    missing.push('Prepaid events must have a price set')
+    errors.push('Prepaid events must have a price set')
   }
 
-  return missing
+  if (!input.booking_mode) {
+    warnings.push('No booking mode set — defaulting to table bookings')
+  }
+
+  return { errors, warnings }
 }
 
 // Helper function to generate a URL-friendly slug
@@ -186,8 +197,15 @@ export const eventSchema = z.object({
   date: z.string()
     .min(1, 'Date is required')
     .refine((val) => {
-      return true
-    }, 'Date must be valid'),
+      try {
+        const eventDate = new Date(val + 'T00:00:00')
+        const today = new Date()
+        today.setHours(0, 0, 0, 0)
+        return eventDate >= today
+      } catch {
+        return false
+      }
+    }, { message: 'Event date cannot be in the past' }),
   time: z.string()
     .min(1, 'Time is required')
     .refine((val) => /^([0-1]?[0-9]|2[0-3]):[0-5][0-9](:[0-5][0-9])?$|^24:00(:00)?$/.test(val), 'Invalid time format (HH:MM)')
@@ -344,7 +362,7 @@ export class EventService {
         : generateSlug(input.name, input.date)
     const slug = normalizeSlugValue(rawSlug)
 
-    const publishIssues = getPublishValidationIssues({
+    const publishValidation = getPublishValidationIssues({
       status: input.event_status,
       name: input.name,
       date: input.date,
@@ -356,12 +374,13 @@ export class EventService {
       poster_image_url: input.poster_image_url,
       is_free: input.is_free,
       price: input.price,
-      payment_mode: input.payment_mode
+      payment_mode: input.payment_mode,
+      booking_mode: input.booking_mode
     })
 
-    if (publishIssues.length > 0) {
+    if (publishValidation.errors.length > 0) {
       throw new Error(
-        `Published events require: ${publishIssues.join(', ')}. Save as Draft until complete.`
+        `Published events require: ${publishValidation.errors.join(', ')}. Save as Draft until complete.`
       )
     }
 
@@ -394,7 +413,7 @@ export class EventService {
     });
 
     if (error) {
-      console.error('Create event transaction error:', error);
+      logger.error('Create event transaction error', { error: error instanceof Error ? error : new Error(String(error)) });
       throw new Error('Failed to create event');
     }
 
@@ -402,7 +421,7 @@ export class EventService {
     // In service, we usually just return data. Side effects can be here or in action.
     // Let's do it here as it's closely tied to event creation success.
     void generateEventMarketingLinks(event.id).catch((e) => {
-      console.error('Failed to generate marketing links:', e);
+      logger.error('Failed to generate marketing links', { error: e instanceof Error ? e : new Error(String(e)) });
     });
 
     return event;
@@ -461,7 +480,9 @@ export class EventService {
       }
     }
 
-    const publishIssues = getPublishValidationIssues({
+    const nextBookingMode = input.booking_mode ?? null
+
+    const publishValidation = getPublishValidationIssues({
       status: nextStatus,
       name: nextName,
       date: nextDate,
@@ -473,12 +494,13 @@ export class EventService {
       poster_image_url: nextPosterImage,
       is_free: nextIsFree,
       price: typeof nextPrice === 'number' ? nextPrice : Number(nextPrice || 0),
-      payment_mode: nextPaymentMode
+      payment_mode: nextPaymentMode,
+      booking_mode: nextBookingMode
     })
 
-    if (publishIssues.length > 0) {
+    if (publishValidation.errors.length > 0) {
       throw new Error(
-        `Published events require: ${publishIssues.join(', ')}. Save as Draft until complete.`
+        `Published events require: ${publishValidation.errors.join(', ')}. Save as Draft until complete.`
       )
     }
 
@@ -510,12 +532,12 @@ export class EventService {
     });
 
     if (error) {
-      console.error('Update event transaction error:', error);
+      logger.error('Update event transaction error', { error: error instanceof Error ? error : new Error(String(error)) });
       throw new Error('Failed to update event');
     }
 
     void generateEventMarketingLinks(event.id).catch((e) => {
-      console.error('Failed to refresh marketing links:', e);
+      logger.error('Failed to refresh marketing links', { error: e instanceof Error ? e : new Error(String(e)) });
     });
 
     return {
@@ -562,7 +584,7 @@ export class EventService {
       .maybeSingle();
 
     if (error) {
-      console.error('Event deletion error:', error);
+      logger.error('Event deletion error', { error: error instanceof Error ? error : new Error(String(error)) });
       throw new Error('Failed to delete event');
     }
 
@@ -583,7 +605,7 @@ export class EventService {
       .order('sort_order', { ascending: true });
 
     if (error) {
-      console.error('Error fetching event FAQs:', error);
+      logger.error('Error fetching event FAQs', { error: error instanceof Error ? error : new Error(String(error)) });
       throw new Error('Failed to fetch FAQs');
     }
     return data;
@@ -598,7 +620,7 @@ export class EventService {
       .maybeSingle();
 
     if (error) {
-      console.error('Error fetching event by ID:', error);
+      logger.error('Error fetching event by ID', { error: error instanceof Error ? error : new Error(String(error)) });
       throw new Error('Failed to fetch event');
     }
     return event;
@@ -614,7 +636,7 @@ export class EventService {
       .order('time', { ascending: true });
 
     if (error) {
-      console.error('Error fetching events by date:', error);
+      logger.error('Error fetching events by date', { error: error instanceof Error ? error : new Error(String(error)) });
       throw new Error('Failed to fetch events');
     }
 
@@ -657,7 +679,7 @@ export class EventService {
       .range(from, to);
 
     if (error) {
-      console.error('Error fetching events:', error);
+      logger.error('Error fetching events', { error: error instanceof Error ? error : new Error(String(error)) });
       throw new Error('Failed to fetch events');
     }
 
