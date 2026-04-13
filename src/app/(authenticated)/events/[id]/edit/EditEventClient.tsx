@@ -39,6 +39,9 @@ export default function EditEventClient({ event, categories, activeBookingCount 
                 toast.error(result.error)
             } else {
                 toast.success('Event updated successfully')
+                if (result.warning) {
+                    toast.warning(result.warning)
+                }
                 router.push(`/events/${event.id}`)
             }
         } catch (error) {
