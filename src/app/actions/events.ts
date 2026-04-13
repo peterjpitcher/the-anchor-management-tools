@@ -139,7 +139,12 @@ async function prepareEventDataFromFormData(formData: FormData, _existingEventId
     name: rawData.name as string,
     date: rawData.date as string,
     time: rawData.time as string || categoryDefaults.time,
-    capacity: null,
+    ...(rawData.capacity !== undefined && rawData.capacity !== null && rawData.capacity !== ''
+      ? { capacity: Number(rawData.capacity) || null }
+      : {}),
+    ...(rawData.payment_mode && ['free', 'cash_only', 'prepaid'].includes(rawData.payment_mode as string)
+      ? { payment_mode: rawData.payment_mode as 'free' | 'cash_only' | 'prepaid' }
+      : {}),
     booking_mode: bookingMode,
     event_type: (rawData.event_type as string)?.trim() || null,
     category_id: categoryId,
