@@ -25,14 +25,19 @@ export default async function EditEventPage({ params }: PageProps) {
 
   const supabase = await createClient()
 
-  // Load event and categories in parallel
-  const [eventResult, categoriesResult] = await Promise.all([
+  // Load event, categories, and active booking count in parallel
+  const [eventResult, categoriesResult, bookingCountResult] = await Promise.all([
     supabase
       .from('events')
       .select('*, event_faqs(id, question, answer, sort_order)')
       .eq('id', id)
       .single(),
-    getActiveEventCategories()
+    getActiveEventCategories(),
+    supabase
+      .from('bookings')
+      .select('*', { count: 'exact', head: true })
+      .eq('event_id', id)
+      .in('status', ['confirmed', 'pending_payment'])
   ])
 
   if (eventResult.error || !eventResult.data) {
@@ -46,10 +51,13 @@ export default async function EditEventPage({ params }: PageProps) {
     console.error('Error loading event categories:', categoriesResult.error)
   }
 
+  const activeBookingCount = bookingCountResult.count ?? 0
+
   return (
     <EditEventClient
       event={eventResult.data}
       categories={(categoriesResult.data as EventCategory[]) || []}
+      activeBookingCount={activeBookingCount}
     />
   )
 }

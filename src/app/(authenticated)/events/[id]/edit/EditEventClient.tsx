@@ -12,9 +12,10 @@ import { toast } from '@/components/ui-v2/feedback/Toast'
 interface EditEventClientProps {
     event: Event
     categories: EventCategory[]
+    activeBookingCount: number
 }
 
-export default function EditEventClient({ event, categories }: EditEventClientProps) {
+export default function EditEventClient({ event, categories, activeBookingCount }: EditEventClientProps) {
     const router = useRouter()
 
     const handleSubmit = async (data: Partial<Event>) => {
@@ -65,6 +66,7 @@ export default function EditEventClient({ event, categories }: EditEventClientPr
                     categories={categories}
                     onSubmit={handleSubmit}
                     onCancel={handleCancel}
+                    activeBookingCount={activeBookingCount}
                 />
             </Card>
         </PageLayout>

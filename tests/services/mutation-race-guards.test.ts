@@ -362,12 +362,20 @@ describe('Mutation race/row-effect guards', () => {
     })
     const fetchEq = vi.fn().mockReturnValue({ single: fetchSingle })
 
+    // Mock bookings active-check: return 0 active bookings so deletion proceeds
+    const bookingsSelectIn = vi.fn().mockResolvedValue({ count: 0, error: null })
+    const bookingsSelectEq = vi.fn().mockReturnValue({ in: bookingsSelectIn })
+    const bookingsSelect = vi.fn().mockReturnValue({ eq: bookingsSelectEq })
+
     const deleteMaybeSingle = vi.fn().mockResolvedValue({ data: null, error: null })
     const deleteSelect = vi.fn().mockReturnValue({ maybeSingle: deleteMaybeSingle })
     const deleteEq = vi.fn().mockReturnValue({ select: deleteSelect })
 
     mockedCreateClient.mockResolvedValue({
       from: vi.fn((table: string) => {
+        if (table === 'bookings') {
+          return { select: bookingsSelect }
+        }
         if (table !== 'events') {
           throw new Error(`Unexpected table: ${table}`)
         }

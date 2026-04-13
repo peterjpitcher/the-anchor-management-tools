@@ -1,7 +1,12 @@
 import { createClient } from '@/lib/supabase/server';
+import { createAdminClient } from '@/lib/supabase/admin';
 import { toLocalIsoDate } from '@/lib/dateUtils';
 import { generateEventMarketingLinks } from '@/app/actions/event-marketing-links';
 import { z } from 'zod';
+import { sendSMS } from '@/lib/twilio';
+import { buildEventCancelledSms, buildRefundNote } from '@/lib/sms/templates';
+import { processEventRefund } from '@/lib/events/manage-booking';
+import { logger } from '@/lib/logger';
 
 function sanitizeEventSearchTerm(value: string): string {
   return value
@@ -513,10 +518,16 @@ export class EventService {
       console.error('Failed to refresh marketing links:', e);
     });
 
-    return event;
+    return {
+      ...event,
+      _oldDate: currentEvent.date as string | null,
+      _oldTime: currentEvent.time as string | null,
+      _oldName: currentEvent.name as string | null,
+      _oldStatus: currentEvent.event_status as string | null,
+    };
   }
 
-  static async deleteEvent(id: string) {
+  static async deleteEvent(id: string): Promise<{ name: string; date: string } | { error: string }> {
     const supabase = await createClient();
 
     // Get event details for return/audit
@@ -528,6 +539,19 @@ export class EventService {
 
     if (!event) {
       throw new Error('Event not found');
+    }
+
+    // Check for active bookings before deletion
+    const { count: activeBookings } = await supabase
+      .from('bookings')
+      .select('*', { count: 'exact', head: true })
+      .eq('event_id', id)
+      .in('status', ['confirmed', 'pending_payment'])
+
+    if (activeBookings && activeBookings > 0) {
+      return {
+        error: `Cannot delete this event — it has ${activeBookings} active booking${activeBookings !== 1 ? 's' : ''}. Cancel the event first to notify customers and process refunds, then delete.`
+      }
     }
 
     const { data: deletedEvent, error } = await supabase
@@ -646,5 +670,212 @@ export class EventService {
         totalPages: count ? Math.ceil(count / pageSize) : 0,
       }
     };
+  }
+
+  /**
+   * Cancellation cascade: cancel all active bookings for an event,
+   * process refunds, send SMS notifications, and clean up waitlist.
+   * Runs synchronously so the admin sees the result.
+   */
+  static async cancelEventBookings(params: {
+    eventId: string
+    eventName: string
+    eventDate: string
+    eventTime: string
+    cancelledBy: string
+    supabase: ReturnType<typeof createAdminClient>
+  }): Promise<{
+    bookingsCancelled: number
+    refundsProcessed: number
+    refundsFailed: number
+    customersNotified: number
+  }> {
+    const { eventId, eventName, eventDate, eventTime, cancelledBy, supabase: db } = params
+    let bookingsCancelled = 0
+    let refundsProcessed = 0
+    let refundsFailed = 0
+    let customersNotified = 0
+
+    // 1. Fetch all active bookings with customer data
+    const { data: bookings } = await db
+      .from('bookings')
+      .select('id, customer_id, seats, status, customers!inner(id, first_name, mobile_number, sms_status)')
+      .eq('event_id', eventId)
+      .in('status', ['confirmed', 'pending_payment'])
+
+    if (!bookings || bookings.length === 0) {
+      // Still close booking_open and clean waitlist even if no active bookings
+      await db.from('events').update({ booking_open: false }).eq('id', eventId)
+      await db.from('waitlist_entries')
+        .update({ status: 'cancelled', cancelled_at: new Date().toISOString() })
+        .eq('event_id', eventId)
+        .in('status', ['pending', 'offered'])
+      await db.from('waitlist_offers')
+        .update({ status: 'cancelled', expired_at: new Date().toISOString() })
+        .eq('event_id', eventId)
+        .in('status', ['pending', 'active'])
+      return { bookingsCancelled, refundsProcessed, refundsFailed, customersNotified }
+    }
+
+    // 2. Cancel each booking, release holds, cancel table bookings
+    for (const booking of bookings) {
+      try {
+        await db
+          .from('bookings')
+          .update({
+            status: 'cancelled',
+            cancelled_at: new Date().toISOString(),
+            cancelled_by: cancelledBy
+          })
+          .eq('id', booking.id)
+
+        // Release active holds
+        await db
+          .from('booking_holds')
+          .update({ status: 'released', released_at: new Date().toISOString() })
+          .eq('event_booking_id', booking.id)
+          .eq('status', 'active')
+
+        // Cancel associated table bookings
+        await db
+          .from('table_bookings')
+          .update({ status: 'cancelled', cancelled_at: new Date().toISOString() })
+          .eq('event_booking_id', booking.id)
+          .in('status', ['confirmed', 'pending_payment'])
+
+        bookingsCancelled++
+      } catch (err) {
+        logger.error('Failed to cancel booking during event cancellation', {
+          error: err instanceof Error ? err : new Error(String(err)),
+          metadata: { bookingId: booking.id, eventId }
+        })
+      }
+    }
+
+    // 3. Process refunds for prepaid bookings
+    const bookingIds = bookings.map(b => b.id)
+    const { data: payments } = await db
+      .from('payments')
+      .select('id, event_booking_id, amount, status, stripe_payment_intent_id')
+      .in('event_booking_id', bookingIds)
+      .eq('status', 'succeeded')
+
+    // Track refund results per booking for SMS
+    const refundResults = new Map<string, { succeeded: boolean; amount: number }>()
+
+    if (payments && payments.length > 0) {
+      for (const payment of payments) {
+        if (!payment.event_booking_id) continue
+        // Find the customer_id for this booking
+        const booking = bookings.find(b => b.id === payment.event_booking_id)
+        const customer = booking?.customers as unknown as { id: string } | undefined
+
+        try {
+          await processEventRefund(db, {
+            bookingId: payment.event_booking_id,
+            customerId: customer?.id || '',
+            eventId,
+            amount: payment.amount,
+            reason: 'event_cancelled',
+            metadata: { cancelled_by: cancelledBy }
+          })
+          refundsProcessed++
+          const existing = refundResults.get(payment.event_booking_id) || { succeeded: true, amount: 0 }
+          existing.amount += payment.amount
+          refundResults.set(payment.event_booking_id, existing)
+        } catch (err) {
+          refundsFailed++
+          refundResults.set(payment.event_booking_id, { succeeded: false, amount: 0 })
+          logger.error('Failed to process refund during event cancellation', {
+            error: err instanceof Error ? err : new Error(String(err)),
+            metadata: { paymentId: payment.id, bookingId: payment.event_booking_id, eventId }
+          })
+        }
+      }
+    }
+
+    // 4. Send cancellation SMS
+    const formattedDate = formatEventDateForSms(eventDate, eventTime)
+
+    for (const booking of bookings) {
+      const customer = booking.customers as unknown as {
+        id: string
+        first_name: string | null
+        mobile_number: string | null
+        sms_status: string | null
+      }
+      if (!customer?.sms_status || customer.sms_status !== 'active' || !customer.mobile_number) continue
+
+      try {
+        const refundResult = refundResults.get(booking.id)
+        const isPrepaid = !!refundResult
+        const refundNote = buildRefundNote({
+          isPrepaid,
+          refundSucceeded: refundResult?.succeeded ?? false,
+          refundAmount: refundResult?.amount ?? null
+        })
+
+        const smsBody = buildEventCancelledSms({
+          firstName: customer.first_name,
+          eventName,
+          eventDate: formattedDate,
+          refundNote
+        })
+
+        await sendSMS(customer.mobile_number, smsBody, {
+          customerId: customer.id,
+          metadata: {
+            template_key: 'event_cancelled',
+            event_id: eventId,
+            event_booking_id: booking.id
+          }
+        })
+        customersNotified++
+      } catch (err) {
+        logger.error('Failed to send cancellation SMS', {
+          error: err instanceof Error ? err : new Error(String(err)),
+          metadata: { bookingId: booking.id, eventId }
+        })
+      }
+    }
+
+    // 5. Release waitlist entries and offers
+    await db
+      .from('waitlist_entries')
+      .update({ status: 'cancelled', cancelled_at: new Date().toISOString() })
+      .eq('event_id', eventId)
+      .in('status', ['pending', 'offered'])
+
+    await db
+      .from('waitlist_offers')
+      .update({ status: 'cancelled', expired_at: new Date().toISOString() })
+      .eq('event_id', eventId)
+      .in('status', ['pending', 'active'])
+
+    // 6. Set booking_open = false
+    await db
+      .from('events')
+      .update({ booking_open: false })
+      .eq('id', eventId)
+
+    return { bookingsCancelled, refundsProcessed, refundsFailed, customersNotified }
+  }
+}
+
+/** Format event date/time for SMS display in London timezone. */
+function formatEventDateForSms(date: string, time: string): string {
+  try {
+    const iso = `${date}T${time || '00:00'}:00`
+    return new Intl.DateTimeFormat('en-GB', {
+      timeZone: 'Europe/London',
+      weekday: 'short',
+      day: 'numeric',
+      month: 'short',
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true
+    }).format(new Date(iso))
+  } catch {
+    return 'the scheduled date'
   }
 }
