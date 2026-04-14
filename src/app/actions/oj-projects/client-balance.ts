@@ -117,11 +117,15 @@ export async function getClientBalance(
     .eq('vendor_id', vendorId)
     .eq('status', 'issued')
 
-  if (cnError) return { error: cnError.message }
-
-  const creditNoteTotal = roundMoney(
-    (creditNotes || []).reduce((acc, cn) => acc + Number(cn.amount_inc_vat || 0), 0)
-  )
+  let creditNoteTotal = 0
+  if (cnError) {
+    // Table may not exist yet if migration hasn't been applied
+    console.warn('[client-balance] credit_notes query failed (table may not exist):', cnError.message)
+  } else {
+    creditNoteTotal = roundMoney(
+      (creditNotes || []).reduce((acc, cn) => acc + Number(cn.amount_inc_vat || 0), 0)
+    )
+  }
 
   const adjustedUnpaidInvoiceBalance = roundMoney(unpaidInvoiceBalance - creditNoteTotal)
   const totalOutstanding = roundMoney(adjustedUnpaidInvoiceBalance + unbilledTotal)
