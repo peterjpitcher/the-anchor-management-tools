@@ -1,11 +1,12 @@
 import { InvoiceWithDetails } from '@/types/invoices'
 import { formatDateFull } from '@/lib/dateUtils'
 import { COMPANY_DETAILS } from '@/lib/company-details'
+import { escapeHtml } from '@/lib/cron/alerting'
 
 const CONTACT_NAME = process.env.COMPANY_CONTACT_NAME || 'Peter Pitcher'
 const CONTACT_PHONE = process.env.COMPANY_CONTACT_PHONE || '07995087315'
 
-export type InvoiceDocumentKind = 'invoice' | 'remittance_advice'
+export type InvoiceDocumentKind = 'invoice' | 'remittance_advice' | 'credit_note'
 
 export interface InvoiceRemittanceDetails {
   paymentDate?: string | null
@@ -14,31 +15,32 @@ export interface InvoiceRemittanceDetails {
   paymentReference?: string | null
 }
 
+export interface CreditNoteDetails {
+  creditNoteNumber: string
+  amountExVat: number
+  vatRate: number
+  amountIncVat: number
+  reason: string
+}
+
 export interface InvoiceTemplateData {
   invoice: InvoiceWithDetails
   logoUrl?: string
   documentKind?: InvoiceDocumentKind
   remittance?: InvoiceRemittanceDetails
+  creditNote?: CreditNoteDetails
 }
 
 export function generateCompactInvoiceHTML(data: InvoiceTemplateData): string {
-  const { invoice, logoUrl, documentKind = 'invoice', remittance } = data
+  const { invoice, logoUrl, documentKind = 'invoice', remittance, creditNote } = data
   const isRemittanceAdvice = documentKind === 'remittance_advice'
+  const isCreditNote = documentKind === 'credit_note'
 
   // Check if any line items have discounts or if there's an invoice discount
   const hasDiscounts = invoice.invoice_discount_percentage > 0 ||
     (invoice.line_items?.some(item => item.discount_percentage > 0) ?? false)
 
   // Helper functions
-  const escapeHtml = (value: string) => {
-    return String(value)
-      .replaceAll('&', '&amp;')
-      .replaceAll('<', '&lt;')
-      .replaceAll('>', '&gt;')
-      .replaceAll('"', '&quot;')
-      .replaceAll("'", '&#39;')
-  }
-
   const formatAddressHtml = (value: string | null | undefined) => {
     if (!value) return ''
 
@@ -149,26 +151,34 @@ export function generateCompactInvoiceHTML(data: InvoiceTemplateData): string {
   const outstandingBalance = Math.max(0, invoice.total_amount - invoice.paid_amount)
 
   // Internally we still call this "remittance advice", but the customer-facing term is "Receipt".
-  const documentTitle = isRemittanceAdvice ? 'Receipt' : 'Invoice'
-  const documentHeader = isRemittanceAdvice ? 'RECEIPT' : 'INVOICE'
-  const documentNumberLabel = isRemittanceAdvice
-    ? `For Invoice #${invoice.invoice_number}`
-    : `#${invoice.invoice_number}`
+  const documentTitle = isCreditNote ? 'Credit Note' : isRemittanceAdvice ? 'Receipt' : 'Invoice'
+  const documentHeader = isCreditNote ? 'CREDIT NOTE' : isRemittanceAdvice ? 'RECEIPT' : 'INVOICE'
+  const documentNumberLabel = isCreditNote
+    ? `${creditNote?.creditNoteNumber || 'CN-???'}`
+    : isRemittanceAdvice
+      ? `For Invoice #${invoice.invoice_number}`
+      : `#${invoice.invoice_number}`
 
-  const secondMetaLabel = isRemittanceAdvice ? 'Payment Date' : 'Due Date'
-  const secondMetaValue = isRemittanceAdvice
-    ? formatDateOrDash(remittancePaymentDate)
-    : formatDate(invoice.due_date)
+  const secondMetaLabel = isCreditNote ? 'Linked Invoice' : isRemittanceAdvice ? 'Payment Date' : 'Due Date'
+  const secondMetaValue = isCreditNote
+    ? `#${invoice.invoice_number}`
+    : isRemittanceAdvice
+      ? formatDateOrDash(remittancePaymentDate)
+      : formatDate(invoice.due_date)
 
-  const thirdMetaLabel = isRemittanceAdvice ? 'Payment Method' : 'Reference'
-  const thirdMetaValue = isRemittanceAdvice
-    ? formatPaymentMethod(remittancePaymentMethod)
-    : invoice.reference || '-'
+  const thirdMetaLabel = isCreditNote ? 'Reason' : isRemittanceAdvice ? 'Payment Method' : 'Reference'
+  const thirdMetaValue = isCreditNote
+    ? creditNote?.reason || '-'
+    : isRemittanceAdvice
+      ? formatPaymentMethod(remittancePaymentMethod)
+      : invoice.reference || '-'
 
-  const fourthMetaLabel = isRemittanceAdvice ? 'Payment Ref' : 'Terms'
-  const fourthMetaValue = isRemittanceAdvice
-    ? remittancePaymentReference || '-'
-    : formatPaymentTerms()
+  const fourthMetaLabel = isCreditNote ? 'VAT Rate' : isRemittanceAdvice ? 'Payment Ref' : 'Terms'
+  const fourthMetaValue = isCreditNote
+    ? `${creditNote?.vatRate ?? 20}%`
+    : isRemittanceAdvice
+      ? remittancePaymentReference || '-'
+      : formatPaymentTerms()
 
   return `
 <!DOCTYPE html>
@@ -176,7 +186,7 @@ export function generateCompactInvoiceHTML(data: InvoiceTemplateData): string {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>${documentTitle} ${invoice.invoice_number} - ${invoice.vendor?.name || 'Customer'}</title>
+  <title>${escapeHtml(documentTitle)} ${escapeHtml(invoice.invoice_number)} - ${escapeHtml(invoice.vendor?.name || 'Customer')}</title>
   <style>
     @page {
       size: A4;
@@ -477,12 +487,12 @@ export function generateCompactInvoiceHTML(data: InvoiceTemplateData): string {
     </div>
     <div class="address-block">
       <h3>Bill To</h3>
-      <p><strong>${invoice.vendor?.name || 'Customer'}</strong></p>
-      ${invoice.vendor?.contact_name ? `<p>${invoice.vendor.contact_name}</p>` : ''}
+      <p><strong>${escapeHtml(invoice.vendor?.name || 'Customer')}</strong></p>
+      ${invoice.vendor?.contact_name ? `<p>${escapeHtml(invoice.vendor.contact_name)}</p>` : ''}
       ${invoice.vendor?.address ? `<p>${formatAddressHtml(invoice.vendor.address)}</p>` : ''}
-      ${invoice.vendor?.email ? `<p>${invoice.vendor.email}</p>` : ''}
-      ${invoice.vendor?.phone ? `<p>${invoice.vendor.phone}</p>` : ''}
-      ${invoice.vendor?.vat_number ? `<p>VAT: ${invoice.vendor.vat_number}</p>` : ''}
+      ${invoice.vendor?.email ? `<p>${escapeHtml(invoice.vendor.email)}</p>` : ''}
+      ${invoice.vendor?.phone ? `<p>${escapeHtml(invoice.vendor.phone)}</p>` : ''}
+      ${invoice.vendor?.vat_number ? `<p>VAT: ${escapeHtml(invoice.vendor.vat_number)}</p>` : ''}
     </div>
   </div>
 
@@ -505,7 +515,7 @@ export function generateCompactInvoiceHTML(data: InvoiceTemplateData): string {
     </div>
   </div>
 
-  <div class="items-section">
+  ${!isCreditNote ? `<div class="items-section">
     <table>
       <thead>
         <tr>
@@ -521,7 +531,7 @@ export function generateCompactInvoiceHTML(data: InvoiceTemplateData): string {
         ${invoice.line_items?.map(item => `
           <tr>
             <td>
-              <div class="item-description">${item.description}</div>
+              <div class="item-description">${escapeHtml(item.description)}</div>
               ${hasDiscounts && item.discount_percentage > 0 ? `<div class="item-line-discount">Line discount: ${item.discount_percentage}%</div>` : ''}
             </td>
             <td class="text-right">${item.quantity}</td>
@@ -569,7 +579,27 @@ export function generateCompactInvoiceHTML(data: InvoiceTemplateData): string {
         </div>
       `}
     </div>
-  </div>
+  </div>` : ''}
+
+  ${isCreditNote && creditNote ? `
+    <div class="payment-section keep-together">
+      <h3>Credit Note Details</h3>
+      <div class="payment-grid">
+        <div class="payment-method">
+          <h4>Amount</h4>
+          <p><strong>Amount (ex VAT):</strong> ${formatCurrency(creditNote.amountExVat)}</p>
+          <p><strong>VAT (${creditNote.vatRate}%):</strong> ${formatCurrency(creditNote.amountIncVat - creditNote.amountExVat)}</p>
+          <p><strong>Total Credit:</strong> ${formatCurrency(creditNote.amountIncVat)}</p>
+        </div>
+        <div class="payment-method">
+          <h4>Reference</h4>
+          <p><strong>Credit Note:</strong> ${escapeHtml(creditNote.creditNoteNumber)}</p>
+          <p><strong>Against Invoice:</strong> ${escapeHtml(invoice.invoice_number)}</p>
+          <p><strong>Reason:</strong> ${escapeHtml(creditNote.reason)}</p>
+        </div>
+      </div>
+    </div>
+  ` : ''}
 
   ${isRemittanceAdvice ? `
     <div class="payment-section keep-together">
@@ -601,14 +631,14 @@ export function generateCompactInvoiceHTML(data: InvoiceTemplateData): string {
           <p><strong>Account Name:</strong> ${COMPANY_DETAILS.bank.accountName}</p>
           <p><strong>Sort Code:</strong> ${COMPANY_DETAILS.bank.sortCode}</p>
           <p><strong>Account: </strong> ${COMPANY_DETAILS.bank.accountNumber}</p>
-          <p><strong>Reference:</strong> ${invoice.invoice_number}</p>
+          <p><strong>Reference:</strong> ${escapeHtml(invoice.invoice_number)}</p>
         </div>
         <div class="payment-method">
           <h4>Other Methods</h4>
           <p><strong>Card Payments:</strong> Subject to additional fees</p>
           <p>For payment queries or to arrange card payment:</p>
-          <p>Contact: ${CONTACT_NAME}</p>
-          <p>Mobile: ${CONTACT_PHONE}</p>
+          <p>Contact: ${escapeHtml(CONTACT_NAME)}</p>
+          <p>Mobile: ${escapeHtml(CONTACT_PHONE)}</p>
           <p>Office: ${COMPANY_DETAILS.phone}</p>
           <p>Email: ${COMPANY_DETAILS.email}</p>
         </div>
@@ -626,7 +656,7 @@ export function generateCompactInvoiceHTML(data: InvoiceTemplateData): string {
   <div class="footer">
     <p>${COMPANY_DETAILS.name} | Company Reg: ${COMPANY_DETAILS.companyNumber} | VAT: ${COMPANY_DETAILS.vatNumber}</p>
     <p>${COMPANY_DETAILS.fullAddress} | ${COMPANY_DETAILS.phone} | ${COMPANY_DETAILS.email}</p>
-    <p>Contact: ${CONTACT_NAME} | Mobile: ${CONTACT_PHONE}</p>
+    <p>Contact: ${escapeHtml(CONTACT_NAME)} | Mobile: ${escapeHtml(CONTACT_PHONE)}</p>
   </div>
 </body>
 </html>

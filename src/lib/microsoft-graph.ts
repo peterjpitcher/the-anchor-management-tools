@@ -72,6 +72,7 @@ function formatEmailPaymentMethod(value: string | null | undefined): string {
 type InvoiceEmailOptions = {
   documentKind?: InvoiceDocumentKind
   remittance?: InvoiceRemittanceDetails
+  pdfFilename?: string
 }
 
 // Send invoice email
@@ -162,9 +163,10 @@ P.S. The invoice is attached as a PDF for easy viewing and printing.`)
     const attachments: any[] = [
       {
         '@odata.type': '#microsoft.graph.fileAttachment',
-        name: isRemittanceAdvice
-          ? `receipt-${invoice.invoice_number}.pdf`
-          : `invoice-${invoice.invoice_number}.pdf`,
+        name: emailOptions?.pdfFilename
+          ?? (isRemittanceAdvice
+            ? `receipt-${invoice.invoice_number}.pdf`
+            : `invoice-${invoice.invoice_number}.pdf`),
         contentType: 'application/pdf',
         contentBytes: bufferToBase64(pdfBuffer)
       }

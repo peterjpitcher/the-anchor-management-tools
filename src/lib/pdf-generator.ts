@@ -3,7 +3,8 @@ import type { ChildProcess } from 'node:child_process'
 import {
   generateCompactInvoiceHTML,
   type InvoiceDocumentKind,
-  type InvoiceRemittanceDetails
+  type InvoiceRemittanceDetails,
+  type CreditNoteDetails
 } from './invoice-template-compact'
 import { generateCompactQuoteHTML } from './quote-template-compact'
 import type { InvoiceWithDetails, QuoteWithDetails } from '@/types/invoices'
@@ -36,6 +37,7 @@ type ExistingBrowserOptions = { browser?: PdfGeneratorBrowser }
 type InvoicePdfOptions = ExistingBrowserOptions & {
   documentKind?: InvoiceDocumentKind
   remittance?: InvoiceRemittanceDetails
+  creditNote?: CreditNoteDetails
 }
 
 const LOCAL_CHROMIUM_ARGS = [
@@ -151,6 +153,7 @@ export async function generateInvoicePDF(
         : undefined,
       documentKind: options.documentKind,
       remittance: options.remittance,
+      creditNote: options.creditNote,
     })
 
     // Generate PDF with A4 format

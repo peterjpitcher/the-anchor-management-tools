@@ -101,11 +101,30 @@ export type OJBillingRun = {
   period_end: string
   status: OJBillingRunStatus
   invoice_id: string | null
-  selected_entry_ids: any | null
+  selected_entry_ids: string[] | null
   carried_forward_inc_vat: number | null
   error_message: string | null
   run_started_at: string
   run_finished_at: string | null
   created_at: string
   updated_at: string
+}
+
+export type OJRecurringChargeInstance = {
+  id: string
+  vendor_id: string
+  recurring_charge_id: string
+  period_yyyymm: string
+  period_start: string
+  period_end: string
+  description_snapshot: string
+  amount_ex_vat_snapshot: number
+  vat_rate_snapshot: number
+  sort_order_snapshot: number
+  status: OJEntryStatus
+  billing_run_id: string | null
+  invoice_id: string | null
+  billed_at: string | null
+  paid_at: string | null
+  created_at: string
 }

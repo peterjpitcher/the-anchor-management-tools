@@ -1,13 +1,5 @@
 import { generatePDFFromHTML } from '@/lib/pdf-generator'
-
-function escapeHtml(value: string) {
-  return String(value)
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;')
-    .replaceAll('"', '&quot;')
-    .replaceAll("'", '&#39;')
-}
+import { escapeHtml } from '@/lib/cron/alerting'
 
 export async function generateOjTimesheetPDF(input: {
   invoiceNumber: string

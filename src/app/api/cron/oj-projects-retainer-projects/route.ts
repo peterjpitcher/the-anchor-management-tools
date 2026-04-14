@@ -3,28 +3,12 @@ import { authorizeCronRequest } from '@/lib/cron-auth'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { formatInTimeZone } from 'date-fns-tz'
 import crypto from 'crypto'
+import { deriveClientCode } from '@/lib/oj-projects/utils'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
 
 const LONDON_TZ = 'Europe/London'
-
-function deriveClientCode(vendorName: string) {
-  const stopWords = new Set(['THE', 'LIMITED', 'LTD', 'CO', 'COMPANY', 'GROUP', 'SERVICES', 'SERVICE', 'AND'])
-  const tokens = String(vendorName || '')
-    .trim()
-    .split(/\s+/)
-    .map((t) => t.replace(/[^A-Za-z0-9]/g, ''))
-    .filter(Boolean)
-    .map((t) => t.toUpperCase())
-    .filter((t) => !stopWords.has(t))
-
-  if (tokens.length === 0) return 'CLIENT'
-
-  const initials = tokens.slice(0, 3).map((t) => t[0]).join('')
-  if (initials.length >= 3) return initials
-  return tokens[0].slice(0, 3)
-}
 
 function randomSuffix(length = 5) {
   const targetLength = Math.max(1, Math.floor(length))

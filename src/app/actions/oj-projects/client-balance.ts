@@ -21,8 +21,10 @@ export type ClientInvoiceSummary = {
 
 export type ClientBalance = {
   unpaidInvoiceBalance: number
+  creditNoteTotal: number
   unbilledTimeTotal: number
   unbilledMileageTotal: number
+  unbilledOneOffTotal: number
   unbilledRecurringTotal: number
   unbilledTotal: number
   totalOutstanding: number
@@ -64,7 +66,7 @@ export async function getClientBalance(
   const { data: entries, error: entriesError } = await supabase
     .from('oj_entries')
     .select(
-      'entry_type, duration_minutes_rounded, miles, hourly_rate_ex_vat_snapshot, vat_rate_snapshot, mileage_rate_snapshot'
+      'entry_type, duration_minutes_rounded, miles, hourly_rate_ex_vat_snapshot, vat_rate_snapshot, mileage_rate_snapshot, amount_ex_vat_snapshot'
     )
     .eq('vendor_id', vendorId)
     .eq('status', 'unbilled')
@@ -74,6 +76,7 @@ export async function getClientBalance(
 
   let unbilledTimeTotal = 0
   let unbilledMileageTotal = 0
+  let unbilledOneOffTotal = 0
   for (const entry of entries || []) {
     if (entry.entry_type === 'time') {
       const mins = Number(entry.duration_minutes_rounded || 0)
@@ -83,6 +86,9 @@ export async function getClientBalance(
       const miles = Number(entry.miles || 0)
       const mileageRate = Number(entry.mileage_rate_snapshot || 0.42)
       unbilledMileageTotal = roundMoney(unbilledMileageTotal + miles * mileageRate)
+    } else if (entry.entry_type === 'one_off') {
+      const amount = Number(entry.amount_ex_vat_snapshot || 0)
+      unbilledOneOffTotal = roundMoney(unbilledOneOffTotal + amount)
     }
   }
 
@@ -102,8 +108,23 @@ export async function getClientBalance(
     }, 0)
   )
 
-  const unbilledTotal = roundMoney(unbilledTimeTotal + unbilledMileageTotal + unbilledRecurringTotal)
-  const totalOutstanding = roundMoney(unpaidInvoiceBalance + unbilledTotal)
+  const unbilledTotal = roundMoney(unbilledTimeTotal + unbilledMileageTotal + unbilledOneOffTotal + unbilledRecurringTotal)
+
+  // Subtract issued credit notes from the unpaid invoice balance
+  const { data: creditNotes, error: cnError } = await supabase
+    .from('credit_notes')
+    .select('amount_inc_vat')
+    .eq('vendor_id', vendorId)
+    .eq('status', 'issued')
+
+  if (cnError) return { error: cnError.message }
+
+  const creditNoteTotal = roundMoney(
+    (creditNotes || []).reduce((acc, cn) => acc + Number(cn.amount_inc_vat || 0), 0)
+  )
+
+  const adjustedUnpaidInvoiceBalance = roundMoney(unpaidInvoiceBalance - creditNoteTotal)
+  const totalOutstanding = roundMoney(adjustedUnpaidInvoiceBalance + unbilledTotal)
 
   const invoiceSummaries: ClientInvoiceSummary[] = (invoices || []).map((inv) => ({
     id: inv.id,
@@ -119,9 +140,11 @@ export async function getClientBalance(
 
   return {
     balance: {
-      unpaidInvoiceBalance,
+      unpaidInvoiceBalance: adjustedUnpaidInvoiceBalance,
+      creditNoteTotal,
       unbilledTimeTotal,
       unbilledMileageTotal,
+      unbilledOneOffTotal,
       unbilledRecurringTotal,
       unbilledTotal,
       totalOutstanding,
