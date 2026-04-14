@@ -27,13 +27,17 @@ import {
 import { createVendorContact, deleteVendorContact, getVendorContacts, updateVendorContact } from '@/app/actions/vendor-contacts'
 import { getClientBalance } from '@/app/actions/oj-projects/client-balance'
 import type { ClientBalance } from '@/app/actions/oj-projects/client-balance'
+import { getClientStatement, sendStatementEmail } from '@/app/actions/oj-projects/client-statement'
+import type { ClientStatementData } from '@/app/actions/oj-projects/client-statement'
 import type { InvoiceVendor } from '@/types/invoices'
 import {
   AlertCircle,
   Briefcase,
   Building2,
+  Calendar,
   Check,
   CreditCard,
+  Download,
   FileText,
   LayoutDashboard,
   List,
@@ -41,6 +45,7 @@ import {
   Phone,
   Plus,
   Save,
+  Send,
   Settings,
   Trash2,
   TrendingUp,
@@ -189,6 +194,18 @@ export default function OJProjectsClientsPage() {
 
   const [balance, setBalance] = useState<ClientBalance | null>(null)
   const [balanceLoading, setBalanceLoading] = useState(false)
+
+  // Statement modal state
+  const [statementModalOpen, setStatementModalOpen] = useState(false)
+  const [statementDateFrom, setStatementDateFrom] = useState(() => {
+    const d = new Date()
+    d.setMonth(d.getMonth() - 3)
+    return d.toISOString().slice(0, 10)
+  })
+  const [statementDateTo, setStatementDateTo] = useState(() => new Date().toISOString().slice(0, 10))
+  const [statementData, setStatementData] = useState<ClientStatementData | null>(null)
+  const [statementLoading, setStatementLoading] = useState(false)
+  const [statementSending, setStatementSending] = useState(false)
 
   const [vendorModalOpen, setVendorModalOpen] = useState(false)
   const [vendorSaving, setVendorSaving] = useState(false)
@@ -445,6 +462,64 @@ export default function OJProjectsClientsPage() {
     }
   }
 
+  function openStatementModal() {
+    setStatementData(null)
+    setStatementLoading(false)
+    setStatementSending(false)
+    // Reset dates to last 3 months
+    const d = new Date()
+    d.setMonth(d.getMonth() - 3)
+    setStatementDateFrom(d.toISOString().slice(0, 10))
+    setStatementDateTo(new Date().toISOString().slice(0, 10))
+    setStatementModalOpen(true)
+  }
+
+  async function handleStatementPreview() {
+    if (!vendorId) return
+    setStatementLoading(true)
+    try {
+      const result = await getClientStatement(vendorId, statementDateFrom, statementDateTo)
+      if (result.error) {
+        toast.error(result.error)
+      } else if (result.statement) {
+        setStatementData(result.statement)
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to load statement')
+    } finally {
+      setStatementLoading(false)
+    }
+  }
+
+  function handleStatementDownload() {
+    if (!vendorId) return
+    const url = `/api/oj-projects/statement-pdf?vendorId=${vendorId}&dateFrom=${statementDateFrom}&dateTo=${statementDateTo}`
+    window.open(url, '_blank')
+  }
+
+  async function handleStatementEmail() {
+    if (!vendorId || !invoiceRecipientConfigured) return
+
+    if (statementData && statementData.transactions.length === 0) {
+      if (!window.confirm('This statement has no transactions. Are you sure you want to email it?')) return
+    }
+
+    setStatementSending(true)
+    try {
+      const result = await sendStatementEmail(vendorId, statementDateFrom, statementDateTo)
+      if (result.error) {
+        toast.error(result.error)
+      } else {
+        toast.success('Statement emailed successfully')
+        setStatementModalOpen(false)
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to send statement')
+    } finally {
+      setStatementSending(false)
+    }
+  }
+
   function openCreateVendor() {
     if (!canCreateVendor) {
       toast.error('You do not have permission to create clients')
@@ -554,6 +629,12 @@ export default function OJProjectsClientsPage() {
           </div>
           <div className="text-sm text-gray-500 pb-2 md:text-right">
             <p>Manage billing rates, recurring charges, and invoice contacts.</p>
+            {settings.statement_mode && vendorId && (
+              <span className="inline-flex items-center gap-1 mt-1 px-2 py-0.5 rounded-full text-xs font-medium bg-indigo-100 text-indigo-700">
+                <FileText className="w-3 h-3" />
+                Statement Mode
+              </span>
+            )}
           </div>
         </div>
       </Card>
@@ -568,9 +649,15 @@ export default function OJProjectsClientsPage() {
         <>
         {/* Account Balance Summary */}
         <Card className="mb-6" header={
-          <div className="flex items-center gap-2">
-            <TrendingUp className="w-5 h-5 text-gray-400" />
-            <CardTitle>Account Balance</CardTitle>
+          <div className="flex items-center justify-between w-full">
+            <div className="flex items-center gap-2">
+              <TrendingUp className="w-5 h-5 text-gray-400" />
+              <CardTitle>Account Balance</CardTitle>
+            </div>
+            <Button type="button" variant="secondary" onClick={openStatementModal} disabled={!vendorId}>
+              <FileText className="w-4 h-4 mr-2" />
+              Statement
+            </Button>
           </div>
         }>
           {balanceLoading ? (
@@ -750,7 +837,7 @@ export default function OJProjectsClientsPage() {
                     onChange={(e) => setSettings({ ...settings, statement_mode: e.target.checked })}
                     disabled={!canEditSettings}
                     label="Send balance statement invoices"
-                    description="Hide itemised work; show project balance summary and payment projection."
+                    description="When enabled, monthly invoices show a running balance statement with opening balance, charges, and closing balance — rather than itemised time entries. Best for clients on a monthly retainer or cap arrangement."
                   />
                 </FormGroup>
 
@@ -1105,6 +1192,118 @@ export default function OJProjectsClientsPage() {
         <ModalActions>
           <Button variant="secondary" onClick={() => setPreviewOpen(false)}>
             Close
+          </Button>
+        </ModalActions>
+      </Modal>
+
+      {/* Statement Modal */}
+      <Modal
+        open={statementModalOpen}
+        onClose={() => setStatementModalOpen(false)}
+        title={`Account Statement — ${selectedVendor?.name || ''}`}
+        size="lg"
+      >
+        <div className="space-y-4">
+          {/* Date Range */}
+          <div className="flex flex-col sm:flex-row gap-4 items-end">
+            <FormGroup label="From" className="mb-0 flex-1">
+              <Input
+                type="date"
+                value={statementDateFrom}
+                onChange={(e) => setStatementDateFrom(e.target.value)}
+              />
+            </FormGroup>
+            <FormGroup label="To" className="mb-0 flex-1">
+              <Input
+                type="date"
+                value={statementDateTo}
+                onChange={(e) => setStatementDateTo(e.target.value)}
+              />
+            </FormGroup>
+            <Button
+              type="button"
+              onClick={handleStatementPreview}
+              loading={statementLoading}
+              disabled={statementLoading || !statementDateFrom || !statementDateTo}
+            >
+              <Calendar className="w-4 h-4 mr-2" />
+              {statementLoading ? 'Loading...' : 'Preview'}
+            </Button>
+          </div>
+
+          {/* Preview Table */}
+          {statementData && (
+            <div>
+              {statementData.transactions.length === 0 ? (
+                <div className="text-center py-8">
+                  <p className="text-sm text-gray-500 italic">No transactions found for this period.</p>
+                  <p className="text-xs text-gray-400 mt-1">The PDF will show opening and closing balances only.</p>
+                </div>
+              ) : (
+                <div className="overflow-x-auto rounded-lg border border-gray-200 max-h-96 overflow-y-auto">
+                  <table className="min-w-full text-sm">
+                    <thead className="bg-gray-50 sticky top-0">
+                      <tr>
+                        <th className="text-left px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wide">Date</th>
+                        <th className="text-left px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wide">Description</th>
+                        <th className="text-left px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wide">Reference</th>
+                        <th className="text-right px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wide">Debit</th>
+                        <th className="text-right px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wide">Credit</th>
+                        <th className="text-right px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wide">Balance</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      <tr className="bg-yellow-50">
+                        <td className="px-3 py-2 font-medium" colSpan={5}>Opening Balance</td>
+                        <td className="px-3 py-2 text-right font-semibold">{'\u00A3'}{statementData.openingBalance.toFixed(2)}</td>
+                      </tr>
+                      {statementData.transactions.map((txn, i) => (
+                        <tr key={i} className="hover:bg-gray-50 transition-colors">
+                          <td className="px-3 py-2 text-gray-500">{txn.date}</td>
+                          <td className="px-3 py-2 text-gray-700">{txn.description}</td>
+                          <td className="px-3 py-2 font-mono text-xs text-gray-600">{txn.reference}</td>
+                          <td className="px-3 py-2 text-right text-red-600">{txn.debit !== null ? `\u00A3${txn.debit.toFixed(2)}` : ''}</td>
+                          <td className="px-3 py-2 text-right text-green-600">{txn.credit !== null ? `\u00A3${txn.credit.toFixed(2)}` : ''}</td>
+                          <td className="px-3 py-2 text-right font-medium">{'\u00A3'}{txn.balance.toFixed(2)}</td>
+                        </tr>
+                      ))}
+                      <tr className="bg-green-50 border-t-2 border-green-600">
+                        <td className="px-3 py-2 font-bold" colSpan={5}>Closing Balance</td>
+                        <td className="px-3 py-2 text-right font-bold">{'\u00A3'}{statementData.closingBalance.toFixed(2)}</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              )}
+              <p className="text-xs text-blue-600 italic mt-2">
+                This statement reflects invoiced amounts only. Unbilled work in progress is not included.
+              </p>
+            </div>
+          )}
+        </div>
+
+        <ModalActions>
+          <Button type="button" variant="secondary" onClick={() => setStatementModalOpen(false)}>
+            Cancel
+          </Button>
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={handleStatementDownload}
+            disabled={!vendorId}
+          >
+            <Download className="w-4 h-4 mr-2" />
+            Download PDF
+          </Button>
+          <Button
+            type="button"
+            onClick={handleStatementEmail}
+            loading={statementSending}
+            disabled={!invoiceRecipientConfigured || statementSending}
+            title={!invoiceRecipientConfigured ? 'No billing email configured for this vendor' : ''}
+          >
+            <Send className="w-4 h-4 mr-2" />
+            {statementSending ? 'Sending...' : 'Email to Client'}
           </Button>
         </ModalActions>
       </Modal>

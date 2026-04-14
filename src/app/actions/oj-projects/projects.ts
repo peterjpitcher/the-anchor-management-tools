@@ -5,6 +5,7 @@ import { checkUserPermission } from '@/app/actions/rbac'
 import { logAuditEvent } from '@/app/actions/audit'
 import { z } from 'zod'
 import crypto from 'crypto'
+import { deriveClientCode } from '@/lib/oj-projects/utils'
 
 const CreateProjectSchema = z.object({
   vendor_id: z.string().uuid('Invalid vendor ID'),
@@ -23,25 +24,6 @@ const CreateProjectSchema = z.object({
 const UpdateProjectSchema = CreateProjectSchema.extend({
   id: z.string().uuid('Invalid project ID'),
 })
-
-function deriveClientCode(vendorName: string) {
-  const stopWords = new Set(['THE', 'LIMITED', 'LTD', 'CO', 'COMPANY', 'GROUP', 'SERVICES', 'SERVICE', 'AND'])
-  const tokens = String(vendorName || '')
-    .trim()
-    .split(/\s+/)
-    .map((t) => t.replace(/[^A-Za-z0-9]/g, ''))
-    .filter(Boolean)
-    .map((t) => t.toUpperCase())
-    .filter((t) => !stopWords.has(t))
-
-  if (tokens.length === 0) {
-    return 'CLIENT'
-  }
-
-  const initials = tokens.slice(0, 3).map((t) => t[0]).join('')
-  if (initials.length >= 3) return initials
-  return tokens[0].slice(0, 3)
-}
 
 function randomSuffix(length = 5) {
   const targetLength = Math.max(1, Math.floor(length))
@@ -303,6 +285,98 @@ export async function deleteProject(formData: FormData) {
   })
 
   return { success: true as const }
+}
+
+export async function getProjectPaymentHistory(projectId: string) {
+  const hasPermission = await checkUserPermission('oj_projects', 'view')
+  if (!hasPermission) return { error: 'You do not have permission to view projects' }
+
+  if (!projectId) return { error: 'Project ID is required' }
+
+  const supabase = await createClient()
+
+  // Get distinct invoice IDs from entries linked to this project
+  const { data: entries, error: entriesError } = await supabase
+    .from('oj_entries')
+    .select('invoice_id')
+    .eq('project_id', projectId)
+    .not('invoice_id', 'is', null)
+
+  if (entriesError) return { error: entriesError.message }
+
+  const invoiceIds = Array.from(new Set((entries || []).map((e) => e.invoice_id).filter(Boolean)))
+
+  if (invoiceIds.length === 0) {
+    return {
+      invoices: [],
+      totals: { totalBilled: 0, totalPaid: 0, totalOutstanding: 0 },
+    }
+  }
+
+  // Fetch invoices with their payments
+  const { data: invoices, error: invoicesError } = await supabase
+    .from('invoices')
+    .select(`
+      id,
+      invoice_number,
+      invoice_date,
+      status,
+      total_amount,
+      payments:invoice_payments(
+        id,
+        payment_date,
+        amount,
+        payment_method
+      )
+    `)
+    .in('id', invoiceIds)
+    .is('deleted_at', null)
+    .order('invoice_date', { ascending: false })
+
+  if (invoicesError) return { error: invoicesError.message }
+
+  let totalBilled = 0
+  let totalPaid = 0
+
+  const mapped = (invoices || []).map((inv: any) => {
+    const total = Number(inv.total_amount || 0)
+    const payments = (inv.payments || []) as Array<{
+      id: string
+      payment_date: string | null
+      amount: number
+      payment_method: string | null
+    }>
+    const paid = payments.reduce((sum: number, p: any) => sum + Number(p.amount || 0), 0)
+
+    totalBilled += total
+    totalPaid += paid
+
+    return {
+      invoice: {
+        id: inv.id,
+        number: inv.invoice_number,
+        date: inv.invoice_date,
+        status: inv.status,
+        total,
+        paid,
+      },
+      payments: payments.map((p: any) => ({
+        id: p.id,
+        date: p.payment_date,
+        amount: Number(p.amount || 0),
+        method: p.payment_method,
+      })),
+    }
+  })
+
+  return {
+    invoices: mapped,
+    totals: {
+      totalBilled: Math.round((totalBilled + Number.EPSILON) * 100) / 100,
+      totalPaid: Math.round((totalPaid + Number.EPSILON) * 100) / 100,
+      totalOutstanding: Math.round((totalBilled - totalPaid + Number.EPSILON) * 100) / 100,
+    },
+  }
 }
 
 export async function updateProjectStatus(formData: FormData) {

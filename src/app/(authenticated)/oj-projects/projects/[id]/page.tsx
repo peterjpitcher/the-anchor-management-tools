@@ -11,7 +11,7 @@ import { Alert } from '@/components/ui-v2/feedback/Alert'
 import { toast } from '@/components/ui-v2/feedback/Toast'
 import { EmptyState } from '@/components/ui-v2/display/EmptyState'
 import { usePermissions } from '@/contexts/PermissionContext'
-import { deleteProject, getProject, updateProjectStatus } from '@/app/actions/oj-projects/projects'
+import { deleteProject, getProject, getProjectPaymentHistory, updateProjectStatus } from '@/app/actions/oj-projects/projects'
 import { addProjectContact, removeProjectContact } from '@/app/actions/oj-projects/project-contacts'
 import { getVendorContacts } from '@/app/actions/vendor-contacts'
 import { getEntries } from '@/app/actions/oj-projects/entries'
@@ -22,6 +22,8 @@ import {
   Building2,
   Calendar,
   CheckCircle2,
+  ChevronDown,
+  ChevronUp,
   Clock,
   CreditCard,
   Edit,
@@ -31,6 +33,7 @@ import {
   MapPin,
   Phone,
   Plus,
+  Receipt,
   Tag,
   Trash2,
   UserPlus,
@@ -61,6 +64,8 @@ export default function OJProjectDetailPage() {
   const [project, setProject] = useState<any | null>(null)
   const [vendorContacts, setVendorContacts] = useState<any[]>([])
   const [entries, setEntries] = useState<any[]>([])
+  const [paymentHistory, setPaymentHistory] = useState<any | null>(null)
+  const [paymentsExpanded, setPaymentsExpanded] = useState(false)
 
   const [contactToAdd, setContactToAdd] = useState('')
   const [savingContact, setSavingContact] = useState(false)
@@ -88,9 +93,10 @@ export default function OJProjectDetailPage() {
 
       const vendorId = projectRes.project.vendor_id
 
-      const [contactsRes, entriesRes] = await Promise.all([
+      const [contactsRes, entriesRes, paymentRes] = await Promise.all([
         getVendorContacts(vendorId),
         getEntries({ projectId, limit: 1000 }),
+        getProjectPaymentHistory(projectId),
       ])
 
       if (contactsRes.error) throw new Error(contactsRes.error)
@@ -99,6 +105,7 @@ export default function OJProjectDetailPage() {
       setProject(projectRes.project)
       setVendorContacts(contactsRes.contacts || [])
       setEntries(entriesRes.entries || [])
+      setPaymentHistory(paymentRes.error ? null : paymentRes)
       setContactToAdd('')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load project')
@@ -454,6 +461,99 @@ export default function OJProjectDetailPage() {
               </div>
             )}
           </Card>
+
+          {/* Payment History */}
+          {paymentHistory && paymentHistory.invoices && paymentHistory.invoices.length > 0 && (
+            <Card
+              header={
+                <button
+                  type="button"
+                  className="flex items-center justify-between gap-3 w-full text-left"
+                  onClick={() => setPaymentsExpanded(!paymentsExpanded)}
+                >
+                  <div className="flex items-center gap-2">
+                    <Receipt className="w-5 h-5 text-gray-400" />
+                    <CardTitle>Payment History</CardTitle>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <div className="text-sm text-gray-500">
+                      {paymentHistory.invoices.length} {paymentHistory.invoices.length === 1 ? 'invoice' : 'invoices'}
+                    </div>
+                    {paymentsExpanded
+                      ? <ChevronUp className="w-4 h-4 text-gray-400" />
+                      : <ChevronDown className="w-4 h-4 text-gray-400" />
+                    }
+                  </div>
+                </button>
+              }
+              padding={paymentsExpanded ? 'none' : 'lg'}
+            >
+              {/* Summary row always visible */}
+              <div className={`grid grid-cols-3 gap-4 ${paymentsExpanded ? 'px-6 py-4 border-b border-gray-100' : ''}`}>
+                <div>
+                  <div className="text-sm text-gray-500 mb-1">Total Billed</div>
+                  <div className="font-semibold text-gray-900">{formatCurrency(paymentHistory.totals.totalBilled)}</div>
+                </div>
+                <div>
+                  <div className="text-sm text-gray-500 mb-1">Total Paid</div>
+                  <div className="font-semibold text-green-600">{formatCurrency(paymentHistory.totals.totalPaid)}</div>
+                </div>
+                <div>
+                  <div className="text-sm text-gray-500 mb-1">Outstanding</div>
+                  <div className={`font-semibold ${paymentHistory.totals.totalOutstanding > 0 ? 'text-red-600' : 'text-green-600'}`}>
+                    {formatCurrency(paymentHistory.totals.totalOutstanding)}
+                  </div>
+                </div>
+              </div>
+
+              {/* Expanded invoice table */}
+              {paymentsExpanded && (
+                <div className="overflow-x-auto">
+                  <table className="min-w-full divide-y divide-gray-200">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Invoice</th>
+                        <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
+                        <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Total</th>
+                        <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Paid</th>
+                        <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody className="bg-white divide-y divide-gray-200">
+                      {paymentHistory.invoices.map((item: any) => (
+                        <tr key={item.invoice.id} className="hover:bg-gray-50 transition-colors">
+                          <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                            {item.invoice.number}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                            {item.invoice.date ? formatDateDdMmmmYyyy(item.invoice.date) : '-'}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-gray-900">
+                            {formatCurrency(item.invoice.total)}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-green-600">
+                            {formatCurrency(item.invoice.paid)}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-right">
+                            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium capitalize
+                              ${item.invoice.status === 'paid' ? 'bg-green-100 text-green-800' :
+                                item.invoice.status === 'sent' ? 'bg-blue-100 text-blue-800' :
+                                  item.invoice.status === 'partially_paid' ? 'bg-amber-100 text-amber-800' :
+                                    item.invoice.status === 'overdue' ? 'bg-red-100 text-red-800' :
+                                      'bg-gray-100 text-gray-800'
+                              }`}
+                            >
+                              {item.invoice.status?.replace('_', ' ')}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </Card>
+          )}
         </div>
 
         {/* Sidebar */}

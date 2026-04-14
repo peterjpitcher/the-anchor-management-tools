@@ -13,6 +13,7 @@ import {
   persistIdempotencyResponse,
   releaseIdempotencyClaim
 } from '@/lib/api/idempotency'
+import { sendBillingRunAlert } from '@/lib/oj-projects/billing-alerts'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -843,7 +844,85 @@ async function splitTimeEntryForCap(input: {
 
   const startAtRaw = candidate.start_at ? new Date(candidate.start_at) : null
   const endAtRaw = candidate.end_at ? new Date(candidate.end_at) : null
-  if (!startAtRaw || !endAtRaw || Number.isNaN(startAtRaw.getTime()) || Number.isNaN(endAtRaw.getTime())) return null
+
+  // -------------------------------------------------------------------
+  // Fallback: monetary proportion split for entries without start_at/end_at
+  // When time entries lack timestamps (e.g. manual entries with only
+  // duration), we cannot split by time range. Instead, split by the
+  // proportion of minutes that fits under the remaining cap headroom,
+  // keeping start_at/end_at as null on both partial and remainder.
+  // -------------------------------------------------------------------
+  if (!startAtRaw || !endAtRaw || Number.isNaN(startAtRaw.getTime()) || Number.isNaN(endAtRaw.getTime())) {
+    console.warn('[OJ Billing] Cap-mode: falling back to monetary split for entry without start_at/end_at:', candidate.id)
+
+    const nowIso = new Date().toISOString()
+
+    // Compute raw duration proportionally to the rounded split
+    const rawMinutes = Number(candidate.duration_minutes_raw || totalMinutes)
+    const rawBilled = Math.max(Math.round(rawMinutes * (partial.minutes / totalMinutes)), 1)
+    const rawRemaining = Math.max(rawMinutes - rawBilled, 0)
+    if (rawRemaining <= 0) return null
+
+    const partialEntry = {
+      ...candidate,
+      duration_minutes_rounded: partial.minutes,
+      duration_minutes_raw: rawBilled,
+      updated_at: nowIso,
+    }
+
+    let remainderEntry = {
+      ...candidate,
+      duration_minutes_rounded: remainingMinutes,
+      duration_minutes_raw: rawRemaining,
+      status: 'unbilled',
+      billing_run_id: null,
+      invoice_id: null,
+      billed_at: null,
+      paid_at: null,
+      created_at: nowIso,
+      updated_at: nowIso,
+    }
+
+    if (input.persist) {
+      if (!input.supabase) throw new Error('Supabase client required for split persist')
+      const { data: updatedRow, error: updateError } = await input.supabase
+        .from('oj_entries')
+        .update({
+          duration_minutes_rounded: partial.minutes,
+          duration_minutes_raw: rawBilled,
+          updated_at: nowIso,
+        })
+        .eq('id', candidate.id)
+        .select('id')
+        .maybeSingle()
+      if (updateError) throw new Error(updateError.message)
+      if (!updatedRow) throw new Error(`Time entry not found while splitting for cap: ${candidate.id}`)
+
+      const { data: inserted, error: insertError } = await input.supabase
+        .from('oj_entries')
+        .insert(
+          buildEntryInsertPayload(candidate, {
+            duration_minutes_rounded: remainingMinutes,
+            duration_minutes_raw: rawRemaining,
+            start_at: null,
+            end_at: null,
+            miles: null,
+            created_at: nowIso,
+            updated_at: nowIso,
+          })
+        )
+        .select('*')
+        .single()
+      if (insertError) throw new Error(insertError.message)
+
+      remainderEntry = { ...inserted, project: candidate.project, work_type: candidate.work_type }
+    }
+
+    input.skippedTimeEntries.splice(index, 1, remainderEntry)
+    input.selectedTimeEntries.push(partialEntry)
+
+    return { addedIncVat: partial.incVat }
+  }
 
   const diffMinutes = Math.max(Math.round((endAtRaw.getTime() - startAtRaw.getTime()) / 60000), 0)
   if (diffMinutes <= 0) return null
@@ -2068,6 +2147,7 @@ export async function GET(request: Request) {
     failed: 0,
     vendors: [] as Array<{
       vendor_id: string
+      vendor_name?: string
       status: 'sent' | 'skipped' | 'failed'
       invoice_id?: string
       invoice_number?: string
@@ -2077,6 +2157,7 @@ export async function GET(request: Request) {
 
   for (const vendorId of vendorIds) {
     results.processed++
+    let vendorNameForAlert: string | undefined
     try {
       // Load vendor
       const { data: vendor, error: vendorError } = await supabase
@@ -2085,6 +2166,7 @@ export async function GET(request: Request) {
         .eq('id', vendorId)
         .single()
       if (vendorError || !vendor) throw new Error(vendorError?.message || 'Vendor not found')
+      vendorNameForAlert = vendor.name || undefined
 
       // Create or load billing run (idempotency)
       let billingRun: any | null = null
@@ -3416,7 +3498,7 @@ export async function GET(request: Request) {
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Unknown error'
       results.failed++
-      results.vendors.push({ vendor_id: vendorId, status: 'failed', error: message })
+      results.vendors.push({ vendor_id: vendorId, vendor_name: vendorNameForAlert, status: 'failed', error: message })
       try {
         await throwOnMutationError(
           supabase
@@ -3427,6 +3509,15 @@ export async function GET(request: Request) {
           `Failed to persist failed billing run state for vendor ${vendorId} period ${period.period_yyyymm}`
         )
       } catch { }
+    }
+  }
+
+  // Send billing alert if any vendors failed
+  if (results.failed > 0) {
+    try {
+      await sendBillingRunAlert(results)
+    } catch (alertError) {
+      console.error('[oj-billing] Failed to send billing run alert:', alertError)
     }
   }
 

@@ -109,8 +109,9 @@ async function resolveInvoiceRecipientsForVendor(
   return { to, cc }
 }
 
-async function sendRemittanceAdviceForPaidInvoice(
+async function sendPaymentReceipt(
   invoiceId: string,
+  paymentId: string,
   sentByUserId?: string | null
 ): Promise<RemittanceAdviceResult> {
   if (!isGraphConfigured()) {
@@ -126,11 +127,24 @@ async function sendRemittanceAdviceForPaidInvoice(
     return { sent: false, skippedReason: 'invoice_lookup_failed', error: message }
   }
 
-  if (invoice.status !== 'paid') {
+  if (invoice.status !== 'paid' && invoice.status !== 'partially_paid') {
     return { sent: false, skippedReason: 'invoice_not_paid' }
   }
 
   const supabase = await createClient()
+
+  // Dedup guard: skip if a receipt was already sent for this specific payment
+  const { data: existingLog } = await supabase
+    .from('invoice_email_logs')
+    .select('id')
+    .eq('payment_id', paymentId)
+    .eq('status', 'sent')
+    .limit(1)
+    .maybeSingle()
+  if (existingLog) {
+    return { sent: false, skippedReason: 'already_sent' }
+  }
+
   const forcedRecipient = getForcedRemittanceTestRecipient()
   let toAddress: string | null = null
   let ccAddresses: string[] = []
@@ -160,21 +174,24 @@ async function sendRemittanceAdviceForPaidInvoice(
     ccAddresses = recipientResult.cc
   }
 
-  const latestPayment = (invoice.payments || [])
-    .slice()
-    .sort((a, b) => {
-      const aDate = new Date(a.payment_date || a.created_at || 0).getTime()
-      const bDate = new Date(b.payment_date || b.created_at || 0).getTime()
-      return bDate - aDate
-    })[0]
+  const payment = (invoice.payments || []).find(p => p.id === paymentId)
+  if (!payment) {
+    return { sent: false, skippedReason: 'payment_not_found' }
+  }
 
-  const paymentAmount = latestPayment?.amount ?? invoice.paid_amount
-  const paymentDate = formatDateForEmail(latestPayment?.payment_date || null)
-  const paymentMethod = formatPaymentMethodForEmail(latestPayment?.payment_method || null)
+  const paymentAmount = payment.amount ?? invoice.paid_amount
+  const paymentDate = formatDateForEmail(payment.payment_date || null)
+  const paymentMethod = formatPaymentMethodForEmail(payment.payment_method || null)
   const outstandingBalance = Math.max(0, invoice.total_amount - invoice.paid_amount)
   const recipientName = invoice.vendor?.contact_name || invoice.vendor?.name || 'there'
 
-  const subject = `Receipt: Invoice ${invoice.invoice_number} (Paid)`
+  const isFullPayment = invoice.status === 'paid'
+  const subject = isFullPayment
+    ? `Receipt: Invoice ${invoice.invoice_number} (Paid in Full)`
+    : `Receipt: Invoice ${invoice.invoice_number} (Payment Received — Balance: £${outstandingBalance.toFixed(2)})`
+  const pdfFilename = isFullPayment
+    ? `receipt-${invoice.invoice_number}.pdf`
+    : `receipt-${invoice.invoice_number}-partial.pdf`
   const body = `Hi ${recipientName},
 
 I hope you're doing well!
@@ -187,7 +204,7 @@ Total Paid: ${formatCurrencyForEmail(invoice.paid_amount)}
 Outstanding Balance: ${formatCurrencyForEmail(outstandingBalance)}
 Payment Date: ${paymentDate}
 ${paymentMethod ? `Payment Method: ${paymentMethod}` : ''}
-${latestPayment?.reference ? `Reference: ${latestPayment.reference}` : ''}
+${payment.reference ? `Reference: ${payment.reference}` : ''}
 
 If you have any questions, just let me know.
 
@@ -205,11 +222,12 @@ ${CONTACT_PHONE}`
     undefined,
     {
       documentKind: 'remittance_advice',
+      pdfFilename,
       remittance: {
-        paymentDate: latestPayment?.payment_date || null,
+        paymentDate: payment.payment_date || null,
         paymentAmount: paymentAmount,
-        paymentMethod: latestPayment?.payment_method || null,
-        paymentReference: latestPayment?.reference || null,
+        paymentMethod: payment.payment_method || null,
+        paymentReference: payment.reference || null,
       },
     }
   )
@@ -220,6 +238,7 @@ ${CONTACT_PHONE}`
     const { error: logError } = await supabase.from('invoice_email_logs').insert(
       recipients.map((address) => ({
         invoice_id: invoiceId,
+        payment_id: paymentId,
         sent_to: address,
         sent_by: sentByUserId || null,
         subject,
@@ -258,6 +277,7 @@ ${CONTACT_PHONE}`
   const errorMessage = emailResult.error || 'Failed to send receipt'
   const { error: failedLogError } = await supabase.from('invoice_email_logs').insert({
     invoice_id: invoiceId,
+    payment_id: paymentId,
     sent_to: toAddress,
     sent_by: sentByUserId || null,
     subject,
@@ -742,9 +762,9 @@ export async function recordPayment(formData: FormData) {
       console.error('Error checking invoice status after payment:', invoiceAfterError)
     } else if (
       invoiceBeforePayment.status !== 'paid' &&
-      invoiceAfterPayment?.status === 'paid'
+      (invoiceAfterPayment?.status === 'paid' || invoiceAfterPayment?.status === 'partially_paid')
     ) {
-      remittanceAdvice = await sendRemittanceAdviceForPaidInvoice(invoiceId, user?.id || null)
+      remittanceAdvice = await sendPaymentReceipt(invoiceId, payment.id, user?.id || null)
     }
 
     revalidatePath('/invoices')
@@ -754,6 +774,246 @@ export async function recordPayment(formData: FormData) {
     return { payment, success: true, remittanceAdvice }
   } catch (error: unknown) {
     console.error('Error in recordPayment:', error)
+    return { error: getErrorMessage(error) }
+  }
+}
+
+export async function voidInvoice(
+  invoiceId: string,
+  reason: string
+): Promise<{ success?: boolean; error?: string }> {
+  try {
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return { error: 'Unauthorized' }
+
+    // Void requires delete permission on invoices
+    const hasDeletePermission = await checkUserPermission('invoices', 'delete')
+    if (!hasDeletePermission) {
+      return { error: 'You do not have permission to void invoices' }
+    }
+
+    // Reversing OJ entries requires oj_projects manage permission
+    const hasOjPermission = await checkUserPermission('oj_projects', 'manage')
+    if (!hasOjPermission) {
+      return { error: 'You do not have permission to manage OJ Projects entries (required for voiding)' }
+    }
+
+    if (!invoiceId || !reason.trim()) {
+      return { error: 'Invoice ID and void reason are required' }
+    }
+
+    // Fetch the invoice
+    const { data: invoice, error: fetchError } = await supabase
+      .from('invoices')
+      .select('id, invoice_number, status, paid_amount, internal_notes')
+      .eq('id', invoiceId)
+      .is('deleted_at', null)
+      .single()
+
+    if (fetchError || !invoice) {
+      return { error: 'Invoice not found' }
+    }
+
+    if (invoice.status === 'void') {
+      return { error: 'Invoice is already voided' }
+    }
+
+    // ABSOLUTE GUARD: Cannot void an invoice with any payments
+    const paidAmount = Number(invoice.paid_amount || 0)
+    if (paidAmount > 0) {
+      return { error: 'Cannot void an invoice with payments. Issue a credit note instead.' }
+    }
+
+    const adminClient = createAdminClient()
+
+    // Update invoice status to void and record reason in internal_notes
+    const voidNote = `[VOIDED ${new Date().toISOString()}] Reason: ${reason.trim()}`
+    const updatedNotes = invoice.internal_notes
+      ? `${invoice.internal_notes}\n\n${voidNote}`
+      : voidNote
+
+    const { error: updateError } = await adminClient
+      .from('invoices')
+      .update({
+        status: 'void',
+        internal_notes: updatedNotes,
+      })
+      .eq('id', invoiceId)
+
+    if (updateError) {
+      return { error: updateError.message || 'Failed to void invoice' }
+    }
+
+    // Reverse linked oj_entries: set status back to 'unbilled', clear billing_run_id and invoice_id
+    const { error: entriesError } = await adminClient
+      .from('oj_entries')
+      .update({
+        status: 'unbilled',
+        billing_run_id: null,
+        invoice_id: null,
+      })
+      .eq('invoice_id', invoiceId)
+
+    if (entriesError) {
+      console.error('[Invoices] Failed to reverse OJ entries on void:', entriesError)
+      // Continue — the invoice is already voided, log the issue
+    }
+
+    // Reverse linked oj_recurring_charge_instances: same treatment
+    const { error: recurringError } = await adminClient
+      .from('oj_recurring_charge_instances')
+      .update({
+        status: 'unbilled',
+        billing_run_id: null,
+        invoice_id: null,
+      })
+      .eq('invoice_id', invoiceId)
+
+    if (recurringError) {
+      console.error('[Invoices] Failed to reverse OJ recurring instances on void:', recurringError)
+    }
+
+    await logAuditEvent({
+      user_id: user.id,
+      user_email: user.email,
+      operation_type: 'update',
+      resource_type: 'invoice',
+      resource_id: invoiceId,
+      operation_status: 'success',
+      old_values: { status: invoice.status },
+      new_values: { status: 'void', void_reason: reason.trim() },
+      additional_info: {
+        action: 'void_invoice',
+        invoice_number: invoice.invoice_number,
+      },
+    })
+
+    revalidatePath('/invoices')
+    revalidatePath(`/invoices/${invoiceId}`)
+    revalidateTag('dashboard')
+
+    return { success: true }
+  } catch (error: unknown) {
+    console.error('Error in voidInvoice:', error)
+    return { error: getErrorMessage(error) }
+  }
+}
+
+export async function createCreditNote(
+  invoiceId: string,
+  amountExVat: number,
+  reason: string
+): Promise<{ success?: boolean; creditNote?: { id: string; credit_note_number: string; amount_inc_vat: number }; error?: string }> {
+  try {
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return { error: 'Unauthorized' }
+
+    const hasPermission = await checkUserPermission('invoices', 'create')
+    if (!hasPermission) {
+      return { error: 'You do not have permission to create credit notes' }
+    }
+
+    if (!invoiceId || !reason.trim()) {
+      return { error: 'Invoice ID and reason are required' }
+    }
+
+    if (!Number.isFinite(amountExVat) || amountExVat <= 0) {
+      return { error: 'Credit note amount must be greater than zero' }
+    }
+
+    // Fetch the invoice to get vendor_id and VAT rate
+    const { data: invoice, error: fetchError } = await supabase
+      .from('invoices')
+      .select('id, invoice_number, vendor_id, vat_amount, subtotal_amount, total_amount')
+      .eq('id', invoiceId)
+      .is('deleted_at', null)
+      .single()
+
+    if (fetchError || !invoice) {
+      return { error: 'Invoice not found' }
+    }
+
+    // Derive VAT rate from the invoice totals
+    const subtotal = Number(invoice.subtotal_amount || 0)
+    const vatAmount = Number(invoice.vat_amount || 0)
+    const vatRate = subtotal > 0 ? Math.round((vatAmount / subtotal) * 100 * 100) / 100 : 20
+
+    // Calculate amount inc VAT
+    const amountIncVat = Math.round((amountExVat * (1 + vatRate / 100)) * 100) / 100
+
+    // Generate sequential credit note number: CN-{YYYY}-{NNN}
+    const currentYear = new Date().getFullYear()
+    const { data: maxCn, error: maxError } = await supabase
+      .from('credit_notes')
+      .select('credit_note_number')
+      .ilike('credit_note_number', `CN-${currentYear}-%`)
+      .order('credit_note_number', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+
+    if (maxError) {
+      return { error: 'Failed to generate credit note number' }
+    }
+
+    let nextSeq = 1
+    if (maxCn?.credit_note_number) {
+      const parts = maxCn.credit_note_number.split('-')
+      const lastSeq = parseInt(parts[2], 10)
+      if (Number.isFinite(lastSeq)) {
+        nextSeq = lastSeq + 1
+      }
+    }
+
+    const creditNoteNumber = `CN-${currentYear}-${String(nextSeq).padStart(3, '0')}`
+
+    // Insert the credit note
+    const { data: creditNote, error: insertError } = await supabase
+      .from('credit_notes')
+      .insert({
+        credit_note_number: creditNoteNumber,
+        invoice_id: invoiceId,
+        vendor_id: invoice.vendor_id,
+        amount_ex_vat: amountExVat,
+        vat_rate: vatRate,
+        amount_inc_vat: amountIncVat,
+        reason: reason.trim(),
+        status: 'issued',
+        created_by: user.id,
+      })
+      .select('id, credit_note_number, amount_inc_vat')
+      .single()
+
+    if (insertError || !creditNote) {
+      console.error('[Invoices] Failed to create credit note:', insertError)
+      return { error: insertError?.message || 'Failed to create credit note' }
+    }
+
+    await logAuditEvent({
+      user_id: user.id,
+      user_email: user.email,
+      operation_type: 'create',
+      resource_type: 'credit_note',
+      resource_id: creditNote.id,
+      operation_status: 'success',
+      new_values: {
+        credit_note_number: creditNoteNumber,
+        invoice_id: invoiceId,
+        invoice_number: invoice.invoice_number,
+        amount_ex_vat: amountExVat,
+        amount_inc_vat: amountIncVat,
+        reason: reason.trim(),
+      },
+    })
+
+    revalidatePath('/invoices')
+    revalidatePath(`/invoices/${invoiceId}`)
+    revalidateTag('dashboard')
+
+    return { success: true, creditNote }
+  } catch (error: unknown) {
+    console.error('Error in createCreditNote:', error)
     return { error: getErrorMessage(error) }
   }
 }
