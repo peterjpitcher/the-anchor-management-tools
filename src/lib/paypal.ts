@@ -290,6 +290,7 @@ export async function capturePayPalPayment(orderId: string) {
     status: data.status,
     payerId: data.payer.payer_id,
     amount: data.purchase_units[0].payments.captures[0].amount.value,
+    customId: data.purchase_units[0].custom_id || null,
   };
 }
 

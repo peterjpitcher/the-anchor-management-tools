@@ -7,7 +7,7 @@ import { formatGuestGreeting, getCustomerFirstNameById } from '@/lib/guest/names
 import { getTablePaymentPreviewByRawToken } from '@/lib/table-bookings/bookings'
 import { tablePaymentBlockedReasonMessage } from '@/lib/table-bookings/table-payment-blocked-reason'
 import { GuestPageShell } from '@/components/features/shared/GuestPageShell'
-import { createSimplePayPalOrder, capturePayPalPayment } from '@/lib/paypal'
+import { createSimplePayPalOrder, capturePayPalPayment, getPayPalOrder } from '@/lib/paypal'
 import { logAuditEvent } from '@/app/actions/audit'
 import { TablePaymentClient } from './TablePaymentClient'
 
@@ -129,13 +129,24 @@ export default async function TablePaymentPage({ params, searchParams }: TablePa
     redirect(`/g/${token}/table-payment?state=paid`)
   }
 
-  // Create or reuse PayPal order
+  // Create or reuse PayPal order (only reuse if still valid on PayPal's side)
   const appBaseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://app.the-anchor.pub'
-  let paypalOrderId: string
+  let paypalOrderId = ''
+  let needsNewOrder = true
 
   if (booking?.paypal_deposit_order_id) {
-    paypalOrderId = booking.paypal_deposit_order_id as string
-  } else {
+    try {
+      const existingOrder = await getPayPalOrder(booking.paypal_deposit_order_id as string)
+      if (existingOrder.status === 'CREATED' || existingOrder.status === 'APPROVED') {
+        paypalOrderId = booking.paypal_deposit_order_id as string
+        needsNewOrder = false
+      }
+    } catch {
+      // Order expired or invalid on PayPal's side — create a fresh one
+    }
+  }
+
+  if (needsNewOrder) {
     let paypalOrder: { orderId: string }
     try {
       paypalOrder = await createSimplePayPalOrder({
@@ -194,6 +205,24 @@ export default async function TablePaymentPage({ params, searchParams }: TablePa
     const db = createAdminClient()
     try {
       const capture = await capturePayPalPayment(captureOrderId)
+
+      // Validate that the captured order belongs to this booking
+      if (capture.customId && capture.customId !== bookingIdForCapture) {
+        void logAuditEvent({
+          operation_type: 'payment.capture_booking_mismatch',
+          resource_type: 'table_booking',
+          resource_id: bookingIdForCapture,
+          operation_status: 'failure',
+          additional_info: {
+            orderId: captureOrderId,
+            expectedBookingId: bookingIdForCapture,
+            actualCustomId: capture.customId,
+            action_needed: 'Manual investigation — PayPal order custom_id does not match booking',
+          },
+        })
+        return { success: false, error: 'Payment verification failed — please contact us.' }
+      }
+
       const { error: updateError } = await db
         .from('table_bookings')
         .update({

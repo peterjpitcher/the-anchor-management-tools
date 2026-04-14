@@ -1,52 +1,11 @@
 -- =============================================================================
 -- Migration: 20260609000000_oj_projects_review.sql
--- Purpose: Fix one_off constraint gap, add payment_id to invoice_email_logs,
---          create credit_notes table
+-- Purpose: Add payment_id to invoice_email_logs, create credit_notes table
+-- Note: one_off constraint already fixed in 20260512000000
 -- =============================================================================
 
 -- ---------------------------------------------------------------------------
--- PART 1: Fix one_off constraint on oj_entries
--- ---------------------------------------------------------------------------
-
--- Step 1: Audit — count violating rows (logged for visibility via RAISE NOTICE)
-DO $$
-DECLARE
-  violation_count integer;
-BEGIN
-  SELECT count(*) INTO violation_count
-  FROM oj_entries
-  WHERE entry_type = 'one_off'
-    AND (miles IS NOT NULL OR duration_minutes_rounded IS NOT NULL
-         OR hourly_rate_snapshot IS NOT NULL OR mileage_rate_snapshot IS NOT NULL);
-  RAISE NOTICE 'one_off constraint violations found: %', violation_count;
-END $$;
-
--- Step 2: Data fix — null out spurious values BEFORE adding constraint
-UPDATE oj_entries
-SET miles = NULL,
-    duration_minutes_rounded = NULL,
-    hourly_rate_snapshot = NULL,
-    mileage_rate_snapshot = NULL
-WHERE entry_type = 'one_off'
-  AND (miles IS NOT NULL OR duration_minutes_rounded IS NOT NULL
-       OR hourly_rate_snapshot IS NOT NULL OR mileage_rate_snapshot IS NOT NULL);
-
--- Step 3: Drop old constraint and add comprehensive version
-ALTER TABLE oj_entries DROP CONSTRAINT IF EXISTS chk_oj_entries_time_fields;
-ALTER TABLE oj_entries ADD CONSTRAINT chk_oj_entries_time_fields CHECK (
-  (entry_type = 'time' AND duration_minutes_rounded IS NOT NULL AND hourly_rate_snapshot IS NOT NULL
-   AND miles IS NULL AND mileage_rate_snapshot IS NULL AND amount_ex_vat_snapshot IS NULL)
-  OR
-  (entry_type = 'mileage' AND miles IS NOT NULL AND mileage_rate_snapshot IS NOT NULL
-   AND duration_minutes_rounded IS NULL AND hourly_rate_snapshot IS NULL AND amount_ex_vat_snapshot IS NULL)
-  OR
-  (entry_type = 'one_off' AND amount_ex_vat_snapshot IS NOT NULL
-   AND duration_minutes_rounded IS NULL AND miles IS NULL
-   AND hourly_rate_snapshot IS NULL AND mileage_rate_snapshot IS NULL)
-);
-
--- ---------------------------------------------------------------------------
--- PART 2: Add payment_id to invoice_email_logs for receipt dedup
+-- PART 1: Add payment_id to invoice_email_logs for receipt dedup
 -- ---------------------------------------------------------------------------
 
 ALTER TABLE invoice_email_logs
@@ -57,7 +16,7 @@ CREATE INDEX IF NOT EXISTS idx_invoice_email_logs_payment_id
   WHERE payment_id IS NOT NULL;
 
 -- ---------------------------------------------------------------------------
--- PART 3: Create credit_notes table
+-- PART 2: Create credit_notes table
 -- ---------------------------------------------------------------------------
 
 CREATE TABLE IF NOT EXISTS credit_notes (
