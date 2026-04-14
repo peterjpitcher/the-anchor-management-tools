@@ -137,6 +137,8 @@ export default function OJProjectDetailPage() {
         const miles = Number(entry.miles || 0)
         const rate = Number(entry.mileage_rate_snapshot || 0.42)
         exVat = miles * rate
+      } else if (entry.entry_type === 'one_off') {
+        exVat = Number(entry.amount_ex_vat_snapshot || 0)
       }
 
       exVat = roundCurrency(exVat)
