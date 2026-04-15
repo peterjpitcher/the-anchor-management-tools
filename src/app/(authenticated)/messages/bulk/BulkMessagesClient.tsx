@@ -316,7 +316,7 @@ export default function BulkMessagesClient({ events, categories }: BulkMessagesC
                 <option value="">All events</option>
                 {events.map((event) => (
                   <option key={event.id} value={event.id}>
-                    {event.name} ({formatDateInLondon(event.date, { day: 'numeric', month: 'short' })})
+                    {event.name} ({formatDateInLondon(event.date, { day: 'numeric', month: 'short', year: 'numeric' })})
                   </option>
                 ))}
               </Select>

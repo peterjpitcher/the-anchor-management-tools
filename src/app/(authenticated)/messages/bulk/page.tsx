@@ -26,7 +26,7 @@ export default async function BulkMessagesPage() {
   const { data: eventsData, error: eventsError } = await supabase
     .from('events')
     .select('id, name, date')
-    .order('date', { ascending: false })
+    .order('date', { ascending: true })
     .limit(500)
 
   if (eventsError) {

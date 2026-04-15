@@ -1,10 +1,9 @@
--- Migration: Add get_bulk_sms_recipients RPC function
--- Purpose: Single-query recipient filtering for the bulk SMS page rebuild
--- Replaces: /api/messages/bulk/customers route (batch-scan + in-memory filtering)
+-- Fix: cast mobile_e164 from varchar(20) to text to match RETURNS TABLE definition
+-- Error: "Returned type character varying(20) does not match expected type text in column 4"
 
 CREATE OR REPLACE FUNCTION public.get_bulk_sms_recipients(
   p_event_id UUID DEFAULT NULL,
-  p_booking_status TEXT DEFAULT NULL,       -- 'with_bookings' | 'without_bookings'
+  p_booking_status TEXT DEFAULT NULL,
   p_sms_opt_in_only BOOLEAN DEFAULT TRUE,
   p_category_id UUID DEFAULT NULL,
   p_created_after DATE DEFAULT NULL,
@@ -39,15 +38,10 @@ BEGIN
     )::DATE AS last_booking_date
   FROM public.customers c
   WHERE
-    -- Must have a sendable phone number
     c.mobile_e164 IS NOT NULL
-
-    -- Must be SMS-eligible (matches send pipeline in src/lib/sms/bulk.ts)
     AND c.sms_opt_in = TRUE
     AND c.marketing_sms_opt_in = TRUE
     AND (c.sms_status IS NULL OR c.sms_status = 'active')
-
-    -- Event + booking status filter (active, non-reminder bookings only)
     AND (
       p_event_id IS NULL
       OR p_booking_status IS NULL
@@ -72,8 +66,6 @@ BEGIN
         )
       )
     )
-
-    -- Category filter: customer has actively attended any event in this category
     AND (
       p_category_id IS NULL
       OR EXISTS (
@@ -85,12 +77,8 @@ BEGIN
           AND COALESCE(b.is_reminder_only, false) = false
       )
     )
-
-    -- Date range filters on customer creation
     AND (p_created_after IS NULL OR c.created_at >= p_created_after)
     AND (p_created_before IS NULL OR c.created_at <= (p_created_before + INTERVAL '1 day'))
-
-    -- Search: name or mobile number (case-insensitive, wildcards escaped by caller)
     AND (
       p_search IS NULL
       OR c.first_name ILIKE '%' || p_search || '%'
@@ -101,6 +89,5 @@ BEGIN
 END;
 $$;
 
--- Security: restrict access
 REVOKE ALL ON FUNCTION public.get_bulk_sms_recipients FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.get_bulk_sms_recipients TO authenticated;
