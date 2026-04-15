@@ -28,7 +28,7 @@ BEGIN
     c.id,
     c.first_name,
     c.last_name,
-    c.mobile_e164,
+    c.mobile_e164::TEXT,
     (
       SELECT MAX(e.date)
       FROM public.bookings b
