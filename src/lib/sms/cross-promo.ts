@@ -7,7 +7,7 @@
  */
 
 import { createAdminClient } from '@/lib/supabase/admin'
-import { formatDateInLondon } from '@/lib/dateUtils'
+import { formatDateInLondon, startOfLondonDayUtc } from '@/lib/dateUtils'
 import { sendSMS } from '@/lib/twilio'
 import { EventMarketingService } from '@/services/event-marketing'
 import { logger } from '@/lib/logger'
@@ -20,6 +20,11 @@ const TEMPLATE_CROSS_PROMO_FREE = 'event_cross_promo_14d'
 const TEMPLATE_CROSS_PROMO_PAID = 'event_cross_promo_14d_paid'
 const TEMPLATE_GENERAL_PROMO_FREE = 'event_general_promo_14d'
 const TEMPLATE_GENERAL_PROMO_PAID = 'event_general_promo_14d_paid'
+
+const TEMPLATE_REMINDER_7D_FREE = 'event_reminder_promo_7d'
+const TEMPLATE_REMINDER_7D_PAID = 'event_reminder_promo_7d_paid'
+const TEMPLATE_REMINDER_3D_FREE = 'event_reminder_promo_3d'
+const TEMPLATE_REMINDER_3D_PAID = 'event_reminder_promo_3d_paid'
 
 const SEND_LOOP_TIME_BUDGET_MS = 240_000 // 4 minutes — leave headroom for 300s cron timeout
 const SEND_LOOP_CHECK_INTERVAL = 25 // check every N recipients
@@ -93,6 +98,40 @@ function buildGeneralPaidMessage(
   return `The Anchor: ${firstName}! Had a great time at ${lastEventName}? ${eventName} is coming up on ${eventDate} — could be your kind of thing! Grab your seats here: ${eventLink}`
 }
 
+function buildReminder7dFreeMessage(
+  firstName: string,
+  eventName: string,
+  eventDate: string
+): string {
+  return `The Anchor: ${firstName}! ${eventName} is just a week away — ${eventDate}. Fancy it? Reply with how many seats! Offer open 48hrs.`
+}
+
+function buildReminder7dPaidMessage(
+  firstName: string,
+  eventName: string,
+  eventDate: string,
+  eventLink: string
+): string {
+  return `The Anchor: ${firstName}! ${eventName} is just a week away — ${eventDate}. Grab your seats: ${eventLink}`
+}
+
+function buildReminder3dFreeMessage(
+  firstName: string,
+  eventName: string,
+  weekday: string
+): string {
+  return `The Anchor: ${firstName}! ${eventName} is this ${weekday}! Still got seats — reply with how many and you're in! Offer open 48hrs.`
+}
+
+function buildReminder3dPaidMessage(
+  firstName: string,
+  eventName: string,
+  weekday: string,
+  eventLink: string
+): string {
+  return `The Anchor: ${firstName}! ${eventName} is this ${weekday}! Last chance to grab seats: ${eventLink}`
+}
+
 async function sendSmsSafe(
   to: string,
   body: string,
@@ -112,6 +151,33 @@ async function sendSmsSafe(
       error: err instanceof Error ? err.message : 'Failed to send SMS',
     } as Awaited<ReturnType<typeof sendSMS>>
   }
+}
+
+export async function hasReachedDailyPromoLimit(
+  db: ReturnType<typeof createAdminClient>,
+  customerId: string
+): Promise<boolean> {
+  const todayStart = startOfLondonDayUtc().toISOString()
+  const { count, error } = await db
+    .from('sms_promo_context')
+    .select('id', { count: 'exact', head: true })
+    .eq('customer_id', customerId)
+    .gte('created_at', todayStart)
+
+  if (error) {
+    logger.warn('Daily promo limit check failed; allowing send as fallback', {
+      metadata: { customerId, error: error.message },
+    })
+    return false
+  }
+
+  return (count ?? 0) >= 1
+}
+
+export type FollowUpRecipient = {
+  customer_id: string
+  first_name: string | null
+  phone_number: string
 }
 
 export async function sendCrossPromoForEvent(
@@ -301,6 +367,159 @@ export async function sendCrossPromoForEvent(
           eventId: event.id,
           error: insertError.message,
         },
+      })
+    }
+
+    // Insert promo sequence row for follow-up tracking
+    const { error: seqError } = await db.from('promo_sequence').upsert(
+      {
+        customer_id: recipient.customer_id,
+        event_id: event.id,
+        audience_type: recipient.audience_type || 'category_match',
+        touch_14d_sent_at: new Date().toISOString(),
+      },
+      { onConflict: 'customer_id,event_id', ignoreDuplicates: true }
+    )
+
+    if (seqError) {
+      logger.warn('Cross-promo: failed to insert promo_sequence row', {
+        metadata: {
+          customerId: recipient.customer_id,
+          eventId: event.id,
+          error: seqError.message,
+        },
+      })
+    }
+
+    stats.sent += 1
+  }
+
+  return stats
+}
+
+export async function sendFollowUpForEvent(
+  event: { id: string; name: string; date: string; payment_mode: string },
+  touchType: '7d' | '3d',
+  recipients: FollowUpRecipient[],
+  options?: { startTime?: number }
+): Promise<SendCrossPromoResult> {
+  const db = createAdminClient()
+  const stats: SendCrossPromoResult = { sent: 0, skipped: 0, errors: 0 }
+
+  if (recipients.length === 0) return stats
+
+  const isPaid = isPaidEvent(event.payment_mode)
+
+  // Generate short link for paid events
+  let eventLink: string | null = null
+  if (isPaid) {
+    try {
+      const link = await EventMarketingService.generateSingleLink(event.id, 'sms_promo')
+      eventLink = link.shortUrl
+    } catch (err) {
+      logger.warn('Follow-up: failed to generate short link; skipping paid event', {
+        metadata: { eventId: event.id, error: err instanceof Error ? err.message : String(err) },
+      })
+      stats.skipped += recipients.length
+      return stats
+    }
+  }
+
+  const eventDate = formatDateInLondon(event.date, {
+    weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
+  })
+  const weekday = formatDateInLondon(event.date, { weekday: 'long' })
+
+  const replyWindowExpiresAt = new Date(
+    Date.now() + EVENT_PROMO_REPLY_WINDOW_HOURS * 60 * 60 * 1000
+  ).toISOString()
+
+  const templateKey = touchType === '7d'
+    ? (isPaid ? TEMPLATE_REMINDER_7D_PAID : TEMPLATE_REMINDER_7D_FREE)
+    : (isPaid ? TEMPLATE_REMINDER_3D_PAID : TEMPLATE_REMINDER_3D_FREE)
+
+  const touchColumn = touchType === '7d' ? 'touch_7d_sent_at' : 'touch_3d_sent_at'
+
+  for (const recipient of recipients) {
+    // Elapsed-time safety check
+    if (
+      options?.startTime &&
+      stats.sent > 0 &&
+      stats.sent % SEND_LOOP_CHECK_INTERVAL === 0
+    ) {
+      const elapsed = Date.now() - options.startTime
+      if (elapsed > SEND_LOOP_TIME_BUDGET_MS) {
+        logger.warn(`Follow-up ${touchType}: aborting — approaching cron timeout`, {
+          metadata: { eventId: event.id, sent: stats.sent, elapsedMs: elapsed },
+        })
+        stats.aborted = true
+        break
+      }
+    }
+
+    const firstName = getSmartFirstName(recipient.first_name)
+
+    // Close prior active sms_promo_context rows for this customer + event
+    await db.from('sms_promo_context')
+      .update({ reply_window_expires_at: new Date().toISOString() })
+      .eq('customer_id', recipient.customer_id)
+      .eq('event_id', event.id)
+      .is('booking_created', false)
+      .gt('reply_window_expires_at', new Date().toISOString())
+
+    let messageBody: string
+    if (touchType === '7d') {
+      messageBody = isPaid
+        ? buildReminder7dPaidMessage(firstName, event.name, eventDate, eventLink!)
+        : buildReminder7dFreeMessage(firstName, event.name, eventDate)
+    } else {
+      messageBody = isPaid
+        ? buildReminder3dPaidMessage(firstName, event.name, weekday, eventLink!)
+        : buildReminder3dFreeMessage(firstName, event.name, weekday)
+    }
+
+    const idempotencyKey = `${templateKey}_${recipient.customer_id}_${event.id}`
+    const smsResult = await sendSmsSafe(recipient.phone_number, messageBody, {
+      customerId: recipient.customer_id,
+      metadata: {
+        event_id: event.id,
+        template_key: templateKey,
+        marketing: true,
+        idempotency_key: idempotencyKey,
+      },
+    })
+
+    if (!smsResult.success) {
+      stats.errors += 1
+      continue
+    }
+
+    // Insert sms_promo_context for reply-to-book + frequency tracking
+    const { error: contextInsertError } = await db.from('sms_promo_context').insert({
+      customer_id: recipient.customer_id,
+      phone_number: recipient.phone_number,
+      event_id: event.id,
+      template_key: templateKey,
+      message_id: smsResult.messageId ?? null,
+      reply_window_expires_at: replyWindowExpiresAt,
+      booking_created: false,
+    })
+
+    if (contextInsertError) {
+      logger.warn(`Follow-up ${touchType}: failed to insert sms_promo_context`, {
+        metadata: { customerId: recipient.customer_id, eventId: event.id, error: contextInsertError.message },
+      })
+    }
+
+    // Update promo_sequence touch timestamp
+    const { error: updateError } = await db.from('promo_sequence')
+      .update({ [touchColumn]: new Date().toISOString() })
+      .eq('customer_id', recipient.customer_id)
+      .eq('event_id', event.id)
+
+    if (updateError) {
+      logger.warn(`Follow-up ${touchType}: failed to update promo_sequence`, {
+        metadata: { customerId: recipient.customer_id, eventId: event.id, error: updateError.message },
       })
     }
 

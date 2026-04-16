@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { sendCrossPromoForEvent } from '../cross-promo'
+import { sendCrossPromoForEvent, hasReachedDailyPromoLimit, sendFollowUpForEvent } from '../cross-promo'
 
 // ---------------------------------------------------------------------------
 // Module mocks
@@ -27,9 +27,16 @@ vi.mock('@/lib/logger', () => ({
   },
 }))
 
-// dateUtils is a pure function — let it run for real
+// dateUtils — mock formatDateInLondon and startOfLondonDayUtc
 vi.mock('@/lib/dateUtils', () => ({
-  formatDateInLondon: vi.fn().mockReturnValue('Saturday, 18 April 2026'),
+  formatDateInLondon: vi.fn().mockImplementation((_date: string, opts?: { weekday?: string }) => {
+    // If only weekday is requested, return just the weekday
+    if (opts && Object.keys(opts).length === 1 && opts.weekday) {
+      return 'Saturday'
+    }
+    return 'Saturday, 18 April 2026'
+  }),
+  startOfLondonDayUtc: vi.fn().mockReturnValue(new Date('2026-04-16T00:00:00Z')),
 }))
 
 // getSmartFirstName is pure — mock it simply
@@ -123,7 +130,8 @@ function buildDbMock(overrides: {
     insertError = null,
   } = overrides
 
-  const db = {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const db: Record<string, any> = {
     rpc: vi.fn().mockImplementation((fnName: string) => {
       if (fnName === 'get_event_capacity_snapshot_v05') {
         return Promise.resolve({ data: capacityError ? null : capacityRows, error: capacityError })
@@ -133,8 +141,15 @@ function buildDbMock(overrides: {
       }
       return Promise.resolve({ data: null, error: new Error(`Unknown RPC: ${fnName}`) })
     }),
-    from: vi.fn().mockReturnThis(),
+    from: vi.fn().mockImplementation(() => db),
     insert: vi.fn().mockReturnValue(Promise.resolve({ error: insertError })),
+    upsert: vi.fn().mockReturnValue(Promise.resolve({ error: null })),
+    update: vi.fn().mockImplementation(() => db),
+    select: vi.fn().mockImplementation(() => db),
+    eq: vi.fn().mockImplementation(() => db),
+    is: vi.fn().mockImplementation(() => db),
+    gt: vi.fn().mockReturnValue(Promise.resolve({ error: null })),
+    gte: vi.fn().mockReturnValue(Promise.resolve({ count: 0, error: null })),
   }
 
   return db
@@ -430,6 +445,30 @@ describe('sendCrossPromoForEvent', () => {
     })
   })
 
+  describe('promo_sequence insert from 14d flow', () => {
+    it('inserts a promo_sequence row after successful send', async () => {
+      const db = buildDbMock()
+      mockCreateAdminClient.mockReturnValue(db as unknown as ReturnType<typeof createAdminClient>)
+      mockSendSMS.mockResolvedValue(makeSmsSuccess() as Awaited<ReturnType<typeof sendSMS>>)
+
+      await sendCrossPromoForEvent(FREE_EVENT)
+
+      // Should have called from('promo_sequence') with upsert
+      const promoSequenceCalls = db.from.mock.calls.filter(
+        (call: string[]) => call[0] === 'promo_sequence'
+      )
+      expect(promoSequenceCalls.length).toBeGreaterThan(0)
+      expect(db.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          customer_id: AUDIENCE_ROW.customer_id,
+          event_id: FREE_EVENT.id,
+          audience_type: 'category_match',
+        }),
+        expect.objectContaining({ onConflict: 'customer_id,event_id', ignoreDuplicates: true })
+      )
+    })
+  })
+
   describe('send loop safety', () => {
     it('accepts an optional startTime and aborts when elapsed time exceeds budget', async () => {
       const largeAudience = Array.from({ length: 30 }, (_, i) => ({
@@ -450,5 +489,190 @@ describe('sendCrossPromoForEvent', () => {
       expect(result.sent).toBeLessThan(30)
       expect(result.aborted).toBe(true)
     })
+  })
+})
+
+// ---------------------------------------------------------------------------
+// hasReachedDailyPromoLimit
+// ---------------------------------------------------------------------------
+
+describe('hasReachedDailyPromoLimit', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('returns false when no promos sent today', async () => {
+    const db = buildDbMock()
+    db.gte.mockReturnValue(Promise.resolve({ count: 0, error: null }))
+
+    const result = await hasReachedDailyPromoLimit(
+      db as unknown as Parameters<typeof hasReachedDailyPromoLimit>[0],
+      'cust-uuid-001'
+    )
+    expect(result).toBe(false)
+  })
+
+  it('returns true when a promo was already sent today', async () => {
+    const db = buildDbMock()
+    db.gte.mockReturnValue(Promise.resolve({ count: 1, error: null }))
+
+    const result = await hasReachedDailyPromoLimit(
+      db as unknown as Parameters<typeof hasReachedDailyPromoLimit>[0],
+      'cust-uuid-001'
+    )
+    expect(result).toBe(true)
+  })
+
+  it('returns false (allow send) when the query errors', async () => {
+    const db = buildDbMock()
+    db.gte.mockReturnValue(Promise.resolve({ count: null, error: { message: 'db error' } }))
+
+    const result = await hasReachedDailyPromoLimit(
+      db as unknown as Parameters<typeof hasReachedDailyPromoLimit>[0],
+      'cust-uuid-001'
+    )
+    expect(result).toBe(false)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// sendFollowUpForEvent
+// ---------------------------------------------------------------------------
+
+describe('sendFollowUpForEvent', () => {
+  const FOLLOW_UP_RECIPIENT = {
+    customer_id: 'cust-uuid-010',
+    first_name: 'Dave',
+    phone_number: '+447700900010',
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  describe('7d free event follow-up', () => {
+    it('sends a short reminder with reply-to-book', async () => {
+      const db = buildDbMock()
+      mockCreateAdminClient.mockReturnValue(db as unknown as ReturnType<typeof createAdminClient>)
+      mockSendSMS.mockResolvedValue(makeSmsSuccess() as Awaited<ReturnType<typeof sendSMS>>)
+
+      const result = await sendFollowUpForEvent(
+        { id: FREE_EVENT.id, name: FREE_EVENT.name, date: FREE_EVENT.date, payment_mode: FREE_EVENT.payment_mode },
+        '7d',
+        [FOLLOW_UP_RECIPIENT]
+      )
+
+      expect(result.sent).toBe(1)
+      const [, body, options] = mockSendSMS.mock.calls[0]
+      expect(body).toContain('Dave')
+      expect(body).toContain('Quiz Night')
+      expect(body).toContain('just a week away')
+      expect(body).toContain('Reply with how many seats')
+      expect(options.metadata?.template_key).toBe('event_reminder_promo_7d')
+    })
+  })
+
+  describe('3d free event follow-up', () => {
+    it('sends a last-chance reminder with weekday name', async () => {
+      const db = buildDbMock()
+      mockCreateAdminClient.mockReturnValue(db as unknown as ReturnType<typeof createAdminClient>)
+      mockSendSMS.mockResolvedValue(makeSmsSuccess() as Awaited<ReturnType<typeof sendSMS>>)
+
+      const result = await sendFollowUpForEvent(
+        { id: FREE_EVENT.id, name: FREE_EVENT.name, date: FREE_EVENT.date, payment_mode: FREE_EVENT.payment_mode },
+        '3d',
+        [FOLLOW_UP_RECIPIENT]
+      )
+
+      expect(result.sent).toBe(1)
+      const [, body, options] = mockSendSMS.mock.calls[0]
+      expect(body).toContain('Dave')
+      expect(body).toContain('Quiz Night')
+      expect(body).toContain('reply with how many and you\'re in')
+      expect(options.metadata?.template_key).toBe('event_reminder_promo_3d')
+    })
+  })
+
+  describe('7d paid event follow-up', () => {
+    it('sends a reminder with booking link', async () => {
+      const db = buildDbMock()
+      mockCreateAdminClient.mockReturnValue(db as unknown as ReturnType<typeof createAdminClient>)
+      mockSendSMS.mockResolvedValue(makeSmsSuccess() as Awaited<ReturnType<typeof sendSMS>>)
+      mockGenerateSingleLink.mockResolvedValue({
+        id: 'link-001', channel: 'sms_promo', label: 'SMS Promo', type: 'digital',
+        shortCode: 'spABC123', shortUrl: 'https://the-anchor.pub/s/spABC123',
+        destinationUrl: 'https://www.the-anchor.pub/events/comedy-night', utm: {},
+      })
+
+      const result = await sendFollowUpForEvent(
+        { id: PAID_EVENT.id, name: PAID_EVENT.name, date: PAID_EVENT.date, payment_mode: PAID_EVENT.payment_mode },
+        '7d',
+        [FOLLOW_UP_RECIPIENT]
+      )
+
+      expect(result.sent).toBe(1)
+      const [, body, options] = mockSendSMS.mock.calls[0]
+      expect(body).toContain('https://the-anchor.pub/s/spABC123')
+      expect(body).not.toContain('reply with how many')
+      expect(options.metadata?.template_key).toBe('event_reminder_promo_7d_paid')
+    })
+  })
+
+  describe('3d paid event follow-up', () => {
+    it('sends a last-chance message with booking link', async () => {
+      const db = buildDbMock()
+      mockCreateAdminClient.mockReturnValue(db as unknown as ReturnType<typeof createAdminClient>)
+      mockSendSMS.mockResolvedValue(makeSmsSuccess() as Awaited<ReturnType<typeof sendSMS>>)
+      mockGenerateSingleLink.mockResolvedValue({
+        id: 'link-001', channel: 'sms_promo', label: 'SMS Promo', type: 'digital',
+        shortCode: 'spABC123', shortUrl: 'https://the-anchor.pub/s/spABC123',
+        destinationUrl: 'https://www.the-anchor.pub/events/comedy-night', utm: {},
+      })
+
+      const result = await sendFollowUpForEvent(
+        { id: PAID_EVENT.id, name: PAID_EVENT.name, date: PAID_EVENT.date, payment_mode: PAID_EVENT.payment_mode },
+        '3d',
+        [FOLLOW_UP_RECIPIENT]
+      )
+
+      expect(result.sent).toBe(1)
+      const [, body, options] = mockSendSMS.mock.calls[0]
+      expect(body).toContain('Last chance to grab seats')
+      expect(body).toContain('https://the-anchor.pub/s/spABC123')
+      expect(options.metadata?.template_key).toBe('event_reminder_promo_3d_paid')
+    })
+  })
+
+  it('closes prior active sms_promo_context rows before sending', async () => {
+    const db = buildDbMock()
+    mockCreateAdminClient.mockReturnValue(db as unknown as ReturnType<typeof createAdminClient>)
+    mockSendSMS.mockResolvedValue(makeSmsSuccess() as Awaited<ReturnType<typeof sendSMS>>)
+
+    await sendFollowUpForEvent(
+      { id: FREE_EVENT.id, name: FREE_EVENT.name, date: FREE_EVENT.date, payment_mode: FREE_EVENT.payment_mode },
+      '7d',
+      [FOLLOW_UP_RECIPIENT]
+    )
+
+    // Should have called update on sms_promo_context to close prior windows
+    expect(db.update).toHaveBeenCalled()
+  })
+
+  it('updates promo_sequence touch timestamp after successful send', async () => {
+    const db = buildDbMock()
+    mockCreateAdminClient.mockReturnValue(db as unknown as ReturnType<typeof createAdminClient>)
+    mockSendSMS.mockResolvedValue(makeSmsSuccess() as Awaited<ReturnType<typeof sendSMS>>)
+
+    await sendFollowUpForEvent(
+      { id: FREE_EVENT.id, name: FREE_EVENT.name, date: FREE_EVENT.date, payment_mode: FREE_EVENT.payment_mode },
+      '7d',
+      [FOLLOW_UP_RECIPIENT]
+    )
+
+    // Should have called from('promo_sequence') for the update
+    const promoSequenceCalls = db.from.mock.calls.filter(
+      (call: string[]) => call[0] === 'promo_sequence'
+    )
+    expect(promoSequenceCalls.length).toBeGreaterThan(0)
   })
 })
