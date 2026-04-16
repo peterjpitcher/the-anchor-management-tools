@@ -130,8 +130,7 @@ function buildDbMock(overrides: {
     insertError = null,
   } = overrides
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const db: Record<string, any> = {
+  const db: Record<string, unknown> = {
     rpc: vi.fn().mockImplementation((fnName: string) => {
       if (fnName === 'get_event_capacity_snapshot_v05') {
         return Promise.resolve({ data: capacityError ? null : capacityRows, error: capacityError })
