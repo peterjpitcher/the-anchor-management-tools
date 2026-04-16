@@ -75,6 +75,26 @@ const AUDIENCE_ROW = {
   phone_number: '+447700900001',
   last_event_category: 'Quiz Night',
   times_attended: 3,
+  audience_type: 'category_match' as const,
+  last_event_name: 'Quiz Night',
+}
+
+const GENERAL_AUDIENCE_ROW = {
+  customer_id: 'cust-uuid-002',
+  first_name: 'Bob',
+  last_name: 'Jones',
+  phone_number: '+447700900002',
+  last_event_category: null,
+  times_attended: null,
+  audience_type: 'general_recent' as const,
+  last_event_name: 'Drag Bingo',
+}
+
+const GENERAL_AUDIENCE_ROW_NO_EVENT_NAME = {
+  ...GENERAL_AUDIENCE_ROW,
+  customer_id: 'cust-uuid-003',
+  phone_number: '+447700900003',
+  last_event_name: null,
 }
 
 function makeCapacityRow(seatsRemaining: number, isFull = false) {
@@ -314,6 +334,121 @@ describe('sendCrossPromoForEvent', () => {
       expect(result.errors).toBe(1)
       expect(result.sent).toBe(0)
       expect(db.insert).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('general audience — free event', () => {
+    it('sends a warm general promo with last event name referenced', async () => {
+      const db = buildDbMock({ audienceRows: [GENERAL_AUDIENCE_ROW] })
+      mockCreateAdminClient.mockReturnValue(db as unknown as ReturnType<typeof createAdminClient>)
+      mockSendSMS.mockResolvedValue(makeSmsSuccess() as Awaited<ReturnType<typeof sendSMS>>)
+
+      const result = await sendCrossPromoForEvent(FREE_EVENT)
+
+      expect(result.sent).toBe(1)
+      expect(result.errors).toBe(0)
+
+      const [to, body, options] = mockSendSMS.mock.calls[0]
+      expect(to).toBe(GENERAL_AUDIENCE_ROW.phone_number)
+      expect(body).toContain('Bob')
+      expect(body).toContain('Drag Bingo')
+      expect(body).toContain('Quiz Night')
+      expect(body).toContain('Saturday, 18 April 2026')
+      expect(body).toContain('reply with how many seats')
+      expect(body).not.toContain('http')
+      expect(options.metadata?.template_key).toBe('event_general_promo_14d')
+    })
+
+    it('falls back to "one of our events" when last_event_name is null', async () => {
+      const db = buildDbMock({ audienceRows: [GENERAL_AUDIENCE_ROW_NO_EVENT_NAME] })
+      mockCreateAdminClient.mockReturnValue(db as unknown as ReturnType<typeof createAdminClient>)
+      mockSendSMS.mockResolvedValue(makeSmsSuccess() as Awaited<ReturnType<typeof sendSMS>>)
+
+      await sendCrossPromoForEvent(FREE_EVENT)
+
+      const [, body] = mockSendSMS.mock.calls[0]
+      expect(body).toContain('one of our events')
+      expect(body).not.toContain('null')
+    })
+  })
+
+  describe('general audience — paid event', () => {
+    it('sends a general promo with a booking link for paid events', async () => {
+      const paidCapacityRow = { ...makeCapacityRow(20), event_id: PAID_EVENT.id }
+      const paidGeneralRow = {
+        ...GENERAL_AUDIENCE_ROW,
+        audience_type: 'general_recent' as const,
+      }
+      const db = buildDbMock({ capacityRows: [paidCapacityRow], audienceRows: [paidGeneralRow] })
+      mockCreateAdminClient.mockReturnValue(db as unknown as ReturnType<typeof createAdminClient>)
+      mockSendSMS.mockResolvedValue(makeSmsSuccess() as Awaited<ReturnType<typeof sendSMS>>)
+      mockGenerateSingleLink.mockResolvedValue({
+        id: 'link-001',
+        channel: 'sms_promo',
+        label: 'SMS Promo',
+        type: 'digital',
+        shortCode: 'spABC123',
+        shortUrl: 'https://the-anchor.pub/s/spABC123',
+        destinationUrl: 'https://www.the-anchor.pub/events/comedy-night',
+        utm: {},
+      })
+
+      const result = await sendCrossPromoForEvent(PAID_EVENT)
+
+      expect(result.sent).toBe(1)
+
+      const [, body, options] = mockSendSMS.mock.calls[0]
+      expect(body).toContain('Drag Bingo')
+      expect(body).toContain('https://the-anchor.pub/s/spABC123')
+      expect(body).not.toContain('reply with how many seats')
+      expect(options.metadata?.template_key).toBe('event_general_promo_14d_paid')
+    })
+  })
+
+  describe('mixed audience — category and general', () => {
+    it('uses correct template key for each audience type', async () => {
+      const mixedAudience = [AUDIENCE_ROW, GENERAL_AUDIENCE_ROW]
+      const db = buildDbMock({ audienceRows: mixedAudience })
+      mockCreateAdminClient.mockReturnValue(db as unknown as ReturnType<typeof createAdminClient>)
+      mockSendSMS.mockResolvedValue(makeSmsSuccess() as Awaited<ReturnType<typeof sendSMS>>)
+
+      const result = await sendCrossPromoForEvent(FREE_EVENT)
+
+      expect(result.sent).toBe(2)
+      expect(mockSendSMS).toHaveBeenCalledTimes(2)
+
+      // First call — category match
+      const [, body1, opts1] = mockSendSMS.mock.calls[0]
+      expect(opts1.metadata?.template_key).toBe('event_cross_promo_14d')
+      expect(body1).toContain('Alice')
+
+      // Second call — general recent
+      const [, body2, opts2] = mockSendSMS.mock.calls[1]
+      expect(opts2.metadata?.template_key).toBe('event_general_promo_14d')
+      expect(body2).toContain('Bob')
+      expect(body2).toContain('Drag Bingo')
+    })
+  })
+
+  describe('send loop safety', () => {
+    it('accepts an optional startTime and aborts when elapsed time exceeds budget', async () => {
+      const largeAudience = Array.from({ length: 30 }, (_, i) => ({
+        ...AUDIENCE_ROW,
+        customer_id: `cust-uuid-${i}`,
+        phone_number: `+4477009000${String(i).padStart(2, '0')}`,
+      }))
+      const db = buildDbMock({ audienceRows: largeAudience })
+      mockCreateAdminClient.mockReturnValue(db as unknown as ReturnType<typeof createAdminClient>)
+      mockSendSMS.mockResolvedValue(makeSmsSuccess() as Awaited<ReturnType<typeof sendSMS>>)
+
+      // startTime 250 seconds ago — should abort before finishing all 30
+      const startTime = Date.now() - 250_000
+      const result = await sendCrossPromoForEvent(FREE_EVENT, { startTime })
+
+      // Should have sent some but not all
+      expect(result.sent).toBeGreaterThan(0)
+      expect(result.sent).toBeLessThan(30)
+      expect(result.aborted).toBe(true)
     })
   })
 })

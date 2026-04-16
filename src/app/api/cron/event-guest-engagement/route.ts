@@ -50,7 +50,12 @@ const EVENT_ENGAGEMENT_TEMPLATE_KEYS = [
 const EVENT_PROMO_LOOKAHEAD_DAYS = parsePositiveIntEnv('EVENT_PROMO_LOOKAHEAD_DAYS', 14)
 const MAX_EVENT_PROMOS_PER_RUN = parsePositiveIntEnv('MAX_EVENT_PROMOS_PER_RUN', 100)
 const EVENT_PROMO_HOURLY_SEND_GUARD_LIMIT = parsePositiveIntEnv('EVENT_PROMO_HOURLY_SEND_GUARD_LIMIT', 120)
-const EVENT_PROMO_TEMPLATE_KEYS = ['event_cross_promo_14d', 'event_cross_promo_14d_paid'] as const
+const EVENT_PROMO_TEMPLATE_KEYS = [
+  'event_cross_promo_14d',
+  'event_cross_promo_14d_paid',
+  'event_general_promo_14d',
+  'event_general_promo_14d_paid',
+] as const
 
 type BookingWithRelations = {
   id: string
