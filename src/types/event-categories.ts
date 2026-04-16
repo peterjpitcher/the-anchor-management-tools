@@ -36,6 +36,8 @@ export interface EventCategory {
   default_doors_time?: string | null
   default_last_entry_time?: string | null
   default_booking_url?: string | null
+  default_promo_sms_enabled: boolean
+  default_bookings_enabled: boolean
   faqs?: Array<{
     question: string
     answer: string
