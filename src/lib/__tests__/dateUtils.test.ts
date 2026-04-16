@@ -9,6 +9,7 @@ import {
   formatDateDdMmmmYyyy,
   formatDateTime,
   formatDateWithTimeForSms,
+  startOfLondonDayUtc,
 } from '../dateUtils'
 
 afterEach(() => {
@@ -321,5 +322,30 @@ describe('formatDateWithTimeForSms', () => {
     // 2025-12-25 is Thursday
     const result = formatDateWithTimeForSms('2025-12-25T12:00:00Z', '12:00')
     expect(result).toContain('Thursday')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// startOfLondonDayUtc
+// ---------------------------------------------------------------------------
+
+describe('startOfLondonDayUtc', () => {
+  it('should return midnight UTC during GMT (winter)', () => {
+    // 15 Jan 2026 10:30 UTC — London is in GMT, so start of day = 00:00 UTC
+    const result = startOfLondonDayUtc(new Date('2026-01-15T10:30:00Z'))
+    expect(result.toISOString()).toBe('2026-01-15T00:00:00.000Z')
+  })
+
+  it('should return 23:00 UTC the previous day during BST (summer)', () => {
+    // 15 Jul 2026 10:30 UTC — London is in BST (UTC+1), so midnight London = 23:00 UTC on 14 Jul
+    const result = startOfLondonDayUtc(new Date('2026-07-15T10:30:00Z'))
+    expect(result.toISOString()).toBe('2026-07-14T23:00:00.000Z')
+  })
+
+  it('should handle just after midnight UTC during BST correctly', () => {
+    // 15 Jul 2026 00:30 UTC — in London this is 01:30 BST on 15 Jul
+    // Start of London day (15 Jul) = 23:00 UTC on 14 Jul
+    const result = startOfLondonDayUtc(new Date('2026-07-15T00:30:00Z'))
+    expect(result.toISOString()).toBe('2026-07-14T23:00:00.000Z')
   })
 })

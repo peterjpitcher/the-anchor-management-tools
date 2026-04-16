@@ -140,6 +140,29 @@ export function formatDateTime12Hour(date: string | Date): string {
   return `${dateStr} at ${timeStr}`
 }
 
+/**
+ * Returns the start of the current London calendar day as a UTC Date object.
+ * During GMT (winter): midnight London = midnight UTC (e.g. 2026-01-15T00:00:00Z)
+ * During BST (summer): midnight London = 23:00 UTC the previous day (e.g. 2026-07-14T23:00:00Z)
+ */
+export function startOfLondonDayUtc(now: Date = new Date()): Date {
+  const londonDate = toLocalIsoDate(now) // YYYY-MM-DD in London
+  // Start with midnight UTC on that London date
+  const midnightUtc = new Date(`${londonDate}T00:00:00Z`)
+  // Walk forward hour by hour from midnight UTC to find when London date starts
+  // During GMT: midnight UTC = midnight London (offset 0)
+  // During BST: 23:00 UTC previous day = midnight London (offset -1h)
+  // Check if one hour earlier is still the same London date
+  const oneHourBefore = new Date(midnightUtc.getTime() - 60 * 60 * 1000)
+  const dateOneHourBefore = toLocalIsoDate(oneHourBefore)
+  if (dateOneHourBefore === londonDate) {
+    // BST: one hour before midnight UTC is already this London date
+    // so the London day started at 23:00 UTC the previous day
+    return oneHourBefore
+  }
+  return midnightUtc
+}
+
 export function formatDateWithTimeForSms(date: string | Date, time?: string | null): string {
   const formattedDate = formatDateInLondon(date, {
     weekday: 'long',
