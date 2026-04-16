@@ -18,6 +18,11 @@ const EVENT_PROMO_MIN_CAPACITY = 10
 
 const TEMPLATE_CROSS_PROMO_FREE = 'event_cross_promo_14d'
 const TEMPLATE_CROSS_PROMO_PAID = 'event_cross_promo_14d_paid'
+const TEMPLATE_GENERAL_PROMO_FREE = 'event_general_promo_14d'
+const TEMPLATE_GENERAL_PROMO_PAID = 'event_general_promo_14d_paid'
+
+const SEND_LOOP_TIME_BUDGET_MS = 240_000 // 4 minutes — leave headroom for 300s cron timeout
+const SEND_LOOP_CHECK_INTERVAL = 25 // check every N recipients
 
 type CrossPromoAudienceRow = {
   customer_id: string
@@ -26,6 +31,8 @@ type CrossPromoAudienceRow = {
   phone_number: string
   last_event_category: string | null
   times_attended: number | null
+  audience_type: 'category_match' | 'general_recent'
+  last_event_name: string | null
 }
 
 type CapacitySnapshotRow = {
@@ -41,6 +48,7 @@ export type SendCrossPromoResult = {
   sent: number
   skipped: number
   errors: number
+  aborted?: boolean
 }
 
 function isPaidEvent(paymentMode: string): boolean {
@@ -66,6 +74,25 @@ function buildPaidMessage(
   return `The Anchor: ${firstName}! Loved having you at ${lastEventCategory} — ${eventName} is coming up on ${eventDate}. Fancy it? Grab your seats here: ${eventLink}`
 }
 
+function buildGeneralFreeMessage(
+  firstName: string,
+  lastEventName: string,
+  eventName: string,
+  eventDate: string
+): string {
+  return `The Anchor: ${firstName}! Had a great time at ${lastEventName}? ${eventName} is coming up on ${eventDate} — could be your kind of thing! Just reply with how many seats and you're sorted! Offer open for 48hrs.`
+}
+
+function buildGeneralPaidMessage(
+  firstName: string,
+  lastEventName: string,
+  eventName: string,
+  eventDate: string,
+  eventLink: string
+): string {
+  return `The Anchor: ${firstName}! Had a great time at ${lastEventName}? ${eventName} is coming up on ${eventDate} — could be your kind of thing! Grab your seats here: ${eventLink}`
+}
+
 async function sendSmsSafe(
   to: string,
   body: string,
@@ -87,13 +114,16 @@ async function sendSmsSafe(
   }
 }
 
-export async function sendCrossPromoForEvent(event: {
-  id: string
-  name: string
-  date: string
-  payment_mode: string
-  category_id: string | null
-}): Promise<SendCrossPromoResult> {
+export async function sendCrossPromoForEvent(
+  event: {
+    id: string
+    name: string
+    date: string
+    payment_mode: string
+    category_id: string | null
+  },
+  options?: { startTime?: number }
+): Promise<SendCrossPromoResult> {
   const db = createAdminClient()
   const stats: SendCrossPromoResult = { sent: 0, skipped: 0, errors: 0 }
 
@@ -190,19 +220,52 @@ export async function sendCrossPromoForEvent(event: {
   })
 
   const isPaid = isPaidEvent(event.payment_mode)
-  const templateKey = isPaid ? TEMPLATE_CROSS_PROMO_PAID : TEMPLATE_CROSS_PROMO_FREE
   const replyWindowExpiresAt = new Date(
     Date.now() + EVENT_PROMO_REPLY_WINDOW_HOURS * 60 * 60 * 1000
   ).toISOString()
 
   // 4. Send to each customer
   for (const recipient of audienceRows) {
-    const firstName = getSmartFirstName(recipient.first_name)
-    const lastEventCategory = recipient.last_event_category || 'our events'
+    // Elapsed-time safety check
+    if (
+      options?.startTime &&
+      stats.sent > 0 &&
+      stats.sent % SEND_LOOP_CHECK_INTERVAL === 0
+    ) {
+      const elapsed = Date.now() - options.startTime
+      if (elapsed > SEND_LOOP_TIME_BUDGET_MS) {
+        logger.warn('Cross-promo: aborting send loop — approaching cron timeout', {
+          metadata: {
+            eventId: event.id,
+            sent: stats.sent,
+            remaining: audienceRows.length - (stats.sent + stats.errors + stats.skipped),
+            elapsedMs: elapsed,
+          },
+        })
+        stats.aborted = true
+        break
+      }
+    }
 
-    const messageBody = isPaid
-      ? buildPaidMessage(firstName, lastEventCategory, event.name, eventDate, eventLink!)
-      : buildFreeMessage(firstName, lastEventCategory, event.name, eventDate)
+    const firstName = getSmartFirstName(recipient.first_name)
+    const isGeneral = recipient.audience_type === 'general_recent'
+    const lastEventName = recipient.last_event_name || 'one of our events'
+
+    let messageBody: string
+    let templateKey: string
+
+    if (isGeneral) {
+      templateKey = isPaid ? TEMPLATE_GENERAL_PROMO_PAID : TEMPLATE_GENERAL_PROMO_FREE
+      messageBody = isPaid
+        ? buildGeneralPaidMessage(firstName, lastEventName, event.name, eventDate, eventLink!)
+        : buildGeneralFreeMessage(firstName, lastEventName, event.name, eventDate)
+    } else {
+      const lastEventCategory = recipient.last_event_category || 'our events'
+      templateKey = isPaid ? TEMPLATE_CROSS_PROMO_PAID : TEMPLATE_CROSS_PROMO_FREE
+      messageBody = isPaid
+        ? buildPaidMessage(firstName, lastEventCategory, event.name, eventDate, eventLink!)
+        : buildFreeMessage(firstName, lastEventCategory, event.name, eventDate)
+    }
 
     const idempotencyKey = `${templateKey}_${recipient.customer_id}_${event.id}`
     const smsResult = await sendSmsSafe(recipient.phone_number, messageBody, {
