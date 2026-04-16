@@ -203,7 +203,7 @@ export async function sendWaitlistOfferSms(
 
   const { data: eventRow, error: eventError } = await supabase
     .from('events')
-    .select('name, start_datetime, date, time')
+    .select('name, start_datetime, date, time, promo_sms_enabled')
     .eq('id', offer.event_id)
     .maybeSingle()
 
@@ -231,6 +231,11 @@ export async function sendWaitlistOfferSms(
       },
     })
     return { success: false, reason: 'event_not_found' }
+  }
+
+  // Skip SMS but report success — the offer record was already created by the RPC
+  if (eventRow.promo_sms_enabled === false) {
+    return { success: true, reason: 'promo_sms_disabled' }
   }
 
   const eventStartDateTimeIso = resolveEventStartDateTimeIso(eventRow, offer.event_start_datetime ?? null)

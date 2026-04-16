@@ -46,6 +46,18 @@ export async function GET(request: NextRequest) {
 
     for (const eventId of uniqueEventIds) {
       try {
+        // Check bookings_enabled before creating an offer
+        const { data: eventFlags } = await supabase
+          .from('events')
+          .select('bookings_enabled')
+          .eq('id', eventId)
+          .maybeSingle()
+
+        if (eventFlags?.bookings_enabled === false) {
+          result.skipped += 1
+          continue
+        }
+
         const offerResult = await createNextWaitlistOffer(supabase, eventId)
 
         if (offerResult.state !== 'offered') {
