@@ -1686,10 +1686,9 @@ async function processFollowUps(
         name: event.name,
         date: event.date,
         payment_mode: event.payment_mode ?? 'free',
-        category_id: event.category_id,
       },
-      eligible,
-      touchType
+      touchType,
+      eligible
     )
 
     result.sent += eventResult.sent
