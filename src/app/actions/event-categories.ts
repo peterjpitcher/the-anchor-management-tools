@@ -126,6 +126,8 @@ const categorySchema = z.object({
   image_alt_text: z.string().max(200).nullable().optional(),
   cancellation_policy: z.string().max(300).nullable().optional(),
   accessibility_notes: z.string().max(300).nullable().optional(),
+  default_promo_sms_enabled: z.boolean().optional(),
+  default_bookings_enabled: z.boolean().optional(),
 })
 
 const ACTIVE_CATEGORY_FILTER = 'is_active.eq.true,is_active.is.null'
