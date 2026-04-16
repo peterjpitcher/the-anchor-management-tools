@@ -101,6 +101,10 @@ export function EventFormGrouped({ event, categories, onSubmit, onCancel, active
   const [imageUrl, setImageUrl] = useState(event?.hero_image_url ?? '')
   const [brief, setBrief] = useState(event?.brief ?? '')
 
+  // Visibility & communications
+  const [promoSmsEnabled, setPromoSmsEnabled] = useState(event?.promo_sms_enabled ?? true)
+  const [bookingsEnabled, setBookingsEnabled] = useState(event?.bookings_enabled ?? true)
+
   // SEO and content fields
   const [slug, setSlug] = useState(event?.slug ?? '')
   const [shortDescription, setShortDescription] = useState(event?.short_description ?? '')
@@ -215,6 +219,9 @@ export function EventFormGrouped({ event, categories, onSubmit, onCancel, active
         duration_minutes: durationMinutes && durationMinutes !== '' ? parseInt(durationMinutes) : null,
         last_entry_time: lastEntryTime || null,
         brief: brief.trim() ? brief.trim() : null,
+        // Visibility & communications
+        promo_sms_enabled: promoSmsEnabled,
+        bookings_enabled: bookingsEnabled,
         // Only include FAQs when they have been explicitly modified
         ...(faqsModified ? { faqs } : {}),
       }
@@ -342,6 +349,15 @@ export function EventFormGrouped({ event, categories, onSubmit, onCancel, active
       }
       if (!bookingUrl && selectedCategory.default_booking_url) {
         setBookingUrl(selectedCategory.default_booking_url)
+      }
+      // Apply SMS and bookings defaults from category (only for new events)
+      if (!event) {
+        if (selectedCategory.default_promo_sms_enabled !== undefined) {
+          setPromoSmsEnabled(selectedCategory.default_promo_sms_enabled)
+        }
+        if (selectedCategory.default_bookings_enabled !== undefined) {
+          setBookingsEnabled(selectedCategory.default_bookings_enabled)
+        }
       }
       // Generate a slug for the event if not already set
       if (!slug && selectedCategory.name && date) {
@@ -1066,6 +1082,69 @@ export function EventFormGrouped({ event, categories, onSubmit, onCancel, active
         </div>
       </CollapsibleSection>
 
+
+      {/* Visibility & Communications */}
+      <CollapsibleSection
+        title="Visibility & Communications"
+        description="Control SMS and booking availability"
+        icon={MegaphoneIcon}
+        defaultOpen={!promoSmsEnabled || !bookingsEnabled}
+      >
+        <div className="space-y-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <label htmlFor="promo-sms-toggle" className="text-sm font-medium text-gray-900">
+                Promotional SMS
+              </label>
+              <p className="text-sm text-gray-500">
+                Send automated reminders, review requests, and cross-promo SMS for this event
+              </p>
+            </div>
+            <button
+              id="promo-sms-toggle"
+              type="button"
+              role="switch"
+              aria-checked={promoSmsEnabled}
+              onClick={() => setPromoSmsEnabled(!promoSmsEnabled)}
+              className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-indigo-600 focus:ring-offset-2 ${promoSmsEnabled ? 'bg-indigo-600' : 'bg-gray-200'}`}
+            >
+              <span className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${promoSmsEnabled ? 'translate-x-5' : 'translate-x-0'}`} />
+            </button>
+          </div>
+
+          <div className="flex items-center justify-between">
+            <div>
+              <label htmlFor="bookings-toggle" className="text-sm font-medium text-gray-900">
+                Accept bookings
+              </label>
+              <p className="text-sm text-gray-500">
+                Allow customers to book this event on the public site
+              </p>
+            </div>
+            <button
+              id="bookings-toggle"
+              type="button"
+              role="switch"
+              aria-checked={bookingsEnabled}
+              onClick={() => setBookingsEnabled(!bookingsEnabled)}
+              className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-indigo-600 focus:ring-offset-2 ${bookingsEnabled ? 'bg-indigo-600' : 'bg-gray-200'}`}
+            >
+              <span className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${bookingsEnabled ? 'translate-x-5' : 'translate-x-0'}`} />
+            </button>
+          </div>
+
+          {!bookingsEnabled && (
+            <div className="rounded-md bg-blue-50 p-4">
+              <div className="flex">
+                <InformationCircleIcon className="h-5 w-5 text-blue-400" aria-hidden="true" />
+                <p className="ml-3 text-sm text-blue-700">
+                  Bookings are turned off — this event won&apos;t appear in booking flows on the public site. Staff can still create bookings manually.
+                </p>
+              </div>
+            </div>
+          )}
+        </div>
+      </CollapsibleSection>
 
       {/* Form Actions */}
       <div className="sticky bottom-0 -mx-4 sm:mx-0 px-4 sm:px-0 py-4 bg-white border-t sm:border-0 sm:relative sm:py-0 z-10">
