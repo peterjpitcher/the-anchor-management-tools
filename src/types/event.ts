@@ -32,6 +32,8 @@ export interface Event {
   promo_video_url: string | null
   highlight_video_urls: string[] | null
   faqs: any | null // JSONB field
+  promo_sms_enabled: boolean
+  bookings_enabled: boolean
   created_at: string
   updated_at: string
   category?: EventCategory
@@ -64,6 +66,8 @@ export interface EventCategory {
   default_doors_time: string | null
   default_last_entry_time: string | null
   default_booking_url: string | null
+  default_promo_sms_enabled: boolean
+  default_bookings_enabled: boolean
   faqs: any | null // JSONB field
   sort_order: number
   is_active: boolean
@@ -104,4 +108,6 @@ export interface EventFormData {
   promo_video_url?: string
   highlight_video_urls?: string[]
   faqs?: any[]
+  promo_sms_enabled?: boolean
+  bookings_enabled?: boolean
 }
