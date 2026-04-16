@@ -113,7 +113,7 @@ export async function POST(request: NextRequest) {
     try {
       const { data: eventRow, error: eventLookupError } = await supabase
         .from('events')
-        .select('id, name, date, start_datetime, booking_mode')
+        .select('id, name, date, start_datetime, booking_mode, bookings_enabled')
         .eq('id', parsed.data.event_id)
         .maybeSingle()
 
@@ -123,6 +123,14 @@ export async function POST(request: NextRequest) {
 
       if (!eventRow) {
         return createErrorResponse('Selected event could not be found', 'NOT_FOUND', 404)
+      }
+
+      if (eventRow.bookings_enabled === false) {
+        return createErrorResponse(
+          'Bookings are not currently available for this event',
+          'BOOKINGS_DISABLED',
+          409
+        )
       }
 
       if (
