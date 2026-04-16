@@ -8,7 +8,8 @@ import { sendSMS } from '@/lib/twilio'
 import { getSmartFirstName } from '@/lib/sms/bulk'
 import { createEventManageToken } from '@/lib/events/manage-booking'
 import { createGuestToken } from '@/lib/guest/tokens'
-import { sendCrossPromoForEvent } from '@/lib/sms/cross-promo'
+import { sendCrossPromoForEvent, sendFollowUpForEvent, hasReachedDailyPromoLimit } from '@/lib/sms/cross-promo'
+import type { FollowUpRecipient } from '@/lib/sms/cross-promo'
 import { getGoogleReviewLink } from '@/lib/events/review-link'
 import { recordAnalyticsEvent } from '@/lib/analytics/events'
 import { persistCronRunResult, recoverCronRunLock } from '@/lib/cron-run-results'
@@ -55,6 +56,10 @@ const EVENT_PROMO_TEMPLATE_KEYS = [
   'event_cross_promo_14d_paid',
   'event_general_promo_14d',
   'event_general_promo_14d_paid',
+  'event_reminder_promo_7d',
+  'event_reminder_promo_7d_paid',
+  'event_reminder_promo_3d',
+  'event_reminder_promo_3d_paid',
 ] as const
 
 type BookingWithRelations = {
@@ -1572,6 +1577,131 @@ async function loadUpcomingEventsForPromo(
   return (data || []) as UpcomingPromoEvent[]
 }
 
+async function loadFollowUpEvents(
+  supabase: ReturnType<typeof createAdminClient>,
+  daysAheadMin: number,
+  daysAheadMax: number
+): Promise<UpcomingPromoEvent[]> {
+  const nowMs = Date.now()
+  const windowStartIso = new Date(nowMs + daysAheadMin * 24 * 60 * 60 * 1000)
+    .toISOString()
+    .slice(0, 10)
+  const windowEndIso = new Date(nowMs + daysAheadMax * 24 * 60 * 60 * 1000)
+    .toISOString()
+    .slice(0, 10)
+
+  const { data, error } = await supabase
+    .from('events')
+    .select('id, name, date, payment_mode, category_id')
+    .eq('booking_open', true)
+    .eq('event_status', 'scheduled')
+    .gte('date', windowStartIso)
+    .lte('date', windowEndIso)
+    .not('category_id', 'is', null)
+    .order('date', { ascending: true })
+    .limit(50)
+
+  if (error) {
+    throw error
+  }
+
+  return (data || []) as UpcomingPromoEvent[]
+}
+
+async function processFollowUps(
+  supabase: ReturnType<typeof createAdminClient>,
+  touchType: '7d' | '3d',
+  daysAheadMin: number,
+  daysAheadMax: number,
+  minGapDays: number,
+  runStartMs: number,
+  remainingBudget: { value: number }
+): Promise<{ sent: number; skipped: number; errors: number; eventsProcessed: number }> {
+  const result = { sent: 0, skipped: 0, errors: 0, eventsProcessed: 0 }
+
+  // Guard: skip if too close to the Vercel function timeout (300s)
+  const elapsedSeconds = (Date.now() - runStartMs) / 1000
+  if (elapsedSeconds > 240) {
+    logger.warn(`Follow-up ${touchType} stage skipped: elapsed time exceeds 240s safety threshold`, {
+      metadata: { touchType, elapsedSeconds }
+    })
+    return result
+  }
+
+  const events = await loadFollowUpEvents(supabase, daysAheadMin, daysAheadMax)
+
+  const minGapIso = `${minGapDays} days`
+
+  for (const event of events) {
+    if (remainingBudget.value <= 0) {
+      logger.info(`Follow-up ${touchType}: shared promo budget exhausted`, {
+        metadata: { touchType, eventsProcessed: result.eventsProcessed }
+      })
+      break
+    }
+
+    // Check elapsed time within the loop
+    const loopElapsed = (Date.now() - runStartMs) / 1000
+    if (loopElapsed > 240) {
+      logger.warn(`Follow-up ${touchType}: stopping mid-loop, elapsed time exceeds 240s`, {
+        metadata: { touchType, elapsedSeconds: loopElapsed, eventsProcessed: result.eventsProcessed }
+      })
+      break
+    }
+
+    // Fetch follow-up recipients via RPC
+    const { data: recipients, error: rpcError } = await supabase.rpc(
+      'get_follow_up_recipients',
+      { p_event_id: event.id, p_touch_type: touchType, p_min_gap_iso: minGapIso }
+    )
+
+    if (rpcError) {
+      logger.warn(`Follow-up ${touchType}: RPC error for event ${event.id}`, {
+        metadata: { eventId: event.id, error: rpcError.message }
+      })
+      result.errors += 1
+      result.eventsProcessed += 1
+      continue
+    }
+
+    // Filter out customers who have already received a promo today
+    const eligible: FollowUpRecipient[] = []
+    for (const r of (recipients || []) as FollowUpRecipient[]) {
+      const limitReached = await hasReachedDailyPromoLimit(supabase, r.customer_id)
+      if (limitReached) {
+        result.skipped += 1
+      } else {
+        eligible.push(r)
+      }
+    }
+
+    if (eligible.length === 0) {
+      result.eventsProcessed += 1
+      continue
+    }
+
+    const eventResult = await sendFollowUpForEvent(
+      {
+        id: event.id,
+        name: event.name,
+        date: event.date,
+        payment_mode: event.payment_mode ?? 'free',
+        category_id: event.category_id,
+      },
+      eligible,
+      touchType
+    )
+
+    result.sent += eventResult.sent
+    result.skipped += eventResult.skipped
+    result.errors += eventResult.errors
+    result.eventsProcessed += 1
+    remainingBudget.value -= eventResult.sent
+  }
+
+  return result
+}
+
 async function processCrossPromo(
   supabase: ReturnType<typeof createAdminClient>,
   runStartMs: number
@@ -1749,13 +1879,27 @@ export async function GET(request: NextRequest) {
     const tableReviews = await processTableReviewFollowups(supabase, tableBookings, appBaseUrl, safetyState)
     const tableCompletion = await processTableReviewWindowCompletion(supabase)
 
-    // Stage 3: Cross-promotion (marketing — runs last, after all transactional stages)
+    // Stage 3: Multi-touch follow-ups + cross-promotion (marketing — runs last, after all transactional stages)
+    const promoBudget = { value: MAX_EVENT_PROMOS_PER_RUN }
+
+    // 3d follow-ups (highest priority)
+    const followUp3d = await processFollowUps(supabase, '3d', 2, 4, 7, runStartMs, promoBudget)
+
+    // 7d follow-ups
+    const followUp7d = await processFollowUps(supabase, '7d', 6, 8, 3, runStartMs, promoBudget)
+
+    // 14d new intros (lowest priority)
     const crossPromo = await processCrossPromo(supabase, runStartMs)
 
     // Cleanup: remove sms_promo_context rows older than 30 days
     await supabase.from('sms_promo_context' as never)
       .delete()
       .lt('created_at', new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString())
+
+    // Cleanup: remove promo_sequence rows older than 14 days
+    await supabase.from('promo_sequence' as never)
+      .delete()
+      .lt('created_at', new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString())
 
     resolvedStatus = 'completed'
     return NextResponse.json({
@@ -1766,6 +1910,8 @@ export async function GET(request: NextRequest) {
       tableReviews,
       tableCompletion,
       marketing,
+      followUp3d,
+      followUp7d,
       crossPromo,
       runKey,
       guard,
