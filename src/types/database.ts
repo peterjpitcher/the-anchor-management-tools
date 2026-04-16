@@ -41,6 +41,8 @@ export interface Event {
   facebook_event_description?: string | null;
   gbp_event_title?: string | null;
   gbp_event_description?: string | null;
+  promo_sms_enabled?: boolean;
+  bookings_enabled?: boolean;
 }
 
 export type PerformerSubmissionStatus =
