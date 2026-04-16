@@ -79,6 +79,7 @@ type BookingWithRelations = {
     date: string | null
     time: string | null
     event_status?: string | null
+    promo_sms_enabled?: boolean | null
   } | null
   customer: {
     id: string
@@ -634,7 +635,8 @@ async function loadEventBookingsForEngagement(
         start_datetime,
         date,
         time,
-        event_status
+        event_status,
+        promo_sms_enabled
       ),
       customer:customers(
         id,
@@ -759,6 +761,11 @@ async function processReminders(
     }
 
     if (event.event_status && ['cancelled', 'draft'].includes(event.event_status)) {
+      result.skipped += 1
+      continue
+    }
+
+    if (event.promo_sms_enabled === false) {
       result.skipped += 1
       continue
     }
@@ -900,6 +907,11 @@ async function processReviewFollowups(
     const event = booking.event
     const eventStartIso = resolveEventStartIso(event)
     if (!customer || !event || !eventStartIso || !customer.mobile_number || customer.sms_status !== 'active') {
+      result.skipped += 1
+      continue
+    }
+
+    if (event.promo_sms_enabled === false) {
       result.skipped += 1
       continue
     }
@@ -1564,6 +1576,7 @@ async function loadUpcomingEventsForPromo(
     .from('events')
     .select('id, name, date, payment_mode, category_id')
     .eq('booking_open', true)
+    .eq('promo_sms_enabled', true)
     .gte('date', nowIso.slice(0, 10))
     .lte('date', windowEndIso.slice(0, 10))
     .not('category_id', 'is', null)
@@ -1594,6 +1607,7 @@ async function loadFollowUpEvents(
     .from('events')
     .select('id, name, date, payment_mode, category_id')
     .eq('booking_open', true)
+    .eq('promo_sms_enabled', true)
     .eq('event_status', 'scheduled')
     .gte('date', windowStartIso)
     .lte('date', windowEndIso)
