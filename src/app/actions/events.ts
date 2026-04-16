@@ -89,7 +89,9 @@ async function prepareEventDataFromFormData(formData: FormData, _existingEventId
         gallery_image_urls,
         default_performer_type,
         default_event_status,
-        default_booking_url
+        default_booking_url,
+        default_promo_sms_enabled,
+        default_bookings_enabled
       `)
       .eq('id', categoryId)
       .single();
@@ -120,7 +122,9 @@ async function prepareEventDataFromFormData(formData: FormData, _existingEventId
         gallery_image_urls: category.gallery_image_urls,
         performer_type: category.default_performer_type,
         event_status: category.default_event_status || 'scheduled',
-        booking_url: category.default_booking_url
+        booking_url: category.default_booking_url,
+        promo_sms_enabled: category.default_promo_sms_enabled,
+        bookings_enabled: category.default_bookings_enabled
       };
     }
   }
@@ -179,7 +183,9 @@ async function prepareEventDataFromFormData(formData: FormData, _existingEventId
     poster_image_url: rawData.poster_image_url as string || null,
     promo_video_url: rawData.promo_video_url as string || categoryDefaults.promo_video_url || null,
     highlight_video_urls: rawData.highlight_video_urls ? JSON.parse(rawData.highlight_video_urls as string) : categoryDefaults.highlight_video_urls || [],
-    gallery_image_urls: rawData.gallery_image_urls ? JSON.parse(rawData.gallery_image_urls as string) : categoryDefaults.gallery_image_urls || []
+    gallery_image_urls: rawData.gallery_image_urls ? JSON.parse(rawData.gallery_image_urls as string) : categoryDefaults.gallery_image_urls || [],
+    promo_sms_enabled: rawData.promo_sms_enabled === 'true' ? true : rawData.promo_sms_enabled === 'false' ? false : categoryDefaults.promo_sms_enabled ?? true,
+    bookings_enabled: rawData.bookings_enabled === 'true' ? true : rawData.bookings_enabled === 'false' ? false : categoryDefaults.bookings_enabled ?? true
   };
 
   // Derive flat keywords as union of three tiers (primary > secondary > local)
