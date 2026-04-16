@@ -125,6 +125,8 @@ export interface CategoryFormData {
   default_doors_time?: string
   default_last_entry_time?: string
   default_booking_url?: string
+  default_promo_sms_enabled?: boolean
+  default_bookings_enabled?: boolean
   faqs?: Array<{
     question: string
     answer: string

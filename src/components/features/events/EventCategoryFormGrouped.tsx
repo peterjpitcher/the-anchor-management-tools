@@ -111,8 +111,10 @@ export function EventCategoryFormGrouped({ category, onSubmit, onCancel }: Event
   const [defaultDoorsTime, setDefaultDoorsTime] = useState(category?.default_doors_time ?? '')
   const [defaultLastEntryTime, setDefaultLastEntryTime] = useState(category?.default_last_entry_time?.substring(0, 5) ?? '')
   const [defaultBookingUrl, setDefaultBookingUrl] = useState(category?.default_booking_url ?? '')
-  
-  
+  const [defaultPromoSmsEnabled, setDefaultPromoSmsEnabled] = useState(category?.default_promo_sms_enabled ?? true)
+  const [defaultBookingsEnabled, setDefaultBookingsEnabled] = useState(category?.default_bookings_enabled ?? true)
+
+
   // Keyword strategy fields
   const [primaryKeywords, setPrimaryKeywords] = useState(keywordsToDisplay((category as any)?.primary_keywords))
   const [secondaryKeywords, setSecondaryKeywords] = useState(keywordsToDisplay((category as any)?.secondary_keywords))
@@ -169,6 +171,8 @@ export function EventCategoryFormGrouped({ category, onSubmit, onCancel }: Event
         default_doors_time: defaultDoorsTime.trim() || undefined,
         default_last_entry_time: defaultLastEntryTime || undefined,
         default_booking_url: defaultBookingUrl.trim() || undefined,
+        default_promo_sms_enabled: defaultPromoSmsEnabled,
+        default_bookings_enabled: defaultBookingsEnabled,
         // Keyword strategy fields
         primary_keywords: parseKeywords(primaryKeywords),
         secondary_keywords: parseKeywords(secondaryKeywords),
@@ -476,6 +480,44 @@ export function EventCategoryFormGrouped({ category, onSubmit, onCancel }: Event
                 fullWidth
               />
             </div>
+          </div>
+
+          <div className="col-span-full flex items-center justify-between pt-4 border-t border-gray-200">
+            <div>
+              <label htmlFor="default-promo-sms" className="text-sm font-medium text-gray-900">
+                Default promotional SMS
+              </label>
+              <p className="text-xs text-gray-500">New events in this category will inherit this setting</p>
+            </div>
+            <button
+              id="default-promo-sms"
+              type="button"
+              role="switch"
+              aria-checked={defaultPromoSmsEnabled}
+              onClick={() => setDefaultPromoSmsEnabled(!defaultPromoSmsEnabled)}
+              className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-indigo-600 focus:ring-offset-2 ${defaultPromoSmsEnabled ? 'bg-indigo-600' : 'bg-gray-200'}`}
+            >
+              <span className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${defaultPromoSmsEnabled ? 'translate-x-5' : 'translate-x-0'}`} />
+            </button>
+          </div>
+
+          <div className="col-span-full flex items-center justify-between">
+            <div>
+              <label htmlFor="default-bookings" className="text-sm font-medium text-gray-900">
+                Default accept bookings
+              </label>
+              <p className="text-xs text-gray-500">New events in this category will inherit this setting</p>
+            </div>
+            <button
+              id="default-bookings"
+              type="button"
+              role="switch"
+              aria-checked={defaultBookingsEnabled}
+              onClick={() => setDefaultBookingsEnabled(!defaultBookingsEnabled)}
+              className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-indigo-600 focus:ring-offset-2 ${defaultBookingsEnabled ? 'bg-indigo-600' : 'bg-gray-200'}`}
+            >
+              <span className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${defaultBookingsEnabled ? 'translate-x-5' : 'translate-x-0'}`} />
+            </button>
           </div>
 
           <div className="col-span-full">
