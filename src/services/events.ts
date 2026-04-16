@@ -59,6 +59,8 @@ export type CreateEventInput = {
   highlight_video_urls?: string[];
   gallery_image_urls?: string[];
   faqs?: Array<{ question: string; answer: string; sort_order?: number }>;
+  promo_sms_enabled?: boolean;
+  bookings_enabled?: boolean;
 };
 
 export type UpdateEventInput = Partial<CreateEventInput>;
@@ -348,7 +350,9 @@ export const eventSchema = z.object({
       }
     })
   }),
-  faqs: z.array(eventFaqSchema).default([])
+  faqs: z.array(eventFaqSchema).default([]),
+  promo_sms_enabled: z.boolean().optional(),
+  bookings_enabled: z.boolean().optional()
 })
 
 export class EventService {
