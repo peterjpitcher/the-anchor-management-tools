@@ -54,7 +54,12 @@ export function ScheduleCalendarWeek({
     )
 
     const sortedEntries = useMemo(() => [...entries].sort(compareEntries), [entries])
-    const allDayBand = sortedEntries.filter((e) => e.allDay)
+    // The all-day band only shows entries that actually intersect the visible
+    // week. Without this filter the band balloons to every all-day note in the
+    // whole dataset (bank holidays etc.), dominating the view.
+    const allDayBand = sortedEntries.filter(
+        (e) => e.allDay && e.end >= weekStart && e.start < weekEnd
+    )
     const timedEntries = sortedEntries.filter((e) => !e.allDay)
 
     function entriesForDay(day: Date) {

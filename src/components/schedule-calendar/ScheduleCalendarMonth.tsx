@@ -80,12 +80,15 @@ export function ScheduleCalendarMonth({
     }, [firstDayOfWeek])
 
     return (
-        <div className="flex flex-col gap-px bg-border rounded-md overflow-hidden">
-            <div className="grid grid-cols-7 gap-px bg-border">
-                {weekDayNames.map((name) => (
+        <div className="flex flex-col border border-gray-300 rounded-md overflow-hidden bg-white">
+            <div className="grid grid-cols-7 border-b border-gray-300 bg-gray-100">
+                {weekDayNames.map((name, i) => (
                     <div
                         key={name}
-                        className="bg-muted px-2 py-2 text-xs font-medium text-foreground text-center"
+                        className={cn(
+                            'px-2 py-2 text-xs font-semibold text-gray-700 text-center',
+                            i > 0 && 'border-l border-gray-300'
+                        )}
                     >
                         {name}
                     </div>
@@ -95,10 +98,16 @@ export function ScheduleCalendarMonth({
             {weeks.map((week, wi) => {
                 const bands = bandsForWeek(week)
                 return (
-                    <div key={wi} className="grid grid-cols-7 gap-px bg-border">
+                    <div
+                        key={wi}
+                        className={cn(
+                            'grid grid-cols-7',
+                            wi > 0 && 'border-t border-gray-300'
+                        )}
+                    >
                         {/* All-day band track */}
                         {bands.length > 0 && (
-                            <div className="col-span-7 bg-background px-1 py-1 flex flex-col gap-1">
+                            <div className="col-span-7 bg-white px-1 py-1 flex flex-col gap-1 border-b border-gray-200">
                                 {bands.map(({ entry, startCol, span }) => {
                                     const isMuted =
                                         entry.status === 'cancelled' ||
@@ -134,15 +143,16 @@ export function ScheduleCalendarMonth({
                         )}
 
                         {/* Day cells */}
-                        {week.map((day) => {
+                        {week.map((day, di) => {
                             const dayEntries = entriesForDay(day)
                             const inMonth = isSameMonth(day, anchor)
                             return (
                                 <div
                                     key={day.toISOString()}
                                     className={cn(
-                                        'bg-background p-1 flex flex-col gap-1 min-h-[80px]',
-                                        !inMonth && 'bg-muted/40 text-muted-foreground'
+                                        'bg-white p-1 flex flex-col gap-1 min-h-[80px]',
+                                        di > 0 && 'border-l border-gray-200',
+                                        !inMonth && 'bg-gray-50 text-gray-400'
                                     )}
                                 >
                                     <div className="flex items-center justify-between">
@@ -200,25 +210,23 @@ function EntryBlock({ entry, onClick, renderTooltip }: EntryBlockProps) {
 
     const content = (
         <>
-            <div className="flex items-center gap-1">
-                {!entry.allDay && (
-                    <span className="font-semibold">{format(entry.start, 'HH:mm')}</span>
+            {!entry.allDay && (
+                <div className="font-semibold leading-tight">{format(entry.start, 'HH:mm')}</div>
+            )}
+            <div
+                data-entry-title
+                className={cn(
+                    'whitespace-normal break-words leading-tight',
+                    isCancelled && 'line-through'
                 )}
-                <span
-                    data-entry-title
-                    className={cn(
-                        'flex-1 whitespace-normal break-words',
-                        isCancelled && 'line-through'
-                    )}
-                >
-                    {entry.title}
-                </span>
+            >
+                {entry.title}
             </div>
             {entry.subtitle && (
-                <div className="text-muted-foreground text-[11px]">{entry.subtitle}</div>
+                <div className="text-muted-foreground text-[11px] leading-tight">{entry.subtitle}</div>
             )}
             {entry.endsNextDay && (
-                <div className="text-muted-foreground text-[10px]">+1 day</div>
+                <div className="text-muted-foreground text-[10px] leading-tight">+1 day</div>
             )}
         </>
     )
