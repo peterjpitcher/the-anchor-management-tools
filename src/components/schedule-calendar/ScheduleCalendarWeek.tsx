@@ -6,6 +6,7 @@ import { addDays, startOfWeek, isSameDay, format } from 'date-fns'
 import { cn } from '@/lib/utils'
 import type { CalendarEntry } from './types'
 import { computeWeekHourRange } from './hour-range'
+import { compareEntries } from './sort'
 
 export interface ScheduleCalendarWeekProps {
     entries: CalendarEntry[]
@@ -32,7 +33,18 @@ export function ScheduleCalendarWeek({
         [weekStart]
     )
 
-    const { startHour, endHour } = useMemo(() => computeWeekHourRange(entries), [entries])
+    // Scope auto-extend to the visible week only so a single outlier entry in
+    // another week doesn't widen every other week's hour range.
+    const weekEnd = useMemo(() => addDays(weekStart, 7), [weekStart])
+    const entriesInVisibleWeek = useMemo(
+        () => entries.filter((e) => e.start >= weekStart && e.start < weekEnd),
+        [entries, weekStart, weekEnd]
+    )
+
+    const { startHour, endHour } = useMemo(
+        () => computeWeekHourRange(entriesInVisibleWeek),
+        [entriesInVisibleWeek]
+    )
     // Hour labels are inclusive of both startHour and endHour — the baseline
     // 12..23 renders 12 labels (12:00 through 23:00) so the gutter reads end
     // to end without a hidden final hour.
@@ -41,8 +53,9 @@ export function ScheduleCalendarWeek({
         [startHour, endHour]
     )
 
-    const allDayBand = entries.filter((e) => e.allDay)
-    const timedEntries = entries.filter((e) => !e.allDay)
+    const sortedEntries = useMemo(() => [...entries].sort(compareEntries), [entries])
+    const allDayBand = sortedEntries.filter((e) => e.allDay)
+    const timedEntries = sortedEntries.filter((e) => !e.allDay)
 
     function entriesForDay(day: Date) {
         // Overnight entries render on their start day only. isSameDay enforces

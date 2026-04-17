@@ -1,0 +1,79 @@
+You are the WORKFLOW & FAILURE-PATH REVIEWER for the calendar redesign implementation (commits `c4f304ea..49f8d035`). Read the reality map at `tasks/codex-qa-review/2026-04-17-calendar-redesign-impl-reality-mapper-report.md` first if present.
+
+**FOCUS** — real-world failure behaviour in the implemented code, not the spec. Priorities:
+
+1. Failure states and error paths
+2. Partial completion / rollback gaps
+3. Retry + idempotency
+4. Duplicated actions
+5. Stale / cached data
+6. Empty states
+7. Race conditions
+8. Cancellation / cleanup
+9. Integration boundaries
+10. User workflows that look complete but fail
+
+**SPECIFIC AREAS TO PROBE IN THE IMPLEMENTATION**
+
+1. **List view anchor with real data**
+   - Events page has a scrollable shell already (`AuthenticatedLayout` has an overflow container). Does the list view's `scrollIntoView` target move the page shell instead of the list container? Trace the render tree on `/events` and say whether the anchor lands correctly.
+   - If user filters the list (attention-needed toggle) while scrolled into past, does the anchor jump back to Today? Should it?
+   - `router.refresh()` after Add-Note creates: does the list lose its scroll position because the anchor refires?
+
+2. **Month/Week entry clicks**
+   - `onEntryClick` is wired to `router.push(entry.onClickHref)`. What about `cmd-click` / middle-click for "open in new tab"? The original used `<a href>` which preserves this; does the new implementation?
+   - Click handler inside `<a>` calls `preventDefault()` only when `onEntryClick` is supplied. Walk through the exact code path and confirm.
+
+3. **Mobile fallback**
+   - `useMediaQuery('(max-width: 639px)')` — does this return true on server render or does it default to false causing a mobile-desktop hydration mismatch?
+   - If user resizes the browser across 640px mid-session, does the switcher re-appear cleanly? Does state reset?
+
+4. **Overnight bookings**
+   - A booking 23:30-01:30 with `end_time_next_day: true`. What does the month view render? What does the week view render (within a day column)? What does the list view show — one row or two?
+   - A booking 14:00-20:00 with `end_time_next_day: false` on a 90-day-ago date: does the past list include it? With guest count? Cancelled styling if cancelled?
+
+5. **`bookedSeatsCount` aggregation correctness**
+   - The query is `status = 'confirmed'` only. But some flows mark bookings as `completed` / `attended` after the fact — are those still countable? Grep the code for any post-event status changes that would make today's count disappear tomorrow.
+   - Does the aggregation count `seats` as `SUM`, or count rows? Does it handle `NULL` seats correctly? Do any rows have `seats = 0` that shouldn't count?
+
+6. **Revalidation paths**
+   - Booking created via the webhook (Stripe/PayPal): does that path trigger revalidation? Grep for `createBooking` / `confirmBooking` usages in webhook handlers.
+   - Private-booking payment mutations (recordDepositPayment etc.) — were they deliberately excluded from revalidation? Does that cause calendar-entry identity/fields to go stale?
+
+7. **Dashboard data windows**
+   - Past private bookings capped at 50. What does the user see when they scroll to the 50th past entry and keep scrolling — a wall?
+   - Past parking capped at 50. Same question.
+   - Is there any "showing last N" affordance or does the list silently end?
+
+8. **Permission edge cases**
+   - Legend derives from "permitted kinds that exist in the data". What if a permitted user has zero events in the window — does Events vanish from the legend? Is that desired?
+   - `canCreateCalendarNote` gates the empty-day click. Does the day-number button still render for users without the permission? Can they click it with no effect?
+
+9. **DST days**
+   - UK DST transitions: last Sunday in March (23-hour day) and last Sunday in October (25-hour day). A 02:00 event on those days — does it render at the right position in the week grid, or is it off by an hour?
+
+10. **Empty data scenarios**
+    - Dashboard with zero events, zero private bookings, zero parking: does the list show a synthetic Today header only, with no past groups, no future groups?
+    - Month view with no entries at all: does the grid still render all 6 rows with clickable empty cells?
+
+**OUTPUT FORMAT**
+```
+# Implementation Workflow & Failure-Path Review — Calendar Redesign
+
+## Inspection Inventory
+## List view anchor reality
+## Click handling reality
+## Mobile fallback reality
+## Overnight booking reality
+## bookedSeatsCount correctness
+## Revalidation reality
+## Dashboard window caps
+## Permission edge cases
+## DST reality
+## Empty data scenarios
+
+## Findings Summary
+| ID | Severity | Scenario | What happens | Recommendation |
+```
+
+Be specific. File paths + line numbers. If you can't verify something, say so.

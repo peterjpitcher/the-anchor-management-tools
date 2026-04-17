@@ -654,7 +654,16 @@ async function fetchDashboardSnapshotImpl(userId: string): Promise<DashboardSnap
           if (pastResult.error) throw pastResult.error
 
           // One grouped bookings query keyed on the union of upcoming + past
-          // event IDs, summing confirmed seats per event.
+          // event IDs. Includes the full "held seat" lifecycle so past events
+          // still show the correct count after the review cron transitions
+          // bookings from `confirmed` to `visited_waiting_for_review`, then
+          // `review_clicked` or `completed`.
+          const BOOKED_STATUSES = [
+            'confirmed',
+            'visited_waiting_for_review',
+            'review_clicked',
+            'completed',
+          ]
           const summaryEventIds = [
             ...(upcomingResult.data ?? []).map((event) => event.id as string),
             ...(pastResult.data ?? []).map((event) => event.id as string),
@@ -666,7 +675,7 @@ async function fetchDashboardSnapshotImpl(userId: string): Promise<DashboardSnap
               .from('bookings')
               .select('event_id, seats')
               .in('event_id', summaryEventIds)
-              .eq('status', 'confirmed')
+              .in('status', BOOKED_STATUSES)
 
             if (bookingRowsError) throw bookingRowsError
 
@@ -850,7 +859,10 @@ async function fetchDashboardSnapshotImpl(userId: string): Promise<DashboardSnap
             PrivateBookingService.getBookings({
               fromDate: past90Iso,
               toDate: todayIso,
-              limit: 50,
+              // Service orders ASC then applies limit at the DB layer, so a 50
+              // cap would return the EARLIEST 50 of the 90-day window. We want
+              // the most recent 50, so pull a larger window and slice below.
+              limit: 500,
               useAdmin: true,
             }),
           ])

@@ -81,8 +81,8 @@ export default function ControlBar({
                     </button>
                 )}
 
-                {/* View Toggle */}
-                <div className="flex bg-gray-100 p-1 rounded-md">
+                {/* View Toggle — hidden on mobile because the calendar auto-falls back to list view there */}
+                <div className="hidden sm:flex bg-gray-100 p-1 rounded-md">
                     <button type="button"
                         onClick={() => setViewMode('month')}
                         title="Month View"
