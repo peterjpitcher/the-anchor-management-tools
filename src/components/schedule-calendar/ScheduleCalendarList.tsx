@@ -72,13 +72,19 @@ export function ScheduleCalendarList({ entries, onEntryClick }: ScheduleCalendar
                         <ul className="divide-y divide-border">
                             {group.entries.map((entry) => {
                                 const isPastEntry = isPast(entry.end) && !isTodayGroup
+                                const isCancelled = entry.status === 'cancelled'
+                                const isFreedStatus =
+                                    entry.status === 'cancelled' ||
+                                    entry.status === 'postponed' ||
+                                    entry.status === 'rescheduled'
                                 return (
                                     <li
                                         key={entry.id}
                                         data-entry-row={isPastEntry ? 'past' : 'future'}
                                         className={cn(
                                             'flex items-start gap-3 py-2 px-2',
-                                            isPastEntry && 'text-muted-foreground bg-muted/20'
+                                            isPastEntry && 'text-muted-foreground bg-muted/20',
+                                            isFreedStatus && 'text-muted-foreground bg-muted/10'
                                         )}
                                     >
                                         <span className="text-xs font-mono w-14 shrink-0">
@@ -93,8 +99,14 @@ export function ScheduleCalendarList({ entries, onEntryClick }: ScheduleCalendar
                                             }}
                                             className="flex-1 block"
                                         >
-                                            <div data-entry-title className="font-medium">
+                                            <div
+                                                data-entry-title
+                                                className={cn('font-medium', isCancelled && 'line-through')}
+                                            >
                                                 {entry.title}
+                                                {entry.endsNextDay && (
+                                                    <span className="ml-2 text-[10px] text-muted-foreground">+1 day</span>
+                                                )}
                                             </div>
                                             {entry.subtitle && (
                                                 <div className="text-xs text-muted-foreground">

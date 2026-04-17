@@ -1,0 +1,55 @@
+You are the ASSUMPTION BREAKER. The calendar redesign has been implemented across commits `c4f304ea..49f8d035`. Your job is to challenge the implementation — break confidence where it's unearned, confirm it where it's real.
+
+**CONTEXT** — if `tasks/codex-qa-review/2026-04-17-calendar-redesign-impl-reality-mapper-report.md` exists, read it first and use its facts to calibrate your challenges. Otherwise inspect the codebase yourself.
+
+**SPEC REFERENCE** — `docs/superpowers/specs/2026-04-17-calendar-redesign-design.md` (already revised for these reviewers — the spec is the contract the implementation must satisfy).
+
+**WHAT TO CHALLENGE**
+
+1. **Promised vs actual behaviour**
+   - The spec promises "full titles, never ellipsis" on busy days. Does the month component actually enforce this at runtime, or only in the specific test fixture? What about overflow in the flex layout — can titles still visually truncate even without `truncate` class?
+   - The spec promises "multi-day bars render once, not repeated per day". Do they? What about cross-week spans (a note from Mon week A to Tue week B) — spec said "render per week row" but does the implementation split cleanly at week boundaries?
+   - The spec promises today-anchored scroll. Does it work on the actual dashboard / events pages (not just in tests) given their scroll container layouts?
+   - The spec promises "hour range auto-extend ignores allDay". Is that honoured?
+
+2. **Implementation shortcuts that may bite**
+   - `UpcomingScheduleCalendar` had to inline-adapt `EventSummary` to `EventOverview` shape for `eventToEntry`. Were placeholder fields set that could affect rendering (status/category/checklist)? Does `eventToEntry` read any of those fields it shouldn't trust?
+   - The dashboard migration notes that it dropped private-booking-specific tooltip fields (`deposit_status`, `hold_expiry`, `balance_due_date`, `days_until_event`). Where does that info still appear on the dashboard?
+   - Sort order: the spec promises deterministic `start → end → kind → status → title → id`. Does the implementation use `compareEntries` consistently in all three views + the list component? Any place doing its own sort?
+   - Dashboard past-loaders cap at 50 rows. What happens when the user scrolls the list to the 51st past entry? Silent truncation?
+
+3. **Behaviour gaps from the spec**
+   - Spec says status of `draft`, `confirmed`, `scheduled`, `sold_out` render normally; `cancelled`, `postponed`, `rescheduled` render muted. Is that fully implemented in all three views, or just month?
+   - Spec promises event duration = 2h fixed on week view. Does the week layout actually force 2h regardless of what `entry.end` says? What about private bookings with no `end_time`?
+   - Spec promises ScheduleCalendar owns anchor state internally and is controlled on `view`. Does it remember anchor across view-mode switches?
+   - Mobile fallback: spec says hide the switcher on <640px. Does the Prev/Today/Next nav also hide, or does it stay visible while showing list?
+
+4. **Plausible regressions**
+   - The old `EventList` table had Date / Name / Category / Checklist / Actions columns with edit/delete actions. The new List view has a simpler row. Are edit/delete actions still reachable for users with permission? Or has the admin surface regressed?
+   - The old EventList used `hasPermission('events', 'manage')` to gate destructive actions. Where does that live now?
+   - Did any keyboard/a11y regression slip in?
+
+5. **False confidence**
+   - Test fixtures are mostly synthetic. Does any test actually exercise the 25/26 April regression scenario with realistic data shape (full EventOverview objects with category, checklist, etc.)?
+   - Are there tests that would actually fail if the adapters produced the wrong `tooltipData` kind?
+   - "Lint + typecheck + build clean" — what about `npm test` full-suite? (The wave 3 agent noted 36 pre-existing failures unrelated to this work — confirm they are unrelated.)
+
+**OUTPUT FORMAT**
+```
+# Implementation Assumption Breaker — Calendar Redesign
+
+## Inspection Inventory
+
+## High-Severity Challenges
+[findings that would block shipping — with evidence, counterargument, and what would confirm]
+
+## Medium-Severity Challenges
+
+## Low-Severity / Notable
+
+## Things The Implementation Got Right
+
+## Summary Verdict
+```
+
+Be direct. Cite file paths and line numbers.

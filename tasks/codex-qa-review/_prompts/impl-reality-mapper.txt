@@ -1,0 +1,52 @@
+You are the REPO REALITY MAPPER. Inspect the code produced by the calendar redesign implementation (commits `c4f304ea..49f8d035`). Build a factual map of what actually landed so later reviewers can critique with accurate context.
+
+**TARGET** — the committed implementation, not the spec. Files to inspect:
+- `src/components/schedule-calendar/` (new: types, sort, hour-range, adapters, Month, Week, List, ScheduleCalendar, index)
+- `src/app/(authenticated)/events/get-events-command-center.ts` (modified — `bookedSeatsCount`)
+- `src/app/(authenticated)/dashboard/dashboard-data.ts` (modified — new fields, past loaders)
+- `src/app/(authenticated)/dashboard/UpcomingScheduleCalendar.tsx` (migrated)
+- `src/app/actions/events.ts`, `src/app/actions/privateBookingActions.ts` (revalidation added)
+- `src/components/events/command-center/EventCalendarView.tsx`, `CommandCenterShell.tsx`, `ControlBar.tsx` (migrated / simplified)
+- `src/components/ui-v2/display/Calendar.tsx`, `src/components/ui-v2/index.ts` (EventCalendar re-export removed)
+- `tests/components/schedule-calendar/*` (new tests)
+- Deleted: `src/components/events/command-center/EventList.tsx`, `EventGrid.tsx`
+
+**WHAT TO REPORT**
+
+1. **What actually landed** — types, exports, component signatures, key structural choices. Cite file paths and line ranges.
+2. **Adapters — fidelity vs spec** — do they produce the shape the types promise? Any shortcuts that matter (e.g. dashboard inline shape-adaptation for `EventSummary` → `EventOverview`)?
+3. **Month view reality** — confirm multi-day notes render once per row and that title elements never receive `truncate`/`text-ellipsis`.
+4. **Week view reality** — confirm hour-range auto-extend works; fixed 2h event blocks; overnight start-day-only rendering.
+5. **List view reality** — today anchor via `useLayoutEffect` + rAF; past styling uses tokens not `opacity-60`; synthetic Today when empty.
+6. **Wrapper reality** — mobile fallback via `useMediaQuery('(max-width: 639px)')`; legend derivation; switcher hidden on mobile.
+7. **Event backend reality** — `bookedSeatsCount` semantics match the spec (confirmed seats only)? Is the aggregation a single grouped query?
+8. **Dashboard reality** — past loaders populated; `end_time_next_day` / `guest_count` plumbed; tooltip regressions (if any) vs the deleted code.
+9. **Revalidation reality** — which mutation paths now invalidate `/events` + `dashboard`? Any misses?
+10. **Deleted surface** — `EventList.tsx` / `EventGrid.tsx` gone; `EventCalendar` re-export gone; confirm no dangling imports.
+11. **Test coverage reality** — what the 29 new tests actually assert.
+12. **Conventions** — is the new code consistent with CLAUDE.md, dateUtils, `cn` usage, design tokens?
+
+**OUTPUT FORMAT**
+```
+# Implementation Reality Map — Calendar Redesign
+
+## Inspection Inventory
+### Inspected
+### Not Inspected
+### Limited Visibility
+
+## What Actually Landed
+## Adapters & Data Flow
+## Month / Week / List view implementation facts
+## Wrapper + integration facts
+## Backend / data contract facts
+## Revalidation facts
+## Deleted-surface facts
+## Test-coverage facts
+## Convention adherence
+
+## Risks Visible From Code (Factual, Not Critique)
+[things later reviewers should know about]
+```
+
+Be factual. Cite paths + line numbers. Flag anything you couldn't verify.

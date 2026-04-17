@@ -210,7 +210,16 @@ export async function getEventsCommandCenterData(): Promise<EventsOverviewResult
     })
 
     // Build a map of eventId -> bookedSeatsCount using a single grouped query.
-    // Only confirmed bookings count; cancelled, expired, and pending_payment are excluded.
+    // Includes the full "held seat" lifecycle: confirmed plus post-event statuses
+    // (visited_waiting_for_review, review_clicked, completed) that the review
+    // cron transitions booked seats through. Excludes: cancelled, expired, and
+    // pending_payment (seats not yet paid / no longer held).
+    const BOOKED_STATUSES = [
+        'confirmed',
+        'visited_waiting_for_review',
+        'review_clicked',
+        'completed',
+    ]
     const eventIds = events.map((e) => e.id)
     const bookedSeatsByEvent = new Map<string, number>()
 
@@ -219,7 +228,7 @@ export async function getEventsCommandCenterData(): Promise<EventsOverviewResult
             .from('bookings')
             .select('event_id, seats')
             .in('event_id', eventIds)
-            .eq('status', 'confirmed')
+            .in('status', BOOKED_STATUSES)
 
         if (bookingsAggError) {
             console.error('Error aggregating bookings for command centre:', bookingsAggError)

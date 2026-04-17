@@ -117,8 +117,12 @@ export default async function DashboardPage() {
     ? [...snapshot.events.past, ...snapshot.events.today, ...snapshot.events.upcoming]
     : []
   const calendarNotesForSchedule = calendarNotes
-  const calendarPrivateBookings = snapshot.privateBookings.permitted ? snapshot.privateBookings.upcoming : []
-  const calendarParkingBookings = snapshot.parking.permitted ? snapshot.parking.upcoming : []
+  const calendarPrivateBookings = snapshot.privateBookings.permitted
+    ? [...snapshot.privateBookings.past, ...snapshot.privateBookings.upcoming]
+    : []
+  const calendarParkingBookings = snapshot.parking.permitted
+    ? [...snapshot.parking.past, ...snapshot.parking.upcoming]
+    : []
 
   const upcomingScheduleCount =
     calendarEvents.filter((event) => Boolean(event.date)).length +
