@@ -796,6 +796,7 @@ export async function createEventManualBooking(input: {
     revalidatePath(`/events/${parsed.data.eventId}`)
     revalidatePath('/events')
     revalidatePath('/table-bookings/foh')
+    revalidateTag('dashboard')
 
     return {
       success: true,
@@ -1112,6 +1113,7 @@ export async function updateEventManualBookingSeats(input: {
     revalidatePath('/events')
     revalidatePath('/table-bookings/foh')
     revalidatePath('/table-bookings/boh')
+    revalidateTag('dashboard')
 
     return {
       success: true,
@@ -1441,6 +1443,7 @@ export async function cancelEventManualBooking(input: {
     revalidatePath(`/events/${bookingRow.event_id}`)
     revalidatePath('/events')
     revalidatePath('/table-bookings/foh')
+    revalidateTag('dashboard')
 
     return {
       success: true,

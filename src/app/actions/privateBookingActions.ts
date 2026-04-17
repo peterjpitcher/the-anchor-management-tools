@@ -264,6 +264,7 @@ export async function createPrivateBooking(formData: FormData) {
     })
 
     revalidatePath('/private-bookings')
+    revalidatePath('/events')
     revalidateTag('dashboard')
     return { success: true, data: booking }
   } catch (error: unknown) {
@@ -365,6 +366,7 @@ export async function updatePrivateBooking(id: string, formData: FormData) {
 
     revalidatePath('/private-bookings')
     revalidatePath(`/private-bookings/${id}`)
+    revalidatePath('/events')
     revalidateTag('dashboard')
     return { success: true, data: booking }
   } catch (error: unknown) {
@@ -394,6 +396,7 @@ export async function updateBookingStatus(id: string, status: BookingStatus) {
 
     revalidatePath('/private-bookings')
     revalidatePath(`/private-bookings/${id}`)
+    revalidatePath('/events')
     revalidateTag('dashboard')
     return { success: true }
   } catch (error: unknown) {
@@ -460,6 +463,7 @@ export async function deletePrivateBooking(id: string) {
 
     revalidatePath('/private-bookings')
     revalidatePath(`/private-bookings/${id}`)
+    revalidatePath('/events')
     revalidateTag('dashboard')
     return { success: true }
   } catch (error: unknown) {
@@ -749,6 +753,7 @@ export async function cancelPrivateBooking(bookingId: string, reason?: string) {
 
     revalidatePath('/private-bookings')
     revalidatePath(`/private-bookings/${bookingId}`)
+    revalidatePath('/events')
     revalidateTag('dashboard')
     return result
   } catch (error: unknown) {
@@ -793,6 +798,8 @@ export async function extendBookingHold(bookingId: string, days: 7 | 14 | 30) {
 
     revalidatePath('/private-bookings')
     revalidatePath(`/private-bookings/${bookingId}`)
+    revalidatePath('/events')
+    revalidateTag('dashboard')
     return result
   } catch (error: unknown) {
     logPrivateBookingActionError('Error extending booking hold', error, { bookingId, days })
@@ -1559,6 +1566,7 @@ export async function captureDepositPayment(
 
     revalidatePath(`/private-bookings/${bookingId}`)
     revalidatePath('/private-bookings')
+    revalidatePath('/events')
     revalidateTag('dashboard')
     return { success: true }
   } catch (error: unknown) {

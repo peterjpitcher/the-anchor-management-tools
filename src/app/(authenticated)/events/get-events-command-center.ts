@@ -9,6 +9,7 @@ export type EventOverview = {
     date: string
     time: string
     daysUntil: number
+    bookedSeatsCount: number
     category: { id: string; name: string; color: string } | null
     heroImageUrl: string | null
     posterImageUrl: string | null
@@ -208,6 +209,28 @@ export async function getEventsCommandCenterData(): Promise<EventsOverviewResult
         statusMap.get(status.event_id)?.push(status)
     })
 
+    // Build a map of eventId -> bookedSeatsCount using a single grouped query.
+    // Only confirmed bookings count; cancelled, expired, and pending_payment are excluded.
+    const eventIds = events.map((e) => e.id)
+    const bookedSeatsByEvent = new Map<string, number>()
+
+    if (eventIds.length > 0) {
+        const { data: bookingRows, error: bookingsAggError } = await supabase
+            .from('bookings')
+            .select('event_id, seats')
+            .in('event_id', eventIds)
+            .eq('status', 'confirmed')
+
+        if (bookingsAggError) {
+            console.error('Error aggregating bookings for command centre:', bookingsAggError)
+        } else {
+            for (const row of (bookingRows ?? []) as Array<{ event_id: string; seats: number | null }>) {
+                const current = bookedSeatsByEvent.get(row.event_id) ?? 0
+                bookedSeatsByEvent.set(row.event_id, current + (row.seats ?? 0))
+            }
+        }
+    }
+
     // --- KPI Calculations ---
 
     // 1. Active Events (Next 30 Days)
@@ -269,6 +292,7 @@ export async function getEventsCommandCenterData(): Promise<EventsOverviewResult
             date: event.date,
             time: event.time,
             daysUntil,
+            bookedSeatsCount: bookedSeatsByEvent.get(event.id) ?? 0,
             category: categoryRecord ?? null,
             heroImageUrl: event.hero_image_url,
             posterImageUrl: event.poster_image_url,

@@ -5,6 +5,7 @@ import type {
     EventsOverviewResult,
     EventOverview,
     CalendarNoteCalendarOverview,
+    PrivateBookingCalendarOverview,
 } from '@/app/(authenticated)/events/get-events-command-center'
 import ControlBar, { ViewMode, FilterType } from './ControlBar'
 import EventCalendarView from './EventCalendarView'
@@ -72,6 +73,17 @@ export default function CommandCenterShell({ initialData, canCreateCalendarNote 
         ))
     }, [initialData.calendarNotes, searchQuery])
 
+    const filteredPrivateBookings = useMemo(() => {
+        if (!searchQuery || searchQuery.trim() === '') {
+            return initialData.privateBookingsForCalendar
+        }
+        const q = searchQuery.toLowerCase()
+        return initialData.privateBookingsForCalendar.filter((b: PrivateBookingCalendarOverview) => (
+            (b.customer_name?.toLowerCase().includes(q) ?? false) ||
+            (b.event_type?.toLowerCase().includes(q) ?? false)
+        ))
+    }, [initialData.privateBookingsForCalendar, searchQuery])
+
 
     return (
         <>
@@ -93,7 +105,7 @@ export default function CommandCenterShell({ initialData, canCreateCalendarNote 
                         {viewMode === 'calendar' ? (
                             <EventCalendarView
                                 events={filteredAllEvents}
-                                privateBookings={initialData.privateBookingsForCalendar}
+                                privateBookings={filteredPrivateBookings}
                                 calendarNotes={filteredCalendarNotes}
                                 canCreateCalendarNote={canCreateCalendarNote}
                             />

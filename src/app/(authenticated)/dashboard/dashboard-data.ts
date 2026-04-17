@@ -14,6 +14,7 @@ type EventSummary = {
   time: string | null
   capacity: number | null
   price: number | null
+  bookedSeatsCount: number
 }
 
 type CalendarNoteSummary = {
@@ -67,6 +68,9 @@ type PrivateBookingSummary = {
   customer_name: string | null
   event_date: string | null
   start_time: string | null
+  end_time: string | null
+  end_time_next_day: boolean | null
+  guest_count: number | null
   status: string | null
   customer_id: string | null
   hold_expiry: string | null
@@ -78,11 +82,12 @@ type PrivateBookingSummary = {
 type PrivateBookingsSnapshot = {
   permitted: boolean
   upcoming: PrivateBookingSummary[]
+  past: PrivateBookingSummary[]
   totalUpcoming: number
   error?: string
 }
 
-type ParkingBookingSummary = {
+type DashboardParkingBookingSummary = {
   id: string
   reference: string | null
   customer_first_name: string | null
@@ -96,11 +101,12 @@ type ParkingBookingSummary = {
 
 type ParkingSnapshot = {
   permitted: boolean
-  upcoming: ParkingBookingSummary[]
+  upcoming: DashboardParkingBookingSummary[]
+  past: DashboardParkingBookingSummary[]
   totalUpcoming: number
   arrivalsToday: number
   pendingPayments: number
-  nextBooking?: ParkingBookingSummary
+  nextBooking?: DashboardParkingBookingSummary
   error?: string
 }
 
@@ -343,12 +349,14 @@ async function fetchDashboardSnapshotImpl(userId: string): Promise<DashboardSnap
     const privateBookings: PrivateBookingsSnapshot = {
       permitted: hasModuleAccess(permissionsMap, 'private_bookings'),
       upcoming: [],
+      past: [],
       totalUpcoming: 0,
     }
 
     const parking: ParkingSnapshot = {
       permitted: hasModuleAccess(permissionsMap, 'parking'),
       upcoming: [],
+      past: [],
       totalUpcoming: 0,
       arrivalsToday: 0,
       pendingPayments: 0,
@@ -645,6 +653,33 @@ async function fetchDashboardSnapshotImpl(userId: string): Promise<DashboardSnap
           if (upcomingResult.error) throw upcomingResult.error
           if (pastResult.error) throw pastResult.error
 
+          // One grouped bookings query keyed on the union of upcoming + past
+          // event IDs, summing confirmed seats per event.
+          const summaryEventIds = [
+            ...(upcomingResult.data ?? []).map((event) => event.id as string),
+            ...(pastResult.data ?? []).map((event) => event.id as string),
+          ]
+
+          const bookedSeatsByEvent = new Map<string, number>()
+          if (summaryEventIds.length > 0) {
+            const { data: bookingRows, error: bookingRowsError } = await supabase
+              .from('bookings')
+              .select('event_id, seats')
+              .in('event_id', summaryEventIds)
+              .eq('status', 'confirmed')
+
+            if (bookingRowsError) throw bookingRowsError
+
+            for (const row of bookingRows ?? []) {
+              const eventId = row.event_id as string
+              const seats = typeof row.seats === 'number' ? row.seats : Number(row.seats ?? 0)
+              bookedSeatsByEvent.set(
+                eventId,
+                (bookedSeatsByEvent.get(eventId) ?? 0) + (Number.isFinite(seats) ? seats : 0),
+              )
+            }
+          }
+
           const toSummary = (event: {
             id: string
             name: string | null
@@ -660,6 +695,7 @@ async function fetchDashboardSnapshotImpl(userId: string): Promise<DashboardSnap
               time: (event.time as string) ?? null,
               capacity: event.capacity ?? null,
               price: event.price ?? null,
+              bookedSeatsCount: bookedSeatsByEvent.get(event.id as string) ?? 0,
             }
           }
 
@@ -761,22 +797,36 @@ async function fetchDashboardSnapshotImpl(userId: string): Promise<DashboardSnap
 
       privateBookings.permitted ? (async () => {
         try {
-          const { data } = await PrivateBookingService.getBookings({
-            fromDate: todayIso,
-            limit: 20,
-            useAdmin: true
-          });
+          const past90Iso = getLocalIsoDateDaysAgo(90)
 
-          const filtered = (data ?? []).filter((booking) => {
-            const status = (booking.status as string) ?? null
-            return status === 'draft' || status === 'confirmed'
-          })
-
-          privateBookings.upcoming = filtered.map((booking) => ({
+          const toPbSummary = (booking: {
+            id: string
+            customer_name?: string | null
+            event_date?: string | null
+            start_time?: string | null
+            end_time?: string | null
+            end_time_next_day?: boolean | null
+            guest_count?: number | null
+            status?: string | null
+            customer_id?: string | null
+            hold_expiry?: string | null
+            deposit_status?: PrivateBookingSummary['deposit_status']
+            balance_due_date?: string | null
+            days_until_event?: number | string | null
+          }): PrivateBookingSummary => ({
             id: booking.id as string,
             customer_name: (booking.customer_name as string) ?? null,
             event_date: (booking.event_date as string) ?? null,
             start_time: (booking.start_time as string) ?? null,
+            end_time: (booking.end_time as string) ?? null,
+            end_time_next_day:
+              typeof booking.end_time_next_day === 'boolean' ? booking.end_time_next_day : null,
+            guest_count:
+              typeof booking.guest_count === 'number'
+                ? booking.guest_count
+                : booking.guest_count != null
+                  ? Number(booking.guest_count)
+                  : null,
             status: (booking.status as string) ?? null,
             customer_id: (booking.customer_id as string) ?? null,
             hold_expiry: (booking.hold_expiry as string) ?? null,
@@ -788,8 +838,40 @@ async function fetchDashboardSnapshotImpl(userId: string): Promise<DashboardSnap
                 : booking.days_until_event != null
                   ? Number(booking.days_until_event)
                   : null,
-          }))
+          })
+
+          // Upcoming + past 90 days run in parallel.
+          const [upcomingPb, pastPb] = await Promise.all([
+            PrivateBookingService.getBookings({
+              fromDate: todayIso,
+              limit: 20,
+              useAdmin: true,
+            }),
+            PrivateBookingService.getBookings({
+              fromDate: past90Iso,
+              toDate: todayIso,
+              limit: 50,
+              useAdmin: true,
+            }),
+          ])
+
+          const filtered = (upcomingPb.data ?? []).filter((booking) => {
+            const status = (booking.status as string) ?? null
+            return status === 'draft' || status === 'confirmed'
+          })
+
+          privateBookings.upcoming = filtered.map(toPbSummary)
           privateBookings.totalUpcoming = privateBookings.upcoming.length
+
+          // Past: `toDate: todayIso` is inclusive so drop any rows dated today
+          // (those belong to upcoming). Rows arrive ascending from the service
+          // (order by event_date ASC); cap at 50 and keep chronological
+          // ascending to mirror events.past.
+          const pastRows = (pastPb.data ?? []).filter((booking) => {
+            const eventDate = (booking.event_date as string) ?? null
+            return eventDate != null && eventDate < todayIso
+          })
+          privateBookings.past = pastRows.slice(-50).map(toPbSummary)
         } catch (error) {
           console.error('Failed to load dashboard private bookings:', error)
           privateBookings.error = 'Failed to load private bookings'
@@ -798,30 +880,20 @@ async function fetchDashboardSnapshotImpl(userId: string): Promise<DashboardSnap
 
       parking.permitted ? (async () => {
         try {
-          const { data, error, count } = await supabase
-            .from('parking_bookings')
-            .select(
-              `
-                id,
-                reference,
-                customer_first_name,
-                customer_last_name,
-                vehicle_registration,
-                start_at,
-                end_at,
-                status,
-                payment_status
-              `,
-              { count: 'exact' }
-            )
-            .gte('start_at', todayIso) // Changed from nowIso to todayIso
-            .in('status', ['pending_payment', 'confirmed'])
-            .order('start_at', { ascending: true })
-            .range(0, 19)
+          const nowIso = new Date().toISOString()
+          const past90Iso = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString()
 
-          if (error) throw error
-
-          parking.upcoming = (data ?? []).map((booking) => ({
+          const toParkingSummary = (booking: {
+            id: string
+            reference: string | null
+            customer_first_name: string | null
+            customer_last_name: string | null
+            vehicle_registration: string | null
+            start_at: string | null
+            end_at: string | null
+            status: string | null
+            payment_status: string | null
+          }): DashboardParkingBookingSummary => ({
             id: booking.id as string,
             reference: (booking.reference as string) ?? null,
             customer_first_name: (booking.customer_first_name as string) ?? null,
@@ -831,9 +903,60 @@ async function fetchDashboardSnapshotImpl(userId: string): Promise<DashboardSnap
             end_at: (booking.end_at as string) ?? null,
             status: (booking.status as string) ?? null,
             payment_status: (booking.payment_status as string) ?? null,
-          }))
+          })
 
-          parking.totalUpcoming = typeof count === 'number' ? count : parking.upcoming.length
+          const [upcomingRes, pastRes] = await Promise.all([
+            supabase
+              .from('parking_bookings')
+              .select(
+                `
+                  id,
+                  reference,
+                  customer_first_name,
+                  customer_last_name,
+                  vehicle_registration,
+                  start_at,
+                  end_at,
+                  status,
+                  payment_status
+                `,
+                { count: 'exact' }
+              )
+              .gte('start_at', todayIso) // Changed from nowIso to todayIso
+              .in('status', ['pending_payment', 'confirmed'])
+              .order('start_at', { ascending: true })
+              .range(0, 19),
+            supabase
+              .from('parking_bookings')
+              .select(
+                `
+                  id,
+                  reference,
+                  customer_first_name,
+                  customer_last_name,
+                  vehicle_registration,
+                  start_at,
+                  end_at,
+                  status,
+                  payment_status
+                `
+              )
+              .lt('end_at', nowIso)
+              .gte('start_at', past90Iso)
+              .order('end_at', { ascending: false })
+              .range(0, 49),
+          ])
+
+          if (upcomingRes.error) throw upcomingRes.error
+          if (pastRes.error) throw pastRes.error
+
+          parking.upcoming = (upcomingRes.data ?? []).map(toParkingSummary)
+
+          const pastDescending = (pastRes.data ?? []).map(toParkingSummary)
+          parking.past = [...pastDescending].reverse()
+
+          parking.totalUpcoming =
+            typeof upcomingRes.count === 'number' ? upcomingRes.count : parking.upcoming.length
           parking.arrivalsToday = parking.upcoming.filter(
             (booking) => booking.start_at && booking.start_at.slice(0, 10) === todayIso
           ).length
