@@ -1,0 +1,48 @@
+You are the INTEGRATION & ARCHITECTURE REVIEWER. Target: `docs/superpowers/specs/2026-04-17-calendar-redesign-design.md`.
+
+Evaluate the proposed architecture against the real codebase. If a Repo Reality Map exists at `tasks/codex-qa-review/2026-04-17-calendar-redesign-repo-reality-mapper-report.md`, use it.
+
+**WHAT TO EVALUATE**
+
+1. **Component placement**
+   - New location `src/components/calendar/` — does this conflict with other top-level components folders? Does the repo prefer `components/ui-v2/...` for shared UI?
+   - Is `AnchorCalendar` a good name given the project is called "Anchor Management Tools"? Would collision or ambiguity with `ui-v2` patterns cause confusion?
+
+2. **Boundary & ownership**
+   - The spec splits: page → adapter wrapper → `AnchorCalendar`. Is that the right layering? Is there double-responsibility (tooltip rendering happening both in the wrappers and the component)?
+   - The adapter functions return `tooltipBody: ReactNode`. Passing React nodes across a data boundary couples the adapters to JSX. Any better shape (e.g. a `tooltipData` structure the component renders)?
+   - The event page and dashboard page both import the same `CalendarEntry` types. Is there a circular-dependency risk given where these sit today?
+
+3. **State ownership**
+   - View mode (month/week/list) lives in the existing `CommandCenterShell` for events. Does it also need to live in the dashboard shell for consistency? If `AnchorCalendar` owns its own view state, does that clash with the events page's URL-persisted view state (if any)?
+   - List view's "anchored scroll" — who owns the scroll container? The component, or the page's layout? If the events page uses `overflow-y-auto` on the shell, the component needs a scroll root.
+
+4. **Data flow**
+   - `bookingsCount` on `EventOverview`: the aggregation has to happen server-side in `getEventsCommandCenterData`. What pattern does this repo use for per-row aggregates? Is a subquery, a view, or a separate query the convention?
+   - Does the spec account for the loading/refreshing flow when an event is edited and the page is revalidated?
+
+5. **Migration path**
+   - Spec proposes: migrate events page, then dashboard, then delete `EventCalendar` re-export. Is that order safe? Can both callers be migrated atomically in one PR, or is staged better?
+   - Is there a reason to keep a compatibility layer on `EventCalendar` for N weeks rather than deleting it immediately?
+
+6. **Future evolution**
+   - Does the new architecture make it easy to add a 4th entry kind (e.g. rota shifts on the dashboard)? Or would that require re-plumbing?
+   - Does making the component reusable cost clarity compared with keeping two page-specific implementations?
+
+**OUTPUT FORMAT**
+```
+# Integration & Architecture Review — Calendar Redesign
+
+## Inspection Inventory
+## Component Placement
+## Boundary & Ownership
+## State Ownership
+## Data Flow
+## Migration Path
+## Future Evolution
+
+## Findings Summary
+| ID | Severity | Area | Finding | Recommendation |
+```
+
+Cite paths. Be concrete about recommended changes.

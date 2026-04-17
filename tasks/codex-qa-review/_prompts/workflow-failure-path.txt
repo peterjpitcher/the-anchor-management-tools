@@ -1,0 +1,79 @@
+You are the WORKFLOW & FAILURE-PATH REVIEWER. Target: `docs/superpowers/specs/2026-04-17-calendar-redesign-design.md`.
+
+If a Repo Reality Map exists at `tasks/codex-qa-review/2026-04-17-calendar-redesign-repo-reality-mapper-report.md`, read it first.
+
+**FOCUS**
+Real-world failure behaviour. Prioritise these over any stylistic comments:
+1. Failure states and error paths
+2. Partial completion and rollback gaps
+3. Retry behaviour and idempotency
+4. Duplicated actions and double-submission
+5. Delayed, stale, or cached data
+6. Empty states and zero-result edge cases
+7. Race conditions and concurrent access
+8. Cancellation paths and cleanup
+9. Integration boundaries and contract mismatches
+10. User workflows that look complete but fail in real use
+
+**SPECIFIC CHECKS FOR THIS SPEC**
+
+1. **Empty states across all three views**
+   - Month view: a month with zero entries — what renders? What does the user click to start?
+   - Week view: a week with only multi-day notes, no timed events — does the hour-range auto-extend still render sensibly, or does it collapse to nothing?
+   - List view: user has no past events, no future events — is the "Today" anchor still meaningful? What do they see?
+
+2. **Weird date inputs**
+   - DST transitions: last Sunday in March / October. Do positions and hours render correctly? Would a 01:00 event on a 23-hour day shift visually?
+   - Events with `end_time_next_day = true` (private bookings that close at 02:00). Do these render once on the start day, or span into the next visible day? Either is defensible, but the spec must commit.
+   - An all-day calendar note whose `end_date` is before `note_date` (corrupted data) — current code already guards. Does the new adapter preserve that guard?
+
+3. **Duplicated / overlapping data**
+   - Two private bookings at the same start time on the same day — spec says "side by side up to 3 overlaps". What about in month view? They currently stack. Does the new spec clarify month view stacking?
+   - An event and a private booking at identical 19:00–21:00 — sort order is tied. What determines the winner?
+
+4. **Click race conditions**
+   - User clicks "Add note" on an empty day while a background refresh is in flight — does the new cell render become stale?
+   - User switches view mid-click — does the click propagate to a now-non-existent cell?
+
+5. **List view anchored scroll corner cases**
+   - `scrollIntoView` on a group that isn't rendered yet (still streaming) — does the anchor silently miss?
+   - User resumes the page from scroll-restored state (browser back button) — does the anchor forcibly reset to "today", overriding their intended scroll?
+   - Mobile: the list view receives focus from page navigation; how does iOS Safari handle `scrollIntoView({ block: 'start' })` on first paint?
+
+6. **Data freshness**
+   - Events can be edited. If someone edits an event in another tab, the dashboard page renders stale data for minutes. Spec doesn't discuss refresh strategy — is that OK, or does the new component need a revalidate hook?
+   - After clicking "Add note" in the modal, the page calls `router.refresh()`. Does that preserve scroll position in list view? Does it preserve view mode?
+
+7. **Permissions edge cases**
+   - A user without `private_bookings.view` sees the page — does the adapter silently drop those entries, or does the server refuse to send them? (Probably the latter, but verify.)
+   - A user with `events.view` but without `private_bookings.view` — can they see a private booking in the legend if there are none in their filtered set?
+
+8. **Performance / scale edge cases**
+   - A venue with 300 private bookings in a month — does the variable-height month view stay performant? Does React re-render everything on filter change?
+   - List view loading all past + all future — how many entries before scroll-anchoring lags?
+
+9. **Accessibility failure paths**
+   - Keyboard-only users: can they navigate month grid → week grid → list?
+   - Screen readers: when list view anchors to "today", does the SR user jump to the same place, or do they have to navigate past history?
+   - Reduced motion: does the scroll anchor animate (`smooth`) or jump (`instant`)? Spec doesn't say.
+
+**OUTPUT FORMAT**
+```
+# Workflow & Failure-Path Review — Calendar Redesign
+
+## Inspection Inventory
+## Empty States
+## Weird Date Inputs
+## Overlapping / Duplicated Data
+## Click Race Conditions
+## List View Anchor Corner Cases
+## Data Freshness
+## Permissions Edge Cases
+## Performance / Scale
+## Accessibility Failure Paths
+
+## Findings Summary
+| ID | Severity | Scenario | What happens | Recommendation |
+```
+
+If you have nothing material to report in a category, say so explicitly.
