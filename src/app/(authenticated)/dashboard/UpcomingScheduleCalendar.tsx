@@ -2,10 +2,20 @@
 
 import { useMemo, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
-import { addHours, format } from 'date-fns'
+import { format } from 'date-fns'
 import { CalendarDaysIcon, LockClosedIcon, TruckIcon } from '@heroicons/react/20/solid'
-import { EventCalendar, type CalendarEvent } from '@/components/ui-v2/display/Calendar'
-import { Tooltip } from '@/components/ui-v2/overlay/Tooltip'
+import {
+  ScheduleCalendar,
+  eventToEntry,
+  privateBookingToEntry,
+  calendarNoteToEntry,
+  parkingToEntry,
+} from '@/components/schedule-calendar'
+import type {
+  CalendarEntry,
+  CalendarEntryKind,
+  ScheduleCalendarView,
+} from '@/components/schedule-calendar'
 import { Modal } from '@/components/ui-v2/overlay/Modal'
 import { Button } from '@/components/ui-v2/forms/Button'
 import { FormGroup } from '@/components/ui-v2/forms/FormGroup'
@@ -19,6 +29,7 @@ type DashboardEventSummary = {
   name: string
   date: string | null
   time: string | null
+  bookedSeatsCount?: number
 }
 
 type DashboardCalendarNoteSummary = {
@@ -38,6 +49,9 @@ type DashboardPrivateBookingSummary = {
   customer_name: string | null
   event_date: string | null
   start_time: string | null
+  end_time: string | null
+  end_time_next_day: boolean | null
+  guest_count: number | null
   status: string | null
   hold_expiry: string | null
   deposit_status: 'Paid' | 'Required' | 'Not Required' | null
@@ -55,100 +69,6 @@ type DashboardParkingBookingSummary = {
   end_at: string | null
   status: string | null
   payment_status: string | null
-}
-
-const EVENT_ID_PREFIX = 'evt:'
-const NOTE_ID_PREFIX = 'note:'
-const PRIVATE_BOOKING_ID_PREFIX = 'pb:'
-const PARKING_ID_PREFIX = 'park:'
-
-function normalizeHexColor(color: string): string | null {
-  const trimmed = color.trim()
-  if (!trimmed.startsWith('#')) return null
-
-  const hex = trimmed.slice(1)
-  if (hex.length === 3) {
-    const [r, g, b] = hex.split('')
-    if (!r || !g || !b) return null
-    return `#${r}${r}${g}${g}${b}${b}`
-  }
-
-  if (hex.length === 6) return `#${hex}`
-  if (hex.length === 8) return `#${hex.slice(0, 6)}`
-
-  return null
-}
-
-function getReadableTextColor(backgroundColor: string): string {
-  const normalized = normalizeHexColor(backgroundColor)
-  if (!normalized) return 'white'
-
-  const r = parseInt(normalized.slice(1, 3), 16)
-  const g = parseInt(normalized.slice(3, 5), 16)
-  const b = parseInt(normalized.slice(5, 7), 16)
-  if ([r, g, b].some(Number.isNaN)) return 'white'
-
-  const brightness = (r * 299 + g * 587 + b * 114) / 1000
-  return brightness >= 160 ? '#111827' : 'white'
-}
-
-function parseLocalDateTime(dateIso: string, time: string | null) {
-  const [yearStr, monthStr, dayStr] = dateIso.split('-')
-  const year = Number(yearStr)
-  const monthIndex = Number(monthStr) - 1
-  const day = Number(dayStr)
-
-  const [hourStr, minuteStr] = (time || '00:00').split(':').slice(0, 2)
-  const hours = Number(hourStr)
-  const minutes = Number(minuteStr)
-
-  return new Date(
-    Number.isFinite(year) ? year : new Date().getFullYear(),
-    Number.isFinite(monthIndex) ? monthIndex : new Date().getMonth(),
-    Number.isFinite(day) ? day : new Date().getDate(),
-    Number.isFinite(hours) ? hours : 0,
-    Number.isFinite(minutes) ? minutes : 0,
-  )
-}
-
-function formatStatusLabel(value: string | null | undefined): string {
-  if (!value) return 'Unknown'
-  return value
-    .split('_')
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(' ')
-}
-
-function getPrivateBookingColor(status: string | null | undefined): string {
-  switch (status) {
-    case 'cancelled':
-      return '#ef4444'
-    case 'completed':
-      return '#6366f1'
-    case 'draft':
-      return '#a78bfa'
-    case 'confirmed':
-    default:
-      return '#8b5cf6'
-  }
-}
-
-function getParkingColor(booking: DashboardParkingBookingSummary): string {
-  if (booking.payment_status === 'pending') return '#f59e0b'
-  if (booking.status === 'pending_payment') return '#f59e0b'
-  return '#64748b'
-}
-
-function getCalendarNoteColor(note: DashboardCalendarNoteSummary): string {
-  return normalizeHexColor(note.color) ?? '#0EA5E9'
-}
-
-function getCalendarNoteDateLabel(note: DashboardCalendarNoteSummary): string {
-  if (note.note_date === note.end_date) {
-    return format(parseLocalDateTime(note.note_date, null), 'EEE d MMM yyyy')
-  }
-
-  return `${format(parseLocalDateTime(note.note_date, null), 'EEE d MMM yyyy')} to ${format(parseLocalDateTime(note.end_date, null), 'EEE d MMM yyyy')}`
 }
 
 function toLocalIsoDate(date: Date): string {
@@ -169,127 +89,87 @@ export default function UpcomingScheduleCalendar({
   canCreateCalendarNote?: boolean
 }) {
   const router = useRouter()
-  const [view, setView] = useState<'month' | 'week' | 'day'>('month')
+  const [view, setView] = useState<ScheduleCalendarView>('month')
   const [newNoteDate, setNewNoteDate] = useState<string | null>(null)
   const [newNoteForm, setNewNoteForm] = useState({ title: '', notes: '', color: '#0EA5E9', end_date: '' })
   const [isSaving, startSaving] = useTransition()
 
-  const eventsById = useMemo(() => {
-    const map = new Map<string, DashboardEventSummary>()
-    for (const event of events) {
-      map.set(event.id, event)
-    }
-    return map
-  }, [events])
-
-  const calendarNotesById = useMemo(() => {
-    const map = new Map<string, DashboardCalendarNoteSummary>()
-    for (const note of calendarNotes) {
-      map.set(note.id, note)
-    }
-    return map
-  }, [calendarNotes])
-
-  const privateBookingsById = useMemo(() => {
-    const map = new Map<string, DashboardPrivateBookingSummary>()
-    for (const booking of privateBookings) {
-      map.set(booking.id, booking)
-    }
-    return map
-  }, [privateBookings])
-
-  const parkingById = useMemo(() => {
-    const map = new Map<string, DashboardParkingBookingSummary>()
-    for (const booking of parkingBookings) {
-      map.set(booking.id, booking)
-    }
-    return map
-  }, [parkingBookings])
-
-  const calendarEvents = useMemo<CalendarEvent[]>(() => {
-    const entries: CalendarEvent[] = []
+  const entries = useMemo<CalendarEntry[]>(() => {
+    const out: CalendarEntry[] = []
 
     for (const event of events) {
       if (!event.date) continue
-
-      const allDay = !event.time
-      const start = parseLocalDateTime(event.date, event.time)
-      const end = allDay ? new Date(start) : addHours(start, 2)
-      const color = '#3b82f6'
-
-      entries.push({
-        id: `${EVENT_ID_PREFIX}${event.id}`,
-        title: event.name,
-        start,
-        end,
-        allDay,
-        color,
-        textColor: getReadableTextColor(color),
-      })
+      // Shape-adapt dashboard EventSummary into the subset of EventOverview
+      // that eventToEntry actually reads (id/name/date/time/bookedSeatsCount/
+      // eventStatus/category). Other EventOverview fields are unused by the
+      // adapter so we pass an adapter-scoped input.
+      out.push(
+        eventToEntry({
+          id: event.id,
+          name: event.name,
+          date: event.date,
+          time: event.time ?? '',
+          daysUntil: 0,
+          bookedSeatsCount: event.bookedSeatsCount ?? 0,
+          category: null,
+          heroImageUrl: null,
+          posterImageUrl: null,
+          eventStatus: null,
+          bookingUrl: null,
+          checklist: {
+            completed: 0,
+            total: 0,
+            overdueCount: 0,
+            dueTodayCount: 0,
+            nextTask: null,
+            outstanding: [],
+          },
+          statusBadge: { label: '', tone: 'neutral' },
+        }),
+      )
     }
 
     for (const booking of privateBookings) {
       if (!booking.event_date) continue
-
-      const allDay = !booking.start_time
-      const start = parseLocalDateTime(booking.event_date, booking.start_time)
-      const end = allDay ? new Date(start) : addHours(start, 3)
-      const color = getPrivateBookingColor(booking.status)
-
-      const statusLabel = booking.status === 'confirmed' ? '' : ` (${formatStatusLabel(booking.status)})`
-
-      entries.push({
-        id: `${PRIVATE_BOOKING_ID_PREFIX}${booking.id}`,
-        title: `${booking.customer_name || 'Guest'}${statusLabel}`,
-        start,
-        end,
-        allDay,
-        showOnStartDayOnly: true,
-        color,
-        textColor: getReadableTextColor(color),
-      })
+      out.push(
+        privateBookingToEntry({
+          id: booking.id,
+          customer_name: booking.customer_name ?? 'Guest',
+          event_date: booking.event_date,
+          start_time: booking.start_time ?? '',
+          end_time: booking.end_time,
+          end_time_next_day: booking.end_time_next_day,
+          // PrivateBookingCalendarOverview.status is a BookingStatus — the
+          // adapter only reads it to derive a display status via string
+          // compare, so a cast through unknown is safe for runtime strings.
+          status: (booking.status ?? 'confirmed') as PrivateBookingCalendarInput['status'],
+          event_type: null,
+          guest_count: booking.guest_count,
+        }),
+      )
     }
 
     for (const note of calendarNotes) {
       if (!note.note_date) continue
-
-      const start = parseLocalDateTime(note.note_date, null)
-      const endRaw = parseLocalDateTime(note.end_date || note.note_date, null)
-      const end = endRaw.getTime() < start.getTime() ? start : endRaw
-
-      const color = getCalendarNoteColor(note)
-      entries.push({
-        id: `${NOTE_ID_PREFIX}${note.id}`,
-        title: note.title,
-        start,
-        end,
-        allDay: true,
-        color,
-        textColor: getReadableTextColor(color),
-      })
+      out.push(calendarNoteToEntry(note))
     }
 
     for (const booking of parkingBookings) {
       if (!booking.start_at) continue
-
-      const start = new Date(booking.start_at)
-      const end = booking.end_at ? new Date(booking.end_at) : addHours(start, 2)
-      const color = getParkingColor(booking)
-
-      const title = booking.vehicle_registration || booking.reference || 'Parking booking'
-
-      entries.push({
-        id: `${PARKING_ID_PREFIX}${booking.id}`,
-        title,
-        start,
-        end,
-        color,
-        textColor: getReadableTextColor(color),
-      })
+      out.push(parkingToEntry(booking))
     }
 
-    return entries.sort((a, b) => a.start.getTime() - b.start.getTime())
+    return out
   }, [calendarNotes, events, parkingBookings, privateBookings])
+
+  const legendKinds = useMemo<CalendarEntryKind[]>(() => {
+    const kinds: CalendarEntryKind[] = []
+    if (calendarNotes.length > 0) kinds.push('calendar_note')
+    if (privateBookings.length > 0) kinds.push('private_booking')
+    if (parkingBookings.length > 0) kinds.push('parking')
+    kinds.push('event')
+    return kinds
+  }, [calendarNotes.length, parkingBookings.length, privateBookings.length])
 
   const hiddenCount = useMemo(() => {
     const hiddenEvents = events.filter((event) => !event.date).length
@@ -328,6 +208,101 @@ export default function UpcomingScheduleCalendar({
       closeNewNoteModal()
       router.refresh()
     })
+  }
+
+  function renderTooltip(entry: CalendarEntry) {
+    if (entry.tooltipData.kind === 'event') {
+      const td = entry.tooltipData
+      return (
+        <div className="space-y-1 text-xs">
+          <div className="flex items-center gap-1.5 font-medium">
+            <CalendarDaysIcon className="h-3.5 w-3.5" />
+            <span>Event</span>
+          </div>
+          <div className="whitespace-pre-wrap">{td.name}</div>
+          <div>
+            {format(entry.start, 'EEE d MMM yyyy')}
+            {td.time ? ` • ${td.time}` : ''}
+          </div>
+          <div>
+            <span className="font-medium">Booked:</span> {td.bookedSeats}
+          </div>
+          {td.category && (
+            <div>
+              <span className="font-medium">Category:</span> {td.category}
+            </div>
+          )}
+        </div>
+      )
+    }
+
+    if (entry.tooltipData.kind === 'calendar_note') {
+      const td = entry.tooltipData
+      return (
+        <div className="space-y-1 text-xs">
+          <div className="font-medium">Calendar note</div>
+          <div className="whitespace-pre-wrap">{td.title}</div>
+          <div>{td.dateRange}</div>
+          {td.notes && <div className="whitespace-pre-wrap">{td.notes}</div>}
+          <div>{td.source === 'ai' ? 'AI generated' : 'Manual note'}</div>
+        </div>
+      )
+    }
+
+    if (entry.tooltipData.kind === 'private_booking') {
+      const td = entry.tooltipData
+      return (
+        <div className="space-y-1 text-xs">
+          <div className="flex items-center gap-1.5 font-medium">
+            <LockClosedIcon className="h-3.5 w-3.5" />
+            <span>Private booking{entry.statusLabel ? ` • ${entry.statusLabel}` : ''}</span>
+          </div>
+          <div className="whitespace-pre-wrap">{td.customerName}</div>
+          <div>
+            {format(entry.start, 'EEE d MMM yyyy')}
+            {td.timeRange ? ` • ${td.timeRange}` : ''}
+          </div>
+          {td.guestCount !== null && (
+            <div>
+              <span className="font-medium">Guests:</span> {td.guestCount}
+            </div>
+          )}
+          {td.endsNextDay && <div>Ends next day</div>}
+        </div>
+      )
+    }
+
+    // parking
+    const td = entry.tooltipData
+    return (
+      <div className="space-y-1 text-xs">
+        <div className="flex items-center gap-1.5 font-medium">
+          <TruckIcon className="h-3.5 w-3.5" />
+          <span>Parking</span>
+        </div>
+        {td.reference && (
+          <div>
+            <span className="font-medium">Ref:</span> {td.reference}
+          </div>
+        )}
+        {td.vehicleReg && (
+          <div>
+            <span className="font-medium">Vehicle:</span> {td.vehicleReg}
+          </div>
+        )}
+        <div>
+          {format(entry.start, 'EEE d MMM yyyy')} • {td.timeRange}
+        </div>
+        <div>
+          <span className="font-medium">Customer:</span> {td.customerName}
+        </div>
+        {td.status && (
+          <div>
+            <span className="font-medium">Status:</span> {td.status}
+          </div>
+        )}
+      </div>
+    )
   }
 
   return (
@@ -402,156 +377,28 @@ export default function UpcomingScheduleCalendar({
         </Modal>
       )}
 
-      <div className="flex flex-wrap items-center gap-3 text-xs text-gray-600">
-        <span className="inline-flex items-center gap-1.5">
-          <span className="inline-block h-2 w-2 rounded-sm bg-blue-500" />
-          Events
-        </span>
-        <span className="inline-flex items-center gap-1.5">
-          <span className="inline-block h-2 w-2 rounded-sm bg-sky-500" />
-          Calendar notes
-        </span>
-        <span className="inline-flex items-center gap-1.5">
-          <span className="inline-block h-2 w-2 rounded-sm bg-violet-500" />
-          Private bookings
-        </span>
-        <span className="inline-flex items-center gap-1.5">
-          <span className="inline-block h-2 w-2 rounded-sm bg-slate-500" />
-          Parking
-        </span>
-        {hiddenCount > 0 && <span className="text-gray-500">• {hiddenCount} without a date (not shown)</span>}
-      </div>
-
-      <EventCalendar
-        className="border-0"
-        events={calendarEvents}
+      <ScheduleCalendar
+        entries={entries}
         view={view}
         onViewChange={setView}
+        canCreateCalendarNote={canCreateCalendarNote}
+        onEmptyDayClick={canCreateCalendarNote ? openNewNoteModal : undefined}
+        onEntryClick={(entry) => {
+          if (entry.onClickHref) router.push(entry.onClickHref)
+        }}
+        renderTooltip={renderTooltip}
+        legendKinds={legendKinds}
         firstDayOfWeek={1}
-        onDateClick={canCreateCalendarNote ? openNewNoteModal : undefined}
-        renderEvent={(event) => {
-          const isCalendarNote = event.id.startsWith(NOTE_ID_PREFIX)
-          const isPrivateBooking = event.id.startsWith(PRIVATE_BOOKING_ID_PREFIX)
-          const isParking = event.id.startsWith(PARKING_ID_PREFIX)
-
-          const icon = isPrivateBooking ? (
-            <LockClosedIcon className="h-3 w-3 flex-none" />
-          ) : isParking ? (
-            <TruckIcon className="h-3 w-3 flex-none" />
-          ) : (
-            <CalendarDaysIcon className="h-3 w-3 flex-none" />
-          )
-
-          const tooltipContent = (() => {
-            if (event.id.startsWith(EVENT_ID_PREFIX)) {
-              const rawId = event.id.slice(EVENT_ID_PREFIX.length)
-              const item = eventsById.get(rawId)
-              return (
-                <div className="space-y-1 text-xs">
-                  <div className="font-medium">Event</div>
-                  <div className="whitespace-pre-wrap">{item?.name ?? event.title}</div>
-                  <div>
-                    {format(event.start, 'EEE d MMM yyyy')}
-                    {!event.allDay && ` • ${format(event.start, 'HH:mm')}`}
-                  </div>
-                </div>
-              )
-            }
-
-            if (isCalendarNote) {
-              const rawId = event.id.slice(NOTE_ID_PREFIX.length)
-              const note = calendarNotesById.get(rawId)
-              return (
-                <div className="space-y-1 text-xs">
-                  <div className="font-medium">Calendar note</div>
-                  <div className="whitespace-pre-wrap">{note?.title ?? event.title}</div>
-                  <div>
-                    {note ? getCalendarNoteDateLabel(note) : format(event.start, 'EEE d MMM yyyy')}
-                  </div>
-                  {note?.notes && <div className="whitespace-pre-wrap">{note.notes}</div>}
-                  {note?.source && (
-                    <div>{note.source === 'ai' ? 'AI generated' : 'Manual note'}</div>
-                  )}
-                </div>
-              )
-            }
-
-            if (event.id.startsWith(PRIVATE_BOOKING_ID_PREFIX)) {
-              const rawId = event.id.slice(PRIVATE_BOOKING_ID_PREFIX.length)
-              const booking = privateBookingsById.get(rawId)
-              const statusLabel = booking ? formatStatusLabel(booking.status) : 'Private booking'
-              return (
-                <div className="space-y-1 text-xs">
-                  <div className="font-medium">Private booking • {statusLabel}</div>
-                  <div className="whitespace-pre-wrap">{booking?.customer_name ?? event.title}</div>
-                  <div>
-                    {format(event.start, 'EEE d MMM yyyy')}
-                    {!event.allDay && ` • ${format(event.start, 'HH:mm')}`}
-                  </div>
-                  {booking?.deposit_status && <div>Deposit: {booking.deposit_status}</div>}
-                  {booking?.hold_expiry && booking?.status === 'draft' && (
-                    <div>Hold expires: {format(new Date(booking.hold_expiry), 'EEE d MMM yyyy')}</div>
-                  )}
-                  {booking?.balance_due_date && booking?.status === 'confirmed' && (
-                    <div>Balance due: {format(parseLocalDateTime(booking.balance_due_date, null), 'EEE d MMM yyyy')}</div>
-                  )}
-                  {typeof booking?.days_until_event === 'number' && <div>{booking.days_until_event} days until event</div>}
-                </div>
-              )
-            }
-
-            if (event.id.startsWith(PARKING_ID_PREFIX)) {
-              const rawId = event.id.slice(PARKING_ID_PREFIX.length)
-              const booking = parkingById.get(rawId)
-              const customerName =
-                booking?.customer_first_name || booking?.customer_last_name
-                  ? `${booking.customer_first_name || ''} ${booking.customer_last_name || ''}`.trim()
-                  : null
-              return (
-                <div className="space-y-1 text-xs">
-                  <div className="font-medium">Parking</div>
-                  <div className="whitespace-pre-wrap">{booking?.vehicle_registration || booking?.reference || event.title}</div>
-                  <div>
-                    {format(event.start, 'EEE d MMM yyyy • HH:mm')}–{format(event.end, 'HH:mm')}
-                  </div>
-                  {customerName && <div>Customer: {customerName}</div>}
-                  {booking?.payment_status && <div>Payment: {formatStatusLabel(booking.payment_status)}</div>}
-                </div>
-              )
-            }
-
-            return <div className="text-xs whitespace-pre-wrap">{event.title}</div>
-          })()
-
-          return (
-            <Tooltip content={tooltipContent} placement="top" delay={250} maxWidth={360}>
-              <span className="inline-flex min-w-0 items-center gap-1">
-                {icon}
-                <span className="truncate">{event.title}</span>
-              </span>
-            </Tooltip>
-          )
-        }}
-        onEventClick={(event) => {
-          if (event.id.startsWith(NOTE_ID_PREFIX)) {
-            return
-          }
-
-          if (event.id.startsWith(EVENT_ID_PREFIX)) {
-            router.push(`/events/${event.id.slice(EVENT_ID_PREFIX.length)}`)
-            return
-          }
-
-          if (event.id.startsWith(PRIVATE_BOOKING_ID_PREFIX)) {
-            router.push(`/private-bookings/${event.id.slice(PRIVATE_BOOKING_ID_PREFIX.length)}`)
-            return
-          }
-
-          if (event.id.startsWith(PARKING_ID_PREFIX)) {
-            router.push('/parking')
-          }
-        }}
       />
+
+      {hiddenCount > 0 && (
+        <p className="text-xs text-gray-500">{hiddenCount} without a date (not shown)</p>
+      )}
     </div>
   )
 }
+
+// Local alias for the private-booking adapter's input shape. Its `status`
+// field is a BookingStatus union in events-command-center; we mirror the
+// structural shape here so the cast stays narrow and explicit.
+type PrivateBookingCalendarInput = Parameters<typeof privateBookingToEntry>[0]
