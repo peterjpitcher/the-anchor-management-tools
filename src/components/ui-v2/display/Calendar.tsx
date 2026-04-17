@@ -679,15 +679,3 @@ export function MiniCalendar({
   )
 }
 
-/**
- * EventCalendar - Calendar optimized for event display
- */
-export function EventCalendar(props: CalendarProps) {
-  return (
-    <Calendar
-      {...props}
-      selectable={false}
-      showEventTime={true}
-    />
-  )
-}
