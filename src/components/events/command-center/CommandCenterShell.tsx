@@ -9,8 +9,6 @@ import type {
 } from '@/app/(authenticated)/events/get-events-command-center'
 import ControlBar, { ViewMode, FilterType } from './ControlBar'
 import EventCalendarView from './EventCalendarView'
-import EventGrid from './EventGrid'
-import EventList from './EventList'
 import TaskSidebar from './TaskSidebar'
 import EventExportPanel from './EventExportPanel'
 import { Modal } from '@/components/ui-v2/overlay/Modal'
@@ -22,7 +20,7 @@ interface CommandCenterShellProps {
 }
 
 export default function CommandCenterShell({ initialData, canCreateCalendarNote }: CommandCenterShellProps) {
-    const [viewMode, setViewMode] = useState<ViewMode>('calendar')
+    const [viewMode, setViewMode] = useState<ViewMode>('month')
     const [filter, setFilter] = useState<FilterType>('all')
     const [searchQuery, setSearchQuery] = useState('')
     const [isSidebarOpen, setIsSidebarOpen] = useState(true)
@@ -102,18 +100,14 @@ export default function CommandCenterShell({ initialData, canCreateCalendarNote 
                     />
 
                     <div className="flex-1 overflow-y-auto min-h-0 pb-20 scrollbar-hide">
-                        {viewMode === 'calendar' ? (
-                            <EventCalendarView
-                                events={filteredAllEvents}
-                                privateBookings={filteredPrivateBookings}
-                                calendarNotes={filteredCalendarNotes}
-                                canCreateCalendarNote={canCreateCalendarNote}
-                            />
-                        ) : viewMode === 'grid' ? (
-                            <EventGrid events={filteredAllEvents} />
-                        ) : (
-                            <EventList events={filteredAllEvents} />
-                        )}
+                        <EventCalendarView
+                            events={filteredAllEvents}
+                            privateBookings={filteredPrivateBookings}
+                            calendarNotes={filteredCalendarNotes}
+                            canCreateCalendarNote={canCreateCalendarNote}
+                            view={viewMode}
+                            onViewChange={setViewMode}
+                        />
                     </div>
                 </div>
 

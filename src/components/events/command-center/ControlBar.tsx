@@ -11,7 +11,7 @@ import {
 } from '@heroicons/react/24/outline'
 import Link from 'next/link'
 
-export type ViewMode = 'calendar' | 'grid' | 'list'
+export type ViewMode = 'month' | 'week' | 'list'
 export type FilterType = 'all' | 'attention_needed'
 
 interface ControlBarProps {
@@ -84,22 +84,25 @@ export default function ControlBar({
                 {/* View Toggle */}
                 <div className="flex bg-gray-100 p-1 rounded-md">
                     <button type="button"
-                        onClick={() => setViewMode('calendar')}
-                        title="Calendar View"
-                        className={`p-1.5 rounded-sm transition-all ${viewMode === 'calendar' ? 'bg-white text-black shadow-sm' : 'text-gray-500 hover:text-gray-900'}`}
+                        onClick={() => setViewMode('month')}
+                        title="Month View"
+                        aria-label="Month view"
+                        className={`p-1.5 rounded-sm transition-all ${viewMode === 'month' ? 'bg-white text-black shadow-sm' : 'text-gray-500 hover:text-gray-900'}`}
                     >
                         <CalendarDaysIcon className="w-4 h-4" />
                     </button>
                     <button type="button"
-                        onClick={() => setViewMode('grid')}
-                        title="Grid View"
-                        className={`p-1.5 rounded-sm transition-all ${viewMode === 'grid' ? 'bg-white text-black shadow-sm' : 'text-gray-500 hover:text-gray-900'}`}
+                        onClick={() => setViewMode('week')}
+                        title="Week View"
+                        aria-label="Week view"
+                        className={`p-1.5 rounded-sm transition-all ${viewMode === 'week' ? 'bg-white text-black shadow-sm' : 'text-gray-500 hover:text-gray-900'}`}
                     >
                         <ViewColumnsIcon className="w-4 h-4" />
                     </button>
                     <button type="button"
                         onClick={() => setViewMode('list')}
                         title="List View"
+                        aria-label="List view"
                         className={`p-1.5 rounded-sm transition-all ${viewMode === 'list' ? 'bg-white text-black shadow-sm' : 'text-gray-500 hover:text-gray-900'}`}
                     >
                         <ListBulletIcon className="w-4 h-4" />
