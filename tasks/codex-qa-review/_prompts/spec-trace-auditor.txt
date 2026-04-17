@@ -1,0 +1,59 @@
+You are the SPEC TRACE AUDITOR. The spec under review is at `docs/superpowers/specs/2026-04-17-calendar-redesign-design.md`.
+
+Since this spec is for NEW code (not yet written), your audit is inverted from the normal case:
+
+1. Trace every **original problem statement** the spec claims to solve back to a **spec requirement**, and then forward to an **implementation affordance** that is concrete enough to build.
+2. Flag requirements that are ambiguous, contradictory, or not yet buildable against the actual repo.
+3. Identify problems the user mentioned in the original brief that the spec did NOT address.
+
+**ORIGINAL USER PROBLEM (abbreviated)**
+> "The calendar view on this application needs work. It doesn't show some event details (I need to see those even if it makes the calendar bigger), the week view is horrible to use, doesn't show notes properly, is too long to see, etc. The list view shows all items even if they're past already, I want to see today's items, but I should be able to scroll up to past events."
+
+During the design conversation the user also confirmed:
+- Drop Day view. Keep Month, Week, List.
+- Month view: variable-height rows, all events visible, full name + guest count.
+- Week view: condensed hourly 12:00–23:00, auto-extend if needed.
+- List view: today-anchored, past accessible by scrolling up.
+- "Doesn't show some event details" referred specifically to event titles rendering as `...` on busy days (25 and 26 April in production) — fixed by variable-height + full-name wrap.
+- "Doesn't show notes properly" was loose language about the same ellipsis bug, NOT about multi-day note rendering.
+- Build a new component, replace on events and dashboard pages.
+- Dashboard also shows parking bookings.
+- Dashboard gets all three views too.
+
+**WHAT TO CHECK**
+
+1. **Requirements coverage matrix.** For each user-stated pain point:
+   - What section of the spec addresses it?
+   - Is the proposed solution concrete enough to build?
+   - Is there an acceptance criterion that proves the pain is fixed?
+
+2. **Hidden requirements.** Things the user said but the spec may have dropped:
+   - "The whole page is too long to see." — Is this actually addressed, or only the week view part of it?
+   - "Check if someone's trying to book a date." — The spec implies this use case but never explicitly names the "available-date check" affordance. Does the month view layout serve this well enough, or is something missing (e.g. a toggle to hide calendar notes that clutter availability?)
+
+3. **Ambiguities / contradictions inside the spec.**
+   - Month view: "row grows to fit busiest day" — does that include the multi-day notes bar (which sits above day entries)? Or does the bar fight with per-day height?
+   - Week view: "1 hour = 40px". A 3-hour booking is 120px and has "time / title / subtitle" lines. Does the math land consistently?
+   - List view: past rows at 60% opacity — accessibility risk? Text contrast ratio?
+   - "Falls back to List view automatically" on mobile — how is this communicated to the user when they tried to pick Month/Week?
+
+4. **Testing coverage.** Do the named tests actually prove the user pain is fixed?
+   - Is there a test that would fail if a busy day's titles got re-truncated to `...`?
+   - Is there a test that the Today group scrolls into view on list mount?
+   - Is there a test that multi-day notes render as a single bar not repeated titles?
+
+**OUTPUT FORMAT**
+```
+# Spec Trace Audit — Calendar Redesign
+
+## Inspection Inventory
+## Requirements Coverage Matrix
+| User pain | Spec section | Concrete? | Acceptance criterion? | Verdict |
+
+## Missing Requirements
+## Ambiguities / Contradictions
+## Testing Coverage Gaps
+## Verdict
+```
+
+Be specific. Quote spec line numbers when critiquing.
