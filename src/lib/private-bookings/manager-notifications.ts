@@ -47,6 +47,14 @@ export type PrivateBookingWeeklyDigestEvent = {
   triggerLabels: string[]
 }
 
+export type PrivateBookingWeeklyDigestStaleOutcome = {
+  bookingId: string
+  customerName: string
+  eventDate: string
+  daysSinceEmail: number
+  bookingUrl: string
+}
+
 export type PrivateBookingWeeklyDigestInput = {
   runDateKey: string
   weekLabel: string
@@ -54,6 +62,7 @@ export type PrivateBookingWeeklyDigestInput = {
   events: PrivateBookingWeeklyDigestEvent[]
   pendingSmsCount: number
   smsQueueUrl: string
+  stalePendingOutcomes?: PrivateBookingWeeklyDigestStaleOutcome[]
 }
 
 function escapeHtml(value: string): string {
@@ -285,6 +294,19 @@ export async function sendManagerPrivateBookingsWeeklyDigestEmail(
       ? `<div style="margin-top:16px;padding:12px;background:#fef3c7;border-radius:6px;"><strong>${input.pendingSmsCount}</strong> SMS pending approval · <a href="${escapeHtml(input.smsQueueUrl)}" style="color:#2563eb;">Review queue →</a></div>`
       : ''
 
+  const staleOutcomes = input.stalePendingOutcomes ?? []
+  const staleOutcomesHtml = staleOutcomes.length > 0
+    ? (() => {
+        const rowsHtml = staleOutcomes
+          .map(
+            (row) =>
+              `<div style="font-size:14px;padding:4px 0;color:#374151;">${escapeHtml(row.customerName)} · ${escapeHtml(formatDateOnly(row.eventDate))} · <strong>${row.daysSinceEmail} days</strong> since outcome email · <a href="${escapeHtml(row.bookingUrl)}" style="color:#2563eb;">View →</a></div>`
+          )
+          .join('')
+        return `<div style="margin-top:16px;padding:12px;background:#fee2e2;border-left:4px solid #dc2626;border-radius:6px;"><h3 style="margin:0 0 8px 0;font-size:16px;">Stale pending outcomes (${staleOutcomes.length})</h3><p style="font-size:13px;color:#6b7280;margin:0 0 8px 0;">Outcome email sent over 14 days ago but still marked pending. Please click one of the links in the original email.</p>${rowsHtml}</div>`
+      })()
+    : ''
+
   const footerHtml = `<p style="margin-top:24px;font-size:12px;color:#9ca3af;">Sent every Monday at 9am · <a href="${escapeHtml(privateBookingsUrl)}" style="color:#9ca3af;">Manage in Anchor Management Tools</a></p>`
 
   let bodyHtml: string
@@ -304,6 +326,7 @@ export async function sendManagerPrivateBookingsWeeklyDigestEmail(
     quickLinkHtml,
     bodyHtml,
     pendingSmsHtml,
+    staleOutcomesHtml,
     footerHtml
   ].join('')
 
@@ -357,6 +380,17 @@ export async function sendManagerPrivateBookingsWeeklyDigestEmail(
   if (input.pendingSmsCount > 0) {
     textLines.push('', '--- PENDING SMS ---')
     textLines.push(`${input.pendingSmsCount} SMS pending approval: ${input.smsQueueUrl}`)
+  }
+
+  if (staleOutcomes.length > 0) {
+    textLines.push('', `--- STALE PENDING OUTCOMES (${staleOutcomes.length}) ---`)
+    textLines.push('Outcome email sent >14 days ago but still marked pending:')
+    staleOutcomes.forEach((row) => {
+      textLines.push(
+        `  ${row.customerName} | ${formatDateOnly(row.eventDate)} | ${row.daysSinceEmail}d since email`
+      )
+      textLines.push(`    ${row.bookingUrl}`)
+    })
   }
 
   textLines.push(
