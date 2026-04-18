@@ -981,6 +981,31 @@ export async function GET(request: Request) {
               })
             : 'the event date'
 
+          // Atomic claim BEFORE sending: only proceed if this cron run wins the
+          // WHERE outcome_email_sent_at IS NULL gate. Concurrent cron runs lose
+          // the claim and skip silently — prevents duplicate manager emails.
+          const claimedAt = new Date().toISOString()
+          const { data: claimed, error: claimErr } = await supabase
+            .from('private_bookings')
+            .update({ outcome_email_sent_at: claimedAt })
+            .eq('id', booking.id)
+            .is('outcome_email_sent_at', null)
+            .select('id')
+            .maybeSingle()
+
+          if (claimErr) {
+            logger.error('Private booking outcome email claim failed', {
+              error: new Error(claimErr.message || 'outcome claim failed'),
+              metadata: { bookingId: booking.id }
+            })
+            continue
+          }
+
+          if (!claimed) {
+            // Another cron run already claimed this booking. Silent skip.
+            continue
+          }
+
           const emailResult = await sendPrivateBookingOutcomeEmail({
             bookingId: booking.id,
             customerName: booking.customer_name || 'the guest',
@@ -990,24 +1015,20 @@ export async function GET(request: Request) {
           })
 
           if (emailResult.success) {
-            // Atomic claim — survives cron double-fire by only writing when still null.
-            const { error: stampErr } = await supabase
-              .from('private_bookings')
-              .update({ outcome_email_sent_at: new Date().toISOString() })
-              .eq('id', booking.id)
-              .is('outcome_email_sent_at', null)
-
-            if (stampErr) {
-              logger.warn('Private booking outcome email sent but claim stamp failed', {
-                metadata: { bookingId: booking.id, error: stampErr.message }
-              })
-            } else {
-              stats.outcomeEmailsSent++
-            }
+            stats.outcomeEmailsSent++
           } else {
-            logger.error('Private booking outcome email failed', {
+            // Claim already stamped; leave it. A failed email is rare (Microsoft
+            // Graph is stable) and automatic retry could duplicate when the
+            // original eventually delivers. The 14-day stale-pending-outcomes
+            // report surfaces these so ops can manually clear the claim if
+            // needed. Silent retry is not safe here.
+            logger.error('Private booking outcome email failed — claim retained', {
               error: new Error(emailResult.error || 'outcome email failed'),
-              metadata: { bookingId: booking.id }
+              metadata: {
+                bookingId: booking.id,
+                claimedAt,
+                manualRecovery: 'reset outcome_email_sent_at to null to retry'
+              }
             })
           }
         }
