@@ -1,5 +1,8 @@
 import { formatTime12Hour } from '@/lib/dateUtils'
 import { sendEmail } from '@/lib/email/emailService'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { createGuestToken } from '@/lib/guest/tokens'
+import { logger } from '@/lib/logger'
 
 const LONDON_TIMEZONE = 'Europe/London'
 const DEFAULT_MANAGER_EMAIL = 'manager@the-anchor.pub'
@@ -383,4 +386,159 @@ export async function sendManagerPrivateBookingsWeeklyDigestEmail(
     actionCount,
     eventCount: events.length
   }
+}
+
+// ----------------------------------------------------------------------------
+// Post-event outcome email (Task 4.1 / Phase 4 — PB SMS redesign)
+// ----------------------------------------------------------------------------
+
+type OutcomeKey = 'went_well' | 'issues' | 'skip'
+
+const OUTCOME_ORDER: OutcomeKey[] = ['went_well', 'issues', 'skip']
+
+export type SendPrivateBookingOutcomeEmailInput = {
+  bookingId: string
+  customerName: string
+  customerFirstName: string
+  /** Human-formatted event date, e.g. "12 May 2026" — caller is responsible for formatting. */
+  eventDate: string
+  guestCount: number | null
+}
+
+export type SendPrivateBookingOutcomeEmailResult = {
+  success: boolean
+  /** IDs (hashed_token strings) for each guest_token created — same order as OUTCOME_ORDER. */
+  tokenIds: string[]
+  error?: string
+}
+
+/**
+ * Build the public outcome URL. Outcome is encoded in the URL path (not in token
+ * metadata) because `createGuestToken` does not accept arbitrary metadata.
+ */
+function buildOutcomeLink(outcome: OutcomeKey, rawToken: string): string {
+  const base = normalizeAppBaseUrl(process.env.NEXT_PUBLIC_APP_URL || '')
+  return `${base}/api/private-bookings/outcome/${outcome}/${rawToken}`
+}
+
+/**
+ * Send the post-event outcome email to the private-bookings manager.
+ *
+ * Creates three guest_tokens (one per outcome: went_well / issues / skip) and
+ * embeds one-click links in the email. If token generation fails part-way
+ * through, no email is sent and the partial token IDs are returned so the caller
+ * can reconcile.
+ */
+export async function sendPrivateBookingOutcomeEmail(
+  input: SendPrivateBookingOutcomeEmailInput
+): Promise<SendPrivateBookingOutcomeEmailResult> {
+  const tokenIds: string[] = []
+
+  if (!input.bookingId) {
+    return { success: false, tokenIds, error: 'bookingId is required' }
+  }
+
+  const admin = createAdminClient()
+
+  // Fetch the booking's customer_id (guest_tokens.customer_id is NOT NULL).
+  const { data: booking, error: fetchError } = await admin
+    .from('private_bookings')
+    .select('customer_id')
+    .eq('id', input.bookingId)
+    .single()
+
+  if (fetchError || !booking?.customer_id) {
+    const message = fetchError?.message || 'Private booking missing customer_id — cannot create outcome tokens'
+    logger.error('sendPrivateBookingOutcomeEmail: failed to load booking customer_id', {
+      error: fetchError instanceof Error ? fetchError : new Error(String(fetchError ?? message)),
+      metadata: { bookingId: input.bookingId }
+    })
+    return { success: false, tokenIds, error: message }
+  }
+
+  // 14-day expiry — matches plan spec.
+  const expiresAt = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString()
+
+  const links: Record<OutcomeKey, string> = {
+    went_well: '',
+    issues: '',
+    skip: ''
+  }
+
+  for (const outcome of OUTCOME_ORDER) {
+    try {
+      const token = await createGuestToken(admin, {
+        customerId: booking.customer_id,
+        // Cast — GuestTokenActionType in @/lib/guest/tokens does not yet list
+        // 'private_booking_outcome', but the DB CHECK constraint was extended in
+        // migration 20260418120100_pb_outcome_token_action.sql. Wave 1 handoff
+        // documents this gap. Safe to cast until the type union is updated.
+        actionType: 'private_booking_outcome' as never,
+        expiresAt,
+        privateBookingId: input.bookingId
+      })
+      tokenIds.push(token.hashedToken)
+      links[outcome] = buildOutcomeLink(outcome, token.rawToken)
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      logger.error('sendPrivateBookingOutcomeEmail: failed to create outcome guest token', {
+        error: err instanceof Error ? err : new Error(message),
+        metadata: { bookingId: input.bookingId, outcome }
+      })
+      return {
+        success: false,
+        tokenIds,
+        error: `Failed to create outcome token for "${outcome}": ${message}`
+      }
+    }
+  }
+
+  const displayName = escapeHtml(input.customerName?.trim() || 'the guest')
+  const eventDateSafe = escapeHtml(input.eventDate?.trim() || 'recently')
+  const guestCountLabel = typeof input.guestCount === 'number' && Number.isFinite(input.guestCount)
+    ? String(input.guestCount)
+    : 'unknown'
+
+  const html = [
+    '<p>Hi,</p>',
+    `<p>Did <strong>${displayName}</strong>'s event on <strong>${eventDateSafe}</strong> go well?</p>`,
+    `<p>Guest count: ${escapeHtml(guestCountLabel)}</p>`,
+    '<p>Click one:</p>',
+    '<ul>',
+    `<li><a href="${escapeHtml(links.went_well)}">Yes — went well (send the customer a Google review ask)</a></li>`,
+    `<li><a href="${escapeHtml(links.issues)}">Had issues (do not send review ask)</a></li>`,
+    `<li><a href="${escapeHtml(links.skip)}">Skip (do not send review ask)</a></li>`,
+    '</ul>',
+    '<p>Links expire in 14 days.</p>'
+  ].join('')
+
+  const text = [
+    `Did ${input.customerName?.trim() || 'the guest'}'s event on ${input.eventDate?.trim() || 'recently'} go well?`,
+    `Guest count: ${guestCountLabel}`,
+    '',
+    `Yes — went well: ${links.went_well}`,
+    `Had issues: ${links.issues}`,
+    `Skip: ${links.skip}`,
+    '',
+    'Links expire in 14 days.'
+  ].join('\n')
+
+  const subject = `Did ${input.customerFirstName?.trim() || 'the guest'}'s event go well? — ${input.eventDate?.trim() || ''}`.trim()
+
+  const result = await sendEmail({
+    to: PRIVATE_BOOKINGS_MANAGER_EMAIL,
+    subject,
+    html,
+    text
+  })
+
+  if (!result.success) {
+    return {
+      success: false,
+      tokenIds,
+      error: result.error || 'Failed to send private booking outcome email'
+    }
+  }
+
+  return { success: true, tokenIds }
 }
