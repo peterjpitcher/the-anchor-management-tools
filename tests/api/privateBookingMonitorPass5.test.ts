@@ -333,11 +333,16 @@ describe('private booking monitor Pass 5a — outcome email', () => {
     expect(response.status).toBe(200)
     expect(payload.stats.outcomeEmailsSent).toBe(0)
 
-    // No stamping update should have been queued for this booking.
-    const stampUpdate = capture.bookingUpdates.find(
+    // Atomic-claim-before-send pattern: claim is stamped BEFORE send and kept
+    // even on failure. This prevents duplicate manager emails on cron
+    // double-fire. Ops manually clears outcome_email_sent_at if the failure
+    // needs retry (surfaced via the 14-day stale-pending-outcomes report).
+    const stampUpdates = capture.bookingUpdates.filter(
       (u) => u.filter.id === 'bk-broken' && u.payload.outcome_email_sent_at !== undefined
     )
-    expect(stampUpdate).toBeUndefined()
+    expect(stampUpdates).toHaveLength(1)
+    expect(stampUpdates[0].payload.outcome_email_sent_at).toMatch(/T/)
+    expect(stampUpdates[0].filter).toMatchObject({ id: 'bk-broken', outcome_email_sent_at: 'IS NULL' })
   })
 
   it('suppresses the send when the booking date is TBD', async () => {
