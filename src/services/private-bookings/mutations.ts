@@ -34,8 +34,15 @@ import {
   bookingCompletedThanksMessage,
   bookingExpiredMessage,
   holdExtendedMessage,
+  bookingCancelledHoldMessage,
+  bookingCancelledRefundableMessage,
+  bookingCancelledNonRefundableMessage,
   bookingCancelledManualReviewMessage,
 } from '@/lib/private-bookings/messages';
+import {
+  getPrivateBookingCancellationOutcome,
+  type CancellationFinancialOutcome,
+} from '@/services/private-bookings/financial';
 
 // ---------------------------------------------------------------------------
 // Private helpers
@@ -108,6 +115,92 @@ async function sendCreationSms(booking: any, phone?: string | null): Promise<voi
     }
   } catch (smsError) {
     logger.error('Failed to queue booking created SMS after booking creation:', { error: smsError instanceof Error ? smsError : new Error(String(smsError)) });
+  }
+}
+
+type CancellationSmsVariant = {
+  triggerType:
+    | 'booking_cancelled_hold'
+    | 'booking_cancelled_refundable'
+    | 'booking_cancelled_non_refundable'
+    | 'booking_cancelled_manual_review'
+  templateKey:
+    | 'private_booking_cancelled_hold'
+    | 'private_booking_cancelled_refundable'
+    | 'private_booking_cancelled_non_refundable'
+    | 'private_booking_cancelled_manual_review'
+  messageBody: string
+  outcome: CancellationFinancialOutcome
+  refundAmount: number
+  retainedAmount: number
+}
+
+/**
+ * Resolve the cancellation SMS variant for a booking from its financial
+ * outcome. Returns the trigger/template keys and the rendered message body
+ * so `cancelBooking()` and the status-change cancel path in `updateBooking()`
+ * can queue a single variant-specific SMS instead of the generic
+ * `booking_cancelled` placeholder that Wave 2 left in place.
+ */
+async function resolveCancellationSmsVariant(input: {
+  bookingId: string
+  customerFirstName: string | null | undefined
+  eventDate: string
+}): Promise<CancellationSmsVariant> {
+  const outcome = await getPrivateBookingCancellationOutcome(input.bookingId)
+
+  switch (outcome.outcome) {
+    case 'no_money':
+      return {
+        triggerType: 'booking_cancelled_hold',
+        templateKey: 'private_booking_cancelled_hold',
+        messageBody: bookingCancelledHoldMessage({
+          customerFirstName: input.customerFirstName,
+          eventDate: input.eventDate,
+        }),
+        outcome: outcome.outcome,
+        refundAmount: outcome.refund_amount,
+        retainedAmount: outcome.retained_amount,
+      }
+    case 'refundable':
+      return {
+        triggerType: 'booking_cancelled_refundable',
+        templateKey: 'private_booking_cancelled_refundable',
+        messageBody: bookingCancelledRefundableMessage({
+          customerFirstName: input.customerFirstName,
+          eventDate: input.eventDate,
+          refundAmount: outcome.refund_amount,
+        }),
+        outcome: outcome.outcome,
+        refundAmount: outcome.refund_amount,
+        retainedAmount: outcome.retained_amount,
+      }
+    case 'non_refundable_retained':
+      return {
+        triggerType: 'booking_cancelled_non_refundable',
+        templateKey: 'private_booking_cancelled_non_refundable',
+        messageBody: bookingCancelledNonRefundableMessage({
+          customerFirstName: input.customerFirstName,
+          eventDate: input.eventDate,
+          retainedAmount: outcome.retained_amount,
+        }),
+        outcome: outcome.outcome,
+        refundAmount: outcome.refund_amount,
+        retainedAmount: outcome.retained_amount,
+      }
+    case 'manual_review':
+    default:
+      return {
+        triggerType: 'booking_cancelled_manual_review',
+        templateKey: 'private_booking_cancelled_manual_review',
+        messageBody: bookingCancelledManualReviewMessage({
+          customerFirstName: input.customerFirstName,
+          eventDate: input.eventDate,
+        }),
+        outcome: 'manual_review',
+        refundAmount: outcome.refund_amount,
+        retainedAmount: outcome.retained_amount,
+      }
   }
 }
 
@@ -651,21 +744,20 @@ export async function updateBooking(id: string, input: UpdatePrivateBookingInput
     }
 
     if (!abortSmsSideEffects && updatedBooking.status === 'cancelled') {
-      // Generic cancellation body. Wave 3 will split this into 4 variants
-      // (hold / refundable / non-refundable / manual review) based on
-      // financial outcome. Until then, the manual-review wording is the
-      // safest default because it promises a follow-up rather than making a
-      // refund/retention statement.
-      const messageBody = bookingCancelledManualReviewMessage({
+      // Pick the variant keyed by the financial outcome (no_money /
+      // refundable / non-refundable / manual review). See
+      // `resolveCancellationSmsVariant` for the mapping.
+      const variant = await resolveCancellationSmsVariant({
+        bookingId: updatedBooking.id,
         customerFirstName: firstName,
         eventDate: eventDateReadable,
-      });
+      })
 
       const result = await SmsQueueService.queueAndSend({
         booking_id: updatedBooking.id,
-        trigger_type: 'booking_cancelled',
-        template_key: 'private_booking_cancelled',
-        message_body: messageBody,
+        trigger_type: variant.triggerType,
+        template_key: variant.templateKey,
+        message_body: variant.messageBody,
         customer_phone: updatedBooking.contact_phone,
         customer_name:
           updatedBooking.customer_name ||
@@ -674,12 +766,15 @@ export async function updateBooking(id: string, input: UpdatePrivateBookingInput
         created_by: performedByUserId,
         priority: 2,
         metadata: {
-          template: 'private_booking_cancelled',
+          template: variant.templateKey,
           event_date: eventDateReadable,
-          reason: 'status_change'
+          reason: 'status_change',
+          financial_outcome: variant.outcome,
+          refund_amount: variant.refundAmount,
+          retained_amount: variant.retainedAmount,
         }
       })
-      captureSmsSideEffect('booking_cancelled', 'private_booking_cancelled', result)
+      captureSmsSideEffect(variant.triggerType, variant.templateKey, result)
     }
 
     if (!abortSmsSideEffects && updatedBooking.status === 'completed' && !completedStatusAlreadyMessaged) {
@@ -967,31 +1062,34 @@ export async function cancelBooking(id: string, reason: string, performedByUserI
     });
 
     const firstName = booking.customer_first_name || booking.customer_name?.split(' ')[0] || 'there';
-    // Generic cancellation body — same caveat as the status-change path above:
-    // Wave 3 splits this into 4 variants; until then, manual-review wording
-    // is the safest default.
-    const smsMessage = bookingCancelledManualReviewMessage({
+    // Pick the cancellation variant based on paid totals + dispute state.
+    // See `resolveCancellationSmsVariant` for the four-outcome mapping.
+    const variant = await resolveCancellationSmsVariant({
+      bookingId: id,
       customerFirstName: firstName,
       eventDate: eventDate,
-    });
+    })
 
-     
+
     let smsResult: any
     try {
       smsResult = await SmsQueueService.queueAndSend({
         booking_id: id,
-        trigger_type: 'booking_cancelled',
-        template_key: 'private_booking_cancelled',
-        message_body: smsMessage,
+        trigger_type: variant.triggerType,
+        template_key: variant.templateKey,
+        message_body: variant.messageBody,
         customer_phone: booking.contact_phone,
         customer_name: booking.customer_name || `${booking.customer_first_name} ${booking.customer_last_name || ''}`.trim(),
         customer_id: booking.customer_id,
         created_by: performedByUserId,
         priority: 2,
         metadata: {
-          template: 'private_booking_cancelled',
+          template: variant.templateKey,
           event_date: eventDate,
-          reason: reason || 'staff_cancelled'
+          reason: reason || 'staff_cancelled',
+          financial_outcome: variant.outcome,
+          refund_amount: variant.refundAmount,
+          retained_amount: variant.retainedAmount,
         }
       });
     } catch (smsError) {
@@ -1000,8 +1098,8 @@ export async function cancelBooking(id: string, reason: string, performedByUserI
 
     const smsSafety = normalizeSmsSafetyMeta(smsResult)
     const smsSummary: PrivateBookingSmsSideEffectSummary = {
-      triggerType: 'booking_cancelled',
-      templateKey: 'private_booking_cancelled',
+      triggerType: variant.triggerType,
+      templateKey: variant.templateKey,
       queueId: typeof smsResult?.queueId === 'string' ? smsResult.queueId : undefined,
       sent: smsResult?.sent === true,
       suppressed: smsResult?.suppressed === true,
