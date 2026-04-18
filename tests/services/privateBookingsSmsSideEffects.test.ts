@@ -25,11 +25,61 @@ vi.mock('@/lib/google-calendar', () => ({
   isCalendarConfigured: vi.fn(() => false),
 }))
 
+vi.mock('@/services/private-bookings/financial', () => ({
+  getPrivateBookingCancellationOutcome: vi.fn(),
+}))
+
 import { createClient } from '@/lib/supabase/server'
 import { SmsQueueService } from '@/services/sms-queue'
 import { PrivateBookingService } from '@/services/private-bookings'
+import { getPrivateBookingCancellationOutcome } from '@/services/private-bookings/financial'
+import {
+  setupReminderMessage,
+  depositReceivedMessage,
+  finalPaymentMessage,
+  bookingCancelledHoldMessage,
+  bookingCancelledRefundableMessage,
+  bookingCancelledNonRefundableMessage,
+  bookingCancelledManualReviewMessage,
+} from '@/lib/private-bookings/messages'
 
 const mockedCreateClient = createClient as unknown as Mock
+const mockedGetCancellationOutcome = getPrivateBookingCancellationOutcome as unknown as Mock
+
+function mockCancelBookingSupabase(): Mock {
+  const fetchSingle = vi.fn().mockResolvedValue({
+    data: {
+      id: 'booking-1',
+      status: 'confirmed',
+      event_date: '2026-02-20',
+      customer_first_name: 'Alex',
+      customer_last_name: 'Smith',
+      customer_name: 'Alex Smith',
+      contact_phone: '+447700900123',
+      calendar_event_id: null,
+      customer_id: null,
+    },
+    error: null,
+  })
+  const fetchEq = vi.fn().mockReturnValue({ single: fetchSingle })
+  const fetchSelect = vi.fn().mockReturnValue({ eq: fetchEq })
+
+  const cancelMaybeSingle = vi.fn().mockResolvedValue({ data: { id: 'booking-1' }, error: null })
+  const cancelSelect = vi.fn().mockReturnValue({ maybeSingle: cancelMaybeSingle })
+  const cancelEq = vi.fn().mockReturnValue({ select: cancelSelect })
+  const update = vi.fn().mockReturnValue({ eq: cancelEq })
+
+  mockedCreateClient.mockResolvedValue({
+    from: vi.fn((table: string) => {
+      if (table !== 'private_bookings') {
+        throw new Error(`Unexpected table: ${table}`)
+      }
+      return { select: fetchSelect, update }
+    }),
+  })
+
+  return update
+}
 
 describe('PrivateBookingService SMS side-effect meta', () => {
   beforeEach(() => {
@@ -122,6 +172,10 @@ describe('PrivateBookingService SMS side-effect meta', () => {
       expect.objectContaining({
         trigger_type: 'setup_reminder',
         template_key: 'private_booking_setup_reminder',
+        message_body: setupReminderMessage({
+          customerFirstName: 'Alex',
+          eventDate: '10 March 2026',
+        }),
       })
     )
 
@@ -204,6 +258,16 @@ describe('PrivateBookingService SMS side-effect meta', () => {
         logFailure: true,
       }),
     ])
+    expect((SmsQueueService.queueAndSend as unknown as Mock).mock.calls[0]?.[0]).toEqual(
+      expect.objectContaining({
+        trigger_type: 'deposit_received',
+        template_key: 'private_booking_deposit_received',
+        message_body: depositReceivedMessage({
+          customerFirstName: 'Alex',
+          eventDate: '20 February 2026',
+        }),
+      })
+    )
   })
 
   it('recordFinalPayment returns smsSideEffects when queueAndSend returns an error result', async () => {
@@ -270,42 +334,25 @@ describe('PrivateBookingService SMS side-effect meta', () => {
         error: 'SMS blocked by idempotency safety guard',
       }),
     ])
+    expect((SmsQueueService.queueAndSend as unknown as Mock).mock.calls[0]?.[0]).toEqual(
+      expect.objectContaining({
+        trigger_type: 'final_payment_received',
+        template_key: 'private_booking_final_payment',
+        message_body: finalPaymentMessage({
+          customerFirstName: 'Alex',
+          eventDate: '20 February 2026',
+        }),
+      })
+    )
   })
 
   it('cancelBooking returns smsSideEffects when queueAndSend throws', async () => {
-    const fetchSingle = vi.fn().mockResolvedValue({
-      data: {
-        id: 'booking-1',
-        status: 'confirmed',
-        event_date: '2026-02-20',
-        customer_first_name: 'Alex',
-        customer_last_name: 'Smith',
-        customer_name: 'Alex Smith',
-        contact_phone: '+447700900123',
-        calendar_event_id: null,
-        customer_id: null,
-      },
-      error: null,
-    })
-    const fetchEq = vi.fn().mockReturnValue({ single: fetchSingle })
-    const fetchSelect = vi.fn().mockReturnValue({ eq: fetchEq })
+    mockCancelBookingSupabase()
 
-    const cancelMaybeSingle = vi.fn().mockResolvedValue({ data: { id: 'booking-1' }, error: null })
-    const cancelSelect = vi.fn().mockReturnValue({ maybeSingle: cancelMaybeSingle })
-    const cancelEq = vi.fn().mockReturnValue({ select: cancelSelect })
-    const update = vi.fn().mockReturnValue({ eq: cancelEq })
-
-    mockedCreateClient.mockResolvedValue({
-      from: vi.fn((table: string) => {
-        if (table !== 'private_bookings') {
-          throw new Error(`Unexpected table: ${table}`)
-        }
-
-        return {
-          select: fetchSelect,
-          update,
-        }
-      }),
+    mockedGetCancellationOutcome.mockResolvedValue({
+      outcome: 'manual_review',
+      refund_amount: 0,
+      retained_amount: 0,
     })
 
     ;(SmsQueueService.queueAndSend as unknown as Mock).mockRejectedValue(new Error('queue insert failed'))
@@ -315,10 +362,158 @@ describe('PrivateBookingService SMS side-effect meta', () => {
     expect(result).toMatchObject({ success: true })
     expect((result as any).smsSideEffects).toEqual([
       expect.objectContaining({
-        triggerType: 'booking_cancelled',
-        templateKey: 'private_booking_cancelled',
+        triggerType: 'booking_cancelled_manual_review',
+        templateKey: 'private_booking_cancelled_manual_review',
         error: 'queue insert failed',
       }),
     ])
+    expect((SmsQueueService.queueAndSend as unknown as Mock).mock.calls[0]?.[0]).toEqual(
+      expect.objectContaining({
+        trigger_type: 'booking_cancelled_manual_review',
+        template_key: 'private_booking_cancelled_manual_review',
+        message_body: bookingCancelledManualReviewMessage({
+          customerFirstName: 'Alex',
+          eventDate: '20 February 2026',
+        }),
+      })
+    )
+  })
+
+  it('cancelBooking picks booking_cancelled_hold when no money paid', async () => {
+    mockCancelBookingSupabase()
+
+    mockedGetCancellationOutcome.mockResolvedValue({
+      outcome: 'no_money',
+      refund_amount: 0,
+      retained_amount: 0,
+    })
+
+    ;(SmsQueueService.queueAndSend as unknown as Mock).mockResolvedValue({
+      success: true,
+      queueId: 'queue-hold-1',
+      sent: true,
+    })
+
+    await PrivateBookingService.cancelBooking('booking-1', 'Customer requested', 'user-1')
+
+    expect((SmsQueueService.queueAndSend as unknown as Mock).mock.calls[0]?.[0]).toEqual(
+      expect.objectContaining({
+        trigger_type: 'booking_cancelled_hold',
+        template_key: 'private_booking_cancelled_hold',
+        message_body: bookingCancelledHoldMessage({
+          customerFirstName: 'Alex',
+          eventDate: '20 February 2026',
+        }),
+        metadata: expect.objectContaining({
+          financial_outcome: 'no_money',
+          refund_amount: 0,
+          retained_amount: 0,
+        }),
+      })
+    )
+  })
+
+  it('cancelBooking picks booking_cancelled_refundable when balance paid', async () => {
+    mockCancelBookingSupabase()
+
+    mockedGetCancellationOutcome.mockResolvedValue({
+      outcome: 'refundable',
+      refund_amount: 450,
+      retained_amount: 150,
+    })
+
+    ;(SmsQueueService.queueAndSend as unknown as Mock).mockResolvedValue({
+      success: true,
+      queueId: 'queue-refund-1',
+      sent: true,
+    })
+
+    await PrivateBookingService.cancelBooking('booking-1', 'Customer requested', 'user-1')
+
+    expect((SmsQueueService.queueAndSend as unknown as Mock).mock.calls[0]?.[0]).toEqual(
+      expect.objectContaining({
+        trigger_type: 'booking_cancelled_refundable',
+        template_key: 'private_booking_cancelled_refundable',
+        message_body: bookingCancelledRefundableMessage({
+          customerFirstName: 'Alex',
+          eventDate: '20 February 2026',
+          refundAmount: 450,
+        }),
+        metadata: expect.objectContaining({
+          financial_outcome: 'refundable',
+          refund_amount: 450,
+          retained_amount: 150,
+        }),
+      })
+    )
+  })
+
+  it('cancelBooking picks booking_cancelled_non_refundable when only deposit paid', async () => {
+    mockCancelBookingSupabase()
+
+    mockedGetCancellationOutcome.mockResolvedValue({
+      outcome: 'non_refundable_retained',
+      refund_amount: 0,
+      retained_amount: 150,
+    })
+
+    ;(SmsQueueService.queueAndSend as unknown as Mock).mockResolvedValue({
+      success: true,
+      queueId: 'queue-nonref-1',
+      sent: true,
+    })
+
+    await PrivateBookingService.cancelBooking('booking-1', 'Customer requested', 'user-1')
+
+    expect((SmsQueueService.queueAndSend as unknown as Mock).mock.calls[0]?.[0]).toEqual(
+      expect.objectContaining({
+        trigger_type: 'booking_cancelled_non_refundable',
+        template_key: 'private_booking_cancelled_non_refundable',
+        message_body: bookingCancelledNonRefundableMessage({
+          customerFirstName: 'Alex',
+          eventDate: '20 February 2026',
+          retainedAmount: 150,
+        }),
+        metadata: expect.objectContaining({
+          financial_outcome: 'non_refundable_retained',
+          refund_amount: 0,
+          retained_amount: 150,
+        }),
+      })
+    )
+  })
+
+  it('cancelBooking picks booking_cancelled_manual_review when dispute open', async () => {
+    mockCancelBookingSupabase()
+
+    mockedGetCancellationOutcome.mockResolvedValue({
+      outcome: 'manual_review',
+      refund_amount: 0,
+      retained_amount: 350,
+    })
+
+    ;(SmsQueueService.queueAndSend as unknown as Mock).mockResolvedValue({
+      success: true,
+      queueId: 'queue-manual-1',
+      sent: true,
+    })
+
+    await PrivateBookingService.cancelBooking('booking-1', 'Customer requested', 'user-1')
+
+    expect((SmsQueueService.queueAndSend as unknown as Mock).mock.calls[0]?.[0]).toEqual(
+      expect.objectContaining({
+        trigger_type: 'booking_cancelled_manual_review',
+        template_key: 'private_booking_cancelled_manual_review',
+        message_body: bookingCancelledManualReviewMessage({
+          customerFirstName: 'Alex',
+          eventDate: '20 February 2026',
+        }),
+        metadata: expect.objectContaining({
+          financial_outcome: 'manual_review',
+          refund_amount: 0,
+          retained_amount: 350,
+        }),
+      })
+    )
   })
 })

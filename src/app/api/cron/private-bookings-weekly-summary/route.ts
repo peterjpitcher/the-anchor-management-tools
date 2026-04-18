@@ -11,7 +11,8 @@ import {
 import { logger } from '@/lib/logger'
 import {
   sendManagerPrivateBookingsWeeklyDigestEmail,
-  type PrivateBookingWeeklyDigestEvent
+  type PrivateBookingWeeklyDigestEvent,
+  type PrivateBookingWeeklyDigestStaleOutcome
 } from '@/lib/private-bookings/manager-notifications'
 import {
   classifyBookingTier,
@@ -19,6 +20,7 @@ import {
   type ClassificationContext,
   type WeeklyDigestBookingRow
 } from '@/lib/private-bookings/weekly-digest-classifier'
+import { getStalePendingOutcomes } from '@/lib/private-bookings/stale-outcomes'
 import { AuditService } from '@/services/audit'
 
 export const maxDuration = 60
@@ -239,13 +241,36 @@ export async function GET(request: Request) {
       return b.triggerLabels.length - a.triggerLabels.length
     })
 
+    // Surface bookings whose outcome email was sent >14 days ago but the
+    // manager still hasn't clicked a went_well / issues / skip link. The
+    // getStalePendingOutcomes helper is fail-safe — on DB error it returns
+    // [] so a single query issue does not break the whole digest.
+    let stalePendingOutcomes: PrivateBookingWeeklyDigestStaleOutcome[] = []
+    try {
+      const staleRows = await getStalePendingOutcomes()
+      stalePendingOutcomes = staleRows.map((row) => ({
+        bookingId: row.booking_id,
+        customerName: row.customer_name,
+        eventDate: row.event_date,
+        daysSinceEmail: row.days_since_email,
+        bookingUrl: buildBookingUrl(row.booking_id)
+      }))
+    } catch (staleErr) {
+      logger.warn('Failed to load stale pending outcomes for weekly digest', {
+        metadata: {
+          error: staleErr instanceof Error ? staleErr.message : String(staleErr)
+        }
+      })
+    }
+
     const emailResult = await sendManagerPrivateBookingsWeeklyDigestEmail({
       runDateKey: londonDateKey,
       weekLabel: formatWeekLabel(londonDateKey),
       appBaseUrl,
       events: digestEvents,
       pendingSmsCount: totalPendingSms,
-      smsQueueUrl: `${appBaseUrl}/private-bookings/sms-queue`
+      smsQueueUrl: `${appBaseUrl}/private-bookings/sms-queue`,
+      stalePendingOutcomes
     })
 
     if (!emailResult.sent) {

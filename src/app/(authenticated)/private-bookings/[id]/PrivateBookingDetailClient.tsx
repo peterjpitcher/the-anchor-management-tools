@@ -70,6 +70,8 @@ import {
   getBookingPortalLink,
   sendDepositPaymentLink,
   editPrivateBookingPayment,
+  getCancellationPreview,
+  getCompletionPreview,
 } from '@/app/actions/privateBookingActions'
 import type {
   PrivateBookingWithDetails,
@@ -492,6 +494,39 @@ interface StatusModalProps {
   onSuccess: () => void;
 }
 
+type CancellationPreview = {
+  outcome:
+    | 'no_money'
+    | 'refundable'
+    | 'non_refundable_retained'
+    | 'manual_review'
+    | null;
+  refund_amount: number;
+  retained_amount: number;
+  preview_body: string | null;
+  error?: string;
+};
+
+const CANCELLATION_OUTCOME_LABEL: Record<
+  NonNullable<CancellationPreview['outcome']>,
+  string
+> = {
+  no_money: 'No money changed hands',
+  refundable: 'Refundable',
+  non_refundable_retained: 'Non-refundable (retained)',
+  manual_review: 'Manual review',
+};
+
+const CANCELLATION_OUTCOME_VARIANT: Record<
+  NonNullable<CancellationPreview['outcome']>,
+  'default' | 'success' | 'warning' | 'error' | 'info'
+> = {
+  no_money: 'default',
+  refundable: 'info',
+  non_refundable_retained: 'warning',
+  manual_review: 'error',
+};
+
 function StatusModal({
   open: isOpen,
   onClose,
@@ -501,6 +536,52 @@ function StatusModal({
 }: StatusModalProps) {
   const [newStatus, setNewStatus] = useState<BookingStatus>(currentStatus);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [cancelPreview, setCancelPreview] =
+    useState<CancellationPreview | null>(null);
+  const [completePreview, setCompletePreview] = useState<string | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+
+  // Reset state when modal opens / changes booking.
+  useEffect(() => {
+    if (isOpen) {
+      setNewStatus(currentStatus);
+      setCancelPreview(null);
+      setCompletePreview(null);
+      setPreviewLoading(false);
+      setIsSubmitting(false);
+    }
+  }, [isOpen, currentStatus]);
+
+  // Fetch preview body whenever the admin selects cancel / complete.
+  useEffect(() => {
+    let active = true;
+
+    async function loadPreview() {
+      if (!isOpen) return;
+
+      if (newStatus === 'cancelled' && currentStatus !== 'cancelled') {
+        setPreviewLoading(true);
+        const preview = await getCancellationPreview(bookingId);
+        if (!active) return;
+        setCancelPreview(preview);
+        setPreviewLoading(false);
+      } else if (newStatus === 'completed' && currentStatus !== 'completed') {
+        setPreviewLoading(true);
+        const preview = await getCompletionPreview(bookingId);
+        if (!active) return;
+        setCompletePreview(preview.preview_body);
+        setPreviewLoading(false);
+      } else {
+        setCancelPreview(null);
+        setCompletePreview(null);
+      }
+    }
+
+    void loadPreview();
+    return () => {
+      active = false;
+    };
+  }, [newStatus, isOpen, bookingId, currentStatus]);
 
   const handleSubmit = async () => {
     setIsSubmitting(true);
@@ -520,6 +601,20 @@ function StatusModal({
   };
 
   const availableStatuses = statusFlow[currentStatus] || [];
+
+  const showCancelPreview =
+    newStatus === 'cancelled' && currentStatus !== 'cancelled';
+  const showCompletePreview =
+    newStatus === 'completed' && currentStatus !== 'completed';
+  const isDestructive = newStatus === 'cancelled';
+
+  const confirmLabel = isSubmitting
+    ? 'Updating...'
+    : newStatus === 'cancelled'
+      ? 'Cancel booking and send SMS'
+      : newStatus === 'completed'
+        ? 'Mark complete and send SMS'
+        : 'Update Status';
 
   return (
     <Modal open={isOpen} onClose={onClose} title="Change Booking Status" mobileFullscreen>
@@ -569,6 +664,85 @@ function StatusModal({
               })}
             </div>
 
+            {showCancelPreview && (
+              <div className="rounded-lg border border-red-200 bg-red-50 p-4 space-y-3">
+                <p className="text-sm font-medium text-red-900">
+                  Cancel this booking?
+                </p>
+
+                {previewLoading ? (
+                  <p className="text-sm text-red-700">Computing outcome...</p>
+                ) : cancelPreview?.error ? (
+                  <p className="text-sm text-red-700">{cancelPreview.error}</p>
+                ) : cancelPreview ? (
+                  <>
+                    {cancelPreview.outcome && (
+                      <div className="flex items-center gap-2">
+                        <Badge
+                          variant={
+                            CANCELLATION_OUTCOME_VARIANT[cancelPreview.outcome]
+                          }
+                        >
+                          {CANCELLATION_OUTCOME_LABEL[cancelPreview.outcome]}
+                        </Badge>
+                      </div>
+                    )}
+                    {cancelPreview.refund_amount > 0 && (
+                      <p className="text-sm text-gray-800">
+                        Refund:{' '}
+                        <strong>
+                          {formatCurrency(cancelPreview.refund_amount)}
+                        </strong>{' '}
+                        within 10 working days
+                      </p>
+                    )}
+                    {cancelPreview.retained_amount > 0 && (
+                      <p className="text-sm text-gray-800">
+                        Retained:{' '}
+                        <strong>
+                          {formatCurrency(cancelPreview.retained_amount)}
+                        </strong>
+                      </p>
+                    )}
+                    {cancelPreview.preview_body && (
+                      <div>
+                        <p className="text-xs font-medium text-gray-600 mb-1">
+                          Customer will receive:
+                        </p>
+                        <pre className="whitespace-pre-wrap rounded border border-gray-200 bg-white p-3 text-sm text-gray-900">
+                          {cancelPreview.preview_body}
+                        </pre>
+                      </div>
+                    )}
+                  </>
+                ) : null}
+              </div>
+            )}
+
+            {showCompletePreview && (
+              <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 space-y-3">
+                <p className="text-sm font-medium text-blue-900">
+                  Mark this booking as complete?
+                </p>
+                {previewLoading ? (
+                  <p className="text-sm text-blue-700">Loading preview...</p>
+                ) : completePreview ? (
+                  <div>
+                    <p className="text-xs font-medium text-gray-600 mb-1">
+                      Customer will receive:
+                    </p>
+                    <pre className="whitespace-pre-wrap rounded border border-gray-200 bg-white p-3 text-sm text-gray-900">
+                      {completePreview}
+                    </pre>
+                  </div>
+                ) : null}
+                <p className="text-xs text-gray-600">
+                  A separate decision email about Google reviews will be sent
+                  to the manager the following morning.
+                </p>
+              </div>
+            )}
+
             <div className="flex justify-end gap-3 mt-6">
               <Button type="button" onClick={onClose} variant="secondary">
                 Cancel
@@ -577,8 +751,9 @@ function StatusModal({
                 onClick={handleSubmit}
                 disabled={isSubmitting || newStatus === currentStatus}
                 loading={isSubmitting}
+                variant={isDestructive ? 'danger' : 'primary'}
               >
-                {isSubmitting ? "Updating..." : "Update Status"}
+                {confirmLabel}
               </Button>
             </div>
           </>
@@ -1383,6 +1558,7 @@ export default function PrivateBookingDetailClient({
     { label: 'Overview', href: `/private-bookings/${bookingId}` },
     { label: 'Items', href: `/private-bookings/${bookingId}/items` },
     { label: 'Messages', href: `/private-bookings/${bookingId}/messages` },
+    { label: 'Communications', href: `/private-bookings/${bookingId}/communications` },
     { label: 'Contract', href: `/private-bookings/${bookingId}/contract` },
   ];
 

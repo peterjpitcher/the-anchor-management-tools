@@ -1,5 +1,8 @@
 import { formatTime12Hour } from '@/lib/dateUtils'
 import { sendEmail } from '@/lib/email/emailService'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { createGuestToken } from '@/lib/guest/tokens'
+import { logger } from '@/lib/logger'
 
 const LONDON_TIMEZONE = 'Europe/London'
 const DEFAULT_MANAGER_EMAIL = 'manager@the-anchor.pub'
@@ -44,6 +47,14 @@ export type PrivateBookingWeeklyDigestEvent = {
   triggerLabels: string[]
 }
 
+export type PrivateBookingWeeklyDigestStaleOutcome = {
+  bookingId: string
+  customerName: string
+  eventDate: string
+  daysSinceEmail: number
+  bookingUrl: string
+}
+
 export type PrivateBookingWeeklyDigestInput = {
   runDateKey: string
   weekLabel: string
@@ -51,6 +62,7 @@ export type PrivateBookingWeeklyDigestInput = {
   events: PrivateBookingWeeklyDigestEvent[]
   pendingSmsCount: number
   smsQueueUrl: string
+  stalePendingOutcomes?: PrivateBookingWeeklyDigestStaleOutcome[]
 }
 
 function escapeHtml(value: string): string {
@@ -282,6 +294,19 @@ export async function sendManagerPrivateBookingsWeeklyDigestEmail(
       ? `<div style="margin-top:16px;padding:12px;background:#fef3c7;border-radius:6px;"><strong>${input.pendingSmsCount}</strong> SMS pending approval · <a href="${escapeHtml(input.smsQueueUrl)}" style="color:#2563eb;">Review queue →</a></div>`
       : ''
 
+  const staleOutcomes = input.stalePendingOutcomes ?? []
+  const staleOutcomesHtml = staleOutcomes.length > 0
+    ? (() => {
+        const rowsHtml = staleOutcomes
+          .map(
+            (row) =>
+              `<div style="font-size:14px;padding:4px 0;color:#374151;">${escapeHtml(row.customerName)} · ${escapeHtml(formatDateOnly(row.eventDate))} · <strong>${row.daysSinceEmail} days</strong> since outcome email · <a href="${escapeHtml(row.bookingUrl)}" style="color:#2563eb;">View →</a></div>`
+          )
+          .join('')
+        return `<div style="margin-top:16px;padding:12px;background:#fee2e2;border-left:4px solid #dc2626;border-radius:6px;"><h3 style="margin:0 0 8px 0;font-size:16px;">Stale pending outcomes (${staleOutcomes.length})</h3><p style="font-size:13px;color:#6b7280;margin:0 0 8px 0;">Outcome email sent over 14 days ago but still marked pending. Please click one of the links in the original email.</p>${rowsHtml}</div>`
+      })()
+    : ''
+
   const footerHtml = `<p style="margin-top:24px;font-size:12px;color:#9ca3af;">Sent every Monday at 9am · <a href="${escapeHtml(privateBookingsUrl)}" style="color:#9ca3af;">Manage in Anchor Management Tools</a></p>`
 
   let bodyHtml: string
@@ -301,6 +326,7 @@ export async function sendManagerPrivateBookingsWeeklyDigestEmail(
     quickLinkHtml,
     bodyHtml,
     pendingSmsHtml,
+    staleOutcomesHtml,
     footerHtml
   ].join('')
 
@@ -356,6 +382,17 @@ export async function sendManagerPrivateBookingsWeeklyDigestEmail(
     textLines.push(`${input.pendingSmsCount} SMS pending approval: ${input.smsQueueUrl}`)
   }
 
+  if (staleOutcomes.length > 0) {
+    textLines.push('', `--- STALE PENDING OUTCOMES (${staleOutcomes.length}) ---`)
+    textLines.push('Outcome email sent >14 days ago but still marked pending:')
+    staleOutcomes.forEach((row) => {
+      textLines.push(
+        `  ${row.customerName} | ${formatDateOnly(row.eventDate)} | ${row.daysSinceEmail}d since email`
+      )
+      textLines.push(`    ${row.bookingUrl}`)
+    })
+  }
+
   textLines.push(
     '',
     `Sent every Monday at 9am · Manage in Anchor Management Tools`,
@@ -383,4 +420,155 @@ export async function sendManagerPrivateBookingsWeeklyDigestEmail(
     actionCount,
     eventCount: events.length
   }
+}
+
+// ----------------------------------------------------------------------------
+// Post-event outcome email (Task 4.1 / Phase 4 — PB SMS redesign)
+// ----------------------------------------------------------------------------
+
+type OutcomeKey = 'went_well' | 'issues' | 'skip'
+
+const OUTCOME_ORDER: OutcomeKey[] = ['went_well', 'issues', 'skip']
+
+export type SendPrivateBookingOutcomeEmailInput = {
+  bookingId: string
+  customerName: string
+  customerFirstName: string
+  /** Human-formatted event date, e.g. "12 May 2026" — caller is responsible for formatting. */
+  eventDate: string
+  guestCount: number | null
+}
+
+export type SendPrivateBookingOutcomeEmailResult = {
+  success: boolean
+  /** IDs (hashed_token strings) for each guest_token created — same order as OUTCOME_ORDER. */
+  tokenIds: string[]
+  error?: string
+}
+
+/**
+ * Build the public outcome URL. Outcome is encoded in the URL path (not in token
+ * metadata) because `createGuestToken` does not accept arbitrary metadata.
+ */
+function buildOutcomeLink(outcome: OutcomeKey, rawToken: string): string {
+  const base = normalizeAppBaseUrl(process.env.NEXT_PUBLIC_APP_URL || '')
+  return `${base}/api/private-bookings/outcome/${outcome}/${rawToken}`
+}
+
+/**
+ * Send the post-event outcome email to the private-bookings manager.
+ *
+ * Creates three guest_tokens (one per outcome: went_well / issues / skip) and
+ * embeds one-click links in the email. If token generation fails part-way
+ * through, no email is sent and the partial token IDs are returned so the caller
+ * can reconcile.
+ */
+export async function sendPrivateBookingOutcomeEmail(
+  input: SendPrivateBookingOutcomeEmailInput
+): Promise<SendPrivateBookingOutcomeEmailResult> {
+  const tokenIds: string[] = []
+
+  if (!input.bookingId) {
+    return { success: false, tokenIds, error: 'bookingId is required' }
+  }
+
+  const admin = createAdminClient()
+
+  // Fetch the booking's customer_id (guest_tokens.customer_id is NOT NULL).
+  const { data: booking, error: fetchError } = await admin
+    .from('private_bookings')
+    .select('customer_id')
+    .eq('id', input.bookingId)
+    .single()
+
+  if (fetchError || !booking?.customer_id) {
+    const message = fetchError?.message || 'Private booking missing customer_id — cannot create outcome tokens'
+    logger.error('sendPrivateBookingOutcomeEmail: failed to load booking customer_id', {
+      error: fetchError instanceof Error ? fetchError : new Error(String(fetchError ?? message)),
+      metadata: { bookingId: input.bookingId }
+    })
+    return { success: false, tokenIds, error: message }
+  }
+
+  // 14-day expiry — matches plan spec.
+  const expiresAt = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString()
+
+  const links: Record<OutcomeKey, string> = {
+    went_well: '',
+    issues: '',
+    skip: ''
+  }
+
+  for (const outcome of OUTCOME_ORDER) {
+    try {
+      const token = await createGuestToken(admin, {
+        customerId: booking.customer_id,
+        actionType: 'private_booking_outcome',
+        expiresAt,
+        privateBookingId: input.bookingId
+      })
+      tokenIds.push(token.hashedToken)
+      links[outcome] = buildOutcomeLink(outcome, token.rawToken)
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      logger.error('sendPrivateBookingOutcomeEmail: failed to create outcome guest token', {
+        error: err instanceof Error ? err : new Error(message),
+        metadata: { bookingId: input.bookingId, outcome }
+      })
+      return {
+        success: false,
+        tokenIds,
+        error: `Failed to create outcome token for "${outcome}": ${message}`
+      }
+    }
+  }
+
+  const displayName = escapeHtml(input.customerName?.trim() || 'the guest')
+  const eventDateSafe = escapeHtml(input.eventDate?.trim() || 'recently')
+  const guestCountLabel = typeof input.guestCount === 'number' && Number.isFinite(input.guestCount)
+    ? String(input.guestCount)
+    : 'unknown'
+
+  const html = [
+    '<p>Hi,</p>',
+    `<p>Did <strong>${displayName}</strong>'s event on <strong>${eventDateSafe}</strong> go well?</p>`,
+    `<p>Guest count: ${escapeHtml(guestCountLabel)}</p>`,
+    '<p>Click one:</p>',
+    '<ul>',
+    `<li><a href="${escapeHtml(links.went_well)}">Yes — went well (send the customer a Google review ask)</a></li>`,
+    `<li><a href="${escapeHtml(links.issues)}">Had issues (do not send review ask)</a></li>`,
+    `<li><a href="${escapeHtml(links.skip)}">Skip (do not send review ask)</a></li>`,
+    '</ul>',
+    '<p>Links expire in 14 days.</p>'
+  ].join('')
+
+  const text = [
+    `Did ${input.customerName?.trim() || 'the guest'}'s event on ${input.eventDate?.trim() || 'recently'} go well?`,
+    `Guest count: ${guestCountLabel}`,
+    '',
+    `Yes — went well: ${links.went_well}`,
+    `Had issues: ${links.issues}`,
+    `Skip: ${links.skip}`,
+    '',
+    'Links expire in 14 days.'
+  ].join('\n')
+
+  const subject = `Did ${input.customerFirstName?.trim() || 'the guest'}'s event go well? — ${input.eventDate?.trim() || ''}`.trim()
+
+  const result = await sendEmail({
+    to: PRIVATE_BOOKINGS_MANAGER_EMAIL,
+    subject,
+    html,
+    text
+  })
+
+  if (!result.success) {
+    return {
+      success: false,
+      tokenIds,
+      error: result.error || 'Failed to send private booking outcome email'
+    }
+  }
+
+  return { success: true, tokenIds }
 }

@@ -438,6 +438,261 @@ export async function addPrivateBookingNote(bookingId: string, note: string) {
   }
 }
 
+/**
+ * Return whether a private booking can still be hard-deleted.
+ *
+ * A booking is delete-eligible only when no SMS has been sent AND no SMS is
+ * currently scheduled in the future. This mirrors the Wave 1 DB trigger
+ * `private_bookings_delete_gate` so the UI can disable the delete button before
+ * the user commits, avoiding a dead-end database error.
+ *
+ * @param bookingId — the UUID of the booking to check
+ */
+export async function getBookingDeleteEligibility(bookingId: string): Promise<{
+  canDelete: boolean
+  sentCount: number
+  scheduledCount: number
+  reason?: string
+}> {
+  const supabase = await createClient()
+  const {
+    data: { user }
+  } = await supabase.auth.getUser()
+
+  if (!user) {
+    return {
+      canDelete: false,
+      sentCount: 0,
+      scheduledCount: 0,
+      reason: 'Unauthorized'
+    }
+  }
+
+  const canDelete = await checkUserPermission('private_bookings', 'delete')
+  if (!canDelete) {
+    return {
+      canDelete: false,
+      sentCount: 0,
+      scheduledCount: 0,
+      reason: 'You do not have permission to delete private bookings'
+    }
+  }
+
+  const admin = createAdminClient()
+  const { data, error } = await admin
+    .from('private_booking_sms_queue')
+    .select('status, scheduled_for')
+    .eq('booking_id', bookingId)
+
+  if (error) {
+    logPrivateBookingActionError('Error fetching SMS queue for delete eligibility:', error, {
+      bookingId
+    })
+    return {
+      canDelete: false,
+      sentCount: 0,
+      scheduledCount: 0,
+      reason: 'Unable to verify SMS history — please try again'
+    }
+  }
+
+  const rows = data ?? []
+  const now = Date.now()
+
+  const sentCount = rows.filter((row) => row.status === 'sent').length
+  const scheduledCount = rows.filter((row) => {
+    if (row.status !== 'approved') return false
+    if (!row.scheduled_for) return false
+    const scheduledAt = Date.parse(row.scheduled_for)
+    return Number.isFinite(scheduledAt) && scheduledAt > now
+  }).length
+
+  if (sentCount > 0) {
+    return {
+      canDelete: false,
+      sentCount,
+      scheduledCount,
+      reason: `${sentCount} SMS already sent to the customer — cancel instead of delete`
+    }
+  }
+
+  if (scheduledCount > 0) {
+    return {
+      canDelete: false,
+      sentCount,
+      scheduledCount,
+      reason: `${scheduledCount} SMS scheduled to send — cancel instead of delete`
+    }
+  }
+
+  return {
+    canDelete: true,
+    sentCount,
+    scheduledCount
+  }
+}
+
+/**
+ * Resolve the financial outcome and the exact SMS body that will be sent
+ * when this booking is cancelled now. Used by the Cancel confirmation
+ * modal to show the admin what the customer will receive.
+ *
+ * Returns `null` preview_body on error so callers can still show a
+ * confirmation dialog; they just won't be able to preview the SMS.
+ */
+export async function getCancellationPreview(bookingId: string): Promise<{
+  outcome: import('@/services/private-bookings/financial').CancellationFinancialOutcome | null
+  refund_amount: number
+  retained_amount: number
+  preview_body: string | null
+  error?: string
+}> {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+
+  if (!user) {
+    return {
+      outcome: null,
+      refund_amount: 0,
+      retained_amount: 0,
+      preview_body: null,
+      error: 'Unauthorized',
+    }
+  }
+
+  const canEdit = await checkUserPermission('private_bookings', 'edit')
+  if (!canEdit) {
+    return {
+      outcome: null,
+      refund_amount: 0,
+      retained_amount: 0,
+      preview_body: null,
+      error: 'You do not have permission to cancel private bookings',
+    }
+  }
+
+  try {
+    const { getPrivateBookingCancellationOutcome } = await import(
+      '@/services/private-bookings/financial'
+    )
+    const [
+      {
+        bookingCancelledHoldMessage,
+        bookingCancelledRefundableMessage,
+        bookingCancelledNonRefundableMessage,
+        bookingCancelledManualReviewMessage,
+      },
+      outcome,
+      bookingResult,
+    ] = await Promise.all([
+      import('@/lib/private-bookings/messages'),
+      getPrivateBookingCancellationOutcome(bookingId),
+      getPrivateBooking(bookingId),
+    ])
+
+    const booking = bookingResult?.data ?? null
+    const customerFirstName =
+      booking?.customer_first_name ?? booking?.customer_name ?? null
+    const eventDateReadable = booking?.event_date
+      ? new Date(booking.event_date).toLocaleDateString('en-GB', {
+          day: 'numeric',
+          month: 'long',
+          year: 'numeric',
+        })
+      : 'your event date'
+
+    let previewBody: string
+    switch (outcome.outcome) {
+      case 'no_money':
+        previewBody = bookingCancelledHoldMessage({
+          customerFirstName,
+          eventDate: eventDateReadable,
+        })
+        break
+      case 'refundable':
+        previewBody = bookingCancelledRefundableMessage({
+          customerFirstName,
+          eventDate: eventDateReadable,
+          refundAmount: outcome.refund_amount,
+        })
+        break
+      case 'non_refundable_retained':
+        previewBody = bookingCancelledNonRefundableMessage({
+          customerFirstName,
+          eventDate: eventDateReadable,
+          retainedAmount: outcome.retained_amount,
+        })
+        break
+      case 'manual_review':
+      default:
+        previewBody = bookingCancelledManualReviewMessage({
+          customerFirstName,
+          eventDate: eventDateReadable,
+        })
+        break
+    }
+
+    return {
+      outcome: outcome.outcome,
+      refund_amount: outcome.refund_amount,
+      retained_amount: outcome.retained_amount,
+      preview_body: previewBody,
+    }
+  } catch (error) {
+    logPrivateBookingActionError('Error computing cancellation preview:', error, {
+      bookingId,
+    })
+    return {
+      outcome: null,
+      refund_amount: 0,
+      retained_amount: 0,
+      preview_body: null,
+      error: 'Failed to compute cancellation preview',
+    }
+  }
+}
+
+/**
+ * Resolve the exact SMS body that will be sent when a booking is marked
+ * complete. Used by the Mark-as-Complete confirmation modal.
+ */
+export async function getCompletionPreview(bookingId: string): Promise<{
+  preview_body: string | null
+  error?: string
+}> {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+
+  if (!user) return { preview_body: null, error: 'Unauthorized' }
+
+  const canEdit = await checkUserPermission('private_bookings', 'edit')
+  if (!canEdit) {
+    return {
+      preview_body: null,
+      error: 'You do not have permission to update private bookings',
+    }
+  }
+
+  try {
+    const [{ bookingCompletedThanksMessage }, bookingResult] = await Promise.all([
+      import('@/lib/private-bookings/messages'),
+      getPrivateBooking(bookingId),
+    ])
+
+    const booking = bookingResult?.data ?? null
+    const customerFirstName =
+      booking?.customer_first_name ?? booking?.customer_name ?? null
+
+    const previewBody = bookingCompletedThanksMessage({ customerFirstName })
+    return { preview_body: previewBody }
+  } catch (error) {
+    logPrivateBookingActionError('Error computing completion preview:', error, {
+      bookingId,
+    })
+    return { preview_body: null, error: 'Failed to compute completion preview' }
+  }
+}
+
 // Delete private booking
 export async function deletePrivateBooking(id: string) {
   const supabase = await createClient()

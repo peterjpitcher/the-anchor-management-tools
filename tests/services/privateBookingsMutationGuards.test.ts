@@ -752,6 +752,117 @@ describe('PrivateBookingService mutation row-effect guards', () => {
     expect((SmsQueueService.queueAndSend as unknown as Mock).mock.calls.length).toBe(0)
   })
 
+  describe('deletePrivateBooking SMS gate', () => {
+    function mockDeleteSupabase(opts: {
+      blockingRows?: Array<{ id: string; status: string; scheduled_for: string | null }>
+      blockingError?: { message: string } | null
+      bookingDetails?: { calendar_event_id: string | null } | null
+      deleteResult?: { data: unknown; error: { message: string } | null }
+    }) {
+      const gateOr = vi.fn().mockResolvedValue({
+        data: opts.blockingRows ?? [],
+        error: opts.blockingError ?? null,
+      })
+      const gateEq = vi.fn().mockReturnValue({ or: gateOr })
+      const gateSelect = vi.fn().mockReturnValue({ eq: gateEq })
+
+      const detailsSingle = vi.fn().mockResolvedValue({
+        data: opts.bookingDetails ?? { calendar_event_id: null },
+        error: null,
+      })
+      const detailsEq = vi.fn().mockReturnValue({ single: detailsSingle })
+
+      const deleteMaybeSingle = vi.fn().mockResolvedValue(
+        opts.deleteResult ?? { data: { id: 'booking-1' }, error: null },
+      )
+      const deleteSelect = vi.fn().mockReturnValue({ maybeSingle: deleteMaybeSingle })
+      const deleteEq = vi.fn().mockReturnValue({ select: deleteSelect })
+
+      mockedCreateClient.mockResolvedValue({
+        from: vi.fn((table: string) => {
+          if (table === 'private_booking_sms_queue') {
+            return { select: gateSelect }
+          }
+          if (table === 'private_bookings') {
+            // The function calls select/single for calendar cleanup only if
+            // isCalendarConfigured(); the mocked google-calendar module
+            // returns false, so calendar cleanup is skipped. The delete path
+            // uses delete/eq/select/maybeSingle.
+            return {
+              select: vi.fn().mockReturnValue({ eq: detailsEq }),
+              delete: vi.fn().mockReturnValue({ eq: deleteEq }),
+            }
+          }
+          throw new Error(`Unexpected table: ${table}`)
+        }),
+      })
+    }
+
+    it('throws when a sent SMS exists', async () => {
+      mockDeleteSupabase({
+        blockingRows: [{ id: 'q1', status: 'sent', scheduled_for: null }],
+      })
+
+      await expect(PrivateBookingService.deletePrivateBooking('booking-x')).rejects.toThrow(
+        /Cannot delete booking/,
+      )
+    })
+
+    it('throws when approved + future-scheduled exists', async () => {
+      mockDeleteSupabase({
+        blockingRows: [
+          {
+            id: 'q2',
+            status: 'approved',
+            scheduled_for: '2999-01-01T00:00:00.000Z',
+          },
+        ],
+      })
+
+      await expect(PrivateBookingService.deletePrivateBooking('booking-z')).rejects.toThrow(
+        /Cannot delete booking/,
+      )
+    })
+
+    it('throws when multiple blocking rows exist and includes count in error', async () => {
+      mockDeleteSupabase({
+        blockingRows: [
+          { id: 'q1', status: 'sent', scheduled_for: null },
+          { id: 'q2', status: 'sent', scheduled_for: null },
+        ],
+      })
+
+      await expect(PrivateBookingService.deletePrivateBooking('booking-multi')).rejects.toThrow(
+        /2 SMS message\(s\)/,
+      )
+    })
+
+    it('allows delete when only pending/cancelled/failed queue rows exist', async () => {
+      mockDeleteSupabase({
+        // Gate returns an empty list because the PostgREST .or filter is
+        // expected to exclude non-sent/non-future-approved rows. The unit
+        // test validates the happy path where the gate lets the delete
+        // proceed.
+        blockingRows: [],
+      })
+
+      await expect(
+        PrivateBookingService.deletePrivateBooking('booking-y'),
+      ).resolves.toEqual({ deletedBooking: { id: 'booking-1' } })
+    })
+
+    it('throws a friendly error when the gate query itself fails', async () => {
+      mockDeleteSupabase({
+        blockingRows: [],
+        blockingError: { message: 'PostgREST exploded' },
+      })
+
+      await expect(PrivateBookingService.deletePrivateBooking('booking-err')).rejects.toThrow(
+        /Failed to verify delete eligibility/,
+      )
+    })
+  })
+
   it('updateBooking skips completed SMS when a completed duplicate already exists', async () => {
     const fetchSingle = vi.fn().mockResolvedValue({
       data: {
