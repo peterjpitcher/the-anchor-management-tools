@@ -438,6 +438,100 @@ export async function addPrivateBookingNote(bookingId: string, note: string) {
   }
 }
 
+/**
+ * Return whether a private booking can still be hard-deleted.
+ *
+ * A booking is delete-eligible only when no SMS has been sent AND no SMS is
+ * currently scheduled in the future. This mirrors the Wave 1 DB trigger
+ * `private_bookings_delete_gate` so the UI can disable the delete button before
+ * the user commits, avoiding a dead-end database error.
+ *
+ * @param bookingId — the UUID of the booking to check
+ */
+export async function getBookingDeleteEligibility(bookingId: string): Promise<{
+  canDelete: boolean
+  sentCount: number
+  scheduledCount: number
+  reason?: string
+}> {
+  const supabase = await createClient()
+  const {
+    data: { user }
+  } = await supabase.auth.getUser()
+
+  if (!user) {
+    return {
+      canDelete: false,
+      sentCount: 0,
+      scheduledCount: 0,
+      reason: 'Unauthorized'
+    }
+  }
+
+  const canDelete = await checkUserPermission('private_bookings', 'delete')
+  if (!canDelete) {
+    return {
+      canDelete: false,
+      sentCount: 0,
+      scheduledCount: 0,
+      reason: 'You do not have permission to delete private bookings'
+    }
+  }
+
+  const admin = createAdminClient()
+  const { data, error } = await admin
+    .from('private_booking_sms_queue')
+    .select('status, scheduled_for')
+    .eq('booking_id', bookingId)
+
+  if (error) {
+    logPrivateBookingActionError('Error fetching SMS queue for delete eligibility:', error, {
+      bookingId
+    })
+    return {
+      canDelete: false,
+      sentCount: 0,
+      scheduledCount: 0,
+      reason: 'Unable to verify SMS history — please try again'
+    }
+  }
+
+  const rows = data ?? []
+  const now = Date.now()
+
+  const sentCount = rows.filter((row) => row.status === 'sent').length
+  const scheduledCount = rows.filter((row) => {
+    if (row.status !== 'approved') return false
+    if (!row.scheduled_for) return false
+    const scheduledAt = Date.parse(row.scheduled_for)
+    return Number.isFinite(scheduledAt) && scheduledAt > now
+  }).length
+
+  if (sentCount > 0) {
+    return {
+      canDelete: false,
+      sentCount,
+      scheduledCount,
+      reason: `${sentCount} SMS already sent to the customer — cancel instead of delete`
+    }
+  }
+
+  if (scheduledCount > 0) {
+    return {
+      canDelete: false,
+      sentCount,
+      scheduledCount,
+      reason: `${scheduledCount} SMS scheduled to send — cancel instead of delete`
+    }
+  }
+
+  return {
+    canDelete: true,
+    sentCount,
+    scheduledCount
+  }
+}
+
 // Delete private booking
 export async function deletePrivateBooking(id: string) {
   const supabase = await createClient()
