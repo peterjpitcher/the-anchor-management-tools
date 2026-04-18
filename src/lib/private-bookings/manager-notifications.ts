@@ -469,11 +469,7 @@ export async function sendPrivateBookingOutcomeEmail(
     try {
       const token = await createGuestToken(admin, {
         customerId: booking.customer_id,
-        // Cast — GuestTokenActionType in @/lib/guest/tokens does not yet list
-        // 'private_booking_outcome', but the DB CHECK constraint was extended in
-        // migration 20260418120100_pb_outcome_token_action.sql. Wave 1 handoff
-        // documents this gap. Safe to cast until the type union is updated.
-        actionType: 'private_booking_outcome' as never,
+        actionType: 'private_booking_outcome',
         expiresAt,
         privateBookingId: input.bookingId
       })
