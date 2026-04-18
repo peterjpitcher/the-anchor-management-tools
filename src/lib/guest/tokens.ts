@@ -9,6 +9,7 @@ export type GuestTokenActionType =
   | 'charge_approval'
   | 'waitlist_offer'
   | 'private_feedback'
+  | 'private_booking_outcome'
 
 export type CreateGuestTokenInput = {
   customerId: string
