@@ -26,6 +26,16 @@ import {
   DATE_TBD_NOTE,
   DEFAULT_TBD_TIME,
 } from './types';
+import {
+  privateBookingCreatedMessage,
+  bookingConfirmedMessage,
+  setupReminderMessage,
+  dateChangedMessage,
+  bookingCompletedThanksMessage,
+  bookingExpiredMessage,
+  holdExtendedMessage,
+  bookingCancelledManualReviewMessage,
+} from '@/lib/private-bookings/messages';
 
 // ---------------------------------------------------------------------------
 // Private helpers
@@ -40,7 +50,6 @@ async function sendCreationSms(booking: any, phone?: string | null): Promise<voi
   });
 
   const depositAmount = toNumber(booking.deposit_amount);
-  const formattedDeposit = depositAmount.toFixed(2);
 
   // Calculate hold expiry (14 days from creation)
   const holdExpiryDate = booking.hold_expiry ? new Date(booking.hold_expiry) : new Date();
@@ -49,14 +58,12 @@ async function sendCreationSms(booking: any, phone?: string | null): Promise<voi
     month: 'long'
   });
 
-  // Calculate time difference
-  const today = new Date();
-  const eventDate = new Date(booking.event_date);
-  const diffTime = eventDate.getTime() - today.getTime();
-  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-  const isShortNotice = diffDays < 7;
-
-  const smsMessage = `The Anchor: ${booking.customer_first_name}! Your private booking for ${eventDateReadable} is in — we're excited to host you! We'll be in touch with next steps.`;
+  const smsMessage = privateBookingCreatedMessage({
+    customerFirstName: booking.customer_first_name,
+    eventDate: eventDateReadable,
+    depositAmount: depositAmount,
+    holdExpiry: expiryReadable,
+  });
 
   try {
     const result = await SmsQueueService.queueAndSend({
@@ -499,7 +506,10 @@ export async function updateBooking(id: string, input: UpdatePrivateBookingInput
       day: 'numeric', month: 'long'
     });
 
-    const smsMessage = `The Anchor: ${updatedBooking.customer_first_name}! Your booking has been moved to ${eventDateReadable}. All sorted on our end!`;
+    const smsMessage = dateChangedMessage({
+      customerFirstName: updatedBooking.customer_first_name,
+      newEventDate: eventDateReadable,
+    });
 
     const result = await SmsQueueService.queueAndSend({
       booking_id: updatedBooking.id,
@@ -547,7 +557,10 @@ export async function updateBooking(id: string, input: UpdatePrivateBookingInput
     const firstName =
       updatedBooking.customer_first_name || updatedBooking.customer_name?.split(' ')[0] || 'there';
 
-    const messageBody = `The Anchor: ${firstName}! Your event on ${eventDateReadable} is nearly here — just a reminder to get any final details to us so we can make it perfect!`;
+    const messageBody = setupReminderMessage({
+      customerFirstName: firstName,
+      eventDate: eventDateReadable,
+    });
 
     const result = await SmsQueueService.queueAndSend({
       booking_id: updatedBooking.id,
@@ -611,8 +624,10 @@ export async function updateBooking(id: string, input: UpdatePrivateBookingInput
     }
 
     if (!abortSmsSideEffects && updatedBooking.status === 'confirmed' && !updatedBooking.deposit_paid_date) {
-      const eventType = updatedBooking.event_type || 'event';
-      const messageBody = `The Anchor: ${firstName}! Everything's confirmed for your event on ${eventDateReadable}. We can't wait!`;
+      const messageBody = bookingConfirmedMessage({
+        customerFirstName: firstName,
+        eventDate: eventDateReadable,
+      });
 
       const result = await SmsQueueService.queueAndSend({
         booking_id: updatedBooking.id,
@@ -636,7 +651,15 @@ export async function updateBooking(id: string, input: UpdatePrivateBookingInput
     }
 
     if (!abortSmsSideEffects && updatedBooking.status === 'cancelled') {
-      const messageBody = `The Anchor: ${firstName}, your booking on ${eventDateReadable} has been cancelled. Hope to see you for something else soon!`;
+      // Generic cancellation body. Wave 3 will split this into 4 variants
+      // (hold / refundable / non-refundable / manual review) based on
+      // financial outcome. Until then, the manual-review wording is the
+      // safest default because it promises a follow-up rather than making a
+      // refund/retention statement.
+      const messageBody = bookingCancelledManualReviewMessage({
+        customerFirstName: firstName,
+        eventDate: eventDateReadable,
+      });
 
       const result = await SmsQueueService.queueAndSend({
         booking_id: updatedBooking.id,
@@ -660,7 +683,9 @@ export async function updateBooking(id: string, input: UpdatePrivateBookingInput
     }
 
     if (!abortSmsSideEffects && updatedBooking.status === 'completed' && !completedStatusAlreadyMessaged) {
-      const messageBody = `The Anchor: ${firstName}! Thanks so much for choosing The Anchor for your event — hope it was everything you wanted!`;
+      const messageBody = bookingCompletedThanksMessage({
+        customerFirstName: firstName,
+      });
 
       const result = await SmsQueueService.queueAndSend({
         booking_id: updatedBooking.id,
@@ -942,7 +967,13 @@ export async function cancelBooking(id: string, reason: string, performedByUserI
     });
 
     const firstName = booking.customer_first_name || booking.customer_name?.split(' ')[0] || 'there';
-    const smsMessage = `The Anchor: ${firstName}, your booking on ${eventDate} has been cancelled. Hope to see you for something else soon!`;
+    // Generic cancellation body — same caveat as the status-change path above:
+    // Wave 3 splits this into 4 variants; until then, manual-review wording
+    // is the safest default.
+    const smsMessage = bookingCancelledManualReviewMessage({
+      customerFirstName: firstName,
+      eventDate: eventDate,
+    });
 
      
     let smsResult: any
@@ -1086,7 +1117,10 @@ export async function expireBooking(
       day: 'numeric', month: 'long', year: 'numeric'
     });
 
-    const smsMessage = `The Anchor: ${booking.customer_first_name}, your hold on ${eventDate} has been released. No worries — give us a shout if you'd like to rebook!`;
+    const smsMessage = bookingExpiredMessage({
+      customerFirstName: booking.customer_first_name,
+      eventDate: eventDate,
+    });
 
      
     let smsResult: any
@@ -1179,7 +1213,11 @@ export async function extendHold(
       ? new Date(booking.event_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })
       : 'your event';
 
-    const smsMessage = `The Anchor: ${booking.customer_first_name}! Good news — we've extended your hold on ${eventDateReadable}. New deadline: ${expiryReadable}.`;
+    const smsMessage = holdExtendedMessage({
+      customerFirstName: booking.customer_first_name,
+      eventDate: eventDateReadable,
+      newExpiryDate: expiryReadable,
+    });
 
      
     let smsResult: any;
