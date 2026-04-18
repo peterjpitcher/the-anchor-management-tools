@@ -126,14 +126,6 @@
       "schedule": "0 9 * * *"
     },
     {
-      "path": "/api/cron/booking-balance-reminders",
-      "schedule": "0 10 * * *"
-    },
-    {
-      "path": "/api/cron/post-event-followup",
-      "schedule": "0 11 * * *"
-    },
-    {
       "path": "/api/cron/invoice-reminders",
       "schedule": "0 9 * * *"
     },
