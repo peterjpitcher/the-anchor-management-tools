@@ -4,6 +4,7 @@ import { withApiAuth } from '@/lib/api/auth';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { createInlinePayPalOrder } from '@/lib/paypal';
 import { logAuditEvent } from '@/app/actions/audit';
+import { logger } from '@/lib/logger';
 
 export const dynamic = 'force-dynamic';
 
@@ -25,6 +26,12 @@ export async function POST(
         .single();
 
       if (fetchError || !booking) {
+        if (fetchError) {
+          logger.error('create-order: booking fetch failed', {
+            error: new Error(fetchError.message),
+            metadata: { bookingId, code: fetchError.code, details: fetchError.details },
+          });
+        }
         return NextResponse.json({ error: 'Booking not found' }, { status: 404 });
       }
 
