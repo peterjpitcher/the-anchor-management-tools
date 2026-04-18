@@ -28,6 +28,12 @@ vi.mock('@/lib/google-calendar', () => ({
 import { createClient } from '@/lib/supabase/server'
 import { SmsQueueService } from '@/services/sms-queue'
 import { PrivateBookingService } from '@/services/private-bookings'
+import {
+  setupReminderMessage,
+  depositReceivedMessage,
+  finalPaymentMessage,
+  bookingCancelledManualReviewMessage,
+} from '@/lib/private-bookings/messages'
 
 const mockedCreateClient = createClient as unknown as Mock
 
@@ -122,6 +128,10 @@ describe('PrivateBookingService SMS side-effect meta', () => {
       expect.objectContaining({
         trigger_type: 'setup_reminder',
         template_key: 'private_booking_setup_reminder',
+        message_body: setupReminderMessage({
+          customerFirstName: 'Alex',
+          eventDate: '10 March 2026',
+        }),
       })
     )
 
@@ -204,6 +214,16 @@ describe('PrivateBookingService SMS side-effect meta', () => {
         logFailure: true,
       }),
     ])
+    expect((SmsQueueService.queueAndSend as unknown as Mock).mock.calls[0]?.[0]).toEqual(
+      expect.objectContaining({
+        trigger_type: 'deposit_received',
+        template_key: 'private_booking_deposit_received',
+        message_body: depositReceivedMessage({
+          customerFirstName: 'Alex',
+          eventDate: '20 February 2026',
+        }),
+      })
+    )
   })
 
   it('recordFinalPayment returns smsSideEffects when queueAndSend returns an error result', async () => {
@@ -270,6 +290,16 @@ describe('PrivateBookingService SMS side-effect meta', () => {
         error: 'SMS blocked by idempotency safety guard',
       }),
     ])
+    expect((SmsQueueService.queueAndSend as unknown as Mock).mock.calls[0]?.[0]).toEqual(
+      expect.objectContaining({
+        trigger_type: 'final_payment_received',
+        template_key: 'private_booking_final_payment',
+        message_body: finalPaymentMessage({
+          customerFirstName: 'Alex',
+          eventDate: '20 February 2026',
+        }),
+      })
+    )
   })
 
   it('cancelBooking returns smsSideEffects when queueAndSend throws', async () => {
@@ -320,5 +350,18 @@ describe('PrivateBookingService SMS side-effect meta', () => {
         error: 'queue insert failed',
       }),
     ])
+    // Wave 2 leaves the generic booking_cancelled body in place using the
+    // manual-review wording as the safest default. Wave 3 will split this
+    // into 4 variants keyed by financial outcome.
+    expect((SmsQueueService.queueAndSend as unknown as Mock).mock.calls[0]?.[0]).toEqual(
+      expect.objectContaining({
+        trigger_type: 'booking_cancelled',
+        template_key: 'private_booking_cancelled',
+        message_body: bookingCancelledManualReviewMessage({
+          customerFirstName: 'Alex',
+          eventDate: '20 February 2026',
+        }),
+      })
+    )
   })
 })
