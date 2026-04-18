@@ -165,6 +165,34 @@ describe('private booking monitor route error payloads', () => {
               }
             }
 
+            // Pass 5a: outcome email eligibility (must come before generic matches)
+            if (columns.includes('outcome_email_sent_at')) {
+              return {
+                eq: vi.fn(() => ({
+                  eq: vi.fn(() => ({
+                    eq: vi.fn(() => ({
+                      is: vi.fn().mockResolvedValue({ data: [], error: null }),
+                    })),
+                  })),
+                })),
+              }
+            }
+
+            // Pass 5b: review SMS eligibility (must come before customer_id/customer_first_name match)
+            if (columns.includes('review_sms_sent_at')) {
+              return {
+                eq: vi.fn(() => ({
+                  is: vi.fn(() => ({
+                    neq: vi.fn(() => ({
+                      gte: vi.fn(() => ({
+                        lte: vi.fn().mockResolvedValue({ data: [], error: null }),
+                      })),
+                    })),
+                  })),
+                })),
+              }
+            }
+
             if (columns.includes('customer_id, customer_first_name')) {
               return {
                 in: vi.fn(() => ({
@@ -174,17 +202,6 @@ describe('private booking monitor route error payloads', () => {
                         limit: vi.fn().mockResolvedValue({ data: [], error: null }),
                       })),
                     })),
-                  })),
-                })),
-              }
-            }
-
-            // Pass 5: post-event followup query
-            if (columns.includes('contact_phone, event_date, customer_id')) {
-              return {
-                in: vi.fn(() => ({
-                  eq: vi.fn(() => ({
-                    is: vi.fn().mockResolvedValue({ data: [], error: null }),
                   })),
                 })),
               }
@@ -441,6 +458,34 @@ describe('private booking monitor route error payloads', () => {
                   }
                 }
 
+                // Pass 5a: outcome email eligibility — eq.event_date → eq.status → eq.post_event_outcome → is.outcome_email_sent_at
+                if (columns.includes('outcome_email_sent_at')) {
+                  return {
+                    eq: vi.fn(() => ({
+                      eq: vi.fn(() => ({
+                        eq: vi.fn(() => ({
+                          is: vi.fn().mockResolvedValue({ data: [], error: null }),
+                        })),
+                      })),
+                    })),
+                  }
+                }
+
+                // Pass 5b: review SMS eligibility — eq.post_event_outcome → is.review_sms_sent_at → neq.status → gte → lte
+                if (columns.includes('review_sms_sent_at')) {
+                  return {
+                    eq: vi.fn(() => ({
+                      is: vi.fn(() => ({
+                        neq: vi.fn(() => ({
+                          gte: vi.fn(() => ({
+                            lte: vi.fn().mockResolvedValue({ data: [], error: null }),
+                          })),
+                        })),
+                      })),
+                    })),
+                  }
+                }
+
                 if (columns.includes('customer_id, customer_first_name')) {
                   return {
                     in: vi.fn(() => ({
@@ -453,17 +498,6 @@ describe('private booking monitor route error payloads', () => {
                             }),
                           })),
                         })),
-                      })),
-                    })),
-                  }
-                }
-
-                // Pass 5: post-event followup query — returns empty so no SMS is sent
-                if (columns.includes('contact_phone, event_date, customer_id')) {
-                  return {
-                    in: vi.fn(() => ({
-                      eq: vi.fn(() => ({
-                        is: vi.fn().mockResolvedValue({ data: [], error: null }),
                       })),
                     })),
                   }
