@@ -141,12 +141,28 @@ describe('private booking monitor idempotency guard', () => {
                     })),
                   }
                 }
-                if (columns.includes('contact_phone, event_date, customer_id')) {
-                  // Pass 5 post-event (untouched in Wave 2)
+                if (columns.includes('outcome_email_sent_at')) {
+                  // Pass 5a: outcome email eligibility
                   return {
-                    in: vi.fn(() => ({
+                    eq: vi.fn(() => ({
                       eq: vi.fn(() => ({
-                        is: vi.fn().mockResolvedValue({ data: [], error: null }),
+                        eq: vi.fn(() => ({
+                          is: vi.fn().mockResolvedValue({ data: [], error: null }),
+                        })),
+                      })),
+                    })),
+                  }
+                }
+                if (columns.includes('review_sms_sent_at')) {
+                  // Pass 5b: review SMS eligibility
+                  return {
+                    eq: vi.fn(() => ({
+                      is: vi.fn(() => ({
+                        neq: vi.fn(() => ({
+                          gte: vi.fn(() => ({
+                            lte: vi.fn().mockResolvedValue({ data: [], error: null }),
+                          })),
+                        })),
                       })),
                     })),
                   }
@@ -292,11 +308,26 @@ describe('private booking monitor idempotency guard', () => {
                     })),
                   }
                 }
-                if (columns.includes('contact_phone, event_date, customer_id')) {
+                if (columns.includes('outcome_email_sent_at')) {
                   return {
-                    in: vi.fn(() => ({
+                    eq: vi.fn(() => ({
                       eq: vi.fn(() => ({
-                        is: vi.fn().mockResolvedValue({ data: [], error: null }),
+                        eq: vi.fn(() => ({
+                          is: vi.fn().mockResolvedValue({ data: [], error: null }),
+                        })),
+                      })),
+                    })),
+                  }
+                }
+                if (columns.includes('review_sms_sent_at')) {
+                  return {
+                    eq: vi.fn(() => ({
+                      is: vi.fn(() => ({
+                        neq: vi.fn(() => ({
+                          gte: vi.fn(() => ({
+                            lte: vi.fn().mockResolvedValue({ data: [], error: null }),
+                          })),
+                        })),
                       })),
                     })),
                   }

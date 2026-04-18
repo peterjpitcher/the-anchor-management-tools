@@ -8,11 +8,8 @@ import { PRIVATE_BOOKING_FEEDBACK_TEMPLATE_KEY } from '@/lib/private-bookings/fe
 import { persistCronRunResult, recoverCronRunLock } from '@/lib/cron-run-results'
 import { getSmartFirstName } from '@/lib/sms/bulk'
 import { reportCronFailure } from '@/lib/cron/alerting'
-import { hasCustomerReviewed } from '@/lib/sms/review-once'
-import { createGuestToken } from '@/lib/guest/tokens'
 import { getGoogleReviewLink } from '@/lib/events/review-link'
-import { sendSMS } from '@/lib/twilio'
-import { ensureReplyInstruction } from '@/lib/sms/support'
+import { sendPrivateBookingOutcomeEmail } from '@/lib/private-bookings/manager-notifications'
 import {
   depositReminder7DayMessage,
   depositReminder1DayMessage,
@@ -20,6 +17,7 @@ import {
   balanceReminder7DayMessage,
   balanceReminder1DayMessage,
   eventReminder1DayMessage,
+  reviewRequestMessage,
 } from '@/lib/private-bookings/messages'
 import { isBookingDateTbd } from '@/lib/private-bookings/tbd-detection'
 
@@ -47,9 +45,12 @@ const PRIVATE_BOOKING_MONITOR_TEMPLATE_KEYS = [
   'private_booking_deposit_reminder_7day',
   'private_booking_deposit_reminder_1day',
   'private_booking_balance_reminder_14day',
+  'private_booking_balance_reminder_7day',
+  'private_booking_balance_reminder_1day',
   'private_booking_event_reminder_1d',
   'private_booking_expired',
   'private_booking_post_event_followup',
+  'private_booking_review_request',
   PRIVATE_BOOKING_FEEDBACK_TEMPLATE_KEY
 ]
 
@@ -364,6 +365,8 @@ export async function GET(request: Request) {
       eventRemindersSent: 0,
       privateFeedbackSmsSent: 0,
       postEventFollowupSent: 0,
+      outcomeEmailsSent: 0,
+      reviewRequestsSent: 0,
       smsCapReached: false
     }
     const totalSmsSent = () =>
@@ -372,7 +375,8 @@ export async function GET(request: Request) {
       stats.balanceRemindersSent +
       stats.eventRemindersSent +
       stats.privateFeedbackSmsSent +
-      stats.postEventFollowupSent
+      stats.postEventFollowupSent +
+      stats.reviewRequestsSent
     const canSendMoreSms = () => totalSmsSent() < MAX_PRIVATE_BOOKING_SMS_PER_RUN
     const abortState = {
       safetyAborts: 0,
@@ -945,135 +949,199 @@ export async function GET(request: Request) {
       }
     }
 
-    // RETIRED: consolidated into private_booking_post_event_followup
-    // Pass 5 (private_booking_feedback_followup) has been retired. The feedback form flow
-    // (createPrivateBookingFeedbackToken / /g/[token]/private-feedback) continues to work for
-    // existing tokens, but no new tokens are generated. Private booking review SMS now sends
-    // a direct Google review link via the review-once system.
-
+    // --- PASS 5a: OUTCOME EMAIL (morning after a confirmed event) ---
+    // Replaces the legacy "review SMS on the morning after" flow. Instead of
+    // sending an SMS directly, email the manager with three one-click outcome
+    // links (went_well / issues / skip). Pass 5b is responsible for the
+    // customer-facing review SMS, gated on the manager's chosen outcome.
     if (!abortState.aborted && PRIVATE_BOOKING_UPCOMING_EVENT_SMS_ENABLED) {
-      // --- PASS 5: POST-EVENT FOLLOWUP (Google review request — morning after event) ---
       const yesterdayLondon = getLondonRunKey(new Date(now.getTime() - 24 * 60 * 60 * 1000))
-      const appBaseUrl = process.env.NEXT_PUBLIC_APP_URL || ''
-      const reviewLinkTarget = await getGoogleReviewLink(supabase)
-      const supportPhone =
-        process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || process.env.TWILIO_PHONE_NUMBER || undefined
 
-      const { data: yesterdayBookings } = await supabase
+      const { data: eligibleForEmail } = await supabase
         .from('private_bookings')
-        .select('id, customer_first_name, customer_name, contact_phone, event_date, customer_id')
-        .in('status', ['confirmed', 'completed'])
+        .select(
+          'id, customer_name, customer_first_name, event_date, guest_count, status, post_event_outcome, outcome_email_sent_at, internal_notes'
+        )
         .eq('event_date', yesterdayLondon)
-        .is('review_processed_at', null)
+        .eq('status', 'confirmed')
+        .eq('post_event_outcome', 'pending')
+        .is('outcome_email_sent_at', null)
 
-      if (yesterdayBookings && yesterdayBookings.length > 0) {
-        // Batch review-once check for all eligible customers
-        const customerIds = yesterdayBookings
-          .map((b) => b.customer_id)
-          .filter((id): id is string => typeof id === 'string' && id.length > 0)
-        const alreadyReviewedSet = await hasCustomerReviewed(customerIds)
-        const nowIso = new Date().toISOString()
+      if (eligibleForEmail && eligibleForEmail.length > 0) {
+        for (const booking of eligibleForEmail) {
+          if (isBookingDateTbd(booking)) continue
 
-        for (const booking of yesterdayBookings) {
+          const rawFirstName = booking.customer_first_name || booking.customer_name?.split(' ')[0]
+          const displayFirstName = getSmartFirstName(rawFirstName)
+          const eventDateReadable = booking.event_date
+            ? new Date(booking.event_date).toLocaleDateString('en-GB', {
+                day: 'numeric',
+                month: 'long',
+                year: 'numeric'
+              })
+            : 'the event date'
+
+          const emailResult = await sendPrivateBookingOutcomeEmail({
+            bookingId: booking.id,
+            customerName: booking.customer_name || 'the guest',
+            customerFirstName: displayFirstName || 'there',
+            eventDate: eventDateReadable,
+            guestCount: booking.guest_count ?? null
+          })
+
+          if (emailResult.success) {
+            // Atomic claim — survives cron double-fire by only writing when still null.
+            const { error: stampErr } = await supabase
+              .from('private_bookings')
+              .update({ outcome_email_sent_at: new Date().toISOString() })
+              .eq('id', booking.id)
+              .is('outcome_email_sent_at', null)
+
+            if (stampErr) {
+              logger.warn('Private booking outcome email sent but claim stamp failed', {
+                metadata: { bookingId: booking.id, error: stampErr.message }
+              })
+            } else {
+              stats.outcomeEmailsSent++
+            }
+          } else {
+            logger.error('Private booking outcome email failed', {
+              error: new Error(emailResult.error || 'outcome email failed'),
+              metadata: { bookingId: booking.id }
+            })
+          }
+        }
+      }
+    }
+
+    // --- PASS 5b: REVIEW SMS (gated on manager's went_well outcome) ---
+    // Only fires when the manager has explicitly clicked "went well" on the
+    // outcome email. Independent of Pass 5a so a late outcome click still
+    // triggers an SMS on the next cron run, as long as the event was within
+    // the 14-day review window.
+    if (!abortState.aborted && PRIVATE_BOOKING_UPCOMING_EVENT_SMS_ENABLED) {
+      const today = getLondonRunKey(new Date())
+      const fourteenDaysAgo = getLondonRunKey(new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000))
+
+      const { data: eligibleForReview } = await supabase
+        .from('private_bookings')
+        .select(
+          'id, customer_id, customer_first_name, customer_name, contact_phone, event_date, post_event_outcome, review_sms_sent_at, status, internal_notes'
+        )
+        .eq('post_event_outcome', 'went_well')
+        .is('review_sms_sent_at', null)
+        .neq('status', 'cancelled')
+        .gte('event_date', fourteenDaysAgo)
+        .lte('event_date', today)
+
+      if (eligibleForReview && eligibleForReview.length > 0) {
+        const reviewLink = await getGoogleReviewLink(supabase)
+
+        for (const booking of eligibleForReview) {
           if (!canSendMoreSms()) {
             stats.smsCapReached = true
             break
           }
 
-          const customerId = booking.customer_id
-          const contactPhone = booking.contact_phone
+          if (isBookingDateTbd(booking)) continue
+          if (!booking.event_date) continue
 
-          // Mark processed regardless of send outcome (avoid re-processing)
-          const markProcessed = async () => {
-            await supabase
-              .from('private_bookings')
-              .update({ review_processed_at: nowIso, updated_at: nowIso })
-              .eq('id', booking.id)
-              .is('review_processed_at', null)
-          }
+          const eventDateIso = booking.event_date.slice(0, 10)
 
-          // If no customer_id or phone, skip but mark processed
-          if (!customerId || !contactPhone) {
-            await markProcessed()
+          // Atomic claim on review_sms_sent_at FIRST — only one cron run can
+          // "win" the right to send for a booking. Survives cron double-fire.
+          const { data: reviewClaim, error: reviewClaimErr } = await supabase
+            .from('private_bookings')
+            .update({ review_sms_sent_at: new Date().toISOString() })
+            .eq('id', booking.id)
+            .is('review_sms_sent_at', null)
+            .select('id')
+            .maybeSingle()
+
+          if (reviewClaimErr) {
+            logger.warn('Private booking review SMS claim failed', {
+              metadata: { bookingId: booking.id, error: reviewClaimErr.message }
+            })
             continue
           }
 
-          // Review-once: suppress if customer already left a review on any booking
-          if (alreadyReviewedSet.has(customerId)) {
-            logger.info('Private booking post-event review SMS suppressed: customer already reviewed', {
-              metadata: { bookingId: booking.id, customerId }
-            })
-            await markProcessed()
-            continue
-          }
+          // Lost the column race to another cron run — skip cleanly.
+          if (!reviewClaim) continue
 
-          // Generate review redirect token
-          let redirectUrl: string
-          try {
-            const provisionalExpiry = new Date(now.getTime() + 8 * 24 * 60 * 60 * 1000).toISOString()
-            const { rawToken } = await createGuestToken(supabase, {
-              customerId,
-              actionType: 'review_redirect',
-              privateBookingId: booking.id,
-              expiresAt: provisionalExpiry
-            })
-            redirectUrl = `${appBaseUrl}/r/${rawToken}`
-          } catch (tokenError) {
-            logger.warn('Private booking post-event: failed to create review redirect token; skipping', {
+          // Business idempotency key — second layer of defence alongside the
+          // column claim above. Lets ops trace duplicates if they ever occur.
+          const reservation = await reserveCronSmsSend(supabase, {
+            bookingId: booking.id,
+            triggerType: 'review_request',
+            windowKey: eventDateIso
+          })
+          if (!reservation.reserved) {
+            // We won the column-level claim but another process already
+            // reserved the same (booking, trigger, window) idempotency key —
+            // which means the SMS was already sent (or is being sent) in a
+            // concurrent run. Fail safe by skipping; the column claim stays
+            // set so the same SMS cannot be re-sent by this column path.
+            logger.info('Private booking review SMS skipped: idempotency key already reserved', {
               metadata: {
                 bookingId: booking.id,
-                customerId,
-                error: tokenError instanceof Error ? tokenError.message : String(tokenError)
+                triggerType: 'review_request',
+                windowKey: eventDateIso,
+                reason: reservation.reason ?? 'duplicate'
               }
             })
-            await markProcessed()
             continue
           }
 
-          const rawFirstName = booking.customer_first_name || booking.customer_name?.split(' ')[0]
-          const firstName = getSmartFirstName(rawFirstName)
-          const messageBody = ensureReplyInstruction(
-            `The Anchor: ${firstName}! Hope your event was everything you wanted. Got 30 seconds? A quick review means the world to us: ${redirectUrl}`,
-            supportPhone
-          )
+          const eventDateReadable = new Date(booking.event_date).toLocaleDateString('en-GB', {
+            day: 'numeric',
+            month: 'long',
+            year: 'numeric'
+          })
 
-          const smsResult = await sendSMS(contactPhone, messageBody, {
-            customerId,
+          const messageBody = reviewRequestMessage({
+            customerFirstName: booking.customer_first_name,
+            eventDate: eventDateReadable,
+            reviewLink
+          })
+
+          const sendResult = await SmsQueueService.queueAndSend({
+            booking_id: booking.id,
+            trigger_type: 'review_request',
+            template_key: 'private_booking_review_request',
+            message_body: messageBody,
+            customer_phone: booking.contact_phone,
+            customer_name: booking.customer_name || 'Guest',
+            customer_id: booking.customer_id ?? undefined,
+            priority: 3,
             metadata: {
-              private_booking_id: booking.id,
-              template_key: 'private_booking_post_event_followup',
-              review_redirect_target: reviewLinkTarget
+              template: 'private_booking_review_request',
+              event_date: eventDateIso,
+              review_link_target: reviewLink
             }
           })
 
-          if (smsResult.success) {
-            stats.postEventFollowupSent++
-            // Mark processed immediately after successful send — this is the primary
-            // guard against re-sends if the cron times out before completing other work.
-            await markProcessed()
-          } else {
-            logger.warn('Failed to send private booking post-event review SMS', {
+          if (sendResult.error) {
+            logger.warn('Failed to queue private booking review SMS', {
               metadata: {
                 bookingId: booking.id,
-                customerId,
-                error: smsResult.error || 'Unknown error',
-                code: typeof (smsResult as any).code === 'string' ? (smsResult as any).code : null
+                error: sendResult.error,
+                code: typeof (sendResult as { code?: string }).code === 'string'
+                  ? (sendResult as { code?: string }).code
+                  : null
               }
             })
-            // Mark processed even on failure to avoid retrying a blocked send
-            await markProcessed()
+          } else if (sendResult.sent) {
+            stats.reviewRequestsSent++
           }
 
-          maybeAbortFromSmsResult(smsResult, {
-            stage: 'pass5:post_event_followup',
+          maybeAbortFromSmsResult(sendResult, {
+            stage: 'pass5b:review_request',
             bookingId: booking.id,
-            triggerType: 'post_event_followup',
-            templateKey: 'private_booking_post_event_followup'
+            triggerType: 'review_request',
+            templateKey: 'private_booking_review_request'
           })
 
-          if (abortState.aborted) {
-            break
-          }
+          if (abortState.aborted) break
         }
       }
     }

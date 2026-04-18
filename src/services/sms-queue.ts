@@ -68,6 +68,7 @@ const PRIVATE_BOOKING_SMS_AUTO_SEND_TRIGGERS = new Set<string>([
   'event_reminder_1d',
   'setup_reminder',
   'post_event_followup',
+  'review_request',
   'manual',
 ]);
 
