@@ -1357,6 +1357,35 @@ export async function extendHold(
 export async function deletePrivateBooking(id: string): Promise<{ deletedBooking: any }> {
   const supabase = await createClient();
 
+  // GATE: block if any SMS was sent, or is approved-and-scheduled for a future
+  // time. If the customer has been (or is about to be) contacted, Delete is
+  // the wrong verb — the admin should use Cancel so the customer gets a
+  // proper cancellation SMS. The DB trigger (installed in Wave 1 Task 1.4) is
+  // the last-line defence; this action-layer check surfaces a friendly error
+  // for the UI without a round trip to PostgreSQL.
+  const { data: blockingRows, error: blockingError } = await supabase
+    .from('private_booking_sms_queue')
+    .select('id, status, scheduled_for')
+    .eq('booking_id', id)
+    .or('status.eq.sent,and(status.eq.approved,scheduled_for.gt.now())');
+
+  if (blockingError) {
+    const blockingErr = blockingError as { message?: string } | null;
+    logger.error('deletePrivateBooking: failed to check SMS gate', {
+      error: blockingError instanceof Error
+        ? blockingError
+        : new Error(String(blockingErr?.message ?? blockingError)),
+      metadata: { bookingId: id },
+    });
+    throw new Error('Failed to verify delete eligibility; please try again.');
+  }
+
+  if (blockingRows && blockingRows.length > 0) {
+    throw new Error(
+      `Cannot delete booking: customer has received ${blockingRows.length} SMS message(s). Use Cancel instead so they're notified.`,
+    );
+  }
+
   // Calendar Cleanup
   if (isCalendarConfigured()) {
     try {
