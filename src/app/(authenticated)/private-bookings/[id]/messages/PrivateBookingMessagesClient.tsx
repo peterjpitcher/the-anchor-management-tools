@@ -33,48 +33,52 @@ interface SmsTemplate {
   template: string
 }
 
+// Template suggestions for the manual-send UI. Copy style mirrors the
+// automated builders in src/lib/private-bookings/messages.ts — no
+// "The Anchor:" opener, first-name-first, em-dash rhythm. These are only
+// prefills: staff can edit before sending.
 const smsTemplates: SmsTemplate[] = [
   {
     id: 'booking_confirmation',
     name: 'Booking Confirmation',
     message: 'Send when booking is confirmed',
     template:
-      'The Anchor: Hi {customer_first_name}, your private event booking at The Anchor on {event_date} has been confirmed. We look forward to hosting your {event_type}.'
+      "Hi {customer_first_name} — you're all confirmed for {event_date}. Can't wait."
   },
   {
     id: 'deposit_reminder',
     name: 'Deposit Reminder',
     message: 'Remind customer about deposit payment',
     template:
-      'The Anchor: Hi {customer_first_name}, just a reminder that your £{deposit_amount} deposit for your event on {event_date} is due. Please reply to arrange payment.'
+      "Hi {customer_first_name} — quick nudge on your £{deposit_amount} deposit for {event_date}. Get it in and the date's yours."
   },
   {
     id: 'balance_reminder',
     name: 'Balance Reminder',
     message: 'Remind about final balance',
     template:
-      'The Anchor: Hi {customer_first_name}, your event at The Anchor is coming up on {event_date}. Your remaining balance of £{balance_due} is due by {balance_due_date}. Please arrange payment.'
+      'Hi {customer_first_name} — £{balance_due} balance still to settle by {balance_due_date} to keep {event_date} on track.'
   },
   {
     id: 'event_reminder',
     name: 'Event Reminder',
     message: '24 hours before event',
     template:
-      "The Anchor: Hi {customer_first_name}, reminder: your event at The Anchor is tomorrow at {start_time}. We're all set for your {guest_count} guests. See you tomorrow!"
+      "Hi {customer_first_name} — tomorrow's the day. Everything's ready for your {guest_count} guests. See you then."
   },
   {
     id: 'setup_notification',
     name: 'Setup Time Notification',
     message: 'Notify about setup arrangements',
     template:
-      'The Anchor: Hi {customer_first_name}, confirming setup for your event on {event_date}. Your vendors/team can access the venue from {setup_time}.'
+      'Hi {customer_first_name} — setup for {event_date} confirmed. Your team can access the venue from {setup_time}.'
   },
   {
     id: 'thank_you',
     name: 'Thank You Message',
     message: 'Send after event completion',
     template:
-      "The Anchor: Hi {customer_first_name}, thank you for choosing The Anchor for your event. We hope you and your guests had a wonderful time. We'd love to welcome you back again soon."
+      'Hi {customer_first_name} — thanks for choosing The Anchor. Hope it was everything you wanted.'
   }
 ]
 
