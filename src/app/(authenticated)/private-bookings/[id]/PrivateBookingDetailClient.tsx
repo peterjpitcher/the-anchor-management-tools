@@ -1383,6 +1383,7 @@ export default function PrivateBookingDetailClient({
     { label: 'Overview', href: `/private-bookings/${bookingId}` },
     { label: 'Items', href: `/private-bookings/${bookingId}/items` },
     { label: 'Messages', href: `/private-bookings/${bookingId}/messages` },
+    { label: 'Communications', href: `/private-bookings/${bookingId}/communications` },
     { label: 'Contract', href: `/private-bookings/${bookingId}/contract` },
   ];
 
