@@ -25,13 +25,15 @@ vi.mock('@/services/audit', () => ({
   },
 }))
 
-const { error } = vi.hoisted(() => ({
+const { error, warn } = vi.hoisted(() => ({
   error: vi.fn(),
+  warn: vi.fn(),
 }))
 
 vi.mock('@/lib/logger', () => ({
   logger: {
     error,
+    warn,
   },
 }))
 

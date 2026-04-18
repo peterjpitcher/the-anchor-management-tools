@@ -115,6 +115,18 @@ describe('private booking monitor route error payloads', () => {
       if (table === 'private_bookings') {
         return {
           select: vi.fn((columns: string) => {
+            // Pass 2 expiry select (narrow: only id + hold_expiry + event_date + internal_notes).
+            // Must come FIRST because Pass 1 select also contains "hold_expiry, event_date".
+            if (columns.startsWith('id, hold_expiry')) {
+              return {
+                eq: vi.fn(() => ({
+                  lt: vi.fn(() => ({
+                    not: vi.fn().mockResolvedValue({ data: [], error: null }),
+                  })),
+                })),
+              }
+            }
+
             if (columns.includes('hold_expiry, event_date')) {
               return {
                 eq: vi.fn(() => ({
@@ -129,20 +141,12 @@ describe('private booking monitor route error payloads', () => {
                           hold_expiry: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString(),
                           event_date: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString(),
                           customer_id: 'customer-1',
+                          deposit_amount: 250,
+                          internal_notes: null,
                         },
                       ],
                       error: null,
                     }),
-                  })),
-                })),
-              }
-            }
-
-            if (columns === 'id, hold_expiry') {
-              return {
-                eq: vi.fn(() => ({
-                  lt: vi.fn(() => ({
-                    not: vi.fn().mockResolvedValue({ data: [], error: null }),
                   })),
                 })),
               }
@@ -161,6 +165,34 @@ describe('private booking monitor route error payloads', () => {
               }
             }
 
+            // Pass 5a: outcome email eligibility (must come before generic matches)
+            if (columns.includes('outcome_email_sent_at')) {
+              return {
+                eq: vi.fn(() => ({
+                  eq: vi.fn(() => ({
+                    eq: vi.fn(() => ({
+                      is: vi.fn().mockResolvedValue({ data: [], error: null }),
+                    })),
+                  })),
+                })),
+              }
+            }
+
+            // Pass 5b: review SMS eligibility (must come before customer_id/customer_first_name match)
+            if (columns.includes('review_sms_sent_at')) {
+              return {
+                eq: vi.fn(() => ({
+                  is: vi.fn(() => ({
+                    neq: vi.fn(() => ({
+                      gte: vi.fn(() => ({
+                        lte: vi.fn().mockResolvedValue({ data: [], error: null }),
+                      })),
+                    })),
+                  })),
+                })),
+              }
+            }
+
             if (columns.includes('customer_id, customer_first_name')) {
               return {
                 in: vi.fn(() => ({
@@ -170,17 +202,6 @@ describe('private booking monitor route error payloads', () => {
                         limit: vi.fn().mockResolvedValue({ data: [], error: null }),
                       })),
                     })),
-                  })),
-                })),
-              }
-            }
-
-            // Pass 5: post-event followup query
-            if (columns.includes('contact_phone, event_date, customer_id')) {
-              return {
-                in: vi.fn(() => ({
-                  eq: vi.fn(() => ({
-                    is: vi.fn().mockResolvedValue({ data: [], error: null }),
                   })),
                 })),
               }
@@ -215,6 +236,12 @@ describe('private booking monitor route error payloads', () => {
               })),
             })),
           })),
+        }
+      }
+
+      if (table === 'private_booking_send_idempotency') {
+        return {
+          insert: vi.fn().mockResolvedValue({ data: null, error: null }),
         }
       }
 
@@ -254,6 +281,8 @@ describe('private booking monitor route error payloads', () => {
           hold_expiry: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString(),
           event_date: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString(),
           customer_id: 'customer-1',
+          deposit_amount: 250,
+          internal_notes: null,
         },
         {
           id: 'booking-2',
@@ -263,6 +292,8 @@ describe('private booking monitor route error payloads', () => {
           hold_expiry: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString(),
           event_date: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString(),
           customer_id: 'customer-2',
+          deposit_amount: 250,
+          internal_notes: null,
         },
       ]
 
@@ -317,6 +348,12 @@ describe('private booking monitor route error payloads', () => {
                   })),
                 })),
               })),
+            }
+          }
+
+          if (table === 'private_booking_send_idempotency') {
+            return {
+              insert: vi.fn().mockResolvedValue({ data: null, error: null }),
             }
           }
 
@@ -391,7 +428,8 @@ describe('private booking monitor route error payloads', () => {
           if (table === 'private_bookings') {
             return {
               select: vi.fn((columns: string) => {
-                if (columns === 'id, hold_expiry') {
+                // Pass 2 expiry select: narrow id, hold_expiry, event_date, internal_notes — must come first.
+                if (columns.startsWith('id, hold_expiry')) {
                   return {
                     eq: vi.fn(() => ({
                       lt: vi.fn(() => ({
@@ -402,6 +440,7 @@ describe('private booking monitor route error payloads', () => {
                 }
 
                 if (columns.includes('hold_expiry')) {
+                  // Pass 1 draft reminders select.
                   return {
                     eq: vi.fn(() => ({
                       gt: vi.fn(() => ({
@@ -415,6 +454,34 @@ describe('private booking monitor route error payloads', () => {
                   return {
                     eq: vi.fn(() => ({
                       eq: vi.fn().mockResolvedValue({ data: [], error: null }),
+                    })),
+                  }
+                }
+
+                // Pass 5a: outcome email eligibility — eq.event_date → eq.status → eq.post_event_outcome → is.outcome_email_sent_at
+                if (columns.includes('outcome_email_sent_at')) {
+                  return {
+                    eq: vi.fn(() => ({
+                      eq: vi.fn(() => ({
+                        eq: vi.fn(() => ({
+                          is: vi.fn().mockResolvedValue({ data: [], error: null }),
+                        })),
+                      })),
+                    })),
+                  }
+                }
+
+                // Pass 5b: review SMS eligibility — eq.post_event_outcome → is.review_sms_sent_at → neq.status → gte → lte
+                if (columns.includes('review_sms_sent_at')) {
+                  return {
+                    eq: vi.fn(() => ({
+                      is: vi.fn(() => ({
+                        neq: vi.fn(() => ({
+                          gte: vi.fn(() => ({
+                            lte: vi.fn().mockResolvedValue({ data: [], error: null }),
+                          })),
+                        })),
+                      })),
                     })),
                   }
                 }
@@ -436,17 +503,6 @@ describe('private booking monitor route error payloads', () => {
                   }
                 }
 
-                // Pass 5: post-event followup query — returns empty so no SMS is sent
-                if (columns.includes('contact_phone, event_date, customer_id')) {
-                  return {
-                    in: vi.fn(() => ({
-                      eq: vi.fn(() => ({
-                        is: vi.fn().mockResolvedValue({ data: [], error: null }),
-                      })),
-                    })),
-                  }
-                }
-
                 throw new Error(`Unexpected private_bookings select: ${columns}`)
               }),
             }
@@ -461,6 +517,12 @@ describe('private booking monitor route error payloads', () => {
                   })),
                 })),
               })),
+            }
+          }
+
+          if (table === 'private_booking_send_idempotency') {
+            return {
+              insert: vi.fn().mockResolvedValue({ data: null, error: null }),
             }
           }
 

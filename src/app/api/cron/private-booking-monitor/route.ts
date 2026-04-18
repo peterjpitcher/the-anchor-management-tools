@@ -8,11 +8,18 @@ import { PRIVATE_BOOKING_FEEDBACK_TEMPLATE_KEY } from '@/lib/private-bookings/fe
 import { persistCronRunResult, recoverCronRunLock } from '@/lib/cron-run-results'
 import { getSmartFirstName } from '@/lib/sms/bulk'
 import { reportCronFailure } from '@/lib/cron/alerting'
-import { hasCustomerReviewed } from '@/lib/sms/review-once'
-import { createGuestToken } from '@/lib/guest/tokens'
 import { getGoogleReviewLink } from '@/lib/events/review-link'
-import { sendSMS } from '@/lib/twilio'
-import { ensureReplyInstruction } from '@/lib/sms/support'
+import { sendPrivateBookingOutcomeEmail } from '@/lib/private-bookings/manager-notifications'
+import {
+  depositReminder7DayMessage,
+  depositReminder1DayMessage,
+  balanceReminder14DayMessage,
+  balanceReminder7DayMessage,
+  balanceReminder1DayMessage,
+  eventReminder1DayMessage,
+  reviewRequestMessage,
+} from '@/lib/private-bookings/messages'
+import { isBookingDateTbd } from '@/lib/private-bookings/tbd-detection'
 
 const JOB_NAME = 'private-booking-monitor'
 const LONDON_TZ = 'Europe/London'
@@ -38,9 +45,12 @@ const PRIVATE_BOOKING_MONITOR_TEMPLATE_KEYS = [
   'private_booking_deposit_reminder_7day',
   'private_booking_deposit_reminder_1day',
   'private_booking_balance_reminder_14day',
+  'private_booking_balance_reminder_7day',
+  'private_booking_balance_reminder_1day',
   'private_booking_event_reminder_1d',
   'private_booking_expired',
   'private_booking_post_event_followup',
+  'private_booking_review_request',
   PRIVATE_BOOKING_FEEDBACK_TEMPLATE_KEY
 ]
 
@@ -75,6 +85,49 @@ function getLondonRunKey(now: Date = new Date()): string {
     month: '2-digit',
     day: '2-digit'
   }).format(now)
+}
+
+/**
+ * Reserve a send via the business idempotency key before any cron-driven SMS
+ * fires. Key shape is `{booking_id}:{trigger_type}:{window_key}` — if another
+ * run already claimed the same key, Postgres returns unique-violation 23505
+ * and we skip cleanly. Returns true when the reservation succeeded (caller
+ * should proceed with the send), false when we should skip.
+ */
+async function reserveCronSmsSend(
+  supabase: ReturnType<typeof createAdminClient>,
+  params: { bookingId: string; triggerType: string; windowKey: string }
+): Promise<{ reserved: boolean; reason?: 'duplicate' | 'error' }> {
+  const idempotencyKey = `${params.bookingId}:${params.triggerType}:${params.windowKey}`
+  const { error } = await supabase
+    .from('private_booking_send_idempotency')
+    .insert({
+      idempotency_key: idempotencyKey,
+      booking_id: params.bookingId,
+      trigger_type: params.triggerType,
+      window_key: params.windowKey
+    })
+
+  if (!error) {
+    return { reserved: true }
+  }
+
+  const pgError = error as { code?: string; message?: string }
+  if (pgError?.code === '23505') {
+    return { reserved: false, reason: 'duplicate' }
+  }
+
+  logger.error('Private booking idempotency reservation failed', {
+    error: new Error(pgError?.message || 'idempotency insert failed'),
+    metadata: {
+      bookingId: params.bookingId,
+      triggerType: params.triggerType,
+      windowKey: params.windowKey,
+      idempotencyKey,
+      code: pgError?.code || null
+    }
+  })
+  return { reserved: false, reason: 'error' }
 }
 
 function shouldAbortPrivateBookingSmsRun(result: unknown): boolean {
@@ -312,6 +365,8 @@ export async function GET(request: Request) {
       eventRemindersSent: 0,
       privateFeedbackSmsSent: 0,
       postEventFollowupSent: 0,
+      outcomeEmailsSent: 0,
+      reviewRequestsSent: 0,
       smsCapReached: false
     }
     const totalSmsSent = () =>
@@ -320,7 +375,8 @@ export async function GET(request: Request) {
       stats.balanceRemindersSent +
       stats.eventRemindersSent +
       stats.privateFeedbackSmsSent +
-      stats.postEventFollowupSent
+      stats.postEventFollowupSent +
+      stats.reviewRequestsSent
     const canSendMoreSms = () => totalSmsSent() < MAX_PRIVATE_BOOKING_SMS_PER_RUN
     const abortState = {
       safetyAborts: 0,
@@ -390,7 +446,7 @@ export async function GET(request: Request) {
     // Find draft bookings where hold_expiry is approaching (<= 7 days)
     const { data: drafts } = await supabase
       .from('private_bookings')
-      .select('id, customer_first_name, customer_name, contact_phone, hold_expiry, event_date, customer_id')
+      .select('id, customer_first_name, customer_name, contact_phone, hold_expiry, event_date, customer_id, deposit_amount, internal_notes')
       .eq('status', 'draft')
       .gt('hold_expiry', now.toISOString()) // Not expired yet
       .not('hold_expiry', 'is', null)
@@ -420,6 +476,10 @@ export async function GET(request: Request) {
         }
         if (!booking.hold_expiry) continue
 
+        // Suppress reminders for bookings whose date is still TBD — the
+        // messages would point at a placeholder date.
+        if (isBookingDateTbd(booking)) continue
+
         // Resolve phone number (fallback to pre-fetched customer mobile map)
         const contactPhone = booking.contact_phone || (booking.customer_id ? customerMobileById.get(booking.customer_id) ?? null : null)
 
@@ -434,6 +494,12 @@ export async function GET(request: Request) {
           month: 'long',
           year: 'numeric'
         })
+
+        // Window key for idempotency: anchor on hold_expiry ISO date. Same
+        // booking + same expiry day + same trigger = same send cycle.
+        const holdExpiryWindowKey = booking.hold_expiry
+          ? new Date(booking.hold_expiry).toISOString().slice(0, 10)
+          : 'unknown'
 
         // 1. Check 7-Day Reminder (Window: 2-7 days)
         if (diffDays <= 7 && diffDays > 1) {
@@ -463,8 +529,19 @@ export async function GET(request: Request) {
           }
 
           if ((count ?? 0) === 0) {
-            const smartName = getSmartFirstName(booking.customer_first_name)
-            const messageBody = `The Anchor: ${smartName}! Your hold on ${eventDateReadable} expires in ${diffDays} days — get your deposit in and the date's all yours.`
+            const reservation = await reserveCronSmsSend(supabase, {
+              bookingId: booking.id,
+              triggerType,
+              windowKey: holdExpiryWindowKey
+            })
+            if (!reservation.reserved) continue
+
+            const messageBody = depositReminder7DayMessage({
+              customerFirstName: booking.customer_first_name,
+              eventDate: eventDateReadable,
+              depositAmount: Number(booking.deposit_amount ?? 0),
+              daysRemaining: diffDays,
+            })
 
             const result = await SmsQueueService.queueAndSend({
               booking_id: booking.id,
@@ -523,12 +600,18 @@ export async function GET(request: Request) {
           }
 
           if ((count ?? 0) === 0) {
-            const expiryReadable = expiry.toLocaleDateString('en-GB', {
-              day: 'numeric',
-              month: 'long'
+            const reservation = await reserveCronSmsSend(supabase, {
+              bookingId: booking.id,
+              triggerType,
+              windowKey: holdExpiryWindowKey
             })
-            const smartName = getSmartFirstName(booking.customer_first_name)
-            const messageBody = `The Anchor: ${smartName}! Your hold on ${eventDateReadable} expires tomorrow — we'd hate to lose you! Get your deposit in today.`
+            if (!reservation.reserved) continue
+
+            const messageBody = depositReminder1DayMessage({
+              customerFirstName: booking.customer_first_name,
+              eventDate: eventDateReadable,
+              depositAmount: Number(booking.deposit_amount ?? 0),
+            })
 
             const result = await SmsQueueService.queueAndSend({
               booking_id: booking.id,
@@ -565,13 +648,16 @@ export async function GET(request: Request) {
       // --- PASS 2: EXPIRY ---
       const { data: expiredDrafts } = await supabase
         .from('private_bookings')
-        .select('id, hold_expiry')
+        .select('id, hold_expiry, event_date, internal_notes')
         .eq('status', 'draft')
         .lt('hold_expiry', now.toISOString())
         .not('hold_expiry', 'is', null);
 
       if (expiredDrafts) {
         for (const booking of expiredDrafts) {
+          // Suppress expiry SMS for bookings whose date was never confirmed.
+          if (isBookingDateTbd(booking)) continue
+
           const canSendExpiryNotification = canSendMoreSms()
           if (!canSendExpiryNotification) {
             stats.smsCapReached = true
@@ -615,21 +701,19 @@ export async function GET(request: Request) {
 
     if (!abortState.aborted && PRIVATE_BOOKING_UPCOMING_EVENT_SMS_ENABLED) {
       // --- PASS 3: BALANCE REMINDERS (Confirmed - Catch-up Logic) ---
-      // Find confirmed bookings where event is <= 14 days away and balance > 0
+      // Fire at 14, 7, or 1 days before event (selected by days-until-event).
 
       const fourteenDaysFromNow = new Date(now);
       fourteenDaysFromNow.setDate(now.getDate() + 14);
-      // Reset time to end of day to ensure we catch events on the 14th day fully? 
-      // Actually, simplest is just strict ISO string comparison.
 
       const { data: confirmedBookings } = await supabase
         .from('private_bookings_with_details')
         .select(
-          'id, customer_first_name, customer_name, contact_phone, customer_mobile, event_date, total_amount, calculated_total, deposit_amount, balance_due_date, final_payment_date, customer_id'
+          'id, customer_first_name, customer_name, contact_phone, customer_mobile, event_date, total_amount, calculated_total, deposit_amount, balance_due_date, final_payment_date, customer_id, internal_notes'
         )
         .eq('status', 'confirmed')
         .gt('event_date', now.toISOString()) // Future events only
-        .lte('event_date', fourteenDaysFromNow.toISOString()) // <= 14 days away
+        .lte('event_date', fourteenDaysFromNow.toISOString()) // Within 14-day window
       // Removed .not('contact_phone', 'is', null) to allow fallback
 
       if (confirmedBookings) {
@@ -638,6 +722,10 @@ export async function GET(request: Request) {
             stats.smsCapReached = true
             break
           }
+
+          // Suppress for TBD bookings — no meaningful date to reference.
+          if (isBookingDateTbd(booking)) continue
+
           // Resolve phone number (fallback to customer record)
           const contactPhone = booking.contact_phone || booking.customer_mobile
 
@@ -645,85 +733,125 @@ export async function GET(request: Request) {
 
           // Simple balance check: if final payment date is set, assume paid.
           const isPaid = !!booking.final_payment_date;
+          if (isPaid) continue
 
-          if (!isPaid) {
-            const triggerType = 'balance_reminder_14day';
+          // Compute days until event (ceil on ms → days, consistent with Pass 1).
+          const eventMs = new Date(booking.event_date).getTime()
+          if (!Number.isFinite(eventMs)) continue
+          const daysUntilEvent = Math.ceil((eventMs - now.getTime()) / (1000 * 60 * 60 * 24))
 
-            const totalAmount = Number(booking.calculated_total ?? booking.total_amount ?? 0)
-            // Security deposit is a returnable bond — NOT deducted from event cost
-            const balanceDue = Math.max(totalAmount, 0)
-            if (!Number.isFinite(balanceDue) || balanceDue <= 0) continue
+          // Only fire at 14, 7, or 1 day windows.
+          if (![14, 7, 1].includes(daysUntilEvent)) continue
 
-            // Check duplicate
-            const { count, error: duplicateCheckError } = await supabase
-              .from('private_booking_sms_queue')
-              .select('id', { count: 'exact', head: true })
-              .eq('booking_id', booking.id)
-              .eq('trigger_type', triggerType)
-              .in('status', ['pending', 'approved', 'sent']);
+          const totalAmount = Number(booking.calculated_total ?? booking.total_amount ?? 0)
+          // Security deposit is a returnable bond — NOT deducted from event cost
+          const balanceDue = Math.max(totalAmount, 0)
+          if (!Number.isFinite(balanceDue) || balanceDue <= 0) continue
 
-            if (duplicateCheckError) {
-              logger.warn('Skipping private booking balance reminder due to duplicate-check query failure', {
-                metadata: {
-                  bookingId: booking.id,
-                  triggerType,
-                  runKey,
-                  error: duplicateCheckError.message
-                }
-              })
-              continue
-            }
+          const eventDateReadable = new Date(booking.event_date).toLocaleDateString('en-GB', {
+            day: 'numeric', month: 'long', year: 'numeric'
+          });
+          const dueDateReadable = booking.balance_due_date
+            ? new Date(booking.balance_due_date).toLocaleDateString('en-GB', {
+              day: 'numeric',
+              month: 'long',
+              year: 'numeric'
+            })
+            : eventDateReadable
 
-            if ((count ?? 0) === 0) {
-              if (!canSendMoreSms()) {
-                stats.smsCapReached = true
-                break
-              }
+          let triggerType: 'balance_reminder_14day' | 'balance_reminder_7day' | 'balance_reminder_1day'
+          let messageBody: string
+          if (daysUntilEvent === 14) {
+            triggerType = 'balance_reminder_14day'
+            messageBody = balanceReminder14DayMessage({
+              customerFirstName: booking.customer_first_name,
+              eventDate: eventDateReadable,
+              balanceAmount: balanceDue,
+              balanceDueDate: dueDateReadable,
+            })
+          } else if (daysUntilEvent === 7) {
+            triggerType = 'balance_reminder_7day'
+            messageBody = balanceReminder7DayMessage({
+              customerFirstName: booking.customer_first_name,
+              eventDate: eventDateReadable,
+              balanceAmount: balanceDue,
+              balanceDueDate: dueDateReadable,
+            })
+          } else {
+            triggerType = 'balance_reminder_1day'
+            messageBody = balanceReminder1DayMessage({
+              customerFirstName: booking.customer_first_name,
+              eventDate: eventDateReadable,
+              balanceAmount: balanceDue,
+            })
+          }
 
-              const eventDateReadable = new Date(booking.event_date).toLocaleDateString('en-GB', {
-                day: 'numeric', month: 'long', year: 'numeric'
-              });
-              const dueDateReadable = booking.balance_due_date
-                ? new Date(booking.balance_due_date).toLocaleDateString('en-GB', {
-                  day: 'numeric',
-                  month: 'long',
-                  year: 'numeric'
-                })
-                : null
+          // Check duplicate via the sms queue (legacy dedup).
+          const { count, error: duplicateCheckError } = await supabase
+            .from('private_booking_sms_queue')
+            .select('id', { count: 'exact', head: true })
+            .eq('booking_id', booking.id)
+            .eq('trigger_type', triggerType)
+            .in('status', ['pending', 'approved', 'sent']);
 
-              const smartName = getSmartFirstName(booking.customer_first_name)
-              const duePart = dueDateReadable ? ` by ${dueDateReadable}` : ''
-              // Note: no payment link variable available in this pass — spec payment_link omitted until a payment token is generated here
-              const messageBody = `The Anchor: ${smartName}! Your event on ${eventDateReadable} is getting close — just the £${balanceDue.toFixed(2)} balance left to pay${duePart}.`
-
-              const result = await SmsQueueService.queueAndSend({
-                booking_id: booking.id,
-                trigger_type: triggerType,
-                template_key: `private_booking_${triggerType}`,
-                message_body: messageBody,
-                customer_phone: contactPhone,
-                customer_name: booking.customer_name,
-                customer_id: booking.customer_id ?? undefined,
-                priority: 1
-              });
-
-              if (result.error) {
-                console.error(`Failed to queue balance reminder for booking ${booking.id}:`, result.error);
-              } else if (result.sent) {
-                stats.balanceRemindersSent++;
-              }
-
-              maybeAbortFromSmsResult(result, {
-                stage: `pass3:${triggerType}`,
+          if (duplicateCheckError) {
+            logger.warn('Skipping private booking balance reminder due to duplicate-check query failure', {
+              metadata: {
                 bookingId: booking.id,
                 triggerType,
-                templateKey: `private_booking_${triggerType}`
-              })
-
-              if (abortState.aborted) {
-                break
+                runKey,
+                error: duplicateCheckError.message
               }
-            }
+            })
+            continue
+          }
+
+          if ((count ?? 0) > 0) continue
+
+          if (!canSendMoreSms()) {
+            stats.smsCapReached = true
+            break
+          }
+
+          // Window key: balance_due_date for the 14-/7-day windows, event_date for 1-day.
+          const balanceWindowKey =
+            triggerType === 'balance_reminder_1day'
+              ? new Date(booking.event_date).toISOString().slice(0, 10)
+              : (booking.balance_due_date ?? booking.event_date).slice(0, 10)
+
+          const reservation = await reserveCronSmsSend(supabase, {
+            bookingId: booking.id,
+            triggerType,
+            windowKey: balanceWindowKey
+          })
+          if (!reservation.reserved) continue
+
+          const result = await SmsQueueService.queueAndSend({
+            booking_id: booking.id,
+            trigger_type: triggerType,
+            template_key: `private_booking_${triggerType}`,
+            message_body: messageBody,
+            customer_phone: contactPhone,
+            customer_name: booking.customer_name,
+            customer_id: booking.customer_id ?? undefined,
+            priority: 1
+          });
+
+          if (result.error) {
+            console.error(`Failed to queue balance reminder for booking ${booking.id}:`, result.error);
+          } else if (result.sent) {
+            stats.balanceRemindersSent++;
+          }
+
+          maybeAbortFromSmsResult(result, {
+            stage: `pass3:${triggerType}`,
+            bookingId: booking.id,
+            triggerType,
+            templateKey: `private_booking_${triggerType}`
+          })
+
+          if (abortState.aborted) {
+            break
           }
         }
       }
@@ -748,8 +876,8 @@ export async function GET(request: Request) {
             break
           }
 
-          const isDateTbdBooking = Boolean(booking.internal_notes?.includes('Event date/time to be confirmed'))
-          if (isDateTbdBooking) continue
+          // Canonical TBD-detection helper (replaces the inline string match).
+          if (isBookingDateTbd(booking)) continue
 
           const triggerType = 'event_reminder_1d'
 
@@ -774,11 +902,21 @@ export async function GET(request: Request) {
 
           if ((count ?? 0) > 0) continue
 
-          const rawFirstName = booking.customer_first_name || booking.customer_name?.split(' ')[0]
-          const firstName = getSmartFirstName(rawFirstName)
-          const guestPart = booking.guest_count ? ` for your ${booking.guest_count} guests` : ''
+          const eventReminderWindowKey = new Date(booking.event_date).toISOString().slice(0, 10)
+          const reservation = await reserveCronSmsSend(supabase, {
+            bookingId: booking.id,
+            triggerType,
+            windowKey: eventReminderWindowKey
+          })
+          if (!reservation.reserved) continue
 
-          const messageBody = `The Anchor: ${firstName}! Tomorrow's the big day — everything's ready${guestPart}. Can't wait to see you!`
+          const rawFirstName = booking.customer_first_name || booking.customer_name?.split(' ')[0]
+          const guestPart = booking.guest_count ? `for your ${booking.guest_count} guests` : ''
+
+          const messageBody = eventReminder1DayMessage({
+            customerFirstName: rawFirstName,
+            guestPart,
+          })
 
           const result = await SmsQueueService.queueAndSend({
             booking_id: booking.id,
@@ -811,135 +949,220 @@ export async function GET(request: Request) {
       }
     }
 
-    // RETIRED: consolidated into private_booking_post_event_followup
-    // Pass 5 (private_booking_feedback_followup) has been retired. The feedback form flow
-    // (createPrivateBookingFeedbackToken / /g/[token]/private-feedback) continues to work for
-    // existing tokens, but no new tokens are generated. Private booking review SMS now sends
-    // a direct Google review link via the review-once system.
-
+    // --- PASS 5a: OUTCOME EMAIL (morning after a confirmed event) ---
+    // Replaces the legacy "review SMS on the morning after" flow. Instead of
+    // sending an SMS directly, email the manager with three one-click outcome
+    // links (went_well / issues / skip). Pass 5b is responsible for the
+    // customer-facing review SMS, gated on the manager's chosen outcome.
     if (!abortState.aborted && PRIVATE_BOOKING_UPCOMING_EVENT_SMS_ENABLED) {
-      // --- PASS 5: POST-EVENT FOLLOWUP (Google review request — morning after event) ---
       const yesterdayLondon = getLondonRunKey(new Date(now.getTime() - 24 * 60 * 60 * 1000))
-      const appBaseUrl = process.env.NEXT_PUBLIC_APP_URL || ''
-      const reviewLinkTarget = await getGoogleReviewLink(supabase)
-      const supportPhone =
-        process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || process.env.TWILIO_PHONE_NUMBER || undefined
 
-      const { data: yesterdayBookings } = await supabase
+      const { data: eligibleForEmail } = await supabase
         .from('private_bookings')
-        .select('id, customer_first_name, customer_name, contact_phone, event_date, customer_id')
-        .in('status', ['confirmed', 'completed'])
+        .select(
+          'id, customer_name, customer_first_name, event_date, guest_count, status, post_event_outcome, outcome_email_sent_at, internal_notes'
+        )
         .eq('event_date', yesterdayLondon)
-        .is('review_processed_at', null)
+        .eq('status', 'confirmed')
+        .eq('post_event_outcome', 'pending')
+        .is('outcome_email_sent_at', null)
 
-      if (yesterdayBookings && yesterdayBookings.length > 0) {
-        // Batch review-once check for all eligible customers
-        const customerIds = yesterdayBookings
-          .map((b) => b.customer_id)
-          .filter((id): id is string => typeof id === 'string' && id.length > 0)
-        const alreadyReviewedSet = await hasCustomerReviewed(customerIds)
-        const nowIso = new Date().toISOString()
+      if (eligibleForEmail && eligibleForEmail.length > 0) {
+        for (const booking of eligibleForEmail) {
+          if (isBookingDateTbd(booking)) continue
 
-        for (const booking of yesterdayBookings) {
+          const rawFirstName = booking.customer_first_name || booking.customer_name?.split(' ')[0]
+          const displayFirstName = getSmartFirstName(rawFirstName)
+          const eventDateReadable = booking.event_date
+            ? new Date(booking.event_date).toLocaleDateString('en-GB', {
+                day: 'numeric',
+                month: 'long',
+                year: 'numeric'
+              })
+            : 'the event date'
+
+          // Atomic claim BEFORE sending: only proceed if this cron run wins the
+          // WHERE outcome_email_sent_at IS NULL gate. Concurrent cron runs lose
+          // the claim and skip silently — prevents duplicate manager emails.
+          const claimedAt = new Date().toISOString()
+          const { data: claimed, error: claimErr } = await supabase
+            .from('private_bookings')
+            .update({ outcome_email_sent_at: claimedAt })
+            .eq('id', booking.id)
+            .is('outcome_email_sent_at', null)
+            .select('id')
+            .maybeSingle()
+
+          if (claimErr) {
+            logger.error('Private booking outcome email claim failed', {
+              error: new Error(claimErr.message || 'outcome claim failed'),
+              metadata: { bookingId: booking.id }
+            })
+            continue
+          }
+
+          if (!claimed) {
+            // Another cron run already claimed this booking. Silent skip.
+            continue
+          }
+
+          const emailResult = await sendPrivateBookingOutcomeEmail({
+            bookingId: booking.id,
+            customerName: booking.customer_name || 'the guest',
+            customerFirstName: displayFirstName || 'there',
+            eventDate: eventDateReadable,
+            guestCount: booking.guest_count ?? null
+          })
+
+          if (emailResult.success) {
+            stats.outcomeEmailsSent++
+          } else {
+            // Claim already stamped; leave it. A failed email is rare (Microsoft
+            // Graph is stable) and automatic retry could duplicate when the
+            // original eventually delivers. The 14-day stale-pending-outcomes
+            // report surfaces these so ops can manually clear the claim if
+            // needed. Silent retry is not safe here.
+            logger.error('Private booking outcome email failed — claim retained', {
+              error: new Error(emailResult.error || 'outcome email failed'),
+              metadata: {
+                bookingId: booking.id,
+                claimedAt,
+                manualRecovery: 'reset outcome_email_sent_at to null to retry'
+              }
+            })
+          }
+        }
+      }
+    }
+
+    // --- PASS 5b: REVIEW SMS (gated on manager's went_well outcome) ---
+    // Only fires when the manager has explicitly clicked "went well" on the
+    // outcome email. Independent of Pass 5a so a late outcome click still
+    // triggers an SMS on the next cron run, as long as the event was within
+    // the 14-day review window.
+    if (!abortState.aborted && PRIVATE_BOOKING_UPCOMING_EVENT_SMS_ENABLED) {
+      const today = getLondonRunKey(new Date())
+      const fourteenDaysAgo = getLondonRunKey(new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000))
+
+      const { data: eligibleForReview } = await supabase
+        .from('private_bookings')
+        .select(
+          'id, customer_id, customer_first_name, customer_name, contact_phone, event_date, post_event_outcome, review_sms_sent_at, status, internal_notes'
+        )
+        .eq('post_event_outcome', 'went_well')
+        .is('review_sms_sent_at', null)
+        .neq('status', 'cancelled')
+        .gte('event_date', fourteenDaysAgo)
+        .lte('event_date', today)
+
+      if (eligibleForReview && eligibleForReview.length > 0) {
+        const reviewLink = await getGoogleReviewLink(supabase)
+
+        for (const booking of eligibleForReview) {
           if (!canSendMoreSms()) {
             stats.smsCapReached = true
             break
           }
 
-          const customerId = booking.customer_id
-          const contactPhone = booking.contact_phone
+          if (isBookingDateTbd(booking)) continue
+          if (!booking.event_date) continue
 
-          // Mark processed regardless of send outcome (avoid re-processing)
-          const markProcessed = async () => {
-            await supabase
-              .from('private_bookings')
-              .update({ review_processed_at: nowIso, updated_at: nowIso })
-              .eq('id', booking.id)
-              .is('review_processed_at', null)
-          }
+          const eventDateIso = booking.event_date.slice(0, 10)
 
-          // If no customer_id or phone, skip but mark processed
-          if (!customerId || !contactPhone) {
-            await markProcessed()
+          // Atomic claim on review_sms_sent_at FIRST — only one cron run can
+          // "win" the right to send for a booking. Survives cron double-fire.
+          const { data: reviewClaim, error: reviewClaimErr } = await supabase
+            .from('private_bookings')
+            .update({ review_sms_sent_at: new Date().toISOString() })
+            .eq('id', booking.id)
+            .is('review_sms_sent_at', null)
+            .select('id')
+            .maybeSingle()
+
+          if (reviewClaimErr) {
+            logger.warn('Private booking review SMS claim failed', {
+              metadata: { bookingId: booking.id, error: reviewClaimErr.message }
+            })
             continue
           }
 
-          // Review-once: suppress if customer already left a review on any booking
-          if (alreadyReviewedSet.has(customerId)) {
-            logger.info('Private booking post-event review SMS suppressed: customer already reviewed', {
-              metadata: { bookingId: booking.id, customerId }
-            })
-            await markProcessed()
-            continue
-          }
+          // Lost the column race to another cron run — skip cleanly.
+          if (!reviewClaim) continue
 
-          // Generate review redirect token
-          let redirectUrl: string
-          try {
-            const provisionalExpiry = new Date(now.getTime() + 8 * 24 * 60 * 60 * 1000).toISOString()
-            const { rawToken } = await createGuestToken(supabase, {
-              customerId,
-              actionType: 'review_redirect',
-              privateBookingId: booking.id,
-              expiresAt: provisionalExpiry
-            })
-            redirectUrl = `${appBaseUrl}/r/${rawToken}`
-          } catch (tokenError) {
-            logger.warn('Private booking post-event: failed to create review redirect token; skipping', {
+          // Business idempotency key — second layer of defence alongside the
+          // column claim above. Lets ops trace duplicates if they ever occur.
+          const reservation = await reserveCronSmsSend(supabase, {
+            bookingId: booking.id,
+            triggerType: 'review_request',
+            windowKey: eventDateIso
+          })
+          if (!reservation.reserved) {
+            // We won the column-level claim but another process already
+            // reserved the same (booking, trigger, window) idempotency key —
+            // which means the SMS was already sent (or is being sent) in a
+            // concurrent run. Fail safe by skipping; the column claim stays
+            // set so the same SMS cannot be re-sent by this column path.
+            logger.info('Private booking review SMS skipped: idempotency key already reserved', {
               metadata: {
                 bookingId: booking.id,
-                customerId,
-                error: tokenError instanceof Error ? tokenError.message : String(tokenError)
+                triggerType: 'review_request',
+                windowKey: eventDateIso,
+                reason: reservation.reason ?? 'duplicate'
               }
             })
-            await markProcessed()
             continue
           }
 
-          const rawFirstName = booking.customer_first_name || booking.customer_name?.split(' ')[0]
-          const firstName = getSmartFirstName(rawFirstName)
-          const messageBody = ensureReplyInstruction(
-            `The Anchor: ${firstName}! Hope your event was everything you wanted. Got 30 seconds? A quick review means the world to us: ${redirectUrl}`,
-            supportPhone
-          )
+          const eventDateReadable = new Date(booking.event_date).toLocaleDateString('en-GB', {
+            day: 'numeric',
+            month: 'long',
+            year: 'numeric'
+          })
 
-          const smsResult = await sendSMS(contactPhone, messageBody, {
-            customerId,
+          const messageBody = reviewRequestMessage({
+            customerFirstName: booking.customer_first_name,
+            eventDate: eventDateReadable,
+            reviewLink
+          })
+
+          const sendResult = await SmsQueueService.queueAndSend({
+            booking_id: booking.id,
+            trigger_type: 'review_request',
+            template_key: 'private_booking_review_request',
+            message_body: messageBody,
+            customer_phone: booking.contact_phone,
+            customer_name: booking.customer_name || 'Guest',
+            customer_id: booking.customer_id ?? undefined,
+            priority: 3,
             metadata: {
-              private_booking_id: booking.id,
-              template_key: 'private_booking_post_event_followup',
-              review_redirect_target: reviewLinkTarget
+              template: 'private_booking_review_request',
+              event_date: eventDateIso,
+              review_link_target: reviewLink
             }
           })
 
-          if (smsResult.success) {
-            stats.postEventFollowupSent++
-            // Mark processed immediately after successful send — this is the primary
-            // guard against re-sends if the cron times out before completing other work.
-            await markProcessed()
-          } else {
-            logger.warn('Failed to send private booking post-event review SMS', {
+          if (sendResult.error) {
+            logger.warn('Failed to queue private booking review SMS', {
               metadata: {
                 bookingId: booking.id,
-                customerId,
-                error: smsResult.error || 'Unknown error',
-                code: typeof (smsResult as any).code === 'string' ? (smsResult as any).code : null
+                error: sendResult.error,
+                code: typeof (sendResult as { code?: string }).code === 'string'
+                  ? (sendResult as { code?: string }).code
+                  : null
               }
             })
-            // Mark processed even on failure to avoid retrying a blocked send
-            await markProcessed()
+          } else if (sendResult.sent) {
+            stats.reviewRequestsSent++
           }
 
-          maybeAbortFromSmsResult(smsResult, {
-            stage: 'pass5:post_event_followup',
+          maybeAbortFromSmsResult(sendResult, {
+            stage: 'pass5b:review_request',
             bookingId: booking.id,
-            triggerType: 'post_event_followup',
-            templateKey: 'private_booking_post_event_followup'
+            triggerType: 'review_request',
+            templateKey: 'private_booking_review_request'
           })
 
-          if (abortState.aborted) {
-            break
-          }
+          if (abortState.aborted) break
         }
       }
     }

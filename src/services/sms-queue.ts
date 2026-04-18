@@ -51,7 +51,13 @@ const PRIVATE_BOOKING_SMS_AUTO_SEND_TRIGGERS = new Set<string>([
   'booking_confirmed',
   'booking_completed',
   'date_changed',
+  // Retained for backward compatibility with historical queue rows. New
+  // cancellation writes use the four variant triggers below.
   'booking_cancelled',
+  'booking_cancelled_hold',
+  'booking_cancelled_refundable',
+  'booking_cancelled_non_refundable',
+  'booking_cancelled_manual_review',
   'booking_expired',
   'hold_extended',
   'deposit_reminder_7day',
@@ -62,6 +68,7 @@ const PRIVATE_BOOKING_SMS_AUTO_SEND_TRIGGERS = new Set<string>([
   'event_reminder_1d',
   'setup_reminder',
   'post_event_followup',
+  'review_request',
   'manual',
 ]);
 
