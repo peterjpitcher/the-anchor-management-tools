@@ -259,6 +259,7 @@ export default function EventDetailClient({
   } | null>(null)
   const [cancellingBookingId, setCancellingBookingId] = useState<string | null>(null)
   const [updatingBookingId, setUpdatingBookingId] = useState<string | null>(null)
+  const [showCancelledBookings, setShowCancelledBookings] = useState(false)
 
   useEffect(() => {
     setMarketingLinks(initialMarketingLinks)
@@ -323,6 +324,13 @@ export default function EventDetailClient({
   const activeBookings = useMemo(
     () => initialBookings.filter((booking) => !['cancelled', 'expired'].includes(booking.status || '')),
     [initialBookings]
+  )
+
+  const displayedBookings = useMemo(
+    () => showCancelledBookings
+      ? initialBookings
+      : initialBookings.filter((booking) => !['cancelled', 'expired'].includes(booking.status || '')),
+    [initialBookings, showCancelledBookings]
   )
 
   const confirmedSeats = useMemo(
@@ -1051,11 +1059,26 @@ export default function EventDetailClient({
                     {activeBookings.length} active bookings • {confirmedSeats} confirmed seats
                   </p>
                 </div>
+                {initialBookings.length > activeBookings.length && (
+                  <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={showCancelledBookings}
+                      onChange={(e) => setShowCancelledBookings(e.target.checked)}
+                      className="h-4 w-4 rounded border-gray-300 text-amber-600 focus:ring-amber-500"
+                    />
+                    Show cancelled
+                  </label>
+                )}
               </div>
 
-              {initialBookings.length === 0 ? (
+              {displayedBookings.length === 0 && activeBookings.length === 0 ? (
                 <div className="rounded-md border border-dashed border-gray-300 p-4 text-sm text-gray-600">
                   No guests are booked yet.
+                </div>
+              ) : displayedBookings.length === 0 ? (
+                <div className="rounded-md border border-dashed border-gray-300 p-4 text-sm text-gray-600">
+                  All bookings are cancelled. Tick &quot;Show cancelled&quot; to view them.
                 </div>
               ) : (
                 <div className="overflow-hidden rounded-md border border-gray-200">
@@ -1081,7 +1104,7 @@ export default function EventDetailClient({
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-100 bg-white">
-                        {initialBookings.map((booking) => {
+                        {displayedBookings.map((booking) => {
                           const fullName = [booking.customer?.first_name, booking.customer?.last_name]
                             .filter(Boolean)
                             .join(' ')
