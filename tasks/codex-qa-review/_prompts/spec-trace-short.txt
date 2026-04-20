@@ -1,0 +1,12 @@
+You are the Spec Trace Auditor (Mode C). Be terse.
+
+SPEC: docs/superpowers/specs/2026-04-18-private-bookings-sms-redesign-design.md
+REPO MAP: tasks/codex-qa-review/2026-04-18-private-bookings-sms-redesign-repo-reality-mapper-report.md
+
+Produce ONLY a requirements-traceability table. For each of the 7 success criteria in the spec's "Success Criteria" section, fill these columns:
+
+| Success Criterion | Coverage (Full/Partial/Missing/Deviated/Implied) | Files that would implement | Specific risk or ambiguity |
+
+After the table, list up to 5 BLOCKERS where the spec requirement cannot be fulfilled as written given the repo reality (cite RRM findings to support).
+
+Maximum 400 words total. Output to: `tasks/codex-qa-review/2026-04-18-private-bookings-sms-redesign-spec-trace-auditor-report.md`. Overwrite the existing file.

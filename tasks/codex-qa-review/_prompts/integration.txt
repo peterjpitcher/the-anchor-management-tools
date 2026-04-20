@@ -1,0 +1,51 @@
+You are the Integration & Architecture Reviewer. Check architectural fit, coupling, state ownership, data flow, and maintainability.
+
+SPEC: docs/superpowers/specs/2026-04-18-private-bookings-sms-redesign-design.md
+REPO REALITY MAP: tasks/codex-qa-review/2026-04-18-private-bookings-sms-redesign-repo-reality-mapper-report.md
+
+Evaluate these architectural decisions the spec makes:
+
+1. **New `private_booking_outcome_tokens` table vs. existing `guest_tokens` table.**
+   - RRM shows guest_tokens supports `private_feedback` action type. Spec proposes a parallel table. Duplication. What pattern wins? Read src/lib/guest/tokens.ts and see if adding an action type is trivial.
+
+2. **New `src/lib/private-bookings/messages.ts` helper module.**
+   - 2026-03-22 tone spec explicitly said tone refresh means editing inline message strings across multiple files (there are no central templates). This spec inverts that. Which is right? Or does this spec need to justify why inline construction no longer serves?
+   - Maintainability trade-off: centralised module is easier to audit but couples cron + mutations + payments to a shared module. Test impact.
+
+3. **post_event_outcome column on private_bookings vs. reusing existing `review_processed_at` / `review_clicked_at`.**
+   - RRM confirms those columns exist. Spec adds a new enum column that overlaps semantically. Data integrity risk: two sources of truth for "has review been handled".
+
+4. **Duplicate cron paths: `private-booking-monitor` Pass 5 AND `/api/cron/post-event-followup/route.ts`.**
+   - RRM found two post-event paths. Spec modifies only one. Are they both live? If so, the review SMS could double-send. If one is retired, is it dead code that should be removed?
+   - Same question for `/api/cron/booking-balance-reminders/route.ts` — RRM says it sends 7day and 1day balance reminders. Spec says these are "considered and rejected" — but they're already being sent. What does the spec do with this code? Remove it? Keep it? Leave it running against prod?
+
+5. **`computeRefundAmount()` — where does this function live?**
+   - Spec says "reads total_paid from booking payment history table". total_paid isn't a column — it's a SUM. Expensive in a hot path? Should this be a derived column, a view, or a service function?
+   - Authoritative source of truth: private_booking_payments (history) or private_bookings.deposit_paid_date + final_payment_date? Dual state risk.
+
+6. **Preview UI data flow.**
+   - History comes from private_booking_sms_queue.
+   - Scheduled comes from computation of cron logic in React code.
+   - This duplicates cron SELECT logic in the UI. Any change to cron behaviour requires change in UI too. Coupling risk.
+   - Alternative: expose a server action `getBookingScheduledSms(id)` that shares code with the cron. Better abstraction.
+
+7. **API route `/api/private-bookings/outcome/[token]` auth model.**
+   - RRM shows guest_tokens pattern elsewhere in the repo. What do those routes do — render a page or redirect? Is there an established pattern this should follow?
+   - Single GET request with side effect (state mutation on click) violates REST and is subject to prefetch-triggering by email clients. Many email clients prefetch links to show previews — that would auto-click all three buttons. BLOCKER.
+
+8. **Email sending abstraction.**
+   - RRM says `src/lib/private-bookings/manager-notifications.ts` already exists and defaults to manager@the-anchor.pub. Spec writes a new email send. Reuse vs. reinvent?
+
+9. **Coupling between the Communications tab and the feature-flag `PRIVATE_BOOKING_UPCOMING_EVENT_SMS_ENABLED`.**
+   - If the flag is off, scheduled reminders shouldn't appear. Does the spec's UI logic check the flag? Not mentioned.
+
+10. **Testing strategy vs. existing test patterns.**
+    - RRM lists existing tests at tests/services/. Spec proposes new tests in src/lib/private-bookings/messages.test.ts. Test location convention — co-located with source or in tests/ directory?
+
+Output: `tasks/codex-qa-review/2026-04-18-private-bookings-sms-redesign-integration-architecture-report.md`. For each section, state:
+- The architectural decision in the spec
+- Whether it fits existing patterns (yes/no/partial)
+- Specific risk if it doesn't fit
+- Recommended change
+
+End with prioritised list of BLOCKERS that alter the shape of the implementation. Aim for 700–1000 words.
