@@ -1,0 +1,70 @@
+**Findings**
+
+1. `Critical` `(Q2)`  
+Claim: [spec:34](/Users/peterpitcher/Cursor/OJ-AnchorManagementTools/docs/superpowers/specs/2026-04-10-menu-management-ux-overhaul-design.md#L34) says inline pack-cost editing can call the existing `updateMenuIngredient` with a partial update.  
+Reality: [`updateMenuIngredient` parses the full schema](/Users/peterpitcher/Cursor/OJ-AnchorManagementTools/src/app/actions/menu-management.ts#L73) and uses [`IngredientSchema.parse`](/Users/peterpitcher/Cursor/OJ-AnchorManagementTools/src/app/actions/menu-management.ts#L80). Worse, the service layer’s [`updateIngredient`](/Users/peterpitcher/Cursor/OJ-AnchorManagementTools/src/services/menu.ts#L366) builds a full update object and will null/clear omitted fields in several cases ([`description`, `supplier_name`, `notes`, etc.](/Users/peterpitcher/Cursor/OJ-AnchorManagementTools/src/services/menu.ts#L385)).  
+Recommended fix: do not implement inline pack-cost edits against the current action. Preferred: add dedicated field-level actions like `updateIngredientPackCost` and `toggleIngredientActive`. If you keep `updateMenuIngredient`, make it partial-safe end-to-end in both the action and service layer.
+
+2. `High` `(Q3)`  
+Claim: [spec:61](/Users/peterpitcher/Cursor/OJ-AnchorManagementTools/docs/superpowers/specs/2026-04-10-menu-management-ux-overhaul-design.md#L61), [spec:82](/Users/peterpitcher/Cursor/OJ-AnchorManagementTools/docs/superpowers/specs/2026-04-10-menu-management-ux-overhaul-design.md#L82), [spec:125](/Users/peterpitcher/Cursor/OJ-AnchorManagementTools/docs/superpowers/specs/2026-04-10-menu-management-ux-overhaul-design.md#L125), and [spec:179](/Users/peterpitcher/Cursor/OJ-AnchorManagementTools/docs/superpowers/specs/2026-04-10-menu-management-ux-overhaul-design.md#L179) treat “25 per page” as a straightforward table feature.  
+Reality: `Pagination` is separate ([`PaginationProps`](/Users/peterpitcher/Cursor/OJ-AnchorManagementTools/src/components/ui-v2/navigation/Pagination.tsx#L15)), but `DataTable` owns sort state internally ([`sortColumn`/`sortDirection`](/Users/peterpitcher/Cursor/OJ-AnchorManagementTools/src/components/ui-v2/display/DataTable.tsx#L241), [`sortedData`](/Users/peterpitcher/Cursor/OJ-AnchorManagementTools/src/components/ui-v2/display/DataTable.tsx#L283), [`handleSort`](/Users/peterpitcher/Cursor/OJ-AnchorManagementTools/src/components/ui-v2/display/DataTable.tsx#L306)). Naively slicing data before passing it in will sort only the current page.  
+Recommended fix: make sorting parent-controlled before adding pagination. The page should own `search/filter -> sort -> paginate`, pass only the current page slice to `DataTable`, and render `Pagination` below it. That requires extending `DataTable` with controlled sort props/callbacks or disabling internal sort.
+
+3. `High` `(Q6)`  
+Claim: [spec:306](/Users/peterpitcher/Cursor/OJ-AnchorManagementTools/docs/superpowers/specs/2026-04-10-menu-management-ux-overhaul-design.md#L306) says no new components need to be created.  
+Reality: `DataTable` can render arbitrary cells ([`column.cell`](/Users/peterpitcher/Cursor/OJ-AnchorManagementTools/src/components/ui-v2/display/DataTable.tsx#L52)), but it has no inline-edit lifecycle, focus management, save/cancel handling, optimistic rollback, or per-cell loading/error API in its props ([`DataTableProps`](/Users/peterpitcher/Cursor/OJ-AnchorManagementTools/src/components/ui-v2/display/DataTable.tsx#L88)).  
+Recommended fix: revise the claim to “no new ui-v2 primitives are required.” You still need feature-level components or hooks such as `EditableCurrencyCell`, `StatusToggleCell`, or `useInlineEdit`, likely under the page `_components/` folders.
+
+4. `High` `(Q7)`  
+Claim: the dish redesign in [spec:203](/Users/peterpitcher/Cursor/OJ-AnchorManagementTools/docs/superpowers/specs/2026-04-10-menu-management-ux-overhaul-design.md#L203) and [spec:209](/Users/peterpitcher/Cursor/OJ-AnchorManagementTools/docs/superpowers/specs/2026-04-10-menu-management-ux-overhaul-design.md#L209) assumes compact selectors are enough.  
+Reality: the current dish editor deliberately shows active ingredients/recipes plus any currently-linked inactive ones, labeled `(inactive)`, so existing dishes remain editable without silently losing retired components ([recipes select](/Users/peterpitcher/Cursor/OJ-AnchorManagementTools/src/app/%28authenticated%29/menu-management/dishes/page.tsx#L1223), [ingredients select](/Users/peterpitcher/Cursor/OJ-AnchorManagementTools/src/app/%28authenticated%29/menu-management/dishes/page.tsx#L1310)).  
+Recommended fix: preserve this behavior explicitly in the spec. Treat it as required, not incidental.
+
+5. `Medium` `(Q1)`  
+Claim: [spec:29](/Users/peterpitcher/Cursor/OJ-AnchorManagementTools/docs/superpowers/specs/2026-04-10-menu-management-ux-overhaul-design.md#L29) says mobile full-screen drawers are built into the existing `Drawer`.  
+Reality: `Drawer` only exposes `sm/md/lg/xl/full` sizes ([size prop](/Users/peterpitcher/Cursor/OJ-AnchorManagementTools/src/components/ui-v2/overlay/Drawer.tsx#L38)) and maps `lg/xl` to fixed max widths ([size classes](/Users/peterpitcher/Cursor/OJ-AnchorManagementTools/src/components/ui-v2/overlay/Drawer.tsx#L137)). The panel is always `w-full` with a max width ([panel classes](/Users/peterpitcher/Cursor/OJ-AnchorManagementTools/src/components/ui-v2/overlay/Drawer.tsx#L252)), and `MobileDrawer` is just a thin wrapper, not a responsive full-screen mode ([`MobileDrawer`](/Users/peterpitcher/Cursor/OJ-AnchorManagementTools/src/components/ui-v2/overlay/Drawer.tsx#L415)).  
+Recommended fix: either add an explicit responsive full-screen mode to `Drawer`/`MobileDrawer`, or change the spec to “use `size='full'` on mobile via page-level responsive logic.” Do not say this is already built in.
+
+6. `Medium` `(Q4, inference)`  
+Claim: [spec:104](/Users/peterpitcher/Cursor/OJ-AnchorManagementTools/docs/superpowers/specs/2026-04-10-menu-management-ux-overhaul-design.md#L104), [spec:158](/Users/peterpitcher/Cursor/OJ-AnchorManagementTools/docs/superpowers/specs/2026-04-10-menu-management-ux-overhaul-design.md#L158), and [spec:228](/Users/peterpitcher/Cursor/OJ-AnchorManagementTools/docs/superpowers/specs/2026-04-10-menu-management-ux-overhaul-design.md#L228) give tight target line counts for the decomposed files.  
+Reality: those counts are low for the behavior described. Current monolith sizes are already 1,224 / 797 / 1,536 lines in [ingredients/page.tsx](/Users/peterpitcher/Cursor/OJ-AnchorManagementTools/src/app/%28authenticated%29/menu-management/ingredients/page.tsx), [recipes/page.tsx](/Users/peterpitcher/Cursor/OJ-AnchorManagementTools/src/app/%28authenticated%29/menu-management/recipes/page.tsx), and [dishes/page.tsx](/Users/peterpitcher/Cursor/OJ-AnchorManagementTools/src/app/%28authenticated%29/menu-management/dishes/page.tsx); the redesign also adds pagination, drawer orchestration, dirty-state tracking, keyboard shortcuts, and inline editing.  
+Recommended fix: treat the listed counts as aspirational floors, not planning numbers. Budget page shells closer to ~200-300 lines and the form-heavy drawer/tab components closer to ~300-500 lines.
+
+7. `Medium` `(Q5, inference)`  
+Claim: [spec:88](/Users/peterpitcher/Cursor/OJ-AnchorManagementTools/docs/superpowers/specs/2026-04-10-menu-management-ux-overhaul-design.md#L88) mandates `Accordion` for the ingredient form.  
+Reality: `Accordion` is a generic content organizer ([`AccordionProps`](/Users/peterpitcher/Cursor/OJ-AnchorManagementTools/src/components/ui-v2/display/Accordion.tsx#L24)), while `FormSection` exists specifically to group form fields ([`FormSection`](/Users/peterpitcher/Cursor/OJ-AnchorManagementTools/src/components/ui-v2/forms/Form.tsx#L208)). For a validation-heavy form, collapsible fieldsets/sections are a better semantic fit than a display accordion.  
+Recommended fix: use `FormSection` as the default form structure and only add collapsible fieldsets where progressive disclosure actually helps. If you do use `Accordion`, require auto-expanding sections that contain validation errors.
+
+8. `Medium` `(Q7)`  
+Claim: [spec:178](/Users/peterpitcher/Cursor/OJ-AnchorManagementTools/docs/superpowers/specs/2026-04-10-menu-management-ux-overhaul-design.md#L178) replaces the dishes menu picker with generic filters but does not preserve routing behavior.  
+Reality: the current dishes page keeps the selected menu in the URL and reuses it when creating a new dish, so the view is bookmarkable and new dishes inherit the current menu context ([query params](/Users/peterpitcher/Cursor/OJ-AnchorManagementTools/src/app/%28authenticated%29/menu-management/dishes/page.tsx#L230), [form defaults](/Users/peterpitcher/Cursor/OJ-AnchorManagementTools/src/app/%28authenticated%29/menu-management/dishes/page.tsx#L433), [filter change](/Users/peterpitcher/Cursor/OJ-AnchorManagementTools/src/app/%28authenticated%29/menu-management/dishes/page.tsx#L546), [contextual add label](/Users/peterpitcher/Cursor/OJ-AnchorManagementTools/src/app/%28authenticated%29/menu-management/dishes/page.tsx#L744)).  
+Recommended fix: keep the menu filter URL-backed and make “new dish” default to the active menu/category.
+
+9. `Medium` `(Q7)`  
+Claim: the spec’s filtering rewrite on [spec:81](/Users/peterpitcher/Cursor/OJ-AnchorManagementTools/docs/superpowers/specs/2026-04-10-menu-management-ux-overhaul-design.md#L81) and [spec:178](/Users/peterpitcher/Cursor/OJ-AnchorManagementTools/docs/superpowers/specs/2026-04-10-menu-management-ux-overhaul-design.md#L178) does not explicitly preserve broad free-text search.  
+Reality: ingredients currently search name, brand, supplier, SKU, dietary flags, and allergens ([ingredients filter](/Users/peterpitcher/Cursor/OJ-AnchorManagementTools/src/app/%28authenticated%29/menu-management/ingredients/page.tsx#L612), [input](/Users/peterpitcher/Cursor/OJ-AnchorManagementTools/src/app/%28authenticated%29/menu-management/ingredients/page.tsx#L818)); dishes search name, description, menu/category labels, ingredient names, and recipe names ([dish filter](/Users/peterpitcher/Cursor/OJ-AnchorManagementTools/src/app/%28authenticated%29/menu-management/dishes/page.tsx#L576), [input](/Users/peterpitcher/Cursor/OJ-AnchorManagementTools/src/app/%28authenticated%29/menu-management/dishes/page.tsx#L1055)).  
+Recommended fix: keep a free-text search alongside `FilterPanel`, or explicitly say search is being narrowed.
+
+10. `Medium` `(Q7)`  
+Claim: [spec:182](/Users/peterpitcher/Cursor/OJ-AnchorManagementTools/docs/superpowers/specs/2026-04-10-menu-management-ux-overhaul-design.md#L182) upgrades GP display to red text plus an icon.  
+Reality: the current dishes table already gives a stronger decision aid by showing the sell price required to hit target GP directly under the GP value for below-target rows ([table hint](/Users/peterpitcher/Cursor/OJ-AnchorManagementTools/src/app/%28authenticated%29/menu-management/dishes/page.tsx#L808)).  
+Recommended fix: preserve that hint as subtext or a tooltip; otherwise this is a real regression for managers triaging pricing.
+
+11. `Low` `(Q7)`  
+Claim: [spec:96](/Users/peterpitcher/Cursor/OJ-AnchorManagementTools/docs/superpowers/specs/2026-04-10-menu-management-ux-overhaul-design.md#L96) moves price history access into the ingredient drawer header.  
+Reality: users can currently open price history straight from the table via the `Prices` row action, without entering edit mode ([row action](/Users/peterpitcher/Cursor/OJ-AnchorManagementTools/src/app/%28authenticated%29/menu-management/ingredients/page.tsx#L723), [modal](/Users/peterpitcher/Cursor/OJ-AnchorManagementTools/src/app/%28authenticated%29/menu-management/ingredients/page.tsx#L1180)).  
+Recommended fix: either keep a row-level trigger or explicitly accept the extra click as a workflow tradeoff.
+
+12. `Low` `(Q7)`  
+Claim: the spec relies on `ConfirmDialog` generically ([spec:296](/Users/peterpitcher/Cursor/OJ-AnchorManagementTools/docs/superpowers/specs/2026-04-10-menu-management-ux-overhaul-design.md#L296)) but does not preserve the recipe-specific delete warning.  
+Reality: the current recipes page warns that deleting a recipe removes it from every dish that uses it ([delete copy](/Users/peterpitcher/Cursor/OJ-AnchorManagementTools/src/app/%28authenticated%29/menu-management/recipes/page.tsx#L780)).  
+Recommended fix: keep entity-specific destructive copy in the redesign, especially where deletes have downstream effects.
+
+13. `Low` `(Q7)`  
+Claim: the spec references GP targets, but not the current cross-page shortcut to manage them ([selling-price hint](/Users/peterpitcher/Cursor/OJ-AnchorManagementTools/docs/superpowers/specs/2026-04-10-menu-management-ux-overhaul-design.md#L194)).  
+Reality: `Menu Target` links exist on ingredients, recipes, and dishes today ([ingredients](/Users/peterpitcher/Cursor/OJ-AnchorManagementTools/src/app/%28authenticated%29/menu-management/ingredients/page.tsx#L605), [recipes](/Users/peterpitcher/Cursor/OJ-AnchorManagementTools/src/app/%28authenticated%29/menu-management/recipes/page.tsx#L392), [dishes](/Users/peterpitcher/Cursor/OJ-AnchorManagementTools/src/app/%28authenticated%29/menu-management/dishes/page.tsx#L752)).  
+Recommended fix: keep the shortcut in header actions or explicitly remove it from the spec.
+
+Main blockers are the ingredient partial-update assumption, the sort+pagination composition model, and the “no new components” claim. Those three need spec changes before implementation starts.
+
+Side note: the spec’s “current: no sorting” baseline is already stale on the ingredients page, which marks several columns sortable in the current code ([ingredients/page.tsx:632](/Users/peterpitcher/Cursor/OJ-AnchorManagementTools/src/app/%28authenticated%29/menu-management/ingredients/page.tsx#L632)).
