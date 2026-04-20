@@ -1,0 +1,54 @@
+1. **FINDING #1: Google Calendar env var mismatch**  
+**CHALLENGE RESULT:** `SEVERITY ADJUSTED`  
+**REASONING:** The code has some fallback logic, but not for the OAuth var names the audit flagged. It falls back for delegate email and calendar IDs in [src/lib/google-calendar.ts](/Users/peterpitcher/Cursor/OJ-AnchorManagementTools/src/lib/google-calendar.ts#L98) and [src/lib/google-calendar.ts](/Users/peterpitcher/Cursor/OJ-AnchorManagementTools/src/lib/google-calendar.ts#L127), but OAuth still expects `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` / `GOOGLE_REDIRECT_URL` in [src/lib/google-calendar.ts](/Users/peterpitcher/Cursor/OJ-AnchorManagementTools/src/lib/google-calendar.ts#L145), while `.env.example` documents `GOOGLE_CALENDAR_CLIENT_ID` / `...SECRET` / `...REDIRECT_URI` in [.env.example](/Users/peterpitcher/Cursor/OJ-AnchorManagementTools/.env.example#L61). The mismatch is real, but the same example file also documents the service-account path the code prefers.  
+**ADJUSTED SEVERITY:** `low`
+
+2. **FINDING #2: GDPR action lacks permission check**  
+**CHALLENGE RESULT:** `OVERTURNED`  
+**REASONING:** `deleteUserData()` authenticates the caller, loads their profile with an admin client, and explicitly requires `system_role === 'super_admin'` before it even resolves the target user by email in [src/app/actions/gdpr.ts](/Users/peterpitcher/Cursor/OJ-AnchorManagementTools/src/app/actions/gdpr.ts#L71). Then the service method it calls does not delete anything yet; it is a placeholder that only logs a warning and returns a message in [src/services/gdpr.ts](/Users/peterpitcher/Cursor/OJ-AnchorManagementTools/src/services/gdpr.ts#L102). If anything, the real issue is misleading UI copy in [src/app/(authenticated)/settings/gdpr/page.tsx](/Users/peterpitcher/Cursor/OJ-AnchorManagementTools/src/app/(authenticated)/settings/gdpr/page.tsx#L117), not missing auth.  
+**ADJUSTED SEVERITY:** `none`
+
+3. **FINDING #3: `fromDb()` doesn’t exist**  
+**CHALLENGE RESULT:** `SEVERITY ADJUSTED`  
+**REASONING:** `fromDb()` does not exist, and I found no equivalent conversion helper in the repo. But the “documented in CLAUDE.md” part is slightly misleading: the reference is in the workspace-level file [../CLAUDE.md](/Users/peterpitcher/Cursor/CLAUDE.md#L159), while the project file just points to that parent guidance in [CLAUDE.md](/Users/peterpitcher/Cursor/OJ-AnchorManagementTools/CLAUDE.md#L3). The codebase also openly uses snake_case in TypeScript models, e.g. [src/app/actions/customer-labels.ts](/Users/peterpitcher/Cursor/OJ-AnchorManagementTools/src/app/actions/customer-labels.ts#L61), so this is documentation drift, not an unbuilt runtime dependency.  
+**ADJUSTED SEVERITY:** `low`
+
+4. **FINDING #4: Four server actions missing permission checks**  
+**CHALLENGE RESULT:** `OVERTURNED`  
+**REASONING:** The claim is wrong on the server-action layer. `customer-labels.ts`, `event-categories.ts`, `business-hours.ts`, and `import-messages.ts` all authenticate and check RBAC before protected operations in [src/app/actions/customer-labels.ts](/Users/peterpitcher/Cursor/OJ-AnchorManagementTools/src/app/actions/customer-labels.ts#L32), [src/app/actions/event-categories.ts](/Users/peterpitcher/Cursor/OJ-AnchorManagementTools/src/app/actions/event-categories.ts#L131), [src/app/actions/business-hours.ts](/Users/peterpitcher/Cursor/OJ-AnchorManagementTools/src/app/actions/business-hours.ts#L16), and [src/app/actions/import-messages.ts](/Users/peterpitcher/Cursor/OJ-AnchorManagementTools/src/app/actions/import-messages.ts#L17). The calling pages for customer labels, business hours, and import-messages are also permission-gated in [src/app/(authenticated)/settings/customer-labels/page.tsx](/Users/peterpitcher/Cursor/OJ-AnchorManagementTools/src/app/(authenticated)/settings/customer-labels/page.tsx#L7), [src/app/(authenticated)/settings/business-hours/page.tsx](/Users/peterpitcher/Cursor/OJ-AnchorManagementTools/src/app/(authenticated)/settings/business-hours/page.tsx#L16), and [src/app/(authenticated)/settings/import-messages/page.tsx](/Users/peterpitcher/Cursor/OJ-AnchorManagementTools/src/app/(authenticated)/settings/import-messages/page.tsx#L6). The only nuance is that the event-categories page itself lacks a redirect guard, but the actions still fail closed.  
+**ADJUSTED SEVERITY:** `none`
+
+5. **FINDING #5: Dates without locale/timezone**  
+**CHALLENGE RESULT:** `SEVERITY ADJUSTED`  
+**REASONING:** All 8 no-locale `toLocaleDateString()` call sites are in client components such as [RightToWorkTab.tsx](/Users/peterpitcher/Cursor/OJ-AnchorManagementTools/src/components/features/employees/RightToWorkTab.tsx#L1), [OnboardingChecklistTab.tsx](/Users/peterpitcher/Cursor/OJ-AnchorManagementTools/src/components/features/employees/OnboardingChecklistTab.tsx#L1), [HealthRecordsTab.tsx](/Users/peterpitcher/Cursor/OJ-AnchorManagementTools/src/components/features/employees/HealthRecordsTab.tsx#L1), [MessageThread.tsx](/Users/peterpitcher/Cursor/OJ-AnchorManagementTools/src/components/features/messages/MessageThread.tsx#L1), [messages/bulk/page.tsx](/Users/peterpitcher/Cursor/OJ-AnchorManagementTools/src/app/(authenticated)/messages/bulk/page.tsx#L1), and [menu-management/ingredients/page.tsx](/Users/peterpitcher/Cursor/OJ-AnchorManagementTools/src/app/(authenticated)/menu-management/ingredients/page.tsx#L1). Several of them only render after client-side fetches or modal interaction, so this is mostly locale-consistency debt for an internal UK-facing app, not a high-severity bug.  
+**ADJUSTED SEVERITY:** `low`
+
+6. **FINDING #6: Stat component uses dollar sign**  
+**CHALLENGE RESULT:** `OVERTURNED`  
+**REASONING:** The base `Stat` component does not format currency at all. The only hardcoded `$` is in the unused `ComparisonStat` helper in [src/components/ui-v2/display/Stat.tsx](/Users/peterpitcher/Cursor/OJ-AnchorManagementTools/src/components/ui-v2/display/Stat.tsx#L351) and specifically [src/components/ui-v2/display/Stat.tsx](/Users/peterpitcher/Cursor/OJ-AnchorManagementTools/src/components/ui-v2/display/Stat.tsx#L374). Actual GBP stat cards pass preformatted values, e.g. [src/app/(authenticated)/quotes/QuotesClient.tsx](/Users/peterpitcher/Cursor/OJ-AnchorManagementTools/src/app/(authenticated)/quotes/QuotesClient.tsx#L183) and [src/app/(authenticated)/invoices/InvoicesClient.tsx](/Users/peterpitcher/Cursor/OJ-AnchorManagementTools/src/app/(authenticated)/invoices/InvoicesClient.tsx#L372), often using the GBP formatter in [src/components/ui-v2/utils/format.ts](/Users/peterpitcher/Cursor/OJ-AnchorManagementTools/src/components/ui-v2/utils/format.ts#L41).  
+**ADJUSTED SEVERITY:** `none`
+
+7. **FINDING #7: 200+ `any` types**  
+**CHALLENGE RESULT:** `SEVERITY ADJUSTED`  
+**REASONING:** The concern is directionally correct, but the number is understated, not overstated: a repo-wide regex search found far more than 200 explicit-`any` patterns, with many in tests/scripts and many in production code. The repo has explicitly disabled `no-explicit-any` in [eslint.config.js](/Users/peterpitcher/Cursor/OJ-AnchorManagementTools/eslint.config.js#L13), but there are also justified workarounds for Supabase typing gaps in runtime code such as [src/app/api/webhooks/twilio/route.ts](/Users/peterpitcher/Cursor/OJ-AnchorManagementTools/src/app/api/webhooks/twilio/route.ts#L129) and [src/services/cashing-up.service.ts](/Users/peterpitcher/Cursor/OJ-AnchorManagementTools/src/services/cashing-up.service.ts#L457). This is a broad maintainability issue, not a single acute defect.  
+**ADJUSTED SEVERITY:** `medium`
+
+8. **FINDING #8: Duplicate `formatDate` functions**  
+**CHALLENGE RESULT:** `SEVERITY ADJUSTED`  
+**REASONING:** The names are duplicated, but the semantics are intentionally different. [src/lib/dateUtils.ts](/Users/peterpitcher/Cursor/OJ-AnchorManagementTools/src/lib/dateUtils.ts#L16) formats long-form London dates for legacy UI, [src/lib/utils.ts](/Users/peterpitcher/Cursor/OJ-AnchorManagementTools/src/lib/utils.ts#L56) formats short `en-GB` display dates, and [src/app/(authenticated)/receipts/utils.ts](/Users/peterpitcher/Cursor/OJ-AnchorManagementTools/src/app/(authenticated)/receipts/utils.ts#L24) forces `UTC` for receipt transaction dates. That is domain specialization, not true duplication.  
+**ADJUSTED SEVERITY:** `low`
+
+9. **FINDING #9: Dead env vars**  
+**CHALLENGE RESULT:** `SEVERITY ADJUSTED`  
+**REASONING:** At least the two SMS flags named in your challenge are not completely unreferenced: they are part of the env validation schema in [src/lib/env.ts](/Users/peterpitcher/Cursor/OJ-AnchorManagementTools/src/lib/env.ts#L19) and documented in [.env.example](/Users/peterpitcher/Cursor/OJ-AnchorManagementTools/.env.example#L12). But they are functionally inert; the active SMS safety system reads `SMS_SAFETY_*` vars instead in [src/lib/sms/safety.ts](/Users/peterpitcher/Cursor/OJ-AnchorManagementTools/src/lib/sms/safety.ts#L73). So “dead” is fair in behavior terms, but “unused” is imprecise.  
+**ADJUSTED SEVERITY:** `low`
+
+10. **FINDING #10: Dead legacy Supabase client**  
+**CHALLENGE RESULT:** `CONFIRMED`  
+**REASONING:** [src/lib/supabase.ts](/Users/peterpitcher/Cursor/OJ-AnchorManagementTools/src/lib/supabase.ts#L1) is a standalone anon singleton, and a repo-wide search found no imports or references to it in `src`, `tests`, `scripts`, or config. This looks like genuine dead code.  
+**ADJUSTED SEVERITY:** `low`
+
+11. **FINDING #11: Twilio webhook inline client**  
+**CHALLENGE RESULT:** `OVERTURNED`  
+**REASONING:** The inline client is intentional and appropriate. The normal server helper depends on cookies in [src/lib/supabase/server.ts](/Users/peterpitcher/Cursor/OJ-AnchorManagementTools/src/lib/supabase/server.ts#L5), which a Twilio webhook does not have, while the admin client in [src/lib/supabase/admin.ts](/Users/peterpitcher/Cursor/OJ-AnchorManagementTools/src/lib/supabase/admin.ts#L4) would be over-privileged for pre-processing logs. The webhook therefore creates a minimal anon client just for verified webhook logging in [src/app/api/webhooks/twilio/route.ts](/Users/peterpitcher/Cursor/OJ-AnchorManagementTools/src/app/api/webhooks/twilio/route.ts#L17), verifies the signature before writing logs in [src/app/api/webhooks/twilio/route.ts](/Users/peterpitcher/Cursor/OJ-AnchorManagementTools/src/app/api/webhooks/twilio/route.ts#L361), and only then switches to the admin client for real mutations in [src/app/api/webhooks/twilio/route.ts](/Users/peterpitcher/Cursor/OJ-AnchorManagementTools/src/app/api/webhooks/twilio/route.ts#L386).  
+**ADJUSTED SEVERITY:** `none`

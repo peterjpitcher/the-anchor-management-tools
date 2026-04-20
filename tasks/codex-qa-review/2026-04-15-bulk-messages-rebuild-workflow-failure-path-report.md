@@ -1,0 +1,53 @@
+Actual below refers to the current `/messages/bulk` page, since the rebuild in the spec is not implemented yet.
+
+## 1. RPC Error Handling [Medium]
+Expected: recipient-load failures should preserve the last good list or show a dedicated error state, and the UI should not look the same as “no matches”.
+Spec: `fetchBulkRecipients()` throws on RPC failure, but the spec never defines the client-side catch/retry/error-state contract; it only defines loading and empty states ([design spec](</Users/peterpitcher/Cursor/OJ-AnchorManagementTools/docs/superpowers/specs/2026-04-15-bulk-messages-rebuild-design.md:191>), [server action](</Users/peterpitcher/Cursor/OJ-AnchorManagementTools/docs/superpowers/specs/2026-04-15-bulk-messages-rebuild-design.md:227>)).
+Actual: the current page’s analogous failure path shows a toast, but a reset load clears `customers` first, then drops into the same empty state as “no matches”, which is misleading ([page.tsx](</Users/peterpitcher/Cursor/OJ-AnchorManagementTools/src/app/(authenticated)/messages/bulk/page.tsx:152>), [page.tsx](</Users/peterpitcher/Cursor/OJ-AnchorManagementTools/src/app/(authenticated)/messages/bulk/page.tsx:212>), [page.tsx](</Users/peterpitcher/Cursor/OJ-AnchorManagementTools/src/app/(authenticated)/messages/bulk/page.tsx:681>)).
+
+## 2. Send, Change Filters, Send Again [Medium]
+Expected: once send starts, the audience/message snapshot should be frozen, and a second send to an overlapping audience should be explicit.
+Spec: the modal confirms count/preview and branches by `<=100` vs `>100`, but it says nothing about freezing filters, overlap detection, or “you are now sending a different audience” safeguards ([design spec](</Users/peterpitcher/Cursor/OJ-AnchorManagementTools/docs/superpowers/specs/2026-04-15-bulk-messages-rebuild-design.md:208>), [send flow](</Users/peterpitcher/Cursor/OJ-AnchorManagementTools/docs/superpowers/specs/2026-04-15-bulk-messages-rebuild-design.md:280>)).
+Actual: a second click during the first send is blocked because `sending` disables the button, but filters stay editable; exact same payloads are largely deduped by deterministic batch keys, while overlapping-but-different audiences are not, so subset re-sends can still duplicate messages ([page.tsx](</Users/peterpitcher/Cursor/OJ-AnchorManagementTools/src/app/(authenticated)/messages/bulk/page.tsx:303>), [page.tsx](</Users/peterpitcher/Cursor/OJ-AnchorManagementTools/src/app/(authenticated)/messages/bulk/page.tsx:604>), [safety.ts](</Users/peterpitcher/Cursor/OJ-AnchorManagementTools/src/lib/sms/safety.ts:43>), [sms-bulk-direct.ts](</Users/peterpitcher/Cursor/OJ-AnchorManagementTools/src/app/actions/sms-bulk-direct.ts:63>)).
+
+## 3. Mid-Way Send Failure / Partial Delivery [Critical]
+Expected: the UI must distinguish “nothing sent” from “some already sent; do not retry blindly”, with counts and retry guidance.
+Spec: it mentions partial-failure toast vs full-failure alert, but it does not model fatal aborts after partial delivery or how queued jobs report later failures ([design spec](</Users/peterpitcher/Cursor/OJ-AnchorManagementTools/docs/superpowers/specs/2026-04-15-bulk-messages-rebuild-design.md:219>)).
+Actual: direct send can abort on fatal safety signals after some recipients were already processed; `logging_failed` is translated into a success-style “do not retry” message, but other fatal aborts surface as a plain error with no partial counts even if some SMS already went out. Queue sends are worse: the page only ever says “queued” up front ([bulk.ts](</Users/peterpitcher/Cursor/OJ-AnchorManagementTools/src/lib/sms/bulk.ts:394>), [sms-bulk-direct.ts](</Users/peterpitcher/Cursor/OJ-AnchorManagementTools/src/app/actions/sms-bulk-direct.ts:139>)).
+
+## 4. Empty Body / Character Limit [Medium]
+Expected: trimmed-empty content should be blocked before confirmation, and any hard cap or segment-cost warning should be explicit.
+Spec: it only says “non-empty” plus char/segment count; it defines no max length and no overflow behaviour ([design spec](</Users/peterpitcher/Cursor/OJ-AnchorManagementTools/docs/superpowers/specs/2026-04-15-bulk-messages-rebuild-design.md:202>), [design spec](</Users/peterpitcher/Cursor/OJ-AnchorManagementTools/docs/superpowers/specs/2026-04-15-bulk-messages-rebuild-design.md:210>)).
+Actual: whitespace-only text still enables the send button because the disable check is not trimmed, then fails only after confirm with a toast; there is no hard character cap, so long messages are allowed and only reflected as more segments ([page.tsx](</Users/peterpitcher/Cursor/OJ-AnchorManagementTools/src/app/(authenticated)/messages/bulk/page.tsx:295>), [page.tsx](</Users/peterpitcher/Cursor/OJ-AnchorManagementTools/src/app/(authenticated)/messages/bulk/page.tsx:597>)).
+
+## 5. Select All, Then Filters Change [Medium]
+Expected: any filter change should clear or reconcile selection before send is possible.
+Spec: “Select All” is defined, but the spec never says selection resets when the visible result set changes ([design spec](</Users/peterpitcher/Cursor/OJ-AnchorManagementTools/docs/superpowers/specs/2026-04-15-bulk-messages-rebuild-design.md:193>)).
+Actual: the current page does clear `selectedCustomers` on every filter change, so it mostly avoids stale-selection sends; the remaining risk comes from request races, not selection persistence itself ([page.tsx](</Users/peterpitcher/Cursor/OJ-AnchorManagementTools/src/app/(authenticated)/messages/bulk/page.tsx:232>)).
+
+## 6. Filter Request Race / Old Response Wins [Critical]
+Expected: only the latest filter request should be allowed to commit results.
+Spec: it adds 300ms debounce, but it does not require `AbortController`, request tokens, or “latest response wins” guards ([design spec](</Users/peterpitcher/Cursor/OJ-AnchorManagementTools/docs/superpowers/specs/2026-04-15-bulk-messages-rebuild-design.md:187>), [server action](</Users/peterpitcher/Cursor/OJ-AnchorManagementTools/docs/superpowers/specs/2026-04-15-bulk-messages-rebuild-design.md:227>)).
+Actual: the current page has no cancellation or sequence guard, so an older request can finish later and overwrite the list under newer filters. That can show the wrong audience beneath the current filter badges, which is send-dangerous ([page.tsx](</Users/peterpitcher/Cursor/OJ-AnchorManagementTools/src/app/(authenticated)/messages/bulk/page.tsx:141>), [page.tsx](</Users/peterpitcher/Cursor/OJ-AnchorManagementTools/src/app/(authenticated)/messages/bulk/page.tsx:232>)).
+
+## 7. Queue Path Fails To Enqueue [High]
+Expected: either zero jobs are created, or the UI reports a partial enqueue and gives a safe retry path.
+Spec: it only defines “queued successfully” vs “full failure”; it does not describe partial enqueue failure across 50-recipient batches ([design spec](</Users/peterpitcher/Cursor/OJ-AnchorManagementTools/docs/superpowers/specs/2026-04-15-bulk-messages-rebuild-design.md:217>), [send flow](</Users/peterpitcher/Cursor/OJ-AnchorManagementTools/docs/superpowers/specs/2026-04-15-bulk-messages-rebuild-design.md:282>)).
+Actual: `enqueueBulkSMSJob()` queues batches sequentially and returns on the first failed batch without rollback, so earlier batches may already be queued while the page shows a generic failure toast ([job-queue.ts](</Users/peterpitcher/Cursor/OJ-AnchorManagementTools/src/app/actions/job-queue.ts:71>), [page.tsx](</Users/peterpitcher/Cursor/OJ-AnchorManagementTools/src/app/(authenticated)/messages/bulk/page.tsx:318>)).
+
+## 8. Quiet Hours At 10pm [High]
+Expected: the UI should warn “this will be scheduled for 09:00 London”, and success copy should say scheduled/deferred, not sent.
+Spec: quiet-hours logic is explicitly unchanged, but the UI copy only talks about sent/queued; there is no warning or deferred state ([design spec](</Users/peterpitcher/Cursor/OJ-AnchorManagementTools/docs/superpowers/specs/2026-04-15-bulk-messages-rebuild-design.md:219>), [not changing](</Users/peterpitcher/Cursor/OJ-AnchorManagementTools/docs/superpowers/specs/2026-04-15-bulk-messages-rebuild-design.md:318>)).
+Actual: the backend treats 21:00-09:00 London as quiet hours and defers delivery automatically, but the current page gives no warning. For direct sends, deferred messages are still counted as success, so the toast can say “Successfully sent X messages” when nothing was sent immediately ([quiet-hours.ts](</Users/peterpitcher/Cursor/OJ-AnchorManagementTools/src/lib/sms/quiet-hours.ts:3>), [twilio.ts](</Users/peterpitcher/Cursor/OJ-AnchorManagementTools/src/lib/twilio.ts:331>), [bulk.ts](</Users/peterpitcher/Cursor/OJ-AnchorManagementTools/src/lib/sms/bulk.ts:355>), [page.tsx](</Users/peterpitcher/Cursor/OJ-AnchorManagementTools/src/app/(authenticated)/messages/bulk/page.tsx:343>)).
+
+## 9. `first_name` Is Null [Low]
+Expected: personalization should fall back cleanly to “there” / “Customer”.
+Spec: it exposes `{{first_name}}` but types `first_name` as non-null and never states the fallback rule ([design spec](</Users/peterpitcher/Cursor/OJ-AnchorManagementTools/docs/superpowers/specs/2026-04-15-bulk-messages-rebuild-design.md:204>), [types](</Users/peterpitcher/Cursor/OJ-AnchorManagementTools/docs/superpowers/specs/2026-04-15-bulk-messages-rebuild-design.md:269>)).
+Actual: the current preview hides the problem by using hard-coded sample data, but the real send pipeline is safe: null/placeholder first names become `there`, and empty full names become `Customer` ([page.tsx](</Users/peterpitcher/Cursor/OJ-AnchorManagementTools/src/app/(authenticated)/messages/bulk/page.tsx:272>), [name-utils.ts](</Users/peterpitcher/Cursor/OJ-AnchorManagementTools/src/lib/sms/name-utils.ts:15>)).
+
+## 10. Hundreds of Events In The Dropdown [Medium]
+Expected: full event list, searchable control, and reasonable performance/usability.
+Spec: it correctly asks for a searchable select, which is the right UX direction ([design spec](</Users/peterpitcher/Cursor/OJ-AnchorManagementTools/docs/superpowers/specs/2026-04-15-bulk-messages-rebuild-design.md:180>)).
+Actual: the current page uses a native `Select` with no search and caps events at 200, so a large catalogue is both hard to use and partially invisible ([page.tsx](</Users/peterpitcher/Cursor/OJ-AnchorManagementTools/src/app/(authenticated)/messages/bulk/page.tsx:121>), [page.tsx](</Users/peterpitcher/Cursor/OJ-AnchorManagementTools/src/app/(authenticated)/messages/bulk/page.tsx:484>)).
+
+Biggest unresolved spec gaps are request cancellation/versioning, partial-send/partial-enqueue reporting, and quiet-hours UI. Those are the ones most likely to produce wrong-audience sends or misleading “sent” feedback.

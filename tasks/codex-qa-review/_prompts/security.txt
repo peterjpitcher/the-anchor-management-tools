@@ -1,0 +1,32 @@
+You are the Security & Data Risk Reviewer. Focus on auth, permissions, validation, injection, exposure, data integrity. Scope tightly to security concerns.
+
+SPEC: docs/superpowers/specs/2026-04-18-private-bookings-sms-redesign-design.md
+REPO REALITY MAP: tasks/codex-qa-review/2026-04-18-private-bookings-sms-redesign-repo-reality-mapper-report.md
+
+Audit:
+
+1. **Unauthenticated outcome token URL** `/api/private-bookings/outcome/[token]` GET route.
+   - Email clients (Outlook, Gmail prefetch) routinely fetch link URLs to render previews. Link safety scanners (Microsoft Defender, Mimecast, Proofpoint) actively follow every URL in inbound emails. Since the route has a GET side effect (setting outcome), ALL THREE OUTCOME TOKENS will be consumed by the security scanner before the human clicks. This is a P0 security defect.
+   - Existing pattern from the 2026-03-22 spec and /g/ routes in this codebase — do they use POST with a confirmation page, or GET with side effect? Verify.
+
+2. **Rate limiting** — spec uses `checkGuestTokenThrottle`. Confirm this is applied with a reasonable scope and limit for this use case. 5/min for public URLs? Per IP or per token?
+
+3. **Audit log** — outcome changes affect customer experience (whether they get a review SMS). Are these logged? Spec mentions audit log briefly.
+
+4. **Exposure of customer info in manager email** — first name, event date, guest count. Is this PII concern? Manager has legitimate access, so probably fine.
+
+5. **RLS** — new table `private_booking_outcome_tokens`. Spec says "RLS disabled — service-role only". Is the route handler using admin client? Claim needs verification against pattern.
+
+6. **Deletion gate bypass** — spec says "all roles including super_admin". Is there a way to bypass via direct DB access / migrations / other service functions? This is a policy question but worth flagging if bypass exists.
+
+7. **Token uniqueness / collision** — 32-byte random hashed with SHA-256. Collision probability negligible. OK.
+
+8. **Input validation on outcome route** — `token` is a URL path segment. Any validation? SQL injection surface via throttle key construction.
+
+9. **Cross-booking token leakage** — if token 1 is for booking A with outcome "went_well", what stops an attacker from guessing token 1 to modify booking B's state? (Tokens are booking-scoped on lookup, but worth verifying the query filters by booking_id correctly.)
+
+10. **SMS content injection** — customer_first_name comes from user input (booking form). If a malicious customer types `Sarah\n\n+44...\n\nCall me`, does the template escape this? Line-break injection into SMS body.
+
+Output: `tasks/codex-qa-review/2026-04-18-private-bookings-sms-redesign-security-data-risk-report.md`. Short and focused. Maximum 500-700 words. BLOCKER list at end.
+
+Skip style issues entirely. Security only.
