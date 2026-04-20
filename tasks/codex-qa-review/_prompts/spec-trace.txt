@@ -1,0 +1,49 @@
+You are the Spec Trace Auditor for Mode C of an adversarial review. The spec is under review — not the code.
+
+SPEC: docs/superpowers/specs/2026-04-18-private-bookings-sms-redesign-design.md
+REPO REALITY MAP: tasks/codex-qa-review/2026-04-18-private-bookings-sms-redesign-repo-reality-mapper-report.md
+
+Your job: for every requirement the spec states, verify that (a) it's implementable as described against the real codebase, (b) it's internally consistent with other requirements, (c) it doesn't silently deviate from related prior specs (especially the 2026-03-22 tone refresh spec).
+
+For each of the spec's success criteria, produce:
+- **Traceability**: which spec section(s) and which real files implement it
+- **Coverage**: implemented | partial | missing | deviated | implied
+- **Risks**: ambiguity in the requirement that could lead to wrong implementation
+
+Specifically audit:
+
+1. **"No customer receives a Google review request unless the booking manager has explicitly confirmed the event went well."**
+   - RRM says Pass 5 already checks `review_processed_at IS NULL` and is gated behind `PRIVATE_BOOKING_UPCOMING_EVENT_SMS_ENABLED`. If flag is OFF in production, what's the actual live risk? Validate the spec's "live bug" framing.
+   - Is there a race condition between the manager clicking "went well" and the cron running the next day?
+   - What happens if the outcome is set via the token click AFTER the 14-day window — does it still send?
+
+2. **"Cancellation after paying receives copy stating refund amount and 10-working-day SLA."**
+   - Existing `cancelBooking()` is called from UI. RRM says it doesn't fetch payment totals. Spec says add `computeRefundAmount()`. Does the spec specify where this call goes — inside `cancelBooking()` (mutation) or upstream in the server action?
+   - PayPal and Stripe refund SLAs differ. The spec hardcodes "10 working days" — is this deliberately chosen as worst-case?
+   - What if a booking has partial refunds already recorded in the payment history? Spec says "use existing payment history ledger" but doesn't specify the SQL.
+
+3. **"Booking with sent SMS cannot be hard-deleted."**
+   - Spec says query `private_booking_sms_queue` for statuses `sent`, `queued`, `dispatching`. RRM says those statuses don't exist. Real statuses: `pending`, `approved`, `sent`, `cancelled`, `failed`. Which should count as "customer was told"?
+   - Does the spec cover what happens for bookings created BEFORE the deletion gate ships — back-fill? One-off script to cancel-then-delete?
+
+4. **"Drop 'The Anchor:' opener across all live templates."**
+   - RRM: templates are hardcoded inline in 3+ files (mutations.ts, payments.ts, private-booking-monitor/route.ts, post-event-followup/route.ts, booking-balance-reminders/route.ts). Spec names only 3. Is the spec's "17 templates" list complete?
+   - Tests at tests/services/privateBookingsSmsSideEffects.test.ts assert specific message bodies. Changing copy breaks these tests. Spec says "snapshot tests on each template function" — does that cover regression?
+
+5. **"Communications tab shows SMS history + scheduled preview."**
+   - Spec's "scheduled" computation references `balance_reminder_14day` gating via `PRIVATE_BOOKING_UPCOMING_EVENT_SMS_ENABLED`. If that flag is OFF in prod (per RRM), the scheduled preview would lie. Is the UI checking the flag?
+   - What if the cron has already fired for today but the queue row hasn't synced — does the tab show double?
+
+6. **"Date-TBD bookings never receive date-based reminders."**
+   - RRM: there's no `is_date_tbd` column; TBD is detected by checking `internal_notes` for `DATE_TBD_NOTE`. The spec plans on a column-based filter. This won't work. Does the spec need to say "match the existing `internal_notes`-based detection"?
+
+7. **Deviations from 2026-03-22 tone spec**:
+   - That spec said tone refresh requires editing inline message strings across multiple files. This spec proposes a NEW `src/lib/private-bookings/messages.ts` helper. Is that a deviation or consistent? If deviation, is it justified?
+
+Output: `tasks/codex-qa-review/2026-04-18-private-bookings-sms-redesign-spec-trace-auditor-report.md`. Structure:
+- Requirement-by-requirement table (Requirement | Coverage | Files | Risks)
+- Deviations from prior specs section
+- Ambiguities list (each ambiguity, possible interpretations, recommended resolution)
+- BLOCKER list at end
+
+Aim for 700–1000 words. Be surgical.

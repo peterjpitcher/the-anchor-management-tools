@@ -1,0 +1,53 @@
+You are running a Mode C Spec Compliance Review on the JUST-IMPLEMENTED Private Bookings SMS Redesign. Be direct and adversarial.
+
+SPEC: docs/superpowers/specs/2026-04-18-private-bookings-sms-redesign-design.md
+PLAN: docs/superpowers/plans/2026-04-18-private-bookings-sms-redesign.md
+BRANCH: feat/private-bookings-sms-redesign (25 commits ahead of main)
+
+Commits on this branch (oldest to newest):
+  git log --oneline main..feat/private-bookings-sms-redesign
+
+Your job: verify the actual code delivers the spec's 7 success criteria + all 10 BLOCKER fixes from the pre-implementation adversarial review at tasks/codex-qa-review/2026-04-18-private-bookings-sms-redesign-adversarial-review.md.
+
+Specifically verify by reading the real code:
+
+1. **Outcome GET never mutates** (blocker B1). Read `src/app/api/private-bookings/outcome/[outcome]/[token]/route.ts`. GET must render a confirmation page only; POST performs the mutation with atomic UPDATE WHERE post_event_outcome = 'pending'.
+
+2. **Legacy cron routes gone** (blocker B2). Confirm `src/app/api/cron/post-event-followup/` and `src/app/api/cron/booking-balance-reminders/` DO NOT exist. Confirm `vercel.json` has no entries for them.
+
+3. **Review lifecycle coherent** (blocker B3). `private_bookings` migration (supabase/migrations/20260418120000_...) adds post_event_outcome + decided_at + outcome_email_sent_at + review_sms_sent_at. Backfill sets 'skip' for rows where review_processed_at was already set. Pass 5b in monitor route uses the NEW columns, not review_processed_at.
+
+4. **Delete gate uses real statuses** (blocker B4). `deletePrivateBooking` in mutations.ts filters on status='sent' OR (status='approved' AND scheduled_for > now()). NOT the fictional 'queued' or 'dispatching' strings.
+
+5. **Refund model has 4 variants** (blocker B5). financial.ts exports `CancellationFinancialOutcome = 'no_money' | 'refundable' | 'non_refundable_retained' | 'manual_review'`. cancelBooking uses a switch. 4 templates in messages.ts exist.
+
+6. **Outcome flow atomic claims** (blocker B6). Both outcome_email_sent_at and review_sms_sent_at are claimed via conditional UPDATE ... WHERE ... IS NULL pattern, not read-then-write.
+
+7. **guest_tokens reused** (blocker B8). Outcome route queries guest_tokens (with column `action_type`), NOT a new private_booking_outcome_tokens table. No such table exists.
+
+8. **Stable idempotency key** (blocker B9). `private_booking_send_idempotency` table exists. Cron passes 1, 3, 4 insert into it before calling SmsQueueService. If insert fails with 23505, skip the send.
+
+9. **Delete gate DB trigger** (blocker B10). Migration 20260418120300_... creates prevent_hard_delete_when_sms_sent function + BEFORE DELETE trigger.
+
+10. **Control-char sanitisation** (M4). `sanitiseSmsVariable` exists in src/lib/sms/sanitise.ts. messages.ts builders call it (directly or indirectly via the `name()` helper).
+
+11. **TBD detection helper** (M2). `isBookingDateTbd` helper exists. Every cron pass calls it.
+
+12. **Full tone refresh**: grep shows "The Anchor:" gone from mutations.ts, payments.ts, and private-booking-monitor/route.ts (OK to remain in legacy comments or unrelated files).
+
+13. **Communications tab**: `src/app/(authenticated)/private-bookings/[id]/communications/page.tsx` exists. `getBookingScheduledSms` in `src/services/private-bookings/scheduled-sms.ts` returns ScheduledSmsPreview[] with correct suppression reasons.
+
+14. **Manager email reuses manager-notifications.ts**: `sendPrivateBookingOutcomeEmail` exported from that file, uses existing sendEmail + PRIVATE_BOOKINGS_MANAGER_EMAIL constant.
+
+For each of the 14 items, state:
+- ✅ Verified — cite file:line evidence
+- ⚠️ Partial — what's missing
+- ❌ Missing — what's wrong
+
+Output to: `tasks/codex-qa-review/2026-04-18-private-bookings-sms-redesign-implementation-review.md`
+
+Keep it scannable — bullet list per item with evidence. Under 800 words total.
+
+End with a BLOCKER section listing anything that must be fixed before merging. If zero blockers, say "No blockers — ready to merge after user review."
+
+Be adversarial. Do not rubber-stamp. Read the code, don't trust the commit messages.

@@ -1,0 +1,46 @@
+You are the Workflow & Failure-Path Reviewer. Your mandate: test how the proposed design behaves under real-world conditions — retries, duplicates, cancellations, partial failures, stale data, race conditions. Anti-happy-path.
+
+SPEC: docs/superpowers/specs/2026-04-18-private-bookings-sms-redesign-design.md
+REPO REALITY MAP: tasks/codex-qa-review/2026-04-18-private-bookings-sms-redesign-repo-reality-mapper-report.md
+
+Stress-test these flows:
+
+### Post-event outcome flow
+1. **Manager clicks "went well" link twice in quick succession** (double-tap on mobile). Both hit the route. Does the second return "already recorded" or corrupt state?
+2. **Two different managers click different outcomes** (e.g. "went well" and "issues") within the same second. Token-per-outcome means both succeed, last-write-wins — is that right?
+3. **Email fails to send** (Graph rate-limited). Cron retries next day. Does it generate a SECOND set of tokens and send a SECOND email? Duplicate tokens in DB.
+4. **Cron fires multiple times for the same day** (known Vercel cron double-fire symptom). Idempotency guard exists? Spec says "only emails if outcome_email_sent_at IS NULL" — but that column doesn't exist yet and isn't in the migration.
+5. **Manager clicks "went well" AFTER 14-day expiry**. Token returns expired. No SMS ever sent. Customer never gets asked. Acceptable?
+6. **Booking is cancelled AFTER the outcome email was sent but BEFORE the review SMS fires**. Does the review SMS still go? Spec doesn't say.
+7. **Booking event_date is rescheduled AFTER the outcome email was sent.** Manager clicks "went well" for the old date. What event is now considered "went well"?
+8. **Customer replies STOP to the review SMS.** Does the existing opt-out infrastructure capture this? Spec says opt-out is out of scope.
+
+### Cancellation split
+9. **Partial refund already issued manually via Stripe dashboard (not recorded in private_booking_payments).** Spec says use ledger. Ledger is wrong. Customer is told £X refund but actually £Y.
+10. **Chargeback / dispute in progress.** What's the refund amount in the SMS? Spec is silent.
+11. **Customer cancels within the first 24 hours of booking (when nothing is paid).** `total_paid = 0`, `deposit_paid_date IS NULL`. Hold variant sends. Correct.
+12. **Customer cancels, has paid deposit but not balance, refund takes 10 days.** SMS states refund amount correctly. But what if ops decides to keep the deposit as penalty? Spec doesn't cover non-refundable deposits.
+13. **Dedupe lock collision**: cancel, immediately un-cancel, cancel again. Third attempt is inside the 15-min dedupe window — customer doesn't get the third SMS. Is that the right behaviour?
+
+### Delete gate
+14. **Booking has an SMS row with `status = 'cancelled'` (in the queue sense, not booking sense).** Does that count as "customer was told" — no, it wasn't sent. Spec's filter must include only `sent` and `approved`, not `pending`/`cancelled`/`failed`. Does the spec clearly specify this?
+15. **SMS row exists but was suppressed due to quiet hours and scheduled for later.** Is that "the customer was told"? Not yet. What status does that have?
+16. **Booking is deleted and then an SMS attempts to send** (race with cron). Foreign key cascade? Spec says `ON DELETE CASCADE` for outcome tokens, but not for SMS queue.
+
+### Copy refresh deployment
+17. **Dedupe lock is hashed on body text.** On deployment of new copy, the dedupe cache is effectively invalidated. A cron that just fired `balance_reminder_14day` with old body will immediately fire the NEW body if the cron loops in the deploy window. Duplicate SMS to customer.
+18. **Snapshot tests against message bodies.** Spec mentions these. Are they updated in the SAME PR or in a follow-up? If follow-up, PR is red.
+
+### Communications tab
+19. **SMS queue returns 500 rows** for a booking with a long saga. Spec doesn't specify pagination. Page load is slow.
+20. **Scheduled preview computes future reminder based on the current booking state, but the cron's SELECT will filter it out** (e.g. balance is paid a minute before the user loads the page). UI shows phantom reminder.
+21. **Empty private_booking_sms_queue** for a brand-new booking — tab shows empty history. Correct.
+22. **Date-TBD booking** — tab says no reminders. But the `booking_created` SMS still fired. Inconsistency: tab header shows reminders-only logic, body shows general-purpose SMS.
+
+For each stress test, state:
+- Behaviour under current spec (what happens, is it handled)
+- Whether the spec addresses the scenario (yes / partially / no)
+- If not handled: BLOCKER | MAJOR | MINOR
+- Recommended spec change
+
+Output: `tasks/codex-qa-review/2026-04-18-private-bookings-sms-redesign-workflow-failure-path-report.md`. Aim for 800–1200 words. Organise by flow area. End with a prioritised BLOCKER list.
