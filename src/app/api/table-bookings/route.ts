@@ -24,6 +24,7 @@ import {
   sendTableBookingCreatedSmsIfAllowed,
   type TableBookingRpcResult
 } from '@/lib/table-bookings/bookings'
+import { saveSundayPreorderByBookingId } from '@/lib/table-bookings/sunday-preorder'
 import { logAuditEvent } from '@/app/actions/audit'
 import { logger } from '@/lib/logger'
 import { verifyTurnstileToken, getClientIp } from '@/lib/turnstile'
@@ -36,6 +37,14 @@ const tableBookingIpLimiter = createRateLimiter({
 })
 
 type SmsSafetyMeta = Awaited<ReturnType<typeof sendTableBookingCreatedSmsIfAllowed>>['sms']
+
+const SundayPreorderItemSchema = z.object({
+  menu_dish_id: z.string().uuid(),
+  quantity: z.preprocess(
+    (value) => (typeof value === 'string' ? Number.parseInt(value, 10) : value),
+    z.number().int().min(1).max(25)
+  )
+})
 
 const CreateTableBookingSchema = z.object({
   phone: z.string().trim().min(7).max(32),
@@ -51,6 +60,9 @@ const CreateTableBookingSchema = z.object({
   purpose: z.enum(['food', 'drinks']),
   notes: z.string().trim().max(500).optional(),
   sunday_lunch: z.boolean().optional(),
+  dietary_requirements: z.array(z.string().trim().min(1).max(100)).max(20).optional(),
+  allergies: z.array(z.string().trim().min(1).max(100)).max(20).optional(),
+  sunday_preorder_items: z.array(SundayPreorderItemSchema).max(40).optional(),
   default_country_code: z.string().regex(/^\d{1,4}$/).optional(),
   skip_customer_sms: z.boolean().optional()
 })
@@ -179,7 +191,10 @@ export async function POST(request: NextRequest) {
       party_size: payload.party_size,
       purpose: payload.purpose,
       notes: payload.notes || null,
-      sunday_lunch: payload.sunday_lunch === true
+      sunday_lunch: payload.sunday_lunch === true,
+      dietary_requirements: payload.dietary_requirements ?? null,
+      allergies: payload.allergies ?? null,
+      sunday_preorder_items: payload.sunday_preorder_items ?? null
     })
 
     const supabase = createAdminClient()
@@ -258,6 +273,62 @@ export async function POST(request: NextRequest) {
         bookingResult = (rpcResultRaw ?? {}) as TableBookingRpcResult
       }
       mutationCommitted = Boolean(bookingResult.table_booking_id)
+
+      // Persist structured dietary/allergy arrays directly on the booking row.
+      // The RPC doesn't accept these so we write them post-insert. Best-effort:
+      // failures are logged, not surfaced to the caller — the booking itself is
+      // still valid without them.
+      if (
+        bookingResult.table_booking_id &&
+        ((payload.dietary_requirements?.length ?? 0) > 0 ||
+          (payload.allergies?.length ?? 0) > 0)
+      ) {
+        const { error: arraysError } = await supabase
+          .from('table_bookings')
+          .update({
+            dietary_requirements: payload.dietary_requirements ?? null,
+            allergies: payload.allergies ?? null,
+          })
+          .eq('id', bookingResult.table_booking_id)
+        if (arraysError) {
+          logger.warn('Failed to persist dietary/allergy arrays on table booking', {
+            metadata: {
+              tableBookingId: bookingResult.table_booking_id,
+              error: arraysError.message,
+            },
+          })
+        }
+      }
+
+      // Persist Sunday lunch pre-order line items in the dedicated table so the
+      // admin pre-order tab, kitchen prep sheet, and analytics see structured
+      // data instead of parsing a free-text notes blob. Best-effort: items still
+      // survive in the notes field if this fails, so the kitchen isn't blind.
+      if (
+        bookingResult.table_booking_id &&
+        payload.sunday_lunch === true &&
+        (payload.sunday_preorder_items?.length ?? 0) > 0
+      ) {
+        try {
+          await saveSundayPreorderByBookingId(supabase, {
+            bookingId: bookingResult.table_booking_id,
+            items: payload.sunday_preorder_items!,
+            staffOverride: true,
+          })
+        } catch (preorderError) {
+          logger.warn('Failed to persist Sunday preorder items for website booking', {
+            metadata: {
+              tableBookingId: bookingResult.table_booking_id,
+              itemCount: payload.sunday_preorder_items?.length ?? 0,
+              error:
+                preorderError instanceof Error
+                  ? preorderError.message
+                  : String(preorderError),
+            },
+          })
+        }
+      }
+
       const appBaseUrl = process.env.NEXT_PUBLIC_APP_URL || request.nextUrl.origin
 
       let nextStepUrl: string | null = null

@@ -5,6 +5,7 @@ import { withApiAuth } from '@/lib/api/auth';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { capturePayPalPayment } from '@/lib/paypal';
 import { logAuditEvent } from '@/app/actions/audit';
+import { logger } from '@/lib/logger';
 import {
   sendManagerTableBookingCreatedEmailIfAllowed,
   sendTableBookingCreatedSmsIfAllowed,
@@ -39,11 +40,17 @@ export async function POST(
       // Fetch the booking
       const { data: booking, error: fetchError } = await supabase
         .from('table_bookings')
-        .select('id, status, payment_status, paypal_deposit_order_id, paypal_deposit_capture_id, customer_id, party_size, start_datetime, booking_reference, sunday_lunch, source')
+        .select('id, status, payment_status, paypal_deposit_order_id, paypal_deposit_capture_id, customer_id, party_size, start_datetime, booking_reference, booking_type, source')
         .eq('id', bookingId)
         .single();
 
       if (fetchError || !booking) {
+        if (fetchError) {
+          logger.error('capture-order: booking fetch failed', {
+            error: new Error(fetchError.message),
+            metadata: { bookingId, code: fetchError.code, details: fetchError.details },
+          });
+        }
         return NextResponse.json({ error: 'Booking not found' }, { status: 404 });
       }
 
@@ -133,7 +140,7 @@ export async function POST(
           booking_reference: booking.booking_reference ?? undefined,
           start_datetime: booking.start_datetime ?? undefined,
           party_size: booking.party_size ?? undefined,
-          sunday_lunch: booking.sunday_lunch ?? false,
+          sunday_lunch: booking.booking_type === 'sunday_lunch',
         };
 
         const { data: customer } = await supabase
