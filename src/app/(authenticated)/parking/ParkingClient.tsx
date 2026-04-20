@@ -130,7 +130,7 @@ export default function ParkingClient({ permissions, initialError }: Props) {
     const loadRates = async () => {
       const result = await getParkingRateConfig()
       if (!result || 'error' in result) {
-        toast.error(result?.error || 'Unable to load parking rates')
+        toast.error((result && 'error' in result ? result.error : undefined) || 'Unable to load parking rates')
         setActiveRates(null)
         return
       }

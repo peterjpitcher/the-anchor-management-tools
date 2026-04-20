@@ -23,7 +23,7 @@ const ChasePaymentModal = dynamic(
   () => import('@/components/modals/ChasePaymentModal').then(mod => mod.ChasePaymentModal),
   { ssr: false }
 )
-import type { InvoiceWithDetails, InvoiceStatus } from '@/types/invoices'
+import type { InvoiceWithDetails, InvoiceStatus, InvoiceLineItem } from '@/types/invoices'
 import { usePermissions } from '@/contexts/PermissionContext'
 import { calculateInvoiceTotals, type InvoiceTotalsResult } from '@/lib/invoiceCalculations'
 
@@ -370,23 +370,23 @@ export default function InvoiceDetailClient({
 
           <Card className="p-6">
             <h2 className="text-lg font-semibold mb-4">Line Items</h2>
-            <DataTable
+            <DataTable<InvoiceLineItem>
               data={invoice.line_items || []}
               getRowKey={(it) => it.id}
               columns={[
-                { key: 'description', header: 'Description', cell: (it: { description: string }) => <span className="text-sm">{it.description}</span> },
-                { key: 'quantity', header: 'Qty', align: 'right', cell: (it: { quantity: number }) => <span className="text-sm">{it.quantity}</span> },
-                { key: 'unit_price', header: 'Unit Price', align: 'right', cell: (it: { unit_price: number }) => <span className="text-sm">£{it.unit_price.toFixed(2)}</span> },
-                { key: 'discount', header: 'Discount', align: 'right', cell: (it: { discount_percentage: number }) => <span className="text-sm text-green-600">{it.discount_percentage > 0 ? `-${it.discount_percentage}%` : ''}</span> },
-                { key: 'vat', header: 'VAT', align: 'right', cell: (it: { vat_rate: number }) => <span className="text-sm">{it.vat_rate}%</span> },
-                { key: 'total', header: 'Total', align: 'right', cell: (it: { id: string }) => {
+                { key: 'description', header: 'Description', cell: (it) => <span className="text-sm">{it.description}</span> },
+                { key: 'quantity', header: 'Qty', align: 'right', cell: (it) => <span className="text-sm">{it.quantity}</span> },
+                { key: 'unit_price', header: 'Unit Price', align: 'right', cell: (it) => <span className="text-sm">£{it.unit_price.toFixed(2)}</span> },
+                { key: 'discount', header: 'Discount', align: 'right', cell: (it) => <span className="text-sm text-green-600">{it.discount_percentage > 0 ? `-${it.discount_percentage}%` : ''}</span> },
+                { key: 'vat', header: 'VAT', align: 'right', cell: (it) => <span className="text-sm">{it.vat_rate}%</span> },
+                { key: 'total', header: 'Total', align: 'right', cell: (it) => {
                   const breakdown = lineTotals.get(it.id)
                   const total = breakdown ? breakdown.total : 0
                   return <span className="text-sm font-medium">£{total.toFixed(2)}</span>
                 } },
               ]}
               emptyMessage="No line items"
-              renderMobileCard={(it: { description: string; quantity: number; unit_price: number; discount_percentage: number; vat_rate: number; id: string }) => {
+              renderMobileCard={(it) => {
                 const breakdown = lineTotals.get(it.id)
                 const lineTotal = breakdown ? breakdown.total : 0
                 return (

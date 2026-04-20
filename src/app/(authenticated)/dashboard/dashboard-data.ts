@@ -1265,7 +1265,7 @@ async function fetchDashboardSnapshotImpl(userId: string): Promise<DashboardSnap
 
           if (error) throw error
 
-          const total = data?.total ?? data?.users?.length ?? 0
+          const total = (data && 'total' in data ? data.total : undefined) ?? data?.users?.length ?? 0
           usersSnapshot.totalUsers = total
         } catch (error) {
           console.error('Failed to load dashboard user metrics:', error)
