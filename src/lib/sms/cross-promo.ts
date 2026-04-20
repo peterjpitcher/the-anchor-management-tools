@@ -242,6 +242,10 @@ export async function sendCrossPromoForEvent(
   const { data: audience, error: audienceError } = await db.rpc('get_cross_promo_audience', {
     p_event_id: event.id,
     p_category_id: event.category_id,
+    p_recency_months: 6,
+    p_general_recency_months: 3,
+    p_frequency_cap_days: 7,
+    p_max_recipients: 200,
   })
 
   if (audienceError) {
