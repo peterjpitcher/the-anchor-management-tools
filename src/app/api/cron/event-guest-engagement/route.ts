@@ -1644,7 +1644,7 @@ async function processFollowUps(
 
   const events = await loadFollowUpEvents(supabase, daysAheadMin, daysAheadMax)
 
-  const minGapIso = `${minGapDays} days`
+  const minGapIso = new Date(Date.now() - minGapDays * 86_400_000).toISOString()
 
   for (const event of events) {
     if (remainingBudget.value <= 0) {
