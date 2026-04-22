@@ -71,8 +71,15 @@ function getProjectLabel(project: any) {
 
 function formatPeriodLabel(periodYyyymm: string | null | undefined) {
   const raw = String(periodYyyymm || '')
-  const match = raw.match(/^\d{4}-\d{2}/)
-  return match ? match[0] : raw
+  // Quarterly: 2026-Q1 → Q1 2026
+  const qMatch = raw.match(/^(\d{4})-Q(\d)$/)
+  if (qMatch) return `Q${qMatch[2]} ${qMatch[1]}`
+  // Annual: 2026 → 2026
+  const yMatch = raw.match(/^\d{4}$/)
+  if (yMatch) return raw
+  // Monthly: 2026-04 → 2026-04
+  const mMatch = raw.match(/^\d{4}-\d{2}/)
+  return mMatch ? mMatch[0] : raw
 }
 
 function toLondonTimeHm(iso: string | null) {
@@ -231,6 +238,46 @@ function getPreviousMonthPeriod(now: Date) {
     period_end: toIsoDateUtc(prevMonthEndUtc),
     period_yyyymm: formatInTimeZone(prevMonthEndUtc, LONDON_TZ, 'yyyy-MM'),
   }
+}
+
+function getRecurringChargePeriod(
+  frequency: string,
+  billingPeriod: { period_start: string; period_end: string; period_yyyymm: string }
+): { period_start: string; period_end: string; period_yyyymm: string } | null {
+  if (frequency === 'monthly' || !frequency) {
+    return billingPeriod
+  }
+
+  // Extract the billing month (1-12) from the period_end date
+  const endDate = parseIsoDateUtc(billingPeriod.period_end)
+  const month = endDate.getUTCMonth() + 1 // 1-12
+  const year = endDate.getUTCFullYear()
+
+  if (frequency === 'quarterly') {
+    // Due when billing month is last month of quarter: 3, 6, 9, 12
+    if (month % 3 !== 0) return null
+    const quarter = Math.ceil(month / 3)
+    const qStart = new Date(Date.UTC(year, (quarter - 1) * 3, 1))
+    const qEnd = new Date(Date.UTC(year, quarter * 3, 0)) // last day of quarter
+    return {
+      period_yyyymm: `${year}-Q${quarter}`,
+      period_start: toIsoDateUtc(qStart),
+      period_end: toIsoDateUtc(qEnd),
+    }
+  }
+
+  if (frequency === 'annually') {
+    // Due when billing month is December
+    if (month !== 12) return null
+    return {
+      period_yyyymm: `${year}`,
+      period_start: `${year}-01-01`,
+      period_end: `${year}-12-31`,
+    }
+  }
+
+  // Unknown frequency, treat as monthly
+  return billingPeriod
 }
 
 function buildInvoiceNotes(input: {
@@ -1425,28 +1472,32 @@ async function buildDryRunPreview(input: {
 
   if (periodInstancesError) throw new Error(periodInstancesError.message)
 
-  const existingPeriodChargeIds = new Set(
-    (periodInstances || [])
-      .concat(
-        (existingInstances || []).filter((c: any) => String(c.period_yyyymm || '') === period.period_yyyymm)
-      )
-      .map((c: any) => String(c?.recurring_charge_id || ''))
-  )
+  const virtualInstances: any[] = []
+  for (const c of (recurringChargeDefs || [])) {
+    const chargePeriod = getRecurringChargePeriod(String(c.frequency || 'monthly'), period)
+    if (!chargePeriod) continue // not due this billing run
 
-  const virtualInstances = (recurringChargeDefs || [])
-    .filter((c: any) => !existingPeriodChargeIds.has(String(c.id)))
-    .map((c: any) => ({
+    // Check if instance already exists for this charge's specific period
+    const alreadyExists = (existingInstances || []).some(
+      (inst: any) => String(inst.recurring_charge_id) === String(c.id) && String(inst.period_yyyymm) === chargePeriod.period_yyyymm
+    ) || (periodInstances || []).some(
+      (inst: any) => String(inst.recurring_charge_id) === String(c.id) && String(inst.period_yyyymm) === chargePeriod.period_yyyymm
+    )
+    if (alreadyExists) continue
+
+    virtualInstances.push({
       vendor_id: vendorId,
       recurring_charge_id: c.id,
-      period_yyyymm: period.period_yyyymm,
-      period_start: period.period_start,
-      period_end: period.period_end,
+      period_yyyymm: chargePeriod.period_yyyymm,
+      period_start: chargePeriod.period_start,
+      period_end: chargePeriod.period_end,
       description_snapshot: String(c.description || ''),
       amount_ex_vat_snapshot: roundMoney(Number(c.amount_ex_vat || 0)),
       vat_rate_snapshot: Number(c.vat_rate || 0),
       sort_order_snapshot: Number(c.sort_order || 0),
       created_at: new Date().toISOString(),
-    }))
+    })
+  }
 
   const eligibleRecurringInstances = [...(existingInstances || []), ...virtualInstances].sort((a: any, b: any) => {
     if (String(a.period_end || '') !== String(b.period_end || '')) {

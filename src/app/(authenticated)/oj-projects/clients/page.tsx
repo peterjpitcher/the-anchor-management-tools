@@ -70,6 +70,7 @@ type ChargeFormState = {
   description: string
   amount_ex_vat: string
   vat_rate: string
+  frequency: string
   is_active: boolean
   sort_order: string
 }
@@ -143,8 +144,16 @@ export default function OJProjectsClientsPage() {
   }, [selectedVendor?.email, contacts])
 
   const recurringChargesExVat = useMemo(() => {
+    const billingMonth = new Date().getMonth() + 1 // 1-12
     return (charges || [])
-      .filter((c: any) => c?.is_active !== false)
+      .filter((c: any) => {
+        if (c?.is_active === false) return false
+        const freq = c?.frequency || 'monthly'
+        if (freq === 'monthly') return true
+        if (freq === 'quarterly') return billingMonth % 3 === 0
+        if (freq === 'annually') return billingMonth === 12
+        return true
+      })
       .reduce((acc: number, c: any) => {
         return acc + Number(c.amount_ex_vat || 0)
       }, 0)
@@ -152,8 +161,16 @@ export default function OJProjectsClientsPage() {
 
   // Keep inc-VAT total for billing cap comparison only (cap is stored inc-VAT)
   const recurringChargesIncVat = useMemo(() => {
+    const billingMonth = new Date().getMonth() + 1 // 1-12
     return (charges || [])
-      .filter((c: any) => c?.is_active !== false)
+      .filter((c: any) => {
+        if (c?.is_active === false) return false
+        const freq = c?.frequency || 'monthly'
+        if (freq === 'monthly') return true
+        if (freq === 'quarterly') return billingMonth % 3 === 0
+        if (freq === 'annually') return billingMonth === 12
+        return true
+      })
       .reduce((acc: number, c: any) => {
         const exVat = Number(c.amount_ex_vat || 0)
         const vatRate = Number(c.vat_rate || 0)
@@ -178,6 +195,7 @@ export default function OJProjectsClientsPage() {
     description: '',
     amount_ex_vat: '',
     vat_rate: '20',
+    frequency: 'monthly',
     is_active: true,
     sort_order: '0',
   })
@@ -292,7 +310,7 @@ export default function OJProjectsClientsPage() {
 
       setCharges(chargesRes.charges || [])
       setContacts((contactsRes.contacts as VendorContact[]) || [])
-      setChargeForm({ description: '', amount_ex_vat: '', vat_rate: '20', is_active: true, sort_order: '0' })
+      setChargeForm({ description: '', amount_ex_vat: '', vat_rate: '20', frequency: 'monthly', is_active: true, sort_order: '0' })
       setContactForm({ name: '', email: '', phone: '', role: '', is_primary: false, receive_invoice_copy: false })
 
       // Load balance separately so it doesn't block the settings from rendering
@@ -375,6 +393,7 @@ export default function OJProjectsClientsPage() {
       fd.append('description', chargeForm.description)
       fd.append('amount_ex_vat', chargeForm.amount_ex_vat)
       fd.append('vat_rate', chargeForm.vat_rate)
+      fd.append('frequency', chargeForm.frequency)
       fd.append('is_active', String(chargeForm.is_active))
       fd.append('sort_order', chargeForm.sort_order)
       if (chargeForm.id) fd.append('id', chargeForm.id)
@@ -909,7 +928,7 @@ export default function OJProjectsClientsPage() {
                       <div className="min-w-0">
                         <div className="text-sm font-medium truncate">{c.description}</div>
                         <div className="text-xs text-gray-500 mt-0.5">
-                          £{Number(c.amount_ex_vat).toFixed(2)} + VAT • {Number(c.vat_rate)}% VAT
+                          £{Number(c.amount_ex_vat).toFixed(2)} + VAT • {Number(c.vat_rate)}% VAT{c.frequency && c.frequency !== 'monthly' ? ` • ${c.frequency === 'quarterly' ? 'Quarterly' : 'Annually'}` : ''}
                         </div>
                         {!c.is_active && <span className="text-xs text-red-500 font-medium">Inactive</span>}
                       </div>
@@ -926,6 +945,7 @@ export default function OJProjectsClientsPage() {
 	                              description: c.description || '',
                               amount_ex_vat: c.amount_ex_vat != null ? String(c.amount_ex_vat) : '',
                               vat_rate: c.vat_rate != null ? String(c.vat_rate) : '20',
+                              frequency: c.frequency || 'monthly',
                               is_active: !!c.is_active,
 	                              sort_order: c.sort_order != null ? String(c.sort_order) : '0',
 	                            })
@@ -963,6 +983,17 @@ export default function OJProjectsClientsPage() {
                         placeholder="e.g. Hosting"
                       />
                     </FormGroup>
+                    <FormGroup label="Frequency" className="mb-0">
+                      <Select
+                        value={chargeForm.frequency}
+                        onChange={(e) => setChargeForm({ ...chargeForm, frequency: e.target.value })}
+                        disabled={!canEditSettings}
+                      >
+                        <option value="monthly">Monthly</option>
+                        <option value="quarterly">Quarterly</option>
+                        <option value="annually">Annually</option>
+                      </Select>
+                    </FormGroup>
                     <FormGroup label="Amount (ex VAT)" className="mb-0">
                       <Input
                         type="number"
@@ -980,7 +1011,7 @@ export default function OJProjectsClientsPage() {
                         <Button
                           type="button"
                           variant="secondary"
-                          onClick={() => setChargeForm({ description: '', amount_ex_vat: '', vat_rate: '20', is_active: true, sort_order: '0' })}
+                          onClick={() => setChargeForm({ description: '', amount_ex_vat: '', vat_rate: '20', frequency: 'monthly', is_active: true, sort_order: '0' })}
                           disabled={!canEditSettings}
                           className="flex-1"
                         >

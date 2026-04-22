@@ -10,6 +10,7 @@ const RecurringChargeSchema = z.object({
   description: z.string().min(1, 'Description is required').max(200),
   amount_ex_vat: z.coerce.number().min(0),
   vat_rate: z.coerce.number().min(0).max(100),
+  frequency: z.enum(['monthly', 'quarterly', 'annually']).default('monthly'),
   is_active: z.coerce.boolean().optional(),
   sort_order: z.coerce.number().int().min(0).max(1000).optional(),
 })
@@ -21,7 +22,7 @@ export async function getRecurringCharges(vendorId: string) {
   const supabase = await createClient()
   const { data, error } = await supabase
     .from('oj_vendor_recurring_charges')
-    .select('id, vendor_id, description, amount_ex_vat, vat_rate, is_active, sort_order, created_at, updated_at')
+    .select('id, vendor_id, description, amount_ex_vat, vat_rate, frequency, is_active, sort_order, created_at, updated_at')
     .eq('vendor_id', vendorId)
     .order('sort_order', { ascending: true })
     .order('created_at', { ascending: true })
@@ -39,6 +40,7 @@ export async function createRecurringCharge(formData: FormData) {
     description: formData.get('description'),
     amount_ex_vat: formData.get('amount_ex_vat'),
     vat_rate: formData.get('vat_rate'),
+    frequency: formData.get('frequency') ?? undefined,
     is_active: formData.get('is_active') ?? undefined,
     sort_order: formData.get('sort_order') ?? undefined,
   })
@@ -54,6 +56,7 @@ export async function createRecurringCharge(formData: FormData) {
       description: parsed.data.description,
       amount_ex_vat: parsed.data.amount_ex_vat,
       vat_rate: parsed.data.vat_rate,
+      frequency: parsed.data.frequency,
       is_active: parsed.data.is_active ?? true,
       sort_order: parsed.data.sort_order ?? 0,
     })
@@ -69,7 +72,7 @@ export async function createRecurringCharge(formData: FormData) {
     resource_type: 'oj_recurring_charge',
     resource_id: data.id,
     operation_status: 'success',
-    new_values: { vendor_id: data.vendor_id, description: data.description, amount_ex_vat: data.amount_ex_vat },
+    new_values: { vendor_id: data.vendor_id, description: data.description, amount_ex_vat: data.amount_ex_vat, frequency: data.frequency },
   })
 
   return { charge: data, success: true as const }
@@ -87,6 +90,7 @@ export async function updateRecurringCharge(formData: FormData) {
     description: formData.get('description'),
     amount_ex_vat: formData.get('amount_ex_vat'),
     vat_rate: formData.get('vat_rate'),
+    frequency: formData.get('frequency') ?? undefined,
     is_active: formData.get('is_active') ?? undefined,
     sort_order: formData.get('sort_order') ?? undefined,
   })
@@ -101,6 +105,7 @@ export async function updateRecurringCharge(formData: FormData) {
       description: parsed.data.description,
       amount_ex_vat: parsed.data.amount_ex_vat,
       vat_rate: parsed.data.vat_rate,
+      frequency: parsed.data.frequency,
       is_active: parsed.data.is_active ?? true,
       sort_order: parsed.data.sort_order ?? 0,
       updated_at: new Date().toISOString(),
