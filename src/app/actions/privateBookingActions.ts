@@ -479,6 +479,33 @@ export async function getBookingDeleteEligibility(bookingId: string): Promise<{
   }
 
   const admin = createAdminClient()
+
+  // If the booking is already cancelled, the customer has been notified —
+  // the SMS gate should not block deletion.
+  const { data: booking, error: bookingError } = await admin
+    .from('private_bookings')
+    .select('status')
+    .eq('id', bookingId)
+    .single()
+
+  if (bookingError || !booking) {
+    return {
+      canDelete: false,
+      sentCount: 0,
+      scheduledCount: 0,
+      reason: 'Booking not found'
+    }
+  }
+
+  // Skip SMS gate for cancelled bookings — customer already notified
+  if (booking.status === 'cancelled') {
+    return {
+      canDelete: true,
+      sentCount: 0,
+      scheduledCount: 0
+    }
+  }
+
   const { data, error } = await admin
     .from('private_booking_sms_queue')
     .select('status, scheduled_for')
