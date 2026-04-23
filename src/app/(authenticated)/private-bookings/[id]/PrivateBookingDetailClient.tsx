@@ -589,6 +589,8 @@ function StatusModal({
     if (result.success) {
       onSuccess();
       onClose();
+    } else if (result.error) {
+      toast.error(result.error);
     }
     setIsSubmitting(false);
   };
