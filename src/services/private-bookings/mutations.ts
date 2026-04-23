@@ -882,7 +882,7 @@ export async function updateBookingStatus(id: string, status: BookingStatus, per
     draft:     ['confirmed', 'cancelled'],
     confirmed: ['completed', 'cancelled'],
     completed: [],
-    cancelled: [],
+    cancelled: ['draft'],
   }
 
   const currentStatus = current.status as BookingStatus
