@@ -128,7 +128,8 @@ export default function DeleteBookingButton({
         title={buttonTitle}
         aria-label={buttonTitle}
         disabled={disabled}
-        onClick={() => {
+        onClick={(e) => {
+          e.stopPropagation()
           void handleOpen()
         }}
       >
