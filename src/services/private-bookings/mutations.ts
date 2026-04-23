@@ -1342,6 +1342,13 @@ export async function extendHold(
       smsResult = { error: 'Failed to queue SMS' };
     }
 
+    if (smsResult?.error) {
+      logger.error('Hold extension SMS failed:', {
+        error: new Error(String(smsResult.error)),
+        metadata: { bookingId: id, code: smsResult.code }
+      });
+    }
+
     const smsSafety = normalizeSmsSafetyMeta(smsResult);
     smsSent = Boolean(!smsResult?.error && 'sent' in smsResult && smsResult.sent);
   }
