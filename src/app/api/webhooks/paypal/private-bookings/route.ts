@@ -86,7 +86,7 @@ export async function POST(request: NextRequest) {
   const supabase = createAdminClient()
   const body = await request.text()
   const headers = Object.fromEntries(request.headers.entries())
-  const webhookId = process.env.PAYPAL_WEBHOOK_ID?.trim()
+  const webhookId = (process.env.PAYPAL_PRIVATE_BOOKINGS_WEBHOOK_ID || process.env.PAYPAL_WEBHOOK_ID)?.trim()
 
   let idempotencyKey: string | null = null
   let requestHash: string | null = null
@@ -350,7 +350,7 @@ async function handleDepositCaptureCompleted(
       ? { status: 'confirmed', cancellation_reason: null }
       : {}
 
-  const { error: updateError } = await supabase
+  const { data: updated, error: updateError } = await supabase
     .from('private_bookings')
     .update({
       deposit_paid_date: new Date().toISOString(),
@@ -361,9 +361,19 @@ async function handleDepositCaptureCompleted(
     })
     .eq('id', bookingId)
     .is('deposit_paid_date', null) // Guard against race with UI-side capture
+    .select('id')
+    .maybeSingle()
 
   if (updateError) {
     throw new Error(`Failed to record private booking deposit from webhook: ${updateError.message}`)
+  }
+
+  if (!updated) {
+    // Zero rows updated — deposit was already recorded by another path (portal capture, staff, or reconciliation cron)
+    logger.info('Webhook deposit update matched zero rows — deposit already recorded by another path', {
+      metadata: { bookingId, captureId }
+    })
+    return
   }
 
   const { error: auditError } = await supabase

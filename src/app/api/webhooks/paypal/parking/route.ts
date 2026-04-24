@@ -82,7 +82,7 @@ export async function POST(request: NextRequest) {
   const supabase = createAdminClient()
   const body = await request.text()
   const headers = Object.fromEntries(request.headers.entries())
-  const webhookId = process.env.PAYPAL_WEBHOOK_ID?.trim()
+  const webhookId = (process.env.PAYPAL_PARKING_WEBHOOK_ID || process.env.PAYPAL_WEBHOOK_ID)?.trim()
 
   let idempotencyKey: string | null = null
   let requestHash: string | null = null
