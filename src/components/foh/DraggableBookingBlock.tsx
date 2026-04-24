@@ -26,6 +26,7 @@ interface DraggableBookingBlockProps {
   assignmentCount: number | null
   styleVariant: 'default' | 'manager_kiosk'
   className: string
+  statusClassName: string
   style?: React.CSSProperties
   title?: string
   onClick: (e: React.MouseEvent<HTMLButtonElement>) => void
@@ -49,6 +50,7 @@ export function DraggableBookingBlock({
   assignmentCount,
   styleVariant,
   className,
+  statusClassName,
   style,
   title,
   onClick,
@@ -78,6 +80,7 @@ export function DraggableBookingBlock({
       startMinutes: parseClockToMinutes(fromTime),
       timelineStartMin,
       timelineEndMin,
+      statusClassName,
     },
   })
 

@@ -298,25 +298,13 @@ export function buildTimelineRange(schedule: FohScheduleResponse['data'] | null)
       ? serviceEndRaw + 1440
       : serviceEndRaw
 
-  let minStart = serviceStart
-  let maxEnd = serviceEnd
-
-  for (const lane of schedule.lanes) {
-    for (const booking of lane.bookings) {
-      const window = resolveBookingWindowMinutes(booking, schedule.date)
-      if (!window) continue
-
-      minStart = Math.min(minStart, window.start)
-      maxEnd = Math.max(maxEnd, window.end)
-    }
-  }
-
-  minStart = Math.max(0, Math.floor((minStart - 30) / 30) * 30)
-  maxEnd = Math.ceil((maxEnd + 30) / 30) * 30
-
-  if (maxEnd - minStart < 4 * 60) {
-    maxEnd = minStart + 4 * 60
-  }
+  // Clamp timeline to service window — don't stretch to fit outlier bookings.
+  // Bookings outside the window are still rendered but clipped by FohTimeline.
+  const minStart = Math.max(0, Math.floor((serviceStart - 30) / 30) * 30)
+  const maxEnd = Math.max(
+    Math.ceil((serviceEnd + 30) / 30) * 30,
+    minStart + 4 * 60
+  )
 
   const ticks: number[] = []
   for (let minute = Math.ceil(minStart / 60) * 60; minute <= maxEnd; minute += 60) {

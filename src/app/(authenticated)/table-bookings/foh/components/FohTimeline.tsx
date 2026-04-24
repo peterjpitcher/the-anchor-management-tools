@@ -2,7 +2,7 @@
 
 import React from 'react'
 import { cn } from '@/lib/utils'
-import { DndContext, DragOverlay, type DragStartEvent, type DragMoveEvent, type DragEndEvent, type SensorDescriptor, type SensorOptions } from '@dnd-kit/core'
+import { DndContext, type DragStartEvent, type DragMoveEvent, type DragEndEvent, type SensorDescriptor, type SensorOptions } from '@dnd-kit/core'
 import { DraggableBookingBlock } from '@/components/foh/DraggableBookingBlock'
 import { DroppableLaneTimeline } from '@/components/foh/DroppableLaneTimeline'
 import { DragConfirmationModal } from '@/components/foh/DragConfirmationModal'
@@ -38,9 +38,9 @@ type FohTimelineProps = {
     bookingId: string
     bookingLabel: string
     widthPx: number
-    visualState: string
-    blockBaseClass: string
+    statusClassName: string
   } | null
+  pointerPosition: { x: number; y: number } | null
   liveSnapTime: string | null
   isOutOfBounds: boolean
   pendingMove: PendingMove | null
@@ -69,6 +69,7 @@ export const FohTimeline = React.memo(function FohTimeline(props: FohTimelinePro
     currentTimelineLeftPct,
     sensors,
     activeDragData,
+    pointerPosition,
     liveSnapTime,
     isOutOfBounds,
     pendingMove,
@@ -117,6 +118,9 @@ export const FohTimeline = React.memo(function FohTimeline(props: FohTimelinePro
   const bookingBlockBaseClass = isManagerKioskStyle
     ? 'absolute top-0.5 h-11 overflow-hidden rounded-md border px-1 py-0.5 text-left text-[9px] shadow-sm transition hover:brightness-105 focus:outline-none focus:ring-2 focus:ring-sidebar/40'
     : 'absolute top-1 h-12 overflow-hidden rounded-md border px-1.5 py-0.5 text-left text-[10px] shadow-sm transition hover:brightness-105 focus:outline-none focus:ring-2 focus:ring-sidebar/40'
+  const bookingOverlayBaseClass = isManagerKioskStyle
+    ? 'h-11 overflow-hidden rounded-md border px-1 py-0.5 text-left text-[9px]'
+    : 'h-12 overflow-hidden rounded-md border px-1.5 py-0.5 text-left text-[10px]'
   const timelineTickLabelClass = cn(
     'absolute -translate-x-1/2 font-medium text-gray-500',
     isManagerKioskStyle ? 'top-0.5 text-[9px]' : 'pt-0.5 text-[10px]'
@@ -196,22 +200,28 @@ export const FohTimeline = React.memo(function FohTimeline(props: FohTimelinePro
             ))}
           </div>
         </div>
-        <DragOverlay dropAnimation={null}>
-          {activeDragData ? (
-            <div
-              className={cn(activeDragData.blockBaseClass, 'opacity-90 shadow-xl ring-2 ring-white/50 cursor-grabbing')}
-              style={{ width: activeDragData.widthPx }}
-            >
-              <p className="truncate font-semibold">{activeDragData.bookingLabel}</p>
-              {liveSnapTime && !isOutOfBounds && (
-                <p className="truncate text-xs font-semibold opacity-80">{liveSnapTime}</p>
-              )}
-              {isOutOfBounds && (
-                <p className="truncate text-xs font-semibold text-red-200 opacity-80">Out of range</p>
-              )}
-            </div>
-          ) : null}
-        </DragOverlay>
+        {activeDragData && pointerPosition ? (
+          <div
+            className={cn(
+              bookingOverlayBaseClass,
+              activeDragData.statusClassName,
+              'fixed z-[9999] pointer-events-none select-none opacity-95 shadow-xl ring-2 ring-white/70'
+            )}
+            style={{
+              left: pointerPosition.x,
+              top: pointerPosition.y,
+              width: activeDragData.widthPx,
+            }}
+          >
+            <p className="truncate font-semibold">{activeDragData.bookingLabel}</p>
+            {liveSnapTime && !isOutOfBounds && (
+              <p className="truncate text-xs font-semibold opacity-80">{liveSnapTime}</p>
+            )}
+            {isOutOfBounds && (
+              <p className="truncate text-xs font-semibold text-red-200 opacity-80">Out of range</p>
+            )}
+          </div>
+        ) : null}
       </DndContext>
       <DragConfirmationModal
         pendingMove={pendingMove}
@@ -307,6 +317,7 @@ const LaneRow = React.memo(function LaneRow(props: {
           const widthPct = Math.max(2.2, ((clippedEnd - clippedStart) / timelineDuration) * 100)
           const visualState = getBookingVisualState(booking)
           const visualLabel = getBookingVisualLabel(booking)
+          const visualClassName = statusBlockClass(visualState)
 
           return (
             <DraggableBookingBlock
@@ -326,7 +337,8 @@ const LaneRow = React.memo(function LaneRow(props: {
               isPrivateBlock={Boolean(booking.is_private_block)}
               assignmentCount={booking.assignment_count ?? null}
               styleVariant={styleVariant}
-              className={cn(bookingBlockBaseClass, statusBlockClass(visualState))}
+              className={cn(bookingBlockBaseClass, visualClassName)}
+              statusClassName={visualClassName}
               style={getSundayPreorderBorderStyle(booking)}
               title={`${booking.guest_name || 'Guest'} · ${booking.booking_reference || booking.id.slice(0, 8)} · ${formatBookingWindow(booking.start_datetime, booking.end_datetime, booking.booking_time)} · ${visualLabel}`}
               onClick={(event) => {
