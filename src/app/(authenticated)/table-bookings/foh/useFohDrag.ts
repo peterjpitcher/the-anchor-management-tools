@@ -56,6 +56,7 @@ export function useFohDrag(timelineRef: React.RefObject<HTMLElement | null>): {
   isOutOfBounds: boolean
   isSubmitting: boolean
   confirmError: string | null
+  pointerPosition: { x: number; y: number } | null
   sensors: ReturnType<typeof useSensors>
   onDragStart: (event: DragStartEvent) => void
   onDragMove: (event: DragMoveEvent) => void
@@ -69,9 +70,12 @@ export function useFohDrag(timelineRef: React.RefObject<HTMLElement | null>): {
   const [pendingMove, setPendingMove] = useState<PendingMove | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [confirmError, setConfirmError] = useState<string | null>(null)
+  const [pointerPosition, setPointerPosition] = useState<{ x: number; y: number } | null>(null)
 
   // Track drag data in a ref so callbacks always have fresh data without re-renders
   const dragDataRef = useRef<DragBookingData | null>(null)
+  // Store offset between pointer and initial element top-left
+  const pointerOffsetRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 })
   // Use a ref for isOutOfBounds to avoid stale closures in onDragEnd
   const isOutOfBoundsRef = useRef(false)
 
@@ -86,14 +90,39 @@ export function useFohDrag(timelineRef: React.RefObject<HTMLElement | null>): {
     setIsDragging(true)
     setLiveSnapTime(data.fromTime)
     setConfirmError(null)
+
+    const pointerEvent = event.activatorEvent as PointerEvent
+    const rect = event.active.rect.current.initial
+
+    if (rect) {
+      pointerOffsetRef.current = {
+        x: rect.left - pointerEvent.clientX,
+        y: rect.top - pointerEvent.clientY,
+      }
+    } else {
+      pointerOffsetRef.current = { x: 0, y: 0 }
+    }
+
+    setPointerPosition({
+      x: pointerEvent.clientX + pointerOffsetRef.current.x,
+      y: pointerEvent.clientY + pointerOffsetRef.current.y,
+    })
   }, [])
 
   const onDragMove = useCallback((event: DragMoveEvent) => {
     const data = dragDataRef.current
     if (!data || !timelineRef.current) return
 
+    const pointerEvent = event.activatorEvent as PointerEvent
+    const pointerX = pointerEvent.clientX + event.delta.x
+    const pointerY = pointerEvent.clientY + event.delta.y
+
+    setPointerPosition({ 
+      x: pointerX + pointerOffsetRef.current.x, 
+      y: pointerY + pointerOffsetRef.current.y 
+    })
+
     const containerRect = timelineRef.current.getBoundingClientRect()
-    const pointerX = (event.activatorEvent as PointerEvent).clientX + event.delta.x
 
     // Out-of-bounds detection
     if (pointerX < containerRect.left || pointerX > containerRect.right) {
@@ -120,6 +149,7 @@ export function useFohDrag(timelineRef: React.RefObject<HTMLElement | null>): {
   const onDragEnd = useCallback((event: DragEndEvent) => {
     setIsDragging(false)
     setLiveSnapTime(null)
+    setPointerPosition(null)
 
     // Prefer the ref (set by onDragStart), fall back to event data for isolated calls
     const data = dragDataRef.current ?? (event.active.data.current as DragBookingData | undefined) ?? null
@@ -138,15 +168,19 @@ export function useFohDrag(timelineRef: React.RefObject<HTMLElement | null>): {
       return
     }
 
-    // When event.over is null (pointer released in header or gap between lanes)
-    // but still within horizontal bounds, treat as a same-table time change.
-    // The pointer naturally drifts vertically during horizontal time drags,
-    // which can leave it outside any DroppableLaneTimeline at the moment of release.
+    // Determine whether the user intended a time change or a table change.
+    // Horizontal movement (deltaX) = time change, vertical movement (deltaY) = table change.
+    // Without this check, even a small vertical drift during a horizontal drag causes
+    // the pointer to land on an adjacent lane, incorrectly triggering a table move.
+    const absDeltaX = Math.abs(event.delta.x)
+    const absDeltaY = Math.abs(event.delta.y)
+    const horizontalDominant = absDeltaX > absDeltaY
+
     const toTableId = event.over ? String(event.over.id) : data.tableId
-    const sameTable = toTableId === data.tableId
+    const sameTable = toTableId === data.tableId || horizontalDominant
 
     if (sameTable) {
-      // Time change drag
+      // Time change drag — keep the booking on its original table
       if (!timelineRef.current) {
         isOutOfBoundsRef.current = false
         setIsOutOfBounds(false)
@@ -178,9 +212,7 @@ export function useFohDrag(timelineRef: React.RefObject<HTMLElement | null>): {
         tableName: data.tableName,
       })
     } else {
-      // Table change drag — preserve original time
-      // event.over is always non-null here: toTableId !== data.tableId means
-      // event.over.id was used to derive toTableId (not the data.tableId fallback).
+      // Table change drag — vertical movement dominant, preserve original time
       const overData = event.over?.data.current as { tableName?: string } | undefined
       const toTableName = overData?.tableName ?? toTableId
 
@@ -251,6 +283,7 @@ export function useFohDrag(timelineRef: React.RefObject<HTMLElement | null>): {
     isOutOfBounds,
     isSubmitting,
     confirmError,
+    pointerPosition,
     sensors,
     onDragStart,
     onDragMove,

@@ -71,25 +71,26 @@ export function FohScheduleClient({
 
   // --- Drag state ---
   const [activeDragData, setActiveDragData] = useState<{
-    bookingId: string; bookingLabel: string; widthPx: number; visualState: string; blockBaseClass: string
+    bookingId: string; bookingLabel: string; widthPx: number; statusClassName: string
   } | null>(null)
 
   const {
-    pendingMove, isDragging, liveSnapTime, isOutOfBounds, isSubmitting, confirmError,
+    pendingMove, isDragging, liveSnapTime, isOutOfBounds, isSubmitting, confirmError, pointerPosition,
     sensors, onDragStart: fohDragStart, onDragMove, onDragEnd: fohDragEnd,
     confirm: confirmMove, cancel: cancelMove,
   } = useFohDrag(timelineRef)
 
-  const bookingBlockBaseClass = isManagerKioskStyle
-    ? 'absolute top-0.5 h-11 overflow-hidden rounded-md border px-1 py-0.5 text-left text-[9px] shadow-sm transition hover:brightness-105 focus:outline-none focus:ring-2 focus:ring-sidebar/40'
-    : 'absolute top-1 h-12 overflow-hidden rounded-md border px-1.5 py-0.5 text-left text-[10px] shadow-sm transition hover:brightness-105 focus:outline-none focus:ring-2 focus:ring-sidebar/40'
-
   const onDragStart = (event: DragStartEvent) => {
     fohDragStart(event)
     const rect = event.active.rect.current.initial
-    const data = event.active.data.current as { bookingId: string; bookingLabel: string } | undefined
-    if (data && rect) {
-      setActiveDragData({ bookingId: data.bookingId, bookingLabel: data.bookingLabel, widthPx: rect.width, visualState: '', blockBaseClass: bookingBlockBaseClass })
+    const data = event.active.data.current as { bookingId: string; bookingLabel: string; statusClassName?: string } | undefined
+    if (data) {
+      setActiveDragData({
+        bookingId: data.bookingId,
+        bookingLabel: data.bookingLabel,
+        widthPx: rect?.width ?? 280,
+        statusClassName: data.statusClassName ?? 'border-gray-300 bg-gray-200/90 text-gray-800',
+      })
     }
   }
 
@@ -320,6 +321,7 @@ export function FohScheduleClient({
         currentTimelineLeftPct={currentTimelineLeftPct}
         sensors={sensors}
         activeDragData={activeDragData}
+        pointerPosition={pointerPosition}
         liveSnapTime={liveSnapTime}
         isOutOfBounds={isOutOfBounds}
         pendingMove={pendingMove}
