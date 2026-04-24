@@ -1611,7 +1611,8 @@ export default function PrivateBookingDetailClient({
   // Handle PayPal return URL — capture the payment when PayPal redirects back
   useEffect(() => {
     const paypalReturn = searchParams.get('paypal_return');
-    const orderId = searchParams.get('order_id');
+    // PayPal returns the order ID in the 'token' query parameter
+    const orderId = searchParams.get('token') || searchParams.get('order_id');
 
     if (paypalReturn !== 'deposit' || !orderId || paypalCaptureHandled) {
       return;

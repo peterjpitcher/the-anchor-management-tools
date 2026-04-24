@@ -1707,7 +1707,7 @@ export async function createDepositPaymentOrder(
       reference: bookingId,
       description: `Deposit for ${booking.event_type || 'Private Booking'} on ${booking.event_date}`,
       amount: depositAmount,
-      returnUrl: `${appUrl}/private-bookings/${bookingId}?paypal_return=deposit&order_id=`,
+      returnUrl: `${appUrl}/private-bookings/${bookingId}?paypal_return=deposit`,
       cancelUrl: `${appUrl}/private-bookings/${bookingId}?paypal_cancel=deposit`,
       currency: 'GBP',
       brandName: 'The Anchor',

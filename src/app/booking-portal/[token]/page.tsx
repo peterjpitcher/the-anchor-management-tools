@@ -4,6 +4,7 @@ import { verifyBookingToken } from '@/lib/private-bookings/booking-token'
 import { formatDateFull, formatTime12Hour } from '@/lib/dateUtils'
 import { formatCurrency } from '@/components/ui-v2/utils/format'
 import { COMPANY_DETAILS } from '@/lib/company-details'
+import { PayPalCaptureClient } from './PayPalCaptureClient'
 import type { BookingStatus } from '@/types/private-bookings'
 
 export const dynamic = 'force-dynamic'
@@ -205,12 +206,8 @@ export default async function BookingPortalPage({ params, searchParams }: PagePr
           </div>
         </div>
 
-        {/* Payment pending banner — shown after returning from PayPal */}
-        {payment_pending === '1' && !depositPaid && (
-          <div className="rounded-xl border border-blue-200 bg-blue-50 p-4 mb-4 text-sm text-blue-800">
-            <strong>Payment received — thank you!</strong> Your deposit is being processed and this page will update shortly.
-          </div>
-        )}
+        {/* PayPal capture — active capture on return from PayPal */}
+        <PayPalCaptureClient portalToken={token} depositPaid={depositPaid} />
 
         {/* Cancelled notice */}
         {b.status === 'cancelled' && (
