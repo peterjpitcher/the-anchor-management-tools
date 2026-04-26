@@ -48,7 +48,7 @@ export async function sendRefundNotification(
     const smsResult = await sendSMS(
       params.phone,
       buildSmsBody(params.customerName, amount),
-      { skipSafetyGuards: true }
+      {}
     )
     if (smsResult.success) return 'sms_sent'
   }
