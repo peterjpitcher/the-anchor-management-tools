@@ -510,6 +510,7 @@ export async function updateEvent(id: string, formData: FormData) {
 
     revalidatePath('/events');
     revalidatePath(`/events/${id}`);
+    revalidatePath(`/events/${id}/edit`);
     revalidateTag('dashboard')
     return { success: true, data: event as Event, warning: marketingLinksWarning || undefined };
   } catch (error: unknown) {
