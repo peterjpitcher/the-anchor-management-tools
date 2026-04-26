@@ -341,7 +341,7 @@ export async function refundPayPalPayment(
     refundId: data.id,
     status: data.status,
     statusDetails: data.status_details?.reason,
-    amount: data.amount.value,
+    amount: data.amount?.value ?? amount.toFixed(2),
   };
 }
 
