@@ -298,21 +298,22 @@ export async function capturePayPalPayment(orderId: string) {
 export async function refundPayPalPayment(
   captureId: string,
   amount: number,
-  reason?: string
-) {
+  requestId: string
+): Promise<{
+  refundId: string;
+  status: string;
+  statusDetails?: string;
+  amount: string;
+}> {
   const accessToken = await getAccessToken();
   const { baseUrl } = getPayPalConfig();
 
-  const refundData: any = {
+  const refundData = {
     amount: {
       value: amount.toFixed(2),
       currency_code: 'GBP',
     },
   };
-
-  if (reason) {
-    refundData.note_to_payer = reason;
-  }
 
   const response = await retry(
     async () => fetch(`${baseUrl}/v2/payments/captures/${captureId}/refund`, {
@@ -320,6 +321,7 @@ export async function refundPayPalPayment(
       headers: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${accessToken}`,
+        'PayPal-Request-Id': requestId,
       },
       body: JSON.stringify(refundData),
     }),
@@ -329,13 +331,16 @@ export async function refundPayPalPayment(
   if (!response.ok) {
     const error = await response.json();
     console.error('PayPal refund error:', error);
-    throw new Error('Failed to process PayPal refund');
+    throw new Error(
+      error?.details?.[0]?.description || error?.message || 'Failed to process PayPal refund'
+    );
   }
 
   const data = await response.json();
   return {
     refundId: data.id,
     status: data.status,
+    statusDetails: data.status_details?.reason,
     amount: data.amount.value,
   };
 }

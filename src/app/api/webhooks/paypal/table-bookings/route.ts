@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { verifyPayPalWebhook } from '@/lib/paypal'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { logger } from '@/lib/logger'
+import { handleRefundEvent } from '@/lib/paypal-refund-webhook'
 import { logAuditEvent } from '@/app/actions/audit'
 import {
   claimIdempotencyKey,
@@ -220,8 +221,20 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Missing event id' }, { status: 400 })
     }
 
-    // Only handle PAYMENT.CAPTURE.COMPLETED — acknowledge and ignore all others
-    if (eventType !== 'PAYMENT.CAPTURE.COMPLETED') {
+    // Handle capture and refund events — acknowledge and ignore all others
+    const HANDLED_EVENT_TYPES = [
+      'PAYMENT.CAPTURE.COMPLETED',
+      'PAYMENT.CAPTURE.REFUNDED',
+      'PAYMENT.REFUND.PENDING',
+      'PAYMENT.REFUND.FAILED',
+    ]
+    const REFUND_EVENT_TYPES = [
+      'PAYMENT.CAPTURE.REFUNDED',
+      'PAYMENT.REFUND.PENDING',
+      'PAYMENT.REFUND.FAILED',
+    ]
+
+    if (!HANDLED_EVENT_TYPES.includes(eventType)) {
       await logWebhook(supabase, { status: 'ignored', headers, body, eventId, eventType })
       return NextResponse.json({ received: true, ignored: true })
     }
@@ -273,7 +286,11 @@ export async function POST(request: NextRequest) {
 
     await logWebhook(supabase, { status: 'received', headers, body, eventId, eventType })
 
-    await handleDepositCaptureCompleted(supabase, event)
+    if (eventType === 'PAYMENT.CAPTURE.COMPLETED') {
+      await handleDepositCaptureCompleted(supabase, event)
+    } else if (REFUND_EVENT_TYPES.includes(eventType)) {
+      await handleRefundEvent(supabase, event, 'table_booking')
+    }
 
     try {
       await persistIdempotencyResponse(

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { verifyPayPalWebhook } from '@/lib/paypal'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { logger } from '@/lib/logger'
+import { handleRefundEvent } from '@/lib/paypal-refund-webhook'
 import {
   claimIdempotencyKey,
   computeIdempotencyRequestHash,
@@ -210,7 +211,9 @@ export async function POST(request: NextRequest) {
         await handlePaymentDenied(supabase, event)
         break
       case 'PAYMENT.CAPTURE.REFUNDED':
-        await handleRefundCompleted(supabase, event)
+      case 'PAYMENT.REFUND.PENDING':
+      case 'PAYMENT.REFUND.FAILED':
+        await handleRefundEvent(supabase, event, 'parking')
         break
       default:
         logger.info('Unhandled PayPal parking webhook event type', {
@@ -532,84 +535,3 @@ async function handlePaymentDenied(supabase: ReturnType<typeof createAdminClient
   }
 }
 
-async function handleRefundCompleted(supabase: ReturnType<typeof createAdminClient>, event: any) {
-  const resource = event.resource
-  const captureLink = resource.links?.find((link: any) => link.rel === 'up')?.href
-  const captureId = captureLink ? captureLink.split('/').pop() : null
-  const refundId = resource.id
-  const amount = parseFloat(resource.amount?.value ?? '0')
-
-  if (!captureId) {
-    throw new Error('Parking refund webhook missing capture ID')
-  }
-
-  const { data: payment, error: paymentLookupError } = await supabase
-    .from('parking_booking_payments')
-    .select('id, booking_id, metadata')
-    .eq('transaction_id', captureId)
-    .maybeSingle()
-
-  if (paymentLookupError) {
-    throw new Error(`Failed to load payment for refund webhook: ${paymentLookupError.message}`)
-  }
-
-  if (!payment) {
-    throw new Error(`Parking payment not found for capture: ${captureId}`)
-  }
-
-  const { data: paymentUpdateRow, error: paymentUpdateError } = await supabase
-    .from('parking_booking_payments')
-    .update({
-      status: 'refunded',
-      refunded_at: new Date().toISOString(),
-      metadata: {
-        ...(payment.metadata || {}),
-        refund_id: refundId,
-        refund_amount: amount
-      }
-    })
-    .eq('id', payment.id)
-    .select('id')
-    .maybeSingle()
-
-  if (paymentUpdateError) {
-    throw new Error(`Failed to mark parking payment refunded: ${paymentUpdateError.message}`)
-  }
-  if (!paymentUpdateRow) {
-    throw new Error(`Parking payment missing during refund webhook update: ${payment.id}`)
-  }
-
-  const { data: refundBookingUpdateRow, error: bookingUpdateError } = await supabase
-    .from('parking_bookings')
-    .update({
-      payment_status: 'refunded',
-      status: 'cancelled'
-    })
-    .eq('id', payment.booking_id)
-    .select('id')
-    .maybeSingle()
-
-  if (bookingUpdateError) {
-    throw new Error(`Failed to update parking booking refund state: ${bookingUpdateError.message}`)
-  }
-  if (!refundBookingUpdateRow) {
-    throw new Error(`Parking booking missing during refund webhook update: ${payment.booking_id}`)
-  }
-
-  const { error: auditError } = await supabase
-    .from('audit_logs')
-    .insert({
-      action: 'payment_webhook_refunded',
-      entity_type: 'parking_booking',
-      entity_id: payment.booking_id,
-      metadata: {
-        refund_id: refundId,
-        amount,
-        event_id: event.id
-      }
-    })
-
-  if (auditError) {
-    throw new Error(`Failed to write refunded parking payment audit log: ${auditError.message}`)
-  }
-}

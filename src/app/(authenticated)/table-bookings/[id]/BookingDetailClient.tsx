@@ -6,6 +6,9 @@ import toast from 'react-hot-toast'
 import { Modal } from '@/components/ui-v2/overlay/Modal'
 import { ConfirmDialog } from '@/components/ui-v2/overlay/ConfirmDialog'
 import { Button } from '@/components/ui-v2/forms/Button'
+import { Badge } from '@/components/ui-v2/display/Badge'
+import { RefundDialog } from '@/components/ui-v2/refunds/RefundDialog'
+import { RefundHistoryTable } from '@/components/ui-v2/refunds/RefundHistoryTable'
 import PreorderTab from './PreorderTab'
 // formatDateInLondon uses toLocaleDateString (date-only); use Intl.DateTimeFormat directly for time display
 const formatLondonTime = (iso: string) =>
@@ -90,6 +93,7 @@ interface Props {
   booking: Booking
   canEdit: boolean
   canManage: boolean
+  canRefund: boolean
 }
 
 type MoveTableOption = {
@@ -108,7 +112,7 @@ type MoveTableAvailabilityResponse = {
   }
 }
 
-export default function BookingDetailClient({ booking, canEdit, canManage }: Props) {
+export default function BookingDetailClient({ booking, canEdit, canManage, canRefund }: Props) {
   const [tab, setTab] = useState<Tab>('overview')
   const isSundayLunch = booking.booking_type === 'sunday_lunch'
 
@@ -132,6 +136,28 @@ export default function BookingDetailClient({ booking, canEdit, canManage }: Pro
   const [partySizeEditValue, setPartySizeEditValue] = useState('')
   const [partySizeEditSendSms, setPartySizeEditSendSms] = useState(true)
   const [smsBody, setSmsBody] = useState('')
+
+  // Refund state
+  const [showRefundDialog, setShowRefundDialog] = useState(false)
+  const [refundTotals, setRefundTotals] = useState({ totalRefunded: 0, totalPending: 0 })
+
+  useEffect(() => {
+    if (!booking.id || booking.payment_status !== 'completed') return
+    let cancelled = false
+    import('@/app/actions/refundActions').then(({ getRefundHistory }) =>
+      getRefundHistory('table_booking', booking.id).then((result) => {
+        if (cancelled || !result.data) return
+        const completed = result.data
+          .filter((r: any) => r.status === 'completed')
+          .reduce((sum: number, r: any) => sum + Number(r.amount), 0)
+        const pending = result.data
+          .filter((r: any) => r.status === 'pending')
+          .reduce((sum: number, r: any) => sum + Number(r.amount), 0)
+        setRefundTotals({ totalRefunded: completed, totalPending: pending })
+      })
+    )
+    return () => { cancelled = true }
+  }, [booking.id, booking.payment_status])
 
   async function runAction(key: string, fn: () => Promise<void>, successMsg: string) {
     setActionLoadingKey(key)
@@ -419,6 +445,36 @@ export default function BookingDetailClient({ booking, canEdit, canManage }: Pro
                       Capture ID: {booking.paypal_deposit_capture_id}
                     </p>
                   )}
+                  {/* Refund status */}
+                  {refundTotals.totalRefunded > 0 && (
+                    <div className="pl-4 mt-1">
+                      <Badge
+                        variant={refundTotals.totalRefunded >= (booking.deposit_amount ?? 0) ? 'info' : 'warning'}
+                        size="sm"
+                      >
+                        {refundTotals.totalRefunded >= (booking.deposit_amount ?? 0) ? 'Refunded' : 'Partially Refunded'}
+                      </Badge>
+                    </div>
+                  )}
+                  {/* Refund button */}
+                  {canRefund && refundTotals.totalRefunded < (booking.deposit_amount ?? 0) && (
+                    <div className="pl-4 mt-2">
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        onClick={() => setShowRefundDialog(true)}
+                      >
+                        Process Refund
+                      </Button>
+                    </div>
+                  )}
+                  {/* Refund history */}
+                  <div className="mt-3">
+                    <RefundHistoryTable
+                      sourceType="table_booking"
+                      sourceId={booking.id}
+                    />
+                  </div>
                 </div>
               ) : (
                 <div className="flex items-center gap-2">
@@ -717,6 +773,21 @@ export default function BookingDetailClient({ booking, canEdit, canManage }: Pro
           </div>
         </div>
       </Modal>
+
+      {/* Refund dialog */}
+      {canRefund && booking.payment_status === 'completed' && (
+        <RefundDialog
+          open={showRefundDialog}
+          onOpenChange={setShowRefundDialog}
+          sourceType="table_booking"
+          sourceId={booking.id}
+          originalAmount={booking.deposit_amount ?? 0}
+          totalRefunded={refundTotals.totalRefunded}
+          totalPending={refundTotals.totalPending}
+          hasPayPalCapture={!!booking.paypal_deposit_capture_id}
+          captureExpired={false}
+        />
+      )}
     </div>
   )
 }

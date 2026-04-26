@@ -11,10 +11,11 @@ interface Props {
 export default async function BookingDetailPage({ params }: Props) {
   const { id } = await params
 
-  const [canView, canEdit, canManage] = await Promise.all([
+  const [canView, canEdit, canManage, canRefund] = await Promise.all([
     checkUserPermission('table_bookings', 'view'),
     checkUserPermission('table_bookings', 'edit'),
     checkUserPermission('table_bookings', 'manage'),
+    checkUserPermission('table_bookings', 'refund'),
   ])
 
   if (!canView) redirect('/unauthorized')
@@ -69,6 +70,7 @@ export default async function BookingDetailPage({ params }: Props) {
         booking={normalizedBooking}
         canEdit={canEdit}
         canManage={canManage}
+        canRefund={canRefund || canManage}
       />
     </PageLayout>
   )

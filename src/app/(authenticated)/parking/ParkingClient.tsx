@@ -14,6 +14,8 @@ import { Spinner } from '@/components/ui-v2/feedback/Spinner'
 import { toast } from '@/components/ui-v2/feedback/Toast'
 import { Alert } from '@/components/ui-v2/feedback/Alert'
 import { Modal, ModalActions } from '@/components/ui-v2/overlay/Modal'
+import { RefundDialog } from '@/components/ui-v2/refunds/RefundDialog'
+import { RefundHistoryTable } from '@/components/ui-v2/refunds/RefundHistoryTable'
 import { FormGroup } from '@/components/ui-v2/forms/FormGroup'
 import { Textarea } from '@/components/ui-v2/forms/Textarea'
 import { Toggle } from '@/components/ui-v2/forms/Toggle'
@@ -119,6 +121,45 @@ export default function ParkingClient({ permissions, initialError }: Props) {
   const [isPending, startTransition] = useTransition()
   const [isMutating, startMutation] = useTransition()
   const pageError = initialError ?? null
+
+  // Refund state
+  const [showRefundDialog, setShowRefundDialog] = useState(false)
+  const [refundPaymentId, setRefundPaymentId] = useState<string | null>(null)
+  const [refundPaymentAmount, setRefundPaymentAmount] = useState(0)
+  const [refundTotals, setRefundTotals] = useState({ totalRefunded: 0, totalPending: 0 })
+  const [refundHasCapture, setRefundHasCapture] = useState(false)
+
+  const openRefundForBooking = async (booking: ParkingBooking) => {
+    try {
+      const { getParkingPaymentForRefund, getRefundHistory } = await import('@/app/actions/refundActions')
+      const paymentResult = await getParkingPaymentForRefund(booking.id)
+
+      if (paymentResult.error || !paymentResult.data) {
+        toast.error(paymentResult.error || 'No paid payment record found.')
+        return
+      }
+
+      setRefundPaymentId(paymentResult.data.paymentId)
+      setRefundPaymentAmount(paymentResult.data.amount)
+      setRefundHasCapture(paymentResult.data.hasCapture)
+
+      // Load refund totals
+      const result = await getRefundHistory('parking', paymentResult.data.paymentId)
+      if (result.data) {
+        const completed = result.data
+          .filter((r: any) => r.status === 'completed')
+          .reduce((sum: number, r: any) => sum + Number(r.amount), 0)
+        const pending = result.data
+          .filter((r: any) => r.status === 'pending')
+          .reduce((sum: number, r: any) => sum + Number(r.amount), 0)
+        setRefundTotals({ totalRefunded: completed, totalPending: pending })
+      }
+
+      setShowRefundDialog(true)
+    } catch {
+      toast.error('Failed to load payment details for refund.')
+    }
+  }
 
   useEffect(() => {
     void fetchBookings()
@@ -361,7 +402,20 @@ export default function ParkingClient({ permissions, initialError }: Props) {
       className="cursor-pointer transition hover:bg-slate-50"
       onClick={() => {
         setSelectedBooking(booking)
+        setRefundPaymentId(null)
         void loadNotifications(booking.id)
+        // Pre-load payment ID for paid bookings (for refund history)
+        if (booking.payment_status === 'paid' && permissions.canRefund) {
+          import('@/app/actions/refundActions').then(({ getParkingPaymentForRefund }) =>
+            getParkingPaymentForRefund(booking.id).then((result) => {
+              if (result.data) {
+                setRefundPaymentId(result.data.paymentId)
+                setRefundPaymentAmount(result.data.amount)
+                setRefundHasCapture(result.data.hasCapture)
+              }
+            })
+          )
+        }
       }}
     >
       <td className="whitespace-nowrap px-4 py-3 text-sm font-medium text-slate-900">{booking.reference}</td>
@@ -451,7 +505,25 @@ export default function ParkingClient({ permissions, initialError }: Props) {
                 {isMutating ? 'Updating…' : 'Mark completed'}
               </Button>
             )}
+
+            {permissions.canRefund && selectedBooking.payment_status === 'paid' && (
+              <Button
+                variant="secondary"
+                disabled={isMutating}
+                onClick={() => openRefundForBooking(selectedBooking)}
+              >
+                Process Refund
+              </Button>
+            )}
           </div>
+        )}
+
+        {/* Refund history — only for paid bookings */}
+        {selectedBooking.payment_status === 'paid' && refundPaymentId && (
+          <RefundHistoryTable
+            sourceType="parking"
+            sourceId={refundPaymentId}
+          />
         )}
 
         <Section title="Recent notifications" description="SMS and email attempts for this booking.">
@@ -875,6 +947,21 @@ export default function ParkingClient({ permissions, initialError }: Props) {
           </ModalActions>
         </form>
       </Modal>
+
+      {/* Refund dialog for parking */}
+      {permissions.canRefund && refundPaymentId && (
+        <RefundDialog
+          open={showRefundDialog}
+          onOpenChange={setShowRefundDialog}
+          sourceType="parking"
+          sourceId={refundPaymentId}
+          originalAmount={refundPaymentAmount}
+          totalRefunded={refundTotals.totalRefunded}
+          totalPending={refundTotals.totalPending}
+          hasPayPalCapture={refundHasCapture}
+          captureExpired={false}
+        />
+      )}
     </PageLayout>
   )
 }

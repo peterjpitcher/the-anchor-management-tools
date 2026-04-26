@@ -98,6 +98,8 @@ import { FormGroup } from "@/components/ui-v2/forms/FormGroup";
 import { Badge } from "@/components/ui-v2/display/Badge";
 import { Modal } from "@/components/ui-v2/overlay/Modal";
 import { ConfirmDialog } from "@/components/ui-v2/overlay/ConfirmDialog";
+import { RefundDialog } from "@/components/ui-v2/refunds/RefundDialog";
+import { RefundHistoryTable } from "@/components/ui-v2/refunds/RefundHistoryTable";
 import { Skeleton } from "@/components/ui-v2/feedback/Skeleton";
 import { EmptyState } from "@/components/ui-v2/display/EmptyState";
 import { Alert } from "@/components/ui-v2/feedback/Alert";
@@ -150,6 +152,7 @@ interface PrivateBookingDetailClientProps {
     canManageCatering: boolean;
     canManageVendors: boolean;
     canEditPayments: boolean;
+    canRefund: boolean;
   };
   paymentHistory: PaymentHistoryEntry[];
   initialError?: string | null;
@@ -1554,7 +1557,31 @@ export default function PrivateBookingDetailClient({
     canManageCatering,
     canManageVendors,
     canEditPayments,
+    canRefund,
   } = permissions;
+
+  // Refund dialog state
+  const [showRefundDialog, setShowRefundDialog] = useState(false);
+  const [refundTotals, setRefundTotals] = useState({ totalRefunded: 0, totalPending: 0 });
+
+  // Load refund totals when booking changes
+  useEffect(() => {
+    if (!booking?.id) return;
+    let cancelled = false;
+    import('@/app/actions/refundActions').then(({ getRefundHistory }) =>
+      getRefundHistory('private_booking', booking.id).then((result) => {
+        if (cancelled || !result.data) return;
+        const completed = result.data
+          .filter((r: any) => r.status === 'completed')
+          .reduce((sum: number, r: any) => sum + Number(r.amount), 0);
+        const pending = result.data
+          .filter((r: any) => r.status === 'pending')
+          .reduce((sum: number, r: any) => sum + Number(r.amount), 0);
+        setRefundTotals({ totalRefunded: completed, totalPending: pending });
+      })
+    );
+    return () => { cancelled = true; };
+  }, [booking?.id]);
 
   const navItems = [
     { label: 'Overview', href: `/private-bookings/${bookingId}` },
@@ -2641,6 +2668,38 @@ export default function PrivateBookingDetailClient({
                   <p className="text-xs text-gray-600 mt-2">
                     Returned after event (subject to terms)
                   </p>
+                  {/* Refund status badge */}
+                  {refundTotals.totalRefunded > 0 && (
+                    <div className="mt-2">
+                      <Badge
+                        variant={refundTotals.totalRefunded >= (booking.deposit_amount ?? 0) ? 'info' : 'warning'}
+                        size="sm"
+                      >
+                        {refundTotals.totalRefunded >= (booking.deposit_amount ?? 0) ? 'Refunded' : 'Partially Refunded'}
+                      </Badge>
+                    </div>
+                  )}
+                  {/* Refund button */}
+                  {canRefund && booking.deposit_paid_date && refundTotals.totalRefunded < (booking.deposit_amount ?? 0) && (
+                    <div className="mt-2">
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        onClick={() => setShowRefundDialog(true)}
+                      >
+                        Process Refund
+                      </Button>
+                    </div>
+                  )}
+                  {/* Refund history */}
+                  {booking.deposit_paid_date && (
+                    <div className="mt-3">
+                      <RefundHistoryTable
+                        sourceType="private_booking"
+                        sourceId={booking.id}
+                      />
+                    </div>
+                  )}
                 </div>
 
                 {(() => {
@@ -2884,6 +2943,25 @@ export default function PrivateBookingDetailClient({
           }}
           item={editingItem}
           onSuccess={refreshBooking}
+        />
+      )}
+
+      {/* Refund dialog */}
+      {canRefund && booking && (
+        <RefundDialog
+          open={showRefundDialog}
+          onOpenChange={setShowRefundDialog}
+          sourceType="private_booking"
+          sourceId={booking.id}
+          originalAmount={booking.deposit_amount ?? 0}
+          totalRefunded={refundTotals.totalRefunded}
+          totalPending={refundTotals.totalPending}
+          hasPayPalCapture={!!booking.paypal_deposit_capture_id}
+          captureExpired={
+            booking.deposit_paid_date
+              ? (new Date().getTime() - new Date(booking.deposit_paid_date).getTime()) / (1000 * 60 * 60 * 24) > 180
+              : false
+          }
         />
       )}
     </PageLayout>
