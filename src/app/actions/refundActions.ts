@@ -143,6 +143,19 @@ async function updateRefundStatus(
     await db.from('table_bookings').update({ deposit_refund_status: status }).eq('id', sourceId)
   } else if (sourceType === 'parking') {
     await db.from('parking_booking_payments').update({ refund_status: status }).eq('id', sourceId)
+
+    // Also update the parent parking_bookings.payment_status when fully refunded
+    if (status === 'refunded') {
+      const { data: paymentRow } = await db
+        .from('parking_booking_payments')
+        .select('booking_id')
+        .eq('id', sourceId)
+        .maybeSingle()
+
+      if (paymentRow?.booking_id) {
+        await db.from('parking_bookings').update({ payment_status: 'refunded' }).eq('id', paymentRow.booking_id)
+      }
+    }
   }
 }
 

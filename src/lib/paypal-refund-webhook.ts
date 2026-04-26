@@ -388,6 +388,29 @@ async function updateBookingRefundStatus(
     throw new Error(`Failed to update ${sourceType} refund status: ${updateError.message}`)
   }
 
+  // Also update the parent parking_bookings.payment_status when fully refunded
+  if (sourceType === 'parking' && refundStatusValue === 'refunded') {
+    const { data: paymentRow } = await supabase
+      .from('parking_booking_payments')
+      .select('booking_id')
+      .eq('id', sourceId)
+      .maybeSingle()
+
+    if (paymentRow?.booking_id) {
+      const { error: bookingUpdateError } = await supabase
+        .from('parking_bookings')
+        .update({ payment_status: 'refunded' })
+        .eq('id', paymentRow.booking_id)
+
+      if (bookingUpdateError) {
+        logger.error('Failed to update parking_bookings.payment_status to refunded', {
+          error: new Error(bookingUpdateError.message),
+          metadata: { sourceId, bookingId: paymentRow.booking_id },
+        })
+      }
+    }
+  }
+
   logger.info('Updated booking refund status', {
     metadata: { sourceType, sourceId, totalRefunded, originalAmount, refundStatusValue },
   })

@@ -85,6 +85,7 @@ export interface Booking {
   payment_method: string | null
   paypal_deposit_capture_id: string | null
   deposit_amount: number | null
+  card_capture_completed_at: string | null
   customer: BookingCustomer | null
   table_booking_tables: BookingTable[]
 }
@@ -785,7 +786,11 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
           totalRefunded={refundTotals.totalRefunded}
           totalPending={refundTotals.totalPending}
           hasPayPalCapture={!!booking.paypal_deposit_capture_id}
-          captureExpired={false}
+          captureExpired={
+            booking.card_capture_completed_at
+              ? (new Date().getTime() - new Date(booking.card_capture_completed_at).getTime()) / (1000 * 60 * 60 * 24) > 180
+              : false
+          }
         />
       )}
     </div>
