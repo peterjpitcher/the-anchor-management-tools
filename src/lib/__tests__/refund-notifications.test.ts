@@ -54,7 +54,7 @@ describe('sendRefundNotification', () => {
     expect(mockSendSMS).toHaveBeenCalledWith(
       '+447700900001',
       expect.stringContaining('\u00a310.00'),
-      { skipSafetyGuards: true }
+      {}
     )
   })
 
@@ -73,7 +73,7 @@ describe('sendRefundNotification', () => {
     expect(mockSendSMS).toHaveBeenCalledWith(
       '+447700900002',
       expect.stringContaining('\u00a350.00'),
-      { skipSafetyGuards: true }
+      {}
     )
   })
 

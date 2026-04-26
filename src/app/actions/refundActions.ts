@@ -151,7 +151,7 @@ export async function processPayPalRefund(
   sourceId: string,
   amount: number,
   reason: string
-): Promise<{ success?: boolean; refundId?: string; pending?: boolean; message?: string; error?: string }> {
+): Promise<{ success?: boolean; refundId?: string; pending?: boolean; message?: string; warning?: string; error?: string }> {
   // 1. Auth
   const auth = await getAuthenticatedUser()
   if ('error' in auth) return { error: auth.error }
@@ -175,50 +175,70 @@ export async function processPayPalRefund(
     return { error: 'PayPal refund window expired (180 days). Use manual refund instead.' }
   }
 
-  // 6. Check remaining balance with advisory lock
-  const { data: remaining, error: rpcError } = await db.rpc('calculate_refundable_balance', {
-    p_source_type: sourceType,
-    p_source_id: sourceId,
-    p_original_amount: booking.originalAmount,
-  })
+  // 6. Check for existing pending PayPal refund row (stable idempotency key across retries)
+  let refundRowId: string
+  let paypalRequestId: string
 
-  if (rpcError) return { error: `Balance check failed: ${rpcError.message}` }
-  if (amount > (remaining ?? 0)) return { error: `Amount exceeds refundable balance (£${(remaining ?? 0).toFixed(2)} remaining)` }
-
-  // 7. Insert pending refund row
-  const paypalRequestId = randomUUID()
-  const { data: refundRow, error: insertError } = await db
+  const { data: existingPending } = await db
     .from('payment_refunds')
-    .insert({
-      source_type: sourceType,
-      source_id: sourceId,
-      paypal_capture_id: booking.captureId,
-      paypal_request_id: paypalRequestId,
-      refund_method: 'paypal',
-      amount,
-      original_amount: booking.originalAmount,
-      reason,
-      status: 'pending',
-      initiated_by: userId,
-      initiated_by_type: 'staff',
-    })
-    .select('id')
-    .single()
+    .select('id, paypal_request_id')
+    .eq('source_type', sourceType)
+    .eq('source_id', sourceId)
+    .eq('status', 'pending')
+    .eq('refund_method', 'paypal')
+    .maybeSingle()
 
-  if (insertError || !refundRow) return { error: `Failed to create refund record: ${insertError?.message}` }
+  if (existingPending) {
+    // Reuse the existing pending row and its PayPal-Request-Id for idempotent retries
+    refundRowId = existingPending.id
+    paypalRequestId = existingPending.paypal_request_id
+  } else {
+    // 7. Atomic balance check + row insertion via RPC (advisory lock held for entire transaction)
+    paypalRequestId = randomUUID()
+    const { data: reserveResult, error: reserveError } = await db.rpc('reserve_refund_balance', {
+      p_source_type: sourceType,
+      p_source_id: sourceId,
+      p_original_amount: booking.originalAmount,
+      p_amount: amount,
+      p_refund_method: 'paypal',
+      p_reason: reason,
+      p_initiated_by: userId,
+      p_paypal_capture_id: booking.captureId,
+      p_paypal_request_id: paypalRequestId,
+    })
+
+    if (reserveError) {
+      // The RPC raises an exception if amount exceeds balance
+      if (reserveError.message.includes('exceeds refundable balance')) {
+        return { error: `Amount exceeds refundable balance` }
+      }
+      return { error: `Balance reservation failed: ${reserveError.message}` }
+    }
+
+    const row = Array.isArray(reserveResult) ? reserveResult[0] : reserveResult
+    if (!row?.refund_id) return { error: 'Failed to create refund record' }
+    refundRowId = row.refund_id
+  }
+
+  const refundRow = { id: refundRowId }
 
   // 8. Call PayPal
   try {
     const result = await refundPayPalPayment(booking.captureId, amount, paypalRequestId)
 
     if (result.status === 'COMPLETED') {
-      // Update refund row
-      await db.from('payment_refunds').update({
+      // Update refund row — check for DB error after successful PayPal refund
+      const { error: completedUpdateError } = await db.from('payment_refunds').update({
         status: 'completed',
         paypal_refund_id: result.refundId,
         paypal_status: 'COMPLETED',
         completed_at: new Date().toISOString(),
       }).eq('id', refundRow.id)
+
+      if (completedUpdateError) {
+        console.error('Refund processed at PayPal but local status update failed:', completedUpdateError.message)
+        return { success: true, refundId: refundRow.id, warning: 'Refund processed at PayPal but local status update failed. Please refresh.' }
+      }
 
       // Update booking refund status
       await updateRefundStatus(db, sourceType, sourceId, booking.originalAmount)
@@ -258,11 +278,15 @@ export async function processPayPalRefund(
     }
 
     if (result.status === 'PENDING') {
-      await db.from('payment_refunds').update({
+      const { error: pendingUpdateError } = await db.from('payment_refunds').update({
         paypal_refund_id: result.refundId,
         paypal_status: 'PENDING',
         paypal_status_details: result.statusDetails || null,
       }).eq('id', refundRow.id)
+
+      if (pendingUpdateError) {
+        console.error('Refund pending at PayPal but local status update failed:', pendingUpdateError.message)
+      }
 
       await logAuditEvent({
         user_id: userId,
@@ -321,6 +345,9 @@ export async function processManualRefund(
   reason: string,
   refundMethod: 'cash' | 'bank_transfer' | 'other'
 ): Promise<{ success?: boolean; refundId?: string; error?: string }> {
+  // 0. Validate method — PayPal refunds must use processPayPalRefund (runtime guard against API misuse)
+  if ((refundMethod as string) === 'paypal') return { error: 'Use PayPal refund for PayPal payments' }
+
   // 1. Auth
   const auth = await getAuthenticatedUser()
   if ('error' in auth) return { error: auth.error }
@@ -336,35 +363,39 @@ export async function processManualRefund(
   const booking = await loadSourceBooking(db, sourceType, sourceId)
   if (!booking) return { error: 'Booking not found' }
 
-  // 4. Check remaining balance with advisory lock
-  const { data: remaining, error: rpcError } = await db.rpc('calculate_refundable_balance', {
+  // 4. Atomic balance check + row insertion via RPC
+  const { data: reserveResult, error: reserveError } = await db.rpc('reserve_refund_balance', {
     p_source_type: sourceType,
     p_source_id: sourceId,
     p_original_amount: booking.originalAmount,
+    p_amount: amount,
+    p_refund_method: refundMethod,
+    p_reason: reason,
+    p_initiated_by: userId,
   })
 
-  if (rpcError) return { error: `Balance check failed: ${rpcError.message}` }
-  if (amount > (remaining ?? 0)) return { error: `Amount exceeds refundable balance (£${(remaining ?? 0).toFixed(2)} remaining)` }
+  if (reserveError) {
+    if (reserveError.message.includes('exceeds refundable balance')) {
+      return { error: `Amount exceeds refundable balance` }
+    }
+    return { error: `Balance reservation failed: ${reserveError.message}` }
+  }
 
-  // 5. Insert completed refund row
-  const { data: refundRow, error: insertError } = await db
+  const row = Array.isArray(reserveResult) ? reserveResult[0] : reserveResult
+  if (!row?.refund_id) return { error: 'Failed to create refund record' }
+
+  // 5. Mark as completed immediately (manual refunds are instant)
+  const { error: completeError } = await db
     .from('payment_refunds')
-    .insert({
-      source_type: sourceType,
-      source_id: sourceId,
-      refund_method: refundMethod,
-      amount,
-      original_amount: booking.originalAmount,
-      reason,
+    .update({
       status: 'completed',
       completed_at: new Date().toISOString(),
-      initiated_by: userId,
-      initiated_by_type: 'staff',
     })
-    .select('id')
-    .single()
+    .eq('id', row.refund_id)
 
-  if (insertError || !refundRow) return { error: `Failed to create refund record: ${insertError?.message}` }
+  if (completeError) return { error: `Failed to complete refund record: ${completeError.message}` }
+
+  const refundRow = { id: row.refund_id }
 
   // 6. Update booking refund status
   await updateRefundStatus(db, sourceType, sourceId, booking.originalAmount)
@@ -402,7 +433,7 @@ export async function getRefundHistory(
   const db = createAdminClient()
   const { data, error } = await db
     .from('payment_refunds')
-    .select('*')
+    .select('id, source_type, source_id, refund_method, amount, original_amount, reason, status, paypal_status, paypal_refund_id, notification_status, initiated_by_type, completed_at, failed_at, created_at')
     .eq('source_type', sourceType)
     .eq('source_id', sourceId)
     .order('created_at', { ascending: false })

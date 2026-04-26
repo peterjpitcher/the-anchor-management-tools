@@ -81,8 +81,43 @@ export async function handleRefundEvent(
   }
 
   if (existingRefund) {
-    // Already exists — update status if needed
-    return await handleExistingRefund(supabase, existingRefund, paypalStatus, statusDetails, sourceType)
+    // Already exists — update status if needed; use stored source_type, not route-supplied
+    return await handleExistingRefund(supabase, existingRefund, paypalStatus, statusDetails, existingRefund.source_type as SourceType)
+  }
+
+  // ----- Step 1b: Fallback — match pending row by (source_type, paypal_capture_id, status='pending') -----
+  if (paypalCaptureId) {
+    const { data: pendingRefund, error: pendingLookupError } = await supabase
+      .from('payment_refunds')
+      .select('id, source_type, source_id, status, paypal_status, original_amount')
+      .eq('source_type', sourceType)
+      .eq('paypal_capture_id', paypalCaptureId)
+      .eq('status', 'pending')
+      .maybeSingle()
+
+    if (pendingLookupError) {
+      logger.error('Failed to look up pending refund by capture ID', {
+        error: new Error(pendingLookupError.message),
+        metadata: { paypalRefundId, paypalCaptureId, sourceType },
+      })
+    }
+
+    if (pendingRefund) {
+      // Update the pending row with the PayPal refund ID, then handle as existing
+      const { error: patchError } = await supabase
+        .from('payment_refunds')
+        .update({ paypal_refund_id: paypalRefundId })
+        .eq('id', pendingRefund.id)
+
+      if (patchError) {
+        logger.error('Failed to patch pending refund with PayPal refund ID', {
+          error: new Error(patchError.message),
+          metadata: { refundId: pendingRefund.id, paypalRefundId },
+        })
+      }
+
+      return await handleExistingRefund(supabase, pendingRefund, paypalStatus, statusDetails, pendingRefund.source_type as SourceType)
+    }
   }
 
   // ----- Step 2: Dashboard reconciliation — refund not in our system -----
