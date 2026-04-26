@@ -222,12 +222,39 @@ export async function processPayPalRefund(
 
   const refundRow = { id: refundRowId }
 
-  // 8. Call PayPal
+  // 8. Call PayPal — separate the API call from post-processing so a parsing
+  //    error after a successful refund doesn't mark the row as "failed" while
+  //    money has already left the account.
+  let result: Awaited<ReturnType<typeof refundPayPalPayment>>
   try {
-    const result = await refundPayPalPayment(booking.captureId, amount, paypalRequestId)
+    result = await refundPayPalPayment(booking.captureId, amount, paypalRequestId)
+  } catch (err) {
+    // PayPal API actually rejected the refund — safe to mark as failed
+    const errorMessage = err instanceof Error ? err.message : 'Unknown error'
 
+    await db.from('payment_refunds').update({
+      status: 'failed',
+      failed_at: new Date().toISOString(),
+      failure_message: errorMessage,
+    }).eq('id', refundRow.id)
+
+    await logAuditEvent({
+      user_id: userId,
+      operation_type: 'refund',
+      resource_type: sourceType,
+      resource_id: sourceId,
+      operation_status: 'failure',
+      error_message: errorMessage,
+      additional_info: { refund_id: refundRow.id, amount, method: 'paypal' },
+    })
+
+    return { error: `PayPal refund failed: ${errorMessage}. You can try again or use manual refund.` }
+  }
+
+  // PayPal returned a response (2xx) — money may have moved. From here,
+  // any error is a local bookkeeping issue, NOT a reason to mark as failed.
+  try {
     if (result.status === 'COMPLETED') {
-      // Update refund row — check for DB error after successful PayPal refund
       const { error: completedUpdateError } = await db.from('payment_refunds').update({
         status: 'completed',
         paypal_refund_id: result.refundId,
@@ -240,10 +267,8 @@ export async function processPayPalRefund(
         return { success: true, refundId: refundRow.id, warning: 'Refund processed at PayPal but local status update failed. Please refresh.' }
       }
 
-      // Update booking refund status
       await updateRefundStatus(db, sourceType, sourceId, booking.originalAmount)
 
-      // Send notification
       let notificationStatus: string | null = null
       if (booking.customerName) {
         notificationStatus = await sendRefundNotification({
@@ -257,7 +282,6 @@ export async function processPayPalRefund(
       }
       await db.from('payment_refunds').update({ notification_status: notificationStatus }).eq('id', refundRow.id)
 
-      // Audit
       await logAuditEvent({
         user_id: userId,
         operation_type: 'refund',
@@ -313,15 +337,27 @@ export async function processPayPalRefund(
       }
     }
 
-    // FAILED or CANCELLED
-    throw new Error(`PayPal returned status: ${result.status}`)
-  } catch (err) {
-    const errorMessage = err instanceof Error ? err.message : 'Unknown error'
-
+    // FAILED or CANCELLED status from PayPal
     await db.from('payment_refunds').update({
       status: 'failed',
+      paypal_refund_id: result.refundId,
+      paypal_status: result.status,
       failed_at: new Date().toISOString(),
-      failure_message: errorMessage,
+      failure_message: `PayPal returned status: ${result.status}`,
+    }).eq('id', refundRow.id)
+
+    return { error: `PayPal refund returned status: ${result.status}. You can try again or use manual refund.` }
+  } catch (postProcessErr) {
+    // PayPal succeeded but local bookkeeping failed — DO NOT mark as failed
+    const errorMessage = postProcessErr instanceof Error ? postProcessErr.message : 'Unknown error'
+    console.error('PayPal refund succeeded but post-processing failed:', errorMessage)
+
+    // Best-effort: mark as completed even if we lost some details
+    await db.from('payment_refunds').update({
+      status: 'completed',
+      paypal_status: result.status,
+      completed_at: new Date().toISOString(),
+      failure_message: `Post-processing error: ${errorMessage}`,
     }).eq('id', refundRow.id)
 
     await logAuditEvent({
@@ -329,12 +365,17 @@ export async function processPayPalRefund(
       operation_type: 'refund',
       resource_type: sourceType,
       resource_id: sourceId,
-      operation_status: 'failure',
-      error_message: errorMessage,
-      additional_info: { refund_id: refundRow.id, amount, method: 'paypal' },
+      operation_status: 'success',
+      additional_info: {
+        refund_id: refundRow.id,
+        amount,
+        method: 'paypal',
+        warning: `Post-processing failed: ${errorMessage}`,
+      },
     })
 
-    return { error: `PayPal refund failed: ${errorMessage}. You can try again or use manual refund.` }
+    revalidatePath(REVALIDATE_PATHS[sourceType])
+    return { success: true, refundId: refundRow.id, warning: 'Refund processed at PayPal but some local updates may have failed. Please refresh.' }
   }
 }
 
