@@ -32,6 +32,7 @@ export default async function PrivateBookingDetailPage({ params }: PageProps) {
   let canManageCatering = false
   let canManageVendors = false
   let canEditPayments = false
+  let canRefund = false
 
   const permissionsResult = await getCurrentUserModuleActions('private_bookings')
 
@@ -54,6 +55,7 @@ export default async function PrivateBookingDetailPage({ params }: PageProps) {
     canManageCatering = actions.has('manage_catering') || actions.has('manage')
     canManageVendors = actions.has('manage_vendors') || actions.has('manage')
     canEditPayments = actions.has('manage')
+    canRefund = actions.has('refund') || actions.has('manage')
   }
 
   if (!canView && errors.length === 0) {
@@ -108,6 +110,7 @@ export default async function PrivateBookingDetailPage({ params }: PageProps) {
         canManageCatering,
         canManageVendors,
         canEditPayments,
+        canRefund,
       }}
       paymentHistory={paymentHistory}
       initialError={initialError}

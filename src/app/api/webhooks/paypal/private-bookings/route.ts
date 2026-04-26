@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { verifyPayPalWebhook } from '@/lib/paypal'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { logger } from '@/lib/logger'
+import { handleRefundEvent } from '@/lib/paypal-refund-webhook'
 import {
   claimIdempotencyKey,
   computeIdempotencyRequestHash,
@@ -13,6 +14,13 @@ const IDEMPOTENCY_TTL_HOURS = 24 * 30
 
 // Prefix used in customId for private booking deposit orders
 const DEPOSIT_CUSTOM_ID_PREFIX = 'pb-deposit-'
+
+// Refund event types that bypass the custom_id prefix check
+const REFUND_EVENT_TYPES = [
+  'PAYMENT.CAPTURE.REFUNDED',
+  'PAYMENT.REFUND.PENDING',
+  'PAYMENT.REFUND.FAILED',
+]
 
 function truncate(value: string | null | undefined, maxLength: number): string | null {
   if (!value) return null
@@ -148,9 +156,11 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Missing event id' }, { status: 400 })
     }
 
-    // Check if this event is for a private booking deposit
+    // Check if this event is for a private booking deposit.
+    // Refund events don't carry custom_id on the refund resource, so bypass the prefix check.
+    const isRefundEvent = REFUND_EVENT_TYPES.includes(eventType)
     const customId = event?.resource?.custom_id ?? ''
-    if (typeof customId !== 'string' || !customId.startsWith(DEPOSIT_CUSTOM_ID_PREFIX)) {
+    if (!isRefundEvent && (typeof customId !== 'string' || !customId.startsWith(DEPOSIT_CUSTOM_ID_PREFIX))) {
       // Not a private booking event — acknowledge without processing
       await logPayPalWebhook(supabase, {
         status: 'ignored',
@@ -226,6 +236,11 @@ export async function POST(request: NextRequest) {
         break
       case 'PAYMENT.CAPTURE.DENIED':
         await handleDepositCaptureDenied(supabase, event)
+        break
+      case 'PAYMENT.CAPTURE.REFUNDED':
+      case 'PAYMENT.REFUND.PENDING':
+      case 'PAYMENT.REFUND.FAILED':
+        await handleRefundEvent(supabase, event, 'private_booking')
         break
       default:
         logger.info('Unhandled PayPal private-bookings webhook event type', {

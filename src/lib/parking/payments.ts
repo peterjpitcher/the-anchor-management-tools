@@ -426,7 +426,8 @@ export async function refundParkingPayment(
     throw new Error('No captured payment found to refund')
   }
 
-  await refundPayPalPayment(payment.transaction_id, amount, options.reason)
+  const { randomUUID } = await import('crypto')
+  await refundPayPalPayment(payment.transaction_id, amount, randomUUID())
 
   await updateParkingBooking(
     booking.id,
