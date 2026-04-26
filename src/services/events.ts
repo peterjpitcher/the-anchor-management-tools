@@ -477,12 +477,23 @@ export class EventService {
 
     let slug: string | undefined
 
+    const dateChanged = input.date && input.date !== currentEvent.date
+
     if (typeof input.slug === 'string') {
       const normalizedInputSlug = normalizeSlugValue(input.slug)
-      slug = normalizedInputSlug.length > 0 ? normalizedInputSlug : undefined
+      // If the user sent the existing slug unchanged but the date moved,
+      // regenerate so the embedded date stays in sync.
+      if (dateChanged && normalizedInputSlug === normalizeSlugValue(currentEvent.slug ?? '')) {
+        slug = generateSlug(nextName, nextDate)
+      } else {
+        slug = normalizedInputSlug.length > 0 ? normalizedInputSlug : undefined
+      }
     } else {
       const currentSlug = typeof currentEvent.slug === 'string' ? normalizeSlugValue(currentEvent.slug) : ''
-      if (currentSlug.length > 0) {
+      if (dateChanged && currentSlug.length > 0) {
+        // Date moved but no explicit slug change — regenerate
+        slug = generateSlug(nextName, nextDate)
+      } else if (currentSlug.length > 0) {
         slug = currentSlug
       } else if (isPublishedStatus(nextStatus) && nextName && nextDate) {
         slug = generateSlug(nextName, nextDate)
