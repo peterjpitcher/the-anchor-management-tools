@@ -4,6 +4,7 @@ import { checkUserPermission } from '@/app/actions/rbac'
 import { createClient } from '@/lib/supabase/server'
 import { getOpenAIConfig } from '@/lib/openai/config'
 import { retry, RetryConfigs } from '@/lib/retry'
+import { validateGeneratedContent } from '@/lib/seo-validation'
 
 const OPENAI_TIMEOUT_MS = 30_000
 
@@ -105,6 +106,7 @@ type EventSeoContentResult = {
     imageAltText: string | null
     faqs: { question: string; answer: string }[]
     cancellationPolicy: string | null
+    accessibilityNotes: string | null
   }
 } | {
   success: false
@@ -244,7 +246,7 @@ export async function generateEventSeoContent(input: EventSeoContentInput): Prom
         {
           role: 'system',
           content:
-            'You are an expert hospitality marketer for "The Anchor", a popular pub and venue near Heathrow in Sipson, West Drayton. Your goal is to craft SEO-friendly, persuasive, and atmosphere-focused website content for events. Keep outputs concise, engaging, and aligned with UK English. Use only the supplied event fields and never invent venue, price, capacity, time, performer, or category details. If a field is missing, leave the corresponding output empty. Focus on driving ticket sales and reservations.',
+            'You are an expert hospitality marketer for "The Anchor", a popular pub and venue near Heathrow in Stanwell Moor, Surrey. Your goal is to craft SEO-friendly, persuasive, and atmosphere-focused website content for events. Write detailed, engaging content aligned with UK English. Longer descriptions rank better and help customers decide — never sacrifice depth for brevity. Use only the supplied event fields and the VENUE CONTEXT block for facts. Never invent venue, price, capacity, time, performer, or category details beyond what is provided. If a field is missing, leave the corresponding output empty. Focus on driving ticket sales and reservations.',
         },
         {
           role: 'user',
@@ -256,12 +258,30 @@ export async function generateEventSeoContent(input: EventSeoContentInput): Prom
             '- Build urgency to secure tickets or book a table immediately.',
             '- Use persuasive language that drives conversion.',
             '- If booking_url is provided, reference booking explicitly but do not include raw URLs.',
-            '- **Long Description SEO**: Generate a comprehensive description (300+ words) formatted in plain text (no markdown) but structured logically with paragraphs. Focus on ranking for relevant keywords by covering the atmosphere, what to expect, and why it is a must-attend.',
+            '- Keep the meta title UNDER 40 characters. The website appends "| The Anchor Stanwell Moor" automatically. Front-load the primary keyword. Example: "Live Music — Jessica Lovelock" (32 chars).',
+            '- Keep the meta description under 155 characters, focusing on the hook and call to action.',
+            '- **Long Description SEO**: Generate a rich, informative description of MINIMUM 450 words (aim for 500) formatted in plain text (no markdown). Structure as 5-6 distinct paragraphs separated by double newlines (\\n\\n):',
+            '  1. Opening hook with event name, date, and primary keywords (70-80 words)',
+            '  2. What to expect — the experience, sounds, energy, and vibe (80-90 words)',
+            '  3. Performer or entertainment details — who they are, their style, why they are worth seeing (80-90 words)',
+            '  4. Food, drink, and venue atmosphere — use the VENUE CONTEXT facts below (70-80 words)',
+            '  5. Practical info and booking — why to reserve, capacity hints, pricing context (70-80 words)',
+            '  6. Local context — use VENUE CONTEXT location facts, transport links, nearby areas (70-80 words)',
+            '  Each paragraph must be a complete thought. Do NOT write one long wall of text. No single paragraph over 120 words.',
             '- Do NOT use Markdown formatting (no bold **, italics _, or links []()). Return clean plain text.',
             '- Do NOT invent missing details; if absent, leave that field blank.',
-            '- Keep the meta description under 155 characters, focusing on the hook and call to action.',
             '- Provide 3-5 punchy highlights and 6-10 targeted keyword phrases.',
             '- **Slug**: Generate a URL-friendly slug (lowercase, alphanumeric, hyphens only, no spaces or special chars) based on the event name and date. Example: "six-nations-2026-england-vs-wales".',
+            '',
+            'VENUE CONTEXT (use these verified facts only — do not invent others):',
+            '- Venue name: The Anchor',
+            '- Address: Horton Road, Stanwell Moor, Surrey, TW19 6AQ',
+            '- Phone: 01753 682707',
+            '- Area: near Heathrow Airport, bordering West Drayton and Staines-upon-Thames',
+            '- Transport: 7 minutes from Heathrow Terminal 5, free parking (20 spaces)',
+            '- Ground-floor venue with step-free access from car park',
+            '- Dog and family friendly',
+            '- Kitchen serves pizza on event nights',
             '',
             ...(keywordContext ? [
               'KEYWORD PLACEMENT RULES:',
@@ -287,9 +307,11 @@ export async function generateEventSeoContent(input: EventSeoContentInput): Prom
             '- If paid/ticketed: "Tickets are non-refundable but may be transferred to another person. Please contact us at least 24 hours before the event for any changes."',
             '- Return null if unsure.',
             '',
+            'ACCESSIBILITY NOTES: Using ONLY the venue facts from VENUE CONTEXT above, write 1-2 sentences about accessibility. Mention step-free access and the phone number for specific requirements. Do NOT claim features not listed in VENUE CONTEXT. Example: "The Anchor is a ground-floor venue with step-free access from the car park. Please call 01753 682707 to discuss any specific accessibility requirements."',
+            '',
             summary,
             '',
-            'Return JSON with keys metaTitle, metaDescription, shortDescription, longDescription, highlights (string array), keywords (string array), slug (string), imageAltText (string), faqs (array of {question, answer}), cancellationPolicy (string or null). All fields must be strings (or arrays); use "" for missing values.',
+            'Return JSON with keys metaTitle, metaDescription, shortDescription, longDescription, highlights (string array), keywords (string array), slug (string), imageAltText (string), faqs (array of {question, answer}), cancellationPolicy (string or null), accessibilityNotes (string or null). All fields must be strings (or arrays); use "" for missing values.',
           ].join('\n'),
         },
       ],
@@ -297,6 +319,7 @@ export async function generateEventSeoContent(input: EventSeoContentInput): Prom
         type: 'json_schema',
         json_schema: {
           name: 'event_seo_content',
+          strict: true,
           schema: {
             type: 'object',
             properties: {
@@ -307,14 +330,10 @@ export async function generateEventSeoContent(input: EventSeoContentInput): Prom
               highlights: {
                 type: 'array',
                 items: { type: 'string' },
-                minItems: 3,
-                maxItems: 6,
               },
               keywords: {
                 type: 'array',
                 items: { type: 'string' },
-                minItems: 6,
-                maxItems: 12,
               },
               slug: { type: ['string', 'null'] },
               imageAltText: { type: ['string', 'null'] },
@@ -329,17 +348,16 @@ export async function generateEventSeoContent(input: EventSeoContentInput): Prom
                   required: ['question', 'answer'],
                   additionalProperties: false,
                 },
-                minItems: 3,
-                maxItems: 5,
               },
               cancellationPolicy: { type: ['string', 'null'] },
+              accessibilityNotes: { type: ['string', 'null'] },
             },
-            required: ['metaTitle', 'metaDescription', 'shortDescription', 'longDescription', 'highlights', 'keywords', 'slug', 'imageAltText', 'faqs'],
+            required: ['metaTitle', 'metaDescription', 'shortDescription', 'longDescription', 'highlights', 'keywords', 'slug', 'imageAltText', 'faqs', 'cancellationPolicy', 'accessibilityNotes'],
             additionalProperties: false,
           },
         },
       },
-      max_tokens: 3500,
+      max_tokens: 4500,
     })
   } catch (err) {
     if (err instanceof DOMException && err.name === 'AbortError') {
@@ -379,12 +397,101 @@ export async function generateEventSeoContent(input: EventSeoContentInput): Prom
     imageAltText: string | null
     faqs: { question: string; answer: string }[]
     cancellationPolicy: string | null
+    accessibilityNotes: string | null
   }
   try {
     parsed = JSON.parse(typeof content === 'string' ? content : JSON.stringify(content))
   } catch (error) {
     console.error('Failed to parse SEO content response', error)
     return { success: false, error: 'Unable to parse AI response.' }
+  }
+
+  // --- Post-generation validation with single retry ---
+  const validation = validateGeneratedContent(parsed)
+
+  if (!validation.passed) {
+    console.warn('SEO content validation failed, retrying:', validation.issues)
+
+    try {
+      const retryResponse = await callOpenAI(baseUrl, apiKey, {
+        model: eventsModel,
+        temperature: 0.5, // lower temperature for corrective retry
+        messages: [
+          {
+            role: 'system',
+            content:
+              'You are an expert hospitality marketer for "The Anchor", a popular pub and venue near Heathrow in Stanwell Moor, Surrey. Your goal is to craft SEO-friendly, persuasive, and atmosphere-focused website content for events. Write detailed, engaging content aligned with UK English. Longer descriptions rank better and help customers decide — never sacrifice depth for brevity. Use only the supplied event fields and the VENUE CONTEXT block for facts. Never invent venue, price, capacity, time, performer, or category details beyond what is provided. If a field is missing, leave the corresponding output empty. Focus on driving ticket sales and reservations.',
+          },
+          {
+            role: 'user',
+            content: summary,
+          },
+          {
+            role: 'assistant',
+            content: JSON.stringify(parsed),
+          },
+          {
+            role: 'user',
+            content: `The response has these issues — fix them and return the complete JSON again:\n${validation.issues.map(i => `- ${i}`).join('\n')}`,
+          },
+        ],
+        response_format: {
+          type: 'json_schema',
+          json_schema: {
+            name: 'event_seo_content',
+            strict: true,
+            schema: {
+              type: 'object',
+              properties: {
+                metaTitle: { type: ['string', 'null'] },
+                metaDescription: { type: ['string', 'null'] },
+                shortDescription: { type: ['string', 'null'] },
+                longDescription: { type: ['string', 'null'] },
+                highlights: { type: 'array', items: { type: 'string' } },
+                keywords: { type: 'array', items: { type: 'string' } },
+                slug: { type: ['string', 'null'] },
+                imageAltText: { type: ['string', 'null'] },
+                faqs: {
+                  type: 'array',
+                  items: {
+                    type: 'object',
+                    properties: { question: { type: 'string' }, answer: { type: 'string' } },
+                    required: ['question', 'answer'],
+                    additionalProperties: false,
+                  },
+                },
+                cancellationPolicy: { type: ['string', 'null'] },
+                accessibilityNotes: { type: ['string', 'null'] },
+              },
+              required: ['metaTitle', 'metaDescription', 'shortDescription', 'longDescription', 'highlights', 'keywords', 'slug', 'imageAltText', 'faqs', 'cancellationPolicy', 'accessibilityNotes'],
+              additionalProperties: false,
+            },
+          },
+        },
+        max_tokens: 4500,
+      })
+
+      if (retryResponse.ok) {
+        const retryPayload = await retryResponse.json()
+        const retryContent = retryPayload?.choices?.[0]?.message?.content
+        if (retryContent) {
+          try {
+            const retryParsed = JSON.parse(typeof retryContent === 'string' ? retryContent : JSON.stringify(retryContent))
+            const retryValidation = validateGeneratedContent(retryParsed)
+            if (retryValidation.passed) {
+              parsed = retryParsed
+              console.warn('SEO content retry succeeded')
+            } else {
+              console.warn('SEO content retry still has issues, using original:', retryValidation.issues)
+            }
+          } catch {
+            console.warn('Failed to parse retry response, using original')
+          }
+        }
+      }
+    } catch (retryErr) {
+      console.warn('SEO content retry failed, using original:', retryErr)
+    }
   }
 
   return {
@@ -400,6 +507,7 @@ export async function generateEventSeoContent(input: EventSeoContentInput): Prom
       imageAltText: parsed.imageAltText || null,
       faqs: Array.isArray(parsed.faqs) ? parsed.faqs : [],
       cancellationPolicy: parsed.cancellationPolicy || null,
+      accessibilityNotes: parsed.accessibilityNotes || null,
     },
   }
 }
