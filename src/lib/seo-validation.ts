@@ -6,9 +6,25 @@
  */
 
 /**
+ * Check if a phrase appears in text using word-boundary matching.
+ * Handles hyphen/space equivalence and punctuation boundaries.
+ * Returns false for partial word matches (e.g. "art" does NOT match "start").
+ */
+function phraseMatchesText(normalised: string, phrase: string): boolean {
+  const escaped = phrase.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const regex = new RegExp(`(?:^|[\\s,.!?;:'"()])${escaped}(?:[\\s,.!?;:'"()]|$)`, 'i')
+  return regex.test(` ${normalised} `)
+}
+
+/**
  * Check if text contains a keyword using word-boundary matching.
  * Handles hyphen/space equivalence and punctuation boundaries.
  * Returns false for partial word matches (e.g. "art" does NOT match "start").
+ *
+ * For long-tail keywords (3+ words), also tries progressively shorter prefixes
+ * down to 2 words. This handles search-intent modifiers like "near me", "tonight",
+ * "this weekend" that wouldn't appear verbatim in content.
+ * Example: "live music tonight near me" matches if text contains "live music".
  */
 export function containsKeyword(text: string, keywords: string[]): boolean {
   if (!text || keywords.length === 0) return false
@@ -16,9 +32,20 @@ export function containsKeyword(text: string, keywords: string[]): boolean {
   return keywords.some(kw => {
     const normKw = kw.toLowerCase().replace(/-/g, ' ').trim()
     if (!normKw) return false
-    const escaped = normKw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-    const regex = new RegExp(`(?:^|[\\s,.!?;:'"()])${escaped}(?:[\\s,.!?;:'"()]|$)`, 'i')
-    return regex.test(` ${normalised} `)
+
+    // Try exact phrase first
+    if (phraseMatchesText(normalised, normKw)) return true
+
+    // For multi-word keywords, try progressively shorter prefixes (down to 2 words)
+    const words = normKw.split(/\s+/)
+    if (words.length >= 3) {
+      for (let len = words.length - 1; len >= 2; len--) {
+        const prefix = words.slice(0, len).join(' ')
+        if (phraseMatchesText(normalised, prefix)) return true
+      }
+    }
+
+    return false
   })
 }
 
@@ -110,8 +137,8 @@ export function validateGeneratedContent(parsed: {
   }
 
   const wordCount = countWords(parsed.longDescription)
-  if (wordCount < 400) {
-    issues.push(`Long description is ${wordCount} words, must be at least 400`)
+  if (wordCount < 450) {
+    issues.push(`Long description is ${wordCount} words, must be at least 450`)
   }
 
   const paragraphCount = countParagraphs(parsed.longDescription)

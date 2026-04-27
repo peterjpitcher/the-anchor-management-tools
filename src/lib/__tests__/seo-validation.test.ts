@@ -65,6 +65,23 @@ describe('containsKeyword', () => {
   it('returns false when no keywords match', () => {
     expect(containsKeyword('pizza and drinks', ['live music', 'quiz night'])).toBe(false)
   })
+
+  it('matches long-tail keyword via prefix — "live music tonight near me" matches text with "live music"', () => {
+    expect(containsKeyword('enjoy live music at the pub', ['live music tonight near me'])).toBe(true)
+  })
+
+  it('matches long-tail keyword via intermediate prefix', () => {
+    expect(containsKeyword('live music tonight at The Anchor', ['live music tonight near me'])).toBe(true)
+  })
+
+  it('does NOT match long-tail keyword when even 2-word prefix is absent', () => {
+    expect(containsKeyword('great food and drinks', ['live music tonight near me'])).toBe(false)
+  })
+
+  it('does NOT try prefix matching for 2-word keywords', () => {
+    // "live music" is only 2 words, so no prefix shortening happens — must match exactly
+    expect(containsKeyword('we have live entertainment', ['live music'])).toBe(false)
+  })
 })
 
 describe('countKeywordMatches', () => {
@@ -217,7 +234,7 @@ describe('validateGeneratedContent', () => {
     expect(result.issues[0]).toContain('Meta description')
   })
 
-  it('fails for long description under 400 words', () => {
+  it('fails for long description under 450 words', () => {
     const result = validateGeneratedContent({
       ...validContent,
       longDescription: 'Short text with only a few words here.',
