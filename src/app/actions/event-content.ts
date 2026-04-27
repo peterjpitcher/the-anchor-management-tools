@@ -6,7 +6,7 @@ import { getOpenAIConfig } from '@/lib/openai/config'
 import { retry, RetryConfigs } from '@/lib/retry'
 import { validateGeneratedContent } from '@/lib/seo-validation'
 
-const OPENAI_TIMEOUT_MS = 30_000
+const OPENAI_TIMEOUT_MS = 60_000
 
 function openAIErrorMessage(status: number, body: string): string {
   let detail = ''
