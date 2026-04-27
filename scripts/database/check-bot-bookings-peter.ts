@@ -90,4 +90,4 @@ async function main() {
   console.log(`table_booking_idempotency: ${idempErr ? idempErr.message : (idempotency?.length || 0)} records`)
 }
 
-main().catch(console.error)
+main().catch((err) => { console.error(err); process.exitCode = 1 })

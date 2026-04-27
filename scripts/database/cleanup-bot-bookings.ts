@@ -179,4 +179,4 @@ async function main() {
   console.log(`Tudor Thomas kept booking (TB-8909D14C): ${tudorKept ? `${tudorKept.status} ✓` : 'MISSING ✗'}`)
 }
 
-main().catch(console.error)
+main().catch((err) => { console.error(err); process.exitCode = 1 })

@@ -13,10 +13,24 @@ vi.mock('@/lib/events/waitlist-offers', () => ({
   sendWaitlistOfferSms: vi.fn(),
 }))
 
+vi.mock('@/lib/analytics/events', () => ({
+  recordAnalyticsEvent: vi.fn(),
+}))
+
 import { authorizeCronRequest } from '@/lib/cron-auth'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createNextWaitlistOffer, sendWaitlistOfferSms } from '@/lib/events/waitlist-offers'
 import { GET } from '@/app/api/cron/event-waitlist-offers/route'
+
+function buildEventsSelectMock(bookingsEnabled = true) {
+  const maybeSingle = vi.fn().mockResolvedValue({
+    data: { bookings_enabled: bookingsEnabled },
+    error: null,
+  })
+  const eq = vi.fn().mockReturnValue({ maybeSingle })
+  const select = vi.fn().mockReturnValue({ eq })
+  return { select }
+}
 
 describe('event waitlist offers route error payloads', () => {
   beforeEach(() => {
@@ -88,6 +102,9 @@ describe('event waitlist offers route error payloads', () => {
         }
         if (table === 'waitlist_offers') {
           return { update: offerCleanupUpdate }
+        }
+        if (table === 'events') {
+          return buildEventsSelectMock()
         }
         throw new Error(`Unexpected table: ${table}`)
       }),
@@ -165,6 +182,9 @@ describe('event waitlist offers route error payloads', () => {
         if (table === 'booking_holds') {
           return { update: holdCleanupUpdate }
         }
+        if (table === 'events') {
+          return buildEventsSelectMock()
+        }
         throw new Error(`Unexpected table: ${table}`)
       }),
     })
@@ -207,6 +227,9 @@ describe('event waitlist offers route error payloads', () => {
       from: vi.fn((table: string) => {
         if (table === 'waitlist_entries') {
           return { select: queuedSelect }
+        }
+        if (table === 'events') {
+          return buildEventsSelectMock()
         }
         throw new Error(`Unexpected table: ${table}`)
       }),

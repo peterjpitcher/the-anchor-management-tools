@@ -131,4 +131,4 @@ async function main() {
   console.log(`\nCustomer IDs:\n${botCustomerIds.map(id => `  '${id}'`).join(',\n')}`)
 }
 
-main().catch(console.error)
+main().catch((err) => { console.error(err); process.exitCode = 1 })

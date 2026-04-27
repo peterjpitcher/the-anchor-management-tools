@@ -25,6 +25,20 @@ vi.mock('@/lib/email/emailService', () => ({
   sendEmail: vi.fn(),
 }))
 
+vi.mock('@/lib/rate-limit-server', () => ({
+  checkRateLimit: vi.fn(),
+}))
+
+vi.mock('@/services/employees', async () => {
+  const actual = await vi.importActual<typeof import('@/services/employees')>('@/services/employees')
+  return {
+    ...actual,
+    EmployeeService: {
+      addEmployeeAttachment: vi.fn(),
+    },
+  }
+})
+
 vi.mock('@/lib/dateUtils', async () => {
   const actual = await vi.importActual<typeof import('@/lib/dateUtils')>('@/lib/dateUtils')
   return {
@@ -37,14 +51,15 @@ import { checkUserPermission } from '@/app/actions/rbac'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getCurrentUser } from '@/lib/audit-helpers'
 import { logAuditEvent } from '@/app/actions/audit'
-import { saveEmployeeAttachmentRecord } from '@/app/actions/employeeActions'
+import { EmployeeService } from '@/services/employees'
+import { addEmployeeAttachment } from '@/app/actions/employeeActions'
 
 const mockedPermission = checkUserPermission as unknown as Mock
 const mockedCreateAdminClient = createAdminClient as unknown as Mock
 const mockedGetCurrentUser = getCurrentUser as unknown as Mock
 const mockedLogAuditEvent = logAuditEvent as unknown as Mock
 
-describe('saveEmployeeAttachmentRecord side-effect safety', () => {
+describe('addEmployeeAttachment side-effect safety', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mockedPermission.mockResolvedValue(true)
@@ -57,29 +72,9 @@ describe('saveEmployeeAttachmentRecord side-effect safety', () => {
     const storageRemove = vi.fn().mockResolvedValue({ error: null })
 
     const client = {
-      from: vi.fn((table: string) => {
-        if (table === 'employee_attachments') {
-          return {
-            insert: vi.fn().mockResolvedValue({ error: null }),
-          }
-        }
-
-        if (table === 'attachment_categories') {
-          return {
-            select: vi.fn(() => {
-              throw new Error('side-effect lookup failed')
-            }),
-          }
-        }
-
-        if (table === 'employees') {
-          return {
-            select: vi.fn(() => ({ eq: vi.fn().mockReturnValue({ maybeSingle: vi.fn() }) })),
-          }
-        }
-
-        throw new Error(`Unexpected table: ${table}`)
-      }),
+      from: vi.fn(() => ({
+        select: vi.fn(() => ({ eq: vi.fn().mockReturnValue({ maybeSingle: vi.fn() }) })),
+      })),
       storage: {
         from: vi.fn().mockReturnValue({
           remove: storageRemove,
@@ -90,16 +85,20 @@ describe('saveEmployeeAttachmentRecord side-effect safety', () => {
 
     mockedCreateAdminClient.mockReturnValue(client)
 
+    // Mock EmployeeService.addEmployeeAttachment to succeed
+    ;(EmployeeService.addEmployeeAttachment as unknown as Mock).mockResolvedValue({
+      storagePath: '3f24f3f6-26bb-4a53-a29a-07b6acffad4f/doc.pdf',
+    })
+
+    const file = new File(['test content'], 'doc.pdf', { type: 'application/pdf' })
+
     const formData = new FormData()
     formData.set('employee_id', '3f24f3f6-26bb-4a53-a29a-07b6acffad4f')
     formData.set('category_id', '8caa75bc-9f5b-4421-b8e8-8748b92276d2')
-    formData.set('storage_path', '3f24f3f6-26bb-4a53-a29a-07b6acffad4f/doc.pdf')
-    formData.set('file_name', 'doc.pdf')
-    formData.set('mime_type', 'application/pdf')
-    formData.set('file_size_bytes', '1024')
+    formData.set('attachment_file', file)
     formData.set('description', 'employee contract')
 
-    const result = await saveEmployeeAttachmentRecord({ type: 'idle' }, formData)
+    const result = await addEmployeeAttachment({ type: 'idle' }, formData)
 
     expect(result).toEqual({ type: 'success', message: 'Attachment uploaded successfully!' })
     expect(storageRemove).not.toHaveBeenCalled()
