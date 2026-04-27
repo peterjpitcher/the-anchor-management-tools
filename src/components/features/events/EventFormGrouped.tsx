@@ -448,6 +448,7 @@ export function EventFormGrouped({ event, categories, onSubmit, onCancel, active
         setFaqsModified(true)
       }
       if (result.data.cancellationPolicy) setCancellationPolicy(result.data.cancellationPolicy)
+      if (result.data.accessibilityNotes) setAccessibilityNotes(result.data.accessibilityNotes)
 
       toast.success('SEO content drafted')
     } catch (error) {
@@ -968,11 +969,11 @@ export function EventFormGrouped({ event, categories, onSubmit, onCancel, active
                   id="meta_title"
                   value={metaTitle}
                   onChange={(e) => setMetaTitle(e.target.value)}
-                  maxLength={60}
+                  maxLength={40}
                   placeholder="SEO page title"
                   fullWidth
                 />
-                <p className="mt-1 text-xs text-gray-500">{metaTitle.length}/60 characters</p>
+                <p className="mt-1 text-xs text-gray-500">{metaTitle.length}/40 characters (site adds location suffix)</p>
               </div>
             </div>
 
@@ -1131,8 +1132,10 @@ export function EventFormGrouped({ event, categories, onSubmit, onCancel, active
             slug={slug}
             highlights={highlights}
             primaryKeywords={parseKeywords(primaryKeywords)}
+            secondaryKeywords={parseKeywords(secondaryKeywords)}
+            localSeoKeywords={parseKeywords(localSeoKeywords)}
             imageAltText={imageAltText}
-            faqCount={faqs.length}
+            faqs={faqs.map(f => ({ question: f.question || '', answer: f.answer || '' }))}
             accessibilityNotes={accessibilityNotes}
           />
         </div>

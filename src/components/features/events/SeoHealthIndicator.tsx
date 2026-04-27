@@ -1,6 +1,14 @@
 'use client'
 
 import { useMemo } from 'react'
+import {
+  containsKeyword,
+  keywordCoverage,
+  countWords,
+  getFirstNWords,
+  countParagraphs,
+  countValidFaqs,
+} from '@/lib/seo-validation'
 
 interface SeoHealthProps {
   metaTitle: string
@@ -9,9 +17,11 @@ interface SeoHealthProps {
   longDescription: string
   slug: string
   highlights: string          // comma-separated string
-  primaryKeywords: string[]   // parsed keyword array
+  primaryKeywords: string[]
+  secondaryKeywords: string[]
+  localSeoKeywords: string[]
   imageAltText: string
-  faqCount: number
+  faqs: { question: string; answer: string }[]
   accessibilityNotes: string
 }
 
@@ -19,22 +29,6 @@ interface SeoCheck {
   label: string
   passed: boolean
   points: number
-}
-
-function containsKeyword(text: string, keywords: string[]): boolean {
-  if (!text || keywords.length === 0) return false
-  const lower = text.toLowerCase()
-  return keywords.some(kw => lower.includes(kw.toLowerCase()))
-}
-
-function countWords(text: string): number {
-  if (!text) return 0
-  return text.trim().split(/\s+/).filter(Boolean).length
-}
-
-function getFirst100Words(text: string): string {
-  if (!text) return ''
-  return text.trim().split(/\s+/).slice(0, 100).join(' ')
 }
 
 export function SeoHealthIndicator({
@@ -45,8 +39,10 @@ export function SeoHealthIndicator({
   slug,
   highlights,
   primaryKeywords,
+  secondaryKeywords,
+  localSeoKeywords,
   imageAltText,
-  faqCount,
+  faqs,
   accessibilityNotes,
 }: SeoHealthProps) {
   const checks = useMemo((): SeoCheck[] => {
@@ -56,48 +52,63 @@ export function SeoHealthIndicator({
 
     return [
       {
-        label: 'Meta title present and under 60 chars',
-        passed: !!metaTitle && metaTitle.length > 0 && metaTitle.length <= 60,
-        points: 10,
+        label: 'Meta title present and under 40 chars',
+        passed: !!metaTitle && metaTitle.length > 0 && metaTitle.length <= 40,
+        points: 8,
       },
       {
-        label: 'Meta description present and under 160 chars',
-        passed: !!metaDescription && metaDescription.length > 0 && metaDescription.length <= 160,
-        points: 10,
+        label: 'Meta description present and under 155 chars',
+        passed: !!metaDescription && metaDescription.length > 0 && metaDescription.length <= 155,
+        points: 7,
       },
       {
         label: 'Primary keyword in meta title',
         passed: containsKeyword(metaTitle, primaryKeywords),
-        points: 10,
+        points: 8,
       },
       {
         label: 'Primary keyword in meta description',
         passed: containsKeyword(metaDescription, primaryKeywords),
-        points: 10,
+        points: 7,
       },
       {
-        label: 'Short description present',
-        passed: !!shortDescription && shortDescription.trim().length > 0,
+        label: 'Short description 120\u2013300 chars',
+        passed: !!shortDescription && shortDescription.trim().length >= 120 && shortDescription.trim().length <= 300,
         points: 5,
       },
       {
-        label: 'Long description present and 300+ words',
-        passed: !!longDescription && countWords(longDescription) >= 300,
+        label: 'Long description 450+ words',
+        passed: countWords(longDescription) >= 450,
         points: 10,
       },
       {
-        label: 'Primary keyword in first 100 words of long description',
-        passed: containsKeyword(getFirst100Words(longDescription), primaryKeywords),
-        points: 10,
+        label: 'Long description has 4+ paragraphs',
+        passed: countParagraphs(longDescription) >= 4,
+        points: 5,
       },
       {
-        label: 'At least 3 FAQs present',
-        passed: faqCount >= 3,
-        points: 10,
+        label: 'Primary keyword in first 100 words',
+        passed: containsKeyword(getFirstNWords(longDescription, 100), primaryKeywords),
+        points: 8,
       },
       {
-        label: 'Image alt text present',
-        passed: !!imageAltText && imageAltText.trim().length > 0,
+        label: 'Secondary keywords in long description (2+)',
+        passed: keywordCoverage(longDescription, secondaryKeywords, 2),
+        points: 8,
+      },
+      {
+        label: 'Local SEO keywords in long description (2+)',
+        passed: keywordCoverage(longDescription, localSeoKeywords, 2),
+        points: 7,
+      },
+      {
+        label: 'At least 3 FAQs with substantive answers',
+        passed: countValidFaqs(faqs) >= 3,
+        points: 7,
+      },
+      {
+        label: 'Image alt text contains primary keyword',
+        passed: !!imageAltText && imageAltText.trim().length > 0 && containsKeyword(imageAltText, primaryKeywords),
         points: 5,
       },
       {
@@ -106,7 +117,7 @@ export function SeoHealthIndicator({
         points: 5,
       },
       {
-        label: 'Slug is keyword-rich (contains primary keyword)',
+        label: 'Slug contains primary keyword',
         passed: containsKeyword(slug.replace(/-/g, ' '), primaryKeywords),
         points: 5,
       },
@@ -124,8 +135,10 @@ export function SeoHealthIndicator({
     slug,
     highlights,
     primaryKeywords,
+    secondaryKeywords,
+    localSeoKeywords,
     imageAltText,
-    faqCount,
+    faqs,
     accessibilityNotes,
   ])
 
