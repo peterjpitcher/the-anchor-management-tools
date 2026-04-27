@@ -54,4 +54,4 @@ async function main() {
   console.log('\nDone. SMS will now show "Fri 24 Apr, 8:00 pm"')
 }
 
-main().catch(console.error)
+main().catch((err) => { console.error(err); process.exitCode = 1 })

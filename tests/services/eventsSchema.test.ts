@@ -75,7 +75,7 @@ describe('getPublishValidationIssues', () => {
       price: 0,
     })
 
-    expect(issues).toEqual([])
+    expect(issues).toEqual({ errors: [], warnings: [] })
   })
 
   it('requires key publish fields for non-draft events', () => {
@@ -91,10 +91,10 @@ describe('getPublishValidationIssues', () => {
       price: 0,
     })
 
-    expect(issues).toContain('URL slug')
-    expect(issues).toContain('short description')
-    expect(issues).toContain('event image')
-    expect(issues).toContain('ticket price (or mark event as free)')
+    expect(issues.errors).toContain('URL slug')
+    expect(issues.errors).toContain('short description')
+    expect(issues.errors).toContain('event image')
+    expect(issues.errors).toContain('ticket price (or mark event as free)')
   })
 
   it('passes with complete publish-ready content', () => {
@@ -108,8 +108,9 @@ describe('getPublishValidationIssues', () => {
       hero_image_url: 'https://example.com/quiz.jpg',
       is_free: true,
       price: 0,
+      booking_mode: 'table_bookings',
     })
 
-    expect(issues).toEqual([])
+    expect(issues).toEqual({ errors: [], warnings: [] })
   })
 })

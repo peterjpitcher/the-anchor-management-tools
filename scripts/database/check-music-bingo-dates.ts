@@ -121,4 +121,4 @@ async function main() {
   console.log(JSON.stringify(apr22Events, null, 2))
 }
 
-main().catch(console.error)
+main().catch((err) => { console.error(err); process.exitCode = 1 })

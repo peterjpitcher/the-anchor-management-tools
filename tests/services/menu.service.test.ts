@@ -10,10 +10,12 @@ vi.mock('@/lib/supabase/admin', () => ({
 }))
 
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { MenuService } from '@/services/menu'
 import { MenuSettingsService } from '@/services/menu-settings'
 
 const mockedCreateClient = createClient as unknown as Mock
+const mockedCreateAdminClient = createAdminClient as unknown as Mock
 
 function buildDeleteClient(table: string) {
   const maybeSingle = vi.fn().mockResolvedValue({ data: null, error: null })
@@ -92,7 +94,7 @@ describe('MenuService delete guards', () => {
       categoryMap: new Map([['food', 'cat-1']]),
     })
 
-    mockedCreateClient.mockResolvedValue({
+    mockedCreateAdminClient.mockReturnValue({
       rpc: vi.fn().mockResolvedValue({
         data: null,
         error: { message: 'Dish not found' },
@@ -107,6 +109,6 @@ describe('MenuService delete guards', () => {
         is_sunday_lunch: false,
         assignments: [{ menu_code: 'main', category_code: 'food', sort_order: 0 }],
       })
-    ).rejects.toThrow('Failed to update dish')
+    ).rejects.toThrow('Dish not found')
   })
 })

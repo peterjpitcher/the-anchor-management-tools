@@ -120,7 +120,9 @@ describe('additional route idempotency persist fail-closed guards', () => {
     const response = await privateBookingEnquiryPost(request as any)
     const payload = await response.json()
 
-    expect(response.status).toBe(201)
+    // Route returns 202 when booking is created but idempotency persistence fails
+    // (avoids 500 which would cause client retries and duplicate bookings)
+    expect(response.status).toBe(202)
     expect(payload).toMatchObject({
       success: true,
       booking_id: 'private-booking-1',

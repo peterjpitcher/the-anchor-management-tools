@@ -754,4 +754,4 @@ async function run() {
   console.log('\nDone! DB triggers will auto-recalculate portion_cost and gp_pct.');
 }
 
-run().catch(console.error);
+run().catch((err) => { console.error(err); process.exitCode = 1 });
