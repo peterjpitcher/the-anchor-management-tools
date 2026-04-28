@@ -175,11 +175,15 @@ export default async function TablePaymentPage({ params, searchParams }: TablePa
 
     paypalOrderId = paypalOrder.orderId
 
+    // Persist the order ID only. Deliberately not writing deposit_amount —
+    // the canonical reader (preview.totalAmount derives from
+    // getCanonicalDeposit) is the source of truth, and capture-time is when
+    // we lock the actually-charged amount via deposit_amount_locked.
+    // Spec §7.3, §7.4, §8.3.
     await supabase
       .from('table_bookings')
       .update({
         paypal_deposit_order_id: paypalOrderId,
-        deposit_amount: preview.totalAmount,
       })
       .eq('id', preview.tableBookingId)
 
@@ -223,6 +227,37 @@ export default async function TablePaymentPage({ params, searchParams }: TablePa
         return { success: false, error: 'Payment verification failed — please contact us.' }
       }
 
+      // Parse the actually-captured GBP amount from PayPal's response. This
+      // is the authoritative figure. Fail closed if missing/unparseable —
+      // do NOT silently fall back to preview.totalAmount or
+      // booking.deposit_amount; that would let stale amounts get locked.
+      // Spec §6, §7.4, §8.3.
+      const rawAmount = capture.amount
+      const lockedAmountGbp =
+        rawAmount === undefined || rawAmount === null
+          ? null
+          : (() => {
+              const n = typeof rawAmount === 'number' ? rawAmount : Number(rawAmount)
+              return Number.isFinite(n) && n > 0 ? n : null
+            })()
+
+      if (lockedAmountGbp === null) {
+        void logAuditEvent({
+          operation_type: 'payment.capture_amount_unparseable',
+          resource_type: 'table_booking',
+          resource_id: bookingIdForCapture,
+          operation_status: 'failure',
+          additional_info: {
+            orderId: captureOrderId,
+            transactionId: capture.transactionId,
+            rawAmount: String(rawAmount ?? 'null'),
+            action_needed:
+              'PayPal capture succeeded but the captured amount was missing or unparseable — manual reconciliation required',
+          },
+        })
+        return { success: false, error: 'Payment captured but amount could not be verified. Please contact us; do not retry.' }
+      }
+
       const { error: updateError } = await db
         .from('table_bookings')
         .update({
@@ -230,6 +265,7 @@ export default async function TablePaymentPage({ params, searchParams }: TablePa
           status: 'confirmed',
           payment_method: 'paypal',
           paypal_deposit_capture_id: capture.transactionId,
+          deposit_amount_locked: lockedAmountGbp,
         })
         .eq('id', bookingIdForCapture)
 
@@ -257,6 +293,7 @@ export default async function TablePaymentPage({ params, searchParams }: TablePa
         additional_info: {
           transactionId: capture.transactionId,
           amount: capture.amount,
+          lockedAmountGbp,
           bookingId: bookingIdForCapture,
         },
       })
