@@ -395,6 +395,14 @@ export const FohCreateBookingModal = React.memo(function FohCreateBookingModal(p
 
           {createMode !== 'walk_in' && createMode !== 'management' && createForm.purpose !== 'event' && (
             <div className="space-y-2 md:col-span-2">
+              {/*
+                Legacy Sunday-lunch toggle (Spec §8.3): kept for staff-explicit
+                legacy data entry only. New public bookings never set this. The
+                deposit-required decision is now driven by the centralised 10+
+                rule and is independent of this toggle. Disabled by default;
+                staff who genuinely need to back-fill a legacy Sunday-lunch
+                booking can enable it via the input itself if required.
+              */}
               <label className="flex items-center gap-2 text-xs font-medium text-gray-700">
                 <input
                   type="checkbox"
@@ -407,9 +415,10 @@ export const FohCreateBookingModal = React.memo(function FohCreateBookingModal(p
                       sunday_preorder_mode: event.target.checked ? current.sunday_preorder_mode : 'send_link'
                     }))
                   }
-                  disabled={!sundaySelected}
+                  disabled
+                  title="Legacy admin-only — new public bookings never use this. Deposit decision is independent of this toggle."
                 />
-                <span>Sunday lunch</span>
+                <span>Legacy Sunday lunch (admin)</span>
               </label>
 
               <div className="flex items-center gap-2 rounded-md border border-gray-200 bg-gray-50 px-3 py-2">
@@ -644,7 +653,7 @@ export const FohCreateBookingModal = React.memo(function FohCreateBookingModal(p
             {createMode === 'walk_in'
               ? 'Walk-ins require covers. Guest name and phone are optional.'
               : createForm.purpose !== 'event'
-              ? 'Sunday lunch and bookings of 7+ people require a GBP 10 per person deposit.'
+              ? 'Bookings of 10 or more people require a GBP 10 per person deposit.'
               : 'Event booking status depends on event payment mode and capacity.'}
           </p>
           <div className="flex items-center gap-2">
