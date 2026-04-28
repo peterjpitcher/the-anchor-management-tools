@@ -281,7 +281,16 @@ export async function GET(_request: NextRequest) {
   }
 
   const todayConfig = todayHoursData?.schedule_config || [];
-  const sundayLunchConfig = todayConfig.find((c: any) => c.booking_type === 'sunday_lunch');
+  // Sunday food window: post-launch (Spec §6, §8.3 Task 4.4) the
+  // schedule_config entry uses booking_type='food' (slot_type 'sunday_food').
+  // Legacy data still uses booking_type='sunday_lunch'. Accept either so the
+  // API keeps returning a usable Sunday window during the migration.
+  const sundayLunchConfig = todayConfig.find(
+    (c: any) =>
+      c.booking_type === 'sunday_lunch' ||
+      c.slot_type === 'sunday_food' ||
+      (currentDay === 0 && c.booking_type === 'food'),
+  );
 
   // Calculate service information
   const services = {
@@ -344,9 +353,12 @@ export async function GET(_request: NextRequest) {
     },
   };
 
-  // Sunday lunch info
-  let sundaySlots = ['12:00', '12:30', '13:00', '13:30', '14:00'];
-  let lastOrderTime = '14:00';
+  // Sunday food info — fallbacks reflect the new 13:00–18:00 service window
+  // (Spec §6, §8.3 Task 4.4). The DB-driven config above will overwrite these
+  // when present. Last seating is 1 hour before service ends, i.e. 17:00 for
+  // an 18:00 close.
+  let sundaySlots = ['13:00', '13:30', '14:00', '14:30', '15:00', '15:30', '16:00', '16:30', '17:00'];
+  let lastOrderTime = '17:00';
 
   if (sundayLunchConfig && sundayLunchConfig.starts_at && sundayLunchConfig.ends_at) {
     const start = sundayLunchConfig.starts_at.substring(0, 5);
