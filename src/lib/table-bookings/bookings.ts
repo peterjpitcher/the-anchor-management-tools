@@ -15,8 +15,15 @@ import {
 import { logger } from '@/lib/logger'
 import { AuditService } from '@/services/audit'
 import { extractSmsSafetyInfo } from '@/lib/sms/safety-info'
+import {
+  computeDepositAmount,
+  getCanonicalDeposit,
+  LARGE_GROUP_DEPOSIT_PER_PERSON_GBP,
+} from './deposit'
 
-const DEPOSIT_PER_PERSON_GBP = 10
+// Re-exported for backwards-compat in this file. The single source of truth is
+// `LARGE_GROUP_DEPOSIT_PER_PERSON_GBP` in `./deposit.ts`. Spec §7.3, §8.3.
+const DEPOSIT_PER_PERSON_GBP = LARGE_GROUP_DEPOSIT_PER_PERSON_GBP
 
 export type TableBookingState = 'confirmed' | 'pending_payment' | 'blocked'
 
@@ -454,7 +461,10 @@ export async function getTablePaymentPreviewByRawToken(
       booking_date,
       booking_time,
       start_datetime,
-      booking_type
+      booking_type,
+      deposit_amount,
+      deposit_amount_locked,
+      deposit_waived
     `)
     .eq('id', token.table_booking_id)
     .maybeSingle()
@@ -488,7 +498,21 @@ export async function getTablePaymentPreviewByRawToken(
   }
 
   const partySize = Math.max(1, Number(booking.committed_party_size ?? booking.party_size ?? 1))
-  const totalAmount = Number((partySize * DEPOSIT_PER_PERSON_GBP).toFixed(2))
+  // Read canonical deposit (locked > stored > computed). Honours
+  // `deposit_amount_locked` for already-paid bookings and any stored
+  // `deposit_amount` for `pending_payment` rows. Spec §3 step 9, §7.3, §8.3.
+  const canonical = getCanonicalDeposit(
+    {
+      party_size: partySize,
+      deposit_amount: booking.deposit_amount ?? null,
+      deposit_amount_locked: booking.deposit_amount_locked ?? null,
+      status: booking.status ?? null,
+      payment_status: booking.payment_status ?? null,
+      deposit_waived: booking.deposit_waived ?? null,
+    },
+    partySize,
+  )
+  const totalAmount = Number(canonical.toFixed(2))
   if (!Number.isFinite(totalAmount) || totalAmount <= 0) {
     return { state: 'blocked', reason: 'invalid_amount' }
   }
@@ -705,7 +729,9 @@ export async function sendTableBookingCreatedSmsIfAllowed(
   const bookingMoment = formatLondonDateTime(input.bookingResult.start_datetime)
   const partySize = Math.max(1, Number(input.bookingResult.party_size ?? 1))
   const seatWord = partySize === 1 ? 'person' : 'people'
-  const depositAmount = Number((partySize * DEPOSIT_PER_PERSON_GBP).toFixed(2))
+  // Centralised compute. Booking is fresh from the RPC so no prior locked
+  // amount can exist here. Spec §3 step 9, §8.3.
+  const depositAmount = Number(computeDepositAmount(partySize).toFixed(2))
   const depositLabel = new Intl.NumberFormat('en-GB', {
     style: 'currency',
     currency: 'GBP',
