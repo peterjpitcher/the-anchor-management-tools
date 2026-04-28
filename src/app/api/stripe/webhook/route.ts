@@ -492,6 +492,36 @@ async function handleCheckoutSessionCompleted(
     const rpcResult = (rpcResultRaw ?? {}) as TableDepositCompletedResult
 
     if (rpcResult.state === 'confirmed' && rpcResult.table_booking_id && rpcResult.customer_id) {
+      // Lock the actually-captured GBP amount from the Stripe session. Authoritative.
+      // Fail-closed: if `amount_total` is null/unparseable, log + skip the lock
+      // write rather than guess. We deliberately do NOT fall back to
+      // booking.deposit_amount — that's how stale amounts get locked.
+      // Spec §6, §7.4, §8.3.
+      if (typeof amount === 'number' && Number.isFinite(amount) && amount > 0) {
+        const { error: lockError } = await supabase
+          .from('table_bookings')
+          .update({ deposit_amount_locked: amount })
+          .eq('id', rpcResult.table_booking_id)
+        if (lockError) {
+          logger.error('stripe-webhook: failed to lock deposit amount on table booking', {
+            error: new Error(lockError.message),
+            metadata: {
+              tableBookingId: rpcResult.table_booking_id,
+              checkoutSessionId,
+              amount,
+            },
+          })
+        }
+      } else {
+        logger.error('stripe-webhook: missing/invalid amount_total — skipping deposit_amount_locked write', {
+          metadata: {
+            tableBookingId: rpcResult.table_booking_id,
+            checkoutSessionId,
+            rawAmount: amount,
+          },
+        })
+      }
+
       const [analyticsOutcome, smsOutcome] = await Promise.allSettled([
         recordAnalyticsEventSafe(supabase, {
           customerId: rpcResult.customer_id,
