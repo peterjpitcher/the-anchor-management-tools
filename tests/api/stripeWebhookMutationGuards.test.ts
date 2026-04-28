@@ -742,8 +742,10 @@ describe('stripe webhook mutation guards', () => {
   })
 
   // Updated: stripe_customer_id update logic was removed from table_deposit flow.
-  // This test now verifies that a confirmed table deposit with SMS succeeds end-to-end.
-  it('returns 200 and sends SMS on successful table deposit confirmation', async () => {
+  // Walk-in launch (spec §6, §7.4, §8.3): the webhook must persist
+  // deposit_amount_locked = checkout session amount_total / 100 after the
+  // confirm RPC succeeds. This test now also verifies that lock write.
+  it('returns 200, locks deposit_amount, and sends SMS on successful table deposit confirmation', async () => {
     ;(verifyStripeWebhookSignature as unknown as vi.Mock).mockReturnValue(true)
     ;(computeIdempotencyRequestHash as unknown as vi.Mock).mockReturnValue('hash-10')
     ;(claimIdempotencyKey as unknown as vi.Mock).mockResolvedValue({ state: 'claimed' })
@@ -754,6 +756,10 @@ describe('stripe webhook mutation guards', () => {
     })
 
     const webhookLogInsert = vi.fn().mockResolvedValue({ error: null })
+
+    // Capture the deposit_amount_locked update on table_bookings
+    const tableBookingsUpdateEq = vi.fn().mockResolvedValue({ error: null })
+    const tableBookingsUpdate = vi.fn(() => ({ eq: tableBookingsUpdateEq }))
 
     const rpc = vi.fn().mockResolvedValue({
       data: {
@@ -769,6 +775,9 @@ describe('stripe webhook mutation guards', () => {
       from: vi.fn((table: string) => {
         if (table === 'webhook_logs') {
           return { insert: webhookLogInsert }
+        }
+        if (table === 'table_bookings') {
+          return { update: tableBookingsUpdate }
         }
 
         throw new Error(`Unexpected table: ${table}`)
@@ -812,6 +821,13 @@ describe('stripe webhook mutation guards', () => {
     expect(sendTableBookingConfirmedAfterDepositSmsIfAllowed).toHaveBeenCalledTimes(1)
     expect(persistIdempotencyResponse).toHaveBeenCalledTimes(1)
     expect(releaseIdempotencyClaim).not.toHaveBeenCalled()
+
+    // Walk-in launch: must lock the captured GBP amount on the booking.
+    // amount_total = 4000 pence => £40.
+    expect(tableBookingsUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({ deposit_amount_locked: 40 })
+    )
+    expect(tableBookingsUpdateEq).toHaveBeenCalledWith('id', 'table-booking-4')
   })
 
   it('logs fulfilled non-success table card capture SMS outcomes without failing the webhook', async () => {
