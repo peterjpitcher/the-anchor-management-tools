@@ -23,6 +23,7 @@ import {
   suggestWalkInTime,
 } from '../utils'
 import type { FohCreateBookingResponse, FohCreateEventBookingResponse } from '../types'
+import { requiresDeposit as requiresDepositForParty } from '@/lib/table-bookings/deposit'
 
 export type UseFohCreateBookingReturn = {
   isCreateModalOpen: boolean
@@ -226,10 +227,13 @@ export function useFohCreateBooking(input: {
   }, [date, isCreateModalOpen])
 
   // --- Overlapping event prompt acknowledgement guard ---
-  const sundaySelected = isSundayDate(createForm.booking_date)
+  // Deposit-required decision uses the centralised 10+ rule. Legacy
+  // sunday_lunch toggle no longer drives this. Spec §8.3.
   const formRequiresDeposit =
-    createMode !== 'management' && !createForm.is_venue_event &&
-    ((createForm.sunday_lunch && sundaySelected) || (createMode !== 'walk_in' && Number(createForm.party_size) >= 7))
+    createMode !== 'management' && !createForm.is_venue_event && createMode !== 'walk_in' &&
+    requiresDepositForParty(Number(createForm.party_size) || 0, {
+      depositWaived: createForm.waive_deposit === true,
+    })
 
   const sundayMenuByCategory = useMemo(() => {
     return sundayMenuItems.reduce<Record<string, SundayMenuItem[]>>((acc, item) => {
@@ -425,8 +429,10 @@ export function useFohCreateBooking(input: {
       setErrorMessage('Please confirm whether this booking is for the overlapping event.'); return
     }
     const requiresDepositValidation =
-      (!isWalkIn && !isManagement && !createForm.waive_deposit && !createForm.is_venue_event) &&
-      ((createForm.sunday_lunch && sundaySelected) || partySize >= 7)
+      (!isWalkIn && !isManagement && !createForm.is_venue_event) &&
+      requiresDepositForParty(partySize, {
+        depositWaived: createForm.waive_deposit === true,
+      })
     if (requiresDepositValidation && !createForm.sunday_deposit_method) {
       setErrorMessage('Choose whether the deposit was taken in cash or should be sent by payment link.'); return
     }
@@ -453,7 +459,7 @@ export function useFohCreateBooking(input: {
           date: bookingDate, time: effectiveBookingTime, party_size: partySize,
           purpose: createForm.purpose === 'drinks' ? 'drinks' : 'food', notes: createForm.notes || undefined,
           sunday_lunch: isManagement ? undefined : createForm.sunday_lunch,
-          sunday_deposit_method: (!isWalkIn && !isManagement && !createForm.waive_deposit && !createForm.is_venue_event && (createForm.sunday_lunch || partySize >= 7)) ? createForm.sunday_deposit_method : undefined,
+          sunday_deposit_method: (!isWalkIn && !isManagement && !createForm.is_venue_event && requiresDepositForParty(partySize, { depositWaived: createForm.waive_deposit === true })) ? createForm.sunday_deposit_method : undefined,
           sunday_preorder_mode: (!isManagement && createForm.sunday_lunch) ? createForm.sunday_preorder_mode : undefined,
           sunday_preorder_items: (!isManagement && sundayPreorderItems.length > 0) ? sundayPreorderItems : undefined,
           waive_deposit: createForm.waive_deposit || undefined, is_venue_event: createForm.is_venue_event || undefined
