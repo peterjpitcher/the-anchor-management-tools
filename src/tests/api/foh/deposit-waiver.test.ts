@@ -30,11 +30,13 @@ function makeRequest(body: object) {
   }) as unknown as import('next/server').NextRequest
 }
 
+// Walk-in launch (spec §6, §7.3): the deposit threshold is now 10+ (not 7+).
+// Party_size: 10 puts the booking on the deposit-required side of the boundary.
 const baseBookingPayload = {
   customer_id: '00000000-0000-0000-0000-000000000001',
   date: '2026-04-05',
   time: '13:00',
-  party_size: 8,
+  party_size: 10,
   purpose: 'food'
 }
 
@@ -142,11 +144,57 @@ describe('POST /api/foh/bookings — deposit waiver', () => {
     expect(res.status).toBe(201)
   })
 
-  it('should require sunday_deposit_method when waive_deposit is false and party_size >= 7', async () => {
+  it('requires a deposit decision when party_size >= 10 and waive_deposit is false', async () => {
+    // Use the same comprehensive mock as the manager-waive case so the route's
+    // customer-lookup step succeeds and we exercise the actual deposit gate.
+    const mockSupabase = {
+      from: vi.fn().mockImplementation((table: string) => {
+        if (table === 'user_roles') {
+          return {
+            select: vi.fn().mockReturnValue({
+              eq: vi.fn().mockResolvedValue({
+                data: [{ roles: { name: 'manager' } }]
+              })
+            })
+          }
+        }
+        if (table === 'customers') {
+          const eqChain = {
+            eq: vi.fn(),
+            maybeSingle: vi.fn().mockResolvedValue({
+              data: { id: '00000000-0000-0000-0000-000000000001', mobile_e164: '+441234567890', mobile_number: '01234567890' },
+              error: null
+            }),
+            single: vi.fn().mockResolvedValue({ data: null, error: null })
+          }
+          eqChain.eq.mockReturnValue(eqChain)
+          return { select: vi.fn().mockReturnValue(eqChain) }
+        }
+        const eqChain = {
+          eq: vi.fn(),
+          maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }),
+          single: vi.fn().mockResolvedValue({ data: null, error: null }),
+          limit: vi.fn().mockReturnValue({
+            eq: vi.fn().mockResolvedValue({ data: [], error: null })
+          })
+        }
+        eqChain.eq.mockReturnValue(eqChain)
+        return {
+          select: vi.fn().mockReturnValue(eqChain),
+          insert: vi.fn().mockResolvedValue({ data: null, error: null }),
+          update: vi.fn().mockReturnValue({
+            eq: vi.fn().mockResolvedValue({ data: null, error: null })
+          }),
+          upsert: vi.fn().mockResolvedValue({ data: null, error: null })
+        }
+      }),
+      rpc: vi.fn().mockResolvedValue({ data: null, error: null })
+    }
+
     const mockResult: MockOkResult = {
       ok: true,
       userId: 'user-3',
-      supabase: {}
+      supabase: mockSupabase
     }
     vi.mocked(requireFohPermission).mockResolvedValue(mockResult as unknown as Awaited<ReturnType<typeof requireFohPermission>>)
 

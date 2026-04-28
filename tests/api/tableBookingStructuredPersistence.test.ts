@@ -188,7 +188,11 @@ describe('POST /api/table-bookings — structured persistence', () => {
     expect(supabase._tableBookingsUpdateEq).toHaveBeenCalledWith('id', BOOKING_ID)
   })
 
-  it('saves structured Sunday lunch pre-order items via saveSundayPreorderByBookingId', async () => {
+  // Walk-in launch (spec §6, §8.1): the public POST path no longer persists
+  // Sunday pre-order items, regardless of sunday_lunch flag or sunday_preorder_items
+  // payload. Pre-orders for legacy `booking_type='sunday_lunch'` bookings are
+  // exclusively administered via the staff admin path now.
+  it('does NOT call saveSundayPreorderByBookingId from the public POST path even with sunday_lunch=true', async () => {
     const supabase = buildSupabase()
     ;(createAdminClient as unknown as vi.Mock).mockReturnValue(supabase)
 
@@ -207,17 +211,8 @@ describe('POST /api/table-bookings — structured persistence', () => {
 
     await POST(buildRequest(body) as any)
 
-    expect(saveSundayPreorderByBookingId).toHaveBeenCalledWith(
-      supabase,
-      expect.objectContaining({
-        bookingId: BOOKING_ID,
-        items: [
-          { menu_dish_id: DISH_ID, quantity: 1 },
-          { menu_dish_id: DISH_ID_2, quantity: 1 },
-        ],
-        staffOverride: true,
-      }),
-    )
+    // Public path no longer persists pre-orders.
+    expect(saveSundayPreorderByBookingId).not.toHaveBeenCalled()
   })
 
   it('does not call saveSundayPreorderByBookingId when booking is not sunday_lunch', async () => {
@@ -237,32 +232,6 @@ describe('POST /api/table-bookings — structured persistence', () => {
     await POST(buildRequest(body) as any)
 
     expect(saveSundayPreorderByBookingId).not.toHaveBeenCalled()
-  })
-
-  it('logs a warning but does not fail the booking if pre-order persistence throws', async () => {
-    const supabase = buildSupabase()
-    ;(createAdminClient as unknown as vi.Mock).mockReturnValue(supabase)
-    saveSundayPreorderByBookingId.mockRejectedValueOnce(new Error('menu lookup failed'))
-
-    const body = {
-      phone: '+447000000000',
-      date: '2026-04-26',
-      time: '12:00',
-      party_size: 2,
-      purpose: 'food',
-      sunday_lunch: true,
-      sunday_preorder_items: [{ menu_dish_id: DISH_ID, quantity: 1 }],
-    }
-
-    const response = await POST(buildRequest(body) as any)
-
-    expect(response.status).toBeLessThan(500)
-    expect(warn).toHaveBeenCalledWith(
-      'Failed to persist Sunday preorder items for website booking',
-      expect.objectContaining({
-        metadata: expect.objectContaining({ tableBookingId: BOOKING_ID, itemCount: 1 }),
-      }),
-    )
   })
 
   it('rejects a payload with sunday_preorder_items containing non-UUID menu_dish_id', async () => {

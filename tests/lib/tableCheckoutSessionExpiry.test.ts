@@ -63,6 +63,7 @@ function buildSupabase() {
       id: 'table-booking-1',
       customer_id: 'customer-1',
       status: 'pending_payment',
+      payment_status: 'pending',
       hold_expires_at: '2026-02-24T09:00:00.000Z',
       party_size: 2,
       committed_party_size: 2,
@@ -70,7 +71,13 @@ function buildSupabase() {
       booking_date: '2026-03-08',
       booking_time: '16:30:00',
       start_datetime: '2026-03-08T16:30:00.000Z',
-      booking_type: 'sunday_lunch',
+      booking_type: 'regular',
+      // Walk-in launch (spec §7.3, §8.3): canonical deposit precedence is
+      // locked > stored > computed. This fixture exercises the "stored"
+      // path — the booking has a deposit set up but not yet paid/locked.
+      deposit_amount: 20,
+      deposit_amount_locked: null,
+      deposit_waived: false,
     },
     error: null,
   })

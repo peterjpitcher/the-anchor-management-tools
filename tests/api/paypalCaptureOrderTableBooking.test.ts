@@ -110,6 +110,7 @@ describe('POST /api/external/table-bookings/[id]/paypal/capture-order', () => {
     capturePayPalPayment.mockResolvedValue({
       transactionId: 'TXN-999',
       status: 'COMPLETED',
+      amount: 40,
     })
 
     const response = await POST(
@@ -125,6 +126,18 @@ describe('POST /api/external/table-bookings/[id]/paypal/capture-order', () => {
     const selectArg = tableBookingsSelect.mock.calls[0]?.[0]
     expect(selectArg).toContain('booking_type')
     expect(selectArg).not.toMatch(/\bsunday_lunch\b/)
+
+    // Walk-in launch (spec §6, §7.4, §8.3): the capture must persist
+    // deposit_amount_locked = the actually-captured GBP amount.
+    expect(tableBookingsUpdate).toHaveBeenCalledTimes(1)
+    const updatePayload = tableBookingsUpdate.mock.calls[0]?.[0]
+    expect(updatePayload).toMatchObject({
+      payment_status: 'completed',
+      status: 'confirmed',
+      payment_method: 'paypal',
+      paypal_deposit_capture_id: 'TXN-999',
+      deposit_amount_locked: 40,
+    })
 
     // The notification payload must derive sunday_lunch from booking_type.
     expect(sendTableBookingCreatedSmsIfAllowed).toHaveBeenCalledWith(
@@ -165,7 +178,11 @@ describe('POST /api/external/table-bookings/[id]/paypal/capture-order', () => {
         : { select: customersSelect },
     )
 
-    capturePayPalPayment.mockResolvedValue({ transactionId: 'TXN-42', status: 'COMPLETED' })
+    capturePayPalPayment.mockResolvedValue({
+      transactionId: 'TXN-42',
+      status: 'COMPLETED',
+      amount: 80,
+    })
 
     await POST(
       buildRequest({ orderId: 'ORDER-123' }),
@@ -176,6 +193,60 @@ describe('POST /api/external/table-bookings/[id]/paypal/capture-order', () => {
       expect.anything(),
       expect.objectContaining({
         bookingResult: expect.objectContaining({ sunday_lunch: false }),
+      }),
+    )
+  })
+
+  it('fails closed (502, no DB update) when PayPal capture response has no parseable GBP amount', async () => {
+    const bookingRow = {
+      id: BOOKING_ID,
+      status: 'pending_payment',
+      payment_status: 'pending',
+      paypal_deposit_order_id: 'ORDER-NO-AMOUNT',
+      paypal_deposit_capture_id: null,
+      customer_id: 'cust-1',
+      party_size: 4,
+      start_datetime: '2026-05-22T19:00:00Z',
+      booking_reference: 'TB-NO-AMOUNT',
+      booking_type: 'regular',
+      source: 'brand_site',
+    }
+
+    const tableBookingsSingle = vi.fn().mockResolvedValue({ data: bookingRow, error: null })
+    const tableBookingsSelect = vi.fn(() => ({ eq: vi.fn(() => ({ single: tableBookingsSingle })) }))
+    const tableBookingsUpdate = vi.fn(() => ({ eq: vi.fn().mockResolvedValue({ error: null }) }))
+    supabaseFrom.mockImplementation((table: string) =>
+      table === 'table_bookings'
+        ? { select: tableBookingsSelect, update: tableBookingsUpdate }
+        : { select: vi.fn(() => ({ eq: vi.fn(() => ({ maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }) })) })) },
+    )
+
+    // Capture succeeds but returns no amount — fail closed.
+    capturePayPalPayment.mockResolvedValue({
+      transactionId: 'TXN-NO-AMT',
+      status: 'COMPLETED',
+      // amount is deliberately missing
+    })
+
+    const response = await POST(
+      buildRequest({ orderId: 'ORDER-NO-AMOUNT' }),
+      { params: Promise.resolve({ id: BOOKING_ID }) },
+    )
+
+    // Must return 502 — explicit "we couldn't confirm your payment" state.
+    expect(response.status).toBe(502)
+
+    // Must NOT update payment_status (deposit_amount_locked stays unset, manual reconciliation required).
+    expect(tableBookingsUpdate).not.toHaveBeenCalled()
+
+    // Must NOT send the customer SMS (booking is in an unconfirmed state).
+    expect(sendTableBookingCreatedSmsIfAllowed).not.toHaveBeenCalled()
+
+    // Must log the high-severity diagnostic so on-call can investigate.
+    expect(loggerError).toHaveBeenCalledWith(
+      expect.stringContaining('no parseable GBP amount'),
+      expect.objectContaining({
+        metadata: expect.objectContaining({ bookingId: BOOKING_ID }),
       }),
     )
   })
