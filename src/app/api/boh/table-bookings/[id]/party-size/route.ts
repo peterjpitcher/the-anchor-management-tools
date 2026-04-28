@@ -11,11 +11,17 @@ import { createGuestToken } from '@/lib/guest/tokens'
 import { sendSMS } from '@/lib/twilio'
 import { getSmartFirstName } from '@/lib/sms/bulk'
 import { ensureReplyInstruction } from '@/lib/sms/support'
+import {
+  getCanonicalDeposit,
+  LARGE_GROUP_DEPOSIT_PER_PERSON_GBP,
+  requiresDeposit,
+} from '@/lib/table-bookings/deposit'
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
-const DEPOSIT_THRESHOLD = 7
-const DEPOSIT_PER_PERSON_GBP = 10
+// Threshold + per-person rate now live in the centralised deposit helper —
+// see src/lib/table-bookings/deposit.ts. Spec §7.3, §8.3.
+const DEPOSIT_PER_PERSON_GBP = LARGE_GROUP_DEPOSIT_PER_PERSON_GBP
 
 const UpdatePartySizeSchema = z.object({
   party_size: z.preprocess(
@@ -62,7 +68,7 @@ export async function POST(
 
   // Read current booking state before the update so we can detect threshold crossings
   const { data: currentBooking, error: fetchError } = await auth.supabase.from('table_bookings')
-    .select('id, party_size, status, payment_status, customer_id, booking_date, booking_reference, booking_type, start_datetime')
+    .select('id, party_size, status, payment_status, customer_id, booking_date, booking_reference, booking_type, start_datetime, deposit_amount, deposit_amount_locked, deposit_waived')
     .eq('id', id)
     .maybeSingle()
 
@@ -95,13 +101,28 @@ export async function POST(
 
     // ── Threshold crossing detection ──────────────────────────────────────────
 
-    const wasDepositRequired = previousPartySize >= DEPOSIT_THRESHOLD
-    const isNowDepositRequired = newPartySize >= DEPOSIT_THRESHOLD
+    const depositWaived = currentBooking.deposit_waived === true
+    const wasDepositRequired = requiresDeposit(previousPartySize, { depositWaived })
+    const isNowDepositRequired = requiresDeposit(newPartySize, { depositWaived })
     const depositAlreadyHandled = ['completed', 'refunded'].includes(currentPaymentStatus ?? '')
 
     // Case 1: Party increased past the deposit threshold — request deposit
     if (!wasDepositRequired && isNowDepositRequired && !depositAlreadyHandled) {
-      const depositAmount = newPartySize * DEPOSIT_PER_PERSON_GBP
+      // Read the canonical amount: locked > stored > computed. If a lock
+      // already exists (paid bookings), it stays — the SMS link will quote
+      // the locked amount. Otherwise compute from the new party size.
+      // Spec §3 step 9, §7.3, §7.4, §8.3.
+      const depositAmount = getCanonicalDeposit(
+        {
+          party_size: newPartySize,
+          deposit_amount: currentBooking.deposit_amount ?? null,
+          deposit_amount_locked: currentBooking.deposit_amount_locked ?? null,
+          status: currentBooking.status ?? null,
+          payment_status: currentBooking.payment_status ?? null,
+          deposit_waived: currentBooking.deposit_waived ?? null,
+        },
+        newPartySize,
+      )
       const depositLabel = new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP' }).format(depositAmount)
       const isSundayLunch = currentBooking.booking_type === 'sunday_lunch'
 
@@ -146,7 +167,14 @@ export async function POST(
             const seatWord = newPartySize === 1 ? 'person' : 'people'
             const depositKindLabel = isSundayLunch ? 'Sunday lunch deposit' : 'table deposit'
             const supportPhone = process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || process.env.TWILIO_PHONE_NUMBER || undefined
-            const smsBody = `The Anchor: Hi ${firstName}, your party size has been updated to ${newPartySize} ${seatWord}. A ${depositKindLabel} of ${depositLabel} (${newPartySize} x £${DEPOSIT_PER_PERSON_GBP}) is now required to secure your booking. Pay now: ${depositUrl}`
+            // Only include the (party_size × per-person) breakdown when the
+            // canonical amount actually matches that simple multiplication —
+            // for paid/locked bookings the breakdown could be misleading.
+            const expectedSimpleTotal = newPartySize * DEPOSIT_PER_PERSON_GBP
+            const breakdownNote = depositAmount === expectedSimpleTotal
+              ? ` (${newPartySize} x £${DEPOSIT_PER_PERSON_GBP})`
+              : ''
+            const smsBody = `The Anchor: Hi ${firstName}, your party size has been updated to ${newPartySize} ${seatWord}. A ${depositKindLabel} of ${depositLabel}${breakdownNote} is now required to secure your booking. Pay now: ${depositUrl}`
             await sendSMS(
               customer.mobile_number,
               ensureReplyInstruction(smsBody, supportPhone),
