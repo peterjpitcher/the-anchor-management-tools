@@ -5,6 +5,7 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import { createInlinePayPalOrder } from '@/lib/paypal';
 import { logAuditEvent } from '@/app/actions/audit';
 import { logger } from '@/lib/logger';
+import { getCanonicalDeposit } from '@/lib/table-bookings/deposit';
 
 export const dynamic = 'force-dynamic';
 
@@ -18,10 +19,12 @@ export async function POST(
     async () => {
       const supabase = createAdminClient();
 
-      // Fetch the booking
+      // Fetch the booking. We pull `deposit_amount_locked`, `deposit_waived`,
+      // and `booking_type` so the canonical-deposit reader can honour locked
+      // amounts and waivers. Spec §7.3, §8.3.
       const { data: booking, error: fetchError } = await supabase
         .from('table_bookings')
-        .select('id, party_size, status, payment_status, paypal_deposit_order_id, deposit_amount')
+        .select('id, party_size, status, payment_status, paypal_deposit_order_id, deposit_amount, deposit_amount_locked, deposit_waived, booking_type')
         .eq('id', bookingId)
         .single();
 
@@ -59,8 +62,27 @@ export async function POST(
         return NextResponse.json({ orderId: booking.paypal_deposit_order_id });
       }
 
-      // Calculate amount server-side — never trust client
-      const depositAmount = booking.party_size * 10;
+      // Read canonical deposit (locked > stored > computed). This stops
+      // blind party_size * 10 recompute and honours
+      // `deposit_amount_locked` for paid/refunded bookings. Spec §3 step 9,
+      // §7.3, §7.4, §8.3.
+      const depositAmount = getCanonicalDeposit(
+        {
+          party_size: booking.party_size,
+          deposit_amount: booking.deposit_amount ?? null,
+          deposit_amount_locked: booking.deposit_amount_locked ?? null,
+          status: booking.status ?? null,
+          payment_status: booking.payment_status ?? null,
+          deposit_waived: booking.deposit_waived ?? null,
+        },
+        booking.party_size,
+      );
+      if (!Number.isFinite(depositAmount) || depositAmount <= 0) {
+        return NextResponse.json(
+          { error: 'No deposit required for this booking.' },
+          { status: 400 },
+        );
+      }
 
       let paypalOrder: { orderId: string };
       try {
@@ -79,12 +101,13 @@ export async function POST(
         );
       }
 
-      // Persist the order ID and deposit amount on the booking
+      // Persist the order ID. Deliberately NOT writing deposit_amount here —
+      // the canonical reader is the source of truth and `deposit_amount_locked`
+      // is set by the capture path on successful payment. Spec §7.3, §7.4, §8.3.
       const { error: persistError } = await supabase
         .from('table_bookings')
         .update({
           paypal_deposit_order_id: paypalOrder.orderId,
-          deposit_amount: depositAmount,
         })
         .eq('id', bookingId);
 
