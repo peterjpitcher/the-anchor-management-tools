@@ -17,6 +17,24 @@ const CaptureOrderSchema = z.object({
   orderId: z.string().min(1),
 });
 
+/**
+ * Parse the captured GBP amount from a PayPal v2 capture response.
+ * Returns the GBP value as a finite number, or null when missing/unparseable.
+ *
+ * Caller MUST fail closed on null — silently falling back to
+ * `booking.deposit_amount` would let stale amounts get locked. Spec §6, §7.4, §8.3.
+ */
+function parseCapturedAmountGbp(
+  captureResult: { amount?: string | number | null } | null | undefined,
+): number | null {
+  if (!captureResult || captureResult.amount === undefined || captureResult.amount === null) {
+    return null;
+  }
+  const raw = captureResult.amount;
+  const n = typeof raw === 'number' ? raw : Number(raw);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
@@ -87,7 +105,49 @@ export async function POST(
 
       const transactionId = captureResult.transactionId;
 
-      // Update the booking atomically
+      // Lock the actually-captured GBP amount on the booking — authoritative
+      // source for what the customer was charged. Fail closed if the capture
+      // response is missing/malformed: do NOT update payment_status, log a
+      // high-severity error, and return 502 so the customer sees an explicit
+      // "we couldn't confirm your payment" state. We deliberately do NOT
+      // fall back to booking.deposit_amount — that's how stale amounts get
+      // locked. Spec §6, §7.4, §8.3.
+      const lockedAmountGbp = parseCapturedAmountGbp(captureResult);
+      if (lockedAmountGbp === null) {
+        logger.error('paypal-capture: capture succeeded but no parseable GBP amount in response', {
+          metadata: {
+            bookingId,
+            orderId,
+            transactionId,
+            // Capture the raw amount value so on-call can investigate.
+            rawAmount: captureResult?.amount ?? null,
+            captureStatus: captureResult?.status ?? null,
+          },
+        });
+        void logAuditEvent({
+          operation_type: 'payment.capture_amount_unparseable',
+          resource_type: 'table_booking',
+          resource_id: bookingId,
+          operation_status: 'failure',
+          additional_info: {
+            orderId,
+            transactionId,
+            rawAmount: String(captureResult?.amount ?? 'null'),
+            action_needed:
+              'PayPal capture succeeded but the captured amount was missing or unparseable — manual reconciliation required before unlocking the booking',
+          },
+        });
+        return NextResponse.json(
+          {
+            error: 'Payment captured but amount could not be verified. Please contact support; do not retry.',
+          },
+          { status: 502 },
+        );
+      }
+
+      // Update the booking atomically — including deposit_amount_locked so
+      // any future recompute (party-size change, blind compute, etc.) honours
+      // the actually-captured amount.
       const { error: updateError } = await supabase
         .from('table_bookings')
         .update({
@@ -95,6 +155,7 @@ export async function POST(
           status: 'confirmed',
           payment_method: 'paypal',
           paypal_deposit_capture_id: transactionId,
+          deposit_amount_locked: lockedAmountGbp,
         })
         .eq('id', bookingId);
 
@@ -128,6 +189,7 @@ export async function POST(
           orderId,
           transactionId,
           bookingId,
+          lockedAmountGbp,
         },
       });
 
