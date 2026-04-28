@@ -19,7 +19,10 @@ import {
   type TableBookingRpcResult
 } from '@/lib/table-bookings/bookings'
 import { saveSundayPreorderByBookingId } from '@/lib/table-bookings/sunday-preorder'
-import { requiresDeposit as requiresDepositForParty } from '@/lib/table-bookings/deposit'
+import {
+  computeDepositAmount,
+  requiresDeposit as requiresDepositForParty,
+} from '@/lib/table-bookings/deposit'
 
 const STRICT_SUNDAY_LUNCH_OPERATOR_EMAIL = 'manager@the-anchor.pub'
 
@@ -1190,9 +1193,17 @@ export async function POST(request: NextRequest) {
       bookingResult.table_booking_id &&
       depositMethod === 'cash'
     ) {
+      // Staff-confirmed cash deposit. Amount derived from the centralised
+      // helper so the per-person rate + threshold stay in one place. The RPC
+      // records the cash payment; we then lock the staff-confirmed amount on
+      // the booking row so any subsequent recompute (party-size change, blind
+      // compute) honours what was actually taken. Spec §6, §7.4, §8.3.
+      const cashDepositAmount = Number(
+        computeDepositAmount(Math.max(1, Number(payload.party_size || 1))).toFixed(2),
+      )
       const { data: cashConfirmRaw, error: cashConfirmError } = await auth.supabase.rpc('record_table_cash_deposit_v05', {
         p_table_booking_id: bookingResult.table_booking_id,
-        p_amount: Number((Math.max(1, Number(payload.party_size || 1)) * 10).toFixed(2)),
+        p_amount: cashDepositAmount,
         p_currency: 'GBP',
       })
 
@@ -1229,6 +1240,25 @@ export async function POST(request: NextRequest) {
           { error: 'Booking was created but cash deposit could not be confirmed.' },
           { status: 409 }
         )
+      }
+
+      // Lock the staff-confirmed cash amount on the booking row. The RPC
+      // updates payments + sets payment_status='completed' but does NOT touch
+      // deposit_amount_locked, so we write it here. Failure to lock is logged
+      // but does not block — the booking is already confirmed by the RPC.
+      // Spec §6, §7.4, §8.3.
+      const { error: cashLockError } = await auth.supabase
+        .from('table_bookings')
+        .update({ deposit_amount_locked: cashDepositAmount })
+        .eq('id', bookingResult.table_booking_id)
+      if (cashLockError) {
+        logger.error('Failed to lock cash deposit amount on booking', {
+          error: new Error(cashLockError.message),
+          metadata: {
+            tableBookingId: bookingResult.table_booking_id,
+            cashDepositAmount,
+          },
+        })
       }
 
       bookingResult = {
