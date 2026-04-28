@@ -51,6 +51,19 @@ function formatLondonDateTime(iso: string): string {
   }).format(new Date(iso))
 }
 
+/**
+ * Extract legacy pre-order text from a `special_requirements` string. Public-
+ * API legacy Sunday-lunch bookings ship the pre-order as free text such as
+ * 'Sunday lunch pre-order: Guest 1: Roasted Chicken x1'. Returns null if no
+ * marker is present. Spec §8.3.
+ */
+function extractLegacyPreorderText(specialRequirements: string | null | undefined): string | null {
+  if (!specialRequirements) return null
+  const marker = /sunday lunch pre-?order/i
+  if (!marker.test(specialRequirements)) return null
+  return specialRequirements.trim()
+}
+
 export default function PreorderTab({ booking, canEdit }: Props) {
   const [data, setData] = useState<PreorderData | null>(null)
   const [loading, setLoading] = useState(true)
@@ -77,6 +90,29 @@ export default function PreorderTab({ booking, canEdit }: Props) {
   if (loading) return <p className="text-sm text-gray-500">Loading pre-order&hellip;</p>
 
   if (!data || data.state === 'blocked') {
+    // Public-API legacy bookings can ship pre-order text in
+    // `special_requirements` rather than as structured `table_booking_items`
+    // rows (e.g. 'Sunday lunch pre-order: Guest 1: Roasted Chicken x1'). If
+    // the structured API returns blocked but the booking has that legacy
+    // text, surface it so kitchen can still see the pre-order. Spec §8.3.
+    const legacyPreorderText = extractLegacyPreorderText(booking.special_requirements)
+    if (legacyPreorderText) {
+      return (
+        <div className="space-y-2 max-w-2xl">
+          <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+            Legacy pre-order (from special requirements)
+          </p>
+          <pre className="whitespace-pre-wrap rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-gray-800">
+            {legacyPreorderText}
+          </pre>
+          {data?.reason ? (
+            <p className="text-xs text-gray-500 italic">
+              Structured pre-order data unavailable ({data.reason}); showing free-text from booking notes.
+            </p>
+          ) : null}
+        </div>
+      )
+    }
     return (
       <p className="text-sm text-gray-500">
         Pre-order not available{data?.reason ? `: ${data.reason}` : ''}
