@@ -24,7 +24,7 @@ import {
   sendTableBookingCreatedSmsIfAllowed,
   type TableBookingRpcResult
 } from '@/lib/table-bookings/bookings'
-import { saveSundayPreorderByBookingId } from '@/lib/table-bookings/sunday-preorder'
+import { computeDepositAmount } from '@/lib/table-bookings/deposit'
 import { logAuditEvent } from '@/app/actions/audit'
 import { logger } from '@/lib/logger'
 import { verifyTurnstileToken, getClientIp } from '@/lib/turnstile'
@@ -87,6 +87,7 @@ type TableBookingResponseData = {
   table_name: string | null
   booking_id: string | null
   deposit_amount: number | null
+  fallback_payment_url: string | null
 }
 
 function isAssignmentConflictRpcError(error: { code?: string; message?: string } | null | undefined): boolean {
@@ -244,7 +245,9 @@ export async function POST(request: NextRequest) {
         p_party_size: payload.party_size,
         p_booking_purpose: payload.purpose,
         p_notes: payload.notes || null,
-        p_sunday_lunch: payload.sunday_lunch === true,
+        // Sunday-lunch flag is legacy — new public bookings never set this. The
+        // FOH admin path retains it for legacy data entry only. Spec §8.3.
+        p_sunday_lunch: false,
         p_source: 'brand_site'
       })
 
@@ -300,34 +303,11 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      // Persist Sunday lunch pre-order line items in the dedicated table so the
-      // admin pre-order tab, kitchen prep sheet, and analytics see structured
-      // data instead of parsing a free-text notes blob. Best-effort: items still
-      // survive in the notes field if this fails, so the kitchen isn't blind.
-      if (
-        bookingResult.table_booking_id &&
-        payload.sunday_lunch === true &&
-        (payload.sunday_preorder_items?.length ?? 0) > 0
-      ) {
-        try {
-          await saveSundayPreorderByBookingId(supabase, {
-            bookingId: bookingResult.table_booking_id,
-            items: payload.sunday_preorder_items!,
-            staffOverride: true,
-          })
-        } catch (preorderError) {
-          logger.warn('Failed to persist Sunday preorder items for website booking', {
-            metadata: {
-              tableBookingId: bookingResult.table_booking_id,
-              itemCount: payload.sunday_preorder_items?.length ?? 0,
-              error:
-                preorderError instanceof Error
-                  ? preorderError.message
-                  : String(preorderError),
-            },
-          })
-        }
-      }
+      // Sunday lunch pre-order persistence has been removed from the public
+      // booking path. New public bookings never use the legacy `sunday_lunch`
+      // booking_type, so persisting pre-order line items here is no longer
+      // valid. The legacy admin FOH path retains `saveSundayPreorderByBookingId`
+      // for staff-explicit legacy Sunday-lunch creation. Spec §8.3.
 
       const appBaseUrl = process.env.NEXT_PUBLIC_APP_URL || request.nextUrl.origin
 
@@ -468,6 +448,11 @@ export async function POST(request: NextRequest) {
         ]
 
         if (bookingResult.state === 'pending_payment') {
+          // Compute deposit via the centralised helper instead of inline
+          // `party_size * 10` arithmetic — keeps the threshold and rate in one
+          // place. The booking is fresh from the RPC so there is no prior
+          // locked/stored amount to honour here. Spec §3 step 9, §8.3.
+          const analyticsDeposit = computeDepositAmount(payload.party_size)
           analyticsPromises.push(recordTableBookingAnalyticsSafe(supabase, {
             customerId: customerResolution.customerId,
             tableBookingId: bookingResult.table_booking_id,
@@ -475,7 +460,7 @@ export async function POST(request: NextRequest) {
             metadata: {
               hold_expires_at: holdExpiresAt,
               next_step_url_provided: Boolean(nextStepUrl),
-              deposit_amount: Number((Math.max(1, Number(payload.party_size || 1)) * 10).toFixed(2)),
+              deposit_amount: Number(analyticsDeposit.toFixed(2)),
               deposit_per_person: 10,
             },
           }, {
@@ -520,6 +505,24 @@ export async function POST(request: NextRequest) {
 
       const responseStatus = responseState === 'blocked' ? 200 : 201
 
+      // Canonical deposit amount for the response payload. Booking is fresh
+      // from the RPC so there is no prior locked/stored amount to honour, but
+      // we still route through the helper to keep the threshold + rate in one
+      // place. Spec §3 step 9, §8.3.
+      const canonicalDeposit =
+        responseState === 'pending_payment' ? computeDepositAmount(payload.party_size) : null
+
+      // Failed-PayPal recovery surface (Spec §6): always expose the token-based
+      // payment URL on `pending_payment` responses as `fallback_payment_url` so
+      // the website can fall back to the management's hosted payment page when
+      // its inline PayPal button fails to render. The field is intentionally
+      // not overloaded onto `next_step_url` — `next_step_url` retains its
+      // happy-path semantics; `fallback_payment_url` is the explicit recovery
+      // surface. Both currently resolve to the same `/g/{token}/table-payment`
+      // URL but the contract is independent.
+      const fallbackPaymentUrl =
+        responseState === 'pending_payment' ? nextStepUrl : null
+
       const responsePayload = {
         success: true,
         data: {
@@ -533,7 +536,8 @@ export async function POST(request: NextRequest) {
           hold_expires_at: responseState === 'pending_payment' ? holdExpiresAt : null,
           table_name: bookingResult.table_name || null,
           booking_id: responseState === 'pending_payment' ? (bookingResult.table_booking_id || null) : null,
-          deposit_amount: responseState === 'pending_payment' ? payload.party_size * 10 : null
+          deposit_amount: canonicalDeposit,
+          fallback_payment_url: fallbackPaymentUrl,
         } satisfies TableBookingResponseData,
         meta: {
           status_code: responseStatus,
