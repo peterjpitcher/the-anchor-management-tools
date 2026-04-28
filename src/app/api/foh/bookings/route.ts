@@ -19,6 +19,7 @@ import {
   type TableBookingRpcResult
 } from '@/lib/table-bookings/bookings'
 import { saveSundayPreorderByBookingId } from '@/lib/table-bookings/sunday-preorder'
+import { requiresDeposit as requiresDepositForParty } from '@/lib/table-bookings/deposit'
 
 const STRICT_SUNDAY_LUNCH_OPERATOR_EMAIL = 'manager@the-anchor.pub'
 
@@ -85,12 +86,15 @@ const CreateFohTableBookingSchema = z.object({
     }
   }
 
-  // Deposit not required for management overrides, deposit waivers, or venue events — they bypass deposit restrictions
+  // Deposit not required for management overrides, deposit waivers, or venue events — they bypass deposit restrictions.
+  // The deposit threshold is the centralised 10+ rule; legacy `sunday_lunch` flag is kept for admin-only legacy
+  // creation but no longer drives the deposit-required decision. Spec §8.3.
   if (
     value.management_override !== true &&
     value.waive_deposit !== true &&
     value.is_venue_event !== true &&
-    (value.sunday_lunch === true || (value.party_size != null && value.party_size >= 7)) &&
+    value.party_size != null &&
+    requiresDepositForParty(value.party_size) &&
     value.sunday_deposit_method == null
   ) {
     context.addIssue({
@@ -1049,7 +1053,13 @@ export async function POST(request: NextRequest) {
     )
   }
 
-  const requiresDeposit = (effectiveSundayLunch || payload.party_size >= 7) && payload.waive_deposit !== true && payload.is_venue_event !== true
+  // Deposit-required decision uses the centralised 10+ rule with explicit
+  // waiver support. `effectiveSundayLunch` is retained ONLY for the legacy
+  // admin-creation path (RPC payload + post-create persistence); the deposit
+  // decision is now generic and unaware of booking_type. Spec §8.3.
+  const requiresDeposit = requiresDepositForParty(payload.party_size, {
+    depositWaived: payload.waive_deposit === true,
+  }) && payload.is_venue_event !== true
   const depositMethod = requiresDeposit
     ? payload.sunday_deposit_method || null
     : null
