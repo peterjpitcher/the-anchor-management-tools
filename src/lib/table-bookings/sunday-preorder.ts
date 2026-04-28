@@ -689,6 +689,23 @@ export async function saveSundayPreorderByBookingId(
     staffOverride?: boolean
   }
 ): Promise<SundayPreorderSaveResult> {
+  // Defence-in-depth: refuse to persist pre-orders for non-legacy bookings.
+  // The new public flow never creates `booking_type='sunday_lunch'` rows so
+  // this code path should never receive one. If it does (mis-wired caller,
+  // legacy data import, etc.), log loudly and bail rather than persist.
+  // `getSundayPreorderPageDataByBookingId` also returns `not_sunday_lunch` —
+  // this is a second guard. Spec §8.3.
+  const { data: bookingRow } = await supabase.from('table_bookings')
+    .select('id, booking_type')
+    .eq('id', input.bookingId)
+    .maybeSingle()
+  if (bookingRow && bookingRow.booking_type !== 'sunday_lunch') {
+    console.warn(
+      `[sunday-preorder] Refusing to persist pre-order for non-legacy booking ${input.bookingId} (booking_type=${bookingRow.booking_type}). New flow does not use pre-orders.`
+    )
+    return { state: 'blocked', reason: 'not_sunday_lunch' }
+  }
+
   const pageData = await getSundayPreorderPageDataByBookingId(supabase, input.bookingId)
   return saveSundayPreorderFromPageData(supabase, {
     pageData,
