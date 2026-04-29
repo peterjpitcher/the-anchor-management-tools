@@ -39,8 +39,10 @@ vi.mock('@/lib/supabase/admin', () => ({
 }))
 
 const mockCreatePayPalOrder = vi.fn()
+const mockGetPayPalOrder = vi.fn()
 vi.mock('@/lib/paypal', () => ({
   createInlinePayPalOrder: mockCreatePayPalOrder,
+  getPayPalOrder: mockGetPayPalOrder,
 }))
 
 vi.mock('@/app/actions/audit', () => ({
@@ -180,5 +182,94 @@ describe('paypal create-order canonical deposit precedence (walk-in launch)', ()
     expect(res.status).toBe(400)
     expect(mockCreatePayPalOrder).not.toHaveBeenCalled()
     expect(mockUpdate).not.toHaveBeenCalled()
+  })
+
+  // Defects ARCH-002 / SEC-002 / WF-002 / AB-004: stale cached order must not
+  // be returned without verifying its amount against the current canonical.
+  describe('cached order stale-amount guard', () => {
+    function mockTwoUpdates(booking: ReturnType<typeof buildBookingRow>) {
+      // Booking fetch
+      mockSingle.mockResolvedValueOnce({ data: booking, error: null })
+      mockEq.mockReturnValue({ single: mockSingle })
+      mockSelect.mockReturnValue({ eq: mockEq })
+      // First update: clear stale paypal_deposit_order_id
+      // Second update: persist new order ID
+      mockUpdateEq.mockResolvedValue({ error: null })
+      mockUpdate.mockReturnValue({ eq: mockUpdateEq })
+    }
+
+    it('reuses cached order when its amount matches the current canonical', async () => {
+      mockFetchAndUpdate(
+        buildBookingRow({
+          party_size: 12,
+          paypal_deposit_order_id: 'ORDER-CACHED-MATCH',
+          deposit_amount: null,
+          deposit_amount_locked: null,
+        })
+      )
+      mockGetPayPalOrder.mockResolvedValueOnce({
+        purchase_units: [{ amount: { value: '120.00', currency_code: 'GBP' } }],
+      })
+
+      const res = await callRoute('booking-canonical')
+      expect(res.status).toBe(200)
+      const json = await (res as Response).json()
+      expect(json.orderId).toBe('ORDER-CACHED-MATCH')
+      expect(mockCreatePayPalOrder).not.toHaveBeenCalled()
+      // No update calls — we reused the cached order.
+      expect(mockUpdate).not.toHaveBeenCalled()
+    })
+
+    it('invalidates cached order and creates a fresh one when canonical drifted', async () => {
+      // Party-size resize from 12 → 15 means canonical = £150 but cached
+      // PayPal order is for £120. Old order must be cleared.
+      mockTwoUpdates(
+        buildBookingRow({
+          party_size: 15,
+          paypal_deposit_order_id: 'ORDER-CACHED-STALE',
+          deposit_amount: null,
+          deposit_amount_locked: null,
+        })
+      )
+      mockGetPayPalOrder.mockResolvedValueOnce({
+        purchase_units: [{ amount: { value: '120.00', currency_code: 'GBP' } }],
+      })
+      mockCreatePayPalOrder.mockResolvedValueOnce({ orderId: 'ORDER-FRESH-150' })
+
+      const res = await callRoute('booking-canonical')
+      expect(res.status).toBe(200)
+      const json = await (res as Response).json()
+      expect(json.orderId).toBe('ORDER-FRESH-150')
+
+      // Fresh order created at the new canonical amount.
+      expect(mockCreatePayPalOrder).toHaveBeenCalledWith(
+        expect.objectContaining({ amount: 150 })
+      )
+
+      // Two updates: invalidation + fresh persistence.
+      expect(mockUpdate).toHaveBeenCalledTimes(2)
+      expect(mockUpdate.mock.calls[0]?.[0]).toEqual({ paypal_deposit_order_id: null })
+      expect(mockUpdate.mock.calls[1]?.[0]).toEqual({ paypal_deposit_order_id: 'ORDER-FRESH-150' })
+    })
+
+    it('invalidates cached order when getPayPalOrder fails (cannot verify)', async () => {
+      mockTwoUpdates(
+        buildBookingRow({
+          party_size: 12,
+          paypal_deposit_order_id: 'ORDER-CACHED-UNVERIFIABLE',
+          deposit_amount: null,
+          deposit_amount_locked: null,
+        })
+      )
+      mockGetPayPalOrder.mockRejectedValueOnce(new Error('PayPal API down'))
+      mockCreatePayPalOrder.mockResolvedValueOnce({ orderId: 'ORDER-FRESH-FALLBACK' })
+
+      const res = await callRoute('booking-canonical')
+      expect(res.status).toBe(200)
+      // Cached order cleared; fresh one created.
+      expect(mockUpdate).toHaveBeenCalledTimes(2)
+      expect(mockUpdate.mock.calls[0]?.[0]).toEqual({ paypal_deposit_order_id: null })
+      expect(mockCreatePayPalOrder).toHaveBeenCalledOnce()
+    })
   })
 })

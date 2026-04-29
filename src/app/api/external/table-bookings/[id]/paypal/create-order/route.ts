@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 
 import { withApiAuth } from '@/lib/api/auth';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { createInlinePayPalOrder } from '@/lib/paypal';
+import { createInlinePayPalOrder, getPayPalOrder } from '@/lib/paypal';
 import { logAuditEvent } from '@/app/actions/audit';
 import { logger } from '@/lib/logger';
 import { getCanonicalDeposit } from '@/lib/table-bookings/deposit';
@@ -57,11 +57,6 @@ export async function POST(
         );
       }
 
-      // Idempotent: return existing order ID without calling PayPal again
-      if (booking.paypal_deposit_order_id) {
-        return NextResponse.json({ orderId: booking.paypal_deposit_order_id });
-      }
-
       // Read canonical deposit (locked > stored > computed). This stops
       // blind party_size * 10 recompute and honours
       // `deposit_amount_locked` for paid/refunded bookings. Spec §3 step 9,
@@ -82,6 +77,67 @@ export async function POST(
           { error: 'No deposit required for this booking.' },
           { status: 400 },
         );
+      }
+
+      // Idempotent reuse — but only when the cached PayPal order's amount
+      // matches the current canonical deposit. If the canonical amount has
+      // changed since the order was created (e.g. party_size resize, locked
+      // amount written, waiver flipped), the cached order is stale and we
+      // must invalidate it to avoid charging the wrong amount.
+      // Spec §7.3, §7.4, §8.3 — defects ARCH-002 / SEC-002 / WF-002 / AB-004.
+      if (booking.paypal_deposit_order_id) {
+        let cachedAmount: number | null = null;
+        try {
+          const remote = (await getPayPalOrder(booking.paypal_deposit_order_id)) as
+            | { purchase_units?: Array<{ amount?: { value?: string; currency_code?: string } }> }
+            | null;
+          const rawValue = remote?.purchase_units?.[0]?.amount?.value;
+          const parsed = typeof rawValue === 'string' ? Number.parseFloat(rawValue) : NaN;
+          cachedAmount = Number.isFinite(parsed) ? Number(parsed.toFixed(2)) : null;
+        } catch (err) {
+          logger.error('create-order: failed to fetch cached PayPal order; invalidating', {
+            error: err instanceof Error ? err : new Error(String(err)),
+            metadata: { bookingId, cachedOrderId: booking.paypal_deposit_order_id },
+          });
+          cachedAmount = null;
+        }
+
+        if (cachedAmount !== null && Math.abs(cachedAmount - depositAmount) < 0.01) {
+          // Cached order still matches canonical — safe to reuse.
+          return NextResponse.json({ orderId: booking.paypal_deposit_order_id });
+        }
+
+        // Stale or unverifiable cached order. Clear it before creating a
+        // fresh one so the invariant "paypal_deposit_order_id implies
+        // amount-current order" is maintained.
+        const { error: clearError } = await supabase
+          .from('table_bookings')
+          .update({ paypal_deposit_order_id: null })
+          .eq('id', bookingId);
+        if (clearError) {
+          logger.error('create-order: failed to clear stale paypal_deposit_order_id', {
+            error: new Error(clearError.message),
+            metadata: { bookingId, staleOrderId: booking.paypal_deposit_order_id },
+          });
+          return NextResponse.json(
+            { error: 'Failed to refresh PayPal order. Please try again.' },
+            { status: 502 },
+          );
+        }
+        void logAuditEvent({
+          operation_type: 'payment.order_invalidated',
+          resource_type: 'table_booking',
+          resource_id: bookingId,
+          operation_status: 'success',
+          additional_info: {
+            staleOrderId: booking.paypal_deposit_order_id,
+            staleAmount: cachedAmount,
+            canonicalAmount: depositAmount,
+            reason: cachedAmount === null
+              ? 'paypal_get_order_failed'
+              : 'amount_drift',
+          },
+        });
       }
 
       let paypalOrder: { orderId: string };
