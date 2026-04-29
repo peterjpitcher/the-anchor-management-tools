@@ -497,13 +497,23 @@ async function handleCheckoutSessionCompleted(
       // write rather than guess. We deliberately do NOT fall back to
       // booking.deposit_amount — that's how stale amounts get locked.
       // Spec §6, §7.4, §8.3.
+      //
+      // Defects WF-003 / SEC-003: the Supabase JS client cannot wrap the RPC
+      // and the follow-up UPDATE in a single transaction, so we fail the
+      // webhook (throwing → 500 → Stripe retries) when the lock write errors.
+      // The booking is already confirmed by the RPC; the retry will re-run
+      // confirm_table_payment_v05 (idempotent — `IF v_booking.status =
+      // 'pending_payment'` short-circuits) and try the lock write again.
+      // Without this, a captured payment can leave the booking confirmed
+      // with deposit_amount_locked IS NULL, breaking the canonical-amount
+      // invariant that locked > stored > computed.
       if (typeof amount === 'number' && Number.isFinite(amount) && amount > 0) {
         const { error: lockError } = await supabase
           .from('table_bookings')
           .update({ deposit_amount_locked: amount })
           .eq('id', rpcResult.table_booking_id)
         if (lockError) {
-          logger.error('stripe-webhook: failed to lock deposit amount on table booking', {
+          logger.error('stripe-webhook: failed to lock deposit amount on table booking — failing webhook for Stripe retry', {
             error: new Error(lockError.message),
             metadata: {
               tableBookingId: rpcResult.table_booking_id,
@@ -511,6 +521,7 @@ async function handleCheckoutSessionCompleted(
               amount,
             },
           })
+          throw new Error(`Failed to lock deposit_amount on table booking ${rpcResult.table_booking_id}: ${lockError.message}`)
         }
       } else {
         logger.error('stripe-webhook: missing/invalid amount_total — skipping deposit_amount_locked write', {
