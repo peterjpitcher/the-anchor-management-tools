@@ -30,9 +30,11 @@ vi.mock('@/lib/supabase/admin', () => ({
 
 // Updated: route now uses createInlinePayPalOrder instead of createSimplePayPalOrder
 const mockCreateSimplePayPalOrder = vi.fn();
+const mockGetPayPalOrder = vi.fn();
 
 vi.mock('@/lib/paypal', () => ({
   createInlinePayPalOrder: mockCreateSimplePayPalOrder,
+  getPayPalOrder: mockGetPayPalOrder,
 }));
 
 vi.mock('@/app/actions/audit', () => ({
@@ -103,9 +105,14 @@ describe('POST /api/external/table-bookings/[id]/paypal/create-order', () => {
     );
   });
 
-  it('returns existing orderId without calling PayPal if paypal_deposit_order_id already set (idempotent)', async () => {
+  it('returns existing orderId without calling PayPal if paypal_deposit_order_id already set and amount matches canonical (idempotent)', async () => {
+    // makeBooking() default: party_size=4, deposit_amount=40 → canonical = 40.
+    // Cached PayPal order also at £40.00 → reused without clear/recreate.
     const booking = makeBooking({ paypal_deposit_order_id: 'PAYPAL-EXISTING-456' });
     mockBookingFetch(booking);
+    mockGetPayPalOrder.mockResolvedValueOnce({
+      purchase_units: [{ amount: { value: '40.00', currency_code: 'GBP' } }],
+    });
 
     const res = await callRoute('booking-uuid-1');
     const body = await res.json();
