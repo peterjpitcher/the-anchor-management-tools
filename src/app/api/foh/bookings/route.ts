@@ -1060,9 +1060,20 @@ export async function POST(request: NextRequest) {
   // waiver support. `effectiveSundayLunch` is retained ONLY for the legacy
   // admin-creation path (RPC payload + post-create persistence); the deposit
   // decision is now generic and unaware of booking_type. Spec §8.3.
+  //
+  // Defects AB-001 / WF-004: management_override implies waiver. Today the
+  // override path returns early at line ~856 so TypeScript correctly
+  // narrows `payload.management_override` to `false | undefined` here —
+  // the `Boolean(...)` wrapper widens it back so the defense-in-depth
+  // check survives any future refactor that lets an override booking
+  // flow into this branch (Zod schema at line ~96 already exempts it).
+  const treatAsWaived =
+    payload.waive_deposit === true ||
+    payload.is_venue_event === true ||
+    Boolean(payload.management_override)
   const requiresDeposit = requiresDepositForParty(payload.party_size, {
-    depositWaived: payload.waive_deposit === true,
-  }) && payload.is_venue_event !== true
+    depositWaived: treatAsWaived,
+  })
   const depositMethod = requiresDeposit
     ? payload.sunday_deposit_method || null
     : null
@@ -1084,8 +1095,9 @@ export async function POST(request: NextRequest) {
     p_sunday_lunch: effectiveSundayLunch,
     p_source: payload.walk_in === true ? 'walk-in' : 'admin',
     p_bypass_cutoff: true,
-    // Venue events automatically waive the deposit, just like an explicit waive_deposit
-    p_deposit_waived: payload.waive_deposit === true || payload.is_venue_event === true
+    // Venue events and management overrides automatically waive the deposit,
+    // matching the explicit waive_deposit path.
+    p_deposit_waived: treatAsWaived
   })
 
   let bookingResult: TableBookingRpcResult
@@ -1244,21 +1256,35 @@ export async function POST(request: NextRequest) {
 
       // Lock the staff-confirmed cash amount on the booking row. The RPC
       // updates payments + sets payment_status='completed' but does NOT touch
-      // deposit_amount_locked, so we write it here. Failure to lock is logged
-      // but does not block — the booking is already confirmed by the RPC.
+      // deposit_amount_locked, so we write it here.
       // Spec §6, §7.4, §8.3.
+      //
+      // Defects WF-003 / SEC-003 / ARCH-003: previously this was best-effort
+      // (logged + continued), which left a window where the booking is
+      // confirmed-but-unlocked and the canonical reader would fall back to
+      // `deposit_amount`. We now fail the request when the lock write fails
+      // so the operator can retry. The cash payment is already recorded by
+      // the RPC; the retry path is "reopen the booking and confirm again",
+      // which the response error message already instructs.
       const { error: cashLockError } = await auth.supabase
         .from('table_bookings')
         .update({ deposit_amount_locked: cashDepositAmount })
         .eq('id', bookingResult.table_booking_id)
       if (cashLockError) {
-        logger.error('Failed to lock cash deposit amount on booking', {
+        logger.error('Failed to lock cash deposit amount on booking — failing FOH create for operator retry', {
           error: new Error(cashLockError.message),
           metadata: {
             tableBookingId: bookingResult.table_booking_id,
             cashDepositAmount,
           },
         })
+        return NextResponse.json(
+          {
+            error: 'Booking confirmed but deposit amount could not be locked. Please reopen the booking and lock the deposit manually.',
+            tableBookingId: bookingResult.table_booking_id,
+          },
+          { status: 500 }
+        )
       }
 
       bookingResult = {

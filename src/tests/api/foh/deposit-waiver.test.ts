@@ -144,6 +144,76 @@ describe('POST /api/foh/bookings — deposit waiver', () => {
     expect(res.status).toBe(201)
   })
 
+  // Defects AB-001 / WF-004: management_override = waiver. A super_admin
+  // creating a 10+ override booking with NO sunday_deposit_method must NOT
+  // be rejected by the deposit gate. The schema (line ~96) already exempts
+  // override; the runtime requiresDeposit calculation (line ~1063) now
+  // honours it too. We assert the schema-pass branch by allowing the
+  // request to reach the super_admin role check rather than returning 400
+  // from the deposit gate.
+  it('management_override with party_size>=10 and no deposit method is not blocked by the deposit gate', async () => {
+    const mockSupabase = {
+      from: vi.fn().mockImplementation((table: string) => {
+        if (table === 'user_roles') {
+          // Non-super_admin: the override path will return 403 from the
+          // role check. Crucially this proves we got past Zod validation
+          // and past the deposit gate — they would each return 400, not 403.
+          return {
+            select: vi.fn().mockReturnValue({
+              eq: vi.fn().mockResolvedValue({
+                data: [{ roles: { name: 'manager' } }]
+              })
+            })
+          }
+        }
+        const eqChain = {
+          eq: vi.fn(),
+          maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }),
+          single: vi.fn().mockResolvedValue({ data: null, error: null }),
+          limit: vi.fn().mockReturnValue({
+            eq: vi.fn().mockResolvedValue({ data: [], error: null })
+          })
+        }
+        eqChain.eq.mockReturnValue(eqChain)
+        return {
+          select: vi.fn().mockReturnValue(eqChain),
+          insert: vi.fn().mockResolvedValue({ data: null, error: null }),
+          update: vi.fn().mockReturnValue({
+            eq: vi.fn().mockResolvedValue({ data: null, error: null })
+          }),
+          upsert: vi.fn().mockResolvedValue({ data: null, error: null })
+        }
+      }),
+      rpc: vi.fn().mockResolvedValue({ data: null, error: null })
+    }
+
+    const mockResult: MockOkResult = {
+      ok: true,
+      userId: 'user-mgmt',
+      supabase: mockSupabase
+    }
+    vi.mocked(requireFohPermission).mockResolvedValue(mockResult as unknown as Awaited<ReturnType<typeof requireFohPermission>>)
+
+    const req = makeRequest({
+      customer_id: '00000000-0000-0000-0000-000000000001',
+      date: '2026-04-05',
+      time: '13:00',
+      party_size: 12,
+      purpose: 'food',
+      management_override: true
+      // Critically: no sunday_deposit_method — would fail the deposit gate
+      // for a non-override booking with party_size=12.
+    })
+    const res = await POST(req)
+    // 403 = override role-check rejected non-super_admin user.
+    // We expect 403, NOT 400 (which is what the deposit gate or Zod would
+    // return). Either 400 outcome would indicate the override exemption
+    // had regressed.
+    expect(res.status).toBe(403)
+    const json = await res.json()
+    expect(json.error).toMatch(/super_admin/i)
+  })
+
   it('requires a deposit decision when party_size >= 10 and waive_deposit is false', async () => {
     // Use the same comprehensive mock as the manager-waive case so the route's
     // customer-lookup step succeeds and we exercise the actual deposit gate.
