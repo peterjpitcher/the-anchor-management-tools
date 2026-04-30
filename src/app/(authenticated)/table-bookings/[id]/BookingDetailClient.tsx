@@ -9,6 +9,7 @@ import { Button } from '@/components/ui-v2/forms/Button'
 import { Badge } from '@/components/ui-v2/display/Badge'
 import { RefundDialog } from '@/components/ui-v2/refunds/RefundDialog'
 import { RefundHistoryTable } from '@/components/ui-v2/refunds/RefundHistoryTable'
+import { LARGE_GROUP_DEPOSIT_THRESHOLD } from '@/lib/table-bookings/deposit'
 import PreorderTab from './PreorderTab'
 // formatDateInLondon uses toLocaleDateString (date-only); use Intl.DateTimeFormat directly for time display
 const formatLondonTime = (iso: string) =>
@@ -371,11 +372,19 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
                 {booking.booking_type.replace(/_/g, ' ')}
               </span>
             )}
-            {booking.deposit_waived != null && (
-              <span className={`text-xs font-medium px-2 py-0.5 rounded ${booking.deposit_waived ? 'bg-gray-100 text-gray-500' : 'bg-blue-100 text-blue-700'}`}>
-                {booking.deposit_waived ? 'Deposit waived' : 'Deposit required'}
-              </span>
-            )}
+            {/* Deposit badge only renders for bookings that fall under the
+                large-group deposit rule (party_size >= 10). For smaller
+                bookings, `deposit_waived` defaults to `false` on the row but
+                no deposit was ever required, so the old `!= null` guard
+                rendered "Deposit required" on every booking. Gating on the
+                canonical threshold matches the deposit helper at
+                src/lib/table-bookings/deposit.ts. */}
+            {booking.party_size != null &&
+              booking.party_size >= LARGE_GROUP_DEPOSIT_THRESHOLD && (
+                <span className={`text-xs font-medium px-2 py-0.5 rounded ${booking.deposit_waived ? 'bg-gray-100 text-gray-500' : 'bg-blue-100 text-blue-700'}`}>
+                  {booking.deposit_waived ? 'Deposit waived' : 'Deposit required'}
+                </span>
+              )}
           </div>
 
           {/* Guest info */}
