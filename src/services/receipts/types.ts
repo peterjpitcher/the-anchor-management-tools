@@ -14,6 +14,11 @@ import type {
   ReceiptClassificationSource,
 } from '@/types/database'
 import { createAdminClient } from '@/lib/supabase/admin'
+import {
+  MAX_RECEIPT_FILE_UPLOAD_BYTES,
+  MAX_RECEIPT_STATEMENT_UPLOAD_BYTES,
+  RECEIPT_BUCKET_NAME,
+} from '@/lib/receipts/upload-constraints'
 
 // ---------------------------------------------------------------------------
 // Internal utility types
@@ -307,8 +312,10 @@ export type BulkStatus = ReceiptTransaction['status']
 // Constants shared across service modules
 // ---------------------------------------------------------------------------
 
-export const RECEIPT_BUCKET = 'receipts'
-export const MAX_RECEIPT_UPLOAD_SIZE = 15 * 1024 * 1024 // 15 MB
+export const RECEIPT_BUCKET = RECEIPT_BUCKET_NAME
+export const MAX_RECEIPT_STATEMENT_UPLOAD_SIZE = MAX_RECEIPT_STATEMENT_UPLOAD_BYTES
+export const MAX_RECEIPT_FILE_UPLOAD_SIZE = MAX_RECEIPT_FILE_UPLOAD_BYTES
+export const MAX_RECEIPT_UPLOAD_SIZE = MAX_RECEIPT_STATEMENT_UPLOAD_SIZE
 export const DEFAULT_PAGE_SIZE = 25
 export const MAX_MONTH_PAGE_SIZE = 5000
 export const RECEIPT_AI_JOB_CHUNK_SIZE = 10

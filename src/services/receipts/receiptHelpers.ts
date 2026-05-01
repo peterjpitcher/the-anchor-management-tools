@@ -25,7 +25,13 @@ import type {
   NormalizedDetailGroupRow,
   RuleSuggestion,
 } from './types'
-import { MAX_RECEIPT_UPLOAD_SIZE } from './types'
+import {
+  MAX_RECEIPT_FILE_UPLOAD_BYTES,
+  MAX_RECEIPT_STATEMENT_UPLOAD_BYTES,
+  RECEIPT_FILE_UPLOAD_LIMIT_LABEL,
+  RECEIPT_STATEMENT_UPLOAD_LIMIT_LABEL,
+  isAllowedReceiptMimeType,
+} from '@/lib/receipts/upload-constraints'
 
 // ---------------------------------------------------------------------------
 // Zod schemas shared by actions layer
@@ -71,33 +77,55 @@ export const classificationUpdateSchema = z.object({
 
 export const fileSchema = z.instanceof(File, { message: 'Please attach a CSV file' })
   .refine((file) => file.size > 0, { message: 'File is empty' })
-  .refine((file) => file.size <= MAX_RECEIPT_UPLOAD_SIZE, {
-    message: 'CSV file is too large. Please keep bank statements under 15 MB.',
+  .refine((file) => file.size <= MAX_RECEIPT_STATEMENT_UPLOAD_BYTES, {
+    message: `CSV file is too large. Please keep bank statements under ${RECEIPT_STATEMENT_UPLOAD_LIMIT_LABEL}.`,
   })
   .refine((file) => file.type === 'text/csv' || file.name.endsWith('.csv'), {
     message: 'Only CSV bank statements are supported'
   })
 
-export const ALLOWED_RECEIPT_MIME_TYPES = [
-  'application/pdf',
-  'image/png',
-  'image/jpeg',
-  'image/jpg',
-  'image/gif',
-  'image/webp',
-  'image/heic',
-  'image/heif', // iOS may report HEIC files as image/heif depending on OS version
-]
-
 export const receiptFileSchema = z.instanceof(File, { message: 'Please choose a receipt file' })
   .refine((file) => file.size > 0, { message: 'File is empty' })
-  .refine((file) => file.size <= MAX_RECEIPT_UPLOAD_SIZE, {
-    message: 'File is too large. Please keep receipts under 15MB.'
+  .refine((file) => file.size <= MAX_RECEIPT_FILE_UPLOAD_BYTES, {
+    message: `File is too large. Please keep receipts under ${RECEIPT_FILE_UPLOAD_LIMIT_LABEL}.`
   })
   .refine(
-    (file) => ALLOWED_RECEIPT_MIME_TYPES.includes(file.type),
+    (file) => isAllowedReceiptMimeType(file.type),
     { message: 'Only PDF, PNG, JPG, GIF, WEBP, and HEIC files are accepted.' }
   )
+
+const receiptUploadMetadataBaseSchema = z.object({
+  fileName: z.string().trim().min(1, 'Please choose a receipt file').max(255, 'File name is too long'),
+  fileType: z.string().trim().min(1, 'File type is missing'),
+  fileSize: z.number().int('Invalid file size').positive('File is empty'),
+})
+
+export const receiptUploadMetadataSchema = receiptUploadMetadataBaseSchema
+  .refine((file) => file.fileSize <= MAX_RECEIPT_FILE_UPLOAD_BYTES, {
+    message: `File is too large. Please keep receipts under ${RECEIPT_FILE_UPLOAD_LIMIT_LABEL}.`,
+    path: ['fileSize'],
+  })
+  .refine((file) => isAllowedReceiptMimeType(file.fileType), {
+    message: 'Only PDF, PNG, JPG, GIF, WEBP, and HEIC files are accepted.',
+    path: ['fileType'],
+  })
+
+export const receiptUploadedObjectSchema = receiptUploadMetadataBaseSchema.extend({
+  storagePath: z
+    .string()
+    .trim()
+    .min(1, 'Missing uploaded receipt path')
+    .max(500, 'Uploaded receipt path is too long')
+    .regex(/^\d{4}\/[^/]+_\d{13}$/, 'Uploaded receipt path is invalid'),
+})
+  .refine((file) => file.fileSize <= MAX_RECEIPT_FILE_UPLOAD_BYTES, {
+    message: `File is too large. Please keep receipts under ${RECEIPT_FILE_UPLOAD_LIMIT_LABEL}.`,
+    path: ['fileSize'],
+  })
+  .refine((file) => isAllowedReceiptMimeType(file.fileType), {
+    message: 'Only PDF, PNG, JPG, GIF, WEBP, and HEIC files are accepted.',
+    path: ['fileType'],
+  })
 
 // ---------------------------------------------------------------------------
 // Pure utility functions

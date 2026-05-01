@@ -13,6 +13,7 @@ import {
   updateReceiptClassification,
   type ClassificationRuleSuggestion,
 } from '@/app/actions/receipts'
+import { useSupabase } from '@/components/providers/SupabaseProvider'
 import type { ReceiptTransaction, ReceiptFile, ReceiptExpenseCategory, ReceiptClassificationSource } from '@/types/database'
 import { receiptExpenseCategorySchema } from '@/lib/validation'
 import {
@@ -29,6 +30,7 @@ import {
 } from '@heroicons/react/24/outline'
 import { usePermissions } from '@/contexts/PermissionContext'
 import { formatCurrency, formatDate, statusLabels, statusToneClasses } from '@/app/(authenticated)/receipts/utils'
+import { RECEIPT_UPLOAD_ACCEPT, receiptUploadErrorMessage, uploadReceiptFile } from './receiptUploadClient'
 
 // Re-defined here or imported? Imported `ReceiptWorkspaceData` in parent, but here we just need the type.
 // We can use ReceiptTransaction & { files: ReceiptFile[], autoRule?: ... }
@@ -72,6 +74,7 @@ export function ReceiptTableRow({
   onRuleSuggestion,
 }: ReceiptTableRowProps) {
   const { hasPermission } = usePermissions()
+  const supabase = useSupabase()
   const canManageReceipts = hasPermission('receipts', 'manage')
 
   const [isPending, startTransition] = useTransition()
@@ -123,19 +126,15 @@ export function ReceiptTableRow({
     event.target.value = ''
     if (!file) return
 
-    const formData = new FormData()
-    formData.append('transactionId', transaction.id)
-    formData.append('receipt', file)
-
     startTransition(async () => {
       try {
-        const response = await fetch('/api/receipts/upload', {
-          method: 'POST',
-          body: formData,
+        const result = await uploadReceiptFile({
+          supabase,
+          transactionId: transaction.id,
+          file,
         })
-        const result = await response.json().catch(() => ({}))
 
-        if (!response.ok || result?.error || !result?.receipt) {
+        if (result?.error || !result?.receipt) {
           toast.error(result?.error ?? 'Upload failed')
           return
         }
@@ -150,9 +149,7 @@ export function ReceiptTableRow({
         toast.success('Receipt uploaded')
       } catch (error) {
         console.error('Receipt upload failed', error)
-        const message = error instanceof Error ? error.message.toLowerCase() : ''
-        const tooLarge = (message.includes('body') && message.includes('limit')) || message.includes('too large')
-        toast.error(tooLarge ? 'File is too large. Please keep receipts under 15MB.' : 'Upload failed')
+        toast.error(receiptUploadErrorMessage(error))
       }
     })
   }
@@ -414,7 +411,7 @@ export function ReceiptTableRow({
           >
             <ArrowUpTrayIcon className="h-4 w-4" />
           </Button>
-          <input type="file" className="hidden" ref={fileInputRef} onChange={handleUpload} />
+          <input type="file" className="hidden" ref={fileInputRef} accept={RECEIPT_UPLOAD_ACCEPT} onChange={handleUpload} />
 
           {transaction.status !== 'completed' && (
             <Button
