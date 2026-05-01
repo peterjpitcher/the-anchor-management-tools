@@ -52,6 +52,8 @@ import {
   performImportReceiptStatement,
   performMarkReceiptTransaction,
   performUpdateReceiptClassification,
+  performCreateReceiptUploadUrl,
+  performCompleteReceiptUpload,
   performUploadReceiptForTransaction,
   performDeleteReceiptFile,
   performCreateReceiptRule,
@@ -332,6 +334,67 @@ export async function updateReceiptClassification(input: {
     revalidatePath('/receipts/missing-expense')
     revalidatePath('/receipts/vendors')
     revalidatePath('/receipts/pnl')
+    revalidateTag('dashboard')
+  }
+
+  return result
+}
+
+export async function createReceiptUploadUrl(input: {
+  transactionId: string
+  fileName: string
+  fileType: string
+  fileSize: number
+}) {
+  const canManage = await checkUserPermission('receipts', 'manage')
+  if (!canManage) {
+    return { error: 'Insufficient permissions' }
+  }
+
+  if (typeof input.transactionId !== 'string' || !input.transactionId) {
+    return { error: 'Missing transaction reference' }
+  }
+
+  const { user_id } = await requireCurrentUser()
+  return performCreateReceiptUploadUrl(user_id, input.transactionId, {
+    fileName: input.fileName,
+    fileType: input.fileType,
+    fileSize: input.fileSize,
+  })
+}
+
+export async function completeReceiptUpload(input: {
+  transactionId: string
+  storagePath: string
+  fileName: string
+  fileType: string
+  fileSize: number
+}) {
+  const canManage = await checkUserPermission('receipts', 'manage')
+  if (!canManage) {
+    return { error: 'Insufficient permissions' }
+  }
+
+  if (typeof input.transactionId !== 'string' || !input.transactionId) {
+    return { error: 'Missing transaction reference' }
+  }
+
+  const { user_id, user_email } = await requireCurrentUser()
+  const result = await performCompleteReceiptUpload(user_id, user_email, input)
+
+  if (result.success) {
+    await logAuditEvent({
+      operation_type: 'upload_receipt',
+      resource_type: 'receipt_transaction',
+      resource_id: input.transactionId,
+      operation_status: 'success',
+      additional_info: {
+        status: 'completed',
+        file_name: input.fileName,
+        file_size: input.fileSize,
+      },
+    })
+    revalidatePath('/receipts')
     revalidateTag('dashboard')
   }
 

@@ -25,6 +25,7 @@ import type {
 } from '@/types/database'
 
 import type {
+  AdminClient,
   AutomationResult,
   ParsedTransactionRow,
   RuleMutationResult,
@@ -48,6 +49,8 @@ import {
   composeReceiptFileArtifacts,
   fileSchema,
   receiptFileSchema,
+  receiptUploadMetadataSchema,
+  receiptUploadedObjectSchema,
   classificationUpdateSchema,
   bulkGroupApplySchema,
   groupRuleInputSchema,
@@ -837,14 +840,26 @@ export async function performUpdateReceiptClassification(
 // @requires Caller must verify user auth and 'receipts.manage' permission
 // ---------------------------------------------------------------------------
 
-export async function performUploadReceiptForTransaction(
-  userId: string,
-  userEmail: string,
-  transactionId: string,
-  file: File
-): Promise<{ success?: boolean; error?: string; receipt?: any }> {
-  const supabase = createAdminClient()
+type ReceiptUploadMetadataInput = {
+  fileName: string
+  fileType: string
+  fileSize: number
+}
 
+type ReceiptUploadedObjectInput = ReceiptUploadMetadataInput & {
+  transactionId: string
+  storagePath: string
+}
+
+async function getReceiptUploadContext(
+  supabase: AdminClient,
+  userId: string,
+  transactionId: string
+): Promise<{
+  transaction?: Pick<ReceiptTransaction, 'id' | 'transaction_date' | 'details' | 'amount_in' | 'amount_out' | 'status'>
+  profile?: { full_name: string | null } | null
+  error?: string
+}> {
   const [{ data: transaction, error: txError }, { data: profile }] = await Promise.all([
     supabase
       .from('receipt_transactions')
@@ -862,23 +877,33 @@ export async function performUploadReceiptForTransaction(
     return { error: 'Transaction not found' }
   }
 
-  const buffer = Buffer.from(await file.arrayBuffer())
+  return { transaction, profile }
+}
 
-  const extension = file.name.includes('.') ? file.name.split('.').pop() || 'pdf' : 'pdf'
-  const amount = transaction.amount_out ?? transaction.amount_in ?? 0
-  const { friendlyName, storagePath } = composeReceiptFileArtifacts(transaction as ReceiptTransaction, amount, extension)
-
-  const { error: uploadError } = await supabase.storage
-    .from(RECEIPT_BUCKET)
-    .upload(storagePath, buffer, {
-      upsert: false,
-      contentType: file.type || 'application/octet-stream',
-    })
-
-  if (uploadError) {
-    console.error('Failed to upload receipt:', uploadError)
-    return { error: 'Failed to upload receipt file.' }
-  }
+async function recordUploadedReceiptForTransaction(params: {
+  supabase: AdminClient
+  userId: string
+  userEmail: string
+  transactionId: string
+  transaction: Pick<ReceiptTransaction, 'status'>
+  profile?: { full_name: string | null } | null
+  storagePath: string
+  fileName: string
+  fileType: string
+  fileSize: number
+}): Promise<{ success?: boolean; error?: string; receipt?: any }> {
+  const {
+    supabase,
+    userId,
+    userEmail,
+    transactionId,
+    transaction,
+    profile,
+    storagePath,
+    fileName,
+    fileType,
+    fileSize,
+  } = params
 
   const now = new Date().toISOString()
 
@@ -887,9 +912,9 @@ export async function performUploadReceiptForTransaction(
     .insert({
       transaction_id: transactionId,
       storage_path: storagePath,
-      file_name: friendlyName,
-      mime_type: file.type || null,
-      file_size_bytes: file.size,
+      file_name: fileName,
+      mime_type: fileType || null,
+      file_size_bytes: fileSize,
       uploaded_by: userId,
     })
     .select('*')
@@ -897,7 +922,6 @@ export async function performUploadReceiptForTransaction(
 
   if (recordError || !receipt) {
     console.error('Failed to record receipt metadata:', recordError)
-    // Attempt cleanup
     const { error: cleanupStorageError } = await supabase.storage.from(RECEIPT_BUCKET).remove([storagePath])
     if (cleanupStorageError) {
       console.error('Failed to cleanup receipt storage after metadata insert error:', cleanupStorageError)
@@ -953,7 +977,7 @@ export async function performUploadReceiptForTransaction(
     previous_status: transaction.status,
     new_status: 'completed',
     action_type: 'receipt_upload',
-    note: `Receipt uploaded (${friendlyName})`,
+    note: `Receipt uploaded (${fileName})`,
     performed_by: userId,
     rule_id: null,
     performed_at: now,
@@ -964,6 +988,134 @@ export async function performUploadReceiptForTransaction(
   }
 
   return { success: true, receipt }
+}
+
+export async function performCreateReceiptUploadUrl(
+  userId: string,
+  transactionId: string,
+  metadata: ReceiptUploadMetadataInput
+): Promise<{ success?: boolean; error?: string; path?: string; token?: string; friendlyName?: string }> {
+  const validation = receiptUploadMetadataSchema.safeParse(metadata)
+  if (!validation.success) {
+    return { error: validation.error.issues[0]?.message ?? 'Invalid receipt upload' }
+  }
+
+  const supabase = createAdminClient()
+
+  const { transaction, error } = await getReceiptUploadContext(supabase, userId, transactionId)
+  if (error || !transaction) {
+    return { error: error ?? 'Transaction not found' }
+  }
+
+  const extension = validation.data.fileName.includes('.')
+    ? validation.data.fileName.split('.').pop() || 'pdf'
+    : 'pdf'
+  const amount = transaction.amount_out ?? transaction.amount_in ?? 0
+  const { friendlyName, storagePath } = composeReceiptFileArtifacts(transaction as ReceiptTransaction, amount, extension)
+
+  const { data, error: signedUploadError } = await supabase.storage
+    .from(RECEIPT_BUCKET)
+    .createSignedUploadUrl(storagePath, { upsert: false })
+
+  if (signedUploadError || !data?.token) {
+    console.error('Failed to create receipt signed upload URL:', signedUploadError)
+    return { error: signedUploadError?.message || 'Failed to prepare receipt upload.' }
+  }
+
+  return {
+    success: true,
+    path: data.path ?? storagePath,
+    token: data.token,
+    friendlyName,
+  }
+}
+
+export async function performCompleteReceiptUpload(
+  userId: string,
+  userEmail: string,
+  input: ReceiptUploadedObjectInput
+): Promise<{ success?: boolean; error?: string; receipt?: any }> {
+  const validation = receiptUploadedObjectSchema.safeParse({
+    fileName: input.fileName,
+    fileType: input.fileType,
+    fileSize: input.fileSize,
+    storagePath: input.storagePath,
+  })
+
+  if (!validation.success) {
+    return { error: validation.error.issues[0]?.message ?? 'Invalid receipt upload' }
+  }
+
+  const supabase = createAdminClient()
+  const { transaction, profile, error } = await getReceiptUploadContext(supabase, userId, input.transactionId)
+  if (error || !transaction) {
+    await supabase.storage.from(RECEIPT_BUCKET).remove([validation.data.storagePath])
+    return { error: error ?? 'Transaction not found' }
+  }
+
+  const expectedYearPrefix = `${transaction.transaction_date.substring(0, 4)}/`
+  if (!validation.data.storagePath.startsWith(expectedYearPrefix)) {
+    await supabase.storage.from(RECEIPT_BUCKET).remove([validation.data.storagePath])
+    return { error: 'Uploaded receipt path is invalid' }
+  }
+
+  return recordUploadedReceiptForTransaction({
+    supabase,
+    userId,
+    userEmail,
+    transactionId: input.transactionId,
+    transaction,
+    profile,
+    storagePath: validation.data.storagePath,
+    fileName: validation.data.fileName,
+    fileType: validation.data.fileType,
+    fileSize: validation.data.fileSize,
+  })
+}
+
+export async function performUploadReceiptForTransaction(
+  userId: string,
+  userEmail: string,
+  transactionId: string,
+  file: File
+): Promise<{ success?: boolean; error?: string; receipt?: any }> {
+  const supabase = createAdminClient()
+
+  const { transaction, profile, error } = await getReceiptUploadContext(supabase, userId, transactionId)
+  if (error || !transaction) {
+    return { error: error ?? 'Transaction not found' }
+  }
+
+  const buffer = Buffer.from(await file.arrayBuffer())
+
+  const extension = file.name.includes('.') ? file.name.split('.').pop() || 'pdf' : 'pdf'
+  const amount = transaction.amount_out ?? transaction.amount_in ?? 0
+  const { friendlyName, storagePath } = composeReceiptFileArtifacts(transaction as ReceiptTransaction, amount, extension)
+
+  const { error: uploadError } = await supabase.storage
+    .from(RECEIPT_BUCKET)
+    .upload(storagePath, buffer, {
+      upsert: false,
+      contentType: file.type || 'application/octet-stream',
+    })
+
+  if (uploadError) {
+    console.error('Failed to upload receipt:', uploadError)
+    return { error: 'Failed to upload receipt file.' }
+  }
+
+  return recordUploadedReceiptForTransaction({
+    supabase,
+    userId,
+    userEmail,
+    transactionId,
+    transaction,
+    profile,
+    storagePath,
+    fileName: friendlyName,
+    fileType: file.type || 'application/octet-stream',
+    fileSize: file.size,
+  })
 }
 
 // ---------------------------------------------------------------------------

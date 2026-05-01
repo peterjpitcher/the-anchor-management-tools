@@ -8,12 +8,12 @@ import { Select } from '@/components/ui-v2/forms/Select'
 import { Spinner } from '@/components/ui-v2/feedback/Spinner'
 import {
   markReceiptTransaction,
-  uploadReceiptForTransaction,
   deleteReceiptFile,
   getReceiptSignedUrl,
   updateReceiptClassification,
   type ClassificationRuleSuggestion,
 } from '@/app/actions/receipts'
+import { useSupabase } from '@/components/providers/SupabaseProvider'
 import type { ReceiptTransaction, ReceiptFile, ReceiptClassificationSource } from '@/types/database'
 import { receiptExpenseCategorySchema } from '@/lib/validation'
 import {
@@ -23,6 +23,7 @@ import {
 } from '@heroicons/react/24/outline'
 import { usePermissions } from '@/contexts/PermissionContext'
 import { formatCurrency, formatDate, statusLabels, statusToneClasses } from '@/app/(authenticated)/receipts/utils'
+import { RECEIPT_UPLOAD_ACCEPT, receiptUploadErrorMessage, uploadReceiptFile } from './receiptUploadClient'
 
 type WorkspaceTransaction = ReceiptTransaction & {
   files: ReceiptFile[]
@@ -45,6 +46,7 @@ export function ReceiptMobileCard({
   onRuleSuggestion,
 }: ReceiptMobileCardProps) {
   const { hasPermission } = usePermissions()
+  const supabase = useSupabase()
   const canManageReceipts = hasPermission('receipts', 'manage')
 
   const [isPending, startTransition] = useTransition()
@@ -88,13 +90,13 @@ export function ReceiptMobileCard({
     event.target.value = ''
     if (!file) return
 
-    const formData = new FormData()
-    formData.append('transactionId', transaction.id)
-    formData.append('receipt', file)
-
     startTransition(async () => {
       try {
-        const result = await uploadReceiptForTransaction(formData)
+        const result = await uploadReceiptFile({
+          supabase,
+          transactionId: transaction.id,
+          file,
+        })
         if (result?.error || !result?.receipt) {
           toast.error(result?.error ?? 'Upload failed')
           return
@@ -108,9 +110,7 @@ export function ReceiptMobileCard({
         toast.success('Receipt uploaded')
       } catch (error) {
         console.error('Receipt upload failed', error)
-        const message = error instanceof Error ? error.message.toLowerCase() : ''
-        const tooLarge = (message.includes('body') && message.includes('limit')) || message.includes('too large')
-        toast.error(tooLarge ? 'File is too large. Please keep receipts under 15MB.' : 'Upload failed')
+        toast.error(receiptUploadErrorMessage(error))
       }
     })
   }
@@ -327,7 +327,7 @@ export function ReceiptMobileCard({
         
         <div className="mt-2 border-t border-gray-100 pt-2 flex flex-wrap gap-2">
              <Button variant="secondary" size="xs" onClick={() => fileInputRef.current?.click()} disabled={isPending || !canManageReceipts}>Upload</Button>
-             <input type="file" className="hidden" ref={fileInputRef} onChange={handleUpload} />
+             <input type="file" className="hidden" ref={fileInputRef} accept={RECEIPT_UPLOAD_ACCEPT} onChange={handleUpload} />
              
              {transaction.files.map(f => (
                  <div key={f.id} className="inline-flex items-center gap-1 rounded-full border border-gray-200 px-2 py-0.5 bg-white text-[11px]">
