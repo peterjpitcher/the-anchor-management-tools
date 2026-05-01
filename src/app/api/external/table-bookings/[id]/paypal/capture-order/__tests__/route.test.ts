@@ -17,7 +17,6 @@ const mockSelect = vi.fn();
 const mockEq = vi.fn();
 const mockSingle = vi.fn();
 const mockUpdate = vi.fn();
-const mockUpdateEq = vi.fn();
 
 vi.mock('@/lib/supabase/admin', () => ({
   createAdminClient: vi.fn(() => ({
@@ -29,9 +28,11 @@ vi.mock('@/lib/supabase/admin', () => ({
 }));
 
 const mockCapturePayPalPayment = vi.fn();
+const mockGetPayPalOrder = vi.fn();
 
 vi.mock('@/lib/paypal', () => ({
   capturePayPalPayment: mockCapturePayPalPayment,
+  getPayPalOrder: mockGetPayPalOrder,
 }));
 
 vi.mock('@/app/actions/audit', () => ({
@@ -45,8 +46,12 @@ function makeBooking(overrides: Record<string, unknown> = {}) {
     party_size: 4,
     status: 'pending_payment',
     payment_status: 'pending',
+    hold_expires_at: '2099-01-01T12:00:00Z',
     paypal_deposit_order_id: 'ORDER-123',
     paypal_deposit_capture_id: null,
+    deposit_amount: 40,
+    deposit_amount_locked: null,
+    deposit_waived: false,
     ...overrides,
   };
 }
@@ -59,9 +64,20 @@ function mockBookingFetch(booking: ReturnType<typeof makeBooking> | null, dbErro
 }
 
 // Helper to mock a successful Supabase update chain
-function mockUpdateSuccess() {
-  mockUpdateEq.mockResolvedValueOnce({ error: null });
-  mockUpdate.mockReturnValue({ eq: mockUpdateEq });
+function mockUpdateSuccess(result: { data: unknown; error: unknown } = { data: { id: 'booking-uuid-1' }, error: null }) {
+  const maybeSingle = vi.fn().mockResolvedValue(result);
+  const select = vi.fn(() => ({ maybeSingle }));
+  const chain = {
+    eq: vi.fn(() => chain),
+    is: vi.fn(() => chain),
+    neq: vi.fn(() => chain),
+    select,
+  };
+  mockUpdate.mockReturnValue(chain);
+}
+
+function makePayPalOrder(amount: string) {
+  return { purchase_units: [{ amount: { value: amount, currency_code: 'GBP' } }] };
 }
 
 // Import AFTER mocks are declared (dynamic to avoid hoisting issues)
@@ -85,6 +101,7 @@ describe('POST /api/external/table-bookings/[id]/paypal/capture-order', () => {
     const booking = makeBooking({ paypal_deposit_order_id: 'ORDER-123' });
     mockBookingFetch(booking);
     mockUpdateSuccess();
+    mockGetPayPalOrder.mockResolvedValueOnce(makePayPalOrder('40.00'));
     mockCapturePayPalPayment.mockResolvedValueOnce({
       transactionId: 'CAPTURE-ABC',
       status: 'COMPLETED',
@@ -144,6 +161,7 @@ describe('POST /api/external/table-bookings/[id]/paypal/capture-order', () => {
   it('returns 502 on PayPal capture failure', async () => {
     const booking = makeBooking({ paypal_deposit_order_id: 'ORDER-123' });
     mockBookingFetch(booking);
+    mockGetPayPalOrder.mockResolvedValueOnce(makePayPalOrder('40.00'));
     mockCapturePayPalPayment.mockRejectedValueOnce(new Error('PayPal capture failed'));
 
     const res = await callRoute('booking-uuid-1', { orderId: 'ORDER-123' });
@@ -156,6 +174,7 @@ describe('POST /api/external/table-bookings/[id]/paypal/capture-order', () => {
   it('returns 502 and logs reconciliation event if PayPal succeeds but DB update fails', async () => {
     const booking = makeBooking({ paypal_deposit_order_id: 'ORDER-123' });
     mockBookingFetch(booking);
+    mockGetPayPalOrder.mockResolvedValueOnce(makePayPalOrder('40.00'));
     mockCapturePayPalPayment.mockResolvedValueOnce({
       transactionId: 'CAPTURE-XYZ',
       status: 'COMPLETED',
@@ -163,8 +182,7 @@ describe('POST /api/external/table-bookings/[id]/paypal/capture-order', () => {
       amount: '40.00',
     });
     // DB update returns an error
-    mockUpdateEq.mockResolvedValueOnce({ error: { message: 'DB write failed' } });
-    mockUpdate.mockReturnValue({ eq: mockUpdateEq });
+    mockUpdateSuccess({ data: null, error: { message: 'DB write failed' } });
 
     const res = await callRoute('booking-uuid-1', { orderId: 'ORDER-123' });
     const body = await res.json();

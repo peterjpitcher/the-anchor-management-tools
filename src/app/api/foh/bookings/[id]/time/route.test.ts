@@ -33,30 +33,31 @@ const mockAuthFail = () => {
 
 const createSupabaseMock = () => {
   // Track calls to from() so we can differentiate between tables
-  const assignmentMaybeSingle = vi.fn().mockResolvedValue({
-    data: {
+  const assignmentEq = vi.fn().mockResolvedValue({
+    data: [{
       start_datetime: '2026-03-15T13:00:00.000Z',
       end_datetime: '2026-03-15T15:00:00.000Z',
-    },
+    }],
     error: null,
   })
-  const assignmentEq = vi.fn().mockReturnValue({ maybeSingle: assignmentMaybeSingle })
   const assignmentSelect = vi.fn().mockReturnValue({ eq: assignmentEq })
 
-  const updateEq = vi.fn().mockResolvedValue({ error: null })
-  const update = vi.fn().mockReturnValue({ eq: updateEq })
+  const rpc = vi.fn().mockResolvedValue({
+    data: { state: 'updated', assignment_count: 1 },
+    error: null,
+  })
 
   const from = vi.fn().mockImplementation((table: string) => {
     if (table === 'booking_table_assignments') {
-      return { select: assignmentSelect, update }
+      return { select: assignmentSelect }
     }
     if (table === 'table_bookings') {
-      return { update }
+      return { select: assignmentSelect }
     }
-    return { select: assignmentSelect, update }
+    return { select: assignmentSelect }
   })
 
-  return { from, _updateEq: updateEq, _update: update }
+  return { from, rpc, _assignmentEq: assignmentEq }
 }
 
 const mockAuthSuccess = (dbMock: Record<string, unknown> = {}) => {
@@ -106,7 +107,7 @@ describe('PATCH /api/foh/bookings/[id]/time', () => {
     expect(res.status).toBe(400)
   })
 
-  it('returns 200 and updates both tables when assignment exists', async () => {
+  it('returns 200 and moves booking plus assignments through the atomic RPC', async () => {
     const db = createSupabaseMock()
     mockAuthSuccess(db)
 
@@ -115,9 +116,11 @@ describe('PATCH /api/foh/bookings/[id]/time', () => {
     const json = await res.json()
     expect(json.success).toBe(true)
 
-    // Should have called from() for booking_table_assignments (select) and both updates
+    // Duration comes from assignments; mutation happens in the database RPC transaction.
     expect(db.from).toHaveBeenCalledWith('booking_table_assignments')
-    expect(db.from).toHaveBeenCalledWith('table_bookings')
-    expect(db._update).toHaveBeenCalled()
+    expect(db.rpc).toHaveBeenCalledWith('move_table_booking_time_v05', expect.objectContaining({
+      p_table_booking_id: VALID_UUID,
+      p_booking_time: '14:00:00',
+    }))
   })
 })

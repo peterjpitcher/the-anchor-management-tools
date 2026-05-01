@@ -74,7 +74,7 @@ async function loadSourceBooking(
   if (sourceType === 'table_booking') {
     const { data } = await db
       .from('table_bookings')
-      .select('id, paypal_deposit_capture_id, card_capture_completed_at, deposit_amount, customer_id, customers(first_name, last_name, email, mobile_e164)')
+      .select('id, paypal_deposit_capture_id, card_capture_completed_at, deposit_amount, deposit_amount_locked, customer_id, customers(first_name, last_name, email, mobile_e164)')
       .eq('id', sourceId)
       .maybeSingle()
     if (!data) return null
@@ -83,7 +83,7 @@ async function loadSourceBooking(
       id: data.id,
       captureId: data.paypal_deposit_capture_id,
       captureDate: data.card_capture_completed_at,
-      originalAmount: Number(data.deposit_amount) || 0,
+      originalAmount: Number(data.deposit_amount_locked ?? data.deposit_amount) || 0,
       customerName: customer ? `${customer.first_name} ${customer.last_name}`.trim() : null,
       customerEmail: customer?.email ?? null,
       customerPhone: customer?.mobile_e164 ?? null,

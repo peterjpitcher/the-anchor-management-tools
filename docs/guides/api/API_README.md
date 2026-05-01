@@ -30,8 +30,8 @@ All endpoints live in `src/app/api/`. Consult the corresponding route file for r
 - `GET /events/{id}` returns the event object as `data` (no nested `event` wrapper); `_meta.lastUpdated` is included for cache diagnostics.
 - `POST /events/{id}/check-availability` includes both legacy fields (`available_seats`, `requested_seats`) and normalized capacity fields (`capacity`, `remaining`, `percentage_full`).
 - `GET /event-categories` includes `event_count` for upcoming active events (scheduled/draft/rescheduled/postponed).
-- `POST /table-bookings` is the only public table-booking endpoint. It requires `Idempotency-Key` and returns `data.state` as one of: `confirmed`, `pending_card_capture`, `pending_payment`, or `blocked`.
-- `POST /table-bookings` next-step behavior: when state is `pending_card_capture` or `pending_payment`, `next_step_url` and `hold_expires_at` are returned; when state is `blocked`, `blocked_reason` is returned.
+- `POST /table-bookings` is the only public table-booking endpoint. It requires `Idempotency-Key` and returns `data.state` as one of: `confirmed`, `pending_payment`, or `blocked`.
+- `POST /table-bookings` next-step behavior: when state is `pending_payment`, `next_step_url` and `hold_expires_at` are returned; when state is `blocked`, `blocked_reason` is returned.
 
 ## OpenAPI Specification
 - `docs/guides/api/openapi.yaml` contains the full OpenAPI 3.0 spec. Import it into Postman/Insomnia/Swagger UI for schema validation, example payloads, and response codes.

@@ -371,10 +371,16 @@ export function useFohCreateBooking(input: {
     }
     if (isManagement && !selectedCustomer) { setErrorMessage('Select a customer for management booking'); return }
     if (!isWalkIn && !isManagement && !selectedCustomer && !createForm.phone.trim()) { setErrorMessage('Select a customer or provide a phone number'); return }
+    if (!isWalkIn && !isManagement && selectedCustomer && !selectedCustomer.mobile_e164 && !selectedCustomer.mobile_number && !createForm.phone.trim()) {
+      setErrorMessage('Enter a phone number for the selected customer'); return
+    }
 
-    const nameParts = splitName(createForm.customer_name)
-    const firstName = createForm.first_name.trim() || nameParts.firstName || undefined
-    const lastName = createForm.last_name.trim() || nameParts.lastName || undefined
+    const walkInNameParts = splitName(createForm.customer_name)
+    const firstName = createForm.first_name.trim() || (isWalkIn ? walkInNameParts.firstName : undefined)
+    const lastName = createForm.last_name.trim() || (isWalkIn ? walkInNameParts.lastName : undefined)
+    if (!isWalkIn && !isManagement && !selectedCustomer && (!firstName || !lastName)) {
+      setErrorMessage('Enter first name and last name for the new customer'); return
+    }
 
     if (createForm.purpose === 'event') {
       const seats = Number.parseInt(createForm.party_size, 10)

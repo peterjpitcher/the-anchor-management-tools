@@ -278,7 +278,8 @@ async function sendBookingSmsIfAllowed(
 
 async function cancelBookingAfterTableReservationFailure(
   supabase: ReturnType<typeof createAdminClient>,
-  bookingId: string
+  bookingId: string,
+  tableBookingId?: string | null
 ): Promise<void> {
   const cancelledAt = new Date().toISOString()
   const rollbackErrors: string[] = []
@@ -339,9 +340,28 @@ async function cancelBookingAfterTableReservationFailure(
     }
   }
 
+  if (tableBookingId) {
+    const { error: tableCancelError } = await supabase
+      .from('table_bookings')
+      .update({
+        status: 'cancelled',
+        cancelled_at: cancelledAt,
+        cancelled_by: 'system',
+        cancellation_reason: 'event_booking_creation_failed',
+        hold_expires_at: null,
+        paypal_deposit_order_id: null,
+        updated_at: cancelledAt,
+      })
+      .eq('id', tableBookingId)
+
+    if (tableCancelError?.message) {
+      rollbackErrors.push(`table_booking_cancel: ${tableCancelError.message}`)
+    }
+  }
+
   if (rollbackErrors.length > 0) {
     throw new Error(
-      `Failed rolling back event booking after table reservation failure: ${rollbackErrors.join('; ')}`
+      `Failed rolling back event booking after creation failure: ${rollbackErrors.join('; ')}`
     )
   }
 }
@@ -525,8 +545,21 @@ export class EventBookingService {
         // cannot complete payment without it. Signal failure to the caller.
         logger.error('Failed to create event payment token', {
           error: tokenError instanceof Error ? tokenError : new Error(String(tokenError)),
-          metadata: { bookingId: rpcResult.booking_id }
+          metadata: { bookingId: rpcResult.booking_id, tableBookingId }
         })
+        let rollbackFailed = false
+        try {
+          await cancelBookingAfterTableReservationFailure(supabase, rpcResult.booking_id, tableBookingId)
+        } catch (rollbackError) {
+          rollbackFailed = true
+          logger.error('Failed to rollback event booking after payment-token failure', {
+            metadata: {
+              bookingId: rpcResult.booking_id,
+              tableBookingId,
+              error: rollbackError instanceof Error ? rollbackError.message : String(rollbackError)
+            }
+          })
+        }
         return {
           resolvedState,
           resolvedReason,
@@ -538,6 +571,7 @@ export class EventBookingService {
           tableBookingId,
           tableName,
           rpcResult,
+          rollbackFailed,
           paymentLinkFailed: true
         }
       }

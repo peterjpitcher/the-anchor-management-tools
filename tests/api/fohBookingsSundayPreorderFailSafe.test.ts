@@ -101,6 +101,8 @@ describe('FOH bookings Sunday preorder fail-safe guards', () => {
       },
       body: JSON.stringify({
         phone: '+447700900111',
+        first_name: 'Pat',
+        last_name: 'Guest',
         date: '2026-02-16',
         time: '12:00',
         party_size: 2,
@@ -206,6 +208,8 @@ describe('FOH bookings Sunday preorder fail-safe guards', () => {
       },
       body: JSON.stringify({
         phone: '+447700900222',
+        first_name: 'Pat',
+        last_name: 'Guest',
         date: '2026-06-28',
         time: '13:30',
         party_size: 2,

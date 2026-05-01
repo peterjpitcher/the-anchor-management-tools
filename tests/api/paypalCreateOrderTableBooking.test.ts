@@ -55,6 +55,7 @@ function buildBookingRow(overrides: Record<string, unknown> = {}) {
     party_size: 12,
     status: 'pending_payment',
     payment_status: 'pending',
+    hold_expires_at: '2099-01-01T12:00:00Z',
     paypal_deposit_order_id: null,
     deposit_amount: null,
     deposit_amount_locked: null,

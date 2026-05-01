@@ -5,6 +5,12 @@ import { logger } from '@/lib/logger'
 import { handleRefundEvent } from '@/lib/paypal-refund-webhook'
 import { logAuditEvent } from '@/app/actions/audit'
 import {
+  buildPayPalDepositCompletedUpdate,
+  getPayPalDepositCaptureBlockReason,
+  parsePayPalAmountGbp,
+  sendTableBookingDepositCapturedNotifications,
+} from '@/lib/table-bookings/paypal-deposit'
+import {
   claimIdempotencyKey,
   computeIdempotencyRequestHash,
   persistIdempotencyResponse,
@@ -105,7 +111,7 @@ async function handleDepositCaptureCompleted(
 
   const { data: booking, error: fetchError } = await supabase
     .from('table_bookings')
-    .select('id, status, payment_status, paypal_deposit_order_id, paypal_deposit_capture_id')
+    .select('id, status, payment_status, hold_expires_at, paypal_deposit_order_id, paypal_deposit_capture_id, customer_id')
     .eq('paypal_deposit_order_id', orderId)
     .maybeSingle()
 
@@ -129,14 +135,63 @@ async function handleDepositCaptureCompleted(
     return
   }
 
+  const blockReason = getPayPalDepositCaptureBlockReason(booking)
+  if (blockReason) {
+    logger.error('Table booking deposit webhook ignored because booking is no longer payable', {
+      metadata: { bookingId: booking.id, orderId, captureId, eventId: event.id, blockReason },
+    })
+    await logAuditEvent({
+      operation_type: 'payment.webhook_capture_blocked',
+      resource_type: 'table_booking',
+      resource_id: booking.id,
+      operation_status: 'failure',
+      additional_info: {
+        capture_id: captureId,
+        order_id: orderId,
+        event_id: event.id,
+        source: 'webhook',
+        reason: blockReason,
+      },
+    })
+    return
+  }
+
+  const lockedAmountGbp = parsePayPalAmountGbp(resource.amount?.value ?? null)
+  if (lockedAmountGbp === null) {
+    logger.error('Table booking deposit webhook capture amount missing or invalid', {
+      metadata: {
+        bookingId: booking.id,
+        orderId,
+        captureId,
+        eventId: event.id,
+        rawAmount: resource.amount?.value ?? null,
+      },
+    })
+    await logAuditEvent({
+      operation_type: 'payment.capture_amount_unparseable',
+      resource_type: 'table_booking',
+      resource_id: booking.id,
+      operation_status: 'failure',
+      additional_info: {
+        capture_id: captureId,
+        order_id: orderId,
+        event_id: event.id,
+        source: 'webhook',
+        raw_amount: resource.amount?.value ?? null,
+        action_needed:
+          'PayPal capture webhook succeeded but amount was missing or unparseable — manual reconciliation required',
+      },
+    })
+    return
+  }
+
   const { error: updateError } = await supabase
     .from('table_bookings')
-    .update({
-      payment_status: 'completed',
-      status: 'confirmed',
-      payment_method: 'paypal',
-      paypal_deposit_capture_id: captureId,
-    })
+    .update(buildPayPalDepositCompletedUpdate({
+      captureId,
+      lockedAmountGbp,
+      capturedAtIso: new Date().toISOString(),
+    }))
     .eq('id', booking.id)
     .is('paypal_deposit_capture_id', null) // Guard against race with browser-side capture
 
@@ -157,7 +212,14 @@ async function handleDepositCaptureCompleted(
       event_id: event.id,
       source: 'webhook',
       amount: resource.amount?.value ?? null,
+      locked_amount_gbp: lockedAmountGbp,
     },
+  })
+
+  await sendTableBookingDepositCapturedNotifications(supabase, {
+    tableBookingId: booking.id,
+    customerId: booking.customer_id,
+    createdVia: 'paypal_webhook',
   })
 }
 

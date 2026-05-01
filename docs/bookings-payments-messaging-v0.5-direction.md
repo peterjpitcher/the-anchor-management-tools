@@ -451,10 +451,10 @@ This document captures the agreed implementation direction so work can continue 
      - `mobile_e164` (canonical)
      - `mobile_number` variants (legacy compatibility)
    - new inbound-created customers now store canonical `mobile_e164` when normalization succeeds
-58. Card-capture expiry analytics completed for cron expiry path:
+58. Pending-payment expiry analytics completed for cron expiry path:
    - `src/app/api/cron/event-booking-holds/route.ts`
-   - when `pending_card_capture` table bookings expire by hold timeout, system now emits:
-     - `card_capture_expired`
+   - when `pending_payment` table bookings expire by hold timeout, system now emits:
+     - `payment_hold_expired`
 59. Guest/manager token action throttling added for sensitive token endpoints:
    - `src/lib/guest/token-throttle.ts`
    - In-memory attempt throttling keyed by:

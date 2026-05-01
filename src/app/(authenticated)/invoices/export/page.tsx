@@ -13,6 +13,8 @@ import { toast } from '@/components/ui-v2/feedback/Toast'
 import { Download, Calendar } from 'lucide-react'
 import { toLocalIsoDate } from '@/lib/dateUtils'
 import { usePermissions } from '@/contexts/PermissionContext'
+import { downloadBlob, filenameFromContentDisposition } from '@/lib/download-file'
+import { getCurrentQuarterDateRange } from '@/lib/invoices/date-ranges'
 
 export default function InvoiceExportPage() {
   const router = useRouter()
@@ -26,13 +28,10 @@ export default function InvoiceExportPage() {
 
   // Set default dates to current quarter
   useEffect(() => {
-    const now = new Date()
-    const currentQuarter = Math.floor(now.getMonth() / 3)
-    const quarterStart = new Date(now.getFullYear(), currentQuarter * 3, 1)
-    const quarterEnd = new Date(now.getFullYear(), (currentQuarter + 1) * 3, 0)
+    const { startDate: quarterStart, endDate: quarterEnd } = getCurrentQuarterDateRange()
 
-    setStartDate(toLocalIsoDate(quarterStart))
-    setEndDate(toLocalIsoDate(quarterEnd))
+    setStartDate(quarterStart)
+    setEndDate(quarterEnd)
   }, [])
 
   useEffect(() => {
@@ -80,20 +79,12 @@ export default function InvoiceExportPage() {
         throw new Error(text || 'Export failed')
       }
 
-      // Get filename from response headers
-      const contentDisposition = response.headers.get('content-disposition')
-      const filename = contentDisposition?.match(/filename="(.+)"/)?.[1] || 'invoices-export.zip'
-
-      // Download the file
       const blob = await response.blob()
-      const url = window.URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = filename
-      document.body.appendChild(a)
-      a.click()
-      window.URL.revokeObjectURL(url)
-      document.body.removeChild(a)
+      const filename = filenameFromContentDisposition(
+        response.headers.get('content-disposition'),
+        'invoices-export.zip'
+      )
+      downloadBlob(blob, filename)
       toast.success('Export downloaded successfully')
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to export invoices')

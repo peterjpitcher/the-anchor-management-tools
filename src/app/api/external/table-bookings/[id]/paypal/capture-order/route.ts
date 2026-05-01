@@ -3,13 +3,19 @@ import { z } from 'zod';
 
 import { withApiAuth } from '@/lib/api/auth';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { capturePayPalPayment } from '@/lib/paypal';
+import { capturePayPalPayment, getPayPalOrder } from '@/lib/paypal';
 import { logAuditEvent } from '@/app/actions/audit';
 import { logger } from '@/lib/logger';
+import { getCanonicalDeposit } from '@/lib/table-bookings/deposit';
 import {
-  sendManagerTableBookingCreatedEmailIfAllowed,
-  sendTableBookingCreatedSmsIfAllowed,
-} from '@/lib/table-bookings/bookings';
+  buildPayPalDepositCompletedUpdate,
+  extractPayPalOrderAmountGbp,
+  getPayPalDepositCaptureBlockReason,
+  parsePayPalAmountGbp,
+  payPalAmountsMatch,
+  payPalDepositCaptureBlockMessage,
+  sendTableBookingDepositCapturedNotifications,
+} from '@/lib/table-bookings/paypal-deposit';
 
 export const dynamic = 'force-dynamic';
 
@@ -24,17 +30,6 @@ const CaptureOrderSchema = z.object({
  * Caller MUST fail closed on null — silently falling back to
  * `booking.deposit_amount` would let stale amounts get locked. Spec §6, §7.4, §8.3.
  */
-function parseCapturedAmountGbp(
-  captureResult: { amount?: string | number | null } | null | undefined,
-): number | null {
-  if (!captureResult || captureResult.amount === undefined || captureResult.amount === null) {
-    return null;
-  }
-  const raw = captureResult.amount;
-  const n = typeof raw === 'number' ? raw : Number(raw);
-  return Number.isFinite(n) && n > 0 ? n : null;
-}
-
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
@@ -58,7 +53,7 @@ export async function POST(
       // Fetch the booking
       const { data: booking, error: fetchError } = await supabase
         .from('table_bookings')
-        .select('id, status, payment_status, paypal_deposit_order_id, paypal_deposit_capture_id, customer_id, party_size, start_datetime, booking_reference, booking_type, source')
+        .select('id, status, payment_status, hold_expires_at, paypal_deposit_order_id, paypal_deposit_capture_id, customer_id, party_size, start_datetime, booking_reference, booking_type, source, deposit_amount, deposit_amount_locked, deposit_waived')
         .eq('id', bookingId)
         .single();
 
@@ -80,6 +75,58 @@ export async function POST(
       // Validate orderId matches what we stored
       if (booking.paypal_deposit_order_id !== orderId) {
         return NextResponse.json({ error: 'Order ID mismatch' }, { status: 400 });
+      }
+
+      const blockReason = getPayPalDepositCaptureBlockReason(booking);
+      if (blockReason) {
+        return NextResponse.json(
+          { error: payPalDepositCaptureBlockMessage(blockReason) },
+          { status: blockReason === 'hold_expired' ? 410 : 409 },
+        );
+      }
+
+      const expectedAmount = Number(
+        getCanonicalDeposit({
+          party_size: Math.max(1, Number(booking.party_size || 1)),
+          deposit_amount: booking.deposit_amount ?? null,
+          deposit_amount_locked: booking.deposit_amount_locked ?? null,
+          status: booking.status ?? null,
+          payment_status: booking.payment_status ?? null,
+          deposit_waived: booking.deposit_waived ?? null,
+        }).toFixed(2),
+      );
+
+      let orderAmount: number | null = null;
+      try {
+        orderAmount = extractPayPalOrderAmountGbp(await getPayPalOrder(orderId));
+      } catch (err) {
+        logger.error('capture-order: failed to verify PayPal order amount before capture', {
+          error: err instanceof Error ? err : new Error(String(err)),
+          metadata: { bookingId, orderId },
+        });
+        return NextResponse.json(
+          { error: 'Failed to verify PayPal order amount. Please try again.' },
+          { status: 502 },
+        );
+      }
+
+      if (orderAmount === null || !payPalAmountsMatch(orderAmount, expectedAmount)) {
+        void logAuditEvent({
+          operation_type: 'payment.capture_amount_mismatch',
+          resource_type: 'table_booking',
+          resource_id: bookingId,
+          operation_status: 'failure',
+          additional_info: {
+            orderId,
+            orderAmount,
+            expectedAmount,
+            action_needed: 'PayPal order amount did not match current booking deposit before capture',
+          },
+        });
+        return NextResponse.json(
+          { error: 'Payment amount no longer matches this booking. Please refresh and try again.' },
+          { status: 409 },
+        );
       }
 
       // Capture the PayPal payment
@@ -112,7 +159,7 @@ export async function POST(
       // "we couldn't confirm your payment" state. We deliberately do NOT
       // fall back to booking.deposit_amount — that's how stale amounts get
       // locked. Spec §6, §7.4, §8.3.
-      const lockedAmountGbp = parseCapturedAmountGbp(captureResult);
+      const lockedAmountGbp = parsePayPalAmountGbp(captureResult?.amount);
       if (lockedAmountGbp === null) {
         logger.error('paypal-capture: capture succeeded but no parseable GBP amount in response', {
           metadata: {
@@ -145,21 +192,46 @@ export async function POST(
         );
       }
 
+      if (!payPalAmountsMatch(lockedAmountGbp, expectedAmount)) {
+        void logAuditEvent({
+          operation_type: 'payment.capture_amount_mismatch',
+          resource_type: 'table_booking',
+          resource_id: bookingId,
+          operation_status: 'failure',
+          additional_info: {
+            orderId,
+            transactionId,
+            capturedAmount: lockedAmountGbp,
+            expectedAmount,
+            action_needed:
+              'PayPal capture succeeded for an amount that no longer matches the booking — manual reconciliation required',
+          },
+        });
+        return NextResponse.json(
+          { error: 'Payment captured but amount did not match the booking. Please contact support; do not retry.' },
+          { status: 502 },
+        );
+      }
+
       // Update the booking atomically — including deposit_amount_locked so
       // any future recompute (party-size change, blind compute, etc.) honours
       // the actually-captured amount.
-      const { error: updateError } = await supabase
+      const { data: updatedBooking, error: updateError } = await supabase
         .from('table_bookings')
-        .update({
-          payment_status: 'completed',
-          status: 'confirmed',
-          payment_method: 'paypal',
-          paypal_deposit_capture_id: transactionId,
-          deposit_amount_locked: lockedAmountGbp,
-        })
-        .eq('id', bookingId);
+        .update(buildPayPalDepositCompletedUpdate({
+          captureId: transactionId,
+          lockedAmountGbp,
+        }))
+        .eq('id', bookingId)
+        .eq('paypal_deposit_order_id', orderId)
+        .is('paypal_deposit_capture_id', null)
+        .neq('status', 'cancelled')
+        .neq('status', 'no_show')
+        .neq('status', 'completed')
+        .select('id')
+        .maybeSingle();
 
-      if (updateError) {
+      if (updateError || !updatedBooking) {
         // PayPal captured but DB update failed — log for manual reconciliation
         void logAuditEvent({
           operation_type: 'payment.capture_local_update_failed',
@@ -169,7 +241,7 @@ export async function POST(
           additional_info: {
             orderId,
             transactionId,
-            dbError: updateError.message,
+            dbError: updateError?.message || 'Booking was no longer payable at update time',
             action_needed: 'Manual reconciliation required — PayPal capture succeeded but DB update failed',
           },
         });
@@ -193,39 +265,11 @@ export async function POST(
         },
       });
 
-      // Send confirmation notifications now that payment is confirmed.
-      // Both were deferred at booking-creation time for website bookings awaiting deposit.
-      if (booking.customer_id) {
-        const bookingResultForNotifications = {
-          state: 'confirmed' as const,
-          table_booking_id: bookingId,
-          booking_reference: booking.booking_reference ?? undefined,
-          start_datetime: booking.start_datetime ?? undefined,
-          party_size: booking.party_size ?? undefined,
-          sunday_lunch: booking.booking_type === 'sunday_lunch',
-        };
-
-        const { data: customer } = await supabase
-          .from('customers')
-          .select('mobile_e164, mobile_number')
-          .eq('id', booking.customer_id)
-          .maybeSingle();
-
-        const normalizedPhone = customer?.mobile_e164 || customer?.mobile_number || '';
-
-        void Promise.allSettled([
-          sendTableBookingCreatedSmsIfAllowed(supabase, {
-            customerId: booking.customer_id,
-            normalizedPhone,
-            bookingResult: bookingResultForNotifications,
-          }),
-          sendManagerTableBookingCreatedEmailIfAllowed(supabase, {
-            tableBookingId: bookingId,
-            fallbackCustomerId: booking.customer_id,
-            createdVia: 'api',
-          }),
-        ]);
-      }
+      await sendTableBookingDepositCapturedNotifications(supabase, {
+        tableBookingId: bookingId,
+        customerId: booking.customer_id,
+        createdVia: 'api',
+      });
 
       return NextResponse.json({ success: true });
     },

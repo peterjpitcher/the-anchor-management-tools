@@ -206,6 +206,7 @@ export async function POST(request: NextRequest) {
       }
 
       if (result.paymentLinkFailed) {
+        mutationCommitted = false
         return createErrorResponse(
           'Booking created but payment link generation failed. Please contact us.',
           'PAYMENT_LINK_FAILED',

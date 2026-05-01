@@ -65,6 +65,21 @@ const CreateFohTableBookingSchema = z.object({
     })
   }
 
+  if (!value.customer_id && value.walk_in !== true && value.management_override !== true) {
+    if (!value.first_name?.trim()) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Enter the customer first name'
+      })
+    }
+    if (!value.last_name?.trim()) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Enter the customer last name'
+      })
+    }
+  }
+
   if (value.management_override === true && !value.customer_id) {
     context.addIssue({
       code: z.ZodIssueCode.custom,
@@ -1310,12 +1325,40 @@ export async function POST(request: NextRequest) {
         })
         nextStepUrl = token.url
       } catch (tokenError) {
-        logger.warn('Failed to create table payment token for FOH create', {
+        const failureAt = new Date().toISOString()
+        logger.error('Failed to create table payment token for FOH create; cancelling pending booking', {
+          error: tokenError instanceof Error ? tokenError : new Error(String(tokenError)),
           metadata: {
             tableBookingId: bookingResult.table_booking_id,
-            error: tokenError instanceof Error ? tokenError.message : String(tokenError),
           },
         })
+        const { error: cancelError } = await auth.supabase
+          .from('table_bookings')
+          .update({
+            status: 'cancelled',
+            cancelled_at: failureAt,
+            cancelled_by: 'system',
+            cancellation_reason: 'payment_link_generation_failed',
+            hold_expires_at: null,
+            paypal_deposit_order_id: null,
+            updated_at: failureAt,
+          })
+          .eq('id', bookingResult.table_booking_id)
+          .eq('status', 'pending_payment')
+
+        if (cancelError) {
+          logger.error('Failed to cancel pending FOH booking after payment-token failure', {
+            error: new Error(cancelError.message),
+            metadata: {
+              tableBookingId: bookingResult.table_booking_id,
+            },
+          })
+        }
+
+        return NextResponse.json(
+          { error: 'Booking could not be created because the payment link failed. Please try again.' },
+          { status: 500 },
+        )
       }
     }
   }
@@ -1392,13 +1435,14 @@ export async function POST(request: NextRequest) {
         customerId,
         tableBookingId: bookingResult.table_booking_id,
         eventType: 'table_deposit_started',
-        metadata: {
-          hold_expires_at: holdExpiresAt,
-          next_step_url_provided: Boolean(nextStepUrl),
-          deposit_amount: Number((Math.max(1, Number(payload.party_size || 1)) * 10).toFixed(2)),
-          deposit_per_person: 10,
-          source: 'foh',
-        },
+          metadata: {
+            hold_expires_at: holdExpiresAt,
+            next_step_url_provided: Boolean(nextStepUrl),
+            deposit_amount: computeDepositAmount(Math.max(1, Number(payload.party_size || 1)), {
+              depositWaived: payload.waive_deposit === true,
+            }),
+            source: 'foh',
+          },
       }, {
         userId: auth.userId,
         customerId,

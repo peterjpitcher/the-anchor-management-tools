@@ -33,6 +33,21 @@ const CreateFohEventBookingSchema = z.object({
       message: 'Provide a customer or phone number'
     })
   }
+
+  if (!value.customer_id && value.walk_in !== true) {
+    if (!value.first_name?.trim()) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Enter the customer first name'
+      })
+    }
+    if (!value.last_name?.trim()) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Enter the customer last name'
+      })
+    }
+  }
 })
 
 type FohEventBookingResponseData = {
@@ -337,12 +352,14 @@ export async function POST(request: NextRequest) {
     )
   }
 
-  // For FOH, payment link failure is a warning (not a hard error) — the manager
-  // can still see the booking and send the link manually.
   if (result.paymentLinkFailed) {
-    logger.warn('Failed to create event payment token for FOH create', {
+    logger.error('Failed to create event payment token for FOH create', {
       metadata: { bookingId: result.bookingId }
     })
+    return NextResponse.json(
+      { error: 'Booking could not be created because the payment link failed. Please try again.' },
+      { status: 500 }
+    )
   }
 
   const {

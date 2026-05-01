@@ -6,6 +6,12 @@ import { createInlinePayPalOrder, getPayPalOrder } from '@/lib/paypal';
 import { logAuditEvent } from '@/app/actions/audit';
 import { logger } from '@/lib/logger';
 import { getCanonicalDeposit } from '@/lib/table-bookings/deposit';
+import {
+  extractPayPalOrderAmountGbp,
+  getPayPalDepositCaptureBlockReason,
+  payPalAmountsMatch,
+  payPalDepositCaptureBlockMessage,
+} from '@/lib/table-bookings/paypal-deposit';
 
 export const dynamic = 'force-dynamic';
 
@@ -24,7 +30,7 @@ export async function POST(
       // amounts and waivers. Spec §7.3, §8.3.
       const { data: booking, error: fetchError } = await supabase
         .from('table_bookings')
-        .select('id, party_size, status, payment_status, paypal_deposit_order_id, deposit_amount, deposit_amount_locked, deposit_waived, booking_type')
+        .select('id, party_size, status, payment_status, hold_expires_at, paypal_deposit_order_id, paypal_deposit_capture_id, deposit_amount, deposit_amount_locked, deposit_waived, booking_type')
         .eq('id', bookingId)
         .single();
 
@@ -54,6 +60,14 @@ export async function POST(
         return NextResponse.json(
           { error: 'This booking does not require a deposit payment' },
           { status: 400 },
+        );
+      }
+
+      const blockReason = getPayPalDepositCaptureBlockReason(booking);
+      if (blockReason) {
+        return NextResponse.json(
+          { error: payPalDepositCaptureBlockMessage(blockReason) },
+          { status: blockReason === 'hold_expired' ? 410 : 409 },
         );
       }
 
@@ -88,12 +102,8 @@ export async function POST(
       if (booking.paypal_deposit_order_id) {
         let cachedAmount: number | null = null;
         try {
-          const remote = (await getPayPalOrder(booking.paypal_deposit_order_id)) as
-            | { purchase_units?: Array<{ amount?: { value?: string; currency_code?: string } }> }
-            | null;
-          const rawValue = remote?.purchase_units?.[0]?.amount?.value;
-          const parsed = typeof rawValue === 'string' ? Number.parseFloat(rawValue) : NaN;
-          cachedAmount = Number.isFinite(parsed) ? Number(parsed.toFixed(2)) : null;
+          const remote = await getPayPalOrder(booking.paypal_deposit_order_id);
+          cachedAmount = extractPayPalOrderAmountGbp(remote);
         } catch (err) {
           logger.error('create-order: failed to fetch cached PayPal order; invalidating', {
             error: err instanceof Error ? err : new Error(String(err)),
@@ -102,7 +112,7 @@ export async function POST(
           cachedAmount = null;
         }
 
-        if (cachedAmount !== null && Math.abs(cachedAmount - depositAmount) < 0.01) {
+        if (cachedAmount !== null && payPalAmountsMatch(cachedAmount, depositAmount)) {
           // Cached order still matches canonical — safe to reuse.
           return NextResponse.json({ orderId: booking.paypal_deposit_order_id });
         }

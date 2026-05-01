@@ -440,7 +440,7 @@ components:
       properties:
         state:
           type: string
-          enum: [confirmed, pending_card_capture, pending_payment, blocked]
+          enum: [confirmed, pending_payment, blocked]
         table_booking_id:
           type: string
           format: uuid
@@ -817,7 +817,7 @@ paths:
               $ref: '#/components/schemas/TableBookingCreateRequest'
       responses:
         '201':
-          description: Booking created (`confirmed`, `pending_card_capture`, or `pending_payment`).
+          description: Booking created (`confirmed` or `pending_payment`).
           content:
             application/json:
               schema:

@@ -122,6 +122,9 @@ export const FohCreateBookingModal = React.memo(function FohCreateBookingModal(p
   } = props
 
   const sundaySelected = isSundayDate(createForm.booking_date)
+  const selectedCustomerNeedsPhone = Boolean(
+    selectedCustomer && !selectedCustomer.mobile_e164 && !selectedCustomer.mobile_number
+  )
 
   return (
     <Modal
@@ -249,11 +252,12 @@ export const FohCreateBookingModal = React.memo(function FohCreateBookingModal(p
             </label>
           )}
 
-          {!selectedCustomer && (
+          {(!selectedCustomer || selectedCustomerNeedsPhone) && (
             <label className="text-xs font-medium text-gray-700">
-              Phone
+              {selectedCustomerNeedsPhone ? 'Phone for selected customer' : 'Phone'}
               <input
                 type="tel"
+                required={selectedCustomerNeedsPhone || (createMode !== 'walk_in' && createMode !== 'management')}
                 value={createForm.phone}
                 onChange={(event) => onSetCreateForm((current) => ({ ...current, phone: event.target.value }))}
                 placeholder="+1 415 555 2671 or local format"
@@ -356,9 +360,9 @@ export const FohCreateBookingModal = React.memo(function FohCreateBookingModal(p
             </>
           )}
 
-          {!selectedCustomer && (
+          {!selectedCustomer && createMode === 'walk_in' && (
             <label className="text-xs font-medium text-gray-700">
-              Customer name (for new customer)
+              Guest name
               <input
                 type="text"
                 value={createForm.customer_name}
@@ -369,11 +373,12 @@ export const FohCreateBookingModal = React.memo(function FohCreateBookingModal(p
             </label>
           )}
 
-          {!selectedCustomer && (
+          {!selectedCustomer && createMode !== 'walk_in' && (
             <label className="text-xs font-medium text-gray-700">
-              First name (optional)
+              First name
               <input
                 type="text"
+                required={createMode !== 'management'}
                 value={createForm.first_name}
                 onChange={(event) => onSetCreateForm((current) => ({ ...current, first_name: event.target.value }))}
                 className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
@@ -381,11 +386,12 @@ export const FohCreateBookingModal = React.memo(function FohCreateBookingModal(p
             </label>
           )}
 
-          {!selectedCustomer && (
+          {!selectedCustomer && createMode !== 'walk_in' && (
             <label className="text-xs font-medium text-gray-700">
-              Last name (optional)
+              Last name
               <input
                 type="text"
+                required={createMode !== 'management'}
                 value={createForm.last_name}
                 onChange={(event) => onSetCreateForm((current) => ({ ...current, last_name: event.target.value }))}
                 className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"

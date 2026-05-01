@@ -7,6 +7,8 @@ import { z } from 'zod'; // Import Zod
 
 import type { InvoiceStatus, InvoiceLineItemInput, Invoice, InvoiceWithDetails, LineItemCatalogItem } from '@/types/invoices';
 
+const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
 function sanitizeInvoiceSearch(value: string): string {
   return value
     .replace(/[,%_()"'\\]/g, '')
@@ -269,9 +271,35 @@ export class InvoiceService {
     status?: InvoiceStatus | 'unpaid',
     page: number = 1,
     limit: number = 20,
-    search?: string
+    search?: string,
+    vendorSearch?: string,
+    startDate?: string,
+    endDate?: string
   ) {
     const supabase = await createClient();
+    const today = getTodayIsoDate();
+    const vendorSearchTerm = vendorSearch ? sanitizeInvoiceSearch(vendorSearch) : '';
+    let vendorIds: string[] | null = null;
+
+    if (vendorSearchTerm.length > 0) {
+      const { data: vendors, error: vendorError } = await supabase
+        .from('invoice_vendors')
+        .select('id')
+        .ilike('name', `%${vendorSearchTerm}%`);
+
+      if (vendorError) {
+        console.error('Error filtering invoice vendors:', vendorError);
+        throw new Error('Failed to fetch invoices');
+      }
+
+      vendorIds = (vendors || []).map((vendor) => vendor.id);
+      if (vendorIds.length === 0) {
+        return {
+          invoices: [] as InvoiceWithDetails[],
+          total: 0
+        };
+      }
+    }
 
     // Overdue status is computed at read time via JS-side normalisation below (line ~314).
     // The DB-level persistOverdueInvoices() write was removed from this read path to avoid
@@ -287,6 +315,10 @@ export class InvoiceService {
 
     if (status === 'unpaid') {
       query = query.in('status', ['draft', 'sent', 'partially_paid', 'overdue']);
+    } else if (status === 'overdue') {
+      query = query.or(`status.eq.overdue,and(status.eq.sent,due_date.lt.${today})`);
+    } else if (status === 'sent') {
+      query = query.eq('status', status).gte('due_date', today);
     } else if (status) {
       query = query.eq('status', status);
     }
@@ -296,6 +328,18 @@ export class InvoiceService {
       if (searchTerm.length > 0) {
         query = query.or(`invoice_number.ilike.%${searchTerm}%,reference.ilike.%${searchTerm}%`);
       }
+    }
+
+    if (vendorIds) {
+      query = query.in('vendor_id', vendorIds);
+    }
+
+    if (startDate && ISO_DATE_RE.test(startDate)) {
+      query = query.gte('invoice_date', startDate);
+    }
+
+    if (endDate && ISO_DATE_RE.test(endDate)) {
+      query = query.lte('invoice_date', endDate);
     }
 
     const from = (page - 1) * limit;
@@ -312,7 +356,6 @@ export class InvoiceService {
       throw new Error('Failed to fetch invoices');
     }
 
-    const today = getTodayIsoDate();
     const normalizedInvoices = invoices.map((invoice) => ({
       ...invoice,
       status:

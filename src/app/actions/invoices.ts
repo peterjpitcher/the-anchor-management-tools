@@ -318,7 +318,10 @@ export async function getInvoices(
   status?: InvoiceStatus | 'unpaid',
   page: number = 1,
   limit: number = 20,
-  search?: string
+  search?: string,
+  vendorSearch?: string,
+  startDate?: string,
+  endDate?: string
 ) {
   try {
     const hasPermission = await checkUserPermission('invoices', 'view')
@@ -326,7 +329,15 @@ export async function getInvoices(
       return { error: 'You do not have permission to view invoices' }
     }
 
-    const { invoices, total } = await InvoiceService.getInvoices(status, page, limit, search)
+    const { invoices, total } = await InvoiceService.getInvoices(
+      status,
+      page,
+      limit,
+      search,
+      vendorSearch,
+      startDate,
+      endDate
+    )
     return { invoices, total }
   } catch (error: unknown) {
     console.error('Error in getInvoices:', error)

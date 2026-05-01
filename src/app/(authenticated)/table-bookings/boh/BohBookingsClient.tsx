@@ -301,10 +301,11 @@ function isLostBooking(booking: BohBooking): boolean {
 
 function calculateMetrics(bookings: BohBooking[]) {
   const totalBookings = bookings.length
-  const totalCovers = bookings.reduce((sum, booking) => sum + Math.max(0, Number(booking.party_size || 0)), 0)
+  const activeBookings = bookings.filter((booking) => !isLostBooking(booking))
+  const totalCovers = activeBookings.reduce((sum, booking) => sum + Math.max(0, Number(booking.party_size || 0)), 0)
   const arrivedBookings = bookings.filter(isArrivedBooking).length
   const lostBookings = bookings.filter(isLostBooking).length
-  const averagePartySize = totalBookings > 0 ? totalCovers / totalBookings : 0
+  const averagePartySize = activeBookings.length > 0 ? totalCovers / activeBookings.length : 0
 
   return {
     totalBookings,
@@ -521,7 +522,12 @@ export function BohBookingsClient({
       if (statusFilter !== 'all') {
         const status = (booking.status || '').toLowerCase()
         const visualStatus = booking.visual_status.toLowerCase()
-        if (status !== statusFilter && visualStatus !== statusFilter) {
+        const paymentStatus = (booking.payment_status || '').toLowerCase()
+        if (statusFilter === 'pending_payment') {
+          if (status !== 'pending_payment' && visualStatus !== 'pending_payment' && paymentStatus !== 'pending') {
+            return false
+          }
+        } else if (status !== statusFilter && visualStatus !== statusFilter) {
           return false
         }
       }

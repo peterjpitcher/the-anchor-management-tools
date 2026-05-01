@@ -15,8 +15,41 @@ interface Props {
   searchParams: Promise<{
     page?: string
     search?: string
+    vendor?: string
     status?: string
+    start_date?: string
+    end_date?: string
   }>
+}
+
+type InvoiceListStatus = InvoiceStatus | 'all' | 'unpaid'
+const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/
+
+const VALID_STATUS_FILTERS = new Set<string>([
+  'all',
+  'unpaid',
+  'draft',
+  'sent',
+  'partially_paid',
+  'paid',
+  'overdue',
+  'void',
+  'written_off',
+])
+
+function resolvePage(rawPage: string | undefined) {
+  const page = Number.parseInt(rawPage || '1', 10)
+  return Number.isFinite(page) && page > 0 ? page : 1
+}
+
+function resolveStatus(rawStatus: string | undefined): InvoiceListStatus {
+  return VALID_STATUS_FILTERS.has(rawStatus || '')
+    ? rawStatus as InvoiceListStatus
+    : 'unpaid'
+}
+
+function resolveIsoDate(rawDate: string | undefined) {
+  return rawDate && ISO_DATE_RE.test(rawDate) ? rawDate : ''
 }
 
 export default async function InvoicesPage({ searchParams }: Props) {
@@ -26,10 +59,12 @@ export default async function InvoicesPage({ searchParams }: Props) {
     redirect('/unauthorized')
   }
 
-  const page = Number(resolvedSearchParams.page) || 1
+  const page = resolvePage(resolvedSearchParams.page)
   const search = resolvedSearchParams.search || ''
-  const rawStatus = resolvedSearchParams.status
-  const clientStatus = (rawStatus || 'unpaid') as InvoiceStatus | 'all' | 'unpaid'
+  const vendorSearch = resolvedSearchParams.vendor || ''
+  const startDate = resolveIsoDate(resolvedSearchParams.start_date)
+  const endDate = resolveIsoDate(resolvedSearchParams.end_date)
+  const clientStatus = resolveStatus(resolvedSearchParams.status)
   const serviceStatus = clientStatus === 'all' ? undefined : clientStatus
 
   const limit = 20
@@ -43,7 +78,7 @@ export default async function InvoicesPage({ searchParams }: Props) {
     canExport,
     canManageCatalog,
   ] = await Promise.all([
-    getInvoices(serviceStatus, page, limit, search),
+    getInvoices(serviceStatus, page, limit, search, vendorSearch, startDate, endDate),
     getInvoiceSummary(),
     checkUserPermission('invoices', 'create'),
     checkUserPermission('invoices', 'edit'),
@@ -75,6 +110,9 @@ export default async function InvoicesPage({ searchParams }: Props) {
       initialStatus={clientStatus}
       initialPage={page}
       initialSearch={search}
+      initialVendorSearch={vendorSearch}
+      initialStartDate={startDate}
+      initialEndDate={endDate}
       initialLimit={limit}
       initialError={initialError}
       permissions={{

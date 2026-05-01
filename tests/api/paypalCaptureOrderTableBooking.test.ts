@@ -3,14 +3,16 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const {
   supabaseFrom,
   capturePayPalPayment,
+  getPayPalOrder,
   loggerError,
-  sendTableBookingCreatedSmsIfAllowed,
+  sendTableBookingConfirmedAfterDepositSmsIfAllowed,
   sendManagerTableBookingCreatedEmailIfAllowed,
 } = vi.hoisted(() => ({
   supabaseFrom: vi.fn(),
   capturePayPalPayment: vi.fn(),
+  getPayPalOrder: vi.fn(),
   loggerError: vi.fn(),
-  sendTableBookingCreatedSmsIfAllowed: vi.fn().mockResolvedValue({ sms: null }),
+  sendTableBookingConfirmedAfterDepositSmsIfAllowed: vi.fn().mockResolvedValue({ sms: null }),
   sendManagerTableBookingCreatedEmailIfAllowed: vi.fn().mockResolvedValue({ sent: true }),
 }))
 
@@ -24,6 +26,7 @@ vi.mock('@/lib/supabase/admin', () => ({
 
 vi.mock('@/lib/paypal', () => ({
   capturePayPalPayment: (...args: unknown[]) => capturePayPalPayment(...args),
+  getPayPalOrder: (...args: unknown[]) => getPayPalOrder(...args),
 }))
 
 vi.mock('@/app/actions/audit', () => ({
@@ -35,8 +38,8 @@ vi.mock('@/lib/logger', () => ({
 }))
 
 vi.mock('@/lib/table-bookings/bookings', () => ({
-  sendTableBookingCreatedSmsIfAllowed: (...args: unknown[]) =>
-    sendTableBookingCreatedSmsIfAllowed(...args),
+  sendTableBookingConfirmedAfterDepositSmsIfAllowed: (...args: unknown[]) =>
+    sendTableBookingConfirmedAfterDepositSmsIfAllowed(...args),
   sendManagerTableBookingCreatedEmailIfAllowed: (...args: unknown[]) =>
     sendManagerTableBookingCreatedEmailIfAllowed(...args),
 }))
@@ -51,6 +54,22 @@ function buildRequest(body: unknown): Request {
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(body),
   }) as unknown as Request
+}
+
+function makePayPalOrder(amount: string) {
+  return { purchase_units: [{ amount: { value: amount, currency_code: 'GBP' } }] }
+}
+
+function makeUpdateChain(result: { data: unknown; error: unknown } = { data: { id: BOOKING_ID }, error: null }) {
+  const maybeSingle = vi.fn().mockResolvedValue(result)
+  const select = vi.fn(() => ({ maybeSingle }))
+  const chain = {
+    eq: vi.fn(() => chain),
+    is: vi.fn(() => chain),
+    neq: vi.fn(() => chain),
+    select,
+  }
+  return chain
 }
 
 function buildBookingFetch(bookingRow: unknown, fetchError: unknown = null) {
@@ -77,9 +96,13 @@ describe('POST /api/external/table-bookings/[id]/paypal/capture-order', () => {
       customer_id: 'cust-1',
       party_size: 2,
       start_datetime: '2026-04-26T12:00:00Z',
+      hold_expires_at: '2099-04-26T12:00:00Z',
       booking_reference: 'TB-TEST1234',
       booking_type: 'sunday_lunch',
       source: 'brand_site',
+      deposit_amount: 40,
+      deposit_amount_locked: null,
+      deposit_waived: false,
     }
 
     // First call: table_bookings select; second call: table_bookings update; third: customers select
@@ -88,8 +111,7 @@ describe('POST /api/external/table-bookings/[id]/paypal/capture-order', () => {
       .mockResolvedValueOnce({ data: bookingRow, error: null })
     const tableBookingsEq1 = vi.fn(() => ({ single: tableBookingsSingle }))
     const tableBookingsSelect = vi.fn(() => ({ eq: tableBookingsEq1 }))
-    const tableBookingsUpdateEq = vi.fn().mockResolvedValue({ error: null })
-    const tableBookingsUpdate = vi.fn(() => ({ eq: tableBookingsUpdateEq }))
+    const tableBookingsUpdate = vi.fn(() => makeUpdateChain())
 
     const customersMaybeSingle = vi
       .fn()
@@ -112,6 +134,7 @@ describe('POST /api/external/table-bookings/[id]/paypal/capture-order', () => {
       status: 'COMPLETED',
       amount: 40,
     })
+    getPayPalOrder.mockResolvedValue(makePayPalOrder('40.00'))
 
     const response = await POST(
       buildRequest({ orderId: 'ORDER-123' }),
@@ -139,16 +162,13 @@ describe('POST /api/external/table-bookings/[id]/paypal/capture-order', () => {
       deposit_amount_locked: 40,
     })
 
-    // The notification payload must derive sunday_lunch from booking_type.
-    expect(sendTableBookingCreatedSmsIfAllowed).toHaveBeenCalledWith(
+    expect(sendTableBookingConfirmedAfterDepositSmsIfAllowed).toHaveBeenCalledWith(
       expect.anything(),
-      expect.objectContaining({
-        bookingResult: expect.objectContaining({ sunday_lunch: true }),
-      }),
+      BOOKING_ID,
     )
   })
 
-  it('derives sunday_lunch=false for a regular booking_type', async () => {
+  it('sends post-deposit notifications for a regular booking_type', async () => {
     const bookingRow = {
       id: BOOKING_ID,
       status: 'pending_payment',
@@ -158,14 +178,18 @@ describe('POST /api/external/table-bookings/[id]/paypal/capture-order', () => {
       customer_id: 'cust-1',
       party_size: 8,
       start_datetime: '2026-04-24T19:00:00Z',
+      hold_expires_at: '2099-04-24T19:00:00Z',
       booking_reference: 'TB-TEST2345',
       booking_type: 'regular',
       source: 'brand_site',
+      deposit_amount: 80,
+      deposit_amount_locked: null,
+      deposit_waived: false,
     }
 
     const tableBookingsSingle = vi.fn().mockResolvedValue({ data: bookingRow, error: null })
     const tableBookingsSelect = vi.fn(() => ({ eq: vi.fn(() => ({ single: tableBookingsSingle })) }))
-    const tableBookingsUpdate = vi.fn(() => ({ eq: vi.fn().mockResolvedValue({ error: null }) }))
+    const tableBookingsUpdate = vi.fn(() => makeUpdateChain())
     const customersSelect = vi.fn(() => ({
       eq: vi.fn(() => ({
         maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }),
@@ -183,17 +207,16 @@ describe('POST /api/external/table-bookings/[id]/paypal/capture-order', () => {
       status: 'COMPLETED',
       amount: 80,
     })
+    getPayPalOrder.mockResolvedValue(makePayPalOrder('80.00'))
 
     await POST(
       buildRequest({ orderId: 'ORDER-123' }),
       { params: Promise.resolve({ id: BOOKING_ID }) },
     )
 
-    expect(sendTableBookingCreatedSmsIfAllowed).toHaveBeenCalledWith(
+    expect(sendTableBookingConfirmedAfterDepositSmsIfAllowed).toHaveBeenCalledWith(
       expect.anything(),
-      expect.objectContaining({
-        bookingResult: expect.objectContaining({ sunday_lunch: false }),
-      }),
+      BOOKING_ID,
     )
   })
 
@@ -207,14 +230,18 @@ describe('POST /api/external/table-bookings/[id]/paypal/capture-order', () => {
       customer_id: 'cust-1',
       party_size: 4,
       start_datetime: '2026-05-22T19:00:00Z',
+      hold_expires_at: '2099-05-22T19:00:00Z',
       booking_reference: 'TB-NO-AMOUNT',
       booking_type: 'regular',
       source: 'brand_site',
+      deposit_amount: 40,
+      deposit_amount_locked: null,
+      deposit_waived: false,
     }
 
     const tableBookingsSingle = vi.fn().mockResolvedValue({ data: bookingRow, error: null })
     const tableBookingsSelect = vi.fn(() => ({ eq: vi.fn(() => ({ single: tableBookingsSingle })) }))
-    const tableBookingsUpdate = vi.fn(() => ({ eq: vi.fn().mockResolvedValue({ error: null }) }))
+    const tableBookingsUpdate = vi.fn(() => makeUpdateChain())
     supabaseFrom.mockImplementation((table: string) =>
       table === 'table_bookings'
         ? { select: tableBookingsSelect, update: tableBookingsUpdate }
@@ -227,6 +254,7 @@ describe('POST /api/external/table-bookings/[id]/paypal/capture-order', () => {
       status: 'COMPLETED',
       // amount is deliberately missing
     })
+    getPayPalOrder.mockResolvedValue(makePayPalOrder('40.00'))
 
     const response = await POST(
       buildRequest({ orderId: 'ORDER-NO-AMOUNT' }),
@@ -240,7 +268,7 @@ describe('POST /api/external/table-bookings/[id]/paypal/capture-order', () => {
     expect(tableBookingsUpdate).not.toHaveBeenCalled()
 
     // Must NOT send the customer SMS (booking is in an unconfirmed state).
-    expect(sendTableBookingCreatedSmsIfAllowed).not.toHaveBeenCalled()
+    expect(sendTableBookingConfirmedAfterDepositSmsIfAllowed).not.toHaveBeenCalled()
 
     // Must log the high-severity diagnostic so on-call can investigate.
     expect(loggerError).toHaveBeenCalledWith(

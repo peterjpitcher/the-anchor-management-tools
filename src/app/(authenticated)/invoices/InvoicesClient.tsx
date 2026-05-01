@@ -18,7 +18,9 @@ import type { HeaderNavItem } from '@/components/ui-v2/navigation/HeaderNav'
 import { MobileInvoiceCard } from './MobileInvoiceCard'
 import { LinkButton } from '@/components/ui-v2/navigation/LinkButton'
 import { toast } from '@/components/ui-v2/feedback/Toast'
-import { toLocalIsoDate } from '@/lib/dateUtils'
+import { downloadInvoicePdf } from '@/lib/invoices/download-pdf'
+import { downloadBlob, filenameFromContentDisposition } from '@/lib/download-file'
+import { getCurrentQuarterDateRange } from '@/lib/invoices/date-ranges'
 
 type InvoiceSummary = {
   total_outstanding: number
@@ -44,6 +46,9 @@ interface InvoicesClientProps {
   initialStatus: StatusFilter
   initialPage: number
   initialSearch: string
+  initialVendorSearch: string
+  initialStartDate: string
+  initialEndDate: string
   initialLimit: number
   initialError: string | null
   permissions: PermissionSnapshot
@@ -68,6 +73,9 @@ export default function InvoicesClient({
   initialStatus,
   initialPage,
   initialSearch,
+  initialVendorSearch,
+  initialStartDate,
+  initialEndDate,
   initialLimit,
   initialError,
   permissions
@@ -104,10 +112,12 @@ export default function InvoicesClient({
   // Local state for controlled inputs
   const [statusFilter, setStatusFilter] = useState<StatusFilter>(initialStatus)
   const [searchTerm, setSearchTerm] = useState(initialSearch)
-  const [exportStartDate, setExportStartDate] = useState('')
-  const [exportEndDate, setExportEndDate] = useState('')
+  const [vendorSearchTerm, setVendorSearchTerm] = useState(initialVendorSearch)
+  const [exportStartDate, setExportStartDate] = useState(initialStartDate)
+  const [exportEndDate, setExportEndDate] = useState(initialEndDate)
   const [exportLoading, setExportLoading] = useState(false)
   const [exportError, setExportError] = useState<string | null>(null)
+  const [downloadingInvoiceId, setDownloadingInvoiceId] = useState<string | null>(null)
 
   // Sync local state with props (e.g. browser navigation)
   useEffect(() => {
@@ -119,17 +129,16 @@ export default function InvoicesClient({
   }, [initialSearch])
 
   useEffect(() => {
-    if (!resolvedPermissions.canExport) return
-    if (exportStartDate || exportEndDate) return
+    setVendorSearchTerm(initialVendorSearch)
+  }, [initialVendorSearch])
 
-    const now = new Date()
-    const currentQuarter = Math.floor(now.getMonth() / 3)
-    const quarterStart = new Date(now.getFullYear(), currentQuarter * 3, 1)
-    const quarterEnd = new Date(now.getFullYear(), (currentQuarter + 1) * 3, 0)
+  useEffect(() => {
+    setExportStartDate(initialStartDate)
+  }, [initialStartDate])
 
-    setExportStartDate(toLocalIsoDate(quarterStart))
-    setExportEndDate(toLocalIsoDate(quarterEnd))
-  }, [resolvedPermissions.canExport, exportStartDate, exportEndDate])
+  useEffect(() => {
+    setExportEndDate(initialEndDate)
+  }, [initialEndDate])
 
   // URL updates
   const updateUrl = useCallback((newParams: Record<string, string | undefined>) => {
@@ -144,22 +153,76 @@ export default function InvoicesClient({
     })
 
     // Reset page to 1 if filter or search changes, unless page is explicitly set
-    if (!newParams.page && (newParams.status !== undefined || newParams.search !== undefined)) {
+    if (
+      !newParams.page &&
+      (
+        newParams.status !== undefined ||
+        newParams.search !== undefined ||
+        newParams.vendor !== undefined ||
+        newParams.start_date !== undefined ||
+        newParams.end_date !== undefined
+      )
+    ) {
       params.set('page', '1')
     }
 
     router.push(`${pathname}?${params.toString()}`)
   }, [searchParams, pathname, router])
 
-  // Debounced search
+  // Debounced text filters
   useEffect(() => {
     const timer = setTimeout(() => {
+      const updates: Record<string, string | undefined> = {}
+
       if (searchTerm !== initialSearch) {
-        updateUrl({ search: searchTerm })
+        updates.search = searchTerm
+      }
+
+      if (vendorSearchTerm !== initialVendorSearch) {
+        updates.vendor = vendorSearchTerm
+      }
+
+      if (Object.keys(updates).length > 0) {
+        updateUrl(updates)
       }
     }, 500)
     return () => clearTimeout(timer)
-  }, [searchTerm, initialSearch, updateUrl])
+  }, [searchTerm, initialSearch, vendorSearchTerm, initialVendorSearch, updateUrl])
+
+  function setExportToCurrentQuarter() {
+    const { startDate, endDate } = getCurrentQuarterDateRange()
+    setExportStartDate(startDate)
+    setExportEndDate(endDate)
+    setExportError(null)
+    updateUrl({
+      search: searchTerm,
+      vendor: vendorSearchTerm,
+      start_date: startDate,
+      end_date: endDate,
+    })
+  }
+
+  function handleStartDateChange(value: string) {
+    setExportStartDate(value)
+    setExportError(null)
+    updateUrl({
+      search: searchTerm,
+      vendor: vendorSearchTerm,
+      start_date: value,
+      end_date: exportEndDate,
+    })
+  }
+
+  function handleEndDateChange(value: string) {
+    setExportEndDate(value)
+    setExportError(null)
+    updateUrl({
+      search: searchTerm,
+      vendor: vendorSearchTerm,
+      start_date: exportStartDate,
+      end_date: value,
+    })
+  }
 
   async function handleExport() {
     if (!resolvedPermissions.canExport) {
@@ -184,8 +247,13 @@ export default function InvoicesClient({
       const params = new URLSearchParams({
         start_date: exportStartDate,
         end_date: exportEndDate,
-        type: 'all',
+        status: statusFilter,
       })
+
+      const normalizedSearch = searchTerm.trim()
+      const normalizedVendor = vendorSearchTerm.trim()
+      if (normalizedSearch) params.set('search', normalizedSearch)
+      if (normalizedVendor) params.set('vendor', normalizedVendor)
 
       const response = await fetch(`/api/invoices/export?${params}`)
       if (!response.ok) {
@@ -193,18 +261,12 @@ export default function InvoicesClient({
         throw new Error(text || 'Export failed')
       }
 
-      const contentDisposition = response.headers.get('content-disposition')
-      const filename = contentDisposition?.match(/filename="(.+)"/)?.[1] || 'invoices-export.zip'
-
       const blob = await response.blob()
-      const url = window.URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = filename
-      document.body.appendChild(a)
-      a.click()
-      window.URL.revokeObjectURL(url)
-      document.body.removeChild(a)
+      const filename = filenameFromContentDisposition(
+        response.headers.get('content-disposition'),
+        'invoices-export.zip'
+      )
+      downloadBlob(blob, filename)
       toast.success('Export downloaded successfully')
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to export invoices'
@@ -214,6 +276,21 @@ export default function InvoicesClient({
       setExportLoading(false)
     }
   }
+
+  const handleInvoicePdfDownload = useCallback(async (invoice: InvoiceWithDetails) => {
+    setDownloadingInvoiceId(invoice.id)
+
+    try {
+      await downloadInvoicePdf({
+        id: invoice.id,
+        invoiceNumber: invoice.invoice_number,
+      })
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to download invoice PDF')
+    } finally {
+      setDownloadingInvoiceId((current) => current === invoice.id ? null : current)
+    }
+  }, [])
 
   function getStatusBadgeVariant(
     status: InvoiceStatus
@@ -304,8 +381,31 @@ export default function InvoicesClient({
         },
         sortable: false,
       },
+      {
+        key: 'download',
+        header: <span className="sr-only">Download</span>,
+        align: 'right',
+        width: '56px',
+        cell: (invoice) => (
+          <button
+            type="button"
+            aria-label={`Download invoice ${invoice.invoice_number}`}
+            title={`Download invoice ${invoice.invoice_number}`}
+            data-row-click-ignore="true"
+            disabled={downloadingInvoiceId === invoice.id}
+            onClick={(event) => {
+              event.stopPropagation()
+              void handleInvoicePdfDownload(invoice)
+            }}
+            className="inline-flex h-8 w-8 items-center justify-center rounded-md text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-900 focus:outline-none focus:ring-2 focus:ring-primary-600 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <Download className="h-4 w-4" aria-hidden="true" />
+          </button>
+        ),
+        sortable: false,
+      },
     ],
-    []
+    [downloadingInvoiceId, handleInvoicePdfDownload]
   )
 
   const navItems = useMemo<HeaderNavItem[]>(() => {
@@ -345,6 +445,11 @@ export default function InvoicesClient({
   const totalPages = Math.ceil(initialTotal / initialLimit)
   const hasNextPage = initialPage < totalPages
   const hasPrevPage = initialPage > 1
+  const hasTextFilters =
+    searchTerm.trim().length > 0 ||
+    vendorSearchTerm.trim().length > 0 ||
+    exportStartDate.length > 0 ||
+    exportEndDate.length > 0
 
   return (
     <PageLayout
@@ -398,7 +503,7 @@ export default function InvoicesClient({
         <Card>
           <div className="border-b p-4">
             <div className="flex flex-col gap-4">
-              <div className="flex flex-col gap-2 sm:flex-row">
+              <div className="grid gap-2 md:grid-cols-[minmax(10rem,auto)_minmax(12rem,1fr)_minmax(12rem,1fr)]">
                 <Select
                   value={statusFilter}
                   onChange={(e) => {
@@ -406,7 +511,7 @@ export default function InvoicesClient({
                     setStatusFilter(newStatus)
                     updateUrl({ status: newStatus })
                   }}
-                  className="w-full sm:w-auto"
+                  className="w-full"
                   fullWidth={false}
                 >
                   <option value="all">All</option>
@@ -422,63 +527,60 @@ export default function InvoicesClient({
 
                 <Input
                   type="text"
-                  placeholder="Search invoices..."
+                  placeholder="Search invoice or reference..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   leftIcon={<Search />}
-                  className="hidden w-full flex-1 sm:block sm:w-auto"
+                  className="w-full"
+                  fullWidth={false}
+                />
+
+                <Input
+                  type="text"
+                  placeholder="Filter vendor..."
+                  value={vendorSearchTerm}
+                  onChange={(e) => setVendorSearchTerm(e.target.value)}
+                  leftIcon={<Search />}
+                  className="w-full"
                   fullWidth={false}
                 />
               </div>
 
-              {resolvedPermissions.canExport && (
-                <div className="rounded-lg border border-gray-100 bg-gray-50 p-3">
-                  <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-                    <div className="grid grid-cols-2 gap-2 sm:flex sm:gap-3">
-                      <div>
-                        <label className="mb-1 block text-xs font-medium text-gray-600">Start date</label>
-                        <Input
-                          type="date"
-                          value={exportStartDate}
-                          onChange={(e) => {
-                            setExportStartDate(e.target.value)
-                            setExportError(null)
-                          }}
-                          fullWidth={false}
-                          className="sm:w-40"
-                        />
-                      </div>
-                      <div>
-                        <label className="mb-1 block text-xs font-medium text-gray-600">End date</label>
-                        <Input
-                          type="date"
-                          value={exportEndDate}
-                          onChange={(e) => {
-                            setExportEndDate(e.target.value)
-                            setExportError(null)
-                          }}
-                          fullWidth={false}
-                          className="sm:w-40"
-                        />
-                      </div>
+              <div className="rounded-lg border border-gray-100 bg-gray-50 p-3">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+                  <div className="grid grid-cols-2 gap-2 sm:flex sm:gap-3">
+                    <div>
+                      <label className="mb-1 block text-xs font-medium text-gray-600">Start date</label>
+                      <Input
+                        type="date"
+                        value={exportStartDate}
+                        onChange={(e) => handleStartDateChange(e.target.value)}
+                        fullWidth={false}
+                        className="sm:w-40"
+                      />
                     </div>
-                    <div className="flex flex-wrap gap-2">
-                      <Button
-                        type="button"
-                        variant="secondary"
-                        size="sm"
-                        onClick={() => {
-                          const now = new Date()
-                          const currentQuarter = Math.floor(now.getMonth() / 3)
-                          const quarterStart = new Date(now.getFullYear(), currentQuarter * 3, 1)
-                          const quarterEnd = new Date(now.getFullYear(), (currentQuarter + 1) * 3, 0)
-                          setExportStartDate(toLocalIsoDate(quarterStart))
-                          setExportEndDate(toLocalIsoDate(quarterEnd))
-                        }}
-                        leftIcon={<Calendar className="h-4 w-4" />}
-                      >
-                        This quarter
-                      </Button>
+                    <div>
+                      <label className="mb-1 block text-xs font-medium text-gray-600">End date</label>
+                      <Input
+                        type="date"
+                        value={exportEndDate}
+                        onChange={(e) => handleEndDateChange(e.target.value)}
+                        fullWidth={false}
+                        className="sm:w-40"
+                      />
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      onClick={setExportToCurrentQuarter}
+                      leftIcon={<Calendar className="h-4 w-4" />}
+                    >
+                      This quarter
+                    </Button>
+                    {resolvedPermissions.canExport && (
                       <Button
                         type="button"
                         size="sm"
@@ -489,13 +591,13 @@ export default function InvoicesClient({
                       >
                         Download
                       </Button>
-                    </div>
+                    )}
                   </div>
-                  {exportError && (
-                    <p className="mt-2 text-sm text-red-600">{exportError}</p>
-                  )}
                 </div>
-              )}
+                {exportError && (
+                  <p className="mt-2 text-sm text-red-600">{exportError}</p>
+                )}
+              </div>
 
               <div className="flex gap-2 sm:hidden">
                 {resolvedPermissions.canExport && (
@@ -529,10 +631,10 @@ export default function InvoicesClient({
             onRowClick={(invoice) => router.push(`/invoices/${invoice.id}`)}
             clickableRows
             emptyMessage={
-              searchTerm ? 'No invoices match your search.' : 'No invoices found.'
+              hasTextFilters ? 'No invoices match your filters.' : 'No invoices found.'
             }
             emptyAction={
-              !searchTerm && resolvedPermissions.canCreate ? (
+              !hasTextFilters && resolvedPermissions.canCreate ? (
                 <Button onClick={() => router.push('/invoices/new')}>
                   <Plus className="mr-2 h-4 w-4" />
                   Create Your First Invoice
@@ -542,7 +644,9 @@ export default function InvoicesClient({
             renderMobileCard={(invoice) => (
               <MobileInvoiceCard 
                 invoice={invoice} 
-                onClick={(inv) => router.push(`/invoices/${inv.id}`)} 
+                onClick={(inv) => router.push(`/invoices/${inv.id}`)}
+                onDownload={(inv) => void handleInvoicePdfDownload(inv)}
+                downloadDisabled={downloadingInvoiceId === invoice.id}
               />
             )}
           />
