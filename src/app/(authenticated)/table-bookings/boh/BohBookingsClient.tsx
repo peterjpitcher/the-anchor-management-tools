@@ -5,6 +5,14 @@ import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui-v2/forms/Button'
 import { EmptyState } from '@/components/ui-v2/display/EmptyState'
 import toast from 'react-hot-toast'
+import {
+  formatGbp,
+  getTableBookingDepositBadgeClasses,
+  getTableBookingDepositState,
+  getTableBookingStatusBadgeClasses,
+  getTableBookingStatusLabel,
+  getTableBookingVisualState,
+} from '@/lib/table-bookings/ui'
 
 type BohViewMode = 'day' | 'week' | 'month'
 type StatusFilter =
@@ -52,6 +60,9 @@ type BohBooking = {
   hold_expires_at: string | null
   payment_status: string | null
   payment_method: string | null
+  deposit_amount: number | null
+  deposit_amount_locked: number | null
+  deposit_waived: boolean | null
   created_at: string | null
   updated_at: string | null
   customer: {
@@ -224,45 +235,11 @@ function formatLifecycleTime(value: string | null): string | null {
 }
 
 function getStatusBadgeClasses(status: string): string {
-  switch (status) {
-    case 'confirmed':
-    case 'pending':
-      return 'bg-green-100 text-green-800 border-green-200'
-    case 'seated':
-      return 'bg-emerald-100 text-emerald-800 border-emerald-200'
-    case 'pending_payment':
-      return 'bg-yellow-100 text-yellow-800 border-yellow-200'
-    case 'left':
-    case 'completed':
-      return 'bg-gray-100 text-gray-600 border-gray-200'
-    case 'no_show':
-      return 'bg-red-100 text-red-700 border-red-200'
-    case 'cancelled':
-      return 'bg-gray-100 text-gray-500 border-gray-200'
-    case 'visited_waiting_for_review':
-    case 'review_clicked':
-      return 'bg-purple-100 text-purple-900 border-purple-200'
-    default:
-      return 'bg-gray-100 text-gray-900 border-gray-200'
-  }
+  return getTableBookingStatusBadgeClasses(status)
 }
 
 function getStatusLabel(status: string): string {
-  switch (status) {
-    case 'pending_payment':
-      return 'Pending payment'
-    case 'no_show':
-      return 'No-show'
-    case 'visited_waiting_for_review':
-      return 'Visited waiting for review'
-    case 'review_clicked':
-      return 'Review clicked'
-    default:
-      return status
-        .split('_')
-        .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-        .join(' ')
-  }
+  return getTableBookingStatusLabel(status)
 }
 
 function getSortValue(booking: BohBooking, column: SortColumn): string | number {
@@ -270,7 +247,7 @@ function getSortValue(booking: BohBooking, column: SortColumn): string | number 
     case 'datetime':
       return booking.start_datetime
         ? Date.parse(booking.start_datetime)
-        : Date.parse(`${booking.booking_date}T${booking.booking_time || '00:00'}:00Z`)
+        : Date.parse(`${booking.booking_date}T${(booking.booking_time || '00:00').slice(0, 5)}:00Z`)
     case 'guest':
       return (booking.guest_name || '').toLowerCase()
     case 'reference':
@@ -280,7 +257,7 @@ function getSortValue(booking: BohBooking, column: SortColumn): string | number 
     case 'tables':
       return (booking.table_names.join(', ') || '').toLowerCase()
     case 'status':
-      return (booking.visual_status || booking.status || '').toLowerCase()
+      return getTableBookingVisualState(booking).toLowerCase()
     case 'phone':
       return (booking.customer?.mobile_number || '').toLowerCase()
     default:
@@ -383,6 +360,7 @@ export function BohBookingsClient({
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc')
   const [actionLoadingKey, setActionLoadingKey] = useState<string | null>(null)
   const [lastInteractionAtMs, setLastInteractionAtMs] = useState<number>(() => Date.now())
+  const [lastLoadedAt, setLastLoadedAt] = useState<Date | null>(null)
 
   const abortControllerRef = useRef<AbortController | null>(null)
 
@@ -437,6 +415,7 @@ export function BohBookingsClient({
         setPreviousRangeStartDate('')
         setPreviousRangeEndDate('')
       }
+      setLastLoadedAt(new Date())
     } catch (err) {
       if (err instanceof DOMException && err.name === 'AbortError') return
       const message = err instanceof Error ? err.message : 'Failed to load BOH bookings'
@@ -521,13 +500,8 @@ export function BohBookingsClient({
     return bookings.filter((booking) => {
       if (statusFilter !== 'all') {
         const status = (booking.status || '').toLowerCase()
-        const visualStatus = booking.visual_status.toLowerCase()
-        const paymentStatus = (booking.payment_status || '').toLowerCase()
-        if (statusFilter === 'pending_payment') {
-          if (status !== 'pending_payment' && visualStatus !== 'pending_payment' && paymentStatus !== 'pending') {
-            return false
-          }
-        } else if (status !== statusFilter && visualStatus !== statusFilter) {
+        const visualStatus = getTableBookingVisualState(booking)
+        if (status !== statusFilter && visualStatus !== statusFilter) {
           return false
         }
       }
@@ -636,7 +610,7 @@ export function BohBookingsClient({
   const statusTotals = useMemo(() => {
     const totals = new Map<string, number>()
     for (const booking of filteredBookings) {
-      const key = booking.visual_status || booking.status || 'unknown'
+      const key = getTableBookingVisualState(booking)
       totals.set(key, (totals.get(key) || 0) + 1)
     }
     return Array.from(totals.entries()).sort((a, b) => b[1] - a[1])
@@ -660,7 +634,10 @@ export function BohBookingsClient({
           <div>
             <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Booking window</p>
             <h2 className="text-lg font-semibold text-gray-900">{formatRangeLabel(rangeStartDate, rangeEndDate)}</h2>
-            <p className="text-sm text-gray-500">{filteredBookings.length} booking{filteredBookings.length === 1 ? '' : 's'} in view</p>
+            <p className="text-sm text-gray-500">
+              {filteredBookings.length} booking{filteredBookings.length === 1 ? '' : 's'} in view
+              {lastLoadedAt ? ` · updated ${lastLoadedAt.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}` : ''}
+            </p>
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
@@ -684,6 +661,14 @@ export function BohBookingsClient({
               onClick={() => setFocusDate((current) => shiftFocusDate(current, view, 1))}
             >
               Next
+            </Button>
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => void loadBookings()}
+              loading={loading}
+            >
+              Refresh
             </Button>
             <div className="ml-2 flex rounded-md border border-gray-300 bg-gray-50 p-1">
               {(['day', 'week', 'month'] as BohViewMode[]).map((candidate) => (
@@ -851,7 +836,11 @@ export function BohBookingsClient({
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100 bg-white">
-                {sortedBookings.map((booking) => (
+                {sortedBookings.map((booking) => {
+                  const visualState = getTableBookingVisualState(booking)
+                  const depositState = getTableBookingDepositState(booking)
+
+                  return (
                   <tr key={booking.id} className="hover:bg-gray-50">
                     <td className="px-3 py-2 font-medium text-gray-900 whitespace-nowrap">{formatBookingDateTime(booking)}</td>
                     <td className="px-3 py-2 text-gray-900">
@@ -874,19 +863,17 @@ export function BohBookingsClient({
                       </div>
                     </td>
                     <td className="px-3 py-2 whitespace-nowrap">
-                      <span className={`inline-flex rounded-full border px-2 py-0.5 text-[11px] font-medium ${getStatusBadgeClasses(booking.visual_status)}`}>
-                        {getStatusLabel(booking.visual_status)}
+                      <span className={`inline-flex rounded-full border px-2 py-0.5 text-[11px] font-medium ${getStatusBadgeClasses(visualState)}`}>
+                        {getStatusLabel(visualState)}
                       </span>
                     </td>
                     <td className="hidden px-3 py-2 text-gray-700 whitespace-nowrap lg:table-cell">{booking.customer?.mobile_number || '—'}</td>
                     <td className="hidden px-3 py-2 whitespace-nowrap lg:table-cell">
-                      {booking.payment_status === 'completed' ? (
-                        <span className="inline-flex rounded-full border border-green-300 bg-green-50 px-2 py-0.5 text-[11px] font-medium text-green-800">
-                          Paid · {booking.payment_method === 'paypal' ? 'PayPal' : booking.payment_method === 'cash' ? 'Cash' : 'Card'}
-                        </span>
-                      ) : (booking.payment_status === 'pending' || booking.status === 'pending_payment') ? (
-                        <span className="inline-flex rounded-full border border-amber-300 bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-800">
-                          Outstanding
+                      {depositState.kind !== 'none' ? (
+                        <span className={`inline-flex rounded-full border px-2 py-0.5 text-[11px] font-medium ${getTableBookingDepositBadgeClasses(depositState.kind)}`}>
+                          {depositState.label}
+                          {depositState.amount != null ? ` · ${formatGbp(depositState.amount)}` : ''}
+                          {depositState.methodLabel ? ` · ${depositState.methodLabel}` : ''}
                         </span>
                       ) : null}
                     </td>
@@ -901,7 +888,8 @@ export function BohBookingsClient({
                       </Button>
                     </td>
                   </tr>
-                ))}
+                  )
+                })}
               </tbody>
             </table>
           )}

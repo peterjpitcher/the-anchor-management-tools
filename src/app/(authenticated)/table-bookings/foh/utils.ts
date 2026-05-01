@@ -1,5 +1,15 @@
 import { CSSProperties } from 'react'
 import { fromZonedTime } from 'date-fns-tz'
+import {
+  getTableBookingStatusBadgeClasses,
+  getTableBookingStatusBlockClasses,
+  getTableBookingStatusLabel,
+  getTableBookingVisualState,
+} from '@/lib/table-bookings/ui'
+import {
+  postTableBookingAction,
+  TableBookingActionError,
+} from '@/lib/table-bookings/client-actions'
 import type {
   FohBooking,
   FohEventOption,
@@ -34,55 +44,11 @@ export function formatBookingWindow(start?: string | null, end?: string | null, 
 }
 
 export function statusBadgeClass(status?: string | null): string {
-  switch (status) {
-    case 'private_block':
-      return 'bg-slate-200 text-slate-800 border-slate-300'
-    case 'seated':
-      return 'bg-emerald-100 text-emerald-800 border-emerald-200'
-    case 'left':
-    case 'completed':
-      return 'bg-gray-100 text-gray-600 border-gray-200'
-    case 'confirmed':
-    case 'pending':
-      return 'bg-green-100 text-green-800 border-green-200'
-    case 'pending_payment':
-      return 'bg-yellow-100 text-yellow-800 border-yellow-200'
-    case 'no_show':
-      return 'bg-red-100 text-red-700 border-red-200'
-    case 'cancelled':
-      return 'bg-gray-100 text-gray-500 border-gray-200'
-    case 'visited_waiting_for_review':
-    case 'review_clicked':
-      return 'bg-purple-100 text-purple-800 border-purple-200'
-    default:
-      return 'bg-gray-100 text-gray-700 border-gray-200'
-  }
+  return getTableBookingStatusBadgeClasses(status)
 }
 
 export function statusBlockClass(status?: string | null): string {
-  switch (status) {
-    case 'private_block':
-      return 'border-slate-400 bg-slate-300/90 text-slate-900'
-    case 'seated':
-      return 'border-emerald-300 bg-emerald-200/90 text-emerald-900'
-    case 'left':
-      return 'border-sky-300 bg-sky-200/90 text-sky-900'
-    case 'confirmed':
-      return 'border-green-300 bg-green-200/90 text-green-900'
-    case 'pending_payment':
-      return 'border-amber-300 bg-amber-200/90 text-amber-900'
-    case 'no_show':
-      return 'border-red-300 bg-red-200/90 text-red-900'
-    case 'cancelled':
-      return 'border-gray-300 bg-gray-200/90 text-gray-700'
-    case 'completed':
-      return 'border-blue-300 bg-blue-200/90 text-blue-900'
-    case 'visited_waiting_for_review':
-    case 'review_clicked':
-      return 'border-purple-300 bg-purple-200/90 text-purple-900'
-    default:
-      return 'border-gray-300 bg-gray-200/90 text-gray-800'
-  }
+  return getTableBookingStatusBlockClasses(status)
 }
 
 export function getSundayPreorderBorderStyle(booking: FohBooking): CSSProperties {
@@ -94,66 +60,11 @@ export function getSundayPreorderBorderStyle(booking: FohBooking): CSSProperties
 }
 
 export function getBookingVisualState(booking: FohBooking): BookingVisualState {
-  if (booking.is_private_block || booking.status === 'private_block') {
-    return 'private_block'
-  }
-
-  if (booking.status === 'no_show' || booking.no_show_at) {
-    return 'no_show'
-  }
-
-  if (booking.left_at) {
-    return 'left'
-  }
-
-  if (booking.seated_at) {
-    return 'seated'
-  }
-
-  switch (booking.status) {
-    case 'pending_payment':
-      return 'pending_payment'
-    case 'confirmed':
-      return 'confirmed'
-    case 'cancelled':
-      return 'cancelled'
-    case 'completed':
-      return 'completed'
-    case 'visited_waiting_for_review':
-      return 'visited_waiting_for_review'
-    case 'review_clicked':
-      return 'review_clicked'
-    default:
-      return 'unknown'
-  }
+  return getTableBookingVisualState(booking) as BookingVisualState
 }
 
 export function getBookingVisualLabel(booking: FohBooking): string {
-  const visualState = getBookingVisualState(booking)
-  switch (visualState) {
-    case 'private_block':
-      return 'Private block'
-    case 'pending_payment':
-      return 'Pending payment'
-    case 'seated':
-      return 'Seated'
-    case 'left':
-      return 'Left'
-    case 'no_show':
-      return 'No-show'
-    case 'confirmed':
-      return 'Booked'
-    case 'cancelled':
-      return 'Cancelled'
-    case 'completed':
-      return 'Completed'
-    case 'visited_waiting_for_review':
-      return 'Visited'
-    case 'review_clicked':
-      return 'Review clicked'
-    default:
-      return booking.status || 'Unknown'
-  }
+  return getTableBookingStatusLabel(getBookingVisualState(booking))
 }
 
 export function formatLifecycleTime(isoValue?: string | null): string | null {
@@ -708,29 +619,10 @@ export function resolveWalkInDefaults(input: {
   }
 }
 
-export class BookingActionError extends Error {
-  payload: Record<string, unknown> | null
-  constructor(message: string, payload: Record<string, unknown> | null) {
-    super(message)
-    this.payload = payload
-  }
-}
+export { TableBookingActionError as BookingActionError }
 
 export async function postBookingAction(path: string, body?: Record<string, unknown>): Promise<Record<string, unknown> | null> {
-  const response = await fetch(path, {
-    method: 'POST',
-    headers: body ? { 'Content-Type': 'application/json' } : undefined,
-    body: body ? JSON.stringify(body) : undefined
-  })
-
-  const payload = await response.json().catch(() => null)
-
-  if (!response.ok) {
-    const errorMessage = payload && typeof payload.error === 'string' ? payload.error : 'Action failed'
-    throw new BookingActionError(errorMessage, payload)
-  }
-
-  return payload
+  return postTableBookingAction(path, body)
 }
 
 export function splitName(fullName: string): { firstName?: string; lastName?: string } {
