@@ -156,6 +156,53 @@ type PrivateBlockForTable = {
   }
 }
 
+function isMissingSchemaError(error: unknown): boolean {
+  const message = String((error as { message?: string } | null)?.message || '').toLowerCase()
+  return (
+    message.includes('does not exist')
+    || message.includes('unknown column')
+    || message.includes('undefined column')
+    || message.includes('undefined table')
+  )
+}
+
+async function loadScheduleBookingRows(
+  supabase: any,
+  date: string,
+): Promise<{ data: any[]; error: unknown | null }> {
+  const attempts = [
+    'id, booking_reference, booking_date, booking_time, party_size, booking_type, booking_purpose, status, payment_status, payment_method, deposit_amount, deposit_amount_locked, hold_expires_at, special_requirements, seated_at, left_at, no_show_at, start_datetime, end_datetime, event_id, deposit_waived, sunday_preorder_completed_at, customer:customers!table_bookings_customer_id_fkey(first_name,last_name)',
+    'id, booking_reference, booking_date, booking_time, party_size, booking_type, booking_purpose, status, payment_status, payment_method, deposit_amount, hold_expires_at, special_requirements, seated_at, left_at, no_show_at, start_datetime, end_datetime, event_id, deposit_waived, sunday_preorder_completed_at, customer:customers!table_bookings_customer_id_fkey(first_name,last_name)',
+    'id, booking_reference, booking_date, booking_time, party_size, booking_type, booking_purpose, status, special_requirements, seated_at, left_at, no_show_at, start_datetime, end_datetime, event_id, customer:customers!table_bookings_customer_id_fkey(first_name,last_name)',
+  ]
+
+  let lastError: unknown | null = null
+
+  for (const select of attempts) {
+    const result = await supabase.from('table_bookings')
+      .select(select)
+      .eq('booking_date', date)
+      // Show all bookings for the day except terminal states:
+      //   - not cancelled (table is free again)
+      //   - not no_show (guest never arrived, table was never used)
+      // Departed guests (left_at IS NOT NULL) remain visible so FOH staff
+      // can see the full day's bookings. The UI uses left_at for styling.
+      .not('status', 'in', '("cancelled","no_show")')
+      .order('booking_time', { ascending: true })
+
+    if (!result.error) {
+      return { data: result.data || [], error: null }
+    }
+
+    lastError = result.error
+    if (!isMissingSchemaError(result.error)) {
+      return { data: [], error: result.error }
+    }
+  }
+
+  return { data: [], error: lastError }
+}
+
 export async function GET(request: NextRequest) {
   const auth = await requireFohPermission('view')
   if (!auth.ok) {
@@ -173,18 +220,7 @@ export async function GET(request: NextRequest) {
       .select('id, table_number, name, capacity, area, area_id, is_bookable')
       .order('table_number', { ascending: true, nullsFirst: false })
       .order('name', { ascending: true, nullsFirst: false }),
-    supabase.from('table_bookings')
-      .select(
-        'id, booking_reference, booking_date, booking_time, party_size, booking_type, booking_purpose, status, payment_status, payment_method, deposit_amount, deposit_amount_locked, hold_expires_at, special_requirements, seated_at, left_at, no_show_at, start_datetime, end_datetime, event_id, deposit_waived, sunday_preorder_completed_at, customer:customers!table_bookings_customer_id_fkey(first_name,last_name)'
-      )
-      .eq('booking_date', date)
-      // Show all bookings for the day except terminal states:
-      //   - not cancelled (table is free again)
-      //   - not no_show (guest never arrived, table was never used)
-      // Departed guests (left_at IS NOT NULL) remain visible so FOH staff
-      // can see the full day's bookings. The UI uses left_at for styling.
-      .not('status', 'in', '("cancelled","no_show")')
-      .order('booking_time', { ascending: true }),
+    loadScheduleBookingRows(supabase, date),
     supabase.from('business_hours')
       .select('opens, closes, is_closed, kitchen_opens, kitchen_closes, is_kitchen_closed')
       .eq('day_of_week', dayOfWeek)
