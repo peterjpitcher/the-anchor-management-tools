@@ -204,8 +204,9 @@ export async function queryReceiptWorkspaceData(filters: ReceiptWorkspaceFilters
 
   const monthRange = resolveMonthRange(filters.month)
   const isMonthScoped = Boolean(monthRange)
-  const maxPageSize = isMonthScoped ? MAX_MONTH_PAGE_SIZE : 100
-  const requestedPageSize = filters.pageSize ?? (isMonthScoped ? MAX_MONTH_PAGE_SIZE : DEFAULT_PAGE_SIZE)
+  const useExpandedPage = isMonthScoped || filters.groupByVendor
+  const maxPageSize = useExpandedPage ? MAX_MONTH_PAGE_SIZE : 100
+  const requestedPageSize = filters.pageSize ?? (useExpandedPage ? MAX_MONTH_PAGE_SIZE : DEFAULT_PAGE_SIZE)
   const pageSize = Math.min(requestedPageSize, maxPageSize)
   const page = isMonthScoped ? 1 : Math.max(filters.page ?? 1, 1)
   const offset = isMonthScoped ? 0 : (page - 1) * pageSize
@@ -380,15 +381,13 @@ export async function queryReceiptWorkspaceData(filters: ReceiptWorkspaceFilters
     .filter((value) => monthRows.some((row: any) => row?.month_start?.startsWith(value)))
     .sort((a, b) => b.localeCompare(a))
 
-  const effectivePageSize = isMonthScoped ? MAX_MONTH_PAGE_SIZE : pageSize
-
   return {
     transactions: shapedTransactions,
     rules: rules ?? [],
     summary: enrichedSummary,
     pagination: {
       page,
-      pageSize: effectivePageSize,
+      pageSize,
       total: count ?? shapedTransactions.length,
     },
     knownVendors,

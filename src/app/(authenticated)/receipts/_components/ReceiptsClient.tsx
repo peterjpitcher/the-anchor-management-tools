@@ -26,6 +26,7 @@ interface ReceiptsClientProps {
     status: ReceiptWorkspaceFilters['status'] | 'all'
     direction: 'in' | 'out' | 'all'
     showOnlyOutstanding: boolean
+    groupByVendor: boolean
     missingVendorOnly: boolean
     missingExpenseOnly: boolean
     search: string
@@ -181,6 +182,7 @@ export default function ReceiptsClient({ initialData, canExport = false, initial
               sortDirection: currentSortDirection,
               status: initialFilters.status,
               showOnlyOutstanding: initialFilters.showOnlyOutstanding,
+              groupByVendor: initialFilters.groupByVendor,
               missingVendorOnly: initialFilters.missingVendorOnly,
               missingExpenseOnly: initialFilters.missingExpenseOnly,
           }}

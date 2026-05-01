@@ -14,6 +14,7 @@ interface ReceiptFiltersProps {
     status: ReceiptWorkspaceFilters['status'] | 'all'
     direction: 'in' | 'out' | 'all'
     showOnlyOutstanding: boolean
+    groupByVendor: boolean
     missingVendorOnly: boolean
     missingExpenseOnly: boolean
     search: string
@@ -114,6 +115,10 @@ export function ReceiptFilters({ filters, availableMonths }: ReceiptFiltersProps
     updateQuery({ outstanding: event.target.checked ? null : '0' })
   }
 
+  function handleGroupByVendorToggle(event: ChangeEvent<HTMLInputElement>) {
+    updateQuery({ groupByVendor: event.target.checked ? null : '0' })
+  }
+
   function handleMissingVendorToggle(event: ChangeEvent<HTMLInputElement>) {
     updateQuery({ needsVendor: event.target.checked ? '1' : null })
   }
@@ -186,6 +191,13 @@ export function ReceiptFilters({ filters, availableMonths }: ReceiptFiltersProps
               onChange={handleOutstandingToggle}
             />
             Outstanding only
+          </label>
+          <label className="flex items-center gap-2">
+            <Checkbox
+              checked={filters.groupByVendor}
+              onChange={handleGroupByVendorToggle}
+            />
+            Group by vendor
           </label>
           <label className="flex items-center gap-2">
             <Checkbox

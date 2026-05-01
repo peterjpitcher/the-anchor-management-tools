@@ -208,6 +208,17 @@ export const receiptRuleSchema = z.object({
   set_vendor_name: z.string().trim().max(120).optional(),
   set_expense_category: receiptExpenseCategorySchema.optional(),
 }).refine((data) => {
+  return Boolean(
+    data.match_description ||
+    data.match_transaction_type ||
+    data.match_direction !== 'both' ||
+    data.match_min_amount != null ||
+    data.match_max_amount != null
+  );
+}, {
+  path: ['match_description'],
+  message: 'Add at least one match condition before saving this rule',
+}).refine((data) => {
   if (data.match_min_amount != null && data.match_max_amount != null) {
     return data.match_min_amount <= data.match_max_amount;
   }
