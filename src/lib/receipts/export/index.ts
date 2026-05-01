@@ -12,3 +12,6 @@ export { appendExpenseImages } from './expense-images'
 export { appendClaimSummaryPdf } from './claim-summary-pdf'
 
 export { quarterMonthRange } from './csv-helpers'
+
+export { getLastCompletedQuarter } from './default-period'
+export type { ReceiptExportPeriod } from './default-period'
