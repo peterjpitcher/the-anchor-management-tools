@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { fromZonedTime } from 'date-fns-tz'
 import { getLondonDateIso, requireFohPermission } from '@/lib/foh/api-auth'
 import { logger } from '@/lib/logger'
+import { getTableBookingVisualState } from '@/lib/table-bookings/ui'
 
 type BohViewMode = 'day' | 'week' | 'month'
 
@@ -146,14 +147,12 @@ function deriveEndIso(booking: any, startIso: string | null): string | null {
 
 function deriveVisualStatus(booking: {
   status: string | null
+  payment_status?: string | null
   seated_at?: string | null
   left_at?: string | null
   no_show_at?: string | null
 }): string {
-  if (booking.status === 'no_show' || booking.no_show_at) return 'no_show'
-  if (booking.left_at) return 'left'
-  if (booking.seated_at) return 'seated'
-  return booking.status || 'unknown'
+  return getTableBookingVisualState(booking)
 }
 
 function createSearchBlob(input: {
@@ -200,8 +199,8 @@ async function loadBookingsRows(
   input: { startDate: string; endDate: string }
 ): Promise<{ data: any[]; error: unknown | null }> {
   const attempts = [
-    'id, booking_reference, booking_date, booking_time, party_size, committed_party_size, booking_type, booking_purpose, status, payment_status, payment_method, special_requirements, seated_at, left_at, no_show_at, cancelled_at, cancelled_by, start_datetime, end_datetime, duration_minutes, hold_expires_at, created_at, updated_at, customer_id, event_id, customer:customers!table_bookings_customer_id_fkey(id,first_name,last_name,mobile_number,sms_status)',
-    'id, booking_reference, booking_date, booking_time, party_size, booking_type, status, payment_status, payment_method, special_requirements, seated_at, left_at, no_show_at, cancelled_at, start_datetime, end_datetime, duration_minutes, created_at, updated_at, customer_id, event_id, customer:customers!table_bookings_customer_id_fkey(id,first_name,last_name,mobile_number,sms_status)',
+    'id, booking_reference, booking_date, booking_time, party_size, committed_party_size, booking_type, booking_purpose, status, payment_status, payment_method, deposit_amount, deposit_amount_locked, deposit_waived, special_requirements, seated_at, left_at, no_show_at, cancelled_at, cancelled_by, start_datetime, end_datetime, duration_minutes, hold_expires_at, created_at, updated_at, customer_id, event_id, customer:customers!table_bookings_customer_id_fkey(id,first_name,last_name,mobile_number,sms_status)',
+    'id, booking_reference, booking_date, booking_time, party_size, booking_type, status, payment_status, payment_method, deposit_amount, deposit_amount_locked, deposit_waived, special_requirements, seated_at, left_at, no_show_at, cancelled_at, start_datetime, end_datetime, duration_minutes, created_at, updated_at, customer_id, event_id, customer:customers!table_bookings_customer_id_fkey(id,first_name,last_name,mobile_number,sms_status)',
     'id, booking_reference, booking_date, booking_time, party_size, booking_type, status, special_requirements, duration_minutes, no_show_at, cancelled_at, created_at, updated_at, customer_id, customer:customers!table_bookings_customer_id_fkey(id,first_name,last_name,mobile_number,sms_status)',
     'id, booking_reference, booking_date, booking_time, party_size, booking_type, status, special_requirements, duration_minutes, no_show_at, cancelled_at, created_at, updated_at, customer_id, customer:customers!table_bookings_customer_id_fkey(id,first_name,last_name,mobile_number)'
   ]
@@ -455,6 +454,7 @@ export async function GET(request: NextRequest) {
       const endIso = deriveEndIso(row, startIso)
       const visualStatus = deriveVisualStatus({
         status: row.status || null,
+        payment_status: row.payment_status || null,
         seated_at: row.seated_at || null,
         left_at: row.left_at || null,
         no_show_at: row.no_show_at || null
@@ -482,6 +482,9 @@ export async function GET(request: NextRequest) {
         hold_expires_at: row.hold_expires_at || null,
         payment_status: row.payment_status || null,
         payment_method: row.payment_method || null,
+        deposit_amount: row.deposit_amount ?? null,
+        deposit_amount_locked: row.deposit_amount_locked ?? null,
+        deposit_waived: row.deposit_waived ?? null,
         created_at: row.created_at || null,
         updated_at: row.updated_at || null,
         customer,

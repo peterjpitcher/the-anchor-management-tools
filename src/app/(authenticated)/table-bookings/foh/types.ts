@@ -8,6 +8,11 @@ export type FohBooking = {
   booking_type: string | null
   booking_purpose: string | null
   status: string | null
+  payment_status?: string | null
+  payment_method?: string | null
+  deposit_amount?: number | null
+  deposit_amount_locked?: number | null
+  hold_expires_at?: string | null
   notes: string | null
   seated_at?: string | null
   left_at?: string | null

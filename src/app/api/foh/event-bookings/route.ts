@@ -271,6 +271,28 @@ export async function POST(request: NextRequest) {
     customerId = selectedCustomer.id
     normalizedPhone = selectedCustomer.mobile_e164 || selectedCustomer.mobile_number || providedPhone
 
+    if (providedPhone && (!selectedCustomer.mobile_e164 || !selectedCustomer.mobile_number)) {
+      const phonePatch: Record<string, string> = { updated_at: new Date().toISOString() }
+      if (!selectedCustomer.mobile_e164) phonePatch.mobile_e164 = providedPhone
+      if (!selectedCustomer.mobile_number) phonePatch.mobile_number = providedPhone
+
+      const { error: customerPhoneUpdateError } = await auth.supabase
+        .from('customers')
+        .update(phonePatch)
+        .eq('id', selectedCustomer.id)
+
+      if (customerPhoneUpdateError) {
+        logger.error('Failed to persist selected customer phone for FOH event booking', {
+          error: customerPhoneUpdateError,
+          metadata: {
+            userId: auth.userId,
+            customerId: selectedCustomer.id,
+          },
+        })
+        return NextResponse.json({ error: 'Failed to update selected customer phone number' }, { status: 500 })
+      }
+    }
+
     if (!normalizedPhone) {
       if (payload.walk_in === true) {
         shouldSendBookingSms = false

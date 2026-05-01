@@ -3,6 +3,11 @@
 import React, { FormEvent } from 'react'
 import { Modal } from '@/components/ui-v2/overlay/Modal'
 import { cn } from '@/lib/utils'
+import {
+  computeDepositAmount,
+  LARGE_GROUP_DEPOSIT_PER_PERSON_GBP,
+  LARGE_GROUP_DEPOSIT_THRESHOLD,
+} from '@/lib/table-bookings/deposit'
 import type {
   FohCreateMode,
   FohCustomerSearchResult,
@@ -122,6 +127,12 @@ export const FohCreateBookingModal = React.memo(function FohCreateBookingModal(p
   } = props
 
   const sundaySelected = isSundayDate(createForm.booking_date)
+  const partySizeNumber = Number.parseInt(createForm.party_size, 10)
+  const formDepositAmount = formRequiresDeposit
+    ? computeDepositAmount(Number.isFinite(partySizeNumber) ? partySizeNumber : 0, {
+        depositWaived: createForm.waive_deposit === true,
+      })
+    : 0
   const selectedCustomerNeedsPhone = Boolean(
     selectedCustomer && !selectedCustomer.mobile_e164 && !selectedCustomer.mobile_number
   )
@@ -401,32 +412,6 @@ export const FohCreateBookingModal = React.memo(function FohCreateBookingModal(p
 
           {createMode !== 'walk_in' && createMode !== 'management' && createForm.purpose !== 'event' && (
             <div className="space-y-2 md:col-span-2">
-              {/*
-                Legacy Sunday-lunch toggle (Spec §8.3): kept for staff-explicit
-                legacy data entry only. New public bookings never set this. The
-                deposit-required decision is now driven by the centralised 10+
-                rule and is independent of this toggle. Disabled by default;
-                staff who genuinely need to back-fill a legacy Sunday-lunch
-                booking can enable it via the input itself if required.
-              */}
-              <label className="flex items-center gap-2 text-xs font-medium text-gray-700">
-                <input
-                  type="checkbox"
-                  checked={createForm.sunday_lunch}
-                  onChange={(event) =>
-                    onSetCreateForm((current) => ({
-                      ...current,
-                      sunday_lunch: event.target.checked,
-                      sunday_deposit_method: event.target.checked ? current.sunday_deposit_method : 'payment_link',
-                      sunday_preorder_mode: event.target.checked ? current.sunday_preorder_mode : 'send_link'
-                    }))
-                  }
-                  disabled
-                  title="Legacy admin-only — new public bookings never use this. Deposit decision is independent of this toggle."
-                />
-                <span>Legacy Sunday lunch (admin)</span>
-              </label>
-
               <div className="flex items-center gap-2 rounded-md border border-gray-200 bg-gray-50 px-3 py-2">
                 <input
                   id="is-venue-event"
@@ -497,7 +482,9 @@ export const FohCreateBookingModal = React.memo(function FohCreateBookingModal(p
                       <span>Cash taken and put in till</span>
                     </label>
                   </div>
-                  <p className="mt-2 text-xs text-gray-600">Deposit amount: GBP 10 per person.</p>
+                  <p className="mt-2 text-xs text-gray-600">
+                    Deposit amount: {formatGbp(formDepositAmount)} ({formatGbp(LARGE_GROUP_DEPOSIT_PER_PERSON_GBP)} per person).
+                  </p>
                 </div>
               )}
 
@@ -659,7 +646,7 @@ export const FohCreateBookingModal = React.memo(function FohCreateBookingModal(p
             {createMode === 'walk_in'
               ? 'Walk-ins require covers. Guest name and phone are optional.'
               : createForm.purpose !== 'event'
-              ? 'Bookings of 10 or more people require a GBP 10 per person deposit.'
+              ? `Bookings of ${LARGE_GROUP_DEPOSIT_THRESHOLD} or more people require a ${formatGbp(LARGE_GROUP_DEPOSIT_PER_PERSON_GBP)} per person deposit.`
               : 'Event booking status depends on event payment mode and capacity.'}
           </p>
           <div className="flex items-center gap-2">

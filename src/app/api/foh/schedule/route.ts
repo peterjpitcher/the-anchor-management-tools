@@ -175,7 +175,7 @@ export async function GET(request: NextRequest) {
       .order('name', { ascending: true, nullsFirst: false }),
     supabase.from('table_bookings')
       .select(
-        'id, booking_reference, booking_date, booking_time, party_size, booking_type, booking_purpose, status, special_requirements, seated_at, left_at, no_show_at, start_datetime, end_datetime, event_id, deposit_waived, sunday_preorder_completed_at, customer:customers!table_bookings_customer_id_fkey(first_name,last_name)'
+        'id, booking_reference, booking_date, booking_time, party_size, booking_type, booking_purpose, status, payment_status, payment_method, deposit_amount, deposit_amount_locked, hold_expires_at, special_requirements, seated_at, left_at, no_show_at, start_datetime, end_datetime, event_id, deposit_waived, sunday_preorder_completed_at, customer:customers!table_bookings_customer_id_fkey(first_name,last_name)'
       )
       .eq('booking_date', date)
       // Show all bookings for the day except terminal states:
@@ -480,6 +480,11 @@ export async function GET(request: NextRequest) {
           booking_type: derivedBookingType,
           booking_purpose: derivedBookingPurpose,
           status: booking.status,
+          payment_status: booking.payment_status || null,
+          payment_method: booking.payment_method || null,
+          deposit_amount: booking.deposit_amount ?? null,
+          deposit_amount_locked: booking.deposit_amount_locked ?? null,
+          hold_expires_at: booking.hold_expires_at || null,
           notes: combinedNotes || null,
           seated_at: booking.seated_at || null,
           left_at: booking.left_at || null,
@@ -530,6 +535,11 @@ export async function GET(request: NextRequest) {
       booking_type: booking.event_id ? 'event' : booking.booking_type,
       booking_purpose: booking.event_id ? 'event' : booking.booking_purpose,
       status: booking.status,
+      payment_status: booking.payment_status || null,
+      payment_method: booking.payment_method || null,
+      deposit_amount: booking.deposit_amount ?? null,
+      deposit_amount_locked: booking.deposit_amount_locked ?? null,
+      hold_expires_at: booking.hold_expires_at || null,
       notes:
         booking.event_id && eventNameById.get(booking.event_id)
           ? [booking.special_requirements || null, `Event: ${eventNameById.get(booking.event_id)}`]

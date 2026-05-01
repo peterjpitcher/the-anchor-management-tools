@@ -9,7 +9,16 @@ import { Button } from '@/components/ui-v2/forms/Button'
 import { Badge } from '@/components/ui-v2/display/Badge'
 import { RefundDialog } from '@/components/ui-v2/refunds/RefundDialog'
 import { RefundHistoryTable } from '@/components/ui-v2/refunds/RefundHistoryTable'
-import { getCanonicalDeposit, LARGE_GROUP_DEPOSIT_THRESHOLD } from '@/lib/table-bookings/deposit'
+import { getCanonicalDeposit } from '@/lib/table-bookings/deposit'
+import {
+  formatGbp,
+  getTableBookingDepositBadgeClasses,
+  getTableBookingDepositState,
+  getTableBookingStatusBadgeClasses,
+  getTableBookingStatusLabel,
+  getTableBookingVisualState,
+} from '@/lib/table-bookings/ui'
+import { requestTableBookingAction } from '@/lib/table-bookings/client-actions'
 import PreorderTab from './PreorderTab'
 // formatDateInLondon uses toLocaleDateString (date-only); use Intl.DateTimeFormat directly for time display
 const formatLondonTime = (iso: string) =>
@@ -20,20 +29,13 @@ const formatLondonTime = (iso: string) =>
     timeZone: 'Europe/London',
   }).format(new Date(iso))
 
-function StatusBadge({ status }: { status: string }) {
-  const colours: Record<string, string> = {
-    confirmed: 'bg-green-100 text-green-800',
-    pending: 'bg-yellow-100 text-yellow-800',
-    seated: 'bg-blue-100 text-blue-800',
-    completed: 'bg-gray-100 text-gray-600',
-    cancelled: 'bg-red-100 text-red-800',
-    no_show: 'bg-red-100 text-red-800',
-  }
+function StatusBadge({ booking }: { booking: Booking }) {
+  const visualState = getTableBookingVisualState(booking)
   return (
     <span
-      className={`text-xs font-semibold uppercase tracking-wide px-2 py-0.5 rounded ${colours[status] ?? 'bg-gray-100 text-gray-600'}`}
+      className={`text-xs font-semibold uppercase tracking-wide px-2 py-0.5 rounded border ${getTableBookingStatusBadgeClasses(visualState)}`}
     >
-      {status.replace(/_/g, ' ')}
+      {getTableBookingStatusLabel(visualState)}
     </span>
   )
 }
@@ -154,6 +156,7 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
     booking.payment_status === 'completed'
       ? Math.max(0, canonicalDepositAmount)
       : Math.max(0, Number(booking.deposit_amount ?? canonicalDepositAmount ?? 0))
+  const depositState = getTableBookingDepositState(booking)
 
   // Refund state
   const [showRefundDialog, setShowRefundDialog] = useState(false)
@@ -177,11 +180,15 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
     return () => { cancelled = true }
   }, [booking.id, booking.payment_status])
 
-  async function runAction(key: string, fn: () => Promise<void>, successMsg: string) {
+  async function runAction<T>(
+    key: string,
+    fn: () => Promise<T>,
+    successMsg: string | ((result: T) => string)
+  ) {
     setActionLoadingKey(key)
     try {
-      await fn()
-      toast.success(successMsg)
+      const result = await fn()
+      toast.success(typeof successMsg === 'function' ? successMsg(result) : successMsg)
       router.refresh()
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Something went wrong')
@@ -196,13 +203,9 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
     await runAction(
       `status:${action}`,
       async () => {
-        const response = await fetch(`/api/boh/table-bookings/${booking.id}/status`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action }),
+        await requestTableBookingAction(`/api/boh/table-bookings/${booking.id}/status`, {
+          body: { action },
         })
-        const payload = (await response.json()) as { error?: string }
-        if (!response.ok) throw new Error(payload.error ?? 'Failed to update booking status')
       },
       'Booking updated'
     )
@@ -216,13 +219,9 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
     await runAction(
       'move-table',
       async () => {
-        const response = await fetch(`/api/boh/table-bookings/${booking.id}/move-table`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ table_id: moveTableId }),
+        await requestTableBookingAction(`/api/boh/table-bookings/${booking.id}/move-table`, {
+          body: { table_id: moveTableId },
         })
-        const payload = (await response.json()) as { error?: string }
-        if (!response.ok) throw new Error(payload.error ?? 'Failed to move booking to selected table')
       },
       'Table assignment updated'
     )
@@ -237,16 +236,24 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
     await runAction(
       'party-size',
       async () => {
-        const response = await fetch(`/api/boh/table-bookings/${booking.id}/party-size`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ party_size: nextSize, send_sms: partySizeEditSendSms }),
+        const payload = await requestTableBookingAction<{
+          depositRequired?: boolean
+          depositUrl?: string | null
+          smsSent?: boolean
+        }>(`/api/boh/table-bookings/${booking.id}/party-size`, {
+          body: { party_size: nextSize, send_sms: partySizeEditSendSms },
         })
-        const payload = (await response.json()) as { error?: string }
-        if (!response.ok) throw new Error(payload.error ?? 'Failed to update party size')
         setPartySizeEditOpen(false)
+        return payload
       },
-      'Party size updated'
+      (payload) => {
+        if (payload.depositRequired) {
+          return payload.smsSent
+            ? 'Party size updated. Deposit link sent by SMS.'
+            : 'Party size updated. Deposit link created.'
+        }
+        return 'Party size updated'
+      }
     )
   }
 
@@ -254,10 +261,10 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
     await runAction(
       'deposit-link',
       async () => {
-        // Deposit link endpoint uses GET (matches BohBookingsClient pattern)
-        const response = await fetch(`/api/boh/table-bookings/${booking.id}/deposit-link`)
-        const payload = (await response.json()) as { error?: string; url?: string }
-        if (!response.ok) throw new Error(payload.error ?? 'Failed to generate deposit link')
+        const payload = await requestTableBookingAction<{ url?: string }>(
+          `/api/boh/table-bookings/${booking.id}/deposit-link`,
+          { method: 'GET' },
+        )
         if (!payload.url) throw new Error('No deposit link returned')
         await navigator.clipboard.writeText(payload.url)
       },
@@ -269,11 +276,9 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
     await runAction(
       'delete',
       async () => {
-        const response = await fetch(`/api/boh/table-bookings/${booking.id}`, {
+        await requestTableBookingAction(`/api/boh/table-bookings/${booking.id}`, {
           method: 'DELETE',
         })
-        const payload = (await response.json()) as { error?: string }
-        if (!response.ok) throw new Error(payload.error ?? 'Failed to delete booking')
         router.push('/table-bookings/boh')
       },
       'Booking deleted'
@@ -289,13 +294,9 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
     await runAction(
       'send-sms',
       async () => {
-        const response = await fetch(`/api/boh/table-bookings/${booking.id}/sms`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ message: trimmed }),
+        await requestTableBookingAction(`/api/boh/table-bookings/${booking.id}/sms`, {
+          body: { message: trimmed },
         })
-        const payload = (await response.json()) as { error?: string }
-        if (!response.ok) throw new Error(payload.error ?? 'Failed to send SMS')
       },
       'SMS sent to guest'
     )
@@ -374,7 +375,7 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
         <div className="space-y-4 max-w-2xl">
           {/* Status strip */}
           <div className="flex flex-wrap items-center gap-3 p-4 bg-gray-50 rounded-lg border border-gray-200">
-            <StatusBadge status={booking.status} />
+            <StatusBadge booking={booking} />
             {booking.party_size != null && (
               <span className="text-sm text-gray-600">{booking.party_size} covers</span>
             )}
@@ -388,19 +389,12 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
                 {booking.booking_type.replace(/_/g, ' ')}
               </span>
             )}
-            {/* Deposit badge only renders for bookings that fall under the
-                large-group deposit rule (party_size >= 10). For smaller
-                bookings, `deposit_waived` defaults to `false` on the row but
-                no deposit was ever required, so the old `!= null` guard
-                rendered "Deposit required" on every booking. Gating on the
-                canonical threshold matches the deposit helper at
-                src/lib/table-bookings/deposit.ts. */}
-            {booking.party_size != null &&
-              booking.party_size >= LARGE_GROUP_DEPOSIT_THRESHOLD && (
-                <span className={`text-xs font-medium px-2 py-0.5 rounded ${booking.deposit_waived ? 'bg-gray-100 text-gray-500' : 'bg-blue-100 text-blue-700'}`}>
-                  {booking.deposit_waived ? 'Deposit waived' : 'Deposit required'}
-                </span>
-              )}
+            {depositState.kind !== 'none' && (
+              <span className={`text-xs font-medium px-2 py-0.5 rounded border ${getTableBookingDepositBadgeClasses(depositState.kind)}`}>
+                {depositState.label}
+                {depositState.amount != null ? ` · ${formatGbp(depositState.amount)}` : ''}
+              </span>
+            )}
           </div>
 
           {/* Guest info */}
@@ -449,21 +443,21 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
           )}
 
           {/* Deposit section — only when a deposit is involved */}
-          {(booking.payment_status === 'completed' || booking.payment_status === 'pending' || booking.status === 'pending_payment') && (
+          {depositState.kind !== 'none' && (
             <div className="rounded-lg border border-gray-200 bg-white p-4 space-y-1">
               <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 mb-2">Deposit</p>
-              {booking.payment_status === 'completed' ? (
+              {depositState.kind === 'paid' ? (
                 <div className="space-y-0.5">
                   <div className="flex items-center gap-2">
                     <span className="inline-block w-2 h-2 rounded-full bg-green-500" />
                     <span className="text-sm font-medium text-green-700">
-                      Paid via {booking.payment_method === 'paypal' ? 'PayPal' : booking.payment_method ?? 'Card'}
+                      Paid{depositState.methodLabel ? ` via ${depositState.methodLabel}` : ''}
                     </span>
                     <span className="text-green-500 text-sm">✓</span>
                   </div>
                   {refundableDepositAmount > 0 && (
                     <p className="text-sm text-gray-700 pl-4">
-                      £{refundableDepositAmount.toFixed(2)}
+                      {formatGbp(refundableDepositAmount)}
                     </p>
                   )}
                   {booking.paypal_deposit_capture_id && (
@@ -504,14 +498,10 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
                 </div>
               ) : (
                 <div className="flex items-center gap-2">
-                  <span className="text-amber-500 text-sm">⚠</span>
-                  <span className="text-sm font-medium text-amber-700">
-                    Outstanding —{' '}
-                    {booking.deposit_amount != null
-                      ? `£${booking.deposit_amount.toFixed(2)}`
-                      : booking.party_size != null
-                        ? `£${canonicalDepositAmount.toFixed(2)}`
-                        : 'amount pending'}
+                  {depositState.kind === 'pending' && <span className="text-amber-500 text-sm">⚠</span>}
+                  <span className={`text-sm font-medium ${depositState.kind === 'pending' ? 'text-amber-700' : 'text-gray-700'}`}>
+                    {depositState.label}
+                    {depositState.amount != null ? ` — ${formatGbp(depositState.amount)}` : ''}
                   </span>
                 </div>
               )}
@@ -720,7 +710,7 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
         }}
         type="warning"
         title="Mark as no-show?"
-        message="This may trigger a charge request for the customer."
+        message="This will mark the booking as no-show and remove it from active covers."
         confirmText="Mark No-show"
         closeOnConfirm={false}
       />

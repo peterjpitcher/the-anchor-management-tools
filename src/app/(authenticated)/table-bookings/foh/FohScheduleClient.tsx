@@ -233,6 +233,25 @@ export function FohScheduleClient({
     })
   }
 
+  function buildActionSuccessMessage(successMessage: string, result: unknown): string {
+    const payload = result as Record<string, unknown> | null
+    const transition = payload && typeof payload.depositTransition === 'object' && payload.depositTransition !== null
+      ? payload.depositTransition as Record<string, unknown>
+      : null
+
+    if (transition?.state === 'deposit_required') {
+      const depositUrl = typeof transition.depositUrl === 'string' ? transition.depositUrl : null
+      const smsSent = transition.smsSent === true
+      return `${successMessage}. Deposit is now required${smsSent ? ' and the payment link was sent by SMS' : ''}${depositUrl ? `: ${depositUrl}` : '.'}`
+    }
+
+    if (transition?.state === 'deposit_cleared') {
+      return `${successMessage}. Pending deposit cleared.`
+    }
+
+    return successMessage
+  }
+
   async function runAction(action: () => Promise<unknown>, successMessage: string, inFlightLabel?: string): Promise<boolean> {
     setShowCancelBookingConfirmation(false); setShowNoShowConfirmation(false)
     setErrorMessage(null); setStatusMessage(null)
@@ -244,7 +263,7 @@ export function FohScheduleClient({
         ? (rp.booking as Parameters<typeof applyBookingPatch>[0]) : null
       if (snap) applyBookingPatch(snap)
       await reloadSchedule()
-      setStatusMessage(successMessage)
+      setStatusMessage(buildActionSuccessMessage(successMessage, result))
       return true
     } catch (error) {
       if (error instanceof BookingActionError && error.payload) {
