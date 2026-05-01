@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { selectBestReceiptRule, type ReceiptRuleMatchable } from '@/lib/receipts/rule-matching'
+import { OUTSTANDING_STATUSES } from '@/services/receipts/types'
 
 function rule(overrides: Partial<ReceiptRuleMatchable>): ReceiptRuleMatchable {
   return {
@@ -107,3 +108,9 @@ describe('selectBestReceiptRule', () => {
   })
 })
 
+describe('receipt outstanding statuses', () => {
+  it("does not treat can't-find receipts as outstanding", () => {
+    expect(OUTSTANDING_STATUSES).toEqual(['pending'])
+    expect(OUTSTANDING_STATUSES).not.toContain('cant_find')
+  })
+})

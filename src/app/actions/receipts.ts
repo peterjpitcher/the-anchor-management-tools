@@ -114,6 +114,11 @@ function revalidateReceiptPaths(): void {
   revalidateTag('dashboard')
 }
 
+function optionalRuleFormText(formData: FormData, key: string): string | undefined {
+  const value = formData.get(key)
+  return typeof value === 'string' && value.trim().length ? value.trim() : undefined
+}
+
 // ---------------------------------------------------------------------------
 // QUERIES (thin auth-check wrappers)
 // ---------------------------------------------------------------------------
@@ -206,19 +211,22 @@ export async function previewReceiptRule(formData: FormData): Promise<{ success:
 
   const parsed = receiptRuleSchema.safeParse({
     name: formData.get('name') ?? '',
-    description: formData.get('description') ?? undefined,
-    match_description: formData.get('match_description') ?? undefined,
-    match_transaction_type: formData.get('match_transaction_type') ?? undefined,
+    description: optionalRuleFormText(formData, 'description'),
+    match_description: optionalRuleFormText(formData, 'match_description'),
+    match_transaction_type: optionalRuleFormText(formData, 'match_transaction_type'),
     match_direction: formData.get('match_direction') ?? 'both',
-    match_min_amount: formData.get('match_min_amount') ? Number(formData.get('match_min_amount')) : undefined,
-    match_max_amount: formData.get('match_max_amount') ? Number(formData.get('match_max_amount')) : undefined,
+    match_min_amount: toOptionalNumber(formData.get('match_min_amount')),
+    match_max_amount: toOptionalNumber(formData.get('match_max_amount')),
     auto_status: formData.get('auto_status') ?? 'no_receipt_required',
-    set_vendor_name: formData.get('set_vendor_name') ?? undefined,
-    set_expense_category: formData.get('set_expense_category') ?? undefined,
+    set_vendor_name: optionalRuleFormText(formData, 'set_vendor_name'),
+    set_expense_category: optionalRuleFormText(formData, 'set_expense_category'),
   })
 
   if (!parsed.success) {
     return { success: false, error: parsed.error.issues[0]?.message ?? 'Invalid rule' }
+  }
+  if (parsed.data.set_expense_category && parsed.data.match_direction !== 'out') {
+    return { success: false, error: 'Expense auto-tagging rules must use outgoing direction' }
   }
 
   const preview = await queryPreviewReceiptRule(parsed.data)

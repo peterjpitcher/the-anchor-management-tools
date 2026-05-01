@@ -56,6 +56,7 @@ describe('Receipts actions expense-direction safeguards', () => {
   it('rejects creating expense auto-tag rules unless match_direction is out', async () => {
     const formData = new FormData()
     formData.set('name', 'Expense rule')
+    formData.set('match_description', 'merchant')
     formData.set('match_direction', 'both')
     formData.set('set_expense_category', 'Entertainment')
 
@@ -84,6 +85,7 @@ describe('Receipts actions expense-direction safeguards', () => {
 
     const formData = new FormData()
     formData.set('name', 'Expense out rule')
+    formData.set('match_description', 'merchant')
     formData.set('match_direction', 'out')
     formData.set('set_expense_category', 'Entertainment')
 
@@ -102,6 +104,7 @@ describe('Receipts actions expense-direction safeguards', () => {
   it('rejects updating expense auto-tag rules unless match_direction is out', async () => {
     const formData = new FormData()
     formData.set('name', 'Updated expense rule')
+    formData.set('match_description', 'merchant')
     formData.set('match_direction', 'in')
     formData.set('set_expense_category', 'Entertainment')
 

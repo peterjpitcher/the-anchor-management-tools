@@ -1,18 +1,62 @@
 'use client'
 
-import { ChangeEvent } from 'react'
+import { ChangeEvent, Fragment, useMemo } from 'react'
 import { Card } from '@/components/ui-v2/layout/Card'
 import { Select } from '@/components/ui-v2/forms/Select'
 import type { ReceiptWorkspaceData, ReceiptWorkspaceFilters, ClassificationRuleSuggestion } from '@/app/actions/receipts'
 import type { ReceiptTransaction } from '@/types/database'
 import { ReceiptTableRow } from './ReceiptTableRow'
 import { ReceiptMobileCard } from './ReceiptMobileCard'
+import { formatCurrency } from '../../utils'
 
 type WorkspaceTransaction = ReceiptWorkspaceData['transactions'][number]
 type SortColumn = NonNullable<ReceiptWorkspaceFilters['sortBy']>
 
 // Helper types matching action exports
 type ReceiptSortColumn = 'transaction_date' | 'details' | 'amount_in' | 'amount_out' | 'amount_total'
+
+type VendorGroup = {
+  key: string
+  vendorName: string
+  transactions: WorkspaceTransaction[]
+  totalIn: number
+  totalOut: number
+}
+
+const MISSING_VENDOR_LABEL = 'Missing vendor'
+
+function getVendorGroupLabel(transaction: WorkspaceTransaction) {
+  const vendorName = transaction.vendor_name?.trim()
+  return vendorName || MISSING_VENDOR_LABEL
+}
+
+function buildVendorGroups(transactions: WorkspaceTransaction[]): VendorGroup[] {
+  const groups = new Map<string, VendorGroup>()
+
+  transactions.forEach((transaction) => {
+    const vendorName = getVendorGroupLabel(transaction)
+    const key = vendorName.toLocaleLowerCase('en-GB')
+    const group = groups.get(key) ?? {
+      key,
+      vendorName,
+      transactions: [],
+      totalIn: 0,
+      totalOut: 0,
+    }
+
+    group.transactions.push(transaction)
+    group.totalIn += Number(transaction.amount_in ?? 0)
+    group.totalOut += Number(transaction.amount_out ?? 0)
+    groups.set(key, group)
+  })
+
+  return Array.from(groups.values()).sort((a, b) => {
+    if (a.vendorName === MISSING_VENDOR_LABEL) return -1
+    if (b.vendorName === MISSING_VENDOR_LABEL) return 1
+    if (b.totalOut !== a.totalOut) return b.totalOut - a.totalOut
+    return a.vendorName.localeCompare(b.vendorName)
+  })
+}
 
 interface ReceiptListProps {
   transactions: WorkspaceTransaction[]
@@ -22,6 +66,7 @@ interface ReceiptListProps {
     sortDirection?: 'asc' | 'desc'
     status?: string
     showOnlyOutstanding?: boolean
+    groupByVendor?: boolean
     missingVendorOnly?: boolean
     missingExpenseOnly?: boolean
   }
@@ -45,6 +90,8 @@ export function ReceiptList({
   const currentSortBy = filters.sortBy ?? 'transaction_date'
   const currentSortDirection = filters.sortDirection ?? 'desc'
   const mobileSortValue = `${currentSortBy}:${currentSortDirection}`
+  const shouldGroupByVendor = filters.groupByVendor ?? false
+  const vendorGroups = useMemo(() => buildVendorGroups(transactions), [transactions])
   
   const mobileSortOptions = [
     { value: 'transaction_date:desc', label: 'Date · newest first' },
@@ -118,6 +165,30 @@ export function ReceiptList({
             <div className="rounded-lg border border-dashed border-gray-300 bg-gray-50 p-6 text-center text-sm text-gray-500">
               No transactions match your filters.
             </div>
+          ) : shouldGroupByVendor ? (
+            vendorGroups.map((group) => (
+              <section key={group.key} className="space-y-2">
+                <div className="rounded-md bg-gray-50 px-3 py-2 text-sm">
+                  <div className="flex items-center justify-between gap-3">
+                    <h3 className="font-semibold text-gray-900">{group.vendorName}</h3>
+                    <span className="text-xs text-gray-500">{group.transactions.length} receipt{group.transactions.length === 1 ? '' : 's'}</span>
+                  </div>
+                  <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-gray-600">
+                    {group.totalOut > 0 && <span>Out {formatCurrency(group.totalOut)}</span>}
+                    {group.totalIn > 0 && <span>In {formatCurrency(group.totalIn)}</span>}
+                  </div>
+                </div>
+                {group.transactions.map((transaction) => (
+                  <ReceiptMobileCard
+                    key={transaction.id}
+                    transaction={transaction}
+                    vendorOptions={knownVendors}
+                    onUpdate={(tx, prev) => handleUpdate(tx, prev ?? 'pending')}
+                    onRuleSuggestion={onRuleSuggestion}
+                  />
+                ))}
+              </section>
+            ))
           ) : (
             transactions.map((transaction) => (
               <ReceiptMobileCard
@@ -161,16 +232,47 @@ export function ReceiptList({
                  {transactions.length === 0 && (
                   <tr><td colSpan={10} className="px-4 py-6 text-center text-gray-500">No transactions match your filters.</td></tr>
                 )}
-                {transactions.map(transaction => (
-                  <ReceiptTableRow
-                    key={transaction.id}
-                    transaction={transaction}
-                    vendorOptions={knownVendors}
-                    onUpdate={(tx, prev) => handleUpdate(tx, prev ?? 'pending')}
-                    onRemove={onTransactionRemove}
-                    onRuleSuggestion={onRuleSuggestion}
-                  />
-                ))}
+                {transactions.length > 0 && shouldGroupByVendor ? (
+                  vendorGroups.map((group) => (
+                    <Fragment key={group.key}>
+                      <tr className="bg-gray-50">
+                        <td colSpan={10} className="px-4 py-2">
+                          <div className="flex flex-wrap items-center justify-between gap-3">
+                            <div className="flex items-center gap-3">
+                              <span className="font-semibold text-gray-900">{group.vendorName}</span>
+                              <span className="text-xs text-gray-500">{group.transactions.length} receipt{group.transactions.length === 1 ? '' : 's'}</span>
+                            </div>
+                            <div className="flex flex-wrap gap-3 text-xs font-medium text-gray-600">
+                              {group.totalOut > 0 && <span>Out {formatCurrency(group.totalOut)}</span>}
+                              {group.totalIn > 0 && <span>In {formatCurrency(group.totalIn)}</span>}
+                            </div>
+                          </div>
+                        </td>
+                      </tr>
+                      {group.transactions.map((transaction) => (
+                        <ReceiptTableRow
+                          key={transaction.id}
+                          transaction={transaction}
+                          vendorOptions={knownVendors}
+                          onUpdate={(tx, prev) => handleUpdate(tx, prev ?? 'pending')}
+                          onRemove={onTransactionRemove}
+                          onRuleSuggestion={onRuleSuggestion}
+                        />
+                      ))}
+                    </Fragment>
+                  ))
+                ) : (
+                  transactions.map((transaction) => (
+                    <ReceiptTableRow
+                      key={transaction.id}
+                      transaction={transaction}
+                      vendorOptions={knownVendors}
+                      onUpdate={(tx, prev) => handleUpdate(tx, prev ?? 'pending')}
+                      onRemove={onTransactionRemove}
+                      onRuleSuggestion={onRuleSuggestion}
+                    />
+                  ))
+                )}
               </tbody>
             </table>
           </div>

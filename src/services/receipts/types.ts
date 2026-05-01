@@ -56,6 +56,7 @@ export type ReceiptWorkspaceFilters = {
   direction?: 'in' | 'out' | 'all'
   search?: string
   showOnlyOutstanding?: boolean
+  groupByVendor?: boolean
   missingVendorOnly?: boolean
   missingExpenseOnly?: boolean
   month?: string
@@ -320,5 +321,4 @@ export const DEFAULT_PAGE_SIZE = 25
 export const MAX_MONTH_PAGE_SIZE = 5000
 export const RECEIPT_AI_JOB_CHUNK_SIZE = 10
 export const RETRO_CHUNK_SIZE = 100
-// 'cant_find' means staff searched but could not locate the receipt — still outstanding and requires follow-up
-export const OUTSTANDING_STATUSES: ReceiptTransaction['status'][] = ['pending', 'cant_find']
+export const OUTSTANDING_STATUSES: ReceiptTransaction['status'][] = ['pending']

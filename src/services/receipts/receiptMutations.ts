@@ -657,7 +657,7 @@ export async function performMarkReceiptTransaction(
 
   const updatePayload = {
     status: validation.data.status,
-    receipt_required: validation.data.receipt_required ?? (validation.data.status === 'pending'),
+    receipt_required: validation.data.status === 'pending',
     marked_by: userId,
     marked_by_email: userEmail,
     marked_by_name: profile?.full_name ?? null,
@@ -1255,27 +1255,67 @@ export async function performDeleteReceiptFile(
 // @requires Caller must verify user auth and 'receipts.manage' permission
 // ---------------------------------------------------------------------------
 
-export async function performCreateReceiptRule(
-  userId: string,
-  formData: FormData
-): Promise<RuleMutationResult> {
-  const rawVendor = formData.get('set_vendor_name')
-  const rawExpense = formData.get('set_expense_category')
+function optionalRuleText(input: FormDataEntryValue | null): string | undefined {
+  return typeof input === 'string' && input.trim().length ? input.trim() : undefined
+}
 
-  const rawData = {
+function getRuleFormData(formData: FormData) {
+  return {
     name: formData.get('name'),
-    description: formData.get('description') || undefined,
-    match_description: formData.get('match_description') || undefined,
-    match_transaction_type: formData.get('match_transaction_type') || undefined,
+    description: optionalRuleText(formData.get('description')),
+    match_description: optionalRuleText(formData.get('match_description')),
+    match_transaction_type: optionalRuleText(formData.get('match_transaction_type')),
     match_direction: formData.get('match_direction') || 'both',
     match_min_amount: toOptionalNumber(formData.get('match_min_amount')),
     match_max_amount: toOptionalNumber(formData.get('match_max_amount')),
     auto_status: formData.get('auto_status') || 'no_receipt_required',
-    set_vendor_name:
-      typeof rawVendor === 'string' && rawVendor.trim().length ? rawVendor.trim() : undefined,
-    set_expense_category:
-      typeof rawExpense === 'string' && rawExpense.trim().length ? rawExpense.trim() : undefined,
+    set_vendor_name: optionalRuleText(formData.get('set_vendor_name')),
+    set_expense_category: optionalRuleText(formData.get('set_expense_category')),
   }
+}
+
+function buildRuleWritePayload(
+  data: {
+    name: string
+    description?: string
+    match_description?: string
+    match_transaction_type?: string
+    match_direction: ReceiptRule['match_direction']
+    match_min_amount?: number
+    match_max_amount?: number
+    auto_status: ReceiptRule['auto_status']
+    set_vendor_name?: string
+    set_expense_category?: ReceiptRule['set_expense_category']
+  },
+  userId: string,
+  includeCreatedBy = false
+) {
+  const payload: Record<string, unknown> = {
+    name: data.name,
+    description: data.description ?? null,
+    match_description: data.match_description ?? null,
+    match_transaction_type: data.match_transaction_type ?? null,
+    match_direction: data.match_direction,
+    match_min_amount: data.match_min_amount ?? null,
+    match_max_amount: data.match_max_amount ?? null,
+    auto_status: data.auto_status,
+    set_vendor_name: data.set_vendor_name ?? null,
+    set_expense_category: data.set_expense_category ?? null,
+    updated_by: userId,
+  }
+
+  if (includeCreatedBy) {
+    payload.created_by = userId
+  }
+
+  return payload
+}
+
+export async function performCreateReceiptRule(
+  userId: string,
+  formData: FormData
+): Promise<RuleMutationResult> {
+  const rawData = getRuleFormData(formData)
 
   const parsed = receiptRuleSchema.safeParse(rawData)
   if (!parsed.success) {
@@ -1289,11 +1329,7 @@ export async function performCreateReceiptRule(
 
   const { data: rule, error } = await supabase
     .from('receipt_rules')
-    .insert({
-      ...parsed.data,
-      created_by: userId,
-      updated_by: userId,
-    })
+    .insert(buildRuleWritePayload(parsed.data, userId, true))
     .select('*')
     .single()
 
@@ -1315,23 +1351,7 @@ export async function performUpdateReceiptRule(
   ruleId: string,
   formData: FormData
 ): Promise<RuleMutationResult> {
-  const rawVendor = formData.get('set_vendor_name')
-  const rawExpense = formData.get('set_expense_category')
-
-  const rawData = {
-    name: formData.get('name'),
-    description: formData.get('description') || undefined,
-    match_description: formData.get('match_description') || undefined,
-    match_transaction_type: formData.get('match_transaction_type') || undefined,
-    match_direction: formData.get('match_direction') || 'both',
-    match_min_amount: toOptionalNumber(formData.get('match_min_amount')),
-    match_max_amount: toOptionalNumber(formData.get('match_max_amount')),
-    auto_status: formData.get('auto_status') || 'no_receipt_required',
-    set_vendor_name:
-      typeof rawVendor === 'string' && rawVendor.trim().length ? rawVendor.trim() : undefined,
-    set_expense_category:
-      typeof rawExpense === 'string' && rawExpense.trim().length ? rawExpense.trim() : undefined,
-  }
+  const rawData = getRuleFormData(formData)
 
   const parsed = receiptRuleSchema.safeParse(rawData)
   if (!parsed.success) {
@@ -1345,10 +1365,7 @@ export async function performUpdateReceiptRule(
 
   const { data: updated, error } = await supabase
     .from('receipt_rules')
-    .update({
-      ...parsed.data,
-      updated_by: userId,
-    })
+    .update(buildRuleWritePayload(parsed.data, userId))
     .eq('id', ruleId)
     .select('*')
     .maybeSingle()

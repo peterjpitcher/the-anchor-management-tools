@@ -218,6 +218,53 @@ describe('markReceiptTransaction', () => {
     )
   })
 
+  it("should clear receipt_required when a transaction is marked can't find", async () => {
+    const existingTransaction = { id: TEST_UUID, status: 'pending' }
+    const updatedTransaction = { id: TEST_UUID, status: 'cant_find', receipt_required: false }
+
+    const fetchSingle = vi.fn().mockResolvedValue({ data: existingTransaction, error: null })
+    const fetchEq = vi.fn().mockReturnValue({ single: fetchSingle })
+
+    const profileSingle = vi.fn().mockResolvedValue({ data: { full_name: 'Test User' }, error: null })
+    const profileEq = vi.fn().mockReturnValue({ single: profileSingle })
+
+    const updateMaybeSingle = vi.fn().mockResolvedValue({ data: updatedTransaction, error: null })
+    const updateSelect = vi.fn().mockReturnValue({ maybeSingle: updateMaybeSingle })
+    const updateEq = vi.fn().mockReturnValue({ select: updateSelect })
+    const update = vi.fn().mockReturnValue({ eq: updateEq })
+
+    const logInsert = vi.fn().mockResolvedValue({ error: null })
+
+    mockedCreateAdminClient.mockReturnValue(
+      buildMockClient({
+        receipt_transactions: {
+          select: vi.fn().mockReturnValue({ eq: fetchEq }),
+          update,
+        },
+        profiles: {
+          select: vi.fn().mockReturnValue({ eq: profileEq }),
+        },
+        receipt_transaction_logs: {
+          insert: logInsert,
+        },
+      })
+    )
+
+    const result = await markReceiptTransaction({
+      transactionId: TEST_UUID,
+      status: 'cant_find',
+      receiptRequired: true,
+    })
+
+    expect(result).toEqual({ success: true, transaction: updatedTransaction })
+    expect(update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: 'cant_find',
+        receipt_required: false,
+      })
+    )
+  })
+
   it('should return error when database update fails', async () => {
     const fetchSingle = vi.fn().mockResolvedValue({
       data: { id: TEST_UUID, status: 'pending' },
@@ -907,10 +954,11 @@ describe('createReceiptRule', () => {
   function makeRuleFormData(overrides: Record<string, string> = {}): FormData {
     const formData = new FormData()
     formData.set('name', overrides.name ?? 'Test Rule')
+    formData.set('match_description', overrides.match_description ?? 'test merchant')
     formData.set('match_direction', overrides.match_direction ?? 'both')
     formData.set('auto_status', overrides.auto_status ?? 'no_receipt_required')
     for (const [key, value] of Object.entries(overrides)) {
-      if (!['name', 'match_direction', 'auto_status'].includes(key)) {
+      if (!['name', 'match_description', 'match_direction', 'auto_status'].includes(key)) {
         formData.set(key, value)
       }
     }
@@ -938,6 +986,18 @@ describe('createReceiptRule', () => {
     expect(mockedCreateAdminClient).not.toHaveBeenCalled()
   })
 
+  it('should reject rules without any match condition', async () => {
+    const result = await createReceiptRule(
+      makeRuleFormData({
+        match_description: '',
+        match_direction: 'both',
+      })
+    )
+
+    expect(result).toEqual({ error: 'Add at least one match condition before saving this rule' })
+    expect(mockedCreateAdminClient).not.toHaveBeenCalled()
+  })
+
   it('should successfully create a rule', async () => {
     const createdRule = { id: 'rule-1', name: 'Test Rule', is_active: true }
 
@@ -957,6 +1017,7 @@ describe('createReceiptRule', () => {
     expect(insert).toHaveBeenCalledWith(
       expect.objectContaining({
         name: 'Test Rule',
+        match_description: 'test merchant',
         match_direction: 'both',
         auto_status: 'no_receipt_required',
         created_by: 'user-1',

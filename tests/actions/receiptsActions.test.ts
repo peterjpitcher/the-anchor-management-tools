@@ -238,6 +238,7 @@ describe('deleteReceiptFile rollback safety', () => {
 
     const formData = new FormData()
     formData.set('name', 'Rule A')
+    formData.set('match_description', 'merchant')
     formData.set('match_direction', 'both')
     formData.set('auto_status', 'no_receipt_required')
 
@@ -245,6 +246,57 @@ describe('deleteReceiptFile rollback safety', () => {
 
     expect(result).toEqual({ error: 'Rule not found' })
     expect(mockedLogAuditEvent).not.toHaveBeenCalled()
+  })
+
+  it('clears optional rule fields by writing nulls on update', async () => {
+    const updateMaybeSingle = vi.fn().mockResolvedValue({
+      data: { id: 'rule-1', name: 'Rule A', is_active: true },
+      error: null,
+    })
+    const updateSelect = vi.fn().mockReturnValue({ maybeSingle: updateMaybeSingle })
+    const updateEq = vi.fn().mockReturnValue({ select: updateSelect })
+    const update = vi.fn().mockReturnValue({ eq: updateEq })
+
+    mockedCreateAdminClient.mockReturnValue({
+      from: vi.fn((table: string) => {
+        if (table !== 'receipt_rules') {
+          throw new Error(`Unexpected table: ${table}`)
+        }
+
+        return { update }
+      }),
+    })
+
+    const formData = new FormData()
+    formData.set('name', 'Rule A')
+    formData.set('description', '')
+    formData.set('match_description', '')
+    formData.set('match_transaction_type', '')
+    formData.set('match_direction', 'out')
+    formData.set('match_min_amount', '')
+    formData.set('match_max_amount', '')
+    formData.set('auto_status', 'no_receipt_required')
+    formData.set('set_vendor_name', '')
+    formData.set('set_expense_category', '')
+
+    const result = await updateReceiptRule('rule-1', formData)
+
+    expect('success' in result && result.success).toBe(true)
+    expect(update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        name: 'Rule A',
+        description: null,
+        match_description: null,
+        match_transaction_type: null,
+        match_direction: 'out',
+        match_min_amount: null,
+        match_max_amount: null,
+        auto_status: 'no_receipt_required',
+        set_vendor_name: null,
+        set_expense_category: null,
+        updated_by: 'user-1',
+      })
+    )
   })
 
   it('returns rule-not-found when rule toggle affects no rows', async () => {
