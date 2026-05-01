@@ -6,9 +6,11 @@ import { Button } from '@/components/ui-v2/forms/Button'
 import { Select } from '@/components/ui-v2/forms/Select'
 import { Card } from '@/components/ui-v2/layout/Card'
 import { DocumentArrowDownIcon } from '@heroicons/react/24/outline'
+import { getLastCompletedQuarter } from '@/lib/receipts/export/default-period'
 
 export function ReceiptExport({ canExport = false }: { canExport?: boolean }) {
   if (!canExport) return null
+  const defaultPeriod = getLastCompletedQuarter()
   const currentYear = new Date().getUTCFullYear()
   const exportYears = [currentYear, currentYear - 1, currentYear - 2]
 
@@ -31,13 +33,13 @@ export function ReceiptExport({ canExport = false }: { canExport?: boolean }) {
       <p className="text-xs text-gray-500 mb-3">Download PDF summary and receipts as ZIP.</p>
       <form onSubmit={handleExportSubmit} className="space-y-3">
         <div className="grid grid-cols-2 gap-2">
-          <Select name="year" defaultValue={String(currentYear)}>
+          <Select name="year" defaultValue={String(defaultPeriod.year)}>
             <option value="" disabled>Year</option>
             {exportYears.map((yearOption) => (
               <option key={yearOption} value={yearOption}>{yearOption}</option>
             ))}
           </Select>
-          <Select name="quarter" defaultValue={String(Math.ceil((new Date().getUTCMonth() + 1) / 3))}>
+          <Select name="quarter" defaultValue={String(defaultPeriod.quarter)}>
             <option value="" disabled>Quarter</option>
             <option value="1">Q1 (Jan–Mar)</option>
             <option value="2">Q2 (Apr–Jun)</option>
