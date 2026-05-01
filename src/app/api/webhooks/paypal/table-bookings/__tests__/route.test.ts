@@ -38,8 +38,10 @@ function createSupabaseMock({
     id: string
     status: string
     payment_status: string
+    hold_expires_at: string | null
     paypal_deposit_order_id: string
     paypal_deposit_capture_id: string | null
+    customer_id?: string | null
   } | null
   bookingUpdateError?: { message: string } | null
 } = {}) {
@@ -156,10 +158,12 @@ describe('POST /api/webhooks/paypal/table-bookings', () => {
     const mockSupabase = createSupabaseMock({
       existingBooking: {
         id: VALID_BOOKING_ID,
-        status: 'pending',
+        status: 'pending_payment',
         payment_status: 'pending',
+        hold_expires_at: '2099-03-15T00:00:00Z',
         paypal_deposit_order_id: VALID_ORDER_ID,
         paypal_deposit_capture_id: null, // not yet captured
+        customer_id: null,
       },
     })
     vi.mocked(createAdminClient).mockReturnValue(mockSupabase as any)
@@ -177,6 +181,8 @@ describe('POST /api/webhooks/paypal/table-bookings', () => {
         status: 'confirmed',
         payment_method: 'paypal',
         paypal_deposit_capture_id: VALID_CAPTURE_ID,
+        deposit_amount_locked: 5,
+        hold_expires_at: null,
       }),
     )
   })
@@ -218,8 +224,10 @@ describe('POST /api/webhooks/paypal/table-bookings', () => {
         id: VALID_BOOKING_ID,
         status: 'confirmed',
         payment_status: 'completed',
+        hold_expires_at: null,
         paypal_deposit_order_id: VALID_ORDER_ID,
         paypal_deposit_capture_id: 'ALREADY-CAPTURED-ID', // already processed
+        customer_id: null,
       },
     })
     vi.mocked(createAdminClient).mockReturnValue(mockSupabase as any)

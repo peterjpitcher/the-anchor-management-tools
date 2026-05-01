@@ -6,6 +6,7 @@ import {
   mapSeatUpdateBlockedReason,
   updateTableBookingPartySizeWithLinkedEventSeats
 } from '@/lib/events/staff-seat-updates'
+import { applyPartySizeDepositTransition } from '@/lib/table-bookings/staff-deposit-transitions'
 
 const UpdatePartySizeSchema = z.object({
   party_size: z.preprocess(
@@ -47,10 +48,22 @@ export async function POST(
     )
   }
 
+  const { data: currentBooking, error: fetchError } = await auth.supabase.from('table_bookings')
+    .select('id, party_size, status, payment_status, customer_id, booking_reference, booking_type, start_datetime, deposit_amount, deposit_amount_locked, deposit_waived')
+    .eq('id', id)
+    .maybeSingle()
+
+  if (fetchError || !currentBooking) {
+    return NextResponse.json({ error: 'Booking not found' }, { status: 404 })
+  }
+
+  const previousPartySize = Math.max(1, Number(currentBooking.party_size || 1))
+  const newPartySize = parsed.data.party_size
+
   try {
     const result = await updateTableBookingPartySizeWithLinkedEventSeats(auth.supabase, {
       tableBookingId: id,
-      partySize: parsed.data.party_size,
+      partySize: newPartySize,
       actor: 'foh',
       sendSms: parsed.data.send_sms,
       appBaseUrl: process.env.NEXT_PUBLIC_APP_URL || request.nextUrl.origin
@@ -66,9 +79,18 @@ export async function POST(
       )
     }
 
+    const depositTransition = await applyPartySizeDepositTransition(auth.supabase, {
+      booking: currentBooking,
+      previousPartySize,
+      newPartySize,
+      sendSms: parsed.data.send_sms,
+      appBaseUrl: process.env.NEXT_PUBLIC_APP_URL || request.nextUrl.origin,
+    })
+
     return NextResponse.json({
       success: true,
-      data: result
+      data: result,
+      depositTransition,
     })
   } catch (error) {
     logger.error('FOH table-booking party-size update failed', {

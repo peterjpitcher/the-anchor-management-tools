@@ -9,7 +9,7 @@ import { Button } from '@/components/ui-v2/forms/Button'
 import { Badge } from '@/components/ui-v2/display/Badge'
 import { RefundDialog } from '@/components/ui-v2/refunds/RefundDialog'
 import { RefundHistoryTable } from '@/components/ui-v2/refunds/RefundHistoryTable'
-import { LARGE_GROUP_DEPOSIT_THRESHOLD } from '@/lib/table-bookings/deposit'
+import { getCanonicalDeposit, LARGE_GROUP_DEPOSIT_THRESHOLD } from '@/lib/table-bookings/deposit'
 import PreorderTab from './PreorderTab'
 // formatDateInLondon uses toLocaleDateString (date-only); use Intl.DateTimeFormat directly for time display
 const formatLondonTime = (iso: string) =>
@@ -86,6 +86,7 @@ export interface Booking {
   payment_method: string | null
   paypal_deposit_capture_id: string | null
   deposit_amount: number | null
+  deposit_amount_locked: number | null
   card_capture_completed_at: string | null
   customer: BookingCustomer | null
   table_booking_tables: BookingTable[]
@@ -138,6 +139,21 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
   const [partySizeEditValue, setPartySizeEditValue] = useState('')
   const [partySizeEditSendSms, setPartySizeEditSendSms] = useState(true)
   const [smsBody, setSmsBody] = useState('')
+  const canonicalDepositAmount = getCanonicalDeposit(
+    {
+      party_size: booking.party_size ?? 0,
+      deposit_amount: booking.deposit_amount,
+      deposit_amount_locked: booking.deposit_amount_locked,
+      status: booking.status,
+      payment_status: booking.payment_status,
+      deposit_waived: booking.deposit_waived,
+    },
+    booking.party_size ?? 0,
+  )
+  const refundableDepositAmount =
+    booking.payment_status === 'completed'
+      ? Math.max(0, canonicalDepositAmount)
+      : Math.max(0, Number(booking.deposit_amount ?? canonicalDepositAmount ?? 0))
 
   // Refund state
   const [showRefundDialog, setShowRefundDialog] = useState(false)
@@ -445,9 +461,9 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
                     </span>
                     <span className="text-green-500 text-sm">✓</span>
                   </div>
-                  {booking.deposit_amount != null && (
+                  {refundableDepositAmount > 0 && (
                     <p className="text-sm text-gray-700 pl-4">
-                      £{booking.deposit_amount.toFixed(2)}
+                      £{refundableDepositAmount.toFixed(2)}
                     </p>
                   )}
                   {booking.paypal_deposit_capture_id && (
@@ -459,15 +475,15 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
                   {refundTotals.totalRefunded > 0 && (
                     <div className="pl-4 mt-1">
                       <Badge
-                        variant={refundTotals.totalRefunded >= (booking.deposit_amount ?? 0) ? 'info' : 'warning'}
+                        variant={refundTotals.totalRefunded >= refundableDepositAmount ? 'info' : 'warning'}
                         size="sm"
                       >
-                        {refundTotals.totalRefunded >= (booking.deposit_amount ?? 0) ? 'Refunded' : 'Partially Refunded'}
+                        {refundTotals.totalRefunded >= refundableDepositAmount ? 'Refunded' : 'Partially Refunded'}
                       </Badge>
                     </div>
                   )}
                   {/* Refund button */}
-                  {canRefund && refundTotals.totalRefunded < (booking.deposit_amount ?? 0) && (
+                  {canRefund && refundTotals.totalRefunded < refundableDepositAmount && (
                     <div className="pl-4 mt-2">
                       <Button
                         variant="secondary"
@@ -494,7 +510,7 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
                     {booking.deposit_amount != null
                       ? `£${booking.deposit_amount.toFixed(2)}`
                       : booking.party_size != null
-                        ? `£${(booking.party_size * 10).toFixed(2)} (£10 × ${booking.party_size})`
+                        ? `£${canonicalDepositAmount.toFixed(2)}`
                         : 'amount pending'}
                   </span>
                 </div>
@@ -791,7 +807,7 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
           onOpenChange={setShowRefundDialog}
           sourceType="table_booking"
           sourceId={booking.id}
-          originalAmount={booking.deposit_amount ?? 0}
+          originalAmount={refundableDepositAmount}
           totalRefunded={refundTotals.totalRefunded}
           totalPending={refundTotals.totalPending}
           hasPayPalCapture={!!booking.paypal_deposit_capture_id}

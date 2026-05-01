@@ -6,10 +6,8 @@ import { sendTableBookingCancelledSmsIfAllowed } from '@/lib/table-bookings/book
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 import {
-  createChargeRequestForBooking,
-  getFeePerHead,
   getTableBookingForFoh,
-  hasUnpaidSundayLunchDeposit
+  hasUnpaidRequiredDeposit
 } from '@/lib/foh/bookings'
 import {
   buildStaffStatusTransitionPlan,
@@ -69,15 +67,15 @@ export async function POST(
 
   const action = parsed.data.action
   const nowIso = new Date().toISOString()
-  const blockUnpaidSundayLunchDeposit = hasUnpaidSundayLunchDeposit(booking)
+  const blockUnpaidRequiredDeposit = hasUnpaidRequiredDeposit(booking)
 
-  if ((action === 'seated' || action === 'confirmed') && blockUnpaidSundayLunchDeposit) {
+  if ((action === 'seated' || action === 'confirmed') && blockUnpaidRequiredDeposit) {
     return NextResponse.json(
       {
         error:
           action === 'seated'
-            ? 'Sunday lunch booking cannot be seated until the GBP 10 per person deposit is paid.'
-            : 'Sunday lunch booking cannot be confirmed until the GBP 10 per person deposit is paid.'
+            ? 'Booking cannot be seated until the required deposit is paid.'
+            : 'Booking cannot be confirmed until the required deposit is paid.'
       },
       { status: 409 }
     )
@@ -107,7 +105,13 @@ export async function POST(
   }
 
   const { data: updatedRow, error: updateError } = await auth.supabase.from('table_bookings')
-    .update(transition.plan.update)
+    .update(action === 'cancelled'
+      ? {
+          ...transition.plan.update,
+          paypal_deposit_order_id: null,
+          hold_expires_at: null,
+        }
+      : transition.plan.update)
     .eq('id', id)
     .select(transition.plan.select)
     .maybeSingle()
@@ -153,36 +157,16 @@ export async function POST(
     return NextResponse.json({ success: true, data: updatedRow })
   }
 
-  const committedPartySize = Math.max(
-    1,
-    Number(booking.committed_party_size || booking.party_size || 1)
-  )
-  const feePerHead = await getFeePerHead(auth.supabase)
-  const suggestedAmount = committedPartySize * feePerHead
-
-  const { chargeRequestId, amount: chargeAmount, capApplied } = await createChargeRequestForBooking(auth.supabase, {
-    bookingId: booking.id,
-    customerId: booking.customer_id,
-    type: 'no_show',
-    amount: suggestedAmount,
-    requestedByUserId: auth.userId,
-    metadata: {
-      committed_party_size: committedPartySize,
-      fee_per_head: feePerHead,
-      source: 'boh_manual_no_show'
-    }
-  })
-
   return NextResponse.json({
     success: true,
     data: {
       booking_id: booking.id,
       status: 'no_show',
       no_show_marked_at: nowIso,
-      charge_request_id: chargeRequestId,
-      suggested_amount: Number(suggestedAmount.toFixed(2)),
-      charge_amount: Number(chargeAmount.toFixed(2)),
-      cap_applied: capApplied
+      charge_request_id: null,
+      suggested_amount: 0,
+      charge_amount: 0,
+      cap_applied: false
     }
   })
 }

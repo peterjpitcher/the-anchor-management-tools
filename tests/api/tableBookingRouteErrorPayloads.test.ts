@@ -107,9 +107,30 @@ describe('table-booking route 500 payload sanitization', () => {
   })
 
   it('returns generic FOH party-size error payload when linked seat update throws', async () => {
+    const bookingMaybeSingle = vi.fn().mockResolvedValue({
+      data: {
+        id: '00000000-0000-4000-8000-000000000001',
+        party_size: 2,
+        status: 'confirmed',
+        payment_status: null,
+        customer_id: 'customer-1',
+        booking_reference: 'REF-1',
+        booking_type: 'standard',
+        start_datetime: null,
+        deposit_amount: null,
+        deposit_amount_locked: null,
+        deposit_waived: false,
+      },
+      error: null,
+    })
+    const bookingEq = vi.fn().mockReturnValue({ maybeSingle: bookingMaybeSingle })
+    const bookingSelect = vi.fn().mockReturnValue({ eq: bookingEq })
+
     ;(requireFohPermission as unknown as vi.Mock).mockResolvedValue({
       ok: true,
-      supabase: {},
+      supabase: {
+        from: vi.fn().mockReturnValue({ select: bookingSelect }),
+      },
     })
     ;(updateTableBookingPartySizeWithLinkedEventSeats as unknown as vi.Mock).mockRejectedValue(
       new Error('sensitive seat sync diagnostics')

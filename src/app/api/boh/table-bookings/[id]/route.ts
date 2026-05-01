@@ -75,6 +75,8 @@ export async function DELETE(
       cancelled_at: nowIso,
       cancelled_by: 'staff',
       cancellation_reason: cancellationReason,
+      paypal_deposit_order_id: null,
+      hold_expires_at: null,
       updated_at: nowIso
     })
     .eq('id', id)

@@ -26,6 +26,7 @@ const ChasePaymentModal = dynamic(
 import type { InvoiceWithDetails, InvoiceStatus, InvoiceLineItem } from '@/types/invoices'
 import { usePermissions } from '@/contexts/PermissionContext'
 import { calculateInvoiceTotals, type InvoiceTotalsResult } from '@/lib/invoiceCalculations'
+import { downloadInvoicePdf } from '@/lib/invoices/download-pdf'
 
 interface InvoiceDetailClientProps {
   initialInvoice: InvoiceWithDetails
@@ -170,6 +171,24 @@ export default function InvoiceDetailClient({
     }
   }
 
+  async function handleDownloadPdf() {
+    if (!invoice || actionLoading) return
+
+    setActionLoading(true)
+    setError(null)
+
+    try {
+      await downloadInvoicePdf({
+        id: invoice.id,
+        invoiceNumber: invoice.invoice_number,
+      })
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to download invoice PDF')
+    } finally {
+      setActionLoading(false)
+    }
+  }
+
   function getStatusBadgeVariant(status: InvoiceStatus): 'default' | 'primary' | 'success' | 'warning' | 'error' | 'info' | 'secondary' {
     switch (status) {
       case 'draft': return 'default'
@@ -258,7 +277,7 @@ export default function InvoiceDetailClient({
       <Button
         variant="secondary"
         size="sm"
-        onClick={() => window.open(`/api/invoices/${invoice.id}/pdf`, '_blank')}
+        onClick={() => void handleDownloadPdf()}
         disabled={actionLoading}
         leftIcon={<Download className="h-4 w-4" />}
       >

@@ -1,10 +1,13 @@
 import type { InvoiceWithDetails, InvoiceStatus } from '@/types/invoices'
 import { Card } from '@/components/ui-v2/layout/Card'
 import { Badge } from '@/components/ui-v2/display/Badge'
+import { Download } from 'lucide-react'
 
 interface MobileInvoiceCardProps {
   invoice: InvoiceWithDetails
   onClick?: (invoice: InvoiceWithDetails) => void
+  onDownload?: (invoice: InvoiceWithDetails) => void
+  downloadDisabled?: boolean
 }
 
 const currencyFormatter = new Intl.NumberFormat('en-GB', {
@@ -16,7 +19,12 @@ const currencyFormatter = new Intl.NumberFormat('en-GB', {
 
 const formatCurrency = (value: number) => currencyFormatter.format(value)
 
-export function MobileInvoiceCard({ invoice, onClick }: MobileInvoiceCardProps) {
+export function MobileInvoiceCard({
+  invoice,
+  onClick,
+  onDownload,
+  downloadDisabled = false,
+}: MobileInvoiceCardProps) {
   const isOverdue = invoice.status === 'overdue'
   const isPaid = invoice.status === 'paid'
 
@@ -62,10 +70,26 @@ export function MobileInvoiceCard({ invoice, onClick }: MobileInvoiceCardProps) 
             </div>
           )}
         </div>
-        <Badge variant={getStatusBadgeVariant(invoice.status)} size="sm">
-          {invoice.status.charAt(0).toUpperCase() +
-            invoice.status.slice(1).replace('_', ' ')}
-        </Badge>
+        <div className="flex shrink-0 items-center gap-2">
+          <button
+            type="button"
+            aria-label={`Download invoice ${invoice.invoice_number}`}
+            title={`Download invoice ${invoice.invoice_number}`}
+            data-row-click-ignore="true"
+            disabled={downloadDisabled}
+            onClick={(event) => {
+              event.stopPropagation()
+              onDownload?.(invoice)
+            }}
+            className="inline-flex h-8 w-8 items-center justify-center rounded-md text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-900 focus:outline-none focus:ring-2 focus:ring-primary-600 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <Download className="h-4 w-4" aria-hidden="true" />
+          </button>
+          <Badge variant={getStatusBadgeVariant(invoice.status)} size="sm">
+            {invoice.status.charAt(0).toUpperCase() +
+              invoice.status.slice(1).replace('_', ' ')}
+          </Badge>
+        </div>
       </div>
 
       <div className="space-y-2 text-sm">

@@ -24,7 +24,7 @@ import {
   sendTableBookingCreatedSmsIfAllowed,
   type TableBookingRpcResult
 } from '@/lib/table-bookings/bookings'
-import { computeDepositAmount } from '@/lib/table-bookings/deposit'
+import { computeDepositAmount, LARGE_GROUP_DEPOSIT_PER_PERSON_GBP } from '@/lib/table-bookings/deposit'
 import { logAuditEvent } from '@/app/actions/audit'
 import { logger } from '@/lib/logger'
 import { verifyTurnstileToken, getClientIp } from '@/lib/turnstile'
@@ -461,7 +461,7 @@ export async function POST(request: NextRequest) {
               hold_expires_at: holdExpiresAt,
               next_step_url_provided: Boolean(nextStepUrl),
               deposit_amount: Number(analyticsDeposit.toFixed(2)),
-              deposit_per_person: 10,
+              deposit_per_person: LARGE_GROUP_DEPOSIT_PER_PERSON_GBP,
             },
           }, {
             tableBookingId: bookingResult.table_booking_id,

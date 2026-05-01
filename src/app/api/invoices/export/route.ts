@@ -8,10 +8,22 @@ import { createClient } from '@/lib/supabase/server'
 import { checkUserPermission } from '@/app/actions/rbac'
 import { closePdfBrowser, createPdfBrowser, generateInvoicePDF } from '@/lib/pdf-generator'
 import { logAuditEvent } from '@/app/actions/audit'
-import type { InvoiceWithDetails } from '@/types/invoices'
+import { getTodayIsoDate } from '@/lib/dateUtils'
+import type { InvoiceStatus, InvoiceWithDetails } from '@/types/invoices'
 
 const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/
 const MAX_EXPORT_WINDOW_DAYS = 366
+const VALID_EXPORT_STATUSES = new Set<string>([
+  'all',
+  'unpaid',
+  'draft',
+  'sent',
+  'partially_paid',
+  'paid',
+  'overdue',
+  'void',
+  'written_off',
+])
 
 function parseIsoDateUtcStart(value: string): Date | null {
   if (!ISO_DATE_RE.test(value)) return null
@@ -24,11 +36,21 @@ function safeMoney(value: unknown): number {
   return Number.isFinite(amount) ? amount : 0
 }
 
+function sanitizeInvoiceSearch(value: string): string {
+  return value
+    .replace(/[,%_()"'\\]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 80)
+}
+
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams
   const startDate = searchParams.get('start_date')
   const endDate = searchParams.get('end_date')
-  const exportType = searchParams.get('type') || 'all'
+  const exportType = searchParams.get('status') || searchParams.get('type') || 'all'
+  const search = sanitizeInvoiceSearch(searchParams.get('search') || '')
+  const vendorSearch = sanitizeInvoiceSearch(searchParams.get('vendor') || '')
   
   if (!startDate || !endDate) {
     return new NextResponse('Start and end dates required', { status: 400 })
@@ -38,7 +60,7 @@ export async function GET(request: NextRequest) {
     return new NextResponse('Dates must use YYYY-MM-DD format', { status: 400 })
   }
 
-  if (!['all', 'paid', 'unpaid'].includes(exportType)) {
+  if (!VALID_EXPORT_STATUSES.has(exportType)) {
     return new NextResponse('Invalid export type', { status: 400 })
   }
 
@@ -72,6 +94,25 @@ export async function GET(request: NextRequest) {
   }
 
   try {
+    let vendorIds: string[] | null = null
+
+    if (vendorSearch.length > 0) {
+      const { data: vendors, error: vendorError } = await supabase
+        .from('invoice_vendors')
+        .select('id')
+        .ilike('name', `%${vendorSearch}%`)
+
+      if (vendorError) {
+        console.error('Error filtering invoice vendors for export:', vendorError)
+        return new NextResponse('Failed to fetch invoices', { status: 500 })
+      }
+
+      vendorIds = (vendors || []).map((vendor) => vendor.id)
+      if (vendorIds.length === 0) {
+        return new NextResponse('No invoices found for the selected criteria', { status: 404 })
+      }
+    }
+
     // Build query
     let query = supabase
       .from('invoices')
@@ -90,6 +131,21 @@ export async function GET(request: NextRequest) {
       query = query.eq('status', 'paid')
     } else if (exportType === 'unpaid') {
       query = query.in('status', ['draft', 'sent', 'partially_paid', 'overdue'])
+    } else if (exportType === 'overdue') {
+      const today = getTodayIsoDate()
+      query = query.or(`status.eq.overdue,and(status.eq.sent,due_date.lt.${today})`)
+    } else if (exportType === 'sent') {
+      query = query.eq('status', 'sent').gte('due_date', getTodayIsoDate())
+    } else if (exportType !== 'all') {
+      query = query.eq('status', exportType as InvoiceStatus)
+    }
+
+    if (search.length > 0) {
+      query = query.or(`invoice_number.ilike.%${search}%,reference.ilike.%${search}%`)
+    }
+
+    if (vendorIds) {
+      query = query.in('vendor_id', vendorIds)
     }
 
     const { data: invoices, error } = await query
@@ -186,6 +242,8 @@ Files included:
           start_date: startDate,
           end_date: endDate,
           export_type: exportType,
+          search: search || null,
+          vendor_search: vendorSearch || null,
           invoice_count: invoices.length,
         },
       })

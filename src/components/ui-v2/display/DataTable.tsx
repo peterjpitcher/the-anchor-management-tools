@@ -28,7 +28,7 @@ const ROW_CLICK_IGNORE_SELECTOR = [
 ].join(',');
 
 function shouldIgnoreRowClick(target: EventTarget | null) {
-  if (!(target instanceof HTMLElement)) {
+  if (!(target instanceof Element)) {
     return false;
   }
 

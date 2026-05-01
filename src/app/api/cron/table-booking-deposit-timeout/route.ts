@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { fromZonedTime } from 'date-fns-tz'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { sendTableBookingCancelledSmsIfAllowed } from '@/lib/table-bookings/bookings'
 import { logAuditEvent } from '@/app/actions/audit'
@@ -35,8 +36,10 @@ export async function GET(request: NextRequest) {
 
     let cancelled = 0
     for (const booking of candidates ?? []) {
-      // Precise 24-hour check using booking date + time
-      const bookingDateTime = new Date(`${booking.booking_date}T${booking.booking_time}`)
+      // Precise 24-hour check using venue-local London time. The server may run
+      // in UTC, and naive Date parsing is wrong around BST/DST boundaries.
+      const clock = String(booking.booking_time || '00:00').slice(0, 5)
+      const bookingDateTime = fromZonedTime(`${booking.booking_date}T${clock}:00`, 'Europe/London')
       if (bookingDateTime.getTime() - now.getTime() > 24 * 60 * 60 * 1000) continue
 
       const { error: updateErr } = await supabase
@@ -46,6 +49,8 @@ export async function GET(request: NextRequest) {
           cancelled_at: now.toISOString(),
           cancelled_by: 'system',
           cancellation_reason: 'deposit_not_paid_within_24h',
+          paypal_deposit_order_id: null,
+          hold_expires_at: null,
           updated_at: now.toISOString(),
         })
         .eq('id', booking.id)

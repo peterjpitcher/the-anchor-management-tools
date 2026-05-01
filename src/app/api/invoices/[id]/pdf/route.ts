@@ -13,6 +13,8 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id: invoiceId } = await params
+  const downloadParam = request.nextUrl.searchParams.get('download')
+  const disposition = downloadParam === '1' || downloadParam === 'true' ? 'attachment' : 'inline'
   
   if (!invoiceId) {
     return new NextResponse('Invoice ID required', { status: 400 })
@@ -75,7 +77,7 @@ export async function GET(
     return new NextResponse(pdfBuffer as unknown as BodyInit, {
       headers: {
         'Content-Type': 'application/pdf',
-        'Content-Disposition': `inline; filename="invoice-${invoice.invoice_number}.pdf"`,
+        'Content-Disposition': `${disposition}; filename="invoice-${invoice.invoice_number}.pdf"`,
         'Cache-Control': 'no-cache, no-store, must-revalidate',
       },
     })

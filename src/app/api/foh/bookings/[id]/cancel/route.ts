@@ -3,6 +3,8 @@ import { requireFohPermission } from '@/lib/foh/api-auth'
 import { getTableBookingForFoh } from '@/lib/foh/bookings'
 import { buildStaffStatusTransitionPlan } from '@/lib/table-bookings/staff-status-actions'
 import { expireStripeCheckoutSession, isStripeConfigured } from '@/lib/payments/stripe'
+import { refundTableBookingDeposit } from '@/lib/table-bookings/refunds'
+import { sendTableBookingCancelledSmsIfAllowed } from '@/lib/table-bookings/bookings'
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
@@ -71,7 +73,11 @@ export async function POST(
   }
 
   const { data, error } = await auth.supabase.from('table_bookings')
-    .update(transition.plan.update)
+    .update({
+      ...transition.plan.update,
+      paypal_deposit_order_id: null,
+      hold_expires_at: null,
+    })
     .eq('id', id)
     .select('id, status, seated_at, left_at, no_show_at, cancelled_at, updated_at')
     .maybeSingle()
@@ -81,6 +87,22 @@ export async function POST(
   }
   if (!data) {
     return NextResponse.json({ error: 'Booking not found' }, { status: 404 })
+  }
+
+  try {
+    if (booking.booking_date && booking.customer_id) {
+      const bookingDate = new Date(`${booking.booking_date}T12:00:00`)
+      const refundResult = await refundTableBookingDeposit(booking.id, bookingDate)
+      await sendTableBookingCancelledSmsIfAllowed(auth.supabase, {
+        customerId: booking.customer_id,
+        bookingReference: booking.booking_reference || booking.id,
+        bookingDate: booking.booking_date,
+        refundResult,
+        tableBookingId: booking.id,
+      })
+    }
+  } catch (err) {
+    console.error('[foh-cancel] refund/SMS error:', err)
   }
 
   return NextResponse.json({ success: true, booking: data, data })

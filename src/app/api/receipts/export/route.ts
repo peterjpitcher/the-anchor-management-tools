@@ -7,6 +7,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
 import { receiptQuarterExportSchema } from '@/lib/validation'
 import type { ReceiptTransaction, ReceiptFile } from '@/types/database'
+import { appendOjProjectInvoices, loadOjProjectInvoicesPaidInQuarter } from '@/lib/receipts/export/oj-project-invoices'
 import {
   buildMileageCsv,
   buildExpensesCsv,
@@ -61,7 +62,10 @@ export async function GET(request: NextRequest) {
 
     // Determine if the user is a super_admin — enhanced bundle includes
     // mileage, expenses, MGD CSVs, expense receipt images, and claim PDF.
-    const isSuperAdmin = await checkIsSuperAdmin()
+    const [isSuperAdmin, canViewOjProjects] = await Promise.all([
+      checkIsSuperAdmin(),
+      checkUserPermission('oj_projects', 'view'),
+    ])
 
     const supabase = createAdminClient()
     const { data: transactions, error } = await supabase
@@ -79,6 +83,9 @@ export async function GET(request: NextRequest) {
 
     const rows = (transactions ?? []) as ReceiptTransactionRow[]
     const summaryCsv = await buildSummaryCsv(rows, parsed.data.year, parsed.data.quarter)
+    const ojProjectInvoices = canViewOjProjects
+      ? await loadOjProjectInvoicesPaidInQuarter(supabase, startDate, endDate)
+      : []
 
     const archive = archiver('zip', { zlib: { level: 1 } })
     const passthrough = new PassThrough()
@@ -137,6 +144,13 @@ export async function GET(request: NextRequest) {
 
     await runWithConcurrency(downloadTasks, DOWNLOAD_CONCURRENCY)
 
+    await appendOjProjectInvoices(archive, ojProjectInvoices, {
+      year: parsed.data.year,
+      quarter: parsed.data.quarter,
+      startDate,
+      endDate,
+    })
+
     // --- Enhanced bundle for super_admin users ---
     if (isSuperAdmin) {
       const q = parsed.data.quarter as 1 | 2 | 3 | 4
@@ -179,7 +193,7 @@ export async function GET(request: NextRequest) {
       })
     }
 
-    if (!rows.length && !isSuperAdmin) {
+    if (!rows.length && !ojProjectInvoices.length && !isSuperAdmin) {
       const placeholder = Buffer.from('No transactions found for this quarter.', 'utf-8')
       archive.append(placeholder, { name: 'README.txt' })
     }
@@ -446,4 +460,3 @@ async function checkIsSuperAdmin(): Promise<boolean> {
     return false
   }
 }
-

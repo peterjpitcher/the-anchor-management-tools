@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireFohPermission } from '@/lib/foh/api-auth'
-import { getTableBookingForFoh, hasUnpaidSundayLunchDeposit } from '@/lib/foh/bookings'
+import { getTableBookingForFoh, hasUnpaidRequiredDeposit } from '@/lib/foh/bookings'
 import { buildStaffStatusTransitionPlan } from '@/lib/table-bookings/staff-status-actions'
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -24,14 +24,14 @@ export async function POST(
     return NextResponse.json({ error: 'Booking not found' }, { status: 404 })
   }
 
-  if (hasUnpaidSundayLunchDeposit(booking)) {
+  if (hasUnpaidRequiredDeposit(booking)) {
     const { data: currentBooking } = await auth.supabase.from('table_bookings')
       .select('id, status, seated_at, left_at, no_show_at, cancelled_at, updated_at')
       .eq('id', id)
       .maybeSingle()
     return NextResponse.json(
       {
-        error: 'Sunday lunch booking cannot be seated until the GBP 10 per person deposit is paid.',
+        error: 'Booking cannot be seated until the required deposit is paid.',
         booking: currentBooking ?? null
       },
       { status: 409 }

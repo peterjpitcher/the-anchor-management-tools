@@ -747,12 +747,10 @@ export async function createEventManualBooking(input: {
     }
 
     if (result.paymentLinkFailed) {
-      // The old admin action swallowed payment link failures and continued with
-      // null URL. The service treats this as a hard failure. To preserve the
-      // admin UX of still showing the booking, we log and continue.
-      logger.warn('Admin booking: payment link generation failed, continuing with null URL', {
+      logger.error('Admin booking: payment link generation failed', {
         metadata: { bookingId: result.bookingId, eventId: parsed.data.eventId }
       })
+      return { error: 'Booking could not be created because the payment link failed. Please try again.' }
     }
 
     const { resolvedState, resolvedReason, bookingId, nextStepUrl, manageUrl, tableBookingId, tableName, smsMeta } = result
