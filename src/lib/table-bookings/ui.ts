@@ -24,6 +24,11 @@ export type TableBookingVisualInput = {
   left_at?: string | null;
   no_show_at?: string | null;
   payment_status?: string | null;
+  party_size?: number | null;
+  deposit_waived?: boolean | null;
+  deposit_amount?: number | string | null;
+  deposit_amount_locked?: number | string | null;
+  paypal_deposit_capture_id?: string | null;
 };
 
 export type TableBookingDepositInput = TableBookingVisualInput & {
@@ -53,6 +58,27 @@ function toNumberOrNull(value: number | string | null | undefined): number | nul
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+function hasPendingRequiredDepositSignal(booking: TableBookingVisualInput): boolean {
+  const status = normaliseStatus(booking.status);
+  const paymentStatus = normaliseStatus(booking.payment_status);
+
+  if (status === 'pending_payment') return true;
+  if (paymentStatus !== 'pending') return false;
+  if (booking.deposit_waived === true || booking.paypal_deposit_capture_id) return false;
+
+  if (booking.party_size !== null && booking.party_size !== undefined) {
+    const partySize = Math.max(0, Number(booking.party_size || 0));
+    return requiresDeposit(partySize);
+  }
+
+  const storedAmount = toNumberOrNull(booking.deposit_amount);
+  const lockedAmount = toNumberOrNull(booking.deposit_amount_locked);
+  if ((storedAmount ?? lockedAmount ?? 0) > 0) return true;
+
+  // Backwards-compatible fallback for callers that only loaded payment_status.
+  return true;
+}
+
 export function getTableBookingVisualState(
   booking: TableBookingVisualInput,
 ): TableBookingVisualState {
@@ -64,7 +90,7 @@ export function getTableBookingVisualState(
   if (status === 'cancelled') return 'cancelled';
   if (booking.left_at) return 'left';
   if (booking.seated_at) return 'seated';
-  if (status === 'pending_payment' || paymentStatus === 'pending') return 'pending_payment';
+  if (hasPendingRequiredDepositSignal(booking)) return 'pending_payment';
 
   switch (status) {
     case 'confirmed':
@@ -172,10 +198,13 @@ export function getTableBookingDepositState(
   const paymentStatus = normaliseStatus(booking.payment_status);
   const lockedAmount = toNumberOrNull(booking.deposit_amount_locked);
   const storedAmount = toNumberOrNull(booking.deposit_amount);
-  const hasStoredAmount = lockedAmount !== null || storedAmount !== null;
   const paid = paymentStatus === 'completed' || Boolean(booking.paypal_deposit_capture_id);
-  const pending = status === 'pending_payment' || paymentStatus === 'pending';
   const requiredByPartySize = requiresDeposit(partySize, { depositWaived: false });
+  const pending = status === 'pending_payment' || (
+    paymentStatus === 'pending' &&
+    booking.deposit_waived !== true &&
+    requiredByPartySize
+  );
   const amount = getCanonicalDeposit(
     {
       party_size: partySize,
@@ -189,7 +218,7 @@ export function getTableBookingDepositState(
   );
   const displayAmount = amount > 0 ? amount : lockedAmount ?? storedAmount;
 
-  if (!requiredByPartySize && !pending && !paid && !hasStoredAmount && booking.deposit_waived !== true) {
+  if (!requiredByPartySize && !pending && !paid && booking.deposit_waived !== true) {
     return { kind: 'none', label: 'No deposit', amount: null, methodLabel: null };
   }
 
