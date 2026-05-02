@@ -14,6 +14,54 @@ describe('table booking UI helpers', () => {
     ).toBe('pending_payment')
   })
 
+  it('renders confirmed under-10 bookings with stale pending payment state as booked', () => {
+    expect(
+      getTableBookingVisualState({
+        status: 'confirmed',
+        payment_status: 'pending',
+        party_size: 7,
+        deposit_amount: null,
+        deposit_waived: false,
+      }),
+    ).toBe('confirmed')
+
+    const state = getTableBookingDepositState({
+      status: 'confirmed',
+      payment_status: 'pending',
+      party_size: 8,
+      deposit_amount: null,
+      deposit_waived: false,
+    })
+
+    expect(state.kind).toBe('none')
+    expect(state.label).toBe('No deposit')
+    expect(state.amount).toBeNull()
+  })
+
+  it('keeps 10+ bookings with pending payment in outstanding deposit state', () => {
+    expect(
+      getTableBookingVisualState({
+        status: 'confirmed',
+        payment_status: 'pending',
+        party_size: 10,
+        deposit_amount: null,
+        deposit_waived: false,
+      }),
+    ).toBe('pending_payment')
+
+    const state = getTableBookingDepositState({
+      status: 'confirmed',
+      payment_status: 'pending',
+      party_size: 10,
+      deposit_amount: null,
+      deposit_waived: false,
+    })
+
+    expect(state.kind).toBe('pending')
+    expect(state.label).toBe('Outstanding deposit')
+    expect(state.amount).toBe(100)
+  })
+
   it('keeps terminal cancellation ahead of payment state', () => {
     expect(
       getTableBookingVisualState({

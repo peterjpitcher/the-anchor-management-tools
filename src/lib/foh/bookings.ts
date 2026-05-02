@@ -2,6 +2,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { recordAnalyticsEvent } from '@/lib/analytics/events'
 import { logger } from '@/lib/logger'
 import { sendManagerChargeApprovalEmail } from '@/lib/table-bookings/charge-approvals'
+import { requiresDeposit } from '@/lib/table-bookings/deposit'
 
 const DEFAULT_FEE_PER_HEAD = 15
 
@@ -52,6 +53,7 @@ export type TableBookingForFoh = {
   booking_type: string | null
   payment_status: string | null
   deposit_waived: boolean | null
+  paypal_deposit_capture_id: string | null
   party_size: number | null
   committed_party_size: number | null
   booking_date: string
@@ -67,7 +69,7 @@ export async function getTableBookingForFoh(
 ): Promise<TableBookingForFoh | null> {
   const { data, error } = await supabase.from('table_bookings')
     .select(
-      'id, customer_id, booking_reference, status, booking_type, payment_status, deposit_waived, party_size, committed_party_size, booking_date, booking_time, duration_minutes, start_datetime, end_datetime'
+      'id, customer_id, booking_reference, status, booking_type, payment_status, deposit_waived, paypal_deposit_capture_id, party_size, committed_party_size, booking_date, booking_time, duration_minutes, start_datetime, end_datetime'
     )
     .eq('id', bookingId)
     .maybeSingle()
@@ -80,13 +82,20 @@ export async function getTableBookingForFoh(
 }
 
 export function hasUnpaidRequiredDeposit(
-  booking: Pick<TableBookingForFoh, 'status' | 'payment_status' | 'deposit_waived'>
+  booking: Pick<TableBookingForFoh, 'status' | 'payment_status' | 'deposit_waived' | 'party_size' | 'committed_party_size'>
+    & Partial<Pick<TableBookingForFoh, 'paypal_deposit_capture_id'>>
 ): boolean {
-  return (
-    booking.deposit_waived !== true
-    && (booking.status === 'pending_payment' || booking.payment_status === 'pending')
-    && booking.payment_status !== 'completed'
+  if (booking.deposit_waived === true) return false
+  if (booking.payment_status === 'completed' || booking.paypal_deposit_capture_id) return false
+
+  const partySize = Math.max(
+    0,
+    Number(booking.committed_party_size ?? booking.party_size ?? 0)
   )
+
+  if (!requiresDeposit(partySize)) return false
+
+  return booking.status === 'pending_payment' || booking.payment_status === 'pending'
 }
 
 export async function createChargeRequestForBooking(
