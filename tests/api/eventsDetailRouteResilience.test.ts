@@ -188,6 +188,11 @@ describe('events detail route resilience', () => {
             updated_at: '2026-02-11T10:00:00.000Z',
             metadata: { channel: 'lnk_bio' },
           },
+          {
+            short_code: 'maabc1',
+            updated_at: '2026-02-12T10:00:00.000Z',
+            metadata: { channel: 'meta_ads' },
+          },
         ],
       })
     )
@@ -201,5 +206,7 @@ describe('events detail route resilience', () => {
     expect(payload.data.facebook_short_link).toContain('/fbabc1')
     expect(payload.data.linkInBioShortLink).toContain('/igabc1')
     expect(payload.data.link_in_bio_short_link).toContain('/igabc1')
+    expect(payload.data.metaAdsShortLink).toContain('/maabc1')
+    expect(payload.data.meta_ads_short_link).toContain('/maabc1')
   })
 })
