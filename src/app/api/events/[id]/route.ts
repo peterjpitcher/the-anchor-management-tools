@@ -170,6 +170,7 @@ export async function GET(
     const price = event.price_per_seat ?? event.price ?? 0
     const facebookShortLink = resolveMarketingShortLink(marketingShortLinks, 'facebook');
     const linkInBioShortLink = resolveMarketingShortLink(marketingShortLinks, 'lnk_bio');
+    const metaAdsShortLink = resolveMarketingShortLink(marketingShortLinks, 'meta_ads');
 
     // Add extended details with all SEO fields
     const extendedEvent = {
@@ -190,6 +191,8 @@ export async function GET(
       facebook_short_link: facebookShortLink,
       linkInBioShortLink: linkInBioShortLink,
       link_in_bio_short_link: linkInBioShortLink,
+      metaAdsShortLink: metaAdsShortLink,
+      meta_ads_short_link: metaAdsShortLink,
       booking_mode: ['table', 'general', 'mixed'].includes(String(event.booking_mode))
         ? event.booking_mode
         : 'table',
