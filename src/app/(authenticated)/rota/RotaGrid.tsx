@@ -17,20 +17,20 @@ import toast from 'react-hot-toast';
 import {
   ChevronLeftIcon,
   ChevronRightIcon,
-  CheckCircleIcon,
-  ExclamationTriangleIcon,
   PlusIcon,
   CalendarDaysIcon,
   PrinterIcon,
+  PencilSquareIcon,
+  XMarkIcon,
 } from '@heroicons/react/24/outline';
 import { Button } from '@/components/ui-v2/forms/Button';
-import { Badge } from '@/components/ui-v2/display/Badge';
 import { formatTime12Hour } from '@/lib/dateUtils';
-import { moveShift, publishRotaWeek, autoPopulateWeekFromTemplates } from '@/app/actions/rota';
+import { moveShift, autoPopulateWeekFromTemplates, upsertRotaSalesTargetOverride } from '@/app/actions/rota';
 import type { RotaWeek, RotaShift, RotaEmployee, LeaveDayWithRequest } from '@/app/actions/rota';
 import type { ShiftTemplate } from '@/app/actions/rota-templates';
 import type { DepartmentBudget, Department } from '@/app/actions/budgets';
 import type { RotaDayInfo } from '@/app/actions/rota-day-info';
+import type { RotaSummary } from '@/lib/rota/summary';
 import ShiftDetailModal from './ShiftDetailModal';
 import CreateShiftModal from './CreateShiftModal';
 import BookHolidayModal from './BookHolidayModal';
@@ -50,10 +50,13 @@ interface RotaGridProps {
   weekStart: string;
   days: string[]; // 7 ISO date strings, Mon–Sun
   canEdit: boolean;
-  canPublish: boolean;
   budgets: DepartmentBudget[];
   departments: Department[];
   dayInfo: Record<string, RotaDayInfo>;
+  periodSummary: RotaSummary | null;
+  canViewSpend: boolean;
+  canViewSalesTargets: boolean;
+  canEditSalesTargets: boolean;
 }
 
 type ActiveItem = { type: 'shift'; shift: RotaShift };
@@ -106,6 +109,56 @@ function formatWeekRange(days: string[]): string {
   return `${startStr} – ${endStr}`;
 }
 
+const GBP = new Intl.NumberFormat('en-GB', {
+  style: 'currency',
+  currency: 'GBP',
+  maximumFractionDigits: 0,
+});
+
+function formatMoney(value: number | null | undefined): string {
+  if (value === null || value === undefined) return '—';
+  return GBP.format(value);
+}
+
+function formatPercent(value: number | null | undefined): string {
+  if (value === null || value === undefined) return '—';
+  return `${value.toFixed(1)}%`;
+}
+
+function formatHours(value: number): string {
+  return `${value.toFixed(1)}h`;
+}
+
+function inclusiveDayCount(startIso: string, endIso: string): number {
+  const start = new Date(startIso + 'T00:00:00Z');
+  const end = new Date(endIso + 'T00:00:00Z');
+  return Math.max(1, Math.floor((end.getTime() - start.getTime()) / 86_400_000) + 1);
+}
+
+function periodMaxHours(emp: RotaEmployee, period: RotaSummary['payrollPeriod'] | undefined): number | null {
+  if (!period || emp.max_weekly_hours === null) return null;
+  return Math.round((emp.max_weekly_hours * inclusiveDayCount(period.start, period.end) / 7) * 10) / 10;
+}
+
+function employeeRole(emp: RotaEmployee): string {
+  return emp.job_title?.trim() || 'No role';
+}
+
+const ROLE_STYLES = [
+  { header: 'bg-emerald-50 border-emerald-200 text-emerald-900', chip: 'bg-emerald-100 text-emerald-800', stripe: 'border-l-emerald-400' },
+  { header: 'bg-sky-50 border-sky-200 text-sky-900', chip: 'bg-sky-100 text-sky-800', stripe: 'border-l-sky-400' },
+  { header: 'bg-violet-50 border-violet-200 text-violet-900', chip: 'bg-violet-100 text-violet-800', stripe: 'border-l-violet-400' },
+  { header: 'bg-rose-50 border-rose-200 text-rose-900', chip: 'bg-rose-100 text-rose-800', stripe: 'border-l-rose-400' },
+  { header: 'bg-teal-50 border-teal-200 text-teal-900', chip: 'bg-teal-100 text-teal-800', stripe: 'border-l-teal-400' },
+  { header: 'bg-slate-50 border-slate-200 text-slate-900', chip: 'bg-slate-100 text-slate-800', stripe: 'border-l-slate-400' },
+] as const;
+
+function roleStyle(role: string): typeof ROLE_STYLES[number] {
+  let hash = 0;
+  for (let i = 0; i < role.length; i += 1) hash = (hash + role.charCodeAt(i) * (i + 1)) % ROLE_STYLES.length;
+  return ROLE_STYLES[hash];
+}
+
 function addWeeks(weekStart: string, n: number): string {
   const d = new Date(weekStart + 'T12:00:00Z');
   d.setUTCDate(d.getUTCDate() + n * 7);
@@ -155,7 +208,7 @@ function DraggableShiftBlock({
     <div
       ref={setNodeRef}
       style={{ transform: CSS.Translate.toString(transform), opacity: isDragging ? 0.3 : 1 }}
-      className={`rounded ${isDraft ? 'border-2 border-dashed' : 'border'} ${colourClass} px-1.5 py-1 text-xs cursor-grab active:cursor-grabbing select-none hover:shadow-sm transition-shadow`}
+      className={`rounded ${isDraft ? 'border-2 border-dashed' : 'border'} ${colourClass} px-1.5 py-0.5 text-xs cursor-grab active:cursor-grabbing select-none hover:shadow-sm transition-shadow`}
       {...attributes}
       {...listeners}
       onClick={onClick}
@@ -229,7 +282,7 @@ function DroppableCell({
 
   const today = isToday(date);
   const leaveStyle = leaveStatus ? LEAVE_STYLES[leaveStatus] : null;
-  const baseClass = 'relative min-h-[40px] border-r border-gray-100 p-1 transition-colors group';
+  const baseClass = 'relative min-h-[34px] border-r border-gray-100 px-1 py-0.5 transition-colors group';
   const overClass = isOver && !disabled ? 'bg-blue-50' : today ? 'bg-yellow-50/40' : '';
 
   return (
@@ -326,10 +379,13 @@ export default function RotaGrid({
   weekStart,
   days,
   canEdit,
-  canPublish,
   budgets,
   departments,
   dayInfo,
+  periodSummary,
+  canViewSpend,
+  canViewSalesTargets,
+  canEditSalesTargets,
 }: RotaGridProps) {
   const router = useRouter();
   const [shifts, setShifts] = useState<RotaShift[]>(initialShifts);
@@ -338,10 +394,11 @@ export default function RotaGrid({
   const [selectedShift, setSelectedShift] = useState<RotaShift | null>(null);
   const [createTarget, setCreateTarget] = useState<{ employeeId: string; date: string } | null>(null);
   const [holidayTarget, setHolidayTarget] = useState<{ employeeId: string; date: string } | null>(null);
-  const [publishPending, startPublishTransition] = useTransition();
   const [dndPending, startDndTransition] = useTransition();
   const [navPending, startNavTransition] = useTransition();
+  const [targetSavePending, startTargetSaveTransition] = useTransition();
   const [holidayDetailTarget, setHolidayDetailTarget] = useState<{ requestId: string; employeeName: string } | null>(null);
+  const [editingTarget, setEditingTarget] = useState<{ date: string; amount: string; reason: string } | null>(null);
 
   const navigateToWeek = useCallback((week: string) => {
     startNavTransition(() => { router.push(`/rota?week=${week}`); });
@@ -389,23 +446,6 @@ export default function RotaGrid({
     [budgets, currentYear],
   );
 
-  // Derive publish banner state from per-shift computed states so borders and
-  // buttons are always in sync, even before the next router.refresh().
-  const activeShifts = useMemo(() => shifts.filter(s => s.status !== 'cancelled'), [shifts]);
-  const unpublishedShifts = useMemo(
-    () => activeShifts.filter(s => shiftIsUnpublished(s, week)),
-    [activeShifts, week],
-  );
-  const hasAnyUnpublished = unpublishedShifts.length > 0;
-  const hasAnyPublished = unpublishedShifts.length < activeShifts.length && activeShifts.length > 0;
-  // showPublishedBanner: week was published and no shifts need re-publishing (or empty published week)
-  const showPublishedBanner = week.status === 'published' && !hasAnyUnpublished;
-  // showAllDraftBanner: nothing is published — covers new draft weeks, empty draft weeks, and the edge
-  // case where a published week has had ALL its shifts modified since last publish
-  const showAllDraftBanner = !showPublishedBanner && !hasAnyPublished;
-  // showMixedBanner: some shifts are published, some are draft — partial re-publish needed
-  const showMixedBanner = hasAnyUnpublished && hasAnyPublished;
-
   // DnD handlers
   const handleDragStart = useCallback((event: DragStartEvent) => {
     setActiveItem(event.active.data.current as ActiveItem);
@@ -438,6 +478,7 @@ export default function RotaGrid({
         const result = await moveShift(s.id, targetEmpId, date);
         if (!result.success) { toast.error(result.error); return; }
         setShifts(prev => prev.map(sh => sh.id === s.id ? result.data : sh));
+        router.refresh();
         if (isOpenRow) {
           toast.success('Shift moved to open');
         } else if (leaveMap.has(`${empId}:${date}`)) {
@@ -447,7 +488,7 @@ export default function RotaGrid({
         }
       });
     }
-  }, [week.id]);
+  }, [leaveMap, router]);
 
   const hasScheduledTemplates = useMemo(
     () => templates.some(t => t.day_of_week !== null),
@@ -470,6 +511,23 @@ export default function RotaGrid({
     return map;
   }, [employees, shifts]);
 
+  const employeeGroups = useMemo(() => {
+    const groups = new Map<string, RotaEmployee[]>();
+    for (const emp of employees) {
+      const role = employeeRole(emp);
+      const current = groups.get(role) ?? [];
+      current.push(emp);
+      groups.set(role, current);
+    }
+    return Array.from(groups.entries())
+      .map(([role, groupEmployees]) => ({ role, employees: groupEmployees }))
+      .sort((a, b) => {
+        if (a.role === 'No role') return 1;
+        if (b.role === 'No role') return -1;
+        return a.role.localeCompare(b.role);
+      });
+  }, [employees]);
+
   const handleApplyTemplates = () => {
     startDndTransition(async () => {
       const result = await autoPopulateWeekFromTemplates(week.id);
@@ -478,66 +536,198 @@ export default function RotaGrid({
         toast('All scheduled shifts already exist for this week', { icon: 'ℹ️' });
       } else {
         setShifts(prev => [...prev, ...result.shifts]);
+        router.refresh();
         toast.success(`${result.created} shift${result.created !== 1 ? 's' : ''} added from templates`);
       }
-    });
-  };
-
-  const handlePublish = () => {
-    startPublishTransition(async () => {
-      const result = await publishRotaWeek(week.id);
-      if (!result.success) { toast.error((result as { success: false; error: string }).error); return; }
-      toast.success('Rota published');
-      router.refresh();
     });
   };
 
   const handleShiftUpdated = (updated: RotaShift) => {
     setShifts(prev => prev.map(s => s.id === updated.id ? updated : s));
     setSelectedShift(updated);
+    router.refresh();
   };
 
   const handleShiftDeleted = (shiftId: string) => {
     setShifts(prev => prev.filter(s => s.id !== shiftId));
     setSelectedShift(null);
+    router.refresh();
+  };
+
+  const startTargetEdit = (date: string) => {
+    const dayTotal = periodSummary?.dayTotals[date];
+    setEditingTarget({
+      date,
+      amount: dayTotal?.salesTarget !== null && dayTotal?.salesTarget !== undefined ? String(dayTotal.salesTarget) : '',
+      reason: dayTotal?.salesTargetReason ?? '',
+    });
+  };
+
+  const saveTargetEdit = () => {
+    if (!editingTarget || !periodSummary?.site) return;
+    const amount = Number(editingTarget.amount);
+    if (!Number.isFinite(amount) || amount < 0) {
+      toast.error('Enter a valid sales target');
+      return;
+    }
+
+    startTargetSaveTransition(async () => {
+      const result = await upsertRotaSalesTargetOverride({
+        siteId: periodSummary.site!.id,
+        targetDate: editingTarget.date,
+        targetAmount: amount,
+        reason: editingTarget.reason.trim() || null,
+      });
+      if (!result.success) {
+        toast.error(result.error);
+        return;
+      }
+      toast.success('Sales target updated');
+      setEditingTarget(null);
+      router.refresh();
+    });
   };
 
   const isPending = dndPending;
+  const renderDailyPlanningCell = (date: string) => {
+    if (!periodSummary) return null;
+
+    const total = periodSummary.dayTotals[date];
+    const overTarget =
+      total?.wagePercent !== null &&
+      total?.wagePercent !== undefined &&
+      total.wagePercent > periodSummary.weekTotals.targetPercent;
+    const isEditing = editingTarget?.date === date;
+
+    return (
+      <div
+        key={date}
+        className={`mt-1 rounded border px-1 py-0.5 text-left text-[10px] leading-tight ${
+          overTarget ? 'border-red-200 bg-red-50' : 'border-gray-200 bg-white'
+        }`}
+      >
+        {isEditing ? (
+          <div className="space-y-0.5">
+            <input
+              type="number"
+              min="0"
+              step="1"
+              value={editingTarget.amount}
+              onChange={e => setEditingTarget(current => current ? { ...current, amount: e.target.value } : current)}
+              className="w-full rounded border border-gray-300 px-1 py-0.5 text-[10px]"
+              aria-label={`Sales target for ${date}`}
+            />
+            <input
+              type="text"
+              value={editingTarget.reason}
+              onChange={e => setEditingTarget(current => current ? { ...current, reason: e.target.value } : current)}
+              placeholder="Reason"
+              className="w-full rounded border border-gray-300 px-1 py-0.5 text-[10px]"
+              aria-label={`Sales target reason for ${date}`}
+            />
+            <div className="flex gap-1">
+              <button
+                type="button"
+                onClick={saveTargetEdit}
+                disabled={targetSavePending}
+                className="rounded bg-gray-900 px-1.5 py-0.5 text-[10px] font-medium text-white disabled:opacity-50"
+              >
+                Save
+              </button>
+              <button
+                type="button"
+                onClick={() => setEditingTarget(null)}
+                disabled={targetSavePending}
+                className="rounded border border-gray-300 px-1 py-0.5 text-gray-500"
+                aria-label="Cancel target edit"
+              >
+                <XMarkIcon className="h-3 w-3" />
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-0.5">
+            <div className="flex items-center justify-between gap-1">
+              <span className="truncate">
+                <span className="text-gray-400">{total?.salesTargetSource === 'actual' ? 'Actual' : 'Target'}</span>{' '}
+                <strong className="text-gray-900">{canViewSalesTargets ? formatMoney(total?.salesTarget ?? null) : 'Hidden'}</strong>
+                {canViewSalesTargets && total?.salesTargetSource === 'override' && (
+                  <span className="ml-1 font-medium text-blue-700">O</span>
+                )}
+              </span>
+              {canEditSalesTargets && canViewSalesTargets && periodSummary.site && (
+                <button
+                  type="button"
+                  onClick={() => startTargetEdit(date)}
+                  className="shrink-0 rounded p-0.5 text-gray-400 hover:bg-gray-100 hover:text-gray-700"
+                  title="Edit sales target"
+                >
+                  <PencilSquareIcon className="h-3 w-3" />
+                </button>
+              )}
+            </div>
+            <p className="truncate">
+              <span className="text-gray-400">Payroll</span>{' '}
+              <strong className="text-gray-900">{canViewSpend ? formatMoney(total?.estimatedCost ?? null) : 'Hidden'}</strong>
+            </p>
+            <p className={`truncate font-semibold ${overTarget ? 'text-red-600' : 'text-emerald-700'}`}>
+              <span className="font-normal text-gray-400">%</span>{' '}
+              {canViewSpend && canViewSalesTargets ? formatPercent(total?.wagePercent ?? null) : 'Hidden'}
+            </p>
+            {canViewSpend && (total?.uncostedShiftCount ?? 0) > 0 && (
+              <p className="text-[9px] text-amber-700">{total.uncostedShiftCount} uncosted</p>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  };
 
   return (
-    <div className="space-y-4">
-      {/* Publish banner — state derived from per-shift border computation so borders and button stay in sync */}
-      {showPublishedBanner && (
-        <div className="flex items-center gap-2 rounded-lg bg-green-50 border border-green-100 px-4 py-2">
-          <CheckCircleIcon className="h-4 w-4 text-green-600 shrink-0" />
-          <span className="text-sm text-green-700">Published — staff can see this rota.</span>
-        </div>
-      )}
-      {showAllDraftBanner && canPublish && (
-        <div className="flex items-center justify-between rounded-lg bg-amber-50 border border-amber-200 px-4 py-3">
-          <div className="flex items-center gap-2 text-sm text-amber-800">
-            <ExclamationTriangleIcon className="h-4 w-4 shrink-0" />
-            <span>This rota is a <strong>draft</strong> — staff cannot see it until published.</span>
+    <div className="space-y-2">
+      {periodSummary && (
+        <div className="rounded-md border border-gray-200 bg-white px-3 py-2">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="min-w-0">
+              <p className="truncate text-xs font-semibold text-gray-900">
+                Labour planning · {periodSummary.payrollPeriod.label} · {periodSummary.payrollPeriod.start} to {periodSummary.payrollPeriod.end}
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
+              <span>
+                <span className="text-gray-400">Week wages</span>{' '}
+                <strong className="text-gray-900">{canViewSpend ? formatMoney(periodSummary.weekTotals.estimatedCost) : 'Hidden'}</strong>
+              </span>
+              <span>
+                <span className="text-gray-400">Target sales</span>{' '}
+                <strong className="text-gray-900">{canViewSalesTargets ? formatMoney(periodSummary.weekTotals.salesTarget) : 'Hidden'}</strong>
+              </span>
+              <span>
+                <span className="text-gray-400">Wage %</span>{' '}
+                <strong className={`${
+                  periodSummary.weekTotals.wagePercent !== null && periodSummary.weekTotals.wagePercent > periodSummary.weekTotals.targetPercent
+                    ? 'text-red-600'
+                    : 'text-emerald-700'
+                }`}>
+                  {canViewSpend && canViewSalesTargets ? formatPercent(periodSummary.weekTotals.wagePercent) : 'Hidden'}
+                </strong>
+              </span>
+              <span>
+                <span className="text-gray-400">Limit</span>{' '}
+                <strong className="text-gray-900">{periodSummary.weekTotals.targetPercent.toFixed(1)}%</strong>
+              </span>
+            </div>
           </div>
-          <Button type="button" size="sm" onClick={handlePublish} disabled={publishPending}>
-            {publishPending ? 'Publishing…' : 'Publish'}
-          </Button>
-        </div>
-      )}
-      {showMixedBanner && canPublish && (
-        <div className="flex items-center justify-between rounded-lg bg-orange-50 border border-orange-200 px-4 py-3">
-          <div className="flex items-center gap-2 text-sm text-orange-800">
-            <ExclamationTriangleIcon className="h-4 w-4 shrink-0" />
-            <span>There are unpublished changes — some shifts are not visible to staff.</span>
-          </div>
-          <Button type="button" size="sm" onClick={handlePublish} disabled={publishPending}>
-            {publishPending ? 'Publishing…' : 'Publish Changes'}
-          </Button>
+          {canViewSpend && periodSummary.weekTotals.uncostedShiftCount > 0 && (
+            <p className="mt-1 text-[11px] text-amber-700">
+              {periodSummary.weekTotals.uncostedShiftCount} visible shift{periodSummary.weekTotals.uncostedShiftCount === 1 ? '' : 's'} could not be costed because the shift is open or missing a rate.
+            </p>
+          )}
         </div>
       )}
 
       {/* Week navigation + budget bars */}
-      <div className="flex flex-wrap items-center justify-between gap-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2 flex-wrap">
           {/* Arrow navigation */}
           <button
@@ -637,21 +827,22 @@ export default function RotaGrid({
         <div className="flex gap-4">
           {/* Grid */}
           <div className="flex-1 min-w-0 overflow-x-auto rounded-lg border border-gray-200 bg-white">
-            <div className="min-w-[600px]">
+            <div className="min-w-[860px]">
               {/* Header row */}
               <div className="flex border-b border-gray-200 bg-gray-50">
-                <div className="w-[160px] shrink-0 sticky left-0 z-20 bg-gray-50 px-3 py-2 text-xs font-medium text-gray-500 border-r border-gray-200">
+                <div className="w-[240px] shrink-0 sticky left-0 z-20 bg-gray-50 px-3 py-1.5 text-xs font-medium text-gray-500 border-r border-gray-200">
                   Employee
                 </div>
                 <div className="flex-1 grid grid-cols-7">
                   {days.map(d => (
                     <div
                       key={d}
-                      className={`px-1.5 py-2 text-xs font-medium text-center border-r border-gray-100 last:border-r-0 ${
+                      className={`px-1 py-1 text-xs font-medium text-center border-r border-gray-100 last:border-r-0 ${
                         isToday(d) ? 'text-blue-700 bg-blue-50' : 'text-gray-500'
                       }`}
                     >
-                      {formatDayHeader(d)}
+                      <span>{formatDayHeader(d)}</span>
+                      {renderDailyPlanningCell(d)}
                     </div>
                   ))}
                 </div>
@@ -659,7 +850,7 @@ export default function RotaGrid({
 
               {/* Day info strip */}
               <div className="flex border-b border-gray-100 bg-white">
-                <div className="w-[160px] shrink-0 sticky left-0 z-10 bg-white px-3 py-1 border-r border-gray-100 flex items-center">
+                <div className="w-[240px] shrink-0 sticky left-0 z-10 bg-white px-3 py-0.5 border-r border-gray-100 flex items-center">
                   <span className="text-[10px] font-medium text-gray-400 uppercase tracking-wide">Today</span>
                 </div>
                 <div className="flex-1 grid grid-cols-7">
@@ -669,10 +860,10 @@ export default function RotaGrid({
                     return (
                       <div
                         key={d}
-                        className={`px-1 py-1 border-r border-gray-100 last:border-r-0 min-h-[28px] ${isToday(d) ? 'bg-blue-50/40' : ''}`}
+                        className={`px-1 py-0.5 border-r border-gray-100 last:border-r-0 min-h-[22px] ${isToday(d) ? 'bg-blue-50/40' : ''}`}
                       >
                         {hasAnything ? (
-                          <div className="space-y-0.5">
+                          <div className="space-y-px">
                             {info.calendarNotes.map((n, i) => (
                               <div key={i} className="flex items-center gap-0.5 min-w-0">
                                 <span className="shrink-0 w-1.5 h-1.5 rounded-sm mt-px" style={{ backgroundColor: n.color }} />
@@ -707,7 +898,7 @@ export default function RotaGrid({
 
               {/* Open shifts row */}
               <div className="flex border-b border-amber-200 bg-amber-50/60 hover:bg-amber-50">
-                <div className="w-[160px] shrink-0 sticky left-0 z-10 bg-amber-50 px-3 py-1.5 border-r border-amber-200 flex flex-col justify-center">
+                <div className="w-[240px] shrink-0 sticky left-0 z-10 bg-amber-50 px-3 py-1.5 border-r border-amber-200 flex flex-col justify-center">
                   <p className="text-xs font-semibold text-amber-700 leading-tight">Open shifts</p>
                   <p className="text-[10px] text-amber-500">Available to staff</p>
                 </div>
@@ -743,66 +934,137 @@ export default function RotaGrid({
                   No active employees found.
                 </div>
               ) : (
-                employees.map(emp => {
-                  const weekHrs = empHoursMap.get(emp.employee_id) ?? 0;
-                  const overHours = emp.max_weekly_hours !== null && weekHrs > emp.max_weekly_hours;
+                <>
+                  {employeeGroups.map(group => {
+                    const style = roleStyle(group.role);
+                    return (
+                      <div key={group.role}>
+                        <div className={`flex border-b ${style.header}`}>
+                          <div className={`w-[240px] shrink-0 sticky left-0 z-10 px-3 py-0.5 border-r ${style.header}`}>
+                            <p className="truncate text-xs font-semibold leading-tight">
+                              {group.role} <span className="text-[10px] font-normal opacity-75">({group.employees.length})</span>
+                            </p>
+                          </div>
+                          <div className="flex-1 grid grid-cols-7">
+                            <div className="col-span-7 px-2 py-0.5 text-[10px] opacity-70">Grouped by role</div>
+                          </div>
+                        </div>
 
-                  return (
-                    <div key={emp.employee_id} className="flex border-b border-gray-100 last:border-b-0 hover:bg-gray-50/40">
-                      {/* Employee name column */}
-                      <div className="w-[160px] shrink-0 sticky left-0 z-10 bg-white px-3 py-1.5 border-r border-gray-200 flex flex-col justify-center">
-                        <p className={`text-xs font-medium leading-tight truncate ${emp.is_active ? 'text-gray-800' : 'text-gray-400'}`}>
-                          {empDisplayName(emp)}
-                        </p>
-                        <p className={`text-[10px] ${overHours ? 'text-red-600 font-semibold' : 'text-gray-400'}`}>
-                          {emp.is_active ? (
-                            <>
-                              {weekHrs.toFixed(1)}h
-                              {emp.max_weekly_hours !== null ? ` / ${emp.max_weekly_hours}h` : ''}
-                              {overHours ? ' ⚠' : ''}
-                            </>
-                          ) : 'Former'}
-                        </p>
-                      </div>
-
-                      {/* Day cells */}
-                      <div className="flex-1 grid grid-cols-7">
-                        {days.map(d => {
-                          const cellShifts = shifts.filter(
-                            s => s.employee_id === emp.employee_id && s.shift_date === d,
-                          );
-                          const leaveStatus = leaveMap.get(`${emp.employee_id}:${d}`);
+                        {group.employees.map(emp => {
+                          const weekHrs = empHoursMap.get(emp.employee_id) ?? 0;
+                          const overWeekHours = emp.max_weekly_hours !== null && weekHrs > emp.max_weekly_hours;
+                          const periodTotal = periodSummary?.employeeTotals[emp.employee_id];
+                          const periodMax = periodMaxHours(emp, periodSummary?.payrollPeriod);
+                          const periodRemaining = periodTotal && periodMax !== null ? Math.round((periodMax - periodTotal.periodHours) * 10) / 10 : null;
+                          const overPeriodHours = periodRemaining !== null && periodRemaining < 0;
+                          const periodUsedPercent = periodTotal && periodMax !== null && periodMax > 0
+                            ? Math.min((periodTotal.periodHours / periodMax) * 100, 120)
+                            : 0;
+                          const periodCapacityColour = overPeriodHours
+                            ? 'text-red-600'
+                            : periodUsedPercent >= 85
+                              ? 'text-amber-700'
+                              : 'text-gray-600';
+                          const periodBarColour = overPeriodHours
+                            ? 'bg-red-500'
+                            : periodUsedPercent >= 85
+                              ? 'bg-amber-500'
+                              : 'bg-emerald-500';
+                          const empRole = employeeRole(emp);
+                          const empStyle = roleStyle(empRole);
 
                           return (
-                            <DroppableCell
-                              key={d}
-                              employeeId={emp.employee_id}
-                              date={d}
-                              leaveStatus={leaveStatus}
-                              disabled={!canEdit || isPending}
-                              onAdd={canEdit && !isPending ? () => setCreateTarget({ employeeId: emp.employee_id, date: d }) : undefined}
-                              onBookHoliday={canEdit && !isPending ? () => setHolidayTarget({ employeeId: emp.employee_id, date: d }) : undefined}
-                              onLeaveClick={(() => {
-                                const ld = leaveDayMap.get(`${emp.employee_id}:${d}`);
-                                return ld ? () => setHolidayDetailTarget({ requestId: ld.request_id, employeeName: empDisplayName(emp) }) : undefined;
-                              })()}
-                            >
-                              {cellShifts.map(s => (
-                                <DraggableShiftBlock
-                                  key={s.id}
-                                  shift={s}
-                                  disabled={!canEdit || isPending}
-                                  isDraft={shiftIsUnpublished(s, week)}
-                                  onClick={() => setSelectedShift(s)}
-                                />
-                              ))}
-                            </DroppableCell>
+                            <div key={emp.employee_id} className="flex border-b border-gray-100 hover:bg-gray-50/40">
+                              {/* Employee name column */}
+                              <div className={`w-[240px] shrink-0 sticky left-0 z-10 bg-white px-3 py-1 border-r border-l-4 ${empStyle.stripe} border-r-gray-200 flex flex-col justify-center`}>
+                                <div className="flex items-center gap-1.5 min-w-0">
+                                  <p className={`text-xs font-medium leading-tight truncate ${emp.is_active ? 'text-gray-800' : 'text-gray-400'}`}>
+                                    {empDisplayName(emp)}
+                                  </p>
+                                  <span className={`shrink-0 rounded px-1.5 py-px text-[9px] font-medium ${empStyle.chip}`}>
+                                    {empRole}
+                                  </span>
+                                </div>
+                                <p className={`text-[10px] truncate ${overWeekHours || overPeriodHours ? 'text-red-600 font-semibold' : 'text-gray-400'}`}>
+                                  {emp.is_active ? (
+                                    <>
+                                      W {formatHours(weekHrs)}
+                                      {emp.max_weekly_hours !== null ? ` / ${emp.max_weekly_hours}h` : ''}
+                                      {overWeekHours ? ' !' : ''}
+                                      {periodTotal && (
+                                        <>
+                                          {' · '}P {formatHours(periodTotal.periodHours)}
+                                          {periodMax !== null ? ` / ${formatHours(periodMax)}` : ' / no max'}
+                                          {periodRemaining !== null ? ` · ${periodRemaining >= 0 ? formatHours(periodRemaining) + ' left' : formatHours(Math.abs(periodRemaining)) + ' over'}` : ''}
+                                        </>
+                                      )}
+                                    </>
+                                  ) : 'Former'}
+                                </p>
+                                {periodTotal && (
+                                  <div className="mt-0.5 space-y-0.5">
+                                    {periodMax !== null && (
+                                      <div className="h-1.5 overflow-hidden rounded-full bg-gray-200" title={`Payroll period hours: ${formatHours(periodTotal.periodHours)} of ${formatHours(periodMax)}`}>
+                                        <div
+                                          className={`h-full rounded-full ${periodBarColour}`}
+                                          style={{ width: `${Math.min(periodUsedPercent, 100)}%` }}
+                                        />
+                                      </div>
+                                    )}
+                                    {canViewSpend && (
+                                      <p className={`text-[10px] truncate ${periodCapacityColour}`}>
+                                        {formatMoney(periodTotal.estimatedCost)}
+                                        {periodTotal.costStatus === 'partial' ? ' · partial rate' : ''}
+                                        {periodTotal.costStatus === 'missing_rate' ? ' · missing rate' : ''}
+                                        {periodTotal.costStatus === 'salaried' ? ' · salaried' : ''}
+                                      </p>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+
+                              {/* Day cells */}
+                              <div className="flex-1 grid grid-cols-7">
+                                {days.map(d => {
+                                  const cellShifts = shifts.filter(
+                                    s => s.employee_id === emp.employee_id && s.shift_date === d,
+                                  );
+                                  const leaveStatus = leaveMap.get(`${emp.employee_id}:${d}`);
+
+                                  return (
+                                    <DroppableCell
+                                      key={d}
+                                      employeeId={emp.employee_id}
+                                      date={d}
+                                      leaveStatus={leaveStatus}
+                                      disabled={!canEdit || isPending}
+                                      onAdd={canEdit && !isPending ? () => setCreateTarget({ employeeId: emp.employee_id, date: d }) : undefined}
+                                      onBookHoliday={canEdit && !isPending ? () => setHolidayTarget({ employeeId: emp.employee_id, date: d }) : undefined}
+                                      onLeaveClick={(() => {
+                                        const ld = leaveDayMap.get(`${emp.employee_id}:${d}`);
+                                        return ld ? () => setHolidayDetailTarget({ requestId: ld.request_id, employeeName: empDisplayName(emp) }) : undefined;
+                                      })()}
+                                    >
+                                      {cellShifts.map(s => (
+                                        <DraggableShiftBlock
+                                          key={s.id}
+                                          shift={s}
+                                          disabled={!canEdit || isPending}
+                                          isDraft={shiftIsUnpublished(s, week)}
+                                          onClick={() => setSelectedShift(s)}
+                                        />
+                                      ))}
+                                    </DroppableCell>
+                                  );
+                                })}
+                              </div>
+                            </div>
                           );
                         })}
                       </div>
-                    </div>
-                  );
-                })
+                    );
+                  })}
+                </>
               )}
             </div>
           </div>
@@ -824,6 +1086,8 @@ export default function RotaGrid({
         <span className="flex items-center gap-1"><span className="inline-block w-3 h-3 rounded-sm bg-green-100 border border-green-300" /> Holiday (approved)</span>
         <span className="flex items-center gap-1"><span className="inline-block w-3 h-3 rounded-sm bg-amber-100 border border-amber-300" /> Holiday (pending)</span>
         <span className="flex items-center gap-1"><span className="inline-block w-3 h-3 rounded-sm bg-blue-50 border-2 border-dashed border-blue-300" /> Unpublished shift</span>
+        <span className="flex items-center gap-1"><span className="inline-block w-3 h-3 rounded-sm bg-emerald-100 border-l-4 border-emerald-400" /> Employee role group</span>
+        <span className="flex items-center gap-1"><span className="inline-block w-3 h-3 rounded-sm bg-red-100 border border-red-300" /> Wage % over target</span>
         {canEdit && <span className="text-gray-400">Drag shifts to move them · Hover a cell to add a shift (+) or book holiday (calendar icon)</span>}
       </div>
 
@@ -865,6 +1129,7 @@ export default function RotaGrid({
               toast.success(shift.is_open_shift ? 'Open shift added' : 'Shift created');
             }
             setCreateTarget(null);
+            router.refresh();
           }}
         />
       )}
@@ -910,6 +1175,7 @@ export default function RotaGrid({
           onClose={() => setShowAddShifts(false)}
           onShiftsAdded={(newShifts) => {
             setShifts(prev => [...prev, ...newShifts]);
+            router.refresh();
           }}
         />
       )}

@@ -27,5 +27,10 @@ VALUES
     'payroll_accountant_email',
     '{"value": ""}',
     'Email address that receives payroll export emails'
+  ),
+  (
+    'rota_wage_target_percent',
+    '{"value": 25}',
+    'Target scheduled wages as a percentage of sales target for rota planning'
   )
 ON CONFLICT (key) DO NOTHING;

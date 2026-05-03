@@ -10,6 +10,7 @@ export type RotaSettings = {
   defaultHolidayDays: number;
   managerEmail: string;
   accountantEmail: string;
+  wageTargetPercent: number;
 };
 
 const DEFAULTS: RotaSettings = {
@@ -18,6 +19,7 @@ const DEFAULTS: RotaSettings = {
   defaultHolidayDays: 25,
   managerEmail: process.env.ROTA_MANAGER_EMAIL ?? '',
   accountantEmail: process.env.PAYROLL_ACCOUNTANT_EMAIL ?? '',
+  wageTargetPercent: 25,
 };
 
 async function readSetting(
@@ -35,12 +37,13 @@ async function readSetting(
 export async function getRotaSettings(): Promise<RotaSettings> {
   const supabase = createAdminClient();
 
-  const [month, day, days, manager, accountant] = await Promise.all([
+  const [month, day, days, manager, accountant, wageTarget] = await Promise.all([
     readSetting(supabase, 'rota_holiday_year_start_month'),
     readSetting(supabase, 'rota_holiday_year_start_day'),
     readSetting(supabase, 'rota_default_holiday_days'),
     readSetting(supabase, 'rota_manager_email'),
     readSetting(supabase, 'payroll_accountant_email'),
+    readSetting(supabase, 'rota_wage_target_percent'),
   ]);
 
   return {
@@ -50,6 +53,7 @@ export async function getRotaSettings(): Promise<RotaSettings> {
     // DB value takes precedence; fall back to env vars
     managerEmail:    ((manager?.value as string) || DEFAULTS.managerEmail),
     accountantEmail: ((accountant?.value as string) || DEFAULTS.accountantEmail),
+    wageTargetPercent: Number(wageTarget?.value ?? DEFAULTS.wageTargetPercent),
   };
 }
 
@@ -78,6 +82,9 @@ export async function updateRotaSettings(
   if (settings.accountantEmail !== undefined) {
     upserts.push({ key: 'payroll_accountant_email', value: { value: settings.accountantEmail } });
   }
+  if (settings.wageTargetPercent !== undefined) {
+    upserts.push({ key: 'rota_wage_target_percent', value: { value: settings.wageTargetPercent } });
+  }
 
   for (const row of upserts) {
     const { error } = await supabase
@@ -87,5 +94,6 @@ export async function updateRotaSettings(
   }
 
   revalidatePath('/settings/rota');
+  revalidatePath('/rota');
   return { success: true };
 }

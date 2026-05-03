@@ -11,12 +11,14 @@ import {
   getWeekShifts,
   getActiveEmployeesForRota,
   getLeaveDaysForWeek,
+  getRotaSummaryForWeek,
 } from '@/app/actions/rota';
 import { getShiftTemplates } from '@/app/actions/rota-templates';
 import { getDepartmentBudgets, getDepartments } from '@/app/actions/budgets';
 import { getRotaWeekDayInfo } from '@/app/actions/rota-day-info';
 import type { RotaDayInfo } from '@/app/actions/rota-day-info';
 import RotaGrid from './RotaGrid';
+import RotaPublishStatus from './RotaPublishStatus';
 
 export const dynamic = 'force-dynamic';
 
@@ -113,6 +115,11 @@ export default async function RotaPage({ searchParams }: RotaPageProps) {
   const budgets = budgetsResult.success ? budgetsResult.data : [];
   const departments = deptResult.success ? deptResult.data : [];
   const dayInfo: Record<string, RotaDayInfo> = dayInfoResult ?? {};
+  const summaryResult = await getRotaSummaryForWeek(weekStart, days, employees);
+  const rotaSummary = summaryResult.success ? summaryResult.data : null;
+  const canViewSpend = summaryResult.success ? summaryResult.canViewSpend : false;
+  const canViewSalesTargets = summaryResult.success ? summaryResult.canViewSalesTargets : false;
+  const canEditSalesTargets = summaryResult.success ? summaryResult.canEditSalesTargets : false;
 
   // Per-user HMAC token — no global secret reaches the browser
   const feedToken = generateRotaFeedToken(user.id);
@@ -124,6 +131,7 @@ export default async function RotaPage({ searchParams }: RotaPageProps) {
       navItems={rotaNavItems}
       headerActions={
         <div className="flex items-center gap-2">
+          <RotaPublishStatus week={week} shifts={shifts} canPublish={canPublish} />
           <RotaFeedButton feedUrl={feedUrl} showCalendarSync={Boolean(process.env.GOOGLE_CALENDAR_ROTA_ID)} />
           <LinkButton href="/rota/templates" size="sm" variant="secondary" leftIcon={<Cog6ToothIcon className="h-4 w-4" />}>
             Templates
@@ -148,10 +156,13 @@ export default async function RotaPage({ searchParams }: RotaPageProps) {
         weekStart={weekStart}
         days={days}
         canEdit={canEdit}
-        canPublish={canPublish}
         budgets={budgets}
         departments={departments}
         dayInfo={dayInfo}
+        periodSummary={rotaSummary}
+        canViewSpend={canViewSpend}
+        canViewSalesTargets={canViewSalesTargets}
+        canEditSalesTargets={canEditSalesTargets}
       />
     </PageLayout>
   );

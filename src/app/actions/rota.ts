@@ -4,10 +4,22 @@ import { after } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { checkUserPermission } from '@/app/actions/rbac';
-import { revalidatePath } from 'next/cache';
+import { revalidatePath, revalidateTag } from 'next/cache';
 import { z } from 'zod';
 import { logAuditEvent } from '@/app/actions/audit';
 import { sendRotaWeekEmails, sendRotaWeekChangeEmails, type DiffShiftRow } from '@/lib/rota/send-rota-emails';
+import { getRotaSettings } from '@/app/actions/rota-settings';
+import {
+  buildRotaSummary,
+  dayOfWeekForIsoDate,
+  resolveSalesTargets,
+  type RotaCashupActualRow,
+  type RotaDaySummaryTotal,
+  type RotaRateContext,
+  type RotaSummary,
+  type RotaSummaryPayrollPeriod,
+  type RotaSummaryShift,
+} from '@/lib/rota/summary';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -68,6 +80,63 @@ function addDaysIso(isoDate: string, days: number): string {
   const d = new Date(isoDate + 'T00:00:00Z');
   d.setUTCDate(d.getUTCDate() + days);
   return d.toISOString().split('T')[0];
+}
+
+function formatMonthLabel(year: number, month: number): string {
+  return new Date(Date.UTC(year, month - 1, 1)).toLocaleDateString('en-GB', {
+    month: 'long',
+    year: 'numeric',
+    timeZone: 'UTC',
+  });
+}
+
+function defaultPayrollPeriodForDate(anchorDate: string): RotaSummaryPayrollPeriod {
+  const [year, month, day] = anchorDate.split('-').map(Number);
+  let periodYear = year;
+  let periodMonth = month;
+
+  if (day >= 25) {
+    periodMonth += 1;
+    if (periodMonth === 13) {
+      periodMonth = 1;
+      periodYear += 1;
+    }
+  }
+
+  const end = new Date(Date.UTC(periodYear, periodMonth - 1, 24));
+  const start = new Date(Date.UTC(periodYear, periodMonth - 2, 25));
+
+  return {
+    year: periodYear,
+    month: periodMonth,
+    start: start.toISOString().split('T')[0],
+    end: end.toISOString().split('T')[0],
+    label: formatMonthLabel(periodYear, periodMonth),
+  };
+}
+
+async function getPayrollPeriodForDate(anchorDate: string): Promise<RotaSummaryPayrollPeriod> {
+  const admin = createAdminClient();
+  const { data } = await admin
+    .from('payroll_periods')
+    .select('year, month, period_start, period_end')
+    .lte('period_start', anchorDate)
+    .gte('period_end', anchorDate)
+    .order('period_start', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (data) {
+    return {
+      year: data.year as number,
+      month: data.month as number,
+      start: data.period_start as string,
+      end: data.period_end as string,
+      label: formatMonthLabel(data.year as number, data.month as number),
+    };
+  }
+
+  return defaultPayrollPeriodForDate(anchorDate);
 }
 
 // ---------------------------------------------------------------------------
@@ -147,6 +216,259 @@ export async function getWeekShifts(weekStart: string): Promise<
 
   if (error) return { success: false, error: error.message };
   return { success: true, data: (data ?? []) as RotaShift[] };
+}
+
+// ---------------------------------------------------------------------------
+// Rota labour cost + sales target summary
+// ---------------------------------------------------------------------------
+
+function hiddenSalesTargets(days: string[]) {
+  return Object.fromEntries(days.map(day => [day, {
+    salesTarget: null,
+    salesTargetSource: 'hidden' as const,
+    salesTargetReason: null,
+  }])) as Record<string, Pick<RotaDaySummaryTotal, 'salesTarget' | 'salesTargetSource' | 'salesTargetReason'>>;
+}
+
+function isMissingOptionalTargetOverridesRelation(error: { code?: string; message?: string } | null | undefined): boolean {
+  if (!error) return false;
+  const message = error.message?.toLowerCase() ?? '';
+  return error.code === '42P01' || error.code === 'PGRST205' || message.includes('cashup_target_overrides');
+}
+
+export async function getRotaSummaryForWeek(
+  weekStart: string,
+  days: string[],
+  employees: RotaEmployee[],
+): Promise<{ success: true; data: RotaSummary; canViewSpend: boolean; canViewSalesTargets: boolean; canEditSalesTargets: boolean } | { success: false; error: string }> {
+  const canView = await checkUserPermission('rota', 'view');
+  if (!canView) return { success: false, error: 'Permission denied' };
+
+  if (!days.length) return { success: false, error: 'No visible rota days provided' };
+
+  const [canViewSpend, canViewSalesTargets, canEditSalesTargets, settings, payrollPeriod] = await Promise.all([
+    checkUserPermission('payroll', 'view'),
+    checkUserPermission('cashing_up', 'view'),
+    checkUserPermission('cashing_up', 'edit'),
+    getRotaSettings(),
+    getPayrollPeriodForDate(weekStart),
+  ]);
+
+  const supabase = await createClient();
+
+  const { data: periodShifts, error: shiftsError } = await supabase
+    .from('rota_shifts')
+    .select('employee_id, shift_date, start_time, end_time, unpaid_break_minutes, is_overnight, is_open_shift, status')
+    .gte('shift_date', payrollPeriod.start)
+    .lte('shift_date', payrollPeriod.end);
+
+  if (shiftsError) return { success: false, error: shiftsError.message };
+
+  let site: { id: string; name: string | null } | null = null;
+  let salesTargets: Record<string, Pick<RotaDaySummaryTotal, 'salesTarget' | 'salesTargetSource' | 'salesTargetReason'>> = hiddenSalesTargets(days);
+
+  if (canViewSalesTargets) {
+    const { data: siteRow } = await supabase
+      .from('sites')
+      .select('id, name')
+      .limit(1)
+      .maybeSingle();
+
+    if (siteRow?.id) {
+      site = { id: siteRow.id, name: siteRow.name ?? null };
+      const dayOfWeeks = [...new Set(days.map(dayOfWeekForIsoDate))];
+      const [defaultTargetResult, overrideResult, actualResult] = await Promise.all([
+        supabase
+          .from('cashup_targets')
+          .select('day_of_week, target_amount, effective_from')
+          .eq('site_id', siteRow.id)
+          .in('day_of_week', dayOfWeeks)
+          .lte('effective_from', days[days.length - 1])
+          .order('effective_from', { ascending: false }),
+        supabase
+          .from('cashup_target_overrides')
+          .select('target_date, target_amount, reason')
+          .eq('site_id', siteRow.id)
+          .gte('target_date', days[0])
+          .lte('target_date', days[days.length - 1]),
+        supabase
+          .from('cashup_sessions')
+          .select('session_date, total_counted_amount, status')
+          .eq('site_id', siteRow.id)
+          .gte('session_date', days[0])
+          .lte('session_date', days[days.length - 1]),
+      ]);
+
+      if (defaultTargetResult.error) return { success: false, error: defaultTargetResult.error.message };
+      if (overrideResult.error && !isMissingOptionalTargetOverridesRelation(overrideResult.error)) {
+        return { success: false, error: overrideResult.error.message };
+      }
+      if (actualResult.error) return { success: false, error: actualResult.error.message };
+
+      salesTargets = resolveSalesTargets(
+        days,
+        (defaultTargetResult.data ?? []).map(row => ({
+          day_of_week: row.day_of_week,
+          target_amount: row.target_amount,
+          effective_from: row.effective_from,
+        })),
+        (overrideResult.error ? [] : (overrideResult.data ?? [])).map(row => ({
+          target_date: row.target_date,
+          target_amount: row.target_amount,
+          reason: row.reason ?? null,
+        })),
+        (actualResult.data ?? []) as RotaCashupActualRow[],
+      );
+    }
+  }
+
+  let rateContext: RotaRateContext | null = null;
+
+  if (canViewSpend) {
+    const admin = createAdminClient();
+    const employeeIds = [
+      ...new Set(
+        ((periodShifts ?? []) as RotaSummaryShift[])
+          .map(shift => shift.employee_id)
+          .filter((employeeId): employeeId is string => Boolean(employeeId)),
+      ),
+    ];
+
+    const [
+      paySettingsResult,
+      rateOverridesResult,
+      ageBandsResult,
+      bandRatesResult,
+      employeesResult,
+    ] = await Promise.all([
+      employeeIds.length
+        ? admin.from('employee_pay_settings').select('employee_id, pay_type').in('employee_id', employeeIds)
+        : Promise.resolve({ data: [], error: null }),
+      employeeIds.length
+        ? admin
+            .from('employee_rate_overrides')
+            .select('employee_id, hourly_rate, effective_from')
+            .in('employee_id', employeeIds)
+            .order('employee_id')
+            .order('effective_from', { ascending: false })
+        : Promise.resolve({ data: [], error: null }),
+      admin.from('pay_age_bands').select('id, min_age, max_age').eq('is_active', true),
+      admin
+        .from('pay_band_rates')
+        .select('band_id, hourly_rate, effective_from')
+        .order('band_id')
+        .order('effective_from', { ascending: false }),
+      employeeIds.length
+        ? admin.from('employees').select('employee_id, date_of_birth').in('employee_id', employeeIds)
+        : Promise.resolve({ data: [], error: null }),
+    ]);
+
+    const failedRateLoad = [paySettingsResult, rateOverridesResult, ageBandsResult, bandRatesResult, employeesResult]
+      .find(result => result.error);
+    if (failedRateLoad?.error) return { success: false, error: failedRateLoad.error.message };
+
+    const salaryEmployeeIds = new Set(
+      (paySettingsResult.data ?? [])
+        .filter(row => row.pay_type === 'salaried')
+        .map(row => row.employee_id),
+    );
+    const dobMap = new Map<string, string>();
+    for (const row of employeesResult.data ?? []) {
+      if (row.date_of_birth) dobMap.set(row.employee_id, row.date_of_birth);
+    }
+
+    rateContext = {
+      salaryEmployeeIds,
+      dobMap,
+      rateOverrides: (rateOverridesResult.data ?? []) as RotaRateContext['rateOverrides'],
+      ageBands: (ageBandsResult.data ?? []) as RotaRateContext['ageBands'],
+      bandRates: (bandRatesResult.data ?? []) as RotaRateContext['bandRates'],
+    };
+  }
+
+  const summary = buildRotaSummary({
+    site,
+    payrollPeriod,
+    weekDays: days,
+    periodShifts: (periodShifts ?? []) as RotaSummaryShift[],
+    employees,
+    salesTargets,
+    targetPercent: settings.wageTargetPercent,
+    rateContext,
+  });
+
+  return {
+    success: true,
+    data: summary,
+    canViewSpend,
+    canViewSalesTargets,
+    canEditSalesTargets,
+  };
+}
+
+const UpsertRotaSalesTargetOverrideSchema = z.object({
+  siteId: z.string().uuid(),
+  targetDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  targetAmount: z.number().min(0).max(9999999),
+  reason: z.string().max(200).nullable().optional(),
+});
+
+export async function upsertRotaSalesTargetOverride(input: z.infer<typeof UpsertRotaSalesTargetOverrideSchema>): Promise<
+  { success: true; data: { site_id: string; target_date: string; target_amount: number; reason: string | null } } | { success: false; error: string }
+> {
+  const canEdit = await checkUserPermission('cashing_up', 'edit');
+  if (!canEdit) return { success: false, error: 'Permission denied' };
+
+  const parsed = UpsertRotaSalesTargetOverrideSchema.safeParse(input);
+  if (!parsed.success) return { success: false, error: parsed.error.errors[0]?.message ?? 'Invalid target override' };
+
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { success: false, error: 'Unauthorized' };
+
+  const { data, error } = await supabase
+    .from('cashup_target_overrides')
+    .upsert({
+      site_id: parsed.data.siteId,
+      target_date: parsed.data.targetDate,
+      target_amount: parsed.data.targetAmount,
+      reason: parsed.data.reason?.trim() || null,
+      created_by: user.id,
+      updated_by: user.id,
+    }, { onConflict: 'site_id,target_date' })
+    .select('site_id, target_date, target_amount, reason')
+    .single();
+
+  if (error) return { success: false, error: error.message };
+
+  void logAuditEvent({
+    user_id: user.id,
+    operation_type: 'update',
+    resource_type: 'cashup_target_override',
+    resource_id: `${parsed.data.siteId}:${parsed.data.targetDate}`,
+    operation_status: 'success',
+    new_values: {
+      target_date: parsed.data.targetDate,
+      target_amount: parsed.data.targetAmount,
+      reason: parsed.data.reason ?? null,
+    },
+  });
+
+  revalidatePath('/rota');
+  revalidatePath('/cashing-up');
+  revalidatePath('/cashing-up/dashboard');
+  revalidatePath('/cashing-up/weekly');
+  revalidateTag('dashboard');
+
+  return {
+    success: true,
+    data: {
+      site_id: data.site_id,
+      target_date: data.target_date,
+      target_amount: Number(data.target_amount),
+      reason: data.reason ?? null,
+    },
+  };
 }
 
 // ---------------------------------------------------------------------------
