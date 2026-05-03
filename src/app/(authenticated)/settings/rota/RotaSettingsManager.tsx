@@ -23,16 +23,19 @@ export default function RotaSettingsManager({ initialSettings, canManage }: Rota
   const [defaultDays, setDefaultDays]   = useState(initialSettings.defaultHolidayDays.toString());
   const [managerEmail, setManagerEmail]       = useState(initialSettings.managerEmail);
   const [accountantEmail, setAccountantEmail] = useState(initialSettings.accountantEmail);
+  const [wageTargetPercent, setWageTargetPercent] = useState(initialSettings.wageTargetPercent.toString());
   const [isPending, startTransition] = useTransition();
 
   const handleSave = () => {
     const month = parseInt(holidayMonth);
     const day   = parseInt(holidayDay);
     const days  = parseInt(defaultDays);
+    const wagePct = Number(wageTargetPercent);
 
     if (!month || month < 1 || month > 12) { toast.error('Holiday year start month must be 1–12'); return; }
     if (!day   || day < 1   || day > 31)   { toast.error('Holiday year start day must be 1–31'); return; }
     if (!days  || days < 1  || days > 365) { toast.error('Default holiday allowance must be between 1 and 365'); return; }
+    if (!Number.isFinite(wagePct) || wagePct <= 0 || wagePct > 100) { toast.error('Wage target must be between 0 and 100'); return; }
 
     startTransition(async () => {
       const result = await updateRotaSettings({
@@ -41,6 +44,7 @@ export default function RotaSettingsManager({ initialSettings, canManage }: Rota
         defaultHolidayDays: days,
         managerEmail: managerEmail.trim(),
         accountantEmail: accountantEmail.trim(),
+        wageTargetPercent: wagePct,
       });
       if (!result.success) { toast.error(result.error); return; }
       toast.success('Rota settings saved');
@@ -97,6 +101,26 @@ export default function RotaSettingsManager({ initialSettings, canManage }: Rota
             max="365"
             value={defaultDays}
             onChange={e => setDefaultDays(e.target.value)}
+            disabled={!canManage}
+          />
+        </FormGroup>
+      </div>
+
+      {/* Labour planning */}
+      <div>
+        <h3 className="text-sm font-semibold text-gray-800 mb-1">Labour Planning</h3>
+        <p className="text-xs text-gray-500 mb-4">
+          Used on the rota to flag days where scheduled wages exceed the target percentage of sales.
+        </p>
+        <FormGroup label="Target wage percentage" htmlFor="wage-target-percent" className="w-48">
+          <Input
+            id="wage-target-percent"
+            type="number"
+            min="0.1"
+            max="100"
+            step="0.1"
+            value={wageTargetPercent}
+            onChange={e => setWageTargetPercent(e.target.value)}
             disabled={!canManage}
           />
         </FormGroup>
