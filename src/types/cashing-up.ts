@@ -64,7 +64,7 @@ export interface UpsertCashupSessionDTO {
   }[];
   cashCounts: {
     denomination: number;
-    quantity: number;
+    totalAmount: number;
   }[];
 }
 

@@ -249,15 +249,13 @@ export function DailyCashupForm({ site, sessionDate, initialSessionData, isBill 
   }, [cashExpected, cashCountedTotal]);
 
   const getDTO = useCallback((): UpsertCashupSessionDTO => {
-    // Reverse calculate quantities for the DB record (best effort)
     const cashCounts = DENOMINATIONS.map(denom => {
-      const val = parseFloat(cashValues[denom.value] || '0');
-      const quantity = Math.round(val / denom.value); // Estimate count
+      const totalAmount = parseFloat(cashValues[denom.value] || '0');
       return {
         denomination: denom.value,
-        quantity: quantity,
+        totalAmount,
       };
-    }).filter(c => c.quantity > 0);
+    }).filter(c => c.totalAmount > 0);
 
     return {
       siteId,
@@ -557,6 +555,7 @@ export function DailyCashupForm({ site, sessionDate, initialSessionData, isBill 
                               id={`input-denom-${denom.value}`}
                               type="number"
                               step="0.01"
+                              min="0"
                               placeholder="0.00"
                               value={cashValues[denom.value] || ''}
                               onChange={e => handleCashValueChange(denom.value, e.target.value)}

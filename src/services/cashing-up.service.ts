@@ -1,6 +1,7 @@
 import { SupabaseClient } from '@supabase/supabase-js';
 import { UpsertCashupSessionDTO, CashupSession, CashupDashboardData, CashupInsightsData } from '@/types/cashing-up';
 import { subDays, format, subMonths } from 'date-fns';
+import { normalizeCashCountInputs } from '@/lib/cashing-up/cash-counts';
 
 export class CashingUpService {
   static async getInsightsData(supabase: SupabaseClient, siteId: string, year?: number): Promise<CashupInsightsData> {
@@ -281,11 +282,11 @@ export class CashingUpService {
       }
     }
 
-    const counts = data.cashCounts.map(c => ({
+    const counts = normalizeCashCountInputs(data.cashCounts).map(c => ({
       cashup_session_id: sessionId,
       denomination: c.denomination,
       quantity: c.quantity,
-      total_amount: c.denomination * c.quantity
+      total_amount: c.totalAmount
     }));
 
     if (counts.length > 0) {
