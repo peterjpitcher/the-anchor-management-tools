@@ -33,9 +33,9 @@ export type PubOpsEventCalendarEventRow = {
   start_datetime: string | null
   end_time: string | null
   duration_minutes: number | null
-  description?: string | null
   brief?: string | null
   short_description?: string | null
+  long_description?: string | null
   booking_url: string | null
   capacity: number | null
   event_status: string | null
@@ -231,7 +231,7 @@ function buildDescription(input: {
   const capacity = typeof event.capacity === 'number' && Number.isFinite(event.capacity)
     ? String(event.capacity)
     : 'Unlimited / not set'
-  const details = truncateText(event.short_description || event.description || event.brief)
+  const details = truncateText(event.short_description || event.long_description || event.brief)
 
   return [
     `Event: ${event.name || 'Untitled event'}`,
@@ -567,7 +567,7 @@ export async function syncPubOpsEventCalendarByEventId(
     const auth = await getOAuth2Client()
     const { data: event, error: eventError } = await supabase
       .from('events')
-      .select('id, name, date, time, start_datetime, end_time, duration_minutes, description, brief, short_description, booking_url, capacity, event_status, booking_mode, payment_mode')
+      .select('id, name, date, time, start_datetime, end_time, duration_minutes, brief, short_description, long_description, booking_url, capacity, event_status, booking_mode, payment_mode')
       .eq('id', eventId)
       .maybeSingle()
 
