@@ -1071,7 +1071,7 @@ export default function OJProjectsDashboardPage() {
                         <FormGroup label="Miles" required>
                           <Input
                             type="number"
-                            min="0"
+                            min="0.1"
                             step="0.1"
                             value={miles}
                             onChange={(e) => setMiles(parseFloat(e.target.value) || 0)}
@@ -1554,7 +1554,7 @@ export default function OJProjectsDashboardPage() {
               <FormGroup label="Miles" required>
                 <Input
                   type="number"
-                  min="0"
+                  min="0.1"
                   step="0.1"
                   value={editForm.miles}
                   onChange={(e) => setEditForm({ ...editForm, miles: e.target.value })}

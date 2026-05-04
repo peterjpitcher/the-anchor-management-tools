@@ -179,6 +179,83 @@ describe('Synced trip default properties', () => {
   })
 })
 
+describe('Idempotent synced trip upsert', () => {
+  interface SyncedTripRow {
+    ojEntryId: string
+    source: 'oj_projects'
+    tripDate: string
+    description: string
+    totalMiles: number
+    milesAtStandardRate: number
+    milesAtReducedRate: number
+    amountDue: number
+  }
+
+  function upsertSyncedTrip(
+    rows: SyncedTripRow[],
+    entry: { id: string; entryDate: string; miles: number; description: string | null }
+  ): SyncedTripRow[] {
+    const totalMiles = Math.round(entry.miles * 10) / 10
+    const nextRow: SyncedTripRow = {
+      ojEntryId: entry.id,
+      source: 'oj_projects',
+      tripDate: entry.entryDate,
+      description: entry.description?.trim() || 'OJ Projects mileage',
+      totalMiles,
+      milesAtStandardRate: totalMiles,
+      milesAtReducedRate: 0,
+      amountDue: Math.round(totalMiles * 0.45 * 100) / 100,
+    }
+
+    const existingIndex = rows.findIndex((row) => row.ojEntryId === entry.id)
+    if (existingIndex === -1) return [...rows, nextRow]
+
+    const nextRows = [...rows]
+    nextRows[existingIndex] = nextRow
+    return nextRows
+  }
+
+  it('should create a missing synced row for a mileage entry', () => {
+    const rows = upsertSyncedTrip([], {
+      id: 'entry-1',
+      entryDate: '2026-04-20',
+      miles: 12.4,
+      description: 'Client visit',
+    })
+
+    expect(rows).toHaveLength(1)
+    expect(rows[0]).toMatchObject({
+      ojEntryId: 'entry-1',
+      source: 'oj_projects',
+      totalMiles: 12.4,
+      amountDue: 5.58,
+    })
+  })
+
+  it('should update the existing synced row instead of duplicating it', () => {
+    const firstRows = upsertSyncedTrip([], {
+      id: 'entry-1',
+      entryDate: '2026-04-20',
+      miles: 12.4,
+      description: 'Client visit',
+    })
+    const updatedRows = upsertSyncedTrip(firstRows, {
+      id: 'entry-1',
+      entryDate: '2026-04-21',
+      miles: 14.2,
+      description: null,
+    })
+
+    expect(updatedRows).toHaveLength(1)
+    expect(updatedRows[0]).toMatchObject({
+      ojEntryId: 'entry-1',
+      tripDate: '2026-04-21',
+      description: 'OJ Projects mileage',
+      totalMiles: 14.2,
+    })
+  })
+})
+
 // ---- Recalculation need detection ----
 
 describe('Recalculation need detection', () => {
