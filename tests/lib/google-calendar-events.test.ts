@@ -188,13 +188,14 @@ describe('google calendar event booking aggregate helpers', () => {
     expect(entry.requestBody.description).toContain('Total active seats: 5')
     expect(entry.requestBody.description).toContain('Public booking link: https://www.the-anchor.pub/whats-on/quiz-night')
     expect(entry.requestBody.description).toContain(`Admin event link: https://app.the-anchor.pub/events/${baseEvent.id}`)
+    expect(entry.requestBody).not.toHaveProperty('colorId')
     expect(entry.requestBody.extendedProperties.private).toEqual({
       source: 'anchor_event_booking_aggregate',
       anchorEventId: baseEvent.id,
     })
   })
 
-  it('marks the entry for deletion when there are no active seats', () => {
+  it('builds an aggregate calendar event when there are no active seats', () => {
     const entry = buildPubOpsEventCalendarEntry({
       event: baseEvent,
       bookings: [
@@ -204,13 +205,13 @@ describe('google calendar event booking aggregate helpers', () => {
       now,
     })
 
-    expect(entry).toMatchObject({
-      shouldDelete: true,
-      reason: 'no_active_seats',
-      aggregate: {
-        totalActiveSeats: 0,
-      },
-    })
+    expect(entry.shouldDelete).toBe(false)
+    if (entry.shouldDelete) throw new Error('Expected zero-seat calendar entry')
+
+    expect(entry.requestBody.summary).toBe('Quiz Night - 0 seats booked')
+    expect(entry.requestBody.description).toContain('Confirmed seats: 0')
+    expect(entry.requestBody.description).toContain('Pending payment held seats: 0')
+    expect(entry.requestBody.description).toContain('Total active seats: 0')
   })
 
   it('updates an existing Pub Ops aggregate calendar event', async () => {
@@ -250,7 +251,7 @@ describe('google calendar event booking aggregate helpers', () => {
     }))
   })
 
-  it('deletes the deterministic event when active seats reach zero', async () => {
+  it('updates the deterministic event when active seats reach zero', async () => {
     const supabase = makeSupabaseMock({
       event: baseEvent,
       bookings: [{ id: 'booking-1', seats: 2, status: 'cancelled', is_reminder_only: false }],
@@ -258,10 +259,30 @@ describe('google calendar event booking aggregate helpers', () => {
 
     const result = await syncPubOpsEventCalendarByEventId(supabase as any, baseEvent.id)
 
+    expect(result.state).toBe('updated')
+    expect(eventsUpdate).toHaveBeenCalledWith(expect.objectContaining({
+      calendarId: PUB_OPS_EVENT_BOOKINGS_CALENDAR_ID,
+      eventId: generatePubOpsEventCalendarEventId(baseEvent.id),
+      requestBody: expect.objectContaining({
+        summary: 'Quiz Night - 0 seats booked',
+      }),
+    }))
+    expect(eventsDelete).not.toHaveBeenCalled()
+  })
+
+  it('deletes the deterministic event when the event is cancelled', async () => {
+    const cancelledEvent = { ...baseEvent, event_status: 'cancelled' }
+    const supabase = makeSupabaseMock({
+      event: cancelledEvent,
+      bookings: [{ id: 'booking-1', seats: 2, status: 'confirmed', is_reminder_only: false }],
+    })
+
+    const result = await syncPubOpsEventCalendarByEventId(supabase as any, cancelledEvent.id)
+
     expect(result.state).toBe('deleted')
     expect(eventsDelete).toHaveBeenCalledWith(expect.objectContaining({
       calendarId: PUB_OPS_EVENT_BOOKINGS_CALENDAR_ID,
-      eventId: generatePubOpsEventCalendarEventId(baseEvent.id),
+      eventId: generatePubOpsEventCalendarEventId(cancelledEvent.id),
     }))
   })
 
