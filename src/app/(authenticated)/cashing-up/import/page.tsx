@@ -74,15 +74,15 @@ export default function ImportPage() {
         for (let i = 0; i < data.length; i++) {
           const row = data[i];
 
-          // Parse Denominations if present
+          // Parse denomination total values if present.
           const cashCounts: Record<number, number> = {};
           let hasCounts = false;
           DENOMINATIONS.forEach(d => {
             // Try both label (e.g., "1p") and value keys if user customized
             if (row[d.label]) {
-              const count = parseFloat(row[d.label]);
-              if (!isNaN(count) && count > 0) {
-                cashCounts[d.value] = count;
+              const totalAmount = parseFloat(row[d.label]);
+              if (!isNaN(totalAmount) && totalAmount > 0) {
+                cashCounts[d.value] = totalAmount;
                 hasCounts = true;
               }
             }
@@ -209,9 +209,9 @@ export default function ImportPage() {
             <ul className="list-disc pl-5 space-y-1 mt-2">
               <li>The file must be a <strong>CSV</strong> (Comma Separated Values) file.</li>
               <li>Required columns: <strong>Date</strong> (YYYY-MM-DD), <strong>Actual Cash</strong>, <strong>Card</strong>, <strong>Stripe</strong>.</li>
-              <li>Optional columns: <strong>Z Report Cash</strong> (Expected), <strong>Site</strong>, <strong>Notes</strong>, and denomination counts.</li>
+              <li>Optional columns: <strong>Z Report Cash</strong> (Expected), <strong>Site</strong>, <strong>Notes</strong>, and denomination total values.</li>
               <li>If <strong>Z Report Cash</strong> is provided, it will be used to calculate variance. If omitted, variance will be £0.</li>
-              <li>If denomination counts are provided, they will be saved.</li>
+              <li>If denomination total values are provided, they will be saved.</li>
             </ul>
           </div>
           <div className="mt-6">

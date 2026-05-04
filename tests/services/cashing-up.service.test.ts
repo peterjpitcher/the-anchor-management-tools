@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { CashingUpService } from '@/services/cashing-up.service';
+import { normalizeCashCountInput, normalizeCashCountInputs } from '@/lib/cashing-up/cash-counts';
 import { SupabaseClient } from '@supabase/supabase-js';
 
 // Mock Supabase Client
@@ -20,6 +21,15 @@ const mockSupabase = {
     delete: mockDelete,
   })),
 } as unknown as SupabaseClient;
+
+function isCashCountInsertPayload(payload: unknown): payload is Array<Record<string, unknown>> {
+  return Array.isArray(payload) && payload.some(row => (
+    typeof row === 'object' &&
+    row !== null &&
+    'denomination' in row &&
+    'total_amount' in row
+  ));
+}
 
 // Chain mocks
 mockSelect.mockReturnValue({ eq: mockEq });
@@ -107,6 +117,49 @@ describe('CashingUpService', () => {
     }));
   });
 
+  it('should persist denomination total values as exact derived counts', async () => {
+    const userId = 'user-123';
+    const dto = {
+      siteId: 'site-1',
+      sessionDate: '2025-01-01',
+      status: 'draft' as const,
+      notes: 'Screenshot case',
+      paymentBreakdowns: [
+        { paymentTypeCode: 'CASH', paymentTypeLabel: 'Cash', expectedAmount: 0, countedAmount: 51.8 },
+      ],
+      cashCounts: [
+        { denomination: 20, totalAmount: 40 },
+        { denomination: 10, totalAmount: 10 },
+        { denomination: 1, totalAmount: 1 },
+        { denomination: 0.2, totalAmount: 0.2 },
+        { denomination: 0.1, totalAmount: 0.1 },
+        { denomination: 0.05, totalAmount: 0.5 },
+      ],
+    };
+
+    mockMaybeSingle.mockResolvedValue({ data: null });
+    mockSingle
+      .mockResolvedValueOnce({ data: { id: 'new-session-id' } })
+      .mockResolvedValueOnce({ data: { id: 'new-session-id' } });
+
+    await CashingUpService.upsertSession(mockSupabase, dto, userId);
+
+    expect(mockInsert).toHaveBeenCalledWith(expect.objectContaining({
+      total_counted_amount: 51.8,
+      total_variance_amount: 51.8,
+    }));
+
+    const cashCountInsertCall = mockInsert.mock.calls.find(([payload]) => isCashCountInsertPayload(payload));
+    expect(cashCountInsertCall?.[0]).toEqual(expect.arrayContaining([
+      expect.objectContaining({ denomination: 20, quantity: 2, total_amount: 40 }),
+      expect.objectContaining({ denomination: 10, quantity: 1, total_amount: 10 }),
+      expect.objectContaining({ denomination: 1, quantity: 1, total_amount: 1 }),
+      expect.objectContaining({ denomination: 0.2, quantity: 1, total_amount: 0.2 }),
+      expect.objectContaining({ denomination: 0.1, quantity: 1, total_amount: 0.1 }),
+      expect.objectContaining({ denomination: 0.05, quantity: 10, total_amount: 0.5 }),
+    ]));
+  });
+
   it('should throw error if session already exists for site/date', async () => {
     const userId = 'user-123';
     const dto = {
@@ -181,5 +234,29 @@ describe('CashingUpService', () => {
     await expect(
       CashingUpService.unlockSession(mockSupabase, 'session-1', 'user-1')
     ).rejects.toThrow('Session not found or not locked');
+  });
+});
+
+describe('cash count normalization', () => {
+  it('normalizes total-value inputs using pence-safe arithmetic', () => {
+    expect(normalizeCashCountInputs([
+      { denomination: 20, totalAmount: 40 },
+      { denomination: 0.2, totalAmount: 0.2 },
+      { denomination: 0.05, totalAmount: 0.5 },
+    ])).toEqual([
+      { denomination: 20, quantity: 2, totalAmount: 40 },
+      { denomination: 0.2, quantity: 1, totalAmount: 0.2 },
+      { denomination: 0.05, quantity: 10, totalAmount: 0.5 },
+    ]);
+  });
+
+  it('rejects totals that are not exact multiples of the denomination', () => {
+    expect(() => normalizeCashCountInput({ denomination: 0.2, totalAmount: 0.3 }))
+      .toThrow('must be a multiple of £0.20');
+  });
+
+  it('rejects negative totals', () => {
+    expect(() => normalizeCashCountInput({ denomination: 10, totalAmount: -10 }))
+      .toThrow('cannot be negative');
   });
 });

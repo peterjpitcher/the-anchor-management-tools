@@ -13,7 +13,7 @@ export interface ImportRow {
   card: number;
   stripe: number;
   notes?: string;
-  cashCounts?: Record<number, number>; // Optional: Denomination value -> Count
+  cashCounts?: Record<number, number>; // Optional: Denomination value -> total amount
 }
 
 export interface ImportResult {
@@ -89,20 +89,18 @@ export async function importCashupHistoryAction(rows: ImportRow[]): Promise<Impo
       })();
 
       // 3. Prepare DTO
-      // Process Cash Counts if available
-      const cashCounts = [];
+      // Process denomination totals if available.
+      const cashCounts: UpsertCashupSessionDTO['cashCounts'] = [];
       let calculatedCashTotal = 0;
 
       if (row.cashCounts) {
         for (const [denom, value] of Object.entries(row.cashCounts)) {
           const denomination = parseFloat(denom);
-          const inputValue = Number(value);
-          // Input is Value (e.g. 150.00), not Count. Calculate Count.
-          const quantity = Math.round(inputValue / denomination);
+          const totalAmount = Number(value);
           
-          if (quantity > 0) {
-            cashCounts.push({ denomination, quantity });
-            calculatedCashTotal += denomination * quantity;
+          if (totalAmount > 0) {
+            cashCounts.push({ denomination, totalAmount });
+            calculatedCashTotal += totalAmount;
           }
         }
       }
@@ -143,7 +141,7 @@ export async function importCashupHistoryAction(rows: ImportRow[]): Promise<Impo
             countedAmount: row.stripe,
           }
         ],
-        cashCounts: cashCounts // Now populated if available
+        cashCounts
       };
 
       // 4. Upsert
