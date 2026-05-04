@@ -51,14 +51,6 @@ export interface SyncOptions {
   weekStart?: string
 }
 
-// Each rota shift is colour-coded by department so the calendar is scannable at a glance.
-// Google Calendar colour IDs: 1=Lavender 2=Sage 6=Tangerine 8=Graphite 11=Tomato
-const DEPT_COLOUR: Record<string, string> = {
-  bar: '1',      // Lavender (matches bar=info/blue badge)
-  kitchen: '6',  // Tangerine (matches kitchen=warning/orange badge)
-  runner: '2',   // Sage (matches runner=success/green badge)
-}
-
 function getRotaCalendarId(): string | null {
   return process.env.GOOGLE_CALENDAR_ROTA_ID ?? null
 }
@@ -92,11 +84,6 @@ function toUtcIso(dateStr: string, timeStr: string): string {
   const [h, m] = timeStr.split(':')
   const local = `${dateStr}T${h.padStart(2, '0')}:${m.padStart(2, '0')}:00`
   return fromZonedTime(local, CALENDAR_TIME_ZONE).toISOString()
-}
-
-function shiftColour(department: string | null, status: string): string {
-  if (status === 'sick') return '11' // Tomato/Red
-  return DEPT_COLOUR[department ?? ''] ?? '8' // Graphite/Gray for unknown dept
 }
 
 export interface RotaShiftRow {
@@ -417,7 +404,6 @@ export async function syncRotaWeekToCalendar(
           description,
           start: { dateTime: startIso, timeZone: CALENDAR_TIME_ZONE },
           end: { dateTime: endIso, timeZone: CALENDAR_TIME_ZONE },
-          colorId: shiftColour(shift.department, shift.status),
           extendedProperties: {
             private: { shiftId: shift.id, weekId: weekId },
           },
