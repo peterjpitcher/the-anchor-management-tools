@@ -31,7 +31,11 @@ const destinationSchema = z.object({
 const tripLegSchema = z.object({
   fromDestinationId: z.string().uuid(),
   toDestinationId: z.string().uuid(),
-  miles: z.number().positive('Miles must be greater than 0'),
+  miles: z
+    .number()
+    .finite('Miles must be a valid number')
+    .positive('Miles must be greater than 0')
+    .refine(hasAtMostOneDecimalPlace, 'Miles must be rounded to 1 decimal place'),
 })
 
 const createTripSchema = z.object({
@@ -139,6 +143,79 @@ function revalidateMileagePaths(): void {
  */
 function canonicalPair(a: string, b: string): [string, string] {
   return a < b ? [a, b] : [b, a]
+}
+
+function hasAtMostOneDecimalPlace(miles: number): boolean {
+  return Math.abs(Math.round(miles * 10) - miles * 10) < 0.000001
+}
+
+function roundMiles(miles: number): number {
+  return Math.round(miles * 10) / 10
+}
+
+function roundCurrency(amount: number): number {
+  return Math.round(amount * 100) / 100
+}
+
+function validateManualTripLegs(
+  legs: Array<{ fromDestinationId: string; toDestinationId: string; miles: number }>,
+  homeBaseId: string
+): {
+  error?: string
+  legs?: Array<{ fromDestinationId: string; toDestinationId: string; miles: number }>
+  totalMiles?: number
+} {
+  if (legs.length === 0) {
+    return { error: 'At least one leg is required' }
+  }
+
+  if (legs[0].fromDestinationId !== homeBaseId) {
+    return { error: 'First leg must start from The Anchor (home base)' }
+  }
+  if (legs[legs.length - 1].toDestinationId !== homeBaseId) {
+    return { error: 'Last leg must end at The Anchor (home base)' }
+  }
+
+  const normalizedLegs = legs.map((leg, index) => {
+    if (leg.fromDestinationId === leg.toDestinationId) {
+      return { error: `Leg ${index + 1} must use two different destinations` }
+    }
+    if (!Number.isFinite(leg.miles) || leg.miles <= 0) {
+      return { error: `Leg ${index + 1} miles must be greater than 0` }
+    }
+    if (!hasAtMostOneDecimalPlace(leg.miles)) {
+      return { error: `Leg ${index + 1} miles must be rounded to 1 decimal place` }
+    }
+    return {
+      fromDestinationId: leg.fromDestinationId,
+      toDestinationId: leg.toDestinationId,
+      miles: roundMiles(leg.miles),
+    }
+  })
+
+  const firstError = normalizedLegs.find(
+    (leg): leg is { error: string } => 'error' in leg
+  )
+  if (firstError) return { error: firstError.error }
+
+  const typedLegs = normalizedLegs as Array<{
+    fromDestinationId: string
+    toDestinationId: string
+    miles: number
+  }>
+
+  for (let i = 1; i < typedLegs.length; i++) {
+    if (typedLegs[i].fromDestinationId !== typedLegs[i - 1].toDestinationId) {
+      return { error: `Leg ${i + 1} must start where leg ${i} ends` }
+    }
+  }
+
+  const totalMiles = roundMiles(typedLegs.reduce((sum, leg) => sum + leg.miles, 0))
+  if (totalMiles <= 0) {
+    return { error: 'Total miles must be greater than 0' }
+  }
+
+  return { legs: typedLegs, totalMiles }
 }
 
 // ---------------------------------------------------------------------------
@@ -261,14 +338,17 @@ export async function getTrips(filters?: {
       destIds.add(leg.to_destination_id)
     }
 
-    const { data: dests } = await db
-      .from('mileage_destinations')
-      .select('id, name')
-      .in('id', Array.from(destIds))
-
     const destNameMap = new Map<string, string>()
-    for (const d of dests ?? []) {
-      destNameMap.set(d.id, d.name)
+    if (destIds.size > 0) {
+      const { data: dests, error: destsError } = await db
+        .from('mileage_destinations')
+        .select('id, name')
+        .in('id', Array.from(destIds))
+
+      if (destsError) throw destsError
+      for (const d of dests ?? []) {
+        destNameMap.set(d.id, d.name)
+      }
     }
 
     // Group legs by trip
@@ -601,7 +681,7 @@ export async function createTrip(input: {
       return { error: parsed.error.issues[0]?.message ?? 'Invalid input' }
     }
 
-    const { tripDate, description, legs } = parsed.data
+    const { tripDate, description } = parsed.data
 
     // Validate leg chain: first leg must start from home base, last must end at home base
     const { data: homeBase } = await db
@@ -614,27 +694,16 @@ export async function createTrip(input: {
       return { error: 'Home base destination not found' }
     }
 
-    if (legs[0].fromDestinationId !== homeBase.id) {
-      return { error: 'First leg must start from The Anchor (home base)' }
+    const validated = validateManualTripLegs(parsed.data.legs, homeBase.id)
+    if (validated.error || !validated.legs || !validated.totalMiles) {
+      return { error: validated.error ?? 'Invalid trip legs' }
     }
-    if (legs[legs.length - 1].toDestinationId !== homeBase.id) {
-      return { error: 'Last leg must end at The Anchor (home base)' }
-    }
+    const legs = validated.legs
+    const totalMiles = validated.totalMiles
 
-    // Validate chain continuity
-    for (let i = 1; i < legs.length; i++) {
-      if (legs[i].fromDestinationId !== legs[i - 1].toDestinationId) {
-        return {
-          error: `Leg ${i + 1} must start where leg ${i} ends`,
-        }
-      }
-    }
-
-    // Calculate total miles
-    const totalMiles = legs.reduce((sum, leg) => sum + leg.miles, 0)
-    if (totalMiles <= 0) {
-      return { error: 'Total miles must be greater than 0' }
-    }
+    // Cache leg distances before creating the trip so uncached pairs are saved
+    // for future prefill and cache write failures do not leave a partial trip.
+    await cacheDistances(db, legs)
 
     // Insert trip with default rates; the shared recalculation below will
     // apply the correct cumulative HMRC threshold split for the whole tax year.
@@ -646,7 +715,7 @@ export async function createTrip(input: {
         total_miles: totalMiles,
         miles_at_standard_rate: totalMiles,
         miles_at_reduced_rate: 0,
-        amount_due: Math.round(totalMiles * STANDARD_RATE * 100) / 100,
+        amount_due: roundCurrency(totalMiles * STANDARD_RATE),
         source: 'manual',
         created_by: userId,
       })
@@ -669,9 +738,6 @@ export async function createTrip(input: {
       .insert(legInserts)
 
     if (legsError) throw legsError
-
-    // Cache new distances
-    await cacheDistances(db, legs)
 
     // Recalculate HMRC rate splits for all trips in the affected tax year
     await recalculateTaxYearMileage(tripDate)
@@ -730,7 +796,7 @@ export async function updateTrip(input: {
       return { error: parsed.error.issues[0]?.message ?? 'Invalid input' }
     }
 
-    const { tripDate, description, legs } = parsed.data
+    const { tripDate, description } = parsed.data
 
     // Validate chain (same as create)
     const { data: homeBase } = await db
@@ -740,24 +806,21 @@ export async function updateTrip(input: {
       .single()
 
     if (!homeBase) return { error: 'Home base not found' }
-    if (legs[0].fromDestinationId !== homeBase.id) {
-      return { error: 'First leg must start from The Anchor' }
-    }
-    if (legs[legs.length - 1].toDestinationId !== homeBase.id) {
-      return { error: 'Last leg must end at The Anchor' }
-    }
-    for (let i = 1; i < legs.length; i++) {
-      if (legs[i].fromDestinationId !== legs[i - 1].toDestinationId) {
-        return { error: `Leg ${i + 1} must start where leg ${i} ends` }
-      }
-    }
 
-    const totalMiles = legs.reduce((sum, leg) => sum + leg.miles, 0)
-    if (totalMiles <= 0) return { error: 'Total miles must be greater than 0' }
+    const validated = validateManualTripLegs(parsed.data.legs, homeBase.id)
+    if (validated.error || !validated.legs || !validated.totalMiles) {
+      return { error: validated.error ?? 'Invalid trip legs' }
+    }
+    const legs = validated.legs
+    const totalMiles = validated.totalMiles
 
     // Save the old trip date before updating, so we can recalculate BOTH tax years
     // if the date moved across the 6 April boundary.
     const oldTripDate = existing.trip_date
+
+    // Cache leg distances before replacing the trip rows. If this fails, the
+    // existing trip is left untouched and the user can retry.
+    await cacheDistances(db, legs)
 
     // Update trip with default rates; the shared recalculation below will
     // apply the correct cumulative HMRC threshold split for the whole tax year.
@@ -769,7 +832,7 @@ export async function updateTrip(input: {
         total_miles: totalMiles,
         miles_at_standard_rate: totalMiles,
         miles_at_reduced_rate: 0,
-        amount_due: Math.round(totalMiles * STANDARD_RATE * 100) / 100,
+        amount_due: roundCurrency(totalMiles * STANDARD_RATE),
       })
       .eq('id', input.id)
 
@@ -796,9 +859,6 @@ export async function updateTrip(input: {
       .insert(legInserts)
 
     if (insertLegsError) throw insertLegsError
-
-    // Cache new distances
-    await cacheDistances(db, legs)
 
     // Recalculate HMRC rate splits for the new tax year
     await recalculateTaxYearMileage(tripDate)
@@ -892,20 +952,20 @@ async function cacheDistances(
 ): Promise<void> {
   for (const leg of legs) {
     const [canonFrom, canonTo] = canonicalPair(leg.fromDestinationId, leg.toDestinationId)
-    try {
-      await db
-        .from('mileage_destination_distances')
-        .upsert(
-          {
-            from_destination_id: canonFrom,
-            to_destination_id: canonTo,
-            miles: leg.miles,
-            last_used_at: new Date().toISOString(),
-          },
-          { onConflict: 'from_destination_id,to_destination_id' }
-        )
-    } catch {
-      // Non-critical: distance cache failure should not block trip creation
+    const { error } = await db
+      .from('mileage_destination_distances')
+      .upsert(
+        {
+          from_destination_id: canonFrom,
+          to_destination_id: canonTo,
+          miles: roundMiles(leg.miles),
+          last_used_at: new Date().toISOString(),
+        },
+        { onConflict: 'from_destination_id,to_destination_id' }
+      )
+
+    if (error) {
+      throw new Error(`Failed to save route distance: ${error.message}`)
     }
   }
 }

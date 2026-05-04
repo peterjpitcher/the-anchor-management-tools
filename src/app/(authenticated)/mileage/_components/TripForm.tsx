@@ -18,10 +18,12 @@ import {
   THRESHOLD_MILES,
 } from '@/lib/mileage/hmrcRates'
 import {
-  PlusIcon,
-  TrashIcon,
-  ArrowRightIcon,
-} from '@heroicons/react/24/outline'
+  createEmptyStop,
+  mapTripLegsToFormModel,
+  validateAndBuildTripLegs,
+  type TripFormStop,
+} from '@/lib/mileage/tripFormModel'
+import { PlusIcon, TrashIcon, ArrowRightIcon } from '@heroicons/react/24/outline'
 import { getTodayIsoDate } from '@/lib/dateUtils'
 
 interface TripFormProps {
@@ -34,12 +36,6 @@ interface TripFormProps {
   editingTrip?: MileageTrip | null
 }
 
-interface LegInput {
-  key: string
-  destinationId: string
-  miles: string
-}
-
 export function TripForm({
   open,
   onClose,
@@ -50,258 +46,166 @@ export function TripForm({
 }: TripFormProps): React.JSX.Element {
   const [isPending, startTransition] = useTransition()
   const [error, setError] = useState<string | null>(null)
+  const [returnMilesError, setReturnMilesError] = useState<string | null>(null)
+  const [stopErrors, setStopErrors] = useState<Map<number, string>>(new Map())
 
   const homeBase = destinations.find((d) => d.isHomeBase)
   const nonHomeDestinations = destinations.filter((d) => !d.isHomeBase)
 
-  // Form state
   const [tripDate, setTripDate] = useState(getTodayIsoDate())
   const [description, setDescription] = useState('')
-  const [stops, setStops] = useState<LegInput[]>([
-    { key: crypto.randomUUID(), destinationId: '', miles: '' },
-  ])
+  const [stops, setStops] = useState<TripFormStop[]>([createEmptyStop()])
+  const [returnMiles, setReturnMiles] = useState('')
 
-  // Populate form when editing
-  useEffect(() => {
-    if (editingTrip) {
-      setTripDate(editingTrip.tripDate)
-      setDescription(editingTrip.description ?? '')
-      // Convert legs to stops (intermediate destinations, excluding home base start/end)
-      const intermediateStops: LegInput[] = editingTrip.legs.map((leg) => ({
-        key: crypto.randomUUID(),
-        destinationId: leg.toDestinationId === homeBase?.id
-          ? leg.fromDestinationId  // last leg: use from
-          : leg.toDestinationId,
-        miles: String(leg.miles),
-      }))
-      // Remove the last stop if it points to home base (it's the return leg)
-      // Actually, each leg has its own miles. We want stops = list of intermediate destinations.
-      // Leg pattern: Anchor -> A (legMiles), A -> B (legMiles), B -> Anchor (legMiles)
-      // Stops: A (miles from prev), B (miles from A), then return (miles from B to Anchor)
-      // For the form, we represent stops as the TO destination of each leg except the last
-      // The last leg's TO is always Anchor, so its FROM is the last stop destination.
-      if (editingTrip.legs.length > 0) {
-        const formStops: LegInput[] = []
-        for (let i = 0; i < editingTrip.legs.length; i++) {
-          const leg = editingTrip.legs[i]
-          if (i < editingTrip.legs.length - 1) {
-            // Intermediate stop: the TO of this leg
-            formStops.push({
-              key: crypto.randomUUID(),
-              destinationId: leg.toDestinationId,
-              miles: String(leg.miles),
-            })
-          } else {
-            // Last leg: goes back to Anchor. The FROM is the last stop.
-            // We represent the return miles on the last stop.
-            // Actually, the last stop destination was already added. We need to add
-            // the final stop with its return miles.
-            formStops.push({
-              key: crypto.randomUUID(),
-              destinationId: leg.fromDestinationId,
-              miles: String(leg.miles),
-            })
-          }
-        }
-        setStops(formStops.length > 0 ? formStops : [{ key: crypto.randomUUID(), destinationId: '', miles: '' }])
-      }
-    } else {
-      setTripDate(getTodayIsoDate())
-      setDescription('')
-      setStops([{ key: crypto.randomUUID(), destinationId: '', miles: '' }])
-    }
-    setError(null)
-  }, [editingTrip, homeBase?.id, open])
+  const getDestinationName = useCallback(
+    (id: string | undefined): string | null => {
+      if (!id) return null
+      return destinations.find((d) => d.id === id)?.name ?? null
+    },
+    [destinations]
+  )
 
-  // Fetch cached distance when destination changes
   const fetchCachedDistance = useCallback(
-    async (destId: string, prevDestId: string): Promise<number | null> => {
-      if (!destId || !prevDestId) return null
-      const result = await getDistanceCache(prevDestId, destId)
+    async (fromDestId: string, toDestId: string): Promise<number | null> => {
+      if (!fromDestId || !toDestId || fromDestId === toDestId) return null
+      const result = await getDistanceCache(fromDestId, toDestId)
       return result.data?.miles ?? null
     },
     []
   )
 
-  function handleDestinationChange(index: number, destId: string): void {
-    setStops((prev) => {
-      const newStops = [...prev]
-      // Clear miles for the leg TO this stop (affected by destination change)
-      newStops[index] = { ...newStops[index], destinationId: destId, miles: '' }
-      // Clear miles for the leg FROM this stop (next stop's miles), if it exists
-      if (index + 1 < newStops.length) {
-        newStops[index + 1] = { ...newStops[index + 1], miles: '' }
-      }
-      return newStops
-    })
-
-    // Also clear return miles if this is the last stop
-    if (index === stops.length - 1) {
+  useEffect(() => {
+    if (editingTrip && homeBase) {
+      const model = mapTripLegsToFormModel(editingTrip.legs, homeBase.id)
+      setTripDate(editingTrip.tripDate)
+      setDescription(editingTrip.description ?? '')
+      setStops(model.stops)
+      setReturnMiles(model.returnMiles)
+    } else if (!editingTrip) {
+      setTripDate(getTodayIsoDate())
+      setDescription('')
+      setStops([createEmptyStop()])
       setReturnMiles('')
     }
 
-    // Attempt to re-fetch cached distances for the new pairs
-    if (destId && homeBase) {
-      // Leg TO this stop: from previous destination to new destination
-      const prevDestId = index === 0 ? homeBase.id : stops[index - 1]?.destinationId
-      if (prevDestId) {
-        fetchCachedDistance(destId, prevDestId).then((cachedMiles) => {
-          if (cachedMiles != null) {
-            setStops((prev) => {
-              const updated = [...prev]
-              if (updated[index] && updated[index].destinationId === destId && !updated[index].miles) {
-                updated[index] = { ...updated[index], miles: String(cachedMiles) }
-              }
-              return updated
-            })
-          }
-        })
-      }
+    setError(null)
+    setReturnMilesError(null)
+    setStopErrors(new Map())
+  }, [editingTrip, homeBase, open])
 
-      // Leg FROM this stop: from new destination to next stop (or home base for return)
-      const nextDestId = index + 1 < stops.length ? stops[index + 1]?.destinationId : null
-      if (nextDestId) {
-        fetchCachedDistance(nextDestId, destId).then((cachedMiles) => {
-          if (cachedMiles != null) {
-            setStops((prev) => {
-              const updated = [...prev]
-              if (updated[index + 1] && !updated[index + 1].miles) {
-                updated[index + 1] = { ...updated[index + 1], miles: String(cachedMiles) }
-              }
-              return updated
-            })
-          }
-        })
-      } else {
-        // This is the last stop; re-fetch return miles to home base
-        fetchCachedDistance(homeBase.id, destId).then((cachedMiles) => {
-          if (cachedMiles != null) {
-            setReturnMiles((prev) => (prev === '' ? String(cachedMiles) : prev))
-          }
-        })
+  function fillStopMilesFromCache(index: number, destId: string, prevDestId: string): void {
+    fetchCachedDistance(prevDestId, destId).then((cachedMiles) => {
+      if (cachedMiles == null) return
+      setStops((prev) => {
+        const updated = [...prev]
+        if (updated[index]?.destinationId === destId && !updated[index].miles) {
+          updated[index] = { ...updated[index], miles: String(cachedMiles) }
+        }
+        return updated
+      })
+    })
+  }
+
+  function fillReturnMilesFromCache(destId: string): void {
+    if (!homeBase) return
+    fetchCachedDistance(destId, homeBase.id).then((cachedMiles) => {
+      if (cachedMiles != null) {
+        setReturnMiles((prev) => (prev === '' ? String(cachedMiles) : prev))
       }
+    })
+  }
+
+  function handleDestinationChange(index: number, destId: string): void {
+    const prevDestId = index === 0 ? homeBase?.id : stops[index - 1]?.destinationId
+    const nextDestId = stops[index + 1]?.destinationId
+    const isLastStop = index === stops.length - 1
+
+    setStops((prev) => {
+      const updated = [...prev]
+      updated[index] = { ...updated[index], destinationId: destId, miles: '' }
+      if (updated[index + 1]) {
+        updated[index + 1] = { ...updated[index + 1], miles: '' }
+      }
+      return updated
+    })
+    setStopErrors((prev) => {
+      const updated = new Map(prev)
+      updated.delete(index)
+      if (index + 1 < stops.length) updated.delete(index + 1)
+      return updated
+    })
+
+    if (isLastStop) {
+      setReturnMiles('')
+      setReturnMilesError(null)
+    }
+
+    if (!destId || !prevDestId) return
+
+    fillStopMilesFromCache(index, destId, prevDestId)
+
+    if (nextDestId) {
+      fillStopMilesFromCache(index + 1, nextDestId, destId)
+    } else if (isLastStop) {
+      fillReturnMilesFromCache(destId)
     }
   }
 
   function handleMilesChange(index: number, miles: string): void {
-    const newStops = [...stops]
-    newStops[index] = { ...newStops[index], miles }
-    setStops(newStops)
+    setStops((prev) => {
+      const updated = [...prev]
+      updated[index] = { ...updated[index], miles }
+      return updated
+    })
+    setStopErrors((prev) => {
+      const updated = new Map(prev)
+      updated.delete(index)
+      return updated
+    })
   }
 
   function addStop(): void {
-    setStops((prev) => [...prev, { key: crypto.randomUUID(), destinationId: '', miles: '' }])
+    setStops((prev) => [...prev, createEmptyStop()])
+    setReturnMiles('')
+    setReturnMilesError(null)
   }
 
   function removeStop(index: number): void {
-    setStops((prev) => {
-      const newStops = prev.filter((_, i) => i !== index)
-      // After removal, the stop that now occupies position `index` (previously index+1)
-      // has a new predecessor, so its miles are stale -- clear them for re-entry/re-fetch.
-      if (index < newStops.length) {
-        newStops[index] = { ...newStops[index], miles: '' }
-      }
-      return newStops
-    })
+    const prevDestId = index === 0 ? homeBase?.id : stops[index - 1]?.destinationId
+    const nextStop = stops[index + 1]
+    const wasLastStop = index === stops.length - 1
+    const newLastDestId = wasLastStop ? stops[index - 1]?.destinationId : undefined
 
-    // If the removed stop was the last one, the return leg's predecessor changed
-    // so clear the return miles too.
-    if (index === stops.length - 1) {
+    setStops((prev) => {
+      const updated = prev.filter((_, i) => i !== index)
+      if (updated[index]) {
+        updated[index] = { ...updated[index], miles: '' }
+      }
+      return updated.length > 0 ? updated : [createEmptyStop()]
+    })
+    setStopErrors(new Map())
+
+    if (wasLastStop) {
       setReturnMiles('')
+      setReturnMilesError(null)
     }
 
-    // Attempt to re-fetch cached distance for the newly adjacent pair
-    if (homeBase) {
-      const prevDestId = index === 0 ? homeBase.id : stops[index - 1]?.destinationId
-      // The stop that now sits at `index` is the old stops[index + 1]
-      const nextStop = stops[index + 1]
-      if (prevDestId && nextStop?.destinationId) {
-        fetchCachedDistance(nextStop.destinationId, prevDestId).then((cachedMiles) => {
-          if (cachedMiles != null) {
-            setStops((prev) => {
-              const updated = [...prev]
-              if (updated[index] && !updated[index].miles) {
-                updated[index] = { ...updated[index], miles: String(cachedMiles) }
-              }
-              return updated
-            })
-          }
-        })
-      }
-      // If the removed stop was the last, re-fetch return miles
-      if (index === stops.length - 1 && index > 0) {
-        const newLastDestId = stops[index - 1]?.destinationId
-        if (newLastDestId) {
-          fetchCachedDistance(homeBase.id, newLastDestId).then((cachedMiles) => {
-            if (cachedMiles != null) {
-              setReturnMiles((prev) => (prev === '' ? String(cachedMiles) : prev))
-            }
-          })
-        }
-      }
+    if (prevDestId && nextStop?.destinationId) {
+      fillStopMilesFromCache(index, nextStop.destinationId, prevDestId)
+    }
+    if (wasLastStop && newLastDestId) {
+      fillReturnMilesFromCache(newLastDestId)
     }
   }
 
-  // Build legs from stops for the form model:
-  // Stop 0: Anchor -> stops[0].destination, miles = stops[0].miles (outbound)
-  // Stop 1: stops[0].destination -> stops[1].destination, miles = stops[1].miles
-  // ...
-  // Last: stops[n-1].destination -> Anchor, with return miles stored separately
-  // Actually the spec says legs include the return, so we need a return miles field.
-  // Let's keep it simpler: each "stop" represents going TO that destination,
-  // and the miles are the leg miles from the previous point to this stop.
-  // The return leg (last stop -> Anchor) needs separate miles.
-  const [returnMiles, setReturnMiles] = useState('')
-
   useEffect(() => {
-    if (editingTrip && editingTrip.legs.length > 0) {
-      // The last leg's miles are the return miles
-      const lastLeg = editingTrip.legs[editingTrip.legs.length - 1]
-      setReturnMiles(String(lastLeg.miles))
-      // Reconstruct stops more carefully
-      const formStops: LegInput[] = []
-      for (let i = 0; i < editingTrip.legs.length - 1; i++) {
-        const leg = editingTrip.legs[i]
-        formStops.push({
-          key: crypto.randomUUID(),
-          destinationId: leg.toDestinationId,
-          miles: String(leg.miles),
-        })
-      }
-      // If only 1 leg total (Anchor -> dest -> Anchor collapsed into single-stop form)
-      if (editingTrip.legs.length === 1) {
-        // Single leg Anchor -> Anchor shouldn't happen, but handle gracefully
-        formStops.push({
-          key: crypto.randomUUID(),
-          destinationId: editingTrip.legs[0].toDestinationId,
-          miles: String(editingTrip.legs[0].miles),
-        })
-        setReturnMiles('')
-      } else {
-        // The from_destination of the last leg is the last intermediate stop
-        // which should already be the to_destination of the second-to-last leg
-      }
-      if (formStops.length > 0) {
-        setStops(formStops)
-      }
-    } else if (!editingTrip) {
-      setReturnMiles('')
-    }
-  }, [editingTrip, open])
-
-  // Fetch return miles cache when last stop changes
-  useEffect(() => {
+    if (!homeBase || returnMiles) return
     const lastStop = stops[stops.length - 1]
-    if (lastStop?.destinationId && homeBase && !returnMiles) {
-      fetchCachedDistance(homeBase.id, lastStop.destinationId).then((cached) => {
-        if (cached != null) {
-          setReturnMiles(String(cached))
-        }
-      })
+    if (lastStop?.destinationId) {
+      fillReturnMilesFromCache(lastStop.destinationId)
     }
-  }, [stops, homeBase, returnMiles, fetchCachedDistance])
+  }, [stops, homeBase, returnMiles])
 
-  // Calculate totals
   const totalMiles =
     stops.reduce((sum, s) => sum + (parseFloat(s.miles) || 0), 0) +
     (parseFloat(returnMiles) || 0)
@@ -310,66 +214,13 @@ export function TripForm({
   const crossesThreshold =
     rateSplit.milesAtStandardRate > 0 && rateSplit.milesAtReducedRate > 0
 
-  // Per-stop validation errors
-  const [stopErrors, setStopErrors] = useState<Map<number, string>>(new Map())
-
   function handleSubmit(): void {
-    setError(null)
-    setStopErrors(new Map())
+    const validation = validateAndBuildTripLegs(homeBase?.id, stops, returnMiles)
+    setError(validation.formError)
+    setStopErrors(validation.stopErrors)
+    setReturnMilesError(validation.returnMilesError)
 
-    if (!homeBase) {
-      setError('Home base not configured')
-      return
-    }
-
-    // Validate ALL rendered stops — never silently drop incomplete ones
-    const errors = new Map<number, string>()
-    for (let i = 0; i < stops.length; i++) {
-      const stop = stops[i]
-      if (!stop.destinationId) {
-        errors.set(i, 'Select a destination')
-      } else if (!stop.miles || parseFloat(stop.miles) <= 0) {
-        errors.set(i, 'Enter miles')
-      }
-    }
-
-    if (errors.size > 0) {
-      setStopErrors(errors)
-      setError('Please complete all stops before saving')
-      return
-    }
-
-    const returnMilesNum = parseFloat(returnMiles)
-    if (!returnMilesNum || returnMilesNum <= 0) {
-      setError('Return miles are required')
-      return
-    }
-
-    // Build legs — all stops are validated at this point
-    const legs: Array<{ fromDestinationId: string; toDestinationId: string; miles: number }> = []
-
-    // First leg: Anchor -> first stop
-    legs.push({
-      fromDestinationId: homeBase.id,
-      toDestinationId: stops[0].destinationId,
-      miles: parseFloat(stops[0].miles),
-    })
-
-    // Middle legs
-    for (let i = 1; i < stops.length; i++) {
-      legs.push({
-        fromDestinationId: stops[i - 1].destinationId,
-        toDestinationId: stops[i].destinationId,
-        miles: parseFloat(stops[i].miles),
-      })
-    }
-
-    // Return leg: last stop -> Anchor
-    legs.push({
-      fromDestinationId: stops[stops.length - 1].destinationId,
-      toDestinationId: homeBase.id,
-      miles: returnMilesNum,
-    })
+    if (validation.formError) return
 
     startTransition(async () => {
       const result = editingTrip
@@ -377,12 +228,12 @@ export function TripForm({
             id: editingTrip.id,
             tripDate,
             description: description.trim() || undefined,
-            legs,
+            legs: validation.legs,
           })
         : await createTrip({
             tripDate,
             description: description.trim() || undefined,
-            legs,
+            legs: validation.legs,
           })
 
       if (result.error) {
@@ -417,7 +268,6 @@ export function TripForm({
           <div className="rounded-md bg-red-50 p-3 text-sm text-red-700">{error}</div>
         )}
 
-        {/* Date & Description */}
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div>
             <label htmlFor="trip-date" className="block text-sm font-medium text-gray-700 mb-1">
@@ -443,11 +293,9 @@ export function TripForm({
           </div>
         </div>
 
-        {/* Route Builder */}
         <div>
           <h4 className="text-sm font-medium text-gray-700 mb-3">Route</h4>
 
-          {/* Origin: The Anchor (fixed) */}
           <div className="flex items-center gap-2 mb-3 text-sm text-gray-600">
             <span className="inline-flex items-center justify-center rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700">
               Start
@@ -455,82 +303,110 @@ export function TripForm({
             <span className="font-medium">{homeBase?.name ?? 'The Anchor'}</span>
           </div>
 
-          {/* Stops */}
           <div className="space-y-3">
-            {stops.map((stop, index) => (
-              <div key={stop.key}>
-                <div className="flex items-center gap-2">
-                  <ArrowRightIcon className="h-4 w-4 shrink-0 text-gray-400" />
-                  <select
-                    className={`block w-full rounded-md border px-3 py-2 text-sm shadow-sm focus:border-primary-600 focus:ring-1 focus:ring-primary-600 min-h-[44px] sm:min-h-[40px] ${stopErrors.has(index) ? 'border-red-400' : 'border-gray-400'}`}
-                    value={stop.destinationId}
-                    onChange={(e) => handleDestinationChange(index, e.target.value)}
-                    aria-label={`Stop ${index + 1} destination`}
-                  >
-                    <option value="">Select destination...</option>
-                    {nonHomeDestinations.map((d) => (
-                      <option key={d.id} value={d.id}>
-                        {d.name}
-                      </option>
-                    ))}
-                  </select>
-                  <Input
-                    wrapperClassName="w-28 shrink-0"
-                    value={stop.miles}
-                    onChange={(e) => handleMilesChange(index, e.target.value)}
-                    placeholder="Miles"
-                    type="number"
-                    min="0.1"
-                    step="0.1"
-                    aria-label={`Stop ${index + 1} miles`}
-                  />
-                  {stops.length > 1 && (
-                    <Button
-                      variant="ghost"
-                      size="xs"
-                      iconOnly
-                      aria-label={`Remove stop ${index + 1}`}
-                      onClick={() => removeStop(index)}
+            {stops.map((stop, index) => {
+              const fromName =
+                index === 0
+                  ? homeBase?.name ?? 'The Anchor'
+                  : getDestinationName(stops[index - 1]?.destinationId) ?? 'Previous stop'
+              const toName = getDestinationName(stop.destinationId) ?? `Stop ${index + 1}`
+              return (
+                <div key={stop.key}>
+                  <div className="mb-1 ml-6 text-xs font-medium text-gray-500">
+                    {fromName} {'\u2192'} {toName}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <ArrowRightIcon className="h-4 w-4 shrink-0 text-gray-400" />
+                    <select
+                      className={`block w-full rounded-md border px-3 py-2 text-sm shadow-sm focus:border-primary-600 focus:ring-1 focus:ring-primary-600 min-h-[44px] sm:min-h-[40px] ${stopErrors.has(index) ? 'border-red-400' : 'border-gray-400'}`}
+                      value={stop.destinationId}
+                      onChange={(e) => handleDestinationChange(index, e.target.value)}
+                      aria-label={`Stop ${index + 1} destination`}
                     >
-                      <TrashIcon className="h-4 w-4 text-red-400" />
-                    </Button>
+                      <option value="">Select destination...</option>
+                      {nonHomeDestinations.map((d) => (
+                        <option key={d.id} value={d.id}>
+                          {d.name}
+                        </option>
+                      ))}
+                    </select>
+                    <Input
+                      wrapperClassName="w-28 shrink-0"
+                      value={stop.miles}
+                      onChange={(e) => handleMilesChange(index, e.target.value)}
+                      placeholder="Miles"
+                      type="number"
+                      min="0.1"
+                      step="0.1"
+                      aria-label={`Miles from ${fromName} to ${toName}`}
+                    />
+                    {stops.length > 1 && (
+                      <Button
+                        variant="ghost"
+                        size="xs"
+                        iconOnly
+                        aria-label={`Remove stop ${index + 1}`}
+                        onClick={() => removeStop(index)}
+                      >
+                        <TrashIcon className="h-4 w-4 text-red-400" />
+                      </Button>
+                    )}
+                  </div>
+                  {stop.destinationId && !stop.miles && !stopErrors.has(index) && (
+                    <p className="mt-1 ml-6 text-xs text-gray-500">
+                      Enter miles once; this route pair will be saved for future trips.
+                    </p>
+                  )}
+                  {stopErrors.has(index) && (
+                    <p className="mt-1 ml-6 text-xs text-red-600">{stopErrors.get(index)}</p>
                   )}
                 </div>
-                {stopErrors.has(index) && (
-                  <p className="mt-1 ml-6 text-xs text-red-600">{stopErrors.get(index)}</p>
-                )}
-              </div>
-            ))}
+              )
+            })}
           </div>
 
-          {/* Add stop button */}
           <div className="mt-2">
             <Button variant="ghost" size="xs" leftIcon={<PlusIcon />} onClick={addStop}>
               Add Stop
             </Button>
           </div>
 
-          {/* Return leg */}
-          <div className="mt-3 flex items-center gap-2">
-            <ArrowRightIcon className="h-4 w-4 shrink-0 text-gray-400" />
-            <span className="inline-flex items-center justify-center rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700">
-              Return
-            </span>
-            <span className="text-sm font-medium text-gray-600">{homeBase?.name ?? 'The Anchor'}</span>
-            <Input
-              wrapperClassName="w-28 shrink-0 ml-auto"
-              value={returnMiles}
-              onChange={(e) => setReturnMiles(e.target.value)}
-              placeholder="Miles"
-              type="number"
-              min="0.1"
-              step="0.1"
-              aria-label="Return miles"
-            />
+          <div className="mt-3">
+            <div className="mb-1 ml-6 text-xs font-medium text-gray-500">
+              {getDestinationName(stops[stops.length - 1]?.destinationId) ?? 'Last stop'} {'\u2192'}{' '}
+              {homeBase?.name ?? 'The Anchor'}
+            </div>
+            <div className="flex items-center gap-2">
+              <ArrowRightIcon className="h-4 w-4 shrink-0 text-gray-400" />
+              <span className="inline-flex items-center justify-center rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700">
+                Return
+              </span>
+              <span className="text-sm font-medium text-gray-600">{homeBase?.name ?? 'The Anchor'}</span>
+              <Input
+                wrapperClassName="w-28 shrink-0 ml-auto"
+                value={returnMiles}
+                onChange={(e) => {
+                  setReturnMiles(e.target.value)
+                  setReturnMilesError(null)
+                }}
+                placeholder="Miles"
+                type="number"
+                min="0.1"
+                step="0.1"
+                aria-label="Return miles"
+              />
+            </div>
+            {stops[stops.length - 1]?.destinationId && !returnMiles && !returnMilesError && (
+              <p className="mt-1 ml-6 text-xs text-gray-500">
+                Enter miles once; this route pair will be saved for future trips.
+              </p>
+            )}
+            {returnMilesError && (
+              <p className="mt-1 ml-6 text-xs text-red-600">{returnMilesError}</p>
+            )}
           </div>
         </div>
 
-        {/* Totals */}
         <div className="rounded-lg border border-gray-200 bg-gray-50 p-4">
           <div className="flex items-center justify-between text-sm">
             <span className="font-medium text-gray-700">Total Miles</span>

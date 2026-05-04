@@ -7,6 +7,7 @@ import { Input } from '@/components/ui-v2/forms/Input'
 import { ConfirmModal } from '@/components/ui-v2/overlay/Modal'
 import {
   getTrips,
+  getTripStats,
   deleteTrip,
   type MileageTrip,
   type MileageDestination,
@@ -82,6 +83,27 @@ export function MileageClient({
   const [dateFrom, setDateFrom] = useState(() => searchParams.get('from') ?? '')
   const [dateTo, setDateTo] = useState(() => searchParams.get('to') ?? '')
 
+  const refreshMileage = useCallback(
+    (filters?: { dateFrom?: string; dateTo?: string }) => {
+      startTransition(async () => {
+        const [tripsResult, statsResult] = await Promise.all([
+          getTrips({
+            dateFrom: filters?.dateFrom || undefined,
+            dateTo: filters?.dateTo || undefined,
+          }),
+          getTripStats(),
+        ])
+        if (tripsResult.data) {
+          setTrips(tripsResult.data)
+        }
+        if (statsResult.data) {
+          setStats(statsResult.data)
+        }
+      })
+    },
+    []
+  )
+
   const refreshTrips = useCallback(
     (filters?: { dateFrom?: string; dateTo?: string }) => {
       startTransition(async () => {
@@ -118,9 +140,7 @@ export function MileageClient({
   }
 
   function handleTripFormSuccess(): void {
-    refreshTrips({ dateFrom, dateTo })
-    // Stats will be stale — refresh the page
-    // We could fetch stats separately but revalidatePath should handle it
+    refreshMileage({ dateFrom, dateTo })
   }
 
   function handleDelete(): void {
@@ -131,9 +151,9 @@ export function MileageClient({
         setDeleteError(result.error)
         return
       }
-      setTrips((prev) => prev.filter((t) => t.id !== deleteTarget.id))
       setDeleteTarget(null)
       setDeleteError(null)
+      refreshMileage({ dateFrom, dateTo })
     })
   }
 

@@ -7,6 +7,16 @@ import { recalculateTaxYearMileage } from '@/lib/mileage/recalculateTaxYear'
 import { getTaxYearBounds } from '@/lib/mileage/hmrcRates'
 import { z } from 'zod'
 
+function hasAtMostOneDecimalPlace(value: number): boolean {
+  return Math.abs(Math.round(value * 10) - value * 10) < 0.000001
+}
+
+const MileageMilesSchema = z.coerce
+  .number()
+  .finite('Miles must be a valid number')
+  .min(0.1, 'Miles must be at least 0.1')
+  .refine(hasAtMostOneDecimalPlace, 'Miles must be rounded to 1 decimal place')
+
 const TimeEntrySchema = z.object({
   vendor_id: z.string().uuid('Invalid vendor ID'),
   project_id: z.string().uuid('Invalid project ID'),
@@ -22,7 +32,7 @@ const MileageEntrySchema = z.object({
   vendor_id: z.string().uuid('Invalid vendor ID'),
   project_id: z.string().uuid('Invalid project ID'),
   entry_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must be YYYY-MM-DD'),
-  miles: z.coerce.number().min(0.01, 'Miles must be greater than 0'),
+  miles: MileageMilesSchema,
   description: z.string().max(5000).optional(),
   internal_notes: z.string().max(10000).optional(),
   billable: z.coerce.boolean().optional(),
@@ -45,7 +55,7 @@ const UpdateEntrySchema = z.object({
   project_id: z.string().uuid('Invalid project ID'),
   entry_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must be YYYY-MM-DD'),
   duration_minutes: z.coerce.number().min(1).optional(),
-  miles: z.coerce.number().optional(),
+  miles: MileageMilesSchema.optional(),
   amount_ex_vat: z.coerce.number().positive().optional(),
   work_type_id: z.string().uuid().optional().or(z.literal('')).optional(),
   description: z.string().max(5000).optional(),
@@ -417,11 +427,14 @@ export async function updateEntry(formData: FormData) {
       .update({
         vendor_id: parsed.data.vendor_id,
         project_id: parsed.data.project_id,
+        entry_type: 'time',
         entry_date: parsed.data.entry_date,
         start_at: existing.start_at ?? null,
         end_at: existing.end_at ?? null,
         duration_minutes_raw: rawMinutes,
         duration_minutes_rounded: roundedMinutes,
+        miles: null,
+        amount_ex_vat_snapshot: null,
         work_type_id: workTypeId,
         work_type_name_snapshot: workTypeName,
         description: parsed.data.description ?? null,
@@ -429,6 +442,7 @@ export async function updateEntry(formData: FormData) {
         billable: parsed.data.billable ?? true,
         hourly_rate_ex_vat_snapshot: settings.hourly_rate_ex_vat,
         vat_rate_snapshot: settings.vat_rate,
+        mileage_rate_snapshot: null,
         updated_at: new Date().toISOString(),
       })
       .eq('id', parsed.data.id)
@@ -468,12 +482,22 @@ export async function updateEntry(formData: FormData) {
       .update({
         vendor_id: parsed.data.vendor_id,
         project_id: parsed.data.project_id,
+        entry_type: 'one_off',
         entry_date: parsed.data.entry_date,
+        start_at: null,
+        end_at: null,
+        duration_minutes_raw: null,
+        duration_minutes_rounded: null,
+        miles: null,
+        work_type_id: null,
+        work_type_name_snapshot: null,
         amount_ex_vat_snapshot: parsed.data.amount_ex_vat,
         description: parsed.data.description ?? null,
         internal_notes: parsed.data.internal_notes ?? null,
         billable: parsed.data.billable ?? true,
+        hourly_rate_ex_vat_snapshot: null,
         vat_rate_snapshot: settings.vat_rate,
+        mileage_rate_snapshot: null,
         updated_at: new Date().toISOString(),
       })
       .eq('id', parsed.data.id)
@@ -512,11 +536,20 @@ export async function updateEntry(formData: FormData) {
     .update({
       vendor_id: parsed.data.vendor_id,
       project_id: parsed.data.project_id,
+      entry_type: 'mileage',
       entry_date: parsed.data.entry_date,
+      start_at: null,
+      end_at: null,
+      duration_minutes_raw: null,
+      duration_minutes_rounded: null,
       miles: parsed.data.miles,
+      work_type_id: null,
+      work_type_name_snapshot: null,
+      amount_ex_vat_snapshot: null,
       description: parsed.data.description ?? null,
       internal_notes: parsed.data.internal_notes ?? null,
       billable: parsed.data.billable ?? true,
+      hourly_rate_ex_vat_snapshot: null,
       mileage_rate_snapshot: settings.mileage_rate,
       vat_rate_snapshot: 0,
       updated_at: new Date().toISOString(),

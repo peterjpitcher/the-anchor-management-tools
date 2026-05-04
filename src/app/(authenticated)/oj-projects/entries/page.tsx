@@ -565,7 +565,7 @@ export default function OJProjectsEntriesPage() {
               <FormGroup label="Miles" required>
                 <Input
                   type="number"
-                  min="0"
+                  min="0.1"
                   step="0.1"
                   value={form.miles}
                   onChange={(e) => setForm({ ...form, miles: e.target.value })}
