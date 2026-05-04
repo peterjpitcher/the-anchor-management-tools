@@ -14,6 +14,15 @@ import {
   DATE_TBD_NOTE,
 } from './types';
 
+function normalizeDepositStatus(booking: {
+  deposit_amount?: unknown
+  deposit_paid_date?: unknown
+  deposit_status?: unknown
+}): 'Paid' | 'Required' | 'Not Required' {
+  if (booking.deposit_paid_date) return 'Paid'
+  return toNumber(booking.deposit_amount) > 0 ? 'Required' : 'Not Required'
+}
+
 // ---------------------------------------------------------------------------
 // Booking queries
 // ---------------------------------------------------------------------------
@@ -99,7 +108,12 @@ export async function getBookings(filters?: {
     throw new Error(error.message || 'An error occurred');
   }
 
-  return { data: (data || []) as PrivateBookingWithDetails[], count };
+  const normalized = (data || []).map((booking) => ({
+    ...booking,
+    deposit_status: normalizeDepositStatus(booking),
+  }))
+
+  return { data: normalized as PrivateBookingWithDetails[], count };
 }
 
 export async function fetchPrivateBookings(options: {
@@ -245,6 +259,7 @@ export async function fetchPrivateBookings(options: {
       hold_expiry: holdExpiryById.get(booking.id) ?? undefined,
       is_date_tbd: Boolean(booking.internal_notes?.includes(DATE_TBD_NOTE)),
       balance_remaining: balanceRemaining,
+      deposit_status: normalizeDepositStatus(booking),
     };
   });
 
@@ -510,6 +525,7 @@ export async function getBookingByIdForMessages(id: string): Promise<PrivateBook
 
   return {
     ...(booking as PrivateBookingWithDetails),
+    deposit_status: normalizeDepositStatus(booking),
     sms_queue: smsQueue ?? [],
   };
 }

@@ -207,10 +207,10 @@ describe('updateDepositAmount', () => {
     await updateDepositAmount('booking-123', 350)
 
     expect(mockFrom).toHaveBeenCalledWith('private_bookings')
-    expect(mockUpdate).toHaveBeenCalledWith({
+    expect(mockUpdate).toHaveBeenCalledWith(expect.objectContaining({
       deposit_amount: 350,
       paypal_deposit_order_id: null,
-    })
+    }))
   })
 
   it('should throw when supabase update fails', async () => {

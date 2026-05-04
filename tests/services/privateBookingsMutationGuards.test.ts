@@ -29,6 +29,15 @@ vi.mock('@/lib/google-calendar', () => ({
   isCalendarConfigured: vi.fn(() => false),
 }))
 
+vi.mock('@/lib/analytics/events', () => ({
+  recordAnalyticsEvent: vi.fn(),
+}))
+
+vi.mock('@/lib/email/private-booking-emails', () => ({
+  sendBookingConfirmationEmail: vi.fn(() => Promise.resolve()),
+  sendBookingCalendarInvite: vi.fn(() => Promise.resolve()),
+}))
+
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { SmsQueueService } from '@/services/sms-queue'
@@ -104,6 +113,65 @@ describe('PrivateBookingService mutation row-effect guards', () => {
         p_booking_data: expect.objectContaining({
           contact_phone: '+33612345678',
         }),
+      }),
+    )
+  })
+
+  it('createBooking auto-confirms zero-deposit bookings and sends confirmation SMS', async () => {
+    const rpc = vi.fn().mockResolvedValue({
+      data: {
+        id: 'booking-zero',
+        customer_id: 'customer-1',
+        customer_first_name: 'Jean',
+        customer_name: 'Jean Dupont',
+        contact_phone: '+33612345678',
+        event_date: '2026-03-10',
+        event_type: 'party',
+      },
+      error: null,
+    })
+
+    mockedCreateClient.mockResolvedValue({
+      rpc,
+    })
+    ;(SmsQueueService.queueAndSend as unknown as Mock).mockResolvedValue({ success: true })
+
+    const result = await PrivateBookingService.createBooking({
+      customer_first_name: 'Jean',
+      customer_last_name: 'Dupont',
+      contact_phone: '+33 6 12 34 56 78',
+      default_country_code: '33',
+      event_date: '2026-03-10',
+      start_time: '18:00',
+      guest_count: 40,
+      event_type: 'party',
+      source: 'manual',
+      deposit_amount: 0,
+    })
+
+    expect(result).toMatchObject({ id: 'booking-zero' })
+    expect(rpc).toHaveBeenCalledWith(
+      'create_private_booking_transaction',
+      expect.objectContaining({
+        p_booking_data: expect.objectContaining({
+          deposit_amount: 0,
+          hold_expiry: null,
+          status: 'confirmed',
+        }),
+      }),
+    )
+
+    await vi.waitFor(() => {
+      expect(SmsQueueService.queueAndSend).toHaveBeenCalledWith(
+        expect.objectContaining({
+          trigger_type: 'booking_confirmed',
+          template_key: 'private_booking_confirmed',
+        }),
+      )
+    })
+    expect(SmsQueueService.queueAndSend).not.toHaveBeenCalledWith(
+      expect.objectContaining({
+        trigger_type: 'booking_created',
       }),
     )
   })
@@ -326,7 +394,7 @@ describe('PrivateBookingService mutation row-effect guards', () => {
     ).rejects.toThrow('Booking not found')
   })
 
-  it('recordDeposit throws not-found when booking update affects no rows', async () => {
+  it('recordDeposit is idempotent when booking update affects no rows', async () => {
     const fetchSingle = vi.fn().mockResolvedValue({
       data: {
         id: 'booking-1',
@@ -369,7 +437,7 @@ describe('PrivateBookingService mutation row-effect guards', () => {
 
     await expect(
       PrivateBookingService.recordDeposit('booking-1', 100, 'card')
-    ).rejects.toThrow('Deposit has already been recorded (concurrent update)')
+    ).resolves.toEqual({ success: true, alreadyRecorded: true })
   })
 
   it('recordFinalPayment throws not-found when booking update affects no rows', async () => {

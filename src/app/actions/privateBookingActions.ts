@@ -30,6 +30,7 @@ import {
   deleteBalancePayment,
   updateDeposit,
   updateDepositAmount,
+  finalizeDepositPayment,
   deleteDeposit,
 } from '@/services/private-bookings'
 import { SmsQueueService } from '@/services/sms-queue' // Still needed for SMS actions
@@ -42,6 +43,16 @@ const getString = (formData: FormData, key: string): string | undefined => {
     return value.trim()
   }
   return undefined
+}
+
+function getPayPalOrderAmount(order: any): number | null {
+  const raw = order?.purchase_units?.[0]?.amount?.value
+  const amount = typeof raw === 'string' || typeof raw === 'number' ? Number(raw) : NaN
+  return Number.isFinite(amount) ? amount : null
+}
+
+function amountsMatch(actual: number, expected: number): boolean {
+  return Math.abs(actual - expected) <= 0.01
 }
 
 function normalizeActionError(error: unknown): Error {
@@ -82,8 +93,8 @@ const editBalancePaymentSchema = z.object({
 const editDepositSchema = z.object({
   bookingId: z.string().uuid(),
   type: z.literal('deposit'),
-  amount: z.string().refine(v => !isNaN(parseFloat(v)) && parseFloat(v) > 0, {
-    message: 'Amount must be greater than £0',
+  amount: z.string().refine(v => !isNaN(parseFloat(v)) && parseFloat(v) >= 0, {
+    message: 'Amount must be £0 or greater',
   }),
   method: z.enum(['cash', 'card', 'invoice']),
 })
@@ -1682,14 +1693,25 @@ export async function createDepositPaymentOrder(
   if (booking.paypal_deposit_order_id) {
     try {
       const existingOrder = await getPayPalOrder(booking.paypal_deposit_order_id)
+      const existingOrderAmount = getPayPalOrderAmount(existingOrder)
       // If order is still CREATED or APPROVED, return its approve URL
-      if (existingOrder?.status === 'CREATED' || existingOrder?.status === 'APPROVED') {
+      if (
+        (existingOrder?.status === 'CREATED' || existingOrder?.status === 'APPROVED') &&
+        existingOrderAmount !== null &&
+        amountsMatch(existingOrderAmount, depositAmount)
+      ) {
         const approveUrl =
           existingOrder.links?.find((l: { rel: string; href: string }) => l.rel === 'payer-action')?.href ||
           existingOrder.links?.find((l: { rel: string; href: string }) => l.rel === 'approve')?.href
         if (approveUrl) {
           return { success: true, approveUrl, orderId: booking.paypal_deposit_order_id }
         }
+      }
+      if (existingOrderAmount !== null && !amountsMatch(existingOrderAmount, depositAmount)) {
+        await admin
+          .from('private_bookings')
+          .update({ paypal_deposit_order_id: null, updated_at: new Date().toISOString() })
+          .eq('id', bookingId)
       }
       // Order is no longer usable — fall through to create a new one
     } catch (lookupError) {
@@ -1784,45 +1806,39 @@ export async function captureDepositPayment(
   }
 
   try {
+    const expectedAmount = Number(booking.deposit_amount ?? 0)
+    if (expectedAmount <= 0) {
+      return { error: 'No deposit is required for this booking' }
+    }
+
+    const order = await getPayPalOrder(orderId)
+    const orderAmount = getPayPalOrderAmount(order)
+    if (orderAmount === null || !amountsMatch(orderAmount, expectedAmount)) {
+      logger.error('PayPal order amount mismatch before capture', {
+        metadata: { bookingId, orderId, orderAmount, expectedAmount }
+      })
+      return { error: `Payment amount mismatch: PayPal order is not for the expected £${expectedAmount.toFixed(2)} deposit. Please create a fresh payment link.` }
+    }
+
     const captureResult = await capturePayPalPayment(orderId)
 
     // SEC-3: Validate captured amount matches expected deposit
     const capturedAmount = parseFloat(captureResult.amount)
-    const expectedAmount = Number(booking.deposit_amount ?? 0)
-    if (expectedAmount > 0 && Math.abs(capturedAmount - expectedAmount) > 0.01) {
+    if (!amountsMatch(capturedAmount, expectedAmount)) {
       logger.error('PayPal capture amount mismatch', {
         metadata: { bookingId, orderId, capturedAmount, expectedAmount }
       })
       return { error: `Payment amount mismatch: captured £${capturedAmount.toFixed(2)} but expected £${expectedAmount.toFixed(2)}. Please contact support.` }
     }
 
-    // Record deposit: mark deposit_paid_date, method=paypal, store capture ID.
-    // Transition draft bookings to confirmed, matching the manual deposit path
-    // (PrivateBookingService.recordDeposit).
-    const statusUpdate: Record<string, unknown> =
-      booking.status === 'draft'
-        ? { status: 'confirmed' as const, cancellation_reason: null }
-        : {}
-
-    const { error: updateError } = await admin
-      .from('private_bookings')
-      .update({
-        deposit_paid_date: new Date().toISOString(),
-        deposit_payment_method: 'paypal',
-        paypal_deposit_capture_id: captureResult.transactionId,
-        ...statusUpdate,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', bookingId)
-      .is('deposit_paid_date', null) // Guard against double-capture
-
-    if (updateError) {
-      logger.error('Failed to record PayPal deposit capture on booking', {
-        error: updateError,
-        metadata: { bookingId, orderId, captureId: captureResult.transactionId }
-      })
-      return { error: 'Payment was captured but we failed to update the booking. Please contact support.' }
-    }
+    await finalizeDepositPayment({
+      bookingId,
+      amount: capturedAmount,
+      method: 'paypal',
+      paypalCaptureId: captureResult.transactionId,
+      performedByUserId: user.id,
+      requireAmountMatch: true,
+    }, admin)
 
     // Audit log
     try {
@@ -2095,17 +2111,22 @@ export async function editPrivateBookingPayment(
 
     const db = createAdminClient()
     const { data: oldBooking } = await db.from('private_bookings').select('deposit_amount, deposit_payment_method, deposit_paid_date').eq('id', parsed.data.bookingId).single()
+    const newAmount = parseFloat(parsed.data.amount)
+
+    if (oldBooking?.deposit_paid_date && newAmount <= 0) {
+      return { error: 'Paid deposit amount must be greater than £0' }
+    }
 
     try {
       if (oldBooking?.deposit_paid_date) {
         // Paid deposit: update amount + method (existing behaviour)
         await updateDeposit(parsed.data.bookingId, {
-          amount: parseFloat(parsed.data.amount),
+          amount: newAmount,
           method: parsed.data.method,
         })
       } else {
         // Unpaid deposit: update amount only, clear PayPal order (CR-1, ID-1)
-        await updateDepositAmount(parsed.data.bookingId, parseFloat(parsed.data.amount))
+        await updateDepositAmount(parsed.data.bookingId, newAmount, user.id)
       }
     } catch (err) {
       return { error: err instanceof Error ? err.message : 'Failed to update deposit' }
@@ -2120,10 +2141,11 @@ export async function editPrivateBookingPayment(
         action: 'edit_private_booking_deposit',
         booking_id: parsed.data.bookingId,
         old_amount: oldBooking?.deposit_amount,
-        new_amount: parseFloat(parsed.data.amount),
+        new_amount: newAmount,
         old_method: oldBooking?.deposit_payment_method,
         new_method: oldBooking?.deposit_paid_date ? parsed.data.method : oldBooking?.deposit_payment_method,
         deposit_paid: !!oldBooking?.deposit_paid_date,
+        no_deposit_required: !oldBooking?.deposit_paid_date && newAmount <= 0,
       },
     })
     revalidatePath(`/private-bookings/${parsed.data.bookingId}`)

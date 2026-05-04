@@ -124,6 +124,7 @@ vi.mock('@/services/private-bookings', async () => {
     deleteBalancePayment: vi.fn(),
     updateDeposit: vi.fn(),
     updateDepositAmount: vi.fn(),
+    finalizeDepositPayment: vi.fn(),
     deleteDeposit: vi.fn(),
   }
 })
@@ -1007,9 +1008,50 @@ describe('privateBookingActions', () => {
       expect(result).toEqual({ success: true })
       expect(mockedUpdateDepositAmount).toHaveBeenCalledWith(
         '660e8400-e29b-41d4-a716-446655440000',
-        150
+        150,
+        'user-1'
       )
       expect(mockedUpdateDeposit).not.toHaveBeenCalled()
+    })
+
+    it('should allow setting an unpaid deposit to zero', async () => {
+      const adminClient = {
+        from: vi.fn().mockReturnValue({
+          select: vi.fn().mockReturnValue({
+            eq: vi.fn().mockReturnValue({
+              single: vi.fn().mockResolvedValue({
+                data: { deposit_amount: 250, deposit_payment_method: null, deposit_paid_date: null },
+                error: null,
+              }),
+            }),
+          }),
+        }),
+      }
+      mockedCreateAdminClient.mockReturnValue(adminClient)
+      mockedUpdateDepositAmount.mockResolvedValue(undefined)
+
+      const fd = new FormData()
+      fd.set('bookingId', '660e8400-e29b-41d4-a716-446655440000')
+      fd.set('type', 'deposit')
+      fd.set('amount', '0')
+      fd.set('method', 'cash')
+
+      const result = await editPrivateBookingPayment(fd)
+
+      expect(result).toEqual({ success: true })
+      expect(mockedUpdateDepositAmount).toHaveBeenCalledWith(
+        '660e8400-e29b-41d4-a716-446655440000',
+        0,
+        'user-1'
+      )
+      expect(mockedUpdateDeposit).not.toHaveBeenCalled()
+      expect(mockedLogAuditEvent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          additional_info: expect.objectContaining({
+            no_deposit_required: true,
+          }),
+        })
+      )
     })
 
     it('should use updateDeposit for paid deposit (preserves existing behaviour)', async () => {

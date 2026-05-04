@@ -43,6 +43,7 @@ import {
   getPrivateBookingCancellationOutcome,
   type CancellationFinancialOutcome,
 } from '@/services/private-bookings/financial';
+import { sendBookingConfirmedSideEffects } from './payments';
 
 // ---------------------------------------------------------------------------
 // Private helpers
@@ -236,13 +237,17 @@ export async function createBooking(input: CreatePrivateBookingInput): Promise<a
   const currentDateTime = new Date();
   const actualEventDate = new Date(finalEventDate);
 
-  let holdExpiryMoment: Date;
+  const depositAmount = input.deposit_amount ?? 250;
+  const requiresDeposit = depositAmount > 0;
+  let holdExpiryMoment: Date | null = null;
 
   // Logic for Deposit Due Date (Hold Expiry)
   const sevenDaysBeforeEvent = new Date(actualEventDate);
   sevenDaysBeforeEvent.setDate(sevenDaysBeforeEvent.getDate() - 7);
 
-  if (input.hold_expiry) {
+  if (!requiresDeposit) {
+    holdExpiryMoment = null;
+  } else if (input.hold_expiry) {
     // User manually specified a date
     holdExpiryMoment = new Date(input.hold_expiry);
 
@@ -262,7 +267,7 @@ export async function createBooking(input: CreatePrivateBookingInput): Promise<a
     holdExpiryMoment = computeHoldExpiry(actualEventDate, currentDateTime);
   }
 
-  const holdExpiryIso = holdExpiryMoment.toISOString();
+  const holdExpiryIso = holdExpiryMoment ? holdExpiryMoment.toISOString() : null;
 
   const normalizedContactPhone =
     input.contact_phone && input.contact_phone.trim() !== ''
@@ -304,8 +309,8 @@ export async function createBooking(input: CreatePrivateBookingInput): Promise<a
     customer_name: input.customer_last_name
       ? `${input.customer_first_name} ${input.customer_last_name}`
       : input.customer_first_name,
-    deposit_amount: input.deposit_amount ?? 250,
-    status: 'draft'
+    deposit_amount: depositAmount,
+    status: requiresDeposit ? 'draft' : 'confirmed'
   };
 
   // 2. Atomic Transaction
@@ -324,21 +329,36 @@ export async function createBooking(input: CreatePrivateBookingInput): Promise<a
 
   // SMS
   if (booking) {
-    const bookingWithHoldExpiry = { ...booking, hold_expiry: holdExpiryIso };
-    void sendCreationSms(bookingWithHoldExpiry, normalizedContactPhone).catch((smsError) => {
-      logger.error('Private booking creation SMS background task failed', {
-        error: smsError instanceof Error ? smsError : new Error(String(smsError)),
-        metadata: { bookingId: booking.id }
+    const bookingForSideEffects = { ...bookingPayload, ...booking, hold_expiry: holdExpiryIso };
+    if (requiresDeposit) {
+      void sendCreationSms(bookingForSideEffects, normalizedContactPhone).catch((smsError) => {
+        logger.error('Private booking creation SMS background task failed', {
+          error: smsError instanceof Error ? smsError : new Error(String(smsError)),
+          metadata: { bookingId: booking.id }
+        })
       })
-    })
+    } else {
+      void sendBookingConfirmedSideEffects({
+        booking: bookingForSideEffects,
+        performedByUserId: (booking as any).created_by ?? (bookingPayload as any).created_by,
+        analyticsVia: 'private_booking_no_deposit_create',
+        syncCalendar: false,
+      }).catch((smsError) => {
+        logger.error('Private booking no-deposit confirmation side effects failed', {
+          error: smsError instanceof Error ? smsError : new Error(String(smsError)),
+          metadata: { bookingId: booking.id }
+        })
+      })
+    }
   }
 
   // Google Calendar Sync
   if (booking && isCalendarConfigured()) {
-    const isDateTbdBooking = Boolean(booking.internal_notes?.includes(DATE_TBD_NOTE))
+    const bookingForCalendar = { ...bookingPayload, ...booking, hold_expiry: holdExpiryIso } as PrivateBookingWithDetails
+    const isDateTbdBooking = Boolean(bookingForCalendar.internal_notes?.includes(DATE_TBD_NOTE))
     if (!isDateTbdBooking && booking.status !== 'cancelled') {
       try {
-        const eventId = await syncCalendarEvent(booking);
+        const eventId = await syncCalendarEvent(bookingForCalendar);
         if (eventId) {
           const { data: updatedCalendarRow, error: calendarUpdateError } = await createAdminClient()
             .from('private_bookings')

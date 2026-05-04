@@ -90,6 +90,16 @@ export async function getBookingScheduledSms(
     .select('idempotency_key')
     .eq('booking_id', bookingId)
 
+  const { data: balancePaymentRows } = await db
+    .from('private_booking_payments')
+    .select('amount')
+    .eq('booking_id', bookingId)
+
+  const balancePaymentsTotal = (balancePaymentRows ?? []).reduce(
+    (sum, row) => sum + Number(row.amount ?? 0),
+    0,
+  )
+
   const alreadySent = new Set(
     (idempRows ?? []).map((r) => String(r.idempotency_key)),
   )
@@ -99,9 +109,10 @@ export async function getBookingScheduledSms(
   const eventDateReadable = booking.event_date
     ? formatReadableDate(booking.event_date)
     : ''
+  const depositAmount = Number(booking.deposit_amount ?? 0)
 
   // --- Deposit reminders (draft) ---
-  if (booking.status === 'draft' && booking.hold_expiry) {
+  if (booking.status === 'draft' && booking.hold_expiry && depositAmount > 0) {
     const holdExpiry = new Date(booking.hold_expiry)
     const daysUntilExpiry = diffDaysCeil(holdExpiry, now)
     const holdExpiryReadable = formatReadableDate(booking.hold_expiry)
@@ -113,7 +124,7 @@ export async function getBookingScheduledSms(
       const body = depositReminder7DayMessage({
         customerFirstName: booking.customer_first_name ?? booking.customer_name ?? null,
         eventDate: eventDateReadable,
-        depositAmount: Number(booking.deposit_amount ?? 0),
+        depositAmount,
         daysRemaining: daysUntilExpiry,
       })
       const suppression = decideSuppression({
@@ -140,7 +151,7 @@ export async function getBookingScheduledSms(
       const body = depositReminder1DayMessage({
         customerFirstName: booking.customer_first_name ?? booking.customer_name ?? null,
         eventDate: eventDateReadable,
-        depositAmount: Number(booking.deposit_amount ?? 0),
+        depositAmount,
       })
       const suppression = decideSuppression({
         triggerType,
@@ -170,7 +181,9 @@ export async function getBookingScheduledSms(
       booking.calculated_total ?? booking.total_amount ?? 0,
     )
     const balanceOutstanding =
-      !booking.final_payment_date && totalAmount > 0 ? totalAmount : 0
+      !booking.final_payment_date && totalAmount > 0
+        ? Math.max(0, totalAmount - balancePaymentsTotal)
+        : 0
 
     const balanceDueDateReadable = booking.balance_due_date
       ? formatReadableDate(booking.balance_due_date)

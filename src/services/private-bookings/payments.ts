@@ -8,6 +8,8 @@ import { logger } from '@/lib/logger';
 import {
   sendDepositReceivedEmail,
   sendBalancePaidEmail,
+  sendBookingConfirmationEmail,
+  sendBookingCalendarInvite,
 } from '@/lib/email/private-booking-emails';
 import type {
   BookingStatus,
@@ -22,60 +24,93 @@ import {
   toNumber,
 } from './types';
 import {
+  bookingConfirmedMessage,
   depositReceivedMessage,
   finalPaymentMessage,
 } from '@/lib/private-bookings/messages';
 
-// ---------------------------------------------------------------------------
-// Record deposit — caller handles auth check
-// ---------------------------------------------------------------------------
+type SupabaseClientLike = Awaited<ReturnType<typeof createClient>> | ReturnType<typeof createAdminClient> | any
 
-export async function recordDeposit(bookingId: string, amount: number, method: string, performedByUserId?: string): Promise<{ success: true; smsSideEffects?: PrivateBookingSmsSideEffectSummary[] }> {
-  const supabase = await createClient();
+type FinalizeDepositPaymentInput = {
+  bookingId: string
+  amount: number
+  method: string
+  performedByUserId?: string
+  paypalCaptureId?: string | null
+  requireAmountMatch?: boolean
+}
 
-  const { data: booking, error: fetchError } = await supabase
-    .from('private_bookings')
-    .select('id, customer_first_name, customer_last_name, customer_name, event_date, start_time, end_time, end_time_next_day, contact_phone, contact_email, customer_id, calendar_event_id, status, guest_count, event_type, deposit_paid_date, deposit_amount, balance_due_date, total_amount')
-    .eq('id', bookingId)
-    .single();
+type FinalizeDepositPaymentResult = {
+  success: true
+  alreadyRecorded?: boolean
+  smsSideEffects?: PrivateBookingSmsSideEffectSummary[]
+}
 
-  if (fetchError || !booking) throw new Error('Booking not found');
+function formatEventDate(eventDate: string | null | undefined): string {
+  return eventDate
+    ? new Date(eventDate).toLocaleDateString('en-GB', {
+        day: 'numeric',
+        month: 'long',
+        year: 'numeric',
+      })
+    : ''
+}
 
-  if (booking.status === 'cancelled') {
-    throw new Error('Cannot record a deposit on a cancelled booking');
+function summarizeSmsResult(
+  triggerType: string,
+  templateKey: string,
+  result: any,
+  bookingId: string,
+): PrivateBookingSmsSideEffectSummary {
+  const smsSafety = normalizeSmsSafetyMeta(result)
+  const summary: PrivateBookingSmsSideEffectSummary = {
+    triggerType,
+    templateKey,
+    queueId: typeof result?.queueId === 'string' ? result.queueId : undefined,
+    sent: result?.sent === true,
+    suppressed: result?.suppressed === true,
+    requiresApproval: result?.requiresApproval === true,
+    code: smsSafety.code,
+    logFailure: smsSafety.logFailure,
+    error: typeof result?.error === 'string' ? result.error : undefined
   }
 
-  if (booking.deposit_paid_date) {
-    throw new Error('Deposit has already been recorded for this booking');
-  }
-
-  // Only transition status to confirmed when the booking is still a draft.
-  // For already-confirmed or completed bookings, leave status and
-  // cancellation_reason untouched to avoid unnecessary churn.
-  const statusUpdate: Partial<{ status: BookingStatus; cancellation_reason: null }> =
-    booking.status === 'draft'
-      ? { status: 'confirmed', cancellation_reason: null }
-      : {};
-
-  // WF-2: Atomic guard — only update if deposit_paid_date is still NULL.
-  // Prevents concurrent deposit recordings from both succeeding.
-  // ID-5: Do NOT overwrite deposit_amount — it's the configured requirement.
-  // The amount parameter is for audit/display only; the configured deposit stays intact.
-  const { data: updatedBooking, error } = await supabase
-    .from('private_bookings')
-    .update({
-      deposit_paid_date: new Date().toISOString(),
-      deposit_payment_method: method,
-      ...statusUpdate,
-      updated_at: new Date().toISOString()
+  if (summary.logFailure) {
+    logger.error('Private booking SMS logging failed', {
+      metadata: {
+        bookingId,
+        triggerType,
+        templateKey,
+        code: summary.code ?? null
+      }
     })
-    .eq('id', bookingId)
-    .is('deposit_paid_date', null)
-    .select()
-    .maybeSingle();
+  }
 
-  if (error) throw new Error('Failed to record deposit');
-  if (!updatedBooking) throw new Error('Deposit has already been recorded (concurrent update)');
+  if (summary.error) {
+    logger.error('Private booking SMS queue/send failed', {
+      metadata: {
+        bookingId,
+        triggerType,
+        templateKey,
+        error: summary.error
+      }
+    })
+  }
+
+  return summary
+}
+
+async function sendDepositReceivedSideEffects(input: {
+  db: SupabaseClientLike
+  booking: any
+  updatedBooking: any
+  amount: number
+  method: string
+  performedByUserId?: string
+}): Promise<PrivateBookingSmsSideEffectSummary[]> {
+  const { db, booking, updatedBooking, amount, method, performedByUserId } = input
+  const bookingId = booking.id
+  const smsSideEffects: PrivateBookingSmsSideEffectSummary[] = []
 
   if (booking.customer_id) {
     try {
@@ -94,20 +129,13 @@ export async function recordDeposit(bookingId: string, amount: number, method: s
     }
   }
 
-  const smsSideEffects: PrivateBookingSmsSideEffectSummary[] = []
-
-  // SMS
   if (booking.contact_phone || booking.customer_id) {
-    const eventDate = new Date(booking.event_date).toLocaleDateString('en-GB', {
-      day: 'numeric', month: 'long', year: 'numeric'
-    });
-
+    const eventDate = formatEventDate(booking.event_date)
     const smsMessage = depositReceivedMessage({
       customerFirstName: booking.customer_first_name,
-      eventDate: eventDate,
+      eventDate,
     });
 
-     
     let smsResult: any
     try {
       smsResult = await SmsQueueService.queueAndSend({
@@ -123,7 +151,7 @@ export async function recordDeposit(bookingId: string, amount: number, method: s
         metadata: {
           template: 'private_booking_deposit_received',
           first_name: booking.customer_first_name,
-          amount: amount,
+          amount,
           event_date: eventDate
         }
       });
@@ -131,45 +159,11 @@ export async function recordDeposit(bookingId: string, amount: number, method: s
       smsResult = { error: smsError instanceof Error ? smsError.message : String(smsError) }
     }
 
-    const smsSafety = normalizeSmsSafetyMeta(smsResult)
-    const smsSummary: PrivateBookingSmsSideEffectSummary = {
-      triggerType: 'deposit_received',
-      templateKey: 'private_booking_deposit_received',
-      queueId: typeof smsResult?.queueId === 'string' ? smsResult.queueId : undefined,
-      sent: smsResult?.sent === true,
-      suppressed: smsResult?.suppressed === true,
-      requiresApproval: smsResult?.requiresApproval === true,
-      code: smsSafety.code,
-      logFailure: smsSafety.logFailure,
-      error: typeof smsResult?.error === 'string' ? smsResult.error : undefined
-    }
-
-    smsSideEffects.push(smsSummary)
-
-    if (smsSummary.logFailure) {
-      logger.error('Private booking SMS logging failed', {
-        metadata: {
-          bookingId: bookingId,
-          triggerType: smsSummary.triggerType,
-          templateKey: smsSummary.templateKey,
-          code: smsSummary.code ?? null
-        }
-      })
-    }
-
-    if (smsSummary.error) {
-      logger.error('Private booking SMS queue/send failed', {
-        metadata: {
-          bookingId: bookingId,
-          triggerType: smsSummary.triggerType,
-          templateKey: smsSummary.templateKey,
-          error: smsSummary.error
-        }
-      })
-    }
+    smsSideEffects.push(
+      summarizeSmsResult('deposit_received', 'private_booking_deposit_received', smsResult, bookingId)
+    )
   }
 
-  // Send deposit received email (non-blocking)
   if (booking.contact_email) {
     sendDepositReceivedEmail({
       contact_email: booking.contact_email,
@@ -186,17 +180,16 @@ export async function recordDeposit(bookingId: string, amount: number, method: s
     );
   }
 
-  // Calendar Sync
   if (updatedBooking && isCalendarConfigured()) {
     try {
       const fullBookingForSync = {
-        ...booking, // original
-        ...updatedBooking, // updated
+        ...booking,
+        ...updatedBooking,
       } as PrivateBookingWithDetails;
 
       const eventId = await syncCalendarEvent(fullBookingForSync);
       if (eventId && eventId !== booking.calendar_event_id) {
-        const { data: updatedCalendarRow, error: calendarUpdateError } = await supabase
+        const { data: updatedCalendarRow, error: calendarUpdateError } = await db
           .from('private_bookings')
           .update({ calendar_event_id: eventId })
           .eq('id', bookingId)
@@ -214,7 +207,204 @@ export async function recordDeposit(bookingId: string, amount: number, method: s
     }
   }
 
-  return smsSideEffects.length > 0 ? { success: true, smsSideEffects } : { success: true };
+  return smsSideEffects
+}
+
+export async function sendBookingConfirmedSideEffects(input: {
+  db?: SupabaseClientLike
+  booking: any
+  performedByUserId?: string
+  analyticsVia: string
+  syncCalendar?: boolean
+}): Promise<PrivateBookingSmsSideEffectSummary[]> {
+  const db = input.db ?? createAdminClient()
+  const booking = input.booking
+  const bookingId = booking.id
+  const eventDate = formatEventDate(booking.event_date)
+  const firstName =
+    booking.customer_first_name || booking.customer_name?.split(' ')[0] || 'there'
+  const smsSideEffects: PrivateBookingSmsSideEffectSummary[] = []
+
+  if (booking.customer_id) {
+    try {
+      const adminClient = createAdminClient()
+      await recordAnalyticsEvent(adminClient, {
+        customerId: booking.customer_id,
+        privateBookingId: bookingId,
+        eventType: 'private_booking_confirmed',
+        metadata: {
+          via: input.analyticsVia,
+          event_type: booking.event_type ?? null
+        }
+      })
+    } catch (analyticsError) {
+      logger.error('Failed to record private booking confirmation analytics:', {
+        error: analyticsError instanceof Error ? analyticsError : new Error(String(analyticsError))
+      })
+    }
+  }
+
+  if (booking.contact_email) {
+    sendBookingConfirmationEmail(booking).catch(e =>
+      logger.error('Failed to send booking confirmation email', { error: e instanceof Error ? e : new Error(String(e)) })
+    )
+    sendBookingCalendarInvite(booking).catch(e =>
+      logger.error('Failed to send calendar invite', { error: e instanceof Error ? e : new Error(String(e)) })
+    )
+  }
+
+  if (booking.contact_phone || booking.customer_id) {
+    const messageBody = bookingConfirmedMessage({
+      customerFirstName: firstName,
+      eventDate,
+    })
+
+    let smsResult: any
+    try {
+      smsResult = await SmsQueueService.queueAndSend({
+        booking_id: bookingId,
+        trigger_type: 'booking_confirmed',
+        template_key: 'private_booking_confirmed',
+        message_body: messageBody,
+        customer_phone: booking.contact_phone,
+        customer_name:
+          booking.customer_name ||
+          `${booking.customer_first_name ?? ''} ${booking.customer_last_name ?? ''}`.trim(),
+        customer_id: booking.customer_id,
+        created_by: input.performedByUserId,
+        priority: 1,
+        metadata: {
+          template: 'private_booking_confirmed',
+          event_date: eventDate,
+          event_type: booking.event_type ?? null
+        }
+      })
+    } catch (smsError) {
+      smsResult = { error: smsError instanceof Error ? smsError.message : String(smsError) }
+    }
+
+    smsSideEffects.push(
+      summarizeSmsResult('booking_confirmed', 'private_booking_confirmed', smsResult, bookingId)
+    )
+  }
+
+  if (input.syncCalendar !== false && isCalendarConfigured()) {
+    try {
+      const eventId = await syncCalendarEvent(booking as PrivateBookingWithDetails)
+      if (eventId && eventId !== booking.calendar_event_id) {
+        await db
+          .from('private_bookings')
+          .update({ calendar_event_id: eventId })
+          .eq('id', bookingId)
+      }
+    } catch (error) {
+      logger.error('Calendar sync failed during booking confirmation:', {
+        error: error instanceof Error ? error : new Error(String(error))
+      })
+    }
+  }
+
+  return smsSideEffects
+}
+
+async function finalizeDepositPaymentWithClient(
+  db: SupabaseClientLike,
+  input: FinalizeDepositPaymentInput,
+): Promise<FinalizeDepositPaymentResult> {
+  const { bookingId, amount, method, performedByUserId, paypalCaptureId } = input
+
+  const { data: booking, error: fetchError } = await db
+    .from('private_bookings')
+    .select('id, customer_first_name, customer_last_name, customer_name, event_date, start_time, end_time, end_time_next_day, contact_phone, contact_email, customer_id, calendar_event_id, status, guest_count, event_type, deposit_paid_date, deposit_amount, balance_due_date, total_amount')
+    .eq('id', bookingId)
+    .single();
+
+  if (fetchError || !booking) throw new Error('Booking not found');
+
+  if (booking.status === 'cancelled') {
+    throw new Error('Cannot record a deposit on a cancelled booking');
+  }
+
+  const requiredDepositAmount = toNumber(booking.deposit_amount, amount)
+  if (requiredDepositAmount <= 0) {
+    throw new Error('No deposit is required for this booking');
+  }
+  if (
+    input.requireAmountMatch &&
+    amount > 0 &&
+    Math.abs(amount - requiredDepositAmount) > 0.01
+  ) {
+    logger.error('Private booking deposit amount mismatch during finalization', {
+      metadata: { bookingId, amount, requiredDepositAmount, method }
+    })
+    throw new Error(`Payment amount mismatch: captured £${amount.toFixed(2)} but expected £${requiredDepositAmount.toFixed(2)}`)
+  }
+  const recordedAmount = amount > 0 ? amount : requiredDepositAmount
+
+  if (booking.deposit_paid_date) {
+    return { success: true, alreadyRecorded: true }
+  }
+
+  const statusUpdate: Partial<{ status: BookingStatus; cancellation_reason: null }> =
+    booking.status === 'draft'
+      ? { status: 'confirmed', cancellation_reason: null }
+      : {};
+
+  const updatePayload: Record<string, unknown> = {
+    deposit_paid_date: new Date().toISOString(),
+    deposit_payment_method: method,
+    ...statusUpdate,
+    updated_at: new Date().toISOString()
+  }
+
+  if (paypalCaptureId) {
+    updatePayload.paypal_deposit_capture_id = paypalCaptureId
+  }
+
+  const { data: updatedBooking, error } = await db
+    .from('private_bookings')
+    .update(updatePayload)
+    .eq('id', bookingId)
+    .is('deposit_paid_date', null)
+    .select()
+    .maybeSingle();
+
+  if (error) throw new Error('Failed to record deposit');
+  if (!updatedBooking) return { success: true, alreadyRecorded: true }
+
+  const smsSideEffects = await sendDepositReceivedSideEffects({
+    db,
+    booking,
+    updatedBooking,
+    amount: recordedAmount,
+    method,
+    performedByUserId,
+  })
+
+  return smsSideEffects.length > 0
+    ? { success: true, smsSideEffects }
+    : { success: true }
+}
+
+export async function finalizeDepositPayment(
+  input: FinalizeDepositPaymentInput,
+  db?: SupabaseClientLike,
+): Promise<FinalizeDepositPaymentResult> {
+  return finalizeDepositPaymentWithClient(db ?? createAdminClient(), input)
+}
+
+// ---------------------------------------------------------------------------
+// Record deposit — caller handles auth check
+// ---------------------------------------------------------------------------
+
+export async function recordDeposit(bookingId: string, amount: number, method: string, performedByUserId?: string): Promise<{ success: true; smsSideEffects?: PrivateBookingSmsSideEffectSummary[] }> {
+  const supabase = await createClient();
+  return finalizeDepositPaymentWithClient(supabase, {
+    bookingId,
+    amount,
+    method,
+    performedByUserId,
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -607,12 +797,55 @@ export async function updateDeposit(
  */
 export async function updateDepositAmount(
   bookingId: string,
-  amount: number
+  amount: number,
+  performedByUserId?: string
 ): Promise<void> {
   const db = createAdminClient()
+
+  if (amount <= 0) {
+    const { data: booking, error: fetchError } = await db
+      .from('private_bookings')
+      .select('id, status, customer_first_name, customer_last_name, customer_name, contact_phone, contact_email, customer_id, event_date, event_type, calendar_event_id')
+      .eq('id', bookingId)
+      .single()
+
+    if (fetchError || !booking) throw new Error('Booking not found')
+
+    const shouldConfirm = booking.status === 'draft'
+    const { error } = await db
+      .from('private_bookings')
+      .update({
+        deposit_amount: 0,
+        deposit_payment_method: null,
+        paypal_deposit_order_id: null,
+        hold_expiry: null,
+        ...(shouldConfirm ? { status: 'confirmed', cancellation_reason: null } : {}),
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', bookingId)
+
+    if (error) throw new Error(`Failed to update deposit amount: ${error.message}`)
+
+    if (shouldConfirm) {
+      await sendBookingConfirmedSideEffects({
+        db,
+        booking: {
+          ...booking,
+          status: 'confirmed',
+          deposit_amount: 0,
+          hold_expiry: null,
+        },
+        performedByUserId,
+        analyticsVia: 'private_booking_no_deposit',
+      })
+    }
+
+    return
+  }
+
   const { error } = await db
     .from('private_bookings')
-    .update({ deposit_amount: amount, paypal_deposit_order_id: null })
+    .update({ deposit_amount: amount, paypal_deposit_order_id: null, updated_at: new Date().toISOString() })
     .eq('id', bookingId)
   if (error) throw new Error(`Failed to update deposit amount: ${error.message}`)
 }
