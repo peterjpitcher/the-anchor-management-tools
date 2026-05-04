@@ -255,12 +255,14 @@ export async function getRotaSummaryForWeek(
   ]);
 
   const supabase = await createClient();
+  const summaryStart = [payrollPeriod.start, days[0]].sort()[0];
+  const summaryEnd = [payrollPeriod.end, days[days.length - 1]].sort().at(-1)!;
 
-  const { data: periodShifts, error: shiftsError } = await supabase
+  const { data: summaryShifts, error: shiftsError } = await supabase
     .from('rota_shifts')
     .select('employee_id, shift_date, start_time, end_time, unpaid_break_minutes, is_overnight, is_open_shift, status')
-    .gte('shift_date', payrollPeriod.start)
-    .lte('shift_date', payrollPeriod.end);
+    .gte('shift_date', summaryStart)
+    .lte('shift_date', summaryEnd);
 
   if (shiftsError) return { success: false, error: shiftsError.message };
 
@@ -328,7 +330,7 @@ export async function getRotaSummaryForWeek(
     const admin = createAdminClient();
     const employeeIds = [
       ...new Set(
-        ((periodShifts ?? []) as RotaSummaryShift[])
+        ((summaryShifts ?? []) as RotaSummaryShift[])
           .map(shift => shift.employee_id)
           .filter((employeeId): employeeId is string => Boolean(employeeId)),
       ),
@@ -390,7 +392,7 @@ export async function getRotaSummaryForWeek(
     site,
     payrollPeriod,
     weekDays: days,
-    periodShifts: (periodShifts ?? []) as RotaSummaryShift[],
+    periodShifts: (summaryShifts ?? []) as RotaSummaryShift[],
     employees,
     salesTargets,
     targetPercent: settings.wageTargetPercent,
