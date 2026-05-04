@@ -160,6 +160,7 @@ export default async function MyShiftsPage() {
     .from('employees')
     .select('employee_id, first_name, last_name')
     .eq('auth_user_id', user.id)
+    .in('status', ['Active', 'Started Separation'])
     .single();
 
   if (!employee) {

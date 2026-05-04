@@ -16,7 +16,7 @@ describe('EmployeeService delete safeguards', () => {
     const fetchMaybeSingle = vi.fn().mockResolvedValue({
       data: {
         employee_id: 'employee-1',
-        status: 'Former',
+        status: 'Active',
         date_of_birth: null,
       },
       error: null,
@@ -56,6 +56,90 @@ describe('EmployeeService delete safeguards', () => {
         status: 'Active',
       })
     ).rejects.toThrow('Employee not found or failed to update.')
+  })
+
+  it('blocks direct separation through the generic employee edit path', async () => {
+    const fetchMaybeSingle = vi.fn().mockResolvedValue({
+      data: {
+        employee_id: 'employee-1',
+        status: 'Active',
+        date_of_birth: null,
+      },
+      error: null,
+    })
+    const fetchEq = vi.fn().mockReturnValue({ maybeSingle: fetchMaybeSingle })
+    const update = vi.fn()
+
+    const mockFrom = vi.fn((table: string) => {
+      if (table !== 'employees') {
+        throw new Error(`Unexpected table: ${table}`)
+      }
+
+      return {
+        select: vi.fn().mockReturnValue({ eq: fetchEq }),
+        update,
+      }
+    })
+
+    ;(createAdminClient as unknown as vi.Mock).mockReturnValue({
+      from: mockFrom,
+      storage: { from: vi.fn() },
+    })
+
+    await expect(
+      EmployeeService.updateEmployee('employee-1', {
+        first_name: 'Alex',
+        last_name: 'Rowe',
+        email_address: 'alex@example.com',
+        job_title: 'Server',
+        employment_start_date: '2026-02-14',
+        status: 'Former',
+      })
+    ).rejects.toThrow('Use the "Mark as Former" action')
+
+    expect(update).not.toHaveBeenCalled()
+  })
+
+  it('blocks direct reactivation of former employees through the generic employee edit path', async () => {
+    const fetchMaybeSingle = vi.fn().mockResolvedValue({
+      data: {
+        employee_id: 'employee-1',
+        status: 'Former',
+        date_of_birth: null,
+      },
+      error: null,
+    })
+    const fetchEq = vi.fn().mockReturnValue({ maybeSingle: fetchMaybeSingle })
+    const update = vi.fn()
+
+    const mockFrom = vi.fn((table: string) => {
+      if (table !== 'employees') {
+        throw new Error(`Unexpected table: ${table}`)
+      }
+
+      return {
+        select: vi.fn().mockReturnValue({ eq: fetchEq }),
+        update,
+      }
+    })
+
+    ;(createAdminClient as unknown as vi.Mock).mockReturnValue({
+      from: mockFrom,
+      storage: { from: vi.fn() },
+    })
+
+    await expect(
+      EmployeeService.updateEmployee('employee-1', {
+        first_name: 'Alex',
+        last_name: 'Rowe',
+        email_address: 'alex@example.com',
+        job_title: 'Server',
+        employment_start_date: '2026-02-14',
+        status: 'Active',
+      })
+    ).rejects.toThrow('Former employees cannot be reactivated')
+
+    expect(update).not.toHaveBeenCalled()
   })
 
   it('throws when employee delete affects no rows after prefetch', async () => {

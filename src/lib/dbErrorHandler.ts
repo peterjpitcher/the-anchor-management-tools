@@ -23,7 +23,7 @@ export function getConstraintErrorMessage(error: PostgrestError): string {
       return 'Please enter a valid date of birth';
     }
     if (message.includes('chk_employee_status')) {
-      return 'Employee status must be either "Active" or "Former"';
+      return 'Employee status must be "Onboarding", "Active", "Started Separation", or "Former"';
     }
     if (message.includes('chk_employee_name_length') || message.includes('chk_customer_name_length')) {
       return 'Names must be 100 characters or less';

@@ -13,6 +13,7 @@ export default async function NewLeaveRequestPage() {
     .from('employees')
     .select('employee_id, first_name')
     .eq('auth_user_id', user.id)
+    .in('status', ['Active', 'Started Separation'])
     .single();
 
   if (!employee) redirect('/portal/leave');

@@ -78,7 +78,7 @@ export async function clockIn(employeeId: string): Promise<
     .eq('employee_id', employeeId)
     .single();
   if (!employee) return { success: false, error: 'Employee not found' };
-  if (employee.status !== 'Active') return { success: false, error: 'Employee is not active' };
+  if (!['Active', 'Started Separation'].includes(employee.status)) return { success: false, error: 'Employee is not active' };
 
   // Prevent double clock-in — explicit null check narrows the race window
   const { data: openSession } = await supabase

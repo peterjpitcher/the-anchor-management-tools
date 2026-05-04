@@ -1117,7 +1117,7 @@ async function fetchDashboardSnapshotImpl(userId: string): Promise<DashboardSnap
           const { count, error } = await supabase
             .from('employees')
             .select('employee_id', { count: 'exact', head: true })
-            .eq('status', 'Active')
+            .in('status', ['Active', 'Started Separation'])
 
           if (error) throw error
 

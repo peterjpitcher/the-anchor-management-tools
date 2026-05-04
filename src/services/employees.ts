@@ -105,6 +105,12 @@ export const employeeSchema = z.object({
   employment_end_date: z.union([z.string().min(1), z.null()]).optional(),
 });
 
+const OPERATIONALLY_ACTIVE_EMPLOYEE_STATUSES = ['Active', 'Started Separation'] as const;
+
+function isOperationallyActiveStatus(status: string | null | undefined): boolean {
+  return OPERATIONALLY_ACTIVE_EMPLOYEE_STATUSES.includes(status as (typeof OPERATIONALLY_ACTIVE_EMPLOYEE_STATUSES)[number]);
+}
+
 export const noteSchema = z.object({
     note_text: z.string().min(1, 'Note text cannot be empty.'),
     employee_id: z.string().uuid(),
@@ -389,7 +395,17 @@ export class EmployeeService {
     if (fetchError || !oldEmployee) {
       throw new Error('Employee not found or failed to fetch old data.');
     }
-    
+
+    if (oldEmployee.status !== updateData.status) {
+      if (updateData.status === 'Former' && oldEmployee.status !== 'Former') {
+        throw new Error('Use the "Mark as Former" action to separate an employee so access is revoked correctly.');
+      }
+
+      if (oldEmployee.status === 'Former' && updateData.status !== 'Former') {
+        throw new Error('Former employees cannot be reactivated from the edit form. Create a controlled rehire flow first.');
+      }
+    }
+
     const { data: updatedEmployee, error } = await adminClient
       .from('employees')
       .update(updateData)
@@ -407,8 +423,8 @@ export class EmployeeService {
     }
 
     // Keep Google Calendar birthday event in sync (best-effort).
-    const wasEligibleForBirthdayEvent = oldEmployee.status === 'Active' && Boolean(oldEmployee.date_of_birth);
-    const isEligibleForBirthdayEvent = updateData.status === 'Active' && Boolean(updateData.date_of_birth);
+    const wasEligibleForBirthdayEvent = isOperationallyActiveStatus(oldEmployee.status) && Boolean(oldEmployee.date_of_birth);
+    const isEligibleForBirthdayEvent = isOperationallyActiveStatus(updateData.status) && Boolean(updateData.date_of_birth);
 
     if (wasEligibleForBirthdayEvent && !isEligibleForBirthdayEvent) {
       try {
@@ -480,7 +496,7 @@ export class EmployeeService {
     const { data, error } = await adminClient
       .from('employees')
       .select('employee_id, first_name, last_name')
-      .eq('status', 'Active')  // Only show active employees in dropdowns
+      .in('status', OPERATIONALLY_ACTIVE_EMPLOYEE_STATUSES)  // Show currently employable staff in dropdowns
       .order('last_name')
       .order('first_name');
 
@@ -1120,7 +1136,7 @@ export class EmployeeService {
         active: activeCount,
         former: formerCount,
         onboarding: onboardingCount,
-        startedSeparation: 0,
+        startedSeparation: statusMap.get('Started Separation') ?? 0,
       },
       filters: {
         statusFilter,

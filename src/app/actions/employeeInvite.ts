@@ -7,6 +7,7 @@ import { checkUserPermission } from './rbac';
 import { logAuditEvent } from './audit';
 import { getCurrentUser } from '@/lib/audit-helpers';
 import { getErrorMessage } from '@/lib/errors';
+import { finalizeEmployeeSeparation } from '@/lib/employees/separation';
 import {
   sendWelcomeEmail,
   sendChaseEmail,
@@ -120,7 +121,7 @@ export async function sendPortalInvite(employeeId: string) {
 
   const { data: employee, error: empError } = await adminClient
     .from('employees')
-    .select('email_address, auth_user_id')
+    .select('email_address, auth_user_id, status')
     .eq('employee_id', employeeId)
     .maybeSingle();
 
@@ -129,6 +130,9 @@ export async function sendPortalInvite(employeeId: string) {
   }
   if (employee.auth_user_id) {
     return { type: 'error', message: 'This employee already has a portal login.' };
+  }
+  if (!['Active', 'Started Separation'].includes(employee.status)) {
+    return { type: 'error', message: 'Portal invites can only be sent to active employees.' };
   }
   if (!employee.email_address) {
     return { type: 'error', message: 'This employee has no email address on file.' };
@@ -653,18 +657,46 @@ export async function submitOnboardingProfile(token: string): Promise<{ success:
 // Status transition actions
 // ---------------------------------------------------------------------------
 
+type BeginSeparationOptions = {
+  employmentEndDate?: string;
+  note?: string;
+};
+
+const isoDateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+
 // H13 fix: added count check — returns error when 0 rows updated (employee not in Active status)
-export async function beginSeparation(employeeId: string): Promise<{ success: boolean; error?: string }> {
+export async function beginSeparation(
+  employeeId: string,
+  options: BeginSeparationOptions = {},
+): Promise<{ success: boolean; error?: string }> {
   const canEdit = await checkUserPermission('employees', 'edit');
   if (!canEdit) {
     return { success: false, error: 'You do not have permission to perform this action.' };
   }
 
+  const employmentEndDate = options.employmentEndDate?.trim() || undefined;
+  if (employmentEndDate && !isoDateSchema.safeParse(employmentEndDate).success) {
+    return { success: false, error: 'Last working day must be a valid date.' };
+  }
+
+  const note = options.note?.trim();
+  if (note && note.length > 500) {
+    return { success: false, error: 'Separation note must be 500 characters or fewer.' };
+  }
+
   const adminClient = createAdminClient();
+
+  const updatePayload: Record<string, string> = {
+    status: 'Started Separation',
+    updated_at: new Date().toISOString(),
+  };
+  if (employmentEndDate) {
+    updatePayload.employment_end_date = employmentEndDate;
+  }
 
   const { data: updated, error } = await adminClient
     .from('employees')
-    .update({ status: 'Started Separation', updated_at: new Date().toISOString() })
+    .update(updatePayload)
     .eq('employee_id', employeeId)
     .eq('status', 'Active')
     .select('employee_id');
@@ -678,8 +710,29 @@ export async function beginSeparation(employeeId: string): Promise<{ success: bo
     return { success: false, error: 'Employee status could not be updated. They may not be in Active status.' };
   }
 
+  const user = await getCurrentUser();
+
+  if (employmentEndDate || note) {
+    const noteText = [
+      'Separation started.',
+      employmentEndDate ? `Last working day: ${employmentEndDate}.` : null,
+      note ? `Note: ${note}` : null,
+    ].filter(Boolean).join(' ');
+
+    const { error: noteError } = await adminClient
+      .from('employee_notes')
+      .insert({
+        employee_id: employeeId,
+        note_text: noteText,
+        created_by_user_id: user?.user_id ?? null,
+      });
+
+    if (noteError) {
+      console.error('[beginSeparation] Failed to add separation note:', noteError);
+    }
+  }
+
   try {
-    const user = await getCurrentUser();
     await logAuditEvent({
       user_id: user?.user_id ?? undefined,
       user_email: user?.user_email ?? undefined,
@@ -687,12 +740,13 @@ export async function beginSeparation(employeeId: string): Promise<{ success: bo
       resource_type: 'employee',
       resource_id: employeeId,
       operation_status: 'success',
-      new_values: { status: 'Started Separation' },
+      new_values: { status: 'Started Separation', employment_end_date: employmentEndDate ?? null },
     });
   } catch (auditError) {
     console.error('[beginSeparation] Audit log failed:', auditError);
   }
 
+  revalidatePath('/employees');
   revalidatePath(`/employees/${employeeId}`);
   return { success: true };
 }
@@ -703,98 +757,16 @@ export async function revokeEmployeeAccess(employeeId: string): Promise<{ succes
     return { success: false, error: 'You do not have permission to perform this action.' };
   }
 
-  const adminClient = createAdminClient();
+  const user = await getCurrentUser();
+  const result = await finalizeEmployeeSeparation(employeeId, {
+    actorUser: user,
+    source: 'manual',
+    blockShiftsOnOrAfterToday: false,
+  });
 
-  // DEF-006: Fetch status along with auth_user_id and email for guard checks
-  const { data: employee } = await adminClient
-    .from('employees')
-    .select('auth_user_id, email_address, status')
-    .eq('employee_id', employeeId)
-    .maybeSingle();
-
-  // DEF-006: Guard against invalid status transitions
-  if (employee?.status === 'Former') {
-    return { success: false, error: 'Employee is already a former employee.' };
-  }
-  if (employee?.status === 'Onboarding') {
-    return { success: false, error: 'Cannot revoke access for an employee who has not yet been activated. Use delete instead.' };
+  if (!result.success) {
+    return { success: false, error: result.error };
   }
 
-  const now = new Date().toISOString();
-  const today = new Date().toISOString().split('T')[0];
-
-  // Update status to Former
-  const { error: updateError } = await adminClient
-    .from('employees')
-    .update({
-      status: 'Former',
-      employment_end_date: today,
-      updated_at: now,
-    })
-    .eq('employee_id', employeeId);
-
-  if (updateError) {
-    console.error('[revokeEmployeeAccess] Error updating status:', updateError);
-    return { success: false, error: 'Failed to update employee status.' };
-  }
-
-  // Clear this employee's pre-assignment from any shift templates
-  await adminClient
-    .from('rota_shift_templates')
-    .update({ employee_id: null })
-    .eq('employee_id', employeeId);
-
-  // DEF-004: Delete all user_roles if auth user exists — this is a hard failure.
-  // A former employee with active roles is a security issue.
-  if (employee?.auth_user_id) {
-    const { error: rolesError } = await adminClient
-      .from('user_roles')
-      .delete()
-      .eq('user_id', employee.auth_user_id);
-
-    if (rolesError) {
-      console.error('[revokeEmployeeAccess] CRITICAL: Failed to delete user roles:', rolesError);
-      return { success: false, error: 'Failed to remove system access. Please try again or contact an administrator.' };
-    }
-  }
-
-  // DEF-011: Expire all pending invite tokens
-  await adminClient
-    .from('employee_invite_tokens')
-    .update({ expires_at: now })
-    .eq('employee_id', employeeId)
-    .is('completed_at', null);
-
-  // DEF-011: Delete the auth user to prevent sign-in
-  if (employee?.auth_user_id) {
-    const { error: authDeleteError } = await adminClient.auth.admin.deleteUser(employee.auth_user_id);
-    if (authDeleteError) {
-      console.error('[revokeEmployeeAccess] Failed to delete auth user:', authDeleteError);
-      // Non-fatal if roles are already deleted — log for manual follow-up
-    }
-
-    // DEF-011: Clear auth_user_id on the employee record
-    await adminClient
-      .from('employees')
-      .update({ auth_user_id: null })
-      .eq('employee_id', employeeId);
-  }
-
-  try {
-    const user = await getCurrentUser();
-    await logAuditEvent({
-      user_id: user?.user_id ?? undefined,
-      user_email: user?.user_email ?? undefined,
-      operation_type: 'access_revoked',
-      resource_type: 'employee',
-      resource_id: employeeId,
-      operation_status: 'success',
-      new_values: { status: 'Former', auth_user_id_cleared: Boolean(employee?.auth_user_id) },
-    });
-  } catch (auditError) {
-    console.error('[revokeEmployeeAccess] Audit log failed:', auditError);
-  }
-
-  revalidatePath(`/employees/${employeeId}`);
   return { success: true };
 }

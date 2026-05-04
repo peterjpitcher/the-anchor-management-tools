@@ -44,7 +44,7 @@ export async function sendRotaWeekEmails(
     supabase
       .from('employees')
       .select('employee_id, first_name, last_name, email_address')
-      .eq('status', 'Active'),
+      .in('status', ['Active', 'Started Separation']),
     supabase
       .from('rota_published_shifts')
       .select('employee_id, shift_date, start_time, end_time, department, name, is_open_shift')
@@ -216,7 +216,7 @@ export async function sendRotaWeekChangeEmails(
     supabase
       .from('employees')
       .select('employee_id, first_name, last_name, email_address')
-      .eq('status', 'Active'),
+      .in('status', ['Active', 'Started Separation']),
     supabase
       .from('rota_published_shifts')
       .select('shift_date, start_time, end_time, department, name')

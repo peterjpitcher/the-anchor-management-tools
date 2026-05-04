@@ -56,6 +56,7 @@ async function isOwnEmployeeRecord(employeeId: string): Promise<boolean> {
     .select('employee_id')
     .eq('employee_id', employeeId)
     .eq('auth_user_id', user.id)
+    .in('status', ['Active', 'Started Separation'])
     .maybeSingle();
   return Boolean(data);
 }

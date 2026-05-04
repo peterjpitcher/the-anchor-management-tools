@@ -13,7 +13,7 @@ export default async function TimeclockPage() {
     supabase
       .from('employees')
       .select('employee_id, first_name, last_name')
-      .eq('status', 'Active')
+      .in('status', ['Active', 'Started Separation'])
       .order('first_name')
       .order('last_name'),
     getOpenSessions(),

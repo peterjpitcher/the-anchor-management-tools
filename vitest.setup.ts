@@ -3,6 +3,8 @@ import { vi } from 'vitest'
 import { mockTwilioClient } from './tests/mocks/twilio'
 import { mockGraphClient } from './tests/mocks/microsoft-graph'
 
+vi.mock('server-only', () => ({}))
+
 // Mock required environment variables
 process.env.NEXT_PUBLIC_SUPABASE_URL = 'https://example.supabase.co'
 process.env.SUPABASE_SERVICE_ROLE_KEY = 'dummy-service-role-key'

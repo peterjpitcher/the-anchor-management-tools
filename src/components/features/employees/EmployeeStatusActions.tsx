@@ -11,10 +11,18 @@ interface EmployeeStatusActionsProps {
   canEdit: boolean;
 }
 
+function todayInputValue(): string {
+  const now = new Date();
+  const offsetMs = now.getTimezoneOffset() * 60_000;
+  return new Date(now.getTime() - offsetMs).toISOString().slice(0, 10);
+}
+
 export default function EmployeeStatusActions({ employeeId, status, canEdit }: EmployeeStatusActionsProps) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [showConfirm, setShowConfirm] = useState<'separation' | 'revoke' | null>(null);
+  const [separationEndDate, setSeparationEndDate] = useState(todayInputValue);
+  const [separationNote, setSeparationNote] = useState('');
 
   if (!canEdit) return null;
 
@@ -36,9 +44,13 @@ export default function EmployeeStatusActions({ employeeId, status, canEdit }: E
     setShowConfirm(null);
     setLoading(true);
     try {
-      const result = await beginSeparation(employeeId);
+      const result = await beginSeparation(employeeId, {
+        employmentEndDate: separationEndDate,
+        note: separationNote.trim() || undefined,
+      });
       if (result.success) {
         toast.success('Employee status updated to Started Separation.');
+        setSeparationNote('');
         router.refresh();
       } else {
         toast.error(result.error || 'Failed to update status.');
@@ -107,13 +119,42 @@ export default function EmployeeStatusActions({ employeeId, status, canEdit }: E
             <div className="relative w-full max-w-md rounded-lg bg-white shadow-xl p-6">
               <h3 className="text-lg font-semibold text-gray-900 mb-2">Begin Separation</h3>
               <p className="text-sm text-gray-600 mb-6">
-                This will change the employee status to &quot;Started Separation&quot;. Their system access will not be affected yet. Continue?
+                This will change the employee status to &quot;Started Separation&quot;. Their system access will not be affected yet.
               </p>
+              <div className="space-y-4 mb-6">
+                <div>
+                  <label htmlFor="separation-end-date" className="block text-sm font-medium text-gray-700">
+                    Last working day
+                  </label>
+                  <input
+                    id="separation-end-date"
+                    type="date"
+                    value={separationEndDate}
+                    onChange={(event) => setSeparationEndDate(event.target.value)}
+                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-yellow-500 focus:ring-yellow-500 sm:text-sm"
+                    required
+                  />
+                </div>
+                <div>
+                  <label htmlFor="separation-note" className="block text-sm font-medium text-gray-700">
+                    Note
+                  </label>
+                  <textarea
+                    id="separation-note"
+                    value={separationNote}
+                    onChange={(event) => setSeparationNote(event.target.value)}
+                    rows={3}
+                    maxLength={500}
+                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-yellow-500 focus:ring-yellow-500 sm:text-sm"
+                    placeholder="Optional reason or handover note"
+                  />
+                </div>
+              </div>
               <div className="flex gap-3 justify-end">
                 <button type="button" onClick={() => setShowConfirm(null)} className="rounded-md px-4 py-2 text-sm font-semibold text-gray-700 ring-1 ring-inset ring-gray-300 hover:bg-gray-50">
                   Cancel
                 </button>
-                <button type="button" onClick={handleBeginSeparation} className="rounded-md bg-yellow-600 px-4 py-2 text-sm font-semibold text-white hover:bg-yellow-500">
+                <button type="button" onClick={handleBeginSeparation} disabled={!separationEndDate} className="rounded-md bg-yellow-600 px-4 py-2 text-sm font-semibold text-white hover:bg-yellow-500 disabled:opacity-50">
                   Confirm
                 </button>
               </div>
