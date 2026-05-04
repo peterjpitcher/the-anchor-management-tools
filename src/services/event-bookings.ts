@@ -6,6 +6,7 @@ import { isPlaceholderName } from '@/lib/sms/name-utils'
 import { createEventPaymentToken } from '@/lib/events/event-payments'
 import { createEventManageToken } from '@/lib/events/manage-booking'
 import { recordAnalyticsEvent } from '@/lib/analytics/events'
+import { syncPubOpsEventCalendarByEventId } from '@/lib/google-calendar-events'
 import { logger } from '@/lib/logger'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -624,6 +625,15 @@ export class EventBookingService {
             },
             { customerId, eventId, eventBookingId: rpcResult.booking_id || null, state: resolvedState }
           )
+        },
+        {
+          label: 'calendar:event_booking_aggregate',
+          promise: syncPubOpsEventCalendarByEventId(supabase, eventId, {
+            source,
+            bookingId: rpcResult.booking_id ?? null,
+            state: resolvedState,
+            context: 'event_booking_created'
+          })
         }
       ]
 

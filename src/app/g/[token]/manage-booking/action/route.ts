@@ -11,6 +11,10 @@ import {
 } from '@/lib/events/manage-booking'
 import { checkGuestTokenThrottle } from '@/lib/guest/token-throttle'
 import { recordAnalyticsEvent } from '@/lib/analytics/events'
+import {
+  syncPubOpsEventCalendarByBookingId,
+  syncPubOpsEventCalendarByEventId,
+} from '@/lib/google-calendar-events'
 import { logger } from '@/lib/logger'
 
 type RouteContext = {
@@ -140,6 +144,17 @@ export async function POST(request: NextRequest, context: RouteContext) {
         })
       }
 
+      if (cancelResult.event_id) {
+        await syncPubOpsEventCalendarByEventId(supabase, cancelResult.event_id, {
+          bookingId: cancelResult.booking_id ?? null,
+          context: 'guest_event_booking_cancelled',
+        })
+      } else if (cancelResult.booking_id) {
+        await syncPubOpsEventCalendarByBookingId(supabase, cancelResult.booking_id, {
+          context: 'guest_event_booking_cancelled',
+        })
+      }
+
       return redirectToState(request, token, {
         state: 'cancelled',
         refund_status: refundStatus,
@@ -244,6 +259,22 @@ export async function POST(request: NextRequest, context: RouteContext) {
               bookingId: updateResult.booking_id,
               error: smsError instanceof Error ? smsError.message : String(smsError)
             }
+          })
+        }
+      }
+
+      if (
+        updateResult.state === 'updated' &&
+        Number(updateResult.delta ?? 0) !== 0
+      ) {
+        if (updateResult.event_id) {
+          await syncPubOpsEventCalendarByEventId(supabase, updateResult.event_id, {
+            bookingId: updateResult.booking_id ?? null,
+            context: 'guest_event_booking_seats_updated',
+          })
+        } else if (updateResult.booking_id) {
+          await syncPubOpsEventCalendarByBookingId(supabase, updateResult.booking_id, {
+            context: 'guest_event_booking_seats_updated',
           })
         }
       }

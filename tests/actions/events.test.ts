@@ -63,6 +63,19 @@ vi.mock('@/lib/analytics/events', () => ({
   recordAnalyticsEvent: vi.fn(),
 }))
 
+vi.mock('@/lib/google-calendar-events', () => ({
+  syncPubOpsEventCalendarByEventId: vi.fn().mockResolvedValue({
+    state: 'updated',
+    eventId: 'event-1',
+    googleEventId: 'google-event-id',
+  }),
+  deletePubOpsEventCalendarEntryByEventId: vi.fn().mockResolvedValue({
+    state: 'deleted',
+    eventId: 'event-1',
+    googleEventId: 'google-event-id',
+  }),
+}))
+
 vi.mock('@/lib/twilio', () => ({
   sendSMS: vi.fn(),
 }))
@@ -85,19 +98,24 @@ vi.mock('@/lib/logger', () => ({
 
 import { checkUserPermission } from '@/app/actions/rbac'
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { logAuditEvent } from '@/app/actions/audit'
 import { EventService, eventSchema } from '@/services/events'
+import { syncPubOpsEventCalendarByEventId } from '@/lib/google-calendar-events'
 import {
   createEvent,
   deleteEvent,
   getEventById,
   getEvents,
+  updateEvent,
 } from '@/app/actions/events'
 
 const mockedPermission = checkUserPermission as unknown as Mock
 const mockedCreateClient = createClient as unknown as Mock
+const mockedCreateAdminClient = createAdminClient as unknown as Mock
 const mockedLogAuditEvent = logAuditEvent as unknown as Mock
 const mockedEventSchema = eventSchema as unknown as { safeParse: Mock; partial: Mock }
+const mockedSyncPubOpsEventCalendarByEventId = syncPubOpsEventCalendarByEventId as unknown as Mock
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -231,6 +249,66 @@ describe('Events actions', () => {
       const result = await createEvent(formData)
 
       expect(result).toEqual({ error: 'DB unavailable' })
+    })
+  })
+
+  // -----------------------------------------------------------------------
+  // updateEvent
+  // -----------------------------------------------------------------------
+
+  describe('updateEvent', () => {
+    it('syncs the Pub Ops aggregate calendar entry after an event reschedule', async () => {
+      mockedPermission.mockResolvedValue(true)
+      mockSupabaseClientForEvents()
+
+      const adminClient = {
+        from: vi.fn().mockReturnValue({
+          select: vi.fn().mockReturnValue({
+            eq: vi.fn().mockReturnValue({
+              in: vi.fn().mockResolvedValue({ data: [], error: null }),
+            }),
+          }),
+        }),
+      }
+      mockedCreateAdminClient.mockReturnValue(adminClient)
+
+      const partialSafeParse = vi.fn().mockReturnValue({
+        success: true,
+        data: {
+          name: 'Quiz Night',
+          date: '2026-04-11',
+          time: '20:00:00',
+          event_status: 'scheduled',
+        },
+      })
+      mockedEventSchema.partial.mockReturnValue({ safeParse: partialSafeParse })
+
+      ;(EventService.updateEvent as Mock).mockResolvedValue({
+        id: 'event-1',
+        name: 'Quiz Night',
+        date: '2026-04-11',
+        time: '20:00:00',
+        slug: 'quiz-night',
+        _oldDate: '2026-04-10',
+        _oldTime: '19:00:00',
+        _oldName: 'Quiz Night',
+        _oldStatus: 'scheduled',
+        marketingLinksWarning: null,
+      })
+
+      const result = await updateEvent('event-1', buildFormData({
+        name: 'Quiz Night',
+        date: '2026-04-11',
+        time: '20:00:00',
+        event_status: 'scheduled',
+      }))
+
+      expect(result).toHaveProperty('success', true)
+      expect(mockedSyncPubOpsEventCalendarByEventId).toHaveBeenCalledWith(
+        adminClient,
+        'event-1',
+        { context: 'event_updated' },
+      )
     })
   })
 
