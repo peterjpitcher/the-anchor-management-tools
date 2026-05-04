@@ -208,4 +208,65 @@ describe('buildRotaSummary', () => {
       wagePercent: null,
     });
   });
+
+  it('costs visible week days outside the selected payroll period without adding them to employee period totals', () => {
+    const aprilPeriod: RotaSummaryPayrollPeriod = {
+      year: 2026,
+      month: 4,
+      start: '2026-03-25',
+      end: '2026-04-24',
+      label: 'April 2026',
+    };
+
+    const summary = buildRotaSummary({
+      site: { id: 'site-1', name: 'The Anchor' },
+      payrollPeriod: aprilPeriod,
+      weekDays: ['2026-04-24', '2026-04-25'],
+      periodShifts: [
+        {
+          employee_id: 'emp-hourly',
+          shift_date: '2026-04-24',
+          start_time: '10:00',
+          end_time: '16:00',
+          unpaid_break_minutes: 0,
+          is_overnight: false,
+          is_open_shift: false,
+          status: 'scheduled',
+        },
+        {
+          employee_id: 'emp-hourly',
+          shift_date: '2026-04-25',
+          start_time: '12:00',
+          end_time: '18:00',
+          unpaid_break_minutes: 0,
+          is_overnight: false,
+          is_open_shift: false,
+          status: 'scheduled',
+        },
+      ],
+      employees: [{ employee_id: 'emp-hourly', job_title: 'Bar' }],
+      salesTargets: {
+        '2026-04-24': { salesTarget: 1000, salesTargetSource: 'default', salesTargetReason: null },
+        '2026-04-25': { salesTarget: 1000, salesTargetSource: 'default', salesTargetReason: null },
+      },
+      targetPercent: 25,
+      rateContext,
+    });
+
+    expect(summary.employeeTotals['emp-hourly']).toMatchObject({
+      periodHours: 6,
+      estimatedCost: 60,
+      costStatus: 'complete',
+    });
+    expect(summary.dayTotals['2026-04-25']).toMatchObject({
+      hours: 6,
+      estimatedCost: 60,
+      wagePercent: 6,
+    });
+    expect(summary.weekTotals).toMatchObject({
+      estimatedCost: 120,
+      salesTarget: 2000,
+      wagePercent: 6,
+    });
+  });
 });

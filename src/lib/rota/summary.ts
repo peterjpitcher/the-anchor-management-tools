@@ -222,6 +222,8 @@ export function buildRotaSummary(input: {
   const roleTotals: Record<string, RotaRoleSummaryTotal> = {};
   const weekDaySet = new Set(input.weekDays);
   const employeeMap = new Map(input.employees.map(employee => [employee.employee_id, employee]));
+  const isPayrollPeriodDay = (shiftDate: string) =>
+    shiftDate >= input.payrollPeriod.start && shiftDate <= input.payrollPeriod.end;
 
   for (const employee of input.employees) {
     employeeTotals[employee.employee_id] = {
@@ -263,6 +265,7 @@ export function buildRotaSummary(input: {
     );
 
     const isVisibleWeekDay = weekDaySet.has(shift.shift_date);
+    const isInPayrollPeriod = isPayrollPeriodDay(shift.shift_date);
     if (isVisibleWeekDay) {
       dayTotals[shift.shift_date].hours = round2(dayTotals[shift.shift_date].hours + hours);
     }
@@ -280,10 +283,13 @@ export function buildRotaSummary(input: {
       salariedShiftCount: 0,
       costedShiftCount: 0,
     };
-    employeeTotal.periodHours = round2(employeeTotal.periodHours + hours);
 
     const employee = employeeMap.get(shift.employee_id);
-    if (employee) {
+    if (isInPayrollPeriod) {
+      employeeTotal.periodHours = round2(employeeTotal.periodHours + hours);
+    }
+
+    if (employee && isInPayrollPeriod) {
       const roleName = roleNameForEmployee(employee);
       const roleTotal = roleTotals[roleName] ?? { employeeCount: 0, periodHours: 0, estimatedCost: input.rateContext ? 0 : null };
       roleTotal.periodHours = round2(roleTotal.periodHours + hours);
@@ -296,26 +302,28 @@ export function buildRotaSummary(input: {
     }
 
     if (input.rateContext.salaryEmployeeIds.has(shift.employee_id)) {
-      employeeTotal.salariedShiftCount += 1;
+      if (isInPayrollPeriod) employeeTotal.salariedShiftCount += 1;
       employeeTotals[shift.employee_id] = employeeTotal;
       continue;
     }
 
     const rate = resolveHourlyRate(shift.employee_id, shift.shift_date, input.rateContext);
     if (!rate) {
-      employeeTotal.uncostedShiftCount += 1;
+      if (isInPayrollPeriod) employeeTotal.uncostedShiftCount += 1;
       if (isVisibleWeekDay) dayTotals[shift.shift_date].uncostedShiftCount += 1;
       employeeTotals[shift.employee_id] = employeeTotal;
       continue;
     }
 
     const cost = round2(hours * rate.rate);
-    employeeTotal.estimatedCost = round2((employeeTotal.estimatedCost ?? 0) + cost);
-    employeeTotal.costedShiftCount += 1;
+    if (isInPayrollPeriod) {
+      employeeTotal.estimatedCost = round2((employeeTotal.estimatedCost ?? 0) + cost);
+      employeeTotal.costedShiftCount += 1;
+    }
     if (isVisibleWeekDay) {
       dayTotals[shift.shift_date].estimatedCost = round2((dayTotals[shift.shift_date].estimatedCost ?? 0) + cost);
     }
-    if (employee) {
+    if (employee && isInPayrollPeriod) {
       const roleName = roleNameForEmployee(employee);
       const roleTotal = roleTotals[roleName];
       if (roleTotal) {
