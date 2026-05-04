@@ -18,6 +18,7 @@ interface EmergencyContactsData {
 
 interface EmergencyContactsStepProps {
   token: string;
+  initialData?: EmergencyContactsData;
   onSuccess: (data: EmergencyContactsData) => void;
 }
 
@@ -29,10 +30,10 @@ const emptyContact = (): ContactData => ({
   address: '',
 });
 
-export default function EmergencyContactsStep({ token, onSuccess }: EmergencyContactsStepProps) {
+export default function EmergencyContactsStep({ token, initialData, onSuccess }: EmergencyContactsStepProps) {
   const [data, setData] = useState<EmergencyContactsData>({
-    primary: emptyContact(),
-    secondary: emptyContact(),
+    primary: initialData?.primary ?? emptyContact(),
+    secondary: initialData?.secondary ?? emptyContact(),
   });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);

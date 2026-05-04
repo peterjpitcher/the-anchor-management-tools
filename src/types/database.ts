@@ -314,6 +314,7 @@ export interface EmployeeInviteToken {
   id: string; // UUID
   employee_id: string; // UUID
   email: string;
+  invite_type: 'onboarding' | 'portal_access';
   token: string;
   expires_at: string; // Timestamp
   completed_at: string | null; // Timestamp

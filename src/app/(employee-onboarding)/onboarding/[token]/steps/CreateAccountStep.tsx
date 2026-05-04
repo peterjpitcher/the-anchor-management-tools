@@ -7,9 +7,19 @@ interface CreateAccountStepProps {
   token: string;
   email: string;
   onSuccess: () => void;
+  description?: string;
+  buttonLabel?: string;
+  loadingLabel?: string;
 }
 
-export default function CreateAccountStep({ token, email, onSuccess }: CreateAccountStepProps) {
+export default function CreateAccountStep({
+  token,
+  email,
+  onSuccess,
+  description,
+  buttonLabel = 'Create Account & Continue',
+  loadingLabel = 'Creating account...',
+}: CreateAccountStepProps) {
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
   const [error, setError] = useState('');
@@ -45,7 +55,11 @@ export default function CreateAccountStep({ token, email, onSuccess }: CreateAcc
     <form onSubmit={handleSubmit} className="space-y-4">
       <div>
         <p className="text-sm text-gray-600 mb-4">
-          Create a password for your account. You&apos;ll use your email address (<strong>{email}</strong>) and this password to sign in.
+          {description ?? (
+            <>
+              Create a password for your account. You&apos;ll use your email address (<strong>{email}</strong>) and this password to sign in.
+            </>
+          )}
         </p>
       </div>
 
@@ -89,7 +103,7 @@ export default function CreateAccountStep({ token, email, onSuccess }: CreateAcc
         disabled={loading}
         className="w-full rounded-md bg-green-600 px-4 py-2 text-sm font-semibold text-white hover:bg-green-500 disabled:opacity-50"
       >
-        {loading ? 'Creating account...' : 'Create Account & Continue'}
+        {loading ? loadingLabel : buttonLabel}
       </button>
     </form>
   );

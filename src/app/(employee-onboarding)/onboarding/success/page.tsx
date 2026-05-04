@@ -1,6 +1,13 @@
 const BASE_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://manage.the-anchor.pub';
 
-export default function OnboardingSuccessPage() {
+interface OnboardingSuccessPageProps {
+  searchParams?: Promise<{ type?: string }>;
+}
+
+export default async function OnboardingSuccessPage({ searchParams }: OnboardingSuccessPageProps) {
+  const params = await searchParams;
+  const isPortalAccess = params?.type === 'portal_access';
+
   return (
     <div className="space-y-4">
       <div className="rounded-lg bg-white p-8 shadow-sm text-center">
@@ -9,9 +16,13 @@ export default function OnboardingSuccessPage() {
             <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
           </svg>
         </div>
-        <h2 className="text-xl font-semibold text-gray-900 mb-2">Profile complete!</h2>
+        <h2 className="text-xl font-semibold text-gray-900 mb-2">
+          {isPortalAccess ? 'Staff portal access ready!' : 'Profile complete!'}
+        </h2>
         <p className="text-gray-600">
-          Your employee profile has been submitted. Your manager has been notified and will be in touch soon.
+          {isPortalAccess
+            ? 'Your staff portal account is ready to use.'
+            : 'Your employee profile has been submitted. Your manager has been notified and will be in touch soon.'}
         </p>
       </div>
 

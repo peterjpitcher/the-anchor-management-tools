@@ -44,7 +44,7 @@ export function buildPortalInviteEmail(email: string, onboardingUrl: string) {
   const text =
     `Hi there,\n\n` +
     `We've launched a new staff portal and you've been invited to set up your access.\n\n` +
-    `Click the link below to create a password and complete your profile:\n${onboardingUrl}\n\n` +
+    `Click the link below to create your staff portal password:\n${onboardingUrl}\n\n` +
     `This link will expire in 7 days. If you have any questions, please speak to your manager.\n\n` +
     `Kind regards,\nThe Anchor Management Team`;
 

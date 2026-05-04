@@ -2041,6 +2041,7 @@ export type Database = {
           employee_id: string
           expires_at: string
           id: string
+          invite_type: string
           token: string
         }
         Insert: {
@@ -2052,6 +2053,7 @@ export type Database = {
           employee_id: string
           expires_at?: string
           id?: string
+          invite_type?: string
           token?: string
         }
         Update: {
@@ -2063,6 +2065,7 @@ export type Database = {
           employee_id?: string
           expires_at?: string
           id?: string
+          invite_type?: string
           token?: string
         }
         Relationships: [
@@ -11770,11 +11773,24 @@ export type Database = {
       create_employee_invite:
         | { Args: { p_email: string }; Returns: Json }
         | { Args: { p_email: string; p_job_title?: string }; Returns: Json }
+      complete_employee_onboarding: {
+        Args: {
+          p_token: string
+        }
+        Returns: Json
+      }
       create_employee_transaction: {
         Args: {
           p_employee_data: Json
           p_financial_data?: Json
           p_health_data?: Json
+        }
+        Returns: Json
+      }
+      link_employee_invite_account: {
+        Args: {
+          p_auth_user_id: string
+          p_token: string
         }
         Returns: Json
       }

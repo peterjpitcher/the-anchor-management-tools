@@ -1,4 +1,4 @@
-import { validateInviteToken } from '@/app/actions/employeeInvite';
+import { getOnboardingSnapshot, validateInviteToken } from '@/app/actions/employeeInvite';
 import Link from 'next/link';
 import OnboardingClient from './OnboardingClient';
 
@@ -25,9 +25,13 @@ export default async function OnboardingPage({ params }: OnboardingPageProps) {
   if (tokenData.completed) {
     return (
       <div className="rounded-lg bg-white p-8 shadow-sm text-center">
-        <h2 className="text-xl font-semibold text-gray-900 mb-2">Profile already complete</h2>
+        <h2 className="text-xl font-semibold text-gray-900 mb-2">
+          {tokenData.inviteType === 'portal_access' ? 'Portal access already set up' : 'Profile already complete'}
+        </h2>
         <p className="text-gray-600 mb-4">
-          Your employee profile has already been completed.
+          {tokenData.inviteType === 'portal_access'
+            ? 'Your staff portal access has already been set up.'
+            : 'Your employee profile has already been completed.'}
         </p>
         <Link
           href="/auth/login"
@@ -50,12 +54,17 @@ export default async function OnboardingPage({ params }: OnboardingPageProps) {
     );
   }
 
+  const snapshot = tokenData.inviteType === 'onboarding'
+    ? await getOnboardingSnapshot(token)
+    : null;
+
   return (
     <OnboardingClient
       token={token}
       email={tokenData.email}
-      employeeId={tokenData.employee_id}
+      inviteType={tokenData.inviteType ?? 'onboarding'}
       hasAuthUser={tokenData.hasAuthUser}
+      initialData={snapshot?.success ? snapshot.data : null}
     />
   );
 }
