@@ -1713,7 +1713,10 @@ export default function PrivateBookingDetailClient({
       formData.set('method', booking?.deposit_payment_method ?? 'cash');
       const result = await editPrivateBookingPayment(formData);
       if (result.success) {
-        toast.success('Deposit amount updated');
+        const nextAmount = Number(editDepositAmount);
+        toast.success(Number.isFinite(nextAmount) && nextAmount <= 0
+          ? 'Booking confirmed with no deposit required'
+          : 'Deposit amount updated');
         setEditingDeposit(false);
         router.refresh();
       } else {
@@ -1949,6 +1952,8 @@ export default function PrivateBookingDetailClient({
         .join('\n')
         .trim() || null
     : null
+  const depositAmount = toNumber(booking.deposit_amount, 0);
+  const depositRequired = depositAmount > 0;
 
   type AuditEntry = NonNullable<PrivateBookingWithDetails['audit_trail']>[number]
   const auditTrail = booking.audit_trail ?? []
@@ -2574,7 +2579,9 @@ export default function PrivateBookingDetailClient({
                         Security Deposit
                       </p>
                       <p className="text-xs text-gray-500">
-                        {booking.deposit_paid_date
+                        {!depositRequired
+                          ? "No deposit required"
+                          : booking.deposit_paid_date
                           ? `Paid ${formatDateFull(booking.deposit_paid_date)}`
                           : "Not paid"}
                       </p>
@@ -2587,7 +2594,7 @@ export default function PrivateBookingDetailClient({
                           value={editDepositAmount}
                           onChange={(e) => setEditDepositAmount(e.target.value)}
                           disabled={savingDeposit}
-                          min="0.01"
+                          min="0"
                           step="0.01"
                           placeholder="Amount"
                           aria-label="Deposit amount"
@@ -2618,13 +2625,13 @@ export default function PrivateBookingDetailClient({
                     ) : (
                       <div className="flex items-center gap-1 justify-end">
                         <p className="text-sm font-medium text-gray-900">
-                          {formatMoney(booking.deposit_amount ?? 250)}
+                          {depositRequired ? formatMoney(depositAmount) : "No deposit"}
                         </p>
                         {!booking.deposit_paid_date && canManageDeposits && (
                           <button
                             type="button"
                             onClick={() => {
-                              setEditDepositAmount(String(booking.deposit_amount ?? 250));
+                              setEditDepositAmount(String(depositAmount));
                               setEditingDeposit(true);
                             }}
                             className="text-gray-400 hover:text-gray-600 focus:outline-none focus:ring-1 focus:ring-gray-400 rounded"
@@ -2636,6 +2643,7 @@ export default function PrivateBookingDetailClient({
                       </div>
                     )}
                     {!booking.deposit_paid_date &&
+                      depositRequired &&
                       (booking.status === "draft" || booking.status === "confirmed") &&
                       canManageDeposits && (
                         <div className="mt-1 flex flex-col gap-1 items-end">
@@ -2665,22 +2673,24 @@ export default function PrivateBookingDetailClient({
                       )}
                     </div>
                   </div>
-                  <p className="text-xs text-gray-600 mt-2">
-                    Returned after event (subject to terms)
-                  </p>
+                  {depositRequired && (
+                    <p className="text-xs text-gray-600 mt-2">
+                      Returned after event (subject to terms)
+                    </p>
+                  )}
                   {/* Refund status badge */}
-                  {refundTotals.totalRefunded > 0 && (
+                  {depositRequired && refundTotals.totalRefunded > 0 && (
                     <div className="mt-2">
                       <Badge
-                        variant={refundTotals.totalRefunded >= (booking.deposit_amount ?? 0) ? 'info' : 'warning'}
+                        variant={refundTotals.totalRefunded >= depositAmount ? 'info' : 'warning'}
                         size="sm"
                       >
-                        {refundTotals.totalRefunded >= (booking.deposit_amount ?? 0) ? 'Refunded' : 'Partially Refunded'}
+                        {refundTotals.totalRefunded >= depositAmount ? 'Refunded' : 'Partially Refunded'}
                       </Badge>
                     </div>
                   )}
                   {/* Refund button */}
-                  {canRefund && booking.deposit_paid_date && refundTotals.totalRefunded < (booking.deposit_amount ?? 0) && (
+                  {depositRequired && canRefund && booking.deposit_paid_date && refundTotals.totalRefunded < depositAmount && (
                     <div className="mt-2">
                       <Button
                         variant="secondary"
@@ -2876,13 +2886,13 @@ export default function PrivateBookingDetailClient({
       />
 
       {/* Modals */}
-      {canManageDeposits && (
+      {canManageDeposits && depositRequired && (
         <PaymentModal
           open={showDepositModal}
           onClose={() => setShowDepositModal(false)}
           bookingId={bookingId}
           type="deposit"
-          amount={booking.deposit_amount ?? 250}
+          amount={depositAmount}
           onSuccess={refreshBooking}
         />
       )}

@@ -147,6 +147,16 @@ export default async function BookingPortalPage({ params, searchParams }: PagePr
 
   const b = booking as BookingRow
 
+  const { data: balancePaymentRows } = await supabase
+    .from('private_booking_payments')
+    .select('amount')
+    .eq('booking_id', bookingId)
+
+  const balancePaymentsTotal = (balancePaymentRows ?? []).reduce(
+    (sum, row) => sum + Number(row.amount ?? 0),
+    0,
+  )
+
   const customerName = b.customer_full_name
     || (b.customer_first_name
       ? [b.customer_first_name, b.customer_last_name].filter(Boolean).join(' ')
@@ -156,8 +166,7 @@ export default async function BookingPortalPage({ params, searchParams }: PagePr
   const balancePaid = !!b.final_payment_date
   const depositRequired = b.deposit_amount > 0
   // Security deposit is a returnable bond — it does NOT reduce the event cost.
-  // Balance remaining is the full event total regardless of deposit status.
-  const balanceRemaining = b.total_amount
+  const balanceRemaining = balancePaid ? 0 : Math.max(0, b.total_amount - balancePaymentsTotal)
 
   // Format end time, accounting for next-day events
   let endTimeDisplay: string | null = null
@@ -247,32 +256,32 @@ export default async function BookingPortalPage({ params, searchParams }: PagePr
           </h2>
 
           {/* Deposit row */}
-          {depositRequired && (
-            <div className="flex items-center justify-between py-3 border-b border-gray-100 last:border-0">
-              <div>
-                <p className="text-sm font-medium text-gray-900">Deposit</p>
-                <p className="text-xs text-gray-500">
-                  {depositPaid
+          <div className="flex items-center justify-between py-3 border-b border-gray-100 last:border-0">
+            <div>
+              <p className="text-sm font-medium text-gray-900">Deposit</p>
+              <p className="text-xs text-gray-500">
+                {!depositRequired
+                  ? 'No deposit required'
+                  : depositPaid
                     ? `Paid on ${formatDateFull(b.deposit_paid_date!)}`
                     : 'Not yet received'}
-                </p>
-              </div>
-              <div className="text-right">
-                <p className="text-sm font-semibold text-gray-900">
-                  {formatCurrency(b.deposit_amount)}
-                </p>
-                <span
-                  className={`inline-block mt-1 text-xs font-medium px-2 py-0.5 rounded-full ${
-                    depositPaid
-                      ? 'bg-green-100 text-green-700'
-                      : 'bg-amber-100 text-amber-700'
-                  }`}
-                >
-                  {depositPaid ? 'Paid' : 'Outstanding'}
-                </span>
-              </div>
+              </p>
             </div>
-          )}
+            <div className="text-right">
+              <p className="text-sm font-semibold text-gray-900">
+                {depositRequired ? formatCurrency(b.deposit_amount) : 'None'}
+              </p>
+              <span
+                className={`inline-block mt-1 text-xs font-medium px-2 py-0.5 rounded-full ${
+                  !depositRequired || depositPaid
+                    ? 'bg-green-100 text-green-700'
+                    : 'bg-amber-100 text-amber-700'
+                }`}
+              >
+                {!depositRequired ? 'Not required' : depositPaid ? 'Paid' : 'Outstanding'}
+              </span>
+            </div>
+          </div>
 
           {/* Total / balance row */}
           <div className="flex items-center justify-between py-3 border-b border-gray-100 last:border-0">

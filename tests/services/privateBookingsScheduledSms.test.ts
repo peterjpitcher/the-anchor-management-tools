@@ -27,6 +27,7 @@ function mockSupabase(opts: {
   booking?: BookingRow | null
   bookingError?: { message: string } | null
   idempRows?: IdempRow[]
+  paymentRows?: Array<{ amount: number }>
 }): void {
   const bookingSingle = vi.fn().mockResolvedValue({
     data: opts.booking ?? null,
@@ -41,12 +42,18 @@ function mockSupabase(opts: {
     error: null,
   })
   const idempSelect = vi.fn().mockReturnValue({ eq: idempEq })
+  const paymentsEq = vi.fn().mockResolvedValue({
+    data: opts.paymentRows ?? [],
+    error: null,
+  })
+  const paymentsSelect = vi.fn().mockReturnValue({ eq: paymentsEq })
 
   mockedCreateAdminClient.mockReturnValue({
     from: vi.fn((table: string) => {
       if (table === 'private_bookings') return { select: bookingSelect }
       if (table === 'private_booking_send_idempotency')
         return { select: idempSelect }
+      if (table === 'private_booking_payments') return { select: paymentsSelect }
       throw new Error(`Unexpected table in test: ${table}`)
     }),
   })
@@ -118,6 +125,15 @@ describe('getBookingScheduledSms', () => {
     expect(oneDay?.suppression_reason).toBeNull()
   })
 
+  it('does not return deposit reminders for zero-deposit draft bookings', async () => {
+    mockSupabase({ booking: draftBooking({ deposit_amount: 0 }) })
+
+    const result = await getBookingScheduledSms(BOOKING_ID, NOW)
+
+    expect(result.find((r) => r.trigger_type.startsWith('deposit_reminder_'))).toBeUndefined()
+    expect(result.map((r) => r.preview_body).join('\n')).not.toContain('£0')
+  })
+
   it('returns balance_reminder_14day for confirmed booking with balance outstanding', async () => {
     process.env.PRIVATE_BOOKING_UPCOMING_EVENT_SMS_ENABLED = 'true'
     mockSupabase({ booking: confirmedBooking() })
@@ -131,6 +147,23 @@ describe('getBookingScheduledSms', () => {
     expect(fourteen?.suppression_reason).toBeNull()
     expect(fourteen?.preview_body).toContain('Sam')
     expect(fourteen?.preview_body).toContain('£1200')
+  })
+
+  it('uses remaining balance after partial payments in balance reminders', async () => {
+    process.env.PRIVATE_BOOKING_UPCOMING_EVENT_SMS_ENABLED = 'true'
+    mockSupabase({
+      booking: confirmedBooking(),
+      paymentRows: [{ amount: 500 }],
+    })
+
+    const result = await getBookingScheduledSms(BOOKING_ID, NOW)
+
+    const fourteen = result.find(
+      (r) => r.trigger_type === 'balance_reminder_14day',
+    )
+    expect(fourteen).toBeDefined()
+    expect(fourteen?.preview_body).toContain('£700')
+    expect(fourteen?.preview_body).not.toContain('£1200')
   })
 
   it('returns event_reminder_1d when event is tomorrow', async () => {

@@ -3,6 +3,7 @@ import { authorizeCronRequest } from '@/lib/cron-auth'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getPayPalOrder, capturePayPalPayment } from '@/lib/paypal'
 import { logger } from '@/lib/logger'
+import { finalizeDepositPayment } from '@/services/private-bookings'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
@@ -57,28 +58,25 @@ export async function GET(request: NextRequest) {
       if (orderStatus === 'COMPLETED') {
         // Already captured — record the deposit
         const captureId = order.purchase_units?.[0]?.payments?.captures?.[0]?.id ?? null
-        const capturedAmount = order.purchase_units?.[0]?.payments?.captures?.[0]?.amount?.value ?? null
-
-        const statusUpdate: Record<string, unknown> =
-          booking.status === 'draft'
-            ? { status: 'confirmed', cancellation_reason: null }
-            : {}
-
-        const { data: updated } = await admin
-          .from('private_bookings')
-          .update({
-            deposit_paid_date: new Date().toISOString(),
-            deposit_payment_method: 'paypal',
-            paypal_deposit_capture_id: captureId,
-            ...statusUpdate,
-            updated_at: new Date().toISOString(),
+        const capturedAmount = Number(order.purchase_units?.[0]?.payments?.captures?.[0]?.amount?.value ?? 0)
+        const expectedAmount = Number(booking.deposit_amount ?? 0)
+        if (expectedAmount > 0 && Math.abs(capturedAmount - expectedAmount) > 0.01) {
+          logger.error('PayPal reconciliation: amount mismatch on completed order', {
+            metadata: { bookingId, orderId, capturedAmount, expectedAmount }
           })
-          .eq('id', bookingId)
-          .is('deposit_paid_date', null)
-          .select('id')
-          .maybeSingle()
+          results.push({ bookingId, outcome: 'amount_mismatch' })
+          continue
+        }
 
-        if (updated) {
+        const finalizeResult = await finalizeDepositPayment({
+          bookingId,
+          amount: capturedAmount,
+          method: 'paypal',
+          paypalCaptureId: captureId,
+          requireAmountMatch: true,
+        }, admin)
+
+        if (!finalizeResult.alreadyRecorded) {
           await admin.from('audit_logs').insert({
             action: 'paypal_deposit_reconciled',
             entity_type: 'private_booking',
@@ -105,26 +103,15 @@ export async function GET(request: NextRequest) {
             continue
           }
 
-          const statusUpdate: Record<string, unknown> =
-            booking.status === 'draft'
-              ? { status: 'confirmed', cancellation_reason: null }
-              : {}
+          const finalizeResult = await finalizeDepositPayment({
+            bookingId,
+            amount: capturedAmount,
+            method: 'paypal',
+            paypalCaptureId: captureResult.transactionId,
+            requireAmountMatch: true,
+          }, admin)
 
-          const { data: updated } = await admin
-            .from('private_bookings')
-            .update({
-              deposit_paid_date: new Date().toISOString(),
-              deposit_payment_method: 'paypal',
-              paypal_deposit_capture_id: captureResult.transactionId,
-              ...statusUpdate,
-              updated_at: new Date().toISOString(),
-            })
-            .eq('id', bookingId)
-            .is('deposit_paid_date', null)
-            .select('id')
-            .maybeSingle()
-
-          if (updated) {
+          if (!finalizeResult.alreadyRecorded) {
             await admin.from('audit_logs').insert({
               action: 'paypal_deposit_reconciled',
               entity_type: 'private_booking',

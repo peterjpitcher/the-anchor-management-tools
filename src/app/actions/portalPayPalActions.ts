@@ -1,9 +1,20 @@
 'use server'
 
 import { createAdminClient } from '@/lib/supabase/admin'
-import { capturePayPalPayment } from '@/lib/paypal'
+import { capturePayPalPayment, getPayPalOrder } from '@/lib/paypal'
 import { verifyBookingToken } from '@/lib/private-bookings/booking-token'
 import { logger } from '@/lib/logger'
+import { finalizeDepositPayment } from '@/services/private-bookings'
+
+function getPayPalOrderAmount(order: any): number | null {
+  const raw = order?.purchase_units?.[0]?.amount?.value
+  const amount = typeof raw === 'string' || typeof raw === 'number' ? Number(raw) : NaN
+  return Number.isFinite(amount) ? amount : null
+}
+
+function amountsMatch(actual: number, expected: number): boolean {
+  return Math.abs(actual - expected) <= 0.01
+}
 
 /**
  * Capture a PayPal deposit payment using the booking portal token as authorisation.
@@ -58,65 +69,52 @@ export async function captureDepositPaymentByToken(
   }
 
   try {
+    const expectedAmount = Number(booking.deposit_amount ?? 0)
+    if (expectedAmount <= 0) {
+      return { error: 'No deposit is required for this booking' }
+    }
+
+    const order = await getPayPalOrder(paypalOrderId)
+    const orderAmount = getPayPalOrderAmount(order)
+    if (orderAmount === null || !amountsMatch(orderAmount, expectedAmount)) {
+      logger.error('Portal capture: order amount mismatch before capture', {
+        metadata: { bookingId, paypalOrderId, orderAmount, expectedAmount }
+      })
+      return { error: 'Payment amount does not match the expected deposit. Please contact us.' }
+    }
+
     const captureResult = await capturePayPalPayment(paypalOrderId)
 
     // Validate captured amount matches expected deposit
     const capturedAmount = parseFloat(captureResult.amount)
-    const expectedAmount = Number(booking.deposit_amount ?? 0)
-    if (expectedAmount > 0 && Math.abs(capturedAmount - expectedAmount) > 0.01) {
+    if (!amountsMatch(capturedAmount, expectedAmount)) {
       logger.error('Portal capture: amount mismatch', {
         metadata: { bookingId, paypalOrderId, capturedAmount, expectedAmount }
       })
       return { error: 'Payment amount does not match the expected deposit. Please contact us.' }
     }
 
-    // Record the deposit and transition status
-    const statusUpdate: Record<string, unknown> =
-      booking.status === 'draft'
-        ? { status: 'confirmed', cancellation_reason: null }
-        : {}
-
-    const { data: updated, error: updateError } = await admin
-      .from('private_bookings')
-      .update({
-        deposit_paid_date: new Date().toISOString(),
-        deposit_payment_method: 'paypal',
-        paypal_deposit_capture_id: captureResult.transactionId,
-        ...statusUpdate,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', bookingId)
-      .is('deposit_paid_date', null)
-      .select('id')
-      .maybeSingle()
-
-    if (updateError) {
-      logger.error('Portal capture: DB update failed', {
-        error: updateError,
-        metadata: { bookingId, captureId: captureResult.transactionId }
-      })
-      return { error: 'Payment was captured but we could not update your booking. Please contact us.' }
-    }
-
-    if (!updated) {
-      // Zero rows updated — deposit was recorded by another path (webhook or staff)
-      logger.info('Portal capture: deposit already recorded by another path', {
-        metadata: { bookingId, captureId: captureResult.transactionId }
-      })
-      return { success: true }
-    }
+    const finalizeResult = await finalizeDepositPayment({
+      bookingId,
+      amount: capturedAmount,
+      method: 'paypal',
+      paypalCaptureId: captureResult.transactionId,
+      requireAmountMatch: true,
+    }, admin)
 
     // Audit log
-    await admin.from('audit_logs').insert({
-      action: 'paypal_deposit_captured_via_portal',
-      entity_type: 'private_booking',
-      entity_id: bookingId,
-      metadata: {
-        capture_id: captureResult.transactionId,
-        order_id: paypalOrderId,
-        amount: captureResult.amount,
-      }
-    })
+    if (!finalizeResult.alreadyRecorded) {
+      await admin.from('audit_logs').insert({
+        action: 'paypal_deposit_captured_via_portal',
+        entity_type: 'private_booking',
+        entity_id: bookingId,
+        metadata: {
+          capture_id: captureResult.transactionId,
+          order_id: paypalOrderId,
+          amount: captureResult.amount,
+        }
+      })
+    }
 
     logger.info('Portal capture: deposit recorded successfully', {
       metadata: { bookingId, captureId: captureResult.transactionId }

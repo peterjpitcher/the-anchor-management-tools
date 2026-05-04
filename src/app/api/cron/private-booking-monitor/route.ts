@@ -444,12 +444,12 @@ export async function GET(request: Request) {
 
     // --- PASS 1: REMINDERS (Drafts - Catch-up Logic) ---
     // Find draft bookings where hold_expiry is approaching (<= 7 days)
-    const { data: drafts } = await supabase
-      .from('private_bookings')
-      .select('id, customer_first_name, customer_name, contact_phone, hold_expiry, event_date, customer_id, deposit_amount, internal_notes')
-      .eq('status', 'draft')
-      .gt('hold_expiry', now.toISOString()) // Not expired yet
-      .not('hold_expiry', 'is', null)
+      const { data: drafts } = await supabase
+        .from('private_bookings')
+        .select('id, customer_first_name, customer_name, contact_phone, hold_expiry, event_date, customer_id, deposit_amount, internal_notes')
+        .eq('status', 'draft')
+        .gt('hold_expiry', now.toISOString()) // Not expired yet
+        .not('hold_expiry', 'is', null)
     // Removed .not('contact_phone', 'is', null) to support fallback to customer record
 
     if (drafts) {
@@ -479,6 +479,9 @@ export async function GET(request: Request) {
         // Suppress reminders for bookings whose date is still TBD — the
         // messages would point at a placeholder date.
         if (isBookingDateTbd(booking)) continue
+
+        const depositAmount = Number(booking.deposit_amount ?? 0)
+        if (!Number.isFinite(depositAmount) || depositAmount <= 0) continue
 
         // Resolve phone number (fallback to pre-fetched customer mobile map)
         const contactPhone = booking.contact_phone || (booking.customer_id ? customerMobileById.get(booking.customer_id) ?? null : null)
@@ -539,7 +542,7 @@ export async function GET(request: Request) {
             const messageBody = depositReminder7DayMessage({
               customerFirstName: booking.customer_first_name,
               eventDate: eventDateReadable,
-              depositAmount: Number(booking.deposit_amount ?? 0),
+              depositAmount,
               daysRemaining: diffDays,
             })
 
@@ -610,7 +613,7 @@ export async function GET(request: Request) {
             const messageBody = depositReminder1DayMessage({
               customerFirstName: booking.customer_first_name,
               eventDate: eventDateReadable,
-              depositAmount: Number(booking.deposit_amount ?? 0),
+              depositAmount,
             })
 
             const result = await SmsQueueService.queueAndSend({
@@ -648,7 +651,7 @@ export async function GET(request: Request) {
       // --- PASS 2: EXPIRY ---
       const { data: expiredDrafts } = await supabase
         .from('private_bookings')
-        .select('id, hold_expiry, event_date, internal_notes')
+        .select('id, hold_expiry, event_date, deposit_amount, internal_notes')
         .eq('status', 'draft')
         .lt('hold_expiry', now.toISOString())
         .not('hold_expiry', 'is', null);
@@ -657,6 +660,8 @@ export async function GET(request: Request) {
         for (const booking of expiredDrafts) {
           // Suppress expiry SMS for bookings whose date was never confirmed.
           if (isBookingDateTbd(booking)) continue
+          const depositAmount = Number(booking.deposit_amount ?? 0)
+          if (!Number.isFinite(depositAmount) || depositAmount <= 0) continue
 
           const canSendExpiryNotification = canSendMoreSms()
           if (!canSendExpiryNotification) {
@@ -709,7 +714,7 @@ export async function GET(request: Request) {
       const { data: confirmedBookings } = await supabase
         .from('private_bookings_with_details')
         .select(
-          'id, customer_first_name, customer_name, contact_phone, customer_mobile, event_date, total_amount, calculated_total, deposit_amount, balance_due_date, final_payment_date, customer_id, internal_notes'
+          'id, customer_first_name, customer_name, contact_phone, customer_mobile, event_date, total_amount, calculated_total, balance_remaining, total_balance_paid, deposit_amount, balance_due_date, final_payment_date, customer_id, internal_notes'
         )
         .eq('status', 'confirmed')
         .gt('event_date', now.toISOString()) // Future events only
@@ -745,7 +750,10 @@ export async function GET(request: Request) {
 
           const totalAmount = Number(booking.calculated_total ?? booking.total_amount ?? 0)
           // Security deposit is a returnable bond — NOT deducted from event cost
-          const balanceDue = Math.max(totalAmount, 0)
+          const viewBalanceRemaining = Number(booking.balance_remaining)
+          const balanceDue = Number.isFinite(viewBalanceRemaining)
+            ? Math.max(viewBalanceRemaining, 0)
+            : Math.max(totalAmount, 0)
           if (!Number.isFinite(balanceDue) || balanceDue <= 0) continue
 
           const eventDateReadable = new Date(booking.event_date).toLocaleDateString('en-GB', {

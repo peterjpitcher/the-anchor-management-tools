@@ -18,7 +18,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   // Fetch IDs of expired draft bookings so we can log the count before updating.
   const { data: expired, error: fetchError } = await supabase
     .from('private_bookings')
-    .select('id')
+    .select('id, deposit_amount')
     .eq('status', 'draft')
     .not('hold_expiry', 'is', null)
     .lt('hold_expiry', now);
@@ -31,7 +31,9 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: fetchError.message }, { status: 500 });
   }
 
-  const ids = (expired ?? []).map((r) => r.id);
+  const ids = (expired ?? [])
+    .filter((r) => Number(r.deposit_amount ?? 0) > 0)
+    .map((r) => r.id);
 
   if (ids.length === 0) {
     logger.info('private-bookings-expire-holds: no expired holds found');

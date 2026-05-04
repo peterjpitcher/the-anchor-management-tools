@@ -245,6 +245,7 @@ CREATE OR REPLACE VIEW public.private_bookings_with_details AS
   public.get_booking_discounted_total(pb.id) AS calculated_total,
   CASE
     WHEN pb.deposit_paid_date IS NOT NULL THEN 'Paid'::text
+    WHEN COALESCE(pb.deposit_amount, 0) <= 0 THEN 'Not Required'::text
     WHEN pb.status = 'confirmed'::text THEN 'Required'::text
     ELSE 'Not Required'::text
   END AS deposit_status,

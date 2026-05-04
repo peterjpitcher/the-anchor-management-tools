@@ -3,6 +3,7 @@ import { verifyPayPalWebhook } from '@/lib/paypal'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { logger } from '@/lib/logger'
 import { handleRefundEvent } from '@/lib/paypal-refund-webhook'
+import { finalizeDepositPayment } from '@/services/private-bookings'
 import {
   claimIdempotencyKey,
   computeIdempotencyRequestHash,
@@ -336,56 +337,17 @@ async function handleDepositCaptureCompleted(
     throw new Error('Private booking deposit webhook missing booking ID in custom_id')
   }
 
-  const { data: booking, error: bookingLookupError } = await supabase
-    .from('private_bookings')
-    .select('id, deposit_paid_date, status')
-    .eq('id', bookingId)
-    .maybeSingle()
+  const capturedAmount = Number(resource.amount?.value ?? 0)
+  const finalizeResult = await finalizeDepositPayment({
+    bookingId,
+    amount: capturedAmount,
+    method: 'paypal',
+    paypalCaptureId: captureId,
+    requireAmountMatch: true,
+  }, supabase)
 
-  if (bookingLookupError) {
-    throw new Error(`Failed to load private booking for deposit webhook: ${bookingLookupError.message}`)
-  }
-
-  if (!booking) {
-    throw new Error(`Private booking not found for deposit webhook: ${bookingId}`)
-  }
-
-  if (booking.deposit_paid_date) {
-    // Already recorded — idempotent, no-op
+  if (finalizeResult.alreadyRecorded) {
     logger.info('Private booking deposit already recorded; ignoring duplicate webhook', {
-      metadata: { bookingId, captureId }
-    })
-    return
-  }
-
-  // Transition draft bookings to confirmed on deposit capture,
-  // matching the behaviour of the manual deposit path (PrivateBookingService.recordDeposit).
-  const statusUpdate: Record<string, unknown> =
-    booking.status === 'draft'
-      ? { status: 'confirmed', cancellation_reason: null }
-      : {}
-
-  const { data: updated, error: updateError } = await supabase
-    .from('private_bookings')
-    .update({
-      deposit_paid_date: new Date().toISOString(),
-      deposit_payment_method: 'paypal',
-      paypal_deposit_capture_id: captureId,
-      ...statusUpdate,
-      updated_at: new Date().toISOString(),
-    })
-    .eq('id', bookingId)
-    .is('deposit_paid_date', null) // Guard against race with UI-side capture
-    .select('id')
-    .maybeSingle()
-
-  if (updateError) {
-    throw new Error(`Failed to record private booking deposit from webhook: ${updateError.message}`)
-  }
-
-  if (!updated) {
-    // Zero rows updated — deposit was already recorded by another path (portal capture, staff, or reconciliation cron)
-    logger.info('Webhook deposit update matched zero rows — deposit already recorded by another path', {
       metadata: { bookingId, captureId }
     })
     return
