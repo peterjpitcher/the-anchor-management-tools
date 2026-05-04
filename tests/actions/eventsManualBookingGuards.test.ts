@@ -70,6 +70,19 @@ vi.mock('@/lib/analytics/events', () => ({
   recordAnalyticsEvent: vi.fn(),
 }))
 
+vi.mock('@/lib/google-calendar-events', () => ({
+  syncPubOpsEventCalendarByEventId: vi.fn().mockResolvedValue({
+    state: 'updated',
+    eventId: 'event-1',
+    googleEventId: 'google-event-id',
+  }),
+  deletePubOpsEventCalendarEntryByEventId: vi.fn().mockResolvedValue({
+    state: 'deleted',
+    eventId: 'event-1',
+    googleEventId: 'google-event-id',
+  }),
+}))
+
 vi.mock('@/lib/twilio', () => ({
   sendSMS: vi.fn(),
 }))
@@ -98,6 +111,7 @@ import { cancelEventManualBooking, createEventManualBooking, updateEventManualBo
 import { ensureCustomerForPhone } from '@/lib/sms/customers'
 import { createEventManageToken, updateEventBookingSeatsById } from '@/lib/events/manage-booking'
 import { sendEventBookingSeatUpdateSms } from '@/lib/events/event-payments'
+import { syncPubOpsEventCalendarByEventId } from '@/lib/google-calendar-events'
 import { sendSMS } from '@/lib/twilio'
 import { formatPhoneForStorage } from '@/lib/utils'
 
@@ -108,6 +122,7 @@ const mockedCreateEventManageToken = createEventManageToken as unknown as Mock
 const mockedUpdateEventBookingSeatsById = updateEventBookingSeatsById as unknown as Mock
 const mockedSendEventBookingSeatUpdateSms = sendEventBookingSeatUpdateSms as unknown as Mock
 const mockedFormatPhoneForStorage = formatPhoneForStorage as unknown as Mock
+const mockedSyncPubOpsEventCalendarByEventId = syncPubOpsEventCalendarByEventId as unknown as Mock
 
 describe('Event manual booking seat-update guards', () => {
   beforeEach(() => {
@@ -200,6 +215,14 @@ describe('Event manual booking seat-update guards', () => {
           bookingId,
           error: 'db_down',
         }),
+      })
+    )
+    expect(mockedSyncPubOpsEventCalendarByEventId).toHaveBeenCalledWith(
+      expect.anything(),
+      '550e8400-e29b-41d4-a716-446655440201',
+      expect.objectContaining({
+        bookingId,
+        context: 'admin_event_booking_seats_updated',
       })
     )
   })
@@ -724,6 +747,14 @@ describe('Event manual booking cancellation guards', () => {
           code: 'logging_failed',
           logFailure: true,
         }),
+      })
+    )
+    expect(mockedSyncPubOpsEventCalendarByEventId).toHaveBeenCalledWith(
+      expect.anything(),
+      eventId,
+      expect.objectContaining({
+        bookingId,
+        context: 'admin_event_booking_cancelled',
       })
     )
   })

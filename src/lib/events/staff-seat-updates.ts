@@ -1,6 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { updateEventBookingSeatsById } from '@/lib/events/manage-booking'
 import { sendEventBookingSeatUpdateSms } from '@/lib/events/event-payments'
+import { syncPubOpsEventCalendarByEventId } from '@/lib/google-calendar-events'
 import { extractSmsSafetyInfo } from '@/lib/sms/safety-info'
 
 export type SeatUpdateSmsMeta = {
@@ -247,6 +248,15 @@ export async function updateTableBookingPartySizeWithLinkedEventSeats(
         logFailure: normalizedSmsSafety.logFailure
       }
     }
+  }
+
+  const eventId = bookingUpdate.event_id || tableBooking.event_id || null
+  if (eventId) {
+    await syncPubOpsEventCalendarByEventId(supabase, eventId, {
+      bookingId: bookingUpdate.booking_id ?? tableBooking.event_booking_id,
+      tableBookingId: tableBooking.id,
+      context: 'linked_table_booking_party_size_updated',
+    })
   }
 
   return {

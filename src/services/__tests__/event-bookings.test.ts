@@ -30,6 +30,10 @@ vi.mock('@/lib/analytics/events', () => ({
   recordAnalyticsEvent: vi.fn()
 }))
 
+vi.mock('@/lib/google-calendar-events', () => ({
+  syncPubOpsEventCalendarByEventId: vi.fn()
+}))
+
 vi.mock('@/lib/logger', () => ({
   logger: {
     info: vi.fn(),
@@ -45,6 +49,7 @@ import { sendSMS } from '@/lib/twilio'
 import { createEventPaymentToken } from '@/lib/events/event-payments'
 import { createEventManageToken } from '@/lib/events/manage-booking'
 import { recordAnalyticsEvent } from '@/lib/analytics/events'
+import { syncPubOpsEventCalendarByEventId } from '@/lib/google-calendar-events'
 import { logger } from '@/lib/logger'
 import { EventBookingService, type CreateBookingParams } from '../event-bookings'
 
@@ -145,6 +150,11 @@ describe('EventBookingService.createBooking', () => {
       url: 'https://example.com/pay/xyz'
     })
     ;(recordAnalyticsEvent as ReturnType<typeof vi.fn>).mockResolvedValue(undefined)
+    ;(syncPubOpsEventCalendarByEventId as ReturnType<typeof vi.fn>).mockResolvedValue({
+      state: 'updated',
+      eventId: BASE_PARAMS.eventId,
+      googleEventId: 'google-event-id'
+    })
     ;(sendSMS as ReturnType<typeof vi.fn>).mockResolvedValue({ success: true, code: null, logFailure: false })
   })
 
@@ -230,6 +240,28 @@ describe('EventBookingService.createBooking', () => {
     expect(result.manageUrl).toBe('https://example.com/manage/abc')
     expect(result.nextStepUrl).toBeNull() // no payment needed
     expect(result.rpcFailed).toBeUndefined()
+  })
+
+  it('syncs the Pub Ops aggregate calendar entry after a confirmed booking', async () => {
+    const supabase = makeSupabaseMock({
+      rpcResults: {
+        create_event_booking_v05: { data: CONFIRMED_RPC_RESULT, error: null }
+      }
+    })
+    ;(createAdminClient as ReturnType<typeof vi.fn>).mockReturnValue(supabase)
+
+    await EventBookingService.createBooking(BASE_PARAMS)
+
+    expect(syncPubOpsEventCalendarByEventId).toHaveBeenCalledWith(
+      supabase,
+      BASE_PARAMS.eventId,
+      expect.objectContaining({
+        source: BASE_PARAMS.source,
+        bookingId: CONFIRMED_RPC_RESULT.booking_id,
+        state: 'confirmed',
+        context: 'event_booking_created'
+      })
+    )
   })
 
   // ── Blocked booking ─────────────────────────────────────────────────────────

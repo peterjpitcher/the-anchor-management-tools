@@ -5,6 +5,7 @@ import { logger } from '@/lib/logger'
 import { recordAnalyticsEvent } from '@/lib/analytics/events'
 import { sendSMS } from '@/lib/twilio'
 import { getSmartFirstName } from '@/lib/sms/name-utils'
+import { syncPubOpsEventCalendarByEventId } from '@/lib/google-calendar-events'
 
 function formatLondonDateTime(dateStr: string): string {
   try {
@@ -54,7 +55,7 @@ export async function GET(request: NextRequest) {
 
     const { data: pendingRows, error: pendingError } = await supabase
       .from('bookings')
-      .select('id')
+      .select('id, event_id')
       .eq('status', 'pending_payment')
       .not('hold_expires_at', 'is', null)
       .lte('hold_expires_at', nowIso)
@@ -76,7 +77,7 @@ export async function GET(request: NextRequest) {
         })
         .in('id', ids)
         .eq('status', 'pending_payment')
-        .select('id')
+        .select('id, event_id')
 
       if (expireBookingsError) {
         throw expireBookingsError
@@ -84,6 +85,9 @@ export async function GET(request: NextRequest) {
 
       result.expiredPendingBookings += (expiredBookings || []).length
       const expiredBookingIds = (expiredBookings || []).map((row: any) => row.id).filter(Boolean)
+      const expiredEventIds = [
+        ...new Set((expiredBookings || []).map((row: any) => row.event_id).filter(Boolean)),
+      ]
       if (expiredBookingIds.length === 0) {
         continue
       }
@@ -170,6 +174,16 @@ export async function GET(request: NextRequest) {
       }
 
       result.cancelledEventTableBookings += (cancelledTables || []).length
+
+      if (expiredEventIds.length > 0) {
+        await Promise.allSettled(
+          expiredEventIds.map((eventId) =>
+            syncPubOpsEventCalendarByEventId(supabase, eventId, {
+              context: 'event_booking_hold_expired',
+            })
+          )
+        )
+      }
     }
 
     const { data: pendingTablePaymentRows, error: pendingTablePaymentError } = await supabase

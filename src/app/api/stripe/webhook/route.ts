@@ -18,6 +18,10 @@ import {
   sendEventPaymentRetrySms
 } from '@/lib/events/event-payments'
 import {
+  syncPubOpsEventCalendarByBookingId,
+  syncPubOpsEventCalendarByEventId,
+} from '@/lib/google-calendar-events'
+import {
   sendTableBookingConfirmedAfterDepositSmsIfAllowed,
 } from '@/lib/table-bookings/bookings'
 
@@ -328,6 +332,19 @@ async function handleSeatIncreaseCheckoutCompleted(
           })
         }
       }
+    }
+
+    if (rpcResult.event_id) {
+      await syncPubOpsEventCalendarByEventId(supabase, rpcResult.event_id, {
+        bookingId: rpcResult.booking_id,
+        checkoutSessionId,
+        context: 'seat_increase_payment_confirmed',
+      })
+    } else {
+      await syncPubOpsEventCalendarByBookingId(supabase, rpcResult.booking_id, {
+        checkoutSessionId,
+        context: 'seat_increase_payment_confirmed',
+      })
     }
     return
   }
@@ -757,6 +774,19 @@ async function handleCheckoutSessionCompleted(
           })
         }
       }
+    }
+
+    if (rpcResult.event_id) {
+      await syncPubOpsEventCalendarByEventId(supabase, rpcResult.event_id, {
+        bookingId: rpcResult.booking_id,
+        checkoutSessionId,
+        context: 'prepaid_event_payment_confirmed',
+      })
+    } else {
+      await syncPubOpsEventCalendarByBookingId(supabase, rpcResult.booking_id, {
+        checkoutSessionId,
+        context: 'prepaid_event_payment_confirmed',
+      })
     }
   }
 

@@ -14,6 +14,10 @@ import { ensureCustomerForPhone } from '@/lib/sms/customers'
 import { createEventManageToken, updateEventBookingSeatsById } from '@/lib/events/manage-booking'
 import { sendEventBookingSeatUpdateSms } from '@/lib/events/event-payments'
 import { recordAnalyticsEvent } from '@/lib/analytics/events'
+import {
+  deletePubOpsEventCalendarEntryByEventId,
+  syncPubOpsEventCalendarByEventId,
+} from '@/lib/google-calendar-events'
 import { sendSMS } from '@/lib/twilio'
 import { ensureReplyInstruction } from '@/lib/sms/support'
 import { getSmartFirstName } from '@/lib/sms/bulk'
@@ -508,6 +512,10 @@ export async function updateEvent(id: string, formData: FormData) {
       })
     }
 
+    await syncPubOpsEventCalendarByEventId(createAdminClient(), id, {
+      context: statusChangedToCancelled ? 'event_cancelled' : 'event_updated',
+    })
+
     revalidatePath('/events');
     revalidatePath(`/events/${id}`);
     revalidatePath(`/events/${id}/edit`);
@@ -557,6 +565,10 @@ export async function deleteEvent(id: string) {
         eventDate: event.date
       }
     });
+
+    await deletePubOpsEventCalendarEntryByEventId(id, {
+      context: 'event_deleted',
+    })
 
     revalidatePath('/events');
     revalidateTag('dashboard')
@@ -1075,6 +1087,13 @@ export async function updateEventManualBookingSeats(input: {
       })
     }
 
+    if (bookingRow.event_id) {
+      await syncPubOpsEventCalendarByEventId(supabase, bookingRow.event_id, {
+        bookingId: updateResult.booking_id,
+        context: 'admin_event_booking_seats_updated',
+      })
+    }
+
     let smsSent = false
     let smsMeta: SmsSafetyMeta = null
     if (parsed.data.sendSms !== false && delta !== 0) {
@@ -1313,6 +1332,13 @@ export async function cancelEventManualBooking(input: {
     }
 
     const followupFailures = Array.from(followupFailureSet)
+
+    if (bookingRow.event_id) {
+      await syncPubOpsEventCalendarByEventId(supabase, bookingRow.event_id, {
+        bookingId: bookingRow.id,
+        context: 'admin_event_booking_cancelled',
+      })
+    }
 
     if (followupFailures.length > 0) {
       logger.warn('Event booking cancellation follow-up updates failed', {

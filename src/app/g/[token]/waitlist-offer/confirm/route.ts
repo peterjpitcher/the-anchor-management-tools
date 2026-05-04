@@ -9,6 +9,7 @@ import { sendSMS } from '@/lib/twilio'
 import { getSmartFirstName } from '@/lib/sms/bulk'
 import { createEventPaymentToken } from '@/lib/events/event-payments'
 import { createEventManageToken } from '@/lib/events/manage-booking'
+import { syncPubOpsEventCalendarByEventId } from '@/lib/google-calendar-events'
 
 type RouteContext = {
   params: Promise<{ token: string }>
@@ -255,6 +256,16 @@ export async function POST(request: NextRequest, context: RouteContext) {
             eventBookingId: acceptance.booking_id,
             eventId: acceptance.event_id || bookingRow.event_id || null,
             state: acceptance.state
+          })
+        )
+      }
+
+      const eventId = acceptance.event_id || bookingRow?.event_id || null
+      if (eventId) {
+        followUpTasks.push(
+          syncPubOpsEventCalendarByEventId(supabase, eventId, {
+            bookingId: acceptance.booking_id,
+            context: 'waitlist_offer_accepted',
           })
         )
       }
