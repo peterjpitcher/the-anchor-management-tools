@@ -29,6 +29,7 @@ import { getEmployeePaySettings, getEmployeeRateOverrides } from '@/app/actions/
 import { getHourlyRate } from '@/lib/rota/pay-calculator'
 import { getLeaveRequests } from '@/app/actions/leave'
 import { getRotaSettings } from '@/app/actions/rota-settings'
+import { checkUserPermission } from '@/app/actions/rbac'
 
 export const dynamic = 'force-dynamic'
 
@@ -56,12 +57,20 @@ export default async function EmployeeDetailPage({ params }: EmployeeDetailPageP
     notFound()
   }
 
-  const [result, paySettingsResult, rateOverridesResult, leaveRequestsResult, rotaSettings] = await Promise.all([
+  const [
+    result,
+    paySettingsResult,
+    rateOverridesResult,
+    leaveRequestsResult,
+    rotaSettings,
+    canCreateLeave,
+  ] = await Promise.all([
     getEmployeeDetailData(employeeId),
     getEmployeePaySettings(employeeId),
     getEmployeeRateOverrides(employeeId),
     getLeaveRequests({ employeeId }),
     getRotaSettings(),
+    checkUserPermission('leave', 'create'),
   ])
 
   if (result.unauthorized) {
@@ -233,7 +242,7 @@ export default async function EmployeeDetailPage({ params }: EmployeeDetailPageP
       content: (
         <EmployeeHolidaysTab
           employeeId={employee.employee_id}
-          canEdit={permissions.canEdit}
+          canCreateLeave={canCreateLeave}
           leaveRequests={leaveRequests}
           paySettings={paySettings}
           rotaSettings={rotaSettings}

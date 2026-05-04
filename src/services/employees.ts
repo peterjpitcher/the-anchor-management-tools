@@ -7,6 +7,9 @@ import type { AuditLogEntry } from '@/app/actions/employeeDetails';
 import type { Employee, EmployeeAttachment, EmployeeFinancialDetails, EmployeeHealthRecord, EmployeeEmergencyContact, EmployeeRightToWork, AttachmentCategory, EmployeeNote, AuditLog } from '@/types/database';
 
 export type EmployeeStatus = 'all' | 'Active' | 'Former' | 'Onboarding' | 'Started Separation';
+export type EmployeeRosterEmployee = Employee & {
+  holiday_days_current_year: number;
+};
 
 export interface ExportOptions {
   format: 'csv' | 'json';
@@ -125,6 +128,15 @@ function sanitizeEmployeeSearchTerm(value: string): string {
     .replace(/\s+/g, ' ')
     .trim()
     .slice(0, 80);
+}
+
+function getCurrentCalendarYearDateRange(): { startDate: string; endDate: string } {
+  const currentYear = getTodayIsoDate().slice(0, 4);
+
+  return {
+    startDate: `${currentYear}-01-01`,
+    endDate: `${currentYear}-12-31`,
+  };
 }
 
 export const addAttachmentSchema = z.object({
@@ -1123,8 +1135,38 @@ export class EmployeeService {
       throw dataError;
     }
 
+    const employees = (data ?? []) as Employee[];
+    const employeeIds = employees.map((employee) => employee.employee_id);
+    const holidayCounts = new Map<string, number>();
+
+    if (employeeIds.length > 0) {
+      const { startDate, endDate } = getCurrentCalendarYearDateRange();
+      const { data: leaveDays, error: leaveDaysError } = await adminClient
+        .from('leave_days')
+        .select('employee_id, leave_date, leave_requests!inner(status)')
+        .in('employee_id', employeeIds)
+        .gte('leave_date', startDate)
+        .lte('leave_date', endDate)
+        .eq('leave_requests.status', 'approved');
+
+      if (leaveDaysError) {
+        throw leaveDaysError;
+      }
+
+      for (const leaveDay of leaveDays ?? []) {
+        const employeeId = (leaveDay as { employee_id?: string | null }).employee_id;
+        if (!employeeId) continue;
+        holidayCounts.set(employeeId, (holidayCounts.get(employeeId) ?? 0) + 1);
+      }
+    }
+
+    const rosterEmployees: EmployeeRosterEmployee[] = employees.map((employee) => ({
+      ...employee,
+      holiday_days_current_year: holidayCounts.get(employee.employee_id) ?? 0,
+    }));
+
     return {
-      employees: (data ?? []) as Employee[],
+      employees: rosterEmployees,
       pagination: {
         page: currentPage,
         pageSize,

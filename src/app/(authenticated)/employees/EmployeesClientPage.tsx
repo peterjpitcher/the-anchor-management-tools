@@ -18,7 +18,7 @@ import { LinkButton } from '@/components/ui-v2/navigation/LinkButton'
 import { exportEmployees } from '@/app/actions/employeeExport'
 import { sendPortalInvite } from '@/app/actions/employeeInvite'
 import type { EmployeeRosterResult } from '@/app/actions/employeeQueries'
-import type { Employee } from '@/types/database'
+import type { EmployeeRosterEmployee } from '@/services/employees'
 import { formatDate } from '@/lib/dateUtils'
 import { calculateLengthOfService } from '@/lib/employeeUtils'
 import InviteEmployeeModal from '@/components/features/employees/InviteEmployeeModal'
@@ -79,7 +79,7 @@ function statusBadgeVariant(status: string): 'success' | 'info' | 'warning' | 'd
   }
 }
 
-function employeeDisplayName(employee: Employee): string {
+function employeeDisplayName(employee: EmployeeRosterEmployee): string {
   if (employee.first_name && employee.last_name) {
     return `${employee.first_name} ${employee.last_name}`
   }
@@ -181,7 +181,7 @@ export default function EmployeesClientPage({ initialData, initialError, permiss
   )
 
   const showSearchResultMessage = Boolean(searchTerm)
-  const currentEmployees = roster.employees as Employee[]
+  const currentEmployees = roster.employees
 
   const headerActions = (
     <>
@@ -308,7 +308,7 @@ export default function EmployeesClientPage({ initialData, initialError, permiss
                   {
                     key: 'name',
                     header: 'Name',
-                    cell: (employee: Employee) => (
+                    cell: (employee: EmployeeRosterEmployee) => (
                       <Link href={`/employees/${employee.employee_id}`} className="text-blue-600 hover:text-blue-700 font-medium">
                         {employeeDisplayName(employee)}
                         {!employee.first_name && (
@@ -320,19 +320,19 @@ export default function EmployeesClientPage({ initialData, initialError, permiss
                   {
                     key: 'job_title',
                     header: 'Job Title',
-                    cell: (employee: Employee) => employee.job_title ?? <span className="text-gray-400 italic">Not set</span>
+                    cell: (employee: EmployeeRosterEmployee) => employee.job_title ?? <span className="text-gray-400 italic">Not set</span>
                   },
                   {
                     key: 'portal_account',
                     header: 'Portal Account',
-                    cell: (employee: Employee) => employee.auth_user_id
+                    cell: (employee: EmployeeRosterEmployee) => employee.auth_user_id
                       ? <Badge variant="success" size="sm">Set up</Badge>
                       : <Badge variant="default" size="sm">Not set up</Badge>
                   },
                   {
                     key: 'email_address',
                     header: 'Email',
-                    cell: (employee: Employee) => (
+                    cell: (employee: EmployeeRosterEmployee) => (
                       <a href={`mailto:${employee.email_address}`} className="text-blue-600 hover:text-blue-700">
                         {employee.email_address}
                       </a>
@@ -341,7 +341,7 @@ export default function EmployeesClientPage({ initialData, initialError, permiss
                   {
                     key: 'mobile_number',
                     header: 'Mobile',
-                    cell: (employee: Employee) => {
+                    cell: (employee: EmployeeRosterEmployee) => {
                       if (!employee.mobile_number) return 'N/A'
                       return (
                         <a href={`tel:${employee.mobile_number}`} className="text-blue-600 hover:text-blue-700">
@@ -351,18 +351,21 @@ export default function EmployeesClientPage({ initialData, initialError, permiss
                     }
                   },
                   {
-                    key: 'date_of_birth',
-                    header: 'Birthday',
-                    cell: (employee: Employee) => (
-                      <div className="text-sm text-gray-900">
-                        {employee.date_of_birth ? formatDate(employee.date_of_birth) : 'N/A'}
-                      </div>
-                    )
+                    key: 'holiday_days_current_year',
+                    header: 'Holiday',
+                    cell: (employee: EmployeeRosterEmployee) => {
+                      const days = employee.holiday_days_current_year ?? 0
+                      return (
+                        <div className="text-sm text-gray-900">
+                          {days} {days === 1 ? 'day' : 'days'}
+                        </div>
+                      )
+                    }
                   },
                   {
                     key: 'employment_start_date',
                     header: 'Start Date',
-                    cell: (employee: Employee) => (
+                    cell: (employee: EmployeeRosterEmployee) => (
                       <div>
                         <div>
                           {employee.employment_start_date
@@ -378,7 +381,7 @@ export default function EmployeesClientPage({ initialData, initialError, permiss
                   {
                     key: 'status',
                     header: 'Status',
-                    cell: (employee: Employee) => (
+                    cell: (employee: EmployeeRosterEmployee) => (
                       <div className="space-y-1">
                         <Badge variant={statusBadgeVariant(employee.status)} dot>
                           {employee.status}

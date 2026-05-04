@@ -1,8 +1,7 @@
 'use server'
 
 import { checkUserPermission } from './rbac'
-import { EmployeeService } from '@/services/employees'
-import type { Employee } from '@/types/database'
+import { EmployeeService, type EmployeeRosterEmployee } from '@/services/employees'
 import { getErrorMessage } from '@/lib/errors';
 
 type EmployeeStatus = 'all' | 'Active' | 'Former' | 'Onboarding' | 'Started Separation'
@@ -35,7 +34,7 @@ interface EmployeeRosterFilters {
 }
 
 export interface EmployeeRosterResult {
-  employees: Employee[]
+  employees: EmployeeRosterEmployee[]
   pagination: EmployeeRosterPagination
   statusCounts: EmployeeStatusCounts
   filters: EmployeeRosterFilters
