@@ -1,24 +1,26 @@
 'use client';
 
-import { useState } from 'react';
-import { createClient } from '@/lib/supabase/client';
+import { useMemo, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import CreateAccountStep from './steps/CreateAccountStep';
 import PersonalStep from './steps/PersonalStep';
 import EmergencyContactsStep from './steps/EmergencyContactsStep';
 import FinancialStep from './steps/FinancialStep';
 import HealthStep from './steps/HealthStep';
 import ReviewStep from './steps/ReviewStep';
+import type { InviteType, OnboardingSnapshot } from '@/app/actions/employeeInvite';
 
 interface OnboardingClientProps {
   token: string;
   email: string;
-  employeeId: string;
+  inviteType: InviteType;
   hasAuthUser: boolean;
+  initialData: OnboardingSnapshot | null;
 }
 
 type SectionKey = 'personal' | 'emergency_contacts' | 'financial' | 'health';
 
-const STEPS = [
+const ONBOARDING_STEPS = [
   { key: 'create_account', title: 'Create Account' },
   { key: 'personal', title: 'Personal Details' },
   { key: 'emergency_contacts', title: 'Emergency Contacts' },
@@ -27,100 +29,89 @@ const STEPS = [
   { key: 'review', title: 'Review & Submit' },
 ] as const;
 
+function firstIncompleteStepIndex(savedSections: Record<SectionKey, boolean>): number {
+  const orderedSections: SectionKey[] = ['personal', 'emergency_contacts', 'financial', 'health'];
+  const firstMissing = orderedSections.findIndex((section) => !savedSections[section]);
+  return firstMissing === -1 ? orderedSections.length : firstMissing;
+}
+
 export default function OnboardingClient({
   token,
   email,
-  employeeId,
+  inviteType,
   hasAuthUser,
+  initialData,
 }: OnboardingClientProps) {
-  // If account already exists, skip the create account step
-  const initialStep = hasAuthUser ? 1 : 0;
-  const [currentStep, setCurrentStep] = useState(initialStep);
-  const [accountCreated, setAccountCreated] = useState(hasAuthUser);
-  const [savedSections, setSavedSections] = useState<Record<SectionKey, boolean>>({
+  if (inviteType === 'portal_access') {
+    return <PortalAccessSetup token={token} email={email} />;
+  }
+
+  return (
+    <OnboardingFlow
+      token={token}
+      email={email}
+      hasAuthUser={hasAuthUser}
+      initialData={initialData}
+    />
+  );
+}
+
+function PortalAccessSetup({ token, email }: { token: string; email: string }) {
+  const router = useRouter();
+
+  return (
+    <div className="rounded-lg bg-white p-6 shadow-sm">
+      <h2 className="text-lg font-semibold text-gray-900 mb-2">Set Up Staff Portal Access</h2>
+      <CreateAccountStep
+        token={token}
+        email={email}
+        description="Create a password for your staff portal account. Your existing employee details will not be changed."
+        buttonLabel="Set Up Portal Access"
+        loadingLabel="Setting up access..."
+        onSuccess={() => router.push('/onboarding/success?type=portal_access')}
+      />
+    </div>
+  );
+}
+
+function OnboardingFlow({
+  token,
+  email,
+  hasAuthUser,
+  initialData,
+}: Omit<OnboardingClientProps, 'inviteType'>) {
+  const initialSavedSections = initialData?.completedSections ?? {
     personal: false,
     emergency_contacts: false,
     financial: false,
     health: false,
-  });
-
-  // Sign-in state (for returning visitors who have an account but no session)
-  const [needsSignIn, setNeedsSignIn] = useState(false);
-  const [signInPassword, setSignInPassword] = useState('');
-  const [signInError, setSignInError] = useState('');
-  const [signInLoading, setSignInLoading] = useState(false);
-
-  const handleSignIn = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setSignInError('');
-    setSignInLoading(true);
-    try {
-      const supabase = createClient();
-      const { error } = await supabase.auth.signInWithPassword({ email, password: signInPassword });
-      if (error) {
-        setSignInError(error.message || 'Sign in failed. Please check your password.');
-      } else {
-        setNeedsSignIn(false);
-      }
-    } finally {
-      setSignInLoading(false);
-    }
   };
+
+  const [accountCreated, setAccountCreated] = useState(hasAuthUser);
+  const [savedSections, setSavedSections] = useState<Record<SectionKey, boolean>>(initialSavedSections);
+
+  const visibleSteps = useMemo(
+    () => accountCreated
+      ? ONBOARDING_STEPS.filter((step) => step.key !== 'create_account')
+      : ONBOARDING_STEPS,
+    [accountCreated],
+  );
+
+  const initialStepIndex = accountCreated ? firstIncompleteStepIndex(initialSavedSections) : 0;
+  const [currentStepIndex, setCurrentStepIndex] = useState(initialStepIndex);
 
   const markSectionComplete = (section: SectionKey) => {
     setSavedSections((prev) => ({ ...prev, [section]: true }));
   };
 
-  const visibleSteps = hasAuthUser || accountCreated
-    ? STEPS.filter((s) => s.key !== 'create_account')
-    : STEPS;
+  const goToNextStep = () => {
+    setCurrentStepIndex((index) => Math.min(index + 1, visibleSteps.length - 1));
+  };
 
-  const adjustedStep = hasAuthUser || accountCreated ? currentStep - 1 : currentStep;
-  const activeVisibleStep = Math.max(0, adjustedStep);
-
-  // If returning visitor with account but needs to sign in
-  if (hasAuthUser && needsSignIn) {
-    return (
-      <div className="rounded-lg bg-white p-8 shadow-sm">
-        <h2 className="text-lg font-semibold text-gray-900 mb-2">Welcome back</h2>
-        <p className="text-sm text-gray-600 mb-6">Please sign in to continue with your profile.</p>
-        <form onSubmit={handleSignIn} className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
-            <input
-              type="email"
-              value={email}
-              readOnly
-              className="block w-full rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-500"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
-            <input
-              type="password"
-              value={signInPassword}
-              onChange={(e) => setSignInPassword(e.target.value)}
-              required
-              className="block w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-green-500 focus:outline-none focus:ring-1 focus:ring-green-500"
-            />
-          </div>
-          {signInError && <p className="text-sm text-red-600">{signInError}</p>}
-          <button
-            type="submit"
-            disabled={signInLoading}
-            className="w-full rounded-md bg-green-600 px-4 py-2 text-sm font-semibold text-white hover:bg-green-500 disabled:opacity-50"
-          >
-            {signInLoading ? 'Signing in...' : 'Sign In & Continue'}
-          </button>
-        </form>
-      </div>
-    );
-  }
+  const currentStep = visibleSteps[currentStepIndex] ?? visibleSteps[visibleSteps.length - 1];
 
   const renderStepContent = () => {
-    const stepKey = currentStep === 0 && !accountCreated ? 'create_account' : visibleSteps[activeVisibleStep]?.key;
-
-    switch (stepKey) {
+    switch (currentStep?.key) {
       case 'create_account':
         return (
           <CreateAccountStep
@@ -128,7 +119,7 @@ export default function OnboardingClient({
             email={email}
             onSuccess={() => {
               setAccountCreated(true);
-              setCurrentStep(1);
+              setCurrentStepIndex(0);
             }}
           />
         );
@@ -136,9 +127,10 @@ export default function OnboardingClient({
         return (
           <PersonalStep
             token={token}
+            initialData={initialData?.personal}
             onSuccess={() => {
               markSectionComplete('personal');
-              setCurrentStep((s) => s + 1);
+              goToNextStep();
             }}
           />
         );
@@ -146,9 +138,10 @@ export default function OnboardingClient({
         return (
           <EmergencyContactsStep
             token={token}
+            initialData={initialData?.emergency_contacts}
             onSuccess={() => {
               markSectionComplete('emergency_contacts');
-              setCurrentStep((s) => s + 1);
+              goToNextStep();
             }}
           />
         );
@@ -156,9 +149,10 @@ export default function OnboardingClient({
         return (
           <FinancialStep
             token={token}
+            initialData={initialData?.financial}
             onSuccess={() => {
               markSectionComplete('financial');
-              setCurrentStep((s) => s + 1);
+              goToNextStep();
             }}
           />
         );
@@ -166,9 +160,10 @@ export default function OnboardingClient({
         return (
           <HealthStep
             token={token}
+            initialData={initialData?.health}
             onSuccess={() => {
               markSectionComplete('health');
-              setCurrentStep((s) => s + 1);
+              goToNextStep();
             }}
           />
         );
@@ -184,13 +179,11 @@ export default function OnboardingClient({
     }
   };
 
+  const displayStep = currentStepIndex + 1;
   const totalSteps = visibleSteps.length;
-  const displayStep = activeVisibleStep + 1;
-  const currentStepData = visibleSteps[activeVisibleStep];
 
   return (
     <div className="space-y-6">
-      {/* Step indicator */}
       <div className="rounded-lg bg-white p-6 shadow-sm">
         <div className="flex items-center justify-between mb-4">
           <div>
@@ -198,13 +191,12 @@ export default function OnboardingClient({
               Step {displayStep} of {totalSteps}
             </p>
             <h2 className="text-lg font-semibold text-gray-900 mt-0.5">
-              {currentStepData?.title}
+              {currentStep?.title}
             </h2>
           </div>
           <span className="text-sm text-gray-400">{Math.round((displayStep / totalSteps) * 100)}%</span>
         </div>
 
-        {/* Progress bar */}
         <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
           <div
             className="h-full bg-green-500 rounded-full transition-all duration-300"
@@ -212,23 +204,22 @@ export default function OnboardingClient({
           />
         </div>
 
-        {/* Step dots */}
         <div className="flex items-center gap-2 mt-4">
           {visibleSteps.map((step, index) => (
-            <button type="button"
+            <button
+              type="button"
               key={step.key}
               onClick={() => {
-                // Only allow going back to completed steps
-                if (index < activeVisibleStep) {
-                  setCurrentStep(hasAuthUser ? index + 1 : index);
+                if (index < currentStepIndex) {
+                  setCurrentStepIndex(index);
                 }
               }}
               className={`flex-1 h-1 rounded-full transition-colors ${
-                index < activeVisibleStep
+                index < currentStepIndex
                   ? 'bg-green-500 cursor-pointer'
-                  : index === activeVisibleStep
-                  ? 'bg-green-400'
-                  : 'bg-gray-200 cursor-default'
+                  : index === currentStepIndex
+                    ? 'bg-green-400'
+                    : 'bg-gray-200 cursor-default'
               }`}
               title={step.title}
             />
@@ -236,7 +227,6 @@ export default function OnboardingClient({
         </div>
       </div>
 
-      {/* Step content */}
       <div className="rounded-lg bg-white p-6 shadow-sm">
         {renderStepContent()}
       </div>

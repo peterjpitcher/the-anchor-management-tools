@@ -26,15 +26,18 @@ export async function GET(req: NextRequest): Promise<Response> {
 
   const supabase = createAdminClient()
 
-  // Verify employee exists
+  // Verify employee exists and still has staff portal access.
   const { data: employee } = await supabase
     .from('employees')
-    .select('first_name, last_name')
+    .select('first_name, last_name, status')
     .eq('employee_id', employeeId)
     .maybeSingle()
 
   if (!employee) {
     return new Response('Not found', { status: 404 })
+  }
+  if (!['Active', 'Started Separation'].includes(employee.status)) {
+    return new Response('Forbidden', { status: 403 })
   }
 
   const empName = [employee.first_name, employee.last_name].filter(Boolean).join(' ') || 'Staff'

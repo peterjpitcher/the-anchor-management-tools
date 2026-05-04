@@ -10,11 +10,9 @@ import { getErrorMessage } from '@/lib/errors';
 import { finalizeEmployeeSeparation } from '@/lib/employees/separation';
 import {
   sendWelcomeEmail,
-  sendChaseEmail,
   sendOnboardingCompleteEmail,
   sendPortalInviteEmail,
 } from '@/lib/email/employee-invite-emails';
-import { FinancialDetailsSchema, HealthRecordSchema, EmergencyContactSchema } from '@/services/employees';
 
 const BASE_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://manage.the-anchor.pub';
 
@@ -28,6 +26,136 @@ function buildOnboardingUrl(token: string): string {
   return `${BASE_URL}/onboarding/${token}`;
 }
 
+export type InviteType = 'onboarding' | 'portal_access';
+type EmployeeStatus = 'Onboarding' | 'Active' | 'Started Separation' | 'Former';
+type OnboardingSectionKey = 'personal' | 'emergency_contacts' | 'financial' | 'health';
+
+type ValidationResult = {
+  valid: boolean;
+  expired: boolean;
+  completed: boolean;
+  employee_id: string | null;
+  email: string | null;
+  hasAuthUser: boolean;
+  inviteType: InviteType | null;
+  employeeStatus: EmployeeStatus | null;
+  employeeName: string | null;
+  error?: string;
+};
+
+export type OnboardingSnapshot = {
+  personal: {
+    first_name: string;
+    last_name: string;
+    date_of_birth: string;
+    address: string;
+    post_code: string;
+    phone_number: string;
+    mobile_number: string;
+  };
+  emergency_contacts: {
+    primary: {
+      name: string;
+      relationship: string;
+      phone_number: string;
+      mobile_number: string;
+      address: string;
+    };
+    secondary: {
+      name: string;
+      relationship: string;
+      phone_number: string;
+      mobile_number: string;
+      address: string;
+    };
+  };
+  financial: {
+    ni_number: string;
+    bank_name: string;
+    payee_name: string;
+    branch_address: string;
+    bank_sort_code: string;
+    bank_account_number: string;
+  };
+  health: {
+    doctor_name: string;
+    doctor_address: string;
+    has_allergies: boolean;
+    allergies: string;
+    had_absence_over_2_weeks_last_3_years: boolean;
+    had_outpatient_treatment_over_3_months_last_3_years: boolean;
+    absence_or_treatment_details: string;
+    illness_history: string;
+    recent_treatment: string;
+    has_diabetes: boolean;
+    has_epilepsy: boolean;
+    has_skin_condition: boolean;
+    has_depressive_illness: boolean;
+    has_bowel_problems: boolean;
+    has_ear_problems: boolean;
+    is_registered_disabled: boolean;
+    disability_reg_number: string;
+    disability_reg_expiry_date: string;
+    disability_details: string;
+  };
+  completedSections: Record<OnboardingSectionKey, boolean>;
+};
+
+function validationFailure(
+  error: string,
+  overrides: Partial<ValidationResult> = {},
+): ValidationResult {
+  return {
+    valid: false,
+    expired: false,
+    completed: false,
+    employee_id: null,
+    email: null,
+    hasAuthUser: false,
+    inviteType: null,
+    employeeStatus: null,
+    employeeName: null,
+    error,
+    ...overrides,
+  };
+}
+
+function normalizeEmail(email: string | null | undefined): string {
+  return (email ?? '').trim().toLowerCase();
+}
+
+async function deleteTokenByValue(adminClient: ReturnType<typeof createAdminClient>, token: string) {
+  const { error } = await adminClient
+    .from('employee_invite_tokens')
+    .delete()
+    .eq('token', token);
+  if (error) {
+    console.error('[employeeInvite] Failed to clean up invite token:', error);
+  }
+}
+
+async function expirePendingSiblingTokens(
+  adminClient: ReturnType<typeof createAdminClient>,
+  employeeId: string,
+  inviteType: InviteType,
+  activeToken: string,
+): Promise<string | null> {
+  const { error } = await adminClient
+    .from('employee_invite_tokens')
+    .update({ expires_at: new Date().toISOString() })
+    .eq('employee_id', employeeId)
+    .eq('invite_type', inviteType)
+    .is('completed_at', null)
+    .neq('token', activeToken);
+
+  if (error) {
+    console.error('[employeeInvite] Failed to expire older invite tokens:', error);
+    return error.message || 'Failed to expire older invite links.';
+  }
+
+  return null;
+}
+
 // ---------------------------------------------------------------------------
 // Manager-side actions
 // ---------------------------------------------------------------------------
@@ -38,7 +166,7 @@ export async function inviteEmployee(prevState: any, formData: FormData) {
     return { type: 'error', message: 'You do not have permission to invite employees.' };
   }
 
-  const email = (formData.get('email') as string | null)?.trim().toLowerCase() ?? '';
+  const email = normalizeEmail(formData.get('email') as string | null);
   const jobTitle = (formData.get('job_title') as string | null)?.trim() || null;
 
   const emailSchema = z.string().email('Please enter a valid email address.');
@@ -69,22 +197,20 @@ export async function inviteEmployee(prevState: any, formData: FormData) {
       return { type: 'error', message: 'Invite created but token was not returned.' };
     }
 
-    // DEF-007: Set invited_at timestamp — check for error and fail fast on failure
-    const { error: invitedAtError } = await adminClient
-      .from('employees')
-      .update({ invited_at: new Date().toISOString() })
-      .eq('employee_id', result.employee_id);
-
-    if (invitedAtError) {
-      console.error('[inviteEmployee] Failed to set invited_at:', invitedAtError);
-      return { type: 'error', message: 'Failed to record invite timestamp. Please try again.' };
-    }
-
-    // Send welcome email (best-effort)
     try {
       await sendWelcomeEmail(email, buildOnboardingUrl(result.token));
     } catch (emailError) {
       console.error('[inviteEmployee] Failed to send welcome email:', emailError);
+      const { error: cleanupError } = await adminClient
+        .from('employees')
+        .delete()
+        .eq('employee_id', result.employee_id)
+        .eq('status', 'Onboarding')
+        .is('auth_user_id', null);
+      if (cleanupError) {
+        console.error('[inviteEmployee] Failed to clean up invite-created employee:', cleanupError);
+      }
+      return { type: 'error', message: 'Invite could not be sent. No employee record was created.' };
     }
 
     // Audit log
@@ -140,7 +266,11 @@ export async function sendPortalInvite(employeeId: string) {
 
   const { data: tokenData, error: tokenError } = await adminClient
     .from('employee_invite_tokens')
-    .insert({ employee_id: employeeId, email: employee.email_address })
+    .insert({
+      employee_id: employeeId,
+      email: normalizeEmail(employee.email_address),
+      invite_type: 'portal_access',
+    })
     .select('token')
     .single();
 
@@ -153,12 +283,18 @@ export async function sendPortalInvite(employeeId: string) {
     await sendPortalInviteEmail(employee.email_address, buildOnboardingUrl(tokenData.token));
   } catch (emailError) {
     console.error('[sendPortalInvite] Failed to send email:', emailError);
-    // Clean up orphaned token
-    await adminClient
-      .from('employee_invite_tokens')
-      .delete()
-      .eq('token', tokenData.token);
+    await deleteTokenByValue(adminClient, tokenData.token);
     return { type: 'error', message: 'Token created but email could not be sent.' };
+  }
+
+  const siblingExpiryError = await expirePendingSiblingTokens(
+    adminClient,
+    employeeId,
+    'portal_access',
+    tokenData.token,
+  );
+  if (siblingExpiryError) {
+    return { type: 'error', message: 'Invite sent, but old portal invite links could not be expired. Please try again.' };
   }
 
   try {
@@ -201,17 +337,14 @@ export async function resendInvite(employeeId: string) {
     return { type: 'error', message: 'Can only resend invites for Onboarding employees.' };
   }
 
-  // DEF-014: Expire all existing pending tokens before creating a new one
-  await adminClient
-    .from('employee_invite_tokens')
-    .update({ expires_at: new Date().toISOString() })
-    .eq('employee_id', employeeId)
-    .is('completed_at', null);
-
   // Create a new token
   const { data: tokenData, error: tokenError } = await adminClient
     .from('employee_invite_tokens')
-    .insert({ employee_id: employeeId, email: employee.email_address })
+    .insert({
+      employee_id: employeeId,
+      email: normalizeEmail(employee.email_address),
+      invite_type: 'onboarding',
+    })
     .select('token')
     .single();
 
@@ -223,7 +356,18 @@ export async function resendInvite(employeeId: string) {
     await sendWelcomeEmail(employee.email_address, buildOnboardingUrl(tokenData.token));
   } catch (emailError) {
     console.error('[resendInvite] Failed to send email:', emailError);
+    await deleteTokenByValue(adminClient, tokenData.token);
     return { type: 'error', message: 'Token created but email could not be sent.' };
+  }
+
+  const siblingExpiryError = await expirePendingSiblingTokens(
+    adminClient,
+    employeeId,
+    'onboarding',
+    tokenData.token,
+  );
+  if (siblingExpiryError) {
+    return { type: 'error', message: 'Invite sent, but old onboarding links could not be expired. Please try again.' };
   }
 
   return { type: 'success', message: `Invite resent to ${employee.email_address}.` };
@@ -233,57 +377,128 @@ export async function resendInvite(employeeId: string) {
 // Employee-side actions (token-authenticated, no permission check)
 // ---------------------------------------------------------------------------
 
-export async function validateInviteToken(token: string): Promise<{
-  valid: boolean;
-  expired: boolean;
-  completed: boolean;
-  employee_id: string | null;
-  email: string | null;
-  hasAuthUser: boolean;
-  error?: string;
-}> {
+export async function validateInviteToken(token: string): Promise<ValidationResult> {
   const adminClient = createAdminClient();
 
   const { data, error } = await adminClient
     .from('employee_invite_tokens')
-    .select('id, employee_id, email, expires_at, completed_at')
+    .select('id, employee_id, email, invite_type, expires_at, completed_at')
     .eq('token', token)
     .maybeSingle();
 
   if (error) {
-    return { valid: false, expired: false, completed: false, employee_id: null, email: null, hasAuthUser: false, error: 'Failed to validate token.' };
+    return validationFailure('Failed to validate token.');
   }
 
   if (!data) {
-    return { valid: false, expired: false, completed: false, employee_id: null, email: null, hasAuthUser: false, error: 'Invalid invite link.' };
+    return validationFailure('Invalid invite link.');
+  }
+
+  const inviteType = (data.invite_type ?? 'onboarding') as InviteType;
+  if (!['onboarding', 'portal_access'].includes(inviteType)) {
+    return validationFailure('Invalid invite link.', {
+      employee_id: data.employee_id,
+      email: data.email,
+      inviteType: null,
+    });
   }
 
   if (data.completed_at) {
-    return { valid: false, expired: false, completed: true, employee_id: data.employee_id, email: data.email, hasAuthUser: false };
+    return validationFailure('Invite link has already been used.', {
+      completed: true,
+      employee_id: data.employee_id,
+      email: data.email,
+      inviteType,
+    });
   }
 
   const now = new Date();
   const expiresAt = new Date(data.expires_at);
-  if (expiresAt < now) {
-    return { valid: false, expired: true, completed: false, employee_id: data.employee_id, email: data.email, hasAuthUser: false };
+  if (expiresAt <= now) {
+    return validationFailure('Invite link has expired.', {
+      expired: true,
+      employee_id: data.employee_id,
+      email: data.email,
+      inviteType,
+    });
   }
 
-  // Check if employee already has an auth user
-  const { data: emp } = await adminClient
+  const { data: emp, error: empError } = await adminClient
     .from('employees')
-    .select('auth_user_id')
+    .select('auth_user_id, email_address, status, first_name, last_name')
     .eq('employee_id', data.employee_id)
     .maybeSingle();
 
+  if (empError || !emp) {
+    return validationFailure('Employee not found.', {
+      employee_id: data.employee_id,
+      email: data.email,
+      inviteType,
+    });
+  }
+
+  const employeeStatus = emp.status as EmployeeStatus;
   const hasAuthUser = Boolean(emp?.auth_user_id);
+  const employeeEmail = normalizeEmail(emp.email_address);
+  const tokenEmail = normalizeEmail(data.email);
+  const employeeName = [emp.first_name, emp.last_name].filter(Boolean).join(' ') || null;
+
+  if (employeeEmail !== tokenEmail) {
+    return validationFailure('Invite link no longer matches the employee email address.', {
+      employee_id: data.employee_id,
+      email: emp.email_address,
+      hasAuthUser,
+      inviteType,
+      employeeStatus,
+      employeeName,
+    });
+  }
+
+  if (inviteType === 'onboarding' && employeeStatus !== 'Onboarding') {
+    return validationFailure('This onboarding invite is no longer valid.', {
+      employee_id: data.employee_id,
+      email: emp.email_address,
+      hasAuthUser,
+      inviteType,
+      employeeStatus,
+      employeeName,
+    });
+  }
+
+  if (inviteType === 'portal_access') {
+    if (!['Active', 'Started Separation'].includes(employeeStatus)) {
+      return validationFailure('Portal invites can only be used by active employees.', {
+        employee_id: data.employee_id,
+        email: emp.email_address,
+        hasAuthUser,
+        inviteType,
+        employeeStatus,
+        employeeName,
+      });
+    }
+
+    if (hasAuthUser) {
+      return validationFailure('This employee already has a portal login.', {
+        employee_id: data.employee_id,
+        email: emp.email_address,
+        hasAuthUser,
+        inviteType,
+        employeeStatus,
+        employeeName,
+      });
+    }
+  }
 
   return {
     valid: true,
     expired: false,
     completed: false,
     employee_id: data.employee_id,
-    email: data.email,
+    email: emp.email_address,
     hasAuthUser,
+    inviteType,
+    employeeStatus,
+    employeeName,
   };
 }
 
@@ -325,12 +540,10 @@ export async function createEmployeeAccount(token: string, password: string): Pr
     return { success: false, error: 'Account created but no user ID returned.' };
   }
 
-  // DEF-002: Link auth_user_id to employee — failure here means the user cannot sign in.
-  // On failure, delete the orphaned auth user and surface the error.
-  const { error: linkError } = await adminClient
-    .from('employees')
-    .update({ auth_user_id: authUserId })
-    .eq('employee_id', validation.employee_id);
+  const { error: linkError } = await adminClient.rpc('link_employee_invite_account', {
+    p_token: token,
+    p_auth_user_id: authUserId,
+  });
 
   if (linkError) {
     console.error('[createEmployeeAccount] Failed to link auth user to employee:', linkError);
@@ -339,7 +552,7 @@ export async function createEmployeeAccount(token: string, password: string): Pr
     if (deleteAuthError) {
       console.error('[createEmployeeAccount] CRITICAL: Failed to delete orphaned auth user after link failure. Manual cleanup required. auth_user_id:', authUserId, deleteAuthError);
     }
-    return { success: false, error: 'Failed to link account. Please try again.' };
+    return { success: false, error: linkError.message || 'Failed to link account. Please try again.' };
   }
 
   return { success: true };
@@ -405,12 +618,15 @@ const HealthSectionSchema = z.object({
 
 export async function saveOnboardingSection(
   token: string,
-  section: 'personal' | 'emergency_contacts' | 'financial' | 'health',
+  section: OnboardingSectionKey,
   data: unknown
 ): Promise<{ success: boolean; error?: string }> {
   const validation = await validateInviteToken(token);
   if (!validation.valid || !validation.employee_id) {
     return { success: false, error: 'Invalid or expired invite link.' };
+  }
+  if (validation.inviteType !== 'onboarding') {
+    return { success: false, error: 'This link is for portal access only.' };
   }
 
   const adminClient = createAdminClient();
@@ -554,84 +770,183 @@ export async function saveOnboardingSection(
   }
 }
 
-export async function submitOnboardingProfile(token: string): Promise<{ success: boolean; error?: string }> {
+export async function getOnboardingSnapshot(token: string): Promise<
+  { success: true; data: OnboardingSnapshot } | { success: false; error: string }
+> {
   const validation = await validateInviteToken(token);
-  if (!validation.valid || !validation.employee_id || !validation.email) {
-    return { success: false, error: 'Invalid or expired invite link.' };
+  if (!validation.valid || !validation.employee_id) {
+    return { success: false, error: validation.error || 'Invalid or expired invite link.' };
+  }
+  if (validation.inviteType !== 'onboarding') {
+    return { success: false, error: 'This link is for portal access only.' };
   }
 
   const adminClient = createAdminClient();
   const employeeId = validation.employee_id;
 
-  // Check personal details are complete
-  const { data: employee } = await adminClient
-    .from('employees')
-    .select('first_name, last_name')
-    .eq('employee_id', employeeId)
-    .maybeSingle();
-
-  if (!employee?.first_name || !employee?.last_name) {
-    return { success: false, error: 'Personal details must be completed before submitting.' };
-  }
-
-  const now = new Date().toISOString();
-
-  // Update employee to Active
-  const { error: updateError } = await adminClient
-    .from('employees')
-    .update({
-      status: 'Active',
-      onboarding_completed_at: now,
-      updated_at: now,
-    })
-    .eq('employee_id', employeeId);
-
-  if (updateError) {
-    console.error('[submitOnboardingProfile] Failed to activate employee:', updateError);
-    return { success: false, error: 'Failed to complete profile. Please try again.' };
-  }
-
-  // DEF-005: Mark token as completed — failure here is critical: employee is Active but cron will keep chasing
-  const { error: tokenMarkError } = await adminClient
-    .from('employee_invite_tokens')
-    .update({ completed_at: now })
-    .eq('token', token);
-
-  if (tokenMarkError) {
-    console.error('[submitOnboardingProfile] CRITICAL: Failed to mark token as completed. Employee is Active but token shows incomplete.', tokenMarkError);
-    return {
-      success: false,
-      error: 'Profile submitted but a system error occurred. Please contact your manager to confirm your account is active.',
-    };
-  }
-
-  // DEF-010: Update profile full_name if auth user exists — non-fatal on failure
-  if (validation.hasAuthUser) {
-    const { data: empData } = await adminClient
+  const [employeeResult, contactsResult, financialResult, healthResult] = await Promise.all([
+    adminClient
       .from('employees')
-      .select('auth_user_id, first_name, last_name')
+      .select('first_name, last_name, date_of_birth, address, post_code, phone_number, mobile_number')
       .eq('employee_id', employeeId)
-      .maybeSingle();
+      .maybeSingle(),
+    adminClient
+      .from('employee_emergency_contacts')
+      .select('name, relationship, phone_number, mobile_number, address, priority')
+      .eq('employee_id', employeeId),
+    adminClient
+      .from('employee_financial_details')
+      .select('ni_number, bank_name, payee_name, branch_address, bank_sort_code, bank_account_number')
+      .eq('employee_id', employeeId)
+      .maybeSingle(),
+    adminClient
+      .from('employee_health_records')
+      .select('doctor_name, doctor_address, has_allergies, allergies, had_absence_over_2_weeks_last_3_years, had_outpatient_treatment_over_3_months_last_3_years, absence_or_treatment_details, illness_history, recent_treatment, has_diabetes, has_epilepsy, has_skin_condition, has_depressive_illness, has_bowel_problems, has_ear_problems, is_registered_disabled, disability_reg_number, disability_reg_expiry_date, disability_details')
+      .eq('employee_id', employeeId)
+      .maybeSingle(),
+  ]);
 
-    if (empData?.auth_user_id) {
-      const { error: profileUpdateError } = await adminClient
-        .from('profiles')
-        .update({
-          full_name: `${empData.first_name} ${empData.last_name}`,
-          updated_at: now,
-        })
-        .eq('id', empData.auth_user_id);
+  if (employeeResult.error) {
+    return { success: false, error: 'Failed to load employee details.' };
+  }
+  if (contactsResult.error) {
+    return { success: false, error: 'Failed to load emergency contacts.' };
+  }
+  if (financialResult.error) {
+    return { success: false, error: 'Failed to load financial details.' };
+  }
+  if (healthResult.error) {
+    return { success: false, error: 'Failed to load health information.' };
+  }
 
-      if (profileUpdateError) {
-        console.error('[submitOnboardingProfile] Failed to update profile name:', profileUpdateError);
-        // Non-fatal — employee is Active, log and continue
-      }
+  const employee = employeeResult.data;
+  const contacts = contactsResult.data ?? [];
+  const primaryContact = contacts.find((contact: { priority: string | null }) => (contact.priority ?? 'Primary').toLowerCase() === 'primary');
+  const secondaryContact = contacts.find((contact: { priority: string | null }) => (contact.priority ?? '').toLowerCase() === 'secondary');
+  const emptyContact = {
+    name: '',
+    relationship: '',
+    phone_number: '',
+    mobile_number: '',
+    address: '',
+  };
+  const toContact = (contact: typeof primaryContact | typeof secondaryContact) => contact ? {
+    name: contact.name ?? '',
+    relationship: contact.relationship ?? '',
+    phone_number: contact.phone_number ?? '',
+    mobile_number: contact.mobile_number ?? '',
+    address: contact.address ?? '',
+  } : emptyContact;
+
+  const financial = financialResult.data;
+  const health = healthResult.data;
+
+  return {
+    success: true,
+    data: {
+      personal: {
+        first_name: employee?.first_name ?? '',
+        last_name: employee?.last_name ?? '',
+        date_of_birth: employee?.date_of_birth ?? '',
+        address: employee?.address ?? '',
+        post_code: employee?.post_code ?? '',
+        phone_number: employee?.phone_number ?? '',
+        mobile_number: employee?.mobile_number ?? '',
+      },
+      emergency_contacts: {
+        primary: toContact(primaryContact),
+        secondary: toContact(secondaryContact),
+      },
+      financial: {
+        ni_number: financial?.ni_number ?? '',
+        bank_name: financial?.bank_name ?? '',
+        payee_name: financial?.payee_name ?? '',
+        branch_address: financial?.branch_address ?? '',
+        bank_sort_code: financial?.bank_sort_code ?? '',
+        bank_account_number: financial?.bank_account_number ?? '',
+      },
+      health: {
+        doctor_name: health?.doctor_name ?? '',
+        doctor_address: health?.doctor_address ?? '',
+        has_allergies: health?.has_allergies ?? false,
+        allergies: health?.allergies ?? '',
+        had_absence_over_2_weeks_last_3_years: health?.had_absence_over_2_weeks_last_3_years ?? false,
+        had_outpatient_treatment_over_3_months_last_3_years: health?.had_outpatient_treatment_over_3_months_last_3_years ?? false,
+        absence_or_treatment_details: health?.absence_or_treatment_details ?? '',
+        illness_history: health?.illness_history ?? '',
+        recent_treatment: health?.recent_treatment ?? '',
+        has_diabetes: health?.has_diabetes ?? false,
+        has_epilepsy: health?.has_epilepsy ?? false,
+        has_skin_condition: health?.has_skin_condition ?? false,
+        has_depressive_illness: health?.has_depressive_illness ?? false,
+        has_bowel_problems: health?.has_bowel_problems ?? false,
+        has_ear_problems: health?.has_ear_problems ?? false,
+        is_registered_disabled: health?.is_registered_disabled ?? false,
+        disability_reg_number: health?.disability_reg_number ?? '',
+        disability_reg_expiry_date: health?.disability_reg_expiry_date ?? '',
+        disability_details: health?.disability_details ?? '',
+      },
+      completedSections: {
+        personal: Boolean(employee?.first_name && employee?.last_name),
+        emergency_contacts: Boolean(primaryContact?.name),
+        financial: Boolean(financial),
+        health: Boolean(health),
+      },
+    },
+  };
+}
+
+export async function submitOnboardingProfile(token: string): Promise<{ success: boolean; error?: string }> {
+  const validation = await validateInviteToken(token);
+  if (!validation.valid || !validation.employee_id || !validation.email) {
+    return { success: false, error: 'Invalid or expired invite link.' };
+  }
+  if (validation.inviteType !== 'onboarding') {
+    return { success: false, error: 'This link is for portal access only.' };
+  }
+
+  const adminClient = createAdminClient();
+
+  const { data: completionData, error: completionError } = await adminClient.rpc('complete_employee_onboarding', {
+    p_token: token,
+  });
+
+  if (completionError) {
+    console.error('[submitOnboardingProfile] Failed to complete onboarding:', completionError);
+    return { success: false, error: completionError.message || 'Failed to complete profile. Please try again.' };
+  }
+
+  const completion = completionData as {
+    employee_id: string;
+    email: string;
+    first_name: string;
+    last_name: string;
+    auth_user_id: string | null;
+    onboarding_completed_at: string;
+  } | null;
+
+  if (!completion?.employee_id || !completion.email) {
+    return { success: false, error: 'Profile completed but completion data was not returned.' };
+  }
+
+  const fullName = [completion.first_name, completion.last_name].filter(Boolean).join(' ');
+
+  if (completion.auth_user_id && fullName) {
+    const { error: profileUpdateError } = await adminClient
+      .from('profiles')
+      .update({
+        full_name: fullName,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', completion.auth_user_id);
+
+    if (profileUpdateError) {
+      console.error('[submitOnboardingProfile] Failed to update profile name:', profileUpdateError);
     }
   }
 
   // Send completion email to manager (best-effort)
   try {
-    const fullName = `${employee.first_name} ${employee.last_name}`;
     await sendOnboardingCompleteEmail(fullName, validation.email);
   } catch (emailError) {
     console.error('[submitOnboardingProfile] Failed to send completion email:', emailError);
@@ -640,12 +955,12 @@ export async function submitOnboardingProfile(token: string): Promise<{ success:
   // Audit log
   try {
     await logAuditEvent({
-      operation_type: 'onboarding_complete',
-      resource_type: 'employee',
-      resource_id: employeeId,
-      operation_status: 'success',
-      new_values: { status: 'Active', onboarding_completed_at: now },
-    });
+        operation_type: 'onboarding_complete',
+        resource_type: 'employee',
+        resource_id: completion.employee_id,
+        operation_status: 'success',
+        new_values: { status: 'Active', onboarding_completed_at: completion.onboarding_completed_at },
+      });
   } catch (auditError) {
     console.error('[submitOnboardingProfile] Audit log failed:', auditError);
   }

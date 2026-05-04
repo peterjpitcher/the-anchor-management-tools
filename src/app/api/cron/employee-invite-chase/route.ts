@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { authorizeCronRequest } from '@/lib/cron-auth';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { sendChaseEmail } from '@/lib/email/employee-invite-emails';
+import { sendChaseEmail, sendPortalInviteEmail } from '@/lib/email/employee-invite-emails';
 
 const BASE_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://manage.the-anchor.pub';
 
@@ -32,7 +32,7 @@ export async function GET(request: NextRequest) {
     // Fetch all pending tokens
     const { data: tokens, error: fetchError } = await supabase
       .from('employee_invite_tokens')
-      .select('id, token, email, created_at, day3_chase_sent_at, day6_chase_sent_at')
+      .select('id, token, email, invite_type, created_at, day3_chase_sent_at, day6_chase_sent_at')
       .is('completed_at', null)
       .gt('expires_at', nowIso);
 
@@ -46,7 +46,11 @@ export async function GET(request: NextRequest) {
       // Day 3 chase — checked independently so day6 can also fire on the same run
       if (!row.day3_chase_sent_at && createdAt <= day3Threshold) {
         try {
-          await sendChaseEmail(row.email, buildOnboardingUrl(row.token), 3);
+          if ((row.invite_type ?? 'onboarding') === 'portal_access') {
+            await sendPortalInviteEmail(row.email, buildOnboardingUrl(row.token));
+          } else {
+            await sendChaseEmail(row.email, buildOnboardingUrl(row.token), 3);
+          }
           const { error: updateDay3Error } = await supabase
             .from('employee_invite_tokens')
             .update({ day3_chase_sent_at: nowIso })
@@ -66,7 +70,11 @@ export async function GET(request: NextRequest) {
       // Day 6 chase — checked independently of day3
       if (!row.day6_chase_sent_at && createdAt <= day6Threshold) {
         try {
-          await sendChaseEmail(row.email, buildOnboardingUrl(row.token), 6);
+          if ((row.invite_type ?? 'onboarding') === 'portal_access') {
+            await sendPortalInviteEmail(row.email, buildOnboardingUrl(row.token));
+          } else {
+            await sendChaseEmail(row.email, buildOnboardingUrl(row.token), 6);
+          }
           const { error: updateDay6Error } = await supabase
             .from('employee_invite_tokens')
             .update({ day6_chase_sent_at: nowIso })

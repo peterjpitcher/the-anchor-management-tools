@@ -16,19 +16,20 @@ interface FinancialData {
 
 interface FinancialStepProps {
   token: string;
+  initialData?: Partial<Omit<FinancialData, 'bank_sort_code_confirm' | 'bank_account_number_confirm'>>;
   onSuccess: (data: Omit<FinancialData, 'bank_sort_code_confirm' | 'bank_account_number_confirm'>) => void;
 }
 
-export default function FinancialStep({ token, onSuccess }: FinancialStepProps) {
+export default function FinancialStep({ token, initialData, onSuccess }: FinancialStepProps) {
   const [data, setData] = useState<FinancialData>({
-    ni_number: '',
-    bank_name: '',
-    payee_name: '',
-    branch_address: '',
-    bank_sort_code: '',
-    bank_sort_code_confirm: '',
-    bank_account_number: '',
-    bank_account_number_confirm: '',
+    ni_number: initialData?.ni_number ?? '',
+    bank_name: initialData?.bank_name ?? '',
+    payee_name: initialData?.payee_name ?? '',
+    branch_address: initialData?.branch_address ?? '',
+    bank_sort_code: initialData?.bank_sort_code ?? '',
+    bank_sort_code_confirm: initialData?.bank_sort_code ?? '',
+    bank_account_number: initialData?.bank_account_number ?? '',
+    bank_account_number_confirm: initialData?.bank_account_number ?? '',
   });
   const [errors, setErrors] = useState<Partial<Record<keyof FinancialData, string>>>({});
   const [loading, setLoading] = useState(false);

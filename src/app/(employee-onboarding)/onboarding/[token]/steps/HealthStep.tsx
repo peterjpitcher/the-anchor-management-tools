@@ -27,30 +27,31 @@ interface HealthData {
 
 interface HealthStepProps {
   token: string;
+  initialData?: Partial<HealthData>;
   onSuccess: (data: HealthData) => void;
 }
 
-export default function HealthStep({ token, onSuccess }: HealthStepProps) {
+export default function HealthStep({ token, initialData, onSuccess }: HealthStepProps) {
   const [data, setData] = useState<HealthData>({
-    doctor_name: '',
-    doctor_address: '',
-    has_allergies: false,
-    allergies: '',
-    had_absence_over_2_weeks_last_3_years: false,
-    had_outpatient_treatment_over_3_months_last_3_years: false,
-    absence_or_treatment_details: '',
-    illness_history: '',
-    recent_treatment: '',
-    has_diabetes: false,
-    has_epilepsy: false,
-    has_skin_condition: false,
-    has_depressive_illness: false,
-    has_bowel_problems: false,
-    has_ear_problems: false,
-    is_registered_disabled: false,
-    disability_reg_number: '',
-    disability_reg_expiry_date: '',
-    disability_details: '',
+    doctor_name: initialData?.doctor_name ?? '',
+    doctor_address: initialData?.doctor_address ?? '',
+    has_allergies: initialData?.has_allergies ?? false,
+    allergies: initialData?.allergies ?? '',
+    had_absence_over_2_weeks_last_3_years: initialData?.had_absence_over_2_weeks_last_3_years ?? false,
+    had_outpatient_treatment_over_3_months_last_3_years: initialData?.had_outpatient_treatment_over_3_months_last_3_years ?? false,
+    absence_or_treatment_details: initialData?.absence_or_treatment_details ?? '',
+    illness_history: initialData?.illness_history ?? '',
+    recent_treatment: initialData?.recent_treatment ?? '',
+    has_diabetes: initialData?.has_diabetes ?? false,
+    has_epilepsy: initialData?.has_epilepsy ?? false,
+    has_skin_condition: initialData?.has_skin_condition ?? false,
+    has_depressive_illness: initialData?.has_depressive_illness ?? false,
+    has_bowel_problems: initialData?.has_bowel_problems ?? false,
+    has_ear_problems: initialData?.has_ear_problems ?? false,
+    is_registered_disabled: initialData?.is_registered_disabled ?? false,
+    disability_reg_number: initialData?.disability_reg_number ?? '',
+    disability_reg_expiry_date: initialData?.disability_reg_expiry_date ?? '',
+    disability_details: initialData?.disability_details ?? '',
   });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
