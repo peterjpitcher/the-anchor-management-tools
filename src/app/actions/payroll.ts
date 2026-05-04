@@ -544,11 +544,11 @@ export async function sendPayrollEmail(year: number, month: number): Promise<
   // Load the payroll period to get the period_end date
   const period = await getOrCreatePayrollPeriod(year, month);
 
-  // Find employees in 'Started Separation' with employment_end_date within this payroll period
+  // Find employees leaving or already separated with employment_end_date within this payroll period
   const { data: leavingRaw } = await supabase
     .from('employees')
     .select('first_name, last_name, employment_end_date')
-    .eq('status', 'Started Separation')
+    .in('status', ['Started Separation', 'Former'])
     .not('employment_end_date', 'is', null)
     .gte('employment_end_date', period.period_start)
     .lte('employment_end_date', period.period_end);

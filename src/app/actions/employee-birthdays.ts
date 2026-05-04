@@ -59,7 +59,7 @@ async function sendBirthdayRemindersInternal(daysAhead: number = 7) {
     const { data: employees, error } = await supabase
       .from('employees')
       .select('employee_id, first_name, last_name, job_title, date_of_birth, email_address')
-      .eq('status', 'Active')
+      .in('status', ['Active', 'Started Separation'])
       .not('date_of_birth', 'is', null);
 
     if (error) {
@@ -183,7 +183,7 @@ export async function getUpcomingBirthdays(daysAhead: number = 30) {
     const { data: employees, error } = await supabase
       .from('employees')
       .select('employee_id, first_name, last_name, job_title, date_of_birth, email_address')
-      .eq('status', 'Active')
+      .in('status', ['Active', 'Started Separation'])
       .not('date_of_birth', 'is', null);
 
     if (error) {
@@ -237,7 +237,7 @@ export async function getAllBirthdays() {
     const { data: employees, error } = await supabase
       .from('employees')
       .select('employee_id, first_name, last_name, job_title, date_of_birth, email_address')
-      .eq('status', 'Active')
+      .in('status', ['Active', 'Started Separation'])
       .not('date_of_birth', 'is', null);
 
     if (error) {

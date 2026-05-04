@@ -258,7 +258,7 @@ export async function syncAllBirthdaysToCalendar(): Promise<{
     const { data: employees, error } = await supabase
       .from('employees')
       .select('employee_id, first_name, last_name, job_title, date_of_birth, email_address')
-      .eq('status', 'Active')
+      .in('status', ['Active', 'Started Separation'])
       .not('date_of_birth', 'is', null);
 
     if (error) {

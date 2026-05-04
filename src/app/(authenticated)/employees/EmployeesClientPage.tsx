@@ -383,7 +383,7 @@ export default function EmployeesClientPage({ initialData, initialError, permiss
                         <Badge variant={statusBadgeVariant(employee.status)} dot>
                           {employee.status}
                         </Badge>
-                        {!employee.auth_user_id && permissions.canEdit && (
+                        {!employee.auth_user_id && permissions.canEdit && ['Active', 'Started Separation'].includes(employee.status) && (
                           <PortalInviteButton employeeId={employee.employee_id} />
                         )}
                       </div>

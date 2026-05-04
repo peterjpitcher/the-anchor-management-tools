@@ -348,7 +348,7 @@ export async function addEmployee(prevState: ActionFormState, formData: FormData
       revalidatePath('/employees');
       return { type: 'success', message: 'Employee created successfully.', employeeId: newEmployee.employee_id };
     } catch (error: unknown) {
-        const message = isPostgrestError(error) ? getConstraintErrorMessage(error) : 'Database error';
+        const message = isPostgrestError(error) ? getConstraintErrorMessage(error) : getErrorMessage(error);
         await logAuditEvent({
             ...(userInfo.user_id && { user_id: userInfo.user_id }),
             ...(userInfo.user_email && { user_email: userInfo.user_email }),

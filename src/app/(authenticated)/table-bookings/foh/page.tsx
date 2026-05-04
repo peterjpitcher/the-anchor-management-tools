@@ -78,7 +78,7 @@ export default async function TableBookingsFohPage() {
   if (useManagerKioskStyle) {
     const admin = createAdminClient()
     const [{ data: emps }, sessionsResult] = await Promise.all([
-      admin.from('employees').select('employee_id, first_name, last_name').eq('status', 'Active').order('first_name').order('last_name'),
+      admin.from('employees').select('employee_id, first_name, last_name').in('status', ['Active', 'Started Separation']).order('first_name').order('last_name'),
       getOpenSessions(),
     ])
     clockWidgetEmployees = (emps ?? []) as ClockEmployee[]

@@ -190,7 +190,7 @@ describe('Timeclock actions', () => {
       })
     })
 
-    it('should clock in successfully and log audit event', async () => {
+    it.each(['Active', 'Started Separation'])('should clock in %s employees and log audit event', async (status) => {
       const session = {
         id: 'session-1',
         employee_id: 'emp-1',
@@ -206,7 +206,7 @@ describe('Timeclock actions', () => {
             select: vi.fn().mockReturnValue({
               eq: vi.fn().mockReturnValue({
                 single: vi.fn().mockResolvedValue({
-                  data: { employee_id: 'emp-1', status: 'Active' },
+                  data: { employee_id: 'emp-1', status },
                   error: null,
                 }),
               }),

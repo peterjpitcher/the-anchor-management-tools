@@ -749,6 +749,7 @@ export async function getEmployeeShifts(
       .select('employee_id')
       .eq('employee_id', employeeId)
       .eq('auth_user_id', user.id)
+      .in('status', ['Active', 'Started Separation'])
       .maybeSingle();
     if (!ownRecord) return { success: false, error: 'Permission denied' };
   }
@@ -779,6 +780,14 @@ export async function getOpenShiftsForPortal(
 
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { success: false, error: 'Unauthorized' };
+
+  const { data: ownRecord } = await supabase
+    .from('employees')
+    .select('employee_id')
+    .eq('auth_user_id', user.id)
+    .in('status', ['Active', 'Started Separation'])
+    .maybeSingle();
+  if (!ownRecord) return { success: false, error: 'Permission denied' };
 
   // Read from the published snapshot — only what was explicitly published is visible to staff
   const { data, error } = await supabase
@@ -1104,7 +1113,7 @@ export async function getActiveEmployeesForRota(weekStart?: string): Promise<
   const { data: employees, error: empError } = await supabase
     .from('employees')
     .select('employee_id, first_name, last_name, job_title')
-    .eq('status', 'Active')
+    .in('status', ['Active', 'Started Separation'])
     .order('first_name')
     .order('last_name');
 
