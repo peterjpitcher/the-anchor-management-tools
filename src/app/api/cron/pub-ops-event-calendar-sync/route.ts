@@ -7,7 +7,8 @@ import { logger } from '@/lib/logger'
 
 const DEFAULT_LIMIT = 200
 const HARD_LIMIT = 500
-const SYNC_CONCURRENCY = 10
+const SYNC_CONCURRENCY = 2
+const BATCH_DELAY_MS = 500
 const CALENDAR_TIME_ZONE = 'Europe/London'
 
 export const maxDuration = 300
@@ -26,6 +27,10 @@ function chunkItems<T>(items: T[], size: number): T[][] {
     chunks.push(items.slice(index, index + size))
   }
   return chunks
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
 export async function GET(request: NextRequest) {
@@ -78,7 +83,9 @@ export async function GET(request: NextRequest) {
       failed: 0,
     }
 
-    for (const batch of chunkItems(eventIds, eventId ? 1 : SYNC_CONCURRENCY)) {
+    const batches = chunkItems(eventIds, eventId ? 1 : SYNC_CONCURRENCY)
+
+    for (const [batchIndex, batch] of batches.entries()) {
       const batchResults = await Promise.all(
         batch.map((id) =>
           syncPubOpsEventCalendarByEventId(supabase, id, {
@@ -92,6 +99,10 @@ export async function GET(request: NextRequest) {
       for (const result of batchResults) {
         counts[result.state] += 1
         results.push(result)
+      }
+
+      if (batchIndex < batches.length - 1) {
+        await delay(BATCH_DELAY_MS)
       }
     }
 
