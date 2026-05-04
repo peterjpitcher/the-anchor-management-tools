@@ -14,7 +14,7 @@ import type { RotaSettings } from '@/app/actions/rota-settings';
 
 interface EmployeeHolidaysTabProps {
   employeeId: string;
-  canEdit: boolean;
+  canCreateLeave: boolean;
   leaveRequests: LeaveRequest[];
   paySettings: EmployeePaySettings | null;
   rotaSettings: Pick<RotaSettings, 'holidayYearStartMonth' | 'holidayYearStartDay' | 'defaultHolidayDays'>;
@@ -47,7 +47,7 @@ function statusVariant(status: LeaveRequest['status']): 'success' | 'warning' | 
 
 export default function EmployeeHolidaysTab({
   employeeId,
-  canEdit,
+  canCreateLeave,
   leaveRequests,
   paySettings,
   rotaSettings,
@@ -117,7 +117,7 @@ export default function EmployeeHolidaysTab({
             Holiday allowance and leave requests.
           </p>
         </div>
-        {canEdit && !showBookForm && (
+        {canCreateLeave && !showBookForm && (
           <Button
             type="button"
             size="sm"
@@ -131,7 +131,7 @@ export default function EmployeeHolidaysTab({
       </div>
 
       {/* Book holiday form */}
-      {showBookForm && canEdit && (
+      {showBookForm && canCreateLeave && (
         <div className="p-4 bg-gray-50 rounded-lg border border-gray-200 space-y-4">
           <p className="text-sm font-medium text-gray-700">Book approved holiday</p>
           {bookError && <Alert variant="error">{bookError}</Alert>}

@@ -50,6 +50,9 @@ interface RotaGridProps {
   weekStart: string;
   days: string[]; // 7 ISO date strings, Mon–Sun
   canEdit: boolean;
+  canViewLeave: boolean;
+  canCreateLeave: boolean;
+  canEditLeave: boolean;
   budgets: DepartmentBudget[];
   departments: Department[];
   dayInfo: Record<string, RotaDayInfo>;
@@ -379,6 +382,9 @@ export default function RotaGrid({
   weekStart,
   days,
   canEdit,
+  canViewLeave,
+  canCreateLeave,
+  canEditLeave,
   budgets,
   departments,
   dayInfo,
@@ -1039,10 +1045,10 @@ export default function RotaGrid({
                                       leaveStatus={leaveStatus}
                                       disabled={!canEdit || isPending}
                                       onAdd={canEdit && !isPending ? () => setCreateTarget({ employeeId: emp.employee_id, date: d }) : undefined}
-                                      onBookHoliday={canEdit && !isPending ? () => setHolidayTarget({ employeeId: emp.employee_id, date: d }) : undefined}
+                                      onBookHoliday={canCreateLeave && !isPending ? () => setHolidayTarget({ employeeId: emp.employee_id, date: d }) : undefined}
                                       onLeaveClick={(() => {
                                         const ld = leaveDayMap.get(`${emp.employee_id}:${d}`);
-                                        return ld ? () => setHolidayDetailTarget({ requestId: ld.request_id, employeeName: empDisplayName(emp) }) : undefined;
+                                        return canViewLeave && ld ? () => setHolidayDetailTarget({ requestId: ld.request_id, employeeName: empDisplayName(emp) }) : undefined;
                                       })()}
                                     >
                                       {cellShifts.map(s => (
@@ -1088,7 +1094,15 @@ export default function RotaGrid({
         <span className="flex items-center gap-1"><span className="inline-block w-3 h-3 rounded-sm bg-blue-50 border-2 border-dashed border-blue-300" /> Unpublished shift</span>
         <span className="flex items-center gap-1"><span className="inline-block w-3 h-3 rounded-sm bg-emerald-100 border-l-4 border-emerald-400" /> Employee role group</span>
         <span className="flex items-center gap-1"><span className="inline-block w-3 h-3 rounded-sm bg-red-100 border border-red-300" /> Wage % over target</span>
-        {canEdit && <span className="text-gray-400">Drag shifts to move them · Hover a cell to add a shift (+) or book holiday (calendar icon)</span>}
+        {(canEdit || canCreateLeave) && (
+          <span className="text-gray-400">
+            {[
+              canEdit ? 'Drag shifts to move them' : null,
+              canEdit ? 'Hover a cell to add a shift (+)' : null,
+              canCreateLeave ? 'Use the calendar icon to book holiday' : null,
+            ].filter(Boolean).join(' · ')}
+          </span>
+        )}
       </div>
 
       {/* Shift detail modal */}
@@ -1153,7 +1167,7 @@ export default function RotaGrid({
         <HolidayDetailModal
           requestId={holidayDetailTarget.requestId}
           employeeName={holidayDetailTarget.employeeName}
-          canEdit={canEdit}
+          canEdit={canEditLeave}
           onClose={() => setHolidayDetailTarget(null)}
           onDeleted={(requestId) => {
             setActiveLeaveDays(prev => prev.filter(l => l.request_id !== requestId));

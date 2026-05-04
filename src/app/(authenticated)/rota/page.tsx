@@ -48,11 +48,22 @@ export default async function RotaPage({ searchParams }: RotaPageProps) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect('/');
 
-  const [canView, canEdit, canPublish, canManageSettings] = await Promise.all([
+  const [
+    canView,
+    canEdit,
+    canPublish,
+    canManageSettings,
+    canViewLeave,
+    canCreateLeave,
+    canEditLeave,
+  ] = await Promise.all([
     checkUserPermission('rota', 'view', user.id),
     checkUserPermission('rota', 'edit', user.id),
     checkUserPermission('rota', 'publish', user.id),
     checkUserPermission('settings', 'manage', user.id),
+    checkUserPermission('leave', 'view', user.id),
+    checkUserPermission('leave', 'create', user.id),
+    checkUserPermission('leave', 'edit', user.id),
   ]);
   if (!canView) redirect('/');
 
@@ -156,6 +167,9 @@ export default async function RotaPage({ searchParams }: RotaPageProps) {
         weekStart={weekStart}
         days={days}
         canEdit={canEdit}
+        canViewLeave={canViewLeave}
+        canCreateLeave={canCreateLeave}
+        canEditLeave={canEditLeave}
         budgets={budgets}
         departments={departments}
         dayInfo={dayInfo}

@@ -1,10 +1,11 @@
 'use server';
 
 import { createClient } from '@/lib/supabase/server';
+import { createAdminClient } from '@/lib/supabase/admin';
 import { checkUserPermission } from '@/app/actions/rbac';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
-import { eachDayOfInterval, parseISO, getYear } from 'date-fns';
+import { eachDayOfInterval, parseISO, getYear, isValid } from 'date-fns';
 import { formatInTimeZone } from 'date-fns-tz';
 import { sendEmail } from '@/lib/email/emailService';
 import {
@@ -35,16 +36,36 @@ function getHolidayYear(date: Date, startMonth: number, startDay: number): numbe
   return date >= yearStart ? year : year - 1;
 }
 
+const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+
+function isValidIsoDate(value: string): boolean {
+  if (!ISO_DATE_PATTERN.test(value)) return false;
+  const date = parseISO(value);
+  return isValid(date) && formatInTimeZone(date, 'Europe/London', 'yyyy-MM-dd') === value;
+}
+
 // ---------------------------------------------------------------------------
 // Submit a leave request (employee)
 // ---------------------------------------------------------------------------
 
 const SubmitLeaveSchema = z.object({
   employeeId: z.string().uuid(),
-  startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-  endDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  startDate: z.string().regex(ISO_DATE_PATTERN),
+  endDate: z.string().regex(ISO_DATE_PATTERN),
   note: z.string().max(500).nullable().optional(),
 });
+
+const UpdateLeaveDatesSchema = z.object({
+  requestId: z.string().uuid(),
+  startDate: z.string().refine(isValidIsoDate, 'Start date must be a valid date'),
+  endDate: z.string().refine(isValidIsoDate, 'End date must be a valid date'),
+});
+
+type UpdateLeaveDatesRpcResult = {
+  success?: boolean;
+  error?: string;
+  code?: string;
+};
 
 // Returns true if the current session user IS the employee identified by employeeId
 async function isOwnEmployeeRecord(employeeId: string): Promise<boolean> {
@@ -478,21 +499,29 @@ export async function deleteLeaveRequest(
   const canEdit = await checkUserPermission('leave', 'edit');
   if (!canEdit) return { success: false, error: 'Permission denied' };
 
+  const parsedRequestId = z.string().uuid().safeParse(requestId);
+  if (!parsedRequestId.success) return { success: false, error: parsedRequestId.error.message };
+
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
 
-  // Delete leave_days first (FK constraint)
-  const { error: daysError } = await supabase.from('leave_days').delete().eq('request_id', requestId);
-  if (daysError) return { success: false, error: daysError.message };
-
-  const { error } = await supabase.from('leave_requests').delete().eq('id', requestId);
-  if (error) return { success: false, error: error.message };
+  // leave_days are removed by the FK ON DELETE CASCADE.
+  const { data: deletedRequest, error } = await supabase
+    .from('leave_requests')
+    .delete()
+    .eq('id', parsedRequestId.data)
+    .select('id')
+    .single();
+  if (error || !deletedRequest) {
+    if (error?.code === 'PGRST116') return { success: false, error: 'Request not found' };
+    return { success: false, error: error?.message ?? 'Request not found' };
+  }
 
   void logAuditEvent({
     user_id: user?.id,
     operation_type: 'delete',
     resource_type: 'leave_request',
-    resource_id: requestId,
+    resource_id: parsedRequestId.data,
     operation_status: 'success',
   });
 
@@ -514,45 +543,70 @@ export async function updateLeaveRequestDates(
   const canEdit = await checkUserPermission('leave', 'edit');
   if (!canEdit) return { success: false, error: 'Permission denied' };
 
+  const parsed = UpdateLeaveDatesSchema.safeParse({ requestId, startDate, endDate });
+  if (!parsed.success) return { success: false, error: parsed.error.message };
+
+  const {
+    requestId: parsedRequestId,
+    startDate: parsedStartDate,
+    endDate: parsedEndDate,
+  } = parsed.data;
+
+  if (parsedEndDate < parsedStartDate) {
+    return { success: false, error: 'End date must be on or after start date' };
+  }
+
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
 
   const { data: request, error: fetchError } = await supabase
     .from('leave_requests')
-    .select('id, employee_id')
-    .eq('id', requestId)
+    .select('id, employee_id, status')
+    .eq('id', parsedRequestId)
     .single();
   if (fetchError || !request) return { success: false, error: 'Request not found' };
+  if (request.status === 'declined') {
+    return { success: false, error: 'Declined holiday requests cannot be edited' };
+  }
 
-  const { error: updateError } = await supabase
+  const { data: overlapping, error: overlappingError } = await supabase
     .from('leave_requests')
-    .update({ start_date: startDate, end_date: endDate, updated_at: new Date().toISOString() })
-    .eq('id', requestId);
-  if (updateError) return { success: false, error: updateError.message };
+    .select('id')
+    .eq('employee_id', request.employee_id)
+    .neq('id', parsedRequestId)
+    .neq('status', 'declined')
+    .lte('start_date', parsedEndDate)
+    .gte('end_date', parsedStartDate);
+  if (overlappingError) return { success: false, error: overlappingError.message };
+  if (overlapping && overlapping.length > 0) {
+    return { success: false, error: 'Employee already has leave covering some of these dates' };
+  }
 
-  // Regenerate leave_days for the new range
-  const { error: deleteError } = await supabase.from('leave_days').delete().eq('request_id', requestId);
-  if (deleteError) return { success: false, error: deleteError.message };
+  const { holidayYearStartMonth, holidayYearStartDay } = await getRotaSettings();
+  const holidayYear = getHolidayYear(parseISO(parsedStartDate), holidayYearStartMonth, holidayYearStartDay);
+  const admin = createAdminClient();
 
-  const days = eachDayOfInterval({ start: parseISO(startDate), end: parseISO(endDate) });
-  const dayRows = days.map(d => ({
-    request_id: requestId,
-    employee_id: (request as { employee_id: string }).employee_id,
-    leave_date: formatInTimeZone(d, 'Europe/London', 'yyyy-MM-dd'),
-  }));
+  const { data: rpcData, error: rpcError } = await admin.rpc('update_leave_request_dates', {
+    p_request_id: parsedRequestId,
+    p_start_date: parsedStartDate,
+    p_end_date: parsedEndDate,
+    p_holiday_year: holidayYear,
+  });
 
-  if (dayRows.length > 0) {
-    const { error: insertError } = await supabase.from('leave_days').insert(dayRows);
-    if (insertError) return { success: false, error: insertError.message };
+  if (rpcError) return { success: false, error: rpcError.message };
+
+  const rpcResult = rpcData as UpdateLeaveDatesRpcResult | null;
+  if (!rpcResult?.success) {
+    return { success: false, error: rpcResult?.error ?? 'Failed to update holiday dates' };
   }
 
   void logAuditEvent({
     user_id: user?.id,
     operation_type: 'update',
     resource_type: 'leave_request',
-    resource_id: requestId,
+    resource_id: parsedRequestId,
     operation_status: 'success',
-    new_values: { start_date: startDate, end_date: endDate },
+    new_values: { start_date: parsedStartDate, end_date: parsedEndDate, holiday_year: holidayYear },
   });
 
   revalidatePath('/rota');

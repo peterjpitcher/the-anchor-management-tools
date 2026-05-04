@@ -7,7 +7,10 @@ import { logger } from '@/lib/logger'
 
 const DEFAULT_LIMIT = 200
 const HARD_LIMIT = 500
+const SYNC_CONCURRENCY = 10
 const CALENDAR_TIME_ZONE = 'Europe/London'
+
+export const maxDuration = 300
 
 function parseLimit(raw: string | null): number {
   const parsed = Number.parseInt(raw || '', 10)
@@ -15,6 +18,14 @@ function parseLimit(raw: string | null): number {
     return DEFAULT_LIMIT
   }
   return Math.min(parsed, HARD_LIMIT)
+}
+
+function chunkItems<T>(items: T[], size: number): T[][] {
+  const chunks: T[][] = []
+  for (let index = 0; index < items.length; index += size) {
+    chunks.push(items.slice(index, index + size))
+  }
+  return chunks
 }
 
 export async function GET(request: NextRequest) {
@@ -67,15 +78,21 @@ export async function GET(request: NextRequest) {
       failed: 0,
     }
 
-    for (const id of eventIds) {
-      const result = await syncPubOpsEventCalendarByEventId(supabase, id, {
-        context: eventId
-          ? 'pub_ops_event_calendar_single_sync'
-          : 'pub_ops_event_calendar_backfill',
-      })
+    for (const batch of chunkItems(eventIds, eventId ? 1 : SYNC_CONCURRENCY)) {
+      const batchResults = await Promise.all(
+        batch.map((id) =>
+          syncPubOpsEventCalendarByEventId(supabase, id, {
+            context: eventId
+              ? 'pub_ops_event_calendar_single_sync'
+              : 'pub_ops_event_calendar_backfill',
+          })
+        )
+      )
 
-      counts[result.state] += 1
-      results.push(result)
+      for (const result of batchResults) {
+        counts[result.state] += 1
+        results.push(result)
+      }
     }
 
     return NextResponse.json({
