@@ -38,8 +38,6 @@ export async function GET(request: NextRequest) {
       let query = supabase
         .from('events')
         .select('id')
-        .neq('event_status', 'cancelled')
-        .neq('event_status', 'draft')
         .order('date', { ascending: true })
         .order('time', { ascending: true })
         .limit(limit)

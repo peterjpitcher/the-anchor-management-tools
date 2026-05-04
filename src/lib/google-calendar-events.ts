@@ -70,7 +70,6 @@ export type PubOpsEventCalendarEntry =
         start: { dateTime: string; timeZone: string }
         end: { dateTime: string; timeZone: string }
         location: string
-        colorId: string
         extendedProperties: {
           private: Record<string, string>
         }
@@ -80,7 +79,7 @@ export type PubOpsEventCalendarEntry =
       shouldDelete: true
       googleEventId: string
       aggregate: PubOpsEventCalendarAggregate
-      reason: 'event_cancelled' | 'no_active_seats' | 'missing_start'
+      reason: 'event_cancelled' | 'missing_start'
     }
 
 function calendarAuth(auth: CalendarAuth): OAuth2Client {
@@ -268,10 +267,6 @@ export function buildPubOpsEventCalendarEntry(input: {
     return { shouldDelete: true, googleEventId, aggregate, reason: 'event_cancelled' }
   }
 
-  if (aggregate.totalActiveSeats <= 0) {
-    return { shouldDelete: true, googleEventId, aggregate, reason: 'no_active_seats' }
-  }
-
   const start = getEventStart(input.event)
   if (!start) {
     return { shouldDelete: true, googleEventId, aggregate, reason: 'missing_start' }
@@ -304,7 +299,6 @@ export function buildPubOpsEventCalendarEntry(input: {
         timeZone: CALENDAR_TIME_ZONE,
       },
       location: 'The Anchor',
-      colorId: aggregate.pendingPaymentSeats > 0 ? '5' : '10',
       extendedProperties: {
         private: {
           source: SOURCE_PROPERTY,
