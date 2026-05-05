@@ -12,6 +12,30 @@ npx tsx scripts/<name>.ts
 npx tsx --tsconfig tsconfig.json scripts/<name>.ts
 ```
 
+**Mileage route distances:**
+
+```bash
+# Show which destination pairs need cached mileage distances. No Google calls.
+npm run mileage:distances:routes -- --plan-only --limit 25
+
+# Call Google Routes API and print calculated distances. No database writes.
+GOOGLE_ROUTES_API_KEY=... npm run mileage:distances:routes -- --limit 25
+
+# Apply a reviewed batch to mileage_destination_distances.
+RUN_MILEAGE_DISTANCE_BACKFILL_MUTATION=true \
+ALLOW_MILEAGE_DISTANCE_BACKFILL_MUTATION_SCRIPT=true \
+GOOGLE_ROUTES_API_KEY=... \
+  npm run mileage:distances:routes -- --confirm --limit 25
+```
+
+The mileage script uses Google Maps Platform Routes API `computeRouteMatrix` with
+driving routes and traffic-unaware routing for stable distance output. By
+default it calculates both directions for every unordered destination pair, then
+skips materially asymmetric or unresolved routes instead of guessing a value.
+Use `--anchor-only` if you only want Anchor-to-location pairs; omit it for
+round-trip mileage between every location. Use `--include-existing` to refresh
+cached rows.
+
 **SQL scripts** (run in Supabase SQL Editor or via `psql`):
 
 ```bash
