@@ -34,7 +34,56 @@ const CreateEventBookingSchema = z.object({
     z.number().int().min(1).max(20)
   ),
   expected_event_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  source_url: z.string().trim().url().max(2048).optional(),
+  landing_path: z.string().trim().min(1).max(512).optional(),
+  utm_source: z.string().trim().min(1).max(200).optional(),
+  utm_medium: z.string().trim().min(1).max(200).optional(),
+  utm_campaign: z.string().trim().min(1).max(300).optional(),
+  utm_content: z.string().trim().min(1).max(300).optional(),
+  utm_term: z.string().trim().min(1).max(300).optional(),
+  fbclid: z.string().trim().min(1).max(500).optional(),
+  short_code: z.string().trim().min(1).max(64).optional(),
+  event_slug: z.string().trim().min(1).max(200).optional(),
+  event_name: z.string().trim().min(1).max(300).optional(),
+  event_category_name: z.string().trim().min(1).max(200).optional(),
+  event_category_slug: z.string().trim().min(1).max(200).optional(),
+  event_date: z.string().trim().min(1).max(80).optional(),
+  event_price: z.number().min(0).optional(),
+  event_value: z.number().min(0).optional(),
+  food_intent: z.string().trim().min(1).max(80).optional(),
 })
+
+const ATTRIBUTION_KEYS = [
+  'source_url',
+  'landing_path',
+  'utm_source',
+  'utm_medium',
+  'utm_campaign',
+  'utm_content',
+  'utm_term',
+  'fbclid',
+  'short_code',
+  'event_slug',
+  'event_name',
+  'event_category_name',
+  'event_category_slug',
+  'event_date',
+  'event_price',
+  'event_value',
+  'food_intent',
+] as const
+
+type EventBookingAttribution = Pick<z.infer<typeof CreateEventBookingSchema>, typeof ATTRIBUTION_KEYS[number]>
+
+function buildBookingAttribution(data: z.infer<typeof CreateEventBookingSchema>): EventBookingAttribution | null {
+  const attribution: Record<string, unknown> = {}
+  for (const key of ATTRIBUTION_KEYS) {
+    const value = data[key]
+    if (typeof value === 'string' && value.trim()) attribution[key] = value
+    if (typeof value === 'number' && Number.isFinite(value)) attribution[key] = value
+  }
+  return Object.keys(attribution).length > 0 ? attribution as EventBookingAttribution : null
+}
 
 export async function POST(request: NextRequest) {
   return withApiAuth(async (req) => {
@@ -79,6 +128,7 @@ export async function POST(request: NextRequest) {
       seats: parsed.data.seats,
       expected_event_date: parsed.data.expected_event_date || null,
     })
+    const attribution = buildBookingAttribution(parsed.data)
 
     const supabase = createAdminClient()
     const idempotencyState = await claimIdempotencyKey(supabase, idempotencyKey, requestHash)
@@ -185,7 +235,8 @@ export async function POST(request: NextRequest) {
         bookingMode,
         appBaseUrl,
         shouldSendSms: true,
-        firstName: parsed.data.first_name || customerResolution.resolvedFirstName
+        firstName: parsed.data.first_name || customerResolution.resolvedFirstName,
+        attribution
       })
 
       if (result.rpcFailed) {

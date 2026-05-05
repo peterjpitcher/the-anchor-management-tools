@@ -130,8 +130,8 @@ describe('redirect table-payment auto-reissue', () => {
     }
   })
 
-  async function callRoute(shortCode = 'abc123') {
-    const request = new Request(`https://vip-club.uk/${shortCode}`, { method: 'GET' })
+  async function callRoute(shortCode = 'abc123', query = '') {
+    const request = new Request(`https://vip-club.uk/${shortCode}${query}`, { method: 'GET' })
     const nextRequestLike = Object.assign(request, { nextUrl: new URL(request.url) })
     return GET(nextRequestLike as any, { params: Promise.resolve({ code: shortCode }) } as any)
   }
@@ -168,7 +168,7 @@ describe('redirect table-payment auto-reissue', () => {
 
     const response = await callRoute('abc123')
 
-    expect(response.headers.get('location')).toBe('https://management.orangejelly.co.uk/g/fresh-token/table-payment')
+    expect(response.headers.get('location')).toBe('https://management.orangejelly.co.uk/g/fresh-token/table-payment?short_code=abc123')
     expect(createTablePaymentToken).toHaveBeenCalledWith(
       supabaseStub.client,
       expect.objectContaining({
@@ -246,9 +246,37 @@ describe('redirect table-payment auto-reissue', () => {
 
     const response = await callRoute('abc125')
 
-    expect(response.headers.get('location')).toBe('https://example.com/somewhere')
+    expect(response.headers.get('location')).toBe('https://example.com/somewhere?short_code=abc125')
     expect(getTablePaymentPreviewByRawToken).not.toHaveBeenCalled()
     expect(createTablePaymentToken).not.toHaveBeenCalled()
     expect(supabaseStub.shortLinksUpdate).not.toHaveBeenCalled()
+  })
+
+  it('preserves incoming paid tracking params on the final destination', async () => {
+    const supabaseStub = buildSupabaseStub({
+      link: {
+        id: 'short-link-4',
+        short_code: 'ma83ed9d',
+        destination_url: 'https://www.the-anchor.pub/events/music-bingo-2026-05-08?utm_source=facebook&utm_medium=paid_social&utm_campaign=music-bingo',
+        expires_at: null,
+        metadata: {
+          channel: 'meta_ads',
+          event_id: 'event-1',
+        },
+      },
+    })
+    ;(createClient as unknown as vi.Mock).mockReturnValue(supabaseStub.client)
+
+    const response = await callRoute('ma83ed9d', '?fbclid=fb-123&utm_campaign=changed&utm_content=copy-a')
+    const location = new URL(response.headers.get('location') || '')
+
+    expect(location.origin).toBe('https://www.the-anchor.pub')
+    expect(location.pathname).toBe('/events/music-bingo-2026-05-08')
+    expect(location.searchParams.get('fbclid')).toBe('fb-123')
+    expect(location.searchParams.get('utm_source')).toBe('facebook')
+    expect(location.searchParams.get('utm_medium')).toBe('paid_social')
+    expect(location.searchParams.get('utm_campaign')).toBe('music-bingo')
+    expect(location.searchParams.get('utm_content')).toBe('copy-a')
+    expect(location.searchParams.get('short_code')).toBe('ma83ed9d')
   })
 })

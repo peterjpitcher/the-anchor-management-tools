@@ -13,6 +13,26 @@ import { logger } from '@/lib/logger'
 
 export type EventBookingSource = 'brand_site' | 'admin' | 'walk-in' | 'sms_reply'
 
+export type EventBookingAttribution = {
+  source_url?: string
+  landing_path?: string
+  utm_source?: string
+  utm_medium?: string
+  utm_campaign?: string
+  utm_content?: string
+  utm_term?: string
+  fbclid?: string
+  short_code?: string
+  event_slug?: string
+  event_name?: string
+  event_category_name?: string
+  event_category_slug?: string
+  event_date?: string
+  event_price?: number
+  event_value?: number
+  food_intent?: string
+} | null
+
 export type EventBookingRpcResult = {
   state: 'confirmed' | 'pending_payment' | 'full_with_waitlist_option' | 'blocked'
   booking_id?: string
@@ -82,6 +102,11 @@ export type CreateBookingParams = {
    * Used when the customer DB record has a placeholder name.
    */
   firstName?: string
+  /**
+   * First-party attribution forwarded by the brand site. Stored in analytics
+   * metadata so paid-booking truth survives browser pixel failures.
+   */
+  attribution?: EventBookingAttribution
 }
 
 export type CreateBookingResult = {
@@ -419,7 +444,8 @@ export class EventBookingService {
       shouldSendSms = true,
       supabaseClient,
       logTag = 'event booking',
-      firstName
+      firstName,
+      attribution = null
     } = params
 
     // Capitalised form used when logTag starts a log message.
@@ -620,7 +646,19 @@ export class EventBookingService {
                 seats,
                 state: resolvedState,
                 payment_mode: rpcResult.payment_mode || null,
-                source
+                source,
+                attribution,
+                source_url: attribution?.source_url ?? null,
+                landing_path: attribution?.landing_path ?? null,
+                utm_source: attribution?.utm_source ?? null,
+                utm_medium: attribution?.utm_medium ?? null,
+                utm_campaign: attribution?.utm_campaign ?? null,
+                utm_content: attribution?.utm_content ?? null,
+                utm_term: attribution?.utm_term ?? null,
+                fbclid: attribution?.fbclid ?? null,
+                short_code: attribution?.short_code ?? null,
+                event_slug: attribution?.event_slug ?? null,
+                food_intent: attribution?.food_intent ?? null
               }
             },
             { customerId, eventId, eventBookingId: rpcResult.booking_id || null, state: resolvedState }
