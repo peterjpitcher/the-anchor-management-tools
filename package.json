@@ -11,6 +11,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint src --max-warnings=0",
+    "mileage:distances:routes": "tsx --tsconfig tsconfig.json scripts/mileage/backfill-distance-cache-from-google-routes.ts",
     "postinstall": "patch-package",
     "test": "VITE_CJS_IGNORE_WARNING=true vitest run",
     "test:coverage": "vitest run --coverage"
