@@ -1,6 +1,6 @@
 import { PageLayout } from '@/components/ui-v2/layout/PageLayout'
 import { checkUserPermission } from '@/app/actions/rbac'
-import { getDestinations } from '@/app/actions/mileage'
+import { getDestinations, getDistanceEntries } from '@/app/actions/mileage'
 import { redirect } from 'next/navigation'
 import { DestinationsClient } from '../_components/DestinationsClient'
 import type { HeaderNavItem } from '@/components/ui-v2/navigation/HeaderNav'
@@ -16,8 +16,12 @@ export default async function MileageDestinationsPage(): Promise<React.JSX.Eleme
   if (!canView) redirect('/unauthorized')
 
   const canManage = await checkUserPermission('mileage', 'manage')
-  const result = await getDestinations()
-  const destinations = result.data ?? []
+  const [destinationsResult, distancesResult] = await Promise.all([
+    getDestinations(),
+    getDistanceEntries(),
+  ])
+  const destinations = destinationsResult.data ?? []
+  const distances = distancesResult.data ?? []
 
   return (
     <PageLayout
@@ -27,6 +31,7 @@ export default async function MileageDestinationsPage(): Promise<React.JSX.Eleme
     >
       <DestinationsClient
         initialDestinations={destinations}
+        initialDistances={distances}
         canManage={canManage}
       />
     </PageLayout>

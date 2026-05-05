@@ -38,6 +38,16 @@ const tripLegSchema = z.object({
     .refine(hasAtMostOneDecimalPlace, 'Miles must be rounded to 1 decimal place'),
 })
 
+const distanceCacheSchema = z.object({
+  fromDestinationId: z.string().uuid(),
+  toDestinationId: z.string().uuid(),
+  miles: z
+    .number()
+    .finite('Miles must be a valid number')
+    .positive('Miles must be greater than 0')
+    .refine(hasAtMostOneDecimalPlace, 'Miles must be rounded to 1 decimal place'),
+})
+
 const createTripSchema = z.object({
   tripDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Invalid date format'),
   description: z.string().optional().or(z.literal('')),
@@ -86,6 +96,15 @@ export interface DistanceCacheEntry {
   fromDestinationId: string
   toDestinationId: string
   miles: number
+}
+
+export interface MileageDistance {
+  fromDestinationId: string
+  fromDestinationName: string
+  toDestinationId: string
+  toDestinationName: string
+  miles: number
+  lastUsedAt: string
 }
 
 // ---------------------------------------------------------------------------
@@ -511,6 +530,61 @@ export async function getDistanceCache(
   }
 }
 
+export async function getDistanceEntries(): Promise<{
+  success?: boolean
+  error?: string
+  data?: MileageDistance[]
+}> {
+  try {
+    await requireMileagePermission('view')
+    const db = createAdminClient()
+
+    const { data: distances, error: distanceError } = await db
+      .from('mileage_destination_distances')
+      .select('from_destination_id, to_destination_id, miles, last_used_at')
+      .order('last_used_at', { ascending: false })
+
+    if (distanceError) throw distanceError
+    if (!distances || distances.length === 0) {
+      return { success: true, data: [] }
+    }
+
+    const destinationIds = new Set<string>()
+    for (const distance of distances) {
+      destinationIds.add(distance.from_destination_id)
+      destinationIds.add(distance.to_destination_id)
+    }
+
+    const { data: destinations, error: destinationError } = await db
+      .from('mileage_destinations')
+      .select('id, name')
+      .in('id', Array.from(destinationIds))
+
+    if (destinationError) throw destinationError
+
+    const destinationNameMap = new Map<string, string>()
+    for (const destination of destinations ?? []) {
+      destinationNameMap.set(destination.id, destination.name)
+    }
+
+    const result: MileageDistance[] = distances.map((distance) => ({
+      fromDestinationId: distance.from_destination_id,
+      fromDestinationName:
+        destinationNameMap.get(distance.from_destination_id) ?? 'Unknown destination',
+      toDestinationId: distance.to_destination_id,
+      toDestinationName:
+        destinationNameMap.get(distance.to_destination_id) ?? 'Unknown destination',
+      miles: Number(distance.miles),
+      lastUsedAt: distance.last_used_at,
+    }))
+
+    return { success: true, data: result }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Failed to fetch distances'
+    return { error: message }
+  }
+}
+
 // ---------------------------------------------------------------------------
 // MUTATIONS
 // ---------------------------------------------------------------------------
@@ -607,6 +681,82 @@ export async function updateDestination(input: {
     return { success: true }
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Failed to update destination'
+    return { error: message }
+  }
+}
+
+export async function upsertDistanceCache(input: {
+  fromDestinationId: string
+  toDestinationId: string
+  miles: number
+}): Promise<{ success?: boolean; error?: string; data?: DistanceCacheEntry }> {
+  try {
+    const { userId } = await requireMileagePermission('manage')
+    const db = createAdminClient()
+
+    const parsed = distanceCacheSchema.safeParse(input)
+    if (!parsed.success) {
+      return { error: parsed.error.issues[0]?.message ?? 'Invalid distance' }
+    }
+
+    if (parsed.data.fromDestinationId === parsed.data.toDestinationId) {
+      return { error: 'Choose two different destinations' }
+    }
+
+    const [canonFrom, canonTo] = canonicalPair(
+      parsed.data.fromDestinationId,
+      parsed.data.toDestinationId
+    )
+    const miles = roundMiles(parsed.data.miles)
+
+    const { data: existing, error: existingError } = await db
+      .from('mileage_destination_distances')
+      .select('miles')
+      .eq('from_destination_id', canonFrom)
+      .eq('to_destination_id', canonTo)
+      .maybeSingle()
+
+    if (existingError) throw existingError
+
+    const { error: upsertError } = await db
+      .from('mileage_destination_distances')
+      .upsert(
+        {
+          from_destination_id: canonFrom,
+          to_destination_id: canonTo,
+          miles,
+          last_used_at: new Date().toISOString(),
+        },
+        { onConflict: 'from_destination_id,to_destination_id' }
+      )
+
+    if (upsertError) throw upsertError
+
+    await logAuditEvent({
+      user_id: userId,
+      operation_type: existing ? 'update' : 'create',
+      resource_type: 'mileage_destination_distance',
+      resource_id: `${canonFrom}:${canonTo}`,
+      operation_status: 'success',
+      old_values: existing ? { miles: Number(existing.miles) } : undefined,
+      new_values: {
+        from_destination_id: canonFrom,
+        to_destination_id: canonTo,
+        miles,
+      },
+    })
+
+    revalidateMileagePaths()
+    return {
+      success: true,
+      data: {
+        fromDestinationId: canonFrom,
+        toDestinationId: canonTo,
+        miles,
+      },
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Failed to save distance'
     return { error: message }
   }
 }
