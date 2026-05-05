@@ -29,6 +29,7 @@ type EventCapacityRow = {
 
 type EventShortLinkRow = {
   short_code: string
+  destination_url: string | null
   updated_at: string | null
   metadata: {
     channel?: string | null
@@ -124,7 +125,7 @@ export async function GET(
     let marketingShortLinks: EventShortLinkRow[] = [];
     const { data: shortLinksRows, error: shortLinksError } = await supabase
       .from('short_links')
-      .select('short_code, updated_at, metadata')
+      .select('short_code, destination_url, updated_at, metadata')
       .contains('metadata', { event_id: event.id });
 
     if (shortLinksError) {
@@ -168,9 +169,12 @@ export async function GET(
       event.payment_mode ||
       ((event.is_free === true || Number(event.price || 0) === 0) ? 'free' : 'cash_only')
     const price = event.price_per_seat ?? event.price ?? 0
-    const facebookShortLink = resolveMarketingShortLink(marketingShortLinks, 'facebook');
-    const linkInBioShortLink = resolveMarketingShortLink(marketingShortLinks, 'lnk_bio');
-    const metaAdsShortLink = resolveMarketingShortLink(marketingShortLinks, 'meta_ads');
+    const facebookShortLinkRow = resolveMarketingShortLinkRow(marketingShortLinks, 'facebook');
+    const linkInBioShortLinkRow = resolveMarketingShortLinkRow(marketingShortLinks, 'lnk_bio');
+    const metaAdsShortLinkRow = resolveMarketingShortLinkRow(marketingShortLinks, 'meta_ads');
+    const facebookShortLink = formatMarketingShortLink(facebookShortLinkRow);
+    const linkInBioShortLink = formatMarketingShortLink(linkInBioShortLinkRow);
+    const metaAdsShortLink = formatMarketingShortLink(metaAdsShortLinkRow);
 
     // Add extended details with all SEO fields
     const extendedEvent = {
@@ -193,6 +197,8 @@ export async function GET(
       link_in_bio_short_link: linkInBioShortLink,
       metaAdsShortLink: metaAdsShortLink,
       meta_ads_short_link: metaAdsShortLink,
+      metaAdsDestinationUrl: metaAdsShortLinkRow?.destination_url || null,
+      meta_ads_destination_url: metaAdsShortLinkRow?.destination_url || null,
       booking_mode: ['table', 'general', 'mixed'].includes(String(event.booking_mode))
         ? event.booking_mode
         : 'table',
@@ -260,8 +266,8 @@ export async function OPTIONS(request: NextRequest) {
   return createApiResponse({}, 200);
 }
 
-function resolveMarketingShortLink(rows: EventShortLinkRow[], channel: string): string | null {
-  const candidate = rows
+function resolveMarketingShortLinkRow(rows: EventShortLinkRow[], channel: string): EventShortLinkRow | null {
+  return rows
     .filter((row) => {
       if (!row || typeof row.short_code !== 'string' || !row.short_code.trim()) {
         return false;
@@ -275,11 +281,13 @@ function resolveMarketingShortLink(rows: EventShortLinkRow[], channel: string): 
       const leftTime = left.updated_at ? Date.parse(left.updated_at) : 0;
       const rightTime = right.updated_at ? Date.parse(right.updated_at) : 0;
       return rightTime - leftTime;
-    })[0];
+    })[0] ?? null;
+}
 
-  if (!candidate) {
+function formatMarketingShortLink(row: EventShortLinkRow | null): string | null {
+  if (!row) {
     return null;
   }
 
-  return `${SHORT_LINK_BASE_URL.replace(/\/$/, '')}/${candidate.short_code}`;
+  return `${SHORT_LINK_BASE_URL.replace(/\/$/, '')}/${row.short_code}`;
 }

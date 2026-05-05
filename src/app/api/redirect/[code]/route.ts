@@ -14,6 +14,19 @@ import {
 
 const FALLBACK_REDIRECT_URL = 'https://www.the-anchor.pub'
 const MISSING_RELATION_CODE = '42P01'
+const PASSTHROUGH_TRACKING_PARAMS = [
+  'fbclid',
+  'gclid',
+  'msclkid',
+  'ttclid',
+  'twclid',
+  'utm_source',
+  'utm_medium',
+  'utm_campaign',
+  'utm_content',
+  'utm_term',
+  'utm_id',
+]
 
 type ShortLinkRow = {
   id: string
@@ -51,6 +64,33 @@ function parseHttpUrl(value: string): URL | null {
   } catch {
     return null
   }
+}
+
+function appendTrackingParams(destinationUrl: string, request: NextRequest, shortCode: string): string {
+  const destination = parseHttpUrl(destinationUrl)
+  if (!destination) return destinationUrl
+
+  for (const param of PASSTHROUGH_TRACKING_PARAMS) {
+    const incoming = request.nextUrl.searchParams.get(param)
+    if (!incoming) continue
+
+    if (param.startsWith('utm_') && destination.searchParams.has(param)) {
+      continue
+    }
+
+    destination.searchParams.set(param, incoming)
+  }
+
+  if (!destination.searchParams.has('short_code')) {
+    destination.searchParams.set('short_code', shortCode)
+  }
+
+  return destination.toString()
+}
+
+function readTrackingParamFromUrl(url: string, key: string): string | null {
+  const parsed = parseHttpUrl(url)
+  return parsed?.searchParams.get(key) || null
 }
 
 function resolveAppBaseUrl(request: NextRequest): string {
@@ -371,15 +411,26 @@ export async function GET(
       }
     }
 
+    const finalRedirectDestinationUrl = appendTrackingParams(
+      redirectDestinationUrl,
+      request,
+      resolvedLink.short_code || shortCode
+    )
+
     // Build redirect response FIRST — send it without waiting for click tracking
-    const response = NextResponse.redirect(redirectDestinationUrl)
+    const response = NextResponse.redirect(finalRedirectDestinationUrl)
 
     // Fire click tracking in background — does NOT block the redirect
     waitUntil((async () => {
       try {
         const userAgent = request.headers.get('user-agent')
         const { deviceType, browser, os } = parseUserAgent(userAgent)
-        const utmParams = parseQueryParams(request.url)
+        const requestUtmParams = parseQueryParams(request.url)
+        const utmParams = {
+          utm_source: requestUtmParams.utm_source || readTrackingParamFromUrl(finalRedirectDestinationUrl, 'utm_source'),
+          utm_medium: requestUtmParams.utm_medium || readTrackingParamFromUrl(finalRedirectDestinationUrl, 'utm_medium'),
+          utm_campaign: requestUtmParams.utm_campaign || readTrackingParamFromUrl(finalRedirectDestinationUrl, 'utm_campaign'),
+        }
         const ipAddress = extractClientIp(request)
 
         const { error: clickInsertError } = await supabase
