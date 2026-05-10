@@ -12,7 +12,7 @@ export default async function ShortLinksPage() {
 
   const canManage = await checkUserPermission('short_links', 'manage')
 
-  const listResult = await getShortLinks(1, 50)
+  const listResult = await getShortLinks(1, 50, false)
 
   if (!listResult || 'error' in listResult) {
     console.error('Failed to load short links:', listResult?.error)

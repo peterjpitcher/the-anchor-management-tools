@@ -50,6 +50,7 @@ export default function ShortLinksClient({ initialLinks, initialTotal, canManage
   const pageSize = 50
   const totalPages = Math.ceil(totalLinks / pageSize)
   const [expandedParents, setExpandedParents] = useState<Set<string>>(new Set())
+  const [showSystemLinks, setShowSystemLinks] = useState(false)
 
   const toggleExpanded = (parentId: string): void => {
     setExpandedParents((prev) => {
@@ -104,7 +105,7 @@ export default function ShortLinksClient({ initialLinks, initialTotal, canManage
   })
 
   const refreshLinks = useCallback(async (page: number = currentPage) => {
-    const result = await getShortLinks(page, pageSize)
+    const result = await getShortLinks(page, pageSize, showSystemLinks)
     if (!result || 'error' in result) {
       toast.error(result?.error || 'Failed to load short links')
       return
@@ -112,7 +113,16 @@ export default function ShortLinksClient({ initialLinks, initialTotal, canManage
     setLinks(Array.isArray(result.data) ? result.data as ShortLink[] : [])
     setTotalLinks(result.total ?? 0)
     setCurrentPage(result.page ?? page)
-  }, [currentPage])
+  }, [currentPage, showSystemLinks])
+
+  const handleToggleSystemLinks = useCallback((checked: boolean) => {
+    setShowSystemLinks(checked)
+    setCurrentPage(1)
+  }, [])
+
+  useEffect(() => {
+    refreshLinks(1)
+  }, [showSystemLinks])
 
   useEffect(() => {
     setLinks(initialLinks)
@@ -205,15 +215,28 @@ export default function ShortLinksClient({ initialLinks, initialTotal, canManage
     },
   ]
 
-  const headerActions = canManage ? (
-    <Button
-      variant="primary"
-      onClick={handleCreateClick}
-      leftIcon={<PlusIcon className="h-5 w-5" />}
-    >
-      Create Short Link
-    </Button>
-  ) : null
+  const headerActions = (
+    <div className="flex items-center gap-4">
+      <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer select-none">
+        <input
+          type="checkbox"
+          checked={showSystemLinks}
+          onChange={(e) => handleToggleSystemLinks(e.target.checked)}
+          className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+        />
+        Show system links
+      </label>
+      {canManage && (
+        <Button
+          variant="primary"
+          onClick={handleCreateClick}
+          leftIcon={<PlusIcon className="h-5 w-5" />}
+        >
+          Create Short Link
+        </Button>
+      )}
+    </div>
+  )
 
   return (
     <PageLayout
