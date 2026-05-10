@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import {
   ChartBarIcon,
   TrashIcon,
@@ -9,7 +9,9 @@ import {
   QrCodeIcon,
   PlusIcon,
   ChevronDownIcon,
-  ChevronRightIcon
+  ChevronRightIcon,
+  MagnifyingGlassIcon,
+  XMarkIcon
 } from '@heroicons/react/24/outline'
 import { PageLayout } from '@/components/ui-v2/layout/PageLayout'
 import { DeleteConfirmDialog } from '@/components/ui-v2/overlay/ConfirmDialog'
@@ -51,6 +53,9 @@ export default function ShortLinksClient({ initialLinks, initialTotal, canManage
   const totalPages = Math.ceil(totalLinks / pageSize)
   const [expandedParents, setExpandedParents] = useState<Set<string>>(new Set())
   const [showSystemLinks, setShowSystemLinks] = useState(false)
+  const [searchQuery, setSearchQuery] = useState('')
+  const [debouncedSearch, setDebouncedSearch] = useState('')
+  const searchInputRef = useRef<HTMLInputElement>(null)
 
   const toggleExpanded = (parentId: string): void => {
     setExpandedParents((prev) => {
@@ -104,8 +109,14 @@ export default function ShortLinksClient({ initialLinks, initialTotal, canManage
     },
   })
 
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(searchQuery), 300)
+    return () => clearTimeout(timer)
+  }, [searchQuery])
+
   const refreshLinks = useCallback(async (page: number = currentPage) => {
-    const result = await getShortLinks(page, pageSize, showSystemLinks)
+    const search = debouncedSearch.trim() || undefined
+    const result = await getShortLinks(page, pageSize, showSystemLinks, search)
     if (!result || 'error' in result) {
       toast.error(result?.error || 'Failed to load short links')
       return
@@ -113,7 +124,7 @@ export default function ShortLinksClient({ initialLinks, initialTotal, canManage
     setLinks(Array.isArray(result.data) ? result.data as ShortLink[] : [])
     setTotalLinks(result.total ?? 0)
     setCurrentPage(result.page ?? page)
-  }, [currentPage, showSystemLinks])
+  }, [currentPage, showSystemLinks, debouncedSearch])
 
   const handleToggleSystemLinks = useCallback((checked: boolean) => {
     setShowSystemLinks(checked)
@@ -122,7 +133,7 @@ export default function ShortLinksClient({ initialLinks, initialTotal, canManage
 
   useEffect(() => {
     refreshLinks(1)
-  }, [showSystemLinks])
+  }, [showSystemLinks, debouncedSearch])
 
   useEffect(() => {
     setLinks(initialLinks)
@@ -217,6 +228,26 @@ export default function ShortLinksClient({ initialLinks, initialTotal, canManage
 
   const headerActions = (
     <div className="flex items-center gap-4">
+      <div className="relative">
+        <MagnifyingGlassIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+        <input
+          ref={searchInputRef}
+          type="text"
+          value={searchQuery}
+          onChange={(e) => { setSearchQuery(e.target.value); setCurrentPage(1) }}
+          placeholder="Search links..."
+          className="pl-9 pr-8 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 w-56"
+        />
+        {searchQuery && (
+          <button
+            type="button"
+            onClick={() => { setSearchQuery(''); searchInputRef.current?.focus() }}
+            className="absolute right-2 top-1/2 -translate-y-1/2 p-0.5 rounded hover:bg-gray-100"
+          >
+            <XMarkIcon className="h-4 w-4 text-gray-400" />
+          </button>
+        )}
+      </div>
       <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer select-none">
         <input
           type="checkbox"

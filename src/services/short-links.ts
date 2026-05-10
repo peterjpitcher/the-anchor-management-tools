@@ -142,7 +142,7 @@ export class ShortLinkService {
     };
   }
 
-  static async getShortLinks(page: number = 1, pageSize: number = 50, includeSystem: boolean = false): Promise<{
+  static async getShortLinks(page: number = 1, pageSize: number = 50, includeSystem: boolean = false, search?: string): Promise<{
     data: unknown[];
     total: number;
     page: number;
@@ -159,6 +159,11 @@ export class ShortLinkService {
 
     if (!includeSystem) {
       query = query.not('created_by', 'is', null);
+    }
+
+    if (search) {
+      const term = `%${search}%`;
+      query = query.or(`name.ilike.${term},short_code.ilike.${term},destination_url.ilike.${term}`);
     }
 
     const { data, error, count } = await query.range(from, to);
