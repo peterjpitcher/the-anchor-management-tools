@@ -145,6 +145,7 @@ export function ShortLinkFormModal({ open, onClose, onSuccess, link, canManage }
       setFormError(`Failed to ${link ? 'update' : 'create'} short link. Please try again.`)
     } finally {
       setSubmitting(false)
+      onSuccess(null)
     }
   }
 

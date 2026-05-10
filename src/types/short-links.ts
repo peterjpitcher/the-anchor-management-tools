@@ -10,6 +10,7 @@ export interface ShortLink {
   expires_at: string | null
   last_clicked_at: string | null
   parent_link_id: string | null
+  created_by?: string | null
 }
 
 /** Row returned by the extended get_all_links_analytics_v2 RPC */

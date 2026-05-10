@@ -128,25 +128,21 @@ export class ShortLinkService {
 
     const shortCode = rpcResult?.short_code as string;
 
-    const { data: linkRow, error: linkFetchError } = await supabase
+    const { data: linkRow } = await supabase
       .from('short_links')
       .select('id')
       .eq('short_code', shortCode)
-      .single();
-
-    if (linkFetchError) {
-      throw new Error('Failed to load created short link');
-    }
+      .maybeSingle();
 
     return {
-      id: linkRow.id,
+      id: linkRow?.id ?? '',
       short_code: shortCode,
       full_url: buildShortLinkUrl(shortCode),
       already_exists: false,
     };
   }
 
-  static async getShortLinks(page: number = 1, pageSize: number = 50): Promise<{
+  static async getShortLinks(page: number = 1, pageSize: number = 50, includeSystem: boolean = false): Promise<{
     data: unknown[];
     total: number;
     page: number;
@@ -156,11 +152,16 @@ export class ShortLinkService {
     const from = (page - 1) * pageSize;
     const to = from + pageSize - 1;
 
-    const { data, error, count } = await supabase
+    let query = supabase
       .from('short_links')
       .select('*', { count: 'exact' })
-      .order('created_at', { ascending: false })
-      .range(from, to);
+      .order('created_at', { ascending: false });
+
+    if (!includeSystem) {
+      query = query.not('created_by', 'is', null);
+    }
+
+    const { data, error, count } = await query.range(from, to);
 
     if (error) throw new Error('Failed to load short links');
     return { data: data || [], total: count || 0, page, pageSize };

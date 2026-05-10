@@ -42,7 +42,7 @@ export async function createShortLink(data: z.infer<typeof CreateShortLinkSchema
     await logAuditEvent({
       operation_type: 'create',
       resource_type: 'short_link',
-      resource_id: result.id,
+      resource_id: result.id || result.short_code,
       operation_status: 'success',
       user_id: user.id,
       additional_info: {
@@ -73,14 +73,14 @@ export async function createShortLink(data: z.infer<typeof CreateShortLinkSchema
   }
 }
 
-export async function getShortLinks(page: number = 1, pageSize: number = 50) {
+export async function getShortLinks(page: number = 1, pageSize: number = 50, includeSystem: boolean = false) {
   try {
     const canView = await checkUserPermission('short_links', 'view');
     if (!canView) {
       return { error: 'You do not have permission to view short links' };
     }
 
-    const result = await ShortLinkService.getShortLinks(page, pageSize);
+    const result = await ShortLinkService.getShortLinks(page, pageSize, includeSystem);
     return { success: true, data: result.data, total: result.total, page: result.page, pageSize: result.pageSize };
   } catch (error: unknown) {
     console.error('Failed to list short links:', error);
