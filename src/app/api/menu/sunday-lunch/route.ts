@@ -17,9 +17,10 @@ export async function GET(_request: NextRequest) {
       .map(item => ({
         id: item.menu_dish_id,
         name: item.name,
+        description: item.description,
         price: item.price,
-        dietary_info: [],
-        allergens: [],
+        dietary_info: item.dietary_info,
+        allergens: item.allergens,
         is_available: true,
       }));
 
@@ -28,9 +29,10 @@ export async function GET(_request: NextRequest) {
       .map(item => ({
         id: item.menu_dish_id,
         name: item.name,
+        description: item.description,
         price: item.price,
-        dietary_info: [],
-        allergens: [],
+        dietary_info: item.dietary_info,
+        allergens: item.allergens,
         is_available: true,
         included: item.price === 0,
       }));

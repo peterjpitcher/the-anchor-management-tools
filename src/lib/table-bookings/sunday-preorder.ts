@@ -18,8 +18,11 @@ interface MenuDishMenuAssignmentRow {
 interface MenuDishRow {
   id: string
   name: string
+  description: string | null
   selling_price: number | null
   is_active: boolean
+  dietary_flags: string[] | null
+  allergen_flags: string[] | null
 }
 
 interface MenuCategoryRow {
@@ -31,7 +34,10 @@ interface MenuCategoryRow {
 interface FallbackDishRow {
   id: string
   name: string
+  description: string | null
   selling_price: number | null
+  dietary_flags: string[] | null
+  allergen_flags: string[] | null
 }
 
 interface LegacyMenuItemRow {
@@ -43,11 +49,14 @@ interface LegacyMenuItemRow {
 export type SundayMenuItem = {
   menu_dish_id: string
   name: string
+  description: string | null
   price: number
   category_code: string | null
   category_name: string | null
   item_type: BookingItemType
   sort_order: number
+  dietary_info: string[]
+  allergens: string[]
 }
 
 export type SundayPreorderExistingItem = {
@@ -186,7 +195,7 @@ async function loadSundayLunchMenuItems(
 
       const [{ data: dishesRaw }, { data: categoriesRaw }] = await Promise.all([
         supabase.from('menu_dishes')
-          .select('id, name, selling_price, is_active')
+          .select('id, name, description, selling_price, is_active, dietary_flags, allergen_flags')
           .in('id', dishIds)
           .eq('is_active', true),
         categoryIds.length > 0
@@ -221,11 +230,14 @@ async function loadSundayLunchMenuItems(
         menuItems.push({
           menu_dish_id: dish.id,
           name: dish.name,
+          description: dish.description || null,
           price: Number(Number(dish.selling_price || 0).toFixed(2)),
           category_code: category?.code || null,
           category_name: category?.name || null,
           item_type: resolveItemType(category?.code || null),
-          sort_order: Number(assignment.sort_order || 0)
+          sort_order: Number(assignment.sort_order || 0),
+          dietary_info: Array.isArray(dish.dietary_flags) ? dish.dietary_flags : [],
+          allergens: Array.isArray(dish.allergen_flags) ? dish.allergen_flags : []
         })
       }
 
@@ -238,7 +250,7 @@ async function loadSundayLunchMenuItems(
   // Fallback for older data: use active Sunday-lunch flagged dishes even if the menu
   // assignment records are missing. This keeps "Capture now" usable.
   const { data: fallbackDishesRaw, error: fallbackDishesError } = await supabase.from('menu_dishes')
-    .select('id, name, selling_price')
+    .select('id, name, description, selling_price, dietary_flags, allergen_flags')
     .eq('is_active', true)
     .eq('is_sunday_lunch', true)
 
@@ -281,13 +293,16 @@ async function loadSundayLunchMenuItems(
     fallbackMenuItems.push({
       menu_dish_id: dish.id,
       name: dish.name,
+      description: dish.description || null,
       price: Number(Number(dish.selling_price || 0).toFixed(2)),
       category_code: categoryCode,
       category_name: categoryName,
       item_type: resolveItemType(categoryCode),
       sort_order: Number.isFinite(Number(legacy?.display_order))
         ? Number(legacy?.display_order)
-        : index
+        : index,
+      dietary_info: Array.isArray(dish.dietary_flags) ? dish.dietary_flags : [],
+      allergens: Array.isArray(dish.allergen_flags) ? dish.allergen_flags : []
     })
   }
 
