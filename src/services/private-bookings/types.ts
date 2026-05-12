@@ -5,6 +5,17 @@ import type {
 } from '@/types/private-bookings';
 
 // ---------------------------------------------------------------------------
+// Status transition rules
+// ---------------------------------------------------------------------------
+
+export const ALLOWED_TRANSITIONS: Record<BookingStatus, BookingStatus[]> = {
+  draft: ['confirmed', 'cancelled'],
+  confirmed: ['completed', 'cancelled'],
+  completed: [],
+  cancelled: ['draft'],
+};
+
+// ---------------------------------------------------------------------------
 // Internal types
 // ---------------------------------------------------------------------------
 

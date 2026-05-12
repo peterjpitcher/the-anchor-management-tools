@@ -24,6 +24,24 @@ type FormState = { error: string } | { success: boolean } | null
 const DATE_TBD_NOTE = 'Event date/time to be confirmed'
 const DEFAULT_TBD_TIME = '12:00'
 
+const STATUS_OPTIONS: Record<string, { value: string; label: string }[]> = {
+  draft: [
+    { value: 'draft', label: 'Draft' },
+    { value: 'confirmed', label: 'Confirmed' },
+    { value: 'cancelled', label: 'Cancelled' },
+  ],
+  confirmed: [
+    { value: 'confirmed', label: 'Confirmed' },
+    { value: 'completed', label: 'Completed' },
+    { value: 'cancelled', label: 'Cancelled' },
+  ],
+  completed: [{ value: 'completed', label: 'Completed' }],
+  cancelled: [
+    { value: 'cancelled', label: 'Cancelled' },
+    { value: 'draft', label: 'Draft' },
+  ],
+}
+
 interface Customer {
   id: string
   first_name: string
@@ -66,6 +84,10 @@ export default function EditPrivateBookingPage({
       if ('error' in result) {
         setError(result.error || 'An error occurred')
       } else if (result.data) {
+        if (result.data.status === 'completed' || result.data.status === 'cancelled') {
+          router.push(`/private-bookings/${id}`)
+          return
+        }
         setBooking(result.data)
         // Initialize form fields
         setCustomerFirstName(result.data.customer_first_name || result.data.customer_name?.split(' ')[0] || '')
@@ -302,12 +324,7 @@ export default function EditPrivateBookingPage({
                     name="status"
                     id="status"
                     defaultValue={booking.status || 'draft'}
-                    options={[
-                      { value: 'draft', label: 'Draft' },
-                      { value: 'confirmed', label: 'Confirmed' },
-                      { value: 'completed', label: 'Completed' },
-                      { value: 'cancelled', label: 'Cancelled' }
-                    ]}
+                    options={STATUS_OPTIONS[booking.status] || []}
                   />
                 </FormGroup>
               </div>

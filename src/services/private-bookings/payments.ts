@@ -321,8 +321,8 @@ async function finalizeDepositPaymentWithClient(
 
   if (fetchError || !booking) throw new Error('Booking not found');
 
-  if (booking.status === 'cancelled') {
-    throw new Error('Cannot record a deposit on a cancelled booking');
+  if (booking.status === 'cancelled' || booking.status === 'completed') {
+    throw new Error('Cannot record a deposit on a cancelled or completed booking');
   }
 
   const requiredDepositAmount = toNumber(booking.deposit_amount, amount)
