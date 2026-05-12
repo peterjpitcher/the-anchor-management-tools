@@ -1,3 +1,7 @@
 # manifest-version: 1
 2026-04-24T12:45:55Z|EDIT|src/app/api/foh/schedule/route.ts|route|structure,docs
 2026-04-24T13:05:59Z|EDIT|src/components/foh/DraggableBookingBlock.tsx|component|structure
+2026-05-12T06:28:01Z|EDIT|src/app/api/webhooks/paypal/private-bookings/route.ts|route|structure,docs
+2026-05-12T06:28:37Z|CREATE|supabase/migrations/20260512000007_clamp_line_total_nonnegative.sql|migration|database
+2026-05-12T06:28:41Z|CREATE|src/app/api/cron/private-bookings-expire-holds/route.ts|route|structure,docs
+2026-05-12T06:29:30Z|EDIT|src/app/api/cron/private-bookings-expire-holds/route.ts|route|structure,docs

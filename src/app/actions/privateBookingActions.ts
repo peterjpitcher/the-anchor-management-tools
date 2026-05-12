@@ -1838,6 +1838,30 @@ export async function captureDepositPayment(
       return { error: `Payment amount mismatch: captured £${capturedAmount.toFixed(2)} but expected £${expectedAmount.toFixed(2)}. Please contact support.` }
     }
 
+    // D15: Audit log BEFORE finalization so the capture attempt is recorded
+    // even if finalizeDepositPayment throws
+    try {
+      await logAuditEvent({
+        user_id: user.id,
+        operation_type: 'paypal_capture',
+        resource_type: 'private_booking',
+        resource_id: bookingId,
+        operation_status: 'success',
+        additional_info: {
+          action: 'paypal_deposit_capture_attempted',
+          phase: 'pre_finalization',
+          order_id: orderId,
+          capture_id: captureResult.transactionId,
+          amount: captureResult.amount,
+        },
+      })
+    } catch (auditError) {
+      logger.error('Failed to log pre-finalization audit event for PayPal deposit capture', {
+        error: auditError instanceof Error ? auditError : new Error(String(auditError)),
+        metadata: { bookingId }
+      })
+    }
+
     await finalizeDepositPayment({
       bookingId,
       amount: capturedAmount,
@@ -1846,7 +1870,7 @@ export async function captureDepositPayment(
       performedByUserId: user.id,
     }, admin)
 
-    // Audit log
+    // Post-finalization audit log
     try {
       await logAuditEvent({
         user_id: user.id,
@@ -2223,4 +2247,82 @@ export async function deletePrivateBookingPayment(
   revalidatePath('/private-bookings')
   revalidatePath(`/private-bookings/${bookingId}`)
   return { success: true }
+}
+
+// ---------------------------------------------------------------------------
+// Send manual SMS for a private booking (uses booking-specific queue)
+// ---------------------------------------------------------------------------
+
+export async function sendPrivateBookingSms(
+  bookingId: string,
+  message: string
+): Promise<{ success?: boolean; error?: string }> {
+  const supabase = await createClient()
+  const [{ data: { user } }, canSend, canManage] = await Promise.all([
+    supabase.auth.getUser(),
+    checkUserPermission('private_bookings', 'send'),
+    checkUserPermission('private_bookings', 'manage'),
+  ])
+
+  if (!canSend && !canManage) {
+    return { error: 'You do not have permission to send SMS for private bookings' }
+  }
+
+  if (!user) {
+    return { error: 'You must be signed in to send messages' }
+  }
+
+  const trimmedMessage = message?.trim()
+  if (!trimmedMessage) {
+    return { error: 'Message body is required' }
+  }
+
+  try {
+    const admin = createAdminClient()
+    const { data: booking, error: fetchError } = await admin
+      .from('private_bookings')
+      .select('id, contact_phone, customer_name, customer_first_name, customer_id, event_date')
+      .eq('id', bookingId)
+      .maybeSingle()
+
+    if (fetchError || !booking) {
+      return { error: 'Booking not found' }
+    }
+
+    if (!booking.contact_phone) {
+      return { error: 'No phone number on file for this booking' }
+    }
+
+    const result = await SmsQueueService.queueAndSend({
+      booking_id: bookingId,
+      trigger_type: 'manual',
+      template_key: 'private_booking_manual',
+      message_body: trimmedMessage,
+      customer_phone: booking.contact_phone,
+      customer_name: booking.customer_name || booking.customer_first_name || undefined,
+      customer_id: booking.customer_id,
+      created_by: user.id,
+      priority: 1,
+      metadata: {
+        template: 'private_booking_manual',
+        sent_by: user.email ?? user.id,
+      },
+    })
+
+    if (result?.error) {
+      logger.error('Manual private booking SMS failed', {
+        error: new Error(String(result.error)),
+        metadata: { bookingId, userId: user.id },
+      })
+      return { error: typeof result.error === 'string' ? result.error : 'Failed to send SMS' }
+    }
+
+    revalidatePath(`/private-bookings/${bookingId}`)
+    revalidatePath(`/private-bookings/${bookingId}/messages`)
+    revalidatePath(`/private-bookings/${bookingId}/communications`)
+    return { success: true }
+  } catch (error) {
+    logPrivateBookingActionError('Error sending private booking SMS:', error, { bookingId })
+    return { error: getErrorMessage(error) }
+  }
 }

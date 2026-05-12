@@ -429,12 +429,18 @@ export async function recordFinalPayment(bookingId: string, method: string, perf
 
   const { data: booking, error: fetchError } = await supabase
     .from('private_bookings')
-    .select('id, customer_first_name, customer_last_name, customer_name, event_date, start_time, end_time, end_time_next_day, contact_phone, customer_id, calendar_event_id, status, guest_count, event_type, deposit_paid_date, date_tbd, internal_notes')
+    .select('id, customer_first_name, customer_last_name, customer_name, event_date, start_time, end_time, end_time_next_day, contact_phone, customer_id, calendar_event_id, status, guest_count, event_type, deposit_paid_date, final_payment_date, date_tbd, internal_notes')
     .eq('id', bookingId)
     .single();
 
   if (fetchError || !booking) throw new Error('Booking not found');
 
+  // D17: Idempotency — if final payment already recorded, return success
+  if (booking.final_payment_date) {
+    return { success: true };
+  }
+
+  // D17: Optimistic lock — only update if final_payment_date is still null
   const { data: updatedBooking, error } = await supabase
     .from('private_bookings')
     .update({
@@ -443,11 +449,13 @@ export async function recordFinalPayment(bookingId: string, method: string, perf
       updated_at: new Date().toISOString()
     })
     .eq('id', bookingId)
+    .is('final_payment_date', null)
     .select()
     .maybeSingle();
 
   if (error) throw new Error('Failed to record final payment');
-  if (!updatedBooking) throw new Error('Booking not found');
+  // D17: If no row returned, another request beat us — idempotent success
+  if (!updatedBooking) return { success: true };
 
   const smsSideEffects: PrivateBookingSmsSideEffectSummary[] = []
 

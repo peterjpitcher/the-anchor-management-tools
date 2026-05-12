@@ -338,6 +338,30 @@ async function handleDepositCaptureCompleted(
   }
 
   const capturedAmount = Number(resource.amount?.value ?? 0)
+
+  // D15: Audit log BEFORE finalization so the capture attempt is recorded
+  // even if finalizeDepositPayment throws
+  const { error: preAuditError } = await supabase
+    .from('audit_logs')
+    .insert({
+      action: 'paypal_deposit_capture_attempted_via_webhook',
+      entity_type: 'private_booking',
+      entity_id: bookingId,
+      metadata: {
+        capture_id: captureId,
+        event_id: event.id,
+        amount: resource.amount?.value ?? null,
+        status: 'attempted',
+      }
+    })
+
+  if (preAuditError) {
+    logger.error('Failed to write pre-finalization PayPal webhook audit log', {
+      error: new Error(preAuditError.message),
+      metadata: { bookingId, captureId }
+    })
+  }
+
   const finalizeResult = await finalizeDepositPayment({
     bookingId,
     amount: capturedAmount,
