@@ -2,6 +2,7 @@ import { notFound, redirect } from 'next/navigation'
 import { getCurrentUserModuleActions } from '@/app/actions/rbac'
 import { getPrivateBooking } from '@/app/actions/privateBookingActions'
 import { getBookingPaymentHistory } from '@/services/private-bookings'
+import { hasPrivateBookingPermission } from '@/lib/private-bookings/permissions'
 import type { PaymentHistoryEntry } from '@/types/private-bookings'
 import PrivateBookingDetailServer from '../PrivateBookingDetailServer'
 
@@ -46,11 +47,11 @@ export default async function PrivateBookingDetailPage({ params }: PageProps) {
   } else {
     const actions = new Set(permissionsResult.actions)
 
-    canView = actions.has('view') || actions.has('manage')
-    canEdit = actions.has('edit') || actions.has('manage')
-    canDelete = actions.has('delete')
+    canView = hasPrivateBookingPermission(actions, 'view')
+    canEdit = hasPrivateBookingPermission(actions, 'edit')
+    canDelete = hasPrivateBookingPermission(actions, 'delete')
     canManageDeposits = actions.has('manage_deposits') || actions.has('manage')
-    canSendSms = actions.has('send') || actions.has('manage')
+    canSendSms = hasPrivateBookingPermission(actions, 'send')
     canManageSpaces = actions.has('manage_spaces') || actions.has('manage')
     canManageCatering = actions.has('manage_catering') || actions.has('manage')
     canManageVendors = actions.has('manage_vendors') || actions.has('manage')
