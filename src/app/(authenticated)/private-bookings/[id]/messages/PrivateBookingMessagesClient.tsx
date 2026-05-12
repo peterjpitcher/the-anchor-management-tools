@@ -10,8 +10,7 @@ import {
   XCircleIcon,
   DevicePhoneMobileIcon
 } from '@heroicons/react/24/outline'
-import { getPrivateBooking } from '@/app/actions/privateBookingActions'
-import { sendSms } from '@/app/actions/sms'
+import { getPrivateBooking, sendPrivateBookingSms } from '@/app/actions/privateBookingActions'
 import type { PrivateBookingWithDetails, PrivateBookingSmsQueue } from '@/types/private-bookings'
 import { formatDateFull, formatTime12Hour, formatDateTime12Hour } from '@/lib/dateUtils'
 import { PageLayout } from '@/components/ui-v2/layout/PageLayout'
@@ -219,11 +218,7 @@ export default function PrivateBookingMessagesClient({
     }
 
     setSending(true)
-    const result = await sendSms({
-      to: booking.contact_phone,
-      body: message,
-      bookingId
-    })
+    const result = await sendPrivateBookingSms(bookingId, message)
     setSending(false)
 
     if ('error' in result && result.error) {

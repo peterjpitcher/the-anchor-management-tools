@@ -814,6 +814,23 @@ export async function updateBooking(id: string, input: UpdatePrivateBookingInput
       captureSmsSideEffect('booking_confirmed', 'private_booking_confirmed', result)
     }
 
+    // Cancel pending SMS queue entries when transitioning to cancelled
+    if (updatedBooking.status === 'cancelled' && currentBooking.status !== 'cancelled') {
+      try {
+        const admin = createAdminClient();
+        await admin
+          .from('private_booking_sms_queue')
+          .update({ status: 'cancelled', updated_at: new Date().toISOString() })
+          .eq('booking_id', id)
+          .in('status', ['pending', 'approved']);
+      } catch (smsCleanupError) {
+        logger.error('Failed to cancel pending SMS during status change to cancelled:', {
+          error: smsCleanupError instanceof Error ? smsCleanupError : new Error(String(smsCleanupError)),
+          metadata: { bookingId: id },
+        });
+      }
+    }
+
     if (!abortSmsSideEffects && updatedBooking.status === 'cancelled') {
       // Pick the variant keyed by the financial outcome (no_money /
       // refundable / non-refundable / manual review). See
@@ -1117,6 +1134,22 @@ export async function cancelBooking(id: string, reason: string, performedByUserI
     }
   }
 
+  // 3b. Cancel pending SMS queue entries — must happen before sending
+  // the cancellation SMS to avoid racing with a scheduled send.
+  try {
+    const admin = createAdminClient();
+    await admin
+      .from('private_booking_sms_queue')
+      .update({ status: 'cancelled', updated_at: new Date().toISOString() })
+      .eq('booking_id', id)
+      .in('status', ['pending', 'approved']);
+  } catch (smsCleanupError) {
+    logger.error('Failed to cancel pending SMS during booking cancellation:', {
+      error: smsCleanupError instanceof Error ? smsCleanupError : new Error(String(smsCleanupError)),
+      metadata: { bookingId: id },
+    });
+  }
+
   const smsSideEffects: PrivateBookingSmsSideEffectSummary[] = []
 
   // 4. SMS Notification
@@ -1271,6 +1304,21 @@ export async function expireBooking(
     } catch (error) {
       logger.error('Failed to delete calendar event:', { error: error instanceof Error ? error : new Error(String(error)) });
     }
+  }
+
+  // 3b. Cancel pending SMS queue entries before sending the expiry notification
+  try {
+    const adminForCleanup = options?.asSystem ? supabase : createAdminClient();
+    await adminForCleanup
+      .from('private_booking_sms_queue')
+      .update({ status: 'cancelled', updated_at: new Date().toISOString() })
+      .eq('booking_id', id)
+      .in('status', ['pending', 'approved']);
+  } catch (smsCleanupError) {
+    logger.error('Failed to cancel pending SMS during booking expiry:', {
+      error: smsCleanupError instanceof Error ? smsCleanupError : new Error(String(smsCleanupError)),
+      metadata: { bookingId: id },
+    });
   }
 
   // 4. SMS Notification
@@ -1474,26 +1522,12 @@ export async function deletePrivateBooking(id: string): Promise<{ deletedBooking
     }
   }
 
-  // Calendar Cleanup
-  if (isCalendarConfigured()) {
-    try {
-      const { data: bookingDetails } = await supabase
-        .from('private_bookings')
-        .select('calendar_event_id')
-        .eq('id', id)
-        .single();
-
-      if (bookingDetails?.calendar_event_id) {
-        const deleted = await deleteCalendarEvent(bookingDetails.calendar_event_id);
-        if (!deleted) {
-          throw new Error('Failed to remove Google Calendar event. Please try again.');
-        }
-      }
-    } catch (error) {
-      logger.error('Failed to delete calendar event during booking deletion:', { error: error instanceof Error ? error : new Error(String(error)) });
-      throw error
-    }
-  }
+  // D16: DB delete first, then calendar cleanup (reverse order for safety)
+  const { data: bookingBeforeDelete } = await supabase
+    .from('private_bookings')
+    .select('calendar_event_id')
+    .eq('id', id)
+    .single();
 
   const { data, error } = await supabase
     .from('private_bookings')
@@ -1505,6 +1539,18 @@ export async function deletePrivateBooking(id: string): Promise<{ deletedBooking
   if (error) {
     logger.error('Error deleting private booking:', { error: error instanceof Error ? error : new Error(String(error)) });
     throw new Error(error.message || 'Failed to delete private booking');
+  }
+
+  // Calendar cleanup is non-blocking — DB record is already gone
+  if (data && bookingBeforeDelete?.calendar_event_id && isCalendarConfigured()) {
+    try {
+      await deleteCalendarEvent(bookingBeforeDelete.calendar_event_id);
+    } catch (calendarError) {
+      logger.error('Failed to delete calendar event after booking deletion (non-blocking):', {
+        error: calendarError instanceof Error ? calendarError : new Error(String(calendarError)),
+        metadata: { bookingId: id, calendarEventId: bookingBeforeDelete.calendar_event_id }
+      });
+    }
   }
 
   return { deletedBooking: data };
@@ -1562,6 +1608,19 @@ export async function addBookingItem(data: {
   discount_type?: 'percent' | 'fixed';
   notes?: string | null;
 }): Promise<{ success: true }> {
+  // D9: Server-side discount bounds validation
+  if (data.discount_value !== undefined && data.discount_value !== null) {
+    if (data.discount_value < 0) {
+      throw new Error('Discount value cannot be negative');
+    }
+    if (data.discount_type === 'percent' && data.discount_value > 100) {
+      throw new Error('Percentage discount cannot exceed 100%');
+    }
+    if (data.discount_type === 'fixed' && data.discount_value > (data.quantity * data.unit_price)) {
+      throw new Error('Fixed discount cannot exceed the line item value');
+    }
+  }
+
   const supabase = await createClient();
 
   const { data: lastItem, error: orderError } = await supabase
@@ -1624,7 +1683,7 @@ export async function updateBookingItem(itemId: string, data: {
 
   const { data: currentItem, error: fetchError } = await supabase
     .from('private_booking_items')
-    .select('booking_id')
+    .select('booking_id, quantity, unit_price, discount_type, discount_value')
     .eq('id', itemId)
     .single();
 
@@ -1632,7 +1691,24 @@ export async function updateBookingItem(itemId: string, data: {
     throw new Error('Item not found');
   }
 
-   
+  // D9: Merge incoming partial data with current values for validation
+  const effectiveQuantity = data.quantity ?? currentItem.quantity;
+  const effectiveUnitPrice = data.unit_price ?? currentItem.unit_price;
+  const effectiveDiscountType = data.discount_type ?? currentItem.discount_type;
+  const effectiveDiscountValue = data.discount_value ?? currentItem.discount_value;
+
+  if (effectiveDiscountValue !== undefined && effectiveDiscountValue !== null) {
+    if (effectiveDiscountValue < 0) {
+      throw new Error('Discount value cannot be negative');
+    }
+    if (effectiveDiscountType === 'percent' && effectiveDiscountValue > 100) {
+      throw new Error('Percentage discount cannot exceed 100%');
+    }
+    if (effectiveDiscountType === 'fixed' && effectiveDiscountValue > (effectiveQuantity * effectiveUnitPrice)) {
+      throw new Error('Fixed discount cannot exceed the line item value');
+    }
+  }
+
   const updateData: any = {};
 
   if (data.quantity !== undefined) updateData.quantity = data.quantity;
