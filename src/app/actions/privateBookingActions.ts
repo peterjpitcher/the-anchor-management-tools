@@ -950,6 +950,7 @@ export async function recordDepositPayment(bookingId: string, formData: FormData
       })
     }
 
+    revalidatePath('/private-bookings')
     revalidatePath(`/private-bookings/${bookingId}`)
     revalidateTag('dashboard')
     return result
@@ -1014,6 +1015,7 @@ export async function recordFinalPayment(bookingId: string, formData: FormData) 
       })
     }
 
+    revalidatePath('/private-bookings')
     revalidatePath(`/private-bookings/${bookingId}`)
     revalidateTag('dashboard')
     return result
@@ -1139,6 +1141,7 @@ export async function applyBookingDiscount(bookingId: string, data: {
       })
     }
 
+    revalidatePath('/private-bookings')
     revalidatePath(`/private-bookings/${bookingId}`)
     revalidateTag('dashboard')
     return { success: true }
@@ -1480,6 +1483,7 @@ export async function addBookingItem(data: {
       notes: data.notes
     });
 
+    revalidatePath('/private-bookings')
     revalidatePath(`/private-bookings/${data.booking_id}`)
     revalidatePath(`/private-bookings/${data.booking_id}/items`)
     revalidateTag('dashboard')
@@ -1507,6 +1511,7 @@ export async function updateBookingItem(itemId: string, data: {
 
     // Revalidate the booking pages
     const bookingId = result.bookingId;
+    revalidatePath('/private-bookings')
     revalidatePath(`/private-bookings/${bookingId}`)
     revalidatePath(`/private-bookings/${bookingId}/items`)
     revalidateTag('dashboard')
@@ -1526,6 +1531,7 @@ export async function deleteBookingItem(itemId: string) {
   try {
     const result = await PrivateBookingService.deleteBookingItem(itemId);
 
+    revalidatePath('/private-bookings')
     revalidatePath(`/private-bookings/${result.bookingId}`)
     revalidatePath(`/private-bookings/${result.bookingId}/items`)
     revalidateTag('dashboard')
@@ -1545,6 +1551,7 @@ export async function reorderBookingItems(bookingId: string, orderedIds: string[
   try {
     await PrivateBookingService.reorderBookingItems(bookingId, orderedIds);
 
+    revalidatePath('/private-bookings')
     revalidatePath(`/private-bookings/${bookingId}`)
     revalidatePath(`/private-bookings/${bookingId}/items`)
     revalidateTag('dashboard')
@@ -1837,7 +1844,6 @@ export async function captureDepositPayment(
       method: 'paypal',
       paypalCaptureId: captureResult.transactionId,
       performedByUserId: user.id,
-      requireAmountMatch: true,
     }, admin)
 
     // Audit log
@@ -2096,6 +2102,7 @@ export async function editPrivateBookingPayment(
         new_method: parsed.data.method,
       },
     })
+    revalidatePath('/private-bookings')
     revalidatePath(`/private-bookings/${parsed.data.bookingId}`)
     return { success: true }
   }
@@ -2148,6 +2155,7 @@ export async function editPrivateBookingPayment(
         no_deposit_required: !oldBooking?.deposit_paid_date && newAmount <= 0,
       },
     })
+    revalidatePath('/private-bookings')
     revalidatePath(`/private-bookings/${parsed.data.bookingId}`)
     return { success: true }
   }
@@ -2212,6 +2220,7 @@ export async function deletePrivateBookingPayment(
     })
   }
 
+  revalidatePath('/private-bookings')
   revalidatePath(`/private-bookings/${bookingId}`)
   return { success: true }
 }

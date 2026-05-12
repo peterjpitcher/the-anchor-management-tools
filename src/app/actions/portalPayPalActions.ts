@@ -99,7 +99,6 @@ export async function captureDepositPaymentByToken(
       amount: capturedAmount,
       method: 'paypal',
       paypalCaptureId: captureResult.transactionId,
-      requireAmountMatch: true,
     }, admin)
 
     // Audit log

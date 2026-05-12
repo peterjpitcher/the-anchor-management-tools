@@ -27,6 +27,7 @@ import {
   DATE_TBD_NOTE,
   DEFAULT_TBD_TIME,
 } from './types';
+import { isBookingDateTbd } from '@/lib/private-bookings/tbd-detection';
 import {
   privateBookingCreatedMessage,
   bookingConfirmedMessage,
@@ -52,11 +53,14 @@ import { sendBookingConfirmedSideEffects } from './payments';
 
  
 async function sendCreationSms(booking: any, phone?: string | null): Promise<void> {
-  const eventDateReadable = new Date(booking.event_date).toLocaleDateString('en-GB', {
-    day: 'numeric',
-    month: 'long',
-    year: 'numeric'
-  });
+  const isTbd = isBookingDateTbd(booking);
+  const eventDateReadable = isTbd
+    ? 'Date to be confirmed'
+    : new Date(booking.event_date).toLocaleDateString('en-GB', {
+        day: 'numeric',
+        month: 'long',
+        year: 'numeric'
+      });
 
   const depositAmount = toNumber(booking.deposit_amount);
 
@@ -246,7 +250,7 @@ export async function createBooking(input: CreatePrivateBookingInput): Promise<a
   const sevenDaysBeforeEvent = new Date(actualEventDate);
   sevenDaysBeforeEvent.setDate(sevenDaysBeforeEvent.getDate() - 7);
 
-  if (!requiresDeposit) {
+  if (!requiresDeposit || input.date_tbd) {
     holdExpiryMoment = null;
   } else if (input.hold_expiry) {
     // User manually specified a date
@@ -311,7 +315,8 @@ export async function createBooking(input: CreatePrivateBookingInput): Promise<a
       ? `${input.customer_first_name} ${input.customer_last_name}`
       : input.customer_first_name,
     deposit_amount: depositAmount,
-    status: requiresDeposit ? 'draft' : 'confirmed'
+    status: requiresDeposit ? 'draft' : 'confirmed',
+    date_tbd: input.date_tbd ? true : false,
   };
 
   // 2. Atomic Transaction
@@ -395,7 +400,7 @@ export async function updateBooking(id: string, input: UpdatePrivateBookingInput
   const { data: currentBooking, error: fetchError } = await supabase
     .from('private_bookings')
     .select(
-      'status, contact_phone, customer_first_name, customer_last_name, customer_name, event_date, start_time, setup_date, setup_time, end_time, end_time_next_day, customer_id, internal_notes, balance_due_date, calendar_event_id, hold_expiry, deposit_paid_date'
+      'status, contact_phone, customer_first_name, customer_last_name, customer_name, event_date, start_time, setup_date, setup_time, end_time, end_time_next_day, customer_id, internal_notes, balance_due_date, calendar_event_id, hold_expiry, deposit_paid_date, date_tbd'
     )
     .eq('id', id)
     .single();
@@ -527,13 +532,30 @@ export async function updateBooking(id: string, input: UpdatePrivateBookingInput
     updated_at: new Date().toISOString()
   };
 
-  // Remove non-column fields
-  delete updatePayload.date_tbd;
+  // Remove non-column fields (date_tbd IS a real column now, keep it)
   delete updatePayload.items;
   delete updatePayload.default_country_code;
 
-  if (input.date_tbd) {
+  // Handle TBD transitions
+  const wasTbd = isBookingDateTbd(currentBooking);
+  if (input.date_tbd === true && !wasTbd) {
+    // Real date -> TBD transition
+    updatePayload.date_tbd = true;
+    updatePayload.hold_expiry = null;
     updatePayload.balance_due_date = null;
+  } else if (input.date_tbd === false && wasTbd) {
+    // TBD -> real date transition
+    updatePayload.date_tbd = false;
+    updatePayload.balance_due_date = null; // trigger will recalculate
+    // Compute hold_expiry for the now-real date
+    if (currentBooking.status === 'draft') {
+      const newEventDate = new Date(finalEventDate);
+      updatePayload.hold_expiry = computeHoldExpiry(newEventDate, new Date()).toISOString();
+    }
+  } else if (input.date_tbd) {
+    // Still TBD — keep nulls
+    updatePayload.balance_due_date = null;
+    updatePayload.hold_expiry = null;
   }
 
   // Clean up undefined values
@@ -725,11 +747,14 @@ export async function updateBooking(id: string, input: UpdatePrivateBookingInput
 
   // Status change messages (e.g. status modal)
   if (statusChanged) {
-    const eventDateReadable = new Date(updatedBooking.event_date).toLocaleDateString('en-GB', {
-      day: 'numeric',
-      month: 'long',
-      year: 'numeric'
-    });
+    const updatedIsTbd = isBookingDateTbd(updatedBooking);
+    const eventDateReadable = updatedIsTbd
+      ? 'Date to be confirmed'
+      : new Date(updatedBooking.event_date).toLocaleDateString('en-GB', {
+          day: 'numeric',
+          month: 'long',
+          year: 'numeric'
+        });
 
     const firstName =
       updatedBooking.customer_first_name || updatedBooking.customer_name?.split(' ')[0] || 'there';
@@ -1020,7 +1045,7 @@ export async function cancelBooking(id: string, reason: string, performedByUserI
   // 1. Get Booking
   const { data: booking, error: fetchError } = await supabase
     .from('private_bookings')
-    .select('id, status, event_date, customer_first_name, customer_last_name, customer_name, contact_phone, calendar_event_id, customer_id')
+    .select('id, status, event_date, customer_first_name, customer_last_name, customer_name, contact_phone, calendar_event_id, customer_id, date_tbd, internal_notes')
     .eq('id', id)
     .single();
 
@@ -1096,9 +1121,12 @@ export async function cancelBooking(id: string, reason: string, performedByUserI
 
   // 4. SMS Notification
   if (booking.contact_phone || booking.customer_id) {
-    const eventDate = new Date(booking.event_date).toLocaleDateString('en-GB', {
-      day: 'numeric', month: 'long', year: 'numeric'
-    });
+    const bookingIsTbd = isBookingDateTbd(booking);
+    const eventDate = bookingIsTbd
+      ? 'Date to be confirmed'
+      : new Date(booking.event_date).toLocaleDateString('en-GB', {
+          day: 'numeric', month: 'long', year: 'numeric'
+        });
 
     const firstName = booking.customer_first_name || booking.customer_name?.split(' ')[0] || 'there';
     // Pick the cancellation variant based on paid totals + dispute state.
@@ -1199,7 +1227,7 @@ export async function expireBooking(
   // 1. Get Booking
   const { data: booking, error: fetchError } = await supabase
     .from('private_bookings')
-    .select('id, status, event_date, customer_first_name, customer_name, contact_phone, calendar_event_id, customer_id')
+    .select('id, status, event_date, customer_first_name, customer_name, contact_phone, calendar_event_id, customer_id, date_tbd, internal_notes')
     .eq('id', id)
     .single();
 
@@ -1250,9 +1278,12 @@ export async function expireBooking(
   let smsCode: string | null = null
   let smsLogFailure = false
   if (options?.sendNotification !== false && (booking.contact_phone || booking.customer_id)) {
-    const eventDate = new Date(booking.event_date).toLocaleDateString('en-GB', {
-      day: 'numeric', month: 'long', year: 'numeric'
-    });
+    const expiryIsTbd = isBookingDateTbd(booking);
+    const eventDate = expiryIsTbd
+      ? 'Date to be confirmed'
+      : new Date(booking.event_date).toLocaleDateString('en-GB', {
+          day: 'numeric', month: 'long', year: 'numeric'
+        });
 
     const smsMessage = bookingExpiredMessage({
       customerFirstName: booking.customer_first_name,

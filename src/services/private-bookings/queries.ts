@@ -11,8 +11,8 @@ import type {
 import {
   toNumber,
   sanitizeBookingSearchTerm,
-  DATE_TBD_NOTE,
 } from './types';
+import { isBookingDateTbd } from '@/lib/private-bookings/tbd-detection';
 
 function normalizeDepositStatus(booking: {
   deposit_amount?: unknown
@@ -187,7 +187,7 @@ export async function fetchPrivateBookings(options: {
       query = query.neq('status', 'cancelled');
     }
   } else if (options.dateFilter === 'past') {
-    query = query.lte('event_date', todayIso);
+    query = query.lt('event_date', todayIso);
   }
 
   const searchTerm = options.search?.trim();
@@ -257,7 +257,7 @@ export async function fetchPrivateBookings(options: {
     return {
       ...booking,
       hold_expiry: holdExpiryById.get(booking.id) ?? undefined,
-      is_date_tbd: Boolean(booking.internal_notes?.includes(DATE_TBD_NOTE)),
+      is_date_tbd: isBookingDateTbd(booking),
       balance_remaining: balanceRemaining,
       deposit_status: normalizeDepositStatus(booking),
     };

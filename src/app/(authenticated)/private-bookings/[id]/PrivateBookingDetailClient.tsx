@@ -4,6 +4,8 @@ import { useState, useEffect, useCallback, type ReactNode } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { formatDateFull, formatTime12Hour, formatDateTime12Hour } from "@/lib/dateUtils";
+import { isBookingDateTbd } from "@/lib/private-bookings/tbd-detection";
+import { DATE_TBD_NOTE } from "@/services/private-bookings/types";
 import {
   PencilIcon,
   UserGroupIcon,
@@ -224,8 +226,6 @@ const normalizeBooking = (booking: PrivateBookingWithDetails): PrivateBookingWit
   };
 };
 
-const DATE_TBD_NOTE = 'Event date/time to be confirmed';
-
 const formatMoney = (value: unknown): string => formatCurrency(toNumber(value));
 
 const formatEndTime = (booking: PrivateBookingWithDetails): string => {
@@ -316,22 +316,34 @@ function PaymentModal({
     >
       <Form onSubmit={handleSubmit} className="space-y-4">
         <FormGroup label="Payment Amount (£)">
-          <Input
-            type="number"
-            value={customAmount}
-            onChange={type === "deposit" ? (e) => setCustomAmount(e.target.value) : handleAmountChange}
-            step="0.01"
-            min="0.01"
-            max={type === "final" && maxAmount !== undefined ? maxAmount.toFixed(2) : undefined}
-            required
-          />
-          {amountError && (
-            <p className="mt-1 text-xs text-red-600">{amountError}</p>
-          )}
-          {type === "final" && maxAmount !== undefined && (
-            <p className="mt-2 text-xs text-gray-500">
-              Remaining balance: £{maxAmount.toFixed(2)}. You may record a partial payment.
-            </p>
+          {type === "deposit" ? (
+            <>
+              <input type="hidden" name="amount" value={customAmount} />
+              <p className="text-lg font-semibold">£{Number(customAmount).toFixed(2)}</p>
+              <p className="mt-1 text-xs text-gray-500">
+                Deposit amount is fixed and cannot be changed.
+              </p>
+            </>
+          ) : (
+            <>
+              <Input
+                type="number"
+                value={customAmount}
+                onChange={handleAmountChange}
+                step="0.01"
+                min="0.01"
+                max={maxAmount !== undefined ? maxAmount.toFixed(2) : undefined}
+                required
+              />
+              {amountError && (
+                <p className="mt-1 text-xs text-red-600">{amountError}</p>
+              )}
+              {maxAmount !== undefined && (
+                <p className="mt-2 text-xs text-gray-500">
+                  Remaining balance: £{maxAmount.toFixed(2)}. You may record a partial payment.
+                </p>
+              )}
+            </>
           )}
         </FormGroup>
 
@@ -1944,7 +1956,7 @@ export default function PrivateBookingDetailClient({
     )
   }
 
-  const isDateTbd = booking.internal_notes?.includes(DATE_TBD_NOTE) ?? false;
+  const isDateTbd = isBookingDateTbd(booking);
   const internalNotesForDisplay = booking.internal_notes
     ? booking.internal_notes
         .split('\n')

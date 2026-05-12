@@ -66,7 +66,7 @@ export async function getBookingScheduledSms(
   const db = createAdminClient()
 
   const { data: booking, error: bookingError } = await db
-    .from('private_bookings')
+    .from('private_bookings_with_details')
     .select('*')
     .eq('id', bookingId)
     .single()

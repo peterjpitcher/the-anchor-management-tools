@@ -73,7 +73,6 @@ export async function GET(request: NextRequest) {
           amount: capturedAmount,
           method: 'paypal',
           paypalCaptureId: captureId,
-          requireAmountMatch: true,
         }, admin)
 
         if (!finalizeResult.alreadyRecorded) {
@@ -108,7 +107,6 @@ export async function GET(request: NextRequest) {
             amount: capturedAmount,
             method: 'paypal',
             paypalCaptureId: captureResult.transactionId,
-            requireAmountMatch: true,
           }, admin)
 
           if (!finalizeResult.alreadyRecorded) {
