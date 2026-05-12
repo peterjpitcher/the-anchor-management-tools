@@ -252,9 +252,11 @@ EXCEPTION WHEN OTHERS THEN
 END;
 $$;
 
--- 5. Recreate the view with date_tbd included
--- Based on the latest view definition from 20260628000002_fix_private_booking_zero_deposit_status.sql
-CREATE OR REPLACE VIEW public.private_bookings_with_details AS
+-- 5. Drop and recreate the view with date_tbd included
+-- CREATE OR REPLACE VIEW cannot reorder columns, so DROP + CREATE is required
+DROP VIEW IF EXISTS public.private_bookings_with_details;
+
+CREATE VIEW public.private_bookings_with_details AS
  SELECT
   pb.id,
   pb.customer_id,
