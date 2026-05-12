@@ -45,6 +45,7 @@ interface BookingRow {
   deposit_amount: number
   deposit_paid_date: string | null
   total_amount: number
+  calculated_total: number | null
   balance_due_date: string | null
   final_payment_date: string | null
   contact_email: string | null
@@ -134,9 +135,9 @@ export default async function BookingPortalPage({ params, searchParams }: PagePr
   // Use admin client: the signed token IS the authorisation
   const supabase = createAdminClient()
   const { data: booking, error } = await supabase
-    .from('private_bookings')
+    .from('private_bookings_with_details')
     .select(
-      'id, customer_first_name, customer_last_name, customer_name, customer_full_name, event_date, start_time, end_time, end_time_next_day, guest_count, event_type, status, deposit_amount, deposit_paid_date, total_amount, balance_due_date, final_payment_date, contact_email, customer_requests, accessibility_needs'
+      'id, customer_first_name, customer_last_name, customer_name, customer_full_name, event_date, start_time, end_time, end_time_next_day, guest_count, event_type, status, deposit_amount, deposit_paid_date, total_amount, calculated_total, balance_due_date, final_payment_date, contact_email, customer_requests, accessibility_needs'
     )
     .eq('id', bookingId)
     .single()
@@ -166,7 +167,9 @@ export default async function BookingPortalPage({ params, searchParams }: PagePr
   const balancePaid = !!b.final_payment_date
   const depositRequired = b.deposit_amount > 0
   // Security deposit is a returnable bond — it does NOT reduce the event cost.
-  const balanceRemaining = balancePaid ? 0 : Math.max(0, b.total_amount - balancePaymentsTotal)
+  // Prefer calculated_total from the view (items-based) over legacy total_amount
+  const effectiveTotal = b.calculated_total ?? b.total_amount
+  const balanceRemaining = balancePaid ? 0 : Math.max(0, effectiveTotal - balancePaymentsTotal)
 
   // Format end time, accounting for next-day events
   let endTimeDisplay: string | null = null
@@ -290,7 +293,7 @@ export default async function BookingPortalPage({ params, searchParams }: PagePr
               <p className="text-xs text-gray-500">Full event cost</p>
             </div>
             <p className="text-sm font-semibold text-gray-900">
-              {formatCurrency(b.total_amount)}
+              {formatCurrency(effectiveTotal)}
             </p>
           </div>
 

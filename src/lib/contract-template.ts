@@ -1,5 +1,6 @@
 import { PrivateBookingWithDetails, PrivateBookingItem } from '@/types/private-bookings'
 import { formatDateFull, formatTime12Hour } from '@/lib/dateUtils'
+import { isBookingDateTbd } from '@/lib/private-bookings/tbd-detection'
 
 export interface ContractData {
   booking: PrivateBookingWithDetails
@@ -100,8 +101,9 @@ export function generateContractHTML(data: ContractData): string {
 
   // Extract details
   const customerName = booking.customer_full_name || booking.customer_name || 'To be confirmed'
-  const eventDate = formatDate(booking.event_date)
-  const startTime = formatTime(booking.start_time)
+  const isTbd = isBookingDateTbd(booking)
+  const eventDate = isTbd ? 'Date to be confirmed' : formatDate(booking.event_date)
+  const startTime = isTbd ? 'To be confirmed' : formatTime(booking.start_time)
   const rawEndTime = formatTime(booking.end_time || null)
   const endTime = booking.end_time && booking.end_time_next_day
     ? `${rawEndTime} (+1 day)`
@@ -139,7 +141,9 @@ export function generateContractHTML(data: ContractData): string {
 
   // Calculate balance due date — prefer explicit field, fall back to 7 days before event
   let balanceDueDate = 'To be confirmed'
-  if (booking.balance_due_date) {
+  if (isTbd) {
+    balanceDueDate = 'To be confirmed (date TBD)'
+  } else if (booking.balance_due_date) {
     // Use the explicitly set balance due date first
     balanceDueDate = formatDate(booking.balance_due_date)
   } else if (booking.event_date) {
@@ -709,7 +713,7 @@ export function generateContractHTML(data: ContractData): string {
     <h3>DEPOSIT INFORMATION</h3>
     <p>To secure your desired date for the event and to cover any potential damages that may occur during your event, a deposit is required. This deposit is both a date reservation fee and a security measure against damage. Please note that we do not charge for incidental damages, such as minor glass breakages, which are understood to happen during normal event usage. However, we will deduct charges from the deposit for any significant damages requiring repairs or special cleaning.</p>
     
-    <p>The deposit must be paid in cash and is essential for the final confirmation of your booking. This approach ensures we can manage any repair costs directly and expediently, should they arise. We aim to return the deposit within 48 hours following the conclusion of your event. This timeframe allows us ample opportunity to thoroughly clean and inspect the space, ensuring everything is in order before we release the deposit. We appreciate your understanding and cooperation in helping us maintain The Anchor Pub in the best possible condition for all our patrons and events.</p>
+    <p>To secure your booking, a deposit is required. This deposit serves as both a date reservation fee and a security bond. The deposit can be paid by cash, card, or PayPal. We aim to return the deposit within 48 hours following the conclusion of your event. This timeframe allows us ample opportunity to thoroughly clean and inspect the space, ensuring everything is in order before we release the deposit. We appreciate your understanding and cooperation in helping us maintain The Anchor Pub in the best possible condition for all our patrons and events.</p>
   </div>
 
   <div style="background: #fee2e2; border: 1px solid #dc2626; padding: 10px; margin: 10px 0; border-radius: 3px; font-size: 8pt; page-break-inside: avoid; break-inside: avoid;">
@@ -733,7 +737,7 @@ export function generateContractHTML(data: ContractData): string {
     <h3>AGREEMENT</h3>
     <p>I, <strong>${safeCustomerName}</strong>, hereby agree to engage Orange Jelly Limited, operating as The Anchor Pub, to host my event described as "<strong>${safeEventType}</strong>" on <strong>${eventDate}</strong> from <strong>${startTime}</strong> to <strong>${endTime}</strong>. In accordance with the terms of this agreement, I commit to paying the total cost of the event, amounting to <strong>${formatCurrency(total)}</strong>.</p>
     
-    <p>To secure this booking, I will pay a refundable security deposit of <strong>${formatCurrency(depositAmount)}</strong> in cash. This deposit is to cover any potential damages from the event and is <strong>separate from and additional to</strong> the total event cost. The deposit will be returned within 48 hours after the event's conclusion, provided that no significant damages occur beyond normal wear and incidental breakages.</p>
+    <p>To secure this booking, I will pay a refundable security deposit of <strong>${formatCurrency(depositAmount)}</strong>. This deposit is to cover any potential damages from the event and is <strong>separate from and additional to</strong> the total event cost. The deposit will be returned within 48 hours after the event's conclusion, provided that no significant damages occur beyond normal wear and incidental breakages.</p>
     
     <p>The total event cost of <strong>${formatCurrency(total)}</strong> is due no later than <strong>${balanceDueDate}</strong>, which is 7 days before the event date. This payment is for the booking items and services only, and does not include the refundable security deposit. I understand that failure to pay the full amount by this due date may result in the cancellation of my event without a refund of my deposit.</p>
     
@@ -760,14 +764,14 @@ export function generateContractHTML(data: ContractData): string {
     
     <h3>Reservation and Deposit</h3>
     <ul>
-      <li>All event bookings require a £250 cash deposit to secure the desired date and time.</li>
+      <li>All event bookings require a deposit (as specified in the booking details above) to secure the desired date and time.</li>
       <li>The deposit serves to cover any damages that may arise from the event, with minor breakages (e.g., glassware) being exempted. Significant damages, be they malicious or accidental, will result in deductions from the deposit.</li>
       <li>Deposits will be returned within 48 hours following the event's conclusion, allowing for a thorough review of the premises and any cleaning or damage assessments.</li>
     </ul>
 
     <h3>Cancellation Policy</h3>
     <ul>
-      <li>If an event is cancelled, the deposit becomes non-refundable.</li>
+      <li>If an event is cancelled, the refundability of the deposit will be assessed on a case-by-case basis depending on the notice period given and any costs already incurred.</li>
       <li>The host assumes responsibility for any cancellation fees tied to third-party vendors or entertainers if the event is cancelled beyond the stipulated cancellation policy of those entities.</li>
     </ul>
 

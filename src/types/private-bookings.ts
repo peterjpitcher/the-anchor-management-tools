@@ -60,6 +60,7 @@ export interface PrivateBooking {
   event_type?: string
   status: BookingStatus
   hold_expiry?: string
+  date_tbd?: boolean
   cancellation_reason?: string
   cancelled_at?: string
   deposit_amount: number

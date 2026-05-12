@@ -343,7 +343,6 @@ async function handleDepositCaptureCompleted(
     amount: capturedAmount,
     method: 'paypal',
     paypalCaptureId: captureId,
-    requireAmountMatch: true,
   }, supabase)
 
   if (finalizeResult.alreadyRecorded) {

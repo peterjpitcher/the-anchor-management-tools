@@ -28,6 +28,7 @@ import {
   depositReceivedMessage,
   finalPaymentMessage,
 } from '@/lib/private-bookings/messages';
+import { isBookingDateTbd } from '@/lib/private-bookings/tbd-detection';
 
 type SupabaseClientLike = Awaited<ReturnType<typeof createClient>> | ReturnType<typeof createAdminClient> | any
 
@@ -37,7 +38,6 @@ type FinalizeDepositPaymentInput = {
   method: string
   performedByUserId?: string
   paypalCaptureId?: string | null
-  requireAmountMatch?: boolean
 }
 
 type FinalizeDepositPaymentResult = {
@@ -46,7 +46,8 @@ type FinalizeDepositPaymentResult = {
   smsSideEffects?: PrivateBookingSmsSideEffectSummary[]
 }
 
-function formatEventDate(eventDate: string | null | undefined): string {
+function formatEventDate(eventDate: string | null | undefined, booking?: { date_tbd?: boolean | null; internal_notes?: string | null }): string {
+  if (booking && isBookingDateTbd(booking)) return 'Date to be confirmed'
   return eventDate
     ? new Date(eventDate).toLocaleDateString('en-GB', {
         day: 'numeric',
@@ -107,8 +108,9 @@ async function sendDepositReceivedSideEffects(input: {
   amount: number
   method: string
   performedByUserId?: string
+  calculatedTotal?: number | null
 }): Promise<PrivateBookingSmsSideEffectSummary[]> {
-  const { db, booking, updatedBooking, amount, method, performedByUserId } = input
+  const { db, booking, updatedBooking, amount, method, performedByUserId, calculatedTotal } = input
   const bookingId = booking.id
   const smsSideEffects: PrivateBookingSmsSideEffectSummary[] = []
 
@@ -130,7 +132,7 @@ async function sendDepositReceivedSideEffects(input: {
   }
 
   if (booking.contact_phone || booking.customer_id) {
-    const eventDate = formatEventDate(booking.event_date)
+    const eventDate = formatEventDate(booking.event_date, booking)
     const smsMessage = depositReceivedMessage({
       customerFirstName: booking.customer_first_name,
       eventDate,
@@ -165,16 +167,17 @@ async function sendDepositReceivedSideEffects(input: {
   }
 
   if (booking.contact_email) {
+    const depositEmailDate = isBookingDateTbd(booking) ? 'Date to be confirmed' : booking.event_date;
     sendDepositReceivedEmail({
       contact_email: booking.contact_email,
       customer_first_name: booking.customer_first_name,
       customer_name: booking.customer_name,
-      event_date: booking.event_date,
+      event_date: depositEmailDate,
       event_type: booking.event_type,
       deposit_amount: amount,
       deposit_payment_method: method,
       balance_due_date: booking.balance_due_date,
-      total_amount: booking.total_amount,
+      total_amount: calculatedTotal ?? booking.total_amount,
     }).catch(e =>
       logger.error('Failed to send deposit received email', { error: e instanceof Error ? e : new Error(String(e)) })
     );
@@ -220,7 +223,7 @@ export async function sendBookingConfirmedSideEffects(input: {
   const db = input.db ?? createAdminClient()
   const booking = input.booking
   const bookingId = booking.id
-  const eventDate = formatEventDate(booking.event_date)
+  const eventDate = formatEventDate(booking.event_date, booking)
   const firstName =
     booking.customer_first_name || booking.customer_name?.split(' ')[0] || 'there'
   const smsSideEffects: PrivateBookingSmsSideEffectSummary[] = []
@@ -315,11 +318,22 @@ async function finalizeDepositPaymentWithClient(
 
   const { data: booking, error: fetchError } = await db
     .from('private_bookings')
-    .select('id, customer_first_name, customer_last_name, customer_name, event_date, start_time, end_time, end_time_next_day, contact_phone, contact_email, customer_id, calendar_event_id, status, guest_count, event_type, deposit_paid_date, deposit_amount, balance_due_date, total_amount')
+    .select('id, customer_first_name, customer_last_name, customer_name, event_date, start_time, end_time, end_time_next_day, contact_phone, contact_email, customer_id, calendar_event_id, status, guest_count, event_type, deposit_paid_date, deposit_amount, balance_due_date, total_amount, date_tbd, internal_notes')
     .eq('id', bookingId)
     .single();
 
   if (fetchError || !booking) throw new Error('Booking not found');
+
+  // Fetch calculated_total from the view for accurate email totals
+  let calculatedTotal: number | null = null;
+  const { data: viewRow } = await db
+    .from('private_bookings_with_details')
+    .select('calculated_total')
+    .eq('id', bookingId)
+    .maybeSingle();
+  if (viewRow?.calculated_total != null) {
+    calculatedTotal = toNumber(viewRow.calculated_total);
+  }
 
   if (booking.status === 'cancelled' || booking.status === 'completed') {
     throw new Error('Cannot record a deposit on a cancelled or completed booking');
@@ -329,17 +343,15 @@ async function finalizeDepositPaymentWithClient(
   if (requiredDepositAmount <= 0) {
     throw new Error('No deposit is required for this booking');
   }
-  if (
-    input.requireAmountMatch &&
-    amount > 0 &&
-    Math.abs(amount - requiredDepositAmount) > 0.01
-  ) {
+  if (Math.abs(amount - requiredDepositAmount) > 0.01) {
     logger.error('Private booking deposit amount mismatch during finalization', {
       metadata: { bookingId, amount, requiredDepositAmount, method }
     })
-    throw new Error(`Payment amount mismatch: captured £${amount.toFixed(2)} but expected £${requiredDepositAmount.toFixed(2)}`)
+    throw new Error(
+      `Deposit amount must be exactly £${requiredDepositAmount.toFixed(2)}, received £${amount.toFixed(2)}`
+    )
   }
-  const recordedAmount = amount > 0 ? amount : requiredDepositAmount
+  const recordedAmount = amount
 
   if (booking.deposit_paid_date) {
     return { success: true, alreadyRecorded: true }
@@ -379,6 +391,7 @@ async function finalizeDepositPaymentWithClient(
     amount: recordedAmount,
     method,
     performedByUserId,
+    calculatedTotal,
   })
 
   return smsSideEffects.length > 0
@@ -416,7 +429,7 @@ export async function recordFinalPayment(bookingId: string, method: string, perf
 
   const { data: booking, error: fetchError } = await supabase
     .from('private_bookings')
-    .select('id, customer_first_name, customer_last_name, customer_name, event_date, start_time, end_time, end_time_next_day, contact_phone, customer_id, calendar_event_id, status, guest_count, event_type, deposit_paid_date')
+    .select('id, customer_first_name, customer_last_name, customer_name, event_date, start_time, end_time, end_time_next_day, contact_phone, customer_id, calendar_event_id, status, guest_count, event_type, deposit_paid_date, date_tbd, internal_notes')
     .eq('id', bookingId)
     .single();
 
@@ -439,9 +452,12 @@ export async function recordFinalPayment(bookingId: string, method: string, perf
   const smsSideEffects: PrivateBookingSmsSideEffectSummary[] = []
 
   if (booking.contact_phone || booking.customer_id) {
-    const eventDate = new Date(booking.event_date).toLocaleDateString('en-GB', {
-      day: 'numeric', month: 'long', year: 'numeric'
-    });
+    const finalIsTbd = isBookingDateTbd(booking);
+    const eventDate = finalIsTbd
+      ? 'Date to be confirmed'
+      : new Date(booking.event_date).toLocaleDateString('en-GB', {
+          day: 'numeric', month: 'long', year: 'numeric'
+        });
 
     const smsMessage = finalPaymentMessage({
       customerFirstName: booking.customer_first_name,
@@ -522,11 +538,22 @@ export async function recordBalancePayment(bookingId: string, amount: number, me
   // Fetch booking upfront -- needed for SMS context and calendar sync regardless of outcome.
   const { data: booking, error: fetchError } = await supabase
     .from('private_bookings')
-    .select('id, customer_first_name, customer_last_name, customer_name, event_date, start_time, end_time, end_time_next_day, contact_phone, contact_email, customer_id, calendar_event_id, status, guest_count, event_type, deposit_paid_date, deposit_amount, total_amount')
+    .select('id, customer_first_name, customer_last_name, customer_name, event_date, start_time, end_time, end_time_next_day, contact_phone, contact_email, customer_id, calendar_event_id, status, guest_count, event_type, deposit_paid_date, deposit_amount, total_amount, date_tbd, internal_notes')
     .eq('id', bookingId)
     .single();
 
   if (fetchError || !booking) throw new Error('Booking not found');
+
+  // Fetch calculated_total from the view for accurate email totals
+  let balanceCalculatedTotal: number | null = null;
+  const { data: balanceViewRow } = await supabase
+    .from('private_bookings_with_details')
+    .select('calculated_total')
+    .eq('id', bookingId)
+    .maybeSingle();
+  if (balanceViewRow?.calculated_total != null) {
+    balanceCalculatedTotal = toNumber(balanceViewRow.calculated_total);
+  }
 
   // Single atomic RPC: inserts payment, recalculates totals, and conditionally
   // stamps final_payment_date -- all within one transaction with a FOR UPDATE lock.
@@ -556,16 +583,19 @@ export async function recordBalancePayment(bookingId: string, amount: number, me
 
   // SMS
   if (booking.contact_phone || booking.customer_id) {
-    const eventDate = new Date(booking.event_date).toLocaleDateString('en-GB', {
-      day: 'numeric', month: 'long', year: 'numeric'
-    });
+    const balanceIsTbd = isBookingDateTbd(booking);
+    const eventDate = balanceIsTbd
+      ? 'Date to be confirmed'
+      : new Date(booking.event_date).toLocaleDateString('en-GB', {
+          day: 'numeric', month: 'long', year: 'numeric'
+        });
 
     const smsMessage = finalPaymentMessage({
       customerFirstName: booking.customer_first_name,
       eventDate: eventDate,
     });
 
-     
+
     let smsResult: any
     try {
       smsResult = await SmsQueueService.queueAndSend({
@@ -628,13 +658,14 @@ export async function recordBalancePayment(bookingId: string, amount: number, me
 
   // Send balance paid email (non-blocking)
   if (booking.contact_email) {
+    const balanceEmailDate = isBookingDateTbd(booking) ? 'Date to be confirmed' : booking.event_date;
     sendBalancePaidEmail({
       contact_email: booking.contact_email,
       customer_first_name: booking.customer_first_name,
       customer_name: booking.customer_name,
-      event_date: booking.event_date,
+      event_date: balanceEmailDate,
       event_type: booking.event_type,
-      total_amount: booking.total_amount,
+      total_amount: balanceCalculatedTotal ?? booking.total_amount,
     }).catch(e =>
       logger.error('Failed to send balance paid email', { error: e instanceof Error ? e : new Error(String(e)) })
     );

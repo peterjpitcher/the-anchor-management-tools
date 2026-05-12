@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useRef, useState, useTransition } from 'react'
+import { useCallback, useEffect, useState, useTransition } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import {
@@ -40,13 +40,6 @@ import { formatDistanceToNowStrict } from 'date-fns'
 import { usePermissions } from '@/contexts/PermissionContext'
 
 const DEFAULT_PAGE_SIZE = 20
-const CACHE_TTL_MS = 30_000
-
-type CacheEntry = {
-  data: PrivateBookingDashboardItem[]
-  totalCount: number
-  timestamp: number
-}
 
 const statusConfig: Record<
   BookingStatus,
@@ -77,16 +70,6 @@ type FetchParams = {
   page: number
   includeCancelled: boolean
 }
-
-const buildCacheKey = (params: FetchParams, pageSize: number) =>
-  JSON.stringify({
-    status: params.status,
-    dateFilter: params.dateFilter,
-    search: params.search,
-    page: params.page,
-    includeCancelled: params.includeCancelled,
-    pageSize
-  })
 
 const toNumber = (value: number | string | null | undefined) => {
   if (typeof value === 'number') {
@@ -132,7 +115,6 @@ export default function PrivateBookingsClient({
   const router = useRouter()
   const { hasPermission } = usePermissions()
   const canManageSettings = hasPermission('private_bookings', 'manage')
-  const cacheRef = useRef<Map<string, CacheEntry>>(new Map())
   const [bookings, setBookings] = useState<PrivateBookingDashboardItem[]>(initialBookings)
   const [totalCount, setTotalCount] = useState(initialTotalCount)
   const [loadError, setLoadError] = useState<string | null>(initialError ?? null)
@@ -149,40 +131,12 @@ export default function PrivateBookingsClient({
 
   const debouncedSearch = useDebouncedValue(searchDraft, 300)
 
-  useEffect(() => {
-    const initialParams: FetchParams = {
-      status: 'all',
-      dateFilter: 'upcoming',
-      search: '',
-      page: 1,
-      includeCancelled: true
-    }
-
-    cacheRef.current.set(buildCacheKey(initialParams, effectivePageSize), {
-      data: initialBookings,
-      totalCount: initialTotalCount,
-      timestamp: Date.now()
-    })
-  }, [initialBookings, initialTotalCount, effectivePageSize])
-
-  const invalidateCache = useCallback(() => {
-    cacheRef.current.clear()
-  }, [])
-
   const runFetch = useCallback(
     (params: FetchParams) => {
       setSearchTerm(params.search)
       setCurrentPage(params.page)
 
       setLoadError(null)
-
-      const cacheKey = buildCacheKey(params, effectivePageSize)
-      const cached = cacheRef.current.get(cacheKey)
-      if (cached && Date.now() - cached.timestamp < CACHE_TTL_MS) {
-        setBookings(cached.data)
-        setTotalCount(cached.totalCount)
-        return
-      }
 
       startTransition(async () => {
         const result = await fetchPrivateBookings({
@@ -202,11 +156,6 @@ export default function PrivateBookingsClient({
           return
         }
 
-        cacheRef.current.set(cacheKey, {
-          data: result.data,
-          totalCount: result.totalCount,
-          timestamp: Date.now()
-        })
         setBookings(result.data)
         setTotalCount(result.totalCount)
       })
@@ -275,7 +224,6 @@ export default function PrivateBookingsClient({
     }
 
     toast.success('Booking deleted successfully')
-    invalidateCache()
     const nextPage = bookings.length === 1 && currentPage > 1 ? currentPage - 1 : currentPage
     fetchWithState({ page: nextPage })
   }
@@ -294,7 +242,6 @@ export default function PrivateBookingsClient({
     }
 
     toast.success('Booking cancelled and customer notified')
-    invalidateCache()
     fetchWithState({ page: currentPage })
   }
 
@@ -311,7 +258,6 @@ export default function PrivateBookingsClient({
         return
       }
       toast.success(`Hold extended by ${days} days${'smsSent' in result && result.smsSent ? ' — customer notified by SMS' : ''}`)
-      invalidateCache()
       fetchWithState({ page: currentPage })
     } finally {
       setExtendingHoldId(null)
