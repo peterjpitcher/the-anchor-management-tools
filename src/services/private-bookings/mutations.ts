@@ -20,6 +20,7 @@ import {
   type CreatePrivateBookingInput,
   type UpdatePrivateBookingInput,
   type PrivateBookingSmsSideEffectSummary,
+  ALLOWED_TRANSITIONS,
   normalizeSmsSafetyMeta,
   toNumber,
   computeHoldExpiry,
@@ -403,6 +404,13 @@ export async function updateBooking(id: string, input: UpdatePrivateBookingInput
     throw new Error('Booking not found');
   }
 
+  if (input.status && input.status !== currentBooking.status) {
+    const allowed = ALLOWED_TRANSITIONS[currentBooking.status as BookingStatus] ?? [];
+    if (!allowed.includes(input.status as BookingStatus)) {
+      throw new Error(`Cannot transition booking from '${currentBooking.status}' to '${input.status}'`);
+    }
+  }
+
   let completedStatusAlreadyMessaged = false;
   if (input.status === 'completed' && currentBooking.status !== 'completed') {
     const admin = createAdminClient();
@@ -530,6 +538,24 @@ export async function updateBooking(id: string, input: UpdatePrivateBookingInput
 
   // Clean up undefined values
   Object.keys(updatePayload).forEach(key => updatePayload[key] === undefined && delete updatePayload[key]);
+
+  if (input.status === 'cancelled' && currentBooking.status !== 'cancelled') {
+    updatePayload.cancellation_reason = 'Cancelled via edit form';
+    updatePayload.cancelled_at = new Date().toISOString();
+  }
+
+  const immutableStatuses = ['completed', 'cancelled'];
+  if (immutableStatuses.includes(currentBooking.status as string)) {
+    const changedNonStatusKeys = Object.keys(updatePayload).filter(k =>
+      k !== 'status' &&
+      k !== 'updated_at' &&
+      updatePayload[k] !== undefined &&
+      updatePayload[k] !== currentBooking[k as keyof typeof currentBooking]
+    );
+    if (changedNonStatusKeys.length > 0) {
+      throw new Error(`Cannot edit a ${currentBooking.status} booking. Only status changes are allowed.`);
+    }
+  }
 
   // 3. Perform Update
   const { data: updatedBooking, error } = await supabase
@@ -897,13 +923,6 @@ export async function updateBookingStatus(id: string, status: BookingStatus, per
     .single()
 
   if (error || !current) throw new Error('Booking not found')
-
-  const ALLOWED_TRANSITIONS: Record<BookingStatus, BookingStatus[]> = {
-    draft:     ['confirmed', 'cancelled'],
-    confirmed: ['completed', 'cancelled'],
-    completed: [],
-    cancelled: ['draft'],
-  }
 
   const currentStatus = current.status as BookingStatus
   const allowed = ALLOWED_TRANSITIONS[currentStatus] ?? []
