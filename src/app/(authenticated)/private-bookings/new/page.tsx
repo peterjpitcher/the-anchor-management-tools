@@ -47,6 +47,7 @@ export default function NewPrivateBookingPage() {
     async function checkPermission() {
       const { checkUserPermission } = await import('@/app/actions/rbac')
       const canCreate = await checkUserPermission('private_bookings', 'create')
+        || await checkUserPermission('private_bookings', 'manage')
       if (!canCreate) {
         router.replace('/private-bookings')
       }

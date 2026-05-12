@@ -3,7 +3,6 @@ import { authorizeCronRequest } from '@/lib/cron-auth'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { logger } from '@/lib/logger'
 import { SmsQueueService } from '@/services/sms-queue'
-import { PrivateBookingService } from '@/services/private-bookings'
 import { PRIVATE_BOOKING_FEEDBACK_TEMPLATE_KEY } from '@/lib/private-bookings/feedback'
 import { persistCronRunResult, recoverCronRunLock } from '@/lib/cron-run-results'
 import { getSmartFirstName } from '@/lib/sms/bulk'
@@ -359,8 +358,6 @@ export async function GET(request: Request) {
     const now = new Date()
     const stats = {
       remindersSent: 0,
-      expirationsProcessed: 0,
-      expirationSmsSent: 0,
       balanceRemindersSent: 0,
       eventRemindersSent: 0,
       privateFeedbackSmsSent: 0,
@@ -371,7 +368,6 @@ export async function GET(request: Request) {
     }
     const totalSmsSent = () =>
       stats.remindersSent +
-      stats.expirationSmsSent +
       stats.balanceRemindersSent +
       stats.eventRemindersSent +
       stats.privateFeedbackSmsSent +
@@ -647,62 +643,7 @@ export async function GET(request: Request) {
       }
     }
 
-    if (!abortState.aborted) {
-      // --- PASS 2: EXPIRY ---
-      const { data: expiredDrafts } = await supabase
-        .from('private_bookings')
-        .select('id, hold_expiry, event_date, deposit_amount, internal_notes')
-        .eq('status', 'draft')
-        .lt('hold_expiry', now.toISOString())
-        .not('hold_expiry', 'is', null);
-
-      if (expiredDrafts) {
-        for (const booking of expiredDrafts) {
-          // Suppress expiry SMS for bookings whose date was never confirmed.
-          if (isBookingDateTbd(booking)) continue
-          const depositAmount = Number(booking.deposit_amount ?? 0)
-          if (!Number.isFinite(depositAmount) || depositAmount <= 0) continue
-
-          const canSendExpiryNotification = canSendMoreSms()
-          if (!canSendExpiryNotification) {
-            stats.smsCapReached = true
-          }
-
-          try {
-            const expireResult = await PrivateBookingService.expireBooking(booking.id, {
-              sendNotification: canSendExpiryNotification,
-              asSystem: true
-            })
-            stats.expirationsProcessed++
-            if (expireResult.smsSent) {
-              stats.expirationSmsSent++
-            }
-
-            maybeAbortFromSmsResult(
-              {
-                code: (expireResult as any).smsCode,
-                logFailure: (expireResult as any).smsLogFailure === true
-              },
-              {
-                stage: 'pass2:booking_expired',
-                bookingId: booking.id,
-                triggerType: 'booking_expired',
-                templateKey: 'private_booking_expired'
-              }
-            )
-
-            if (abortState.aborted) {
-              break
-            }
-          } catch (expireError) {
-            logger.error('Failed to expire private booking during cron run', {
-              error: expireError instanceof Error ? expireError : new Error(String(expireError)),
-              metadata: { bookingId: booking.id, runKey }
-            })
-          }
-        }
-      }
-    }
+    // Hold expiry is handled by the dedicated private-bookings-expire-holds cron
 
     if (!abortState.aborted && PRIVATE_BOOKING_UPCOMING_EVENT_SMS_ENABLED) {
       // --- PASS 3: BALANCE REMINDERS (Confirmed - Catch-up Logic) ---

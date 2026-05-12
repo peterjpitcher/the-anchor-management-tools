@@ -146,7 +146,8 @@ export async function getPrivateBookings(filters?: {
   customerId?: string
 }) {
   try {
-    const hasPermission = await checkUserPermission('private_bookings', 'view');
+    const hasPermission = await checkUserPermission('private_bookings', 'view')
+      || await checkUserPermission('private_bookings', 'manage');
     if (!hasPermission) {
       return { error: 'You do not have permission to view private bookings' };
     }
@@ -164,6 +165,7 @@ export async function getPrivateBooking(
   variant: 'detail' | 'edit' | 'items' | 'messages' = 'detail'
 ) {
   const canView = await checkUserPermission('private_bookings', 'view')
+    || await checkUserPermission('private_bookings', 'manage')
   if (!canView) {
     return { error: 'You do not have permission to view private bookings' }
   }
@@ -229,12 +231,13 @@ export async function createPrivateBooking(formData: FormData) {
 
     const bookingData = validationResult.data
 
-    const [{ data: { user } }, canCreate] = await Promise.all([
+    const [{ data: { user } }, canCreate, canManage] = await Promise.all([
       supabase.auth.getUser(),
       checkUserPermission('private_bookings', 'create'),
+      checkUserPermission('private_bookings', 'manage'),
     ])
 
-    if (!canCreate) {
+    if (!canCreate && !canManage) {
       return { error: 'You do not have permission to create private bookings' }
     }
 
@@ -287,6 +290,7 @@ export async function createPrivateBooking(formData: FormData) {
 // Update private booking
 export async function updatePrivateBooking(id: string, formData: FormData) {
   const canEdit = await checkUserPermission('private_bookings', 'edit')
+    || await checkUserPermission('private_bookings', 'manage')
   if (!canEdit) {
     return { error: 'You do not have permission to update private bookings' }
   }
@@ -389,6 +393,7 @@ export async function updatePrivateBooking(id: string, formData: FormData) {
 // Update booking status
 export async function updateBookingStatus(id: string, status: BookingStatus) {
   const canEdit = await checkUserPermission('private_bookings', 'edit')
+    || await checkUserPermission('private_bookings', 'manage')
   if (!canEdit) {
     return { error: 'You do not have permission to update private bookings' }
   }
@@ -423,16 +428,17 @@ export async function addPrivateBookingNote(bookingId: string, note: string) {
   }
 
   const supabase = await createClient()
-  const [{ data: { user } }, canEdit] = await Promise.all([
+  const [{ data: { user } }, canEdit, canManageNotes] = await Promise.all([
     supabase.auth.getUser(),
     checkUserPermission('private_bookings', 'edit'),
+    checkUserPermission('private_bookings', 'manage'),
   ])
 
   if (!user) {
     return { error: 'You must be signed in to add a note' }
   }
 
-  if (!canEdit) {
+  if (!canEdit && !canManageNotes) {
     return { error: 'You do not have permission to add notes to private bookings' }
   }
 
@@ -480,6 +486,7 @@ export async function getBookingDeleteEligibility(bookingId: string): Promise<{
   }
 
   const canDelete = await checkUserPermission('private_bookings', 'delete')
+    || await checkUserPermission('private_bookings', 'manage')
   if (!canDelete) {
     return {
       canDelete: false,
@@ -599,6 +606,7 @@ export async function getCancellationPreview(bookingId: string): Promise<{
   }
 
   const canEdit = await checkUserPermission('private_bookings', 'edit')
+    || await checkUserPermission('private_bookings', 'manage')
   if (!canEdit) {
     return {
       outcome: null,
@@ -704,6 +712,7 @@ export async function getCompletionPreview(bookingId: string): Promise<{
   if (!user) return { preview_body: null, error: 'Unauthorized' }
 
   const canEdit = await checkUserPermission('private_bookings', 'edit')
+    || await checkUserPermission('private_bookings', 'manage')
   if (!canEdit) {
     return {
       preview_body: null,
@@ -734,12 +743,13 @@ export async function getCompletionPreview(bookingId: string): Promise<{
 // Delete private booking
 export async function deletePrivateBooking(id: string) {
   const supabase = await createClient()
-  const [{ data: { user } }, canDelete] = await Promise.all([
+  const [{ data: { user } }, canDelete, canManageDelete] = await Promise.all([
     supabase.auth.getUser(),
     checkUserPermission('private_bookings', 'delete'),
+    checkUserPermission('private_bookings', 'manage'),
   ])
 
-  if (!canDelete) {
+  if (!canDelete && !canManageDelete) {
     return { error: 'You do not have permission to delete private bookings' }
   }
 
@@ -768,6 +778,7 @@ export async function deletePrivateBooking(id: string) {
 // Get venue spaces
 export async function getVenueSpaces(activeOnly = true) {
   const canView = await checkUserPermission('private_bookings', 'view')
+    || await checkUserPermission('private_bookings', 'manage')
   if (!canView) {
     return { error: 'You do not have permission to view private bookings' }
   }
@@ -799,6 +810,7 @@ export async function getVenueSpacesForManagement() {
 // Get catering packages
 export async function getCateringPackages(activeOnly = true) {
   const canView = await checkUserPermission('private_bookings', 'view')
+    || await checkUserPermission('private_bookings', 'manage')
   if (!canView) {
     return { error: 'You do not have permission to view private bookings' }
   }
@@ -830,6 +842,7 @@ export async function getCateringPackagesForManagement() {
 // Get vendors
 export async function getVendors(serviceType?: string, activeOnly = true) {
   const canView = await checkUserPermission('private_bookings', 'view')
+    || await checkUserPermission('private_bookings', 'manage')
   if (!canView) {
     return { error: 'You do not have permission to view private bookings' }
   }
@@ -873,6 +886,7 @@ export async function getVendorsForManagement() {
 
 export async function getVendorRate(vendorId: string) {
   const canView = await checkUserPermission('private_bookings', 'view')
+    || await checkUserPermission('private_bookings', 'manage')
   if (!canView) {
     return { error: 'You do not have permission to view private bookings' }
   }
@@ -1031,6 +1045,7 @@ export async function recordFinalPayment(bookingId: string, formData: FormData) 
 // Cancel a private booking and notify customer by SMS
 export async function cancelPrivateBooking(bookingId: string, reason?: string) {
   const canEdit = await checkUserPermission('private_bookings', 'edit')
+    || await checkUserPermission('private_bookings', 'manage')
   if (!canEdit) {
     return { error: 'You do not have permission to cancel private bookings' }
   }
@@ -1062,6 +1077,7 @@ export async function cancelPrivateBooking(bookingId: string, reason?: string) {
 
 export async function extendBookingHold(bookingId: string, days: 7 | 14 | 30) {
   const canEdit = await checkUserPermission('private_bookings', 'edit')
+    || await checkUserPermission('private_bookings', 'manage')
   if (!canEdit) {
     return { error: 'You do not have permission to extend booking holds' }
   }
@@ -1109,11 +1125,12 @@ export async function applyBookingDiscount(bookingId: string, data: {
   discount_reason: string
 }) {
   const supabase = await createClient()
-  const [{ data: { user } }, canEdit] = await Promise.all([
+  const [{ data: { user } }, canEdit, canManageDiscount] = await Promise.all([
     supabase.auth.getUser(),
     checkUserPermission('private_bookings', 'edit'),
+    checkUserPermission('private_bookings', 'manage'),
   ])
-  if (!canEdit) {
+  if (!canEdit && !canManageDiscount) {
     return { error: 'You do not have permission to update private bookings' }
   }
 
@@ -1236,16 +1253,17 @@ export async function rejectSms(smsId: string) {
 
 export async function sendApprovedSms(smsId: string) {
   const supabase = await createClient()
-  const [{ data: { user } }, canSend] = await Promise.all([
+  const [{ data: { user } }, canSend, canManageSend] = await Promise.all([
     supabase.auth.getUser(),
     checkUserPermission('private_bookings', 'send'),
+    checkUserPermission('private_bookings', 'manage'),
   ])
 
   if (!user) {
     return { error: 'Not authenticated' }
   }
 
-  if (!canSend) {
+  if (!canSend && !canManageSend) {
     return { error: 'Insufficient permissions' }
   }
 
@@ -1425,6 +1443,7 @@ export async function deleteCateringPackage(id: string) {
 // Booking Items Management
 export async function getBookingItems(bookingId: string) {
   const canView = await checkUserPermission('private_bookings', 'view')
+    || await checkUserPermission('private_bookings', 'manage')
   if (!canView) {
     return { error: 'You do not have permission to view private bookings' }
   }
@@ -1464,6 +1483,7 @@ export async function addBookingItem(data: {
   notes?: string | null
 }) {
   const canEdit = await checkUserPermission('private_bookings', 'edit')
+    || await checkUserPermission('private_bookings', 'manage')
   if (!canEdit) {
     return { error: 'You do not have permission to modify private bookings' }
   }
@@ -1502,6 +1522,7 @@ export async function updateBookingItem(itemId: string, data: {
   notes?: string | null
 }) {
   const canEdit = await checkUserPermission('private_bookings', 'edit')
+    || await checkUserPermission('private_bookings', 'manage')
   if (!canEdit) {
     return { error: 'You do not have permission to modify private bookings' }
   }
@@ -1524,6 +1545,7 @@ export async function updateBookingItem(itemId: string, data: {
 
 export async function deleteBookingItem(itemId: string) {
   const canEdit = await checkUserPermission('private_bookings', 'edit')
+    || await checkUserPermission('private_bookings', 'manage')
   if (!canEdit) {
     return { error: 'You do not have permission to modify private bookings' }
   }
@@ -1544,6 +1566,7 @@ export async function deleteBookingItem(itemId: string) {
 
 export async function reorderBookingItems(bookingId: string, orderedIds: string[]) {
   const canEdit = await checkUserPermission('private_bookings', 'edit')
+    || await checkUserPermission('private_bookings', 'manage')
   if (!canEdit) {
     return { error: 'You do not have permission to modify private bookings' }
   }
@@ -1914,6 +1937,7 @@ export async function resendCalendarInvite(
   bookingId: string
 ): Promise<{ success?: boolean; error?: string }> {
   const canEdit = await checkUserPermission('private_bookings', 'edit')
+    || await checkUserPermission('private_bookings', 'manage')
   if (!canEdit) {
     return { error: 'You do not have permission to perform this action' }
   }
@@ -1991,6 +2015,7 @@ export async function getBookingPortalLink(
   // public URL. This is a write-like operation (sharing data outside the app),
   // so it requires edit permission rather than just view.
   const hasPermission = await checkUserPermission('private_bookings', 'edit')
+    || await checkUserPermission('private_bookings', 'manage')
   if (!hasPermission) {
     return { error: 'Insufficient permissions' }
   }
