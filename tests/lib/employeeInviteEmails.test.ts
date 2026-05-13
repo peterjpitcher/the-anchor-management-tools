@@ -34,7 +34,7 @@ describe('employee separation emails', () => {
     expect(email.text).toContain('Any questions during your shifts can be raised with Billy')
     expect(email.text).toContain('Anything relating to this process can be raised with me directly')
     expect(email.text).toContain('I wish you the best of luck for the future')
-    expect(email.text).toContain('Kind regards,\nBilly and I')
+    expect(email.text).toContain('Kind regards,\nPeter & Billy')
     expect(email.text).not.toContain('Peter confirms')
     expect(email.text).not.toContain('We wish')
   })
