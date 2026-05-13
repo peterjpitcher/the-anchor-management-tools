@@ -30,9 +30,13 @@ describe('employee separation emails', () => {
     expect(email.text).toContain('You will be paid in the next normal pay cycle for any shifts worked')
     expect(email.text).toContain('I will provide your P45 once the next pay cycle is complete.')
     expect(email.text).toContain('Please return your keys and any company property')
+    expect(email.text).toContain('unless Billy or I confirm otherwise')
     expect(email.text).toContain('Any questions during your shifts can be raised with Billy')
     expect(email.text).toContain('Anything relating to this process can be raised with me directly')
+    expect(email.text).toContain('I wish you the best of luck for the future')
     expect(email.text).toContain('Kind regards,\nPeter')
+    expect(email.text).not.toContain('Peter confirms')
+    expect(email.text).not.toContain('We wish')
   })
 
   it('builds a past-dated separation email without a separation reason', () => {

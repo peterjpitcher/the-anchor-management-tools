@@ -63,7 +63,7 @@ function buildRemainingShiftsText(input: SeparationStartedEmailInput): string | 
     'You are currently scheduled for the following shifts up to and including that date:',
     ...shifts.map(formatShiftLine),
     '',
-    'Please continue to attend any remaining scheduled shifts unless Billy or Peter confirms otherwise.',
+    'Please continue to attend any remaining scheduled shifts unless Billy or I confirm otherwise.',
   ].join('\n');
 }
 
@@ -136,7 +136,7 @@ export function buildSeparationStartedEmail(input: SeparationStartedEmailInput) 
     '',
     'Any questions during your shifts can be raised with Billy. Anything relating to this process can be raised with me directly.',
     '',
-    'Thank you for your service. We wish you the best of luck for the future.',
+    'Thank you for your service. I wish you the best of luck for the future.',
     '',
     'Kind regards,',
     'Peter',
