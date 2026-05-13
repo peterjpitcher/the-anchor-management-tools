@@ -139,7 +139,7 @@ export function buildSeparationStartedEmail(input: SeparationStartedEmailInput) 
     'Thank you for your service. I wish you the best of luck for the future.',
     '',
     'Kind regards,',
-    'Billy and I',
+    'Peter & Billy',
   ].filter((section): section is string => section !== null);
 
   return { subject, text: sections.join('\n'), cc: [MANAGER_EMAIL] };
