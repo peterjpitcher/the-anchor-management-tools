@@ -5023,6 +5023,7 @@ export type Database = {
           pack_size: number | null
           pack_size_unit: Database["public"]["Enums"]["menu_unit"] | null
           portions_per_pack: number | null
+          purchase_department: string
           shelf_life_days: number | null
           storage_type: Database["public"]["Enums"]["menu_storage_type"]
           supplier_name: string | null
@@ -5046,6 +5047,7 @@ export type Database = {
           pack_size?: number | null
           pack_size_unit?: Database["public"]["Enums"]["menu_unit"] | null
           portions_per_pack?: number | null
+          purchase_department?: string
           shelf_life_days?: number | null
           storage_type?: Database["public"]["Enums"]["menu_storage_type"]
           supplier_name?: string | null
@@ -5069,6 +5071,7 @@ export type Database = {
           pack_size?: number | null
           pack_size_unit?: Database["public"]["Enums"]["menu_unit"] | null
           portions_per_pack?: number | null
+          purchase_department?: string
           shelf_life_days?: number | null
           storage_type?: Database["public"]["Enums"]["menu_storage_type"]
           supplier_name?: string | null
@@ -11119,6 +11122,7 @@ export type Database = {
           pack_size: number | null
           pack_size_unit: Database["public"]["Enums"]["menu_unit"] | null
           portions_per_pack: number | null
+          purchase_department: string | null
           shelf_life_days: number | null
           storage_type: Database["public"]["Enums"]["menu_storage_type"] | null
           supplier_name: string | null
@@ -11145,6 +11149,7 @@ export type Database = {
           pack_size?: number | null
           pack_size_unit?: Database["public"]["Enums"]["menu_unit"] | null
           portions_per_pack?: number | null
+          purchase_department?: string | null
           shelf_life_days?: number | null
           storage_type?: Database["public"]["Enums"]["menu_storage_type"] | null
           supplier_name?: string | null
@@ -11171,6 +11176,7 @@ export type Database = {
           pack_size?: number | null
           pack_size_unit?: Database["public"]["Enums"]["menu_unit"] | null
           portions_per_pack?: number | null
+          purchase_department?: string | null
           shelf_life_days?: number | null
           storage_type?: Database["public"]["Enums"]["menu_storage_type"] | null
           supplier_name?: string | null

@@ -1,6 +1,7 @@
 'use server';
 
 import { getOpenAIConfig } from '@/lib/openai/config'
+import { MENU_PURCHASE_DEPARTMENTS, type MenuPurchaseDepartment } from '@/lib/menu/purchase-departments'
 import { retry, RetryConfigs } from '@/lib/retry'
 
 const MODEL_PRICING_PER_1K_TOKENS: Record<string, { prompt: number; completion: number }> = {
@@ -21,6 +22,7 @@ export type AiParsedIngredient = {
   portions_per_pack: number | null
   wastage_pct: number
   storage_type: string
+  purchase_department: MenuPurchaseDepartment
   allergens: string[]
   dietary_flags: string[]
   notes: string | null
@@ -117,6 +119,7 @@ IMPORTANT: Enforce logical hierarchy for dietary flags:
 
 For units, normalize to the closest standard unit (e.g. 'kg' -> 'kilogram', 'ml' -> 'millilitre').
 Pack cost should be the price for the full pack/case, not per unit, if possible.
+Set purchase_department to 'bar' for drinks, mixers, alcohol, bottled/canned soft drinks, bar syrups, coffee/tea, and bar garnish. Use 'kitchen' for food/prep ingredients. Use 'other' only when neither department fits.
 If the input is HTML from a supplier website, look for 'ingredients', 'nutrition', and 'specifications' sections.`
 
     const response = await retry(
@@ -151,6 +154,11 @@ If the input is HTML from a supplier website, look for 'ingredients', 'nutrition
                   portions_per_pack: { type: ['number', 'null'], description: 'Estimated number of portions per pack' },
                   wastage_pct: { type: 'number', description: 'Estimated wastage percentage (0-100)' },
                   storage_type: { type: 'string', enum: STORAGE_OPTIONS, description: 'How the product should be stored' },
+                  purchase_department: {
+                    type: 'string',
+                    enum: MENU_PURCHASE_DEPARTMENTS,
+                    description: 'Department that usually buys/validates this item'
+                  },
                   allergens: {
                     type: 'array', 
                     items: { type: 'string', enum: ALLERGEN_OPTIONS },
@@ -166,7 +174,7 @@ If the input is HTML from a supplier website, look for 'ingredients', 'nutrition
                 required: [
                   'name', 'description', 'supplier_name', 'supplier_sku', 'brand', 
                   'pack_size', 'pack_size_unit', 'pack_cost', 'portions_per_pack', 
-                  'wastage_pct', 'storage_type', 'allergens', 'dietary_flags', 'notes'
+                  'wastage_pct', 'storage_type', 'purchase_department', 'allergens', 'dietary_flags', 'notes'
                 ],
                 additionalProperties: false
               }
@@ -206,6 +214,9 @@ If the input is HTML from a supplier website, look for 'ingredients', 'nutrition
       }
       
       parsedData.dietary_flags = Array.from(flags)
+      if (!MENU_PURCHASE_DEPARTMENTS.includes(parsedData.purchase_department)) {
+        parsedData.purchase_department = 'kitchen'
+      }
 
     } catch (e) {
       console.error('Failed to parse OpenAI JSON response', e)

@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { MENU_PURCHASE_DEPARTMENTS, isMenuPurchaseDepartment } from '@/lib/menu/purchase-departments';
 import { MenuSettingsService } from '@/services/menu-settings';
 import { z } from 'zod'; // Import z for schemas
 
@@ -9,12 +10,19 @@ const UNITS = [
 ] as const;
 
 const STORAGE_TYPES = ['ambient', 'chilled', 'frozen', 'dry', 'other'] as const;
+const INGREDIENT_SELECT_WITH_DEPARTMENT = 'id, name, description, default_unit, storage_type, purchase_department, supplier_name, supplier_sku, brand, pack_size, pack_size_unit, pack_cost, portions_per_pack, wastage_pct, shelf_life_days, allergens, dietary_flags, notes, is_active, latest_pack_cost, latest_unit_cost, abv';
+const INGREDIENT_SELECT_WITHOUT_DEPARTMENT = 'id, name, description, default_unit, storage_type, supplier_name, supplier_sku, brand, pack_size, pack_size_unit, pack_cost, portions_per_pack, wastage_pct, shelf_life_days, allergens, dietary_flags, notes, is_active, latest_pack_cost, latest_unit_cost, abv';
+
+function isMissingPurchaseDepartmentColumn(error: { code?: string; message?: string } | null): boolean {
+  return error?.code === '42703' && /purchase_department/i.test(error.message ?? '');
+}
 
 export const IngredientSchema = z.object({
   name: z.string().min(1),
   description: z.string().nullable().optional(),
   default_unit: z.enum(UNITS).default('each'),
   storage_type: z.enum(STORAGE_TYPES).default('ambient'),
+  purchase_department: z.enum(MENU_PURCHASE_DEPARTMENTS).default('kitchen'),
   supplier_name: z.string().nullable().optional(),
   supplier_sku: z.string().nullable().optional(),
   brand: z.string().nullable().optional(),
@@ -156,10 +164,24 @@ export class MenuService {
     const supabase = await createClient();
     const targetGpPct = await MenuSettingsService.getMenuTargetGp({ client: supabase });
 
-    const { data, error } = await supabase
+    const ingredientsResult = await supabase
       .from('menu_ingredients_with_prices')
-      .select('id, name, description, default_unit, storage_type, supplier_name, supplier_sku, brand, pack_size, pack_size_unit, pack_cost, portions_per_pack, wastage_pct, shelf_life_days, allergens, dietary_flags, notes, is_active, latest_pack_cost, latest_unit_cost, abv')
+      .select(INGREDIENT_SELECT_WITH_DEPARTMENT)
       .order('name', { ascending: true });
+    let data = ingredientsResult.data as any[] | null;
+    let error = ingredientsResult.error;
+
+    if (isMissingPurchaseDepartmentColumn(error)) {
+      console.warn(
+        'menu_ingredients_with_prices.purchase_department is missing; defaulting ingredients to kitchen until the migration is applied.'
+      );
+      const fallback = await supabase
+        .from('menu_ingredients_with_prices')
+        .select(INGREDIENT_SELECT_WITHOUT_DEPARTMENT)
+        .order('name', { ascending: true });
+      data = fallback.data as any[] | null;
+      error = fallback.error;
+    }
 
     if (error) {
       console.error('listMenuIngredients error:', error);
@@ -276,6 +298,9 @@ export class MenuService {
       description: ingredient.description,
       default_unit: ingredient.default_unit,
       storage_type: ingredient.storage_type,
+      purchase_department: isMenuPurchaseDepartment(ingredient.purchase_department)
+        ? ingredient.purchase_department
+        : 'kitchen',
       supplier_name: ingredient.supplier_name,
       supplier_sku: ingredient.supplier_sku,
       brand: ingredient.brand,
@@ -327,6 +352,7 @@ export class MenuService {
         description: input.description || null,
         default_unit: input.default_unit,
         storage_type: input.storage_type,
+        purchase_department: input.purchase_department,
         supplier_name: input.supplier_name || null,
         supplier_sku: input.supplier_sku || null,
         brand: input.brand || null,
@@ -402,6 +428,7 @@ export class MenuService {
         description: input.description || null,
         default_unit: input.default_unit,
         storage_type: input.storage_type,
+        purchase_department: input.purchase_department,
         supplier_name: input.supplier_name || null,
         supplier_sku: input.supplier_sku || null,
         brand: input.brand || null,
