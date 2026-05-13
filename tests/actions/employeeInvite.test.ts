@@ -26,6 +26,7 @@ vi.mock('@/lib/email/employee-invite-emails', () => ({
   sendChaseEmail: vi.fn(),
   sendOnboardingCompleteEmail: vi.fn(),
   sendPortalInviteEmail: vi.fn(),
+  sendSeparationStartedEmail: vi.fn(),
 }))
 
 import { checkUserPermission } from '@/app/actions/rbac'
@@ -40,13 +41,14 @@ import {
   submitOnboardingProfile,
   validateInviteToken,
 } from '@/app/actions/employeeInvite'
-import { sendPortalInviteEmail, sendWelcomeEmail } from '@/lib/email/employee-invite-emails'
+import { sendPortalInviteEmail, sendSeparationStartedEmail, sendWelcomeEmail } from '@/lib/email/employee-invite-emails'
 
 const mockedPermission = checkUserPermission as unknown as Mock
 const mockedCreateAdminClient = createAdminClient as unknown as Mock
 const mockedGetCurrentUser = getCurrentUser as unknown as Mock
 const mockedSendWelcomeEmail = sendWelcomeEmail as unknown as Mock
 const mockedSendPortalInviteEmail = sendPortalInviteEmail as unknown as Mock
+const mockedSendSeparationStartedEmail = sendSeparationStartedEmail as unknown as Mock
 
 function mockMaybeSingle(data: unknown, error: unknown = null) {
   return {
@@ -280,6 +282,20 @@ describe('employee invite status transitions', () => {
   })
 
   it('begins separation with a last working day and employee note', async () => {
+    const employeeSelect = vi.fn().mockReturnValue({
+      eq: vi.fn().mockReturnValue({
+        maybeSingle: vi.fn().mockResolvedValue({
+          data: {
+            email_address: 'alex@example.com',
+            first_name: 'Alex',
+            last_name: 'Rowe',
+            employment_end_date: null,
+            status: 'Active',
+          },
+          error: null,
+        }),
+      }),
+    })
     const employeeUpdate = vi.fn().mockReturnValue({
       eq: vi.fn().mockReturnValue({
         eq: vi.fn().mockReturnValue({
@@ -287,12 +303,30 @@ describe('employee invite status transitions', () => {
         }),
       }),
     })
+    const shiftsOrderByStart = vi.fn().mockResolvedValue({
+      data: [{
+        shift_date: '2099-05-14',
+        start_time: '09:00',
+        end_time: '17:00',
+        department: 'bar',
+      }],
+      error: null,
+    })
+    const shiftsOrderByDate = vi.fn().mockReturnValue({ order: shiftsOrderByStart })
+    const shiftsNeq = vi.fn().mockReturnValue({ order: shiftsOrderByDate })
+    const shiftsLte = vi.fn().mockReturnValue({ neq: shiftsNeq })
+    const shiftsGte = vi.fn().mockReturnValue({ lte: shiftsLte })
+    const shiftsEq = vi.fn().mockReturnValue({ gte: shiftsGte })
+    const shiftsSelect = vi.fn().mockReturnValue({ eq: shiftsEq })
     const noteInsert = vi.fn().mockResolvedValue({ error: null })
 
     mockedCreateAdminClient.mockReturnValue({
       from: vi.fn((table: string) => {
         if (table === 'employees') {
-          return { update: employeeUpdate }
+          return { select: employeeSelect, update: employeeUpdate }
+        }
+        if (table === 'rota_shifts') {
+          return { select: shiftsSelect }
         }
         if (table === 'employee_notes') {
           return { insert: noteInsert }
@@ -302,18 +336,29 @@ describe('employee invite status transitions', () => {
     })
 
     const result = await beginSeparation('employee-1', {
-      employmentEndDate: '2026-05-15',
+      employmentEndDate: '2099-05-15',
       note: 'Notice given',
     })
 
     expect(result).toEqual({ success: true })
     expect(employeeUpdate).toHaveBeenCalledWith(expect.objectContaining({
       status: 'Started Separation',
-      employment_end_date: '2026-05-15',
+      employment_end_date: '2099-05-15',
+    }))
+    expect(mockedSendSeparationStartedEmail).toHaveBeenCalledWith(expect.objectContaining({
+      email: 'alex@example.com',
+      employeeName: 'Alex Rowe',
+      employmentEndDate: '2099-05-15',
+      remainingShifts: [{
+        shiftDate: '2099-05-14',
+        startTime: '09:00',
+        endTime: '17:00',
+        department: 'bar',
+      }],
     }))
     expect(noteInsert).toHaveBeenCalledWith(expect.objectContaining({
       employee_id: 'employee-1',
-      note_text: expect.stringContaining('Last working day: 2026-05-15.'),
+      note_text: expect.stringContaining('Last working day: 2099-05-15.'),
     }))
   })
 

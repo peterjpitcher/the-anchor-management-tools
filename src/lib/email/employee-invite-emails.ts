@@ -1,6 +1,71 @@
 import { sendEmail } from './emailService';
+import { formatDateFull, formatTime12Hour } from '@/lib/dateUtils';
 
 const MANAGER_EMAIL = process.env.MANAGER_EMAIL || 'manager@the-anchor.pub';
+
+export interface SeparationShiftSummary {
+  shiftDate: string;
+  startTime: string;
+  endTime: string;
+  department?: string | null;
+}
+
+export interface SeparationStartedEmailInput {
+  email: string;
+  employeeName?: string | null;
+  employmentEndDate?: string;
+  todayIso: string;
+  remainingShifts?: SeparationShiftSummary[];
+}
+
+function firstNameFrom(employeeName?: string | null): string | null {
+  return employeeName?.trim().split(/\s+/)[0] || null;
+}
+
+function formatDepartment(department?: string | null): string {
+  const cleaned = department?.trim().replace(/[_-]+/g, ' ');
+  if (!cleaned) return '';
+  return cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
+}
+
+function formatShiftLine(shift: SeparationShiftSummary): string {
+  const timeRange = `${formatTime12Hour(shift.startTime)} - ${formatTime12Hour(shift.endTime)}`;
+  const department = formatDepartment(shift.department);
+  return `- ${formatDateFull(shift.shiftDate)}, ${timeRange}${department ? ` (${department})` : ''}`;
+}
+
+function buildLastWorkingDayText(employmentEndDate: string | undefined, todayIso: string): string {
+  if (!employmentEndDate) {
+    return 'We will confirm your final working day separately.';
+  }
+
+  const formattedEndDate = formatDateFull(employmentEndDate);
+  if (employmentEndDate > todayIso) {
+    return `Your last scheduled working day is ${formattedEndDate}.`;
+  }
+  if (employmentEndDate < todayIso) {
+    return `Your last working day was ${formattedEndDate}.`;
+  }
+  return `Your last working day is today, ${formattedEndDate}.`;
+}
+
+function buildRemainingShiftsText(input: SeparationStartedEmailInput): string | null {
+  if (!input.employmentEndDate || input.employmentEndDate <= input.todayIso) {
+    return null;
+  }
+
+  const shifts = input.remainingShifts ?? [];
+  if (shifts.length === 0) {
+    return 'You do not currently have any remaining shifts scheduled up to and including that date.';
+  }
+
+  return [
+    'You are currently scheduled for the following shifts up to and including that date:',
+    ...shifts.map(formatShiftLine),
+    '',
+    'Please continue to attend any remaining scheduled shifts unless Billy or Peter confirms otherwise.',
+  ].join('\n');
+}
 
 export function buildWelcomeEmail(email: string, onboardingUrl: string) {
   const subject = 'Welcome to The Anchor -- Complete Your Profile';
@@ -51,6 +116,35 @@ export function buildPortalInviteEmail(email: string, onboardingUrl: string) {
   return { subject, text, cc: [MANAGER_EMAIL] };
 }
 
+export function buildSeparationStartedEmail(input: SeparationStartedEmailInput) {
+  const subject = 'Formal separation process started - Orange Jelly Limited';
+  const greeting = firstNameFrom(input.employeeName) ? `Hi ${firstNameFrom(input.employeeName)},` : 'Hi there,';
+  const remainingShiftsText = buildRemainingShiftsText(input);
+  const sections = [
+    greeting,
+    '',
+    'We are writing to confirm that we have begun the formal process of separating you from Orange Jelly Limited.',
+    '',
+    buildLastWorkingDayText(input.employmentEndDate, input.todayIso),
+    remainingShiftsText ? `\n${remainingShiftsText}` : null,
+    '',
+    'You will be paid in the next normal pay cycle for any shifts worked, together with any other amounts due. Your final payslip will show the final payment and any deductions.',
+    '',
+    'We will provide your P45 once the next pay cycle is complete.',
+    '',
+    'Please return your keys and any company property you have been provided with before you leave, or arrange their return with Billy or Peter.',
+    '',
+    'Any questions during your shifts can be raised with Billy. Anything relating to this process can be raised with Peter.',
+    '',
+    'Thank you for your service. We wish you the best of luck for the future.',
+    '',
+    'Kind regards,',
+    'Orange Jelly Limited',
+  ].filter((section): section is string => section !== null);
+
+  return { subject, text: sections.join('\n'), cc: [MANAGER_EMAIL] };
+}
+
 export async function sendPortalInviteEmail(email: string, onboardingUrl: string) {
   const { subject, text, cc } = buildPortalInviteEmail(email, onboardingUrl);
   return sendEmail({ to: email, subject, text, cc });
@@ -69,4 +163,13 @@ export async function sendChaseEmail(email: string, onboardingUrl: string, dayNu
 export async function sendOnboardingCompleteEmail(employeeName: string, employeeEmail: string) {
   const { subject, text } = buildOnboardingCompleteEmail(employeeName, employeeEmail);
   return sendEmail({ to: MANAGER_EMAIL, subject, text });
+}
+
+export async function sendSeparationStartedEmail(input: SeparationStartedEmailInput) {
+  const { subject, text, cc } = buildSeparationStartedEmail(input);
+  const result = await sendEmail({ to: input.email, subject, text, cc });
+  if (!result.success) {
+    throw new Error(result.error || 'Failed to send separation email.');
+  }
+  return result;
 }
