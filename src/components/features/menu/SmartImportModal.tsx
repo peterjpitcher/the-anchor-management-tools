@@ -7,6 +7,7 @@ import { Textarea } from '@/components/ui-v2/forms/Textarea';
 import { Alert } from '@/components/ui-v2/feedback/Alert';
 import { toast } from '@/components/ui-v2/feedback/Toast';
 import { Badge } from '@/components/ui-v2/display/Badge';
+import type { MenuPurchaseDepartment } from '@/lib/menu/purchase-departments';
 
 interface AiParsedIngredient {
   name: string;
@@ -20,6 +21,7 @@ interface AiParsedIngredient {
   portions_per_pack: number | null;
   wastage_pct: number;
   storage_type: string;
+  purchase_department: MenuPurchaseDepartment;
   allergens: string[];
   dietary_flags: string[];
   notes: string | null;

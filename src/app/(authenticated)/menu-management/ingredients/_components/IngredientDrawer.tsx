@@ -22,6 +22,12 @@ import {
 } from '@/app/actions/ai-menu-parsing';
 import { PriceHistoryPopover } from './PriceHistoryPopover';
 import type { Ingredient } from './IngredientExpandedRow';
+import {
+  MENU_PURCHASE_DEPARTMENT_LABELS,
+  MENU_PURCHASE_DEPARTMENTS,
+  isMenuPurchaseDepartment,
+  type MenuPurchaseDepartment,
+} from '@/lib/menu/purchase-departments';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -50,6 +56,11 @@ const STORAGE_TYPES = [
   { value: 'dry', label: 'Dry' },
   { value: 'other', label: 'Other' },
 ];
+
+const PURCHASE_DEPARTMENT_OPTIONS = MENU_PURCHASE_DEPARTMENTS.map((value) => ({
+  value,
+  label: MENU_PURCHASE_DEPARTMENT_LABELS[value],
+}));
 
 const ALLERGEN_OPTIONS = [
   { value: 'celery', label: 'Celery' },
@@ -111,6 +122,7 @@ type IngredientFormState = {
   description: string;
   default_unit: string;
   storage_type: string;
+  purchase_department: MenuPurchaseDepartment;
   supplier_name: string;
   supplier_sku: string;
   brand: string;
@@ -132,6 +144,7 @@ const createDefaultFormState = (): IngredientFormState => ({
   description: '',
   default_unit: 'each',
   storage_type: 'ambient',
+  purchase_department: 'kitchen',
   supplier_name: '',
   supplier_sku: '',
   brand: '',
@@ -154,6 +167,7 @@ function ingredientToFormState(ingredient: Ingredient): IngredientFormState {
     description: ingredient.description || '',
     default_unit: ingredient.default_unit || 'each',
     storage_type: ingredient.storage_type || 'ambient',
+    purchase_department: ingredient.purchase_department || 'kitchen',
     supplier_name: ingredient.supplier_name || '',
     supplier_sku: ingredient.supplier_sku || '',
     brand: ingredient.brand || '',
@@ -243,6 +257,9 @@ export function IngredientDrawer({
       state.brand = importData.brand || '';
       state.pack_cost = importData.pack_cost != null ? importData.pack_cost.toString() : '0';
       state.storage_type = importData.storage_type || 'ambient';
+      state.purchase_department = importData.purchase_department && isMenuPurchaseDepartment(importData.purchase_department)
+        ? importData.purchase_department
+        : 'kitchen';
       state.description = importData.description || '';
       state.notes = importData.notes || '';
       state.pack_size = importData.pack_size != null ? importData.pack_size.toString() : '';
@@ -347,6 +364,7 @@ export function IngredientDrawer({
         portions_per_pack: parseFloat(formState.portions_per_pack) || null,
         wastage_pct: parseFloat(formState.wastage_pct) || 0,
         storage_type: formState.storage_type,
+        purchase_department: formState.purchase_department,
         allergens: formState.allergens,
         dietary_flags: formState.dietary_flags,
         notes: formState.notes || null,
@@ -407,6 +425,7 @@ export function IngredientDrawer({
         description: formState.description || null,
         default_unit: formState.default_unit as 'each' | 'portion' | 'gram' | 'kilogram' | 'millilitre' | 'litre' | 'ounce' | 'pound' | 'teaspoon' | 'tablespoon' | 'cup' | 'slice' | 'piece',
         storage_type: formState.storage_type as 'ambient' | 'chilled' | 'frozen' | 'dry' | 'other',
+        purchase_department: formState.purchase_department,
         supplier_name: formState.supplier_name || null,
         supplier_sku: formState.supplier_sku || null,
         brand: formState.brand || null,
@@ -625,6 +644,25 @@ export function IngredientDrawer({
                 {STORAGE_TYPES.map((t) => (
                   <option key={t.value} value={t.value}>
                     {t.label}
+                  </option>
+                ))}
+              </Select>
+            </FormGroup>
+            <FormGroup
+              label="Purchase Department"
+              required
+              help="Separates kitchen food purchases from bar drink purchases."
+            >
+              <Select
+                value={formState.purchase_department}
+                onChange={(e) => {
+                  const value = e.target.value;
+                  update({ purchase_department: isMenuPurchaseDepartment(value) ? value : 'kitchen' });
+                }}
+              >
+                {PURCHASE_DEPARTMENT_OPTIONS.map((department) => (
+                  <option key={department.value} value={department.value}>
+                    {department.label}
                   </option>
                 ))}
               </Select>

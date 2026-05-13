@@ -6,6 +6,7 @@ import { PageLayout } from '@/components/ui-v2/layout/PageLayout';
 import { Section } from '@/components/ui-v2/layout/Section';
 import { Card } from '@/components/ui-v2/layout/Card';
 import { Button } from '@/components/ui-v2/forms/Button';
+import { Select } from '@/components/ui-v2/forms/Select';
 import { DataTable, type Column } from '@/components/ui-v2/display/DataTable';
 import { Badge } from '@/components/ui-v2/display/Badge';
 import { FilterPanel, type FilterDefinition } from '@/components/ui-v2/display/FilterPanel';
@@ -16,6 +17,7 @@ import { toast } from '@/components/ui-v2/feedback/Toast';
 import { LinkButton } from '@/components/ui-v2/navigation/LinkButton';
 import { usePermissions } from '@/contexts/PermissionContext';
 import { SmartImportModal } from '@/components/features/menu/SmartImportModal';
+import { ArrowDownTrayIcon } from '@heroicons/react/20/solid';
 import { useTablePipeline } from '../_components/useTablePipeline';
 import { EditableCurrencyCell } from '../_components/EditableCurrencyCell';
 import { StatusToggleCell } from '../_components/StatusToggleCell';
@@ -24,6 +26,13 @@ import { IngredientDrawer } from './_components/IngredientDrawer';
 import { PriceHistoryPopover } from './_components/PriceHistoryPopover';
 import { listMenuIngredients, deleteMenuIngredient, updateIngredientPackCost, toggleIngredientActive } from '@/app/actions/menu-management';
 import type { AiParsedIngredient } from '@/app/actions/ai-menu-parsing';
+import {
+  MENU_PURCHASE_DEPARTMENT_LABELS,
+  MENU_PURCHASE_DEPARTMENTS,
+  getMenuPurchaseDepartmentLabel,
+  isMenuPurchaseDepartment,
+  type MenuPurchaseDepartment,
+} from '@/lib/menu/purchase-departments';
 
 // ---------------------------------------------------------------------------
 // Helpers (shared with expanded row / drawer via re-export in types)
@@ -88,6 +97,16 @@ const STATUS_OPTIONS = [
   { value: 'inactive', label: 'Inactive' },
 ];
 
+const PURCHASE_DEPARTMENT_OPTIONS = MENU_PURCHASE_DEPARTMENTS.map((value) => ({
+  value,
+  label: MENU_PURCHASE_DEPARTMENT_LABELS[value],
+}));
+
+const ALLERGEN_REPORT_DEPARTMENT_OPTIONS = [
+  { value: 'all', label: 'All departments' },
+  ...PURCHASE_DEPARTMENT_OPTIONS,
+];
+
 const ALLERGEN_FILTER_OPTIONS = ALLERGEN_VALUES.map((v) => ({
   value: v,
   label: v.charAt(0).toUpperCase() + v.slice(1),
@@ -95,6 +114,7 @@ const ALLERGEN_FILTER_OPTIONS = ALLERGEN_VALUES.map((v) => ({
 
 const filterDefinitions: FilterDefinition[] = [
   { id: 'status', label: 'Status', type: 'select', options: STATUS_OPTIONS, pinned: true },
+  { id: 'purchase_department', label: 'Department', type: 'select', options: PURCHASE_DEPARTMENT_OPTIONS, pinned: true },
   { id: 'storage_type', label: 'Storage Type', type: 'select', options: STORAGE_TYPE_OPTIONS },
   { id: 'supplier_name', label: 'Supplier', type: 'text', placeholder: 'Filter by supplier...' },
   { id: 'allergens', label: 'Allergens', type: 'multiselect', options: ALLERGEN_FILTER_OPTIONS },
@@ -110,6 +130,10 @@ function ingredientFilterFn(item: Record<string, unknown>, filters: Record<strin
 
   if (filters.storage_type && typeof filters.storage_type === 'string') {
     if (ingredient.storage_type !== filters.storage_type) return false;
+  }
+
+  if (filters.purchase_department && typeof filters.purchase_department === 'string') {
+    if (ingredient.purchase_department !== filters.purchase_department) return false;
   }
 
   if (filters.supplier_name && typeof filters.supplier_name === 'string') {
@@ -137,6 +161,9 @@ function mapApiIngredient(raw: Record<string, unknown>): Ingredient {
     description: raw.description as string | null | undefined,
     default_unit: (raw.default_unit as string) || 'portion',
     storage_type: (raw.storage_type as string) || 'ambient',
+    purchase_department: isMenuPurchaseDepartment(raw.purchase_department as string | null | undefined)
+      ? (raw.purchase_department as MenuPurchaseDepartment)
+      : 'kitchen',
     supplier_name: raw.supplier_name as string | null | undefined,
     supplier_sku: raw.supplier_sku as string | null | undefined,
     brand: raw.brand as string | null | undefined,
@@ -205,6 +232,7 @@ export default function MenuIngredientsPage(): React.ReactElement {
 
   // Smart import modal
   const [showImportModal, setShowImportModal] = useState(false);
+  const [allergenReportDepartment, setAllergenReportDepartment] = useState<MenuPurchaseDepartment | 'all'>('all');
 
   const canManage = hasPermission('menu_management', 'manage');
 
@@ -246,6 +274,7 @@ export default function MenuIngredientsPage(): React.ReactElement {
       return [
         ingredient.name,
         ingredient.brand ?? '',
+        getMenuPurchaseDepartmentLabel(ingredient.purchase_department),
         ingredient.supplier_name ?? '',
         ingredient.supplier_sku ?? '',
         ...ingredient.allergens,
@@ -300,6 +329,20 @@ export default function MenuIngredientsPage(): React.ReactElement {
     }
   }
 
+  function handleDownloadAllergenPdf() {
+    const params = new URLSearchParams({ download: '1' });
+    if (allergenReportDepartment !== 'all') {
+      params.set('department', allergenReportDepartment);
+    }
+
+    const link = document.createElement('a');
+    link.href = `/api/menu-management/ingredients/allergens/pdf?${params.toString()}`;
+    link.rel = 'noopener';
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+  }
+
   // ---- Columns ----
 
   const columns: Column<Record<string, unknown>>[] = useMemo(
@@ -340,6 +383,26 @@ export default function MenuIngredientsPage(): React.ReactElement {
             </div>
           ) : (
             <span className="text-sm text-gray-500">&mdash;</span>
+          );
+        },
+      },
+      {
+        key: 'purchase_department',
+        header: 'Dept',
+        sortable: true,
+        sortFn: (a, b) => {
+          const ia = a as unknown as Ingredient;
+          const ib = b as unknown as Ingredient;
+          return getMenuPurchaseDepartmentLabel(ia.purchase_department).localeCompare(
+            getMenuPurchaseDepartmentLabel(ib.purchase_department)
+          );
+        },
+        cell: (row) => {
+          const ingredient = row as unknown as Ingredient;
+          return (
+            <Badge variant={ingredient.purchase_department === 'bar' ? 'primary' : 'secondary'}>
+              {getMenuPurchaseDepartmentLabel(ingredient.purchase_department)}
+            </Badge>
           );
         },
       },
@@ -483,7 +546,28 @@ export default function MenuIngredientsPage(): React.ReactElement {
   // ---- Header actions ----
 
   const headerActions = (
-    <div className="flex items-center gap-2">
+    <div className="flex flex-wrap items-center gap-2">
+      <Select
+        value={allergenReportDepartment}
+        onChange={(event) => {
+          const value = event.target.value;
+          setAllergenReportDepartment(isMenuPurchaseDepartment(value) ? value : 'all');
+        }}
+        selectSize="sm"
+        fullWidth={false}
+        aria-label="Allergen report department"
+        options={ALLERGEN_REPORT_DEPARTMENT_OPTIONS}
+        className="w-40"
+      />
+      <Button
+        variant="secondary"
+        size="sm"
+        onClick={handleDownloadAllergenPdf}
+        disabled={loading}
+        leftIcon={<ArrowDownTrayIcon />}
+      >
+        Download Allergens
+      </Button>
       {canManage && (
         <>
           <Button variant="secondary" onClick={() => setShowImportModal(true)}>

@@ -1,6 +1,7 @@
 'use client';
 
 import { Badge } from '@/components/ui-v2/display/Badge';
+import type { MenuPurchaseDepartment } from '@/lib/menu/purchase-departments';
 
 interface DishAssignmentSummary {
   menu_code: string;
@@ -35,6 +36,7 @@ export interface Ingredient {
   description?: string | null;
   default_unit: string;
   storage_type: string;
+  purchase_department: MenuPurchaseDepartment;
   supplier_name?: string | null;
   supplier_sku?: string | null;
   brand?: string | null;
