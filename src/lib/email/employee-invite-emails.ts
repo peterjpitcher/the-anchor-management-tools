@@ -123,23 +123,23 @@ export function buildSeparationStartedEmail(input: SeparationStartedEmailInput) 
   const sections = [
     greeting,
     '',
-    'We are writing to confirm that we have begun the formal process of separating you from Orange Jelly Limited.',
+    'I am writing to confirm that I have begun the formal process of separating you from Orange Jelly Limited.',
     '',
     buildLastWorkingDayText(input.employmentEndDate, input.todayIso),
     remainingShiftsText ? `\n${remainingShiftsText}` : null,
     '',
     'You will be paid in the next normal pay cycle for any shifts worked, together with any other amounts due. Your final payslip will show the final payment and any deductions.',
     '',
-    'We will provide your P45 once the next pay cycle is complete.',
+    'I will provide your P45 once the next pay cycle is complete.',
     '',
-    'Please return your keys and any company property you have been provided with before you leave, or arrange their return with Billy or Peter.',
+    'Please return your keys and any company property you have been provided with before you leave, or arrange their return with Billy or me.',
     '',
-    'Any questions during your shifts can be raised with Billy. Anything relating to this process can be raised with Peter.',
+    'Any questions during your shifts can be raised with Billy. Anything relating to this process can be raised with me directly.',
     '',
     'Thank you for your service. We wish you the best of luck for the future.',
     '',
     'Kind regards,',
-    'Orange Jelly Limited',
+    'Peter',
   ].filter((section): section is string => section !== null);
 
   return { subject, text: sections.join('\n'), cc: [MANAGER_EMAIL] };
