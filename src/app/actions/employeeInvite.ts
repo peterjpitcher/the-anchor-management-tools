@@ -12,7 +12,10 @@ import {
   sendWelcomeEmail,
   sendOnboardingCompleteEmail,
   sendPortalInviteEmail,
+  sendSeparationStartedEmail,
+  type SeparationShiftSummary,
 } from '@/lib/email/employee-invite-emails';
+import { getTodayIsoDate } from '@/lib/dateUtils';
 
 const BASE_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://manage.the-anchor.pub';
 
@@ -979,6 +982,56 @@ type BeginSeparationOptions = {
 
 const isoDateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 
+type BeginSeparationEmployee = {
+  email_address: string;
+  first_name: string | null;
+  last_name: string | null;
+  employment_end_date: string | null;
+  status: string;
+};
+
+type SeparationShiftRow = {
+  shift_date: string;
+  start_time: string;
+  end_time: string;
+  department: string | null;
+};
+
+async function getRemainingSeparationShifts(
+  adminClient: ReturnType<typeof createAdminClient>,
+  employeeId: string,
+  employmentEndDate: string | undefined,
+  todayIso: string,
+): Promise<{ shifts: SeparationShiftSummary[]; error?: string }> {
+  if (!employmentEndDate || employmentEndDate <= todayIso) {
+    return { shifts: [] };
+  }
+
+  const { data, error } = await adminClient
+    .from('rota_shifts')
+    .select('shift_date, start_time, end_time, department')
+    .eq('employee_id', employeeId)
+    .gte('shift_date', todayIso)
+    .lte('shift_date', employmentEndDate)
+    .neq('status', 'cancelled')
+    .order('shift_date', { ascending: true })
+    .order('start_time', { ascending: true });
+
+  if (error) {
+    console.error('[beginSeparation] Failed to load remaining shifts:', error);
+    return { shifts: [], error: 'Failed to load remaining scheduled shifts.' };
+  }
+
+  return {
+    shifts: ((data ?? []) as SeparationShiftRow[]).map((shift) => ({
+      shiftDate: shift.shift_date,
+      startTime: shift.start_time,
+      endTime: shift.end_time,
+      department: shift.department,
+    })),
+  };
+}
+
 // H13 fix: added count check — returns error when 0 rows updated (employee not in Active status)
 export async function beginSeparation(
   employeeId: string,
@@ -1000,6 +1053,33 @@ export async function beginSeparation(
   }
 
   const adminClient = createAdminClient();
+  const todayIso = getTodayIsoDate();
+
+  const { data: employee, error: employeeError } = await adminClient
+    .from('employees')
+    .select('email_address, first_name, last_name, employment_end_date, status')
+    .eq('employee_id', employeeId)
+    .maybeSingle();
+
+  if (employeeError) {
+    console.error('[beginSeparation] Failed to load employee:', employeeError);
+    return { success: false, error: 'Failed to load employee.' };
+  }
+
+  if (!employee || (employee as BeginSeparationEmployee).status !== 'Active') {
+    return { success: false, error: 'Employee status could not be updated. They may not be in Active status.' };
+  }
+
+  const employeeForEmail = employee as BeginSeparationEmployee;
+  const shiftsResult = await getRemainingSeparationShifts(
+    adminClient,
+    employeeId,
+    employmentEndDate,
+    todayIso,
+  );
+  if (shiftsResult.error) {
+    return { success: false, error: shiftsResult.error };
+  }
 
   const updatePayload: Record<string, string> = {
     status: 'Started Separation',
@@ -1023,6 +1103,42 @@ export async function beginSeparation(
 
   if (!updated || updated.length === 0) {
     return { success: false, error: 'Employee status could not be updated. They may not be in Active status.' };
+  }
+
+  try {
+    const employeeName = [employeeForEmail.first_name, employeeForEmail.last_name].filter(Boolean).join(' ') || null;
+    await sendSeparationStartedEmail({
+      email: employeeForEmail.email_address,
+      employeeName,
+      employmentEndDate,
+      todayIso,
+      remainingShifts: shiftsResult.shifts,
+    });
+  } catch (emailError) {
+    console.error('[beginSeparation] Failed to send separation email:', emailError);
+
+    const { error: rollbackError } = await adminClient
+      .from('employees')
+      .update({
+        status: 'Active',
+        employment_end_date: employeeForEmail.employment_end_date,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('employee_id', employeeId)
+      .eq('status', 'Started Separation');
+
+    if (rollbackError) {
+      console.error('[beginSeparation] Failed to roll back separation status after email failure:', rollbackError);
+      return {
+        success: false,
+        error: 'Employee status was updated, but the separation email could not be sent. Please send the employee confirmation manually.',
+      };
+    }
+
+    return {
+      success: false,
+      error: 'Separation email could not be sent, so the employee was left in Active status.',
+    };
   }
 
   const user = await getCurrentUser();
