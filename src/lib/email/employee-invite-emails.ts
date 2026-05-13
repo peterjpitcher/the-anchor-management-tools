@@ -2,6 +2,11 @@ import { sendEmail } from './emailService';
 import { formatDateFull, formatTime12Hour } from '@/lib/dateUtils';
 
 const MANAGER_EMAIL = process.env.MANAGER_EMAIL || 'manager@the-anchor.pub';
+const BILLY_EMAIL = 'billy@orangejelly.co.uk';
+
+function uniqueEmails(emails: string[]): string[] {
+  return [...new Set(emails.map((email) => email.trim()).filter(Boolean))];
+}
 
 export interface SeparationShiftSummary {
   shiftDate: string;
@@ -123,7 +128,7 @@ export function buildSeparationStartedEmail(input: SeparationStartedEmailInput) 
   const sections = [
     greeting,
     '',
-    "We are writing to confirm that we've started the formal process of separating you from Orange Jelly Limited.",
+    "I am writing to confirm that we've started the formal process of separating you from Orange Jelly Limited.",
     '',
     buildLastWorkingDayText(input.employmentEndDate, input.todayIso),
     remainingShiftsText ? `\n${remainingShiftsText}` : null,
@@ -136,13 +141,13 @@ export function buildSeparationStartedEmail(input: SeparationStartedEmailInput) 
     '',
     'Any questions during your shifts can be raised with Billy. Anything relating to this process can be raised with me directly.',
     '',
-    'Thank you for your service. I wish you the best of luck for the future.',
+    'Thank you for your service. We wish you the best of luck for the future.',
     '',
     'Kind regards,',
     'Peter & Billy',
   ].filter((section): section is string => section !== null);
 
-  return { subject, text: sections.join('\n'), cc: [MANAGER_EMAIL] };
+  return { subject, text: sections.join('\n'), cc: uniqueEmails([MANAGER_EMAIL, BILLY_EMAIL]) };
 }
 
 export async function sendPortalInviteEmail(email: string, onboardingUrl: string) {
