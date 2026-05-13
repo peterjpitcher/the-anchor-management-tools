@@ -123,7 +123,7 @@ export function buildSeparationStartedEmail(input: SeparationStartedEmailInput) 
   const sections = [
     greeting,
     '',
-    'I am writing to confirm that I have begun the formal process of separating you from Orange Jelly Limited.',
+    "We are writing to confirm that we've started the formal process of separating you from Orange Jelly Limited.",
     '',
     buildLastWorkingDayText(input.employmentEndDate, input.todayIso),
     remainingShiftsText ? `\n${remainingShiftsText}` : null,
@@ -139,7 +139,7 @@ export function buildSeparationStartedEmail(input: SeparationStartedEmailInput) 
     'Thank you for your service. I wish you the best of luck for the future.',
     '',
     'Kind regards,',
-    'Peter',
+    'Billy and I',
   ].filter((section): section is string => section !== null);
 
   return { subject, text: sections.join('\n'), cc: [MANAGER_EMAIL] };
