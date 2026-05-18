@@ -70,7 +70,7 @@ Plans:
 - [x] 03-01-PLAN.md -- Events section (list, calendar, board views) with drawer-based CRUD and SidebarNav cleanup
 - [x] 03-02-PLAN.md -- Cashing Up (5 sub-pages with SectionNav) and Short Links (table + insights)
 - [x] 03-03-PLAN.md -- OJ Projects section (overview, projects, entries, clients, work types)
-- [ ] 03-04-PLAN.md -- Design System documentation page and Performers route removal
+- [x] 03-04-PLAN.md -- Design System documentation page and Performers route removal
 
 ### Phase 4: Modes & Cleanup
 **Goal**: FOH chromeless mode is live for front-of-house managers, all legacy UI code is removed, and project documentation reflects the new design system as the canonical pattern
