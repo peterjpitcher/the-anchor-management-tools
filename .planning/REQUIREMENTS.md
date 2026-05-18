@@ -132,13 +132,83 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| (To be populated by roadmapper) | | |
+| DS-01 | Phase 1 | Pending |
+| DS-02 | Phase 1 | Pending |
+| DS-03 | Phase 1 | Pending |
+| DS-04 | Phase 1 | Pending |
+| DS-05 | Phase 1 | Pending |
+| DS-06 | Phase 1 | Pending |
+| DS-07 | Phase 1 | Pending |
+| DS-08 | Phase 1 | Pending |
+| DS-09 | Phase 1 | Pending |
+| DS-10 | Phase 1 | Pending |
+| DS-11 | Phase 1 | Pending |
+| DS-12 | Phase 1 | Pending |
+| DS-13 | Phase 1 | Pending |
+| DS-14 | Phase 1 | Pending |
+| DS-15 | Phase 1 | Pending |
+| DS-16 | Phase 1 | Pending |
+| DS-17 | Phase 1 | Pending |
+| DS-18 | Phase 1 | Pending |
+| DS-19 | Phase 1 | Pending |
+| DS-20 | Phase 1 | Pending |
+| SHELL-01 | Phase 1 | Pending |
+| SHELL-02 | Phase 1 | Pending |
+| SHELL-03 | Phase 1 | Pending |
+| SHELL-04 | Phase 1 | Pending |
+| SHELL-05 | Phase 1 | Pending |
+| SHELL-06 | Phase 1 | Pending |
+| MIG-01 | Phase 2 | Pending |
+| MIG-02 | Phase 2 | Pending |
+| MIG-03 | Phase 2 | Pending |
+| MIG-04 | Phase 2 | Pending |
+| MIG-05 | Phase 2 | Pending |
+| MIG-06 | Phase 2 | Pending |
+| MIG-07 | Phase 2 | Pending |
+| MIG-08 | Phase 2 | Pending |
+| MIG-09 | Phase 2 | Pending |
+| MIG-10 | Phase 2 | Pending |
+| MIG-11 | Phase 2 | Pending |
+| MIG-12 | Phase 2 | Pending |
+| MIG-13 | Phase 2 | Pending |
+| MIG-14 | Phase 2 | Pending |
+| MIG-15 | Phase 2 | Pending |
+| MIG-16 | Phase 2 | Pending |
+| MIG-17 | Phase 2 | Pending |
+| MIG-18 | Phase 2 | Pending |
+| MIG-19 | Phase 2 | Pending |
+| MIG-20 | Phase 2 | Pending |
+| MIG-21 | Phase 2 | Pending |
+| MIG-22 | Phase 2 | Pending |
+| MIG-23 | Phase 2 | Pending |
+| MIG-24 | Phase 2 | Pending |
+| MIG-25 | Phase 2 | Pending |
+| MIG-26 | Phase 2 | Pending |
+| MIG-27 | Phase 2 | Pending |
+| MIG-28 | Phase 2 | Pending |
+| NEW-01 | Phase 3 | Pending |
+| NEW-02 | Phase 3 | Pending |
+| NEW-03 | Phase 3 | Pending |
+| NEW-04 | Phase 3 | Pending |
+| NEW-05 | Phase 3 | Pending |
+| NEW-06 | Phase 3 | Pending |
+| NEW-07 | Phase 3 | Pending |
+| PERF-01 | Phase 3 | Pending |
+| PERF-02 | Phase 3 | Pending |
+| PERF-03 | Phase 3 | Pending |
+| PERF-04 | Phase 3 | Pending |
+| MODE-02 | Phase 3 | Pending |
+| MODE-01 | Phase 4 | Pending |
+| CLEAN-01 | Phase 4 | Pending |
+| CLEAN-02 | Phase 4 | Pending |
+| CLEAN-03 | Phase 4 | Pending |
+| CLEAN-04 | Phase 4 | Pending |
 
 **Coverage:**
-- v1 requirements: 68 total
-- Mapped to phases: 0
-- Unmapped: 68 ⚠️
+- v1 requirements: 71 total
+- Mapped to phases: 71
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-05-18*
-*Last updated: 2026-05-18 after initial definition*
+*Last updated: 2026-05-18 after roadmap creation -- all 71 requirements mapped to 4 phases*
