@@ -7,9 +7,9 @@
 
 ### Design System Foundation
 
-- [ ] **DS-01**: Migrate Tailwind from v3 syntax to v4 native (`@theme`, CSS-first config, remove `tailwind.config.js`)
-- [ ] **DS-02**: Implement design tokens via `@theme` block (brand palette 50-900, semantic surfaces, borders, text, status colours, shadows, radii, spacing, typography)
-- [ ] **DS-03**: Set up Inter (400-800) and JetBrains Mono (400-600) via `next/font`
+- [x] **DS-01**: Migrate Tailwind from v3 syntax to v4 native (`@theme`, CSS-first config, remove `tailwind.config.js`)
+- [x] **DS-02**: Implement design tokens via `@theme` block (brand palette 50-900, semantic surfaces, borders, text, status colours, shadows, radii, spacing, typography)
+- [x] **DS-03**: Set up Inter (400-800) and JetBrains Mono (400-600) via `next/font`
 - [ ] **DS-04**: Build Button component (4 variants: primary/secondary/ghost/danger, 3 sizes: sm/md/lg, icon support, loading state)
 - [ ] **DS-05**: Build Card component (header with title/subtitle/action, padded body, optional footer)
 - [ ] **DS-06**: Build Stat tile component (label, value, delta with direction, icon, hint)
@@ -132,9 +132,9 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| DS-01 | Phase 1 | Pending |
-| DS-02 | Phase 1 | Pending |
-| DS-03 | Phase 1 | Pending |
+| DS-01 | Phase 1 | Complete |
+| DS-02 | Phase 1 | Complete |
+| DS-03 | Phase 1 | Complete |
 | DS-04 | Phase 1 | Pending |
 | DS-05 | Phase 1 | Pending |
 | DS-06 | Phase 1 | Pending |
