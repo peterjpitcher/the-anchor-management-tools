@@ -47,12 +47,12 @@
 - [x] **MIG-06**: Redesign Menu Management page (section sidebar + dish table, allergens, availability toggles)
 - [x] **MIG-07**: Redesign Table Bookings (timeline swimlane, floor plan, list view, FOH/BOH/Reports/Settings sub-pages)
 - [x] **MIG-08**: Redesign Rota (weekly grid, Leave/Timeclock/Labour Costs/Payroll/Templates sub-pages)
-- [ ] **MIG-09**: Redesign Invoices page (table with tabs, client filter, status badges)
-- [ ] **MIG-10**: Redesign Quotes page (table, status tracking)
-- [ ] **MIG-11**: Redesign Receipts page (upload card + table, OCR description, tabs)
-- [ ] **MIG-12**: Redesign Mileage page (trips/destinations/rates sub-pages)
-- [ ] **MIG-13**: Redesign Expenses page (table + category breakdown sidebar with budget progress bars)
-- [ ] **MIG-14**: Redesign MGD page (machines table, quarterly readings, return history, HMRC registration)
+- [x] **MIG-09**: Redesign Invoices page (table with tabs, client filter, status badges)
+- [x] **MIG-10**: Redesign Quotes page (table, status tracking)
+- [x] **MIG-11**: Redesign Receipts page (upload card + table, OCR description, tabs)
+- [x] **MIG-12**: Redesign Mileage page (trips/destinations/rates sub-pages)
+- [x] **MIG-13**: Redesign Expenses page (table + category breakdown sidebar with budget progress bars)
+- [x] **MIG-14**: Redesign MGD page (machines table, quarterly readings, return history, HMRC registration)
 - [x] **MIG-15**: Redesign Messages page (3-panel layout: conversation list + thread + contact sidebar)
 - [x] **MIG-16**: Redesign Users page (user table, roles/permissions matrix)
 - [x] **MIG-17**: Redesign Profile page (personal details, security, notifications, sidebar)
@@ -166,12 +166,12 @@
 | MIG-06 | Phase 2 | Complete |
 | MIG-07 | Phase 2 | Complete |
 | MIG-08 | Phase 2 | Complete |
-| MIG-09 | Phase 2 | Pending |
-| MIG-10 | Phase 2 | Pending |
-| MIG-11 | Phase 2 | Pending |
-| MIG-12 | Phase 2 | Pending |
-| MIG-13 | Phase 2 | Pending |
-| MIG-14 | Phase 2 | Pending |
+| MIG-09 | Phase 2 | Complete |
+| MIG-10 | Phase 2 | Complete |
+| MIG-11 | Phase 2 | Complete |
+| MIG-12 | Phase 2 | Complete |
+| MIG-13 | Phase 2 | Complete |
+| MIG-14 | Phase 2 | Complete |
 | MIG-15 | Phase 2 | Complete |
 | MIG-16 | Phase 2 | Complete |
 | MIG-17 | Phase 2 | Complete |
