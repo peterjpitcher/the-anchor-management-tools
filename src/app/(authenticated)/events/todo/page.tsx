@@ -1,9 +1,14 @@
 import { redirect } from 'next/navigation'
 import { checkUserPermission } from '@/app/actions/rbac'
 import { getChecklistTodos } from '@/app/actions/event-checklist'
-import TodoClient from './TodoClient'
+import { PageHeader } from '@/ds'
+import TodoClient from './_components/TodoClient'
 
 export const dynamic = 'force-dynamic'
+
+export const metadata = {
+  title: 'Event Todos',
+}
 
 export default async function EventsTodoPage() {
   const canView = await checkUserPermission('events', 'view')
@@ -12,9 +17,16 @@ export default async function EventsTodoPage() {
   const result = await getChecklistTodos()
 
   return (
-    <TodoClient
-      initialItems={result.items || []}
-      initialError={result.success ? undefined : result.error}
-    />
+    <div className="p-6">
+      <PageHeader
+        title="Event Todos"
+        subtitle="Cross-event checklist overview"
+        breadcrumbs={[
+          { label: 'Events', href: '/events' },
+          { label: 'Todos' },
+        ]}
+      />
+      <TodoClient initialTodos={result.items ?? []} />
+    </div>
   )
 }
