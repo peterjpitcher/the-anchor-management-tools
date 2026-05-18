@@ -19,6 +19,7 @@ import {
   Badge,
 } from '@/ds'
 import { Icon } from '@/ds/icons'
+import Link from 'next/link'
 
 import { UsersContent } from '@/app/(authenticated)/users/_components/UsersContent'
 import { RolesContent } from '@/app/(authenticated)/users/_components/RolesContent'
@@ -194,6 +195,30 @@ function GeneralSection() {
           </CardBody>
         </Card>
       </div>
+
+      {/* Developer Tools */}
+      <Card>
+        <CardHeader title="Developer Tools" subtitle="Internal tools and references" />
+        <CardBody>
+          <Link
+            href="/settings/design-system"
+            className="flex items-center gap-3 p-3 -m-1 rounded-default hover:bg-surface-hover transition-colors group"
+          >
+            <div className="flex items-center justify-center w-10 h-10 rounded-lg bg-primary-soft">
+              <Icon name="palette" size={20} className="text-primary" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-[13px] font-semibold text-text-strong group-hover:text-primary transition-colors">
+                Design System
+              </p>
+              <p className="text-xs text-text-muted">
+                Component library, colours, typography, and spacing reference
+              </p>
+            </div>
+            <Icon name="chevronRight" size={16} className="text-text-subtle" />
+          </Link>
+        </CardBody>
+      </Card>
     </div>
   )
 }
