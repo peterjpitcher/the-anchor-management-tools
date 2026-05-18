@@ -1,16 +1,8 @@
 import { redirect } from 'next/navigation'
 import { checkUserPermission } from '@/app/actions/rbac'
 import { getCollections, getReturns, getCurrentReturn } from '@/app/actions/mgd'
-import { PageLayout } from '@/components/ui-v2/layout/PageLayout'
-import { Alert } from '@/components/ui-v2/feedback/Alert'
-import { Card } from '@/components/ui-v2/layout/Card'
+import { PageHeader, Alert, Card, CardBody } from '@/ds'
 import { MgdClient } from './_components/MgdClient'
-import type { HeaderNavItem } from '@/components/ui-v2/navigation/HeaderNav'
-
-const navItems: HeaderNavItem[] = [
-  { label: 'Collections', href: '/mgd' },
-  { label: 'Insights', href: '/mgd/insights' },
-]
 
 export default async function MgdPage(): Promise<React.ReactElement> {
   const canView = await checkUserPermission('mgd', 'view')
@@ -28,22 +20,27 @@ export default async function MgdPage(): Promise<React.ReactElement> {
       ('error' in currentReturnResult ? currentReturnResult.error : '') ||
       ('error' in returnsResult ? returnsResult.error : '')
     return (
-      <PageLayout title="Machine Games Duty" navItems={navItems}>
+      <div className="space-y-6">
+        <PageHeader
+          breadcrumbs={[{ label: 'Finance' }, { label: 'MGD' }]}
+          title="Machine Games Duty"
+          subtitle="Track collections and quarterly MGD returns"
+        />
         <Card>
-          <Alert
-            variant="error"
-            title="Error loading MGD data"
-            description={errorMsg || 'An unexpected error occurred.'}
-          />
+          <CardBody>
+            <Alert tone="danger" title="Error loading MGD data">
+              {errorMsg || 'An unexpected error occurred.'}
+            </Alert>
+          </CardBody>
         </Card>
-      </PageLayout>
+      </div>
     )
   }
 
   const currentReturn = currentReturnResult.data ?? null
   const allReturns = returnsResult.data ?? []
 
-  // Pre-fetch collections for the current return period (or empty)
+  // Pre-fetch collections for the current return period
   let initialCollections: Awaited<ReturnType<typeof getCollections>> extends
     | { data?: infer D }
     | { error: string }
@@ -60,12 +57,17 @@ export default async function MgdPage(): Promise<React.ReactElement> {
   }
 
   return (
-    <PageLayout title="Machine Games Duty" subtitle="Track collections and quarterly MGD returns" navItems={navItems}>
+    <div className="space-y-6">
+      <PageHeader
+        breadcrumbs={[{ label: 'Finance' }, { label: 'MGD' }]}
+        title="Machine Games Duty"
+        subtitle="Track collections and quarterly MGD returns"
+      />
       <MgdClient
         initialReturn={currentReturn}
         initialCollections={initialCollections}
         initialReturns={allReturns}
       />
-    </PageLayout>
+    </div>
   )
 }

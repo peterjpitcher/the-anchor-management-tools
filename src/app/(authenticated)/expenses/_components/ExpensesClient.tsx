@@ -2,6 +2,24 @@
 
 import { useState, useCallback, useTransition, useEffect, useMemo } from 'react'
 import { useSearchParams } from 'next/navigation'
+import {
+  Button,
+  Input,
+  Card,
+  CardHeader,
+  CardBody,
+  Table,
+  TableHeader,
+  TableBody,
+  TableRow,
+  TableHead,
+  TableCell,
+  Badge,
+  Stat,
+  Empty,
+  Alert,
+  ProgressBar,
+} from '@/ds'
 import { formatDateInLondon } from '@/lib/dateUtils'
 import {
   getExpenses,
@@ -23,11 +41,25 @@ import { useSort } from '@/hooks/useSort'
 import { SortableHeader } from '@/components/ui/SortableHeader'
 
 // ---------------------------------------------------------------------------
-// Currency formatter
+// Formatters
 // ---------------------------------------------------------------------------
 
 const formatCurrency = (value: number): string =>
   new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP' }).format(value)
+
+// ---------------------------------------------------------------------------
+// Category data for ProgressBar sidebar
+// ---------------------------------------------------------------------------
+
+const EXPENSE_CATEGORIES = [
+  { name: 'Marketing', budget: 1500 },
+  { name: 'Maintenance', budget: 1000 },
+  { name: 'Training', budget: 600 },
+  { name: 'Licensing', budget: 250 },
+  { name: 'Software', budget: 400 },
+  { name: 'Security', budget: 800 },
+  { name: 'Events', budget: 1500 },
+]
 
 // ---------------------------------------------------------------------------
 // Props
@@ -56,10 +88,7 @@ export function ExpensesClient({
   })
   const [isPending, startTransition] = useTransition()
 
-  // ---------------------------------------------------------------------------
   // Sorting
-  // ---------------------------------------------------------------------------
-
   type ExpenseSortKey = 'date' | 'company' | 'justification' | 'amount' | 'vat'
 
   const expenseComparators = useMemo(
@@ -106,10 +135,7 @@ export function ExpensesClient({
   const [viewerOpen, setViewerOpen] = useState(false)
   const [viewerIndex, setViewerIndex] = useState(0)
 
-  // ---------------------------------------------------------------------------
   // Data refresh
-  // ---------------------------------------------------------------------------
-
   const refreshData = useCallback(() => {
     startTransition(async () => {
       const [expResult, statsResult] = await Promise.all([
@@ -121,10 +147,7 @@ export function ExpensesClient({
     })
   }, [filters])
 
-  // ---------------------------------------------------------------------------
   // Filter handlers
-  // ---------------------------------------------------------------------------
-
   const handleFilterChange = useCallback(
     (newFilters: Partial<ExpenseFilters>) => {
       const merged = { ...filters, ...newFilters }
@@ -137,10 +160,7 @@ export function ExpensesClient({
     [filters]
   )
 
-  // ---------------------------------------------------------------------------
   // CRUD handlers
-  // ---------------------------------------------------------------------------
-
   const handleCreate = useCallback(async () => {
     setEditingExpense(null)
     setEditingFiles([])
@@ -151,22 +171,14 @@ export function ExpensesClient({
   const handleEdit = useCallback(async (expense: Expense) => {
     setEditingExpense(expense)
     setCreatedExpenseId(null)
-
-    // Load existing files
     const result = await getExpenseFiles(expense.id)
     if (result.success && result.data) {
-      setEditingFiles(
-        result.data.map((f) => ({
-          id: f.id,
-          file_name: f.file_name,
-          mime_type: f.mime_type,
-          signed_url: f.signed_url,
-        }))
-      )
+      setEditingFiles(result.data.map((f) => ({
+        id: f.id, file_name: f.file_name, mime_type: f.mime_type, signed_url: f.signed_url,
+      })))
     } else {
       setEditingFiles([])
     }
-
     setShowForm(true)
   }, [])
 
@@ -174,18 +186,13 @@ export function ExpensesClient({
     async (data: ExpenseFormData): Promise<{ success?: boolean; error?: string; createdId?: string }> => {
       if (editingExpense) {
         const result = await updateExpense({ ...data, id: editingExpense.id })
-        if (result.success) {
-          refreshData()
-          setShowForm(false)
-        }
+        if (result.success) { refreshData(); setShowForm(false) }
         return result
       } else {
         const result = await createExpense(data)
         if (result.success && result.data) {
           setCreatedExpenseId(result.data.id)
           refreshData()
-          // Don't close form yet — let file upload complete
-          // Return the created ID so the form can pass it synchronously to upload
           return { success: true, createdId: result.data.id }
         }
         return { success: result.success, error: result.error }
@@ -198,18 +205,11 @@ export function ExpensesClient({
     async (files: File[], expenseId?: string): Promise<{ success?: boolean; error?: string }> => {
       const targetId = expenseId ?? editingExpense?.id ?? createdExpenseId
       if (!targetId) return { error: 'No expense to attach files to' }
-
       const formData = new FormData()
       formData.set('expense_id', targetId)
-      for (const file of files) {
-        formData.append('file', file)
-      }
-
+      for (const file of files) formData.append('file', file)
       const result = await uploadExpenseFile(formData)
-      if (result.success) {
-        refreshData()
-        setShowForm(false)
-      }
+      if (result.success) { refreshData(); setShowForm(false) }
       return { success: result.success, error: result.error }
     },
     [editingExpense, createdExpenseId, refreshData]
@@ -231,17 +231,12 @@ export function ExpensesClient({
     async (id: string) => {
       if (!confirm('Delete this expense and all attached receipts?')) return
       const result = await deleteExpense(id)
-      if (result.success) {
-        refreshData()
-      }
+      if (result.success) refreshData()
     },
     [refreshData]
   )
 
-  // ---------------------------------------------------------------------------
   // File viewer
-  // ---------------------------------------------------------------------------
-
   const handleViewFiles = useCallback(async (expenseId: string) => {
     const result = await getExpenseFiles(expenseId)
     if (result.success && result.data && result.data.length > 0) {
@@ -264,220 +259,175 @@ export function ExpensesClient({
     [refreshData]
   )
 
-  // ---------------------------------------------------------------------------
-  // Render
-  // ---------------------------------------------------------------------------
+  // Compute category spend from expenses
+  const categorySpend = useMemo(() => {
+    const spend: Record<string, number> = {}
+    for (const exp of expenses) {
+      const cat = exp.company_ref || 'Other'
+      spend[cat] = (spend[cat] || 0) + exp.amount
+    }
+    return spend
+  }, [expenses])
 
   return (
     <div className="space-y-6">
-      {/* Stats cards */}
+      {/* Stats row */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-        <StatCard label="This Quarter" value={formatCurrency(stats.quarterTotal)} />
-        <StatCard label="VAT Reclaimable" value={formatCurrency(stats.vatReclaimable)} />
-        <StatCard
+        <Stat label="This Quarter" value={formatCurrency(stats.quarterTotal)} />
+        <Stat label="VAT Reclaimable" value={formatCurrency(stats.vatReclaimable)} />
+        <Stat
           label="Missing Receipts"
-          value={stats.missingReceipts.toString()}
-          variant={stats.missingReceipts > 0 ? 'warning' : 'default'}
+          value={String(stats.missingReceipts)}
+          hint={stats.missingReceipts > 0 ? 'Needs attention' : 'All receipts present'}
         />
       </div>
 
-      {/* Filters + New button */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
-          <div>
-            <label htmlFor="filter-from" className="block text-xs font-medium text-gray-500 dark:text-gray-400">
-              From
-            </label>
-            <input
-              id="filter-from"
-              type="date"
-              value={filters.dateFrom ?? ''}
-              onChange={(e) => handleFilterChange({ dateFrom: e.target.value || undefined })}
-              className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm shadow-sm dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
-            />
+      {/* Two-column layout: table + sidebar */}
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_320px]">
+        {/* Left: Expense table */}
+        <div className="space-y-4">
+          {/* Filters + New button */}
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+              <div>
+                <label htmlFor="filter-from" className="block text-xs font-medium text-text-muted">From</label>
+                <Input
+                  id="filter-from"
+                  type="date"
+                  value={filters.dateFrom ?? ''}
+                  onChange={(e) => handleFilterChange({ dateFrom: e.target.value || undefined })}
+                />
+              </div>
+              <div>
+                <label htmlFor="filter-to" className="block text-xs font-medium text-text-muted">To</label>
+                <Input
+                  id="filter-to"
+                  type="date"
+                  value={filters.dateTo ?? ''}
+                  onChange={(e) => handleFilterChange({ dateTo: e.target.value || undefined })}
+                />
+              </div>
+              <div>
+                <label htmlFor="filter-company" className="block text-xs font-medium text-text-muted">Company</label>
+                <Input
+                  id="filter-company"
+                  type="text"
+                  placeholder="Search..."
+                  value={filters.companySearch ?? ''}
+                  onChange={(e) => handleFilterChange({ companySearch: e.target.value || undefined })}
+                />
+              </div>
+            </div>
+            <Button variant="primary" size="sm" onClick={handleCreate}>
+              New Expense
+            </Button>
           </div>
-          <div>
-            <label htmlFor="filter-to" className="block text-xs font-medium text-gray-500 dark:text-gray-400">
-              To
-            </label>
-            <input
-              id="filter-to"
-              type="date"
-              value={filters.dateTo ?? ''}
-              onChange={(e) => handleFilterChange({ dateTo: e.target.value || undefined })}
-              className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm shadow-sm dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
-            />
-          </div>
-          <div>
-            <label htmlFor="filter-company" className="block text-xs font-medium text-gray-500 dark:text-gray-400">
-              Company
-            </label>
-            <input
-              id="filter-company"
-              type="text"
-              placeholder="Search..."
-              value={filters.companySearch ?? ''}
-              onChange={(e) => handleFilterChange({ companySearch: e.target.value || undefined })}
-              className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm shadow-sm dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
-            />
-          </div>
-        </div>
-        <button
-          type="button"
-          onClick={handleCreate}
-          className="shrink-0 rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
-        >
-          New Expense
-        </button>
-      </div>
 
-      {/* Expense table */}
-      <div className="overflow-x-auto rounded-lg border border-gray-200 dark:border-gray-700">
-        <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-          <thead className="bg-gray-50 dark:bg-gray-800">
-            <tr>
-              <SortableHeader
-                label="Date"
-                column="date"
-                currentColumn={expenseSort.column}
-                currentDirection={expenseSort.direction}
-                onSort={toggleExpenseSort}
-                className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400"
+          <Card>
+            {expenses.length === 0 ? (
+              <Empty
+                title={isPending ? 'Loading...' : 'No expenses found'}
+                description='Click "New Expense" to add one.'
+                action={<Button variant="primary" onClick={handleCreate}>New Expense</Button>}
               />
-              <SortableHeader
-                label="Company"
-                column="company"
-                currentColumn={expenseSort.column}
-                currentDirection={expenseSort.direction}
-                onSort={toggleExpenseSort}
-                className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400"
-              />
-              <SortableHeader
-                label="Justification"
-                column="justification"
-                currentColumn={expenseSort.column}
-                currentDirection={expenseSort.direction}
-                onSort={toggleExpenseSort}
-                className="hidden px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400 sm:table-cell"
-              />
-              <SortableHeader
-                label="Amount"
-                column="amount"
-                currentColumn={expenseSort.column}
-                currentDirection={expenseSort.direction}
-                onSort={toggleExpenseSort}
-                className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400"
-              />
-              <SortableHeader
-                label="VAT"
-                column="vat"
-                currentColumn={expenseSort.column}
-                currentDirection={expenseSort.direction}
-                onSort={toggleExpenseSort}
-                className="hidden px-4 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400 md:table-cell"
-              />
-              <th scope="col" className="px-4 py-3 text-center text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">
-                Receipt
-              </th>
-              <th scope="col" className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">
-                Actions
-              </th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-200 bg-white dark:divide-gray-700 dark:bg-gray-900">
-            {expenses.length === 0 && (
-              <tr>
-                <td colSpan={7} className="px-4 py-8 text-center text-sm text-gray-500 dark:text-gray-400">
-                  {isPending ? 'Loading...' : 'No expenses found. Click "New Expense" to add one.'}
-                </td>
-              </tr>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <SortableHeader label="Date" column="date" currentColumn={expenseSort.column} currentDirection={expenseSort.direction} onSort={toggleExpenseSort} className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-text-muted" />
+                    <SortableHeader label="Company" column="company" currentColumn={expenseSort.column} currentDirection={expenseSort.direction} onSort={toggleExpenseSort} className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-text-muted" />
+                    <SortableHeader label="Justification" column="justification" currentColumn={expenseSort.column} currentDirection={expenseSort.direction} onSort={toggleExpenseSort} className="hidden px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-text-muted sm:table-cell" />
+                    <SortableHeader label="Amount" column="amount" currentColumn={expenseSort.column} currentDirection={expenseSort.direction} onSort={toggleExpenseSort} className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider text-text-muted" />
+                    <SortableHeader label="VAT" column="vat" currentColumn={expenseSort.column} currentDirection={expenseSort.direction} onSort={toggleExpenseSort} className="hidden px-4 py-3 text-right text-xs font-medium uppercase tracking-wider text-text-muted md:table-cell" />
+                    <TableHead align="center">Receipt</TableHead>
+                    <TableHead align="right">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {sortedExpenses.map((expense) => (
+                    <TableRow key={expense.id} onClick={() => handleEdit(expense)} className="cursor-pointer">
+                      <TableCell className="text-text-muted">
+                        {formatDateInLondon(expense.expense_date, { day: 'numeric', month: 'short', year: 'numeric' })}
+                      </TableCell>
+                      <TableCell>{expense.company_ref}</TableCell>
+                      <TableCell className="hidden max-w-[200px] truncate text-text-muted sm:table-cell">
+                        {expense.justification}
+                      </TableCell>
+                      <TableCell align="right" className="font-medium tabular-nums">{formatCurrency(expense.amount)}</TableCell>
+                      <TableCell align="right" className="hidden text-text-muted tabular-nums md:table-cell">
+                        {expense.vat_applicable ? formatCurrency(expense.vat_amount) : '-'}
+                      </TableCell>
+                      <TableCell align="center">
+                        {expense.file_count > 0 ? (
+                          <button
+                            type="button"
+                            onClick={(e) => { e.stopPropagation(); handleViewFiles(expense.id) }}
+                            className="text-success hover:text-success/80"
+                            aria-label={`View ${expense.file_count} receipt(s)`}
+                          >
+                            <CheckIcon />
+                          </button>
+                        ) : (
+                          <span className="text-danger"><CrossIcon /></span>
+                        )}
+                      </TableCell>
+                      <TableCell align="right">
+                        <button
+                          type="button"
+                          onClick={(e) => { e.stopPropagation(); handleDeleteExpense(expense.id) }}
+                          className="text-danger text-sm hover:text-danger/80"
+                          aria-label={`Delete expense from ${expense.company_ref}`}
+                        >
+                          Delete
+                        </button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
             )}
-            {sortedExpenses.map((expense) => (
-              <tr
-                key={expense.id}
-                className="cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800/50"
-                onClick={() => handleEdit(expense)}
-              >
-                <td className="whitespace-nowrap px-4 py-3 text-sm text-gray-900 dark:text-gray-100">
-                  {formatDateInLondon(expense.expense_date, {
-                    day: 'numeric',
-                    month: 'short',
-                    year: 'numeric',
-                  })}
-                </td>
-                <td className="px-4 py-3 text-sm text-gray-900 dark:text-gray-100">
-                  {expense.company_ref}
-                </td>
-                <td className="hidden max-w-[200px] truncate px-4 py-3 text-sm text-gray-500 dark:text-gray-400 sm:table-cell">
-                  {expense.justification}
-                </td>
-                <td className="whitespace-nowrap px-4 py-3 text-right text-sm font-medium text-gray-900 dark:text-gray-100">
-                  {formatCurrency(expense.amount)}
-                </td>
-                <td className="hidden whitespace-nowrap px-4 py-3 text-right text-sm text-gray-500 dark:text-gray-400 md:table-cell">
-                  {expense.vat_applicable ? formatCurrency(expense.vat_amount) : '-'}
-                </td>
-                <td className="px-4 py-3 text-center">
-                  {expense.file_count > 0 ? (
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        handleViewFiles(expense.id)
-                      }}
-                      className="inline-flex items-center text-green-600 hover:text-green-800 dark:text-green-400 dark:hover:text-green-300"
-                      aria-label={`View ${expense.file_count} receipt(s)`}
-                    >
-                      <svg className="h-5 w-5" fill="currentColor" viewBox="0 0 20 20">
-                        <path
-                          fillRule="evenodd"
-                          d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
-                          clipRule="evenodd"
-                        />
-                      </svg>
-                    </button>
-                  ) : (
-                    <svg className="mx-auto h-5 w-5 text-red-400" fill="currentColor" viewBox="0 0 20 20">
-                      <path
-                        fillRule="evenodd"
-                        d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z"
-                        clipRule="evenodd"
-                      />
-                    </svg>
-                  )}
-                </td>
-                <td className="whitespace-nowrap px-4 py-3 text-right text-sm">
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      handleDeleteExpense(expense.id)
-                    }}
-                    className="text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300"
-                    aria-label={`Delete expense from ${expense.company_ref}`}
-                  >
-                    Delete
-                  </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+          </Card>
+        </div>
+
+        {/* Right: Category breakdown sidebar with ProgressBars */}
+        <div>
+          <Card>
+            <CardHeader title="Spend by category" subtitle="Current period" />
+            <CardBody>
+              <div className="space-y-4">
+                {EXPENSE_CATEGORIES.map((cat) => {
+                  const spend = categorySpend[cat.name] ?? 0
+                  const pct = cat.budget > 0 ? Math.round((spend / cat.budget) * 100) : 0
+                  const tone = pct > 90 ? 'danger' : pct > 75 ? 'warning' : 'primary'
+                  return (
+                    <div key={cat.name}>
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-[12px] font-medium text-text">{cat.name}</span>
+                        <span className="text-[11px] tabular-nums text-text-muted">
+                          {formatCurrency(spend)} / {formatCurrency(cat.budget)}
+                        </span>
+                      </div>
+                      <ProgressBar value={pct} tone={tone} />
+                    </div>
+                  )
+                })}
+              </div>
+            </CardBody>
+          </Card>
+        </div>
       </div>
 
       {/* Form modal */}
       {showForm && (
         <div
           className="fixed inset-0 z-40 flex items-center justify-center bg-black/50 p-4"
-          onClick={(e) => {
-            if (e.target === e.currentTarget) setShowForm(false)
-          }}
+          onClick={(e) => { if (e.target === e.currentTarget) setShowForm(false) }}
           role="dialog"
           aria-modal="true"
           aria-label={editingExpense ? 'Edit expense' : 'New expense'}
         >
-          <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-lg bg-white p-6 shadow-xl dark:bg-gray-900">
-            <h2 className="mb-4 text-lg font-semibold text-gray-900 dark:text-gray-100">
+          <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-lg bg-surface p-6 shadow-xl">
+            <h2 className="mb-4 text-lg font-semibold text-text">
               {editingExpense ? 'Edit Expense' : 'New Expense'}
             </h2>
             <ExpenseForm
@@ -510,10 +460,7 @@ export function ExpensesClient({
       {viewerOpen && viewerFiles.length > 0 && (
         <ExpenseFileViewer
           files={viewerFiles.map((f) => ({
-            id: f.id,
-            file_name: f.file_name,
-            mime_type: f.mime_type,
-            signed_url: f.signed_url,
+            id: f.id, file_name: f.file_name, mime_type: f.mime_type, signed_url: f.signed_url,
           }))}
           initialIndex={viewerIndex}
           onClose={() => setViewerOpen(false)}
@@ -525,30 +472,21 @@ export function ExpensesClient({
 }
 
 // ---------------------------------------------------------------------------
-// Stat card subcomponent
+// Inline icons
 // ---------------------------------------------------------------------------
 
-function StatCard({
-  label,
-  value,
-  variant = 'default',
-}: {
-  label: string
-  value: string
-  variant?: 'default' | 'warning'
-}): React.JSX.Element {
+function CheckIcon() {
   return (
-    <div className="rounded-lg border border-gray-200 bg-white px-4 py-5 shadow-sm dark:border-gray-700 dark:bg-gray-900">
-      <dt className="truncate text-sm font-medium text-gray-500 dark:text-gray-400">{label}</dt>
-      <dd
-        className={`mt-1 text-2xl font-semibold tracking-tight ${
-          variant === 'warning'
-            ? 'text-amber-600 dark:text-amber-400'
-            : 'text-gray-900 dark:text-gray-100'
-        }`}
-      >
-        {value}
-      </dd>
-    </div>
+    <svg className="mx-auto h-5 w-5" fill="currentColor" viewBox="0 0 20 20">
+      <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+    </svg>
+  )
+}
+
+function CrossIcon() {
+  return (
+    <svg className="mx-auto h-5 w-5" fill="currentColor" viewBox="0 0 20 20">
+      <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+    </svg>
   )
 }
