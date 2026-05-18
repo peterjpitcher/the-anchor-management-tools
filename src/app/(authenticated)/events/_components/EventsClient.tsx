@@ -5,6 +5,9 @@ import { PageHeader, Segmented } from '@/ds'
 import { Button } from '@/ds'
 import { Icon } from '@/ds/icons'
 import { EventListView } from './EventListView'
+import { EventCalendarView } from './EventCalendarView'
+import { EventBoardView } from './EventBoardView'
+import { EventDrawer } from './EventDrawer'
 import { EventFilterPanel, type EventFilters } from './EventFilterPanel'
 import type { Event } from '@/types/database'
 import type { EventCategory } from '@/types/event-categories'
@@ -169,19 +172,27 @@ export default function EventsClient({
         )}
 
         {view === 'calendar' && (
-          <div className="text-center text-text-muted py-12">
-            Calendar view will be built in Task 2
-          </div>
+          <EventCalendarView
+            events={events}
+            onEventClick={handleEventClick}
+          />
         )}
 
         {view === 'board' && (
-          <div className="text-center text-text-muted py-12">
-            Board view will be built in Task 2
-          </div>
+          <EventBoardView
+            events={events}
+            onEventClick={handleEventClick}
+          />
         )}
       </div>
 
-      {/* EventDrawer will be added in Task 2 */}
+      <EventDrawer
+        open={drawerOpen}
+        onClose={handleDrawerClose}
+        event={activeEvent}
+        categories={categories}
+        onSave={handleSave}
+      />
     </div>
   )
 }
