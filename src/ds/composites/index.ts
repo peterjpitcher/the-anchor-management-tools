@@ -1,6 +1,6 @@
-/**
- * Composite components — populated by Plan 01-03
- *
- * Will export: Card, Stat, PageHeader, SectionNav, Tabs,
- * Segmented, Table
- */
+export { Card, CardHeader, CardBody, CardFooter } from './Card'
+export { PageHeader } from './PageHeader'
+export { SectionNav } from './SectionNav'
+export { Tabs } from './Tabs'
+export { Segmented } from './Segmented'
+export { Table, TableHeader, TableBody, TableRow, TableHead, TableCell, TablePagination } from './Table'
