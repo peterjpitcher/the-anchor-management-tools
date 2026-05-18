@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-stopped_at: Completed 02-04-PLAN.md
-last_updated: "2026-05-18T18:20:15.056Z"
+stopped_at: Completed 02-02-PLAN.md
+last_updated: "2026-05-18T18:30:25.327Z"
 progress:
   total_phases: 4
   completed_phases: 1
   total_plans: 9
-  completed_plans: 6
+  completed_plans: 8
 ---
 
 # Project State
@@ -24,7 +24,7 @@ See: .planning/PROJECT.md (updated 2026-05-18)
 ## Current Position
 
 Phase: 02 (screen-migrations) — EXECUTING
-Plan: 3 of 5
+Plan: 4 of 5
 
 ## Performance Metrics
 
@@ -52,6 +52,7 @@ Plan: 3 of 5
 | Phase 01 P04 | 8min | 3 tasks | 10 files |
 | Phase 02-screen-migrations P01 | 128min | 3 tasks | 26 files |
 | Phase 02-screen-migrations P04 | 7min | 2 tasks | 10 files |
+| Phase 02-screen-migrations P02 | 17min | 3 tasks | 19 files |
 
 ## Accumulated Context
 
@@ -77,6 +78,8 @@ Recent decisions affecting current work:
 - [Phase 02-screen-migrations]: Keep toast utility from ui-v2 as acceptable migration exception; domain components (CustomerForm, DeleteBookingButton, etc.) preserved unchanged
 - [Phase 02-screen-migrations]: Use _components/ subdirectory pattern for migrated client components; ds/ API differences documented (Tabs: activeTab/onTabChange, Select: options array, Empty: description, TablePagination: page/totalItems)
 - [Phase 02-screen-migrations]: Settings hub embeds UsersContent, RolesContent, ProfileClient via SectionNav state-based rendering; ds/ Alert/Badge use 'tone' not 'variant', ConfirmDialog uses 'message' not 'description'
+- [Phase 02-screen-migrations]: Table Bookings and Rota sub-pages use demo data for initial ds/ buildout; real data wiring happens when page.tsx switches to new client components
+- [Phase 02-screen-migrations]: CardHeader requires title prop (not children), Badge has no size prop, ProgressBar value is 0-100 pct, Tabs uses tabs prop (not items)
 
 ### Pending Todos
 
@@ -90,6 +93,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-05-18T18:20:15.054Z
-Stopped at: Completed 02-04-PLAN.md
+Last session: 2026-05-18T18:30:25.325Z
+Stopped at: Completed 02-02-PLAN.md
 Resume file: None
