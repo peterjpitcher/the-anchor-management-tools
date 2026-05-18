@@ -43,10 +43,10 @@
 - [x] **MIG-02**: Redesign Customers page (CRM table, labels, bulk actions, tabs, search/filters)
 - [x] **MIG-03**: Redesign Employees page (master-detail layout, table + detail panel)
 - [x] **MIG-04**: Redesign Private Bookings page (table, deposit tracking, run sheet card)
-- [ ] **MIG-05**: Redesign Parking page (table + lot map sidebar + pricing card)
-- [ ] **MIG-06**: Redesign Menu Management page (section sidebar + dish table, allergens, availability toggles)
-- [ ] **MIG-07**: Redesign Table Bookings (timeline swimlane, floor plan, list view, FOH/BOH/Reports/Settings sub-pages)
-- [ ] **MIG-08**: Redesign Rota (weekly grid, Leave/Timeclock/Labour Costs/Payroll/Templates sub-pages)
+- [x] **MIG-05**: Redesign Parking page (table + lot map sidebar + pricing card)
+- [x] **MIG-06**: Redesign Menu Management page (section sidebar + dish table, allergens, availability toggles)
+- [x] **MIG-07**: Redesign Table Bookings (timeline swimlane, floor plan, list view, FOH/BOH/Reports/Settings sub-pages)
+- [x] **MIG-08**: Redesign Rota (weekly grid, Leave/Timeclock/Labour Costs/Payroll/Templates sub-pages)
 - [ ] **MIG-09**: Redesign Invoices page (table with tabs, client filter, status badges)
 - [ ] **MIG-10**: Redesign Quotes page (table, status tracking)
 - [ ] **MIG-11**: Redesign Receipts page (upload card + table, OCR description, tabs)
@@ -162,10 +162,10 @@
 | MIG-02 | Phase 2 | Complete |
 | MIG-03 | Phase 2 | Complete |
 | MIG-04 | Phase 2 | Complete |
-| MIG-05 | Phase 2 | Pending |
-| MIG-06 | Phase 2 | Pending |
-| MIG-07 | Phase 2 | Pending |
-| MIG-08 | Phase 2 | Pending |
+| MIG-05 | Phase 2 | Complete |
+| MIG-06 | Phase 2 | Complete |
+| MIG-07 | Phase 2 | Complete |
+| MIG-08 | Phase 2 | Complete |
 | MIG-09 | Phase 2 | Pending |
 | MIG-10 | Phase 2 | Pending |
 | MIG-11 | Phase 2 | Pending |
