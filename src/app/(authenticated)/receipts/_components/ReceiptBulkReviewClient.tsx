@@ -3,14 +3,7 @@
 import { useEffect, useMemo, useState, useTransition } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { SparklesIcon, ClockIcon, UsersIcon, BuildingStorefrontIcon, RocketLaunchIcon } from '@heroicons/react/24/outline'
-import { Button } from '@/components/ui-v2/forms/Button'
-import { Input } from '@/components/ui-v2/forms/Input'
-import { Select } from '@/components/ui-v2/forms/Select'
-import { Checkbox } from '@/components/ui-v2/forms/Checkbox'
-import { Card } from '@/components/ui-v2/layout/Card'
-import { Badge } from '@/components/ui-v2/display/Badge'
-import { toast } from '@/components/ui-v2/feedback/Toast'
-import { Spinner } from '@/components/ui-v2/feedback/Spinner'
+import { Button, Input, Select, Checkbox, Card, Badge, toast, Spinner } from '@/ds'
 import type { ReceiptBulkReviewData } from '@/app/actions/receipts'
 import {
   applyReceiptGroupClassification,
@@ -358,27 +351,24 @@ export default function ReceiptBulkReviewClient({ initialData, initialFilters }:
 
   return (
     <div className="space-y-6">
-      <Card
-        variant="bordered"
-        header={<div className="flex flex-wrap items-center justify-between gap-3">
+      <Card>
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
           <div>
             <h2 className="text-lg font-semibold text-gray-900">Filters</h2>
             <p className="text-sm text-gray-500">Fine-tune which transactions are grouped before you approve them.</p>
           </div>
-        </div>}
-      >
+        </div>
         <div className="grid gap-4 md:grid-cols-3">
           <div>
             <label className="text-sm font-medium text-gray-700">Statuses</label>
             <div className="mt-2 flex flex-wrap gap-3">
               {statusOrder.map((status) => (
-                <label key={status} className="flex items-center gap-2 text-sm text-gray-700">
-                  <Checkbox
-                    checked={currentStatuses.has(status)}
-                    onChange={() => handleStatusToggle(status)}
-                  />
-                  {STATUS_LABELS[status]}
-                </label>
+                <Checkbox
+                  key={status}
+                  label={STATUS_LABELS[status]}
+                  checked={currentStatuses.has(status)}
+                  onChange={() => handleStatusToggle(status)}
+                />
               ))}
             </div>
           </div>
@@ -388,27 +378,27 @@ export default function ReceiptBulkReviewClient({ initialData, initialFilters }:
               className="mt-2"
               value={String(initialFilters.limit)}
               onChange={(event) => handleLimitChange(event.target.value)}
-            >
-              {limitOptions.map((option) => (
-                <option key={option} value={option}>{option} rows</option>
-              ))}
-            </Select>
+              options={limitOptions.map((option) => ({
+                value: String(option),
+                label: `${option} rows`,
+              }))}
+            />
           </div>
           <div>
             <label className="text-sm font-medium text-gray-700">Scope</label>
-            <div className="mt-2 flex items-center gap-2 text-sm text-gray-700">
+            <div className="mt-2">
               <Checkbox
+                label="Only show transactions missing vendor and expense tags"
                 checked={initialFilters.onlyUnclassified}
-                onChange={(event) => handleOnlyUnclassifiedToggle(event.target.checked)}
+                onChange={(checked) => handleOnlyUnclassifiedToggle(checked)}
               />
-              Only show transactions missing vendor and expense tags
             </div>
-            <div className="mt-2 flex items-center gap-2 text-sm text-gray-700">
+            <div className="mt-2">
               <Checkbox
+                label="Fuzzy group similar transactions"
                 checked={isFuzzyGrouping}
-                onChange={(event) => handleFuzzyToggle(event.target.checked)}
+                onChange={(checked) => handleFuzzyToggle(checked)}
               />
-              Fuzzy group similar transactions
             </div>
             <p className="mt-2 text-xs text-gray-500">Currently reviewing: {statusesLabel || 'pending transactions'}.</p>
           </div>
@@ -416,7 +406,7 @@ export default function ReceiptBulkReviewClient({ initialData, initialFilters }:
       </Card>
 
       {initialData.groups.length === 0 ? (
-        <Card variant="bordered">
+        <Card>
           <div className="flex items-center gap-3 text-sm text-gray-600">
             <ClockIcon className="h-5 w-5 text-gray-400" />
             Nothing to review with your current filters. Adjust the filters above or import more transactions.
@@ -436,10 +426,8 @@ export default function ReceiptBulkReviewClient({ initialData, initialFilters }:
             const sample = group.sampleTransaction
 
             return (
-              <Card
-                key={group.details}
-                variant="bordered"
-                header={<div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+              <Card key={group.details}>
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between mb-4">
                   <div className="space-y-1">
                     <h3 className="text-base font-semibold text-gray-900">{group.details}</h3>
                     <div className="flex flex-wrap items-center gap-2 text-xs text-gray-500">
@@ -453,24 +441,24 @@ export default function ReceiptBulkReviewClient({ initialData, initialFilters }:
                   </div>
                   <div className="flex items-center gap-2">
                     {suggestion.source !== 'none' && (
-                      <Badge variant={suggestion.source === 'ai' ? 'info' : 'secondary'} size="sm">
+                      <Badge tone={suggestion.source === 'ai' ? 'info' : 'neutral'}>
                         {suggestion.source === 'ai' ? 'AI suggestion' : 'Based on existing data'}
                       </Badge>
                     )}
                     {suggestion.model && (
-                      <Badge variant="default" size="sm">{suggestion.model}</Badge>
+                      <Badge tone="neutral">{suggestion.model}</Badge>
                     )}
                   </div>
-                </div>}
-              >
+                </div>
                 <div className="space-y-4">
                   <div className="grid gap-4 md:grid-cols-2">
                     <div className="space-y-2">
                       <label className="text-sm font-medium text-gray-700">Vendor</label>
                       <div className="flex items-center gap-3">
                         <Checkbox
+                          label=""
                           checked={applyVendor[group.details] ?? false}
-                          onChange={(event) => setApplyVendor((prev) => ({ ...prev, [group.details]: event.target.checked }))}
+                          onChange={(checked) => setApplyVendor((prev) => ({ ...prev, [group.details]: checked }))}
                           disabled={!canManageReceipts}
                         />
                         <Input
@@ -488,20 +476,23 @@ export default function ReceiptBulkReviewClient({ initialData, initialFilters }:
                       <label className="text-sm font-medium text-gray-700">Expense category</label>
                       <div className="flex items-center gap-3">
                         <Checkbox
+                          label=""
                           checked={applyExpense[group.details] ?? false}
-                          onChange={(event) => setApplyExpense((prev) => ({ ...prev, [group.details]: event.target.checked }))}
+                          onChange={(checked) => setApplyExpense((prev) => ({ ...prev, [group.details]: checked }))}
                           disabled={!canManageReceipts}
                         />
                         <Select
                           value={expenseValue}
                           onChange={(event) => setExpenseDrafts((prev) => ({ ...prev, [group.details]: event.target.value }))}
                           disabled={!applyExpense[group.details] || !canManageReceipts}
-                        >
-                          <option value="">Leave unset</option>
-                          {EXPENSE_OPTIONS.map((option) => (
-                            <option key={option} value={option}>{option}</option>
-                          ))}
-                        </Select>
+                          options={[
+                            { value: '', label: 'Leave unset' },
+                            ...EXPENSE_OPTIONS.map((option) => ({
+                              value: option,
+                              label: option,
+                            })),
+                          ]}
+                        />
                       </div>
                       {suggestion.expenseCategory && (
                         <p className="text-xs text-gray-500 inline-flex items-center gap-1"><SparklesIcon className="h-4 w-4 text-blue-500" /> {suggestion.expenseCategory}</p>
@@ -563,7 +554,7 @@ export default function ReceiptBulkReviewClient({ initialData, initialFilters }:
                       Configure rule
                     </Button>
                     {createdRule && (
-                      <Badge variant="success" size="sm">Rule created: {createdRule.name}</Badge>
+                      <Badge tone="success">Rule created: {createdRule.name}</Badge>
                     )}
                     {createdRule && (
                       <Button
@@ -624,11 +615,11 @@ export default function ReceiptBulkReviewClient({ initialData, initialFilters }:
                                 direction: event.target.value as 'in' | 'out' | 'both',
                               },
                             }))}
-                          >
-                            {RULE_DIRECTION_OPTIONS.map((option) => (
-                              <option key={option.value} value={option.value}>{option.label}</option>
-                            ))}
-                          </Select>
+                            options={RULE_DIRECTION_OPTIONS.map((option) => ({
+                              value: option.value,
+                              label: option.label,
+                            }))}
+                          />
                         </div>
                         <div>
                           <label className="text-xs font-medium text-emerald-900">Auto status</label>
@@ -642,37 +633,37 @@ export default function ReceiptBulkReviewClient({ initialData, initialFilters }:
                                 autoStatus: event.target.value as BulkStatus,
                               },
                             }))}
-                          >
-                            {RULE_STATUS_OPTIONS.map((status) => (
-                              <option key={status} value={status}>{STATUS_LABELS[status]}</option>
-                            ))}
-                          </Select>
+                            options={RULE_STATUS_OPTIONS.map((status) => ({
+                              value: status,
+                              label: STATUS_LABELS[status],
+                            }))}
+                          />
                         </div>
                         <div className="flex items-center gap-2">
                           <Checkbox
+                            label="Set vendor automatically"
                             checked={ruleDraft.setVendor}
-                            onChange={(event) => setRuleDrafts((prev) => ({
+                            onChange={(checked) => setRuleDrafts((prev) => ({
                               ...prev,
                               [group.details]: {
                                 ...prev[group.details],
-                                setVendor: event.target.checked,
+                                setVendor: checked,
                               },
                             }))}
                           />
-                          <span className="text-xs text-emerald-900">Set vendor automatically</span>
                         </div>
                         <div className="flex items-center gap-2">
                           <Checkbox
+                            label="Set expense category automatically"
                             checked={ruleDraft.setExpense}
-                            onChange={(event) => setRuleDrafts((prev) => ({
+                            onChange={(checked) => setRuleDrafts((prev) => ({
                               ...prev,
                               [group.details]: {
                                 ...prev[group.details],
-                                setExpense: event.target.checked,
+                                setExpense: checked,
                               },
                             }))}
                           />
-                          <span className="text-xs text-emerald-900">Set expense category automatically</span>
                         </div>
                       </div>
                       <div className="flex flex-wrap items-center gap-3">

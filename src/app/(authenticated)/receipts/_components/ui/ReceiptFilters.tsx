@@ -2,10 +2,7 @@
 
 import { useMemo, FormEvent, ChangeEvent } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { Button } from '@/components/ui-v2/forms/Button'
-import { Input } from '@/components/ui-v2/forms/Input'
-import { Select } from '@/components/ui-v2/forms/Select'
-import { Checkbox } from '@/components/ui-v2/forms/Checkbox'
+import { Button, Input, Select, Checkbox } from '@/ds'
 import type { ReceiptWorkspaceFilters } from '@/app/actions/receipts'
 import type { ReceiptTransaction } from '@/types/database'
 
@@ -111,35 +108,27 @@ export function ReceiptFilters({ filters, availableMonths }: ReceiptFiltersProps
     updateQuery({ search: query || null })
   }
 
-  function handleOutstandingToggle(event: ChangeEvent<HTMLInputElement>) {
-    updateQuery({ outstanding: event.target.checked ? null : '0' })
+  function handleOutstandingToggle(checked: boolean) {
+    updateQuery({ outstanding: checked ? null : '0' })
   }
 
-  function handleGroupByVendorToggle(event: ChangeEvent<HTMLInputElement>) {
-    updateQuery({ groupByVendor: event.target.checked ? null : '0' })
+  function handleGroupByVendorToggle(checked: boolean) {
+    updateQuery({ groupByVendor: checked ? null : '0' })
   }
 
-  function handleMissingVendorToggle(event: ChangeEvent<HTMLInputElement>) {
-    updateQuery({ needsVendor: event.target.checked ? '1' : null })
+  function handleMissingVendorToggle(checked: boolean) {
+    updateQuery({ needsVendor: checked ? '1' : null })
   }
 
-  function handleMissingExpenseToggle(event: ChangeEvent<HTMLInputElement>) {
-    updateQuery({ needsExpense: event.target.checked ? '1' : null })
+  function handleMissingExpenseToggle(checked: boolean) {
+    updateQuery({ needsExpense: checked ? '1' : null })
   }
 
   return (
     <div className="mb-4 space-y-3">
       <div className="flex items-center justify-end gap-2">
-        <Select value={filters.status ?? 'all'} onChange={handleStatusChange} className="w-40">
-          {statusOptions.map((option) => (
-            <option key={option.value} value={option.value}>{option.label}</option>
-          ))}
-        </Select>
-        <Select value={filters.direction ?? 'all'} onChange={handleDirectionChange} className="w-40">
-          {directionOptions.map((option) => (
-            <option key={option.value} value={option.value}>{option.label}</option>
-          ))}
-        </Select>
+        <Select value={filters.status ?? 'all'} onChange={handleStatusChange} className="w-40" options={statusOptions} />
+        <Select value={filters.direction ?? 'all'} onChange={handleDirectionChange} className="w-40" options={directionOptions} />
       </div>
 
       {monthOptions.length > 0 && (
@@ -148,9 +137,8 @@ export function ReceiptFilters({ filters, availableMonths }: ReceiptFiltersProps
           style={{ WebkitOverflowScrolling: 'touch' }}
         >
           <Button
-            variant="ghost"
-            size="xs"
-            active={!filters.month}
+            variant={!filters.month ? 'secondary' : 'ghost'}
+            size="sm"
             onClick={() => updateQuery({ month: null })}
             className="whitespace-nowrap flex-shrink-0"
           >
@@ -161,9 +149,8 @@ export function ReceiptFilters({ filters, availableMonths }: ReceiptFiltersProps
             return (
               <Button
                 key={monthValue}
-                variant="ghost"
-                size="xs"
-                active={isActive}
+                variant={isActive ? 'secondary' : 'ghost'}
+                size="sm"
                 aria-pressed={isActive}
                 onClick={() => handleMonthSelect(monthValue)}
                 className="whitespace-nowrap flex-shrink-0"
@@ -185,34 +172,26 @@ export function ReceiptFilters({ filters, availableMonths }: ReceiptFiltersProps
           <Button type="submit" variant="secondary">Search</Button>
         </form>
         <div className="flex flex-wrap items-center gap-3 text-sm text-gray-600">
-          <label className="flex items-center gap-2">
-            <Checkbox
-              checked={filters.showOnlyOutstanding}
-              onChange={handleOutstandingToggle}
-            />
-            Outstanding only
-          </label>
-          <label className="flex items-center gap-2">
-            <Checkbox
-              checked={filters.groupByVendor}
-              onChange={handleGroupByVendorToggle}
-            />
-            Group by vendor
-          </label>
-          <label className="flex items-center gap-2">
-            <Checkbox
-              checked={filters.missingVendorOnly}
-              onChange={handleMissingVendorToggle}
-            />
-            Missing vendor
-          </label>
-          <label className="flex items-center gap-2">
-            <Checkbox
-              checked={filters.missingExpenseOnly}
-              onChange={handleMissingExpenseToggle}
-            />
-            Missing expense
-          </label>
+          <Checkbox
+            label="Outstanding only"
+            checked={filters.showOnlyOutstanding}
+            onChange={handleOutstandingToggle}
+          />
+          <Checkbox
+            label="Group by vendor"
+            checked={filters.groupByVendor}
+            onChange={handleGroupByVendorToggle}
+          />
+          <Checkbox
+            label="Missing vendor"
+            checked={filters.missingVendorOnly}
+            onChange={handleMissingVendorToggle}
+          />
+          <Checkbox
+            label="Missing expense"
+            checked={filters.missingExpenseOnly}
+            onChange={handleMissingExpenseToggle}
+          />
         </div>
       </div>
     </div>

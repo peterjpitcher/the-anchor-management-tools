@@ -3,10 +3,7 @@
 import { useState, useTransition, FormEvent } from 'react'
 import { useRouter } from 'next/navigation'
 import { toast } from 'react-hot-toast'
-import { Button } from '@/components/ui-v2/forms/Button'
-import { Input } from '@/components/ui-v2/forms/Input'
-import { Card } from '@/components/ui-v2/layout/Card'
-import { Spinner } from '@/components/ui-v2/feedback/Spinner'
+import { Button, Input, Card, Spinner } from '@/ds'
 import { importReceiptStatement } from '@/app/actions/receipts'
 import { usePermissions } from '@/contexts/PermissionContext'
 import type { ReceiptBatch } from '@/types/database'
@@ -69,7 +66,7 @@ export function ReceiptUpload({ lastImport }: ReceiptUploadProps) {
   }
 
   return (
-    <Card padding="sm">
+    <Card>
       <h2 className="text-sm font-semibold text-gray-900">Upload bank statement</h2>
       <p className="text-xs text-gray-500 mb-3">Import CSV and auto-match recurring items.</p>
       <form onSubmit={handleStatementSubmit} className="space-y-3">

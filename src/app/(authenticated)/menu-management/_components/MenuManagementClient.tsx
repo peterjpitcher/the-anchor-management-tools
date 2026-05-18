@@ -3,7 +3,7 @@
 import { useEffect, useState, useMemo, useCallback } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { toast } from '@/components/ui-v2/feedback/Toast'
+import { toast } from '@/ds'
 import {
   PageHeader, Card, CardHeader, CardBody, CardFooter, Segmented, SectionNav,
   Table, TableHeader, TableBody, TableRow, TableHead, TableCell,

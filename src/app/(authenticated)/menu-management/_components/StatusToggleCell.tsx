@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useCallback } from 'react';
-import { Spinner, StatusBadge } from '@/components/ui-v2';
+import { Spinner, Badge } from '@/ds';
 
 interface StatusToggleCellProps {
   isActive: boolean;
@@ -69,7 +69,7 @@ export function StatusToggleCell({
         className="inline-flex items-center gap-2 rounded transition-colors hover:bg-muted px-1 py-0.5 disabled:opacity-50"
         aria-label={`Toggle ${entityName} ${optimisticActive ? 'active' : 'inactive'}`}
       >
-        <StatusBadge status={optimisticActive ? 'active' : 'inactive'} />
+        <Badge tone={optimisticActive ? 'success' : 'neutral'}>{optimisticActive ? 'Active' : 'Inactive'}</Badge>
         {isSaving && <Spinner size="sm" />}
       </button>
       {error && (

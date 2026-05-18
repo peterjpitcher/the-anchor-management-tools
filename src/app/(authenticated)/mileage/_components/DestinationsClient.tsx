@@ -1,9 +1,7 @@
 'use client'
 
 import { useEffect, useState, useTransition } from 'react'
-import { Button } from '@/components/ui-v2/forms/Button'
-import { Input } from '@/components/ui-v2/forms/Input'
-import { Modal, ModalActions, ConfirmModal } from '@/components/ui-v2/overlay/Modal'
+import { Button, Input, Modal, ConfirmDialog } from '@/ds'
 import {
   createDestination,
   updateDestination,
@@ -314,7 +312,7 @@ export function DestinationsClient({
           <Button
             variant="primary"
             size="sm"
-            leftIcon={<PlusIcon />}
+            icon={<PlusIcon />}
             onClick={openCreate}
           >
             Add Destination
@@ -393,8 +391,6 @@ export function DestinationsClient({
                           type="number"
                           min="0.1"
                           step="0.1"
-                          inputSize="sm"
-                          wrapperClassName="w-24"
                           value={anchorDistanceDrafts[dest.id] ?? ''}
                           onChange={(e) =>
                             setAnchorDistanceDrafts((prev) => ({
@@ -406,7 +402,7 @@ export function DestinationsClient({
                         />
                         <Button
                           variant="secondary"
-                          size="xs"
+                          size="sm"
                           onClick={() => saveAnchorDistance(dest)}
                           loading={anchorSavingId === dest.id && isPending}
                         >
@@ -427,23 +423,19 @@ export function DestinationsClient({
                       <div className="flex items-center justify-end gap-1">
                         <Button
                           variant="ghost"
-                          size="xs"
-                          iconOnly
+                          size="sm"
+                          icon={<PencilSquareIcon className="h-4 w-4" />}
                           aria-label={`Edit ${dest.name}`}
                           onClick={() => openEdit(dest)}
-                        >
-                          <PencilSquareIcon className="h-4 w-4" />
-                        </Button>
+                        />
                         <Button
                           variant="ghost"
-                          size="xs"
-                          iconOnly
+                          size="sm"
+                          icon={<TrashIcon className="h-4 w-4 text-red-500" />}
                           aria-label={`Delete ${dest.name}`}
                           disabled={dest.tripCount > 0}
                           onClick={() => setDeleteTarget(dest)}
-                        >
-                          <TrashIcon className="h-4 w-4 text-red-500" />
-                        </Button>
+                        />
                       </div>
                     </td>
                   )}
@@ -516,8 +508,7 @@ export function DestinationsClient({
                 type="number"
                 min="0.1"
                 step="0.1"
-                inputSize="sm"
-                value={routeMiles}
+                  value={routeMiles}
                 onChange={(e) => setRouteMiles(e.target.value)}
               />
             </div>
@@ -581,9 +572,9 @@ export function DestinationsClient({
         open={showForm}
         onClose={() => setShowForm(false)}
         title={editingDest ? 'Edit Destination' : 'Add Destination'}
-        size="sm"
+        width="sm"
         footer={
-          <ModalActions>
+          <div className="flex justify-end gap-3 mt-6">
             <Button
               variant="secondary"
               size="sm"
@@ -600,7 +591,7 @@ export function DestinationsClient({
             >
               {editingDest ? 'Save Changes' : 'Add Destination'}
             </Button>
-          </ModalActions>
+          </div>
         }
       >
         <div className="space-y-4">
@@ -638,15 +629,14 @@ export function DestinationsClient({
       </Modal>
 
       {/* Delete confirmation */}
-      <ConfirmModal
+      <ConfirmDialog
         open={!!deleteTarget}
         onClose={() => setDeleteTarget(null)}
         onConfirm={handleDelete}
         title="Delete Destination"
         message={`Are you sure you want to delete "${deleteTarget?.name}"? This cannot be undone.`}
         confirmLabel="Delete"
-        variant="danger"
-        loading={isPending}
+        tone="danger"
       />
     </div>
   )

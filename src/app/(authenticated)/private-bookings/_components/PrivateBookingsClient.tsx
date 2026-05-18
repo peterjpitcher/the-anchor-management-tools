@@ -10,7 +10,7 @@ import {
   SparklesIcon,
   FunnelIcon,
 } from '@heroicons/react/24/outline'
-import { toast } from '@/components/ui-v2/feedback/Toast'
+import { toast } from '@/ds'
 import { formatDateFull, formatTime12Hour } from '@/lib/dateUtils'
 import { deletePrivateBooking, cancelPrivateBooking, extendBookingHold } from '@/app/actions/privateBookingActions'
 import DeleteBookingButton from '@/components/private-bookings/DeleteBookingButton'

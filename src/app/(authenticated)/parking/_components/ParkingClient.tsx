@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState, useTransition } from 'react'
 import { formatDateTime } from '@/lib/dateUtils'
-import { toast } from '@/components/ui-v2/feedback/Toast'
+import { toast } from '@/ds'
 import {
   PageHeader, Card, CardHeader, CardBody, SectionNav,
   Table, TableHeader, TableBody, TableRow, TableHead, TableCell,
@@ -11,8 +11,8 @@ import {
   Button, Badge, SearchInput, Select, Stat, Spinner, Alert,
   Modal, Input, Textarea, Switch, Dropdown, DropdownItem, Empty,
 } from '@/ds'
-import { RefundDialog } from '@/components/ui-v2/refunds/RefundDialog'
-import { RefundHistoryTable } from '@/components/ui-v2/refunds/RefundHistoryTable'
+import { RefundDialog } from './RefundDialog'
+import { RefundHistoryTable } from './RefundHistoryTable'
 import type {
   ParkingBooking,
   ParkingBookingStatus,

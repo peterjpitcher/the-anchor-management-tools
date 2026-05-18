@@ -21,7 +21,7 @@ import {
   ConfirmDialog,
 } from '@/ds'
 import { Icon } from '@/ds/icons'
-import { toast } from '@/components/ui-v2/feedback/Toast'
+import { toast } from '@/ds'
 import { getTodayIsoDate } from '@/lib/dateUtils'
 
 import {

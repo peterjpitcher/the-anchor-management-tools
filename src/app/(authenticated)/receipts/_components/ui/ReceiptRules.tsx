@@ -3,14 +3,8 @@
 import { useEffect, useMemo, useState, useTransition, FormEvent, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { toast } from 'react-hot-toast'
-import { Button } from '@/components/ui-v2/forms/Button'
-import { Input } from '@/components/ui-v2/forms/Input'
-import { SearchInput } from '@/components/ui-v2/forms/SearchInput'
-import { Select } from '@/components/ui-v2/forms/Select'
-import { Card } from '@/components/ui-v2/layout/Card'
-import { Badge } from '@/components/ui-v2/display/Badge'
+import { Button, Input, SearchInput, Select, Card, Badge, Spinner } from '@/ds'
 import { Accordion } from '@/components/ui-v2/display/Accordion'
-import { Spinner } from '@/components/ui-v2/feedback/Spinner'
 import {
   toggleReceiptRule,
   createReceiptRule,
@@ -308,18 +302,18 @@ export function ReceiptRules({ rules, pendingSuggestion, onApplySuggestion, onDi
   }
 
   return (
-    <Card className="hidden md:block" padding="none">
+    <Card className="hidden md:block">
       <div className="flex items-start justify-between gap-4 p-4">
         <div className="min-w-0">
           <div className="flex items-center gap-2">
             <h2 className="text-lg font-semibold text-gray-900">Automation rules</h2>
-            {pendingSuggestion && <Badge size="sm" variant="success">Suggestion</Badge>}
+            {pendingSuggestion && <Badge tone="success">Suggestion</Badge>}
           </div>
           <p className="text-sm text-gray-500">Automatically tick off known transactions (e.g. card settlements).</p>
         </div>
 
         <div className="flex flex-shrink-0 items-center gap-2">
-          <Badge variant="secondary">{rules.length} rules</Badge>
+          <Badge tone="neutral">{rules.length} rules</Badge>
           <Button
             variant="secondary"
             size="sm"
@@ -336,10 +330,8 @@ export function ReceiptRules({ rules, pendingSuggestion, onApplySuggestion, onDi
           <div className="border-t border-gray-200" />
           <div className="p-4">
             <div className="grid gap-4 lg:grid-cols-2">
-              <Card
-                variant="bordered"
-                header={<h3 className="text-md font-semibold text-gray-900">New rule</h3>}
-              >
+              <Card>
+                <h3 className="text-md font-semibold text-gray-900 mb-3">New rule</h3>
                 {pendingSuggestion && (
                   <div className="mb-3 rounded-md border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-700">
                     <div className="flex flex-wrap items-center justify-between gap-2">
@@ -348,13 +340,13 @@ export function ReceiptRules({ rules, pendingSuggestion, onApplySuggestion, onDi
                       </p>
                       <div className="flex items-center gap-2">
                         <Button
-                          size="xs"
+                          size="sm"
                           variant="secondary"
                           onClick={() => applySuggestion(pendingSuggestion)}
                         >
                           Apply
                         </Button>
-                        <Button size="xs" variant="ghost" onClick={onDismissSuggestion}>
+                        <Button size="sm" variant="ghost" onClick={onDismissSuggestion}>
                           Dismiss
                         </Button>
                       </div>
@@ -372,15 +364,15 @@ export function ReceiptRules({ rules, pendingSuggestion, onApplySuggestion, onDi
                         value={retroScope}
                         onChange={(event) => setRetroScope(event.target.value as 'pending' | 'all')}
                         className="w-44"
-                        selectSize="sm"
-                      >
-                        <option value="pending">Pending only</option>
-                        <option value="all">All historical</option>
-                      </Select>
+                        options={[
+                          { value: 'pending', label: 'Pending only' },
+                          { value: 'all', label: 'All historical' },
+                        ]}
+                      />
                     </div>
                     <div className="mt-3 flex items-center gap-2">
                       <Button
-                        size="xs"
+                        size="sm"
                         variant="secondary"
                         onClick={() => handleRetroRun(retroPrompt.id, retroScope)}
                         disabled={isRetroPending}
@@ -388,7 +380,7 @@ export function ReceiptRules({ rules, pendingSuggestion, onApplySuggestion, onDi
                         {isRetroPending && <Spinner className="mr-2 h-3 w-3" />}Run now
                       </Button>
                       <Button
-                        size="xs"
+                        size="sm"
                         variant="ghost"
                         onClick={() => {
                           setRetroPrompt(null)
@@ -420,24 +412,22 @@ export function ReceiptRules({ rules, pendingSuggestion, onApplySuggestion, onDi
                     <Input name="match_min_amount" placeholder="Min amount" type="number" step="0.01" />
                     <Input name="match_max_amount" placeholder="Max amount" type="number" step="0.01" />
                   </div>
-                  <Select name="match_direction" defaultValue="both">
-                    <option value="both">Any direction</option>
-                    <option value="out">Money out</option>
-                    <option value="in">Money in</option>
-                  </Select>
-                  <Select name="auto_status" defaultValue="no_receipt_required">
-                    <option value="no_receipt_required">Mark as not required</option>
-                    <option value="auto_completed">Mark as auto completed</option>
-                    <option value="completed">Mark as completed</option>
-                    <option value="pending">Leave pending</option>
-                  </Select>
+                  <Select name="match_direction" defaultValue="both" options={[
+                    { value: 'both', label: 'Any direction' },
+                    { value: 'out', label: 'Money out' },
+                    { value: 'in', label: 'Money in' },
+                  ]} />
+                  <Select name="auto_status" defaultValue="no_receipt_required" options={[
+                    { value: 'no_receipt_required', label: 'Mark as not required' },
+                    { value: 'auto_completed', label: 'Mark as auto completed' },
+                    { value: 'completed', label: 'Mark as completed' },
+                    { value: 'pending', label: 'Leave pending' },
+                  ]} />
                   <Input name="set_vendor_name" placeholder="Set vendor name (optional)" />
-                  <Select name="set_expense_category" defaultValue="">
-                    <option value="">Leave expense unset</option>
-                    {expenseCategoryOptions.map((option) => (
-                      <option key={option} value={option}>{option}</option>
-                    ))}
-                  </Select>
+                  <Select name="set_expense_category" defaultValue="" options={[
+                    { value: '', label: 'Leave expense unset' },
+                    ...expenseCategoryOptions.map((option) => ({ value: option, label: option })),
+                  ]} />
                   {isPreviewVisible && rulePreview && (
                     <RulePreviewPanel preview={rulePreview} />
                   )}
@@ -460,9 +450,8 @@ export function ReceiptRules({ rules, pendingSuggestion, onApplySuggestion, onDi
               <div className="space-y-3">
                 <SearchInput
                   value={ruleSearch}
-                  onSearch={setRuleSearch}
+                  onChange={setRuleSearch}
                   placeholder="Search rules..."
-                  inputSize="sm"
                 />
 
                 <div className="flex items-center justify-between gap-4">
@@ -473,7 +462,7 @@ export function ReceiptRules({ rules, pendingSuggestion, onApplySuggestion, onDi
                   </p>
                   <div className="flex flex-wrap items-center gap-2">
                     <Button
-                      size="xs"
+                      size="sm"
                       variant="ghost"
                       onClick={collapseAllVisibleRules}
                       disabled={expandedVisibleRuleCount === 0}
@@ -481,7 +470,7 @@ export function ReceiptRules({ rules, pendingSuggestion, onApplySuggestion, onDi
                       Collapse all
                     </Button>
                     <Button
-                      size="xs"
+                      size="sm"
                       variant="secondary"
                       onClick={expandAllVisibleRules}
                       disabled={filteredRules.length === 0 || expandedVisibleRuleCount === filteredRules.length}
@@ -514,10 +503,10 @@ export function ReceiptRules({ rules, pendingSuggestion, onApplySuggestion, onDi
                       ),
                       extra: (
                         <div className="flex items-center gap-2">
-                          <Badge size="sm" variant={rule.is_active ? 'success' : 'secondary'}>
+                          <Badge tone={rule.is_active ? 'success' : 'neutral'}>
                             {rule.is_active ? 'Active' : 'Disabled'}
                           </Badge>
-                          <Badge size="sm" variant="neutral">
+                          <Badge tone="neutral">
                             {statusLabels[rule.auto_status]}
                           </Badge>
                         </div>
@@ -538,12 +527,12 @@ export function ReceiptRules({ rules, pendingSuggestion, onApplySuggestion, onDi
                                 <Select
                                   value={retroConfirmScope}
                                   onChange={(e) => setRetroConfirmScope(e.target.value as 'pending' | 'all')}
-                                  selectSize="sm"
                                   className="w-40"
-                                >
-                                  <option value="pending">Pending only</option>
-                                  <option value="all">All historical</option>
-                                </Select>
+                                  options={[
+                                    { value: 'pending', label: 'Pending only' },
+                                    { value: 'all', label: 'All historical' },
+                                  ]}
+                                />
                                 <Button
                                   size="sm"
                                   variant="secondary"
@@ -566,7 +555,7 @@ export function ReceiptRules({ rules, pendingSuggestion, onApplySuggestion, onDi
                               </Button>
                             )}
                             <Button
-                              variant={rule.is_active ? 'success' : 'ghost'}
+                              variant={rule.is_active ? 'primary' : 'ghost'}
                               size="sm"
                               onClick={() => handleRuleToggle(rule)}
                               disabled={(isRulePending && activeRuleId === rule.id) || !canManageReceipts}
@@ -592,24 +581,22 @@ export function ReceiptRules({ rules, pendingSuggestion, onApplySuggestion, onDi
                                 <Input name="match_min_amount" type="number" step="0.01" defaultValue={rule.match_min_amount ?? ''} />
                                 <Input name="match_max_amount" type="number" step="0.01" defaultValue={rule.match_max_amount ?? ''} />
                               </div>
-                              <Select name="match_direction" defaultValue={rule.match_direction}>
-                                <option value="both">Any direction</option>
-                                <option value="out">Money out</option>
-                                <option value="in">Money in</option>
-                              </Select>
-                              <Select name="auto_status" defaultValue={rule.auto_status}>
-                                <option value="no_receipt_required">Mark as not required</option>
-                                <option value="auto_completed">Mark as auto completed</option>
-                                <option value="completed">Mark as completed</option>
-                                <option value="pending">Leave pending</option>
-                              </Select>
+                              <Select name="match_direction" defaultValue={rule.match_direction} options={[
+                                { value: 'both', label: 'Any direction' },
+                                { value: 'out', label: 'Money out' },
+                                { value: 'in', label: 'Money in' },
+                              ]} />
+                              <Select name="auto_status" defaultValue={rule.auto_status} options={[
+                                { value: 'no_receipt_required', label: 'Mark as not required' },
+                                { value: 'auto_completed', label: 'Mark as auto completed' },
+                                { value: 'completed', label: 'Mark as completed' },
+                                { value: 'pending', label: 'Leave pending' },
+                              ]} />
                               <Input name="set_vendor_name" defaultValue={rule.set_vendor_name ?? ''} placeholder="Set vendor name (optional)" />
-                              <Select name="set_expense_category" defaultValue={rule.set_expense_category ?? ''}>
-                                <option value="">Leave expense unset</option>
-                                {expenseCategoryOptions.map((option) => (
-                                  <option key={option} value={option}>{option}</option>
-                                ))}
-                              </Select>
+                              <Select name="set_expense_category" defaultValue={rule.set_expense_category ?? ''} options={[
+                                { value: '', label: 'Leave expense unset' },
+                                ...expenseCategoryOptions.map((option) => ({ value: option, label: option })),
+                              ]} />
                               <Button type="submit" disabled={isRulePending && activeRuleId === rule.id}>
                                 {isRulePending && activeRuleId === rule.id && <Spinner className="mr-2 h-4 w-4" />}Save changes
                               </Button>

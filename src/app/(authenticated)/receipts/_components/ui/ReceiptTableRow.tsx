@@ -2,10 +2,7 @@
 
 import { useState, useTransition, useRef, ChangeEvent } from 'react'
 import { toast } from 'react-hot-toast'
-import { Button } from '@/components/ui-v2/forms/Button'
-import { Input } from '@/components/ui-v2/forms/Input'
-import { Select } from '@/components/ui-v2/forms/Select'
-import { Spinner } from '@/components/ui-v2/feedback/Spinner'
+import { Button, Input, Select, Spinner } from '@/ds'
 import {
   markReceiptTransaction,
   deleteReceiptFile,
@@ -288,21 +285,21 @@ export function ReceiptTableRow({
             {isCustomVendor ? (
               <div className="space-y-2">
                 <Input autoFocus value={classificationDraft} onChange={e => setClassificationDraft(e.target.value)} placeholder="Vendor name" disabled={isPending} />
-                <Button type="button" variant="ghost" size="xs" onClick={() => { setIsCustomVendor(false); setClassificationDraft('') }} disabled={isPending}>⟵ Pick existing</Button>
+                <Button type="button" variant="ghost" size="sm" onClick={() => { setIsCustomVendor(false); setClassificationDraft('') }} disabled={isPending}>⟵ Pick existing</Button>
               </div>
             ) : (
               <Select autoFocus value={classificationDraft} onChange={e => {
                 if (e.target.value === '__custom__') { setIsCustomVendor(true); setClassificationDraft(''); }
                 else setClassificationDraft(e.target.value)
-              }} disabled={isPending}>
-                <option value="">Clear</option>
-                {vendorOptions.map(v => <option key={v} value={v}>{v}</option>)}
-                <option value="__custom__">+ New vendor</option>
-              </Select>
+              }} disabled={isPending} options={[
+                { value: '', label: 'Clear' },
+                ...vendorOptions.map(v => ({ value: v, label: v })),
+                { value: '__custom__', label: '+ New vendor' },
+              ]} />
             )}
             <div className="flex gap-2">
-              <Button size="xs" onClick={saveClassification} disabled={isPending}>{isPending && <Spinner className="mr-1 h-3 w-3" />}Save</Button>
-              <Button size="xs" variant="ghost" onClick={() => setEditingField(null)} disabled={isPending}>Cancel</Button>
+              <Button size="sm" onClick={saveClassification} disabled={isPending}>{isPending && <Spinner className="mr-1 h-3 w-3" />}Save</Button>
+              <Button size="sm" variant="ghost" onClick={() => setEditingField(null)} disabled={isPending}>Cancel</Button>
             </div>
           </div>
         ) : (
@@ -322,13 +319,13 @@ export function ReceiptTableRow({
       <td className="px-4 py-3">
         {editingField === 'expense' ? (
           <div className="flex flex-col gap-2 min-w-[200px]">
-            <Select autoFocus value={classificationDraft} onChange={e => setClassificationDraft(e.target.value)} disabled={isPending}>
-              <option value="">Clear</option>
-              {expenseCategoryOptions.map(o => <option key={o} value={o}>{o}</option>)}
-            </Select>
+            <Select autoFocus value={classificationDraft} onChange={e => setClassificationDraft(e.target.value)} disabled={isPending} options={[
+              { value: '', label: 'Clear' },
+              ...expenseCategoryOptions.map(o => ({ value: o, label: o })),
+            ]} />
             <div className="flex gap-2">
-              <Button size="xs" onClick={saveClassification} disabled={isPending}>{isPending && <Spinner className="mr-1 h-3 w-3" />}Save</Button>
-              <Button size="xs" variant="ghost" onClick={() => setEditingField(null)} disabled={isPending}>Cancel</Button>
+              <Button size="sm" onClick={saveClassification} disabled={isPending}>{isPending && <Spinner className="mr-1 h-3 w-3" />}Save</Button>
+              <Button size="sm" variant="ghost" onClick={() => setEditingField(null)} disabled={isPending}>Cancel</Button>
             </div>
           </div>
         ) : (
@@ -379,8 +376,8 @@ export function ReceiptTableRow({
               disabled={isPending}
             />
             <div className="flex gap-1">
-              <Button size="xs" onClick={saveNote} disabled={isPending}>Save</Button>
-              <Button size="xs" variant="ghost" onClick={() => setIsEditingNote(false)} disabled={isPending}>Cancel</Button>
+              <Button size="sm" onClick={saveNote} disabled={isPending}>Save</Button>
+              <Button size="sm" variant="ghost" onClick={() => setIsEditingNote(false)} disabled={isPending}>Cancel</Button>
             </div>
           </div>
         ) : (
@@ -404,7 +401,7 @@ export function ReceiptTableRow({
         <div className="flex flex-row items-center gap-1">
           <Button
             variant="secondary"
-            size="xs"
+            size="sm"
             onClick={() => fileInputRef.current?.click()}
             disabled={isPending || !canManageReceipts}
             title="Upload receipt"
@@ -415,8 +412,8 @@ export function ReceiptTableRow({
 
           {transaction.status !== 'completed' && (
             <Button
-              variant="success"
-              size="xs"
+              variant="primary"
+              size="sm"
               onClick={() => handleStatusUpdate('completed')}
               disabled={isPending || !canManageReceipts}
               title="Mark as done"
@@ -428,7 +425,7 @@ export function ReceiptTableRow({
           {transaction.status !== 'no_receipt_required' && (
             <Button
               variant="secondary"
-              size="xs"
+              size="sm"
               onClick={() => handleStatusUpdate('no_receipt_required')}
               disabled={isPending || !canManageReceipts}
               title="Skip (no receipt needed)"
@@ -440,7 +437,7 @@ export function ReceiptTableRow({
           {transaction.status !== 'cant_find' && (
             <Button
               variant="secondary"
-              size="xs"
+              size="sm"
               onClick={() => handleStatusUpdate('cant_find')}
               className="border border-rose-200 text-rose-700 hover:bg-rose-50"
               disabled={isPending || !canManageReceipts}
@@ -453,7 +450,7 @@ export function ReceiptTableRow({
           {transaction.status !== 'pending' && (
             <Button
               variant="ghost"
-              size="xs"
+              size="sm"
               onClick={() => handleStatusUpdate('pending')}
               disabled={isPending || !canManageReceipts}
               title="Reopen"

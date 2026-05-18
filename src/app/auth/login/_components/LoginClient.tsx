@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import Image from 'next/image'
 import { signIn as signInAction } from '@/app/actions/auth'
 import { Button, Field, Input, Spinner } from '@/ds'
-import { toast } from '@/components/ui-v2/feedback/Toast'
+import { toast } from '@/ds'
 
 const LOGIN_REDIRECT_COOKIE = 'post_login_redirect'
 

@@ -30,7 +30,7 @@ import {
 } from '@/ds'
 import type { InvoiceWithDetails, InvoiceStatus } from '@/types/invoices'
 import { usePermissions } from '@/contexts/PermissionContext'
-import { toast } from '@/components/ui-v2/feedback/Toast'
+import { toast } from '@/ds'
 import { downloadInvoicePdf } from '@/lib/invoices/download-pdf'
 import { downloadBlob, filenameFromContentDisposition } from '@/lib/download-file'
 import { getCurrentQuarterDateRange } from '@/lib/invoices/date-ranges'
