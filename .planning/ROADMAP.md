@@ -49,7 +49,7 @@ Plans:
 **Plans**: 5 plans
 
 Plans:
-- [ ] 02-01-PLAN.md -- Component gap fill (13 new ds/ primitives, Chart composite, recharts, layout CSS) + high-traffic screens (Dashboard, Customers, Employees, Private Bookings)
+- [x] 02-01-PLAN.md -- Component gap fill (13 new ds/ primitives, Chart composite, recharts, layout CSS) + high-traffic screens (Dashboard, Customers, Employees, Private Bookings)
 - [ ] 02-02-PLAN.md -- Operations screens (Parking, Menu Management, Table Bookings with 5 sub-pages, Rota with 6 sub-pages)
 - [ ] 02-03-PLAN.md -- Finance screens (Invoices, Quotes with shared SectionNav, Receipts, Mileage, Expenses, MGD)
 - [ ] 02-04-PLAN.md -- Communication and settings screens (Messages 3-panel, Users with reusable content, Profile, Settings hub)
@@ -95,6 +95,6 @@ Phases execute in numeric order: 1 --> 1.1 --> 1.2 --> 2 --> 2.1 --> 3 --> 4
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Design System & App Shell | 4/4 | Complete   | 2026-05-18 |
-| 2. Screen Migrations | 0/5 | Not started | - |
+| 2. Screen Migrations | 1/5 | In Progress|  |
 | 3. New Sections | 0/4 | Not started | - |
 | 4. Modes & Cleanup | 0/2 | Not started | - |
