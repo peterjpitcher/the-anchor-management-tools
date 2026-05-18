@@ -1,9 +1,6 @@
 'use client'
 
-import { AppNavigation } from '@/components/features/shared/AppNavigation'
-import { ArrowRightOnRectangleIcon, XMarkIcon } from '@heroicons/react/24/outline'
 import { usePathname, useRouter } from 'next/navigation'
-import Image from 'next/image'
 import React, { useState, useEffect, useMemo } from 'react'
 import AddNoteModal from '@/components/modals/AddNoteModal'
 import { useSupabase } from '@/components/providers/SupabaseProvider'
@@ -13,6 +10,7 @@ import { signOut as signOutAction } from '@/app/actions/auth'
 import type { UserPermission } from '@/types/rbac'
 import { usePermissions } from '@/contexts/PermissionContext'
 import { isFohOnlyUser } from '@/lib/foh/user-mode'
+import { AppShell } from '@/ds/shell'
 
 function AuthenticatedLayoutContent({ children }: { children: React.ReactNode }) {
   const router = useRouter()
@@ -22,7 +20,6 @@ function AuthenticatedLayoutContent({ children }: { children: React.ReactNode })
   const [isAddNoteModalOpen, setIsAddNoteModalOpen] = useState(false)
   const [user, setUser] = useState<User | null>(null)
   const [loading, setLoading] = useState(true)
-  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
   const [isSigningOut, setIsSigningOut] = useState(false)
   const fohOnlyMode = useMemo(() => {
     if (permissionsLoading) return false
@@ -52,7 +49,7 @@ function AuthenticatedLayoutContent({ children }: { children: React.ReactNode })
           data: { user },
           error,
         } = await supabase.auth.getUser()
-        
+
         if (mounted) {
           if (error) {
             console.error('Auth check error:', error)
@@ -73,17 +70,9 @@ function AuthenticatedLayoutContent({ children }: { children: React.ReactNode })
 
     getUser()
 
-    // Add event listener for opening mobile menu from PageHeader
-    const handleOpenMenu = () => {
-      setIsMobileMenuOpen(true)
-    }
-    
-    window.addEventListener('open-mobile-menu', handleOpenMenu)
-
     return () => {
       mounted = false
       subscription.unsubscribe()
-      window.removeEventListener('open-mobile-menu', handleOpenMenu)
     }
   }, [supabase, router])
 
@@ -92,12 +81,6 @@ function AuthenticatedLayoutContent({ children }: { children: React.ReactNode })
       router.replace('/auth/login')
     }
   }, [loading, user, router])
-
-  useEffect(() => {
-    if (fohOnlyMode && isMobileMenuOpen) {
-      setIsMobileMenuOpen(false)
-    }
-  }, [fohOnlyMode, isMobileMenuOpen])
 
   useEffect(() => {
     if (loading || !user || permissionsLoading || !fohOnlyMode) {
@@ -120,7 +103,7 @@ if (loading || !user) {
   if (!permissionsLoading && fohOnlyMode && !isFohPath) {
     return (
       <div className="flex items-center justify-center h-screen bg-gray-100">
-        <p className="text-gray-500">Redirecting to Front of House…</p>
+        <p className="text-gray-500">Redirecting to Front of House...</p>
       </div>
     )
   }
@@ -156,111 +139,20 @@ async function handleSignOut() {
   const closeAddNoteModal = () => setIsAddNoteModalOpen(false)
 
   return (
-    <div className="min-h-screen bg-gray-100">
-      <div className="flex h-screen overflow-hidden bg-white">
-        {/* Sidebar */}
-        {!fohOnlyMode && (
-          <div className="hidden md:flex md:flex-shrink-0">
-            <div className="flex w-64 flex-col">
-              <div className="flex min-h-0 flex-1 flex-col border-r border-gray-300 bg-sidebar">
-                <div className="flex flex-1 flex-col overflow-y-auto pt-5 pb-4">
-                  <div className="px-4">
-                    <div className="w-full mb-2">
-                      <Image 
-                        src="/logo.png" 
-                        alt="Management Tools Logo" 
-                        width={192}
-                        height={192}
-                        className="w-full h-auto"
-                        priority 
-                      />
-                    </div>
-                    <h1 className="text-xl font-bold text-white text-center w-full">Management Tools</h1>
-                  </div>
-                  <div className="mt-5 flex-1">
-                    <AppNavigation onQuickAddNoteClick={openAddNoteModal} />
-                  </div>
-                </div>
-                <div className="flex flex-shrink-0 border-t border-green-600 p-4">
-                  <button type="button"
-                    onClick={handleSignOut}
-                    disabled={isSigningOut}
-                    className="group flex w-full items-center px-2 py-2 text-sm font-medium text-gray-100 hover:bg-green-700 hover:text-white rounded-md"
-                  >
-                    <ArrowRightOnRectangleIcon
-                      className="mr-3 h-6 w-6 text-green-200 group-hover:text-white"
-                      aria-hidden="true"
-                    />
-                    Sign out
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Mobile menu overlay */}
-        {!fohOnlyMode && isMobileMenuOpen && (
-          <div className="fixed inset-0 z-40 md:hidden">
-            <div className="fixed inset-0 bg-gray-600 bg-opacity-75" onClick={() => setIsMobileMenuOpen(false)} />
-            <div className="fixed inset-y-0 left-0 flex max-w-xs w-full bg-sidebar">
-              <div className="flex w-full flex-col h-full">
-                <div className="flex items-center justify-between h-16 px-4 border-b border-green-600 flex-shrink-0">
-                  <h2 className="text-lg font-semibold text-white">Menu</h2>
-                  <button
-                    type="button"
-                    className="rounded-md text-gray-300 hover:text-white focus:outline-none focus:ring-2 focus:ring-white"
-                    onClick={() => setIsMobileMenuOpen(false)}
-                  >
-                    <span className="sr-only">Close menu</span>
-                    <XMarkIcon className="h-6 w-6" aria-hidden="true" />
-                  </button>
-                </div>
-                <div className="flex-1 overflow-y-auto py-4 min-h-0">
-                  <AppNavigation
-                    onQuickAddNoteClick={() => {
-                      openAddNoteModal()
-                      setIsMobileMenuOpen(false)
-                    }}
-                    onNavigate={() => setIsMobileMenuOpen(false)}
-                  />
-                </div>
-                <div className="flex flex-shrink-0 border-t border-green-600 p-4">
-                  <button type="button"
-                    onClick={() => {
-                      handleSignOut()
-                      setIsMobileMenuOpen(false)
-                    }}
-                    disabled={isSigningOut}
-                    className="group flex w-full items-center px-2 py-2 text-sm font-medium text-gray-100 hover:bg-green-700 hover:text-white rounded-md"
-                  >
-                    <ArrowRightOnRectangleIcon
-                      className="mr-3 h-6 w-6 text-green-200 group-hover:text-white"
-                      aria-hidden="true"
-                    />
-                    Sign out
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Main content */}
-        <div className="flex flex-1 flex-col overflow-hidden">
-          <main className="flex-1 overflow-y-auto bg-gray-50 pb-6 px-2 sm:px-4 md:px-6 py-2 sm:py-4">
-            {children}
-          </main>
-        </div>
-      </div>
+    <>
+      <AppShell
+        showSidebar={!fohOnlyMode}
+        userName={user?.user_metadata?.full_name ?? user?.email?.split('@')[0] ?? 'User'}
+        userRole="Manager"
+        onSignOut={handleSignOut}
+        isSigningOut={isSigningOut}
+      >
+        {children}
+      </AppShell>
       <AddNoteModal isOpen={isAddNoteModalOpen} onClose={closeAddNoteModal} />
-    </div>
+    </>
   )
 }
-
-
-
-
 
 export default function AuthenticatedLayout({
   children,
@@ -274,4 +166,4 @@ export default function AuthenticatedLayout({
       <AuthenticatedLayoutContent>{children}</AuthenticatedLayoutContent>
     </PermissionProvider>
   )
-} 
+}
