@@ -95,6 +95,6 @@ Phases execute in numeric order: 1 --> 1.1 --> 1.2 --> 2 --> 2.1 --> 3 --> 4
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Design System & App Shell | 4/4 | Complete   | 2026-05-18 |
-| 2. Screen Migrations | 1/5 | In Progress|  |
+| 2. Screen Migrations | 5/5 | Near Complete (26/28 screens, 18 nested sub-page files remain) | 2026-05-18 |
 | 3. New Sections | 0/4 | Not started | - |
 | 4. Modes & Cleanup | 0/2 | Not started | - |
