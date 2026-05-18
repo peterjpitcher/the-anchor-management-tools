@@ -1,12 +1,12 @@
-import { createAdminClient } from '@/lib/supabase/admin';
-import { getOpenSessions } from '@/app/actions/timeclock';
-import TimeclockKiosk from './TimeclockKiosk';
-import { Toaster } from 'react-hot-toast';
+import { createAdminClient } from '@/lib/supabase/admin'
+import { getOpenSessions } from '@/app/actions/timeclock'
+import TimeclockClient from './_components/TimeclockClient'
+import { Toaster } from 'react-hot-toast'
 
-export const dynamic = 'force-dynamic';
+export const dynamic = 'force-dynamic'
 
 export default async function TimeclockPage() {
-  const supabase = createAdminClient();
+  const supabase = createAdminClient()
 
   // Fetch active employees using admin client (public page, no auth session)
   const [{ data: employees }, sessionsResult] = await Promise.all([
@@ -17,10 +17,10 @@ export default async function TimeclockPage() {
       .order('first_name')
       .order('last_name'),
     getOpenSessions(),
-  ]);
+  ])
 
-  const activeEmployees = (employees ?? []) as { employee_id: string; first_name: string | null; last_name: string | null }[];
-  const openSessions = sessionsResult.success ? sessionsResult.data : [];
+  const activeEmployees = (employees ?? []) as { employee_id: string; first_name: string | null; last_name: string | null }[]
+  const openSessions = sessionsResult.success ? sessionsResult.data : []
 
   return (
     <>
@@ -30,7 +30,7 @@ export default async function TimeclockPage() {
           style: { background: '#1f2937', color: '#f9fafb', border: '1px solid #374151' },
         }}
       />
-      <TimeclockKiosk employees={activeEmployees} openSessions={openSessions} />
+      <TimeclockClient employees={activeEmployees} openSessions={openSessions} />
     </>
-  );
+  )
 }
