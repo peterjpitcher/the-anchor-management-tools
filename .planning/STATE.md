@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-stopped_at: Completed 01-04-PLAN.md (app shell)
-last_updated: "2026-05-18T17:10:44.069Z"
+stopped_at: Completed 02-01-PLAN.md
+last_updated: "2026-05-18T18:09:45.669Z"
 progress:
   total_phases: 4
   completed_phases: 1
-  total_plans: 4
-  completed_plans: 4
+  total_plans: 9
+  completed_plans: 5
 ---
 
 # Project State
@@ -19,12 +19,12 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-18)
 
 **Core value:** Every staff member sees a consistent, modern, professional interface matching the design handoff pixel-perfectly.
-**Current focus:** Phase 01 — design-system-app-shell
+**Current focus:** Phase 02 — screen-migrations
 
 ## Current Position
 
-Phase: 2
-Plan: Not started
+Phase: 02 (screen-migrations) — EXECUTING
+Plan: 2 of 5
 
 ## Performance Metrics
 
@@ -50,6 +50,7 @@ Plan: Not started
 | Phase 01 P02 | 5min | 2 tasks | 16 files |
 | Phase 01 P03 | 5min | 2 tasks | 11 files |
 | Phase 01 P04 | 8min | 3 tasks | 10 files |
+| Phase 02-screen-migrations P01 | 128min | 3 tasks | 26 files |
 
 ## Accumulated Context
 
@@ -72,6 +73,8 @@ Recent decisions affecting current work:
 - [Phase 01]: paths.tsx uses JSX fragments for multi-element SVG icons; Table is fully client-side due to sortable headers; 46 icons built exceeding 38 minimum
 - [Phase 01]: CSS-only sidebar expand/collapse via :hover/:focus-within -- no JavaScript state needed
 - [Phase 01]: Surgical AuthenticatedLayout swap preserving all auth/FOH/permission/modal logic intact
+- [Phase 02-screen-migrations]: Keep toast utility from ui-v2 as acceptable migration exception; domain components (CustomerForm, DeleteBookingButton, etc.) preserved unchanged
+- [Phase 02-screen-migrations]: Use _components/ subdirectory pattern for migrated client components; ds/ API differences documented (Tabs: activeTab/onTabChange, Select: options array, Empty: description, TablePagination: page/totalItems)
 
 ### Pending Todos
 
@@ -85,6 +88,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-05-18T17:07:41.339Z
-Stopped at: Completed 01-04-PLAN.md (app shell)
+Last session: 2026-05-18T18:09:45.667Z
+Stopped at: Completed 02-01-PLAN.md
 Resume file: None

@@ -39,10 +39,10 @@
 
 ### Existing Screen Migrations
 
-- [ ] **MIG-01**: Redesign Dashboard (revenue chart, stat grid, today card, upcoming events, activity feed, mini metrics)
-- [ ] **MIG-02**: Redesign Customers page (CRM table, labels, bulk actions, tabs, search/filters)
-- [ ] **MIG-03**: Redesign Employees page (master-detail layout, table + detail panel)
-- [ ] **MIG-04**: Redesign Private Bookings page (table, deposit tracking, run sheet card)
+- [x] **MIG-01**: Redesign Dashboard (revenue chart, stat grid, today card, upcoming events, activity feed, mini metrics)
+- [x] **MIG-02**: Redesign Customers page (CRM table, labels, bulk actions, tabs, search/filters)
+- [x] **MIG-03**: Redesign Employees page (master-detail layout, table + detail panel)
+- [x] **MIG-04**: Redesign Private Bookings page (table, deposit tracking, run sheet card)
 - [ ] **MIG-05**: Redesign Parking page (table + lot map sidebar + pricing card)
 - [ ] **MIG-06**: Redesign Menu Management page (section sidebar + dish table, allergens, availability toggles)
 - [ ] **MIG-07**: Redesign Table Bookings (timeline swimlane, floor plan, list view, FOH/BOH/Reports/Settings sub-pages)
@@ -158,10 +158,10 @@
 | SHELL-04 | Phase 1 | Complete |
 | SHELL-05 | Phase 1 | Complete |
 | SHELL-06 | Phase 1 | Complete |
-| MIG-01 | Phase 2 | Pending |
-| MIG-02 | Phase 2 | Pending |
-| MIG-03 | Phase 2 | Pending |
-| MIG-04 | Phase 2 | Pending |
+| MIG-01 | Phase 2 | Complete |
+| MIG-02 | Phase 2 | Complete |
+| MIG-03 | Phase 2 | Complete |
+| MIG-04 | Phase 2 | Complete |
 | MIG-05 | Phase 2 | Pending |
 | MIG-06 | Phase 2 | Pending |
 | MIG-07 | Phase 2 | Pending |
