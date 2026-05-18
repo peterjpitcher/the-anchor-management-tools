@@ -56,21 +56,21 @@ Plans:
 - [x] 02-05-PLAN.md -- Auth and standalone-layout screens (Login, Onboarding, Staff Portal, Timeclock, Public Booking, Public Parking, Booking Confirmation, Privacy, Error, Unauthorised)
 
 ### Phase 3: New Sections
-**Goal**: Six new sections are live and functional -- Events, Cashing Up, OJ Projects, and Short Links built as UI on existing backends; Performers built full-stack with schema migration; Design System page documenting the component library
+**Goal**: Five new sections are live and functional -- Events, Cashing Up, OJ Projects, and Short Links built as UI on existing backends; Design System page documenting the component library. Performers section removed from scope.
 **Depends on**: Phase 2
-**Requirements**: NEW-01, NEW-02, NEW-03, NEW-04, NEW-05, NEW-06, NEW-07, PERF-01, PERF-02, PERF-03, PERF-04, MODE-02
+**Requirements**: NEW-01, NEW-02, NEW-03, NEW-04, NEW-05, NEW-06, NEW-07, MODE-02
 **Success Criteria** (what must be TRUE):
   1. User navigates to Events and sees list view with table/filters/pagination, calendar view with month navigation, and board/kanban view grouped by status -- all powered by existing event server actions
-  2. User navigates to Performers and can create/edit performers with genre tags and fee ranges, view booking history linked to events, and rate performers -- backed by new schema tables (performer_ratings, performer_contact_log, performer_id FK on events)
-  3. User navigates to Cashing Up, OJ Projects, and Short Links and sees fully redesigned UIs (daily entry, weekly summary, insights for Cashing Up; projects/entries/clients/work-types for OJ Projects; link table with analytics for Short Links) with no new backend work required
-  4. User navigates to the Design System page and sees live component previews, colour swatches, typography scale, and icon library
+  2. User navigates to Cashing Up, OJ Projects, and Short Links and sees fully redesigned UIs (daily entry, weekly summary, insights for Cashing Up; projects/entries/clients/work-types for OJ Projects; link table with analytics for Short Links) with no new backend work required
+  3. User navigates to the Design System page (via Settings) and sees live component previews, colour swatches, typography scale, and icon library
+  4. Performers section is removed from sidebar navigation and route structure
 **Plans**: TBD
 
 Plans:
 - [ ] 03-01: Events section (list, calendar, board views)
-- [ ] 03-02: Performers section (schema migration, server actions, UI)
-- [ ] 03-03: Cashing Up and Short Links sections (UI-only on existing backends)
-- [ ] 03-04: OJ Projects section and Design System documentation page
+- [ ] 03-02: Cashing Up and Short Links sections (UI-only on existing backends)
+- [ ] 03-03: OJ Projects section and Design System documentation page
+- [ ] 03-04: Performers removal (nav, routes, cleanup)
 
 ### Phase 4: Modes & Cleanup
 **Goal**: FOH chromeless mode is live for front-of-house managers, all legacy UI code is removed, and project documentation reflects the new design system as the canonical pattern
