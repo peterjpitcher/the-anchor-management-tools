@@ -52,7 +52,7 @@ Plans:
 - [x] 02-01-PLAN.md -- Component gap fill (13 new ds/ primitives, Chart composite, recharts, layout CSS) + high-traffic screens (Dashboard, Customers, Employees, Private Bookings)
 - [ ] 02-02-PLAN.md -- Operations screens (Parking, Menu Management, Table Bookings with 5 sub-pages, Rota with 6 sub-pages)
 - [ ] 02-03-PLAN.md -- Finance screens (Invoices, Quotes with shared SectionNav, Receipts, Mileage, Expenses, MGD)
-- [ ] 02-04-PLAN.md -- Communication and settings screens (Messages 3-panel, Users with reusable content, Profile, Settings hub)
+- [x] 02-04-PLAN.md -- Communication and settings screens (Messages 3-panel, Users with reusable content, Profile, Settings hub)
 - [ ] 02-05-PLAN.md -- Auth and standalone-layout screens (Login, Onboarding, Staff Portal, Timeclock, Public Booking, Public Parking, Booking Confirmation, Privacy, Error, Unauthorised)
 
 ### Phase 3: New Sections

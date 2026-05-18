@@ -53,10 +53,10 @@
 - [ ] **MIG-12**: Redesign Mileage page (trips/destinations/rates sub-pages)
 - [ ] **MIG-13**: Redesign Expenses page (table + category breakdown sidebar with budget progress bars)
 - [ ] **MIG-14**: Redesign MGD page (machines table, quarterly readings, return history, HMRC registration)
-- [ ] **MIG-15**: Redesign Messages page (3-panel layout: conversation list + thread + contact sidebar)
-- [ ] **MIG-16**: Redesign Users page (user table, roles/permissions matrix)
-- [ ] **MIG-17**: Redesign Profile page (personal details, security, notifications, sidebar)
-- [ ] **MIG-18**: Redesign Settings hub (general toggles, settings groups, sub-page routing)
+- [x] **MIG-15**: Redesign Messages page (3-panel layout: conversation list + thread + contact sidebar)
+- [x] **MIG-16**: Redesign Users page (user table, roles/permissions matrix)
+- [x] **MIG-17**: Redesign Profile page (personal details, security, notifications, sidebar)
+- [x] **MIG-18**: Redesign Settings hub (general toggles, settings groups, sub-page routing)
 - [ ] **MIG-19**: Redesign Login page (auth card, email/password, 2FA, Microsoft SSO)
 - [ ] **MIG-20**: Redesign Onboarding wizard (6-step flow, sidebar step rail)
 - [ ] **MIG-21**: Redesign Staff Portal (clock-in card, shifts, leave, stats)
@@ -172,10 +172,10 @@
 | MIG-12 | Phase 2 | Pending |
 | MIG-13 | Phase 2 | Pending |
 | MIG-14 | Phase 2 | Pending |
-| MIG-15 | Phase 2 | Pending |
-| MIG-16 | Phase 2 | Pending |
-| MIG-17 | Phase 2 | Pending |
-| MIG-18 | Phase 2 | Pending |
+| MIG-15 | Phase 2 | Complete |
+| MIG-16 | Phase 2 | Complete |
+| MIG-17 | Phase 2 | Complete |
+| MIG-18 | Phase 2 | Complete |
 | MIG-19 | Phase 2 | Pending |
 | MIG-20 | Phase 2 | Pending |
 | MIG-21 | Phase 2 | Pending |
