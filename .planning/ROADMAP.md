@@ -33,7 +33,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 Plans:
 - [x] 01-01-PLAN.md -- Tailwind v4 migration and design token foundation
-- [ ] 01-02-PLAN.md -- Primitive components (Button, Badge, Avatar, Alert, Modal, form controls, Stat, Skeleton, Empty, Toast)
+- [x] 01-02-PLAN.md -- Primitive components (Button, Badge, Avatar, Alert, Modal, form controls, Stat, Skeleton, Empty, Toast)
 - [ ] 01-03-PLAN.md -- Composite components (Card, PageHeader, SectionNav, Tabs, Segmented, Table, icons)
 - [ ] 01-04-PLAN.md -- App shell (Sidebar, Topbar, AppShell) and AuthenticatedLayout replacement
 

@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-stopped_at: Completed 01-01-PLAN.md (Tailwind v4 migration + design tokens)
-last_updated: "2026-05-18T16:11:33.828Z"
+stopped_at: Completed 01-02-PLAN.md (15 primitive components)
+last_updated: "2026-05-18T16:18:51.394Z"
 progress:
   total_phases: 4
   completed_phases: 0
   total_plans: 4
-  completed_plans: 1
+  completed_plans: 2
 ---
 
 # Project State
@@ -24,7 +24,7 @@ See: .planning/PROJECT.md (updated 2026-05-18)
 ## Current Position
 
 Phase: 01 (design-system-app-shell) — EXECUTING
-Plan: 2 of 4
+Plan: 3 of 4
 
 ## Performance Metrics
 
@@ -47,6 +47,7 @@ Plan: 2 of 4
 
 *Updated after each plan completion*
 | Phase 01 P01 | 8min | 2 tasks | 10 files |
+| Phase 01 P02 | 5min | 2 tasks | 16 files |
 
 ## Accumulated Context
 
@@ -63,6 +64,9 @@ Recent decisions affecting current work:
 - [Phase 01]: Preserved legacy HSL CSS vars for backward compatibility during v3-to-v4 transition
 - [Phase 01]: Manual Tailwind v4 migration after codemod partial failure -- @apply with responsive prefixes unsupported in v4
 - [Phase 01]: @theme block in globals.css is canonical token source; @utility replaces @layer utilities @apply
+- [Phase 01]: Button icon props accept ReactNode for decoupling from Icon component
+- [Phase 01]: Form controls use button+ARIA roles instead of hidden native inputs for full style control
+- [Phase 01]: Avatar uses static Tailwind bg-[#hex] classes for deterministic palette (6 colors, purge-safe)
 
 ### Pending Todos
 
@@ -76,6 +80,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-05-18T16:11:33.826Z
-Stopped at: Completed 01-01-PLAN.md (Tailwind v4 migration + design tokens)
+Last session: 2026-05-18T16:18:51.392Z
+Stopped at: Completed 01-02-PLAN.md (15 primitive components)
 Resume file: None
