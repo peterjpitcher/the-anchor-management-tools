@@ -1,7 +1,7 @@
 import { redirect } from 'next/navigation'
 import { checkUserPermission } from '@/app/actions/rbac'
 import { getInvoices, getInvoiceSummary } from '@/app/actions/invoices'
-import InvoicesClient from './InvoicesClient'
+import InvoicesClient from './_components/InvoicesClient'
 import type { InvoiceStatus } from '@/types/invoices'
 
 const EMPTY_SUMMARY = {
