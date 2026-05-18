@@ -10,22 +10,22 @@
 - [x] **DS-01**: Migrate Tailwind from v3 syntax to v4 native (`@theme`, CSS-first config, remove `tailwind.config.js`)
 - [x] **DS-02**: Implement design tokens via `@theme` block (brand palette 50-900, semantic surfaces, borders, text, status colours, shadows, radii, spacing, typography)
 - [x] **DS-03**: Set up Inter (400-800) and JetBrains Mono (400-600) via `next/font`
-- [ ] **DS-04**: Build Button component (4 variants: primary/secondary/ghost/danger, 3 sizes: sm/md/lg, icon support, loading state)
+- [x] **DS-04**: Build Button component (4 variants: primary/secondary/ghost/danger, 3 sizes: sm/md/lg, icon support, loading state)
 - [ ] **DS-05**: Build Card component (header with title/subtitle/action, padded body, optional footer)
-- [ ] **DS-06**: Build Stat tile component (label, value, delta with direction, icon, hint)
-- [ ] **DS-07**: Build Badge component (6 tones: neutral/primary/success/warning/danger/info, optional dot)
+- [x] **DS-06**: Build Stat tile component (label, value, delta with direction, icon, hint)
+- [x] **DS-07**: Build Badge component (6 tones: neutral/primary/success/warning/danger/info, optional dot)
 - [ ] **DS-08**: Build Tabs component (underline style with count pills)
 - [ ] **DS-09**: Build Segmented control component (inline button group with sliding active state)
-- [ ] **DS-10**: Build Alert component (4 tones with icon, title, body)
-- [ ] **DS-11**: Build Modal component (backdrop, centered card, header/body/footer, configurable width)
-- [ ] **DS-12**: Build Avatar component (initials from name, deterministic colour, 4 sizes, AvatarStack with overflow)
+- [x] **DS-10**: Build Alert component (4 tones with icon, title, body)
+- [x] **DS-11**: Build Modal component (backdrop, centered card, header/body/footer, configurable width)
+- [x] **DS-12**: Build Avatar component (initials from name, deterministic colour, 4 sizes, AvatarStack with overflow)
 - [ ] **DS-13**: Build Table component (header/body/row/cell, hover states, sortable, pagination footer)
-- [ ] **DS-14**: Build form controls (Input with icon, Select, Textarea, Checkbox, Radio, Switch)
+- [x] **DS-14**: Build form controls (Input with icon, Select, Textarea, Checkbox, Radio, Switch)
 - [ ] **DS-15**: Build PageHeader component (breadcrumbs, title, subtitle, action buttons)
 - [ ] **DS-16**: Build SectionNav horizontal pill strip component
-- [ ] **DS-17**: Build Empty state component (icon, title, body, optional action)
-- [ ] **DS-18**: Build Toast notification component (colour dot, text, tone)
-- [ ] **DS-19**: Build Skeleton shimmer loading component
+- [x] **DS-17**: Build Empty state component (icon, title, body, optional action)
+- [x] **DS-18**: Build Toast notification component (colour dot, text, tone)
+- [x] **DS-19**: Build Skeleton shimmer loading component
 - [ ] **DS-20**: Build 38+ stroke SVG icon set matching design handoff (16px on 24x24 viewBox, strokeWidth 1.75)
 
 ### App Shell
@@ -135,22 +135,22 @@
 | DS-01 | Phase 1 | Complete |
 | DS-02 | Phase 1 | Complete |
 | DS-03 | Phase 1 | Complete |
-| DS-04 | Phase 1 | Pending |
+| DS-04 | Phase 1 | Complete |
 | DS-05 | Phase 1 | Pending |
-| DS-06 | Phase 1 | Pending |
-| DS-07 | Phase 1 | Pending |
+| DS-06 | Phase 1 | Complete |
+| DS-07 | Phase 1 | Complete |
 | DS-08 | Phase 1 | Pending |
 | DS-09 | Phase 1 | Pending |
-| DS-10 | Phase 1 | Pending |
-| DS-11 | Phase 1 | Pending |
-| DS-12 | Phase 1 | Pending |
+| DS-10 | Phase 1 | Complete |
+| DS-11 | Phase 1 | Complete |
+| DS-12 | Phase 1 | Complete |
 | DS-13 | Phase 1 | Pending |
-| DS-14 | Phase 1 | Pending |
+| DS-14 | Phase 1 | Complete |
 | DS-15 | Phase 1 | Pending |
 | DS-16 | Phase 1 | Pending |
-| DS-17 | Phase 1 | Pending |
-| DS-18 | Phase 1 | Pending |
-| DS-19 | Phase 1 | Pending |
+| DS-17 | Phase 1 | Complete |
+| DS-18 | Phase 1 | Complete |
+| DS-19 | Phase 1 | Complete |
 | DS-20 | Phase 1 | Pending |
 | SHELL-01 | Phase 1 | Pending |
 | SHELL-02 | Phase 1 | Pending |
