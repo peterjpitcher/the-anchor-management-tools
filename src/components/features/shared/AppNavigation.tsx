@@ -23,7 +23,6 @@ type NavigationItemWithPermission = {
 const primaryNavigation: NavigationItemWithPermission[] = [
   { name: 'Dashboard', href: '/', icon: HomeIcon, permission: { module: 'dashboard', action: 'view' } },
   { name: 'Events', href: '/events', icon: CalendarIcon, permission: { module: 'events', action: 'view' } },
-  { name: 'Performers', href: '/performers', icon: MicrophoneIcon, permission: { module: 'performers', action: 'view' } },
   { name: 'Customers', href: '/customers', icon: UserGroupIcon, permission: { module: 'customers', action: 'view' } },
   { name: 'Messages', href: '/messages', icon: EnvelopeIcon, permission: { module: 'messages', action: 'view' } },
 ];
