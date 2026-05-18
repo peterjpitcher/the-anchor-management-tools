@@ -1,78 +1,51 @@
-import { createClient } from '@/lib/supabase/server';
-import { redirect } from 'next/navigation';
-import { checkUserPermission } from '@/app/actions/rbac';
-import { DailyCashupForm } from '@/components/features/cashing-up/DailyCashupForm';
-import { PageLayout } from '@/components/ui-v2/layout/PageLayout';
-import { CashingUpService } from '@/services/cashing-up.service'; // Import CashingUpService
+import { createClient } from '@/lib/supabase/server'
+import { getDailySummaryAction } from '@/app/actions/daily-summary'
+import { getDailyTargetAction } from '@/app/actions/cashing-up'
+import { getWeeklyDataAction } from '@/app/actions/cashing-up'
+import { CashingUpService } from '@/services/cashing-up.service'
+import { getTodayIsoDate } from '@/lib/dateUtils'
+import { DailyClient } from './_components/DailyClient'
 
 export default async function DailyCashupPage(props: { searchParams: Promise<{ date?: string; siteId?: string }> }) {
-  const searchParams = await props.searchParams;
-  const sessionDateParam = searchParams.date;
-  const siteIdParam = searchParams.siteId;
+  const searchParams = await props.searchParams
 
-  const supabase = await createClient();
-  const canView = await checkUserPermission('cashing_up', 'view');
-  if (!canView) redirect('/unauthorized');
+  const supabase = await createClient()
+  const { data: site } = await supabase.from('sites').select('id, name').limit(1).single()
+  const siteId = searchParams.siteId || site?.id
+  const siteName = site?.name || 'Default Site'
 
-  const { data: { user } } = await supabase.auth.getUser();
-  const isBill = user?.email?.toLowerCase() === 'billy@orangejelly.co.uk';
-  let defaultSiteId: string | undefined;
-
-  const navItems = [ // Moved declaration here
-    { label: 'Dashboard', href: '/cashing-up/dashboard' },
-    { label: 'Daily Entry', href: '/cashing-up/daily' },
-    { label: 'Weekly Breakdown', href: '/cashing-up/weekly' },
-    { label: 'Insights', href: '/cashing-up/insights' },
-    { label: 'Import History', href: '/cashing-up/import' },
-  ];
-
-  // Determine siteId
-  let siteId = siteIdParam;
   if (!siteId) {
-    const { data: defaultSite, error: defaultSiteError } = await supabase.from('sites').select('id').limit(1).single();
-    if (defaultSiteError || !defaultSite) {
-      return (
-        <PageLayout title="Cashing Up" navItems={navItems} containerSize="xl" error="No site configured or an error occurred.">
-          <div className="p-4 text-center text-gray-500">Please configure a site in the database.</div>
-        </PageLayout>
-      );
-    }
-    siteId = defaultSite.id;
+    return <p className="text-text-muted text-center py-8">No site configured. Please configure a site in the database.</p>
   }
 
-  // Fetch site details for the form
-  const { data: siteDetails, error: siteDetailsError } = await supabase.from('sites').select('id, name').eq('id', siteId).single();
+  const todayIso = getTodayIsoDate()
+  const sessionDate = searchParams.date || todayIso
 
+  // Calculate week start (Monday)
+  const dateObj = new Date(sessionDate + 'T12:00:00')
+  const dayOfWeek = dateObj.getDay()
+  const diffToMon = dateObj.getDate() - dayOfWeek + (dayOfWeek === 0 ? -6 : 1)
+  dateObj.setDate(diffToMon)
+  const weekStart = `${dateObj.getFullYear()}-${String(dateObj.getMonth() + 1).padStart(2, '0')}-${String(dateObj.getDate()).padStart(2, '0')}`
 
+  const [summaryRes, targetRes, weeklyRes, existingSession] = await Promise.all([
+    getDailySummaryAction(sessionDate),
+    getDailyTargetAction(siteId, sessionDate),
+    getWeeklyDataAction(siteId, weekStart),
+    CashingUpService.getSessionByDateAndSite(supabase, siteId, sessionDate).catch(() => null),
+  ])
 
-  if (siteDetailsError || !siteDetails) {
-    return (
-      <PageLayout title="Cashing Up" navItems={navItems} containerSize="xl" error="Site not found or an error occurred.">
-        <div className="p-4 text-center text-gray-500">The selected site could not be loaded.</div>
-      </PageLayout>
-    );
-  }
-
-  let initialSessionData = null;
-  const sessionDate = sessionDateParam; // Date from query param
-
-  if (sessionDate && siteId) {
-    try {
-      initialSessionData = await CashingUpService.getSessionByDateAndSite(supabase, siteId, sessionDate);
-    } catch (error: unknown) {
-      console.error('Error fetching session data:', error);
-      // Continue without session data, will show empty form
-    }
-  }
+  const targetAmount = typeof targetRes.data === 'number' ? targetRes.data : 0
 
   return (
-    <PageLayout title="Cashing Up" navItems={navItems}>
-      <DailyCashupForm
-        site={siteDetails}
-        sessionDate={sessionDate || (() => { const t = new Date(); return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}-${String(t.getDate()).padStart(2, '0')}`; })()} // Local date to avoid UTC toISOString() shift
-        initialSessionData={initialSessionData}
-        isBill={isBill}
-      />
-    </PageLayout>
-  );
+    <DailyClient
+      siteId={siteId}
+      siteName={siteName}
+      sessionDate={sessionDate}
+      dailySummary={summaryRes.success ? summaryRes.summary ?? null : null}
+      dailyTarget={targetAmount}
+      weeklyData={weeklyRes.data ?? []}
+      existingSession={existingSession ? JSON.parse(JSON.stringify(existingSession)) : null}
+    />
+  )
 }
