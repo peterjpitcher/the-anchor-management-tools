@@ -395,6 +395,48 @@ nav[aria-label="Mobile navigation"],
   }
 }
 
+/* ================================================
+   DESIGN SYSTEM SHELL — Sidebar collapse/expand
+   ================================================ */
+.ds-sidebar {
+  width: var(--spacing-sidebar-collapsed);
+  flex-shrink: 0;
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  overflow: hidden;
+  transition: width 200ms var(--ease-default);
+  z-index: 20;
+}
+.ds-sidebar:hover,
+.ds-sidebar:focus-within {
+  width: var(--spacing-sidebar-expanded);
+  box-shadow: var(--shadow-lg);
+  overflow-y: auto;
+}
+.ds-sidebar .ds-label {
+  opacity: 0;
+  max-width: 0;
+  overflow: hidden;
+  transition: opacity 120ms, max-width 180ms;
+}
+.ds-sidebar:hover .ds-label,
+.ds-sidebar:focus-within .ds-label {
+  opacity: 1;
+  max-width: 200px;
+  transition-delay: 60ms;
+}
+/* Hide group dividers when collapsed */
+.ds-sidebar .ds-group-divider {
+  opacity: 0;
+  transition: opacity 120ms;
+}
+.ds-sidebar:hover .ds-group-divider,
+.ds-sidebar:focus-within .ds-group-divider {
+  opacity: 1;
+  transition-delay: 60ms;
+}
+
 /* Legacy compatibility: map old HSL-based CSS vars to concrete values
    so existing components using hsl(var(--primary)) etc. don't break */
 :root {
