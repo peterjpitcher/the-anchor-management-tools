@@ -46,14 +46,14 @@ Plans:
   2. User navigates to any of the 28 screens (Dashboard through Unauthorised page) and sees the design-handoff layout with correct PageHeader, SectionNav, stat tiles, tables, and form controls
   3. No page imports anything from `src/components/ui-v2/` or `src/components/ui/` -- all imports resolve to `@/ds/`
   4. All existing functionality (CRUD, search, filters, pagination, exports, payment flows) works identically to before migration
-**Plans**: TBD
+**Plans**: 5 plans
 
 Plans:
-- [ ] 02-01: High-traffic staff pages (Dashboard, Customers, Employees, Private Bookings)
-- [ ] 02-02: Operations pages (Parking, Menu Management, Table Bookings, Rota)
-- [ ] 02-03: Finance pages (Invoices, Quotes, Receipts, Mileage, Expenses, MGD)
-- [ ] 02-04: Communication and settings pages (Messages, Users, Profile, Settings)
-- [ ] 02-05: Auth and public pages (Login, Onboarding, Staff Portal, Timeclock, Public Booking, Public Parking, Booking Confirmation, Privacy, Error, Unauthorised)
+- [ ] 02-01-PLAN.md -- Component gap fill (13 new ds/ primitives, Chart composite, recharts, layout CSS) + high-traffic screens (Dashboard, Customers, Employees, Private Bookings)
+- [ ] 02-02-PLAN.md -- Operations screens (Parking, Menu Management, Table Bookings with 5 sub-pages, Rota with 6 sub-pages)
+- [ ] 02-03-PLAN.md -- Finance screens (Invoices, Quotes with shared SectionNav, Receipts, Mileage, Expenses, MGD)
+- [ ] 02-04-PLAN.md -- Communication and settings screens (Messages 3-panel, Users with reusable content, Profile, Settings hub)
+- [ ] 02-05-PLAN.md -- Auth and standalone-layout screens (Login, Onboarding, Staff Portal, Timeclock, Public Booking, Public Parking, Booking Confirmation, Privacy, Error, Unauthorised)
 
 ### Phase 3: New Sections
 **Goal**: Six new sections are live and functional -- Events, Cashing Up, OJ Projects, and Short Links built as UI on existing backends; Performers built full-stack with schema migration; Design System page documenting the component library
