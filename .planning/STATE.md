@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-stopped_at: Phase 3 context gathered
-last_updated: "2026-05-18T19:50:56.795Z"
+stopped_at: Completed 03-02-PLAN.md
+last_updated: "2026-05-18T20:25:37.259Z"
 progress:
   total_phases: 4
   completed_phases: 2
-  total_plans: 9
-  completed_plans: 9
+  total_plans: 13
+  completed_plans: 11
 ---
 
 # Project State
@@ -19,12 +19,12 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-18)
 
 **Core value:** Every staff member sees a consistent, modern, professional interface matching the design handoff pixel-perfectly.
-**Current focus:** Phase 02 — screen-migrations
+**Current focus:** Phase 03 — new-sections
 
 ## Current Position
 
-Phase: 02 (screen-migrations) — NEAR COMPLETE (gap closure done, 18 nested sub-page files remain)
-Plan: 5 of 5 (all executed + gap closure commit)
+Phase: 03 (new-sections) — EXECUTING
+Plan: 3 of 4
 
 ## Performance Metrics
 
@@ -54,6 +54,8 @@ Plan: 5 of 5 (all executed + gap closure commit)
 | Phase 02-screen-migrations P04 | 7min | 2 tasks | 10 files |
 | Phase 02-screen-migrations P02 | 17min | 3 tasks | 19 files |
 | Phase 02-screen-migrations P03 | 45min | 2 tasks | 13 files |
+| Phase 03-new-sections P02 | 12min | 2 tasks | 27 files |
+| Phase 03-new-sections P01 | 12min | 2 tasks | 14 files |
 
 ## Accumulated Context
 
@@ -82,6 +84,8 @@ Recent decisions affecting current work:
 - [Phase 02-screen-migrations]: Table Bookings and Rota sub-pages use demo data for initial ds/ buildout; real data wiring happens when page.tsx switches to new client components
 - [Phase 02-screen-migrations]: CardHeader requires title prop (not children), Badge has no size prop, ProgressBar value is 0-100 pct, Tabs uses tabs prop (not items)
 - [Phase 02-screen-migrations]: Invoices/Quotes share FINANCE_SECTION_NAV constant; SectionNav in server page.tsx for static href nav; ReceiptsClient minimal migration (sub-components retain ui-v2); Toast exception preserved
+- [Phase 03-new-sections]: Cashing Up uses shared layout.tsx with SectionNav — permission check once at layout level
+- [Phase 03-new-sections]: Short Links uses SectionNav with Links/Insights navigation; old components/ directory fully deleted
 
 ### Pending Todos
 
@@ -95,6 +99,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-05-18T19:50:56.791Z
-Stopped at: Phase 3 context gathered
-Resume file: .planning/phases/03-new-sections/03-CONTEXT.md
+Last session: 2026-05-18T20:25:23.894Z
+Stopped at: Completed 03-02-PLAN.md
+Resume file: None
