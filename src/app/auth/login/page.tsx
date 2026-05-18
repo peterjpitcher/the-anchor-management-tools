@@ -1,19 +1,19 @@
 'use client'
 
 import { Suspense } from 'react'
-import LoginForm from './page-client'
-import { Spinner } from '@/components/ui-v2/feedback/Spinner'
+import LoginClient from './_components/LoginClient'
+import { Spinner } from '@/ds'
 
 export default function LoginPage() {
   return (
     <Suspense
       fallback={
-        <div className="min-h-screen flex items-center justify-center bg-sidebar p-4">
+        <div className="auth">
           <Spinner size="lg" />
         </div>
       }
     >
-      <LoginForm />
+      <LoginClient />
     </Suspense>
   )
 }
