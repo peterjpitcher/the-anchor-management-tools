@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-stopped_at: Completed 03-02-PLAN.md
-last_updated: "2026-05-18T20:25:37.259Z"
+stopped_at: Completed 03-01-PLAN.md
+last_updated: "2026-05-18T20:26:09.345Z"
 progress:
   total_phases: 4
   completed_phases: 2
   total_plans: 13
-  completed_plans: 11
+  completed_plans: 12
 ---
 
 # Project State
@@ -24,7 +24,7 @@ See: .planning/PROJECT.md (updated 2026-05-18)
 ## Current Position
 
 Phase: 03 (new-sections) — EXECUTING
-Plan: 3 of 4
+Plan: 4 of 4
 
 ## Performance Metrics
 
@@ -56,6 +56,7 @@ Plan: 3 of 4
 | Phase 02-screen-migrations P03 | 45min | 2 tasks | 13 files |
 | Phase 03-new-sections P02 | 12min | 2 tasks | 27 files |
 | Phase 03-new-sections P01 | 12min | 2 tasks | 14 files |
+| Phase 03-new-sections P03 | 18min | 2 tasks | 14 files |
 
 ## Accumulated Context
 
@@ -86,6 +87,8 @@ Recent decisions affecting current work:
 - [Phase 02-screen-migrations]: Invoices/Quotes share FINANCE_SECTION_NAV constant; SectionNav in server page.tsx for static href nav; ReceiptsClient minimal migration (sub-components retain ui-v2); Toast exception preserved
 - [Phase 03-new-sections]: Cashing Up uses shared layout.tsx with SectionNav — permission check once at layout level
 - [Phase 03-new-sections]: Short Links uses SectionNav with Links/Insights navigation; old components/ directory fully deleted
+- [Phase 03-new-sections]: Drawer-based CRUD replaces route-based /events/new and /events/[id]/edit per D-06; events/[id] redirects to /events
+- [Phase 03-new-sections]: Board view is read-only (no drag-and-drop) per D-04; CalendarGrid uses weekStartsOn: 1 (Monday)
 
 ### Pending Todos
 
@@ -99,6 +102,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-05-18T20:25:23.894Z
-Stopped at: Completed 03-02-PLAN.md
+Last session: 2026-05-18T20:26:00.458Z
+Stopped at: Completed 03-01-PLAN.md
 Resume file: None
