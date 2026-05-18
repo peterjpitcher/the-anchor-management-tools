@@ -29,13 +29,13 @@ Decimal phases appear between their surrounding integers in numeric order.
   3. All 17 design system primitives and composites (Button, Card, Stat, Badge, Tabs, Segmented, Alert, Modal, Avatar, Table, form controls, PageHeader, SectionNav, Empty, Toast, Skeleton) render with correct Bottle Green brand tokens and Inter/JetBrains Mono typography
   4. All existing pages continue to function correctly inside the new shell -- no auth regressions, no broken workflows, no layout overflow
   5. Tailwind v4 native syntax is active (`@theme` block in globals.css, `@import "tailwindcss"`, no tailwind.config.js dependency for token resolution)
-**Plans**: TBD
+**Plans**: 4 plans
 
 Plans:
-- [ ] 01-01: Tailwind v4 migration and design token foundation
-- [ ] 01-02: Primitive components (Button, Badge, Avatar, Alert, Modal, form controls, Stat, Skeleton, Empty, Toast)
-- [ ] 01-03: Composite components (Card, PageHeader, SectionNav, Tabs, Segmented, Table, icons)
-- [ ] 01-04: App shell (Sidebar, Topbar, AppShell) and AuthenticatedLayout replacement
+- [ ] 01-01-PLAN.md -- Tailwind v4 migration and design token foundation
+- [ ] 01-02-PLAN.md -- Primitive components (Button, Badge, Avatar, Alert, Modal, form controls, Stat, Skeleton, Empty, Toast)
+- [ ] 01-03-PLAN.md -- Composite components (Card, PageHeader, SectionNav, Tabs, Segmented, Table, icons)
+- [ ] 01-04-PLAN.md -- App shell (Sidebar, Topbar, AppShell) and AuthenticatedLayout replacement
 
 ### Phase 2: Screen Migrations
 **Goal**: Every existing screen uses ds/ components exclusively -- matching the design handoff pixel-perfectly -- with no imports remaining from ui-v2/ in migrated pages
@@ -94,7 +94,7 @@ Phases execute in numeric order: 1 --> 1.1 --> 1.2 --> 2 --> 2.1 --> 3 --> 4
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Design System & App Shell | 0/4 | Not started | - |
+| 1. Design System & App Shell | 0/4 | Planning complete | - |
 | 2. Screen Migrations | 0/5 | Not started | - |
 | 3. New Sections | 0/4 | Not started | - |
 | 4. Modes & Cleanup | 0/2 | Not started | - |
