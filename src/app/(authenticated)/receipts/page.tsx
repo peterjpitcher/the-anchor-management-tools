@@ -1,9 +1,8 @@
 import ReceiptsClient from './_components/ReceiptsClient'
 import { getReceiptWorkspaceData, type ReceiptWorkspaceFilters } from '@/app/actions/receipts'
-import { PageLayout } from '@/components/ui-v2/layout/PageLayout'
+import { PageHeader } from '@/ds'
 import { redirect } from 'next/navigation'
 import { checkUserPermission } from '@/app/actions/rbac'
-import { getReceiptsNavItems } from './receiptsNavItems'
 
 const STATUS_VALUES = new Set(['pending', 'completed', 'auto_completed', 'no_receipt_required', 'cant_find'])
 const DIRECTION_VALUES = new Set(['in', 'out'])
@@ -101,18 +100,13 @@ export default async function ReceiptsPage({ searchParams }: ReceiptsPageProps) 
     data = await getReceiptWorkspaceData(filters)
   }
 
-  const navItems = getReceiptsNavItems({
-    view: 'workspace',
-    missingVendorOnly,
-    missingExpenseOnly,
-  })
-
   return (
-    <PageLayout
-      title="Receipts"
-      subtitle="Upload statements, tick off receipts, and download quarterly packs."
-      navItems={navItems}
-    >
+    <div className="space-y-6">
+      <PageHeader
+        breadcrumbs={[{ label: 'Finance' }, { label: 'Receipts' }]}
+        title="Receipts"
+        subtitle="Upload statements, tick off receipts, and download quarterly packs."
+      />
       <ReceiptsClient
         initialData={data}
         canExport={canExport}
@@ -129,6 +123,6 @@ export default async function ReceiptsPage({ searchParams }: ReceiptsPageProps) 
           sortDirection,
         }}
       />
-    </PageLayout>
+    </div>
   )
 }

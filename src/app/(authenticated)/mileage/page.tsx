@@ -1,14 +1,13 @@
-import { PageLayout } from '@/components/ui-v2/layout/PageLayout'
+import { PageHeader, SectionNav } from '@/ds'
 import { checkUserPermission } from '@/app/actions/rbac'
 import { getTrips, getTripStats, getDestinations } from '@/app/actions/mileage'
 import { redirect } from 'next/navigation'
 import { MileageClient } from './_components/MileageClient'
-import type { HeaderNavItem } from '@/components/ui-v2/navigation/HeaderNav'
 
-const navItems: HeaderNavItem[] = [
-  { label: 'Trips', href: '/mileage' },
-  { label: 'Destinations', href: '/mileage/destinations' },
-  { label: 'Insights', href: '/mileage/insights' },
+const MILEAGE_SECTION_NAV = [
+  { id: 'trips', label: 'Trips', href: '/mileage' },
+  { id: 'destinations', label: 'Destinations', href: '/mileage/destinations' },
+  { id: 'insights', label: 'Insights', href: '/mileage/insights' },
 ]
 
 export default async function MileagePage(): Promise<React.JSX.Element> {
@@ -27,6 +26,9 @@ export default async function MileagePage(): Promise<React.JSX.Element> {
   const stats = statsResult.data ?? {
     quarterTotalMiles: 0,
     quarterAmountDue: 0,
+    calendarYear: new Date().getFullYear(),
+    calendarYearTotalMiles: 0,
+    calendarYearAmountDue: 0,
     taxYearTotalMiles: 0,
     taxYearAmountDue: 0,
     milesToThreshold: 10_000,
@@ -34,17 +36,19 @@ export default async function MileagePage(): Promise<React.JSX.Element> {
   const destinations = destsResult.data ?? []
 
   return (
-    <PageLayout
-      title="Mileage"
-      subtitle="Track business trips for HMRC mileage reimbursement."
-      navItems={navItems}
-    >
+    <div className="space-y-6">
+      <PageHeader
+        breadcrumbs={[{ label: 'Finance' }, { label: 'Mileage' }]}
+        title="Mileage"
+        subtitle="Business trip log with HMRC-rate reimbursement"
+      />
+      <SectionNav items={MILEAGE_SECTION_NAV} activeId="trips" />
       <MileageClient
         initialTrips={trips}
         initialStats={stats}
         destinations={destinations}
         canManage={canManage}
       />
-    </PageLayout>
+    </div>
   )
 }

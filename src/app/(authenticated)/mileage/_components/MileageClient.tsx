@@ -2,9 +2,23 @@
 
 import { useState, useTransition, useCallback, useEffect, useMemo } from 'react'
 import { useSearchParams } from 'next/navigation'
-import { Button } from '@/components/ui-v2/forms/Button'
-import { Input } from '@/components/ui-v2/forms/Input'
-import { ConfirmModal } from '@/components/ui-v2/overlay/Modal'
+import {
+  Button,
+  IconButton,
+  Input,
+  Badge,
+  Stat,
+  Empty,
+  ConfirmDialog,
+} from '@/ds'
+import {
+  Table,
+  TableHeader,
+  TableBody,
+  TableRow,
+  TableHead,
+  TableCell,
+} from '@/ds'
 import {
   getTrips,
   getTripStats,
@@ -34,7 +48,7 @@ interface MileageClientProps {
 }
 
 function formatCurrency(amount: number): string {
-  return `\u00A3${amount.toFixed(2)}`
+  return `£${amount.toFixed(2)}`
 }
 
 export function MileageClient({
@@ -171,25 +185,24 @@ export function MileageClient({
     <div className="space-y-6">
       {/* Stats cards */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-        <StatCard
+        <Stat
           label="This Quarter"
-          miles={stats.quarterTotalMiles}
-          amount={stats.quarterAmountDue}
+          value={`${stats.quarterTotalMiles.toFixed(1)} mi`}
+          hint={formatCurrency(stats.quarterAmountDue)}
         />
-        <StatCard
+        <Stat
           label="Tax Year Total"
-          miles={stats.taxYearTotalMiles}
-          amount={stats.taxYearAmountDue}
+          value={`${stats.taxYearTotalMiles.toFixed(1)} mi`}
+          hint={formatCurrency(stats.taxYearAmountDue)}
         />
-        <StatCard
+        <Stat
           label="Miles to Threshold"
-          miles={stats.milesToThreshold}
-          subtitle={
+          value={`${stats.milesToThreshold.toFixed(1)} mi`}
+          hint={
             stats.milesToThreshold > 0
-              ? `${stats.milesToThreshold.toLocaleString()} mi left at \u00A30.45`
-              : 'Now at reduced rate (\u00A30.25/mi)'
+              ? `${stats.milesToThreshold.toLocaleString()} mi left at £0.45`
+              : 'Now at reduced rate (£0.25/mi)'
           }
-          variant={stats.milesToThreshold === 0 ? 'warning' : 'default'}
         />
       </div>
 
@@ -197,16 +210,15 @@ export function MileageClient({
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2">
           {canManage && (
-            <Button variant="primary" size="sm" leftIcon={<PlusIcon />} onClick={openNewTrip}>
+            <Button variant="primary" size="sm" icon={<PlusIcon className="h-4 w-4" />} onClick={openNewTrip}>
               New Trip
             </Button>
           )}
           <Button
             variant="ghost"
             size="sm"
-            leftIcon={<FunnelIcon />}
+            icon={<FunnelIcon className="h-4 w-4" />}
             onClick={() => setShowFilters(!showFilters)}
-            active={showFilters}
           >
             Filter
           </Button>
@@ -214,7 +226,7 @@ export function MileageClient({
         <Button
           variant="ghost"
           size="sm"
-          leftIcon={<ArrowPathIcon />}
+          icon={<ArrowPathIcon className="h-4 w-4" />}
           onClick={() => refreshTrips({ dateFrom, dateTo })}
           loading={isPending}
         >
@@ -224,27 +236,25 @@ export function MileageClient({
 
       {/* Filter row */}
       {showFilters && (
-        <div className="flex flex-wrap items-end gap-3 rounded-lg border border-gray-200 bg-white p-4">
+        <div className="flex flex-wrap items-end gap-3 rounded-lg border border-border bg-surface-1 p-4">
           <div>
-            <label htmlFor="filter-from" className="block text-xs font-medium text-gray-500 mb-1">
+            <label htmlFor="filter-from" className="block text-xs font-medium text-text-muted mb-1">
               From
             </label>
             <Input
               id="filter-from"
               type="date"
-              inputSize="sm"
               value={dateFrom}
               onChange={(e) => setDateFrom(e.target.value)}
             />
           </div>
           <div>
-            <label htmlFor="filter-to" className="block text-xs font-medium text-gray-500 mb-1">
+            <label htmlFor="filter-to" className="block text-xs font-medium text-text-muted mb-1">
               To
             </label>
             <Input
               id="filter-to"
               type="date"
-              inputSize="sm"
               value={dateTo}
               onChange={(e) => setDateTo(e.target.value)}
             />
@@ -265,140 +275,127 @@ export function MileageClient({
 
       {/* Trip list */}
       {trips.length === 0 ? (
-        <div className="rounded-lg border border-gray-200 bg-white p-8 text-center">
-          <MapPinIcon className="mx-auto h-12 w-12 text-gray-300" />
-          <p className="mt-2 text-sm text-gray-500">
-            No trips recorded yet. Add your first trip to start tracking mileage.
-          </p>
-        </div>
+        <Empty
+          icon={<MapPinIcon className="h-12 w-12" />}
+          title="No trips recorded"
+          description="Add your first trip to start tracking mileage."
+        />
       ) : (
-        <div className="overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
-              <tr>
-                <SortableHeader
-                  label="Date"
-                  column="date"
-                  currentColumn={tripSort.column}
-                  currentDirection={tripSort.direction}
-                  onSort={toggleTripSort}
-                  className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500"
-                />
-                <SortableHeader
-                  label="Route"
-                  column="route"
-                  currentColumn={tripSort.column}
-                  currentDirection={tripSort.direction}
-                  onSort={toggleTripSort}
-                  className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500"
-                />
-                <SortableHeader
-                  label="Miles"
-                  column="miles"
-                  currentColumn={tripSort.column}
-                  currentDirection={tripSort.direction}
-                  onSort={toggleTripSort}
-                  className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500"
-                />
-                <SortableHeader
-                  label="Rate"
-                  column="rate"
-                  currentColumn={tripSort.column}
-                  currentDirection={tripSort.direction}
-                  onSort={toggleTripSort}
-                  className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500"
-                />
-                <SortableHeader
-                  label="Amount"
-                  column="amount"
-                  currentColumn={tripSort.column}
-                  currentDirection={tripSort.direction}
-                  onSort={toggleTripSort}
-                  className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500"
-                />
-                <SortableHeader
-                  label="Source"
-                  column="source"
-                  currentColumn={tripSort.column}
-                  currentDirection={tripSort.direction}
-                  onSort={toggleTripSort}
-                  className="px-4 py-3 text-center text-xs font-medium uppercase tracking-wider text-gray-500"
-                />
-                {canManage && (
-                  <th scope="col" className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500">
-                    Actions
-                  </th>
-                )}
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-200">
-              {sortedTrips.map((trip) => {
-                const isOjProjects = trip.source === 'oj_projects'
-                const hasMixedRates = trip.milesAtStandardRate > 0 && trip.milesAtReducedRate > 0
-                return (
-                  <tr key={trip.id} className="hover:bg-gray-50">
-                    <td className="whitespace-nowrap px-4 py-3 text-sm text-gray-900">
-                      {formatDateInLondon(trip.tripDate, {
-                        day: '2-digit',
-                        month: 'short',
-                        year: 'numeric',
-                      })}
-                    </td>
-                    <td className="max-w-xs truncate px-4 py-3 text-sm text-gray-600" title={trip.routeSummary}>
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <SortableHeader
+                label="Date"
+                column="date"
+                currentColumn={tripSort.column}
+                currentDirection={tripSort.direction}
+                onSort={toggleTripSort}
+                className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-text-muted"
+              />
+              <SortableHeader
+                label="Route"
+                column="route"
+                currentColumn={tripSort.column}
+                currentDirection={tripSort.direction}
+                onSort={toggleTripSort}
+                className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-text-muted"
+              />
+              <SortableHeader
+                label="Miles"
+                column="miles"
+                currentColumn={tripSort.column}
+                currentDirection={tripSort.direction}
+                onSort={toggleTripSort}
+                className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider text-text-muted"
+              />
+              <SortableHeader
+                label="Rate"
+                column="rate"
+                currentColumn={tripSort.column}
+                currentDirection={tripSort.direction}
+                onSort={toggleTripSort}
+                className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider text-text-muted"
+              />
+              <SortableHeader
+                label="Amount"
+                column="amount"
+                currentColumn={tripSort.column}
+                currentDirection={tripSort.direction}
+                onSort={toggleTripSort}
+                className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider text-text-muted"
+              />
+              <SortableHeader
+                label="Source"
+                column="source"
+                currentColumn={tripSort.column}
+                currentDirection={tripSort.direction}
+                onSort={toggleTripSort}
+                className="px-4 py-3 text-center text-xs font-medium uppercase tracking-wider text-text-muted"
+              />
+              {canManage && (
+                <TableHead align="right">Actions</TableHead>
+              )}
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {sortedTrips.map((trip) => {
+              const isOjProjects = trip.source === 'oj_projects'
+              const hasMixedRates = trip.milesAtStandardRate > 0 && trip.milesAtReducedRate > 0
+              return (
+                <TableRow key={trip.id}>
+                  <TableCell>
+                    {formatDateInLondon(trip.tripDate, {
+                      day: '2-digit',
+                      month: 'short',
+                      year: 'numeric',
+                    })}
+                  </TableCell>
+                  <TableCell className="max-w-xs">
+                    <span className="block truncate" title={trip.routeSummary}>
                       {trip.routeSummary}
-                    </td>
-                    <td className="whitespace-nowrap px-4 py-3 text-right text-sm font-medium text-gray-900">
-                      {trip.totalMiles.toFixed(1)}
-                    </td>
-                    <td className="whitespace-nowrap px-4 py-3 text-right text-sm text-gray-500">
-                      {hasMixedRates ? 'Mixed' : trip.milesAtReducedRate > 0 ? '\u00A30.25' : '\u00A30.45'}
-                    </td>
-                    <td className="whitespace-nowrap px-4 py-3 text-right text-sm font-medium text-gray-900">
-                      {formatCurrency(trip.amountDue)}
-                    </td>
-                    <td className="whitespace-nowrap px-4 py-3 text-center">
-                      <span
-                        className={
-                          isOjProjects
-                            ? 'inline-flex rounded-full bg-purple-100 px-2 py-0.5 text-xs font-medium text-purple-700'
-                            : 'inline-flex rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-600'
-                        }
-                      >
-                        {isOjProjects ? 'OJ Projects' : 'Manual'}
-                      </span>
-                    </td>
-                    {canManage && (
-                      <td className="whitespace-nowrap px-4 py-3 text-right">
-                        {!isOjProjects && (
-                          <div className="flex items-center justify-end gap-1">
-                            <Button
-                              variant="ghost"
-                              size="xs"
-                              iconOnly
-                              aria-label={`Edit trip on ${trip.tripDate}`}
-                              onClick={() => openEditTrip(trip)}
-                            >
-                              <PencilSquareIcon className="h-4 w-4" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="xs"
-                              iconOnly
-                              aria-label={`Delete trip on ${trip.tripDate}`}
-                              onClick={() => { setDeleteError(null); setDeleteTarget(trip) }}
-                            >
-                              <TrashIcon className="h-4 w-4 text-red-500" />
-                            </Button>
-                          </div>
-                        )}
-                      </td>
-                    )}
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
-        </div>
+                    </span>
+                  </TableCell>
+                  <TableCell align="right" className="font-medium">
+                    {trip.totalMiles.toFixed(1)}
+                  </TableCell>
+                  <TableCell align="right">
+                    {hasMixedRates ? 'Mixed' : trip.milesAtReducedRate > 0 ? '£0.25' : '£0.45'}
+                  </TableCell>
+                  <TableCell align="right" className="font-medium">
+                    {formatCurrency(trip.amountDue)}
+                  </TableCell>
+                  <TableCell align="center">
+                    <Badge tone={isOjProjects ? 'primary' : 'neutral'}>
+                      {isOjProjects ? 'OJ Projects' : 'Manual'}
+                    </Badge>
+                  </TableCell>
+                  {canManage && (
+                    <TableCell align="right">
+                      {!isOjProjects && (
+                        <div className="flex items-center justify-end gap-1">
+                          <IconButton
+                            icon={<PencilSquareIcon className="h-4 w-4" />}
+                            label={`Edit trip on ${trip.tripDate}`}
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => openEditTrip(trip)}
+                          />
+                          <IconButton
+                            icon={<TrashIcon className="h-4 w-4 text-red-500" />}
+                            label={`Delete trip on ${trip.tripDate}`}
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => { setDeleteError(null); setDeleteTarget(trip) }}
+                          />
+                        </div>
+                      )}
+                    </TableCell>
+                  )}
+                </TableRow>
+              )
+            })}
+          </TableBody>
+        </Table>
       )}
 
       {/* Trip form */}
@@ -416,52 +413,16 @@ export function MileageClient({
       />
 
       {/* Delete confirmation */}
-      <ConfirmModal
-        open={!!deleteTarget}
-        onClose={() => setDeleteTarget(null)}
-        onConfirm={handleDelete}
-        title="Delete Trip"
-        message={`Are you sure you want to delete the trip on ${deleteTarget?.tripDate ?? ''}? This cannot be undone.`}
-        confirmLabel="Delete"
-        variant="danger"
-        loading={isPending}
-      />
-    </div>
-  )
-}
-
-// ---------------------------------------------------------------------------
-// Stat card
-// ---------------------------------------------------------------------------
-
-function StatCard({
-  label,
-  miles,
-  amount,
-  subtitle,
-  variant = 'default',
-}: {
-  label: string
-  miles: number
-  amount?: number
-  subtitle?: string
-  variant?: 'default' | 'warning'
-}): React.JSX.Element {
-  return (
-    <div
-      className={`rounded-lg border p-4 ${
-        variant === 'warning'
-          ? 'border-amber-200 bg-amber-50'
-          : 'border-gray-200 bg-white'
-      }`}
-    >
-      <p className="text-xs font-medium uppercase tracking-wider text-gray-500">{label}</p>
-      <p className="mt-1 text-2xl font-bold text-gray-900">{miles.toFixed(1)} mi</p>
-      {amount != null && (
-        <p className="text-sm text-gray-600">{formatCurrency(amount)}</p>
-      )}
-      {subtitle && (
-        <p className="mt-1 text-xs text-gray-500">{subtitle}</p>
+      {deleteTarget && (
+        <ConfirmDialog
+          open
+          onClose={() => { setDeleteTarget(null); setDeleteError(null) }}
+          onConfirm={handleDelete}
+          title="Delete Trip"
+          message={`Are you sure you want to delete the trip on ${deleteTarget.tripDate}? This cannot be undone.`}
+          confirmLabel="Delete"
+          tone="danger"
+        />
       )}
     </div>
   )

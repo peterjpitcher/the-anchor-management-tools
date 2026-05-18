@@ -17,7 +17,7 @@ import { ReceiptList } from './ui/ReceiptList'
 import { ReceiptRules } from './ui/ReceiptRules'
 import { ReceiptReclassify } from './ui/ReceiptReclassify'
 import { usePermissions } from '@/contexts/PermissionContext'
-import { Button } from '@/components/ui-v2/forms/Button'
+import { Button } from '@/ds'
 
 interface ReceiptsClientProps {
   initialData: ReceiptWorkspaceData

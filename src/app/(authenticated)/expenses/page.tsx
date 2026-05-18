@@ -1,15 +1,8 @@
 import { redirect } from 'next/navigation'
 import { checkUserPermission } from '@/app/actions/rbac'
 import { getExpenses, getExpenseStats } from '@/app/actions/expenses'
-import { PageLayout } from '@/components/ui-v2/layout/PageLayout'
-import { Alert } from '@/components/ui-v2/feedback/Alert'
+import { PageHeader, Alert } from '@/ds'
 import { ExpensesClient } from './_components/ExpensesClient'
-import type { HeaderNavItem } from '@/components/ui-v2/navigation/HeaderNav'
-
-const navItems: HeaderNavItem[] = [
-  { label: 'Expenses', href: '/expenses' },
-  { label: 'Insights', href: '/expenses/insights' },
-]
 
 export default async function ExpensesPage(): Promise<React.JSX.Element> {
   const canView = await checkUserPermission('expenses', 'view')
@@ -33,18 +26,30 @@ export default async function ExpensesPage(): Promise<React.JSX.Element> {
 
   if (loadError) {
     return (
-      <PageLayout title="Expenses" subtitle="Track and manage business expenses with receipt images." navItems={navItems}>
-        <Alert variant="error" title="Failed to load expenses" description={loadError} />
-      </PageLayout>
+      <div className="space-y-6">
+        <PageHeader
+          breadcrumbs={[{ label: 'Finance' }, { label: 'Expenses' }]}
+          title="Expenses"
+          subtitle="Track and manage business expenses with receipt images."
+        />
+        <Alert tone="danger" title="Failed to load expenses">
+          {loadError}
+        </Alert>
+      </div>
     )
   }
 
   return (
-    <PageLayout title="Expenses" subtitle="Track and manage business expenses with receipt images." navItems={navItems}>
+    <div className="space-y-6">
+      <PageHeader
+        breadcrumbs={[{ label: 'Finance' }, { label: 'Expenses' }]}
+        title="Expenses"
+        subtitle="Track and manage business expenses with receipt images."
+      />
       <ExpensesClient
         initialExpenses={expensesResult.data ?? []}
         initialStats={statsResult.data ?? { quarterTotal: 0, vatReclaimable: 0, missingReceipts: 0 }}
       />
-    </PageLayout>
+    </div>
   )
 }
