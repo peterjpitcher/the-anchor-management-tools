@@ -1,112 +1,32 @@
 import { redirect } from 'next/navigation'
 import { checkUserPermission } from '@/app/actions/rbac'
-import {
-  getEventsCommandCenterData,
-  type PrivateBookingCalendarOverview,
-} from './get-events-command-center'
-import KPIHeader from '@/components/events/command-center/KPIHeader'
-import CommandCenterShell from '@/components/events/command-center/CommandCenterShell'
-import { DATE_TBD_NOTE, PrivateBookingService } from '@/services/private-bookings'
-import { PageLayout } from '@/components/ui-v2/layout/PageLayout'
-import { LinkButton } from '@/components/ui-v2/navigation/LinkButton'
-import type { HeaderNavItem } from '@/components/ui-v2/navigation/HeaderNav'
+import { getEvents } from '@/app/actions/events'
+import { getActiveEventCategories } from '@/app/actions/event-categories'
+import EventsClient from './_components/EventsClient'
 
 export const metadata = {
-  title: 'Events Command Center',
+  title: 'Events',
 }
 
 export default async function EventsPage() {
-  const [canViewEvents, canViewPrivateBookings, canManagePrivateBookings, canManageCalendarNotes, canManageEvents] = await Promise.all([
-    checkUserPermission('events', 'view'),
-    checkUserPermission('private_bookings', 'view'),
-    checkUserPermission('private_bookings', 'manage'),
-    checkUserPermission('settings', 'manage'),
-    checkUserPermission('events', 'manage'),
-  ])
+  const canViewEvents = await checkUserPermission('events', 'view')
 
   if (!canViewEvents) {
     redirect('/unauthorized')
   }
 
-  const navItems: HeaderNavItem[] = [
-    { label: 'Overview', href: '/events' },
-    { label: 'Checklist Todo', href: '/events/todo' },
-  ]
-
-  const data = await getEventsCommandCenterData()
-  let privateBookingsForCalendar: PrivateBookingCalendarOverview[] = []
-
-  if (canViewPrivateBookings || canManagePrivateBookings) {
-    try {
-      const { data: bookings } = await PrivateBookingService.fetchPrivateBookingsForCalendar()
-
-      privateBookingsForCalendar = (bookings ?? [])
-        .filter((booking) => booking.status !== 'cancelled')
-        .filter((booking) => !booking.internal_notes?.includes(DATE_TBD_NOTE))
-        .map((booking) => ({
-          id: booking.id,
-          customer_name:
-            booking.customer_full_name ||
-            booking.customer_name ||
-            booking.customer_first_name ||
-            'Unknown',
-          event_date: booking.event_date,
-          start_time: booking.start_time || '00:00',
-          end_time: booking.end_time ?? null,
-          end_time_next_day: booking.end_time_next_day ?? null,
-          status: booking.status,
-          event_type: booking.event_type ?? null,
-          guest_count: booking.guest_count ?? null,
-        }))
-    } catch (error) {
-      console.error('Error loading private bookings for events calendar', error)
-    }
-  }
-
-  const headerActions = canManageEvents ? (
-    <div className="flex items-center gap-2">
-      <LinkButton href="/settings/event-categories" variant="secondary" size="sm">Event Categories</LinkButton>
-      <LinkButton href="/events/new" variant="primary">
-        Create Event
-      </LinkButton>
-    </div>
-  ) : null
-
-  if (data.error) {
-    return (
-      <PageLayout
-        title="Events Command Center"
-        subtitle="Manage upcoming events and clear tasks."
-        navItems={navItems}
-        headerActions={headerActions}
-        error={data.error}
-      />
-    )
-  }
+  const [eventsResult, categoriesResult] = await Promise.all([
+    getEvents({ status: 'all', page: 1, pageSize: 25 }),
+    getActiveEventCategories(),
+  ])
 
   return (
-    <PageLayout
-      title="Events Command Center"
-      subtitle="Manage upcoming events and clear tasks."
-      navItems={navItems}
-      headerActions={headerActions}
-      className="bg-gray-50/50"
-      padded={false}
-      contentClassName="px-4 py-4 md:px-8 md:py-6"
-    >
-      <div className="flex min-h-[65vh] flex-col gap-6 overflow-hidden">
-        <KPIHeader kpis={data.kpis} />
-
-        <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-          <CommandCenterShell
-            initialData={{
-              ...data,
-              privateBookingsForCalendar,
-            }}
-            canCreateCalendarNote={canManageCalendarNotes}
-          />
-        </div>
-      </div>
-    </PageLayout>
+    <div className="p-6">
+      <EventsClient
+        initialEvents={eventsResult.data ?? []}
+        initialPagination={eventsResult.pagination}
+        categories={categoriesResult.data ?? []}
+      />
+    </div>
   )
 }
