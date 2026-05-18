@@ -1,7 +1,7 @@
 import { redirect } from 'next/navigation'
 import { checkUserPermission } from '@/app/actions/rbac'
 import { getEmployeesRoster } from '@/app/actions/employeeQueries'
-import EmployeesClientPage from './EmployeesClientPage'
+import EmployeesClient from './_components/EmployeesClient'
 
 export const dynamic = 'force-dynamic'
 
@@ -24,11 +24,11 @@ export default async function EmployeesPage({ searchParams }: PageProps) {
   }
 
   const resolvedParams = await searchParams
-  
+
   const page = Number(resolvedParams.page) || 1
   const searchTerm = typeof resolvedParams.search === 'string' ? resolvedParams.search : ''
   const statusParam = typeof resolvedParams.status === 'string' ? resolvedParams.status : 'Active'
-  
+
   let statusFilter: EmployeeStatus = 'Active'
   if (['all', 'Active', 'Former', 'Onboarding', 'Started Separation'].includes(statusParam)) {
     statusFilter = statusParam as EmployeeStatus
@@ -42,7 +42,7 @@ export default async function EmployeesPage({ searchParams }: PageProps) {
   })
 
   return (
-    <EmployeesClientPage
+    <EmployeesClient
       initialData={initialData}
       initialError={initialData.error ?? null}
       permissions={{

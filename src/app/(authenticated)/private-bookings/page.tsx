@@ -1,5 +1,5 @@
 import { redirect } from 'next/navigation'
-import PrivateBookingsClient from './PrivateBookingsClient'
+import PrivateBookingsClient from './_components/PrivateBookingsClient'
 import {
   fetchPrivateBookings,
   type PrivateBookingDashboardItem
