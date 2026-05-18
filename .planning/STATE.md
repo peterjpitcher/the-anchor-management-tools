@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-stopped_at: Completed 03-01-PLAN.md
-last_updated: "2026-05-18T20:26:09.345Z"
+stopped_at: Completed 03-03-PLAN.md
+last_updated: "2026-05-18T20:26:16.843Z"
 progress:
   total_phases: 4
   completed_phases: 2
@@ -89,6 +89,7 @@ Recent decisions affecting current work:
 - [Phase 03-new-sections]: Short Links uses SectionNav with Links/Insights navigation; old components/ directory fully deleted
 - [Phase 03-new-sections]: Drawer-based CRUD replaces route-based /events/new and /events/[id]/edit per D-06; events/[id] redirects to /events
 - [Phase 03-new-sections]: Board view is read-only (no drag-and-drop) per D-04; CalendarGrid uses weekStartsOn: 1 (Monday)
+- [Phase 03-new-sections]: OJ Projects: Split SectionNav into OJProjectsNav client component for path-aware active state; derive clients from project vendor data
 
 ### Pending Todos
 
@@ -102,6 +103,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-05-18T20:26:00.458Z
-Stopped at: Completed 03-01-PLAN.md
+Last session: 2026-05-18T20:26:16.839Z
+Stopped at: Completed 03-03-PLAN.md
 Resume file: None

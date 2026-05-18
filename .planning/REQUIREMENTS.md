@@ -75,7 +75,7 @@
 - [x] **NEW-03**: Build Events board/kanban view
 - [x] **NEW-04**: Build Cashing Up section UI (daily entry form, week-at-a-glance table, category breakdown tiles)
 - [x] **NEW-05**: Build Cashing Up sub-pages (Weekly, Insights, Import)
-- [ ] **NEW-06**: Build OJ Projects section UI (Overview, Projects table with budget progress, Clients, Work Types, Time Entries)
+- [x] **NEW-06**: Build OJ Projects section UI (Overview, Projects table with budget progress, Clients, Work Types, Time Entries)
 - [x] **NEW-07**: Build Short Links section UI (table with copy button, click analytics, search)
 
 ### New Section — Performers (needs backend)
@@ -191,7 +191,7 @@
 | NEW-03 | Phase 3 | Complete |
 | NEW-04 | Phase 3 | Complete |
 | NEW-05 | Phase 3 | Complete |
-| NEW-06 | Phase 3 | Pending |
+| NEW-06 | Phase 3 | Complete |
 | NEW-07 | Phase 3 | Complete |
 | PERF-01 | Phase 3 | Pending |
 | PERF-02 | Phase 3 | Pending |
