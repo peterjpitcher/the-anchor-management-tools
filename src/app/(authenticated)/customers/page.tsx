@@ -1,7 +1,7 @@
 import { redirect } from 'next/navigation'
 import { checkUserPermission } from '@/app/actions/rbac'
 import { getCustomerList } from '@/app/actions/customers'
-import CustomersClient from './CustomersClient'
+import CustomersClient from './_components/CustomersClient'
 
 const DEFAULT_PAGE_SIZE = 50
 
