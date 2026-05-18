@@ -70,9 +70,9 @@
 
 ### New Sections (UI on existing backends)
 
-- [ ] **NEW-01**: Build Events section UI (list view with table, tabs, search/filters, bulk actions, pagination)
-- [ ] **NEW-02**: Build Events calendar view
-- [ ] **NEW-03**: Build Events board/kanban view
+- [x] **NEW-01**: Build Events section UI (list view with table, tabs, search/filters, bulk actions, pagination)
+- [x] **NEW-02**: Build Events calendar view
+- [x] **NEW-03**: Build Events board/kanban view
 - [x] **NEW-04**: Build Cashing Up section UI (daily entry form, week-at-a-glance table, category breakdown tiles)
 - [x] **NEW-05**: Build Cashing Up sub-pages (Weekly, Insights, Import)
 - [ ] **NEW-06**: Build OJ Projects section UI (Overview, Projects table with budget progress, Clients, Work Types, Time Entries)
@@ -186,9 +186,9 @@
 | MIG-26 | Phase 2 | Pending |
 | MIG-27 | Phase 2 | Pending |
 | MIG-28 | Phase 2 | Pending |
-| NEW-01 | Phase 3 | Pending |
-| NEW-02 | Phase 3 | Pending |
-| NEW-03 | Phase 3 | Pending |
+| NEW-01 | Phase 3 | Complete |
+| NEW-02 | Phase 3 | Complete |
+| NEW-03 | Phase 3 | Complete |
 | NEW-04 | Phase 3 | Complete |
 | NEW-05 | Phase 3 | Complete |
 | NEW-06 | Phase 3 | Pending |

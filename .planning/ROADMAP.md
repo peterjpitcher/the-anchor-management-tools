@@ -69,7 +69,7 @@ Plans:
 Plans:
 - [x] 03-01-PLAN.md -- Events section (list, calendar, board views) with drawer-based CRUD and SidebarNav cleanup
 - [x] 03-02-PLAN.md -- Cashing Up (5 sub-pages with SectionNav) and Short Links (table + insights)
-- [ ] 03-03-PLAN.md -- OJ Projects section (overview, projects, entries, clients, work types)
+- [x] 03-03-PLAN.md -- OJ Projects section (overview, projects, entries, clients, work types)
 - [ ] 03-04-PLAN.md -- Design System documentation page and Performers route removal
 
 ### Phase 4: Modes & Cleanup
