@@ -21,7 +21,7 @@ import {
   Spinner,
   Empty,
 } from '@/ds'
-import { toast } from '@/components/ui-v2/feedback/Toast'
+import { toast } from '@/ds'
 
 /* ------------------------------------------------------------------ */
 /*  Constants                                                          */

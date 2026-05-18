@@ -1,4 +1,4 @@
-import { Card } from '@/components/ui-v2/layout/Card'
+import { Card } from '@/ds'
 import type { ReceiptWorkspaceSummary, AIUsageBreakdown } from '@/app/actions/receipts'
 
 interface SummaryCardProps {
@@ -17,7 +17,7 @@ function SummaryCard({ title, value, tone }: SummaryCardProps) {
   }
 
   return (
-    <Card variant="bordered" className="h-full">
+    <Card className="h-full">
       <div className="space-y-2">
         <p className="text-sm text-gray-500">{title}</p>
         <p className="text-3xl font-semibold text-gray-900">{value}</p>
@@ -43,7 +43,7 @@ function CostSummaryCard({ cost, breakdown }: { cost: number; breakdown?: AIUsag
     : null
 
   return (
-    <Card variant="bordered" className="h-full">
+    <Card className="h-full">
       <div className="space-y-2">
         <p className="text-sm text-gray-500">OpenAI spend</p>
         <p className="text-3xl font-semibold text-gray-900">{formatCurrencyStrict(cost)}</p>

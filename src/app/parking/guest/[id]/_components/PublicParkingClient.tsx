@@ -1,7 +1,9 @@
 import { Icon } from '@/ds'
 import type { ParkingBooking } from '@/types/parking'
 import { formatDateTime } from '@/lib/dateUtils'
-import { formatCurrency } from '@/components/ui-v2/utils/format'
+function formatCurrency(amount: number, currency = 'GBP', locale = 'en-GB'): string {
+  return new Intl.NumberFormat(locale, { style: 'currency', currency }).format(amount)
+}
 
 interface PublicParkingClientProps {
   booking: ParkingBooking

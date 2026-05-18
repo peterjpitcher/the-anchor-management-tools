@@ -23,7 +23,7 @@ import {
   TableHead,
   TableCell,
 } from '@/ds'
-import { toast } from '@/components/ui-v2/feedback/Toast'
+import { toast } from '@/ds'
 import { formatDateInLondon } from '@/lib/dateUtils'
 import { CollectionForm } from './CollectionForm'
 import {

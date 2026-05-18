@@ -50,7 +50,7 @@ import {
 } from '@/ds'
 
 /* ---------- Toast helper (re-use existing) ---------- */
-import { toast } from '@/components/ui-v2/feedback/Toast'
+import { toast } from '@/ds'
 
 /* ---------- SVG Icons ---------- */
 const PlusIcon = () => (

@@ -1,9 +1,7 @@
 'use client'
 
 import { useState, useEffect, useTransition, useCallback } from 'react'
-import { Button } from '@/components/ui-v2/forms/Button'
-import { Input } from '@/components/ui-v2/forms/Input'
-import { Modal, ModalActions } from '@/components/ui-v2/overlay/Modal'
+import { Button, Input, Modal } from '@/ds'
 import {
   createTrip,
   updateTrip,
@@ -251,16 +249,16 @@ export function TripForm({
       open={open}
       onClose={onClose}
       title={editingTrip ? 'Edit Trip' : 'New Trip'}
-      size="lg"
+      width="lg"
       footer={
-        <ModalActions>
+        <div className="flex justify-end gap-3 mt-6">
           <Button variant="secondary" size="sm" onClick={onClose} disabled={isPending}>
             Cancel
           </Button>
           <Button variant="primary" size="sm" onClick={handleSubmit} loading={isPending}>
             {editingTrip ? 'Save Changes' : 'Save Trip'}
           </Button>
-        </ModalActions>
+        </div>
       }
     >
       <div className="space-y-5">
@@ -331,7 +329,7 @@ export function TripForm({
                       ))}
                     </select>
                     <Input
-                      wrapperClassName="w-28 shrink-0"
+                      className="w-28 shrink-0"
                       value={stop.miles}
                       onChange={(e) => handleMilesChange(index, e.target.value)}
                       placeholder="Miles"
@@ -343,13 +341,11 @@ export function TripForm({
                     {stops.length > 1 && (
                       <Button
                         variant="ghost"
-                        size="xs"
-                        iconOnly
+                        size="sm"
+                        icon={<TrashIcon className="h-4 w-4 text-red-400" />}
                         aria-label={`Remove stop ${index + 1}`}
                         onClick={() => removeStop(index)}
-                      >
-                        <TrashIcon className="h-4 w-4 text-red-400" />
-                      </Button>
+                      />
                     )}
                   </div>
                   {stop.destinationId && !stop.miles && !stopErrors.has(index) && (
@@ -366,7 +362,7 @@ export function TripForm({
           </div>
 
           <div className="mt-2">
-            <Button variant="ghost" size="xs" leftIcon={<PlusIcon />} onClick={addStop}>
+            <Button variant="ghost" size="sm" icon={<PlusIcon />} onClick={addStop}>
               Add Stop
             </Button>
           </div>
@@ -383,7 +379,7 @@ export function TripForm({
               </span>
               <span className="text-sm font-medium text-gray-600">{homeBase?.name ?? 'The Anchor'}</span>
               <Input
-                wrapperClassName="w-28 shrink-0 ml-auto"
+                className="w-28 shrink-0 ml-auto"
                 value={returnMiles}
                 onChange={(e) => {
                   setReturnMiles(e.target.value)

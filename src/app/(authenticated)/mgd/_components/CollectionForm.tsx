@@ -1,14 +1,13 @@
 'use client'
 
 import { useState } from 'react'
-import { Button } from '@/components/ui-v2/forms/Button'
-import { Input } from '@/components/ui-v2/forms/Input'
-import { FormGroup } from '@/components/ui-v2/forms/FormGroup'
-import { Textarea } from '@/components/ui-v2/forms/Textarea'
-import { formatCurrency } from '@/components/ui-v2/utils/format'
+import { Button, Input, Field, Textarea, toast } from '@/ds'
 import { createCollection, updateCollection } from '@/app/actions/mgd'
 import type { MgdCollection } from '@/app/actions/mgd'
-import { toast } from '@/components/ui-v2/feedback/Toast'
+
+function formatCurrency(amount: number): string {
+  return new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP' }).format(amount)
+}
 
 interface CollectionFormProps {
   /** Existing collection for edit mode; omit for create mode */
@@ -82,7 +81,7 @@ export function CollectionForm({
         </div>
       )}
 
-      <FormGroup label="Collection Date" required>
+      <Field label="Collection Date" required>
         <Input
           type="date"
           value={collectionDate}
@@ -90,46 +89,46 @@ export function CollectionForm({
           required
           disabled={disabled}
         />
-      </FormGroup>
+      </Field>
 
-      <FormGroup label="Net Take" required>
+      <Field label="Net Take" required>
         <Input
           type="number"
           step="0.01"
           min="0"
           value={netTake}
           onChange={(e) => setNetTake(e.target.value)}
-          leftElement={<span className="text-gray-500">£</span>}
+          icon={<span className="text-gray-500">£</span>}
           placeholder="0.00"
           required
           disabled={disabled}
         />
-      </FormGroup>
+      </Field>
 
-      <FormGroup label="MGD Due (20%)">
+      <Field label="MGD Due (20%)">
         <Input
           type="text"
           value={formatCurrency(mgdAmount)}
           disabled
           aria-label="MGD amount (calculated)"
         />
-      </FormGroup>
+      </Field>
 
-      <FormGroup label="VAT on Supplier" required>
+      <Field label="VAT on Supplier" required>
         <Input
           type="number"
           step="0.01"
           min="0"
           value={vatOnSupplier}
           onChange={(e) => setVatOnSupplier(e.target.value)}
-          leftElement={<span className="text-gray-500">£</span>}
+          icon={<span className="text-gray-500">£</span>}
           placeholder="0.00"
           required
           disabled={disabled}
         />
-      </FormGroup>
+      </Field>
 
-      <FormGroup label="Notes">
+      <Field label="Notes">
         <Textarea
           value={notes}
           onChange={(e) => setNotes(e.target.value)}
@@ -137,7 +136,7 @@ export function CollectionForm({
           placeholder="Optional notes..."
           disabled={disabled}
         />
-      </FormGroup>
+      </Field>
 
       <div className="flex justify-end gap-2 pt-2">
         <Button type="button" variant="ghost" onClick={onCancel}>

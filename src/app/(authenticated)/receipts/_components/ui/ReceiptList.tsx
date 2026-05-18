@@ -1,8 +1,7 @@
 'use client'
 
 import { ChangeEvent, Fragment, useMemo } from 'react'
-import { Card } from '@/components/ui-v2/layout/Card'
-import { Select } from '@/components/ui-v2/forms/Select'
+import { Card, Select } from '@/ds'
 import type { ReceiptWorkspaceData, ReceiptWorkspaceFilters, ClassificationRuleSuggestion } from '@/app/actions/receipts'
 import type { ReceiptTransaction } from '@/types/database'
 import { ReceiptTableRow } from './ReceiptTableRow'
@@ -137,12 +136,13 @@ export function ReceiptList({
   }
 
   return (
-    <Card header={<div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h2 className="text-lg font-semibold text-gray-900">Transactions</h2>
-          <p className="text-sm text-gray-500">Tick off receipts as you collect them and keep the finance trail tidy.</p>
+    <Card>
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+          <div>
+            <h2 className="text-lg font-semibold text-gray-900">Transactions</h2>
+            <p className="text-sm text-gray-500">Tick off receipts as you collect them and keep the finance trail tidy.</p>
+          </div>
         </div>
-      </div>}>
 
         <div className="w-full sm:hidden mb-4">
           <label htmlFor="mobile-receipts-sort" className="text-xs font-medium text-gray-600">Sort</label>
@@ -151,12 +151,8 @@ export function ReceiptList({
             value={mobileSortValue}
             onChange={onMobileSort}
             className="mt-1"
-            selectSize="sm"
-          >
-            {mobileSortOptions.map((option) => (
-              <option key={option.value} value={option.value}>{option.label}</option>
-            ))}
-          </Select>
+            options={mobileSortOptions}
+          />
         </div>
 
         {/* Mobile View */}

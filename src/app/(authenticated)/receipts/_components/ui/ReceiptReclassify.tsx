@@ -3,7 +3,7 @@
 import { useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { toast } from 'react-hot-toast'
-import { Button } from '@/components/ui-v2/forms/Button'
+import { Button } from '@/ds'
 import { requeueUnclassifiedTransactions } from '@/app/actions/receipts'
 import { usePermissions } from '@/contexts/PermissionContext'
 

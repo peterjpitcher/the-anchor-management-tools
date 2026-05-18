@@ -1,6 +1,6 @@
 'use client';
 
-import { Spinner } from '@/components/ui-v2';
+import { Spinner } from '@/ds';
 import { useInlineEdit } from './useInlineEdit';
 
 interface EditableCurrencyCellProps {

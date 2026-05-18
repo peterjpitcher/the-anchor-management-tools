@@ -4,11 +4,7 @@ import { useMemo, useState, useTransition, useRef, ChangeEvent } from 'react'
 import { PNL_METRICS, PNL_TIMEFRAMES, MANUAL_METRIC_KEYS } from '@/lib/pnl/constants'
 import type { PnlDashboardData, PnlTimeframeKey } from '@/app/actions/pnl'
 import { savePlManualActualsAction, savePlTargetsAction } from '@/app/actions/pnl'
-import { Button } from '@/components/ui-v2/forms/Button'
-import { Input } from '@/components/ui-v2/forms/Input'
-import { toast } from '@/components/ui-v2/feedback/Toast'
-import { Spinner } from '@/components/ui-v2/feedback/Spinner'
-import { Card } from '@/components/ui-v2/layout/Card'
+import { Button, Input, toast, Spinner, Card } from '@/ds'
 import { DocumentArrowDownIcon } from '@heroicons/react/24/outline'
 import clsx from 'clsx'
 
@@ -518,7 +514,7 @@ const renderPeriodTargetCell = (
         )
       })}
 
-      <Card variant="bordered">
+      <Card>
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <div className="rounded-md border border-gray-200 p-4">
             <p className="text-xs uppercase tracking-wide text-gray-500">{timeframeLabel}</p>

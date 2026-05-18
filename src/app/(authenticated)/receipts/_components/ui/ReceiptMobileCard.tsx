@@ -2,10 +2,7 @@
 
 import { useState, useTransition, useRef, ChangeEvent } from 'react'
 import { toast } from 'react-hot-toast'
-import { Button } from '@/components/ui-v2/forms/Button'
-import { Input } from '@/components/ui-v2/forms/Input'
-import { Select } from '@/components/ui-v2/forms/Select'
-import { Spinner } from '@/components/ui-v2/feedback/Spinner'
+import { Button, Input, Select, Spinner } from '@/ds'
 import {
   markReceiptTransaction,
   deleteReceiptFile,
@@ -266,15 +263,15 @@ export function ReceiptMobileCard({
                             <Select autoFocus value={classificationDraft} onChange={e => {
                                 if (e.target.value === '__custom__') { setIsCustomVendor(true); setClassificationDraft(''); }
                                 else setClassificationDraft(e.target.value)
-                            }} disabled={isPending}>
-                                <option value="">Clear</option>
-                                {vendorOptions.map(v => <option key={v} value={v}>{v}</option>)}
-                                <option value="__custom__">+ New</option>
-                            </Select>
+                            }} disabled={isPending} options={[
+                                { value: '', label: 'Clear' },
+                                ...vendorOptions.map(v => ({ value: v, label: v })),
+                                { value: '__custom__', label: '+ New' },
+                            ]} />
                         )}
                         <div className="flex gap-2">
-                            <Button size="xs" onClick={saveClassification} disabled={isPending}>Save</Button>
-                            <Button size="xs" variant="ghost" onClick={() => setEditingField(null)} disabled={isPending}>Cancel</Button>
+                            <Button size="sm" onClick={saveClassification} disabled={isPending}>Save</Button>
+                            <Button size="sm" variant="ghost" onClick={() => setEditingField(null)} disabled={isPending}>Cancel</Button>
                         </div>
                     </div>
                 ) : (
@@ -289,13 +286,13 @@ export function ReceiptMobileCard({
             <div className="text-sm leading-tight text-gray-900">
                  {editingField === 'expense' ? (
                     <div className="flex flex-col gap-2 mt-1">
-                        <Select autoFocus value={classificationDraft} onChange={e => setClassificationDraft(e.target.value)} disabled={isPending}>
-                            <option value="">Clear</option>
-                            {expenseCategoryOptions.map(o => <option key={o} value={o}>{o}</option>)}
-                        </Select>
+                        <Select autoFocus value={classificationDraft} onChange={e => setClassificationDraft(e.target.value)} disabled={isPending} options={[
+                            { value: '', label: 'Clear' },
+                            ...expenseCategoryOptions.map(o => ({ value: o, label: o })),
+                        ]} />
                         <div className="flex gap-2">
-                            <Button size="xs" onClick={saveClassification} disabled={isPending}>Save</Button>
-                            <Button size="xs" variant="ghost" onClick={() => setEditingField(null)} disabled={isPending}>Cancel</Button>
+                            <Button size="sm" onClick={saveClassification} disabled={isPending}>Save</Button>
+                            <Button size="sm" variant="ghost" onClick={() => setEditingField(null)} disabled={isPending}>Cancel</Button>
                         </div>
                     </div>
                 ) : (
@@ -312,8 +309,8 @@ export function ReceiptMobileCard({
                     <div className="flex flex-col gap-2 mt-1">
                         <Input value={noteDraft} onChange={e => setNoteDraft(e.target.value)} placeholder="Note" disabled={isPending} />
                         <div className="flex gap-2">
-                            <Button size="xs" onClick={saveNote} disabled={isPending}>Save</Button>
-                            <Button size="xs" variant="ghost" onClick={() => setIsEditingNote(false)} disabled={isPending}>Cancel</Button>
+                            <Button size="sm" onClick={saveNote} disabled={isPending}>Save</Button>
+                            <Button size="sm" variant="ghost" onClick={() => setIsEditingNote(false)} disabled={isPending}>Cancel</Button>
                         </div>
                     </div>
                 ) : (
@@ -326,9 +323,9 @@ export function ReceiptMobileCard({
         </div>
         
         <div className="mt-2 border-t border-gray-100 pt-2 flex flex-wrap gap-2">
-             <Button variant="secondary" size="xs" onClick={() => fileInputRef.current?.click()} disabled={isPending || !canManageReceipts}>Upload</Button>
+             <Button variant="secondary" size="sm" onClick={() => fileInputRef.current?.click()} disabled={isPending || !canManageReceipts}>Upload</Button>
              <input type="file" className="hidden" ref={fileInputRef} accept={RECEIPT_UPLOAD_ACCEPT} onChange={handleUpload} />
-             
+
              {transaction.files.map(f => (
                  <div key={f.id} className="inline-flex items-center gap-1 rounded-full border border-gray-200 px-2 py-0.5 bg-white text-[11px]">
                      <button type="button" onClick={() => handleReceiptDownload(f.id)} className="text-emerald-700 truncate max-w-[80px]">{f.file_name || 'Receipt'}</button>
@@ -337,10 +334,10 @@ export function ReceiptMobileCard({
              ))}
 
              <div className="ml-auto flex gap-1">
-                 {transaction.status !== 'completed' && <Button variant="success" size="xs" onClick={() => handleStatusUpdate('completed')} disabled={isPending || !canManageReceipts}>Done</Button>}
-                 {transaction.status === 'pending' && <Button variant="secondary" size="xs" onClick={() => handleStatusUpdate('no_receipt_required')} disabled={isPending || !canManageReceipts}>Skip</Button>}
-                 {transaction.status === 'pending' && <Button variant="secondary" size="xs" onClick={() => handleStatusUpdate('cant_find')} className="border border-rose-200 text-rose-700" disabled={isPending || !canManageReceipts}>Missing</Button>}
-                 {transaction.status !== 'pending' && <Button variant="ghost" size="xs" onClick={() => handleStatusUpdate('pending')} disabled={isPending || !canManageReceipts}>Reopen</Button>}
+                 {transaction.status !== 'completed' && <Button variant="primary" size="sm" onClick={() => handleStatusUpdate('completed')} disabled={isPending || !canManageReceipts}>Done</Button>}
+                 {transaction.status === 'pending' && <Button variant="secondary" size="sm" onClick={() => handleStatusUpdate('no_receipt_required')} disabled={isPending || !canManageReceipts}>Skip</Button>}
+                 {transaction.status === 'pending' && <Button variant="secondary" size="sm" onClick={() => handleStatusUpdate('cant_find')} className="border border-rose-200 text-rose-700" disabled={isPending || !canManageReceipts}>Missing</Button>}
+                 {transaction.status !== 'pending' && <Button variant="ghost" size="sm" onClick={() => handleStatusUpdate('pending')} disabled={isPending || !canManageReceipts}>Reopen</Button>}
              </div>
         </div>
     </div>

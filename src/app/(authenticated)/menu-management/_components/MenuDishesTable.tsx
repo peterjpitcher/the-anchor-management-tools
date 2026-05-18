@@ -1,9 +1,7 @@
 'use client';
 
 import { useMemo, useCallback, useState } from 'react';
-import { Card } from '@/components/ui-v2/layout/Card';
-import { Badge } from '@/components/ui-v2/display/Badge';
-import { Input } from '@/components/ui-v2/forms/Input';
+import { Card, Badge, Input } from '@/ds';
 import { Pagination } from '@/components/ui-v2/navigation/Pagination';
 import { ExclamationTriangleIcon, MagnifyingGlassIcon } from '@heroicons/react/20/solid';
 import { useTablePipeline } from './useTablePipeline';
@@ -408,8 +406,7 @@ export function MenuDishesTable({
             placeholder="Search dishes..."
             value={pipeline.searchQuery}
             onChange={(e) => pipeline.setSearchQuery(e.target.value)}
-            leftIcon={<MagnifyingGlassIcon className="h-4 w-4 text-gray-400" />}
-            inputSize="sm"
+            icon={<MagnifyingGlassIcon className="h-4 w-4 text-gray-400" />}
           />
         </div>
         {hasAnyOptionGroups && (
@@ -539,11 +536,11 @@ export function MenuDishesTable({
                       <td className="px-4 py-2 text-gray-700">{formatGp(row.targetGpPct)}</td>
                       <td className="px-4 py-2">
                         {belowTarget ? (
-                          <Badge variant="error">Alert</Badge>
+                          <Badge tone="danger">Alert</Badge>
                         ) : isMissingCosting(row.originalDish) ? (
-                          <Badge variant="warning">No cost</Badge>
+                          <Badge tone="warning">No cost</Badge>
                         ) : (
-                          <Badge variant="success">OK</Badge>
+                          <Badge tone="success">OK</Badge>
                         )}
                       </td>
                     </tr>
