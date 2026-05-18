@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-stopped_at: Completed 01-03-PLAN.md (composites and icons)
-last_updated: "2026-05-18T16:19:41.582Z"
+stopped_at: Completed 01-04-PLAN.md (app shell)
+last_updated: "2026-05-18T17:07:41.341Z"
 progress:
   total_phases: 4
-  completed_phases: 0
+  completed_phases: 1
   total_plans: 4
-  completed_plans: 3
+  completed_plans: 4
 ---
 
 # Project State
@@ -49,6 +49,7 @@ Plan: 4 of 4
 | Phase 01 P01 | 8min | 2 tasks | 10 files |
 | Phase 01 P02 | 5min | 2 tasks | 16 files |
 | Phase 01 P03 | 5min | 2 tasks | 11 files |
+| Phase 01 P04 | 8min | 3 tasks | 10 files |
 
 ## Accumulated Context
 
@@ -69,6 +70,8 @@ Recent decisions affecting current work:
 - [Phase 01]: Form controls use button+ARIA roles instead of hidden native inputs for full style control
 - [Phase 01]: Avatar uses static Tailwind bg-[#hex] classes for deterministic palette (6 colors, purge-safe)
 - [Phase 01]: paths.tsx uses JSX fragments for multi-element SVG icons; Table is fully client-side due to sortable headers; 46 icons built exceeding 38 minimum
+- [Phase 01]: CSS-only sidebar expand/collapse via :hover/:focus-within -- no JavaScript state needed
+- [Phase 01]: Surgical AuthenticatedLayout swap preserving all auth/FOH/permission/modal logic intact
 
 ### Pending Todos
 
@@ -82,6 +85,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-05-18T16:19:41.581Z
-Stopped at: Completed 01-03-PLAN.md (composites and icons)
+Last session: 2026-05-18T17:07:41.339Z
+Stopped at: Completed 01-04-PLAN.md (app shell)
 Resume file: None
