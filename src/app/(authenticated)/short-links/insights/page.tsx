@@ -1,12 +1,10 @@
 import { redirect } from 'next/navigation'
 import { checkUserPermission } from '@/app/actions/rbac'
-import { InsightsClient } from './InsightsClient'
+import { InsightsClient } from './_components/InsightsClient'
 
 export default async function ShortLinksInsightsPage() {
   const canView = await checkUserPermission('short_links', 'view')
-  if (!canView) {
-    redirect('/unauthorized')
-  }
+  if (!canView) redirect('/unauthorized')
 
   return <InsightsClient />
 }

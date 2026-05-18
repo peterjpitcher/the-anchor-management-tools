@@ -1,22 +1,19 @@
 import { redirect } from 'next/navigation'
-import ShortLinksClient from './ShortLinksClient'
 import { checkUserPermission } from '@/app/actions/rbac'
-import { getShortLinks } from '@/app/actions/short-links'
+import { getShortLinks, getShortLinkVolume } from '@/app/actions/short-links'
+import { ShortLinksClient } from './_components/ShortLinksClient'
 import type { ShortLink } from '@/types/short-links'
 
 export default async function ShortLinksPage() {
   const canView = await checkUserPermission('short_links', 'view')
-  if (!canView) {
-    redirect('/unauthorized')
-  }
+  if (!canView) redirect('/unauthorized')
 
   const canManage = await checkUserPermission('short_links', 'manage')
 
-  const listResult = await getShortLinks(1, 50, false)
-
-  if (!listResult || 'error' in listResult) {
-    console.error('Failed to load short links:', listResult?.error)
-  }
+  const [listResult, volumeResult] = await Promise.all([
+    getShortLinks(1, 25),
+    getShortLinkVolume(30),
+  ])
 
   const initialLinks: ShortLink[] =
     listResult && 'data' in listResult && Array.isArray(listResult.data)
@@ -29,6 +26,11 @@ export default async function ShortLinksPage() {
       : initialLinks.length
 
   return (
-    <ShortLinksClient initialLinks={initialLinks} initialTotal={initialTotal} canManage={!!canManage} />
+    <ShortLinksClient
+      initialLinks={initialLinks}
+      initialTotal={initialTotal}
+      volume={volumeResult?.data ?? null}
+      canManage={!!canManage}
+    />
   )
 }
