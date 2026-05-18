@@ -14,7 +14,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 1: Design System & App Shell** - Build canonical design system (tokens, 17 components, icons) and deploy new sidebar + topbar shell to all authenticated pages (completed 2026-05-18)
 - [ ] **Phase 2: Screen Migrations** - Migrate all 28 existing screens to use ds/ components within the new shell
-- [ ] **Phase 3: New Sections** - Build 6 new sections (Events, Cashing Up, OJ Projects, Short Links UI on existing backends; Performers full-stack with schema; Design System docs page)
+- [ ] **Phase 3: New Sections** - Build 5 new sections (Events, Cashing Up, OJ Projects, Short Links UI on existing backends; Design System docs page) plus Performers removal
 - [ ] **Phase 4: Modes, Polish & Cleanup** - FOH chromeless mode, remove legacy ui/ and ui-v2/ directories, remove tailwind.config.js, update docs
 
 ## Phase Details
@@ -64,13 +64,13 @@ Plans:
   2. User navigates to Cashing Up, OJ Projects, and Short Links and sees fully redesigned UIs (daily entry, weekly summary, insights for Cashing Up; projects/entries/clients/work-types for OJ Projects; link table with analytics for Short Links) with no new backend work required
   3. User navigates to the Design System page (via Settings) and sees live component previews, colour swatches, typography scale, and icon library
   4. Performers section is removed from sidebar navigation and route structure
-**Plans**: TBD
+**Plans**: 4 plans
 
 Plans:
-- [ ] 03-01: Events section (list, calendar, board views)
-- [ ] 03-02: Cashing Up and Short Links sections (UI-only on existing backends)
-- [ ] 03-03: OJ Projects section and Design System documentation page
-- [ ] 03-04: Performers removal (nav, routes, cleanup)
+- [ ] 03-01-PLAN.md -- Events section (list, calendar, board views) with drawer-based CRUD and SidebarNav cleanup
+- [ ] 03-02-PLAN.md -- Cashing Up (5 sub-pages with SectionNav) and Short Links (table + insights)
+- [ ] 03-03-PLAN.md -- OJ Projects section (overview, projects, entries, clients, work types)
+- [ ] 03-04-PLAN.md -- Design System documentation page and Performers route removal
 
 ### Phase 4: Modes & Cleanup
 **Goal**: FOH chromeless mode is live for front-of-house managers, all legacy UI code is removed, and project documentation reflects the new design system as the canonical pattern
