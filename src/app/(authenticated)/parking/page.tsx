@@ -1,6 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
-import ParkingClient from './ParkingClient'
+import ParkingClient from './_components/ParkingClient'
 
 export default async function ParkingPage() {
   const supabase = await createClient()
