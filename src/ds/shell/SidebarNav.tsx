@@ -24,7 +24,6 @@ export const NAV_GROUPS: NavGroup[] = [
     items: [
       { id: 'dashboard', label: 'Dashboard', icon: 'home', href: '/' },
       { id: 'events', label: 'Events', icon: 'calendar', href: '/events' },
-      { id: 'performers', label: 'Performers', icon: 'mic', href: '/performers' },
       { id: 'customers', label: 'Customers', icon: 'users', href: '/customers' },
       { id: 'messages', label: 'Messages', icon: 'message', href: '/messages' },
     ],
@@ -63,7 +62,6 @@ export const NAV_GROUPS: NavGroup[] = [
     label: null,
     items: [
       { id: 'settings', label: 'Settings', icon: 'cog', href: '/settings' },
-      { id: 'system', label: 'Design System', icon: 'palette', href: '/design-system' },
     ],
   },
 ]
