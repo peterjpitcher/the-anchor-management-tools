@@ -1,6 +1,103 @@
 @import "tailwindcss";
 
 /* ================================================
+   DESIGN TOKENS — Single source of truth for all
+   visual properties. Generates Tailwind utilities
+   automatically (e.g. bg-primary, text-text, etc.)
+   ================================================ */
+@theme {
+  /* Brand palette */
+  --color-brand-50: #ecfdf5;
+  --color-brand-100: #d1fae5;
+  --color-brand-200: #a7f3d0;
+  --color-brand-300: #6ee7b7;
+  --color-brand-400: #34d399;
+  --color-brand-500: #10b981;
+  --color-brand-600: #006A4E;
+  --color-brand-700: #064e3b;
+  --color-brand-800: #043927;
+  --color-brand-900: #022c1a;
+
+  /* Semantic — light theme (v1 only) */
+  --color-bg: #fafaf9;
+  --color-surface: #ffffff;
+  --color-surface-2: #fafaf9;
+  --color-surface-hover: #f5f5f4;
+  --color-border: #ececea;
+  --color-border-strong: #d6d3d1;
+  --color-border-focus: #34d399;
+  --color-text: #1c1917;
+  --color-text-strong: #0c0a09;
+  --color-text-muted: #57534e;
+  --color-text-subtle: #a8a29e;
+
+  /* Primary */
+  --color-primary: #006A4E;
+  --color-primary-hover: #064e3b;
+  --color-primary-soft: #ecfdf5;
+  --color-primary-soft-fg: #043927;
+  --color-primary-fg: #ffffff;
+
+  /* Sidebar */
+  --color-sidebar-bg: #064e3b;
+  --color-sidebar-fg: #ffffff;
+  --color-sidebar-fg-muted: rgba(255, 255, 255, 0.72);
+  --color-sidebar-active-bg: rgba(255, 255, 255, 0.16);
+  --color-sidebar-hover-bg: rgba(255, 255, 255, 0.08);
+  --color-sidebar-border: rgba(255, 255, 255, 0.12);
+
+  /* Status */
+  --color-success: #16a34a;
+  --color-success-soft: #f0fdf4;
+  --color-success-fg: #166534;
+  --color-warning: #d97706;
+  --color-warning-soft: #fffbeb;
+  --color-warning-fg: #92400e;
+  --color-danger: #dc2626;
+  --color-danger-soft: #fef2f2;
+  --color-danger-fg: #991b1b;
+  --color-info: #0284c7;
+  --color-info-soft: #f0f9ff;
+  --color-info-fg: #075985;
+
+  /* Typography */
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  /* Density — compact default (v1 only) */
+  --spacing-row-h: 29px;
+  --spacing-row-h-lg: 36px;
+  --spacing-input-h: 31px;
+  --spacing-btn-h: 31px;
+  --spacing-btn-h-sm: 25px;
+  --spacing-btn-h-lg: 36px;
+
+  /* Layout */
+  --spacing-sidebar-expanded: 232px;
+  --spacing-sidebar-collapsed: 64px;
+  --spacing-topbar: 52px;
+  --spacing-pad-card: 14px;
+
+  /* Radii */
+  --radius-sm: 6px;
+  --radius-default: 8px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-xl: 20px;
+  --radius-pill: 9999px;
+
+  /* Shadows */
+  --shadow-xs: 0 1px 0 rgba(15, 23, 42, 0.04);
+  --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.06), 0 1px 1px rgba(15, 23, 42, 0.04);
+  --shadow-default: 0 2px 4px -1px rgba(15, 23, 42, 0.06), 0 4px 10px -4px rgba(15, 23, 42, 0.08);
+  --shadow-lg: 0 12px 28px -8px rgba(15, 23, 42, 0.18);
+  --shadow-ring: 0 0 0 3px color-mix(in oklch, var(--color-primary) 30%, transparent);
+
+  /* Easing */
+  --ease-default: cubic-bezier(0.2, 0.7, 0.1, 1);
+}
+
+/* ================================================
    MOBILE LAYOUT FIXES - Applied to fix overflow
    ================================================ */
 
