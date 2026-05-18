@@ -30,12 +30,12 @@
 
 ### App Shell
 
-- [ ] **SHELL-01**: Build collapsible sidebar (64px collapsed, 232px expanded on hover, 200ms transition)
-- [ ] **SHELL-02**: Implement sidebar navigation groups (Primary, Operations, Staff Ops, Finance, Settings) with correct icons and active indicator
-- [ ] **SHELL-03**: Build sticky topbar (52px height, search bar, notification bell with dot, "New" button)
-- [ ] **SHELL-04**: Implement sidebar user footer (avatar, name, role)
-- [ ] **SHELL-05**: Replace AuthenticatedLayout with new AppShell (sidebar + topbar + page area)
-- [ ] **SHELL-06**: Maintain backward compatibility — existing pages render correctly in new shell during migration
+- [x] **SHELL-01**: Build collapsible sidebar (64px collapsed, 232px expanded on hover, 200ms transition)
+- [x] **SHELL-02**: Implement sidebar navigation groups (Primary, Operations, Staff Ops, Finance, Settings) with correct icons and active indicator
+- [x] **SHELL-03**: Build sticky topbar (52px height, search bar, notification bell with dot, "New" button)
+- [x] **SHELL-04**: Implement sidebar user footer (avatar, name, role)
+- [x] **SHELL-05**: Replace AuthenticatedLayout with new AppShell (sidebar + topbar + page area)
+- [x] **SHELL-06**: Maintain backward compatibility — existing pages render correctly in new shell during migration
 
 ### Existing Screen Migrations
 
@@ -152,12 +152,12 @@
 | DS-18 | Phase 1 | Complete |
 | DS-19 | Phase 1 | Complete |
 | DS-20 | Phase 1 | Complete |
-| SHELL-01 | Phase 1 | Pending |
-| SHELL-02 | Phase 1 | Pending |
-| SHELL-03 | Phase 1 | Pending |
-| SHELL-04 | Phase 1 | Pending |
-| SHELL-05 | Phase 1 | Pending |
-| SHELL-06 | Phase 1 | Pending |
+| SHELL-01 | Phase 1 | Complete |
+| SHELL-02 | Phase 1 | Complete |
+| SHELL-03 | Phase 1 | Complete |
+| SHELL-04 | Phase 1 | Complete |
+| SHELL-05 | Phase 1 | Complete |
+| SHELL-06 | Phase 1 | Complete |
 | MIG-01 | Phase 2 | Pending |
 | MIG-02 | Phase 2 | Pending |
 | MIG-03 | Phase 2 | Pending |

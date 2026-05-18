@@ -12,7 +12,7 @@ Transform the Anchor Management Tools from its current three-layer UI system (le
 
 Decimal phases appear between their surrounding integers in numeric order.
 
-- [ ] **Phase 1: Design System & App Shell** - Build canonical design system (tokens, 17 components, icons) and deploy new sidebar + topbar shell to all authenticated pages
+- [x] **Phase 1: Design System & App Shell** - Build canonical design system (tokens, 17 components, icons) and deploy new sidebar + topbar shell to all authenticated pages (completed 2026-05-18)
 - [ ] **Phase 2: Screen Migrations** - Migrate all 28 existing screens to use ds/ components within the new shell
 - [ ] **Phase 3: New Sections** - Build 6 new sections (Events, Cashing Up, OJ Projects, Short Links UI on existing backends; Performers full-stack with schema; Design System docs page)
 - [ ] **Phase 4: Modes, Polish & Cleanup** - FOH chromeless mode, remove legacy ui/ and ui-v2/ directories, remove tailwind.config.js, update docs
@@ -35,7 +35,7 @@ Plans:
 - [x] 01-01-PLAN.md -- Tailwind v4 migration and design token foundation
 - [x] 01-02-PLAN.md -- Primitive components (Button, Badge, Avatar, Alert, Modal, form controls, Stat, Skeleton, Empty, Toast)
 - [x] 01-03-PLAN.md -- Composite components (Card, PageHeader, SectionNav, Tabs, Segmented, Table, icons)
-- [ ] 01-04-PLAN.md -- App shell (Sidebar, Topbar, AppShell) and AuthenticatedLayout replacement
+- [x] 01-04-PLAN.md -- App shell (Sidebar, Topbar, AppShell) and AuthenticatedLayout replacement
 
 ### Phase 2: Screen Migrations
 **Goal**: Every existing screen uses ds/ components exclusively -- matching the design handoff pixel-perfectly -- with no imports remaining from ui-v2/ in migrated pages
@@ -94,7 +94,7 @@ Phases execute in numeric order: 1 --> 1.1 --> 1.2 --> 2 --> 2.1 --> 3 --> 4
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Design System & App Shell | 0/4 | Planning complete | - |
+| 1. Design System & App Shell | 4/4 | Complete   | 2026-05-18 |
 | 2. Screen Migrations | 0/5 | Not started | - |
 | 3. New Sections | 0/4 | Not started | - |
 | 4. Modes & Cleanup | 0/2 | Not started | - |
