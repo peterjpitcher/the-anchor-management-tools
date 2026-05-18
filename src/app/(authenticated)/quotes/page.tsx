@@ -1,7 +1,7 @@
 import { redirect } from 'next/navigation'
 import { checkUserPermission } from '@/app/actions/rbac'
 import { getQuotes, getQuoteSummary } from '@/app/actions/quotes'
-import QuotesClient from './QuotesClient'
+import QuotesClient from './_components/QuotesClient'
 
 export default async function QuotesPage() {
   const canView = await checkUserPermission('invoices', 'view')
