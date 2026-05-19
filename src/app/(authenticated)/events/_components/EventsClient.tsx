@@ -2,19 +2,27 @@
 
 import { useState, useCallback, useTransition, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { startOfMonth, endOfMonth, format } from 'date-fns'
 import { getTodayIsoDate } from '@/lib/dateUtils'
 import { PageHeader, Segmented } from '@/ds'
 import { Button } from '@/ds'
 import { Icon } from '@/ds/icons'
 import { EventListView } from './EventListView'
-import { EventCalendarView } from './EventCalendarView'
 import { EventBoardView } from './EventBoardView'
 import { EventDrawer } from './EventDrawer'
 import { EventFilterPanel, type EventFilters } from './EventFilterPanel'
+import { VenueCalendar } from '@/components/schedule-calendar'
+import type {
+  VenueCalendarEvent,
+  VenueCalendarBooking,
+  VenueCalendarNote,
+  VenueCalendarParking,
+} from '@/components/schedule-calendar'
 import type { Event } from '@/types/database'
 import type { EventCategory } from '@/types/event-categories'
 import { getEvents, deleteEvent } from '@/app/actions/events'
+import { fetchPrivateBookingsForCalendar } from '@/app/actions/private-bookings-dashboard'
+import { listCalendarNotes } from '@/app/actions/calendar-notes'
+import { listParkingBookings } from '@/app/actions/parking'
 import { toast } from '@/ds'
 
 type ViewMode = 'list' | 'calendar' | 'board'
@@ -42,11 +50,14 @@ export default function EventsClient({
   categories,
 }: EventsClientProps) {
   const router = useRouter()
-  const [view, setView] = useState<ViewMode>('list')
+  const [view, setView] = useState<ViewMode>('calendar')
   const [events, setEvents] = useState<Event[]>(initialEvents)
-  const [calendarEvents, setCalendarEvents] = useState<Event[]>([])
+  const [calendarEvents, setCalendarEvents] = useState<VenueCalendarEvent[]>([])
+  const [calendarBookings, setCalendarBookings] = useState<VenueCalendarBooking[]>([])
+  const [calendarNotes, setCalendarNotes] = useState<VenueCalendarNote[]>([])
+  const [calendarParking, setCalendarParking] = useState<VenueCalendarParking[]>([])
   const [boardEvents, setBoardEvents] = useState<Event[]>([])
-  const [calendarMonth, setCalendarMonth] = useState<Date>(new Date())
+
   const [pagination, setPagination] = useState(
     initialPagination ?? { totalCount: 0, currentPage: 1, pageSize: 25, totalPages: 1 }
   )
@@ -84,20 +95,31 @@ export default function EventsClient({
     []
   )
 
-  const fetchCalendarEvents = useCallback(
-    (month: Date) => {
+  const fetchCalendarData = useCallback(
+    () => {
       startTransition(async () => {
-        const dateFrom = format(startOfMonth(month), 'yyyy-MM-dd')
-        const dateTo = format(endOfMonth(month), 'yyyy-MM-dd')
-        const result = await getEvents({
-          status: 'all',
-          dateFrom,
-          dateTo,
-          page: 1,
-          pageSize: 200,
-        })
-        if (result.data) {
-          setCalendarEvents(result.data)
+        const [eventsResult, bookingsResult, notesResult, parkingResult] = await Promise.all([
+          getEvents({ status: 'all', page: 1, pageSize: 500 }),
+          fetchPrivateBookingsForCalendar(),
+          listCalendarNotes(),
+          listParkingBookings({ limit: 500 }),
+        ])
+        if (eventsResult.data) {
+          setCalendarEvents(eventsResult.data.map(e => ({
+            id: e.id,
+            name: e.name,
+            date: e.date,
+            time: e.time,
+            bookedSeatsCount: (e as Event & { booked_count?: number }).booked_count ?? 0,
+            eventStatus: e.event_status,
+          })))
+        }
+        if ('data' in bookingsResult && bookingsResult.data) {
+          setCalendarBookings(bookingsResult.data as VenueCalendarBooking[])
+        }
+        if (notesResult.data) setCalendarNotes(notesResult.data)
+        if ('data' in parkingResult && parkingResult.data) {
+          setCalendarParking(parkingResult.data as VenueCalendarParking[])
         }
       })
     },
@@ -119,11 +141,11 @@ export default function EventsClient({
 
   useEffect(() => {
     if (view === 'calendar') {
-      fetchCalendarEvents(calendarMonth)
+      fetchCalendarData()
     } else if (view === 'board') {
       fetchBoardEvents()
     }
-  }, [view, calendarMonth, fetchCalendarEvents, fetchBoardEvents])
+  }, [view, fetchCalendarData, fetchBoardEvents])
 
   const handleFilterChange = useCallback(
     (newFilters: EventFilters) => {
@@ -159,13 +181,13 @@ export default function EventsClient({
   const handleSave = useCallback(() => {
     handleDrawerClose()
     if (view === 'calendar') {
-      fetchCalendarEvents(calendarMonth)
+      fetchCalendarData()
     } else if (view === 'board') {
       fetchBoardEvents()
     } else {
       fetchEvents(pagination.currentPage, filters)
     }
-  }, [handleDrawerClose, view, fetchCalendarEvents, calendarMonth, fetchBoardEvents, fetchEvents, pagination.currentPage, filters])
+  }, [handleDrawerClose, view, fetchCalendarData, fetchBoardEvents, fetchEvents, pagination.currentPage, filters])
 
   const handleDeleteSelected = useCallback(() => {
     startTransition(async () => {
@@ -229,10 +251,11 @@ export default function EventsClient({
         )}
 
         {view === 'calendar' && (
-          <EventCalendarView
+          <VenueCalendar
             events={calendarEvents}
-            onEventClick={handleEventClick}
-            onMonthChange={setCalendarMonth}
+            privateBookings={calendarBookings}
+            calendarNotes={calendarNotes}
+            parkingBookings={calendarParking}
           />
         )}
 

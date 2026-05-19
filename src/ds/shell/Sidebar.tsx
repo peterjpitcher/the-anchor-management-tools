@@ -21,10 +21,11 @@ export function Sidebar({ navGroups, userName, userRole, onSignOut, isSigningOut
     <div className="ds-sidebar bg-sidebar-bg flex flex-col hidden md:flex">
       {/* Logo area — matches topbar height */}
       <div className="flex items-center justify-center h-[var(--spacing-topbar)] shrink-0 px-3">
-        <Icon name="home" size={24} className="text-sidebar-fg shrink-0" />
-        <span className="ds-label ml-2 text-[15px] font-bold text-sidebar-fg whitespace-nowrap">
-          The Anchor
-        </span>
+        <img
+          src="/logo.png"
+          alt="The Anchor"
+          className="h-8 w-auto shrink-0"
+        />
       </div>
 
       {/* Navigation */}
