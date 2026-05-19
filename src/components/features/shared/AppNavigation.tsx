@@ -1,7 +1,7 @@
 'use client'
 
 import { usePathname } from 'next/navigation'
-import { CalendarIcon, UserGroupIcon, HomeIcon, IdentificationIcon, PencilSquareIcon, CogIcon, EnvelopeIcon, BuildingOfficeIcon, DocumentTextIcon, LinkIcon, ReceiptRefundIcon, TruckIcon, Squares2X2Icon, BanknotesIcon, MicrophoneIcon, BriefcaseIcon, CalendarDaysIcon, UserCircleIcon, UsersIcon, ShieldCheckIcon, DocumentDuplicateIcon, ChevronRightIcon, MapIcon, MapPinIcon, CurrencyPoundIcon } from '@heroicons/react/24/outline'
+import { CalendarIcon, UserGroupIcon, HomeIcon, IdentificationIcon, PencilSquareIcon, CogIcon, EnvelopeIcon, BuildingOfficeIcon, DocumentTextIcon, LinkIcon, ReceiptRefundIcon, TruckIcon, Squares2X2Icon, BanknotesIcon, MicrophoneIcon, BriefcaseIcon, CalendarDaysIcon, UserCircleIcon, UsersIcon, ShieldCheckIcon, DocumentDuplicateIcon, ChevronRightIcon, MapIcon, MapPinIcon, CurrencyPoundIcon, ReceiptPercentIcon } from '@heroicons/react/24/outline'
 import { useMemo, useState } from 'react'
 import { cn } from '@/lib/utils'
 import { usePermissions } from '@/contexts/PermissionContext'
@@ -54,7 +54,6 @@ const financeNavigation: NavigationItemWithPermission[] = [
   { name: 'Insights', href: '/cashing-up/insights', icon: BanknotesIcon, permission: { module: 'cashing_up', action: 'view' }, subItem: true },
   { name: 'Import', href: '/cashing-up/import', icon: BanknotesIcon, permission: { module: 'cashing_up', action: 'view' }, subItem: true },
   { name: 'Invoices', href: '/invoices', icon: DocumentTextIcon, permission: { module: 'invoices', action: 'view' } },
-  { name: 'Quotes', href: '/quotes', icon: DocumentDuplicateIcon, permission: { module: 'invoices', action: 'view' }, subItem: true },
   { name: 'OJ Projects', href: '/oj-projects', icon: BriefcaseIcon, permission: { module: 'oj_projects', action: 'view' } },
   { name: 'Projects', href: '/oj-projects/projects', icon: BriefcaseIcon, permission: { module: 'oj_projects', action: 'view' }, subItem: true },
   { name: 'Clients', href: '/oj-projects/clients', icon: BriefcaseIcon, permission: { module: 'oj_projects', action: 'view' }, subItem: true },
@@ -63,7 +62,7 @@ const financeNavigation: NavigationItemWithPermission[] = [
   { name: 'Receipts', href: '/receipts', icon: ReceiptRefundIcon, permission: { module: 'receipts', action: 'view' } },
   { name: 'Mileage', href: '/mileage', icon: MapIcon, permission: { module: 'mileage', action: 'view' } },
   { name: 'Destinations', href: '/mileage/destinations', icon: MapPinIcon, permission: { module: 'mileage', action: 'view' }, subItem: true },
-  { name: 'Expenses', href: '/expenses', icon: BanknotesIcon, permission: { module: 'expenses', action: 'view' } },
+  { name: 'Expenses', href: '/expenses', icon: ReceiptPercentIcon, permission: { module: 'expenses', action: 'view' } },
   { name: 'MGD', href: '/mgd', icon: CurrencyPoundIcon, permission: { module: 'mgd', action: 'view' } },
   { name: 'Short Links', href: '/short-links', icon: LinkIcon, permission: { module: 'short_links', action: 'view' } },
 ];
