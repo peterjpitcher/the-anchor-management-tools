@@ -14,7 +14,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 1: Design System & App Shell** - Build canonical design system (tokens, 17 components, icons) and deploy new sidebar + topbar shell to all authenticated pages (completed 2026-05-18)
 - [ ] **Phase 2: Screen Migrations** - Migrate all 28 existing screens to use ds/ components within the new shell
-- [ ] **Phase 3: New Sections** - Build 5 new sections (Events, Cashing Up, OJ Projects, Short Links UI on existing backends; Design System docs page) plus Performers removal
+- [x] **Phase 3: New Sections** - Build 5 new sections (Events, Cashing Up, OJ Projects, Short Links UI on existing backends; Design System docs page) plus Performers removal (completed 2026-05-18)
 - [ ] **Phase 4: Modes, Polish & Cleanup** - FOH chromeless mode, remove legacy ui/ and ui-v2/ directories, remove tailwind.config.js, update docs
 
 ## Phase Details
@@ -81,11 +81,11 @@ Plans:
   2. The directories `src/components/ui/` and `src/components/ui-v2/` no longer exist -- `grep -r "ui-v2" src/app/ --include="*.tsx"` returns zero results
   3. The file `tailwind.config.js` no longer exists -- all Tailwind configuration lives in CSS via `@theme`
   4. CLAUDE.md documents `src/ds/` as the canonical component system with correct import patterns
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
-- [ ] 04-01: FOH chromeless mode
-- [ ] 04-02: Legacy cleanup (remove ui/, ui-v2/, tailwind.config.js) and documentation update
+- [ ] 04-01-PLAN.md -- FOH chromeless mode (AppShell/Topbar FOH props, FohClockBand, layout wiring)
+- [ ] 04-02-PLAN.md -- Legacy cleanup (build 6 gap ds/ components, migrate 193 files, delete ui/ and ui-v2/, update CLAUDE.md)
 
 ## Progress
 
@@ -96,5 +96,5 @@ Phases execute in numeric order: 1 --> 1.1 --> 1.2 --> 2 --> 2.1 --> 3 --> 4
 |-------|----------------|--------|-----------|
 | 1. Design System & App Shell | 4/4 | Complete   | 2026-05-18 |
 | 2. Screen Migrations | 5/5 | Near Complete (26/28 screens, 18 nested sub-page files remain) | 2026-05-18 |
-| 3. New Sections | 0/4 | Not started | - |
+| 3. New Sections | 4/4 | Complete | 2026-05-18 |
 | 4. Modes & Cleanup | 0/2 | Not started | - |
