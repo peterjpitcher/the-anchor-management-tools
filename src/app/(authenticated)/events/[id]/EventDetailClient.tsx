@@ -28,6 +28,7 @@ import {
 import {
   regenerateEventMarketingLinks,
 } from '@/app/actions/event-marketing-links'
+import CustomerSearchInput from '@/components/features/customers/CustomerSearchInput'
 import { EventMarketingLinksCard } from '@/components/features/events/EventMarketingLinksCard'
 import { EventPromotionContentCard } from '@/components/features/events/EventPromotionContentCard'
 import { EventChecklistCard } from '@/components/features/events/EventChecklistCard'
@@ -101,6 +102,7 @@ export default function EventDetailClient({
   const [newFirstName, setNewFirstName] = useState('')
   const [newLastName, setNewLastName] = useState('')
   const [newSeats, setNewSeats] = useState(1)
+  const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null)
 
   // Edit seats state
   const [editingBookingId, setEditingBookingId] = useState<string | null>(null)
@@ -131,10 +133,12 @@ export default function EventDetailClient({
     return Math.round((totalSeats / event.capacity) * 100)
   }, [totalSeats, event?.capacity])
 
-  const estimatedRevenue = useMemo(() => {
-    if (!event?.price || event.is_free) return null
-    return totalSeats * event.price
-  }, [totalSeats, event?.price, event?.is_free])
+  const estimatedRevenue = totalSeats * 25
+
+  const totalLinkClicks = useMemo(
+    () => links.reduce((sum, l) => sum + (l.clickCount ?? 0), 0),
+    [links],
+  )
 
   /* ---- Refresh bookings ---- */
 
@@ -166,6 +170,7 @@ export default function EventDetailClient({
         setNewFirstName('')
         setNewLastName('')
         setNewSeats(1)
+        setSelectedCustomerId(null)
         await refreshBookings()
       }
     })
@@ -310,8 +315,8 @@ export default function EventDetailClient({
       {/* Tabs */}
       <Tabs
         tabs={[
-          { id: 'overview', label: 'Overview' },
-          { id: 'attendees', label: 'Attendees', count: activeBookings.length },
+          { id: 'overview', label: 'Overview', count: activeBookings.length },
+          { id: 'short-links', label: 'Short Links', count: totalLinkClicks || undefined },
           { id: 'marketing', label: 'Marketing' },
         ]}
         activeTab={activeTab}
@@ -323,40 +328,52 @@ export default function EventDetailClient({
         {/* Tab content — takes remaining space */}
         <div className={`flex-1 min-w-0 ${isPending ? 'opacity-60 pointer-events-none' : ''}`}>
           {activeTab === 'overview' && (
-            <OverviewTab
-              event={event}
-              activeBookings={activeBookings}
-              totalSeats={totalSeats}
-              capacityPct={capacityPct}
-              estimatedRevenue={estimatedRevenue}
-            />
+            <div className="flex flex-col gap-6">
+              <OverviewTab event={event} />
+              <AttendeesTab
+                event={event}
+                visibleBookings={visibleBookings}
+                showCancelled={showCancelled}
+                onToggleCancelled={() => setShowCancelled((v) => !v)}
+                canManage={permissions.canManage}
+                totalSeats={totalSeats}
+                activeBookingsCount={activeBookings.length}
+                capacityPct={capacityPct}
+                estimatedRevenue={estimatedRevenue}
+                totalLinkClicks={totalLinkClicks}
+                selectedCustomerId={selectedCustomerId}
+                onCustomerSelect={(customer) => {
+                  if (customer) {
+                    setSelectedCustomerId(customer.id)
+                    setNewPhone(customer.mobile_number || '')
+                    setNewFirstName(customer.first_name || '')
+                    setNewLastName(customer.last_name || '')
+                  } else {
+                    setSelectedCustomerId(null)
+                    setNewPhone('')
+                    setNewFirstName('')
+                    setNewLastName('')
+                  }
+                }}
+                newPhone={newPhone}
+                onNewPhoneChange={setNewPhone}
+                newSeats={newSeats}
+                onNewSeatsChange={setNewSeats}
+                onCreateBooking={handleCreateBooking}
+                editingBookingId={editingBookingId}
+                editSeatsValue={editSeatsValue}
+                onEditSeatsValueChange={setEditSeatsValue}
+                onStartEditSeats={handleStartEditSeats}
+                onSaveSeats={handleSaveSeats}
+                onCancelEdit={() => setEditingBookingId(null)}
+                onCancelBooking={setCancellingBookingId}
+                isPending={isPending}
+              />
+            </div>
           )}
 
-          {activeTab === 'attendees' && (
-            <AttendeesTab
-              event={event}
-              visibleBookings={visibleBookings}
-              showCancelled={showCancelled}
-              onToggleCancelled={() => setShowCancelled((v) => !v)}
-              canManage={permissions.canManage}
-              newPhone={newPhone}
-              onNewPhoneChange={setNewPhone}
-              newFirstName={newFirstName}
-              onNewFirstNameChange={setNewFirstName}
-              newLastName={newLastName}
-              onNewLastNameChange={setNewLastName}
-              newSeats={newSeats}
-              onNewSeatsChange={setNewSeats}
-              onCreateBooking={handleCreateBooking}
-              editingBookingId={editingBookingId}
-              editSeatsValue={editSeatsValue}
-              onEditSeatsValueChange={setEditSeatsValue}
-              onStartEditSeats={handleStartEditSeats}
-              onSaveSeats={handleSaveSeats}
-              onCancelEdit={() => setEditingBookingId(null)}
-              onCancelBooking={setCancellingBookingId}
-              isPending={isPending}
-            />
+          {activeTab === 'short-links' && (
+            <ShortLinksTab links={links} totalClicks={totalLinkClicks} />
           )}
 
           {activeTab === 'marketing' && (
@@ -396,26 +413,22 @@ export default function EventDetailClient({
 /*  Overview Tab                                                       */
 /* ================================================================== */
 
-function OverviewTab({
-  event,
-  activeBookings,
-  totalSeats,
-  capacityPct,
-  estimatedRevenue,
-}: {
-  event: Event
-  activeBookings: EventBookingRow[]
-  totalSeats: number
-  capacityPct: number | null
-  estimatedRevenue: number | null
-}) {
+function OverviewTab({ event }: { event: Event }) {
   return (
-    <div className="grid gap-6 lg:grid-cols-3">
-      {/* Metadata card -- spans 2 cols */}
-      <Card className="lg:col-span-2">
-        <CardHeader title="Event Details" />
-        <CardBody>
-          <dl className="grid gap-4 sm:grid-cols-2">
+    <Card>
+      <CardHeader title="Event Details" />
+      <CardBody>
+        <div className="flex flex-col gap-6 lg:flex-row">
+          {event.hero_image_url && (
+            <div className="shrink-0">
+              <img
+                src={event.hero_image_url}
+                alt={`${event.name} hero image`}
+                className="rounded-lg w-full lg:w-64 lg:h-64 aspect-square object-cover"
+              />
+            </div>
+          )}
+          <dl className="grid flex-1 gap-4 sm:grid-cols-2 content-start">
             <DetailRow label="Date" value={formatDateInLondon(event.date, { day: 'numeric', month: 'long', year: 'numeric' })} />
             <DetailRow label="Time" value={formatTime12Hour(event.time)} />
             {event.end_time && <DetailRow label="End Time" value={formatTime12Hour(event.end_time)} />}
@@ -429,9 +442,12 @@ function OverviewTab({
               </DetailRow>
             )}
             {event.brief && (
-              <DetailRow label="Brief" value={event.brief} className="sm:col-span-2">
-                <CopyButton text={event.brief} label="Brief" />
-              </DetailRow>
+              <div className="sm:col-span-2">
+                <dt className="text-xs font-medium text-text-muted">Brief</dt>
+                <dd className="mt-0.5">
+                  <CopyButton text={event.brief} label="Brief" />
+                </dd>
+              </div>
             )}
             {event.booking_url && (
               <DetailRow label="Booking URL" value={event.booking_url} className="sm:col-span-2">
@@ -439,36 +455,91 @@ function OverviewTab({
               </DetailRow>
             )}
           </dl>
+        </div>
+      </CardBody>
+    </Card>
+  )
+}
 
-          {event.hero_image_url && (
-            <div className="mt-4">
-              <p className="text-xs font-medium text-text-muted mb-1">Hero Image</p>
-              <img
-                src={event.hero_image_url}
-                alt={`${event.name} hero image`}
-                className="rounded-lg max-h-48 object-cover"
-              />
+/* ================================================================== */
+/*  Short Links Tab                                                    */
+/* ================================================================== */
+
+function ShortLinksTab({ links, totalClicks }: { links: EventMarketingLink[]; totalClicks: number }) {
+  const sortedLinks = useMemo(
+    () => [...links].sort((a, b) => (b.clickCount ?? 0) - (a.clickCount ?? 0)),
+    [links],
+  )
+
+  return (
+    <div className="flex flex-col gap-6">
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
+        <Card padding="md">
+          <p className="text-xs font-medium text-text-muted">Total Clicks</p>
+          <p className="mt-1 text-2xl font-semibold text-text-primary">{totalClicks.toLocaleString()}</p>
+        </Card>
+        <Card padding="md">
+          <p className="text-xs font-medium text-text-muted">Active Links</p>
+          <p className="mt-1 text-2xl font-semibold text-text-primary">{links.length}</p>
+        </Card>
+        <Card padding="md">
+          <p className="text-xs font-medium text-text-muted">Avg. Clicks/Link</p>
+          <p className="mt-1 text-2xl font-semibold text-text-primary">
+            {links.length > 0 ? Math.round(totalClicks / links.length) : 0}
+          </p>
+        </Card>
+      </div>
+
+      <Card>
+        <CardHeader title="Click Breakdown by Channel" />
+        <CardBody>
+          {sortedLinks.length === 0 ? (
+            <EmptyState title="No Links" description="No marketing links have been generated for this event yet." />
+          ) : (
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Channel</TableHead>
+                    <TableHead>Type</TableHead>
+                    <TableHead>Short URL</TableHead>
+                    <TableHead align="right">Clicks</TableHead>
+                    <TableHead>Last Clicked</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {sortedLinks.map((link) => (
+                    <TableRow key={link.id}>
+                      <TableCell>
+                        <span className="font-medium text-text-strong">{link.label}</span>
+                      </TableCell>
+                      <TableCell>
+                        <Badge tone={link.type === 'digital' ? 'info' : 'neutral'} size="sm">
+                          {link.type === 'digital' ? 'Digital' : 'Print'}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-xs text-text-muted font-mono">{link.shortCode}</span>
+                          <CopyButton text={link.shortUrl} label="Short URL" />
+                        </div>
+                      </TableCell>
+                      <TableCell align="right">
+                        <span className={`font-semibold ${link.clickCount > 0 ? 'text-text-strong' : 'text-text-muted'}`}>
+                          {link.clickCount.toLocaleString()}
+                        </span>
+                      </TableCell>
+                      <TableCell>
+                        <span className="text-xs text-text-muted">
+                          {link.lastClickedAt ? formatDateInLondon(link.lastClickedAt) : '-'}
+                        </span>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
             </div>
           )}
-        </CardBody>
-      </Card>
-
-      {/* Summary card */}
-      <Card>
-        <CardHeader title="Bookings Summary" />
-        <CardBody>
-          <dl className="grid gap-4">
-            <DetailRow label="Active Bookings" value={String(activeBookings.length)} />
-            <DetailRow label="Total Seats Booked" value={String(totalSeats)} />
-            <DetailRow
-              label="Capacity"
-              value={capacityPct !== null ? `${capacityPct}%` : '-'}
-            />
-            <DetailRow
-              label="Estimated Revenue"
-              value={estimatedRevenue !== null ? formatCurrency(estimatedRevenue) : '-'}
-            />
-          </dl>
         </CardBody>
       </Card>
     </div>
@@ -485,12 +556,15 @@ function AttendeesTab({
   showCancelled,
   onToggleCancelled,
   canManage,
+  totalSeats,
+  activeBookingsCount,
+  capacityPct,
+  estimatedRevenue,
+  totalLinkClicks,
+  selectedCustomerId,
+  onCustomerSelect,
   newPhone,
   onNewPhoneChange,
-  newFirstName,
-  onNewFirstNameChange,
-  newLastName,
-  onNewLastNameChange,
   newSeats,
   onNewSeatsChange,
   onCreateBooking,
@@ -508,12 +582,15 @@ function AttendeesTab({
   showCancelled: boolean
   onToggleCancelled: () => void
   canManage: boolean
+  totalSeats: number
+  activeBookingsCount: number
+  capacityPct: number | null
+  estimatedRevenue: number | null
+  totalLinkClicks: number
+  selectedCustomerId: string | null
+  onCustomerSelect: (customer: { id: string; first_name: string; last_name: string | null; mobile_number: string | null; email: string | null } | null) => void
   newPhone: string
   onNewPhoneChange: (v: string) => void
-  newFirstName: string
-  onNewFirstNameChange: (v: string) => void
-  newLastName: string
-  onNewLastNameChange: (v: string) => void
   newSeats: number
   onNewSeatsChange: (v: number) => void
   onCreateBooking: () => void
@@ -528,54 +605,74 @@ function AttendeesTab({
 }) {
   return (
     <div className="flex flex-col gap-6">
+      {/* Stat cards */}
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-5">
+        <Card padding="md">
+          <p className="text-xs font-medium text-text-muted">Total Seats Booked</p>
+          <p className="mt-1 text-2xl font-semibold text-text-primary">{totalSeats}</p>
+        </Card>
+        <Card padding="md">
+          <p className="text-xs font-medium text-text-muted">Active Bookings</p>
+          <p className="mt-1 text-2xl font-semibold text-text-primary">{activeBookingsCount}</p>
+        </Card>
+        <Card padding="md">
+          <p className="text-xs font-medium text-text-muted">Capacity</p>
+          <p className="mt-1 text-2xl font-semibold text-text-primary">{capacityPct !== null ? `${capacityPct}%` : '-'}</p>
+        </Card>
+        <Card padding="md">
+          <p className="text-xs font-medium text-text-muted">Est. Revenue</p>
+          <p className="mt-1 text-2xl font-semibold text-text-primary">{estimatedRevenue !== null ? formatCurrency(estimatedRevenue) : '-'}</p>
+        </Card>
+        <Card padding="md">
+          <p className="text-xs font-medium text-text-muted">Link Clicks</p>
+          <p className="mt-1 text-2xl font-semibold text-text-primary">{totalLinkClicks.toLocaleString()}</p>
+        </Card>
+      </div>
+
       {/* Manual booking form */}
       {canManage && (
         <Card>
           <CardHeader title="Add Manual Booking" />
           <CardBody>
-            <div className="flex flex-wrap items-end gap-3">
-              <div className="flex-1 min-w-[160px]">
-                <label className="block text-xs font-medium text-text-muted mb-1">Phone *</label>
-                <Input
-                  value={newPhone}
-                  onChange={(e) => onNewPhoneChange(e.target.value)}
-                  placeholder="07700 900000"
+            <div className="space-y-3">
+              <div>
+                <label className="block text-xs font-medium text-text-muted mb-1">Customer</label>
+                <CustomerSearchInput
+                  onCustomerSelect={onCustomerSelect}
+                  selectedCustomerId={selectedCustomerId}
+                  placeholder="Search by name or phone..."
                 />
               </div>
-              <div className="flex-1 min-w-[120px]">
-                <label className="block text-xs font-medium text-text-muted mb-1">First Name</label>
-                <Input
-                  value={newFirstName}
-                  onChange={(e) => onNewFirstNameChange(e.target.value)}
-                  placeholder="First name"
-                />
+              {!selectedCustomerId && (
+                <div>
+                  <label className="block text-xs font-medium text-text-muted mb-1">Or enter phone number for new customer</label>
+                  <Input
+                    value={newPhone}
+                    onChange={(e) => onNewPhoneChange(e.target.value)}
+                    placeholder="07700 900000"
+                  />
+                </div>
+              )}
+              <div className="flex items-end gap-3">
+                <div className="w-24">
+                  <label className="block text-xs font-medium text-text-muted mb-1">Seats</label>
+                  <Input
+                    type="number"
+                    value={String(newSeats)}
+                    onChange={(e) => onNewSeatsChange(Math.max(1, Math.min(20, Number(e.target.value) || 1)))}
+                    min={1}
+                    max={20}
+                  />
+                </div>
+                <Button
+                  variant="primary"
+                  onClick={onCreateBooking}
+                  disabled={(!newPhone.trim() && !selectedCustomerId) || isPending}
+                  icon={isPending ? <Spinner className="h-4 w-4" /> : <Icon name="plus" size={14} />}
+                >
+                  Add Booking
+                </Button>
               </div>
-              <div className="flex-1 min-w-[120px]">
-                <label className="block text-xs font-medium text-text-muted mb-1">Last Name</label>
-                <Input
-                  value={newLastName}
-                  onChange={(e) => onNewLastNameChange(e.target.value)}
-                  placeholder="Last name"
-                />
-              </div>
-              <div className="w-24">
-                <label className="block text-xs font-medium text-text-muted mb-1">Seats</label>
-                <Input
-                  type="number"
-                  value={String(newSeats)}
-                  onChange={(e) => onNewSeatsChange(Math.max(1, Math.min(20, Number(e.target.value) || 1)))}
-                  min={1}
-                  max={20}
-                />
-              </div>
-              <Button
-                variant="primary"
-                onClick={onCreateBooking}
-                disabled={!newPhone.trim() || isPending}
-                icon={isPending ? <Spinner className="h-4 w-4" /> : <Icon name="plus" size={14} />}
-              >
-                Add Booking
-              </Button>
             </div>
           </CardBody>
         </Card>

@@ -5,6 +5,7 @@ import { cn } from '@/lib/utils'
 
 interface CheckboxProps {
   label?: string
+  'aria-label'?: string
   description?: string
   checked?: boolean
   /** @deprecated Accepted for backward compatibility */
@@ -12,7 +13,7 @@ interface CheckboxProps {
   /** @deprecated Accepted for backward compatibility */
   indeterminate?: boolean
   // Accepts both (checked: boolean) and (event: ChangeEvent) handlers
-   
+
   onChange?: (checkedOrEvent: any) => void
   disabled?: boolean
   id?: string
@@ -26,6 +27,7 @@ interface CheckboxProps {
 
 export function Checkbox({
   label,
+  'aria-label': ariaLabel,
   description,
   checked = false,
   defaultChecked,
@@ -50,6 +52,7 @@ export function Checkbox({
         type="button"
         role="checkbox"
         aria-checked={checked}
+        aria-label={!displayLabel ? (ariaLabel ?? label) : undefined}
         disabled={disabled}
         onClick={() => {
           if (onChange) {

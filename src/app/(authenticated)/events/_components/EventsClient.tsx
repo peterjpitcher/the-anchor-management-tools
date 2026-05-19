@@ -42,20 +42,37 @@ interface EventsClientProps {
     totalPages: number
   }
   categories: EventCategory[]
+  initialCalendarEvents?: Event[]
+  initialCalendarBookings?: VenueCalendarBooking[]
+  initialCalendarNotes?: VenueCalendarNote[]
+  initialCalendarParking?: VenueCalendarParking[]
 }
 
 export default function EventsClient({
   initialEvents,
   initialPagination,
   categories,
+  initialCalendarEvents,
+  initialCalendarBookings,
+  initialCalendarNotes,
+  initialCalendarParking,
 }: EventsClientProps) {
   const router = useRouter()
   const [view, setView] = useState<ViewMode>('calendar')
   const [events, setEvents] = useState<Event[]>(initialEvents)
-  const [calendarEvents, setCalendarEvents] = useState<VenueCalendarEvent[]>([])
-  const [calendarBookings, setCalendarBookings] = useState<VenueCalendarBooking[]>([])
-  const [calendarNotes, setCalendarNotes] = useState<VenueCalendarNote[]>([])
-  const [calendarParking, setCalendarParking] = useState<VenueCalendarParking[]>([])
+  const [calendarEvents, setCalendarEvents] = useState<VenueCalendarEvent[]>(
+    () => (initialCalendarEvents ?? []).map(e => ({
+      id: e.id,
+      name: e.name,
+      date: e.date,
+      time: e.time,
+      bookedSeatsCount: (e as Event & { booked_count?: number }).booked_count ?? 0,
+      eventStatus: e.event_status,
+    }))
+  )
+  const [calendarBookings, setCalendarBookings] = useState<VenueCalendarBooking[]>(initialCalendarBookings ?? [])
+  const [calendarNotes, setCalendarNotes] = useState<VenueCalendarNote[]>(initialCalendarNotes ?? [])
+  const [calendarParking, setCalendarParking] = useState<VenueCalendarParking[]>(initialCalendarParking ?? [])
   const [boardEvents, setBoardEvents] = useState<Event[]>([])
 
   const [pagination, setPagination] = useState(
@@ -139,13 +156,16 @@ export default function EventsClient({
     })
   }, [])
 
+  const [calendarInitialised, setCalendarInitialised] = useState(!!initialCalendarEvents?.length)
+
   useEffect(() => {
-    if (view === 'calendar') {
+    if (view === 'calendar' && !calendarInitialised) {
       fetchCalendarData()
+      setCalendarInitialised(true)
     } else if (view === 'board') {
       fetchBoardEvents()
     }
-  }, [view, fetchCalendarData, fetchBoardEvents])
+  }, [view, calendarInitialised, fetchCalendarData, fetchBoardEvents])
 
   const handleFilterChange = useCallback(
     (newFilters: EventFilters) => {

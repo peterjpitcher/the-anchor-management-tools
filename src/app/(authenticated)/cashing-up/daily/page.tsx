@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import { getDailySummaryAction } from '@/app/actions/daily-summary'
 import { getDailyTargetAction } from '@/app/actions/cashing-up'
 import { getWeeklyDataAction } from '@/app/actions/cashing-up'
+import { getMissingCashupDatesAction } from '@/app/actions/missing-cashups'
 import { CashingUpService } from '@/services/cashing-up.service'
 import { getTodayIsoDate } from '@/lib/dateUtils'
 import { DailyClient } from './_components/DailyClient'
@@ -28,11 +29,12 @@ export default async function DailyCashupPage(props: { searchParams: Promise<{ d
   dateObj.setDate(diffToMon)
   const weekStart = `${dateObj.getFullYear()}-${String(dateObj.getMonth() + 1).padStart(2, '0')}-${String(dateObj.getDate()).padStart(2, '0')}`
 
-  const [summaryRes, targetRes, weeklyRes, existingSession] = await Promise.all([
+  const [summaryRes, targetRes, weeklyRes, existingSession, missingRes] = await Promise.all([
     getDailySummaryAction(sessionDate),
     getDailyTargetAction(siteId, sessionDate),
     getWeeklyDataAction(siteId, weekStart),
     CashingUpService.getSessionByDateAndSite(supabase, siteId, sessionDate).catch(() => null),
+    getMissingCashupDatesAction(siteId),
   ])
 
   const targetAmount = typeof targetRes.data === 'number' ? targetRes.data : 0
@@ -46,6 +48,7 @@ export default async function DailyCashupPage(props: { searchParams: Promise<{ d
       dailyTarget={targetAmount}
       weeklyData={weeklyRes.data ?? []}
       existingSession={existingSession ? JSON.parse(JSON.stringify(existingSession)) : null}
+      missingDates={missingRes.success && missingRes.dates ? missingRes.dates : []}
     />
   )
 }

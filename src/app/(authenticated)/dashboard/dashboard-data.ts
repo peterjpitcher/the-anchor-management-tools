@@ -5,7 +5,7 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { PrivateBookingService } from '@/services/private-bookings'
 import { getLocalIsoDateDaysAgo, getLocalIsoDateDaysAhead, getTodayIsoDate } from '@/lib/dateUtils'
-import { startOfWeek, subWeeks, format, addDays, differenceInCalendarDays } from 'date-fns'
+import { startOfWeek, subWeeks, format, addDays, differenceInCalendarDays, getISOWeek, setISOWeek } from 'date-fns'
 
 type EventSummary = {
   id: string
@@ -184,6 +184,7 @@ type LoyaltySnapshot = {
 type CashingUpDailySession = {
   date: string
   amount: number
+  target: number
 }
 
 type CashingUpSnapshot = {
@@ -504,13 +505,16 @@ async function fetchDashboardSnapshotImpl(userId: string): Promise<DashboardSnap
           const thisWeekEndStr = format(thisWeekEnd, 'yyyy-MM-dd')
           
           const lastWeekStart = subWeeks(weekStart, 1)
-          const lastWeekEnd = addDays(lastWeekStart, completedDaysThisWeek - 1)
+          const lastWeekEnd = addDays(lastWeekStart, 6) // always full Mon–Sun
           const lastWeekStartStr = format(lastWeekStart, 'yyyy-MM-dd')
           const lastWeekEndStr = format(lastWeekEnd, 'yyyy-MM-dd')
 
-          const lastYearStart = subWeeks(weekStart, 52)
-          const lastYearEnd = addDays(lastYearStart, completedDaysThisWeek - 1)
-          const lastYearStartStr = format(lastYearStart, 'yyyy-MM-dd')
+          // Same ISO week number last year — weekdays align correctly
+          const thisWeekNum = getISOWeek(weekStart)
+          const lastYearDate = new Date(weekStart.getFullYear() - 1, 5, 1) // mid-year seed
+          const lastYearWeekStart = startOfWeek(setISOWeek(lastYearDate, thisWeekNum), { weekStartsOn: 1 })
+          const lastYearEnd = addDays(lastYearWeekStart, 6) // full Mon–Sun
+          const lastYearStartStr = format(lastYearWeekStart, 'yyyy-MM-dd')
           const lastYearEndStr = format(lastYearEnd, 'yyyy-MM-dd')
 
           // Slice this week's data to the completed cutoff
@@ -538,10 +542,10 @@ async function fetchDashboardSnapshotImpl(userId: string): Promise<DashboardSnap
           ])
           const targets = targetsRes.data
 
-          // Sums
-          cashingUp.thisWeekTotal = thisWeekCompleted.reduce((sum, s) => sum + (s.total_counted_amount || 0), 0)
-          cashingUp.lastWeekTotal = lastWeekRes.data?.reduce((sum, s) => sum + (s.total_counted_amount || 0), 0) || 0
-          cashingUp.lastYearTotal = lastYearRes.data?.reduce((sum, s) => sum + (s.total_counted_amount || 0), 0) || 0
+          // Sums — explicit Number() because Supabase returns numeric columns as strings
+          cashingUp.thisWeekTotal = thisWeekCompleted.reduce((sum, s) => sum + Number(s.total_counted_amount || 0), 0)
+          cashingUp.lastWeekTotal = lastWeekRes.data?.reduce((sum, s) => sum + Number(s.total_counted_amount || 0), 0) || 0
+          cashingUp.lastYearTotal = lastYearRes.data?.reduce((sum, s) => sum + Number(s.total_counted_amount || 0), 0) || 0
 
           // Count submitted (only completed range)
           cashingUp.sessionsSubmittedCount = thisWeekCompleted.filter(s => s.status !== 'draft').length
@@ -558,10 +562,16 @@ async function fetchDashboardSnapshotImpl(userId: string): Promise<DashboardSnap
 
           cashingUp.dailySessions = (recentSessions ?? [])
             .filter(s => s.session_date)
-            .map(s => ({
-              date: s.session_date as string,
-              amount: Number(s.total_counted_amount || 0),
-            }))
+            .map(s => {
+              const sessionDate = s.session_date as string
+              const dayOfWeek = new Date(sessionDate + 'T12:00:00').getDay()
+              const dayTarget = targets?.find(t => t.day_of_week === dayOfWeek && t.effective_from <= sessionDate)
+              return {
+                date: sessionDate,
+                amount: Number(s.total_counted_amount || 0),
+                target: dayTarget ? Number(dayTarget.target_amount) : 0,
+              }
+            })
 
           let targetSum = 0
           if (completedDaysThisWeek > 0) {

@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useCallback, useMemo, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import {
   Card, CardHeader, CardBody,
   Table, TableHeader, TableBody, TableRow, TableHead, TableCell,
@@ -9,7 +10,9 @@ import { Field, Input, Button, Badge, Alert, Stat } from '@/ds'
 import { Icon } from '@/ds/icons'
 import { upsertSessionAction, submitSessionAction } from '@/app/actions/cashing-up'
 import { getDailySummaryAction } from '@/app/actions/daily-summary'
+import { getMissingCashupDatesAction } from '@/app/actions/missing-cashups'
 import toast from 'react-hot-toast'
+import { format, parseISO } from 'date-fns'
 import type { CashupSession, UpsertCashupSessionDTO } from '@/types/cashing-up'
 
 const DENOMINATIONS = [
@@ -44,6 +47,7 @@ interface Props {
   dailyTarget: number
   weeklyData: WeeklyRow[]
   existingSession: CashupSession | null
+  missingDates: string[]
 }
 
 const fmt = (num: number): string =>
@@ -63,7 +67,9 @@ const dayName = (dateStr: string): string => {
   return d.toLocaleDateString('en-GB', { weekday: 'short' })
 }
 
-export function DailyClient({ siteId, siteName, sessionDate, dailySummary, dailyTarget, weeklyData, existingSession }: Props) {
+export function DailyClient({ siteId, siteName, sessionDate, dailySummary, dailyTarget, weeklyData, existingSession, missingDates: initialMissingDates }: Props) {
+  const router = useRouter()
+  const [missingDates, setMissingDates] = useState<string[]>(initialMissingDates)
   const getBreakdownValue = (code: string, field: 'countedAmount' | 'expectedAmount'): number => {
     if (!existingSession?.cashup_payment_breakdowns) return 0
     const bd = existingSession.cashup_payment_breakdowns.find(
@@ -149,6 +155,9 @@ export function DailyClient({ siteId, siteName, sessionDate, dailySummary, daily
         if (res.data?.id) setSessionId(res.data.id)
         setLastSaved(new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }))
         toast.success('Session saved')
+        getMissingCashupDatesAction(siteId).then(r => {
+          if (r.success && r.dates) setMissingDates(r.dates)
+        })
       } else {
         toast.error(res.error || 'Failed to save')
       }
@@ -173,6 +182,12 @@ export function DailyClient({ siteId, siteName, sessionDate, dailySummary, daily
       const res = await submitSessionAction(idToSubmit)
       if (res.success) {
         toast.success('Session submitted for approval')
+        const nextDate = missingDates.find(d => d !== sessionDate)
+        if (nextDate) {
+          router.push(`/cashing-up/daily?date=${nextDate}&siteId=${siteId}`)
+        } else {
+          router.push('/cashing-up/dashboard')
+        }
       } else {
         toast.error(res.error || 'Failed to submit')
       }
@@ -182,6 +197,13 @@ export function DailyClient({ siteId, siteName, sessionDate, dailySummary, daily
       setSaving(false)
     }
   }, [sessionId, handleSave])
+
+  const onDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const newDate = e.target.value
+    if (newDate) {
+      router.push(`/cashing-up/daily?date=${newDate}&siteId=${siteId}`)
+    }
+  }
 
   const handleKeyDown = (e: React.KeyboardEvent, nextId: string) => {
     if (e.key === 'ArrowRight' || e.key === 'Tab') {
@@ -196,6 +218,72 @@ export function DailyClient({ siteId, siteName, sessionDate, dailySummary, daily
 
   return (
     <div className="space-y-4">
+      {/* Date picker row */}
+      <Card>
+        <CardBody>
+          <div className="flex flex-wrap items-center gap-4">
+            <Field label="Date" className="flex-shrink-0">
+              <div className="flex items-center gap-2">
+                <input
+                  type="date"
+                  value={sessionDate}
+                  onChange={onDateChange}
+                  className="rounded-default border border-border bg-surface px-3 py-1.5 text-sm font-medium text-text focus:outline-none focus:ring-2 focus:ring-primary/50"
+                />
+                <Badge tone="neutral">
+                  {format(parseISO(sessionDate), 'EEEE')}
+                </Badge>
+              </div>
+            </Field>
+            <div className="flex items-center gap-2 text-sm text-text-muted">
+              <Icon name="building" size={14} />
+              <span>{siteName}</span>
+            </div>
+            {dailyTarget > 0 && (
+              <div className="ml-auto flex items-center gap-1.5 text-sm">
+                <span className="text-text-muted">Target:</span>
+                <span className="font-semibold font-mono">£{fmt(dailyTarget)}</span>
+              </div>
+            )}
+          </div>
+        </CardBody>
+      </Card>
+
+      {/* Missing dates alert */}
+      {missingDates.length > 0 && (
+        <Alert tone="warning">
+          <div className="space-y-2">
+            <div className="flex items-center gap-2">
+              <Icon name="alertTriangle" size={16} />
+              <span className="font-semibold text-sm">
+                {missingDates.length} missing cashing up {missingDates.length === 1 ? 'entry' : 'entries'}
+              </span>
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              {missingDates.slice(0, 10).map(d => (
+                <button
+                  key={d}
+                  type="button"
+                  onClick={() => router.push(`/cashing-up/daily?date=${d}&siteId=${siteId}`)}
+                  className={`inline-flex items-center gap-1 rounded-default border px-2 py-0.5 text-xs font-medium transition-colors ${
+                    d === sessionDate
+                      ? 'border-primary bg-primary/10 text-primary'
+                      : 'border-border bg-surface hover:bg-surface-2 text-text-muted hover:text-text'
+                  }`}
+                >
+                  {format(parseISO(d), 'EEE dd MMM')}
+                </button>
+              ))}
+              {missingDates.length > 10 && (
+                <span className="text-xs text-text-muted self-center">
+                  +{missingDates.length - 10} more
+                </span>
+              )}
+            </div>
+          </div>
+        </Alert>
+      )}
+
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         {/* Column 1 — Cash denomination grid */}
         <Card>

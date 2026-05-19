@@ -687,7 +687,7 @@ export class EventService {
 
     let query = supabase
       .from('events')
-      .select('*, category:event_categories(*)', { count: 'exact' });
+      .select('*, category:event_categories(*), bookings:bookings(seats, status)', { count: 'exact' });
 
     if (status !== 'all') {
       query = query.eq('event_status', status);
@@ -720,8 +720,38 @@ export class EventService {
       throw new Error('Failed to fetch events');
     }
 
+    const eventIds = (data || []).map((row: Record<string, unknown>) => row.id as string)
+
+    const clickCountMap: Record<string, number> = {}
+    if (eventIds.length > 0) {
+      const adminDb = createAdminClient()
+      const orFilter = eventIds.map(id => `metadata.cs.{"event_id":"${id}"}`).join(',')
+      const { data: linkRows } = await adminDb
+        .from('short_links')
+        .select('metadata, click_count')
+        .or(orFilter)
+
+      if (linkRows) {
+        for (const row of linkRows) {
+          const eid = (row.metadata as Record<string, unknown>)?.event_id as string
+          if (eid) {
+            clickCountMap[eid] = (clickCountMap[eid] || 0) + ((row.click_count as number) || 0)
+          }
+        }
+      }
+    }
+
+    const events = (data || []).map((row: Record<string, unknown>) => {
+      const bookings = Array.isArray(row.bookings) ? row.bookings as { seats: number | null; status: string | null }[] : []
+      const activeBookings = bookings.filter((b) => b.status !== 'cancelled')
+      const booked_count = activeBookings.reduce((sum, b) => sum + (b.seats ?? 0), 0)
+      const link_clicks = clickCountMap[row.id as string] || 0
+      const { bookings: _bookings, ...event } = row
+      return { ...event, booked_count, link_clicks }
+    })
+
     return {
-      events: data || [],
+      events,
       pagination: {
         totalCount: count || 0,
         currentPage: page,
