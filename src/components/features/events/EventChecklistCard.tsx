@@ -176,49 +176,6 @@ export function EventChecklistCard({ eventId, eventName, className }: EventCheck
         </div>
       ) : (
         <div className="space-y-6">
-          <div className="grid gap-4 sm:grid-cols-3">
-            <div className="rounded-lg border border-gray-200 p-4">
-              <p className="text-sm text-gray-500">Progress</p>
-              <div className="mt-2 flex items-center justify-between">
-                <span className="text-lg font-semibold text-gray-900">{completedCount}/{totalTasks}</span>
-                <Badge variant={completedCount === totalTasks ? 'success' : 'info'} size="sm">
-                  {percentComplete}%
-                </Badge>
-              </div>
-              <ProgressBar value={percentComplete} size="sm" className="mt-3" />
-            </div>
-            <div className="rounded-lg border border-gray-200 p-4">
-              <p className="text-sm text-gray-500">Overdue</p>
-              <div className="mt-2 flex items-center justify-between">
-                <span className="text-lg font-semibold text-gray-900">{overdueCount}</span>
-                <Badge variant={overdueCount > 0 ? 'error' : 'success'} size="sm">
-                  {overdueCount > 0 ? 'Action needed' : 'Clear'}
-                </Badge>
-              </div>
-              <p className="mt-3 text-xs text-gray-500">Tasks past due date</p>
-            </div>
-            <div className="rounded-lg border border-gray-200 p-4">
-              <p className="text-sm text-gray-500">Next task</p>
-              <div className="mt-2 text-sm text-gray-900">
-                {nextTask ? (
-                  <div>
-                    <p className="font-medium text-gray-900">{nextTask.label}</p>
-                    <p className="text-xs text-gray-500 mt-1">
-                      {nextTask.status === 'overdue'
-                        ? `Overdue since ${nextTask.dueDateFormatted}`
-                        : nextTask.status === 'due_today'
-                          ? 'Due today'
-                          : `Due on ${nextTask.dueDateFormatted}`
-                      }
-                    </p>
-                  </div>
-                ) : (
-                  <span className="text-sm text-gray-500">All tasks complete</span>
-                )}
-              </div>
-            </div>
-          </div>
-
           <div>
             <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-wide">Outstanding Tasks</h3>
             <div className="mt-3 space-y-3">
