@@ -367,6 +367,12 @@ export default function EventDetailClient({
         )}
       </div>
 
+      {/* Checklist — persistent across all tabs */}
+      <EventChecklistCard
+        eventId={event.id}
+        eventName={event.name}
+      />
+
       {/* Cancel confirmation dialog */}
       <ConfirmDialog
         open={cancellingBookingId !== null}
@@ -718,11 +724,6 @@ function MarketingTab({
         facebookDescription={event.facebook_event_description}
         googleTitle={event.gbp_event_title}
         googleDescription={event.gbp_event_description}
-      />
-
-      <EventChecklistCard
-        eventId={event.id}
-        eventName={event.name}
       />
     </div>
   )
