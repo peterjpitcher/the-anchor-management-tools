@@ -110,8 +110,14 @@ None yet.
 - ~~Three concurrent UI systems (ui/, ui-v2/, new ds/) is the top risk until Phase 4 cleanup completes~~ RESOLVED: ui/ and ui-v2/ deleted, single @/ds system
 - AuthenticatedLayout.tsx is historically fragile (middleware was disabled after a Vercel incident)
 
+### Quick Tasks Completed
+
+| # | Description | Date | Commit | Directory |
+|---|-------------|------|--------|-----------|
+| 260519-ice | Restore events detail page with attendees, marketing links, promotion content, and full metadata display | 2026-05-19 | 95c18f0d | [260519-ice-restore-events-detail-page-with-attendee](./quick/260519-ice-restore-events-detail-page-with-attendee/) |
+
 ## Session Continuity
 
-Last session: 2026-05-19T07:24:01Z
+Last activity: 2026-05-19 - Completed quick task 260519-ice: Restore events detail page
 Stopped at: Completed 04-02-PLAN.md — All phases complete
 Resume file: .planning/ROADMAP.md
