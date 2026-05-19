@@ -77,7 +77,7 @@ export function TabNav({
 }: TabNavProps) {
   const pathname = usePathname() ?? ''
   const scrollContainerRef = useRef<HTMLDivElement>(null)
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   
   const activeTabRef = useRef<any>(null)
 
   const currentActiveKey = (() => {

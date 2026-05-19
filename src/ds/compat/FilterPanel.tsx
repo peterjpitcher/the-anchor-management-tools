@@ -20,12 +20,12 @@ export interface FilterDefinition {
   placeholder?: string
   icon?: ReactNode
   pinned?: boolean
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   
   render?: (value: any, onChange: (value: any) => void) => ReactNode
 }
 
 export interface FilterValue {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   
   [key: string]: any
 }
 

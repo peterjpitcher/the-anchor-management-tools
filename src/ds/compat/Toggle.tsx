@@ -13,7 +13,7 @@ import { Switch } from '../primitives/Switch'
 interface ToggleProps {
   label?: string
   checked: boolean
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   
   onChange: (valueOrEvent: any) => void
   disabled?: boolean
   size?: 'sm' | 'md'

@@ -12,7 +12,7 @@ interface CheckboxProps {
   /** @deprecated Accepted for backward compatibility */
   indeterminate?: boolean
   // Accepts both (checked: boolean) and (event: ChangeEvent) handlers
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   
   onChange?: (checkedOrEvent: any) => void
   disabled?: boolean
   id?: string
