@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useCallback, useTransition, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import { startOfMonth, endOfMonth, format } from 'date-fns'
 import { PageHeader, Segmented } from '@/ds'
 import { Button } from '@/ds'
@@ -39,6 +40,7 @@ export default function EventsClient({
   initialPagination,
   categories,
 }: EventsClientProps) {
+  const router = useRouter()
   const [view, setView] = useState<ViewMode>('list')
   const [events, setEvents] = useState<Event[]>(initialEvents)
   const [calendarEvents, setCalendarEvents] = useState<Event[]>([])
@@ -138,9 +140,8 @@ export default function EventsClient({
   )
 
   const handleEventClick = useCallback((event: Event) => {
-    setActiveEvent(event)
-    setDrawerOpen(true)
-  }, [])
+    router.push(`/events/${event.id}`)
+  }, [router])
 
   const handleNewEvent = useCallback(() => {
     setActiveEvent(null)
