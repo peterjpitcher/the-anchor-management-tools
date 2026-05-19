@@ -6,12 +6,15 @@ import { Sidebar } from './Sidebar'
 import { SidebarNav, NAV_GROUPS } from './SidebarNav'
 import { UserFooter } from './UserFooter'
 import { Topbar } from './Topbar'
+import { FohClockBand } from './FohClockBand'
 import { Icon } from '@/ds/icons'
 import type { NavGroup } from './SidebarNav'
 
 interface AppShellProps {
   children: ReactNode
   showSidebar?: boolean
+  fohMode?: boolean
+  fohEmployeeId?: string
   userName: string
   userRole: string
   onSignOut: () => void
@@ -21,6 +24,8 @@ interface AppShellProps {
 export function AppShell({
   children,
   showSidebar = true,
+  fohMode = false,
+  fohEmployeeId,
   userName,
   userRole,
   onSignOut,
@@ -48,8 +53,8 @@ export function AppShell({
         />
       )}
 
-      {/* Mobile sidebar overlay */}
-      {showSidebar && (
+      {/* Mobile sidebar overlay — hidden in FOH mode (no sidebar at all) */}
+      {showSidebar && !fohMode && (
         <Dialog open={mobileOpen} onClose={closeMobile} className="relative z-50 md:hidden">
           <DialogBackdrop className="fixed inset-0 bg-black/40 transition-opacity" />
           <div className="fixed inset-0 flex">
@@ -89,7 +94,16 @@ export function AppShell({
 
       {/* Main content area */}
       <div className="flex-1 min-w-0 flex flex-col">
-        {showSidebar && <Topbar onMenuOpen={openMobile} />}
+        <Topbar
+          onMenuOpen={showSidebar && !fohMode ? openMobile : undefined}
+          fohMode={fohMode}
+          userName={userName}
+          onSignOut={onSignOut}
+          isSigningOut={isSigningOut}
+        />
+        {fohMode && fohEmployeeId && (
+          <FohClockBand employeeId={fohEmployeeId} />
+        )}
         <main className="flex-1 overflow-auto bg-bg p-[12px_16px_40px] md:p-[22px_28px_40px]">
           {children}
         </main>
