@@ -65,12 +65,12 @@ export default async function DashboardPage() {
   // --- Stats ---
   const stats = [
     {
-      label: 'Revenue this week',
-      value: snapshot.invoices.permitted
-        ? currencyFormatter.format(snapshot.invoices.unpaid.reduce((sum, inv) => sum + (inv.total_amount || 0), 0))
+      label: 'Cashing up (week)',
+      value: snapshot.cashingUp.permitted
+        ? currencyFormatter.format(snapshot.cashingUp.thisWeekTotal)
         : '--',
-      hint: snapshot.invoices.permitted
-        ? `${snapshot.invoices.overdueCount} overdue · ${snapshot.invoices.unpaid.length} open`
+      hint: snapshot.cashingUp.permitted && snapshot.cashingUp.thisWeekTarget > 0
+        ? `Target: ${currencyFormatter.format(snapshot.cashingUp.thisWeekTarget)}`
         : undefined,
     },
     {
@@ -148,11 +148,20 @@ export default async function DashboardPage() {
     })),
   ]
 
-  // --- Revenue Data (placeholder for real data) ---
-  const revenueData = Array.from({ length: 14 }, (_, i) => ({
-    day: `Day ${i + 1}`,
-    amount: Math.floor(700 + Math.random() * 1200),
-  }))
+  // --- Revenue Data (from cashing-up daily sessions, fallback to weekly totals) ---
+  const revenueData: { day: string; amount: number }[] = []
+  if (snapshot.cashingUp.permitted) {
+    if (snapshot.cashingUp.dailySessions.length > 0) {
+      for (const s of snapshot.cashingUp.dailySessions) {
+        const d = new Date(s.date + 'T12:00:00')
+        const label = d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', timeZone: LONDON_TIMEZONE })
+        revenueData.push({ day: label, amount: s.amount })
+      }
+    } else if (snapshot.cashingUp.thisWeekTotal > 0 || snapshot.cashingUp.lastWeekTotal > 0) {
+      revenueData.push({ day: 'Last week', amount: snapshot.cashingUp.lastWeekTotal })
+      revenueData.push({ day: 'This week', amount: snapshot.cashingUp.thisWeekTotal })
+    }
+  }
 
   // --- Upcoming Events ---
   const allUpcomingEvents = snapshot.events.permitted ? snapshot.events.upcoming : []
@@ -161,7 +170,7 @@ export default async function DashboardPage() {
     const dayStr = d.toLocaleDateString('en-GB', { weekday: 'short', timeZone: LONDON_TIMEZONE }).toUpperCase()
     const dayNum = d.toLocaleDateString('en-GB', { day: 'numeric', timeZone: LONDON_TIMEZONE })
     const capacity = e.capacity ?? 60
-    const booked = Math.floor(capacity * 0.6)
+    const booked = e.bookedSeatsCount
     const pct = capacity > 0 ? booked / capacity : 0
     return {
       id: e.id,
@@ -181,40 +190,52 @@ export default async function DashboardPage() {
   })
 
   // --- Activity ---
-  const activity = [
-    ...(snapshot.messages.permitted && snapshot.messages.unread > 0
-      ? [{ id: 'msg', actor: 'Messages', action: `${snapshot.messages.unread} unread messages`, time: 'Recent' }]
-      : []),
-    ...(snapshot.receipts.permitted && snapshot.receipts.needsAttention > 0
-      ? [{ id: 'rcpt', actor: 'Receipts', action: `${snapshot.receipts.needsAttention} receipts pending review`, time: 'Recent' }]
-      : []),
-    ...(snapshot.parking.permitted && snapshot.parking.pendingPayments > 0
-      ? [{ id: 'park', actor: 'Parking', action: `${snapshot.parking.pendingPayments} pending payments`, time: 'Recent' }]
-      : []),
-  ]
+  const activity: Array<{ id: string; actor: string; action: string; time: string }> = []
+  if (snapshot.invoices.permitted && snapshot.invoices.overdueCount > 0) {
+    activity.push({ id: 'inv-overdue', actor: 'Invoices', action: `${snapshot.invoices.overdueCount} overdue`, time: 'Urgent' })
+  }
+  if (eventsToday.length > 0) {
+    activity.push({ id: 'ev-today', actor: 'Events', action: `${eventsToday.length} event${eventsToday.length > 1 ? 's' : ''} today`, time: 'Today' })
+  }
+  if (privateToday.length > 0) {
+    activity.push({ id: 'pb-today', actor: 'Bookings', action: `${privateToday.length} private booking${privateToday.length > 1 ? 's' : ''} today`, time: 'Today' })
+  }
+  if (parkingToday.length > 0) {
+    activity.push({ id: 'park-today', actor: 'Parking', action: `${parkingToday.length} parking arrival${parkingToday.length > 1 ? 's' : ''} today`, time: 'Today' })
+  }
+  if (snapshot.messages.permitted && snapshot.messages.unread > 0) {
+    activity.push({ id: 'msg', actor: 'Messages', action: `${snapshot.messages.unread} unread`, time: 'Recent' })
+  }
+  if (snapshot.receipts.permitted && snapshot.receipts.needsAttention > 0) {
+    activity.push({ id: 'rcpt', actor: 'Receipts', action: `${snapshot.receipts.needsAttention} pending review`, time: 'Recent' })
+  }
+  if (snapshot.parking.permitted && snapshot.parking.pendingPayments > 0) {
+    activity.push({ id: 'park-pay', actor: 'Parking', action: `${snapshot.parking.pendingPayments} pending payment${snapshot.parking.pendingPayments > 1 ? 's' : ''}`, time: 'Recent' })
+  }
 
   // --- Mini Metrics ---
   const miniMetrics = [
     {
-      label: 'SMS sent (7d)',
-      value: snapshot.systemHealth.permitted ? String(snapshot.systemHealth.smsFailures24h || 0) : '--',
-      trend: [210, 180, 220, 190, 240, 200, 254],
+      label: 'SMS failures (24h)',
+      value: snapshot.systemHealth.permitted ? String(snapshot.systemHealth.smsFailures24h) : '--',
+      trend: [] as number[],
+      tone: (snapshot.systemHealth.permitted && snapshot.systemHealth.smsFailures24h > 0 ? 'warning' : undefined) as 'warning' | undefined,
     },
     {
-      label: 'Messages awaiting reply',
+      label: 'Unread messages',
       value: snapshot.messages.permitted ? String(snapshot.messages.unread) : '--',
-      trend: [18, 22, 15, 20, 17, 14, 12],
-      tone: 'warning' as const,
+      trend: [] as number[],
+      tone: (snapshot.messages.permitted && snapshot.messages.unread > 0 ? 'warning' : undefined) as 'warning' | undefined,
     },
     {
-      label: 'Private bookings (active)',
+      label: 'Active private bookings',
       value: snapshot.privateBookings.permitted ? String(snapshot.privateBookings.upcoming.length) : '--',
-      trend: [8, 9, 11, 10, 12, 13, 14],
+      trend: [] as number[],
     },
     {
       label: 'New customers (month)',
       value: snapshot.customers.permitted ? String(snapshot.customers.newThisMonth) : '--',
-      trend: [55, 60, 64, 58, 70, 66, 72],
+      trend: [] as number[],
     },
   ]
 
@@ -288,27 +309,47 @@ export default async function DashboardPage() {
 
   return (
     <div className="p-5 max-w-[1600px] mx-auto flex flex-col gap-5">
-      {/* Upcoming Schedule Calendar (preserved existing component) */}
-      <UpcomingScheduleCalendar
-        events={calendarEvents}
-        calendarNotes={calendarNotes}
-        privateBookings={calendarPrivateBookings}
-        parkingBookings={calendarParkingBookings}
-        canCreateCalendarNote={canManageCalendarNotes}
-      />
-
       <DashboardClient
         subtitle={subtitle}
         stats={stats}
+        calendar={
+          <UpcomingScheduleCalendar
+            events={calendarEvents}
+            calendarNotes={calendarNotes}
+            privateBookings={calendarPrivateBookings}
+            parkingBookings={calendarParkingBookings}
+            canCreateCalendarNote={canManageCalendarNotes}
+          />
+        }
         revenueData={revenueData}
-        revenueSummary={{ avgDaily: '£1,189', bestDay: '£1,740', vsLastWeek: '+14.2%', forecast: '£76,200' }}
+        revenueSummary={snapshot.cashingUp.permitted
+          ? {
+              avgDaily: currencyFormatter.format(
+                snapshot.cashingUp.thisWeekTotal / Math.max(snapshot.cashingUp.sessionsSubmittedCount, 1)
+              ),
+              completedThrough: snapshot.cashingUp.completedThrough ?? '--',
+              vsLastWeek: snapshot.cashingUp.lastWeekTotal > 0
+                ? `${snapshot.cashingUp.thisWeekTotal >= snapshot.cashingUp.lastWeekTotal ? '+' : ''}${(
+                    ((snapshot.cashingUp.thisWeekTotal - snapshot.cashingUp.lastWeekTotal) / snapshot.cashingUp.lastWeekTotal) * 100
+                  ).toFixed(1)}%`
+                : '--',
+              lastYearSameWeek: snapshot.cashingUp.lastYearTotal > 0
+                ? currencyFormatter.format(snapshot.cashingUp.lastYearTotal)
+                : '--',
+            }
+          : { avgDaily: '--', completedThrough: '--', vsLastWeek: '--', lastYearSameWeek: '--' }
+        }
         todayTitle={`Today at The Anchor`}
         todayItems={todayItems}
         todayMeta={{
           openTime: '12:00',
-          onRota: [],
-          bookings: String(todayItems.filter((t) => t.type === 'booking').length),
-          covers: '--',
+          onRota: snapshot.rotaToday.staffOnRota,
+          bookings: String(todayItems.filter((t) => t.type === 'booking' || t.type === 'event').length),
+          covers: (() => {
+            if (!snapshot.privateBookings.permitted) return '--'
+            const total = privateToday.reduce((sum, b) => sum + (b.guest_count ?? 0), 0)
+            return total > 0 ? String(total) : '--'
+          })(),
         }}
         upcomingEvents={upcomingEventsFormatted}
         activity={activity}

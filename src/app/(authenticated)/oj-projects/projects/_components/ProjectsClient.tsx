@@ -24,6 +24,7 @@ import {
   IconButton,
   toast,
 } from '@/ds'
+import { Icon } from '@/ds/icons'
 import { usePermissions } from '@/contexts/PermissionContext'
 import {
   getProjects,
@@ -201,7 +202,7 @@ export function ProjectsClient({ initialProjects }: ProjectsClientProps): React.
           />
         </div>
         {canCreate && (
-          <Button onClick={openCreate} icon="plus" size="sm">
+          <Button onClick={openCreate} icon={<Icon name="plus" size={16} />} size="sm">
             New Project
           </Button>
         )}
@@ -278,7 +279,7 @@ export function ProjectsClient({ initialProjects }: ProjectsClientProps): React.
                       <div className="flex gap-1" onClick={(e) => e.stopPropagation()}>
                         {canEdit && (
                           <IconButton
-                            icon="edit"
+                            icon={<Icon name="edit" size={16} />}
                             size="sm"
                             label="Edit"
                             onClick={() => openEdit(project)}
@@ -286,7 +287,7 @@ export function ProjectsClient({ initialProjects }: ProjectsClientProps): React.
                         )}
                         {canDelete && (
                           <IconButton
-                            icon="trash"
+                            icon={<Icon name="trash" size={16} />}
                             size="sm"
                             label="Delete"
                             onClick={() => setDeleteId(project.id)}

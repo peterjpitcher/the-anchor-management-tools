@@ -21,6 +21,7 @@ import {
   IconButton,
   toast,
 } from '@/ds'
+import { Icon } from '@/ds/icons'
 import { usePermissions } from '@/contexts/PermissionContext'
 import {
   getWorkTypes,
@@ -137,7 +138,7 @@ export function WorkTypesClient({ initialWorkTypes }: WorkTypesClientProps): Rea
       {/* Toolbar */}
       <div className="flex justify-end">
         {canCreate && (
-          <Button onClick={openCreate} icon="plus" size="sm">
+          <Button onClick={openCreate} icon={<Icon name="plus" size={16} />} size="sm">
             New Work Type
           </Button>
         )}
@@ -181,7 +182,7 @@ export function WorkTypesClient({ initialWorkTypes }: WorkTypesClientProps): Rea
                     <div className="flex gap-1">
                       {canEdit && (
                         <IconButton
-                          icon="edit"
+                          icon={<Icon name="edit" size={16} />}
                           size="sm"
                           label="Edit"
                           onClick={() => openEdit(wt)}
@@ -189,7 +190,7 @@ export function WorkTypesClient({ initialWorkTypes }: WorkTypesClientProps): Rea
                       )}
                       {canEdit && wt.is_active && (
                         <IconButton
-                          icon="trash"
+                          icon={<Icon name="trash" size={16} />}
                           size="sm"
                           label="Disable"
                           onClick={() => setDisableId(wt.id)}

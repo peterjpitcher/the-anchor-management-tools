@@ -385,7 +385,7 @@ export function EntriesClient({
                       <div className="flex gap-1">
                         {canEdit && (
                           <IconButton
-                            icon="edit"
+                            icon={<Icon name="edit" size={16} />}
                             size="sm"
                             label="Edit"
                             onClick={() => openEdit(entry)}
@@ -393,7 +393,7 @@ export function EntriesClient({
                         )}
                         {canDelete && (
                           <IconButton
-                            icon="trash"
+                            icon={<Icon name="trash" size={16} />}
                             size="sm"
                             label="Delete"
                             onClick={() => setDeleteId(entry.id)}
