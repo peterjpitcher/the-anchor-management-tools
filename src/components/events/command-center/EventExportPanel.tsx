@@ -3,7 +3,7 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { ArrowDownTrayIcon } from '@heroicons/react/24/outline'
 import { getLocalIsoDateDaysAhead, getTodayIsoDate } from '@/lib/dateUtils'
-import { toast } from '@/components/ui-v2/feedback/Toast'
+import { toast } from '@/ds'
 import type { EventOverview } from '@/app/(authenticated)/events/get-events-command-center'
 
 type ExportMode = 'all' | 'single'

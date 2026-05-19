@@ -1,8 +1,8 @@
 'use client';
 
 import { useMemo } from 'react';
-import { Button } from '@/components/ui-v2/forms/Button';
-import { Alert } from '@/components/ui-v2/feedback/Alert';
+import { Button } from '@/ds';
+import { Alert } from '@/ds';
 import {
   IngredientCompositionRow,
   RecipeCompositionRow,

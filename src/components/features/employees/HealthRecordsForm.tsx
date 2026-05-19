@@ -5,11 +5,11 @@ import { useFormStatus } from 'react-dom';
 import { upsertHealthRecord } from '@/app/actions/employeeActions';
 import type { EmployeeHealthRecord } from '@/types/database';
 import { usePathname, useRouter } from 'next/navigation';
-import { toast } from '@/components/ui-v2/feedback/Toast';
-import { Input } from '@/components/ui-v2/forms/Input';
-import { Textarea } from '@/components/ui-v2/forms/Textarea';
-import { Checkbox } from '@/components/ui-v2/forms/Checkbox';
-import { Button } from '@/components/ui-v2/forms/Button';
+import { toast } from '@/ds';
+import { Input } from '@/ds';
+import { Textarea } from '@/ds';
+import { Checkbox } from '@/ds';
+import { Button } from '@/ds';
 
 interface HealthRecordsFormProps {
   employeeId: string;

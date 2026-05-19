@@ -2,8 +2,8 @@
 
 import React, { type ReactNode, type ComponentProps, useEffect, useRef } from 'react'
 import { useFormState as useFormStateLegacy, useFormStatus } from 'react-dom'
-import { Button } from '@/components/ui-v2/forms/Button'
-import { toast } from '@/components/ui-v2/feedback/Toast'
+import { Button } from '@/ds'
+import { toast } from '@/ds'
 
 export type SmsQueueActionState = {
   status: 'idle' | 'success' | 'error'

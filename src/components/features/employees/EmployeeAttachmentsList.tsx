@@ -8,7 +8,7 @@ import { deleteEmployeeAttachment, getAttachmentSignedUrl } from '@/app/actions/
 import { PaperClipIcon, ArrowDownTrayIcon, TrashIcon, ExclamationTriangleIcon, EyeIcon } from '@heroicons/react/24/outline'
 import { formatBytes } from '@/lib/utils'
 import { formatDateInLondon } from '@/lib/dateUtils'
-import { toast } from '@/components/ui-v2/feedback/Toast'
+import { toast } from '@/ds'
 
 interface EmployeeAttachmentsListProps {
   employeeId: string

@@ -10,10 +10,16 @@ import type { Event } from '@/types/database'
 interface EventCalendarViewProps {
   events: Event[]
   onEventClick: (event: Event) => void
+  onMonthChange?: (month: Date) => void
 }
 
-export function EventCalendarView({ events, onEventClick }: EventCalendarViewProps) {
+export function EventCalendarView({ events, onEventClick, onMonthChange }: EventCalendarViewProps) {
   const [currentMonth, setCurrentMonth] = useState<Date>(new Date())
+
+  const changeMonth = (newMonth: Date) => {
+    setCurrentMonth(newMonth)
+    onMonthChange?.(newMonth)
+  }
 
   return (
     <div>
@@ -24,7 +30,7 @@ export function EventCalendarView({ events, onEventClick }: EventCalendarViewPro
             variant="ghost"
             size="sm"
             icon={<Icon name="chevronLeft" size={16} />}
-            onClick={() => setCurrentMonth((m) => subMonths(m, 1))}
+            onClick={() => changeMonth(subMonths(currentMonth, 1))}
             aria-label="Previous month"
           />
           <h2 className="text-lg font-semibold text-text-strong min-w-[160px] text-center">
@@ -34,14 +40,14 @@ export function EventCalendarView({ events, onEventClick }: EventCalendarViewPro
             variant="ghost"
             size="sm"
             icon={<Icon name="chevronRight" size={16} />}
-            onClick={() => setCurrentMonth((m) => addMonths(m, 1))}
+            onClick={() => changeMonth(addMonths(currentMonth, 1))}
             aria-label="Next month"
           />
         </div>
         <Button
           variant="secondary"
           size="sm"
-          onClick={() => setCurrentMonth(new Date())}
+          onClick={() => changeMonth(new Date())}
         >
           Today
         </Button>

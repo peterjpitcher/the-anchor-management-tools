@@ -16,19 +16,19 @@ import {
   TrashIcon,
   PlayIcon,
 } from '@heroicons/react/24/outline'
-import { PageLayout } from '@/components/ui-v2/layout/PageLayout'
-import { Section } from '@/components/ui-v2/layout/Section'
-import { Card } from '@/components/ui-v2/layout/Card'
-import { Button, IconButton } from '@/components/ui-v2/forms/Button'
-import { Badge } from '@/components/ui-v2/display/Badge'
-import { DataTable } from '@/components/ui-v2/display/DataTable'
-import { EmptyState } from '@/components/ui-v2/display/EmptyState'
-import { Select } from '@/components/ui-v2/forms/Select'
-import { FormGroup } from '@/components/ui-v2/forms/FormGroup'
-import { Pagination } from '@/components/ui-v2/navigation/Pagination'
-import { Stat } from '@/components/ui-v2/display/Stat'
-import { Spinner } from '@/components/ui-v2/feedback/Spinner'
-import { Alert } from '@/components/ui-v2/feedback/Alert'
+import { PageLayout } from '@/ds'
+import { Section } from '@/ds'
+import { Card } from '@/ds'
+import { Button, IconButton } from '@/ds'
+import { Badge } from '@/ds'
+import { DataTable } from '@/ds'
+import { EmptyState } from '@/ds'
+import { Select } from '@/ds'
+import { FormGroup } from '@/ds'
+import { Pagination } from '@/ds'
+import { Stat } from '@/ds'
+import { Spinner } from '@/ds'
+import { Alert } from '@/ds'
 
 const jobTypeLabels: Record<string, string> = {
   send_sms: 'Send SMS',

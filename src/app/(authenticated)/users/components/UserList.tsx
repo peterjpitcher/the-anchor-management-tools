@@ -5,9 +5,9 @@ import type { User as SupabaseUser } from '@supabase/supabase-js';
 import { Role } from '@/types/rbac';
 import UserRolesModal from './UserRolesModal';
 import { format } from 'date-fns';
-import { DataTable, type Column } from '@/components/ui-v2/display/DataTable';
-import { Button } from '@/components/ui-v2/forms/Button';
-import { Card } from '@/components/ui-v2/layout/Card';
+import { DataTable, type Column } from '@/ds';
+import { Button } from '@/ds';
+import { Card } from '@/ds';
 
 type UserSummary = Pick<SupabaseUser, 'id' | 'email' | 'created_at' | 'last_sign_in_at'>;
 

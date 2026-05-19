@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useMemo, useEffect } from 'react'
 import {
   Card, CardHeader, CardBody,
   Table, TableHeader, TableBody, TableRow, TableHead, TableCell,
@@ -11,6 +11,21 @@ import { upsertSessionAction, submitSessionAction } from '@/app/actions/cashing-
 import { getDailySummaryAction } from '@/app/actions/daily-summary'
 import toast from 'react-hot-toast'
 import type { CashupSession, UpsertCashupSessionDTO } from '@/types/cashing-up'
+
+const DENOMINATIONS = [
+  { value: 50, label: '£50' },
+  { value: 20, label: '£20' },
+  { value: 10, label: '£10' },
+  { value: 5, label: '£5' },
+  { value: 2, label: '£2' },
+  { value: 1, label: '£1' },
+  { value: 0.5, label: '50p' },
+  { value: 0.2, label: '20p' },
+  { value: 0.1, label: '10p' },
+  { value: 0.05, label: '5p' },
+  { value: 0.02, label: '2p' },
+  { value: 0.01, label: '1p' },
+]
 
 interface WeeklyRow {
   session_date: string
@@ -49,7 +64,6 @@ const dayName = (dateStr: string): string => {
 }
 
 export function DailyClient({ siteId, siteName, sessionDate, dailySummary, dailyTarget, weeklyData, existingSession }: Props) {
-  // Extract initial values from existing session breakdowns
   const getBreakdownValue = (code: string, field: 'countedAmount' | 'expectedAmount'): number => {
     if (!existingSession?.cashup_payment_breakdowns) return 0
     const bd = existingSession.cashup_payment_breakdowns.find(
@@ -59,42 +73,75 @@ export function DailyClient({ siteId, siteName, sessionDate, dailySummary, daily
     return field === 'countedAmount' ? bd.counted_amount : bd.expected_amount
   }
 
-  const [cashCounted, setCashCounted] = useState(getBreakdownValue('CASH', 'countedAmount').toString() || '')
-  const [floatOpened, setFloatOpened] = useState('')
-  const [cardTakings, setCardTakings] = useState(getBreakdownValue('CARD', 'countedAmount').toString() || '')
-  const [tipsOnCard, setTipsOnCard] = useState('')
-  const [refunds, setRefunds] = useState('')
-  const [voids, setVoids] = useState('')
+  // Restore denomination values from existing cash counts
+  const getInitialCashValues = (): Record<string, string> => {
+    const values: Record<string, string> = {}
+    if (existingSession?.cashup_cash_counts) {
+      existingSession.cashup_cash_counts.forEach((c) => {
+        values[c.denomination.toString()] = c.total_amount?.toString() || '0'
+      })
+    }
+    return values
+  }
+
+  const [cashValues, setCashValues] = useState<Record<string, string>>(getInitialCashValues)
+  const [cashExpected, setCashExpected] = useState(getBreakdownValue('CASH', 'expectedAmount').toString() || '')
+  const [cardTotal, setCardTotal] = useState(getBreakdownValue('CARD', 'countedAmount').toString() || '')
+  const [stripeTotal, setStripeTotal] = useState(getBreakdownValue('STRIPE', 'countedAmount').toString() || '')
   const [notes, setNotes] = useState(existingSession?.notes || '')
+  const [autoNotes, setAutoNotes] = useState(dailySummary || '')
   const [saving, setSaving] = useState(false)
   const [lastSaved, setLastSaved] = useState<string | null>(null)
   const [sessionId, setSessionId] = useState<string | null>(existingSession?.id ?? null)
+  const isLocked = existingSession?.status !== 'draft' && existingSession?.status !== undefined
 
-  const cashNum = parseFloat(cashCounted) || 0
-  const cardNum = parseFloat(cardTakings) || 0
-  const tipsNum = parseFloat(tipsOnCard) || 0
-  const refundsNum = parseFloat(refunds) || 0
-  const voidsNum = parseFloat(voids) || 0
-  const floatNum = parseFloat(floatOpened) || 0
+  useEffect(() => {
+    if (sessionDate) {
+      getDailySummaryAction(sessionDate).then(res => {
+        if (res.success && res.summary) {
+          setAutoNotes(res.summary)
+        }
+      })
+    }
+  }, [sessionDate])
 
-  const totalCounted = cashNum + cardNum + tipsNum - refundsNum - voidsNum
+  const handleCashValueChange = (denomValue: number, inputValue: string) => {
+    setCashValues(prev => ({ ...prev, [denomValue.toString()]: inputValue }))
+  }
+
+  const cashCountedTotal = useMemo(() => {
+    return DENOMINATIONS.reduce((total, denom) => {
+      const val = parseFloat(cashValues[denom.value] || '0')
+      return total + val
+    }, 0)
+  }, [cashValues])
+
+  const cardNum = parseFloat(cardTotal) || 0
+  const stripeNum = parseFloat(stripeTotal) || 0
+  const cashExpectedNum = parseFloat(cashExpected) || 0
+  const cashVariance = cashCountedTotal - cashExpectedNum
+  const totalRevenue = cashCountedTotal + cardNum + stripeNum
   const target = dailyTarget
-  const variance = totalCounted - target
 
   const handleSave = useCallback(async () => {
     setSaving(true)
     try {
+      const cashCounts = DENOMINATIONS.map(denom => {
+        const val = parseFloat(cashValues[denom.value] || '0')
+        return { denomination: denom.value, totalAmount: val }
+      }).filter(c => c.totalAmount > 0)
+
       const dto: UpsertCashupSessionDTO = {
         siteId,
         sessionDate,
         status: 'draft',
-        notes: notes || null,
+        notes: [notes, autoNotes].filter(Boolean).join('\n\n').trim() || null,
         paymentBreakdowns: [
-          { paymentTypeCode: 'CASH', paymentTypeLabel: 'Cash', expectedAmount: target, countedAmount: cashNum },
+          { paymentTypeCode: 'CASH', paymentTypeLabel: 'Cash', expectedAmount: cashExpectedNum, countedAmount: cashCountedTotal },
           { paymentTypeCode: 'CARD', paymentTypeLabel: 'Card', expectedAmount: cardNum, countedAmount: cardNum },
-          { paymentTypeCode: 'TIPS', paymentTypeLabel: 'Tips on Card', expectedAmount: 0, countedAmount: tipsNum },
+          { paymentTypeCode: 'STRIPE', paymentTypeLabel: 'Stripe', expectedAmount: stripeNum, countedAmount: stripeNum },
         ],
-        cashCounts: [],
+        cashCounts,
       }
 
       const res = await upsertSessionAction(dto, sessionId ?? undefined)
@@ -110,7 +157,7 @@ export function DailyClient({ siteId, siteName, sessionDate, dailySummary, daily
     } finally {
       setSaving(false)
     }
-  }, [siteId, sessionDate, notes, cashNum, cardNum, tipsNum, target, sessionId])
+  }, [siteId, sessionDate, notes, autoNotes, cashValues, cashExpectedNum, cashCountedTotal, cardNum, stripeNum, sessionId])
 
   const handleSubmit = useCallback(async () => {
     if (!sessionId) {
@@ -136,118 +183,169 @@ export function DailyClient({ siteId, siteName, sessionDate, dailySummary, daily
     }
   }, [sessionId, handleSave])
 
+  const handleKeyDown = (e: React.KeyboardEvent, nextId: string) => {
+    if (e.key === 'ArrowRight' || e.key === 'Tab') {
+      const nextElement = document.getElementById(nextId)
+      if (nextElement && e.key === 'ArrowRight') {
+        e.preventDefault()
+        nextElement.focus()
+        if (nextElement instanceof HTMLInputElement) nextElement.select()
+      }
+    }
+  }
+
   return (
     <div className="space-y-4">
-      {/* 2-column grid layout */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {/* Left column - Today's till */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        {/* Column 1 — Cash denomination grid */}
         <Card>
           <CardHeader
-            title="Today's till"
-            subtitle={lastSaved ? `Auto-saved at ${lastSaved}` : sessionDate}
+            title="Cash"
+            subtitle={lastSaved ? `Saved at ${lastSaved}` : 'Cash drawer count'}
           />
           <CardBody>
-            <div className="grid grid-cols-2 gap-3">
-              <Field label="Cash drawer (counted)">
-                <Input
-                  type="number"
-                  step="0.01"
-                  value={cashCounted}
-                  onChange={(e) => setCashCounted(e.target.value)}
-                  placeholder="0.00"
-                  icon={<Icon name="pound" size={16} />}
-                />
-              </Field>
-              <Field label="Float opened with">
-                <Input
-                  type="number"
-                  step="0.01"
-                  value={floatOpened}
-                  onChange={(e) => setFloatOpened(e.target.value)}
-                  placeholder="0.00"
-                  icon={<Icon name="pound" size={16} />}
-                />
-              </Field>
-              <Field label="Card takings (Stripe)">
-                <Input
-                  type="number"
-                  step="0.01"
-                  value={cardTakings}
-                  onChange={(e) => setCardTakings(e.target.value)}
-                  placeholder="0.00"
-                  icon={<Icon name="pound" size={16} />}
-                />
-              </Field>
-              <Field label="Tips on card">
-                <Input
-                  type="number"
-                  step="0.01"
-                  value={tipsOnCard}
-                  onChange={(e) => setTipsOnCard(e.target.value)}
-                  placeholder="0.00"
-                  icon={<Icon name="pound" size={16} />}
-                />
-              </Field>
-              <Field label="Refunds">
-                <Input
-                  type="number"
-                  step="0.01"
-                  value={refunds}
-                  onChange={(e) => setRefunds(e.target.value)}
-                  placeholder="0.00"
-                  icon={<Icon name="pound" size={16} />}
-                />
-              </Field>
-              <Field label="Voids">
-                <Input
-                  type="number"
-                  step="0.01"
-                  value={voids}
-                  onChange={(e) => setVoids(e.target.value)}
-                  placeholder="0.00"
-                  icon={<Icon name="pound" size={16} />}
-                />
-              </Field>
+            <p className="text-xs font-semibold text-text-muted uppercase mb-2">
+              Cash drawer count (total value)
+            </p>
+            <div className="grid grid-cols-2 gap-1.5">
+              {DENOMINATIONS.map((denom, index) => {
+                const nextDenom = DENOMINATIONS[index + 1]
+                const nextId = nextDenom ? `input-denom-${nextDenom.value}` : 'input-cash-expected'
+                return (
+                  <div
+                    key={denom.value}
+                    className="flex items-center justify-between bg-surface-2 px-2 py-1 rounded-default border border-border"
+                  >
+                    <span className="text-xs font-medium text-text-muted w-8 text-center">
+                      {denom.label}
+                    </span>
+                    <div className="flex items-center gap-0.5">
+                      <span className="text-text-subtle text-xs">£</span>
+                      <input
+                        id={`input-denom-${denom.value}`}
+                        type="number"
+                        step="0.01"
+                        placeholder="0.00"
+                        value={cashValues[denom.value] || ''}
+                        onChange={(e) => handleCashValueChange(denom.value, e.target.value)}
+                        onKeyDown={(e) => handleKeyDown(e, nextId)}
+                        onWheel={(e) => e.currentTarget.blur()}
+                        className="w-20 p-1 text-right text-sm bg-transparent border-none focus:outline-none focus:ring-0 font-mono"
+                        disabled={isLocked}
+                      />
+                    </div>
+                  </div>
+                )
+              })}
             </div>
+
+            {/* Cash totals */}
+            <div className="mt-3 pt-3 border-t border-border space-y-2">
+              <div className="flex justify-between items-center">
+                <span className="text-sm font-semibold text-text-strong">Total counted:</span>
+                <span className="font-mono font-bold text-lg">£{fmt(cashCountedTotal)}</span>
+              </div>
+
+              <div className="flex justify-between items-center pt-2 border-t border-border">
+                <span className="text-sm text-text-muted font-medium">Expected (Z-Read):</span>
+                <div className="flex items-center gap-1">
+                  <span className="text-text-subtle text-xs">£</span>
+                  <input
+                    id="input-cash-expected"
+                    type="number"
+                    step="0.01"
+                    value={cashExpected}
+                    onChange={(e) => setCashExpected(e.target.value)}
+                    onKeyDown={(e) => handleKeyDown(e, 'input-card-total')}
+                    onWheel={(e) => e.currentTarget.blur()}
+                    className="w-28 p-1 text-right text-sm bg-surface-2 border border-border rounded-default font-mono focus:outline-none focus:ring-1 focus:ring-primary"
+                    disabled={isLocked}
+                  />
+                </div>
+              </div>
+
+              <div className="flex justify-between items-center">
+                <span className="text-sm font-medium text-text">Variance:</span>
+                <span className={`font-mono font-bold ${cashVariance < 0 ? 'text-danger-fg' : 'text-success-fg'}`}>
+                  £{fmt(cashVariance)}
+                </span>
+              </div>
+            </div>
+          </CardBody>
+        </Card>
+
+        {/* Column 2 — Card, Stripe, Notes */}
+        <Card>
+          <CardHeader title="Card & Stripe" />
+          <CardBody className="space-y-4">
+            <Field label="Card total (terminal)">
+              <Input
+                id="input-card-total"
+                type="number"
+                step="0.01"
+                value={cardTotal}
+                onChange={(e) => setCardTotal(e.target.value)}
+                placeholder="0.00"
+                icon={<Icon name="pound" size={16} />}
+                disabled={isLocked}
+              />
+            </Field>
+
+            <Field label="Stripe total (dashboard)">
+              <Input
+                id="input-stripe-total"
+                type="number"
+                step="0.01"
+                value={stripeTotal}
+                onChange={(e) => setStripeTotal(e.target.value)}
+                placeholder="0.00"
+                icon={<Icon name="pound" size={16} />}
+                disabled={isLocked}
+              />
+            </Field>
+
+            {/* Variance summary */}
+            <Alert tone="info">
+              <div className="flex justify-between items-center">
+                <span>Cash variance:</span>
+                <strong className={cashVariance < 0 ? 'text-danger-fg' : 'text-success-fg'}>
+                  £{fmt(cashVariance)}
+                </strong>
+              </div>
+            </Alert>
 
             {/* Notes */}
-            <div className="mt-3">
-              <Field label="Notes">
-                <Input
-                  value={notes}
-                  onChange={(e) => setNotes(e.target.value)}
-                  placeholder="Any notes for today..."
-                />
-              </Field>
-            </div>
+            <Field label="Notes / variance reason">
+              <Input
+                id="input-notes"
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                placeholder="Enter your notes here..."
+                disabled={isLocked}
+              />
+            </Field>
 
-            {/* Variance alert */}
-            <div className="mt-4">
-              <Alert tone="info">
-                <div className="flex justify-between items-center">
-                  <span>Total counted: <strong>{'£'}{fmt(totalCounted)}</strong></span>
-                  <span>
-                    Variance: <strong className={variance >= 0 ? 'text-success-fg' : 'text-danger-fg'}>
-                      {'£'}{fmt(variance)}
-                    </strong>
-                  </span>
-                </div>
-              </Alert>
-            </div>
+            {autoNotes && (
+              <div className="bg-warning/10 p-3 rounded-default border border-warning/30 text-xs text-text whitespace-pre-wrap">
+                <strong>Auto-detected events:</strong>
+                <br />
+                {autoNotes}
+              </div>
+            )}
 
-            {/* Buttons */}
-            <div className="flex gap-3 mt-4">
-              <Button variant="secondary" onClick={handleSave} loading={saving}>
+            {/* Action buttons */}
+            <div className="flex gap-3 pt-2">
+              <Button variant="secondary" onClick={handleSave} loading={saving} disabled={isLocked}>
                 Save Draft
               </Button>
-              <Button variant="primary" onClick={handleSubmit} loading={saving}>
+              <Button variant="primary" onClick={handleSubmit} loading={saving} disabled={isLocked}>
                 Submit
               </Button>
             </div>
           </CardBody>
         </Card>
 
-        {/* Right column - Week at a glance */}
+        {/* Column 3 — Week at a glance */}
         <Card>
           <CardHeader title="Week at a glance" />
           <Table>
@@ -274,13 +372,13 @@ export function DailyClient({ siteId, siteName, sessionDate, dailySummary, daily
                       {dayName(row.session_date)}
                     </TableCell>
                     <TableCell align="right" className="font-mono text-xs">
-                      {'£'}{fmt(row.total_expected_amount ?? 0)}
+                      £{fmt(row.total_expected_amount ?? 0)}
                     </TableCell>
                     <TableCell align="right" className="font-mono text-xs">
-                      {'£'}{fmt(row.total_counted_amount ?? 0)}
+                      £{fmt(row.total_counted_amount ?? 0)}
                     </TableCell>
                     <TableCell align="right" className="font-mono text-xs">
-                      {'£'}{fmt((row.total_expected_amount ?? 0) + (row.total_counted_amount ?? 0))}
+                      £{fmt((row.total_expected_amount ?? 0) + (row.total_counted_amount ?? 0))}
                     </TableCell>
                     <TableCell>
                       <Badge tone={statusTone(row.status)} dot>
@@ -295,11 +393,11 @@ export function DailyClient({ siteId, siteName, sessionDate, dailySummary, daily
         </Card>
       </div>
 
-      {/* Category breakdown stats */}
+      {/* Revenue stats */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         <Card>
           <CardBody>
-            <Stat label="Cash" value={`£${fmt(cashNum)}`} />
+            <Stat label="Cash counted" value={`£${fmt(cashCountedTotal)}`} />
           </CardBody>
         </Card>
         <Card>
@@ -309,12 +407,17 @@ export function DailyClient({ siteId, siteName, sessionDate, dailySummary, daily
         </Card>
         <Card>
           <CardBody>
-            <Stat label="Tips" value={`£${fmt(tipsNum)}`} />
+            <Stat label="Stripe" value={`£${fmt(stripeNum)}`} />
           </CardBody>
         </Card>
         <Card>
           <CardBody>
-            <Stat label="Refunds / Voids" value={`£${fmt(refundsNum + voidsNum)}`} />
+            <Stat
+              label="Total revenue"
+              value={`£${fmt(totalRevenue)}`}
+              delta={target > 0 ? Math.round((totalRevenue / target) * 100) - 100 : undefined}
+              hint={target > 0 ? `Target: £${fmt(target)}` : undefined}
+            />
           </CardBody>
         </Card>
       </div>

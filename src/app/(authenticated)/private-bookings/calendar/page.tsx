@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation'
 import CalendarView from '@/components/private-bookings/CalendarView'
-import { PageLayout } from '@/components/ui-v2/layout/PageLayout'
+import { PageLayout } from '@/ds'
 import { getCurrentUserModuleActions } from '@/app/actions/rbac'
 import { fetchPrivateBookingsForCalendar } from '@/app/actions/private-bookings-dashboard'
 

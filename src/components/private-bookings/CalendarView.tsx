@@ -9,8 +9,8 @@ import {
 } from '@heroicons/react/24/outline'
 import type { BookingStatus } from '@/types/private-bookings'
 import { formatTime12Hour } from '@/lib/dateUtils'
-import { Select } from '@/components/ui-v2/forms/Select'
-import { Button } from '@/components/ui-v2/forms/Button'
+import { Select } from '@/ds'
+import { Button } from '@/ds'
 
 interface CalendarBooking {
   id: string

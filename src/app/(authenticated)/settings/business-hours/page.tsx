@@ -1,16 +1,16 @@
 import { redirect } from 'next/navigation'
 import { BusinessHoursManager } from './BusinessHoursManager'
 import { SpecialHoursClientWrapper } from './SpecialHoursClientWrapper' // Import the new client wrapper
-import { PageLayout } from '@/components/ui-v2/layout/PageLayout'
-import { Card } from '@/components/ui-v2/layout/Card'
-import { Section } from '@/components/ui-v2/layout/Section'
+import { PageLayout } from '@/ds'
+import { Card } from '@/ds'
+import { Section } from '@/ds'
 import { checkUserPermission } from '@/app/actions/rbac'
 import {
   getBusinessHours,
   getSpecialHours,
   getServiceStatusOverrides,
 } from '@/app/actions/business-hours'
-import { Alert } from '@/components/ui-v2/feedback/Alert'
+import { Alert } from '@/ds'
 
 
 export default async function BusinessHoursPage() {

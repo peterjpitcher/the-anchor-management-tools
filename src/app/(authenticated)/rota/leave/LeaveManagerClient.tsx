@@ -3,9 +3,9 @@
 import { useState, useTransition } from 'react';
 import toast from 'react-hot-toast';
 import { CheckIcon, XMarkIcon, ChevronDownIcon, ChevronUpIcon } from '@heroicons/react/24/outline';
-import { Button } from '@/components/ui-v2/forms/Button';
-import { Badge } from '@/components/ui-v2/display/Badge';
-import { Input } from '@/components/ui-v2/forms/Input';
+import { Button } from '@/ds';
+import { Badge } from '@/ds';
+import { Input } from '@/ds';
 import { reviewLeaveRequest } from '@/app/actions/leave';
 import type { LeaveRequest } from '@/app/actions/leave';
 

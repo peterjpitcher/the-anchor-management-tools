@@ -1,8 +1,8 @@
 import { getAllRoles, getAllPermissions, checkUserPermission } from '@/app/actions/rbac'
 import RoleList from './components/RoleList'
-import { PageLayout } from '@/components/ui-v2/layout/PageLayout'
-import { Alert } from '@/components/ui-v2/feedback/Alert'
-import { LinkButton } from '@/components/ui-v2/navigation/LinkButton'
+import { PageLayout } from '@/ds'
+import { Alert } from '@/ds'
+import { LinkButton } from '@/ds'
 import { redirect } from 'next/navigation'
 
 export default async function RolesPage() {

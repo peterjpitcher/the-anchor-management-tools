@@ -3,11 +3,11 @@
 import { useState, useTransition } from 'react';
 import toast from 'react-hot-toast';
 import { XMarkIcon } from '@heroicons/react/24/outline';
-import { Button } from '@/components/ui-v2/forms/Button';
-import { Input } from '@/components/ui-v2/forms/Input';
-import { Select } from '@/components/ui-v2/forms/Select';
-import { FormGroup } from '@/components/ui-v2/forms/FormGroup';
-import { Alert } from '@/components/ui-v2/feedback/Alert';
+import { Button } from '@/ds';
+import { Input } from '@/ds';
+import { Select } from '@/ds';
+import { FormGroup } from '@/ds';
+import { Alert } from '@/ds';
 import { createShift } from '@/app/actions/rota';
 import type { RotaShift } from '@/app/actions/rota';
 import type { Department } from '@/app/actions/budgets';

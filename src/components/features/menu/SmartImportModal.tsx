@@ -1,12 +1,12 @@
 'use client';
 
 import { useState } from 'react';
-import { Modal } from '@/components/ui-v2/overlay/Modal';
-import { Button } from '@/components/ui-v2/forms/Button';
-import { Textarea } from '@/components/ui-v2/forms/Textarea';
-import { Alert } from '@/components/ui-v2/feedback/Alert';
-import { toast } from '@/components/ui-v2/feedback/Toast';
-import { Badge } from '@/components/ui-v2/display/Badge';
+import { Modal } from '@/ds';
+import { Button } from '@/ds';
+import { Textarea } from '@/ds';
+import { Alert } from '@/ds';
+import { toast } from '@/ds';
+import { Badge } from '@/ds';
 import type { MenuPurchaseDepartment } from '@/lib/menu/purchase-departments';
 
 interface AiParsedIngredient {

@@ -11,13 +11,23 @@ import {
 } from '@headlessui/react'
 import { cn } from '@/lib/utils'
 
-interface DrawerProps {
+export interface DrawerProps {
   open: boolean
   onClose: () => void
   title?: string
+  /** @deprecated Accepted for backward compatibility */
+  description?: string
   children: React.ReactNode
+  /** @deprecated Accepted for backward compatibility */
+  footer?: React.ReactNode
   side?: 'right' | 'left'
+  /** @deprecated Use `side` instead */
+  position?: string
   width?: string
+  /** @deprecated Use `width` instead */
+  size?: string
+  /** @deprecated Accepted for backward compatibility */
+  mobileFullscreen?: boolean
 }
 
 const CloseIcon = () => (
@@ -31,11 +41,17 @@ export function Drawer({
   open,
   onClose,
   title,
+  description: _description,
   children,
-  side = 'right',
+  footer,
+  side,
+  position,
   width = '380px',
+  size: _size,
+  mobileFullscreen: _mfs,
 }: DrawerProps) {
-  const isRight = side === 'right'
+  const resolvedSide = side ?? (position === 'left' ? 'left' : 'right')
+  const isRight = resolvedSide === 'right'
 
   return (
     <Transition show={open} as={Fragment}>
@@ -88,6 +104,12 @@ export function Drawer({
               <div className="flex-1 overflow-y-auto p-5">
                 {children}
               </div>
+
+              {footer && (
+                <div className="px-5 py-4 border-t border-border flex justify-end gap-3">
+                  {footer}
+                </div>
+              )}
             </DialogPanel>
           </TransitionChild>
         </div>

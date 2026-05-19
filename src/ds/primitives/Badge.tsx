@@ -4,6 +4,14 @@ type BadgeTone = 'neutral' | 'primary' | 'success' | 'warning' | 'danger' | 'inf
 
 interface BadgeProps {
   tone?: BadgeTone
+  /** @deprecated Use `tone` instead. Maps variant names to tones for backward compatibility. */
+  variant?: string
+  /** @deprecated Badge uses a single size. Accepted but ignored for backward compatibility. */
+  size?: string
+  /** @deprecated Accepted for backward compatibility. */
+  title?: string
+  /** @deprecated Accepted for backward compatibility. */
+  icon?: React.ReactNode
   dot?: boolean
   children: React.ReactNode
   className?: string
@@ -36,8 +44,20 @@ const toneStyles: Record<BadgeTone, { badge: string; dot: string }> = {
   },
 }
 
-export function Badge({ tone = 'neutral', dot = false, children, className }: BadgeProps) {
-  const styles = toneStyles[tone]
+const variantToTone: Record<string, BadgeTone> = {
+  default: 'neutral',
+  neutral: 'neutral',
+  primary: 'primary',
+  success: 'success',
+  warning: 'warning',
+  danger: 'danger',
+  error: 'danger',
+  info: 'info',
+}
+
+export function Badge({ tone, variant, size: _size, title: _title, icon: _icon, dot = false, children, className }: BadgeProps) {
+  const resolvedTone: BadgeTone = tone ?? variantToTone[variant ?? ''] ?? 'neutral'
+  const styles = toneStyles[resolvedTone]
 
   return (
     <span

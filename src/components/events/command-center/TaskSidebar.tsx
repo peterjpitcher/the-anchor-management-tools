@@ -6,7 +6,7 @@ import { ChevronRightIcon, ChevronLeftIcon, CheckIcon } from '@heroicons/react/2
 import Link from 'next/link'
 import { format } from 'date-fns'
 import { toggleEventChecklistTask } from '@/app/actions/event-checklist'
-import { toast } from '@/components/ui-v2/feedback/Toast'
+import { toast } from '@/ds'
 
 interface TaskSidebarProps {
     todos: ChecklistTodoItem[]

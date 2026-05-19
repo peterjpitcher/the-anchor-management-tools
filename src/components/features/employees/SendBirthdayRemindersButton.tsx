@@ -1,8 +1,8 @@
 'use client'
 
 import { useState } from 'react'
-import { Button } from '@/components/ui-v2/forms/Button'
-import { toast } from '@/components/ui-v2/feedback/Toast'
+import { Button } from '@/ds'
+import { toast } from '@/ds'
 import { sendBirthdayReminders } from '@/app/actions/employee-birthdays'
 
 export default function SendBirthdayRemindersButton() {

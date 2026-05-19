@@ -1,5 +1,5 @@
 import { redirect } from 'next/navigation'
-import { PageLayout } from '@/components/ui-v2/layout/PageLayout'
+import { PageLayout } from '@/ds'
 import { checkUserPermission, getUserPermissions } from '@/app/actions/rbac'
 import { getLondonDateIso } from '@/lib/foh/api-auth'
 import { FohScheduleClient } from './FohScheduleClient'
@@ -9,7 +9,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { getOpenSessions } from '@/app/actions/timeclock'
 import Image from 'next/image'
 import FohClockWidget from './FohClockWidget'
-import { LinkButton } from '@/components/ui-v2/navigation/LinkButton'
+import { LinkButton } from '@/ds'
 
 const MANAGER_IPAD_EMAIL = 'manager@the-anchor.pub'
 

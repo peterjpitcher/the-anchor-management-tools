@@ -5,16 +5,18 @@ import { UserFooter } from './UserFooter'
 import { Icon } from '@/ds/icons'
 import type { NavGroup } from './SidebarNav'
 
-interface SidebarProps {
-  navGroups: NavGroup[]
-  userName: string
-  userRole: string
-  onSignOut: () => void
-  isSigningOut: boolean
+export interface SidebarProps {
+  navGroups?: NavGroup[]
+  userName?: string
+  userRole?: string
+  onSignOut?: () => void
+  isSigningOut?: boolean
   onNavigate?: () => void
+  /** Legacy children-based API */
+  children?: React.ReactNode
 }
 
-export function Sidebar({ navGroups, userName, userRole, onSignOut, isSigningOut, onNavigate }: SidebarProps) {
+export function Sidebar({ navGroups, userName, userRole, onSignOut, isSigningOut, onNavigate, children }: SidebarProps) {
   return (
     <div className="ds-sidebar bg-sidebar-bg flex flex-col hidden md:flex">
       {/* Logo area — matches topbar height */}
@@ -27,16 +29,22 @@ export function Sidebar({ navGroups, userName, userRole, onSignOut, isSigningOut
 
       {/* Navigation */}
       <div className="flex-1 py-3 overflow-hidden">
-        <SidebarNav items={navGroups} onNavigate={onNavigate} />
+        {navGroups ? (
+          <SidebarNav items={navGroups} onNavigate={onNavigate} />
+        ) : (
+          children
+        )}
       </div>
 
       {/* User footer */}
-      <UserFooter
-        userName={userName}
-        userRole={userRole}
-        onSignOut={onSignOut}
-        isSigningOut={isSigningOut}
-      />
+      {userName && onSignOut && (
+        <UserFooter
+          userName={userName}
+          userRole={userRole ?? ''}
+          onSignOut={onSignOut}
+          isSigningOut={isSigningOut ?? false}
+        />
+      )}
     </div>
   )
 }

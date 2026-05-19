@@ -1,9 +1,9 @@
 'use client';
 
-import { FormSection } from '@/components/ui-v2/forms/Form';
-import { FormGroup } from '@/components/ui-v2/forms/FormGroup';
-import { Input } from '@/components/ui-v2/forms/Input';
-import { Textarea } from '@/components/ui-v2/forms/Textarea';
+import { FormSection } from '@/ds';
+import { FormGroup } from '@/ds';
+import { Input } from '@/ds';
+import { Textarea } from '@/ds';
 
 // ---------------------------------------------------------------------------
 // Types

@@ -1,8 +1,8 @@
 'use client';
 
 import { useMemo } from 'react';
-import { Card } from '@/components/ui-v2/layout/Card';
-import { EmptyState } from '@/components/ui-v2/display/EmptyState';
+import { Card } from '@/ds';
+import { EmptyState } from '@/ds';
 
 type MonthlyChartPoint = {
   monthStart: string;

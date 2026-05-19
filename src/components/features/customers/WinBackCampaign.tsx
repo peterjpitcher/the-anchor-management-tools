@@ -15,10 +15,10 @@
 
 import { useState, useTransition } from 'react'
 import { MegaphoneIcon, ChevronDownIcon, ChevronUpIcon } from '@heroicons/react/24/outline'
-import { Button } from '@/components/ui-v2/forms/Button'
-import { Select } from '@/components/ui-v2/forms/Select'
-import { ConfirmDialog } from '@/components/ui-v2/overlay/ConfirmDialog'
-import { toast } from '@/components/ui-v2/feedback/Toast'
+import { Button } from '@/ds'
+import { Select } from '@/ds'
+import { ConfirmDialog } from '@/ds'
+import { toast } from '@/ds'
 import { sendWinBackCampaign } from '@/app/actions/customers'
 
 const INACTIVE_OPTIONS = [

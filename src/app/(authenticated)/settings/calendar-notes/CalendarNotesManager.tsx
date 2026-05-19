@@ -7,13 +7,13 @@ import {
   SparklesIcon,
   TrashIcon,
 } from '@heroicons/react/24/outline'
-import { Button } from '@/components/ui-v2/forms/Button'
-import { FormGroup } from '@/components/ui-v2/forms/FormGroup'
-import { Input } from '@/components/ui-v2/forms/Input'
-import { Textarea } from '@/components/ui-v2/forms/Textarea'
-import { Alert } from '@/components/ui-v2/feedback/Alert'
-import { Badge } from '@/components/ui-v2/display/Badge'
-import { toast } from '@/components/ui-v2/feedback/Toast'
+import { Button } from '@/ds'
+import { FormGroup } from '@/ds'
+import { Input } from '@/ds'
+import { Textarea } from '@/ds'
+import { Alert } from '@/ds'
+import { Badge } from '@/ds'
+import { toast } from '@/ds'
 import {
   createCalendarNote,
   deleteCalendarNote,

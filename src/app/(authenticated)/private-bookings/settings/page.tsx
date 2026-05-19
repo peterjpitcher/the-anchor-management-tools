@@ -6,9 +6,9 @@ import {
   UserGroupIcon,
 } from '@heroicons/react/24/outline'
 import { getCurrentUserModuleActions } from '@/app/actions/rbac'
-import { PageLayout } from '@/components/ui-v2/layout/PageLayout'
-import { Card } from '@/components/ui-v2/layout/Card'
-import { LinkButton } from '@/components/ui-v2/navigation/LinkButton'
+import { PageLayout } from '@/ds'
+import { Card } from '@/ds'
+import { LinkButton } from '@/ds'
 
 export default async function PrivateBookingsSettingsPage() {
   const permissionsResult = await getCurrentUserModuleActions('private_bookings')

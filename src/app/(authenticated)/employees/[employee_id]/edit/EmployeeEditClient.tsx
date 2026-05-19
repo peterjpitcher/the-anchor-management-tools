@@ -5,10 +5,10 @@ import FinancialDetailsForm from '@/components/features/employees/FinancialDetai
 import HealthRecordsForm from '@/components/features/employees/HealthRecordsForm'
 import { updateEmployee } from '@/app/actions/employeeActions'
 import type { Employee, EmployeeFinancialDetails, EmployeeHealthRecord } from '@/types/database'
-import { PageLayout } from '@/components/ui-v2/layout/PageLayout'
-import { Card } from '@/components/ui-v2/layout/Card'
-import { Tabs } from '@/components/ui-v2/navigation/Tabs'
-import { LinkButton } from '@/components/ui-v2/navigation/LinkButton'
+import { PageLayout } from '@/ds'
+import { Card } from '@/ds'
+import { Tabs } from '@/ds'
+import { LinkButton } from '@/ds'
 
 interface EmployeeEditClientProps {
   employee: Employee

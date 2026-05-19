@@ -5,12 +5,20 @@ import { cn } from '@/lib/utils'
 
 interface TextareaProps extends React.TextareaHTMLAttributes<HTMLTextAreaElement> {
   label?: string
-  error?: string
+  error?: string | boolean
   hint?: string
+  /** @deprecated Textareas are always full-width. Accepted for backward compatibility. */
+  fullWidth?: boolean
+  /** @deprecated Accepted for backward compatibility */
+  maxRows?: number
+  /** @deprecated Accepted for backward compatibility */
+  autoResize?: boolean
+  /** @deprecated Accepted for backward compatibility */
+  minRows?: number
 }
 
 export const Textarea = forwardRef<HTMLTextAreaElement, TextareaProps>(
-  ({ label, error, hint, rows = 3, id: idProp, className, disabled, ...rest }, ref) => {
+  ({ label, error, hint, fullWidth: _fw, maxRows: _mr, autoResize: _ar, minRows: _minR, rows = 3, id: idProp, className, disabled, ...rest }, ref) => {
     const autoId = useId()
     const id = idProp ?? autoId
     const errorId = `${id}-error`

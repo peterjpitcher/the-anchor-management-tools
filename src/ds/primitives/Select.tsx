@@ -8,16 +8,20 @@ interface SelectOption {
   label: string
 }
 
-interface SelectProps extends Omit<React.SelectHTMLAttributes<HTMLSelectElement>, 'children'> {
+interface SelectProps extends React.SelectHTMLAttributes<HTMLSelectElement> {
   label?: string
-  error?: string
+  error?: string | boolean
   hint?: string
-  options: SelectOption[]
+  options?: SelectOption[]
   placeholder?: string
+  /** @deprecated Accepted for backward compatibility */
+  selectSize?: string
+  /** @deprecated Accepted for backward compatibility */
+  fullWidth?: boolean
 }
 
 export const Select = forwardRef<HTMLSelectElement, SelectProps>(
-  ({ label, error, hint, options, placeholder, id: idProp, className, disabled, ...rest }, ref) => {
+  ({ label, error, hint, options, placeholder, selectSize: _selectSize, fullWidth: _fullWidth, id: idProp, className, disabled, children, ...rest }, ref) => {
     const autoId = useId()
     const id = idProp ?? autoId
     const errorId = `${id}-error`
@@ -53,11 +57,11 @@ export const Select = forwardRef<HTMLSelectElement, SelectProps>(
                 {placeholder}
               </option>
             )}
-            {options.map((opt) => (
+            {options ? options.map((opt) => (
               <option key={opt.value} value={opt.value}>
                 {opt.label}
               </option>
-            ))}
+            )) : children}
           </select>
 
           {/* Chevron down icon */}

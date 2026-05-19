@@ -3,15 +3,26 @@
 import { forwardRef, useId } from 'react'
 import { cn } from '@/lib/utils'
 
-interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> {
+export interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> {
   label?: string
-  error?: string
+  error?: string | boolean
   hint?: string
   icon?: React.ReactNode
+  /** @deprecated Use `icon` instead */
+  leftIcon?: React.ReactNode
+  /** @deprecated Accepted for backward compatibility */
+  leftElement?: React.ReactNode
+  /** @deprecated Accepted for backward compatibility */
+  rightElement?: React.ReactNode
+  /** @deprecated Inputs are always full-width. Accepted for backward compatibility. */
+  fullWidth?: boolean
+  /** @deprecated Accepted for backward compatibility */
+  inputSize?: string
 }
 
 export const Input = forwardRef<HTMLInputElement, InputProps>(
-  ({ label, error, hint, icon, id: idProp, className, disabled, ...rest }, ref) => {
+  ({ label, error, hint, icon, leftIcon, leftElement, rightElement, fullWidth: _fw, inputSize: _is, id: idProp, className, disabled, ...rest }, ref) => {
+    const resolvedIcon = icon ?? leftIcon
     const autoId = useId()
     const id = idProp ?? autoId
     const errorId = `${id}-error`
@@ -26,9 +37,9 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
         )}
 
         <div className="relative">
-          {icon && (
+          {resolvedIcon && (
             <span className="absolute left-3 top-1/2 -translate-y-1/2 text-text-subtle [&>svg]:w-4 [&>svg]:h-4" aria-hidden="true">
-              {icon}
+              {resolvedIcon}
             </span>
           )}
 
@@ -40,7 +51,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
               'outline-none transition-[border-color,box-shadow] duration-[120ms]',
               'focus:border-border-focus focus:shadow-ring',
               'placeholder:text-text-subtle',
-              icon && 'pl-9',
+              resolvedIcon && 'pl-9',
               error && 'border-danger focus:border-danger focus:shadow-[0_0_0_3px_rgba(220,38,38,0.15)]',
               disabled && 'opacity-50 cursor-not-allowed bg-surface-2',
               className

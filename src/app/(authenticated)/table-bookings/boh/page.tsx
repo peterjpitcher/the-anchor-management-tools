@@ -1,9 +1,9 @@
 import { redirect } from 'next/navigation'
-import { PageLayout } from '@/components/ui-v2/layout/PageLayout'
+import { PageLayout } from '@/ds'
 import { checkUserPermission, getUserPermissions } from '@/app/actions/rbac'
 import { isFohOnlyUser } from '@/lib/foh/user-mode'
 import { BohBookingsClient } from './BohBookingsClient'
-import { LinkButton } from '@/components/ui-v2/navigation/LinkButton'
+import { LinkButton } from '@/ds'
 
 export default async function TableBookingsBohPage() {
   const [canView, canEdit, canManage, canViewReports, canManageSettings, permissionsResult] = await Promise.all([

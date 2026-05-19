@@ -17,9 +17,15 @@ interface ModalProps {
   open: boolean
   onClose: () => void
   title?: string
+  /** @deprecated Use children instead */
+  description?: string
   children: React.ReactNode
   footer?: React.ReactNode
   width?: ModalWidth
+  /** @deprecated Use `width` instead */
+  size?: ModalWidth
+  /** @deprecated Accepted for backward compatibility */
+  mobileFullscreen?: boolean
 }
 
 const widthStyles: Record<ModalWidth, string> = {
@@ -33,10 +39,14 @@ export function Modal({
   open,
   onClose,
   title,
+  description: _description,
   children,
   footer,
-  width = 'md',
+  width,
+  size,
+  mobileFullscreen: _mfs,
 }: ModalProps) {
+  const resolvedWidth = width ?? size ?? 'md'
   return (
     <Transition show={open} as={Fragment}>
       <Dialog onClose={onClose} className="relative z-50">
@@ -65,7 +75,7 @@ export function Modal({
             <DialogPanel
               className={cn(
                 'w-full bg-surface rounded-lg shadow-lg',
-                widthStyles[width]
+                widthStyles[resolvedWidth]
               )}
             >
               {title && (

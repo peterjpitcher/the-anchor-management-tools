@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { Button } from '@/components/ui-v2/forms/Button'
+import { Button } from '@/ds'
 import toast from 'react-hot-toast'
 import type { Booking } from './BookingDetailClient'
 

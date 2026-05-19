@@ -615,6 +615,8 @@ export async function getEvents(options?: {
   pageSize?: number;
   orderBy?: string;
   orderAsc?: boolean;
+  dateFrom?: string;
+  dateTo?: string;
 }): Promise<{ data?: Event[], pagination?: { totalCount: number, currentPage: number, pageSize: number, totalPages: number }, error?: string }> {
   try {
     const { events, pagination } = await EventService.getEvents(options);

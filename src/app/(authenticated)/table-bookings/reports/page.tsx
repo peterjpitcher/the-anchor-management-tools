@@ -1,7 +1,7 @@
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
-import { PageLayout } from '@/components/ui-v2/layout/PageLayout'
-import { Card } from '@/components/ui-v2/layout/Card'
+import { PageLayout } from '@/ds'
+import { Card } from '@/ds'
 import { BarChart } from '@/components/charts/BarChart'
 import { checkUserPermission, getUserPermissions } from '@/app/actions/rbac'
 import {

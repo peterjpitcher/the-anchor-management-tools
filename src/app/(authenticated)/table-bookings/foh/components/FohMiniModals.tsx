@@ -1,7 +1,7 @@
 'use client'
 
 import React from 'react'
-import { Modal, ModalActions } from '@/components/ui-v2/overlay/Modal'
+import { Modal, ModalActions } from '@/ds'
 
 type FohPartySizeModalProps = {
   open: boolean

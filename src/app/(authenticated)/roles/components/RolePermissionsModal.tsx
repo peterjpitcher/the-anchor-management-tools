@@ -5,11 +5,11 @@ import { Role, Permission } from '@/types/rbac';
 import { getRolePermissions, assignPermissionsToRole } from '@/app/actions/rbac';
 import { useRouter } from 'next/navigation';
 import toast from 'react-hot-toast';
-import { Modal, ModalActions } from '@/components/ui-v2/overlay/Modal';
-import { Button } from '@/components/ui-v2/forms/Button';
-import { Checkbox } from '@/components/ui-v2/forms/Checkbox';
-import { Card } from '@/components/ui-v2/layout/Card';
-import { Spinner } from '@/components/ui-v2/feedback/Spinner';
+import { Modal, ModalActions } from '@/ds';
+import { Button } from '@/ds';
+import { Checkbox } from '@/ds';
+import { Card } from '@/ds';
+import { Spinner } from '@/ds';
 
 interface RolePermissionsModalProps {
   isOpen: boolean

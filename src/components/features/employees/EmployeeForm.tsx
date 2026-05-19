@@ -5,15 +5,15 @@ import { useActionState } from 'react';
 import { useFormStatus } from 'react-dom';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { toast } from '@/components/ui-v2/feedback/Toast';
+import { toast } from '@/ds';
 import type { ActionFormState } from '@/types/actions';
 import type { Employee } from '@/types/database';
 import { ChevronLeftIcon, ChevronRightIcon } from '@heroicons/react/24/outline';
-import { Input } from '@/components/ui-v2/forms/Input';
-import { Textarea } from '@/components/ui-v2/forms/Textarea';
-import { Select } from '@/components/ui-v2/forms/Select';
-import { Checkbox } from '@/components/ui-v2/forms/Checkbox';
-import { Button } from '@/components/ui-v2/forms/Button';
+import { Input } from '@/ds';
+import { Textarea } from '@/ds';
+import { Select } from '@/ds';
+import { Checkbox } from '@/ds';
+import { Button } from '@/ds';
 
 interface EmployeeFormProps {
   employee?: Employee; // For editing, not used in this initial "add" form

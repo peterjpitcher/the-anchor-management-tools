@@ -9,11 +9,34 @@ import { cn } from '@/lib/utils'
 interface CardProps {
   children: React.ReactNode
   className?: string
+  /** @deprecated Use CardHeader subcomponent instead */
+  title?: string
+  /** @deprecated Use CardHeader subcomponent instead */
+  subtitle?: string
+  /** @deprecated Accepted for backward compatibility */
+  header?: React.ReactNode
+  /** @deprecated Accepted for backward compatibility */
+  id?: string
+  /** @deprecated Accepted for backward compatibility */
+  onClick?: () => void
+  /** @deprecated Accepted for backward compatibility */
+  variant?: string
+  /** @deprecated Accepted for backward compatibility */
+  padding?: string
+  /** @deprecated Accepted for backward compatibility */
+  interactive?: boolean
 }
 
-export function Card({ children, className }: CardProps) {
+export function Card({ children, className, title, subtitle, header, id: _id, onClick, variant: _variant, padding: _padding, interactive: _interactive }: CardProps) {
   return (
-    <div className={cn('bg-surface border border-border rounded-lg shadow-sm overflow-hidden', className)}>
+    <div
+      className={cn('bg-surface border border-border rounded-lg shadow-sm overflow-hidden', onClick && 'cursor-pointer', className)}
+      onClick={onClick}
+      role={onClick ? 'button' : undefined}
+      tabIndex={onClick ? 0 : undefined}
+    >
+      {header}
+      {title && <CardHeader title={title} subtitle={subtitle} />}
       {children}
     </div>
   )
@@ -22,7 +45,7 @@ export function Card({ children, className }: CardProps) {
 /* ------------------------------------------------------------------ */
 
 interface CardHeaderProps {
-  title: string
+  title?: string
   subtitle?: string
   action?: React.ReactNode
   children?: React.ReactNode

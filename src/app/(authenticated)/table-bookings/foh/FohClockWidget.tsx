@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from 'react';
 import toast from 'react-hot-toast';
-import { Modal, ModalActions, ConfirmModal } from '@/components/ui-v2/overlay/Modal';
+import { Modal, ModalActions, ConfirmModal } from '@/ds';
 import { clockIn, clockOut } from '@/app/actions/timeclock';
 import type { TimeclockSession } from '@/app/actions/timeclock';
 

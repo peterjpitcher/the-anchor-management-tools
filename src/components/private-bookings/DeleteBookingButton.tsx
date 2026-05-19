@@ -3,9 +3,9 @@
 import { useCallback, useEffect, useState } from 'react'
 import { TrashIcon } from '@heroicons/react/24/outline'
 
-import { Button } from '@/components/ui-v2/forms/Button'
-import { Input } from '@/components/ui-v2/forms/Input'
-import { Modal, ModalActions } from '@/components/ui-v2/overlay/Modal'
+import { Button } from '@/ds'
+import { Input } from '@/ds'
+import { Modal, ModalActions } from '@/ds'
 import { getBookingDeleteEligibility } from '@/app/actions/privateBookingActions'
 import { formatDateFull } from '@/lib/dateUtils'
 

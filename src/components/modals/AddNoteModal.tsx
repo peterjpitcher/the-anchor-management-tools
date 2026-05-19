@@ -3,11 +3,11 @@
 import React, { useState, useEffect, FormEvent } from 'react';
 import { getEmployeeList, addEmployeeNote } from '@/app/actions/employeeActions';
 import type { NoteFormState } from '@/types/actions';
-import { Modal, ModalActions } from '@/components/ui-v2/overlay/Modal';
-import { Button } from '@/components/ui-v2/forms/Button';
-import { Select } from '@/components/ui-v2/forms/Select';
-import { Textarea } from '@/components/ui-v2/forms/Textarea';
-import { Alert } from '@/components/ui-v2/feedback/Alert';
+import { Modal, ModalActions } from '@/ds';
+import { Button } from '@/ds';
+import { Select } from '@/ds';
+import { Textarea } from '@/ds';
+import { Alert } from '@/ds';
 
 interface EmployeeOption {
   id: string;

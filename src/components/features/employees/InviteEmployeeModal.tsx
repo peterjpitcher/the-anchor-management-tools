@@ -2,7 +2,7 @@
 
 import { useEffect, useActionState } from 'react';
 import { inviteEmployee } from '@/app/actions/employeeInvite';
-import { toast } from '@/components/ui-v2/feedback/Toast';
+import { toast } from '@/ds';
 
 interface InviteEmployeeModalProps {
   onClose: () => void;

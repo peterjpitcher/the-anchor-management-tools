@@ -11,7 +11,7 @@ import ControlBar, { ViewMode, FilterType } from './ControlBar'
 import EventCalendarView from './EventCalendarView'
 import TaskSidebar from './TaskSidebar'
 import EventExportPanel from './EventExportPanel'
-import { Modal } from '@/components/ui-v2/overlay/Modal'
+import { Modal } from '@/ds'
 import { usePermissions } from '@/contexts/PermissionContext'
 
 interface CommandCenterShellProps {

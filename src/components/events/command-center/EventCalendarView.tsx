@@ -20,12 +20,12 @@ import type {
   CalendarEntryKind,
   ScheduleCalendarView,
 } from '@/components/schedule-calendar'
-import { Modal } from '@/components/ui-v2/overlay/Modal'
-import { Button } from '@/components/ui-v2/forms/Button'
-import { FormGroup } from '@/components/ui-v2/forms/FormGroup'
-import { Input } from '@/components/ui-v2/forms/Input'
-import { Textarea } from '@/components/ui-v2/forms/Textarea'
-import { toast } from '@/components/ui-v2/feedback/Toast'
+import { Modal } from '@/ds'
+import { Button } from '@/ds'
+import { FormGroup } from '@/ds'
+import { Input } from '@/ds'
+import { Textarea } from '@/ds'
+import { toast } from '@/ds'
 import { createCalendarNote } from '@/app/actions/calendar-notes'
 
 function toLocalIsoDate(date: Date): string {

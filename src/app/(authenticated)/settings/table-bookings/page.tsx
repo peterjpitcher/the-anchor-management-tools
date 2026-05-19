@@ -1,8 +1,8 @@
 import { redirect } from 'next/navigation'
 import { checkUserPermission } from '@/app/actions/rbac'
-import { PageLayout } from '@/components/ui-v2/layout/PageLayout'
-import { Card } from '@/components/ui-v2/layout/Card'
-import { Section } from '@/components/ui-v2/layout/Section'
+import { PageLayout } from '@/ds'
+import { Card } from '@/ds'
+import { Section } from '@/ds'
 import { TableSetupManager } from './TableSetupManager'
 
 export default async function TableSetupSettingsPage() {

@@ -5,11 +5,11 @@ import { CalendarIcon, UserGroupIcon, HomeIcon, IdentificationIcon, PencilSquare
 import { useMemo, useState } from 'react'
 import { cn } from '@/lib/utils'
 import { usePermissions } from '@/contexts/PermissionContext'
-import { Badge } from '@/components/ui-v2/display/Badge'
+import { Badge } from '@/ds'
 import type { ModuleName, ActionType } from '@/types/rbac'
 import { useUnreadMessageCount } from '@/hooks/useUnreadMessageCount'
 import { useOutstandingCounts } from '@/hooks/useOutstandingCounts'
-import { Sidebar, SidebarGroup, SidebarItem } from '@/components/ui-v2/navigation'
+import { Sidebar, SidebarGroup, SidebarItem } from '@/ds'
 
 type NavigationItemWithPermission = {
   name: string;

@@ -35,7 +35,7 @@ import {
 } from '@/app/actions/mgd'
 import type { MgdCollection, MgdReturn } from '@/app/actions/mgd'
 import { useSort } from '@/hooks/useSort'
-import { SortableHeader } from '@/components/ui/SortableHeader'
+import { SortableHeader } from '@/ds'
 
 // ---------------------------------------------------------------------------
 // Helpers

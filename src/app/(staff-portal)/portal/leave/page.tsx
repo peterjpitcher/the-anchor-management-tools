@@ -1,6 +1,6 @@
 import { createClient } from '@/lib/supabase/server';
 import { redirect } from 'next/navigation';
-import { Badge } from '@/components/ui-v2/display/Badge';
+import { Badge } from '@/ds';
 import { getLeaveRequests, getHolidayUsage } from '@/app/actions/leave';
 import { getRotaSettings } from '@/app/actions/rota-settings';
 import type { LeaveRequest } from '@/app/actions/leave';

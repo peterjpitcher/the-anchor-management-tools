@@ -1,10 +1,10 @@
 'use client';
 
 import { useState, useCallback, ReactNode } from 'react';
-import { Popover, PopoverHeader, PopoverContent } from '@/components/ui-v2/overlay/Popover';
-import { Spinner } from '@/components/ui-v2/feedback/Spinner';
+import { Popover, PopoverHeader, PopoverContent } from '@/ds';
+import { Spinner } from '@/ds';
 import { getMenuIngredientPrices } from '@/app/actions/menu-management';
-import { toast } from '@/components/ui-v2/feedback/Toast';
+import { toast } from '@/ds';
 
 interface IngredientPriceEntry {
   id: string;

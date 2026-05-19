@@ -679,9 +679,11 @@ export class EventService {
     pageSize?: number;
     orderBy?: string;
     orderAsc?: boolean;
+    dateFrom?: string;
+    dateTo?: string;
   }) {
     const supabase = await createClient();
-    const { status = 'scheduled', searchTerm, page = 1, pageSize = 10, orderBy = 'date', orderAsc = true } = options || {};
+    const { status = 'scheduled', searchTerm, page = 1, pageSize = 10, orderBy = 'date', orderAsc = true, dateFrom, dateTo } = options || {};
 
     let query = supabase
       .from('events')
@@ -689,6 +691,12 @@ export class EventService {
 
     if (status !== 'all') {
       query = query.eq('event_status', status);
+    }
+    if (dateFrom) {
+      query = query.gte('date', dateFrom);
+    }
+    if (dateTo) {
+      query = query.lte('date', dateTo);
     }
     if (searchTerm) {
       const sanitizedSearch = sanitizeEventSearchTerm(searchTerm);

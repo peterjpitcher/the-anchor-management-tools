@@ -6,8 +6,8 @@ import {
   type ReceiptVendorSummary,
   type ReceiptVendorMonthTransaction,
 } from '@/app/actions/receipts'
-import { Card } from '@/components/ui-v2/layout/Card'
-import { Spinner } from '@/components/ui-v2/feedback/Spinner'
+import { Card } from '@/ds'
+import { Spinner } from '@/ds'
 import { ChevronDownIcon } from '@heroicons/react/20/solid'
 
 function formatCurrency(value: number | null | undefined) {

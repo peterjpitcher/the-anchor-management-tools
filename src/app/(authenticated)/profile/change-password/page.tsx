@@ -4,12 +4,12 @@ import { useState } from 'react'
 import { useSupabase } from '@/components/providers/SupabaseProvider'
 import { useRouter } from 'next/navigation'
 import toast from 'react-hot-toast'
-import { Button } from '@/components/ui-v2/forms/Button'
-import { Input } from '@/components/ui-v2/forms/Input'
-import { FormGroup } from '@/components/ui-v2/forms/FormGroup'
-import { Section } from '@/components/ui-v2/layout/Section'
-import { PageLayout } from '@/components/ui-v2/layout/PageLayout'
-import { Card } from '@/components/ui-v2/layout/Card'
+import { Button } from '@/ds'
+import { Input } from '@/ds'
+import { FormGroup } from '@/ds'
+import { Section } from '@/ds'
+import { PageLayout } from '@/ds'
+import { Card } from '@/ds'
 
 export default function ChangePasswordPage() {
   const supabase = useSupabase()

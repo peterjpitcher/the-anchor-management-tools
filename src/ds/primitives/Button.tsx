@@ -3,15 +3,23 @@
 import { forwardRef } from 'react'
 import { cn } from '@/lib/utils'
 
-type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger'
-type ButtonSize = 'sm' | 'md' | 'lg'
+type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger' | 'link'
+type ButtonSize = 'xs' | 'sm' | 'md' | 'lg'
 
-interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
+export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: ButtonVariant
   size?: ButtonSize
   icon?: React.ReactNode
+  /** @deprecated Use `icon` instead */
+  leftIcon?: React.ReactNode
   iconRight?: React.ReactNode
+  /** @deprecated Use `iconRight` instead */
+  rightIcon?: React.ReactNode
   loading?: boolean
+  /** @deprecated Accepted for backward compatibility */
+  fullWidth?: boolean
+  /** @deprecated Use IconButton or icon-only Button instead */
+  iconOnly?: boolean
 }
 
 const variantStyles: Record<ButtonVariant, string> = {
@@ -23,9 +31,12 @@ const variantStyles: Record<ButtonVariant, string> = {
     'bg-transparent text-text border-transparent hover:bg-surface-hover',
   danger:
     'bg-danger text-white border-danger hover:brightness-95',
+  link:
+    'bg-transparent text-primary border-transparent hover:underline p-0 h-auto',
 }
 
 const sizeStyles: Record<ButtonSize, string> = {
+  xs: 'h-6 px-1.5 text-[11px] rounded-[6px]',
   sm: 'h-[var(--spacing-btn-h-sm)] px-2.5 text-xs rounded-[7px]',
   md: 'h-[var(--spacing-btn-h)] px-3 text-[13px] rounded-[8px]',
   lg: 'h-[var(--spacing-btn-h-lg)] px-4 text-sm rounded-[9px]',
@@ -55,8 +66,12 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
       variant = 'secondary',
       size = 'md',
       icon,
+      leftIcon,
       iconRight,
+      rightIcon,
       loading,
+      fullWidth,
+      iconOnly: _iconOnly,
       children,
       className,
       disabled,
@@ -73,18 +88,20 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
         'active:translate-y-[0.5px]',
         variantStyles[variant],
         sizeStyles[size],
+        !children && size === 'xs' && 'w-6 px-0',
         !children && size === 'sm' && 'w-[var(--spacing-btn-h-sm)] px-0',
         !children && size === 'md' && 'w-[var(--spacing-btn-h)] px-0',
         !children && size === 'lg' && 'w-[var(--spacing-btn-h-lg)] px-0',
+        fullWidth && 'w-full',
         (disabled || loading) && 'opacity-50 cursor-not-allowed',
         className
       )}
       disabled={disabled || loading}
       {...rest}
     >
-      {loading ? <Spinner /> : icon ? icon : null}
+      {loading ? <Spinner /> : (icon ?? leftIcon) ? (icon ?? leftIcon) : null}
       {children}
-      {iconRight && !loading ? iconRight : null}
+      {(iconRight ?? rightIcon) && !loading ? (iconRight ?? rightIcon) : null}
     </button>
   )
 )

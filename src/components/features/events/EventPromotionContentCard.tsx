@@ -1,15 +1,15 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { Card } from '@/components/ui-v2/layout/Card'
-import { Textarea } from '@/components/ui-v2/forms/Textarea'
-import { Input } from '@/components/ui-v2/forms/Input'
-import { Button } from '@/components/ui-v2/forms/Button'
-import { Spinner } from '@/components/ui-v2/feedback/Spinner'
-import { toast } from '@/components/ui-v2/feedback/Toast'
+import { Card } from '@/ds'
+import { Textarea } from '@/ds'
+import { Input } from '@/ds'
+import { Button } from '@/ds'
+import { Spinner } from '@/ds'
+import { toast } from '@/ds'
 import { ClipboardDocumentIcon, ArrowPathIcon } from '@heroicons/react/24/outline'
 import { generateEventPromotionContent, type EventPromotionContentType } from '@/app/actions/event-content'
-import { Select } from '@/components/ui-v2/forms/Select'
+import { Select } from '@/ds'
 import type { EventMarketingLink } from '@/app/actions/event-marketing-links'
 
 type FacebookEventContent = {

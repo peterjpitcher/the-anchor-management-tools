@@ -24,9 +24,11 @@ import {
   Checkbox,
   toast,
 } from '@/ds'
+import { Icon } from '@/ds/icons'
+import { Segmented } from '@/ds'
 import { usePermissions } from '@/contexts/PermissionContext'
-import { getEntries, updateEntry, deleteEntry } from '@/app/actions/oj-projects/entries'
-import { formatDateDdMmmmYyyy } from '@/lib/dateUtils'
+import { getEntries, updateEntry, deleteEntry, createTimeEntry, createMileageEntry, createOneOffCharge } from '@/app/actions/oj-projects/entries'
+import { formatDateDdMmmmYyyy, getTodayIsoDate } from '@/lib/dateUtils'
 
 function formatCurrency(value: number): string {
   return `£${value.toFixed(2)}`
@@ -45,6 +47,7 @@ export function EntriesClient({
 }: EntriesClientProps): React.ReactElement {
   const router = useRouter()
   const { hasPermission } = usePermissions()
+  const canCreate = hasPermission('oj_projects', 'create')
   const canEdit = hasPermission('oj_projects', 'edit')
   const canDelete = hasPermission('oj_projects', 'delete')
 
@@ -52,6 +55,22 @@ export function EntriesClient({
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
   const [typeFilter, setTypeFilter] = useState('all')
+
+  // Create modal state
+  const [createOpen, setCreateOpen] = useState(false)
+  const [createType, setCreateType] = useState<'time' | 'mileage' | 'one_off'>('time')
+  const [createForm, setCreateForm] = useState({
+    vendor_id: '',
+    project_id: '',
+    entry_date: getTodayIsoDate(),
+    duration_minutes: '',
+    miles: '',
+    amount_ex_vat: '',
+    work_type_id: '',
+    description: '',
+    internal_notes: '',
+    billable: true,
+  })
 
   // Edit modal state
   const [editOpen, setEditOpen] = useState(false)
@@ -170,6 +189,71 @@ export function EntriesClient({
     }
   }
 
+  const vendors = useMemo(() => {
+    const map = new Map<string, string>()
+    projects.forEach((p: any) => {
+      if (p.vendor?.id && p.vendor?.name) map.set(p.vendor.id, p.vendor.name)
+    })
+    return Array.from(map, ([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name))
+  }, [projects])
+
+  const createProjectOptions = createForm.vendor_id
+    ? projects.filter((p: any) => p.vendor_id === createForm.vendor_id)
+    : projects
+
+  function openCreate(): void {
+    setCreateForm({
+      vendor_id: '',
+      project_id: '',
+      entry_date: getTodayIsoDate(),
+      duration_minutes: '',
+      miles: '',
+      amount_ex_vat: '',
+      work_type_id: '',
+      description: '',
+      internal_notes: '',
+      billable: true,
+    })
+    setCreateType('time')
+    setCreateOpen(true)
+  }
+
+  async function handleCreateSubmit(e: React.FormEvent): Promise<void> {
+    e.preventDefault()
+    setSaving(true)
+    try {
+      const fd = new FormData()
+      fd.append('vendor_id', createForm.vendor_id)
+      fd.append('project_id', createForm.project_id)
+      fd.append('entry_date', createForm.entry_date)
+      fd.append('description', createForm.description)
+      fd.append('internal_notes', createForm.internal_notes)
+      fd.append('billable', String(createForm.billable))
+
+      let res: any
+      if (createType === 'time') {
+        fd.append('duration_minutes', createForm.duration_minutes)
+        if (createForm.work_type_id) fd.append('work_type_id', createForm.work_type_id)
+        res = await createTimeEntry(fd)
+      } else if (createType === 'mileage') {
+        fd.append('miles', createForm.miles)
+        res = await createMileageEntry(fd)
+      } else {
+        fd.append('amount_ex_vat', createForm.amount_ex_vat)
+        res = await createOneOffCharge(fd)
+      }
+
+      if (res.error) throw new Error(res.error)
+      toast.success('Entry created')
+      setCreateOpen(false)
+      await reload()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to create entry')
+    } finally {
+      setSaving(false)
+    }
+  }
+
   function entryAmount(entry: any): number {
     if (entry.entry_type === 'time') {
       return (Number(entry.duration_minutes_rounded || 0) / 60) * Number(entry.hourly_rate_ex_vat_snapshot || 0)
@@ -238,6 +322,15 @@ export function EntriesClient({
             className="w-32"
           />
         </div>
+        {canCreate && (
+          <Button
+            variant="primary"
+            icon={<Icon name="plus" size={16} />}
+            onClick={openCreate}
+          >
+            New Entry
+          </Button>
+        )}
       </div>
 
       {/* Table */}
@@ -315,6 +408,147 @@ export function EntriesClient({
           </Table>
         )}
       </Card>
+
+      {/* Create Modal */}
+      <Modal
+        open={createOpen}
+        onClose={() => setCreateOpen(false)}
+        title="New Entry"
+      >
+        <form onSubmit={handleCreateSubmit} className="flex flex-col gap-4">
+          <Segmented
+            options={[
+              { id: 'time', label: 'Time' },
+              { id: 'mileage', label: 'Mileage' },
+              { id: 'one_off', label: 'One-off' },
+            ]}
+            value={createType}
+            onChange={(id) => setCreateType(id as 'time' | 'mileage' | 'one_off')}
+            size="sm"
+          />
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <Field label="Client" required>
+              <Select
+                value={createForm.vendor_id}
+                onChange={(e) => setCreateForm({ ...createForm, vendor_id: e.target.value, project_id: '' })}
+                options={[
+                  { label: 'Select client...', value: '' },
+                  ...vendors.map((v) => ({ label: v.name, value: v.id })),
+                ]}
+              />
+            </Field>
+            <Field label="Date" required>
+              <Input
+                type="date"
+                value={createForm.entry_date}
+                onChange={(e) => setCreateForm({ ...createForm, entry_date: e.target.value })}
+                required
+              />
+            </Field>
+          </div>
+
+          <Field label="Project" required>
+            <Select
+              value={createForm.project_id}
+              onChange={(e) => setCreateForm({ ...createForm, project_id: e.target.value })}
+              options={[
+                { label: 'Select project...', value: '' },
+                ...createProjectOptions.map((p: any) => ({
+                  label: `${p.project_code} - ${p.project_name}`,
+                  value: p.id,
+                })),
+              ]}
+            />
+          </Field>
+
+          {createType === 'time' && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <Field label="Duration (minutes)" required>
+                <Input
+                  type="number"
+                  min="1"
+                  value={createForm.duration_minutes}
+                  onChange={(e) => setCreateForm({ ...createForm, duration_minutes: e.target.value })}
+                  placeholder="e.g. 90"
+                  required
+                />
+              </Field>
+              <Field label="Work Type">
+                <Select
+                  value={createForm.work_type_id}
+                  onChange={(e) => setCreateForm({ ...createForm, work_type_id: e.target.value })}
+                  options={[
+                    { label: 'None', value: '' },
+                    ...workTypes.filter((w: any) => w.is_active).map((w: any) => ({
+                      label: w.name,
+                      value: w.id,
+                    })),
+                  ]}
+                />
+              </Field>
+            </div>
+          )}
+
+          {createType === 'mileage' && (
+            <Field label="Miles" required>
+              <Input
+                type="number"
+                min="0.1"
+                step="0.1"
+                value={createForm.miles}
+                onChange={(e) => setCreateForm({ ...createForm, miles: e.target.value })}
+                placeholder="e.g. 12.5"
+                required
+              />
+            </Field>
+          )}
+
+          {createType === 'one_off' && (
+            <Field label="Amount (ex VAT)" required>
+              <Input
+                type="number"
+                min="0.01"
+                step="0.01"
+                value={createForm.amount_ex_vat}
+                onChange={(e) => setCreateForm({ ...createForm, amount_ex_vat: e.target.value })}
+                placeholder="e.g. 150.00"
+                required
+              />
+            </Field>
+          )}
+
+          <Field label="Description">
+            <Input
+              value={createForm.description}
+              onChange={(e) => setCreateForm({ ...createForm, description: e.target.value })}
+              placeholder="What was done..."
+            />
+          </Field>
+          <Field label="Internal Notes">
+            <Textarea
+              value={createForm.internal_notes}
+              onChange={(e) => setCreateForm({ ...createForm, internal_notes: e.target.value })}
+              rows={2}
+            />
+          </Field>
+
+          <Checkbox
+            label="Billable"
+            checked={createForm.billable}
+            onChange={(checked) => setCreateForm({ ...createForm, billable: checked })}
+          />
+
+          <div className="flex justify-end gap-3 pt-2">
+            <Button type="button" variant="ghost" onClick={() => setCreateOpen(false)}>
+              Cancel
+            </Button>
+            <Button type="submit" loading={saving}>
+              Create Entry
+            </Button>
+          </div>
+        </form>
+      </Modal>
 
       {/* Edit Modal */}
       <Modal

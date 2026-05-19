@@ -3,9 +3,9 @@
 import { useState, useTransition } from 'react';
 import toast from 'react-hot-toast';
 import { PlusIcon, TrashIcon } from '@heroicons/react/24/outline';
-import { Button } from '@/components/ui-v2/forms/Button';
-import { Input } from '@/components/ui-v2/forms/Input';
-import { FormGroup } from '@/components/ui-v2/forms/FormGroup';
+import { Button } from '@/ds';
+import { Input } from '@/ds';
+import { FormGroup } from '@/ds';
 import { upsertDepartmentBudget, addDepartment, deleteDepartment, type DepartmentBudget, type Department } from '@/app/actions/budgets';
 import { deriveBudgetTargets } from '@/lib/rota/budget-utils';
 

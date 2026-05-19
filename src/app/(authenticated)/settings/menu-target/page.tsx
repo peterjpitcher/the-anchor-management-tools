@@ -3,9 +3,9 @@
 import { redirect } from 'next/navigation';
 import { checkUserPermission } from '@/app/actions/rbac';
 import { getMenuTargetGp } from '@/app/actions/menu-settings';
-import { PageLayout } from '@/components/ui-v2/layout/PageLayout';
-import { Section } from '@/components/ui-v2/layout/Section';
-import { Card } from '@/components/ui-v2/layout/Card';
+import { PageLayout } from '@/ds';
+import { Section } from '@/ds';
+import { Card } from '@/ds';
 import { MenuTargetForm } from './MenuTargetForm';
 
 export default async function MenuTargetSettingsPage() {

@@ -7,6 +7,20 @@ interface StatProps {
   deltaDirection?: 'up' | 'down' | 'flat'
   icon?: React.ReactNode
   hint?: string
+  /** @deprecated Use `hint` instead */
+  description?: string
+  /** @deprecated Accepted for backward compatibility */
+  variant?: string
+  /** @deprecated Use `delta` instead */
+  change?: string
+  /** @deprecated Use `deltaDirection` instead */
+  changeType?: string
+  /** @deprecated Accepted for backward compatibility */
+  loading?: boolean
+  /** @deprecated Accepted for backward compatibility */
+  color?: string
+  /** @deprecated Accepted for backward compatibility */
+  size?: string
   className?: string
 }
 
@@ -35,7 +49,8 @@ const DeltaArrow = ({ direction }: { direction: 'up' | 'down' | 'flat' }) => {
   )
 }
 
-export function Stat({ label, value, delta, deltaDirection, icon, hint, className }: StatProps) {
+export function Stat({ label, value, delta, deltaDirection, icon, hint, description, variant: _variant, change: _change, changeType: _changeType, loading: _loading, color: _color, size: _size, className }: StatProps) {
+  const resolvedHint = hint ?? description
   const direction = deltaDirection ?? (delta !== undefined ? inferDirection(delta) : undefined)
 
   return (
@@ -68,8 +83,8 @@ export function Stat({ label, value, delta, deltaDirection, icon, hint, classNam
         </span>
       )}
 
-      {hint && (
-        <span className="text-xs text-text-subtle mt-0.5">{hint}</span>
+      {resolvedHint && (
+        <span className="text-xs text-text-subtle mt-0.5">{resolvedHint}</span>
       )}
     </div>
   )

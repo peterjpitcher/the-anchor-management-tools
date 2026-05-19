@@ -1,6 +1,6 @@
 'use client';
 
-import { Badge } from '@/components/ui-v2/display/Badge';
+import { Badge } from '@/ds';
 
 // ---------------------------------------------------------------------------
 // Types (shared with page and drawer)

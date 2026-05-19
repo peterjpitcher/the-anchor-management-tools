@@ -3,11 +3,11 @@
 import { useEffect, useMemo, useState } from 'react'
 import { updateBusinessHours } from '@/app/actions/business-hours'
 import { BusinessHours, DAY_NAMES } from '@/types/business-hours'
-import { Button } from '@/components/ui-v2/forms/Button'
-import { Input } from '@/components/ui-v2/forms/Input'
-import { Checkbox } from '@/components/ui-v2/forms/Checkbox'
-import { Card } from '@/components/ui-v2/layout/Card'
-import { DataTable } from '@/components/ui-v2/display/DataTable'
+import { Button } from '@/ds'
+import { Input } from '@/ds'
+import { Checkbox } from '@/ds'
+import { Card } from '@/ds'
+import { DataTable } from '@/ds'
 import toast from 'react-hot-toast'
 
 interface BusinessHoursManagerProps {

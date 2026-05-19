@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useCallback, useTransition } from 'react'
+import { useState, useCallback, useTransition, useEffect } from 'react'
+import { startOfMonth, endOfMonth, format } from 'date-fns'
 import { PageHeader, Segmented } from '@/ds'
 import { Button } from '@/ds'
 import { Icon } from '@/ds/icons'
@@ -40,6 +41,9 @@ export default function EventsClient({
 }: EventsClientProps) {
   const [view, setView] = useState<ViewMode>('list')
   const [events, setEvents] = useState<Event[]>(initialEvents)
+  const [calendarEvents, setCalendarEvents] = useState<Event[]>([])
+  const [boardEvents, setBoardEvents] = useState<Event[]>([])
+  const [calendarMonth, setCalendarMonth] = useState<Date>(new Date())
   const [pagination, setPagination] = useState(
     initialPagination ?? { totalCount: 0, currentPage: 1, pageSize: 25, totalPages: 1 }
   )
@@ -75,6 +79,47 @@ export default function EventsClient({
     []
   )
 
+  const fetchCalendarEvents = useCallback(
+    (month: Date) => {
+      startTransition(async () => {
+        const dateFrom = format(startOfMonth(month), 'yyyy-MM-dd')
+        const dateTo = format(endOfMonth(month), 'yyyy-MM-dd')
+        const result = await getEvents({
+          status: 'all',
+          dateFrom,
+          dateTo,
+          page: 1,
+          pageSize: 200,
+        })
+        if (result.data) {
+          setCalendarEvents(result.data)
+        }
+      })
+    },
+    []
+  )
+
+  const fetchBoardEvents = useCallback(() => {
+    startTransition(async () => {
+      const result = await getEvents({
+        status: 'all',
+        page: 1,
+        pageSize: 200,
+      })
+      if (result.data) {
+        setBoardEvents(result.data)
+      }
+    })
+  }, [])
+
+  useEffect(() => {
+    if (view === 'calendar') {
+      fetchCalendarEvents(calendarMonth)
+    } else if (view === 'board') {
+      fetchBoardEvents()
+    }
+  }, [view, calendarMonth, fetchCalendarEvents, fetchBoardEvents])
+
   const handleFilterChange = useCallback(
     (newFilters: EventFilters) => {
       setFilters(newFilters)
@@ -109,8 +154,14 @@ export default function EventsClient({
 
   const handleSave = useCallback(() => {
     handleDrawerClose()
-    fetchEvents(pagination.currentPage, filters)
-  }, [handleDrawerClose, fetchEvents, pagination.currentPage, filters])
+    if (view === 'calendar') {
+      fetchCalendarEvents(calendarMonth)
+    } else if (view === 'board') {
+      fetchBoardEvents()
+    } else {
+      fetchEvents(pagination.currentPage, filters)
+    }
+  }, [handleDrawerClose, view, fetchCalendarEvents, calendarMonth, fetchBoardEvents, fetchEvents, pagination.currentPage, filters])
 
   const handleDeleteSelected = useCallback(() => {
     startTransition(async () => {
@@ -152,11 +203,13 @@ export default function EventsClient({
         }
       />
 
-      <EventFilterPanel
-        filters={filters}
-        onFilterChange={handleFilterChange}
-        categories={categories}
-      />
+      {view === 'list' && (
+        <EventFilterPanel
+          filters={filters}
+          onFilterChange={handleFilterChange}
+          categories={categories}
+        />
+      )}
 
       <div className={isPending ? 'opacity-60 pointer-events-none' : ''}>
         {view === 'list' && (
@@ -173,14 +226,15 @@ export default function EventsClient({
 
         {view === 'calendar' && (
           <EventCalendarView
-            events={events}
+            events={calendarEvents}
             onEventClick={handleEventClick}
+            onMonthChange={setCalendarMonth}
           />
         )}
 
         {view === 'board' && (
           <EventBoardView
-            events={events}
+            events={boardEvents}
             onEventClick={handleEventClick}
           />
         )}

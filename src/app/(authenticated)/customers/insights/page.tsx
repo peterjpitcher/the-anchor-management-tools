@@ -16,10 +16,10 @@ import {
   type CustomerInsightsWindow,
   type StrategicSignal
 } from '@/lib/analytics/customer-insights'
-import { PageLayout } from '@/components/ui-v2/layout/PageLayout'
-import { Card } from '@/components/ui-v2/layout/Card'
-import { Stat, StatGroup } from '@/components/ui-v2/display/Stat'
-import { Badge } from '@/components/ui-v2/display/Badge'
+import { PageLayout } from '@/ds'
+import { Card } from '@/ds'
+import { Stat, StatGroup } from '@/ds'
+import { Badge } from '@/ds'
 import { BarChart } from '@/components/charts/BarChart'
 import { WinBackCampaign } from '@/components/features/customers/WinBackCampaign'
 

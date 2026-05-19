@@ -1,10 +1,10 @@
 import { redirect } from 'next/navigation'
 import { checkUserPermission } from '@/app/actions/rbac'
 import { getExpenseInsights } from '@/app/actions/expenses'
-import { PageLayout } from '@/components/ui-v2/layout/PageLayout'
-import { Alert } from '@/components/ui-v2/feedback/Alert'
+import { PageLayout } from '@/ds'
+import { Alert } from '@/ds'
 import { ExpensesInsightsClient } from './_components/ExpensesInsightsClient'
-import type { HeaderNavItem } from '@/components/ui-v2/navigation/HeaderNav'
+import type { HeaderNavItem } from '@/ds'
 
 const navItems: HeaderNavItem[] = [
   { label: 'Expenses', href: '/expenses' },

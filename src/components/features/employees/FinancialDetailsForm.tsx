@@ -6,10 +6,10 @@ import { upsertFinancialDetails } from '@/app/actions/employeeActions';
 import type { ActionFormState } from '@/types/actions';
 import type { EmployeeFinancialDetails } from '@/types/database';
 import { usePathname, useRouter } from 'next/navigation';
-import { toast } from '@/components/ui-v2/feedback/Toast';
-import { Input } from '@/components/ui-v2/forms/Input';
-import { Textarea } from '@/components/ui-v2/forms/Textarea';
-import { Button } from '@/components/ui-v2/forms/Button';
+import { toast } from '@/ds';
+import { Input } from '@/ds';
+import { Textarea } from '@/ds';
+import { Button } from '@/ds';
 
 interface FinancialDetailsFormProps {
   employeeId: string;

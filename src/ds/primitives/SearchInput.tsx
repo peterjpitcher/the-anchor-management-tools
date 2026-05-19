@@ -4,8 +4,16 @@ import { cn } from '@/lib/utils'
 import { Input } from './Input'
 
 interface SearchInputProps {
-  value: string
-  onChange: (v: string) => void
+  value?: string
+  /** @deprecated Use `value` + `onChange` instead */
+  defaultValue?: string
+  onChange?: (v: string) => void
+  /** @deprecated Use `onChange` instead */
+  onSearch?: (v: string) => void
+  /** @deprecated Accepted for backward compatibility */
+  debounceDelay?: number
+  /** @deprecated Accepted for backward compatibility */
+  loading?: boolean
   placeholder?: string
   className?: string
 }
@@ -25,23 +33,29 @@ const ClearIcon = () => (
 )
 
 export function SearchInput({
-  value,
+  value: valueProp,
+  defaultValue,
   onChange,
+  onSearch,
+  debounceDelay: _debounce,
+  loading: _loading,
   placeholder = 'Search...',
   className,
 }: SearchInputProps) {
+  const handleChange = onChange ?? onSearch ?? (() => {})
+  const value = valueProp ?? defaultValue ?? ''
   return (
     <div className={cn('relative', className)}>
       <Input
         icon={<SearchIcon />}
         value={value}
-        onChange={(e) => onChange(e.target.value)}
+        onChange={(e) => handleChange(e.target.value)}
         placeholder={placeholder}
       />
       {value && (
         <button
           type="button"
-          onClick={() => onChange('')}
+          onClick={() => handleChange('')}
           className="absolute right-2.5 top-1/2 -translate-y-1/2 p-0.5 rounded text-text-subtle hover:text-text transition-colors"
           aria-label="Clear search"
         >

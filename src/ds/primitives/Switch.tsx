@@ -7,7 +7,7 @@ type SwitchSize = 'sm' | 'md'
 interface SwitchProps {
   label?: string
   checked: boolean
-  onChange: (checked: boolean) => void
+  onChange: (value: boolean) => void
   disabled?: boolean
   size?: SwitchSize
   className?: string

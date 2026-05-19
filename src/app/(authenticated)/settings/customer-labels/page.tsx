@@ -1,6 +1,6 @@
 import { getCustomerLabels } from '@/app/actions/customer-labels';
 import { checkUserPermission } from '@/app/actions/rbac';
-import { PageLayout } from '@/components/ui-v2/layout/PageLayout';
+import { PageLayout } from '@/ds';
 import CustomerLabelsClient from './CustomerLabelsClient';
 import { redirect } from 'next/navigation';
 
