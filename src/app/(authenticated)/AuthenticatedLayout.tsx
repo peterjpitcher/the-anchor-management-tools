@@ -21,6 +21,7 @@ function AuthenticatedLayoutContent({ children }: { children: React.ReactNode })
   const [user, setUser] = useState<User | null>(null)
   const [loading, setLoading] = useState(true)
   const [isSigningOut, setIsSigningOut] = useState(false)
+  const [fohEmployeeId, setFohEmployeeId] = useState<string | undefined>(undefined)
   const fohOnlyMode = useMemo(() => {
     if (permissionsLoading) return false
     return isFohOnlyUser(permissions)
@@ -92,6 +93,26 @@ function AuthenticatedLayoutContent({ children }: { children: React.ReactNode })
     }
   }, [loading, user, permissionsLoading, fohOnlyMode, isFohPath, router])
 
+  // Resolve employee ID for FOH users (needed for clock-in band)
+  useEffect(() => {
+    if (!fohOnlyMode || !user?.email) return
+    let cancelled = false
+
+    async function fetchEmployeeId() {
+      const { data } = await supabase
+        .from('employees')
+        .select('employee_id')
+        .eq('email_address', user!.email!)
+        .single()
+      if (!cancelled && data?.employee_id) {
+        setFohEmployeeId(data.employee_id)
+      }
+    }
+
+    fetchEmployeeId()
+    return () => { cancelled = true }
+  }, [fohOnlyMode, user, supabase])
+
 if (loading || !user) {
     return (
       <div className="flex items-center justify-center h-screen bg-gray-100">
@@ -142,6 +163,8 @@ async function handleSignOut() {
     <>
       <AppShell
         showSidebar={!fohOnlyMode}
+        fohMode={fohOnlyMode}
+        fohEmployeeId={fohEmployeeId}
         userName={user?.user_metadata?.full_name ?? user?.email?.split('@')[0] ?? 'User'}
         userRole="Manager"
         onSignOut={handleSignOut}
