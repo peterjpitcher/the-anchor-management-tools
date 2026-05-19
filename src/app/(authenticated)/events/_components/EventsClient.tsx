@@ -3,6 +3,7 @@
 import { useState, useCallback, useTransition, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { startOfMonth, endOfMonth, format } from 'date-fns'
+import { getTodayIsoDate } from '@/lib/dateUtils'
 import { PageHeader, Segmented } from '@/ds'
 import { Button } from '@/ds'
 import { Icon } from '@/ds/icons'
@@ -53,7 +54,7 @@ export default function EventsClient({
     searchTerm: '',
     category: 'all',
     status: 'all',
-    dateFrom: '',
+    dateFrom: getTodayIsoDate(),
     dateTo: '',
   })
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
@@ -67,6 +68,8 @@ export default function EventsClient({
         const result = await getEvents({
           status: currentFilters.status === 'all' ? 'all' : currentFilters.status as 'scheduled' | 'cancelled' | 'postponed' | 'rescheduled' | 'sold_out',
           searchTerm: currentFilters.searchTerm || undefined,
+          dateFrom: currentFilters.dateFrom || undefined,
+          dateTo: currentFilters.dateTo || undefined,
           page,
           pageSize: 25,
         })

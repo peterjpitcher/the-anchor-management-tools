@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation'
 import { checkUserPermission } from '@/app/actions/rbac'
 import { getEvents } from '@/app/actions/events'
 import { getActiveEventCategories } from '@/app/actions/event-categories'
+import { getTodayIsoDate } from '@/lib/dateUtils'
 import EventsClient from './_components/EventsClient'
 
 export const metadata = {
@@ -16,7 +17,7 @@ export default async function EventsPage() {
   }
 
   const [eventsResult, categoriesResult] = await Promise.all([
-    getEvents({ status: 'all', page: 1, pageSize: 25 }),
+    getEvents({ status: 'all', dateFrom: getTodayIsoDate(), page: 1, pageSize: 25 }),
     getActiveEventCategories(),
   ])
 
