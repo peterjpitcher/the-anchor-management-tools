@@ -25,6 +25,24 @@ import { logger } from '@/lib/logger'
 import { buildKeywordsUnion } from '@/lib/keywords'
 import { buildEventRescheduledSms, buildEventCancelledSms, buildRefundNote } from '@/lib/sms/templates'
 
+export type EventBookingRow = {
+  id: string
+  customer_id: string
+  event_id: string
+  seats: number | null
+  is_reminder_only: boolean
+  notes: string | null
+  created_at: string
+  status?: string | null
+  customer?: {
+    id: string
+    first_name: string | null
+    last_name: string | null
+    mobile_number: string | null
+    email: string | null
+  } | null
+}
+
 type CreateEventResult = { error: string } | { success: true; data: Event; warning?: string }
 type EventFaqInput = NonNullable<CreateEventInput['faqs']>[number]
 type PreparedEventData = Partial<CreateEventInput> & { faqs?: EventFaqInput[] }
@@ -626,6 +644,32 @@ export async function getEvents(options?: {
       error: error instanceof Error ? error : new Error(String(error)),
     })
     return { error: getErrorMessage(error, 'Failed to fetch events') };
+  }
+}
+
+export async function getEventBookings(eventId: string): Promise<{ data?: EventBookingRow[], error?: string }> {
+  try {
+    const canView = await checkUserPermission('events', 'view')
+    if (!canView) {
+      return { error: 'Insufficient permissions to view event bookings' }
+    }
+
+    const supabase = createAdminClient()
+    const { data, error } = await supabase
+      .from('bookings')
+      .select('id, customer_id, event_id, seats, is_reminder_only, notes, created_at, status, customer:customers(id, first_name, last_name, mobile_number, email)')
+      .eq('event_id', eventId)
+      .order('created_at', { ascending: false })
+
+    if (error) throw error
+
+    return { data: (data ?? []) as unknown as EventBookingRow[] }
+  } catch (error: unknown) {
+    logger.error('Error fetching event bookings', {
+      error: error instanceof Error ? error : new Error(String(error)),
+      metadata: { eventId },
+    })
+    return { error: getErrorMessage(error, 'Failed to fetch event bookings') }
   }
 }
 
