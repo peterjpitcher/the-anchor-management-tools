@@ -5,9 +5,9 @@ import { useFormStatus } from 'react-dom'
 import { useRouter } from 'next/navigation'
 import { addEmployeeNote } from '@/app/actions/employeeActions'
 import type { NoteFormState } from '@/types/actions'
-import { Button } from '@/components/ui-v2/forms/Button'
-import { Textarea } from '@/components/ui-v2/forms/Textarea'
-import { toast } from '@/components/ui-v2/feedback/Toast'
+import { Button } from '@/ds'
+import { Textarea } from '@/ds'
+import { toast } from '@/ds'
 
 interface AddEmployeeNoteFormProps {
   employeeId: string

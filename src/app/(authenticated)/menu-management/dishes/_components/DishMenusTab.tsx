@@ -1,10 +1,10 @@
 'use client';
 
-import { Button } from '@/components/ui-v2/forms/Button';
-import { Select } from '@/components/ui-v2/forms/Select';
-import { Input } from '@/components/ui-v2/forms/Input';
-import { Checkbox } from '@/components/ui-v2/forms/Checkbox';
-import { FormGroup } from '@/components/ui-v2/forms/FormGroup';
+import { Button } from '@/ds';
+import { Select } from '@/ds';
+import { Input } from '@/ds';
+import { Checkbox } from '@/ds';
+import { FormGroup } from '@/ds';
 import type { MenuSummary } from './DishExpandedRow';
 
 // ---------------------------------------------------------------------------

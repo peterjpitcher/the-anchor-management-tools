@@ -3,10 +3,10 @@
 import { useState, useTransition, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import toast from 'react-hot-toast';
-import { Button } from '@/components/ui-v2/forms/Button';
-import { Input } from '@/components/ui-v2/forms/Input';
-import { FormGroup } from '@/components/ui-v2/forms/FormGroup';
-import { Alert } from '@/components/ui-v2/feedback/Alert';
+import { Button } from '@/ds';
+import { Input } from '@/ds';
+import { FormGroup } from '@/ds';
+import { Alert } from '@/ds';
 import { submitLeaveRequest } from '@/app/actions/leave';
 
 interface LeaveRequestFormProps {

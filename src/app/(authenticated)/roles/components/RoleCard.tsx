@@ -6,9 +6,9 @@ import { deleteRole } from '@/app/actions/rbac'
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import toast from 'react-hot-toast'
-import { Card, CardHeader, CardTitle, CardDescription } from '@/components/ui-v2/layout/Card'
-import { Button, IconButton } from '@/components/ui-v2/forms/Button'
-import { Badge } from '@/components/ui-v2/display/Badge'
+import { Card, CardHeader, CardTitle, CardDescription } from '@/ds'
+import { Button, IconButton } from '@/ds'
+import { Badge } from '@/ds'
 
 interface RoleCardProps {
   role: Role

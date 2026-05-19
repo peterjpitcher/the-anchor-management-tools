@@ -1,6 +1,6 @@
 import { getPlDashboardData } from '@/app/actions/pnl'
-import { PageLayout } from '@/components/ui-v2/layout/PageLayout'
-import { Card } from '@/components/ui-v2/layout/Card'
+import { PageLayout } from '@/ds'
+import { Card } from '@/ds'
 import PnlClient from '@/app/(authenticated)/receipts/_components/PnlClient'
 import { redirect } from 'next/navigation'
 import { checkUserPermission } from '@/app/actions/rbac'

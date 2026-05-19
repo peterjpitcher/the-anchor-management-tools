@@ -1,9 +1,9 @@
-import { PageLayout } from '@/components/ui-v2/layout/PageLayout'
+import { PageLayout } from '@/ds'
 import { checkUserPermission } from '@/app/actions/rbac'
 import { getDestinations, getDistanceEntries } from '@/app/actions/mileage'
 import { redirect } from 'next/navigation'
 import { DestinationsClient } from '../_components/DestinationsClient'
-import type { HeaderNavItem } from '@/components/ui-v2/navigation/HeaderNav'
+import type { HeaderNavItem } from '@/ds'
 
 const navItems: HeaderNavItem[] = [
   { label: 'Trips', href: '/mileage' },

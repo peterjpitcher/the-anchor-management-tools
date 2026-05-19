@@ -1,17 +1,17 @@
 'use client';
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { Drawer, DrawerActions } from '@/components/ui-v2/overlay/Drawer';
-import { FormSection } from '@/components/ui-v2/forms/Form';
-import { FormGroup } from '@/components/ui-v2/forms/FormGroup';
-import { Input } from '@/components/ui-v2/forms/Input';
-import { Select } from '@/components/ui-v2/forms/Select';
-import { Textarea } from '@/components/ui-v2/forms/Textarea';
-import { Checkbox } from '@/components/ui-v2/forms/Checkbox';
-import { Button } from '@/components/ui-v2/forms/Button';
-import { Alert } from '@/components/ui-v2/feedback/Alert';
-import { ConfirmDialog } from '@/components/ui-v2/overlay/ConfirmDialog';
-import { toast } from '@/components/ui-v2/feedback/Toast';
+import { Drawer, DrawerActions } from '@/ds';
+import { FormSection } from '@/ds';
+import { FormGroup } from '@/ds';
+import { Input } from '@/ds';
+import { Select } from '@/ds';
+import { Textarea } from '@/ds';
+import { Checkbox } from '@/ds';
+import { Button } from '@/ds';
+import { Alert } from '@/ds';
+import { ConfirmDialog } from '@/ds';
+import { toast } from '@/ds';
 import { useMediaQuery } from '@/hooks/use-media-query';
 import { createMenuRecipe, updateMenuRecipe } from '@/app/actions/menu-management';
 import {

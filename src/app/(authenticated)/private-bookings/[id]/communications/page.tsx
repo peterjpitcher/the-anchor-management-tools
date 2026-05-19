@@ -3,8 +3,8 @@ import Link from 'next/link'
 import { getCurrentUserModuleActions } from '@/app/actions/rbac'
 import { getPrivateBooking } from '@/app/actions/privateBookingActions'
 import { CommunicationsTabServer } from '@/components/private-bookings/CommunicationsTabServer'
-import { PageLayout } from '@/components/ui-v2/layout/PageLayout'
-import { Alert } from '@/components/ui-v2/feedback/Alert'
+import { PageLayout } from '@/ds'
+import { Alert } from '@/ds'
 
 export const dynamic = 'force-dynamic'
 

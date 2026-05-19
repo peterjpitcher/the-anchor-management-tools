@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { sendQuoteViaEmail } from '@/app/actions/email'
-import { Button, Modal, ModalActions, Input, Textarea, Alert, FormGroup } from '@/components/ui-v2'
+import { Button, Modal, ModalActions, Input, Textarea, Alert, FormGroup } from '@/ds'
 import { Send } from 'lucide-react'
 import type { QuoteWithDetails } from '@/types/invoices'
 import { useSupabase } from '@/components/providers/SupabaseProvider'

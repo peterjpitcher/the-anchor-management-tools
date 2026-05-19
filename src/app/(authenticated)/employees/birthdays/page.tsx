@@ -8,11 +8,11 @@ import {
   CalendarIcon
 } from '@heroicons/react/24/outline'
 import { format, getMonth, addDays } from 'date-fns'
-import { PageLayout } from '@/components/ui-v2/layout/PageLayout'
-import { Card } from '@/components/ui-v2/layout/Card'
-import { Badge } from '@/components/ui-v2/display/Badge'
-import { Alert } from '@/components/ui-v2/feedback/Alert'
-import { EmptyState } from '@/components/ui-v2/display/EmptyState'
+import { PageLayout } from '@/ds'
+import { Card } from '@/ds'
+import { Badge } from '@/ds'
+import { Alert } from '@/ds'
+import { EmptyState } from '@/ds'
 import SendBirthdayRemindersButton from '@/components/features/employees/SendBirthdayRemindersButton'
 
 export const dynamic = 'force-dynamic'

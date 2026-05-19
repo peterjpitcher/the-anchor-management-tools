@@ -1,11 +1,11 @@
 'use client'
 
 import type { ScheduledSmsPreview, ScheduledSmsSuppressionReason } from '@/services/private-bookings/scheduled-sms'
-import { Card } from '@/components/ui-v2/layout/Card'
-import { Section } from '@/components/ui-v2/layout/Section'
-import { Badge } from '@/components/ui-v2/display/Badge'
-import { EmptyState } from '@/components/ui-v2/display/EmptyState'
-import { Alert } from '@/components/ui-v2/feedback/Alert'
+import { Card } from '@/ds'
+import { Section } from '@/ds'
+import { Badge } from '@/ds'
+import { EmptyState } from '@/ds'
+import { Alert } from '@/ds'
 import { formatDateTime12Hour } from '@/lib/dateUtils'
 import { ChatBubbleLeftRightIcon, ClockIcon } from '@heroicons/react/24/outline'
 

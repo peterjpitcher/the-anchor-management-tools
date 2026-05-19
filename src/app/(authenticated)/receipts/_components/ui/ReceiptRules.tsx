@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState, useTransition, FormEvent, useRef } from '
 import { useRouter } from 'next/navigation'
 import { toast } from 'react-hot-toast'
 import { Button, Input, SearchInput, Select, Card, Badge, Spinner } from '@/ds'
-import { Accordion } from '@/components/ui-v2/display/Accordion'
+import { Accordion } from '@/ds'
 import {
   toggleReceiptRule,
   createReceiptRule,

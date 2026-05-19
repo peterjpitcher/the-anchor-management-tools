@@ -38,7 +38,7 @@ import {
 import { ExpenseForm, type ExpenseFormData, type ExistingFile } from './ExpenseForm'
 import { ExpenseFileViewer } from './ExpenseFileViewer'
 import { useSort } from '@/hooks/useSort'
-import { SortableHeader } from '@/components/ui/SortableHeader'
+import { SortableHeader } from '@/ds'
 
 // ---------------------------------------------------------------------------
 // Formatters

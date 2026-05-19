@@ -2,8 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Button } from '@/components/ui-v2/forms/Button'
-import { EmptyState } from '@/components/ui-v2/display/EmptyState'
+import { Button } from '@/ds'
+import { EmptyState } from '@/ds'
 import toast from 'react-hot-toast'
 import {
   formatGbp,

@@ -1,8 +1,8 @@
 import { checkUserPermission } from '@/app/actions/rbac';
 import { redirect } from 'next/navigation';
-import { PageLayout } from '@/components/ui-v2/layout/PageLayout';
-import { Card } from '@/components/ui-v2/layout/Card';
-import { Section } from '@/components/ui-v2/layout/Section';
+import { PageLayout } from '@/ds';
+import { Card } from '@/ds';
+import { Section } from '@/ds';
 import { getPayAgeBands, getPayBandRates } from '@/app/actions/pay-bands';
 import PayBandsManager from './PayBandsManager';
 

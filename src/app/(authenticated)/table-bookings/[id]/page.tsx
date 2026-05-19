@@ -1,7 +1,7 @@
 import { notFound, redirect } from 'next/navigation'
 import { checkUserPermission } from '@/app/actions/rbac'
 import { createClient } from '@/lib/supabase/server'
-import { PageLayout } from '@/components/ui-v2/layout/PageLayout'
+import { PageLayout } from '@/ds'
 import BookingDetailClient, { type Booking } from './BookingDetailClient'
 
 interface Props {

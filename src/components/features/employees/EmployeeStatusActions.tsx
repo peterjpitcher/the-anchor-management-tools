@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { beginSeparation, revokeEmployeeAccess, resendInvite } from '@/app/actions/employeeInvite';
-import { toast } from '@/components/ui-v2/feedback/Toast';
+import { toast } from '@/ds';
 
 interface EmployeeStatusActionsProps {
   employeeId: string;

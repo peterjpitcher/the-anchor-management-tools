@@ -1,9 +1,9 @@
 'use client'
 
 import { CateringPackage } from '@/types/private-bookings'
-import { Card } from '@/components/ui-v2/layout/Card'
-import { Badge } from '@/components/ui-v2/display/Badge'
-import { Button } from '@/components/ui-v2/forms/Button'
+import { Card } from '@/ds'
+import { Badge } from '@/ds'
+import { Button } from '@/ds'
 import { PencilIcon } from '@heroicons/react/24/outline'
 
 interface CateringPackageCardProps {

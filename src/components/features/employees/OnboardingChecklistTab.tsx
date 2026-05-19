@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import { updateOnboardingChecklist, getOnboardingProgress } from '@/app/actions/employeeActions'
 import { CheckCircle2, Circle, Loader2 } from 'lucide-react'
-import { toast } from '@/components/ui-v2/feedback/Toast'
+import { toast } from '@/ds'
 
 interface OnboardingChecklistTabProps {
   employeeId: string

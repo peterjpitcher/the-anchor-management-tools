@@ -1,7 +1,7 @@
 'use client'
 
 import React, { FormEvent } from 'react'
-import { Modal } from '@/components/ui-v2/overlay/Modal'
+import { Modal } from '@/ds'
 import { cn } from '@/lib/utils'
 import {
   computeDepositAmount,

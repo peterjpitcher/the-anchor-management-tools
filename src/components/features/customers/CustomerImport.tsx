@@ -1,9 +1,9 @@
 import { useState } from 'react'
-import { DataTable } from '@/components/ui-v2/display/DataTable'
+import { DataTable } from '@/ds'
 import { CloudArrowUpIcon, ArrowDownTrayIcon } from '@heroicons/react/24/outline'
 import { Customer } from '@/types/database'
-import { toast } from '@/components/ui-v2/feedback/Toast'
-import { Button } from '@/components/ui-v2/forms/Button'
+import { toast } from '@/ds'
+import { Button } from '@/ds'
 import { formatPhoneForStorage } from '@/lib/utils'
 
 interface CustomerImportProps {

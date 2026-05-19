@@ -17,20 +17,20 @@ import {
   SparklesIcon,
   CheckCircleIcon,
 } from '@heroicons/react/24/outline';
-import { PageLayout } from '@/components/ui-v2/layout/PageLayout';
-import { Card } from '@/components/ui-v2/layout/Card';
-import { Button, IconButton } from '@/components/ui-v2/forms/Button';
-import { Modal } from '@/components/ui-v2/overlay/Modal';
-import { Form } from '@/components/ui-v2/forms/Form';
-import { FormGroup } from '@/components/ui-v2/forms/FormGroup';
-import { Input } from '@/components/ui-v2/forms/Input';
-import { Textarea } from '@/components/ui-v2/forms/Textarea';
-import { toast } from '@/components/ui-v2/feedback/Toast';
-import { Spinner } from '@/components/ui-v2/feedback/Spinner';
-import { EmptyState } from '@/components/ui-v2/display/EmptyState';
-import { Alert } from '@/components/ui-v2/feedback/Alert';
-import { ConfirmDialog } from '@/components/ui-v2/overlay/ConfirmDialog';
-import { BackButton } from '@/components/ui-v2/navigation/BackButton';
+import { PageLayout } from '@/ds';
+import { Card } from '@/ds';
+import { Button, IconButton } from '@/ds';
+import { Modal } from '@/ds';
+import { Form } from '@/ds';
+import { FormGroup } from '@/ds';
+import { Input } from '@/ds';
+import { Textarea } from '@/ds';
+import { toast } from '@/ds';
+import { Spinner } from '@/ds';
+import { EmptyState } from '@/ds';
+import { Alert } from '@/ds';
+import { ConfirmDialog } from '@/ds';
+import { BackButton } from '@/ds';
 import { useRouter } from 'next/navigation';
 
 const PRESET_COLORS = [

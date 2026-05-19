@@ -16,9 +16,9 @@ import {
   startOfMonth,
   startOfWeek,
 } from 'date-fns'
-import { Button } from '@/components/ui-v2/forms/Button'
-import { Card } from '@/components/ui-v2/layout/Card'
-import { Section } from '@/components/ui-v2/layout/Section'
+import { Button } from '@/ds'
+import { Card } from '@/ds'
+import { Section } from '@/ds'
 import { ArrowLeftIcon, ArrowRightIcon } from '@heroicons/react/24/outline'
 import { SpecialHoursModal } from './SpecialHoursModal'
 import toast from 'react-hot-toast'

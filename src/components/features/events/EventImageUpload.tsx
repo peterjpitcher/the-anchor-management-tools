@@ -3,8 +3,8 @@
 import { useState, useRef } from 'react'
 import { useFormState } from 'react-dom'
 import { uploadEventImage, deleteEventImage, type ImageUploadState } from '@/app/actions/event-images'
-import { Button } from '@/components/ui-v2/forms/Button'
-import { Input } from '@/components/ui-v2/forms/Input'
+import { Button } from '@/ds'
+import { Input } from '@/ds'
 import { TrashIcon, PhotoIcon } from '@heroicons/react/24/outline'
 import toast from 'react-hot-toast'
 

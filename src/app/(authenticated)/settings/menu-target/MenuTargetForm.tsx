@@ -1,10 +1,10 @@
 'use client';
 
 import { useState, useTransition } from 'react';
-import { Button } from '@/components/ui-v2/forms/Button';
-import { FormGroup } from '@/components/ui-v2/forms/FormGroup';
-import { Input } from '@/components/ui-v2/forms/Input';
-import { Alert } from '@/components/ui-v2/feedback/Alert';
+import { Button } from '@/ds';
+import { FormGroup } from '@/ds';
+import { Input } from '@/ds';
+import { Alert } from '@/ds';
 import { updateMenuTargetGp } from '@/app/actions/menu-settings';
 
 type Props = {

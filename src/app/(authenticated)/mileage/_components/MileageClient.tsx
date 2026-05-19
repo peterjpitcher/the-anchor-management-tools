@@ -30,7 +30,7 @@ import type { TaxYearStats } from '@/lib/mileage/hmrcRates'
 import { TripForm } from './TripForm'
 import { formatDateInLondon } from '@/lib/dateUtils'
 import { useSort } from '@/hooks/useSort'
-import { SortableHeader } from '@/components/ui/SortableHeader'
+import { SortableHeader } from '@/ds'
 import {
   PlusIcon,
   PencilSquareIcon,

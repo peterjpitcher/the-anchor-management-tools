@@ -14,8 +14,8 @@ import {
 import { createTimeclockSession, updateTimeclockSession, deleteTimeclockSession, approveTimeclockSession } from '@/app/actions/timeclock';
 import type { TimeclockSessionWithEmployee } from '@/app/actions/timeclock';
 import type { RotaEmployee } from '@/app/actions/rota';
-import { Badge } from '@/components/ui-v2/display/Badge';
-import { Button } from '@/components/ui-v2/forms/Button';
+import { Badge } from '@/ds';
+import { Button } from '@/ds';
 import { formatTime12Hour } from '@/lib/dateUtils';
 
 interface TimeclockManagerProps {

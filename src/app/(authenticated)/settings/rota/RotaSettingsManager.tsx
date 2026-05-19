@@ -2,9 +2,9 @@
 
 import { useState, useTransition } from 'react';
 import toast from 'react-hot-toast';
-import { Button } from '@/components/ui-v2/forms/Button';
-import { Input } from '@/components/ui-v2/forms/Input';
-import { FormGroup } from '@/components/ui-v2/forms/FormGroup';
+import { Button } from '@/ds';
+import { Input } from '@/ds';
+import { FormGroup } from '@/ds';
 import { updateRotaSettings, type RotaSettings } from '@/app/actions/rota-settings';
 
 const MONTHS = [

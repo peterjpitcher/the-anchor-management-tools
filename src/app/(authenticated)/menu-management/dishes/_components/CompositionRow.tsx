@@ -1,9 +1,9 @@
 'use client';
 
 import { useState } from 'react';
-import { Input } from '@/components/ui-v2/forms/Input';
-import { Select } from '@/components/ui-v2/forms/Select';
-import { FormGroup } from '@/components/ui-v2/forms/FormGroup';
+import { Input } from '@/ds';
+import { Select } from '@/ds';
+import { FormGroup } from '@/ds';
 import { ChevronDownIcon, ChevronUpIcon, TrashIcon } from '@heroicons/react/20/solid';
 import { cn } from '@/lib/utils';
 

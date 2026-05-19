@@ -3,7 +3,7 @@
 import { useState, useMemo, useTransition } from 'react';
 import toast from 'react-hot-toast';
 import { XMarkIcon } from '@heroicons/react/24/outline';
-import { Button } from '@/components/ui-v2/forms/Button';
+import { Button } from '@/ds';
 import { addShiftsFromTemplates } from '@/app/actions/rota';
 import type { RotaWeek, RotaShift, RotaEmployee } from '@/app/actions/rota';
 import type { ShiftTemplate } from '@/app/actions/rota-templates';

@@ -3,7 +3,7 @@
 import { useState, type ReactNode } from 'react'
 import { addMonths, addWeeks, subMonths, subWeeks, format } from 'date-fns'
 import { useMediaQuery } from '@/hooks/use-media-query'
-import { Button } from '@/components/ui-v2/forms/Button'
+import { Button } from '@/ds'
 import { cn } from '@/lib/utils'
 import { ScheduleCalendarMonth } from './ScheduleCalendarMonth'
 import { ScheduleCalendarWeek } from './ScheduleCalendarWeek'

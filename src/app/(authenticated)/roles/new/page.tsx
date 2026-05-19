@@ -1,6 +1,6 @@
 import { createRole, checkUserPermission } from '@/app/actions/rbac';
 import RoleForm from '../components/RoleForm';
-import { PageLayout } from '@/components/ui-v2/layout/PageLayout';
+import { PageLayout } from '@/ds';
 import { redirect } from 'next/navigation';
 
 export default async function NewRolePage() {

@@ -2,7 +2,7 @@
 
 import { useMemo, useCallback, useState } from 'react';
 import { Card, Badge, Input } from '@/ds';
-import { Pagination } from '@/components/ui-v2/navigation/Pagination';
+import { Pagination } from '@/ds';
 import { ExclamationTriangleIcon, MagnifyingGlassIcon } from '@heroicons/react/20/solid';
 import { useTablePipeline } from './useTablePipeline';
 

@@ -1,6 +1,6 @@
 'use client';
 
-import { Badge } from '@/components/ui-v2/display/Badge';
+import { Badge } from '@/ds';
 import type { MenuPurchaseDepartment } from '@/lib/menu/purchase-departments';
 
 interface DishAssignmentSummary {

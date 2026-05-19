@@ -9,7 +9,7 @@ import { format } from 'date-fns'
 import { TrashIcon } from '@heroicons/react/24/outline'
 import { usePermissions } from '@/contexts/PermissionContext'
 import { deleteEvent } from '@/app/actions/events'
-import { toast } from '@/components/ui-v2/feedback/Toast'
+import { toast } from '@/ds'
 
 interface EventCardProps {
     event: EventOverview

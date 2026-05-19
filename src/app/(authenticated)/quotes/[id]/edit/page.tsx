@@ -7,19 +7,19 @@ import { getVendors } from '@/app/actions/vendors'
 import { Plus, Trash2 } from 'lucide-react'
 import type { InvoiceVendor, InvoiceLineItemInput, QuoteWithDetails } from '@/types/invoices'
 // UI v2 components
-import { PageLayout } from '@/components/ui-v2/layout/PageLayout'
-import { Card } from '@/components/ui-v2/layout/Card'
-import { Section } from '@/components/ui-v2/layout/Section'
-import { Button } from '@/components/ui-v2/forms/Button'
-import { Input } from '@/components/ui-v2/forms/Input'
-import { Select } from '@/components/ui-v2/forms/Select'
-import { Textarea } from '@/components/ui-v2/forms/Textarea'
-import { FormGroup } from '@/components/ui-v2/forms/FormGroup'
-import { Alert } from '@/components/ui-v2/feedback/Alert'
-import { Spinner } from '@/components/ui-v2/feedback/Spinner'
-import { toast } from '@/components/ui-v2/feedback/Toast'
+import { PageLayout } from '@/ds'
+import { Card } from '@/ds'
+import { Section } from '@/ds'
+import { Button } from '@/ds'
+import { Input } from '@/ds'
+import { Select } from '@/ds'
+import { Textarea } from '@/ds'
+import { FormGroup } from '@/ds'
+import { Alert } from '@/ds'
+import { Spinner } from '@/ds'
+import { toast } from '@/ds'
 
-import { BackButton } from '@/components/ui-v2/navigation/BackButton';
+import { BackButton } from '@/ds';
 import { usePermissions } from '@/contexts/PermissionContext'
 export default function EditQuotePage({ params }: { params: Promise<{ id: string }> }) {
   const router = useRouter()

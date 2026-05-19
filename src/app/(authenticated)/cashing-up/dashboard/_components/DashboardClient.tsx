@@ -1,7 +1,8 @@
 'use client'
 
+import { useRouter, useSearchParams } from 'next/navigation'
 import { Card, CardHeader, CardBody, Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/ds'
-import { Stat, Badge, ProgressBar } from '@/ds'
+import { Stat, Badge, ProgressBar, Select } from '@/ds'
 
 interface DashboardData {
   kpis: {
@@ -36,14 +37,49 @@ interface WeeklyProgress {
 
 interface Props {
   dashboardData: DashboardData | null
+  comparisonData: DashboardData | null
   weeklyProgress: WeeklyProgress | null
+  selectedYear: number
+  compareYear?: number
   error?: string
 }
 
 const fmt = (num: number): string =>
   num.toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
-export function DashboardClient({ dashboardData, weeklyProgress, error }: Props) {
+const currentYear = new Date().getFullYear()
+const YEAR_OPTIONS = Array.from({ length: currentYear - 2018 }, (_, i) => ({
+  label: String(currentYear - i),
+  value: String(currentYear - i),
+}))
+
+function pctChange(current: number, previous: number): number | undefined {
+  if (previous === 0) return undefined
+  return Math.round(((current - previous) / previous) * 100)
+}
+
+export function DashboardClient({ dashboardData, comparisonData, weeklyProgress, selectedYear, compareYear, error }: Props) {
+  const router = useRouter()
+
+  const handleYearChange = (year: string) => {
+    const params = new URLSearchParams()
+    params.set('year', year)
+    if (compareYear) params.set('compareYear', String(compareYear))
+    router.push(`/cashing-up/dashboard?${params.toString()}`)
+  }
+
+  const handleCompareChange = (year: string) => {
+    const params = new URLSearchParams()
+    params.set('year', String(selectedYear))
+    if (year) params.set('compareYear', year)
+    router.push(`/cashing-up/dashboard?${params.toString()}`)
+  }
+
+  const compareOptions = [
+    { label: 'None', value: '' },
+    ...YEAR_OPTIONS.filter((o) => o.value !== String(selectedYear)),
+  ]
+
   if (error || !dashboardData) {
     return (
       <Card>
@@ -55,15 +91,43 @@ export function DashboardClient({ dashboardData, weeklyProgress, error }: Props)
   }
 
   const { kpis, tables } = dashboardData
+  const comp = comparisonData?.kpis
   const varianceIsPositive = kpis.totalVariance >= 0
 
   return (
     <div className="space-y-6">
+      {/* Year selectors */}
+      <div className="flex flex-wrap gap-3 items-center">
+        <div className="flex items-center gap-2">
+          <span className="text-sm font-medium text-text-muted">Year:</span>
+          <Select
+            value={String(selectedYear)}
+            onChange={(e) => handleYearChange(e.target.value)}
+            options={YEAR_OPTIONS}
+            className="w-28"
+          />
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="text-sm font-medium text-text-muted">Compare to:</span>
+          <Select
+            value={compareYear ? String(compareYear) : ''}
+            onChange={(e) => handleCompareChange(e.target.value)}
+            options={compareOptions}
+            className="w-28"
+          />
+        </div>
+      </div>
+
       {/* Stat tiles */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <Card>
           <CardBody>
-            <Stat label="Total Takings" value={`£${fmt(kpis.totalTakings)}`} hint={`Target: £${fmt(kpis.totalTarget)}`} />
+            <Stat
+              label="Total Takings"
+              value={`£${fmt(kpis.totalTakings)}`}
+              delta={comp ? pctChange(kpis.totalTakings, comp.totalTakings) : undefined}
+              hint={comp ? `vs £${fmt(comp.totalTakings)} (${compareYear})` : `Target: £${fmt(kpis.totalTarget)}`}
+            />
           </CardBody>
         </Card>
         <Card>
@@ -71,18 +135,30 @@ export function DashboardClient({ dashboardData, weeklyProgress, error }: Props)
             <Stat
               label="Total Variance"
               value={`£${fmt(kpis.totalVariance)}`}
+              delta={comp ? pctChange(kpis.totalVariance, comp.totalVariance) : undefined}
+              hint={comp ? `vs £${fmt(comp.totalVariance)} (${compareYear})` : undefined}
               className={varianceIsPositive ? 'text-success-fg' : 'text-danger-fg'}
             />
           </CardBody>
         </Card>
         <Card>
           <CardBody>
-            <Stat label="Sessions Submitted" value={kpis.daysWithSubmittedSessions} />
+            <Stat
+              label="Sessions Submitted"
+              value={kpis.daysWithSubmittedSessions}
+              delta={comp ? pctChange(kpis.daysWithSubmittedSessions, comp.daysWithSubmittedSessions) : undefined}
+              hint={comp ? `vs ${comp.daysWithSubmittedSessions} (${compareYear})` : undefined}
+            />
           </CardBody>
         </Card>
         <Card>
           <CardBody>
-            <Stat label="Avg Daily Takings" value={`£${fmt(kpis.averageDailyTakings)}`} />
+            <Stat
+              label="Avg Daily Takings"
+              value={`£${fmt(kpis.averageDailyTakings)}`}
+              delta={comp ? pctChange(kpis.averageDailyTakings, comp.averageDailyTakings) : undefined}
+              hint={comp ? `vs £${fmt(comp.averageDailyTakings)} (${compareYear})` : undefined}
+            />
           </CardBody>
         </Card>
       </div>

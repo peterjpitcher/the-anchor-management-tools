@@ -1,8 +1,8 @@
 import { Metadata } from 'next'
 import { redirect } from 'next/navigation'
 import ApiKeysManager from './ApiKeysManager'
-import { PageLayout } from '@/components/ui-v2/layout/PageLayout'
-import { Alert } from '@/components/ui-v2/feedback/Alert'
+import { PageLayout } from '@/ds'
+import { Alert } from '@/ds'
 import { checkUserPermission } from '@/app/actions/rbac'
 import { getApiKeys } from './actions'
 

@@ -2,8 +2,8 @@ import { checkUserPermission } from '@/app/actions/rbac';
 import { redirect } from 'next/navigation';
 import { generateRotaFeedToken } from '@/lib/portal/calendar-token';
 import { createClient } from '@/lib/supabase/server';
-import { PageLayout } from '@/components/ui-v2/layout/PageLayout';
-import { LinkButton } from '@/components/ui-v2/navigation/LinkButton';
+import { PageLayout } from '@/ds';
+import { LinkButton } from '@/ds';
 import { Cog6ToothIcon } from '@heroicons/react/24/outline';
 import RotaFeedButton from './RotaFeedButton';
 import {

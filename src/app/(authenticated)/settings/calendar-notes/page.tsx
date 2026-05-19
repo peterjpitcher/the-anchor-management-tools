@@ -3,9 +3,9 @@
 import { redirect } from 'next/navigation'
 import { checkUserPermission } from '@/app/actions/rbac'
 import { listCalendarNotes } from '@/app/actions/calendar-notes'
-import { PageLayout } from '@/components/ui-v2/layout/PageLayout'
-import { Section } from '@/components/ui-v2/layout/Section'
-import { Card } from '@/components/ui-v2/layout/Card'
+import { PageLayout } from '@/ds'
+import { Section } from '@/ds'
+import { Card } from '@/ds'
 import CalendarNotesManager from './CalendarNotesManager'
 
 export default async function CalendarNotesSettingsPage() {

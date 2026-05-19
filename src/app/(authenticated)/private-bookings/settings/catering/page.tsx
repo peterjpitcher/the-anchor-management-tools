@@ -1,7 +1,7 @@
 import { redirect } from 'next/navigation'
 import { getCateringPackagesForManagement } from '@/app/actions/privateBookingActions'
-import { PageLayout } from '@/components/ui-v2/layout/PageLayout'
-import { Alert } from '@/components/ui-v2/feedback/Alert'
+import { PageLayout } from '@/ds'
+import { Alert } from '@/ds'
 import { getCurrentUserModuleActions } from '@/app/actions/rbac'
 import { CateringManager } from '@/components/features/catering/CateringManager'
 

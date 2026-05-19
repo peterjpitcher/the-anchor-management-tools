@@ -2,8 +2,8 @@
 
 import { Customer } from '@/types/database'
 import { useState } from 'react'
-import { Input } from '@/components/ui-v2/forms/Input'
-import { Button } from '@/components/ui-v2/forms/Button'
+import { Input } from '@/ds'
+import { Button } from '@/ds'
 import { formatPhoneForStorage } from '@/lib/utils'
 
 interface CustomerFormProps {

@@ -1,8 +1,8 @@
 'use client'
 
 import { FormEvent, useEffect, useMemo, useState } from 'react'
-import { Button } from '@/components/ui-v2/forms/Button'
-import { Alert } from '@/components/ui-v2/feedback/Alert'
+import { Button } from '@/ds'
+import { Alert } from '@/ds'
 
 type TableSetupRow = {
   id: string

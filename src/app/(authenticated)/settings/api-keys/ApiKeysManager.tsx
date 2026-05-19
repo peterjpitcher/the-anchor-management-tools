@@ -2,17 +2,17 @@
 
 import { useState } from 'react';
 import { DocumentDuplicateIcon, PlusIcon, PencilIcon } from '@heroicons/react/24/outline';
-import { Button, IconButton } from '@/components/ui-v2/forms/Button';
-import { Input } from '@/components/ui-v2/forms/Input';
-import { Checkbox } from '@/components/ui-v2/forms/Checkbox';
-import { Card } from '@/components/ui-v2/layout/Card';
-import { Badge } from '@/components/ui-v2/display/Badge';
-import { DataTable } from '@/components/ui-v2/display/DataTable';
+import { Button, IconButton } from '@/ds';
+import { Input } from '@/ds';
+import { Checkbox } from '@/ds';
+import { Card } from '@/ds';
+import { Badge } from '@/ds';
+import { DataTable } from '@/ds';
 import toast from 'react-hot-toast';
 import { generateApiKey, updateApiKey } from './actions';
 import { format } from 'date-fns';
 import type { ApiKey } from '@/types/api';
-import { Alert } from '@/components/ui-v2/feedback/Alert';
+import { Alert } from '@/ds';
 
 interface ApiKeysManagerProps {
   initialKeys: ApiKey[];

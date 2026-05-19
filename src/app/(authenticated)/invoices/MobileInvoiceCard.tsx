@@ -1,6 +1,6 @@
 import type { InvoiceWithDetails, InvoiceStatus } from '@/types/invoices'
-import { Card } from '@/components/ui-v2/layout/Card'
-import { Badge } from '@/components/ui-v2/display/Badge'
+import { Card } from '@/ds'
+import { Badge } from '@/ds'
 import { Download } from 'lucide-react'
 
 interface MobileInvoiceCardProps {

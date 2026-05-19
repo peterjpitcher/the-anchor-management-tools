@@ -2,10 +2,10 @@
 
 import { useState, useTransition, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
-import { TabNav } from '@/components/ui-v2/navigation/TabNav'
-import { StatGroup } from '@/components/ui-v2/display/Stat'
-import { Stat } from '@/components/ui-v2/display/Stat'
-import { Card } from '@/components/ui-v2/layout/Card'
+import { TabNav } from '@/ds'
+import { StatGroup } from '@/ds'
+import { Stat } from '@/ds'
+import { Card } from '@/ds'
 import { BarChart } from '@/components/charts/BarChart'
 import {
   getMileageInsights,
@@ -13,7 +13,7 @@ import {
   type MileageGranularity,
 } from '@/app/actions/mileage'
 import { useSort } from '@/hooks/useSort'
-import { SortableHeader } from '@/components/ui/SortableHeader'
+import { SortableHeader } from '@/ds'
 
 const PERIOD_TABS = [
   { key: 'monthly' as const, label: 'Monthly' },

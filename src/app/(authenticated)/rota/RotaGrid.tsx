@@ -23,7 +23,7 @@ import {
   PencilSquareIcon,
   XMarkIcon,
 } from '@heroicons/react/24/outline';
-import { Button } from '@/components/ui-v2/forms/Button';
+import { Button } from '@/ds';
 import { formatTime12Hour } from '@/lib/dateUtils';
 import { moveShift, autoPopulateWeekFromTemplates, upsertRotaSalesTargetOverride } from '@/app/actions/rota';
 import type { RotaWeek, RotaShift, RotaEmployee, LeaveDayWithRequest } from '@/app/actions/rota';

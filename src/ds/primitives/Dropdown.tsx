@@ -3,17 +3,31 @@
 import { Menu, MenuButton, MenuItem, MenuItems } from '@headlessui/react'
 import { cn } from '@/lib/utils'
 
-interface DropdownProps {
-  trigger: React.ReactNode
-  children: React.ReactNode
+export interface DropdownProps {
+  trigger?: React.ReactNode
+  /** @deprecated Use `trigger` instead */
+  label?: React.ReactNode
+  /** @deprecated Accepted for backward compatibility — use `trigger` instead */
+  icon?: React.ReactNode
+  /** @deprecated Accepted for backward compatibility */
+  items?: Array<{ key: string; label: React.ReactNode; description?: string; onClick?: () => void; icon?: React.ReactNode; danger?: boolean }>
+  /** @deprecated Accepted for backward compatibility */
+  disabled?: boolean
+  /** @deprecated Accepted for backward compatibility */
+  variant?: string
+  /** @deprecated Accepted for backward compatibility */
+  size?: string
+  children?: React.ReactNode
   align?: 'left' | 'right'
 }
 
-export function Dropdown({ trigger, children, align = 'right' }: DropdownProps) {
+export function Dropdown({ trigger, label, icon: _icon, items, disabled: _disabled, variant: _variant, size: _size, children, align = 'right' }: DropdownProps) {
+  // Build trigger from label if not provided
+  const resolvedTrigger = trigger ?? (label ? <span className="text-sm font-medium">{label}</span> : <span>...</span>)
   return (
     <Menu as="div" className="relative inline-block text-left">
       <MenuButton as="div" className="inline-flex">
-        {trigger}
+        {resolvedTrigger}
       </MenuButton>
 
       <MenuItems
@@ -24,6 +38,11 @@ export function Dropdown({ trigger, children, align = 'right' }: DropdownProps) 
           align === 'right' ? 'right-0' : 'left-0'
         )}
       >
+        {items && items.map((item) => (
+          <DropdownItem key={item.key} onClick={item.onClick} icon={item.icon} danger={item.danger}>
+            {item.label}
+          </DropdownItem>
+        ))}
         {children}
       </MenuItems>
     </Menu>

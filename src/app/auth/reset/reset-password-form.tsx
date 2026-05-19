@@ -3,13 +3,13 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useSupabase } from '@/components/providers/SupabaseProvider'
-import { Container } from '@/components/ui-v2/layout/Container'
-import { Card } from '@/components/ui-v2/layout/Card'
-import { Form } from '@/components/ui-v2/forms/Form'
-import { FormGroup } from '@/components/ui-v2/forms/FormGroup'
-import { Input } from '@/components/ui-v2/forms/Input'
-import { Button } from '@/components/ui-v2/forms/Button'
-import { toast } from '@/components/ui-v2/feedback/Toast'
+import { Container } from '@/ds'
+import { Card } from '@/ds'
+import { Form } from '@/ds'
+import { FormGroup } from '@/ds'
+import { Input } from '@/ds'
+import { Button } from '@/ds'
+import { toast } from '@/ds'
 
 type Props = {
   email?: string

@@ -12,6 +12,8 @@ export interface LinkButtonProps {
   variant?: LinkButtonVariant
   size?: LinkButtonSize
   icon?: React.ReactNode
+  /** @deprecated Use `icon` instead */
+  leftIcon?: React.ReactNode
   iconRight?: React.ReactNode
   target?: string
   rel?: string
@@ -41,6 +43,7 @@ export const LinkButton = forwardRef<HTMLAnchorElement, LinkButtonProps>(
       variant = 'secondary',
       size = 'md',
       icon,
+      leftIcon,
       iconRight,
       target,
       rel,
@@ -58,9 +61,10 @@ export const LinkButton = forwardRef<HTMLAnchorElement, LinkButtonProps>(
       className,
     )
 
+    const resolvedIcon = icon ?? leftIcon
     const inner = (
       <>
-        {icon && <span className="flex-shrink-0 [&>svg]:h-4 [&>svg]:w-4">{icon}</span>}
+        {resolvedIcon && <span className="flex-shrink-0 [&>svg]:h-4 [&>svg]:w-4">{resolvedIcon}</span>}
         {children}
         {iconRight && <span className="flex-shrink-0 [&>svg]:h-4 [&>svg]:w-4">{iconRight}</span>}
       </>

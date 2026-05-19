@@ -1,10 +1,10 @@
 'use client';
 
 import { useState } from 'react';
-import { Input } from '@/components/ui-v2/forms/Input';
-import { Select } from '@/components/ui-v2/forms/Select';
-import { FormGroup } from '@/components/ui-v2/forms/FormGroup';
-import { Button } from '@/components/ui-v2/forms/Button';
+import { Input } from '@/ds';
+import { Select } from '@/ds';
+import { FormGroup } from '@/ds';
+import { Button } from '@/ds';
 import { ChevronDownIcon, ChevronUpIcon, TrashIcon } from '@heroicons/react/20/solid';
 
 // ---------------------------------------------------------------------------

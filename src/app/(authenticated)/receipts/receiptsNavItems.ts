@@ -1,4 +1,4 @@
-import type { HeaderNavItem } from '@/components/ui-v2/navigation/HeaderNav'
+import type { HeaderNavItem } from '@/ds'
 
 type ReceiptNavView =
   | 'workspace'

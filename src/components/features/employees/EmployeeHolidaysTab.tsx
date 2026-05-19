@@ -3,11 +3,11 @@
 import { useState, useTransition } from 'react';
 import toast from 'react-hot-toast';
 import { CalendarDaysIcon, PlusIcon } from '@heroicons/react/24/outline';
-import { Badge } from '@/components/ui-v2/display/Badge';
-import { Button } from '@/components/ui-v2/forms/Button';
-import { Input } from '@/components/ui-v2/forms/Input';
-import { FormGroup } from '@/components/ui-v2/forms/FormGroup';
-import { Alert } from '@/components/ui-v2/feedback/Alert';
+import { Badge } from '@/ds';
+import { Button } from '@/ds';
+import { Input } from '@/ds';
+import { FormGroup } from '@/ds';
+import { Alert } from '@/ds';
 import { bookApprovedHoliday, type LeaveRequest } from '@/app/actions/leave';
 import type { EmployeePaySettings } from '@/app/actions/pay-bands';
 import type { RotaSettings } from '@/app/actions/rota-settings';

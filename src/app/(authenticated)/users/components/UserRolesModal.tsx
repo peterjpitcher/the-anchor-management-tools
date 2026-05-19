@@ -5,12 +5,12 @@ import type { User as SupabaseUser } from '@supabase/supabase-js';
 import { Role } from '@/types/rbac';
 import { getUserRoles, assignRolesToUser } from '@/app/actions/rbac';
 import { useRouter } from 'next/navigation';
-import { Modal, ModalActions } from '@/components/ui-v2/overlay/Modal';
-import { Button } from '@/components/ui-v2/forms/Button';
-import { Checkbox } from '@/components/ui-v2/forms/Checkbox';
-import { Badge } from '@/components/ui-v2/display/Badge';
-import { Spinner } from '@/components/ui-v2/feedback/Spinner';
-import { Alert } from '@/components/ui-v2/feedback/Alert';
+import { Modal, ModalActions } from '@/ds';
+import { Button } from '@/ds';
+import { Checkbox } from '@/ds';
+import { Badge } from '@/ds';
+import { Spinner } from '@/ds';
+import { Alert } from '@/ds';
 import toast from 'react-hot-toast';
 
 type UserSummary = Pick<SupabaseUser, 'id' | 'email'>;

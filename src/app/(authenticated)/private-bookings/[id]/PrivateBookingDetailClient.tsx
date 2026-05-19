@@ -86,27 +86,12 @@ import type {
   PaymentHistoryEntry,
 } from "@/types/private-bookings";
 import PaymentHistoryTable from './PaymentHistoryTable'
-// New UI components
-import { PageLayout } from "@/components/ui-v2/layout/PageLayout";
-import { Card } from "@/components/ui-v2/layout/Card";
-import { Section } from "@/components/ui-v2/layout/Section";
-import { Button } from "@/components/ui-v2/forms/Button";
-import { LinkButton } from "@/components/ui-v2/navigation/LinkButton";
-import { Input } from "@/components/ui-v2/forms/Input";
-import { Select } from "@/components/ui-v2/forms/Select";
-import { Textarea } from "@/components/ui-v2/forms/Textarea";
-import { Form } from "@/components/ui-v2/forms/Form";
-import { FormGroup } from "@/components/ui-v2/forms/FormGroup";
-import { Badge } from "@/components/ui-v2/display/Badge";
-import { Modal } from "@/components/ui-v2/overlay/Modal";
-import { ConfirmDialog } from "@/components/ui-v2/overlay/ConfirmDialog";
-import { RefundDialog } from "@/components/ui-v2/refunds/RefundDialog";
-import { RefundHistoryTable } from "@/components/ui-v2/refunds/RefundHistoryTable";
-import { Skeleton } from "@/components/ui-v2/feedback/Skeleton";
-import { EmptyState } from "@/components/ui-v2/display/EmptyState";
-import { Alert } from "@/components/ui-v2/feedback/Alert";
-import { toast } from "@/components/ui-v2/feedback/Toast";
-import { formatCurrency } from "@/components/ui-v2/utils/format";
+// Design system components
+import { FormGroup, Form, PageLayout, Section, Card, CardHeader, CardBody } from '@/ds'
+import { Button, LinkButton, Input, Select, Textarea, Badge, Modal, ConfirmDialog, Skeleton, Empty, EmptyState, Alert, toast } from '@/ds'
+import { RefundDialog } from '@/components/features/invoices/RefundDialog'
+import { RefundHistoryTable } from '@/components/features/invoices/RefundHistoryTable'
+import { formatCurrency } from '@/lib/format'
 // Using types from private-bookings.ts
 
 // Status configuration

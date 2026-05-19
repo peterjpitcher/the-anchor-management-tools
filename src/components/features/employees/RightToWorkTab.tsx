@@ -11,7 +11,7 @@ import {
 import { useSupabase } from '@/components/providers/SupabaseProvider'
 import type { ActionFormState } from '@/types/actions'
 import type { EmployeeRightToWork } from '@/types/database'
-import { toast } from '@/components/ui-v2/feedback/Toast'
+import { toast } from '@/ds'
 import { MAX_FILE_SIZE } from '@/lib/constants'
 import { AlertCircle, CheckCircle, Clock, Upload, Eye, Download, Trash2 } from 'lucide-react'
 

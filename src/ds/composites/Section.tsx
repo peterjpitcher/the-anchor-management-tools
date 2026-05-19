@@ -14,6 +14,8 @@ export interface SectionProps {
   collapsible?: boolean
   defaultCollapsed?: boolean
   icon?: ReactNode
+  /** HTML id for the section element */
+  id?: string
   className?: string
   children?: ReactNode
 }
@@ -43,6 +45,7 @@ export const Section = forwardRef<HTMLElement, SectionProps>(
       collapsible = false,
       defaultCollapsed = false,
       icon,
+      id,
       className,
       children,
     },
@@ -56,6 +59,7 @@ export const Section = forwardRef<HTMLElement, SectionProps>(
     return (
       <section
         ref={ref}
+        id={id}
         className={cn('rounded-lg', variantClasses[variant], className)}
       >
         {hasHeader && (

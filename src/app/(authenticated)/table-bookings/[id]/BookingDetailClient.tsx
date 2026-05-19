@@ -3,12 +3,12 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import toast from 'react-hot-toast'
-import { Modal } from '@/components/ui-v2/overlay/Modal'
-import { ConfirmDialog } from '@/components/ui-v2/overlay/ConfirmDialog'
-import { Button } from '@/components/ui-v2/forms/Button'
-import { Badge } from '@/components/ui-v2/display/Badge'
-import { RefundDialog } from '@/components/ui-v2/refunds/RefundDialog'
-import { RefundHistoryTable } from '@/components/ui-v2/refunds/RefundHistoryTable'
+import { Modal } from '@/ds'
+import { ConfirmDialog } from '@/ds'
+import { Button } from '@/ds'
+import { Badge } from '@/ds'
+import { RefundDialog } from '@/components/features/invoices/RefundDialog'
+import { RefundHistoryTable } from '@/components/features/invoices/RefundHistoryTable'
 import { getCanonicalDeposit } from '@/lib/table-bookings/deposit'
 import {
   formatGbp,

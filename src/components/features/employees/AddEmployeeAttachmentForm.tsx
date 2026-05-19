@@ -5,8 +5,8 @@ import { useRouter } from 'next/navigation'
 import { addEmployeeAttachment } from '@/app/actions/employeeActions'
 import type { AttachmentFormState } from '@/types/actions'
 import type { AttachmentCategory } from '@/types/database'
-import { Button } from '@/components/ui-v2/forms/Button'
-import { toast } from '@/components/ui-v2/feedback/Toast'
+import { Button } from '@/ds'
+import { toast } from '@/ds'
 import { MAX_FILE_SIZE } from '@/lib/constants'
 
 const ATTACHMENT_ALLOWED_MIME_TYPES = [

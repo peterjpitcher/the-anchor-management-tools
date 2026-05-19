@@ -2,13 +2,13 @@
 
 import { useState } from 'react'
 import { importMissedMessages } from '@/app/actions/import-messages'
-import { PageLayout } from '@/components/ui-v2/layout/PageLayout'
-import { Section } from '@/components/ui-v2/layout/Section'
-import { Card } from '@/components/ui-v2/layout/Card'
-import { FormGroup } from '@/components/ui-v2/forms/FormGroup'
-import { Input } from '@/components/ui-v2/forms/Input'
-import { Button } from '@/components/ui-v2/forms/Button'
-import { Alert } from '@/components/ui-v2/feedback/Alert'
+import { PageLayout } from '@/ds'
+import { Section } from '@/ds'
+import { Card } from '@/ds'
+import { FormGroup } from '@/ds'
+import { Input } from '@/ds'
+import { Button } from '@/ds'
+import { Alert } from '@/ds'
 
 interface ImportSummary {
   totalFound: number;

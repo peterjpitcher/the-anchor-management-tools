@@ -1,6 +1,6 @@
 import { getReceiptVendorSummary } from '@/app/actions/receipts'
-import { PageLayout } from '@/components/ui-v2/layout/PageLayout'
-import { Card } from '@/components/ui-v2/layout/Card'
+import { PageLayout } from '@/ds'
+import { Card } from '@/ds'
 import Link from 'next/link'
 import VendorSummaryGrid from './_components/VendorSummaryGrid'
 import { redirect } from 'next/navigation'
