@@ -130,7 +130,7 @@ Roles: `super_admin`, `manager`, `staff`. Defined in `src/types/rbac.ts`.
 
 ## UI Components
 
-Migrating from legacy `PageWrapper`/`Page` pattern to `PageLayout` + `HeaderNav` from `src/components/ui-v2/`. New pages must use the `ui-v2` pattern. Navigation defined in `src/components/ui-v2/navigation/AppNavigation.tsx`.
+All UI components are imported from the unified design system barrel at `@/ds` (source: `src/ds/`). This includes primitives (Button, Input, Modal, etc.), composites (Card, Section, Tabs), shell components (Sidebar, Topbar, AppShell), and a compatibility layer (`src/ds/compat/`) for legacy wrapper components. Navigation defined in `src/components/features/shared/AppNavigation.tsx`.
 
 ## Data Conventions
 
@@ -308,17 +308,15 @@ A comprehensive UI redesign and feature expansion of The Anchor Management Tools
 - Default to server components for page-level data fetching
 - `'use client'` added for interactivity, hooks, and browser APIs
 - Data passed from server parents as props to client children
-- New code uses `src/components/ui-v2/` via the barrel export `src/components/ui-v2/index.ts`
-- Legacy `PageWrapper`/`Page` pattern still exists but being phased out
-- New pages: use `PageLayout` + `HeaderNav` from `ui-v2`
-- Defined in `src/components/ui-v2/tokens.ts` — primary green `#16a34a`, neutral grays
+- All UI components import from `@/ds` (unified design system barrel at `src/ds/`)
+- Design tokens defined in `src/ds/tokens.ts` — primary green `#16a34a`, neutral grays
+- Compat layer at `src/ds/compat/` for legacy wrapper components (FormGroup, EmptyState, TabNav, etc.)
 - Tailwind classes only — no inline hex colors in components
 - Never use dynamic Tailwind class construction (e.g., no `bg-${color}-500`)
 ## Module Design
 - Named exports everywhere (no default exports from utility/service files)
 - Default exports used only for Next.js page/layout components
-- `src/components/ui-v2/index.ts` is the single export point for the UI library
-- `src/components/ui-v2/navigation/index.ts` sub-barrel for navigation components
+- `src/ds/index.ts` is the single export point for the UI library (re-exports primitives, composites, shell, compat)
 - Service and action files do not use barrel exports — import directly from specific files
 ## Form Validation
 ## Date Handling
