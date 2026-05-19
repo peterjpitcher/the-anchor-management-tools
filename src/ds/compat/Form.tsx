@@ -11,19 +11,19 @@ import { Alert } from '../primitives/Alert'
 import { Spinner } from '../primitives/Spinner'
 
 export interface FormProps extends Omit<FormHTMLAttributes<HTMLFormElement>, 'onSubmit'> {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   
   action?: (formData: FormData) => Promise<any>
   onSubmit?: (e: React.FormEvent<HTMLFormElement>) => void | Promise<void>
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   
   onSuccess?: (result: any) => void
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   
   onError?: (error: any) => void
   showLoading?: boolean
   disableOnSubmit?: boolean
   resetOnSuccess?: boolean
   loadingMessage?: string
   showErrors?: boolean
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   
   errorMessage?: string | ((error: any) => ReactNode)
   spacing?: 'compact' | 'normal' | 'spacious'
 }
