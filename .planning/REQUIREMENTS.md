@@ -92,10 +92,10 @@
 
 ### Cleanup
 
-- [ ] **CLEAN-01**: Remove legacy `ui/` components after all pages migrated
-- [ ] **CLEAN-02**: Remove `ui-v2/` components after all pages migrated
-- [ ] **CLEAN-03**: Remove `tailwind.config.js` after v4 migration complete
-- [ ] **CLEAN-04**: Update CLAUDE.md to reflect new design system patterns
+- [x] **CLEAN-01**: Remove legacy `ui/` components after all pages migrated
+- [x] **CLEAN-02**: Remove `ui-v2/` components after all pages migrated
+- [x] **CLEAN-03**: Remove `tailwind.config.js` after v4 migration complete
+- [x] **CLEAN-04**: Update CLAUDE.md to reflect new design system patterns
 
 ## v2 Requirements
 
@@ -199,10 +199,10 @@
 | PERF-04 | Phase 3 | Removed (D-01) |
 | MODE-02 | Phase 3 | Complete |
 | MODE-01 | Phase 4 | Complete |
-| CLEAN-01 | Phase 4 | Pending |
-| CLEAN-02 | Phase 4 | Pending |
-| CLEAN-03 | Phase 4 | Pending |
-| CLEAN-04 | Phase 4 | Pending |
+| CLEAN-01 | Phase 4 | Complete |
+| CLEAN-02 | Phase 4 | Complete |
+| CLEAN-03 | Phase 4 | Complete |
+| CLEAN-04 | Phase 4 | Complete |
 
 **Coverage:**
 - v1 requirements: 71 total

@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: in-progress
-stopped_at: Completed 04-01-PLAN.md
-last_updated: "2026-05-19T06:41:00Z"
+stopped_at: Completed 04-02-PLAN.md
+last_updated: "2026-05-19T07:24:01Z"
 progress:
   total_phases: 4
-  completed_phases: 3
+  completed_phases: 4
   total_plans: 15
-  completed_plans: 14
+  completed_plans: 15
 ---
 
 # Project State
@@ -23,9 +23,9 @@ See: .planning/PROJECT.md (updated 2026-05-18)
 
 ## Current Position
 
-Phase: 04 (modes-cleanup) — IN PROGRESS
-Current Plan: 2 of 2
-Completed: 04-01 (FOH Chromeless Mode)
+Phase: 04 (modes-cleanup) — COMPLETE
+Current Plan: 2 of 2 (all complete)
+Completed: 04-01 (FOH Chromeless Mode), 04-02 (UI Import Consolidation)
 
 ## Performance Metrics
 
@@ -60,6 +60,7 @@ Completed: 04-01 (FOH Chromeless Mode)
 | Phase 03-new-sections P03 | 18min | 2 tasks | 14 files |
 | Phase 03-new-sections PP04 | 6min | 2 tasks | 7 files |
 | Phase 04-modes-cleanup P01 | 10min | 2 tasks | 5 files |
+| Phase 04-modes-cleanup P02 | 45min | 3 tasks | 333 files |
 
 ## Accumulated Context
 
@@ -95,6 +96,9 @@ Recent decisions affecting current work:
 - [Phase 03-new-sections]: OJ Projects: Split SectionNav into OJProjectsNav client component for path-aware active state; derive clients from project vendor data
 - [Phase 03-new-sections]: Design System page is a server component with static showcase and anchor navigation (per D-19, D-20, D-22); Performers route fully deleted per D-01
 - [Phase 04-modes-cleanup]: FOH chromeless mode uses fohMode boolean prop threaded from AuthenticatedLayout through AppShell to Topbar; FohClockBand integrates with existing timeclock server actions; employee ID resolved via email_address match
+- [Phase 04-modes-cleanup]: Backward-compat approach over mass consumer rewrite: ds/compat/ wrappers + deprecated compat props rather than editing 190+ files
+- [Phase 04-modes-cleanup]: Toggle as separate compat wrapper bridging event-based onChange to Switch boolean API
+- [Phase 04-modes-cleanup]: SidebarGroup/SidebarItem as real JSX components (not just types) for AppNavigation children-based API
 
 ### Pending Todos
 
@@ -103,11 +107,11 @@ None yet.
 ### Blockers/Concerns
 
 - Tailwind v3-to-v4 migration is the critical first step -- dynamic class construction patterns must be audited
-- Three concurrent UI systems (ui/, ui-v2/, new ds/) is the top risk until Phase 4 cleanup completes
+- ~~Three concurrent UI systems (ui/, ui-v2/, new ds/) is the top risk until Phase 4 cleanup completes~~ RESOLVED: ui/ and ui-v2/ deleted, single @/ds system
 - AuthenticatedLayout.tsx is historically fragile (middleware was disabled after a Vercel incident)
 
 ## Session Continuity
 
-Last session: 2026-05-19T06:41:00Z
-Stopped at: Completed 04-01-PLAN.md
+Last session: 2026-05-19T07:24:01Z
+Stopped at: Completed 04-02-PLAN.md — All phases complete
 Resume file: .planning/ROADMAP.md
