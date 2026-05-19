@@ -318,60 +318,65 @@ export default function EventDetailClient({
         onTabChange={setActiveTab}
       />
 
-      {/* Tab content */}
-      <div className={isPending ? 'opacity-60 pointer-events-none' : ''}>
-        {activeTab === 'overview' && (
-          <OverviewTab
-            event={event}
-            activeBookings={activeBookings}
-            totalSeats={totalSeats}
-            capacityPct={capacityPct}
-            estimatedRevenue={estimatedRevenue}
-          />
-        )}
+      {/* Main content + checklist sidebar */}
+      <div className="flex gap-6 items-start">
+        {/* Tab content — takes remaining space */}
+        <div className={`flex-1 min-w-0 ${isPending ? 'opacity-60 pointer-events-none' : ''}`}>
+          {activeTab === 'overview' && (
+            <OverviewTab
+              event={event}
+              activeBookings={activeBookings}
+              totalSeats={totalSeats}
+              capacityPct={capacityPct}
+              estimatedRevenue={estimatedRevenue}
+            />
+          )}
 
-        {activeTab === 'attendees' && (
-          <AttendeesTab
-            event={event}
-            visibleBookings={visibleBookings}
-            showCancelled={showCancelled}
-            onToggleCancelled={() => setShowCancelled((v) => !v)}
-            canManage={permissions.canManage}
-            newPhone={newPhone}
-            onNewPhoneChange={setNewPhone}
-            newFirstName={newFirstName}
-            onNewFirstNameChange={setNewFirstName}
-            newLastName={newLastName}
-            onNewLastNameChange={setNewLastName}
-            newSeats={newSeats}
-            onNewSeatsChange={setNewSeats}
-            onCreateBooking={handleCreateBooking}
-            editingBookingId={editingBookingId}
-            editSeatsValue={editSeatsValue}
-            onEditSeatsValueChange={setEditSeatsValue}
-            onStartEditSeats={handleStartEditSeats}
-            onSaveSeats={handleSaveSeats}
-            onCancelEdit={() => setEditingBookingId(null)}
-            onCancelBooking={setCancellingBookingId}
-            isPending={isPending}
-          />
-        )}
+          {activeTab === 'attendees' && (
+            <AttendeesTab
+              event={event}
+              visibleBookings={visibleBookings}
+              showCancelled={showCancelled}
+              onToggleCancelled={() => setShowCancelled((v) => !v)}
+              canManage={permissions.canManage}
+              newPhone={newPhone}
+              onNewPhoneChange={setNewPhone}
+              newFirstName={newFirstName}
+              onNewFirstNameChange={setNewFirstName}
+              newLastName={newLastName}
+              onNewLastNameChange={setNewLastName}
+              newSeats={newSeats}
+              onNewSeatsChange={setNewSeats}
+              onCreateBooking={handleCreateBooking}
+              editingBookingId={editingBookingId}
+              editSeatsValue={editSeatsValue}
+              onEditSeatsValueChange={setEditSeatsValue}
+              onStartEditSeats={handleStartEditSeats}
+              onSaveSeats={handleSaveSeats}
+              onCancelEdit={() => setEditingBookingId(null)}
+              onCancelBooking={setCancellingBookingId}
+              isPending={isPending}
+            />
+          )}
 
-        {activeTab === 'marketing' && (
-          <MarketingTab
-            event={event}
-            links={links}
-            onRegenerate={handleRegenerateLinks}
-            onLinkGenerated={handleLinkGenerated}
+          {activeTab === 'marketing' && (
+            <MarketingTab
+              event={event}
+              links={links}
+              onRegenerate={handleRegenerateLinks}
+              onLinkGenerated={handleLinkGenerated}
+            />
+          )}
+        </div>
+
+        {/* Checklist — persistent right panel */}
+        <div className="hidden lg:block w-80 shrink-0 sticky top-6">
+          <EventChecklistCard
+            eventId={event.id}
+            eventName={event.name}
           />
-        )}
+        </div>
       </div>
-
-      {/* Checklist — persistent across all tabs */}
-      <EventChecklistCard
-        eventId={event.id}
-        eventName={event.name}
-      />
 
       {/* Cancel confirmation dialog */}
       <ConfirmDialog
