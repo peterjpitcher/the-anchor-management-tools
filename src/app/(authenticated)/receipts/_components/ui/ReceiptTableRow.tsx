@@ -86,6 +86,13 @@ export function ReceiptTableRow({
 
   async function handleStatusUpdate(status: ReceiptTransaction['status']) {
     if (!canManageReceipts) return
+    const previousStatus = transaction.status
+    onUpdate({
+      ...transaction,
+      status,
+      files: transaction.files,
+      autoRule: transaction.autoRule,
+    }, previousStatus)
     startTransition(async () => {
       const result = await markReceiptTransaction({
         transactionId: transaction.id,
@@ -95,25 +102,22 @@ export function ReceiptTableRow({
       })
 
       if (result?.error || !result?.transaction) {
+        onUpdate({
+          ...transaction,
+          status: previousStatus,
+          files: transaction.files,
+          autoRule: transaction.autoRule,
+        }, status)
         toast.error(result?.error ?? 'Update failed')
         return
       }
 
-      // Determine if we should remove it (logic handled by parent based on filters? 
-      // Actually parent needs to decide if it stays. 
-      // But here we just notify update. Parent `onUpdate` handles the "keep or remove" logic?
-      // No, parent `onUpdate` just updates state. Parent needs to filter?
-      // In ReceiptList, we had logic to remove if it doesn't match filters.
-      // We'll assume the parent handles filtering or we pass the check.
-      // For now, just notify update.
       onUpdate({
         ...transaction,
         ...result.transaction as ReceiptTransaction,
         files: transaction.files,
         autoRule: transaction.autoRule
-      }, transaction.status)
-
-      toast.success('Status updated')
+      }, previousStatus)
     })
   }
 

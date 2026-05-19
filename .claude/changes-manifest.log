@@ -35,3 +35,10 @@
 2026-05-19T15:18:27Z|EDIT|src/app/(authenticated)/events/page.tsx|route|structure,docs
 2026-05-19T15:29:37Z|EDIT|src/app/(authenticated)/dashboard/page.tsx|route|structure,docs
 2026-05-19T15:29:45Z|EDIT|src/app/(authenticated)/dashboard/page.tsx|route|structure,docs
+2026-05-19T16:08:57Z|EDIT|src/components/features/shared/AppNavigation.tsx|component|structure
+2026-05-19T16:09:09Z|EDIT|src/components/features/shared/AppNavigation.tsx|component|structure
+2026-05-19T16:10:50Z|EDIT|src/components/features/shared/AppNavigation.tsx|component|structure
+2026-05-19T16:12:24Z|EDIT|src/app/(authenticated)/receipts/page.tsx|route|structure,docs
+2026-05-19T16:12:27Z|EDIT|src/app/(authenticated)/receipts/page.tsx|route|structure,docs
+2026-05-19T16:13:01Z|EDIT|src/app/(authenticated)/receipts/page.tsx|route|structure,docs
+2026-05-19T16:13:06Z|EDIT|src/app/(authenticated)/receipts/page.tsx|route|structure,docs

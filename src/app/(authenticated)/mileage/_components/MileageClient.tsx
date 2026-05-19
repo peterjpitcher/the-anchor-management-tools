@@ -30,7 +30,6 @@ import type { TaxYearStats } from '@/lib/mileage/hmrcRates'
 import { TripForm } from './TripForm'
 import { formatDateInLondon } from '@/lib/dateUtils'
 import { useSort } from '@/hooks/useSort'
-import { SortableHeader } from '@/ds'
 import {
   PlusIcon,
   PencilSquareIcon,
@@ -281,57 +280,15 @@ export function MileageClient({
           description="Add your first trip to start tracking mileage."
         />
       ) : (
-        <Table>
+        <Table className="[--spacing-row-h:10px]">
           <TableHeader>
             <TableRow>
-              <SortableHeader
-                label="Date"
-                column="date"
-                currentColumn={tripSort.column}
-                currentDirection={tripSort.direction}
-                onSort={toggleTripSort}
-                className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-text-muted"
-              />
-              <SortableHeader
-                label="Route"
-                column="route"
-                currentColumn={tripSort.column}
-                currentDirection={tripSort.direction}
-                onSort={toggleTripSort}
-                className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-text-muted"
-              />
-              <SortableHeader
-                label="Miles"
-                column="miles"
-                currentColumn={tripSort.column}
-                currentDirection={tripSort.direction}
-                onSort={toggleTripSort}
-                className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider text-text-muted"
-              />
-              <SortableHeader
-                label="Rate"
-                column="rate"
-                currentColumn={tripSort.column}
-                currentDirection={tripSort.direction}
-                onSort={toggleTripSort}
-                className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider text-text-muted"
-              />
-              <SortableHeader
-                label="Amount"
-                column="amount"
-                currentColumn={tripSort.column}
-                currentDirection={tripSort.direction}
-                onSort={toggleTripSort}
-                className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider text-text-muted"
-              />
-              <SortableHeader
-                label="Source"
-                column="source"
-                currentColumn={tripSort.column}
-                currentDirection={tripSort.direction}
-                onSort={toggleTripSort}
-                className="px-4 py-3 text-center text-xs font-medium uppercase tracking-wider text-text-muted"
-              />
+              <TableHead sortable sortDirection={tripSort.column === 'date' ? tripSort.direction : null} onSort={() => toggleTripSort('date')}>Date</TableHead>
+              <TableHead sortable sortDirection={tripSort.column === 'route' ? tripSort.direction : null} onSort={() => toggleTripSort('route')}>Route</TableHead>
+              <TableHead sortable sortDirection={tripSort.column === 'miles' ? tripSort.direction : null} onSort={() => toggleTripSort('miles')} align="right">Miles</TableHead>
+              <TableHead sortable sortDirection={tripSort.column === 'rate' ? tripSort.direction : null} onSort={() => toggleTripSort('rate')} align="right">Rate</TableHead>
+              <TableHead sortable sortDirection={tripSort.column === 'amount' ? tripSort.direction : null} onSort={() => toggleTripSort('amount')} align="right">Amount</TableHead>
+              <TableHead sortable sortDirection={tripSort.column === 'source' ? tripSort.direction : null} onSort={() => toggleTripSort('source')} align="center">Source</TableHead>
               {canManage && (
                 <TableHead align="right">Actions</TableHead>
               )}
