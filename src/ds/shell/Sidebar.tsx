@@ -1,5 +1,6 @@
 'use client'
 
+import { Anchor } from 'lucide-react'
 import { SidebarNav } from './SidebarNav'
 import { UserFooter } from './UserFooter'
 import { Icon } from '@/ds/icons'
@@ -20,11 +21,12 @@ export function Sidebar({ navGroups, userName, userRole, onSignOut, isSigningOut
   return (
     <div className="ds-sidebar bg-sidebar-bg flex flex-col hidden md:flex">
       {/* Logo area — matches topbar height */}
-      <div className="flex items-center justify-center h-[var(--spacing-topbar)] shrink-0 px-3">
+      <div className="flex items-center justify-center min-h-[var(--spacing-topbar)] shrink-0 px-3 py-2">
+        <Anchor className="ds-logo-icon h-7 w-7 text-white shrink-0" />
         <img
           src="/logo.png"
           alt="The Anchor"
-          className="h-8 w-auto shrink-0"
+          className="ds-logo-full w-full px-4"
         />
       </div>
 

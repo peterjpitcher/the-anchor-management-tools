@@ -7,6 +7,7 @@ import { formatDistanceToNow } from 'date-fns'
 import {
   PageHeader,
   Card,
+  CardBody,
   CardHeader,
   SectionNav,
 } from '@/ds'
@@ -456,10 +457,11 @@ export function MessagesClient() {
       )}
 
       {/* 3-panel layout: 320px conversation list + 1fr thread + 280px contact sidebar */}
-      <Card className="h-[560px] overflow-hidden">
+      <Card className="h-[calc(100vh-14rem)] min-h-[400px] overflow-hidden">
+        <CardBody className="p-0 h-full">
         <div className="grid grid-cols-[320px_1fr_280px] h-full">
           {/* ============ LEFT PANEL: Conversation List ============ */}
-          <div className="flex flex-col border-r border-border h-full">
+          <div className="flex flex-col border-r border-border h-full min-h-0">
             {/* Filter + Search */}
             <div className="p-3 border-b border-border space-y-2">
               <SectionNav items={filterItems} activeId={filter} onSelect={(id) => setFilter(id as ConversationFilter)} />
@@ -530,7 +532,7 @@ export function MessagesClient() {
           </div>
 
           {/* ============ MIDDLE PANEL: Message Thread ============ */}
-          <div className="flex flex-col h-full">
+          <div className="flex flex-col h-full min-h-0">
             {!selectedCustomerId || !selectedCustomer ? (
               <div className="flex h-full items-center justify-center p-6">
                 <Empty
@@ -719,6 +721,7 @@ export function MessagesClient() {
             )}
           </div>
         </div>
+        </CardBody>
       </Card>
     </div>
   )

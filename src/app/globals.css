@@ -427,6 +427,21 @@ nav[aria-label="Mobile navigation"],
   max-width: 200px;
   transition-delay: 60ms;
 }
+/* Logo: show icon when collapsed, full logo when expanded */
+.ds-sidebar .ds-logo-full {
+  display: none;
+}
+.ds-sidebar .ds-logo-icon {
+  display: block;
+}
+.ds-sidebar:hover .ds-logo-full,
+.ds-sidebar:focus-within .ds-logo-full {
+  display: block;
+}
+.ds-sidebar:hover .ds-logo-icon,
+.ds-sidebar:focus-within .ds-logo-icon {
+  display: none;
+}
 /* Hide group dividers when collapsed */
 .ds-sidebar .ds-group-divider {
   opacity: 0;

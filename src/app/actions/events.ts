@@ -635,10 +635,10 @@ export async function getEvents(options?: {
   orderAsc?: boolean;
   dateFrom?: string;
   dateTo?: string;
-}): Promise<{ data?: Event[], pagination?: { totalCount: number, currentPage: number, pageSize: number, totalPages: number }, error?: string }> {
+}): Promise<{ data?: (Event & { booked_count: number; link_clicks: number })[], pagination?: { totalCount: number, currentPage: number, pageSize: number, totalPages: number }, error?: string }> {
   try {
     const { events, pagination } = await EventService.getEvents(options);
-    return { data: events, pagination };
+    return { data: events as (Event & { booked_count: number; link_clicks: number })[], pagination };
   } catch (error: unknown) {
     logger.error('Error fetching events', {
       error: error instanceof Error ? error : new Error(String(error)),

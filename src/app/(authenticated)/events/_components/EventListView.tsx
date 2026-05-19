@@ -109,6 +109,7 @@ export function EventListView({
             <TableHead>Date</TableHead>
             <TableHead>Category</TableHead>
             <TableHead>Booked</TableHead>
+            <TableHead align="right">Clicks</TableHead>
             <TableHead align="right">Price</TableHead>
             <TableHead>Status</TableHead>
             <TableHead className="w-10" />
@@ -117,7 +118,7 @@ export function EventListView({
         <TableBody>
           {events.length === 0 ? (
             <tr>
-              <td colSpan={8} className="px-4 py-12 text-center text-sm text-text-muted">
+              <td colSpan={9} className="px-4 py-12 text-center text-sm text-text-muted">
                 No events found
               </td>
             </tr>
@@ -126,6 +127,7 @@ export function EventListView({
               const capacity = event.capacity ?? 0
               const booked = (event as Event & { booked_count?: number }).booked_count ?? 0
               const bookedRatio = capacity > 0 ? Math.round((booked / capacity) * 100) : 0
+              const linkClicks = (event as Event & { link_clicks?: number }).link_clicks ?? 0
               return (
                 <TableRow key={event.id} onClick={() => onEventClick(event)}>
                   <TableCell>
@@ -157,6 +159,9 @@ export function EventListView({
                       </span>
                       {capacity > 0 && <BarMini value={bookedRatio} />}
                     </div>
+                  </TableCell>
+                  <TableCell align="right">
+                    <span className="text-xs text-text-muted">{linkClicks > 0 ? linkClicks.toLocaleString() : '-'}</span>
                   </TableCell>
                   <TableCell align="right">
                     {formatCurrency(event.price)}

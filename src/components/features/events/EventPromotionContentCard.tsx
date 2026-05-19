@@ -260,7 +260,7 @@ export function EventPromotionContentCard({
   const selectedTypeMeta = CONTENT_TYPES.find((item) => item.value === contentType)
 
   return (
-    <Card padding="lg" className="space-y-6">
+    <Card className="p-6 space-y-6">
       <div className="space-y-2">
         <h2 className="text-lg font-semibold text-gray-900">AI Event Copy Builder</h2>
         <p className="text-sm text-gray-500">

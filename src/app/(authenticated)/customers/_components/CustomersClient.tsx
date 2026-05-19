@@ -442,7 +442,7 @@ export default function CustomersClient({
               <TableHeader>
                 <TableRow>
                   <TableHead className="w-9">
-                    <Checkbox label="Select all" checked={selected.size === customers.length && customers.length > 0} onChange={toggleAll} />
+                    <Checkbox aria-label="Select all" checked={selected.size === customers.length && customers.length > 0} onChange={toggleAll} />
                   </TableHead>
                   <TableHead>Customer</TableHead>
                   <TableHead>Labels</TableHead>
@@ -455,7 +455,7 @@ export default function CustomersClient({
                 {customers.map(customer => (
                   <TableRow key={customer.id}>
                     <TableCell>
-                      <Checkbox label="Select customer" checked={selected.has(customer.id)} onChange={() => toggleSel(customer.id)} />
+                      <Checkbox aria-label="Select customer" checked={selected.has(customer.id)} onChange={() => toggleSel(customer.id)} />
                     </TableCell>
                     <TableCell>
                       <div className="flex items-center gap-2.5">

@@ -15,6 +15,8 @@ export interface EventMarketingLink {
   description?: string;
   qrCode?: string;
   updatedAt?: string;
+  clickCount: number;
+  lastClickedAt?: string;
 }
 
 interface ExistingShortLink {
@@ -177,7 +179,7 @@ export class EventMarketingService {
 
     const { data: links, error } = await supabase
       .from('short_links')
-      .select('id, short_code, destination_url, metadata, updated_at')
+      .select('id, short_code, destination_url, metadata, updated_at, click_count, last_clicked_at')
       .contains('metadata', { event_id: eventId });
 
     if (error) {
@@ -204,6 +206,8 @@ export class EventMarketingService {
           destinationUrl: link.destination_url,
           utm: link.metadata?.utm || {},
           updatedAt: link.updated_at || undefined,
+          clickCount: (link as Record<string, unknown>).click_count as number ?? 0,
+          lastClickedAt: (link as Record<string, unknown>).last_clicked_at as string ?? undefined,
         } satisfies EventMarketingLink;
       })
       .filter(Boolean) as EventMarketingLink[];
@@ -291,6 +295,7 @@ export class EventMarketingService {
       destinationUrl: record.destination_url,
       utm: record.metadata?.utm || {},
       updatedAt: record.updated_at || undefined,
+      clickCount: 0,
     };
 
     if (channelConfig.type === 'print') {

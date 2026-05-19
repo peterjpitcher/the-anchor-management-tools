@@ -148,18 +148,19 @@ export default async function DashboardPage() {
     })),
   ]
 
-  // --- Revenue Data (from cashing-up daily sessions, fallback to weekly totals) ---
-  const revenueData: { day: string; amount: number }[] = []
+  // --- Revenue Data (last 7 days only; full 14-day session list used for stats) ---
+  const allSessions = snapshot.cashingUp.permitted ? snapshot.cashingUp.dailySessions : []
+  const recentSessions = allSessions.slice(-7) // last 7 days for the chart
+  const priorSessions = allSessions.slice(0, Math.max(allSessions.length - 7, 0)) // prior days for comparison
+
+  const revenueData: { day: string; amount: number; target: number }[] = []
   if (snapshot.cashingUp.permitted) {
-    if (snapshot.cashingUp.dailySessions.length > 0) {
-      for (const s of snapshot.cashingUp.dailySessions) {
+    if (recentSessions.length > 0) {
+      for (const s of recentSessions) {
         const d = new Date(s.date + 'T12:00:00')
         const label = d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', timeZone: LONDON_TIMEZONE })
-        revenueData.push({ day: label, amount: s.amount })
+        revenueData.push({ day: label, amount: s.amount, target: s.target })
       }
-    } else if (snapshot.cashingUp.thisWeekTotal > 0 || snapshot.cashingUp.lastWeekTotal > 0) {
-      revenueData.push({ day: 'Last week', amount: snapshot.cashingUp.lastWeekTotal })
-      revenueData.push({ day: 'This week', amount: snapshot.cashingUp.thisWeekTotal })
     }
   }
 
@@ -322,23 +323,34 @@ export default async function DashboardPage() {
           />
         }
         revenueData={revenueData}
-        revenueSummary={snapshot.cashingUp.permitted
-          ? {
-              avgDaily: currencyFormatter.format(
-                snapshot.cashingUp.thisWeekTotal / Math.max(snapshot.cashingUp.sessionsSubmittedCount, 1)
-              ),
-              completedThrough: snapshot.cashingUp.completedThrough ?? '--',
-              vsLastWeek: snapshot.cashingUp.lastWeekTotal > 0
-                ? `${snapshot.cashingUp.thisWeekTotal >= snapshot.cashingUp.lastWeekTotal ? '+' : ''}${(
-                    ((snapshot.cashingUp.thisWeekTotal - snapshot.cashingUp.lastWeekTotal) / snapshot.cashingUp.lastWeekTotal) * 100
-                  ).toFixed(1)}%`
-                : '--',
-              lastYearSameWeek: snapshot.cashingUp.lastYearTotal > 0
-                ? currencyFormatter.format(snapshot.cashingUp.lastYearTotal)
-                : '--',
-            }
-          : { avgDaily: '--', completedThrough: '--', vsLastWeek: '--', lastYearSameWeek: '--' }
-        }
+        revenueSummary={(() => {
+          if (!snapshot.cashingUp.permitted) return { avgDaily: '--', completedThrough: '--', vsLastWeek: '--', lastYearSameWeek: '--' }
+
+          // Average daily — from the displayed 7 days
+          const daysWithData = revenueData.filter(d => d.amount > 0)
+          const totalDisplayed = daysWithData.reduce((sum, d) => sum + d.amount, 0)
+          const avgDaily = daysWithData.length > 0
+            ? currencyFormatter.format(totalDisplayed / daysWithData.length)
+            : '£0'
+          const completedThrough = daysWithData.length > 0
+            ? daysWithData[daysWithData.length - 1].day
+            : '--'
+
+          // Week vs last — recent 7 days vs prior 7 days from the 14-day session list
+          const recentSum = recentSessions.reduce((sum, s) => sum + s.amount, 0)
+          const priorSum = priorSessions.reduce((sum, s) => sum + s.amount, 0)
+          const vsLastWeek = priorSum > 0
+            ? `${recentSum >= priorSum ? '+' : ''}${(((recentSum - priorSum) / priorSum) * 100).toFixed(1)}%`
+            : '--'
+
+          // Last year same week — ISO week number match (weekdays align)
+          const lastYearTotal = snapshot.cashingUp.lastYearTotal
+          const lastYearSameWeek = lastYearTotal > 0 && recentSum > 0
+            ? `${recentSum >= lastYearTotal ? '+' : ''}${(((recentSum - lastYearTotal) / lastYearTotal) * 100).toFixed(1)}%`
+            : '--'
+
+          return { avgDaily, completedThrough, vsLastWeek, lastYearSameWeek }
+        })()}
         todayTitle={`Today at The Anchor`}
         todayItems={todayItems}
         todayMeta={{
