@@ -28,6 +28,14 @@ interface CardProps {
 }
 
 export function Card({ children, className, title, subtitle, header, id: _id, onClick, variant: _variant, padding: _padding, interactive: _interactive }: CardProps) {
+  const hasLegacyHeader = Boolean(header) || Boolean(title)
+  const usesSubcomponents = React.Children.toArray(children).some(
+    (child) =>
+      React.isValidElement(child) &&
+      (child.type === CardBody || child.type === CardHeader || child.type === CardFooter),
+  )
+  const shouldAutoPad = !usesSubcomponents
+
   return (
     <div
       className={cn('bg-surface border border-border rounded-lg shadow-sm overflow-hidden', onClick && 'cursor-pointer', className)}
@@ -35,9 +43,17 @@ export function Card({ children, className, title, subtitle, header, id: _id, on
       role={onClick ? 'button' : undefined}
       tabIndex={onClick ? 0 : undefined}
     >
-      {header}
+      {header && (
+        <div className="px-[var(--spacing-pad-card)] py-3 border-b border-border">
+          {header}
+        </div>
+      )}
       {title && <CardHeader title={title} subtitle={subtitle} />}
-      {children}
+      {shouldAutoPad ? (
+        <div className="p-[var(--spacing-pad-card)]">{children}</div>
+      ) : (
+        children
+      )}
     </div>
   )
 }

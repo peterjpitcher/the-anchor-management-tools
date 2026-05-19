@@ -1,6 +1,5 @@
 'use client'
 
-import { useState } from 'react'
 import Link from 'next/link'
 import {
   PageHeader,
@@ -13,7 +12,6 @@ import {
   Avatar,
   AvatarStack,
   Alert,
-  Segmented,
   Empty,
   ProgressBar,
   Sparkline,
@@ -86,8 +84,9 @@ interface QuickAction {
 interface DashboardProps {
   subtitle: string
   stats: StatItem[]
+  calendar?: React.ReactNode
   revenueData: RevenueData[]
-  revenueSummary: { avgDaily: string; bestDay: string; vsLastWeek: string; forecast: string }
+  revenueSummary: { avgDaily: string; completedThrough: string; vsLastWeek: string; lastYearSameWeek: string }
   todayTitle: string
   todayItems: TodayItem[]
   todayMeta: { openTime: string; onRota: string[]; bookings: string; covers: string }
@@ -105,6 +104,7 @@ interface DashboardProps {
 export default function DashboardClient({
   subtitle,
   stats,
+  calendar,
   revenueData,
   revenueSummary,
   todayTitle,
@@ -118,8 +118,6 @@ export default function DashboardClient({
   alerts,
   refreshAction,
 }: DashboardProps) {
-  const [rangeView, setRangeView] = useState('week')
-
   return (
     <div className="flex flex-col gap-5">
       {/* Page Header */}
@@ -128,22 +126,11 @@ export default function DashboardClient({
         title="Dashboard"
         subtitle={subtitle}
         actions={
-          <div className="flex items-center gap-2">
-            <Segmented
-              options={[
-                { id: 'today', label: 'Today' },
-                { id: 'week', label: 'This week' },
-                { id: 'month', label: 'Month' },
-              ]}
-              value={rangeView}
-              onChange={setRangeView}
-            />
-            <form action={refreshAction}>
-              <Button type="submit" variant="secondary" size="sm">
-                Refresh
-              </Button>
-            </form>
-          </div>
+          <form action={refreshAction}>
+            <Button type="submit" variant="secondary" size="sm">
+              Refresh
+            </Button>
+          </form>
         }
       />
 
@@ -170,32 +157,41 @@ export default function DashboardClient({
         ))}
       </div>
 
+      {/* Calendar */}
+      {calendar}
+
       {/* Revenue + Today row */}
       <div className="grid grid-cols-3 gap-4">
         {/* Revenue Card */}
         <Card className="col-span-2">
           <CardHeader
-            title="Revenue -- last 14 days"
-            subtitle="Net takings across bar, kitchen and events"
+            title="Revenue"
+            subtitle="Cashing up totals"
           />
           <CardBody>
-            <RevenueChart data={revenueData} />
+            {revenueData.length > 0 ? (
+              <RevenueChart data={revenueData} />
+            ) : (
+              <div className="h-[160px] flex items-center justify-center text-sm text-text-muted">
+                No cashing up data for this period
+              </div>
+            )}
             <div className="flex justify-between mt-3 pt-3 border-t border-border">
               <div>
                 <div className="text-[11px] text-text-muted">Average daily</div>
                 <div className="text-base font-semibold text-text-strong tabular-nums">{revenueSummary.avgDaily}</div>
               </div>
               <div>
-                <div className="text-[11px] text-text-muted">Best day</div>
-                <div className="text-base font-semibold text-text-strong tabular-nums">{revenueSummary.bestDay}</div>
+                <div className="text-[11px] text-text-muted">Completed through</div>
+                <div className="text-base font-semibold text-text-strong tabular-nums">{revenueSummary.completedThrough}</div>
               </div>
               <div>
                 <div className="text-[11px] text-text-muted">Week vs last</div>
-                <div className="text-base tabular-nums text-success">{revenueSummary.vsLastWeek}</div>
+                <div className={`text-base tabular-nums ${revenueSummary.vsLastWeek.startsWith('-') ? 'text-error' : revenueSummary.vsLastWeek === '--' ? 'text-text-muted' : 'text-success'}`}>{revenueSummary.vsLastWeek}</div>
               </div>
               <div>
-                <div className="text-[11px] text-text-muted">Forecast (4 wks)</div>
-                <div className="text-base font-semibold text-text-strong tabular-nums">{revenueSummary.forecast}</div>
+                <div className="text-[11px] text-text-muted">Last year same week</div>
+                <div className="text-base font-semibold text-text-strong tabular-nums">{revenueSummary.lastYearSameWeek}</div>
               </div>
             </div>
           </CardBody>

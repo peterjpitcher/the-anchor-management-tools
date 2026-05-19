@@ -171,11 +171,6 @@ export function ProjectsOverview({ projects, entries: initialEntries, workTypes 
     [entries],
   )
 
-  const recentProjects = useMemo(
-    () => projects.slice(0, 5),
-    [projects],
-  )
-
   const statusTone = (status: string): 'success' | 'warning' | 'info' | 'neutral' => {
     switch (status) {
       case 'active': return 'success'
@@ -198,17 +193,17 @@ export function ProjectsOverview({ projects, entries: initialEntries, workTypes 
 
       {/* Stats row */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <Stat label="Active Projects" value={String(activeProjects.length)} icon="briefcase" />
-        <Stat label="Total Hours" value={totalHours.toFixed(1)} icon="clock" />
-        <Stat label="Revenue This Month" value={formatCurrency(revenueThisMonth)} icon="pound" />
-        <Stat label="Unbilled Entries" value={String(outstandingCount)} icon="clock" />
+        <Stat label="Active Projects" value={String(activeProjects.length)} icon={<Icon name="briefcase" size={20} />} />
+        <Stat label="Total Hours" value={totalHours.toFixed(1)} icon={<Icon name="clock" size={20} />} />
+        <Stat label="Revenue This Month" value={formatCurrency(revenueThisMonth)} icon={<Icon name="pound" size={20} />} />
+        <Stat label="Unbilled Entries" value={String(outstandingCount)} icon={<Icon name="clock" size={20} />} />
       </div>
 
       {/* Recent Projects */}
       <Card>
-        <CardHeader title="Recent Projects" />
-        {recentProjects.length === 0 ? (
-          <Empty title="No projects" description="Create your first project to get started." />
+        <CardHeader title="Active Projects" />
+        {activeProjects.length === 0 ? (
+          <Empty title="No active projects" description="No projects are currently active." />
         ) : (
           <Table>
             <TableHeader>
@@ -221,7 +216,7 @@ export function ProjectsOverview({ projects, entries: initialEntries, workTypes 
               </TableRow>
             </TableHeader>
             <TableBody>
-              {recentProjects.map((project) => {
+              {activeProjects.map((project) => {
                 const budgetHours = Number(project.budget_hours || 0)
                 const usedHours = Number(project.total_hours_used || 0)
                 const budgetMoney = Number(project.budget_ex_vat || 0)

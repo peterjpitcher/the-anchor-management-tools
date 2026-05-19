@@ -12,7 +12,7 @@ import { markMessagesAsRead } from '@/app/actions/messageActions'
 import { updateCustomer as updateCustomerAction, updateCustomerNotes } from '@/app/actions/customers'
 import { getCustomerLabelAssignments, getCustomerLabels, type CustomerLabel, type CustomerLabelAssignment } from '@/app/actions/customer-labels'
 import { PageLayout } from '@/ds'
-import { Card, CardDescription, CardTitle } from '@/ds'
+import { Card, CardBody, CardDescription, CardTitle } from '@/ds'
 import { Alert } from '@/ds'
 import { Button } from '@/ds'
 import { SearchInput } from '@/ds'
@@ -1025,21 +1025,23 @@ export default function CustomerViewPage() {
 
           <div className="space-y-6">
             <Card>
-              <div className="flex items-center justify-between">
-                <div className="flex items-center space-x-3">
-                  <ChatBubbleLeftRightIcon className="h-5 w-5 text-gray-400" />
-                  <span
-                    className={`text-sm font-medium ${customer.sms_opt_in !== false ? 'text-green-600' : 'text-red-600'}`}
-                  >
-                    SMS {customer.sms_opt_in !== false ? 'Active' : 'Inactive'}
-                  </span>
+              <CardBody>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-3">
+                    <ChatBubbleLeftRightIcon className="h-5 w-5 text-gray-400" />
+                    <span
+                      className={`text-sm font-medium ${customer.sms_opt_in !== false ? 'text-green-600' : 'text-red-600'}`}
+                    >
+                      SMS {customer.sms_opt_in !== false ? 'Active' : 'Inactive'}
+                    </span>
+                  </div>
+                  {customer.sms_delivery_failures && customer.sms_delivery_failures > 0 && (
+                    <span className="text-sm text-orange-600">
+                      {customer.sms_delivery_failures} failed deliveries
+                    </span>
+                  )}
                 </div>
-                {customer.sms_delivery_failures && customer.sms_delivery_failures > 0 && (
-                  <span className="text-sm text-orange-600">
-                    {customer.sms_delivery_failures} failed deliveries
-                  </span>
-                )}
-              </div>
+              </CardBody>
             </Card>
 
             {hasPermission('customers', 'manage') && (

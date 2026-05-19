@@ -181,6 +181,11 @@ type LoyaltySnapshot = {
   permitted: boolean
 }
 
+type CashingUpDailySession = {
+  date: string
+  amount: number
+}
+
 type CashingUpSnapshot = {
   permitted: boolean
   thisWeekTotal: number
@@ -189,6 +194,7 @@ type CashingUpSnapshot = {
   lastYearTotal: number
   sessionsSubmittedCount: number
   completedThrough: string | null
+  dailySessions: CashingUpDailySession[]
   error?: string
 }
 
@@ -205,6 +211,12 @@ type SystemHealthSnapshot = {
   permitted: boolean
   smsFailures24h: number
   failedCronJobs24h: number
+  error?: string
+}
+
+type RotaTodaySnapshot = {
+  permitted: boolean
+  staffOnRota: string[]
   error?: string
 }
 
@@ -233,6 +245,7 @@ export type DashboardSnapshot = {
   cashingUp: CashingUpSnapshot
   tableBookings: TableBookingsSnapshot
   systemHealth: SystemHealthSnapshot
+  rotaToday: RotaTodaySnapshot
   /** B4: Total revenue from private bookings today (confirmed/completed) */
   revenueToday: number
   /** B3: Pipeline value of upcoming confirmed + draft private bookings */
@@ -423,6 +436,7 @@ async function fetchDashboardSnapshotImpl(userId: string): Promise<DashboardSnap
     lastYearTotal: 0,
     sessionsSubmittedCount: 0,
     completedThrough: null,
+    dailySessions: [],
   }
 
     const tableBookings: TableBookingsSnapshot = {
@@ -437,6 +451,11 @@ async function fetchDashboardSnapshotImpl(userId: string): Promise<DashboardSnap
       permitted: hasModuleAccess(permissionsMap, 'settings') || hasModuleAccess(permissionsMap, 'users'),
       smsFailures24h: 0,
       failedCronJobs24h: 0,
+    }
+
+    const rotaToday: RotaTodaySnapshot = {
+      permitted: hasModuleAccess(permissionsMap, 'rota'),
+      staffOnRota: [],
     }
 
     // B4 / B3 analytics — only computed when user has private_bookings access
@@ -503,7 +522,7 @@ async function fetchDashboardSnapshotImpl(userId: string): Promise<DashboardSnap
           // determine the date ranges for comparisons.
           const [lastWeekRes, lastYearRes, targetsRes] = await Promise.all([
             supabase.from('cashup_sessions')
-              .select('total_counted_amount')
+              .select('total_counted_amount, session_date')
               .eq('site_id', site.id)
               .gte('session_date', lastWeekStartStr)
               .lte('session_date', lastWeekEndStr),
@@ -526,6 +545,23 @@ async function fetchDashboardSnapshotImpl(userId: string): Promise<DashboardSnap
 
           // Count submitted (only completed range)
           cashingUp.sessionsSubmittedCount = thisWeekCompleted.filter(s => s.status !== 'draft').length
+
+          // Build daily session data for the revenue chart — last 14 days up to most recent submission
+          const fourteenDaysAgo = format(addDays(today, -13), 'yyyy-MM-dd')
+          const { data: recentSessions } = await supabase.from('cashup_sessions')
+            .select('total_counted_amount, session_date')
+            .eq('site_id', site.id)
+            .gte('session_date', fourteenDaysAgo)
+            .lte('session_date', todayStr)
+            .neq('status', 'draft')
+            .order('session_date', { ascending: true })
+
+          cashingUp.dailySessions = (recentSessions ?? [])
+            .filter(s => s.session_date)
+            .map(s => ({
+              date: s.session_date as string,
+              amount: Number(s.total_counted_amount || 0),
+            }))
 
           let targetSum = 0
           if (completedDaysThisWeek > 0) {
@@ -630,7 +666,7 @@ async function fetchDashboardSnapshotImpl(userId: string): Promise<DashboardSnap
               .gte('date', todayIso)
               .order('date', { ascending: true })
               .order('time', { ascending: true })
-              .range(0, 24),
+              .range(0, 199),
             supabase
               .from('events')
               .select(
@@ -647,7 +683,7 @@ async function fetchDashboardSnapshotImpl(userId: string): Promise<DashboardSnap
               .lt('date', todayIso)
               .order('date', { ascending: false })
               .order('time', { ascending: false })
-              .range(0, 24),
+              .range(0, 199),
           ])
 
           if (upcomingResult.error) throw upcomingResult.error
@@ -853,7 +889,7 @@ async function fetchDashboardSnapshotImpl(userId: string): Promise<DashboardSnap
           const [upcomingPb, pastPb] = await Promise.all([
             PrivateBookingService.getBookings({
               fromDate: todayIso,
-              limit: 20,
+              limit: 200,
               useAdmin: true,
             }),
             PrivateBookingService.getBookings({
@@ -937,7 +973,7 @@ async function fetchDashboardSnapshotImpl(userId: string): Promise<DashboardSnap
               .gte('start_at', todayIso) // Changed from nowIso to todayIso
               .in('status', ['pending_payment', 'confirmed'])
               .order('start_at', { ascending: true })
-              .range(0, 19),
+              .range(0, 199),
             supabase
               .from('parking_bookings')
               .select(
@@ -1344,8 +1380,34 @@ async function fetchDashboardSnapshotImpl(userId: string): Promise<DashboardSnap
         }
       })() : Promise.resolve(),
 
-      // Ensure all items in Promise.allSettled are followed by a comma,
-      // and the final closing parenthesis and bracket match the opening ones.
+      rotaToday.permitted ? (async () => {
+        try {
+          const { data: shifts, error: rotaErr } = await supabase
+            .from('rota_shifts')
+            .select('employee_id')
+            .eq('shift_date', todayIso)
+            .eq('status', 'scheduled')
+            .eq('is_open_shift', false)
+            .not('employee_id', 'is', null)
+
+          if (rotaErr) throw rotaErr
+
+          const empIds = [...new Set((shifts ?? []).map((s: any) => s.employee_id as string))]
+          if (empIds.length > 0) {
+            const { data: emps } = await supabase
+              .from('employees')
+              .select('employee_id, first_name')
+              .in('employee_id', empIds)
+
+            rotaToday.staffOnRota = (emps ?? [])
+              .map((e: any) => e.first_name as string)
+              .filter(Boolean)
+          }
+        } catch (error) {
+          console.error('Failed to load rota today:', error)
+          rotaToday.error = 'Failed to load rota'
+        }
+      })() : Promise.resolve(),
     ])
 
     const profile: ProfileSnapshot = {
@@ -1373,6 +1435,7 @@ async function fetchDashboardSnapshotImpl(userId: string): Promise<DashboardSnap
       cashingUp,
       tableBookings,
       systemHealth,
+      rotaToday,
       revenueToday,
       bookingPipelineValue,
     }

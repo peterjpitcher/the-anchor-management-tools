@@ -20,6 +20,7 @@ import {
   IconButton,
   toast,
 } from '@/ds'
+import { Icon } from '@/ds/icons'
 import { usePermissions } from '@/contexts/PermissionContext'
 import { updateProjectStatus, deleteProject } from '@/app/actions/oj-projects/projects'
 import { deleteEntry } from '@/app/actions/oj-projects/entries'
@@ -167,7 +168,7 @@ export function ProjectDetailClient({
       <Button
         variant="ghost"
         size="sm"
-        icon="chevronLeft"
+        icon={<Icon name="chevronLeft" size={16} />}
         onClick={() => router.push('/oj-projects/projects')}
       >
         Back to Projects
@@ -310,7 +311,7 @@ export function ProjectDetailClient({
                         <TableCell>
                           {entry.status === 'unbilled' && canDelete && (
                             <IconButton
-                              icon="trash"
+                              icon={<Icon name="trash" size={16} />}
                               size="sm"
                               label="Delete"
                               onClick={() => setDeleteEntryId(entry.id)}
@@ -358,7 +359,7 @@ export function ProjectDetailClient({
                     </div>
                     {canEdit && (
                       <IconButton
-                        icon="trash"
+                        icon={<Icon name="trash" size={16} />}
                         size="sm"
                         label="Remove"
                         onClick={() => handleRemoveContact(tc.id)}
