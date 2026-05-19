@@ -347,18 +347,16 @@ export function EventDrawer({ open, onClose, event, categories, onSave }: EventD
           {seoContent && (
             <Textarea
               value={seoContent}
-              onChange={() => {}}
+              readOnly
               rows={6}
-              disabled
               className="mb-2"
             />
           )}
           {promoContent && (
             <Textarea
               value={promoContent}
-              onChange={() => {}}
+              readOnly
               rows={4}
-              disabled
             />
           )}
         </section>

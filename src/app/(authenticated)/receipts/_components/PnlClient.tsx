@@ -4,7 +4,7 @@ import { useMemo, useState, useTransition, useRef, ChangeEvent } from 'react'
 import { PNL_METRICS, PNL_TIMEFRAMES, MANUAL_METRIC_KEYS } from '@/lib/pnl/constants'
 import type { PnlDashboardData, PnlTimeframeKey } from '@/app/actions/pnl'
 import { savePlManualActualsAction, savePlTargetsAction } from '@/app/actions/pnl'
-import { Button, Input, toast, Spinner, Card } from '@/ds'
+import { Button, Input, toast, Spinner, Card, Select } from '@/ds'
 import { DocumentArrowDownIcon } from '@heroicons/react/24/outline'
 import clsx from 'clsx'
 
@@ -282,18 +282,14 @@ export default function PnlClient({ initialData, canExport = false }: Props) {
   const renderTimeframeSelector = () => (
     <div className="flex flex-wrap items-center gap-3">
       <label className="text-sm font-medium text-gray-700" htmlFor="pnl-timeframe">View timeframe</label>
-      <select
+      <Select
         id="pnl-timeframe"
-        className="rounded-md border border-gray-300 px-3 py-1 text-sm text-gray-900 shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-emerald-500"
         value={selectedTimeframe}
         onChange={(event: ChangeEvent<HTMLSelectElement>) =>
           setSelectedTimeframe(event.target.value as PnlTimeframeKey)
         }
-      >
-        {PNL_TIMEFRAMES.map((tf) => (
-          <option key={tf.key} value={tf.key}>{tf.label}</option>
-        ))}
-      </select>
+        options={PNL_TIMEFRAMES.map((tf) => ({ value: tf.key, label: tf.label }))}
+      />
     </div>
   )
 

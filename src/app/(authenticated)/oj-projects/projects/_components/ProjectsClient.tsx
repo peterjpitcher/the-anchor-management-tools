@@ -262,8 +262,8 @@ export function ProjectsClient({ initialProjects }: ProjectsClientProps): React.
                             tone={progress > 90 ? 'danger' : 'primary'}
                           />
                           <span className="text-xs text-text-muted">
-                            {budgetHours > 0
-                              ? `${formatCurrency(spentMoney)} / ${formatCurrency(budgetMoney > 0 ? budgetMoney : usedHours * 75)}`
+                            {budgetHours > 0 && budgetMoney === 0
+                              ? `${usedHours.toFixed(1)}h / ${budgetHours.toFixed(1)}h`
                               : `${formatCurrency(spentMoney)} / ${formatCurrency(budgetMoney)}`}
                           </span>
                         </div>
@@ -320,16 +320,16 @@ export function ProjectsClient({ initialProjects }: ProjectsClientProps): React.
           </Field>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Field label="Status">
-              <select
+              <Select
                 value={form.status}
                 onChange={(e) => setForm({ ...form, status: e.target.value })}
-                className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm"
-              >
-                <option value="active">Active</option>
-                <option value="paused">Paused</option>
-                <option value="completed">Completed</option>
-                <option value="archived">Archived</option>
-              </select>
+                options={[
+                  { label: 'Active', value: 'active' },
+                  { label: 'Paused', value: 'paused' },
+                  { label: 'Completed', value: 'completed' },
+                  { label: 'Archived', value: 'archived' },
+                ]}
+              />
             </Field>
             <Field label="Deadline">
               <Input

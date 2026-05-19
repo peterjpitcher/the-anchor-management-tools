@@ -8,6 +8,7 @@ import {
   Tabs,
   Card,
   CardHeader,
+  CardBody,
   Table,
   TableHeader,
   TableBody,
@@ -28,6 +29,7 @@ import {
   Dropdown,
   DropdownItem,
 } from '@/ds'
+import { Icon } from '@/ds/icons'
 import type { InvoiceWithDetails, InvoiceStatus } from '@/types/invoices'
 import { usePermissions } from '@/contexts/PermissionContext'
 import { toast } from '@/ds'
@@ -339,7 +341,7 @@ export default function InvoicesClient({
       {/* Main table card */}
       <Card>
         {/* Search / filter bar */}
-        <div className="flex flex-col gap-3 border-b border-border p-4 sm:flex-row sm:items-center">
+        <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center">
           <SearchInput
             value={searchTerm}
             onChange={setSearchTerm}
@@ -362,7 +364,7 @@ export default function InvoicesClient({
             options={STATUS_OPTIONS}
             className="sm:w-40"
           />
-        </div>
+        </CardHeader>
 
         {/* Date range / export */}
         <div className="border-b border-border bg-surface-2 px-4 py-3">
@@ -401,15 +403,17 @@ export default function InvoicesClient({
 
         {/* Table */}
         {initialInvoices.length === 0 ? (
-          <Empty
-            title={searchTerm || vendorSearchTerm ? 'No invoices match your filters.' : 'No invoices found.'}
-            description="Try adjusting your filters or create a new invoice."
-            action={
-              resolvedPermissions.canCreate ? (
-                <Button variant="primary" onClick={() => router.push('/invoices/new')}>New Invoice</Button>
-              ) : undefined
-            }
-          />
+          <CardBody>
+            <Empty
+              title={searchTerm || vendorSearchTerm ? 'No invoices match your filters.' : 'No invoices found.'}
+              description="Try adjusting your filters or create a new invoice."
+              action={
+                resolvedPermissions.canCreate ? (
+                  <Button variant="primary" onClick={() => router.push('/invoices/new')}>New Invoice</Button>
+                ) : undefined
+              }
+            />
+          </CardBody>
         ) : (
           <>
             {/* Desktop table */}
@@ -464,7 +468,7 @@ export default function InvoicesClient({
                       <TableCell align="right">
                         <div className="flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
                           <IconButton
-                            icon={<DownloadIcon />}
+                            icon={<Icon name="download" size={16} />}
                             size="sm"
                             label={`Download invoice ${inv.invoice_number}`}
                             disabled={downloadingInvoiceId === inv.id}
@@ -507,13 +511,3 @@ export default function InvoicesClient({
   )
 }
 
-// Simple inline SVG icon for download button
-function DownloadIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-      <polyline points="7 10 12 15 17 10" />
-      <line x1="12" y1="15" x2="12" y2="3" />
-    </svg>
-  )
-}

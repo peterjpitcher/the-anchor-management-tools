@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import {
   Card,
   CardHeader,
+  CardBody,
   Table,
   TableHeader,
   TableBody,
@@ -208,56 +209,58 @@ export function ProjectDetailClient({
           {/* Budget Card */}
           <Card>
             <CardHeader title="Budget" />
-            <div className="grid grid-cols-3 gap-4 mb-4">
-              <div>
-                <p className="text-xs text-text-muted">Total (ex VAT)</p>
-                <p className="text-lg font-semibold">{formatCurrency(totals.totalExVat)}</p>
+            <CardBody>
+              <div className="grid grid-cols-3 gap-4 mb-4">
+                <div>
+                  <p className="text-xs text-text-muted">Total (ex VAT)</p>
+                  <p className="text-lg font-semibold">{formatCurrency(totals.totalExVat)}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-text-muted">Hours Logged</p>
+                  <p className="text-lg font-semibold">{totals.hours.toFixed(1)}h</p>
+                </div>
+                <div>
+                  <p className="text-xs text-text-muted">Budget</p>
+                  <p className="text-lg font-semibold">{budget != null ? formatCurrency(budget) : 'Not set'}</p>
+                </div>
               </div>
-              <div>
-                <p className="text-xs text-text-muted">Hours Logged</p>
-                <p className="text-lg font-semibold">{totals.hours.toFixed(1)}h</p>
+              {budget != null && budget > 0 && (
+                <div className="mb-4">
+                  <ProgressBar
+                    value={budgetProgress}
+                    tone={budgetProgress > 90 ? 'danger' : 'primary'}
+                  />
+                  <p className="text-xs text-text-muted mt-1">
+                    {formatCurrency(totals.totalExVat)} of {formatCurrency(budget)} used
+                  </p>
+                </div>
+              )}
+              {budgetHours != null && budgetHours > 0 && (
+                <div className="mb-4">
+                  <ProgressBar
+                    value={hoursProgress}
+                    tone={hoursProgress > 90 ? 'danger' : 'primary'}
+                  />
+                  <p className="text-xs text-text-muted mt-1">
+                    {totals.hours.toFixed(1)}h of {budgetHours.toFixed(1)}h used
+                  </p>
+                </div>
+              )}
+              <div className="grid grid-cols-3 gap-4 border-t border-border pt-4">
+                <div>
+                  <p className="text-xs text-text-muted">Unbilled</p>
+                  <p className="font-medium">{formatCurrency(totals.unbilled)}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-text-muted">Billed</p>
+                  <p className="font-medium text-info">{formatCurrency(totals.billed)}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-text-muted">Paid</p>
+                  <p className="font-medium text-success">{formatCurrency(totals.paid)}</p>
+                </div>
               </div>
-              <div>
-                <p className="text-xs text-text-muted">Budget</p>
-                <p className="text-lg font-semibold">{budget != null ? formatCurrency(budget) : 'Not set'}</p>
-              </div>
-            </div>
-            {budget != null && budget > 0 && (
-              <div className="mb-4">
-                <ProgressBar
-                  value={budgetProgress}
-                  tone={budgetProgress > 90 ? 'danger' : 'primary'}
-                />
-                <p className="text-xs text-text-muted mt-1">
-                  {formatCurrency(totals.totalExVat)} of {formatCurrency(budget)} used
-                </p>
-              </div>
-            )}
-            {budgetHours != null && budgetHours > 0 && (
-              <div className="mb-4">
-                <ProgressBar
-                  value={hoursProgress}
-                  tone={hoursProgress > 90 ? 'danger' : 'primary'}
-                />
-                <p className="text-xs text-text-muted mt-1">
-                  {totals.hours.toFixed(1)}h of {budgetHours.toFixed(1)}h used
-                </p>
-              </div>
-            )}
-            <div className="grid grid-cols-3 gap-4 border-t border-border pt-4">
-              <div>
-                <p className="text-xs text-text-muted">Unbilled</p>
-                <p className="font-medium">{formatCurrency(totals.unbilled)}</p>
-              </div>
-              <div>
-                <p className="text-xs text-text-muted">Billed</p>
-                <p className="font-medium text-info">{formatCurrency(totals.billed)}</p>
-              </div>
-              <div>
-                <p className="text-xs text-text-muted">Paid</p>
-                <p className="font-medium text-success">{formatCurrency(totals.paid)}</p>
-              </div>
-            </div>
+            </CardBody>
           </Card>
 
           {/* Entries Table */}
@@ -332,42 +335,46 @@ export function ProjectDetailClient({
           {/* Status Card */}
           <Card>
             <CardHeader title="Status" />
-            <div className="flex flex-col gap-3">
-              <Badge tone={statusTone(project.status)}>{project.status}</Badge>
-              {canEdit && (
-                <Select
-                  value={project.status}
-                  onChange={(e) => handleStatusChange(e.target.value)}
-                  options={statusOptions}
-                />
-              )}
-            </div>
+            <CardBody>
+              <div className="flex flex-col gap-3">
+                <Badge tone={statusTone(project.status)}>{project.status}</Badge>
+                {canEdit && (
+                  <Select
+                    value={project.status}
+                    onChange={(e) => handleStatusChange(e.target.value)}
+                    options={statusOptions}
+                  />
+                )}
+              </div>
+            </CardBody>
           </Card>
 
           {/* Contacts Card */}
           <Card>
             <CardHeader title="Contacts" />
             {taggedContacts.length === 0 ? (
-              <p className="text-sm text-text-muted">No contacts tagged.</p>
+              <Empty title="No contacts tagged" />
             ) : (
-              <div className="flex flex-col gap-2">
-                {taggedContacts.map((tc: any) => (
-                  <div key={tc.id} className="flex items-start justify-between gap-2 p-2 rounded-lg bg-surface-2">
-                    <div className="min-w-0">
-                      <p className="text-sm font-medium truncate">{tc.contact?.name || 'Unknown'}</p>
-                      <p className="text-xs text-text-muted truncate">{tc.contact?.email || ''}</p>
+              <CardBody>
+                <div className="flex flex-col gap-2">
+                  {taggedContacts.map((tc: any) => (
+                    <div key={tc.id} className="flex items-start justify-between gap-2 p-2 rounded-lg bg-surface-2">
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium truncate">{tc.contact?.name || 'Unknown'}</p>
+                        <p className="text-xs text-text-muted truncate">{tc.contact?.email || ''}</p>
+                      </div>
+                      {canEdit && (
+                        <IconButton
+                          icon={<Icon name="trash" size={16} />}
+                          size="sm"
+                          label="Remove"
+                          onClick={() => handleRemoveContact(tc.id)}
+                        />
+                      )}
                     </div>
-                    {canEdit && (
-                      <IconButton
-                        icon={<Icon name="trash" size={16} />}
-                        size="sm"
-                        label="Remove"
-                        onClick={() => handleRemoveContact(tc.id)}
-                      />
-                    )}
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              </CardBody>
             )}
           </Card>
 
@@ -375,38 +382,40 @@ export function ProjectDetailClient({
           {payments && payments.invoices && payments.invoices.length > 0 && (
             <Card>
               <CardHeader title="Payment History" />
-              <div className="grid grid-cols-3 gap-3 mb-3">
-                <div>
-                  <p className="text-xs text-text-muted">Billed</p>
-                  <p className="text-sm font-semibold">{formatCurrency(payments.totals.totalBilled)}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-text-muted">Paid</p>
-                  <p className="text-sm font-semibold text-success">{formatCurrency(payments.totals.totalPaid)}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-text-muted">Outstanding</p>
-                  <p className={`text-sm font-semibold ${payments.totals.totalOutstanding > 0 ? 'text-danger' : 'text-success'}`}>
-                    {formatCurrency(payments.totals.totalOutstanding)}
-                  </p>
-                </div>
-              </div>
-              <div className="flex flex-col gap-2">
-                {payments.invoices.map((item: any) => (
-                  <div key={item.invoice.id} className="flex items-center justify-between text-sm p-2 rounded-lg bg-surface-2">
-                    <div>
-                      <p className="font-medium">{item.invoice.number}</p>
-                      <p className="text-xs text-text-muted">{item.invoice.date ? formatDateDdMmmmYyyy(item.invoice.date) : '-'}</p>
-                    </div>
-                    <div className="text-right">
-                      <p className="font-medium">{formatCurrency(item.invoice.total)}</p>
-                      <Badge tone={item.invoice.status === 'paid' ? 'success' : 'warning'}>
-                        {item.invoice.status}
-                      </Badge>
-                    </div>
+              <CardBody>
+                <div className="grid grid-cols-3 gap-3 mb-3">
+                  <div>
+                    <p className="text-xs text-text-muted">Billed</p>
+                    <p className="text-sm font-semibold">{formatCurrency(payments.totals.totalBilled)}</p>
                   </div>
-                ))}
-              </div>
+                  <div>
+                    <p className="text-xs text-text-muted">Paid</p>
+                    <p className="text-sm font-semibold text-success">{formatCurrency(payments.totals.totalPaid)}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-text-muted">Outstanding</p>
+                    <p className={`text-sm font-semibold ${payments.totals.totalOutstanding > 0 ? 'text-danger' : 'text-success'}`}>
+                      {formatCurrency(payments.totals.totalOutstanding)}
+                    </p>
+                  </div>
+                </div>
+                <div className="flex flex-col gap-2">
+                  {payments.invoices.map((item: any) => (
+                    <div key={item.invoice.id} className="flex items-center justify-between text-sm p-2 rounded-lg bg-surface-2">
+                      <div>
+                        <p className="font-medium">{item.invoice.number}</p>
+                        <p className="text-xs text-text-muted">{item.invoice.date ? formatDateDdMmmmYyyy(item.invoice.date) : '-'}</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="font-medium">{formatCurrency(item.invoice.total)}</p>
+                        <Badge tone={item.invoice.status === 'paid' ? 'success' : 'warning'}>
+                          {item.invoice.status}
+                        </Badge>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </CardBody>
             </Card>
           )}
         </div>

@@ -221,7 +221,7 @@ export function DailyClient({ siteId, siteName, sessionDate, dailySummary, daily
                     </span>
                     <div className="flex items-center gap-0.5">
                       <span className="text-text-subtle text-xs">£</span>
-                      <input
+                      <Input
                         id={`input-denom-${denom.value}`}
                         type="number"
                         step="0.01"
@@ -250,7 +250,7 @@ export function DailyClient({ siteId, siteName, sessionDate, dailySummary, daily
                 <span className="text-sm text-text-muted font-medium">Expected (Z-Read):</span>
                 <div className="flex items-center gap-1">
                   <span className="text-text-subtle text-xs">£</span>
-                  <input
+                  <Input
                     id="input-cash-expected"
                     type="number"
                     step="0.01"
@@ -258,7 +258,7 @@ export function DailyClient({ siteId, siteName, sessionDate, dailySummary, daily
                     onChange={(e) => setCashExpected(e.target.value)}
                     onKeyDown={(e) => handleKeyDown(e, 'input-card-total')}
                     onWheel={(e) => e.currentTarget.blur()}
-                    className="w-28 p-1 text-right text-sm bg-surface-2 border border-border rounded-default font-mono focus:outline-none focus:ring-1 focus:ring-primary"
+                    className="w-28 p-1 text-right text-sm font-mono"
                     disabled={isLocked}
                   />
                 </div>

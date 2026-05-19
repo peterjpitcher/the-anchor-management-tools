@@ -10,6 +10,7 @@ import { Input } from '@/ds'
 import { Textarea } from '@/ds'
 import { FormGroup } from '@/ds'
 import { Card } from '@/ds'
+import { Checkbox } from '@/ds'
 import { Alert } from '@/ds'
 import { EmptyState } from '@/ds'
 import { DataTable } from '@/ds'
@@ -718,24 +719,22 @@ export default function VendorsPage() {
                     disabled={!canEdit}
                   />
                 </FormGroup>
-                <label className="inline-flex items-center gap-2 md:col-span-2 text-sm">
-                  <input
-                    type="checkbox"
+                <div className="md:col-span-2">
+                  <Checkbox
                     checked={contactForm.is_primary}
-                    onChange={(e) => setContactForm({ ...contactForm, is_primary: e.target.checked })}
+                    onChange={(checked: boolean) => setContactForm({ ...contactForm, is_primary: checked })}
                     disabled={!canEdit}
+                    label="Set as primary contact"
                   />
-                  Set as primary contact
-                </label>
-                <label className="inline-flex items-center gap-2 md:col-span-2 text-sm">
-                  <input
-                    type="checkbox"
+                </div>
+                <div className="md:col-span-2">
+                  <Checkbox
                     checked={contactForm.receive_invoice_copy}
-                    onChange={(e) => setContactForm({ ...contactForm, receive_invoice_copy: e.target.checked })}
+                    onChange={(checked: boolean) => setContactForm({ ...contactForm, receive_invoice_copy: checked })}
                     disabled={!canEdit}
+                    label="Receive invoice copy (CC)"
                   />
-                  Receive invoice copy (CC)
-                </label>
+                </div>
               </div>
               <div className="flex justify-end">
                 <Button
