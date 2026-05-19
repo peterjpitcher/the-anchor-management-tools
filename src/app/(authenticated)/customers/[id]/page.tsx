@@ -18,6 +18,8 @@ import { Button } from '@/ds'
 import { SearchInput } from '@/ds'
 import { DataTable } from '@/ds'
 import { Modal } from '@/ds'
+import { Select } from '@/ds'
+import { Textarea } from '@/ds'
 import { MessageThread } from '@/components/features/messages/MessageThread'
 import { CustomerForm } from '@/components/features/customers/CustomerForm'
 import { CustomerLabelSelector } from '@/components/features/customers/CustomerLabelSelector'
@@ -1080,8 +1082,7 @@ export default function CustomerViewPage() {
               >
                 {isEditingNotes ? (
                   <div className="space-y-3">
-                    <textarea
-                      className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 placeholder-gray-400 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                    <Textarea
                       rows={4}
                       value={notesValue}
                       onChange={(e) => setNotesValue(e.target.value)}
@@ -1366,32 +1367,31 @@ export default function CustomerViewPage() {
               debounceDelay={150}
             />
 
-            <select
+            <Select
               value={bookingTypeFilter}
               onChange={(event) => setBookingTypeFilter(event.target.value as BookingSource | 'all')}
-              className="rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-green-500 focus:ring-green-500"
-            >
-              <option value="all">All booking types</option>
-              <option value="event">Event bookings</option>
-              <option value="table">Table bookings</option>
-              <option value="private">Private bookings</option>
-              <option value="parking">Parking bookings</option>
-            </select>
+              options={[
+                { value: 'all', label: 'All booking types' },
+                { value: 'event', label: 'Event bookings' },
+                { value: 'table', label: 'Table bookings' },
+                { value: 'private', label: 'Private bookings' },
+                { value: 'parking', label: 'Parking bookings' },
+              ]}
+            />
 
-            <select
+            <Select
               value={bookingTimeFilter}
               onChange={(event) => setBookingTimeFilter(event.target.value as 'all' | 'upcoming' | 'past')}
-              className="rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-green-500 focus:ring-green-500"
-            >
-              <option value="all">All time</option>
-              <option value="upcoming">Upcoming only</option>
-              <option value="past">Past only</option>
-            </select>
+              options={[
+                { value: 'all', label: 'All time' },
+                { value: 'upcoming', label: 'Upcoming only' },
+                { value: 'past', label: 'Past only' },
+              ]}
+            />
 
-            <select
+            <Select
               value={bookingStatusFilter}
               onChange={(event) => setBookingStatusFilter(event.target.value)}
-              className="rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-green-500 focus:ring-green-500"
             >
               <option value="all">All statuses</option>
               {bookingStatusOptions.map((status) => (
@@ -1399,12 +1399,11 @@ export default function CustomerViewPage() {
                   {status}
                 </option>
               ))}
-            </select>
+            </Select>
 
-            <select
+            <Select
               value={bookingInterestFilter}
               onChange={(event) => setBookingInterestFilter(event.target.value)}
-              className="rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-green-500 focus:ring-green-500"
             >
               <option value="all">All interests</option>
               {bookingInterestOptions.map((interest) => (
@@ -1412,7 +1411,7 @@ export default function CustomerViewPage() {
                   {interest}
                 </option>
               ))}
-            </select>
+            </Select>
           </div>
 
           <DataTable

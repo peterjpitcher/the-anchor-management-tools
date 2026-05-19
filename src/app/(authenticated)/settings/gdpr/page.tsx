@@ -9,7 +9,7 @@ import { exportUserData, deleteUserData } from '@/app/actions/gdpr'
 import toast from 'react-hot-toast'
 import { PageLayout } from '@/ds'
 import { Section } from '@/ds'
-import { Card, CardHeader, CardTitle, CardDescription } from '@/ds'
+import { Card, CardHeader, CardTitle, CardDescription, CardBody } from '@/ds'
 import { Button } from '@/ds'
 import { Input } from '@/ds'
 import { Alert } from '@/ds'
@@ -103,7 +103,7 @@ export default function GDPRSettingsPage() {
               This includes your profile, bookings, messages, and activity logs.
             </CardDescription>
           </CardHeader>
-          <div className="px-5 pb-5 sm:px-6 sm:pb-6">
+          <CardBody>
             <Button variant="primary"
               onClick={handleExportData}
               loading={isExporting}
@@ -111,7 +111,7 @@ export default function GDPRSettingsPage() {
             >
               {isExporting ? 'Exporting...' : 'Export My Data'}
             </Button>
-          </div>
+          </CardBody>
         </Card>
 
         {/* Data Deletion Card */}
@@ -126,7 +126,7 @@ export default function GDPRSettingsPage() {
               This action cannot be undone.
             </CardDescription>
           </CardHeader>
-          <div className="px-5 pb-5 sm:px-6 sm:pb-6">
+          <CardBody>
             {!showDeleteConfirm ? (
               <Button
                 variant="danger"
@@ -171,7 +171,7 @@ export default function GDPRSettingsPage() {
                 </div>
               </Alert>
             )}
-          </div>
+          </CardBody>
         </Card>
 
         {/* Privacy Rights Information */}
@@ -179,7 +179,7 @@ export default function GDPRSettingsPage() {
           <CardHeader>
             <CardTitle>Your Privacy Rights</CardTitle>
           </CardHeader>
-          <div className="px-5 pb-5 sm:px-6 sm:pb-6">
+          <CardBody>
             <div className="text-sm text-gray-700 space-y-2">
               <p>Under GDPR, you have the following rights:</p>
               <ul className="list-disc list-inside space-y-1 ml-4">
@@ -198,7 +198,7 @@ export default function GDPRSettingsPage() {
                 .
               </p>
             </div>
-          </div>
+          </CardBody>
         </Card>
       </Section>
     </PageLayout>

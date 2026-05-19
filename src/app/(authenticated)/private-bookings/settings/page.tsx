@@ -47,7 +47,7 @@ export default async function PrivateBookingsSettingsPage() {
     >
       <div className="space-y-6">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <Card className="p-6">
+          <Card>
             <div className="flex items-start gap-4">
               <MapPinIcon className="h-6 w-6 text-gray-600" />
               <div className="flex-1">
@@ -66,7 +66,7 @@ export default async function PrivateBookingsSettingsPage() {
             </div>
           </Card>
 
-          <Card className="p-6">
+          <Card>
             <div className="flex items-start gap-4">
               <SparklesIcon className="h-6 w-6 text-gray-600" />
               <div className="flex-1">
@@ -85,7 +85,7 @@ export default async function PrivateBookingsSettingsPage() {
             </div>
           </Card>
 
-          <Card className="p-6">
+          <Card>
             <div className="flex items-start gap-4">
               <UserGroupIcon className="h-6 w-6 text-gray-600" />
               <div className="flex-1">
@@ -104,7 +104,7 @@ export default async function PrivateBookingsSettingsPage() {
             </div>
           </Card>
 
-          <Card className="p-6">
+          <Card>
             <div className="flex items-start gap-4">
               <ChatBubbleLeftRightIcon className="h-6 w-6 text-gray-600" />
               <div className="flex-1">

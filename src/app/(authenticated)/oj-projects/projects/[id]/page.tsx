@@ -1,6 +1,7 @@
 import { getProject, getProjectPaymentHistory } from '@/app/actions/oj-projects/projects'
 import { getEntries } from '@/app/actions/oj-projects/entries'
 import { getProjectContacts } from '@/app/actions/oj-projects/project-contacts'
+import { Empty } from '@/ds'
 import { ProjectDetailClient } from './_components/ProjectDetailClient'
 
 interface PageProps {
@@ -19,9 +20,10 @@ export default async function OJProjectDetailPage({ params }: PageProps): Promis
 
   if (projectRes.error || !projectRes.project) {
     return (
-      <div className="p-8 text-center text-text-muted">
-        {projectRes.error || 'Project not found'}
-      </div>
+      <Empty
+        title="Project not found"
+        description={projectRes.error || 'The project you are looking for does not exist.'}
+      />
     )
   }
 

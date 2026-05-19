@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState, useTransition } from 'react'
-import { Button, Input, Modal, ConfirmDialog } from '@/ds'
+import { Button, Input, Modal, ConfirmDialog, Select } from '@/ds'
 import {
   createDestination,
   updateDestination,
@@ -23,9 +23,6 @@ interface DestinationsClientProps {
   initialDistances: MileageDistance[]
   canManage: boolean
 }
-
-const selectClassName =
-  'block w-full rounded-md border border-gray-400 px-3 py-2 text-sm shadow-sm focus:border-primary-600 focus:ring-1 focus:ring-primary-600 min-h-[44px] sm:min-h-[36px]'
 
 function canonicalPair(a: string, b: string): [string, string] {
   return a < b ? [a, b] : [b, a]
@@ -458,35 +455,33 @@ export function DestinationsClient({
               <label htmlFor="route-distance-from" className="mb-1 block text-xs font-medium text-gray-500">
                 From
               </label>
-              <select
+              <Select
                 id="route-distance-from"
-                className={selectClassName}
                 value={routeFromId}
                 onChange={(e) => {
                   setRouteFromId(e.target.value)
                   if (routeToId === e.target.value) setRouteToId('')
                 }}
+                placeholder="Select location..."
               >
-                <option value="">Select location...</option>
                 {nonHomeDestinations.map((destination) => (
                   <option key={destination.id} value={destination.id}>
                     {destination.name}
                   </option>
                 ))}
-              </select>
+              </Select>
             </div>
 
             <div>
               <label htmlFor="route-distance-to" className="mb-1 block text-xs font-medium text-gray-500">
                 To
               </label>
-              <select
+              <Select
                 id="route-distance-to"
-                className={selectClassName}
                 value={routeToId}
                 onChange={(e) => setRouteToId(e.target.value)}
+                placeholder="Select location..."
               >
-                <option value="">Select location...</option>
                 {nonHomeDestinations.map((destination) => (
                   <option
                     key={destination.id}
@@ -496,7 +491,7 @@ export function DestinationsClient({
                     {destination.name}
                   </option>
                 ))}
-              </select>
+              </Select>
             </div>
 
             <div>

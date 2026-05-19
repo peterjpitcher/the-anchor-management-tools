@@ -3,6 +3,8 @@
 import { useState } from 'react'
 import type { User as SupabaseUser } from '@supabase/supabase-js'
 import type { Role } from '@/types/rbac'
+import type { SiteSettings } from '@/app/actions/site-settings'
+import { updateSiteSettings, updateSiteToggle } from '@/app/actions/site-settings'
 
 import {
   PageHeader,
@@ -10,13 +12,14 @@ import {
   Card,
   CardHeader,
   CardBody,
+  Empty,
+  toast,
 } from '@/ds'
 import {
   Button,
   Field,
   Input,
   Switch,
-  Badge,
 } from '@/ds'
 import { Icon } from '@/ds/icons'
 import Link from 'next/link'
@@ -34,11 +37,8 @@ interface SettingsClientProps {
   roles: Role[]
   canManageRoles: boolean
   canManageSettings: boolean
+  siteSettings: SiteSettings | null
 }
-
-/* ------------------------------------------------------------------ */
-/*  Section items for SectionNav                                       */
-/* ------------------------------------------------------------------ */
 
 const SECTION_ITEMS = [
   { id: 'general', label: 'General' },
@@ -51,43 +51,133 @@ const SECTION_ITEMS = [
 /*  General Section                                                    */
 /* ------------------------------------------------------------------ */
 
-function GeneralSection() {
-  const [onlineBookings, setOnlineBookings] = useState(true)
-  const [smsNotifications, setSmsNotifications] = useState(true)
-  const [autoConfirm, setAutoConfirm] = useState(false)
-  const [fohMode, setFohMode] = useState(false)
-  const [kioskMode, setKioskMode] = useState(false)
+function GeneralSection({ settings, canEdit }: { settings: SiteSettings | null; canEdit: boolean }) {
+  const [saving, setSaving] = useState(false)
+  const [toggleSaving, setToggleSaving] = useState<string | null>(null)
+
+  const [form, setForm] = useState({
+    name: settings?.name ?? '',
+    phone: settings?.phone ?? '',
+    email: settings?.email ?? '',
+    website: settings?.website ?? '',
+    address: settings?.address ?? '',
+    default_party_size: String(settings?.default_party_size ?? 2),
+    booking_duration_mins: String(settings?.booking_duration_mins ?? 90),
+    advance_booking_days: String(settings?.advance_booking_days ?? 30),
+    deposit_amount: String(settings?.deposit_amount ?? 10),
+    min_group_size_deposit: String(settings?.min_group_size_deposit ?? 7),
+    currency: settings?.currency ?? 'GBP',
+    reminder_hours_before: String(settings?.reminder_hours_before ?? 24),
+    admin_email: settings?.admin_email ?? '',
+    cc_email: settings?.cc_email ?? '',
+  })
+
+  const [toggles, setToggles] = useState({
+    online_bookings_enabled: settings?.online_bookings_enabled ?? true,
+    sms_notifications_enabled: settings?.sms_notifications_enabled ?? true,
+    auto_confirm_bookings: settings?.auto_confirm_bookings ?? false,
+  })
+
+  if (!settings) {
+    return <Empty title="Settings unavailable" description="Could not load site settings." />
+  }
+
+  async function handleSave(e: React.FormEvent): Promise<void> {
+    e.preventDefault()
+    setSaving(true)
+    try {
+      const fd = new FormData()
+      fd.append('id', settings!.id)
+      Object.entries(form).forEach(([key, value]) => fd.append(key, value))
+      const res = await updateSiteSettings(fd)
+      if (res.error) throw new Error(res.error)
+      toast.success('Settings saved')
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to save settings')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function handleToggle(field: keyof typeof toggles): Promise<void> {
+    const newValue = !toggles[field]
+    setToggles((prev) => ({ ...prev, [field]: newValue }))
+    setToggleSaving(field)
+    try {
+      const res = await updateSiteToggle(settings!.id, field, newValue)
+      if (res.error) {
+        setToggles((prev) => ({ ...prev, [field]: !newValue }))
+        toast.error(res.error)
+      } else {
+        toast.success('Setting updated')
+      }
+    } catch {
+      setToggles((prev) => ({ ...prev, [field]: !newValue }))
+      toast.error('Failed to update setting')
+    } finally {
+      setToggleSaving(null)
+    }
+  }
+
+  const disabled = !canEdit
 
   return (
     <div className="space-y-6">
       {/* Business Profile */}
-      <Card>
-        <CardHeader title="Business Profile" subtitle="Your venue details" />
-        <CardBody>
-          <div className="grid grid-cols-2 gap-4">
-            <Field label="Business Name">
-              <Input defaultValue="The Anchor" />
-            </Field>
-            <Field label="Phone">
-              <Input defaultValue="+44 1234 567890" />
-            </Field>
-            <Field label="Email">
-              <Input defaultValue="info@the-anchor.pub" />
-            </Field>
-            <Field label="Website">
-              <Input defaultValue="https://the-anchor.pub" />
-            </Field>
-            <div className="col-span-2">
-              <Field label="Address">
-                <Input defaultValue="123 High Street, London" />
+      <form onSubmit={handleSave}>
+        <Card>
+          <CardHeader title="Business Profile" subtitle="Your venue details" />
+          <CardBody>
+            <div className="grid grid-cols-2 gap-4">
+              <Field label="Business Name">
+                <Input
+                  value={form.name}
+                  onChange={(e) => setForm({ ...form, name: e.target.value })}
+                  disabled={disabled}
+                />
               </Field>
+              <Field label="Phone">
+                <Input
+                  value={form.phone}
+                  onChange={(e) => setForm({ ...form, phone: e.target.value })}
+                  disabled={disabled}
+                />
+              </Field>
+              <Field label="Email">
+                <Input
+                  type="email"
+                  value={form.email}
+                  onChange={(e) => setForm({ ...form, email: e.target.value })}
+                  disabled={disabled}
+                />
+              </Field>
+              <Field label="Website">
+                <Input
+                  value={form.website}
+                  onChange={(e) => setForm({ ...form, website: e.target.value })}
+                  disabled={disabled}
+                />
+              </Field>
+              <div className="col-span-2">
+                <Field label="Address">
+                  <Input
+                    value={form.address}
+                    onChange={(e) => setForm({ ...form, address: e.target.value })}
+                    disabled={disabled}
+                  />
+                </Field>
+              </div>
             </div>
-          </div>
-          <div className="flex justify-end mt-4">
-            <Button variant="primary" size="sm">Save Changes</Button>
-          </div>
-        </CardBody>
-      </Card>
+            {canEdit && (
+              <div className="flex justify-end mt-4">
+                <Button type="submit" variant="primary" size="sm" loading={saving}>
+                  Save Changes
+                </Button>
+              </div>
+            )}
+          </CardBody>
+        </Card>
+      </form>
 
       {/* Quick Toggles */}
       <Card>
@@ -99,102 +189,143 @@ function GeneralSection() {
                 <p className="text-[13px] font-medium text-text-strong">Online Bookings</p>
                 <p className="text-xs text-text-muted">Accept table bookings from the website</p>
               </div>
-              <Switch checked={onlineBookings} onChange={setOnlineBookings} />
+              <Switch
+                checked={toggles.online_bookings_enabled}
+                onChange={() => handleToggle('online_bookings_enabled')}
+                disabled={disabled || toggleSaving === 'online_bookings_enabled'}
+              />
             </div>
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-[13px] font-medium text-text-strong">SMS Notifications</p>
                 <p className="text-xs text-text-muted">Send automatic SMS confirmations</p>
               </div>
-              <Switch checked={smsNotifications} onChange={setSmsNotifications} />
+              <Switch
+                checked={toggles.sms_notifications_enabled}
+                onChange={() => handleToggle('sms_notifications_enabled')}
+                disabled={disabled || toggleSaving === 'sms_notifications_enabled'}
+              />
             </div>
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-[13px] font-medium text-text-strong">Auto-Confirm Bookings</p>
                 <p className="text-xs text-text-muted">Automatically confirm new bookings</p>
               </div>
-              <Switch checked={autoConfirm} onChange={setAutoConfirm} />
-            </div>
-          </div>
-        </CardBody>
-      </Card>
-
-      {/* Other Modes */}
-      <Card>
-        <CardHeader title="Other Modes" />
-        <CardBody>
-          <div className="grid grid-cols-2 gap-4">
-            <div className="flex items-center justify-between p-3 border border-border rounded-default">
-              <div>
-                <p className="text-[13px] font-medium text-text-strong">FOH Mode</p>
-                <p className="text-xs text-text-muted">Simplified front-of-house view</p>
-              </div>
-              <Switch checked={fohMode} onChange={setFohMode} />
-            </div>
-            <div className="flex items-center justify-between p-3 border border-border rounded-default">
-              <div>
-                <p className="text-[13px] font-medium text-text-strong">Kiosk Mode</p>
-                <p className="text-xs text-text-muted">Full-screen kiosk display</p>
-              </div>
-              <Switch checked={kioskMode} onChange={setKioskMode} />
+              <Switch
+                checked={toggles.auto_confirm_bookings}
+                onChange={() => handleToggle('auto_confirm_bookings')}
+                disabled={disabled || toggleSaving === 'auto_confirm_bookings'}
+              />
             </div>
           </div>
         </CardBody>
       </Card>
 
       {/* Settings groups in 3-col grid */}
-      <div className="grid grid-cols-3 gap-6">
-        <Card>
-          <CardHeader title="Booking Settings" />
-          <CardBody>
-            <div className="space-y-3">
-              <Field label="Default Party Size">
-                <Input type="number" defaultValue="2" />
-              </Field>
-              <Field label="Booking Duration (mins)">
-                <Input type="number" defaultValue="90" />
-              </Field>
-              <Field label="Advance Booking (days)">
-                <Input type="number" defaultValue="30" />
-              </Field>
-            </div>
-          </CardBody>
-        </Card>
+      <form onSubmit={handleSave}>
+        <div className="grid grid-cols-3 gap-6">
+          <Card>
+            <CardHeader title="Booking Settings" />
+            <CardBody>
+              <div className="space-y-3">
+                <Field label="Default Party Size">
+                  <Input
+                    type="number"
+                    value={form.default_party_size}
+                    onChange={(e) => setForm({ ...form, default_party_size: e.target.value })}
+                    disabled={disabled}
+                  />
+                </Field>
+                <Field label="Booking Duration (mins)">
+                  <Input
+                    type="number"
+                    value={form.booking_duration_mins}
+                    onChange={(e) => setForm({ ...form, booking_duration_mins: e.target.value })}
+                    disabled={disabled}
+                  />
+                </Field>
+                <Field label="Advance Booking (days)">
+                  <Input
+                    type="number"
+                    value={form.advance_booking_days}
+                    onChange={(e) => setForm({ ...form, advance_booking_days: e.target.value })}
+                    disabled={disabled}
+                  />
+                </Field>
+              </div>
+            </CardBody>
+          </Card>
 
-        <Card>
-          <CardHeader title="Payment Settings" />
-          <CardBody>
-            <div className="space-y-3">
-              <Field label="Deposit Amount">
-                <Input type="text" defaultValue="10.00" />
-              </Field>
-              <Field label="Min Group Size for Deposit">
-                <Input type="number" defaultValue="7" />
-              </Field>
-              <Field label="Currency">
-                <Input defaultValue="GBP" disabled />
-              </Field>
-            </div>
-          </CardBody>
-        </Card>
+          <Card>
+            <CardHeader title="Payment Settings" />
+            <CardBody>
+              <div className="space-y-3">
+                <Field label="Deposit Amount">
+                  <Input
+                    type="number"
+                    step="0.01"
+                    value={form.deposit_amount}
+                    onChange={(e) => setForm({ ...form, deposit_amount: e.target.value })}
+                    disabled={disabled}
+                  />
+                </Field>
+                <Field label="Min Group Size for Deposit">
+                  <Input
+                    type="number"
+                    value={form.min_group_size_deposit}
+                    onChange={(e) => setForm({ ...form, min_group_size_deposit: e.target.value })}
+                    disabled={disabled}
+                  />
+                </Field>
+                <Field label="Currency">
+                  <Input value={form.currency} disabled />
+                </Field>
+              </div>
+            </CardBody>
+          </Card>
 
-        <Card>
-          <CardHeader title="Notification Settings" />
-          <CardBody>
-            <div className="space-y-3">
-              <Field label="Reminder (hours before)">
-                <Input type="number" defaultValue="24" />
-              </Field>
-              <Field label="Admin Email">
-                <Input type="email" defaultValue="admin@the-anchor.pub" />
-              </Field>
-              <Field label="CC Email">
-                <Input type="email" defaultValue="" placeholder="Optional" />
-              </Field>
-            </div>
-          </CardBody>
-        </Card>
-      </div>
+          <Card>
+            <CardHeader title="Notification Settings" />
+            <CardBody>
+              <div className="space-y-3">
+                <Field label="Reminder (hours before)">
+                  <Input
+                    type="number"
+                    value={form.reminder_hours_before}
+                    onChange={(e) => setForm({ ...form, reminder_hours_before: e.target.value })}
+                    disabled={disabled}
+                  />
+                </Field>
+                <Field label="Admin Email">
+                  <Input
+                    type="email"
+                    value={form.admin_email}
+                    onChange={(e) => setForm({ ...form, admin_email: e.target.value })}
+                    disabled={disabled}
+                  />
+                </Field>
+                <Field label="CC Email">
+                  <Input
+                    type="email"
+                    value={form.cc_email}
+                    onChange={(e) => setForm({ ...form, cc_email: e.target.value })}
+                    placeholder="Optional"
+                    disabled={disabled}
+                  />
+                </Field>
+              </div>
+            </CardBody>
+          </Card>
+        </div>
+
+        {canEdit && (
+          <div className="flex justify-end mt-4">
+            <Button type="submit" variant="primary" size="sm" loading={saving}>
+              Save All Settings
+            </Button>
+          </div>
+        )}
+      </form>
 
       {/* Developer Tools */}
       <Card>
@@ -232,6 +363,7 @@ export function SettingsClient({
   roles,
   canManageRoles,
   canManageSettings,
+  siteSettings,
 }: SettingsClientProps) {
   const [activeSection, setActiveSection] = useState<ActiveSection>('general')
 
@@ -250,7 +382,7 @@ export function SettingsClient({
         className="mb-6"
       />
 
-      {activeSection === 'general' && <GeneralSection />}
+      {activeSection === 'general' && <GeneralSection settings={siteSettings} canEdit={canManageSettings} />}
       {activeSection === 'users' && (
         <UsersContent users={users} roles={roles} canManageRoles={canManageRoles} />
       )}

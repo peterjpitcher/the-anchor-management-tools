@@ -2813,16 +2813,6 @@ export default function PrivateBookingDetailClient({
                   <ChevronRightIcon className="h-4 w-4 text-gray-400" />
                 </Link>
 
-                <button type="button"
-                  disabled
-                  className="flex items-center justify-between w-full px-4 py-3 text-sm font-medium text-gray-400 bg-gray-50 rounded-lg cursor-not-allowed opacity-50"
-                >
-                  <div className="flex items-center">
-                    <DocumentTextIcon className="h-5 w-5 mr-3 text-gray-400" />
-                    Upload Document
-                  </div>
-                  <span className="text-xs text-gray-400">Coming Soon</span>
-                </button>
               </div>
             </Card>
           </Section>

@@ -1,4 +1,5 @@
 import { checkUserPermission, getAllUsers, getAllRoles } from '@/app/actions/rbac'
+import { getSiteSettings } from '@/app/actions/site-settings'
 import type { Role } from '@/types/rbac'
 import { SettingsClient } from './_components/SettingsClient'
 
@@ -9,14 +10,14 @@ export default async function SettingsPage() {
     checkUserPermission('users', 'manage_roles'),
   ])
 
-  // Load users and roles for the Users/Roles sub-sections
-  const [usersResult, rawRolesResult] = await Promise.all([
+  const [usersResult, rawRolesResult, settingsResult] = await Promise.all([
     canViewUsers
       ? getAllUsers()
       : Promise.resolve({ data: [], error: undefined }),
     canManageRoles
       ? getAllRoles()
       : Promise.resolve<{ success: true; data: Role[] }>({ success: true, data: [] }),
+    getSiteSettings(),
   ])
 
   const users = usersResult.data || []
@@ -32,6 +33,7 @@ export default async function SettingsPage() {
       roles={roles}
       canManageRoles={canManageRolesInUi}
       canManageSettings={canManageSettings}
+      siteSettings={settingsResult.settings ?? null}
     />
   )
 }

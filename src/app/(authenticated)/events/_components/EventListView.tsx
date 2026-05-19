@@ -124,7 +124,8 @@ export function EventListView({
           ) : (
             events.map((event) => {
               const capacity = event.capacity ?? 0
-              const bookedRatio = capacity > 0 ? 0 : 0 // No booked count in type; shows 0
+              const booked = (event as Event & { booked_count?: number }).booked_count ?? 0
+              const bookedRatio = capacity > 0 ? Math.round((booked / capacity) * 100) : 0
               return (
                 <TableRow key={event.id} onClick={() => onEventClick(event)}>
                   <TableCell>
@@ -152,7 +153,7 @@ export function EventListView({
                   <TableCell>
                     <div className="flex items-center gap-2">
                       <span className="text-xs text-text-muted">
-                        {capacity > 0 ? `0/${capacity}` : '-'}
+                        {capacity > 0 ? `${booked}/${capacity}` : '-'}
                       </span>
                       {capacity > 0 && <BarMini value={bookedRatio} />}
                     </div>
