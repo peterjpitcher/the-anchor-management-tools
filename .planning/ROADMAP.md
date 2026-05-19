@@ -84,7 +84,7 @@ Plans:
 **Plans**: 2 plans
 
 Plans:
-- [ ] 04-01-PLAN.md -- FOH chromeless mode (AppShell/Topbar FOH props, FohClockBand, layout wiring)
+- [x] 04-01-PLAN.md -- FOH chromeless mode (AppShell/Topbar FOH props, FohClockBand, layout wiring)
 - [ ] 04-02-PLAN.md -- Legacy cleanup (build 6 gap ds/ components, migrate 193 files, delete ui/ and ui-v2/, update CLAUDE.md)
 
 ## Progress
@@ -97,4 +97,4 @@ Phases execute in numeric order: 1 --> 1.1 --> 1.2 --> 2 --> 2.1 --> 3 --> 4
 | 1. Design System & App Shell | 4/4 | Complete   | 2026-05-18 |
 | 2. Screen Migrations | 5/5 | Near Complete (26/28 screens, 18 nested sub-page files remain) | 2026-05-18 |
 | 3. New Sections | 4/4 | Complete | 2026-05-18 |
-| 4. Modes & Cleanup | 0/2 | Not started | - |
+| 4. Modes & Cleanup | 1/2 | In Progress|  |

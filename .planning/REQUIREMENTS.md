@@ -87,7 +87,7 @@
 
 ### Special Modes
 
-- [ ] **MODE-01**: Build FOH-only chromeless mode (no sidebar, locked to table management screen with clock-in band)
+- [x] **MODE-01**: Build FOH-only chromeless mode (no sidebar, locked to table management screen with clock-in band)
 - [x] **MODE-02**: Build Design System documentation page (live component previews, colour swatches, typography scale, spacing, all controls)
 
 ### Cleanup
@@ -193,12 +193,12 @@
 | NEW-05 | Phase 3 | Complete |
 | NEW-06 | Phase 3 | Complete |
 | NEW-07 | Phase 3 | Complete |
-| PERF-01 | Phase 3 | Pending |
-| PERF-02 | Phase 3 | Pending |
-| PERF-03 | Phase 3 | Pending |
-| PERF-04 | Phase 3 | Pending |
+| PERF-01 | Phase 3 | Removed (D-01) |
+| PERF-02 | Phase 3 | Removed (D-01) |
+| PERF-03 | Phase 3 | Removed (D-01) |
+| PERF-04 | Phase 3 | Removed (D-01) |
 | MODE-02 | Phase 3 | Complete |
-| MODE-01 | Phase 4 | Pending |
+| MODE-01 | Phase 4 | Complete |
 | CLEAN-01 | Phase 4 | Pending |
 | CLEAN-02 | Phase 4 | Pending |
 | CLEAN-03 | Phase 4 | Pending |
