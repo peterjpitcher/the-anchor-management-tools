@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: unknown
-stopped_at: Completed 03-04-PLAN.md
-last_updated: "2026-05-18T20:35:54.328Z"
+status: in-progress
+stopped_at: Completed 04-01-PLAN.md
+last_updated: "2026-05-19T06:41:00Z"
 progress:
   total_phases: 4
   completed_phases: 3
-  total_plans: 13
-  completed_plans: 13
+  total_plans: 15
+  completed_plans: 14
 ---
 
 # Project State
@@ -19,12 +19,13 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-18)
 
 **Core value:** Every staff member sees a consistent, modern, professional interface matching the design handoff pixel-perfectly.
-**Current focus:** Phase 03 — new-sections
+**Current focus:** Phase 04 — modes-cleanup (next)
 
 ## Current Position
 
-Phase: 03 (new-sections) — EXECUTING
-Plan: 4 of 4
+Phase: 04 (modes-cleanup) — IN PROGRESS
+Current Plan: 2 of 2
+Completed: 04-01 (FOH Chromeless Mode)
 
 ## Performance Metrics
 
@@ -58,6 +59,7 @@ Plan: 4 of 4
 | Phase 03-new-sections P01 | 12min | 2 tasks | 14 files |
 | Phase 03-new-sections P03 | 18min | 2 tasks | 14 files |
 | Phase 03-new-sections PP04 | 6min | 2 tasks | 7 files |
+| Phase 04-modes-cleanup P01 | 10min | 2 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -92,6 +94,7 @@ Recent decisions affecting current work:
 - [Phase 03-new-sections]: Board view is read-only (no drag-and-drop) per D-04; CalendarGrid uses weekStartsOn: 1 (Monday)
 - [Phase 03-new-sections]: OJ Projects: Split SectionNav into OJProjectsNav client component for path-aware active state; derive clients from project vendor data
 - [Phase 03-new-sections]: Design System page is a server component with static showcase and anchor navigation (per D-19, D-20, D-22); Performers route fully deleted per D-01
+- [Phase 04-modes-cleanup]: FOH chromeless mode uses fohMode boolean prop threaded from AuthenticatedLayout through AppShell to Topbar; FohClockBand integrates with existing timeclock server actions; employee ID resolved via email_address match
 
 ### Pending Todos
 
@@ -105,6 +108,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-05-18T20:35:54.325Z
-Stopped at: Completed 03-04-PLAN.md
-Resume file: None
+Last session: 2026-05-19T06:41:00Z
+Stopped at: Completed 04-01-PLAN.md
+Resume file: .planning/ROADMAP.md
