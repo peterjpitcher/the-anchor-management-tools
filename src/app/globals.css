@@ -39,6 +39,7 @@
   --color-primary-fg: #ffffff;
 
   /* Sidebar */
+  --color-sidebar: #064e3b;
   --color-sidebar-bg: #064e3b;
   --color-sidebar-fg: #ffffff;
   --color-sidebar-fg-muted: rgba(255, 255, 255, 0.72);
