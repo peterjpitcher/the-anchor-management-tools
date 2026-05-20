@@ -9,7 +9,6 @@ import { Icon } from '@/ds/icons'
 import { createEvent, updateEvent } from '@/app/actions/events'
 import { getEventChecklist, toggleEventChecklistTask } from '@/app/actions/event-checklist'
 import { generateEventSeoContent } from '@/app/actions/event-content'
-import { getEventImages } from '@/app/actions/event-images'
 import { parseKeywords, keywordsToDisplay, buildKeywordsUnion } from '@/lib/keywords'
 import { KeywordStrategyCard } from '@/components/features/events/KeywordStrategyCard'
 import { FaqEditor } from '@/components/features/events/FaqEditor'
@@ -120,9 +119,6 @@ export function EventDrawer({ open, onClose, event, categories, onSave }: EventD
   // ── AI content ──
   const [aiLoading, setAiLoading] = useState(false)
 
-  // ── Images ──
-  const [images, setImages] = useState<Array<{ id: string; url: string; image_type: string }>>([])
-
   // Initialize form when event changes
   useEffect(() => {
     if (event) {
@@ -227,23 +223,6 @@ export function EventDrawer({ open, onClose, event, categories, onSave }: EventD
       })
     } else {
       setChecklistItems([])
-    }
-  }, [event?.id, open])
-
-  // Load images for existing events
-  useEffect(() => {
-    if (event?.id && open) {
-      getEventImages(event.id).then((result) => {
-        if (result && Array.isArray(result.data)) {
-          setImages(result.data.map((img: { id: string; url?: string; storage_path?: string; image_type: string }) => ({
-            id: img.id,
-            url: img.url || img.storage_path || '',
-            image_type: img.image_type,
-          })))
-        }
-      })
-    } else {
-      setImages([])
     }
   }, [event?.id, open])
 
@@ -521,23 +500,6 @@ export function EventDrawer({ open, onClose, event, categories, onSave }: EventD
             />
           </div>
         </Section>
-
-        {/* ── Images — only for existing events ── */}
-        {isEdit && images.length > 0 && (
-          <Section title="Images">
-            <div className="grid grid-cols-3 gap-2">
-              {images.map((img) => (
-                <div key={img.id} className="relative aspect-square rounded-default overflow-hidden border border-border">
-                  <img
-                    src={img.url}
-                    alt={`Event image (${img.image_type})`}
-                    className="w-full h-full object-cover"
-                  />
-                </div>
-              ))}
-            </div>
-          </Section>
-        )}
 
         {/* ── Time & Schedule ── */}
         <Section title="Time & Schedule">
