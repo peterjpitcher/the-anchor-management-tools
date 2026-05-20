@@ -373,7 +373,7 @@ export default function NewPrivateBookingPage() {
               </FormGroup>
               <FormGroup
                 label="Balance Due Date"
-                help="Leave blank to auto-calculate (7 days before event)"
+                help="Leave blank to auto-calculate (14 days before event)"
               >
                 <Input
                   type="date"

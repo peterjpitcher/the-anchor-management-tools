@@ -163,13 +163,24 @@ export function bookingCancelledRefundableMessage(input: {
   )
 }
 
+export function bookingCancelledPartialRefundMessage(input: {
+  customerFirstName: string | null | undefined
+  eventDate: string
+  refundAmount: number
+  deductionAmount: number
+}): string {
+  return cap(
+    `Hi ${name(input.customerFirstName)} — your booking on ${input.eventDate} is cancelled. Your deposit will be refunded less the ${money(input.deductionAmount)} cancellation administration deduction. We'll refund ${money(input.refundAmount)} within 10 working days.`
+  )
+}
+
 export function bookingCancelledNonRefundableMessage(input: {
   customerFirstName: string | null | undefined
   eventDate: string
   retainedAmount: number
 }): string {
   return cap(
-    `Hi ${name(input.customerFirstName)} — your booking on ${input.eventDate} is cancelled. The ${money(input.retainedAmount)} already paid is retained per our booking terms. We'll be in touch if anything else is outstanding.`
+    `Hi ${name(input.customerFirstName)} — your booking on ${input.eventDate} is cancelled. As cancellation was within 30 days of the event, the ${money(input.retainedAmount)} deposit is retained per our booking terms.`
   )
 }
 

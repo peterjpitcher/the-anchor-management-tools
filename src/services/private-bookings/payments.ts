@@ -174,6 +174,9 @@ async function sendDepositReceivedSideEffects(input: {
       customer_name: booking.customer_name,
       event_date: depositEmailDate,
       event_type: booking.event_type,
+      start_time: booking.start_time,
+      end_time: booking.end_time,
+      guest_count: booking.guest_count,
       deposit_amount: amount,
       deposit_payment_method: method,
       balance_due_date: booking.balance_due_date,
@@ -674,6 +677,7 @@ export async function recordBalancePayment(bookingId: string, amount: number, me
       event_date: balanceEmailDate,
       event_type: booking.event_type,
       total_amount: balanceCalculatedTotal ?? booking.total_amount,
+      deposit_amount: booking.deposit_amount,
     }).catch(e =>
       logger.error('Failed to send balance paid email', { error: e instanceof Error ? e : new Error(String(e)) })
     );
