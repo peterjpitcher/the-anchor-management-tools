@@ -1,6 +1,7 @@
 import { notFound, redirect } from 'next/navigation'
 import { getCurrentUserModuleActions } from '@/app/actions/rbac'
 import { getEventById, getEventBookings } from '@/app/actions/events'
+import { getActiveEventCategories } from '@/app/actions/event-categories'
 import { getEventMarketingLinks } from '@/app/actions/event-marketing-links'
 import type { EventMarketingLink } from '@/app/actions/event-marketing-links'
 import type { EventBookingRow } from '@/app/actions/events'
@@ -96,6 +97,10 @@ export default async function EventDetailPage({ params }: PageProps) {
     }
   }
 
+  // Fetch event categories for the edit drawer (non-fatal)
+  const categoriesResult = await getActiveEventCategories()
+  const categories = categoriesResult.data ?? []
+
   if (!eventData && errors.length === 0) {
     errors.push('We could not load this event.')
   }
@@ -107,6 +112,7 @@ export default async function EventDetailPage({ params }: PageProps) {
       event={eventData}
       bookings={bookings}
       marketingLinks={marketingLinks}
+      categories={categories}
       permissions={{ canEdit, canDelete, canManage }}
       initialError={initialError}
     />
