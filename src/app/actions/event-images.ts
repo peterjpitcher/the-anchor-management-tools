@@ -1,6 +1,7 @@
 'use server'
 
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { z } from 'zod'
 import { revalidatePath } from 'next/cache'
 import { checkUserPermission } from './rbac'
@@ -76,10 +77,11 @@ export async function uploadEventImage(
     if (!event_id && !category_id) {
       return { type: 'error', message: 'Either event_id or category_id is required.' }
     }
-    const supabase = await createClient()
+    const authClient = await createClient()
+    const supabase = createAdminClient()
 
     // Get authenticated user
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
+    const { data: { user }, error: authError } = await authClient.auth.getUser()
     if (authError || !user) {
       return { type: 'error', message: 'Authentication required.' }
     }
@@ -90,7 +92,7 @@ export async function uploadEventImage(
       .replace(/\s+/g, '_')
       .replace(/_+/g, '_')
       .replace(/^[._-]+|[._-]+$/g, '')
-    
+
     const finalFileName = sanitizedFileName || 'unnamed_image'
     const folder = event_id ? `events/${event_id}` : `categories/${category_id}`
     const uniqueFileName = `${folder}/${image_type}/${Date.now()}_${finalFileName}`
@@ -98,7 +100,7 @@ export async function uploadEventImage(
     // Upload to storage
     const { data: uploadData, error: uploadError } = await supabase.storage
       .from(BUCKET_NAME)
-      .upload(uniqueFileName, file, { 
+      .upload(uniqueFileName, file, {
         upsert: false,
         contentType: file.type
       })
@@ -243,8 +245,9 @@ export async function deleteEventImage(imageUrl: string, entityId: string) {
       return { error: 'Insufficient permissions to delete event images.' }
     }
 
-    const supabase = await createClient()
-    
+    const authClient = await createClient()
+    const supabase = createAdminClient()
+
     // First, try to find the image in event_images table by URL
     const { data: images, error: imagesError } = await supabase
       .from('event_images')
@@ -255,7 +258,7 @@ export async function deleteEventImage(imageUrl: string, entityId: string) {
       console.error('Failed to load event images for delete:', imagesError)
       return { error: 'Failed to load event images.' }
     }
-    
+
     // Find the image that matches the URL
     let imageToDelete = null
     if (images && images.length > 0) {
@@ -263,14 +266,14 @@ export async function deleteEventImage(imageUrl: string, entityId: string) {
         const { data: { publicUrl } } = supabase.storage
           .from(BUCKET_NAME)
           .getPublicUrl(img.storage_path)
-        
+
         if (publicUrl === imageUrl) {
           imageToDelete = img
           break
         }
       }
     }
-    
+
     // If we found the image in event_images, delete it from storage
     if (imageToDelete) {
       const { data: deletedImage, error: deleteImageError } = await supabase
@@ -322,7 +325,7 @@ export async function deleteEventImage(imageUrl: string, entityId: string) {
     // Always update the event to remove the image URL
     const { data: updatedEvent, error: updateError } = await supabase
       .from('events')
-      .update({ 
+      .update({
         hero_image_url: null,
         thumbnail_image_url: null,
         poster_image_url: null
@@ -330,7 +333,7 @@ export async function deleteEventImage(imageUrl: string, entityId: string) {
       .eq('id', entityId)
       .select('id')
       .maybeSingle()
-    
+
     if (updateError) {
       console.error('Failed to clear image URLs from event:', updateError)
       return { error: 'Failed to remove image from event.' }
@@ -340,7 +343,7 @@ export async function deleteEventImage(imageUrl: string, entityId: string) {
     }
 
     // Log audit event
-    const { data: { user } } = await supabase.auth.getUser()
+    const { data: { user } } = await authClient.auth.getUser()
     if (user) {
       await logAuditEvent({
         user_id: user.id,
@@ -367,8 +370,8 @@ export async function deleteEventImage(imageUrl: string, entityId: string) {
 
 export async function getEventImages(eventId: string) {
   try {
-    const supabase = await createClient()
-    
+    const supabase = createAdminClient()
+
     const { data, error } = await supabase
       .from('event_images')
       .select('*')
@@ -410,8 +413,8 @@ export async function updateImageMetadata(
       return { error: 'Insufficient permissions to update event images.' }
     }
 
-    const supabase = await createClient()
-    
+    const supabase = createAdminClient()
+
     const { data: updatedImage, error } = await supabase
       .from('event_images')
       .update({
