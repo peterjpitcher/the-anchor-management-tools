@@ -589,6 +589,7 @@ export async function getCancellationPreview(bookingId: string): Promise<{
   outcome: import('@/services/private-bookings/financial').CancellationFinancialOutcome | null
   refund_amount: number
   retained_amount: number
+  deposit_deduction: number
   preview_body: string | null
   error?: string
 }> {
@@ -600,6 +601,7 @@ export async function getCancellationPreview(bookingId: string): Promise<{
       outcome: null,
       refund_amount: 0,
       retained_amount: 0,
+      deposit_deduction: 0,
       preview_body: null,
       error: 'Unauthorized',
     }
@@ -612,6 +614,7 @@ export async function getCancellationPreview(bookingId: string): Promise<{
       outcome: null,
       refund_amount: 0,
       retained_amount: 0,
+      deposit_deduction: 0,
       preview_body: null,
       error: 'You do not have permission to cancel private bookings',
     }
@@ -625,6 +628,7 @@ export async function getCancellationPreview(bookingId: string): Promise<{
       {
         bookingCancelledHoldMessage,
         bookingCancelledRefundableMessage,
+        bookingCancelledPartialRefundMessage,
         bookingCancelledNonRefundableMessage,
         bookingCancelledManualReviewMessage,
       },
@@ -655,6 +659,14 @@ export async function getCancellationPreview(bookingId: string): Promise<{
           eventDate: eventDateReadable,
         })
         break
+      case 'deposit_partial_refund':
+        previewBody = bookingCancelledPartialRefundMessage({
+          customerFirstName,
+          eventDate: eventDateReadable,
+          refundAmount: outcome.refund_amount,
+          deductionAmount: outcome.deposit_deduction,
+        })
+        break
       case 'refundable':
         previewBody = bookingCancelledRefundableMessage({
           customerFirstName,
@@ -682,6 +694,7 @@ export async function getCancellationPreview(bookingId: string): Promise<{
       outcome: outcome.outcome,
       refund_amount: outcome.refund_amount,
       retained_amount: outcome.retained_amount,
+      deposit_deduction: outcome.deposit_deduction,
       preview_body: previewBody,
     }
   } catch (error) {
@@ -692,6 +705,7 @@ export async function getCancellationPreview(bookingId: string): Promise<{
       outcome: null,
       refund_amount: 0,
       retained_amount: 0,
+      deposit_deduction: 0,
       preview_body: null,
       error: 'Failed to compute cancellation preview',
     }

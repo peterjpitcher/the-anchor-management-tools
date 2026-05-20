@@ -114,18 +114,14 @@ export function generateContractHTML(data: ContractData): string {
   const subtotal = calculateSubtotal()
   const discountAmount = calculateDiscountAmount()
   const total = calculateTotal()
-  // Sum all recorded payments to calculate true remaining balance.
-  // The deposit is stored on the booking row (deposit_paid_date / deposit_amount), NOT in
-  // private_booking_payments, so we must add it to the accumulator start value when paid.
-  const depositPaid = (booking.deposit_paid_date && Number.isFinite(booking.deposit_amount))
-    ? (booking.deposit_amount as number)
-    : 0
+  // The deposit is separate from the event balance and cannot be used towards it.
+  // Only event-balance payments (stored in private_booking_payments) reduce the balance.
   const totalPaid = booking.final_payment_date
     ? total
     : ((booking.payments || []) as Array<{ amount: number | string }>).reduce((sum, p) => {
         const paid = typeof p.amount === 'string' ? parseFloat(p.amount) : (p.amount ?? 0)
         return sum + (Number.isFinite(paid) ? paid : 0)
-      }, depositPaid)
+      }, 0)
   const balanceDue = Math.max(0, total - totalPaid)
   const contractNote = formatPlainText(booking.contract_note)
 
@@ -139,18 +135,20 @@ export function generateContractHTML(data: ContractData): string {
     ? escapeHtml(booking.accessibility_needs)
     : null
 
-  // Calculate balance due date — prefer explicit field, fall back to 7 days before event
+  // Calculate balance due date — prefer explicit field, fall back to 14 days before event
   let balanceDueDate = 'To be confirmed'
+  let finalDetailsDate = 'To be confirmed'
   if (isTbd) {
     balanceDueDate = 'To be confirmed (date TBD)'
+    finalDetailsDate = 'To be confirmed (date TBD)'
   } else if (booking.balance_due_date) {
-    // Use the explicitly set balance due date first
     balanceDueDate = formatDate(booking.balance_due_date)
+    finalDetailsDate = balanceDueDate
   } else if (booking.event_date) {
-    // Fall back to 7 days before event
     const eventDateObj = new Date(booking.event_date)
-    const dueDate = new Date(eventDateObj.getTime() - (7 * 24 * 60 * 60 * 1000))
+    const dueDate = new Date(eventDateObj.getTime() - (14 * 24 * 60 * 60 * 1000))
     balanceDueDate = formatDate(dueDate.toISOString())
+    finalDetailsDate = balanceDueDate
   }
 
   // Group items by type
@@ -452,6 +450,18 @@ export function generateContractHTML(data: ContractData): string {
     <p><strong>Date Generated:</strong> ${formatDate(new Date().toISOString())}</p>
   </div>
 
+  <div style="background: #fef3c7; border: 2px solid #d97706; padding: 12px; margin-bottom: 15px; border-radius: 3px; font-size: 8pt; page-break-inside: avoid; break-inside: avoid;">
+    <h3 style="color: #92400e; margin-top: 0; font-size: 10pt; text-transform: uppercase;">Important: Booking Deposit, Cancellation Terms and Acceptance of Terms</h3>
+    <p style="margin-bottom: 6px;">Payment of the booking deposit confirms that the Host has read, understood and accepted this Agreement and these Terms and Conditions in full. A binding confirmed booking is created when Orange Jelly Limited receives cleared payment of the booking deposit, whether or not a signed copy of this Agreement has also been returned.</p>
+    <p style="margin-bottom: 6px;">Before the booking deposit is paid, Orange Jelly Limited may place a temporary hold on the requested date and time. A temporary hold is provisional only and does not create a confirmed booking. Unless Orange Jelly Limited agrees otherwise in writing, a temporary hold may be released if the booking deposit is not received in cleared funds within 14 calendar days.</p>
+    <p style="margin-bottom: 6px;">The booking deposit is paid to secure the agreed event date and time, to allow Orange Jelly Limited to remove that date and time from general availability, and to protect Orange Jelly Limited against cancellation, damage, unpaid balances, additional cleaning, overtime, third-party supplier costs and any other charges arising from the event.</p>
+    <p style="margin-bottom: 6px;">The booking deposit is separate from and additional to the total event cost. It cannot be used by the Host as payment towards the event balance, bar spend, catering, entertainment, venue hire or any other event charge. The Host must pay the full event balance separately by the due date stated in this Agreement.</p>
+    <p style="margin-bottom: 6px;">If the event proceeds as booked, the booking deposit will be refunded within 48 hours after the event, provided that the full event balance has been paid, all charges have been settled, and no deductions are required for damage, additional cleaning, overtime, unpaid charges, supplier costs or any other sums owed by the Host.</p>
+    <p style="margin-bottom: 6px;">If the Host cancels the booking less than 30 calendar days before the event date, fails to attend, fails to pay the full event balance by the due date, or otherwise does not proceed with the event, the booking deposit will be retained in full, except only where a refund is required by law.</p>
+    <p style="margin-bottom: 6px;">If the Host cancels the booking 30 calendar days or more before the event date, the booking deposit may be refunded, less a 5% cancellation administration deduction and any direct costs, supplier charges, payment processing costs, staffing costs, special-order items or other charges already incurred or committed by Orange Jelly Limited in connection with the booking.</p>
+    <p style="margin-bottom: 0;">If Orange Jelly Limited is able to secure another booking for the same date following the Host's cancellation, Orange Jelly Limited may refund an appropriate additional amount of the deposit after deducting any costs, losses, charges or administration arising from the cancellation or change.</p>
+  </div>
+
   <div class="info-grid">
     <div class="info-section">
       <h3>Customer Details</h3>
@@ -677,43 +687,56 @@ export function generateContractHTML(data: ContractData): string {
   
   <table style="margin-top: 15px;">
     <tbody>
-      <tr style="background: #e0f2fe;">
-        <td style="padding: 10px; border: 1px solid #0284c7;">
-          <strong style="color: #0c4a6e;">Refundable Security Deposit</strong>
-          <br/><small style="color: #0369a1;">Returned after event (subject to terms)</small>
+      <tr style="background: #fef3c7;">
+        <td style="padding: 10px; border: 1px solid #d97706;">
+          <strong style="color: #92400e;">Booking and Damage Deposit</strong>
+          <br/><small style="color: #b45309;">Deposit status: ${booking.deposit_paid_date ? `Paid ${formatDate(booking.deposit_paid_date)}` : 'Due'}</small>
         </td>
-        <td style="text-align: right; padding: 10px; border: 1px solid #0284c7; color: #0c4a6e;">
+        <td style="text-align: right; padding: 10px; border: 1px solid #d97706; color: #92400e;">
           <strong>${formatCurrency(depositAmount)}</strong>
-          ${booking.deposit_paid_date ? `<br/><small style="color: #0369a1;">Paid ${formatDate(booking.deposit_paid_date)}</small>` : `<br/><small style="color: #dc2626;">Not yet paid</small>`}
         </td>
       </tr>
       <tr class="total-row">
-        <td><strong>Balance Due for Event</strong></td>
+        <td><strong>Event Balance Due</strong></td>
         <td style="text-align: right;"><strong>${formatCurrency(balanceDue)}</strong></td>
       </tr>
       ${!booking.final_payment_date && total > 0 ? `
       <tr>
-        <td colspan="2" style="text-align: right; font-size: 10pt; color: #666;">
-          Balance due by: ${balanceDueDate} (7 days before event)
-        </td>
+        <td style="color: #666;">Balance due by:</td>
+        <td style="text-align: right; color: #666;">${balanceDueDate} (14 days before event)</td>
+      </tr>
+      <tr>
+        <td style="color: #666;">Final guest numbers due by:</td>
+        <td style="text-align: right; color: #666;">${finalDetailsDate} (14 days before event)</td>
       </tr>
       ` : ''}
       ${booking.final_payment_date ? `
       <tr>
         <td colspan="2" style="text-align: center; color: #10b981; font-weight: bold; padding: 10px;">
-          ✓ FULLY PAID - Thank you!
+          ✓ EVENT BALANCE FULLY PAID
         </td>
       </tr>
       ` : ''}
     </tbody>
   </table>
+  <p style="font-size: 8pt; color: #92400e; margin-top: 8px; padding: 6px; background: #fef3c7; border-radius: 2px;">
+    <strong>Important:</strong> The deposit is separate from the event balance and cannot be used towards payment of the event balance. The full event balance remains payable separately.
+  </p>
   </div>
 
   <div class="deposit-section">
     <h3>DEPOSIT INFORMATION</h3>
-    <p>To secure your desired date for the event and to cover any potential damages that may occur during your event, a deposit is required. This deposit is both a date reservation fee and a security measure against damage. Please note that we do not charge for incidental damages, such as minor glass breakages, which are understood to happen during normal event usage. However, we will deduct charges from the deposit for any significant damages requiring repairs or special cleaning.</p>
-    
-    <p>To secure your booking, a deposit is required. This deposit serves as both a date reservation fee and a security bond. The deposit can be paid by cash, card, or PayPal. We aim to return the deposit within 48 hours following the conclusion of your event. This timeframe allows us ample opportunity to thoroughly clean and inspect the space, ensuring everything is in order before we release the deposit. We appreciate your understanding and cooperation in helping us maintain The Anchor Pub in the best possible condition for all our patrons and events.</p>
+    <p>To secure the desired date and time for the event, a booking and damage deposit is required. The deposit is paid to secure the booking, remove the agreed date and time from general availability, and protect Orange Jelly Limited, trading as The Anchor, against cancellation, damage, additional cleaning, overtime, unpaid charges, third-party supplier costs and other sums arising from the event.</p>
+
+    <p>The booking is not confirmed until the deposit has been received in cleared funds by Orange Jelly Limited. Before the deposit is paid, Orange Jelly Limited may place a temporary hold on the requested date and time. A temporary hold is provisional only and may be released if the deposit is not received in cleared funds within 14 calendar days, unless Orange Jelly Limited agrees otherwise in writing.</p>
+
+    <p>The deposit may be paid by cash, card, bank transfer or PayPal. Payment of the deposit constitutes acceptance of this Agreement and these Terms and Conditions in full.</p>
+
+    <p>The deposit is separate from and additional to the total event cost. The deposit cannot be used by the Host as payment towards the event balance, bar spend, catering, entertainment, venue hire, supplier charges or any other event cost. The full event balance must be paid separately by the due date stated in this Agreement.</p>
+
+    <p>If the event proceeds as booked, Orange Jelly Limited will refund the deposit within 48 hours after the event, provided that the full event balance has been paid, all charges have been settled, and no deductions are required.</p>
+
+    <p>The Host remains fully responsible for any significant damage, excessive cleaning, unauthorised overtime, unpaid bar tabs, supplier charges, staffing costs, special-order items or other costs arising from the event. Orange Jelly Limited will not charge for ordinary incidental wear and minor glass breakages that are reasonably expected during normal event use. However, significant damage, malicious or accidental damage, specialist cleaning, missing items, unpaid balances, overtime, or costs caused by the Host, their guests, suppliers or entertainers may be deducted from the deposit. If the deposit is not enough to cover the full amount owed, the Host must pay the remaining balance on demand.</p>
   </div>
 
   <div style="background: #fee2e2; border: 1px solid #dc2626; padding: 10px; margin: 10px 0; border-radius: 3px; font-size: 8pt; page-break-inside: avoid; break-inside: avoid;">
@@ -737,11 +760,23 @@ export function generateContractHTML(data: ContractData): string {
     <h3>AGREEMENT</h3>
     <p>I, <strong>${safeCustomerName}</strong>, hereby agree to engage Orange Jelly Limited, operating as The Anchor Pub, to host my event described as "<strong>${safeEventType}</strong>" on <strong>${eventDate}</strong> from <strong>${startTime}</strong> to <strong>${endTime}</strong>. In accordance with the terms of this agreement, I commit to paying the total cost of the event, amounting to <strong>${formatCurrency(total)}</strong>.</p>
     
-    <p>To secure this booking, I will pay a refundable security deposit of <strong>${formatCurrency(depositAmount)}</strong>. This deposit is to cover any potential damages from the event and is <strong>separate from and additional to</strong> the total event cost. The deposit will be returned within 48 hours after the event's conclusion, provided that no significant damages occur beyond normal wear and incidental breakages.</p>
-    
-    <p>The total event cost of <strong>${formatCurrency(total)}</strong> is due no later than <strong>${balanceDueDate}</strong>, which is 7 days before the event date. This payment is for the booking items and services only, and does not include the refundable security deposit. I understand that failure to pay the full amount by this due date may result in the cancellation of my event without a refund of my deposit.</p>
-    
+    <p>To secure this booking, I will pay the booking and damage deposit of <strong>${formatCurrency(depositAmount)}</strong> shown in the booking summary. I understand and agree that the deposit is paid to secure the agreed event date and time, remove that date and time from general availability, and protect Orange Jelly Limited against cancellation, damage, additional cleaning, overtime, unpaid charges, supplier costs and other sums arising from the event.</p>
+
+    <p>I understand that the deposit is separate from and additional to the total event cost. I understand that the deposit cannot be used by me as payment towards the event balance, bar spend, catering, entertainment, venue hire, supplier charges or any other event cost. I must pay the full event balance separately by the due date stated in this Agreement.</p>
+
+    <p>I understand that the full event balance of <strong>${formatCurrency(total)}</strong> and final guest numbers are due no later than <strong>${balanceDueDate}</strong>, which is 14 calendar days before the event date. I understand that failure to pay the full event balance by the due date may result in cancellation of the booking and forfeiture of the deposit, except only where a refund is required by law.</p>
+
+    <p>I understand that if the event proceeds as booked, the deposit will be refunded within 48 hours after the event, provided that the full event balance has been paid, all charges have been settled, and no deductions are required for damage, additional cleaning, overtime, unpaid charges, supplier costs or any other sums owed by me.</p>
+
+    <p>I understand that if I cancel the booking less than 30 calendar days before the event date, fail to attend, fail to pay the full event balance by the due date, or otherwise do not proceed with the event, the deposit will be retained in full, except only where a refund is required by law.</p>
+
+    <p>I understand that if I cancel the booking 30 calendar days or more before the event date, the deposit may be refunded, less a 5% cancellation administration deduction and any direct costs, supplier charges, payment processing costs, staffing costs, special-order items or other charges already incurred or committed by Orange Jelly Limited in connection with the booking.</p>
+
     <p>By signing below, I, <strong>${safeCustomerName}</strong>, confirm my understanding and agreement to these terms, and commit to upholding my responsibilities as outlined in this agreement.</p>
+  </div>
+
+  <div style="background: #f9fafb; border: 1px solid #d1d5db; padding: 10px; margin: 15px 0 10px 0; border-radius: 3px; font-size: 8pt; page-break-inside: avoid; break-inside: avoid;">
+    <p>By signing below, paying the deposit, or otherwise confirming the booking in writing, I confirm that I have read, understood and agree to be bound by this Agreement and these Terms and Conditions. I understand that payment of the deposit creates a confirmed booking and that the deposit is subject to the cancellation, payment, damage and deduction terms set out in this Agreement.</p>
   </div>
 
   <div class="signature-section">
@@ -764,20 +799,52 @@ export function generateContractHTML(data: ContractData): string {
     
     <h3>Reservation and Deposit</h3>
     <ul>
-      <li>All event bookings require a deposit (as specified in the booking details above) to secure the desired date and time.</li>
-      <li>The deposit serves to cover any damages that may arise from the event, with minor breakages (e.g., glassware) being exempted. Significant damages, be they malicious or accidental, will result in deductions from the deposit.</li>
-      <li>Deposits will be returned within 48 hours following the event's conclusion, allowing for a thorough review of the premises and any cleaning or damage assessments.</li>
+      <li>All event bookings require a booking and damage deposit, as specified in the booking details above.</li>
+      <li>Before the deposit is paid, Orange Jelly Limited may place a temporary hold on the requested date and time. A temporary hold is provisional only and does not create a confirmed booking. Unless Orange Jelly Limited agrees otherwise in writing, a temporary hold may be released if the deposit is not received in cleared funds within 14 calendar days.</li>
+      <li>The booking is confirmed only when Orange Jelly Limited has received the deposit in cleared funds. Once the deposit has been received, Orange Jelly Limited may remove the agreed date and time from general availability and may decline other enquiries or bookings for that date and time.</li>
+      <li>The deposit is paid to secure the agreed event date and time and to protect Orange Jelly Limited against cancellation, damage, additional cleaning, overtime, unpaid charges, third-party supplier costs and other sums arising from the event.</li>
+      <li>The deposit is separate from and additional to the total event cost. The Host may not use the deposit as payment towards the event balance, bar spend, catering, entertainment, venue hire, supplier charges or any other event cost. The full event balance remains payable separately by the due date stated in this Agreement.</li>
+      <li>If the event proceeds as booked, the deposit will be refunded within 48 hours after the event, provided that the full event balance has been paid, all charges have been settled, and no deductions are required.</li>
+      <li>Orange Jelly Limited may deduct from the deposit any sums owed by the Host, including but not limited to damage, specialist cleaning, missing items, unpaid balances, unpaid bar tabs, overtime, supplier costs, staffing costs, special-order items, cancellation costs and any other charges arising from the event. If the deposit is not enough to cover the sums owed, the Host must pay the remaining balance on demand.</li>
     </ul>
 
     <h3>Cancellation Policy</h3>
     <ul>
-      <li>If an event is cancelled, the refundability of the deposit will be assessed on a case-by-case basis depending on the notice period given and any costs already incurred.</li>
-      <li>The host assumes responsibility for any cancellation fees tied to third-party vendors or entertainers if the event is cancelled beyond the stipulated cancellation policy of those entities.</li>
+      <li>The Host may cancel the event only by giving written notice to Orange Jelly Limited. The cancellation date will be the date on which Orange Jelly Limited receives the written notice.</li>
+      <li>If the Host cancels the booking 30 calendar days or more before the event date, the deposit may be refunded, less a 5% cancellation administration deduction and any direct costs, supplier charges, payment processing costs, staffing costs, special-order items or other charges already incurred or committed by Orange Jelly Limited in connection with the booking.</li>
+      <li>If the Host cancels the booking less than 30 calendar days before the event date, the deposit will be retained in full, except only where a refund is required by law. This is because Orange Jelly Limited may have removed the date from availability, declined other enquiries, committed staff, ordered stock, arranged suppliers, incurred administrative time, or suffered loss of opportunity.</li>
+      <li>If the Host fails to attend, fails to pay the full event balance by the due date, fails to confirm final guest numbers by the due date, or otherwise does not proceed with the event, Orange Jelly Limited may treat the booking as cancelled by the Host and may retain the deposit in full, except only where a refund is required by law.</li>
+      <li>Cancellation by the Host does not release the Host from responsibility for any other sums that are already due or have already been incurred in connection with the event, including third-party supplier costs, entertainer costs, special-order items, staffing costs, stock ordered specifically for the event, or any other costs committed to by Orange Jelly Limited or its suppliers.</li>
+      <li>If Orange Jelly Limited is able to secure another booking for the same date following the Host's cancellation, Orange Jelly Limited may refund an appropriate additional amount of the deposit after deducting any costs, losses, charges or administration arising from the cancellation or change. The Host acknowledges that a replacement booking may not be possible, particularly where cancellation is close to the event date.</li>
+      <li>Where required by law, Orange Jelly Limited will take reasonable steps to reduce its losses, including attempting to re-sell the date where reasonably practical.</li>
+    </ul>
+
+    <h3>Date Changes</h3>
+    <ul>
+      <li>The Host may request a change of event date by giving written notice to Orange Jelly Limited.</li>
+      <li>Date changes are subject to availability and are not guaranteed. Orange Jelly Limited is under no obligation to agree to a date change unless it confirms the change in writing.</li>
+      <li>Where the Host requests a date change at least 14 calendar days before the event date, Orange Jelly Limited will use reasonable efforts to accommodate the request where a suitable alternative date is available.</li>
+      <li>Any financial impact arising from a date change will be payable by the Host. This includes but is not limited to supplier charges, entertainer charges, staffing costs, stock costs, special-order items, administration, price increases and any other costs incurred or committed by Orange Jelly Limited as a result of the change.</li>
+      <li>Orange Jelly Limited may deduct any such costs from the deposit. If the deposit is not enough to cover the costs, the Host must pay the remaining balance on demand.</li>
+      <li>A request to change the date less than 14 calendar days before the event date may be refused and may be treated as a cancellation by the Host. In that case, the cancellation policy will apply.</li>
     </ul>
 
     <h3>Payment</h3>
     <ul>
-      <li>All payments associated with the event must be settled no less than 7 days before the scheduled event date.</li>
+      <li>The full event balance must be paid no later than 14 calendar days before the scheduled event date, unless Orange Jelly Limited agrees otherwise in writing.</li>
+      <li>Final guest numbers, catering requirements, dietary requirements, accessibility requirements and any other final event details must also be confirmed no later than 14 calendar days before the scheduled event date.</li>
+      <li>The deposit is payable to secure the booking. Payment of the deposit constitutes acceptance of this Agreement and these Terms and Conditions in full.</li>
+      <li>The deposit is separate from and additional to the event balance. The Host may not use the deposit as payment towards the event balance or any other event charge. The full event balance must be paid separately by the due date.</li>
+      <li>If the full event balance is not paid by the due date, Orange Jelly Limited may treat the booking as cancelled by the Host. In that case, the deposit may be retained in full, except only where a refund is required by law. Orange Jelly Limited may also recover any further losses, costs or charges arising from the non-payment or cancellation.</li>
+    </ul>
+
+    <h3>Final Guest Numbers, Catering and Event Details</h3>
+    <ul>
+      <li>Final guest numbers must be confirmed no later than 14 calendar days before the event date.</li>
+      <li>Once final guest numbers have been confirmed, Orange Jelly Limited may commit to staffing, catering, stock, suppliers and other event arrangements on the basis of those numbers.</li>
+      <li>If guest numbers reduce after the 14 calendar day deadline, Orange Jelly Limited is not obliged to reduce the event balance, particularly where catering, staffing, stock or supplier commitments have already been made.</li>
+      <li>Any increase in guest numbers after the 14 calendar day deadline is subject to availability and may result in additional charges. Orange Jelly Limited is not obliged to accommodate late increases.</li>
+      <li>All allergies, dietary requirements and accessibility requirements must be provided as early as possible and no later than 14 calendar days before the event date. Orange Jelly Limited will use reasonable efforts to accommodate requirements notified by the deadline, but cannot guarantee accommodation of requirements notified late.</li>
     </ul>
 
     <h3>Age Restrictions</h3>
@@ -787,7 +854,9 @@ export function generateContractHTML(data: ContractData): string {
 
     <h3>Liability</h3>
     <ul>
-      <li>Orange Jelly Limited, trading as The Anchor, will not be held liable for any injuries or accidents that transpire during the event, except in cases where gross negligence on our part can be proven. By agreeing to these terms, the host pledges to indemnify and exempt Orange Jelly Limited from claims, damages, losses, and expenses stemming from the event.</li>
+      <li>Nothing in this Agreement limits or excludes Orange Jelly Limited's liability for death or personal injury caused by its negligence, fraud or fraudulent misrepresentation, or any other liability that cannot lawfully be limited or excluded.</li>
+      <li>Subject to the above, Orange Jelly Limited will not be responsible for loss, damage, injury, delay or disruption caused by the Host, their guests, external suppliers, entertainers, contractors, or any matter outside Orange Jelly Limited's reasonable control.</li>
+      <li>The Host is responsible for the conduct of their guests, suppliers, entertainers and contractors during the event. The Host agrees to indemnify Orange Jelly Limited against claims, losses, damages, liabilities, costs and expenses arising from any act or omission by the Host, their guests, suppliers, entertainers or contractors.</li>
     </ul>
 
     <h3>What's Included and Not Included</h3>
@@ -807,8 +876,10 @@ export function generateContractHTML(data: ContractData): string {
 
     <h3>Entertainment & Equipment</h3>
     <ul>
-      <li>All entertainers brought in by the host must be pre-approved and must present evidence of their public liability insurance.</li>
-      <li>Any equipment that requires electricity, including but not limited to bouncy castles, DJs, live bands, etc., will incur a £25 standing charge for power use. All equipment must undergo PAC testing and be approved in advance.</li>
+      <li>All entertainers brought in by the Host must be pre-approved by Orange Jelly Limited and must provide evidence of public liability insurance where requested.</li>
+      <li>Any equipment that requires electricity, including but not limited to DJ equipment, live band equipment, lighting, sound systems and bouncy castles, must be approved by Orange Jelly Limited in advance.</li>
+      <li>Electrical equipment must be PAT tested where applicable and must be safe, suitable and properly maintained.</li>
+      <li>Any equipment requiring electricity may incur a standing charge for power use, as specified by Orange Jelly Limited.</li>
     </ul>
 
     <h3>Decoration and Setup</h3>
@@ -829,7 +900,7 @@ export function generateContractHTML(data: ContractData): string {
 
     <h3>Additional Charges & Overtime</h3>
     <ul>
-      <li>If an event goes beyond the agreed-upon timeframe, additional hourly rates will apply, and these charges can be deducted from the deposit if not settled by the host.</li>
+      <li>If an event goes beyond the agreed-upon timeframe, additional hourly rates will apply and will be payable by the Host on demand.</li>
       <li>In cases where specific services or provisions are required outside of our standard offerings, additional charges may apply.</li>
     </ul>
 
@@ -847,13 +918,14 @@ export function generateContractHTML(data: ContractData): string {
     <h3>Force Majeure</h3>
     <ul>
       <li>Neither party shall be held liable or responsible to the other party nor be deemed to have defaulted under or breached this Agreement for failure or delay in fulfilling or performing any term of this Agreement to the extent, and for so long as, such failure or delay is caused by or results from causes beyond the reasonable control of the affected party including but not limited to fire, floods, embargoes, war, acts of war (whether war is declared or not), acts of terrorism, insurrections, riots, civil commotions, strikes, lockouts or other labour disturbances, acts of God or acts, omissions or delays in acting by any governmental authority or the other party.</li>
-      <li>In the event of a cancellation due to force majeure, Orange Jelly Limited will provide a full refund minus any costs already borne by the company in preparation for the event.</li>
+      <li>In the event that the event cannot proceed due to force majeure, Orange Jelly Limited may, where reasonably possible, offer the Host an alternative date. If an alternative date cannot reasonably be agreed, any refund will be assessed in accordance with applicable law, taking into account any costs already incurred, work already carried out, third-party commitments, supplier costs, staffing costs, special-order items and the status of the booking deposit.</li>
     </ul>
 
     <h3>Indemnification & Liability</h3>
     <ul>
-      <li>The host agrees to indemnify and hold harmless Orange Jelly Limited, its affiliates, and their respective directors, officers, employees, and agents from and against any and all claims, losses, damages, liabilities, judgements, fees, costs, and expenses (including reasonable solicitors' fees and costs) related to or arising out of any act or omission by the host, their guests, or their vendors.</li>
-      <li>Orange Jelly Limited's total liability for any claim arising out of or in connection with the organisation or hosting of an event shall be limited to the amount paid by the host for the event.</li>
+      <li>The Host agrees to indemnify and hold harmless Orange Jelly Limited, its affiliates, and their respective directors, officers, employees and agents from and against any claims, losses, damages, liabilities, judgements, fees, costs and expenses related to or arising out of any act or omission by the Host, their guests, suppliers, entertainers or contractors.</li>
+      <li>Nothing in this Agreement limits or excludes Orange Jelly Limited's liability for death or personal injury caused by its negligence, fraud or fraudulent misrepresentation, or any other liability that cannot lawfully be limited or excluded.</li>
+      <li>Subject to the above, Orange Jelly Limited's total liability for any claim arising out of or in connection with the organisation or hosting of an event shall be limited to the amount paid by the Host for the event.</li>
     </ul>
 
     <h3>Event Insurance</h3>

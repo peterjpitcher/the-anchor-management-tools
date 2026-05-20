@@ -166,7 +166,7 @@ export default async function BookingPortalPage({ params, searchParams }: PagePr
   const depositPaid = !!b.deposit_paid_date
   const balancePaid = !!b.final_payment_date
   const depositRequired = b.deposit_amount > 0
-  // Security deposit is a returnable bond — it does NOT reduce the event cost.
+  // Booking and damage deposit — separate from event balance, not deducted from event cost
   // Prefer calculated_total from the view (items-based) over legacy total_amount
   const effectiveTotal = b.calculated_total ?? b.total_amount
   const balanceRemaining = balancePaid ? 0 : Math.max(0, effectiveTotal - balancePaymentsTotal)

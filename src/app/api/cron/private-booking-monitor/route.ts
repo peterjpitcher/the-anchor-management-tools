@@ -690,7 +690,7 @@ export async function GET(request: Request) {
           if (![14, 7, 1].includes(daysUntilEvent)) continue
 
           const totalAmount = Number(booking.calculated_total ?? booking.total_amount ?? 0)
-          // Security deposit is a returnable bond — NOT deducted from event cost
+          // Booking and damage deposit — separate from event balance
           const viewBalanceRemaining = Number(booking.balance_remaining)
           const balanceDue = Number.isFinite(viewBalanceRemaining)
             ? Math.max(viewBalanceRemaining, 0)

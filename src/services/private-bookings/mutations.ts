@@ -38,6 +38,7 @@ import {
   holdExtendedMessage,
   bookingCancelledHoldMessage,
   bookingCancelledRefundableMessage,
+  bookingCancelledPartialRefundMessage,
   bookingCancelledNonRefundableMessage,
   bookingCancelledManualReviewMessage,
 } from '@/lib/private-bookings/messages';
@@ -128,11 +129,13 @@ type CancellationSmsVariant = {
   triggerType:
     | 'booking_cancelled_hold'
     | 'booking_cancelled_refundable'
+    | 'booking_cancelled_partial_refund'
     | 'booking_cancelled_non_refundable'
     | 'booking_cancelled_manual_review'
   templateKey:
     | 'private_booking_cancelled_hold'
     | 'private_booking_cancelled_refundable'
+    | 'private_booking_cancelled_partial_refund'
     | 'private_booking_cancelled_non_refundable'
     | 'private_booking_cancelled_manual_review'
   messageBody: string
@@ -176,6 +179,20 @@ async function resolveCancellationSmsVariant(input: {
           customerFirstName: input.customerFirstName,
           eventDate: input.eventDate,
           refundAmount: outcome.refund_amount,
+        }),
+        outcome: outcome.outcome,
+        refundAmount: outcome.refund_amount,
+        retainedAmount: outcome.retained_amount,
+      }
+    case 'deposit_partial_refund':
+      return {
+        triggerType: 'booking_cancelled_partial_refund',
+        templateKey: 'private_booking_cancelled_partial_refund',
+        messageBody: bookingCancelledPartialRefundMessage({
+          customerFirstName: input.customerFirstName,
+          eventDate: input.eventDate,
+          refundAmount: outcome.refund_amount,
+          deductionAmount: outcome.deposit_deduction,
         }),
         outcome: outcome.outcome,
         refundAmount: outcome.refund_amount,

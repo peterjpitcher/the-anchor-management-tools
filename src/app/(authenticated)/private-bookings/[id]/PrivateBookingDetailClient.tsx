@@ -498,11 +498,13 @@ type CancellationPreview = {
   outcome:
     | 'no_money'
     | 'refundable'
+    | 'deposit_partial_refund'
     | 'non_refundable_retained'
     | 'manual_review'
     | null;
   refund_amount: number;
   retained_amount: number;
+  deposit_deduction: number;
   preview_body: string | null;
   error?: string;
 };
@@ -512,8 +514,9 @@ const CANCELLATION_OUTCOME_LABEL: Record<
   string
 > = {
   no_money: 'No money changed hands',
-  refundable: 'Refundable',
-  non_refundable_retained: 'Non-refundable (retained)',
+  refundable: 'Balance refundable (deposit retained)',
+  deposit_partial_refund: 'Deposit refundable less 5% admin deduction',
+  non_refundable_retained: 'Deposit retained (<30 days notice)',
   manual_review: 'Manual review',
 };
 
@@ -523,6 +526,7 @@ const CANCELLATION_OUTCOME_VARIANT: Record<
 > = {
   no_money: 'default',
   refundable: 'info',
+  deposit_partial_refund: 'success',
   non_refundable_retained: 'warning',
   manual_review: 'error',
 };
@@ -2713,7 +2717,7 @@ export default function PrivateBookingDetailClient({
                   const payments: PrivateBookingPayment[] = booking.payments ?? [];
                   const totalPaid = payments.reduce((sum, p) => sum + (p.amount ?? 0), 0);
                   const bookingTotal = calculateTotal();
-                  // Security deposit is a returnable bond — not deducted from the event cost
+                  // Booking and damage deposit — separate from event balance
                   const remaining = Math.max(0, bookingTotal - totalPaid);
                   return (
                     <>
@@ -2887,7 +2891,7 @@ export default function PrivateBookingDetailClient({
       {canManageDeposits && (() => {
         const payments: PrivateBookingPayment[] = booking?.payments ?? [];
         const totalPaid = payments.reduce((sum, p) => sum + (p.amount ?? 0), 0);
-        // Security deposit is a returnable bond — not deducted from the event cost
+        // Booking and damage deposit — separate from event balance
         const remaining = Math.max(0, calculateTotal() - totalPaid);
         return (
           <PaymentModal
