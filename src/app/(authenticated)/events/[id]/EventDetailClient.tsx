@@ -19,7 +19,9 @@ import { Icon } from '@/ds/icons'
 import type { Event } from '@/types/database'
 import type { EventBookingRow } from '@/app/actions/events'
 import type { EventMarketingLink } from '@/app/actions/event-marketing-links'
+import type { EventCategory } from '@/types/event-categories'
 import {
+  getEventById,
   getEventBookings,
   createEventManualBooking,
   updateEventManualBookingSeats,
@@ -28,6 +30,7 @@ import {
 import {
   regenerateEventMarketingLinks,
 } from '@/app/actions/event-marketing-links'
+import { EventDrawer } from '@/app/(authenticated)/events/_components/EventDrawer'
 import CustomerSearchInput from '@/components/features/customers/CustomerSearchInput'
 import { EventMarketingLinksCard } from '@/components/features/events/EventMarketingLinksCard'
 import { EventPromotionContentCard } from '@/components/features/events/EventPromotionContentCard'
@@ -44,6 +47,7 @@ interface EventDetailClientProps {
   event: Event | null
   bookings: EventBookingRow[]
   marketingLinks: EventMarketingLink[]
+  categories: EventCategory[]
   permissions: { canEdit: boolean; canDelete: boolean; canManage: boolean }
   initialError: string | null
 }
@@ -85,17 +89,20 @@ function copyToClipboard(text: string, label: string): void {
 /* ------------------------------------------------------------------ */
 
 export default function EventDetailClient({
-  event,
+  event: initialEvent,
   bookings: initialBookings,
   marketingLinks: initialLinks,
+  categories,
   permissions,
   initialError,
 }: EventDetailClientProps) {
+  const [event, setEvent] = useState<Event | null>(initialEvent)
   const [activeTab, setActiveTab] = useState('overview')
   const [bookings, setBookings] = useState<EventBookingRow[]>(initialBookings)
   const [links, setLinks] = useState<EventMarketingLink[]>(initialLinks)
   const [showCancelled, setShowCancelled] = useState(false)
   const [isPending, startTransition] = useTransition()
+  const [drawerOpen, setDrawerOpen] = useState(false)
 
   // Manual booking form state
   const [newPhone, setNewPhone] = useState('')
@@ -133,7 +140,7 @@ export default function EventDetailClient({
     return Math.round((totalSeats / event.capacity) * 100)
   }, [totalSeats, event?.capacity])
 
-  const estimatedRevenue = totalSeats * 25
+  const estimatedRevenue = event?.price ? totalSeats * event.price : null
 
   const totalLinkClicks = useMemo(
     () => links.reduce((sum, l) => sum + (l.clickCount ?? 0), 0),
@@ -149,6 +156,18 @@ export default function EventDetailClient({
       setBookings(result.data)
     }
   }, [event])
+
+  /* ---- Edit drawer ---- */
+
+  const handleDrawerSave = useCallback(async () => {
+    setDrawerOpen(false)
+    if (!event) return
+    const result = await getEventById(event.id)
+    if (result.data) {
+      setEvent(result.data)
+    }
+    await refreshBookings()
+  }, [event, refreshBookings])
 
   /* ---- Manual booking ---- */
 
@@ -298,7 +317,7 @@ export default function EventDetailClient({
               <Badge tone="neutral">{formatCurrency(event.price)}</Badge>
             ) : null}
             {permissions.canEdit && (
-              <Button variant="secondary" size="sm" icon={<Icon name="edit" size={14} />}>
+              <Button variant="secondary" size="sm" icon={<Icon name="edit" size={14} />} onClick={() => setDrawerOpen(true)}>
                 Edit
               </Button>
             )}
@@ -405,6 +424,17 @@ export default function EventDetailClient({
         confirmLabel="Cancel Booking"
         tone="danger"
       />
+
+      {/* Edit event drawer */}
+      {permissions.canEdit && (
+        <EventDrawer
+          open={drawerOpen}
+          onClose={() => setDrawerOpen(false)}
+          event={event}
+          categories={categories}
+          onSave={handleDrawerSave}
+        />
+      )}
     </div>
   )
 }
