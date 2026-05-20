@@ -97,10 +97,14 @@ export async function uploadEventImage(
     const folder = event_id ? `events/${event_id}` : `categories/${category_id}`
     const uniqueFileName = `${folder}/${image_type}/${Date.now()}_${finalFileName}`
 
+    // Convert File to Buffer for Node.js compatibility with admin client
+    const arrayBuffer = await file.arrayBuffer()
+    const buffer = Buffer.from(arrayBuffer)
+
     // Upload to storage
     const { data: uploadData, error: uploadError } = await supabase.storage
       .from(BUCKET_NAME)
-      .upload(uniqueFileName, file, {
+      .upload(uniqueFileName, buffer, {
         upsert: false,
         contentType: file.type
       })
