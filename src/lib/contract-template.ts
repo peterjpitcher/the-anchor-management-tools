@@ -450,18 +450,6 @@ export function generateContractHTML(data: ContractData): string {
     <p><strong>Date Generated:</strong> ${formatDate(new Date().toISOString())}</p>
   </div>
 
-  <div style="background: #fef3c7; border: 2px solid #d97706; padding: 12px; margin-bottom: 15px; border-radius: 3px; font-size: 8pt; page-break-inside: avoid; break-inside: avoid;">
-    <h3 style="color: #92400e; margin-top: 0; font-size: 10pt; text-transform: uppercase;">Important: Booking Deposit, Cancellation Terms and Acceptance of Terms</h3>
-    <p style="margin-bottom: 6px;">Payment of the booking deposit confirms that the Host has read, understood and accepted this Agreement and these Terms and Conditions in full. A binding confirmed booking is created when Orange Jelly Limited receives cleared payment of the booking deposit, whether or not a signed copy of this Agreement has also been returned.</p>
-    <p style="margin-bottom: 6px;">Before the booking deposit is paid, Orange Jelly Limited may place a temporary hold on the requested date and time. A temporary hold is provisional only and does not create a confirmed booking. Unless Orange Jelly Limited agrees otherwise in writing, a temporary hold may be released if the booking deposit is not received in cleared funds within 14 calendar days.</p>
-    <p style="margin-bottom: 6px;">The booking deposit is paid to secure the agreed event date and time, to allow Orange Jelly Limited to remove that date and time from general availability, and to protect Orange Jelly Limited against cancellation, damage, unpaid balances, additional cleaning, overtime, third-party supplier costs and any other charges arising from the event.</p>
-    <p style="margin-bottom: 6px;">The booking deposit is separate from and additional to the total event cost. It cannot be used by the Host as payment towards the event balance, bar spend, catering, entertainment, venue hire or any other event charge. The Host must pay the full event balance separately by the due date stated in this Agreement.</p>
-    <p style="margin-bottom: 6px;">If the event proceeds as booked, the booking deposit will be refunded within 48 hours after the event, provided that the full event balance has been paid, all charges have been settled, and no deductions are required for damage, additional cleaning, overtime, unpaid charges, supplier costs or any other sums owed by the Host.</p>
-    <p style="margin-bottom: 6px;">If the Host cancels the booking less than 30 calendar days before the event date, fails to attend, fails to pay the full event balance by the due date, or otherwise does not proceed with the event, the booking deposit will be retained in full, except only where a refund is required by law.</p>
-    <p style="margin-bottom: 6px;">If the Host cancels the booking 30 calendar days or more before the event date, the booking deposit may be refunded, less a 5% cancellation administration deduction and any direct costs, supplier charges, payment processing costs, staffing costs, special-order items or other charges already incurred or committed by Orange Jelly Limited in connection with the booking.</p>
-    <p style="margin-bottom: 0;">If Orange Jelly Limited is able to secure another booking for the same date following the Host's cancellation, Orange Jelly Limited may refund an appropriate additional amount of the deposit after deducting any costs, losses, charges or administration arising from the cancellation or change.</p>
-  </div>
-
   <div class="info-grid">
     <div class="info-section">
       <h3>Customer Details</h3>
