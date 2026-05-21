@@ -42,7 +42,7 @@ export function EditableCurrencyCell({
     return (
       <div className="flex flex-col gap-1">
         <div className="flex items-center gap-1">
-          <span className="text-sm text-muted-foreground">£</span>
+          <span className="text-sm text-text-muted">£</span>
           <input
             ref={inputRef}
             type="number"
@@ -58,12 +58,12 @@ export function EditableCurrencyCell({
               }
             }}
             onBlur={() => void saveValue()}
-            className="w-20 rounded border border-input bg-background px-2 py-1 text-sm"
+            className="w-20 rounded border border-border bg-surface px-2 py-1 text-sm"
             aria-label={`Edit ${fieldLabel} for ${entityName}`}
           />
         </div>
         {error && (
-          <span className="text-xs text-destructive">{error}</span>
+          <span className="text-xs text-danger">{error}</span>
         )}
       </div>
     );
@@ -74,13 +74,13 @@ export function EditableCurrencyCell({
       <button
         type="button"
         onClick={startEditing}
-        className="rounded px-1 py-0.5 text-left text-sm hover:bg-muted transition-colors"
+        className="rounded px-1 py-0.5 text-left text-sm hover:bg-surface-hover transition-colors"
         aria-label={`Edit ${fieldLabel} for ${entityName}`}
       >
         £{value.toFixed(2)}
       </button>
       {error && (
-        <span className="text-xs text-destructive">{error}</span>
+        <span className="text-xs text-danger">{error}</span>
       )}
     </div>
   );

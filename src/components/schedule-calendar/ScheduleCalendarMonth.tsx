@@ -119,7 +119,7 @@ export function ScheduleCalendarMonth({
                                             key={entry.id}
                                             className={cn(
                                                 'text-xs rounded-sm px-2 py-1 border-l-[3px] whitespace-normal break-words',
-                                                isMuted && 'text-muted-foreground/80',
+                                                isMuted && 'text-text-muted/80',
                                                 isCancelled && 'line-through'
                                             )}
                                             style={{
@@ -223,17 +223,17 @@ function EntryBlock({ entry, onClick, renderTooltip }: EntryBlockProps) {
                 {entry.title}
             </div>
             {entry.subtitle && (
-                <div className="text-muted-foreground text-[11px] leading-tight">{entry.subtitle}</div>
+                <div className="text-text-muted text-[11px] leading-tight">{entry.subtitle}</div>
             )}
             {entry.endsNextDay && (
-                <div className="text-muted-foreground text-[10px] leading-tight">+1 day</div>
+                <div className="text-text-muted text-[10px] leading-tight">+1 day</div>
             )}
         </>
     )
 
     const sharedClass = cn(
-        'block rounded-sm px-2 py-1 text-xs border-l-[3px] bg-background hover:bg-muted text-left w-full',
-        isMuted && 'text-muted-foreground/80',
+        'block rounded-sm px-2 py-1 text-xs border-l-[3px] bg-surface hover:bg-surface-hover text-left w-full',
+        isMuted && 'text-text-muted/80',
         isCancelled && 'line-through'
     )
     const sharedStyle = {

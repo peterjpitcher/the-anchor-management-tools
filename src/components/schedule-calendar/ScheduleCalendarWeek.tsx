@@ -90,8 +90,8 @@ export function ScheduleCalendarWeek({
         <div className="border border-border rounded-md overflow-hidden">
             {/* All-day band */}
             {allDayBand.length > 0 && (
-                <div className="grid grid-cols-[50px_repeat(7,_1fr)] bg-muted/30 border-b border-border">
-                    <div className="text-[10px] text-muted-foreground p-1 text-right">All day</div>
+                <div className="grid grid-cols-[50px_repeat(7,_1fr)] bg-surface-hover/30 border-b border-border">
+                    <div className="text-[10px] text-text-muted p-1 text-right">All day</div>
                     <div className="col-span-7 p-1 flex flex-col gap-1">
                         {allDayBand.map((e) => (
                             <a
@@ -115,7 +115,7 @@ export function ScheduleCalendarWeek({
             )}
 
             {/* Day headers */}
-            <div className="grid grid-cols-[50px_repeat(7,_1fr)] bg-muted border-b border-border">
+            <div className="grid grid-cols-[50px_repeat(7,_1fr)] bg-surface-hover border-b border-border">
                 <div />
                 {days.map((d) => (
                     <div key={d.toISOString()} className="text-xs font-medium text-center py-2">
@@ -131,7 +131,7 @@ export function ScheduleCalendarWeek({
                     {hours.map((h) => (
                         <div
                             key={h}
-                            className="text-[10px] text-muted-foreground text-right pr-1"
+                            className="text-[10px] text-text-muted text-right pr-1"
                             style={{ height: ROW_PX }}
                         >
                             {String(h).padStart(2, '0')}:00
@@ -163,8 +163,8 @@ export function ScheduleCalendarWeek({
                                         onEntryClick(entry)
                                     }}
                                     className={cn(
-                                        'absolute left-1 right-1 rounded-sm px-2 py-1 text-xs border-l-[3px] bg-background overflow-hidden',
-                                        entry.status === 'cancelled' && 'line-through text-muted-foreground/80'
+                                        'absolute left-1 right-1 rounded-sm px-2 py-1 text-xs border-l-[3px] bg-surface overflow-hidden',
+                                        entry.status === 'cancelled' && 'line-through text-text-muted/80'
                                     )}
                                     style={{
                                         top,
@@ -182,12 +182,12 @@ export function ScheduleCalendarWeek({
                                         {entry.title}
                                     </div>
                                     {entry.subtitle && (
-                                        <div className="text-muted-foreground text-[10px]">
+                                        <div className="text-text-muted text-[10px]">
                                             {entry.subtitle}
                                         </div>
                                     )}
                                     {entry.endsNextDay && (
-                                        <div className="text-muted-foreground text-[10px]">+1 day</div>
+                                        <div className="text-text-muted text-[10px]">+1 day</div>
                                     )}
                                 </a>
                             )
