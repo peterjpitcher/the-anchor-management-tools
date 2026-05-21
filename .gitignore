@@ -77,3 +77,13 @@ gha-creds-*.json
 .superpowers/
 .claude/worktrees/
 .claude/session-context.md
+.claude/changes-manifest.log
+.claude/schema-docs.md
+.claude/scheduled_tasks.lock
+
+# Supabase CLI temp state
+supabase/.temp/
+
+# QA review + task working artifacts (regenerated per session)
+tasks/codex-qa-review/
+tasks/ai-seo-content-quality/
