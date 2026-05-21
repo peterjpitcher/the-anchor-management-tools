@@ -1,5 +1,7 @@
 'use client'
 
+import { useState } from 'react'
+
 import {
   PageHeader,
   Card,
@@ -72,15 +74,18 @@ const BRAND_COLORS = [
   { shade: '900', hex: '#022c1a' },
 ]
 
+// `usage` lists the Tailwind prefixes this token is realistically applied with.
+// The displayed class is derived as `${prefix}-${tokenSuffix}`, which is why
+// text-colour tokens double up (e.g. text-muted → text-text-muted).
 const SEMANTIC_COLORS = [
-  { name: 'surface', cssVar: '--color-surface', hex: '#ffffff' },
-  { name: 'surface-2', cssVar: '--color-surface-2', hex: '#fafaf9' },
-  { name: 'border', cssVar: '--color-border', hex: '#ececea' },
-  { name: 'text', cssVar: '--color-text', hex: '#1c1917' },
-  { name: 'text-muted', cssVar: '--color-text-muted', hex: '#57534e' },
-  { name: 'text-subtle', cssVar: '--color-text-subtle', hex: '#a8a29e' },
-  { name: 'primary', cssVar: '--color-primary', hex: '#006A4E' },
-  { name: 'primary-fg', cssVar: '--color-primary-fg', hex: '#ffffff' },
+  { name: 'surface', cssVar: '--color-surface', hex: '#ffffff', usage: ['bg'] },
+  { name: 'surface-2', cssVar: '--color-surface-2', hex: '#fafaf9', usage: ['bg'] },
+  { name: 'border', cssVar: '--color-border', hex: '#ececea', usage: ['border'] },
+  { name: 'text', cssVar: '--color-text', hex: '#1c1917', usage: ['text'] },
+  { name: 'text-muted', cssVar: '--color-text-muted', hex: '#57534e', usage: ['text'] },
+  { name: 'text-subtle', cssVar: '--color-text-subtle', hex: '#a8a29e', usage: ['text'] },
+  { name: 'primary', cssVar: '--color-primary', hex: '#006A4E', usage: ['bg', 'text'] },
+  { name: 'primary-fg', cssVar: '--color-primary-fg', hex: '#ffffff', usage: ['text'] },
 ]
 
 const STATUS_COLORS = [
@@ -144,8 +149,43 @@ function CodeBlock({ code }: { code: string }) {
   )
 }
 
+// Derives the real Tailwind utility class(es) for a colour token. Tailwind v4
+// appends the token suffix (the part after `--color-`) to each prefix, so
+// `--color-text-muted` used as a text colour becomes `text-text-muted`.
+function utilityClasses(cssVar: string, prefixes: readonly string[]): string[] {
+  const suffix = cssVar.replace('--color-', '')
+  return prefixes.map((prefix) => `${prefix}-${suffix}`)
+}
+
+// Click-to-copy chip showing a usable utility class.
+function CopyableClass({ className }: { className: string }) {
+  const [copied, setCopied] = useState(false)
+
+  function handleCopy() {
+    navigator.clipboard
+      ?.writeText(className)
+      .then(() => {
+        setCopied(true)
+        setTimeout(() => setCopied(false), 1200)
+      })
+      .catch(() => undefined)
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={handleCopy}
+      title={copied ? 'Copied!' : `Copy "${className}"`}
+      aria-label={`Copy class ${className}`}
+      className="font-mono text-[10px] leading-none text-text-muted hover:text-text bg-surface-2 hover:bg-surface-hover border border-border rounded-sm px-1.5 py-1 transition-colors cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+    >
+      {copied ? 'copied!' : className}
+    </button>
+  )
+}
+
 /* ------------------------------------------------------------------ */
-/*  Page component (Server Component)                                  */
+/*  Page component (Client Component — click-to-copy needs state)      */
 /* ------------------------------------------------------------------ */
 
 export default function DesignSystemPage() {
@@ -185,12 +225,13 @@ export default function DesignSystemPage() {
           <SubSection title="Brand Palette">
             <div className="flex flex-wrap gap-3">
               {BRAND_COLORS.map((c) => (
-                <div key={c.shade} className="flex flex-col items-center gap-1.5">
+                <div key={c.shade} className="flex flex-col items-center gap-1.5 w-24">
                   <div
                     className="w-16 h-16 rounded-lg border border-border shadow-xs"
                     style={{ backgroundColor: c.hex }}
                   />
                   <span className="text-xs font-semibold text-text-strong">{c.shade}</span>
+                  <CopyableClass className={`bg-brand-${c.shade}`} />
                   <span className="text-[10px] font-mono text-text-muted">{c.hex}</span>
                 </div>
               ))}
@@ -198,14 +239,26 @@ export default function DesignSystemPage() {
           </SubSection>
 
           <SubSection title="Semantic Colours">
+            <p className="text-xs text-text-muted mb-3 max-w-2xl">
+              Tailwind generates utilities from each token below — click a class to copy it.
+              Note that text-colour tokens repeat the prefix: the usable class for{' '}
+              <code className="font-mono text-text">text-muted</code> is{' '}
+              <code className="font-mono text-text">text-text-muted</code>, not{' '}
+              <code className="font-mono text-text">text-muted</code>.
+            </p>
             <div className="flex flex-wrap gap-3">
               {SEMANTIC_COLORS.map((c) => (
-                <div key={c.name} className="flex flex-col items-center gap-1.5">
+                <div key={c.name} className="flex flex-col items-center gap-1.5 w-28">
                   <div
                     className="w-16 h-16 rounded-lg border border-border shadow-xs"
                     style={{ backgroundColor: c.hex }}
                   />
                   <span className="text-xs font-semibold text-text-strong">{c.name}</span>
+                  <div className="flex flex-col items-center gap-1">
+                    {utilityClasses(c.cssVar, c.usage).map((cls) => (
+                      <CopyableClass key={cls} className={cls} />
+                    ))}
+                  </div>
                   <span className="text-[10px] font-mono text-text-muted">{c.hex}</span>
                 </div>
               ))}
@@ -213,24 +266,32 @@ export default function DesignSystemPage() {
           </SubSection>
 
           <SubSection title="Status Colours">
-            {STATUS_COLORS.map((s) => (
-              <div key={s.name} className="flex items-center gap-3 mb-3">
-                <div
-                  className="w-16 h-16 rounded-lg border border-border shadow-xs"
-                  style={{ backgroundColor: s.hex }}
-                />
-                <div
-                  className="w-16 h-16 rounded-lg border border-border shadow-xs"
-                  style={{ backgroundColor: s.softHex }}
-                />
-                <div>
-                  <span className="text-sm font-semibold text-text-strong">{s.name}</span>
-                  <div className="text-[10px] font-mono text-text-muted">
-                    {s.hex} / {s.softHex}
+            {STATUS_COLORS.map((s) => {
+              const suffix = s.cssVar.replace('--color-', '')
+              return (
+                <div key={s.name} className="flex items-center gap-3 mb-3">
+                  <div
+                    className="w-16 h-16 rounded-lg border border-border shadow-xs"
+                    style={{ backgroundColor: s.hex }}
+                  />
+                  <div
+                    className="w-16 h-16 rounded-lg border border-border shadow-xs"
+                    style={{ backgroundColor: s.softHex }}
+                  />
+                  <div>
+                    <span className="text-sm font-semibold text-text-strong">{s.name}</span>
+                    <div className="flex flex-wrap gap-1 mt-1">
+                      <CopyableClass className={`bg-${suffix}`} />
+                      <CopyableClass className={`bg-${suffix}-soft`} />
+                      <CopyableClass className={`text-${suffix}-fg`} />
+                    </div>
+                    <div className="text-[10px] font-mono text-text-muted mt-1">
+                      {s.hex} / {s.softHex}
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
+              )
+            })}
           </SubSection>
         </Section>
 
