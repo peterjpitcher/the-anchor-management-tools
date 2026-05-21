@@ -336,7 +336,7 @@ describe('Mutation race/row-effect guards', () => {
     const deleteSelect = vi.fn().mockReturnValue({ maybeSingle: deleteMaybeSingle })
     const deleteEq = vi.fn().mockReturnValue({ select: deleteSelect })
 
-    mockedCreateClient.mockResolvedValue({
+    mockedCreateAdminClient.mockReturnValue({
       from: vi.fn((table: string) => {
         if (table !== 'short_links') {
           throw new Error(`Unexpected table: ${table}`)

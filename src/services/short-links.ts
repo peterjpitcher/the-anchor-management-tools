@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { z } from 'zod';
 import { buildShortLinkUrl } from '@/lib/short-links/base-url';
+import { resolveShortLinkName } from '@/lib/short-links/names';
 import {
   SHORT_LINK_INSIGHTS_TIMEZONE,
   type ShortLinkInsightsGranularity,
@@ -69,7 +70,7 @@ export class ShortLinkService {
   ) {
     const { data, error } = await supabase
       .from('short_links')
-      .select('id, short_code, created_at')
+      .select('id, short_code, destination_url, name, created_at')
       .eq('destination_url', destinationUrl)
       .order('created_at', { ascending: true })
       .limit(1)
@@ -86,9 +87,17 @@ export class ShortLinkService {
     already_exists: boolean;
   }> {
     const supabase = await createClient();
+    const linkName = resolveShortLinkName(data.name, data.destination_url);
 
     const existing = await this.findShortLinkByDestinationUrl(supabase, data.destination_url);
     if (existing) {
+      if (!existing.name?.trim()) {
+        await createAdminClient()
+          .from('short_links')
+          .update({ name: linkName })
+          .eq('id', existing.id);
+      }
+
       return {
         id: existing.id,
         short_code: existing.short_code,
@@ -118,12 +127,11 @@ export class ShortLinkService {
     }
 
     const rpcResult = result as Record<string, unknown> | null;
-    if (data.name && rpcResult?.short_code) {
-      await supabase
+    if (rpcResult?.short_code) {
+      await createAdminClient()
         .from('short_links')
-        .update({ name: data.name })
-        .eq('short_code', rpcResult.short_code as string)
-        .is('name', null);
+        .update({ name: linkName })
+        .eq('short_code', rpcResult.short_code as string);
     }
 
     const shortCode = rpcResult?.short_code as string;
@@ -145,6 +153,7 @@ export class ShortLinkService {
   static async getShortLinks(page: number = 1, pageSize: number = 50, includeSystem: boolean = false, search?: string): Promise<{
     data: unknown[];
     total: number;
+    linkTotal: number;
     page: number;
     pageSize: number;
   }> {
@@ -152,28 +161,70 @@ export class ShortLinkService {
     const from = (page - 1) * pageSize;
     const to = from + pageSize - 1;
 
-    let query = supabase
+    let countQuery = supabase
+      .from('short_links')
+      .select('id', { count: 'exact', head: true });
+
+    let parentQuery = supabase
       .from('short_links')
       .select('*', { count: 'exact' })
+      .is('parent_link_id', null)
       .order('created_at', { ascending: false });
 
     if (!includeSystem) {
-      query = query.not('created_by', 'is', null);
+      countQuery = countQuery.not('created_by', 'is', null);
+      parentQuery = parentQuery.not('created_by', 'is', null);
     }
 
     if (search) {
       const term = `%${search}%`;
-      query = query.or(`name.ilike.${term},short_code.ilike.${term},destination_url.ilike.${term}`);
+      const searchFilter = `name.ilike.${term},short_code.ilike.${term},destination_url.ilike.${term}`;
+      countQuery = countQuery.or(searchFilter);
+      parentQuery = parentQuery.or(searchFilter);
     }
 
-    const { data, error, count } = await query.range(from, to);
+    const [
+      { count: linkTotal, error: countError },
+      { data: parents, error: parentError, count },
+    ] = await Promise.all([
+      countQuery,
+      parentQuery.range(from, to),
+    ]);
 
-    if (error) throw new Error('Failed to load short links');
-    return { data: data || [], total: count || 0, page, pageSize };
+    if (countError || parentError) throw new Error('Failed to load short links');
+
+    const parentRows = parents || [];
+    const parentIds = parentRows.map((link) => link.id);
+    let variants: unknown[] = [];
+
+    if (parentIds.length > 0) {
+      let variantQuery = supabase
+        .from('short_links')
+        .select('*')
+        .in('parent_link_id', parentIds)
+        .order('created_at', { ascending: false });
+
+      if (!includeSystem) {
+        variantQuery = variantQuery.not('created_by', 'is', null);
+      }
+
+      const { data: variantRows, error: variantError } = await variantQuery;
+      if (variantError) throw new Error('Failed to load short link variants');
+      variants = variantRows || [];
+    }
+
+    return {
+      data: [...parentRows, ...variants],
+      total: count || 0,
+      linkTotal: linkTotal || 0,
+      page,
+      pageSize,
+    };
   }
 
   static async updateShortLink(input: UpdateShortLinkInput) {
-    const supabase = await createClient();
+    const supabase = createAdminClient();
+    const linkName = resolveShortLinkName(input.name, input.destination_url);
 
     const conflict = await this.findShortLinkByDestinationUrl(supabase, input.destination_url);
     if (conflict && conflict.id !== input.id) {
@@ -185,7 +236,7 @@ export class ShortLinkService {
     const { data: updated, error } = await supabase
       .from('short_links')
       .update({
-        name: input.name ?? null,
+        name: linkName,
         destination_url: input.destination_url,
         link_type: input.link_type,
         expires_at: input.expires_at ?? null,
@@ -201,7 +252,7 @@ export class ShortLinkService {
   }
 
   static async deleteShortLink(id: string) {
-    const supabase = await createClient();
+    const supabase = createAdminClient();
     
     const { data: existing, error: fetchError } = await supabase
       .from('short_links')
@@ -230,11 +281,20 @@ export class ShortLinkService {
     link_type: string;
     metadata?: Record<string, any>;
     expires_at?: string;
+    name?: string;
   }): Promise<{ short_code: string; full_url: string; already_exists: boolean }> {
     const supabase = await createAdminClient();
+    const linkName = resolveShortLinkName(data.name, data.destination_url);
 
     const existing = await this.findShortLinkByDestinationUrl(supabase, data.destination_url);
     if (existing) {
+      if (!existing.name?.trim()) {
+        await supabase
+          .from('short_links')
+          .update({ name: linkName })
+          .eq('id', existing.id);
+      }
+
       return {
         short_code: existing.short_code,
         full_url: buildShortLinkUrl(existing.short_code),
@@ -260,6 +320,11 @@ export class ShortLinkService {
     }
 
     const shortCode = (result as Record<string, unknown>)?.short_code as string;
+    await supabase
+      .from('short_links')
+      .update({ name: linkName })
+      .eq('short_code', shortCode);
+
     return {
       short_code: shortCode,
       full_url: buildShortLinkUrl(shortCode),
