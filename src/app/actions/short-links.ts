@@ -81,7 +81,14 @@ export async function getShortLinks(page: number = 1, pageSize: number = 50, inc
     }
 
     const result = await ShortLinkService.getShortLinks(page, pageSize, includeSystem, search);
-    return { success: true, data: result.data, total: result.total, page: result.page, pageSize: result.pageSize };
+    return {
+      success: true,
+      data: result.data,
+      total: result.total,
+      linkTotal: result.linkTotal,
+      page: result.page,
+      pageSize: result.pageSize,
+    };
   } catch (error: unknown) {
     console.error('Failed to list short links:', error);
     return { error: getErrorMessage(error) };

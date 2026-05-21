@@ -34,6 +34,35 @@ export function ShortLinkFormModal({ open, onClose, link, onSave }: Props) {
   const [submitting, setSubmitting] = useState(false)
   const [formError, setFormError] = useState<string | null>(null)
 
+  const populateUtmFields = (url: string) => {
+    try {
+      const parsed = new URL(url)
+      const source = parsed.searchParams.get('utm_source') || ''
+      const medium = parsed.searchParams.get('utm_medium') || ''
+      const campaign = parsed.searchParams.get('utm_campaign') || ''
+      setUtmSource(source)
+      setUtmMedium(medium)
+      setUtmCampaign(campaign)
+      setShowUtm(Boolean(source || medium || campaign))
+    } catch {
+      setUtmSource('')
+      setUtmMedium('')
+      setUtmCampaign('')
+      setShowUtm(false)
+    }
+  }
+
+  const buildSubmittedDestinationUrl = () => {
+    const hasUtmValue = [utmSource, utmMedium, utmCampaign].some((value) => value.trim())
+    if (!showUtm || !hasUtmValue) return destinationUrl
+
+    const parsed = new URL(destinationUrl)
+    if (utmSource.trim()) parsed.searchParams.set('utm_source', utmSource.trim())
+    if (utmMedium.trim()) parsed.searchParams.set('utm_medium', utmMedium.trim())
+    if (utmCampaign.trim()) parsed.searchParams.set('utm_campaign', utmCampaign.trim())
+    return parsed.toString()
+  }
+
   useEffect(() => {
     if (open) {
       if (link) {
@@ -41,6 +70,7 @@ export function ShortLinkFormModal({ open, onClose, link, onSave }: Props) {
         setDestinationUrl(link.destination_url)
         setLinkType(link.link_type || 'custom')
         setCustomCode(link.short_code)
+        populateUtmFields(link.destination_url)
       } else {
         setName('')
         setDestinationUrl('')
@@ -61,11 +91,12 @@ export function ShortLinkFormModal({ open, onClose, link, onSave }: Props) {
     setFormError(null)
 
     try {
+      const submittedDestinationUrl = buildSubmittedDestinationUrl()
       if (link) {
         const result = await updateShortLink({
           id: link.id,
           name: name || null,
-          destination_url: destinationUrl,
+          destination_url: submittedDestinationUrl,
           link_type: linkType as 'custom',
         })
         if (!result || 'error' in result) {
@@ -76,7 +107,7 @@ export function ShortLinkFormModal({ open, onClose, link, onSave }: Props) {
       } else {
         const result = await createShortLink({
           name: name || undefined,
-          destination_url: destinationUrl,
+          destination_url: submittedDestinationUrl,
           link_type: linkType as 'custom',
           custom_code: customCode || undefined,
         })

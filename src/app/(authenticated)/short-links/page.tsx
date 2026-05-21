@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation'
 import { checkUserPermission } from '@/app/actions/rbac'
-import { getShortLinks, getShortLinkVolume } from '@/app/actions/short-links'
+import { getShortLinks, getShortLinkVolumeAdvanced } from '@/app/actions/short-links'
 import { ShortLinksClient } from './_components/ShortLinksClient'
 import type { ShortLink } from '@/types/short-links'
 
@@ -10,9 +10,26 @@ export default async function ShortLinksPage() {
 
   const canManage = await checkUserPermission('short_links', 'manage')
 
-  const [listResult, volumeResult] = await Promise.all([
+  const now = new Date()
+  const currentStart = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
+  const previousStart = new Date(now.getTime() - 60 * 24 * 60 * 60 * 1000)
+
+  const [listResult, volumeResult, previousVolumeResult] = await Promise.all([
     getShortLinks(1, 25),
-    getShortLinkVolume(30),
+    getShortLinkVolumeAdvanced({
+      start_at: currentStart.toISOString(),
+      end_at: now.toISOString(),
+      granularity: 'day',
+      include_bots: false,
+      timezone: 'Europe/London',
+    }),
+    getShortLinkVolumeAdvanced({
+      start_at: previousStart.toISOString(),
+      end_at: currentStart.toISOString(),
+      granularity: 'day',
+      include_bots: false,
+      timezone: 'Europe/London',
+    }),
   ])
 
   const initialLinks: ShortLink[] =
@@ -25,11 +42,18 @@ export default async function ShortLinksPage() {
       ? listResult.total
       : initialLinks.length
 
+  const initialLinkTotal =
+    listResult && 'linkTotal' in listResult && typeof listResult.linkTotal === 'number'
+      ? listResult.linkTotal
+      : initialTotal
+
   return (
     <ShortLinksClient
       initialLinks={initialLinks}
       initialTotal={initialTotal}
+      initialLinkTotal={initialLinkTotal}
       volume={volumeResult?.data ?? null}
+      previousVolume={previousVolumeResult?.data ?? null}
       canManage={!!canManage}
     />
   )

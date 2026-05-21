@@ -117,12 +117,13 @@ describe('ShortLinkService', () => {
   })
 
   it('creates a new short link when destination URL is new', async () => {
-    mockMaybeSingle.mockResolvedValue({ data: null, error: null })
+    mockMaybeSingle
+      .mockResolvedValueOnce({ data: null, error: null })
+      .mockResolvedValueOnce({ data: { id: 'id-new' }, error: null })
     mockRpcSingle.mockResolvedValue({
       data: { short_code: 'new123', full_url: 'https://l.the-anchor.pub/new123' },
       error: null,
     })
-    mockSingle.mockResolvedValue({ data: { id: 'id-new' }, error: null })
 
     const result = await ShortLinkService.createShortLink({
       name: 'My Link',
