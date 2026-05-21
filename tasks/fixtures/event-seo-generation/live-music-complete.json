@@ -1,0 +1,23 @@
+{
+  "name": "live-music-complete",
+  "description": "Complete live music event with performer, time, pricing, booking URL — should produce high-quality content",
+  "input": {
+    "name": "The Rhythm Makers Live at The Anchor",
+    "date": "2026-07-18",
+    "time": "8:00 PM",
+    "categoryName": "Live Music",
+    "capacity": 80,
+    "brief": "The Rhythm Makers bring their energetic mix of funk, soul, and blues to The Anchor. The four-piece band features guitar, bass, drums, and saxophone. Known for getting the crowd on their feet with classic covers and original tracks.",
+    "performerName": "The Rhythm Makers",
+    "performerType": "Band",
+    "price": "£5",
+    "isFree": false,
+    "bookingUrl": "https://the-anchor.pub/events/rhythm-makers",
+    "primaryKeywords": ["live music Stanwell Moor", "pub live music Surrey"],
+    "secondaryKeywords": ["funk soul band", "live band near Heathrow"],
+    "localSeoKeywords": ["Stanwell Moor pub", "Staines-upon-Thames live music"]
+  },
+  "expectedOutcome": "pass",
+  "minimumScore": 90,
+  "notes": "Fully specified event — the pipeline should produce publishable content on first generation or after deterministic repair"
+}

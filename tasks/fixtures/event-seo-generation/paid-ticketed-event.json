@@ -1,0 +1,23 @@
+{
+  "name": "paid-ticketed-event",
+  "description": "Ticketed comedy night with advance booking",
+  "input": {
+    "name": "Comedy Night with Sarah Mitchell",
+    "date": "2026-09-12",
+    "time": "8:30 PM",
+    "categoryName": "Comedy",
+    "capacity": 60,
+    "brief": "Award-winning comedian Sarah Mitchell headlines with her new show 'Absolutely Typical'. Support from local comedian Tom Barnes. Doors open 7:30pm, show starts 8:30pm sharp. Over 18s only.",
+    "performerName": "Sarah Mitchell",
+    "performerType": "Comedian",
+    "price": "£15",
+    "isFree": false,
+    "bookingUrl": "https://the-anchor.pub/events/comedy-night-sarah-mitchell",
+    "primaryKeywords": ["comedy night Stanwell Moor", "stand-up comedy Surrey"],
+    "secondaryKeywords": ["live comedy near Heathrow", "pub comedy night"],
+    "localSeoKeywords": ["Stanwell Moor entertainment", "Staines-upon-Thames comedy"]
+  },
+  "expectedOutcome": "pass",
+  "minimumScore": 90,
+  "notes": "Paid ticketed event with named performer — tests pricing, booking URL, and performer-centric content"
+}

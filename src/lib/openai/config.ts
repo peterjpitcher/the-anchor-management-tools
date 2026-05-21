@@ -7,12 +7,15 @@ type OpenAIConfig = {
   baseUrl: string;
   receiptsModel: string;
   eventsModel: string;
+  seoModel: string;
 };
 
 const DEFAULT_BASE_URL = 'https://api.openai.com/v1';
 const DEFAULT_RECEIPTS_MODEL = process.env.OPENAI_RECEIPTS_MODEL ?? 'gpt-4o-mini';
 const DEFAULT_EVENTS_MODEL =
   process.env.OPENAI_EVENT_CONTENT_MODEL ?? process.env.OPENAI_EVENTS_MODEL ?? 'gpt-4o-mini';
+const DEFAULT_SEO_MODEL =
+  process.env.OPENAI_EVENT_SEO_MODEL ?? process.env.OPENAI_EVENTS_MODEL ?? 'gpt-4o-mini';
 
 const SETTINGS_CANDIDATES = [
   'openai_settings',
@@ -26,6 +29,7 @@ const KEY_PROPS = ['api_key', 'apiKey', 'key', 'value', 'token', 'secret'];
 const BASE_URL_PROPS = ['base_url', 'baseUrl', 'endpoint', 'url'];
 const RECEIPTS_MODEL_PROPS = ['receipts_model', 'receipt_model', 'classification_model'];
 const EVENTS_MODEL_PROPS = ['events_model', 'event_model', 'promotion_model', 'content_model'];
+const SEO_MODEL_PROPS = ['event_seo_model', 'seo_model', 'events_model', 'event_model'];
 
 let cachedConfig: OpenAIConfig | null = null;
 let cacheExpiresAt = 0;
@@ -94,6 +98,7 @@ async function loadConfigFromSettings(): Promise<Partial<OpenAIConfig>> {
       const baseUrl = pickString(value, BASE_URL_PROPS);
       const receiptsModel = pickString(value, RECEIPTS_MODEL_PROPS);
       const eventsModel = pickString(value, EVENTS_MODEL_PROPS);
+      const seoModel = pickString(value, SEO_MODEL_PROPS);
 
       if (apiKey) {
         return {
@@ -101,6 +106,7 @@ async function loadConfigFromSettings(): Promise<Partial<OpenAIConfig>> {
           baseUrl: baseUrl ?? undefined,
           receiptsModel: receiptsModel ?? undefined,
           eventsModel: eventsModel ?? undefined,
+          seoModel: seoModel ?? undefined,
         };
       }
     }
@@ -128,6 +134,7 @@ async function loadConfigFromSettings(): Promise<Partial<OpenAIConfig>> {
         baseUrl: pickString(fallbackValue, BASE_URL_PROPS) ?? undefined,
         receiptsModel: pickString(fallbackValue, RECEIPTS_MODEL_PROPS) ?? undefined,
         eventsModel: pickString(fallbackValue, EVENTS_MODEL_PROPS) ?? undefined,
+        seoModel: pickString(fallbackValue, SEO_MODEL_PROPS) ?? undefined,
       };
     }
 
@@ -153,8 +160,9 @@ export async function getOpenAIConfig(options: { forceRefresh?: boolean } = {}):
   const baseUrl = envBaseUrl ?? settingsOverrides.baseUrl ?? DEFAULT_BASE_URL;
   const receiptsModel = settingsOverrides.receiptsModel ?? DEFAULT_RECEIPTS_MODEL;
   const eventsModel = settingsOverrides.eventsModel ?? DEFAULT_EVENTS_MODEL;
+  const seoModel = settingsOverrides.seoModel ?? DEFAULT_SEO_MODEL;
 
-  cachedConfig = { apiKey, baseUrl, receiptsModel, eventsModel };
+  cachedConfig = { apiKey, baseUrl, receiptsModel, eventsModel, seoModel };
   cacheExpiresAt = now + 5 * 60 * 1000; // 5 minutes
 
   return cachedConfig;

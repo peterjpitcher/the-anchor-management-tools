@@ -1,0 +1,21 @@
+{
+  "name": "food-event-complete",
+  "description": "Sunday roast special with set menu and booking required",
+  "input": {
+    "name": "Father's Day Sunday Roast",
+    "date": "2026-06-21",
+    "time": "12:00 PM",
+    "categoryName": "Food & Drink",
+    "capacity": 50,
+    "brief": "Three-course Father's Day set menu. Includes a roast dinner with all the trimmings, choice of dessert, and a complimentary pint for Dad. Vegetarian and vegan options available. Pre-booking essential.",
+    "price": "£25 per person",
+    "isFree": false,
+    "bookingUrl": "https://the-anchor.pub/events/fathers-day-roast",
+    "primaryKeywords": ["Father's Day lunch Surrey", "Sunday roast Stanwell Moor"],
+    "secondaryKeywords": ["pub roast dinner", "Father's Day meal near Heathrow"],
+    "localSeoKeywords": ["Stanwell Moor restaurant", "Staines-upon-Thames dining"]
+  },
+  "expectedOutcome": "pass",
+  "minimumScore": 85,
+  "notes": "Food event without performer — tests food/drink category handling and pricing content"
+}
