@@ -82,11 +82,13 @@ async function prepareEventDataFromFormData(formData: FormData, _existingEventId
 
   const categoryId = formData.get('category_id') as string || null;
   let categoryDefaults: Partial<CreateEventInput> = {};
+  let categorySlug: string | null = null;
 
   if (categoryId) {
     const { data: category } = await supabase
       .from('event_categories')
       .select(`
+        slug,
         default_start_time,
         default_end_time,
         default_duration_minutes,
@@ -119,6 +121,7 @@ async function prepareEventDataFromFormData(formData: FormData, _existingEventId
       .single();
 
     if (category) {
+      categorySlug = category.slug || null;
       categoryDefaults = {
         time: category.default_start_time,
         end_time: category.default_end_time,
@@ -171,7 +174,7 @@ async function prepareEventDataFromFormData(formData: FormData, _existingEventId
       ? { payment_mode: rawData.payment_mode as 'free' | 'cash_only' | 'prepaid' }
       : {}),
     booking_mode: bookingMode,
-    event_type: (rawData.event_type as string)?.trim() || null,
+    event_type: categorySlug,
     category_id: categoryId,
     short_description: rawData.short_description as string || categoryDefaults.short_description || null,
     long_description: rawData.long_description as string || categoryDefaults.long_description || null,

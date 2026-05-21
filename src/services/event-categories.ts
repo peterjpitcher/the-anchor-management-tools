@@ -74,6 +74,14 @@ export class EventCategoryService {
       throw new Error('Failed to update event category');
     }
 
+    // Propagate slug changes to events.event_type (derived field)
+    if (category && oldCategory.slug !== category.slug) {
+      await admin
+        .from('events')
+        .update({ event_type: category.slug })
+        .eq('category_id', id)
+    }
+
     return { category, oldCategory };
   }
 

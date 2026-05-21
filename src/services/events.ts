@@ -23,6 +23,7 @@ export type CreateEventInput = {
   capacity?: number | null;
   payment_mode?: 'free' | 'cash_only' | 'prepaid' | null;
   booking_mode?: 'table' | 'general' | 'mixed' | null;
+  // Derived from event_categories.slug — not user-editable. Set by prepareEventDataFromFormData.
   event_type?: string | null;
   category_id?: string | null;
   short_description?: string | null;
