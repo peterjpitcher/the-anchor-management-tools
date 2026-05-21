@@ -21,12 +21,19 @@ export interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> 
 }
 
 export const Input = forwardRef<HTMLInputElement, InputProps>(
-  ({ label, error, hint, icon, leftIcon, leftElement, rightElement, fullWidth: _fw, inputSize: _is, id: idProp, className, disabled, ...rest }, ref) => {
+  ({ label, error, hint, icon, leftIcon, leftElement, rightElement, fullWidth: _fw, inputSize: _is, id: idProp, className, disabled, onWheel, ...rest }, ref) => {
     const resolvedIcon = icon ?? leftIcon
     const autoId = useId()
     const id = idProp ?? autoId
     const errorId = `${id}-error`
     const hintId = `${id}-hint`
+
+    // Number inputs change value on scroll-wheel, causing accidental edits when the cursor
+    // happens to rest over the field. Blur on wheel so scrolling moves the page instead.
+    const handleWheel = (e: React.WheelEvent<HTMLInputElement>) => {
+      if (rest.type === 'number') e.currentTarget.blur()
+      onWheel?.(e)
+    }
 
     return (
       <div className="flex flex-col">
@@ -59,6 +66,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
             disabled={disabled}
             aria-invalid={error ? 'true' : undefined}
             aria-describedby={error ? errorId : hint ? hintId : undefined}
+            onWheel={rest.type === 'number' || onWheel ? handleWheel : undefined}
             {...rest}
           />
         </div>

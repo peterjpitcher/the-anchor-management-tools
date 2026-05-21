@@ -108,12 +108,12 @@ export default function EventDetailClient({
   const [newPhone, setNewPhone] = useState('')
   const [newFirstName, setNewFirstName] = useState('')
   const [newLastName, setNewLastName] = useState('')
-  const [newSeats, setNewSeats] = useState(1)
+  const [newSeats, setNewSeats] = useState('')
   const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null)
 
   // Edit seats state
   const [editingBookingId, setEditingBookingId] = useState<string | null>(null)
-  const [editSeatsValue, setEditSeatsValue] = useState(1)
+  const [editSeatsValue, setEditSeatsValue] = useState('')
 
   // Cancel confirmation state
   const [cancellingBookingId, setCancellingBookingId] = useState<string | null>(null)
@@ -177,7 +177,7 @@ export default function EventDetailClient({
       const result = await createEventManualBooking({
         eventId: event.id,
         phone: newPhone.trim(),
-        seats: newSeats,
+        seats: Math.max(1, Math.min(20, Number(newSeats) || 1)),
         firstName: newFirstName.trim() || undefined,
         lastName: newLastName.trim() || undefined,
       })
@@ -188,7 +188,7 @@ export default function EventDetailClient({
         setNewPhone('')
         setNewFirstName('')
         setNewLastName('')
-        setNewSeats(1)
+        setNewSeats('')
         setSelectedCustomerId(null)
         await refreshBookings()
       }
@@ -199,7 +199,7 @@ export default function EventDetailClient({
 
   const handleStartEditSeats = useCallback((booking: EventBookingRow) => {
     setEditingBookingId(booking.id)
-    setEditSeatsValue(booking.seats ?? 1)
+    setEditSeatsValue(String(booking.seats ?? 1))
   }, [])
 
   const handleSaveSeats = useCallback(() => {
@@ -207,7 +207,7 @@ export default function EventDetailClient({
     startTransition(async () => {
       const result = await updateEventManualBookingSeats({
         bookingId: editingBookingId,
-        seats: editSeatsValue,
+        seats: Math.max(1, Math.min(20, Number(editSeatsValue) || 1)),
       })
       if ('error' in result) {
         toast.error(result.error)
@@ -621,12 +621,12 @@ function AttendeesTab({
   onCustomerSelect: (customer: { id: string; first_name: string; last_name: string | null; mobile_number: string | null; email: string | null } | null) => void
   newPhone: string
   onNewPhoneChange: (v: string) => void
-  newSeats: number
-  onNewSeatsChange: (v: number) => void
+  newSeats: string
+  onNewSeatsChange: (v: string) => void
   onCreateBooking: () => void
   editingBookingId: string | null
-  editSeatsValue: number
-  onEditSeatsValueChange: (v: number) => void
+  editSeatsValue: string
+  onEditSeatsValueChange: (v: string) => void
   onStartEditSeats: (booking: EventBookingRow) => void
   onSaveSeats: () => void
   onCancelEdit: () => void
@@ -688,10 +688,11 @@ function AttendeesTab({
                   <label className="block text-xs font-medium text-text-muted mb-1">Seats</label>
                   <Input
                     type="number"
-                    value={String(newSeats)}
-                    onChange={(e) => onNewSeatsChange(Math.max(1, Math.min(20, Number(e.target.value) || 1)))}
+                    value={newSeats}
+                    onChange={(e) => onNewSeatsChange(e.target.value.replace(/\D/g, ''))}
                     min={1}
                     max={20}
+                    placeholder="1"
                   />
                 </div>
                 <Button
@@ -754,8 +755,8 @@ function AttendeesTab({
                             <div className="flex items-center gap-1">
                               <Input
                                 type="number"
-                                value={String(editSeatsValue)}
-                                onChange={(e) => onEditSeatsValueChange(Math.max(1, Math.min(20, Number(e.target.value) || 1)))}
+                                value={editSeatsValue}
+                                onChange={(e) => onEditSeatsValueChange(e.target.value.replace(/\D/g, ''))}
                                 min={1}
                                 max={20}
                                 className="w-16"
