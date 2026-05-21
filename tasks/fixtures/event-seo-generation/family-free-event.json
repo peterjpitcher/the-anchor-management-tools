@@ -1,0 +1,19 @@
+{
+  "name": "family-free-event",
+  "description": "Free family fun day in the beer garden",
+  "input": {
+    "name": "August Bank Holiday Family Fun Day",
+    "date": "2026-08-31",
+    "time": "1:00 PM",
+    "categoryName": "Family",
+    "capacity": 120,
+    "brief": "Free family fun day in the beer garden. Bouncy castle, face painting, BBQ stall, and ice cream van. Live acoustic music from 3pm. Kids eat free from the children's menu.",
+    "isFree": true,
+    "primaryKeywords": ["family fun day Stanwell Moor", "bank holiday pub event Surrey"],
+    "secondaryKeywords": ["free family event", "kids activities near Heathrow"],
+    "localSeoKeywords": ["Stanwell Moor family pub", "Staines-upon-Thames events"]
+  },
+  "expectedOutcome": "pass",
+  "minimumScore": 85,
+  "notes": "Free family event — tests free/family category handling, no performer, no booking URL"
+}

@@ -1,0 +1,10 @@
+{
+  "name": "sparse-input-should-fail",
+  "description": "Only name provided, missing date and keywords — should fail preflight",
+  "input": {
+    "name": "Some Event"
+  },
+  "expectedOutcome": "fail",
+  "minimumScore": null,
+  "notes": "Sparse input — preflight should reject with hardErrors before any OpenAI call"
+}

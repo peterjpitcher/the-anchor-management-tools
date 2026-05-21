@@ -1,0 +1,21 @@
+{
+  "name": "quiz-night-complete",
+  "description": "Weekly quiz night with team format, prizes, and free entry",
+  "input": {
+    "name": "Wednesday Quiz Night",
+    "date": "2026-06-10",
+    "time": "7:30 PM",
+    "categoryName": "Quiz Night",
+    "capacity": 60,
+    "brief": "Weekly pub quiz hosted by quizmaster Dave. Teams of up to six. Three rounds: general knowledge, music, and a picture round. Winning team gets a £50 bar tab. Second place gets a bottle of wine.",
+    "performerName": "Dave",
+    "performerType": "Host",
+    "isFree": true,
+    "primaryKeywords": ["pub quiz Stanwell Moor", "quiz night Surrey"],
+    "secondaryKeywords": ["free pub quiz", "team quiz near Heathrow"],
+    "localSeoKeywords": ["Stanwell Moor pub", "Staines quiz night"]
+  },
+  "expectedOutcome": "pass",
+  "minimumScore": 90,
+  "notes": "Free event with host (not performer) — tests quiz-specific content generation"
+}

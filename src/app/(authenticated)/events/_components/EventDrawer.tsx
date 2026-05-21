@@ -12,10 +12,18 @@ import { generateEventSeoContent } from '@/app/actions/event-content'
 import { parseKeywords, keywordsToDisplay, buildKeywordsUnion } from '@/lib/keywords'
 import { KeywordStrategyCard } from '@/components/features/events/KeywordStrategyCard'
 import { FaqEditor } from '@/components/features/events/FaqEditor'
+import { SeoHealthIndicator } from '@/components/features/events/SeoHealthIndicator'
 import { SquareImageUpload } from '@/components/features/shared/SquareImageUpload'
 import type { Event } from '@/types/database'
 import type { EventCategory } from '@/types/event-categories'
 import type { EventChecklistItem } from '@/lib/event-checklist'
+
+type GenerationPhase = 'checking' | 'drafting' | null
+
+interface PreflightIssue {
+  type: 'error' | 'warning'
+  message: string
+}
 
 interface EventDrawerProps {
   open: boolean
@@ -117,6 +125,22 @@ export function EventDrawer({ open, onClose, event, categories, onSave }: EventD
 
   // ── AI content ──
   const [aiLoading, setAiLoading] = useState(false)
+  const [generationPhase, setGenerationPhase] = useState<GenerationPhase>(null)
+  const [elapsedSeconds, setElapsedSeconds] = useState(0)
+  const [preflightIssues, setPreflightIssues] = useState<PreflightIssue[]>([])
+
+  // Elapsed timer for generation feedback
+  useEffect(() => {
+    if (!aiLoading) {
+      setElapsedSeconds(0)
+      return
+    }
+    const start = Date.now()
+    const interval = setInterval(() => {
+      setElapsedSeconds(Math.floor((Date.now() - start) / 1000))
+    }, 1000)
+    return () => clearInterval(interval)
+  }, [aiLoading])
 
   // Initialize form when event changes
   useEffect(() => {
@@ -366,63 +390,121 @@ export function EventDrawer({ open, onClose, event, categories, onSave }: EventD
     }
   }
 
+  function checkPreflightRequirements(): PreflightIssue[] {
+    const issues: PreflightIssue[] = []
+
+    // Hard requirements
+    if (!name?.trim()) {
+      issues.push({ type: 'error', message: 'Event name is required' })
+    }
+    if (!date) {
+      issues.push({ type: 'error', message: 'Event date is required' })
+    }
+
+    const pk = parseKeywords(primaryKeywords)
+    if (pk.length === 0) {
+      issues.push({ type: 'error', message: 'At least one primary keyword is required' })
+    }
+
+    // Check for at least one detail source beyond just the name
+    const hasDetail = !!(
+      brief?.trim() ||
+      (categoryId && categories.find(c => c.id === categoryId)?.name) ||
+      performerName?.trim() ||
+      price?.trim() ||
+      isFree ||
+      longDescription?.trim()
+    )
+    if (!hasDetail) {
+      issues.push({ type: 'error', message: 'Add a brief, category, performer, or price to give the AI enough context' })
+    }
+
+    // Soft warnings
+    if (!time) {
+      issues.push({ type: 'warning', message: 'No event time — timing details will be omitted' })
+    }
+
+    return issues
+  }
+
   async function handleGenerateSeo() {
-    if (!name.trim()) {
-      toast.error('Enter an event name first')
+    // Client-side preflight
+    const issues = checkPreflightRequirements()
+    setPreflightIssues(issues)
+
+    const errors = issues.filter(i => i.type === 'error')
+    if (errors.length > 0) {
+      toast.error(errors.map(e => e.message).join('. '))
       return
     }
+
     setAiLoading(true)
+    setGenerationPhase('checking')
 
-    if (!slug && name && date) {
-      setSlug(name.toLowerCase().replace(/[^a-z0-9]+/g, '-') + '-' + date)
+    try {
+      if (!slug && name && date) {
+        setSlug(name.toLowerCase().replace(/[^a-z0-9]+/g, '-') + '-' + date)
+      }
+
+      setGenerationPhase('drafting')
+
+      const selectedCategory = categoryId ? categories.find(c => c.id === categoryId) : undefined
+      const pk = parseKeywords(primaryKeywords)
+      const sk = parseKeywords(secondaryKeywords)
+      const lk = parseKeywords(localSeoKeywords)
+      const result = await generateEventSeoContent({
+        eventId: event?.id ?? null,
+        name: name.trim(),
+        date: date || null,
+        time: time || null,
+        categoryName: selectedCategory?.name ?? null,
+        capacity: capacity ? parseInt(capacity) : null,
+        brief: brief.trim() || null,
+        performerName: performerName.trim() || null,
+        performerType: performerType.trim() || null,
+        price: price ? parseFloat(price) : null,
+        isFree,
+        bookingUrl: bookingUrl.trim() || null,
+        existingShortDescription: shortDescription || null,
+        existingLongDescription: longDescription || null,
+        existingMetaTitle: metaTitle || null,
+        existingMetaDescription: metaDescription || null,
+        existingHighlights: highlights ? highlights.split(',').map(h => h.trim()).filter(Boolean) : [],
+        existingKeywords: buildKeywordsUnion(pk, sk, lk),
+        primaryKeywords: pk,
+        secondaryKeywords: sk,
+        localSeoKeywords: lk,
+      })
+
+      if (!result.success) {
+        toast.error(result.error ?? 'Failed to generate SEO content')
+        return
+      }
+
+      // Only update fields on success — never overwrite existing content on failure
+      const d = result.data
+      if (d.metaTitle) setMetaTitle(d.metaTitle)
+      if (d.metaDescription) setMetaDescription(d.metaDescription)
+      if (d.shortDescription) setShortDescription(d.shortDescription)
+      if (d.longDescription) setLongDescription(d.longDescription)
+      if (d.highlights) setHighlights(d.highlights.join(', '))
+      if (d.slug) setSlug(d.slug)
+      if (d.imageAltText) setImageAltText(d.imageAltText)
+      if (d.faqs?.length) {
+        setFaqs(d.faqs.map((faq: { question: string; answer: string }, i: number) => ({ ...faq, sort_order: i })))
+        setFaqsModified(true)
+      }
+      if (d.cancellationPolicy) setCancellationPolicy(d.cancellationPolicy)
+      if (d.accessibilityNotes) setAccessibilityNotes(d.accessibilityNotes)
+      setPreflightIssues([])
+      toast.success('SEO content drafted — check the health score below')
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'SEO generation failed unexpectedly'
+      toast.error(message)
+    } finally {
+      setAiLoading(false)
+      setGenerationPhase(null)
     }
-
-    const selectedCategory = categoryId ? categories.find(c => c.id === categoryId) : undefined
-    const result = await generateEventSeoContent({
-      eventId: event?.id ?? null,
-      name: name.trim(),
-      date: date || null,
-      time: time || null,
-      categoryName: selectedCategory?.name ?? null,
-      capacity: capacity ? parseInt(capacity) : null,
-      brief: brief.trim() || null,
-      performerName: performerName.trim() || null,
-      performerType: performerType.trim() || null,
-      price: price ? parseFloat(price) : null,
-      isFree,
-      bookingUrl: bookingUrl.trim() || null,
-      existingShortDescription: shortDescription || null,
-      existingLongDescription: longDescription || null,
-      existingMetaTitle: metaTitle || null,
-      existingMetaDescription: metaDescription || null,
-      existingHighlights: highlights ? highlights.split(',').map(h => h.trim()).filter(Boolean) : [],
-      existingKeywords: [],
-      primaryKeywords: parseKeywords(primaryKeywords),
-      secondaryKeywords: parseKeywords(secondaryKeywords),
-      localSeoKeywords: parseKeywords(localSeoKeywords),
-    })
-
-    setAiLoading(false)
-    if (!result.success) {
-      toast.error(result.error ?? 'Failed to generate SEO content')
-      return
-    }
-
-    const d = result.data
-    if (d.metaTitle) setMetaTitle(d.metaTitle)
-    if (d.metaDescription) setMetaDescription(d.metaDescription)
-    if (d.shortDescription) setShortDescription(d.shortDescription)
-    if (d.longDescription) setLongDescription(d.longDescription)
-    if (d.highlights) setHighlights(d.highlights.join(', '))
-    if (d.slug) setSlug(d.slug)
-    if (d.imageAltText) setImageAltText(d.imageAltText)
-    if (d.faqs?.length) {
-      setFaqs(d.faqs.map((faq: { question: string; answer: string }, i: number) => ({ ...faq, sort_order: i })))
-      setFaqsModified(true)
-    }
-    if (d.cancellationPolicy) setCancellationPolicy(d.cancellationPolicy)
-    if (d.accessibilityNotes) setAccessibilityNotes(d.accessibilityNotes)
-    toast.success('SEO content drafted')
   }
 
   return (
@@ -655,6 +737,32 @@ export function EventDrawer({ open, onClose, event, categories, onSave }: EventD
             </Button>
           </div>
 
+          {/* Generation phase feedback */}
+          {aiLoading && generationPhase && (
+            <div className="flex items-center gap-2 text-sm text-text-muted mb-3">
+              <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-neutral-300 border-t-green-600" />
+              <span>
+                {generationPhase === 'checking' && 'Checking event details...'}
+                {generationPhase === 'drafting' && 'Drafting SEO copy...'}
+                {elapsedSeconds >= 10 && ` (${elapsedSeconds}s)`}
+              </span>
+              {elapsedSeconds >= 30 && (
+                <span className="text-amber-600">Still working...</span>
+              )}
+            </div>
+          )}
+
+          {/* Preflight issues */}
+          {preflightIssues.length > 0 && !aiLoading && (
+            <div className="mb-3 space-y-1">
+              {preflightIssues.map((issue, i) => (
+                <p key={i} className={`text-xs ${issue.type === 'error' ? 'text-red-600' : 'text-amber-600'}`}>
+                  {issue.type === 'error' ? '✗ ' : '⚠ '}{issue.message}
+                </p>
+              ))}
+            </div>
+          )}
+
           {/* Meta & URL */}
           <div className="grid grid-cols-2 gap-3">
             <Input
@@ -739,6 +847,26 @@ export function EventDrawer({ open, onClose, event, categories, onSave }: EventD
               onModified={() => setFaqsModified(true)}
             />
           </div>
+
+          {/* SEO Health Score — shown when SEO content exists */}
+          {(metaTitle || metaDescription || longDescription) && (
+            <div className="mt-4">
+              <SeoHealthIndicator
+                metaTitle={metaTitle}
+                metaDescription={metaDescription}
+                shortDescription={shortDescription}
+                longDescription={longDescription}
+                slug={slug}
+                highlights={highlights}
+                primaryKeywords={parseKeywords(primaryKeywords)}
+                secondaryKeywords={parseKeywords(secondaryKeywords)}
+                localSeoKeywords={parseKeywords(localSeoKeywords)}
+                imageAltText={imageAltText}
+                faqs={faqs}
+                accessibilityNotes={accessibilityNotes}
+              />
+            </div>
+          )}
         </Section>
 
         {/* ── Footer actions ── */}

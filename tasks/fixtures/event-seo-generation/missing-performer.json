@@ -1,0 +1,20 @@
+{
+  "name": "missing-performer",
+  "description": "Live music event without performer details — should still pass but content will be less specific",
+  "input": {
+    "name": "Saturday Night Live Music",
+    "date": "2026-07-25",
+    "time": "9:00 PM",
+    "categoryName": "Live Music",
+    "capacity": 80,
+    "brief": "Live band performing classic rock and pop covers. Dance floor open from 9pm.",
+    "price": "£3",
+    "isFree": false,
+    "primaryKeywords": ["live music Stanwell Moor", "pub live band Surrey"],
+    "secondaryKeywords": ["Saturday night live music", "rock covers band"],
+    "localSeoKeywords": ["Stanwell Moor nightlife", "Staines-upon-Thames live music"]
+  },
+  "expectedOutcome": "pass",
+  "minimumScore": 80,
+  "notes": "Missing performer for music category — preflight should warn but not block; content quality may be slightly lower"
+}

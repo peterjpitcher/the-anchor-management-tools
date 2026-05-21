@@ -1,3 +1,9 @@
+/**
+ * @deprecated This component is no longer referenced in any route.
+ * The EventDrawer is the active event form. This file is kept temporarily
+ * for reference during the SEO generation refactor and should be deleted
+ * once the new generation pipeline is verified.
+ */
 'use client'
 
 import { useState, useEffect, useRef } from 'react'

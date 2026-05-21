@@ -4,20 +4,24 @@ aliases:
   - AI Classification
   - GPT Integration
   - Transaction Classification
+  - Event SEO Generation
 tags:
   - type/reference
   - integration/openai
   - status/active
 integration: openai
 created: 2026-03-14
-updated: 2026-03-14
+updated: 2026-05-21
 ---
 
 ← [[Integrations MOC]]
 
 ## Overview
 
-OpenAI is used exclusively by the [[Receipts]] module to classify raw bank transaction descriptions into vendor names and expense categories. This replaces manual categorisation for imported bank statements.
+OpenAI is used by multiple modules in AMS:
+
+1. **[[Receipts]]** — classifies raw bank transaction descriptions into vendor names and expense categories
+2. **[[Events]]** — generates SEO-optimised content (meta titles, descriptions, long descriptions, FAQs, keywords, alt text) for event pages
 
 ## Environment Variables
 
@@ -89,8 +93,49 @@ Token usage and estimated cost are logged per transaction to `receipt_transactio
 | Module | Purpose |
 |---|---|
 | [[Receipts]] | Bank transaction classification on CSV import |
+| [[Events]] | SEO content generation for event pages |
 
-This integration is not used by any other module.
+## Event SEO Content Generation
+
+### Purpose
+
+Generates complete SEO content packages for event pages, including meta title, meta description, short description, long description (450-650 words), highlights, FAQs, keywords, slug, and image alt text.
+
+### Architecture: Facts-First Pipeline
+
+The generation pipeline follows a facts-first approach where all verifiable data is extracted and validated before any OpenAI call:
+
+1. **Facts Builder** (`src/lib/event-seo/generation.ts`) — `buildEventSeoFacts(input)` assembles a typed `EventSeoFacts` object from form data and/or database records, normalising keywords and deduplicating across tiers
+2. **Preflight Check** (`preflightCheck(facts)`) — validates that minimum required fields are present (name, date, at least one primary keyword, at least one detail source). Returns hard errors that block generation and soft warnings that allow generation with caveats
+3. **Prompt Construction** (`src/lib/event-seo/prompts.ts`) — `buildGenerationMessages(facts)` builds a two-message array (system + user). Static prompt sections (venue context, quality rubric, field rules, keyword placement rules) appear first for OpenAI prompt caching. Dynamic facts JSON is appended last
+4. **Quality Gate** (`src/lib/seo-validation.ts`) — `validateGeneratedContent(parsed, options)` runs 30+ deterministic checks on the generated output (field lengths, keyword placement, formatting, filler phrases, FAQ structure)
+5. **Deterministic Repair** (`applyDeterministicRepair(draft, facts)`) — code-level fixes (strip markdown, normalise slug, cap arrays, remove URLs/placeholders) that do not require an LLM call
+6. **Retry** — if validation still fails after repair, a second OpenAI call with the failed draft and specific issues listed can attempt a targeted fix
+
+### Model Configuration
+
+| Variable | Purpose | Default |
+|---|---|---|
+| `OPENAI_EVENT_SEO_MODEL` | Model override for event SEO generation | Falls back to events model config |
+
+### Library Files
+
+| File | Purpose |
+|---|---|
+| `src/lib/event-seo/generation.ts` | Facts builder, preflight check, retry/timeout constants |
+| `src/lib/event-seo/prompts.ts` | System role, static prompt sections, message builders |
+| `src/lib/seo-validation.ts` | Quality gate (30+ checks), deterministic repair utilities |
+| `src/app/actions/event-content.ts` | Server action orchestrating the full pipeline |
+
+### Eval Harness
+
+Golden test fixtures live in `tasks/fixtures/event-seo-generation/`. Run:
+
+```bash
+npm run eval:seo
+```
+
+This tests the deterministic pipeline (facts building, preflight, prompt construction) against 7 fixtures covering live music, quiz nights, food events, family events, comedy, missing-performer edge cases, and deliberately sparse input that should fail preflight.
 
 ## Related
 
