@@ -166,7 +166,7 @@ export function ScheduleCalendarMonth({
                                             className={cn(
                                                 'text-xs font-medium rounded-full h-5 min-w-5 px-1.5 text-left',
                                                 isToday(day) &&
-                                                    'bg-primary text-primary-foreground text-center font-semibold'
+                                                    'bg-primary text-primary-fg text-center font-semibold'
                                             )}
                                             onClick={(ev) => {
                                                 if (ev.target === ev.currentTarget && onEmptyDayClick) {
