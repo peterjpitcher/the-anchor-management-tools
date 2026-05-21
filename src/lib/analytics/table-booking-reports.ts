@@ -660,7 +660,7 @@ export async function loadTableBookingReportsSnapshot(input: {
     fetchAllRows((from, to) =>
       supabase
         .from('bookings')
-        .select('customer_id, event:events(event_type)')
+        .select('customer_id, event:events(event_type, category:event_categories(name))')
         .not('customer_id', 'is', null)
         .not('event_id', 'is', null)
         .or(eventBookingSourceFilter)
@@ -669,7 +669,7 @@ export async function loadTableBookingReportsSnapshot(input: {
     fetchAllRows((from, to) =>
       supabase
         .from('waitlist_entries')
-        .select('customer_id, event:events(event_type)')
+        .select('customer_id, event:events(event_type, category:event_categories(name))')
         .not('customer_id', 'is', null)
         .not('event_id', 'is', null)
         .range(from, to)
@@ -860,24 +860,25 @@ export async function loadTableBookingReportsSnapshot(input: {
   const interestMap = new Map<string, Set<string>>()
   const bookingInterestRows = (eventInterestBookingsResult.data || []) as Array<{
     customer_id: string | null
-    event?: { event_type?: string | null } | { event_type?: string | null }[] | null
+    event?: { event_type?: string | null; category?: { name?: string | null } | null } | { event_type?: string | null; category?: { name?: string | null } | null }[] | null
   }>
   const waitlistInterestRows = (eventInterestWaitlistResult.data || []) as Array<{
     customer_id: string | null
-    event?: { event_type?: string | null } | { event_type?: string | null }[] | null
+    event?: { event_type?: string | null; category?: { name?: string | null } | null } | { event_type?: string | null; category?: { name?: string | null } | null }[] | null
   }>
 
   const appendInterest = (
     rows: Array<{
       customer_id: string | null
-      event?: { event_type?: string | null } | { event_type?: string | null }[] | null
+      event?: { event_type?: string | null; category?: { name?: string | null } | null } | { event_type?: string | null; category?: { name?: string | null } | null }[] | null
     }>
   ) => {
     for (const row of rows) {
       if (!row.customer_id) continue
       if (excludedCustomerIds.has(row.customer_id)) continue
       const event = Array.isArray(row.event) ? row.event[0] : row.event
-      const eventType = normalizeEventType(event?.event_type)
+      const categoryName = event?.category?.name?.trim()
+      const eventType = normalizeEventType(categoryName && categoryName.length > 0 ? categoryName : event?.event_type)
 
       const set = interestMap.get(eventType) || new Set<string>()
       set.add(row.customer_id)
