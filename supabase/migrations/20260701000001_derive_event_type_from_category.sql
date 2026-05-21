@@ -122,6 +122,12 @@ $$;
 -- ============================================================
 -- For every event that has a category, set event_type to the category's slug.
 -- IS DISTINCT FROM avoids no-op updates on rows already correct.
+-- Temporarily drop chk_event_date_reasonable because updating event_type
+-- on old events (date > 1 year ago) re-validates the check constraint even
+-- though we are not changing the date column. Re-added as NOT VALID so it
+-- applies to future writes without failing on historical rows.
+
+ALTER TABLE public.events DROP CONSTRAINT IF EXISTS chk_event_date_reasonable;
 
 UPDATE public.events e
 SET event_type = ec.slug
@@ -138,3 +144,9 @@ UPDATE public.events
 SET event_type = NULL
 WHERE category_id IS NULL
   AND NULLIF(TRIM(event_type), '') IS NOT NULL;
+
+-- Re-add the constraint as NOT VALID: enforced on new inserts/updates
+-- but does not re-validate existing historical rows.
+ALTER TABLE public.events
+  ADD CONSTRAINT chk_event_date_reasonable
+  CHECK (date >= (CURRENT_DATE - '1 year'::interval)) NOT VALID;
