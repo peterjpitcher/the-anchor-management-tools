@@ -76,7 +76,7 @@ export function ScheduleCalendar({
                 )}
                 <div className="flex-1" />
                 {!isMobile && (
-                    <div className="flex bg-muted rounded-md p-1 gap-1" role="group" aria-label="Calendar view">
+                    <div className="flex bg-surface-hover rounded-md p-1 gap-1" role="group" aria-label="Calendar view">
                         {(['month', 'week', 'list'] as ScheduleCalendarView[]).map((v) => (
                             <button
                                 key={v}
@@ -85,8 +85,8 @@ export function ScheduleCalendar({
                                 className={cn(
                                     'px-3 py-1 text-xs rounded-sm capitalize',
                                     view === v
-                                        ? 'bg-background shadow-sm'
-                                        : 'text-muted-foreground hover:text-foreground'
+                                        ? 'bg-surface shadow-sm'
+                                        : 'text-text-muted hover:text-text'
                                 )}
                             >
                                 {v}
@@ -98,7 +98,7 @@ export function ScheduleCalendar({
 
             {/* Legend */}
             {legendKinds && legendKinds.length > 0 && (
-                <div className="flex items-center gap-3 text-[11px] text-muted-foreground">
+                <div className="flex items-center gap-3 text-[11px] text-text-muted">
                     {legendKinds.map((k) => (
                         <span key={k} className="flex items-center gap-1">
                             <span
