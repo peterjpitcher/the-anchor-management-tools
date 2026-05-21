@@ -38,7 +38,12 @@ export default async function EventsPage() {
     fetchPrivateBookingsForCalendar(),
     listCalendarNotes(),
     listParkingBookings({ limit: 500 }),
-    getChecklistTodos(),
+    getChecklistTodos().catch(
+      () =>
+        ({ success: false, error: 'Unable to load outstanding todos' }) as Awaited<
+          ReturnType<typeof getChecklistTodos>
+        >,
+    ),
     checkUserPermission('events', 'manage'),
   ])
 
