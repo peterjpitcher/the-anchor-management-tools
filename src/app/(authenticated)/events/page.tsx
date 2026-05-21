@@ -15,6 +15,9 @@ export const metadata = {
   title: 'Events',
 }
 
+// AI SEO generation (generateEventSeoContent, opened from EventDrawer) runs to a ~90s budget; raise past Vercel's 15s default so the function isn't killed mid-generation.
+export const maxDuration = 100
+
 export default async function EventsPage() {
   const canViewEvents = await checkUserPermission('events', 'view')
 
