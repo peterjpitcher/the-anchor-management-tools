@@ -181,7 +181,7 @@ export async function GET(
       id: event.id,
       slug: event.slug,
       brief: event.brief || null,
-      event_type: event.event_type || null,
+      event_type: category?.slug ?? event.event_type ?? null,
       date: event.date,
       time: event.time,
       end_time: event.end_time || null,

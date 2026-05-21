@@ -16,6 +16,7 @@ type CustomerBucket = {
 
 type EventRelationRecord = {
   event_type?: string | null
+  category?: { name?: string | null } | null
 }
 
 type EventRelation = EventRelationRecord | EventRelationRecord[] | null
@@ -42,7 +43,7 @@ function parseTimestampMs(value: string | null): number | null {
 
 function resolveEventType(relation: EventRelation): string | null {
   const eventRecord = Array.isArray(relation) ? relation[0] : relation
-  return normalizeEventType(eventRecord?.event_type)
+  return normalizeEventType(eventRecord?.category?.name) ?? normalizeEventType(eventRecord?.event_type)
 }
 
 function getOrCreateBucket(map: Map<string, CustomerBucket>, customerId: string): CustomerBucket {
@@ -175,7 +176,7 @@ export async function recalculateEngagementScoresAndLabels(
       supabase.from('customers').select('id'),
       supabase
         .from('bookings')
-        .select('customer_id, created_at, event:events(event_type)')
+        .select('customer_id, created_at, event:events(event_type, category:event_categories(name))')
         .not('customer_id', 'is', null),
       supabase
         .from('table_bookings')
@@ -187,7 +188,7 @@ export async function recalculateEngagementScoresAndLabels(
         .not('customer_id', 'is', null),
       supabase
         .from('waitlist_entries')
-        .select('customer_id, event:events(event_type)')
+        .select('customer_id, event:events(event_type, category:event_categories(name))')
         .not('customer_id', 'is', null)
     ])
 
