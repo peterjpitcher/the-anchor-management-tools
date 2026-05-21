@@ -137,4 +137,41 @@ describe('EventTodosWidget', () => {
     await waitFor(() => expect(toast.error).toHaveBeenCalledWith('nope'))
     expect(screen.getByText('Write event brief')).toBeInTheDocument()
   })
+
+  it('restores the todo and shows a toast when the action throws/rejects', async () => {
+    mockToggle.mockRejectedValue(new Error('network'))
+    const user = userEvent.setup()
+    render(<EventTodosWidget initialTodos={[makeItem({ label: 'Write event brief' })]} canManage todayIso={TODAY} />)
+
+    await user.click(screen.getByRole('checkbox', { name: 'Mark "Write event brief" complete' }))
+
+    await waitFor(() => expect(toast.error).toHaveBeenCalled())
+    expect(screen.getByText('Write event brief')).toBeInTheDocument()
+  })
+
+  it('restores only the failed item when an earlier completion fails after a later one succeeds', async () => {
+    let rejectFirst!: (reason?: unknown) => void
+    const firstPromise = new Promise<{ success: boolean; error?: string }>((_resolve, reject) => {
+      rejectFirst = reject
+    })
+    mockToggle.mockImplementation((_eventId: string, key: string) =>
+      key === 'first' ? firstPromise : Promise.resolve({ success: true }),
+    )
+    const items = [
+      makeItem({ key: 'first', label: 'First task', dueDate: '2026-05-18' }),
+      makeItem({ key: 'second', label: 'Second task', dueDate: '2026-05-19' }),
+    ]
+    const user = userEvent.setup()
+    render(<EventTodosWidget initialTodos={items} canManage todayIso={TODAY} />)
+
+    // Begin completing "first" (request stays pending), then complete "second" (succeeds).
+    await user.click(screen.getByRole('checkbox', { name: 'Mark "First task" complete' }))
+    await user.click(screen.getByRole('checkbox', { name: 'Mark "Second task" complete' }))
+    await waitFor(() => expect(screen.queryByText('Second task')).not.toBeInTheDocument())
+
+    // Now fail "first": only it should be restored; "second" must stay removed.
+    rejectFirst(new Error('network'))
+    await waitFor(() => expect(screen.getByText('First task')).toBeInTheDocument())
+    expect(screen.queryByText('Second task')).not.toBeInTheDocument()
+  })
 })

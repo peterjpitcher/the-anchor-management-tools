@@ -25,13 +25,24 @@ export default function EventTodosWidget({
   const [isPending, startTransition] = useTransition()
 
   function handleComplete(item: ChecklistTodoItem) {
-    const snapshot = todos
     setTodos((prev) => prev.filter((t) => !(t.eventId === item.eventId && t.key === item.key)))
+    // Restore only this item (functional + re-sorted) so an overlapping completion isn't resurrected.
+    const restore = () =>
+      setTodos((prev) =>
+        prev.some((t) => t.eventId === item.eventId && t.key === item.key)
+          ? prev
+          : [...prev, item].sort((a, b) => a.dueDate.localeCompare(b.dueDate) || a.order - b.order),
+      )
     startTransition(async () => {
-      const result = await toggleEventChecklistTask(item.eventId, item.key, true)
-      if (!result.success) {
-        setTodos(snapshot)
-        toast.error(result.error ?? 'Could not update todo')
+      try {
+        const result = await toggleEventChecklistTask(item.eventId, item.key, true)
+        if (!result.success) {
+          restore()
+          toast.error(result.error ?? 'Could not update todo')
+        }
+      } catch {
+        restore()
+        toast.error('Could not update todo')
       }
     })
   }
