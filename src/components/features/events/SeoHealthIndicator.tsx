@@ -179,10 +179,10 @@ export function SeoHealthIndicator({
   const colourClasses = colourMap[colour]
 
   return (
-    <div className="rounded-lg border border-border bg-background/50 p-3">
+    <div className="rounded-lg border border-border bg-surface/50 p-3">
       {/* Header */}
       <div className="mb-2 flex items-center justify-between">
-        <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+        <span className="text-xs font-semibold uppercase tracking-wide text-text-muted">
           SEO Health
         </span>
         <span className={`text-sm font-bold ${colourClasses.score}`}>
@@ -191,7 +191,7 @@ export function SeoHealthIndicator({
       </div>
 
       {/* Progress bar */}
-      <div className="mb-3 h-[2px] w-full rounded-full bg-muted">
+      <div className="mb-3 h-[2px] w-full rounded-full bg-surface-hover">
         <div
           className={`h-[2px] rounded-full transition-all duration-300 ${colourClasses.bar}`}
           style={{ width: `${score}%` }}
@@ -213,7 +213,7 @@ export function SeoHealthIndicator({
             >
               {check.passed ? '\u2713' : '\u2717'}
             </span>
-            <span className={`text-xs leading-tight ${check.passed ? 'text-foreground' : 'text-muted-foreground'}`}>
+            <span className={`text-xs leading-tight ${check.passed ? 'text-text' : 'text-text-muted'}`}>
               {check.label}
             </span>
           </div>

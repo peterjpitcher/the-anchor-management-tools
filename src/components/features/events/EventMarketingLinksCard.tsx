@@ -33,7 +33,7 @@ function GhostCard({
   onGenerate: () => void
 }) {
   return (
-    <div className="rounded-lg border border-dashed border-gray-300 bg-muted/40 p-4">
+    <div className="rounded-lg border border-dashed border-gray-300 bg-surface-hover/40 p-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <p className="text-sm font-semibold text-gray-900">{label}</p>

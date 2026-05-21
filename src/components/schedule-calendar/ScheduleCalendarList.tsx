@@ -92,8 +92,8 @@ export function ScheduleCalendarList({ entries, onEntryClick }: ScheduleCalendar
                                             data-entry-row={isPastEntry ? 'past' : 'future'}
                                             className={cn(
                                                 'flex items-start gap-3 py-2 px-3 border-l-[3px] hover:bg-gray-50',
-                                                isPastEntry && 'text-muted-foreground bg-gray-50/50',
-                                                isFreedStatus && 'text-muted-foreground bg-gray-50/30'
+                                                isPastEntry && 'text-text-muted bg-gray-50/50',
+                                                isFreedStatus && 'text-text-muted bg-gray-50/30'
                                             )}
                                             style={{ borderLeftColor: entry.color }}
                                         >
