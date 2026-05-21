@@ -9,6 +9,9 @@ import EventDetailClient from './EventDetailClient'
 
 export const dynamic = 'force-dynamic'
 
+// AI SEO generation (generateEventSeoContent, opened from EventDrawer) runs to a ~90s budget; raise past Vercel's 15s default so the function isn't killed mid-generation.
+export const maxDuration = 100
+
 interface PageProps {
   params: Promise<{
     id: string
