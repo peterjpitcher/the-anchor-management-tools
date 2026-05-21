@@ -72,8 +72,8 @@ export function EventCard({ event, onClick, compact = false }: EventCardProps) {
         {formatDateInLondon(event.date)} {event.time ? `at ${event.time}` : ''}
       </div>
       <div className="flex items-center gap-1.5 flex-wrap">
-        {event.event_type && (
-          <Badge tone="info">{event.event_type}</Badge>
+        {(event as any).category?.name && (
+          <Badge tone="info">{(event as any).category.name}</Badge>
         )}
         <Badge tone={getStatusTone(event.event_status)} dot>
           {formatStatusLabel(event.event_status)}

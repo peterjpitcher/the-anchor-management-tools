@@ -67,7 +67,6 @@ export function EventDrawer({ open, onClose, event, categories, onSave }: EventD
   const [endTime, setEndTime] = useState('')
   const [categoryId, setCategoryId] = useState('')
   const [status, setStatus] = useState('scheduled')
-  const [eventType, setEventType] = useState('')
   const [capacity, setCapacity] = useState('')
   const [brief, setBrief] = useState('')
 
@@ -128,7 +127,6 @@ export function EventDrawer({ open, onClose, event, categories, onSave }: EventD
       setEndTime(event.end_time || '')
       setCategoryId(event.category_id || '')
       setStatus(event.event_status || 'scheduled')
-      setEventType(event.event_type || '')
       setCapacity(event.capacity?.toString() || '')
       setBrief(event.brief || '')
       setDoorsTime(event.doors_time || '')
@@ -166,7 +164,6 @@ export function EventDrawer({ open, onClose, event, categories, onSave }: EventD
       setEndTime('')
       setCategoryId('')
       setStatus('scheduled')
-      setEventType('')
       setCapacity('')
       setBrief('')
       setDoorsTime('')
@@ -289,7 +286,6 @@ export function EventDrawer({ open, onClose, event, categories, onSave }: EventD
       if (endTime) formData.set('end_time', endTime)
       if (categoryId) formData.set('category_id', categoryId)
       formData.set('event_status', status)
-      if (eventType.trim()) formData.set('event_type', eventType.trim())
       if (capacity) formData.set('capacity', capacity)
       formData.set('booking_mode', bookingMode)
 
@@ -447,20 +443,12 @@ export function EventDrawer({ open, onClose, event, categories, onSave }: EventD
               onChange={(e) => setName(e.target.value)}
               placeholder="Enter event name"
             />
-            <div className="grid grid-cols-2 gap-3">
-              <Select
-                label="Category"
-                options={categoryOptions}
-                value={categoryId}
-                onChange={(e) => handleCategoryChange(e.target.value)}
-              />
-              <Input
-                label="Event Type"
-                value={eventType}
-                onChange={(e) => setEventType(e.target.value)}
-                placeholder="e.g. quiz_night"
-              />
-            </div>
+            <Select
+              label="Category"
+              options={categoryOptions}
+              value={categoryId}
+              onChange={(e) => handleCategoryChange(e.target.value)}
+            />
             <div className="grid grid-cols-2 gap-3">
               <DateTimePicker
                 type="date"

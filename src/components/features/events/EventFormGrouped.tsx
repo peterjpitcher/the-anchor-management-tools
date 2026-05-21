@@ -89,7 +89,6 @@ export function EventFormGrouped({ event, categories, onSubmit, onCancel, active
   const [bookingMode, setBookingMode] = useState<'table' | 'general' | 'mixed'>(
     (event?.booking_mode as 'table' | 'general' | 'mixed') ?? 'table'
   )
-  const [eventType, setEventType] = useState(event?.event_type ?? '')
   const [performerName, setPerformerName] = useState(event?.performer_name ?? '')
   const [performerType, setPerformerType] = useState(event?.performer_type ?? '')
   const [price, setPrice] = useState(event?.price?.toString() ?? '0')
@@ -188,7 +187,6 @@ export function EventFormGrouped({ event, categories, onSubmit, onCancel, active
         category_id: categoryId || null,
         event_status: eventStatus,
         booking_mode: bookingMode,
-        event_type: eventType.trim() || null,
         performer_name: performerName.trim() || null,
         performer_type: performerType.trim() || null,
         price: price && price !== '' ? parseFloat(price) : 0,
@@ -523,22 +521,6 @@ export function EventFormGrouped({ event, categories, onSubmit, onCancel, active
                   </option>
                 ))}
               </Select>
-            </div>
-          </div>
-
-          <div className="sm:col-span-2">
-            <label htmlFor="event_type" className="block text-sm font-medium leading-6 text-gray-900">
-              Event Type
-            </label>
-            <div className="mt-2">
-              <Input
-                type="text"
-                id="event_type"
-                value={eventType}
-                onChange={(e) => setEventType(e.target.value)}
-                placeholder="e.g., open_mic, quiz_night, live_music"
-                fullWidth
-              />
             </div>
           </div>
 
