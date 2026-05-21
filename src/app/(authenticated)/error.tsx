@@ -47,11 +47,11 @@ export default function AuthenticatedError({
   return (
     <div className="flex flex-col items-center justify-center min-h-[50vh] gap-4">
       <h2 className="text-xl font-semibold">Something went wrong</h2>
-      <p className="text-muted-foreground">
+      <p className="text-text-muted">
         An error occurred while loading this page. Please try again.
       </p>
       {error.digest && (
-        <p className="text-xs text-muted-foreground">
+        <p className="text-xs text-text-muted">
           Error ID: {error.digest}
         </p>
       )}
