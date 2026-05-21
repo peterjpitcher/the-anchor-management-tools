@@ -530,13 +530,13 @@ describe('validateGeneratedContent (full mode, with options)', () => {
 
   // --- Short description ---
   describe('short description', () => {
-    it('should report repairable when short description is under 120 chars', () => {
+    it('should report advisory warning (non-blocking) when short description is under 120 chars', () => {
       const draft = buildValidDraft()
       draft.shortDescription = 'Free live music at The Anchor featuring Jessica Lovelock.'
       const result = validateGeneratedContent(draft, buildValidOptions())
       const issue = result.issues.find(i => i.code === 'short_desc_length')
       expect(issue).toBeDefined()
-      expect(issue!.severity).toBe('repairable')
+      expect(issue!.severity).toBe('warning')
     })
 
     it('should report repairable when short description exceeds 300 chars', () => {

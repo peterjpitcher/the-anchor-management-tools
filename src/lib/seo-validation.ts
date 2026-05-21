@@ -341,12 +341,20 @@ function runFullValidation(
 
   // --- Short description ---
   if (shortDescription.trim()) {
-    if (shortDescription.length < 120 || shortDescription.length > 300) {
+    if (shortDescription.length > 300) {
       issues.push({
         code: 'short_desc_length',
         severity: 'repairable',
         field: 'shortDescription',
-        message: `Short description is ${shortDescription.length} chars, should be 120-300`,
+        message: `Short description is ${shortDescription.length} chars, trim to 300 or fewer`,
+      })
+    } else if (shortDescription.length < 120) {
+      // Advisory only: concise, on-brand copy is preferred over padded length.
+      issues.push({
+        code: 'short_desc_length',
+        severity: 'warning',
+        field: 'shortDescription',
+        message: `Short description is ${shortDescription.length} chars, a little short (aim for 120+)`,
       })
     }
     if (hasMarkdown(shortDescription)) {
