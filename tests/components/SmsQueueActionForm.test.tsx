@@ -14,10 +14,13 @@ const toast = vi.hoisted(() => ({
   remove: vi.fn(),
 }))
 
-vi.mock('@/components/ui-v2/feedback/Toast', () => ({
-  toast,
-  Toaster: () => null,
-}))
+vi.mock('@/ds', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/ds')>()
+  return {
+    ...actual,
+    toast,
+  }
+})
 
 describe('SmsQueueActionForm', () => {
   const confirmSpy = () => vi.spyOn(window, 'confirm')

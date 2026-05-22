@@ -255,7 +255,7 @@ export function buildRotaSummary(input: {
   }
 
   for (const shift of input.periodShifts) {
-    if (shift.status === 'cancelled') continue;
+    if (shift.status !== 'scheduled') continue;
 
     const hours = calculatePaidHours(
       shift.start_time,

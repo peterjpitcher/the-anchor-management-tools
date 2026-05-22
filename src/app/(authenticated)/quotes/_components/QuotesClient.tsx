@@ -28,12 +28,11 @@ import type { QuoteWithDetails, QuoteStatus } from '@/types/invoices'
 import { usePermissions } from '@/contexts/PermissionContext'
 
 // ---------------------------------------------------------------------------
-// Shared SectionNav items -- same as Invoices
+// Shared finance SectionNav items.
 // ---------------------------------------------------------------------------
 
 const FINANCE_SECTION_NAV = [
   { id: 'invoices', label: 'Invoices', href: '/invoices' },
-  { id: 'quotes', label: 'Quotes', href: '/quotes' },
   { id: 'catalog', label: 'Catalog', href: '/invoices/catalog' },
   { id: 'recurring', label: 'Recurring', href: '/invoices/recurring' },
   { id: 'vendors', label: 'Vendors', href: '/invoices/vendors' },

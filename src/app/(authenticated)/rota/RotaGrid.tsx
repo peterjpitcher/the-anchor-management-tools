@@ -19,6 +19,7 @@ import {
   ChevronRightIcon,
   PlusIcon,
   CalendarDaysIcon,
+  ExclamationTriangleIcon,
   PrinterIcon,
   PencilSquareIcon,
   XMarkIcon,
@@ -36,6 +37,7 @@ import CreateShiftModal from './CreateShiftModal';
 import BookHolidayModal from './BookHolidayModal';
 import HolidayDetailModal from './HolidayDetailModal';
 import AddShiftsModal from './AddShiftsModal';
+import MarkSickModal from './MarkSickModal';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -63,11 +65,19 @@ interface RotaGridProps {
 
 type ActiveItem = { type: 'shift'; shift: RotaShift };
 
+type CouldntWorkTarget = {
+  shift: RotaShift | null;
+  employeeId: string;
+  date: string;
+};
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
 function shiftIsUnpublished(shift: RotaShift, week: RotaWeek): boolean {
+  if (shift.status === 'sick') return false;       // absence marker, like holiday blocks
+  if (shift.is_open_shift && shift.reassignment_reason?.startsWith("Couldn't Work")) return false;
   if (week.status === 'draft') return true;         // never published
   if (!week.published_at) return false;             // published but no timestamp — treat all as published
   // A shift is unpublished if it was created OR modified after the last publish.
@@ -169,7 +179,7 @@ function addWeeks(weekStart: string, n: number): string {
 
 function empWeekHours(employeeId: string, shifts: RotaShift[]): number {
   return shifts
-    .filter(s => s.employee_id === employeeId && s.status !== 'cancelled')
+    .filter(s => s.employee_id === employeeId && s.status === 'scheduled')
     .reduce((sum, s) => sum + paidHours(s.start_time, s.end_time, s.unpaid_break_minutes, s.is_overnight), 0);
 }
 
@@ -230,6 +240,7 @@ function DraggableShiftBlock({
   const sickColour = shift.status === 'sick' ? 'bg-danger-soft border-danger/25' : '';
   const cancelColour = shift.status === 'cancelled' ? 'bg-surface-2 border-border opacity-60' : '';
   const colourClass = cancelColour || sickColour || deptColour;
+  const isCouldntWork = shift.status === 'sick';
 
   return (
     <div
@@ -248,10 +259,14 @@ function DraggableShiftBlock({
       {shift.name && (
         <p className="truncate font-semibold leading-tight text-text-strong">{shift.name}</p>
       )}
-      <p className="truncate font-medium leading-tight text-text">
-        {formatTime12Hour(shift.start_time)}–{formatTime12Hour(shift.end_time)}{shift.is_overnight ? '+' : ''}{' '}
-        <span className="font-normal text-text-muted">{ph.toFixed(1)}h{shift.status !== 'scheduled' ? ` · ${shift.status}` : ''}</span>
-      </p>
+      {isCouldntWork ? (
+        <p className="truncate font-medium leading-tight text-danger-fg">Couldn&apos;t Work</p>
+      ) : (
+        <p className="truncate font-medium leading-tight text-text">
+          {formatTime12Hour(shift.start_time)}–{formatTime12Hour(shift.end_time)}{shift.is_overnight ? '+' : ''}{' '}
+          <span className="font-normal text-text-muted">{ph.toFixed(1)}h{shift.status !== 'scheduled' ? ` · ${shift.status}` : ''}</span>
+        </p>
+      )}
     </div>
   );
 }
@@ -283,23 +298,59 @@ const LEAVE_STYLES = {
   pending:  { bg: 'bg-warning-soft', pill: 'bg-warning/15 text-warning-fg',  label: 'HOLIDAY – PENDING' },
 };
 
+const COULDNT_WORK_STYLE = {
+  bg: 'bg-danger-soft',
+  pill: 'bg-danger/10 text-danger-fg',
+  label: "COULDN'T WORK",
+};
+
+function CouldntWorkBlock({
+  shift,
+  onClick,
+}: {
+  shift: RotaShift;
+  onClick: () => void;
+}) {
+  return (
+    <div className="mb-1">
+      <button
+        type="button"
+        onClick={event => { event.stopPropagation(); onClick(); }}
+        className={`w-full rounded-default px-1.5 py-0.5 text-center text-[10px] font-semibold leading-tight transition-opacity hover:opacity-75 ${COULDNT_WORK_STYLE.pill}`}
+        title="View Couldn't Work details"
+      >
+        {COULDNT_WORK_STYLE.label}
+      </button>
+      {shift.sick_reason && (
+        <p className="mt-0.5 whitespace-normal break-words text-[10px] leading-tight text-danger-fg/80">
+          {shift.sick_reason}
+        </p>
+      )}
+    </div>
+  );
+}
+
 function DroppableCell({
   employeeId,
   date,
   children,
   leaveStatus,
+  hasCouldntWork,
   disabled,
   onAdd,
   onBookHoliday,
+  onMarkSick,
   onLeaveClick,
 }: {
   employeeId: string;
   date: string;
   children: React.ReactNode;
   leaveStatus?: 'approved' | 'pending';
+  hasCouldntWork?: boolean;
   disabled: boolean;
   onAdd?: () => void;
   onBookHoliday?: () => void;
+  onMarkSick?: () => void;
   onLeaveClick?: () => void;
 }) {
   const { setNodeRef, isOver } = useDroppable({
@@ -309,11 +360,12 @@ function DroppableCell({
 
   const today = isToday(date);
   const leaveStyle = leaveStatus ? LEAVE_STYLES[leaveStatus] : null;
+  const couldntWorkStyle = hasCouldntWork ? COULDNT_WORK_STYLE : null;
   const baseClass = 'group/cell relative min-h-[62px] border-r border-border/80 bg-surface px-2 py-1.5 transition-colors';
   const overClass = isOver && !disabled ? 'bg-primary-soft ring-1 ring-inset ring-primary/25' : today ? 'bg-primary-soft/45' : '';
 
   return (
-    <div ref={setNodeRef} className={`${baseClass} ${overClass || (leaveStyle?.bg ?? '')}`}>
+    <div ref={setNodeRef} className={`${baseClass} ${overClass || (leaveStyle?.bg ?? couldntWorkStyle?.bg ?? '')}`}>
       {leaveStyle && (
         <div className="mb-1">
           {onLeaveClick ? (
@@ -333,8 +385,19 @@ function DroppableCell({
         </div>
       )}
       <div className="relative z-10 space-y-1">{children}</div>
-      {(onAdd || onBookHoliday) && (
+      {(onAdd || onBookHoliday || onMarkSick) && (
         <div className="absolute bottom-1 right-1 z-20 flex items-center gap-0.5 opacity-0 transition-opacity group-hover/cell:opacity-100 group-focus-within/cell:opacity-100">
+          {onMarkSick && (
+            <button
+              type="button"
+              onClick={e => { e.stopPropagation(); onMarkSick(); }}
+              className="rounded-default border border-border bg-surface p-0.5 text-text-subtle shadow-xs hover:bg-danger-soft hover:text-danger-fg"
+              title="Mark as Couldn't Work"
+              aria-label="Mark as Couldn't Work"
+            >
+              <ExclamationTriangleIcon className="h-3 w-3" />
+            </button>
+          )}
           {onBookHoliday && (
             <button
               type="button"
@@ -391,6 +454,7 @@ export default function RotaGrid({
   const [selectedShift, setSelectedShift] = useState<RotaShift | null>(null);
   const [createTarget, setCreateTarget] = useState<{ employeeId: string; date: string } | null>(null);
   const [holidayTarget, setHolidayTarget] = useState<{ employeeId: string; date: string } | null>(null);
+  const [sickTarget, setSickTarget] = useState<CouldntWorkTarget | null>(null);
   const [dndPending, startDndTransition] = useTransition();
   const [navPending, startNavTransition] = useTransition();
   const [targetSavePending, startTargetSaveTransition] = useTransition();
@@ -435,7 +499,7 @@ export default function RotaGrid({
 
   // Separate open shifts from employee shifts
   const openShifts = useMemo(() => shifts.filter(s => s.is_open_shift), [shifts]);
-  const activeShifts = useMemo(() => shifts.filter(s => s.status !== 'cancelled'), [shifts]);
+  const activeShifts = useMemo(() => shifts.filter(s => s.status === 'scheduled'), [shifts]);
   const totalScheduledHours = useMemo(
     () => activeShifts.reduce((sum, s) => sum + paidHours(s.start_time, s.end_time, s.unpaid_break_minutes, s.is_overnight), 0),
     [activeShifts],
@@ -547,7 +611,7 @@ export default function RotaGrid({
 
   const handleShiftUpdated = (updated: RotaShift) => {
     setShifts(prev => prev.map(s => s.id === updated.id ? updated : s));
-    setSelectedShift(updated);
+    setSelectedShift(current => current?.id === updated.id ? updated : current);
     router.refresh();
   };
 
@@ -1048,6 +1112,12 @@ export default function RotaGrid({
                                   const cellShifts = shifts.filter(
                                     s => s.employee_id === emp.employee_id && s.shift_date === d,
                                   );
+                                  const couldntWorkShifts = cellShifts.filter(s => s.status === 'sick' && !s.is_open_shift);
+                                  const workedShifts = cellShifts.filter(s => s.status !== 'sick');
+                                  const sickCandidate =
+                                    cellShifts.find(s => s.status === 'scheduled' && !s.is_open_shift) ??
+                                    cellShifts.find(s => s.status === 'sick' && !s.is_open_shift) ??
+                                    null;
                                   const leaveStatus = leaveMap.get(`${emp.employee_id}:${d}`);
 
                                   return (
@@ -1056,19 +1126,28 @@ export default function RotaGrid({
                                       employeeId={emp.employee_id}
                                       date={d}
                                       leaveStatus={leaveStatus}
+                                      hasCouldntWork={couldntWorkShifts.length > 0}
                                       disabled={!canEdit || isPending}
                                       onAdd={canEdit && !isPending ? () => setCreateTarget({ employeeId: emp.employee_id, date: d }) : undefined}
                                       onBookHoliday={canCreateLeave && !isPending ? () => setHolidayTarget({ employeeId: emp.employee_id, date: d }) : undefined}
+                                      onMarkSick={canEdit && !isPending ? () => setSickTarget({ shift: sickCandidate, employeeId: emp.employee_id, date: d }) : undefined}
                                       onLeaveClick={(() => {
                                         const ld = leaveDayMap.get(`${emp.employee_id}:${d}`);
                                         return canViewLeave && ld ? () => setHolidayDetailTarget({ requestId: ld.request_id, employeeName: empDisplayName(emp) }) : undefined;
                                       })()}
                                     >
-                                      {cellShifts.map(s => (
+                                      {couldntWorkShifts.map(s => (
+                                        <CouldntWorkBlock
+                                          key={s.id}
+                                          shift={s}
+                                          onClick={() => setSelectedShift(s)}
+                                        />
+                                      ))}
+                                      {workedShifts.map(s => (
                                         <DraggableShiftBlock
                                           key={s.id}
                                           shift={s}
-                                          disabled={!canEdit || isPending}
+                                          disabled={!canEdit || isPending || s.status !== 'scheduled'}
                                           isDraft={shiftIsUnpublished(s, week)}
                                           onClick={() => setSelectedShift(s)}
                                         />
@@ -1103,7 +1182,7 @@ export default function RotaGrid({
         <CardBody className="flex flex-wrap items-center gap-3 py-3 text-xs text-text-muted">
           <span className="flex items-center gap-1.5"><span className="inline-block h-3 w-3 rounded-sm border border-info/25 bg-info-soft" /> Bar shift</span>
           <span className="flex items-center gap-1.5"><span className="inline-block h-3 w-3 rounded-sm border border-warning/25 bg-warning-soft" /> Kitchen shift</span>
-          <span className="flex items-center gap-1.5"><span className="inline-block h-3 w-3 rounded-sm border border-danger/25 bg-danger-soft" /> Sick</span>
+          <span className="flex items-center gap-1.5"><span className="inline-block h-3 w-3 rounded-sm border border-danger/25 bg-danger-soft" /> Couldn&apos;t Work</span>
           <span className="flex items-center gap-1.5"><span className="inline-block h-3 w-3 rounded-sm border border-success/25 bg-success-soft" /> Holiday approved</span>
           <span className="flex items-center gap-1.5"><span className="inline-block h-3 w-3 rounded-sm border border-warning/25 bg-warning-soft" /> Holiday pending</span>
           <span className="flex items-center gap-1.5"><span className="inline-block h-3 w-3 rounded-sm border-2 border-dashed border-info/25 bg-info-soft" /> Unpublished shift</span>
@@ -1165,6 +1244,42 @@ export default function RotaGrid({
           onBooked={(days) => {
             setActiveLeaveDays(prev => [...prev, ...days]);
             setHolidayTarget(null);
+          }}
+        />
+      )}
+
+      {/* Mark as Couldn't Work modal */}
+      {sickTarget && (
+        <MarkSickModal
+          shift={sickTarget.shift}
+          weekId={week.id}
+          employeeId={sickTarget.employeeId}
+          shiftDate={sickTarget.date}
+          employeeName={empDisplayName(employees.find(e => e.employee_id === sickTarget.employeeId) ?? { employee_id: '', first_name: null, last_name: null, job_title: null, max_weekly_hours: null, is_active: true })}
+          onClose={() => setSickTarget(null)}
+          onMarked={(updated) => {
+            setShifts(prev => {
+              const moved = prev.map(s => (
+                s.employee_id === updated.employee_id &&
+                s.shift_date === updated.shift_date &&
+                s.status === 'scheduled' &&
+                !s.is_open_shift
+                  ? {
+                      ...s,
+                      employee_id: null,
+                      is_open_shift: true,
+                      reassigned_from_id: updated.employee_id,
+                      reassignment_reason: updated.sick_reason ? `Couldn't Work: ${updated.sick_reason}` : "Couldn't Work",
+                    }
+                  : s
+              ));
+              return moved.some(s => s.id === updated.id)
+                ? moved.map(s => s.id === updated.id ? updated : s)
+                : [...moved, updated];
+            });
+            setSelectedShift(current => current?.id === updated.id ? updated : current);
+            setSickTarget(null);
+            router.refresh();
           }}
         />
       )}

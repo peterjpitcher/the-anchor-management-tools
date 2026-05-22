@@ -1,7 +1,7 @@
 'use client'
 
-import { useMemo, useState, useCallback } from 'react'
-import { useRouter } from 'next/navigation'
+import { useEffect, useMemo, useState, useCallback } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import {
   Card,
   Table,
@@ -32,6 +32,7 @@ import {
   updateProject,
   deleteProject,
 } from '@/app/actions/oj-projects/projects'
+import type { OJClientSummary } from '@/app/actions/oj-projects/clients'
 import { formatDateDdMmmmYyyy } from '@/lib/dateUtils'
 
 function formatCurrency(value: number): string {
@@ -63,10 +64,12 @@ const emptyForm: ProjectForm = {
 
 interface ProjectsClientProps {
   initialProjects: any[]
+  clients: OJClientSummary[]
 }
 
-export function ProjectsClient({ initialProjects }: ProjectsClientProps): React.ReactElement {
+export function ProjectsClient({ initialProjects, clients }: ProjectsClientProps): React.ReactElement {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const { hasPermission } = usePermissions()
   const canCreate = hasPermission('oj_projects', 'create')
   const canEdit = hasPermission('oj_projects', 'edit')
@@ -79,8 +82,18 @@ export function ProjectsClient({ initialProjects }: ProjectsClientProps): React.
   const [saving, setSaving] = useState(false)
   const [form, setForm] = useState<ProjectForm>(emptyForm)
   const [deleteId, setDeleteId] = useState<string | null>(null)
+  const [handledEditId, setHandledEditId] = useState<string | null>(null)
 
   const isEditing = !!form.id
+
+  const clientOptions = useMemo(() => {
+    const map = new Map<string, string>()
+    clients.forEach((client) => map.set(client.id, client.name))
+    projects.forEach((project) => {
+      if (project.vendor?.id && project.vendor?.name) map.set(project.vendor.id, project.vendor.name)
+    })
+    return Array.from(map, ([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name))
+  }, [clients, projects])
 
   const filtered = useMemo(() => {
     let list = projects
@@ -103,6 +116,26 @@ export function ProjectsClient({ initialProjects }: ProjectsClientProps): React.
     const res = await getProjects({ status: 'all' })
     if (res.projects) setProjects(res.projects)
   }, [])
+
+  useEffect(() => {
+    const editId = searchParams.get('edit')
+    if (!editId || editId === handledEditId) return
+    const project = projects.find((item) => item.id === editId)
+    if (!project) return
+    setForm({
+      id: project.id,
+      vendor_id: project.vendor_id,
+      project_name: project.project_name || '',
+      brief: project.brief || '',
+      internal_notes: project.internal_notes || '',
+      deadline: project.deadline || '',
+      budget_ex_vat: project.budget_ex_vat != null ? String(project.budget_ex_vat) : '',
+      budget_hours: project.budget_hours != null ? String(project.budget_hours) : '',
+      status: project.status || 'active',
+    })
+    setModalOpen(true)
+    setHandledEditId(editId)
+  }, [handledEditId, projects, searchParams])
 
   function openCreate(): void {
     setForm(emptyForm)
@@ -316,6 +349,17 @@ export function ProjectsClient({ initialProjects }: ProjectsClientProps): React.
               onChange={(e) => setForm({ ...form, project_name: e.target.value })}
               placeholder="e.g. Website Redesign"
               required
+            />
+          </Field>
+          <Field label="Client" required>
+            <Select
+              value={form.vendor_id}
+              onChange={(e) => setForm({ ...form, vendor_id: e.target.value })}
+              required
+              options={[
+                { label: 'Select client...', value: '' },
+                ...clientOptions.map((client) => ({ label: client.name, value: client.id })),
+              ]}
             />
           </Field>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

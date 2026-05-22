@@ -39,12 +39,11 @@ import { getCurrentQuarterDateRange } from '@/lib/invoices/date-ranges'
 import { MobileInvoiceCard } from '../MobileInvoiceCard'
 
 // ---------------------------------------------------------------------------
-// Shared SectionNav items — Invoices + Quotes share this nav
+// Shared finance SectionNav items.
 // ---------------------------------------------------------------------------
 
 const FINANCE_SECTION_NAV = [
   { id: 'invoices', label: 'Invoices', href: '/invoices' },
-  { id: 'quotes', label: 'Quotes', href: '/quotes' },
   { id: 'catalog', label: 'Catalog', href: '/invoices/catalog' },
   { id: 'recurring', label: 'Recurring', href: '/invoices/recurring' },
   { id: 'vendors', label: 'Vendors', href: '/invoices/vendors' },

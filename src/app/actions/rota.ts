@@ -47,6 +47,7 @@ export type RotaShift = {
   unpaid_break_minutes: number;
   department: string;
   status: 'scheduled' | 'sick' | 'cancelled';
+  sick_reason: string | null;
   notes: string | null;
   is_overnight: boolean;
   is_open_shift: boolean;
@@ -204,18 +205,44 @@ export async function getWeekShifts(weekStart: string): Promise<
   const sundayIso = addDaysIso(weekStart, 6);
 
   // Explicit column list matching RotaShift type — avoids fetching unnecessary columns
-  const ROTA_SHIFT_COLUMNS = 'id, week_id, employee_id, template_id, shift_date, start_time, end_time, unpaid_break_minutes, department, status, notes, is_overnight, is_open_shift, name, reassigned_from_id, reassigned_at, reassigned_by, reassignment_reason, created_at, updated_at' as const;
+  const rotaShiftColumns = 'id, week_id, employee_id, template_id, shift_date, start_time, end_time, unpaid_break_minutes, department, status, sick_reason, notes, is_overnight, is_open_shift, name, reassigned_from_id, reassigned_at, reassigned_by, reassignment_reason, created_at, updated_at' as const;
+  const rotaShiftColumnsWithoutSickReason = 'id, week_id, employee_id, template_id, shift_date, start_time, end_time, unpaid_break_minutes, department, status, notes, is_overnight, is_open_shift, name, reassigned_from_id, reassigned_at, reassigned_by, reassignment_reason, created_at, updated_at' as const;
 
-  const { data, error } = await supabase
-    .from('rota_shifts')
-    .select(ROTA_SHIFT_COLUMNS)
-    .gte('shift_date', weekStart)
-    .lte('shift_date', sundayIso)
-    .order('shift_date')
-    .order('start_time');
+  type RotaShiftQueryResult = {
+    data: Array<Partial<RotaShift>> | null;
+    error: { code?: string; message: string } | null;
+  };
+
+  const loadShifts = async (columns: string): Promise<RotaShiftQueryResult> => {
+    const result = await supabase
+      .from('rota_shifts')
+      .select(columns)
+      .gte('shift_date', weekStart)
+      .lte('shift_date', sundayIso)
+      .order('shift_date')
+      .order('start_time');
+    return result as unknown as RotaShiftQueryResult;
+  };
+
+  let { data, error } = await loadShifts(rotaShiftColumns);
+
+  if (error && isMissingSickReasonColumn(error)) {
+    const fallback = await loadShifts(rotaShiftColumnsWithoutSickReason);
+    data = fallback.data?.map(shift => ({ ...shift, sick_reason: null })) ?? null;
+    error = fallback.error;
+  }
 
   if (error) return { success: false, error: error.message };
   return { success: true, data: (data ?? []) as RotaShift[] };
+}
+
+function isMissingSickReasonColumn(error: { code?: string; message?: string } | null | undefined): boolean {
+  if (!error) return false;
+  const message = error.message?.toLowerCase() ?? '';
+  return error.code === '42703' || (
+    message.includes('sick_reason') &&
+    (message.includes('does not exist') || message.includes('could not find'))
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -658,13 +685,243 @@ export async function deleteShift(shiftId: string): Promise<
 }
 
 // ---------------------------------------------------------------------------
-// Mark shift sick
+// Mark shift as Couldn't Work
 // ---------------------------------------------------------------------------
 
-export async function markShiftSick(shiftId: string): Promise<
-  { success: true } | { success: false; error: string }
+const MarkShiftSickSchema = z.object({
+  shiftId: z.string().min(1),
+  reason: z.string().trim().min(1, "Couldn't Work reason is required").max(500, "Couldn't Work reason must be 500 characters or fewer"),
+});
+
+const MarkEmployeeCouldntWorkSchema = z.object({
+  weekId: z.string().uuid(),
+  employeeId: z.string().uuid(),
+  shiftDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  reason: z.string().trim().min(1, "Couldn't Work reason is required").max(500, "Couldn't Work reason must be 500 characters or fewer"),
+});
+
+export async function markShiftSick(shiftId: string, reason: string): Promise<
+  { success: true; data: RotaShift } | { success: false; error: string }
 > {
-  return updateShift(shiftId, { status: 'sick' });
+  const canEdit = await checkUserPermission('rota', 'edit');
+  if (!canEdit) return { success: false, error: 'Permission denied' };
+
+  const parsed = MarkShiftSickSchema.safeParse({ shiftId, reason });
+  if (!parsed.success) return { success: false, error: parsed.error.errors[0]?.message ?? "Invalid Couldn't Work details" };
+
+  const supabase = await createClient();
+
+  let { data: current, error: fetchError } = await supabase
+    .from('rota_shifts')
+    .select('id, week_id, employee_id, shift_date, start_time, end_time, status, is_open_shift, sick_reason')
+    .eq('id', parsed.data.shiftId)
+    .single();
+
+  if (fetchError && isMissingSickReasonColumn(fetchError)) {
+    const fallback = await supabase
+      .from('rota_shifts')
+      .select('id, week_id, employee_id, shift_date, start_time, end_time, status, is_open_shift')
+      .eq('id', parsed.data.shiftId)
+      .single();
+
+    current = fallback.data ? { ...fallback.data, sick_reason: null } : null;
+    fetchError = fallback.error;
+  }
+
+  if (fetchError || !current) return { success: false, error: 'Shift not found' };
+  if (current.is_open_shift || !current.employee_id) {
+    return { success: false, error: "Open shifts cannot be marked as Couldn't Work" };
+  }
+  if (current.status === 'cancelled') {
+    return { success: false, error: "Cancelled shifts cannot be marked as Couldn't Work" };
+  }
+
+  return markEmployeeCouldntWork({
+    weekId: current.week_id,
+    employeeId: current.employee_id,
+    shiftDate: current.shift_date,
+    reason: parsed.data.reason,
+  });
+}
+
+export async function markEmployeeCouldntWork(input: z.infer<typeof MarkEmployeeCouldntWorkSchema>): Promise<
+  { success: true; data: RotaShift } | { success: false; error: string }
+> {
+  const canEdit = await checkUserPermission('rota', 'edit');
+  if (!canEdit) return { success: false, error: 'Permission denied' };
+
+  const parsed = MarkEmployeeCouldntWorkSchema.safeParse(input);
+  if (!parsed.success) return { success: false, error: parsed.error.errors[0]?.message ?? "Invalid Couldn't Work details" };
+
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+
+  const { data: week, error: weekError } = await supabase
+    .from('rota_weeks')
+    .select('week_start')
+    .eq('id', parsed.data.weekId)
+    .single();
+
+  if (weekError || !week) return { success: false, error: 'Rota week not found' };
+
+  const weekStart = week.week_start as string;
+  const weekEnd = addDaysIso(weekStart, 6);
+  if (parsed.data.shiftDate < weekStart || parsed.data.shiftDate > weekEnd) {
+    return { success: false, error: `Couldn't Work date must be within this rota week (${weekStart} to ${weekEnd})` };
+  }
+
+  const { data: existingSickShifts, error: existingSickError } = await supabase
+    .from('rota_shifts')
+    .select('id, sick_reason')
+    .eq('week_id', parsed.data.weekId)
+    .eq('employee_id', parsed.data.employeeId)
+    .eq('shift_date', parsed.data.shiftDate)
+    .eq('status', 'sick')
+    .order('created_at');
+
+  if (existingSickError) return { success: false, error: existingSickError.message };
+
+  const existingSickShift = existingSickShifts?.[0] as { id: string; sick_reason: string | null } | undefined;
+  let marker: RotaShift;
+  let previousReason: string | null = null;
+  let markerCreated = false;
+
+  if (existingSickShift) {
+    const { data: updated, error: updateError } = await supabase
+      .from('rota_shifts')
+      .update({ sick_reason: parsed.data.reason })
+      .eq('id', existingSickShift.id)
+      .select('*')
+      .single();
+
+    if (updateError) {
+      if (isMissingSickReasonColumn(updateError)) {
+        return { success: false, error: "Couldn't Work reasons require the latest rota database migration before records can be saved" };
+      }
+      return { success: false, error: updateError.message };
+    }
+
+    marker = updated as RotaShift;
+    previousReason = existingSickShift.sick_reason ?? null;
+  } else {
+    const { data, error } = await supabase
+      .from('rota_shifts')
+      .insert({
+        week_id: parsed.data.weekId,
+        employee_id: parsed.data.employeeId,
+        is_open_shift: false,
+        template_id: null,
+        name: "Couldn't Work",
+        shift_date: parsed.data.shiftDate,
+        start_time: '00:00',
+        end_time: '00:00',
+        unpaid_break_minutes: 0,
+        department: 'bar',
+        status: 'sick',
+        sick_reason: parsed.data.reason,
+        notes: null,
+        is_overnight: false,
+        created_by: user?.id,
+      })
+      .select('*')
+      .single();
+
+    if (error) {
+      if (isMissingSickReasonColumn(error)) {
+        return { success: false, error: "Couldn't Work reasons require the latest rota database migration before records can be saved" };
+      }
+      return { success: false, error: error.message };
+    }
+
+    marker = data as RotaShift;
+    markerCreated = true;
+  }
+
+  const { data: shiftsToOpen, error: shiftsToOpenError } = await supabase
+    .from('rota_shifts')
+    .select('id')
+    .eq('week_id', parsed.data.weekId)
+    .eq('employee_id', parsed.data.employeeId)
+    .eq('shift_date', parsed.data.shiftDate)
+    .eq('status', 'scheduled')
+    .eq('is_open_shift', false);
+
+  if (shiftsToOpenError) return { success: false, error: shiftsToOpenError.message };
+
+  const shiftIdsToOpen = [...new Set((shiftsToOpen ?? []).map(shift => shift.id as string))];
+  if (shiftIdsToOpen.length > 0) {
+    const reassignedAt = new Date().toISOString();
+    const reassignmentReason = `Couldn't Work: ${parsed.data.reason}`;
+
+    const { error: moveError } = await supabase
+      .from('rota_shifts')
+      .update({
+        employee_id: null,
+        is_open_shift: true,
+        reassigned_from_id: parsed.data.employeeId,
+        reassigned_at: reassignedAt,
+        reassigned_by: user?.id,
+        reassignment_reason: reassignmentReason,
+      })
+      .in('id', shiftIdsToOpen);
+
+    if (moveError) return { success: false, error: moveError.message };
+
+    const { error: publishedSnapshotError } = await createAdminClient()
+      .from('rota_published_shifts')
+      .update({
+        employee_id: null,
+        is_open_shift: true,
+        published_at: reassignedAt,
+      })
+      .in('id', shiftIdsToOpen);
+
+    if (publishedSnapshotError) {
+      return { success: false, error: `Couldn't Work was recorded and shifts were moved to open shifts, but the employee portal could not be updated: ${publishedSnapshotError.message}` };
+    }
+  }
+
+  const auditInfo = {
+    action: 'mark_shift_sick',
+    shift_id: marker.id,
+    shift_date: parsed.data.shiftDate,
+    start_time: '00:00',
+    end_time: '00:00',
+    sick_reason: parsed.data.reason,
+    created_from_empty_cell: markerCreated,
+    moved_shift_ids_to_open: shiftIdsToOpen,
+  };
+
+  void logAuditEvent({
+    user_id: user?.id,
+    operation_type: 'mark_sick',
+    resource_type: 'rota_shift',
+    resource_id: marker.id,
+    operation_status: 'success',
+    old_values: markerCreated ? {} : { status: 'sick', sick_reason: previousReason },
+    new_values: { status: 'sick', sick_reason: parsed.data.reason, employee_id: parsed.data.employeeId },
+    additional_info: auditInfo,
+  });
+
+  void logAuditEvent({
+    user_id: user?.id,
+    operation_type: 'update',
+    resource_type: 'employee',
+    resource_id: parsed.data.employeeId,
+    operation_status: 'success',
+    old_values: { rota_shift_status: markerCreated ? null : 'sick', sick_reason: previousReason },
+    new_values: { rota_shift_status: 'sick', sick_reason: parsed.data.reason },
+    additional_info: {
+      ...auditInfo,
+      fields_changed: ['rota_shift_status', 'sick_reason', 'open_shift_coverage'],
+    },
+  });
+
+  revalidatePath('/rota');
+  revalidatePath('/rota/hours');
+  revalidatePath('/portal/shifts');
+  revalidatePath(`/employees/${parsed.data.employeeId}`);
+  return { success: true, data: marker };
 }
 
 // ---------------------------------------------------------------------------
@@ -759,6 +1016,7 @@ export async function getEmployeeShifts(
     .from('rota_published_shifts')
     .select('*')
     .eq('employee_id', employeeId)
+    .eq('status', 'scheduled')
     .gte('shift_date', fromDate)
     .lte('shift_date', toDate)
     .order('shift_date')
@@ -794,6 +1052,7 @@ export async function getOpenShiftsForPortal(
     .from('rota_published_shifts')
     .select('*')
     .eq('is_open_shift', true)
+    .eq('status', 'scheduled')
     .gte('shift_date', fromDate)
     .lte('shift_date', toDate)
     .order('shift_date')
@@ -1285,7 +1544,7 @@ export async function publishRotaWeek(weekId: string): Promise<
   if (isRepublish) {
     const { data: prev } = await admin
       .from('rota_published_shifts')
-      .select('id, employee_id, shift_date, start_time, end_time, department, name, is_open_shift')
+      .select('id, employee_id, shift_date, start_time, end_time, department, name, is_open_shift, status')
       .eq('week_id', weekId);
     previousPublishedShifts = (prev ?? []) as DiffShiftRow[];
   }
@@ -1339,6 +1598,7 @@ export async function publishRotaWeek(weekId: string): Promise<
         department: s.department,
         name: s.name,
         is_open_shift: s.is_open_shift,
+        status: s.status,
       }));
       void sendRotaWeekChangeEmails(weekId, weekRow.week_start, previousPublishedShifts, newShiftsForDiff);
     } else {

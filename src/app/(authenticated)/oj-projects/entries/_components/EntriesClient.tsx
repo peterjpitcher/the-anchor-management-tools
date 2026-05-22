@@ -28,6 +28,7 @@ import { Icon } from '@/ds/icons'
 import { Segmented } from '@/ds'
 import { usePermissions } from '@/contexts/PermissionContext'
 import { getEntries, updateEntry, deleteEntry, createTimeEntry, createMileageEntry, createOneOffCharge } from '@/app/actions/oj-projects/entries'
+import type { OJClientSummary } from '@/app/actions/oj-projects/clients'
 import { formatDateDdMmmmYyyy, getTodayIsoDate } from '@/lib/dateUtils'
 
 function formatCurrency(value: number): string {
@@ -38,12 +39,14 @@ interface EntriesClientProps {
   initialEntries: any[]
   projects: any[]
   workTypes: any[]
+  clients: OJClientSummary[]
 }
 
 export function EntriesClient({
   initialEntries,
   projects,
   workTypes,
+  clients,
 }: EntriesClientProps): React.ReactElement {
   const router = useRouter()
   const { hasPermission } = usePermissions()
@@ -167,6 +170,7 @@ export function EntriesClient({
       toast.success('Entry updated')
       setEditOpen(false)
       await reload()
+      router.refresh()
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to update entry')
     } finally {
@@ -191,15 +195,24 @@ export function EntriesClient({
 
   const vendors = useMemo(() => {
     const map = new Map<string, string>()
+    clients.forEach((client) => map.set(client.id, client.name))
     projects.forEach((p: any) => {
       if (p.vendor?.id && p.vendor?.name) map.set(p.vendor.id, p.vendor.name)
     })
+    entries.forEach((entry: any) => {
+      if (entry.vendor?.id && entry.vendor?.name) map.set(entry.vendor.id, entry.vendor.name)
+    })
     return Array.from(map, ([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name))
-  }, [projects])
+  }, [clients, entries, projects])
+
+  const addableProjects = useMemo(
+    () => projects.filter((p: any) => p.status !== 'completed' && p.status !== 'archived'),
+    [projects],
+  )
 
   const createProjectOptions = createForm.vendor_id
-    ? projects.filter((p: any) => p.vendor_id === createForm.vendor_id)
-    : projects
+    ? addableProjects.filter((p: any) => p.vendor_id === createForm.vendor_id)
+    : addableProjects
 
   function openCreate(): void {
     setCreateForm({
@@ -247,6 +260,7 @@ export function EntriesClient({
       toast.success('Entry created')
       setCreateOpen(false)
       await reload()
+      router.refresh()
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to create entry')
     } finally {
@@ -295,8 +309,8 @@ export function EntriesClient({
   ]
 
   const vendorProjectOptions = editForm.vendor_id
-    ? projects.filter((p) => p.vendor_id === editForm.vendor_id)
-    : projects
+    ? addableProjects.filter((p) => p.vendor_id === editForm.vendor_id)
+    : addableProjects
 
   return (
     <div className="flex flex-col gap-4">
@@ -432,6 +446,7 @@ export function EntriesClient({
               <Select
                 value={createForm.vendor_id}
                 onChange={(e) => setCreateForm({ ...createForm, vendor_id: e.target.value, project_id: '' })}
+                required
                 options={[
                   { label: 'Select client...', value: '' },
                   ...vendors.map((v) => ({ label: v.name, value: v.id })),
@@ -448,14 +463,14 @@ export function EntriesClient({
             </Field>
           </div>
 
-          <Field label="Project" required>
+          <Field label="Project">
             <Select
               value={createForm.project_id}
               onChange={(e) => setCreateForm({ ...createForm, project_id: e.target.value })}
               options={[
-                { label: 'Select project...', value: '' },
+                { label: 'Current retainer / General Work', value: '' },
                 ...createProjectOptions.map((p: any) => ({
-                  label: `${p.project_code} - ${p.project_name}`,
+                  label: `${p.project_code} - ${p.project_name}${p.status === 'paused' ? ' (paused)' : ''}`,
                   value: p.id,
                 })),
               ]}
@@ -571,19 +586,32 @@ export function EntriesClient({
             </Field>
           </div>
 
-          <Field label="Project" required>
-            <Select
-              value={editForm.project_id}
-              onChange={(e) => setEditForm({ ...editForm, project_id: e.target.value })}
-              options={[
-                { label: 'Select project...', value: '' },
-                ...vendorProjectOptions.map((p) => ({
-                  label: `${p.project_code} - ${p.project_name}`,
-                  value: p.id,
-                })),
-              ]}
-            />
-          </Field>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <Field label="Client" required>
+              <Select
+                value={editForm.vendor_id}
+                onChange={(e) => setEditForm({ ...editForm, vendor_id: e.target.value, project_id: '' })}
+                required
+                options={[
+                  { label: 'Select client...', value: '' },
+                  ...vendors.map((v) => ({ label: v.name, value: v.id })),
+                ]}
+              />
+            </Field>
+            <Field label="Project">
+              <Select
+                value={editForm.project_id}
+                onChange={(e) => setEditForm({ ...editForm, project_id: e.target.value })}
+                options={[
+                  { label: 'Current retainer / General Work', value: '' },
+                  ...vendorProjectOptions.map((p) => ({
+                    label: `${p.project_code} - ${p.project_name}${p.status === 'paused' ? ' (paused)' : ''}`,
+                    value: p.id,
+                  })),
+                ]}
+              />
+            </Field>
+          </div>
 
           {editForm.entry_type === 'time' && (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

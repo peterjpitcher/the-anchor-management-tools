@@ -10,9 +10,10 @@ import { Select } from '@/ds';
 import { FormGroup } from '@/ds';
 import { Badge } from '@/ds';
 import { Alert } from '@/ds';
-import { updateShift, deleteShift, markShiftSick } from '@/app/actions/rota';
+import { updateShift, deleteShift } from '@/app/actions/rota';
 import type { RotaShift, RotaEmployee } from '@/app/actions/rota';
 import type { Department } from '@/app/actions/budgets';
+import MarkSickModal from './MarkSickModal';
 
 interface ShiftDetailModalProps {
   shift: RotaShift;
@@ -45,6 +46,11 @@ const STATUS_BADGE: Record<string, 'success' | 'error' | 'default'> = {
   sick: 'error',
   cancelled: 'default',
 };
+const STATUS_LABEL: Record<string, string> = {
+  scheduled: 'Scheduled',
+  sick: "Couldn't Work",
+  cancelled: 'Cancelled',
+};
 
 export default function ShiftDetailModal({
   shift: initialShift,
@@ -66,12 +72,14 @@ export default function ShiftDetailModal({
   const [error, setError] = useState('');
   const [isPending, startTransition] = useTransition();
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [showSickModal, setShowSickModal] = useState(false);
 
   const empName = employee
     ? [employee.first_name, employee.last_name].filter(Boolean).join(' ') || 'Unknown'
     : 'Unknown employee';
 
   const paidH = paidHoursNum(shift.start_time, shift.end_time, shift.unpaid_break_minutes, shift.is_overnight);
+  const isCouldntWork = shift.status === 'sick';
 
   const handleSaveEdit = () => {
     if (!startTime || !endTime) { setError('Start and end time are required'); return; }
@@ -93,17 +101,6 @@ export default function ShiftDetailModal({
     });
   };
 
-  const handleMarkSick = () => {
-    startTransition(async () => {
-      const result = await markShiftSick(shift.id);
-      if (!result.success) { toast.error((result as { success: false; error: string }).error); return; }
-      const updated = { ...shift, status: 'sick' as const };
-      setShift(updated);
-      onUpdated(updated);
-      toast.success('Marked as sick');
-    });
-  };
-
   const handleDelete = () => {
     startTransition(async () => {
       const result = await deleteShift(shift.id);
@@ -115,6 +112,7 @@ export default function ShiftDetailModal({
   };
 
   return (
+    <>
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50" onClick={onClose}>
       <div
         className="bg-white rounded-xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto"
@@ -144,27 +142,37 @@ export default function ShiftDetailModal({
                   {shift.department}
                 </Badge>
                 <Badge variant={STATUS_BADGE[shift.status] ?? 'default'} size="sm">
-                  {shift.status}
+                  {STATUS_LABEL[shift.status] ?? shift.status}
                 </Badge>
               </div>
 
               <dl className="space-y-2">
-                <div className="flex justify-between text-sm">
-                  <dt className="text-gray-500">Time</dt>
-                  <dd className="text-gray-900 font-medium">{formatTime12Hour(shift.start_time)} – {formatTime12Hour(shift.end_time)}{shift.is_overnight ? ' (+1)' : ''}</dd>
-                </div>
-                <div className="flex justify-between text-sm">
-                  <dt className="text-gray-500">Break</dt>
-                  <dd className="text-gray-900">{shift.unpaid_break_minutes} min</dd>
-                </div>
-                <div className="flex justify-between text-sm">
-                  <dt className="text-gray-500">Paid hours</dt>
-                  <dd className="text-gray-900 font-medium">{paidH.toFixed(1)}h</dd>
-                </div>
+                {!isCouldntWork && (
+                  <>
+                    <div className="flex justify-between text-sm">
+                      <dt className="text-gray-500">Time</dt>
+                      <dd className="text-gray-900 font-medium">{formatTime12Hour(shift.start_time)} – {formatTime12Hour(shift.end_time)}{shift.is_overnight ? ' (+1)' : ''}</dd>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <dt className="text-gray-500">Break</dt>
+                      <dd className="text-gray-900">{shift.unpaid_break_minutes} min</dd>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <dt className="text-gray-500">Paid hours</dt>
+                      <dd className="text-gray-900 font-medium">{paidH.toFixed(1)}h</dd>
+                    </div>
+                  </>
+                )}
                 {shift.notes && (
                   <div className="flex justify-between text-sm">
                     <dt className="text-gray-500">Notes</dt>
                     <dd className="text-gray-900 text-right max-w-[240px]">{shift.notes}</dd>
+                  </div>
+                )}
+                {shift.status === 'sick' && shift.sick_reason && (
+                  <div className="flex justify-between text-sm">
+                    <dt className="text-gray-500">Couldn&apos;t Work reason</dt>
+                    <dd className="text-gray-900 text-right max-w-[240px]">{shift.sick_reason}</dd>
                   </div>
                 )}
               </dl>
@@ -179,10 +187,10 @@ export default function ShiftDetailModal({
                       type="button"
                       size="sm"
                       variant="secondary"
-                      onClick={handleMarkSick}
+                      onClick={() => setShowSickModal(true)}
                       disabled={isPending}
                     >
-                      Mark sick
+                      Mark Couldn&apos;t Work
                     </Button>
                   )}
                   {!confirmDelete ? (
@@ -275,5 +283,17 @@ export default function ShiftDetailModal({
         </div>
       </div>
     </div>
+    {showSickModal && (
+      <MarkSickModal
+        shift={shift}
+        employeeName={empName}
+        onClose={() => setShowSickModal(false)}
+        onMarked={(updated) => {
+          setShift(updated);
+          onUpdated(updated);
+        }}
+      />
+    )}
+    </>
   );
 }

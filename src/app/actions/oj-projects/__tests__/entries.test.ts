@@ -132,6 +132,94 @@ describe('createTimeEntry', () => {
     const result = await createTimeEntry(fd)
     expect(result.error).toBeDefined()
   })
+
+  it('should reject entries against a selected closed retainer project', async () => {
+    mockCreateClient.mockResolvedValue({
+      auth: {
+        getUser: vi.fn().mockResolvedValue({
+          data: { user: { id: 'user-1', email: 'test@test.com' } },
+        }),
+      },
+      from: vi.fn().mockImplementation((table: string) => {
+        if (table === 'oj_projects') {
+          return {
+            select: vi.fn().mockReturnThis(),
+            eq: vi.fn().mockReturnThis(),
+            single: vi.fn().mockResolvedValue({
+              data: {
+                id: 'b0000000-0000-0000-0000-000000000001',
+                vendor_id: 'a0000000-0000-0000-0000-000000000001',
+                status: 'completed',
+                is_retainer: true,
+              },
+              error: null,
+            }),
+          }
+        }
+        throw new Error(`Unexpected table: ${table}`)
+      }),
+    } as any)
+
+    const fd = makeFormData({
+      vendor_id: 'a0000000-0000-0000-0000-000000000001',
+      project_id: 'b0000000-0000-0000-0000-000000000001',
+      entry_date: '2026-03-12',
+      duration_minutes: '60',
+    })
+
+    const result = await createTimeEntry(fd)
+    expect(result).toEqual({ error: 'Cannot add entries to a closed retainer' })
+  })
+
+  it('should reject auto-routed entries when the matching monthly retainer is closed', async () => {
+    mockCreateClient.mockResolvedValue({
+      auth: {
+        getUser: vi.fn().mockResolvedValue({
+          data: { user: { id: 'user-1', email: 'test@test.com' } },
+        }),
+      },
+      from: vi.fn().mockImplementation((table: string) => {
+        if (table === 'oj_vendor_billing_settings') {
+          return {
+            select: vi.fn().mockReturnThis(),
+            eq: vi.fn().mockReturnThis(),
+            maybeSingle: vi.fn().mockResolvedValue({
+              data: {
+                hourly_rate_ex_vat: 75,
+                vat_rate: 20,
+                mileage_rate: 0.42,
+                retainer_included_hours_per_month: 10,
+              },
+              error: null,
+            }),
+          }
+        }
+        if (table === 'oj_projects') {
+          return {
+            select: vi.fn().mockReturnThis(),
+            eq: vi.fn().mockReturnThis(),
+            maybeSingle: vi.fn().mockResolvedValue({
+              data: {
+                id: 'b0000000-0000-0000-0000-000000000001',
+                status: 'archived',
+              },
+              error: null,
+            }),
+          }
+        }
+        throw new Error(`Unexpected table: ${table}`)
+      }),
+    } as any)
+
+    const fd = makeFormData({
+      vendor_id: 'a0000000-0000-0000-0000-000000000001',
+      entry_date: '2026-03-12',
+      duration_minutes: '60',
+    })
+
+    const result = await createTimeEntry(fd)
+    expect(result).toEqual({ error: 'Cannot add entries to a closed retainer' })
+  })
 })
 
 function makeUpdateSupabaseMock(existingStartAt: string | null, existingEndAt: string | null) {

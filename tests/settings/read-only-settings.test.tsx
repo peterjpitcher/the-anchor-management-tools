@@ -77,7 +77,7 @@ describe('Settings read-only behaviour', () => {
       expect(input).toBeDisabled()
     })
 
-    const checkboxes = container.querySelectorAll('input[type="checkbox"]')
+    const checkboxes = screen.getAllByRole('checkbox')
     expect(checkboxes.length).toBeGreaterThan(0)
     checkboxes.forEach((checkbox) => {
       expect(checkbox).toBeDisabled()

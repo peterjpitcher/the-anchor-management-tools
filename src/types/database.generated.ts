@@ -8968,6 +8968,7 @@ export type Database = {
           reassigned_from_id: string | null
           reassignment_reason: string | null
           shift_date: string
+          sick_reason: string | null
           start_time: string
           status: string
           template_id: string | null
@@ -8992,6 +8993,7 @@ export type Database = {
           reassigned_from_id?: string | null
           reassignment_reason?: string | null
           shift_date: string
+          sick_reason?: string | null
           start_time: string
           status?: string
           template_id?: string | null
@@ -9016,6 +9018,7 @@ export type Database = {
           reassigned_from_id?: string | null
           reassignment_reason?: string | null
           shift_date?: string
+          sick_reason?: string | null
           start_time?: string
           status?: string
           template_id?: string | null

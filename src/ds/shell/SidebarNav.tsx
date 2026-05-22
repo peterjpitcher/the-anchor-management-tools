@@ -49,7 +49,6 @@ export const NAV_GROUPS: NavGroup[] = [
     items: [
       { id: 'cashing-up', label: 'Cashing Up', icon: 'cash', href: '/cashing-up/dashboard' },
       { id: 'invoices', label: 'Invoices', icon: 'file', href: '/invoices' },
-      { id: 'quotes', label: 'Quotes', icon: 'file', href: '/quotes' },
       { id: 'projects', label: 'OJ Projects', icon: 'briefcase', href: '/oj-projects' },
       { id: 'receipts', label: 'Receipts', icon: 'receipt', href: '/receipts' },
       { id: 'mileage', label: 'Mileage', icon: 'map', href: '/mileage' },

@@ -7,8 +7,10 @@ import { rotaNavItems } from '../nav';
 import HoursByEmployeeClient, {
   type HoursEmployeeOption,
   type HolidayEmployeeSummary,
+  type SickEmployeeSummary,
   type HoursSeries,
   type WeeklyHolidayDetail,
+  type WeeklySickDetail,
   type WeeklyHoursRow,
 } from './HoursByEmployeeClient';
 
@@ -56,6 +58,13 @@ type LeaveDayRow = {
   employee_id: string;
   leave_date: string;
   request_id: string;
+};
+
+type SickShiftRow = {
+  id: string;
+  employee_id: string;
+  shift_date: string;
+  sick_reason: string | null;
 };
 
 function isIsoDate(value: string | undefined): value is string {
@@ -141,7 +150,7 @@ export default async function RotaHoursPage({ searchParams }: HoursPageProps) {
   const requestedEmployeeIds = normalizeEmployeeParams(params.employee);
   const supabase = createAdminClient();
 
-  const [employeesResult, sessionsResult, leaveDaysResult] = await Promise.all([
+  const [employeesResult, sessionsResult, leaveDaysResult, sickShiftsResult] = await Promise.all([
     supabase
       .from('employees')
       .select('employee_id, first_name, last_name, job_title, status')
@@ -161,11 +170,20 @@ export default async function RotaHoursPage({ searchParams }: HoursPageProps) {
       .lte('leave_date', toDate)
       .eq('leave_requests.status', 'approved')
       .order('leave_date'),
+    supabase
+      .from('rota_shifts')
+      .select('id, employee_id, shift_date, sick_reason')
+      .gte('shift_date', fromDate)
+      .lte('shift_date', toDate)
+      .eq('status', 'sick')
+      .not('employee_id', 'is', null)
+      .order('shift_date'),
   ]);
 
   const employees = (employeesResult.data ?? []) as EmployeeRow[];
   const sessions = (sessionsResult.data ?? []) as SessionRow[];
   const leaveDays = (leaveDaysResult.data ?? []) as LeaveDayRow[];
+  const sickShifts = (sickShiftsResult.data ?? []) as SickShiftRow[];
   const employeeMap = new Map(employees.map(employee => [employee.employee_id, employee]));
   const validEmployeeIds = new Set(employees.map(employee => employee.employee_id));
   const selectedEmployeeIds = requestedEmployeeIds.filter(id => validEmployeeIds.has(id));
@@ -192,10 +210,26 @@ export default async function RotaHoursPage({ searchParams }: HoursPageProps) {
     holidayDatesByEmployee.set(leaveDay.employee_id, dates);
   }
 
+  const sickEntriesByEmployee = new Map<string, Array<{ date: string; reason: string | null }>>();
+  for (const sickShift of sickShifts) {
+    const entries = sickEntriesByEmployee.get(sickShift.employee_id) ?? [];
+    const existing = entries.find(entry => entry.date === sickShift.shift_date);
+    if (existing) {
+      const reason = sickShift.sick_reason?.trim();
+      if (reason && existing.reason !== reason) {
+        existing.reason = existing.reason ? `${existing.reason}; ${reason}` : reason;
+      }
+    } else {
+      entries.push({ date: sickShift.shift_date, reason: sickShift.sick_reason?.trim() || null });
+    }
+    sickEntriesByEmployee.set(sickShift.employee_id, entries);
+  }
+
   const optionIds = new Set<string>([
     ...employees.map(employee => employee.employee_id),
     ...completedSessions.map(session => session.employee_id),
     ...leaveDays.map(day => day.employee_id),
+    ...sickShifts.map(shift => shift.employee_id),
     ...selectedEmployeeIds,
   ]);
   const employeeOptions: HoursEmployeeOption[] = [...optionIds]
@@ -208,11 +242,13 @@ export default async function RotaHoursPage({ searchParams }: HoursPageProps) {
         role: employee?.job_title ?? null,
         totalHours: roundHours(totalsByEmployee.get(id) ?? 0),
         holidayDays,
+        sickDays: sickEntriesByEmployee.get(id)?.length ?? 0,
       };
     })
     .sort((a, b) =>
       b.totalHours - a.totalHours ||
       b.holidayDays - a.holidayDays ||
+      b.sickDays - a.sickDays ||
       a.name.localeCompare(b.name)
     );
 
@@ -221,6 +257,7 @@ export default async function RotaHoursPage({ searchParams }: HoursPageProps) {
     .sort((a, b) =>
       b.totalHours - a.totalHours ||
       b.holidayDays - a.holidayDays ||
+      b.sickDays - a.sickDays ||
       a.name.localeCompare(b.name)
     );
 
@@ -239,6 +276,8 @@ export default async function RotaHoursPage({ searchParams }: HoursPageProps) {
       weekLabel: weekLabel(weekStart),
       __holidayDays: 0,
       __holidayDetails: [],
+      __sickDays: 0,
+      __sickDetails: [],
     };
     for (const employee of seriesEmployees) {
       row[employee.id] = 0;
@@ -285,9 +324,45 @@ export default async function RotaHoursPage({ searchParams }: HoursPageProps) {
     row.__holidayDetails = details;
   }
 
+  for (const sickShift of sickShifts) {
+    if (!selectedSet.has(sickShift.employee_id)) continue;
+    const weekStart = mondayOfWeekIso(sickShift.shift_date);
+    const rowIndex = weekIndex.get(weekStart);
+    if (rowIndex === undefined) continue;
+
+    const row = chartData[rowIndex];
+    const details = (row.__sickDetails ?? []) as WeeklySickDetail[];
+    const employee = employeeOptions.find(option => option.id === sickShift.employee_id);
+    const existingEmployee = details.find(item => item.employeeId === sickShift.employee_id);
+    const reason = sickShift.sick_reason?.trim() || null;
+
+    if (existingEmployee) {
+      if (!existingEmployee.entries.some(entry => entry.date === sickShift.shift_date)) {
+        existingEmployee.days += 1;
+        existingEmployee.entries.push({ date: sickShift.shift_date, reason });
+        row.__sickDays = Number(row.__sickDays ?? 0) + 1;
+      }
+    } else {
+      details.push({
+        employeeId: sickShift.employee_id,
+        name: employee?.name ?? 'Unknown',
+        colour: colourByEmployeeId.get(sickShift.employee_id) ?? COLOURS[0],
+        entries: [{ date: sickShift.shift_date, reason }],
+        days: 1,
+      });
+      row.__sickDays = Number(row.__sickDays ?? 0) + 1;
+    }
+
+    row.__sickDetails = details;
+  }
+
   const totalHours = roundHours(filteredCompletedSessions.reduce((sum, session) => sum + actualHours(session), 0));
   const totalHolidayDays = seriesEmployees.reduce(
     (sum, employee) => sum + (holidayDatesByEmployee.get(employee.id)?.length ?? 0),
+    0,
+  );
+  const totalSickDays = seriesEmployees.reduce(
+    (sum, employee) => sum + (sickEntriesByEmployee.get(employee.id)?.length ?? 0),
     0,
   );
   const holidaySummaries: HolidayEmployeeSummary[] = seriesEmployees
@@ -299,11 +374,20 @@ export default async function RotaHoursPage({ searchParams }: HoursPageProps) {
       dates: [...(holidayDatesByEmployee.get(employee.id) ?? [])].sort(),
     }))
     .filter(summary => summary.holidayDays > 0);
+  const sickSummaries: SickEmployeeSummary[] = seriesEmployees
+    .map(employee => ({
+      employeeId: employee.id,
+      name: employee.name,
+      colour: colourByEmployeeId.get(employee.id) ?? COLOURS[0],
+      sickDays: sickEntriesByEmployee.get(employee.id)?.length ?? 0,
+      entries: [...(sickEntriesByEmployee.get(employee.id) ?? [])].sort((a, b) => a.date.localeCompare(b.date)),
+    }))
+    .filter(summary => summary.sickDays > 0);
 
   return (
     <PageLayout
       title="Hours by employee"
-      subtitle="Worked timeclock hours and booked holidays grouped by employee"
+      subtitle="Worked timeclock hours, holidays, and Couldn't Work days grouped by employee"
       navItems={rotaNavItems}
     >
       <HoursByEmployeeClient
@@ -315,7 +399,9 @@ export default async function RotaHoursPage({ searchParams }: HoursPageProps) {
         series={series}
         totalHours={totalHours}
         totalHolidayDays={totalHolidayDays}
+        totalSickDays={totalSickDays}
         holidaySummaries={holidaySummaries}
+        sickSummaries={sickSummaries}
         completedSessionCount={filteredCompletedSessions.length}
         openSessionCount={openSessionCount}
         weekCount={weeks.length}

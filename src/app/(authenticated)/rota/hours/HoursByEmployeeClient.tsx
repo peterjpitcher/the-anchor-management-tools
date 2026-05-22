@@ -3,7 +3,7 @@
 import { useMemo, useState } from 'react';
 import { Popover, PopoverButton, PopoverPanel } from '@headlessui/react';
 import { usePathname, useRouter } from 'next/navigation';
-import { Check, ChevronDown, Users, X } from 'lucide-react';
+import { Check, ChevronDown, Download, Users, X } from 'lucide-react';
 import {
   Bar,
   CartesianGrid,
@@ -22,6 +22,7 @@ export interface HoursEmployeeOption {
   role: string | null;
   totalHours: number;
   holidayDays: number;
+  sickDays: number;
 }
 
 export interface HoursSeries {
@@ -39,12 +40,27 @@ export interface WeeklyHolidayDetail {
   days: number;
 }
 
+export interface SickEntry {
+  date: string;
+  reason: string | null;
+}
+
+export interface WeeklySickDetail {
+  employeeId: string;
+  name: string;
+  colour: string;
+  entries: SickEntry[];
+  days: number;
+}
+
 export interface WeeklyHoursRow {
   weekStart: string;
   weekLabel: string;
   __holidayDays?: number;
   __holidayDetails?: WeeklyHolidayDetail[];
-  [employeeId: string]: string | number | WeeklyHolidayDetail[] | null | undefined;
+  __sickDays?: number;
+  __sickDetails?: WeeklySickDetail[];
+  [employeeId: string]: string | number | WeeklyHolidayDetail[] | WeeklySickDetail[] | null | undefined;
 }
 
 export interface HolidayEmployeeSummary {
@@ -53,6 +69,14 @@ export interface HolidayEmployeeSummary {
   colour: string;
   holidayDays: number;
   dates: string[];
+}
+
+export interface SickEmployeeSummary {
+  employeeId: string;
+  name: string;
+  colour: string;
+  sickDays: number;
+  entries: SickEntry[];
 }
 
 interface HoursByEmployeeClientProps {
@@ -64,10 +88,27 @@ interface HoursByEmployeeClientProps {
   series: HoursSeries[];
   totalHours: number;
   totalHolidayDays: number;
+  totalSickDays: number;
   holidaySummaries: HolidayEmployeeSummary[];
+  sickSummaries: SickEmployeeSummary[];
   completedSessionCount: number;
   openSessionCount: number;
   weekCount: number;
+}
+
+interface HolidayRecordRow {
+  employeeId: string;
+  name: string;
+  colour: string;
+  date: string;
+}
+
+interface SickRecordRow {
+  employeeId: string;
+  name: string;
+  colour: string;
+  date: string;
+  reason: string | null;
 }
 
 function formatHours(value: number): string {
@@ -78,7 +119,20 @@ function shortDate(iso: string): string {
   return new Date(`${iso}T00:00:00Z`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
 }
 
+function fullDate(iso: string): string {
+  return new Date(`${iso}T00:00:00Z`).toLocaleDateString('en-GB', {
+    weekday: 'short',
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+  });
+}
+
 function formatHolidayDays(value: number): string {
+  return `${value} day${value === 1 ? '' : 's'}`;
+}
+
+function formatSickDays(value: number): string {
   return `${value} day${value === 1 ? '' : 's'}`;
 }
 
@@ -113,6 +167,12 @@ function formatDateRange(dates: string[]): string {
   )).join(', ');
 }
 
+function formatSickEntries(entries: SickEntry[]): string {
+  return entries
+    .map(entry => `${shortDate(entry.date)}${entry.reason ? ` (${entry.reason})` : ''}`)
+    .join(', ');
+}
+
 function HoursTooltip({
   active,
   payload,
@@ -131,15 +191,17 @@ function HoursTooltip({
   const chartRow = payload?.find(item => item.payload)?.payload;
   const holidayDays = Number(chartRow?.__holidayDays ?? 0);
   const holidayDetails = chartRow?.__holidayDetails ?? [];
+  const sickDays = Number(chartRow?.__sickDays ?? 0);
+  const sickDetails = chartRow?.__sickDetails ?? [];
   const rows = (payload ?? [])
     .filter(item =>
       typeof item.value === 'number' &&
       item.value > 0 &&
-      !String(item.dataKey ?? '').startsWith('__holiday')
+      !String(item.dataKey ?? '').startsWith('__')
     )
     .sort((a, b) => (Number(b.value) || 0) - (Number(a.value) || 0));
 
-  if (!active || (rows.length === 0 && holidayDays === 0)) return null;
+  if (!active || (rows.length === 0 && holidayDays === 0 && sickDays === 0)) return null;
 
   return (
     <div className="min-w-[180px] rounded-default border border-border bg-surface px-3 py-2 text-xs shadow-lg">
@@ -170,6 +232,24 @@ function HoursTooltip({
             {holidayDetails.map(item => (
               <p key={item.employeeId} className="text-[11px] leading-snug text-text-muted">
                 <span className="font-medium text-text">{item.name}</span>: {formatDateRange(item.dates)}
+              </p>
+            ))}
+          </div>
+        </div>
+      )}
+      {sickDays > 0 && (
+        <div className="mt-2 border-t border-border pt-2">
+          <div className="flex items-center justify-between gap-3">
+            <span className="flex items-center gap-1.5 text-danger">
+              <span className="h-2 w-2 shrink-0 rounded-full bg-danger" />
+              Couldn&apos;t Work recorded
+            </span>
+            <span className="font-semibold text-text-strong">{formatSickDays(sickDays)}</span>
+          </div>
+          <div className="mt-1 space-y-1">
+            {sickDetails.map(item => (
+              <p key={item.employeeId} className="text-[11px] leading-snug text-text-muted">
+                <span className="font-medium text-text">{item.name}</span>: {formatSickEntries(item.entries)}
               </p>
             ))}
           </div>
@@ -339,7 +419,7 @@ function EmployeeMultiSelect({ employees, selectedEmployeeIds, onChange }: Emplo
                           <span className="min-w-0 flex-1">
                             <span className="block truncate text-[13px] font-medium text-text">{employee.name}</span>
                             <span className="block truncate text-xs text-text-muted">
-                              {employee.role || 'No role'} · {formatHours(employee.totalHours)} · {formatHolidayDays(employee.holidayDays)} holiday
+                              {employee.role || 'No role'} · {formatHours(employee.totalHours)} · {formatHolidayDays(employee.holidayDays)} holiday · Couldn&apos;t Work: {formatSickDays(employee.sickDays)}
                             </span>
                           </span>
                         </button>
@@ -365,7 +445,9 @@ export default function HoursByEmployeeClient({
   series,
   totalHours,
   totalHolidayDays,
+  totalSickDays,
   holidaySummaries,
+  sickSummaries,
   completedSessionCount,
   openSessionCount,
   weekCount,
@@ -384,14 +466,51 @@ export default function HoursByEmployeeClient({
   const xAxisInterval = isWideRange ? Math.ceil(chartData.length / 16) : 'preserveStartEnd';
   const chartHeight = isWideRange ? 420 : 380;
   const maxBarSize = isWideRange ? 12 : 24;
-  const holidayAxisMax = Math.max(
+  const absenceAxisMax = Math.max(
     1,
     Math.ceil(Math.max(...chartData.map(row => Number(row.__holidayDays ?? 0)))),
+    Math.ceil(Math.max(...chartData.map(row => Number(row.__sickDays ?? 0)))),
   );
   const holidayDaysByEmployee = useMemo(
     () => new Map(holidaySummaries.map(summary => [summary.employeeId, summary.holidayDays])),
     [holidaySummaries],
   );
+  const sickDaysByEmployee = useMemo(
+    () => new Map(sickSummaries.map(summary => [summary.employeeId, summary.sickDays])),
+    [sickSummaries],
+  );
+  const holidayRows = useMemo<HolidayRecordRow[]>(
+    () => holidaySummaries
+      .flatMap(summary => summary.dates.map(date => ({
+        employeeId: summary.employeeId,
+        name: summary.name,
+        colour: summary.colour,
+        date,
+      })))
+      .sort((a, b) => a.date.localeCompare(b.date) || a.name.localeCompare(b.name)),
+    [holidaySummaries],
+  );
+  const sickRows = useMemo<SickRecordRow[]>(
+    () => sickSummaries
+      .flatMap(summary => summary.entries.map(entry => ({
+        employeeId: summary.employeeId,
+        name: summary.name,
+        colour: summary.colour,
+        date: entry.date,
+        reason: entry.reason,
+      })))
+      .sort((a, b) => a.date.localeCompare(b.date) || a.name.localeCompare(b.name)),
+    [sickSummaries],
+  );
+  const pdfHref = useMemo(() => {
+    const params = new URLSearchParams();
+    params.set('from', fromDate);
+    params.set('to', toDate);
+    for (const employeeId of selectedEmployeeIds) {
+      params.append('employee', employeeId);
+    }
+    return `/api/rota/hours/pdf?${params.toString()}`;
+  }, [fromDate, selectedEmployeeIds, toDate]);
 
   const applyFilters = () => {
     const params = new URLSearchParams();
@@ -433,14 +552,29 @@ export default function HoursByEmployeeClient({
               <span className="mx-2 text-text-subtle">/</span>
               Employees: <span className="font-semibold text-text-strong">{series.length}</span>
             </div>
-            <Button type="button" className="justify-self-start sm:order-4 xl:order-5" onClick={applyFilters}>
-              Apply
-            </Button>
+            <div className="flex items-center gap-2 justify-self-start sm:order-4 xl:order-5">
+              <Button type="button" onClick={applyFilters}>
+                Apply
+              </Button>
+              <a
+                href={pdfHref}
+                download
+                aria-disabled={series.length === 0}
+                className={cn(
+                  'inline-flex h-[var(--spacing-btn-h)] items-center justify-center gap-1.5 rounded-[8px] border border-border-strong bg-surface px-3 text-[13px] font-semibold text-text no-underline',
+                  'transition-[background,border-color,color,transform,box-shadow] duration-[120ms] hover:bg-surface-hover focus-visible:outline-none focus-visible:shadow-ring active:translate-y-[0.5px]',
+                  series.length === 0 && 'pointer-events-none opacity-50'
+                )}
+              >
+                <Download className="h-4 w-4" aria-hidden="true" />
+                Download PDF
+              </a>
+            </div>
           </div>
         </CardBody>
       </Card>
 
-      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-6">
         <Card>
           <p className="text-xs font-medium text-text-muted">Worked hours</p>
           <p className="mt-1 text-2xl font-semibold text-text-strong">{formatHours(totalHours)}</p>
@@ -452,6 +586,10 @@ export default function HoursByEmployeeClient({
         <Card>
           <p className="text-xs font-medium text-text-muted">Holidays booked</p>
           <p className="mt-1 text-2xl font-semibold text-text-strong">{formatHolidayDays(totalHolidayDays)}</p>
+        </Card>
+        <Card>
+          <p className="text-xs font-medium text-text-muted">Couldn&apos;t Work recorded</p>
+          <p className="mt-1 text-2xl font-semibold text-text-strong">{formatSickDays(totalSickDays)}</p>
         </Card>
         <Card>
           <p className="text-xs font-medium text-text-muted">Completed sessions</p>
@@ -473,6 +611,8 @@ export default function HoursByEmployeeClient({
               <span>Worked hours</span>
               <span className="ml-2 h-2.5 w-2.5 rounded-full bg-warning" />
               <span>Holiday days</span>
+              <span className="ml-2 h-2.5 w-2.5 rounded-full bg-danger" />
+              <span>Couldn&apos;t Work days</span>
             </div>
           }
         />
@@ -509,9 +649,9 @@ export default function HoursByEmployeeClient({
                         unit="h"
                       />
                       <YAxis
-                        yAxisId="holiday"
+                        yAxisId="absence"
                         orientation="right"
-                        domain={[0, holidayAxisMax]}
+                        domain={[0, absenceAxisMax]}
                         allowDecimals={false}
                         tickFormatter={(value) => `${value}d`}
                         tick={{ fontSize: 11, fill: 'var(--color-warning-fg)' }}
@@ -533,10 +673,20 @@ export default function HoursByEmployeeClient({
                         />
                       ))}
                       <Bar
-                        yAxisId="holiday"
+                        yAxisId="absence"
                         dataKey="__holidayDays"
                         name="Holiday days"
                         fill="var(--color-warning)"
+                        radius={[4, 4, 0, 0]}
+                        maxBarSize={maxBarSize}
+                        minPointSize={2}
+                        isAnimationActive={false}
+                      />
+                      <Bar
+                        yAxisId="absence"
+                        dataKey="__sickDays"
+                        name="Couldn't Work days"
+                        fill="var(--color-danger)"
                         radius={[4, 4, 0, 0]}
                         maxBarSize={maxBarSize}
                         minPointSize={2}
@@ -563,6 +713,7 @@ export default function HoursByEmployeeClient({
                         <span className="block font-semibold text-text-strong">{formatHours(item.totalHours)}</span>
                         <span className="block text-[11px] text-text-muted">
                           {formatHolidayDays(holidayDaysByEmployee.get(item.employeeId) ?? 0)} holiday
+                          {' · '}Couldn&apos;t Work: {formatSickDays(sickDaysByEmployee.get(item.employeeId) ?? 0)}
                         </span>
                       </span>
                     </div>
@@ -577,29 +728,80 @@ export default function HoursByEmployeeClient({
       <Card>
         <CardHeader
           title="Holidays booked"
-          subtitle={`Approved holiday days from ${shortDate(fromDate)} - ${shortDate(toDate)}`}
+          subtitle={`${formatHolidayDays(totalHolidayDays)} from ${shortDate(fromDate)} - ${shortDate(toDate)}`}
         />
         <CardBody>
-          {holidaySummaries.length === 0 ? (
+          {holidayRows.length === 0 ? (
             <div className="rounded-default border border-dashed border-border bg-surface-2 p-6 text-center text-sm text-text-muted">
               No approved holidays booked for the selected employees in this date range.
             </div>
           ) : (
-            <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
-              {holidaySummaries.map(item => (
-                <div key={item.employeeId} className="rounded-default border border-border bg-surface-2 px-3 py-2">
-                  <div className="flex items-center justify-between gap-3">
-                    <span className="flex min-w-0 items-center gap-2">
-                      <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: item.colour }} />
-                      <span className="truncate text-sm font-semibold text-text-strong">{item.name}</span>
-                    </span>
-                    <span className="shrink-0 text-xs font-semibold text-text-muted">
-                      {formatHolidayDays(item.holidayDays)}
-                    </span>
-                  </div>
-                  <p className="mt-1 line-clamp-2 text-xs text-text-muted">{formatDateRange(item.dates)}</p>
-                </div>
-              ))}
+            <div className="overflow-hidden rounded-default border border-border">
+              <div className="max-h-[420px] overflow-auto">
+                <table className="min-w-full divide-y divide-border text-sm">
+                  <thead className="sticky top-0 bg-surface-2 text-left text-xs font-semibold text-text-muted">
+                    <tr>
+                      <th scope="col" className="w-1/2 px-3 py-2">Employee</th>
+                      <th scope="col" className="px-3 py-2">Date</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border bg-surface">
+                    {holidayRows.map(row => (
+                      <tr key={`${row.employeeId}-${row.date}`} className="hover:bg-surface-hover">
+                        <td className="px-3 py-2">
+                          <span className="flex min-w-0 items-center gap-2">
+                            <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: row.colour }} />
+                            <span className="truncate font-medium text-text-strong">{row.name}</span>
+                          </span>
+                        </td>
+                        <td className="whitespace-nowrap px-3 py-2 text-text-muted">{fullDate(row.date)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </CardBody>
+      </Card>
+
+      <Card>
+        <CardHeader
+          title="Couldn't Work recorded"
+          subtitle={`${formatSickDays(totalSickDays)} from ${shortDate(fromDate)} - ${shortDate(toDate)}`}
+        />
+        <CardBody>
+          {sickRows.length === 0 ? (
+            <div className="rounded-default border border-dashed border-border bg-surface-2 p-6 text-center text-sm text-text-muted">
+              No Couldn&apos;t Work days recorded for the selected employees in this date range.
+            </div>
+          ) : (
+            <div className="overflow-hidden rounded-default border border-border">
+              <div className="max-h-[420px] overflow-auto">
+                <table className="min-w-full divide-y divide-border text-sm">
+                  <thead className="sticky top-0 bg-surface-2 text-left text-xs font-semibold text-text-muted">
+                    <tr>
+                      <th scope="col" className="w-[28%] px-3 py-2">Employee</th>
+                      <th scope="col" className="w-[22%] px-3 py-2">Date</th>
+                      <th scope="col" className="px-3 py-2">Reason</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border bg-surface">
+                    {sickRows.map(row => (
+                      <tr key={`${row.employeeId}-${row.date}`} className="hover:bg-surface-hover">
+                        <td className="px-3 py-2">
+                          <span className="flex min-w-0 items-center gap-2">
+                            <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: row.colour }} />
+                            <span className="truncate font-medium text-text-strong">{row.name}</span>
+                          </span>
+                        </td>
+                        <td className="whitespace-nowrap px-3 py-2 text-text-muted">{fullDate(row.date)}</td>
+                        <td className="px-3 py-2 text-text-muted">{row.reason || 'No reason recorded'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
           )}
         </CardBody>

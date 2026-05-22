@@ -50,6 +50,7 @@ export async function sendRotaWeekEmails(
       .select('employee_id, shift_date, start_time, end_time, department, name, is_open_shift')
       .eq('week_id', weekId)
       .eq('is_open_shift', false)
+      .eq('status', 'scheduled')
       .not('employee_id', 'is', null)
       .order('shift_date')
       .order('start_time'),
@@ -58,6 +59,7 @@ export async function sendRotaWeekEmails(
       .select('shift_date, start_time, end_time, department, name')
       .eq('week_id', weekId)
       .eq('is_open_shift', true)
+      .eq('status', 'scheduled')
       .order('shift_date')
       .order('start_time'),
   ]);
@@ -141,6 +143,7 @@ export type DiffShiftRow = {
   department: string;
   name: string | null;
   is_open_shift: boolean;
+  status: string;
 };
 
 function toShiftSummary(s: DiffShiftRow): ShiftSummary {
@@ -222,6 +225,7 @@ export async function sendRotaWeekChangeEmails(
       .select('shift_date, start_time, end_time, department, name')
       .eq('week_id', weekId)
       .eq('is_open_shift', true)
+      .eq('status', 'scheduled')
       .order('shift_date')
       .order('start_time'),
   ]);
@@ -229,14 +233,14 @@ export async function sendRotaWeekChangeEmails(
   // Group non-open shifts by employee
   const prevByEmployee: Record<string, DiffShiftRow[]> = {};
   for (const s of previousShifts) {
-    if (!s.employee_id || s.is_open_shift) continue;
+    if (!s.employee_id || s.is_open_shift || s.status !== 'scheduled') continue;
     if (!prevByEmployee[s.employee_id]) prevByEmployee[s.employee_id] = [];
     prevByEmployee[s.employee_id]!.push(s);
   }
 
   const newByEmployee: Record<string, DiffShiftRow[]> = {};
   for (const s of newShifts) {
-    if (!s.employee_id || s.is_open_shift) continue;
+    if (!s.employee_id || s.is_open_shift || s.status !== 'scheduled') continue;
     if (!newByEmployee[s.employee_id]) newByEmployee[s.employee_id] = [];
     newByEmployee[s.employee_id]!.push(s);
   }
