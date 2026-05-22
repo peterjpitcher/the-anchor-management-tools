@@ -64,6 +64,7 @@ temp/*.csv
 temp/logs_result*.json
 
 # Playwright test artifacts
+.playwright-mcp/
 test-results/
 test-reports/
 playwright-report/

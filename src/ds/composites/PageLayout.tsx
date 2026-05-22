@@ -2,15 +2,15 @@
 
 import React from 'react'
 import { useRouter, usePathname } from 'next/navigation'
-import Link from 'next/link'
 import { cn } from '@/lib/utils'
 import { Spinner } from '@/ds/primitives/Spinner'
 import { Alert } from '@/ds/primitives/Alert'
 import { Button } from '@/ds/primitives/Button'
 import { Icon } from '@/ds/icons'
+import { SectionNav } from './SectionNav'
 
 /* ------------------------------------------------------------------ */
-/*  HeaderNav — underline-style tab navigation (legacy-compatible)    */
+/*  HeaderNav — PageLayout adapter for the standard SectionNav        */
 /* ------------------------------------------------------------------ */
 
 export interface HeaderNavItem {
@@ -31,8 +31,26 @@ function HeaderNav({
   className?: string
 }) {
   const pathname = usePathname()
+  const getItemId = React.useCallback((item: HeaderNavItem, index: number) => {
+    if (item.href) return item.href.startsWith('#') ? item.href : item.href.split('#')[0]
+    return `${item.label}-${index}`
+  }, [])
 
   const resolvedItems = React.useMemo(() => {
+    const hrefItems = items
+      .map((item) => {
+        if (!item.href || item.href.startsWith('#')) return null
+        return { item, hrefWithoutHash: item.href.split('#')[0] }
+      })
+      .filter((item): item is { item: HeaderNavItem; hrefWithoutHash: string } => Boolean(item))
+
+    const activeHref = hrefItems
+      .filter(({ hrefWithoutHash }) =>
+        hrefWithoutHash === pathname ||
+        (hrefWithoutHash !== '/' && pathname.startsWith(`${hrefWithoutHash}/`)),
+      )
+      .sort((a, b) => b.hrefWithoutHash.length - a.hrefWithoutHash.length)[0]?.hrefWithoutHash
+
     const computed = items.map((item) => {
       if (typeof item.active === 'boolean') {
         return { item, active: item.active }
@@ -44,9 +62,7 @@ function HeaderNav({
           active = typeof window !== 'undefined' && item.href === window.location.hash
         } else {
           const hrefWithoutHash = item.href.split('#')[0]
-          active =
-            hrefWithoutHash === pathname ||
-            (hrefWithoutHash !== '/' && pathname.startsWith(hrefWithoutHash))
+          active = hrefWithoutHash === activeHref
         }
       }
 
@@ -68,62 +84,28 @@ function HeaderNav({
 
   if (resolvedItems.length === 0) return null
 
+  const sectionItems = resolvedItems.map(({ item }, index) => ({
+    id: getItemId(item, index),
+    label: item.label,
+    href: item.href,
+    badge: item.badge,
+    icon: item.icon,
+    disabled: item.disabled,
+  }))
+
+  const activeItem = resolvedItems.find(({ active }) => active)
+  const activeId = activeItem
+    ? getItemId(activeItem.item, resolvedItems.indexOf(activeItem))
+    : sectionItems[0]?.id ?? ''
+
+  const handleSelect = (id: string) => {
+    const match = resolvedItems.find(({ item }, index) => getItemId(item, index) === id)
+    match?.item.onClick?.()
+  }
+
   return (
     <div className={cn('relative w-full sm:flex-1', className)}>
-      <nav className="overflow-x-auto text-sm sm:text-base" aria-label="Section navigation">
-        <ul className="flex w-max min-w-full items-center gap-4 sm:gap-6 -mb-px">
-          {resolvedItems.map(({ item, active }, index) => {
-            const { href, onClick, label, icon, disabled, badge } = item
-            const key = `${label}-${index}`
-            const content = (
-              <span
-                className={cn(
-                  'inline-flex items-center gap-2 whitespace-nowrap px-1 py-3 border-b-2 transition-colors duration-150 text-sm font-medium',
-                  active
-                    ? 'border-blue-600 text-blue-600'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300',
-                  disabled && 'opacity-50 pointer-events-none',
-                )}
-              >
-                {icon && <span className="flex items-center">{icon}</span>}
-                <span>{label}</span>
-                {badge !== undefined && badge !== null && (
-                  <span
-                    className={cn(
-                      'inline-flex min-w-[1.25rem] items-center justify-center rounded-full px-1 text-[10px] font-bold',
-                      active ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600',
-                    )}
-                  >
-                    {badge}
-                  </span>
-                )}
-              </span>
-            )
-
-            return (
-              <li key={key} className="flex flex-shrink-0">
-                {href ? (
-                  <Link
-                    href={href}
-                    className="focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
-                  >
-                    {content}
-                  </Link>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={onClick}
-                    disabled={disabled}
-                    className="focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
-                  >
-                    {content}
-                  </button>
-                )}
-              </li>
-            )
-          })}
-        </ul>
-      </nav>
+      <SectionNav items={sectionItems} activeId={activeId} onSelect={handleSelect} />
     </div>
   )
 }

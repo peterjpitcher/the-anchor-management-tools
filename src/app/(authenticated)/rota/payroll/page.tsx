@@ -8,6 +8,7 @@ import { getPayrollMonthData, getOrCreatePayrollPeriod } from '@/app/actions/pay
 import type { PayrollMonthApproval, PayrollPeriod } from '@/app/actions/payroll';
 import { getRotaWeekDayInfo } from '@/app/actions/rota-day-info';
 import PayrollClient from './PayrollClient';
+import { rotaNavItems } from '../nav';
 
 export const dynamic = 'force-dynamic';
 
@@ -72,13 +73,7 @@ export default async function PayrollPage({ searchParams }: PayrollPageProps) {
     <PageLayout
       title="Payroll"
       subtitle={monthLabel}
-      navItems={[
-        { label: 'Rota', href: '/rota' },
-        { label: 'Leave', href: '/rota/leave' },
-        { label: 'Timeclock', href: '/rota/timeclock' },
-        { label: 'Labour Costs', href: '/rota/dashboard' },
-        { label: 'Payroll', href: '/rota/payroll' },
-      ]}
+      navItems={rotaNavItems}
     >
       <Section
         title={`${monthLabel} Payroll`}
