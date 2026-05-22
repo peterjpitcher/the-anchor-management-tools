@@ -112,8 +112,8 @@ function ShiftCell({
         return (
           <div key={shift.id} style={{ backgroundColor: bg, color: fg, borderRadius: 3, padding: '2px 4px', marginBottom: 2, fontSize: 10 }}>
             {shift.name && <div style={{ fontSize: 9, fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{shift.name}</div>}
-            <div style={{ fontWeight: 600 }}>{formatTime(shift.start_time)}–{formatTime(shift.end_time)}</div>
-            <div style={{ fontSize: 9, opacity: 0.85 }}>{isSick ? 'Sick' : isBar ? 'Bar' : 'Kitchen'} · {ph.toFixed(1)}h</div>
+            {!isSick && <div style={{ fontWeight: 600 }}>{formatTime(shift.start_time)}–{formatTime(shift.end_time)}</div>}
+            <div style={{ fontSize: 9, opacity: 0.85 }}>{isSick ? "Couldn't Work" : `${isBar ? 'Bar' : 'Kitchen'} · ${ph.toFixed(1)}h`}</div>
           </div>
         );
       })}
@@ -321,7 +321,7 @@ export default async function RotaPrintPage({ searchParams }: PrintPageProps) {
           {[
             { bg: '#dbeafe', label: 'Bar' },
             { bg: '#ffedd5', label: 'Kitchen' },
-            { bg: '#fee2e2', label: 'Sick' },
+            { bg: '#fee2e2', label: "Couldn't Work" },
             { bg: '#dcfce7', label: 'Holiday (approved)' },
             { bg: '#fef9c3', label: 'Holiday (pending)' },
           ].map(({ bg, label }) => (

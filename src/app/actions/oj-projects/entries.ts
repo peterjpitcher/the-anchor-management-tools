@@ -5,6 +5,7 @@ import { checkUserPermission } from '@/app/actions/rbac'
 import { logAuditEvent } from '@/app/actions/audit'
 import { recalculateTaxYearMileage } from '@/lib/mileage/recalculateTaxYear'
 import { getTaxYearBounds } from '@/lib/mileage/hmrcRates'
+import { generateProjectCode } from '@/lib/oj-projects/project-codes'
 import { z } from 'zod'
 
 function hasAtMostOneDecimalPlace(value: number): boolean {
@@ -19,7 +20,7 @@ const MileageMilesSchema = z.coerce
 
 const TimeEntrySchema = z.object({
   vendor_id: z.string().uuid('Invalid vendor ID'),
-  project_id: z.string().uuid('Invalid project ID'),
+  project_id: z.string().uuid('Invalid project ID').optional().or(z.literal('')).optional(),
   entry_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must be YYYY-MM-DD'),
   duration_minutes: z.coerce.number().min(1, 'Duration must be at least 1 minute'),
   work_type_id: z.string().uuid('Invalid work type').optional().or(z.literal('')).optional(),
@@ -30,7 +31,7 @@ const TimeEntrySchema = z.object({
 
 const MileageEntrySchema = z.object({
   vendor_id: z.string().uuid('Invalid vendor ID'),
-  project_id: z.string().uuid('Invalid project ID'),
+  project_id: z.string().uuid('Invalid project ID').optional().or(z.literal('')).optional(),
   entry_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must be YYYY-MM-DD'),
   miles: MileageMilesSchema,
   description: z.string().max(5000).optional(),
@@ -40,7 +41,7 @@ const MileageEntrySchema = z.object({
 
 const OneOffChargeSchema = z.object({
   vendor_id: z.string().uuid('Invalid vendor ID'),
-  project_id: z.string().uuid('Invalid project ID'),
+  project_id: z.string().uuid('Invalid project ID').optional().or(z.literal('')).optional(),
   entry_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must be YYYY-MM-DD'),
   amount_ex_vat: z.coerce.number().positive('Amount must be greater than 0'),
   description: z.string().max(5000).optional(),
@@ -52,7 +53,7 @@ const UpdateEntrySchema = z.object({
   id: z.string().uuid('Invalid entry ID'),
   entry_type: z.enum(['time', 'mileage', 'one_off'] as const),
   vendor_id: z.string().uuid('Invalid vendor ID'),
-  project_id: z.string().uuid('Invalid project ID'),
+  project_id: z.string().uuid('Invalid project ID').optional().or(z.literal('')).optional(),
   entry_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must be YYYY-MM-DD'),
   duration_minutes: z.coerce.number().min(1).optional(),
   miles: MileageMilesSchema.optional(),
@@ -66,7 +67,7 @@ const UpdateEntrySchema = z.object({
 async function getVendorSettingsOrDefault(supabase: Awaited<ReturnType<typeof createClient>>, vendorId: string) {
   const { data } = await supabase
     .from('oj_vendor_billing_settings')
-    .select('hourly_rate_ex_vat, vat_rate, mileage_rate')
+    .select('hourly_rate_ex_vat, vat_rate, mileage_rate, retainer_included_hours_per_month')
     .eq('vendor_id', vendorId)
     .maybeSingle()
 
@@ -74,6 +75,7 @@ async function getVendorSettingsOrDefault(supabase: Awaited<ReturnType<typeof cr
     hourly_rate_ex_vat: typeof data?.hourly_rate_ex_vat === 'number' ? data.hourly_rate_ex_vat : 75,
     vat_rate: typeof data?.vat_rate === 'number' ? data.vat_rate : 20,
     mileage_rate: typeof data?.mileage_rate === 'number' ? data.mileage_rate : 0.42,
+    retainer_included_hours_per_month: typeof data?.retainer_included_hours_per_month === 'number' ? data.retainer_included_hours_per_month : null,
   }
 }
 
@@ -84,7 +86,7 @@ async function ensureProjectMatchesVendor(
 ) {
   const { data: project, error } = await supabase
     .from('oj_projects')
-    .select('id, vendor_id, status')
+    .select('id, vendor_id, status, is_retainer')
     .eq('id', projectId)
     .single()
 
@@ -93,9 +95,169 @@ async function ensureProjectMatchesVendor(
     return { error: 'Selected project does not belong to the selected vendor' }
   }
   if (project.status === 'completed' || project.status === 'archived') {
+    if (project.is_retainer) {
+      return { error: 'Cannot add entries to a closed retainer' }
+    }
     return { error: 'Cannot add entries to a closed project' }
   }
   return { success: true as const }
+}
+
+const GENERAL_PROJECT_NAME = 'General Work'
+const GENERAL_PROJECT_NOTES = 'Auto-created by OJ Projects for client-level entries without a specific project.'
+
+function periodFromEntryDate(entryDate: string): string {
+  return entryDate.slice(0, 7)
+}
+
+function monthLabelFromPeriod(periodYyyymm: string): string {
+  const [year, month] = periodYyyymm.split('-').map(Number)
+  if (!year || !month) return periodYyyymm
+  return new Date(Date.UTC(year, month - 1, 1)).toLocaleDateString('en-GB', {
+    month: 'short',
+    year: 'numeric',
+    timeZone: 'UTC',
+  })
+}
+
+async function getVendorName(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  vendorId: string
+) {
+  const { data } = await supabase
+    .from('invoice_vendors')
+    .select('name')
+    .eq('id', vendorId)
+    .maybeSingle()
+
+  return data?.name ? String(data.name) : 'Client'
+}
+
+async function createGeneralProject(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  vendorId: string
+) {
+  const projectCode = await generateProjectCode(supabase, vendorId)
+  const { data, error } = await supabase
+    .from('oj_projects')
+    .insert({
+      vendor_id: vendorId,
+      project_code: projectCode,
+      project_name: GENERAL_PROJECT_NAME,
+      brief: 'Default bucket for ad hoc client work that is not tied to a specific project.',
+      internal_notes: GENERAL_PROJECT_NOTES,
+      deadline: null,
+      budget_ex_vat: null,
+      budget_hours: null,
+      status: 'active',
+      is_retainer: false,
+      retainer_period_yyyymm: null,
+    })
+    .select('id')
+    .single()
+
+  if (error) return { error: error.message }
+  return { projectId: data.id as string }
+}
+
+async function resolveGeneralProject(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  vendorId: string
+) {
+  const { data: existing, error: existingError } = await supabase
+    .from('oj_projects')
+    .select('id')
+    .eq('vendor_id', vendorId)
+    .eq('is_retainer', false)
+    .eq('project_name', GENERAL_PROJECT_NAME)
+    .in('status', ['active', 'paused'])
+    .order('created_at', { ascending: true })
+    .limit(1)
+    .maybeSingle()
+
+  if (existingError) return { error: existingError.message }
+  if (existing?.id) return { projectId: existing.id as string }
+
+  return createGeneralProject(supabase, vendorId)
+}
+
+async function createRetainerProject(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  vendorId: string,
+  periodYyyymm: string,
+  includedHours: number
+) {
+  const [vendorName, projectCode] = await Promise.all([
+    getVendorName(supabase, vendorId),
+    generateProjectCode(supabase, vendorId),
+  ])
+  const monthLabel = monthLabelFromPeriod(periodYyyymm)
+
+  const { data, error } = await supabase
+    .from('oj_projects')
+    .insert({
+      vendor_id: vendorId,
+      project_code: projectCode,
+      project_name: `${vendorName} Retainer (${monthLabel})`,
+      brief: `Monthly retainer bucket for ${monthLabel}.`,
+      internal_notes: `Auto-created by OJ Projects when logging a retainer entry for ${periodYyyymm}.`,
+      deadline: null,
+      budget_ex_vat: null,
+      budget_hours: includedHours,
+      status: 'active',
+      is_retainer: true,
+      retainer_period_yyyymm: periodYyyymm,
+    })
+    .select('id')
+    .single()
+
+  if (error) return { error: error.message }
+  return { projectId: data.id as string }
+}
+
+async function resolveRetainerProject(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  vendorId: string,
+  entryDate: string,
+  includedHours: number
+) {
+  const periodYyyymm = periodFromEntryDate(entryDate)
+  const { data: existing, error: existingError } = await supabase
+    .from('oj_projects')
+    .select('id, status')
+    .eq('vendor_id', vendorId)
+    .eq('is_retainer', true)
+    .eq('retainer_period_yyyymm', periodYyyymm)
+    .maybeSingle()
+
+  if (existingError) return { error: existingError.message }
+  if (existing?.id) {
+    if (existing.status === 'completed' || existing.status === 'archived') {
+      return { error: 'Cannot add entries to a closed retainer' }
+    }
+    return { projectId: existing.id as string }
+  }
+
+  return createRetainerProject(supabase, vendorId, periodYyyymm, includedHours)
+}
+
+async function resolveProjectForEntry(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  input: { projectId?: string | null; vendorId: string; entryDate: string }
+) {
+  if (input.projectId) {
+    const match = await ensureProjectMatchesVendor(supabase, input.projectId, input.vendorId)
+    if ('error' in match) return { error: match.error }
+    return { projectId: input.projectId }
+  }
+
+  const settings = await getVendorSettingsOrDefault(supabase, input.vendorId)
+  const includedHours = Number(settings.retainer_included_hours_per_month || 0)
+  if (Number.isFinite(includedHours) && includedHours > 0) {
+    return resolveRetainerProject(supabase, input.vendorId, input.entryDate, includedHours)
+  }
+
+  return resolveGeneralProject(supabase, input.vendorId)
 }
 
 async function getWorkTypeName(
@@ -164,7 +326,7 @@ export async function createTimeEntry(formData: FormData) {
 
   const parsed = TimeEntrySchema.safeParse({
     vendor_id: formData.get('vendor_id'),
-    project_id: formData.get('project_id'),
+    project_id: formData.get('project_id') || undefined,
     entry_date: formData.get('entry_date'),
     duration_minutes: formData.get('duration_minutes'),
     work_type_id: formData.get('work_type_id') || undefined,
@@ -181,8 +343,12 @@ export async function createTimeEntry(formData: FormData) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
 
-  const match = await ensureProjectMatchesVendor(supabase, parsed.data.project_id, parsed.data.vendor_id)
-  if ('error' in match) return { error: match.error }
+  const projectResolution = await resolveProjectForEntry(supabase, {
+    projectId: parsed.data.project_id || null,
+    vendorId: parsed.data.vendor_id,
+    entryDate: parsed.data.entry_date,
+  })
+  if ('error' in projectResolution) return { error: projectResolution.error }
 
   const workTypeId = parsed.data.work_type_id ? String(parsed.data.work_type_id) : null
   const [settings, workTypeName] = await Promise.all([
@@ -194,7 +360,7 @@ export async function createTimeEntry(formData: FormData) {
     .from('oj_entries')
     .insert({
       vendor_id: parsed.data.vendor_id,
-      project_id: parsed.data.project_id,
+      project_id: projectResolution.projectId,
       entry_type: 'time',
       entry_date: parsed.data.entry_date,
       start_at: null,
@@ -241,7 +407,7 @@ export async function createMileageEntry(formData: FormData) {
 
   const parsed = MileageEntrySchema.safeParse({
     vendor_id: formData.get('vendor_id'),
-    project_id: formData.get('project_id'),
+    project_id: formData.get('project_id') || undefined,
     entry_date: formData.get('entry_date'),
     miles: formData.get('miles'),
     description: formData.get('description') || undefined,
@@ -253,8 +419,12 @@ export async function createMileageEntry(formData: FormData) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
 
-  const match = await ensureProjectMatchesVendor(supabase, parsed.data.project_id, parsed.data.vendor_id)
-  if ('error' in match) return { error: match.error }
+  const projectResolution = await resolveProjectForEntry(supabase, {
+    projectId: parsed.data.project_id || null,
+    vendorId: parsed.data.vendor_id,
+    entryDate: parsed.data.entry_date,
+  })
+  if ('error' in projectResolution) return { error: projectResolution.error }
 
   const settings = await getVendorSettingsOrDefault(supabase, parsed.data.vendor_id)
 
@@ -262,7 +432,7 @@ export async function createMileageEntry(formData: FormData) {
     .from('oj_entries')
     .insert({
       vendor_id: parsed.data.vendor_id,
-      project_id: parsed.data.project_id,
+      project_id: projectResolution.projectId,
       entry_type: 'mileage',
       entry_date: parsed.data.entry_date,
       start_at: null,
@@ -309,7 +479,7 @@ export async function createOneOffCharge(formData: FormData) {
 
   const parsed = OneOffChargeSchema.safeParse({
     vendor_id: formData.get('vendor_id'),
-    project_id: formData.get('project_id'),
+    project_id: formData.get('project_id') || undefined,
     entry_date: formData.get('entry_date'),
     amount_ex_vat: formData.get('amount_ex_vat'),
     description: formData.get('description') || undefined,
@@ -321,8 +491,12 @@ export async function createOneOffCharge(formData: FormData) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
 
-  const match = await ensureProjectMatchesVendor(supabase, parsed.data.project_id, parsed.data.vendor_id)
-  if ('error' in match) return { error: match.error }
+  const projectResolution = await resolveProjectForEntry(supabase, {
+    projectId: parsed.data.project_id || null,
+    vendorId: parsed.data.vendor_id,
+    entryDate: parsed.data.entry_date,
+  })
+  if ('error' in projectResolution) return { error: projectResolution.error }
 
   const settings = await getVendorSettingsOrDefault(supabase, parsed.data.vendor_id)
 
@@ -330,7 +504,7 @@ export async function createOneOffCharge(formData: FormData) {
     .from('oj_entries')
     .insert({
       vendor_id: parsed.data.vendor_id,
-      project_id: parsed.data.project_id,
+      project_id: projectResolution.projectId,
       entry_type: 'one_off',
       entry_date: parsed.data.entry_date,
       start_at: null,
@@ -375,7 +549,7 @@ export async function updateEntry(formData: FormData) {
     id: formData.get('id'),
     entry_type: formData.get('entry_type'),
     vendor_id: formData.get('vendor_id'),
-    project_id: formData.get('project_id'),
+    project_id: formData.get('project_id') || undefined,
     entry_date: formData.get('entry_date'),
     duration_minutes: formData.get('duration_minutes') || undefined,
     miles: formData.get('miles') ?? undefined,
@@ -399,8 +573,12 @@ export async function updateEntry(formData: FormData) {
   if (fetchError || !existing) return { error: fetchError?.message || 'Entry not found' }
   if (existing.status !== 'unbilled') return { error: 'Only unbilled entries can be edited' }
 
-  const match = await ensureProjectMatchesVendor(supabase, parsed.data.project_id, parsed.data.vendor_id)
-  if ('error' in match) return { error: match.error }
+  const projectResolution = await resolveProjectForEntry(supabase, {
+    projectId: parsed.data.project_id || null,
+    vendorId: parsed.data.vendor_id,
+    entryDate: parsed.data.entry_date,
+  })
+  if ('error' in projectResolution) return { error: projectResolution.error }
 
   const entryWorkTypeId = parsed.data.entry_type === 'time' && parsed.data.work_type_id
     ? String(parsed.data.work_type_id)
@@ -426,7 +604,7 @@ export async function updateEntry(formData: FormData) {
       .from('oj_entries')
       .update({
         vendor_id: parsed.data.vendor_id,
-        project_id: parsed.data.project_id,
+        project_id: projectResolution.projectId,
         entry_type: 'time',
         entry_date: parsed.data.entry_date,
         start_at: existing.start_at ?? null,
@@ -481,7 +659,7 @@ export async function updateEntry(formData: FormData) {
       .from('oj_entries')
       .update({
         vendor_id: parsed.data.vendor_id,
-        project_id: parsed.data.project_id,
+        project_id: projectResolution.projectId,
         entry_type: 'one_off',
         entry_date: parsed.data.entry_date,
         start_at: null,
@@ -535,7 +713,7 @@ export async function updateEntry(formData: FormData) {
     .from('oj_entries')
     .update({
       vendor_id: parsed.data.vendor_id,
-      project_id: parsed.data.project_id,
+      project_id: projectResolution.projectId,
       entry_type: 'mileage',
       entry_date: parsed.data.entry_date,
       start_at: null,

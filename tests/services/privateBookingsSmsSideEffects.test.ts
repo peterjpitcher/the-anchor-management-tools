@@ -223,17 +223,23 @@ describe('PrivateBookingService SMS side-effect meta', () => {
     const updateIs = vi.fn().mockReturnValue({ select: updateSelect })
     const updateEq = vi.fn().mockReturnValue({ is: updateIs })
     const update = vi.fn().mockReturnValue({ eq: updateEq })
+    const viewMaybeSingle = vi.fn().mockResolvedValue({ data: { calculated_total: 100 }, error: null })
+    const viewEq = vi.fn().mockReturnValue({ maybeSingle: viewMaybeSingle })
+    const viewSelect = vi.fn().mockReturnValue({ eq: viewEq })
 
     mockedCreateClient.mockResolvedValue({
       from: vi.fn((table: string) => {
-        if (table !== 'private_bookings') {
-          throw new Error(`Unexpected table: ${table}`)
+        if (table === 'private_bookings_with_details') {
+          return { select: viewSelect }
+        }
+        if (table === 'private_bookings') {
+          return {
+            select: fetchSelect,
+            update,
+          }
         }
 
-        return {
-          select: fetchSelect,
-          update,
-        }
+        throw new Error(`Unexpected table: ${table}`)
       }),
     })
 
@@ -299,7 +305,8 @@ describe('PrivateBookingService SMS side-effect meta', () => {
       error: null,
     })
     const updateSelect = vi.fn().mockReturnValue({ maybeSingle: updateMaybeSingle })
-    const updateEq = vi.fn().mockReturnValue({ select: updateSelect })
+    const updateIs = vi.fn().mockReturnValue({ select: updateSelect })
+    const updateEq = vi.fn().mockReturnValue({ is: updateIs })
     const update = vi.fn().mockReturnValue({ eq: updateEq })
 
     mockedCreateClient.mockResolvedValue({

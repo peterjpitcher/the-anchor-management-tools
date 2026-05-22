@@ -37,7 +37,7 @@ describe('ScheduleCalendarList', () => {
         const row = container.querySelector('[data-entry-row="past"]')
         expect(row).not.toBeNull()
         expect(row!.className).not.toMatch(/opacity-60/)
-        expect(row!.className).toMatch(/text-muted-foreground/)
+        expect(row!.className).toMatch(/text-text-muted/)
     })
 
     it('calls scrollIntoView on Today header on mount', () => {

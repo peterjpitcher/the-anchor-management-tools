@@ -432,6 +432,9 @@ export async function getTripStats(): Promise<{
 
     const today = getTodayIsoDate()
     const { start: taxYearStart, end: taxYearEnd } = getTaxYearBounds(today)
+    const calendarYear = Number(today.slice(0, 4))
+    const calendarYearStart = `${calendarYear}-01-01`
+    const calendarYearEnd = `${calendarYear}-12-31`
 
     // Tax year trips
     const { data: taxYearTrips, error: tyError } = await db
@@ -442,6 +445,14 @@ export async function getTripStats(): Promise<{
 
     if (tyError) throw tyError
 
+    const { data: calendarYearTrips, error: cyError } = await db
+      .from('mileage_trips')
+      .select('total_miles, amount_due, trip_date')
+      .gte('trip_date', calendarYearStart)
+      .lte('trip_date', calendarYearEnd)
+
+    if (cyError) throw cyError
+
     const taxYearTotalMiles = (taxYearTrips ?? []).reduce(
       (sum, t) => sum + Number(t.total_miles),
       0
@@ -450,15 +461,23 @@ export async function getTripStats(): Promise<{
       (sum, t) => sum + Number(t.amount_due),
       0
     )
+    const calendarYearTotalMiles = (calendarYearTrips ?? []).reduce(
+      (sum, t) => sum + Number(t.total_miles),
+      0
+    )
+    const calendarYearAmountDue = (calendarYearTrips ?? []).reduce(
+      (sum, t) => sum + Number(t.amount_due),
+      0
+    )
 
     // Current quarter: determine quarter boundaries
     const { quarterStart, quarterEnd } = getCurrentQuarter(today)
 
-    const quarterMiles = (taxYearTrips ?? [])
+    const quarterMiles = (calendarYearTrips ?? [])
       .filter((t) => t.trip_date >= quarterStart && t.trip_date <= quarterEnd)
       .reduce((sum, t) => sum + Number(t.total_miles), 0)
 
-    const quarterAmount = (taxYearTrips ?? [])
+    const quarterAmount = (calendarYearTrips ?? [])
       .filter((t) => t.trip_date >= quarterStart && t.trip_date <= quarterEnd)
       .reduce((sum, t) => sum + Number(t.amount_due), 0)
 
@@ -467,6 +486,9 @@ export async function getTripStats(): Promise<{
       data: {
         quarterTotalMiles: Math.round(quarterMiles * 10) / 10,
         quarterAmountDue: Math.round(quarterAmount * 100) / 100,
+        calendarYear,
+        calendarYearTotalMiles: Math.round(calendarYearTotalMiles * 10) / 10,
+        calendarYearAmountDue: Math.round(calendarYearAmountDue * 100) / 100,
         taxYearTotalMiles: Math.round(taxYearTotalMiles * 10) / 10,
         taxYearAmountDue: Math.round(taxYearAmountDue * 100) / 100,
         milesToThreshold: Math.max(0, THRESHOLD_MILES - taxYearTotalMiles),

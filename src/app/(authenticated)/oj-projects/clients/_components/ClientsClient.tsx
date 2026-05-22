@@ -24,25 +24,20 @@ import { getClientBalance } from '@/app/actions/oj-projects/client-balance'
 import { getClientStatement, sendStatementEmail } from '@/app/actions/oj-projects/client-statement'
 import type { ClientBalance } from '@/app/actions/oj-projects/client-balance'
 import type { ClientStatementData } from '@/app/actions/oj-projects/client-statement'
+import type { OJClientSummary } from '@/app/actions/oj-projects/clients'
 import { formatDateDdMmmmYyyy } from '@/lib/dateUtils'
 
 function formatCurrency(value: number): string {
   return `£${value.toFixed(2)}`
 }
 
-interface ClientSummary {
-  id: string
-  name: string
-  projectCount: number
-}
-
 interface ClientsClientProps {
-  initialClients: ClientSummary[]
+  initialClients: OJClientSummary[]
 }
 
 export function ClientsClient({ initialClients }: ClientsClientProps): React.ReactElement {
   const [search, setSearch] = useState('')
-  const [drawerVendor, setDrawerVendor] = useState<ClientSummary | null>(null)
+  const [drawerVendor, setDrawerVendor] = useState<OJClientSummary | null>(null)
   const [balance, setBalance] = useState<ClientBalance | null>(null)
   const [loadingBalance, setLoadingBalance] = useState(false)
 
@@ -59,7 +54,7 @@ export function ClientsClient({ initialClients }: ClientsClientProps): React.Rea
     return initialClients.filter((c) => c.name.toLowerCase().includes(q))
   }, [initialClients, search])
 
-  async function openDrawer(client: ClientSummary): Promise<void> {
+  async function openDrawer(client: OJClientSummary): Promise<void> {
     setDrawerVendor(client)
     setBalance(null)
     setStatement(null)
@@ -142,6 +137,7 @@ export function ClientsClient({ initialClients }: ClientsClientProps): React.Rea
               <TableRow>
                 <TableHead>Client Name</TableHead>
                 <TableHead>Projects</TableHead>
+                <TableHead>Retainer</TableHead>
                 <TableHead className="w-32">Actions</TableHead>
               </TableRow>
             </TableHeader>
@@ -151,6 +147,13 @@ export function ClientsClient({ initialClients }: ClientsClientProps): React.Rea
                   <TableCell className="font-medium">{client.name}</TableCell>
                   <TableCell>
                     <Badge tone="info">{client.projectCount} project{client.projectCount !== 1 ? 's' : ''}</Badge>
+                  </TableCell>
+                  <TableCell>
+                    {client.retainerHours ? (
+                      <Badge tone="success">{client.retainerHours}h / month</Badge>
+                    ) : (
+                      <span className="text-sm text-text-muted">None</span>
+                    )}
                   </TableCell>
                   <TableCell>
                     <Button

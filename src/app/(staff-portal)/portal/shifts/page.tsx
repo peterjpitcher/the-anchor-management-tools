@@ -70,14 +70,14 @@ async function buildPeriodSummary(
   const endLabel = format(parseISO(period.period_end), 'd MMM');
   const periodLabel = `${startLabel} - ${endLabel}`;
 
-  // Fetch shifts for this period (assigned to employee, scheduled or sick status)
+  // Fetch only staff-visible scheduled shifts for the portal pay preview.
   const { data: shifts } = await supabase
     .from('rota_shifts')
     .select('shift_date, start_time, end_time, unpaid_break_minutes, is_overnight, status, week_id')
     .eq('employee_id', employeeId)
     .gte('shift_date', period.period_start)
     .lte('shift_date', period.period_end)
-    .in('status', ['scheduled', 'sick']);
+    .eq('status', 'scheduled');
 
   // Filter to only shifts from published weeks
   const weekIds = [...new Set((shifts ?? []).map((s: { week_id: string }) => s.week_id))];
@@ -232,10 +232,10 @@ export default async function MyShiftsPage() {
     getOpenShiftsForPortal(today, toDate),
   ]);
   const shifts = shiftsResult.success
-    ? shiftsResult.data.filter(s => s.status !== 'cancelled')
+    ? shiftsResult.data.filter(s => s.status === 'scheduled')
     : [];
   const openShifts = openShiftsResult.success
-    ? openShiftsResult.data.filter(s => s.status !== 'cancelled')
+    ? openShiftsResult.data.filter(s => s.status === 'scheduled')
     : [];
 
   // Group by date
@@ -305,11 +305,6 @@ export default async function MyShiftsPage() {
                           )}
                         </div>
                       </div>
-                      {shift.status === 'sick' && (
-                        <span className="text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded-full font-medium">
-                          Sick
-                        </span>
-                      )}
                     </div>
                   );
                 })}

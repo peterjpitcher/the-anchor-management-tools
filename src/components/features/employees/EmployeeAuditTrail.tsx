@@ -66,7 +66,8 @@ export function EmployeeAuditTrail({
         update_financial_details: 'updated financial details',
         update_health_records: 'updated health records',
         update_right_to_work: 'updated right to work',
-        update_onboarding_checklist: 'updated onboarding checklist'
+        update_onboarding_checklist: 'updated onboarding checklist',
+        mark_shift_sick: "marked a shift as Couldn't Work"
       }
       return specificActions[additionalInfo.action] || additionalInfo.action
     }
@@ -134,6 +135,26 @@ export function EmployeeAuditTrail({
     if (Array.isArray(additionalInfo.fields_updated) && additionalInfo.fields_updated.length > 0) {
       const count = additionalInfo.fields_updated.length
       details.push(`${count} field${count > 1 ? 's' : ''} updated`)
+    }
+
+    if (additionalInfo.action === 'mark_shift_sick') {
+      const shiftDate = typeof additionalInfo.shift_date === 'string' ? additionalInfo.shift_date : null
+      const startTime = typeof additionalInfo.start_time === 'string' ? additionalInfo.start_time : null
+      const endTime = typeof additionalInfo.end_time === 'string' ? additionalInfo.end_time : null
+      const sickReason = typeof additionalInfo.sick_reason === 'string' ? additionalInfo.sick_reason : null
+
+      if (shiftDate) {
+        const dateLabel = new Date(`${shiftDate}T00:00:00`).toLocaleDateString('en-GB', {
+          day: 'numeric',
+          month: 'short',
+          year: 'numeric'
+        })
+        details.push(`Shift: ${dateLabel}${startTime && endTime ? ` ${startTime.slice(0, 5)}-${endTime.slice(0, 5)}` : ''}`)
+      }
+
+      if (sickReason) {
+        details.push(`Reason: ${sickReason}`)
+      }
     }
 
     if (log.old_values && log.new_values) {

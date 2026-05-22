@@ -46,7 +46,7 @@ const staffOpsNavigation: NavigationItemWithPermission[] = [
   { name: 'Quick Add Note', href: '#', icon: PencilSquareIcon, action: true, permission: { module: 'settings', action: 'manage' } },
 ];
 
-// Finance group: Cashing Up (+ sub-pages), Invoices, Quotes, OJ Projects, Receipts, Short Links, Settings
+// Finance group: Cashing Up (+ sub-pages), Invoices, OJ Projects, Receipts, Short Links, Settings
 const financeNavigation: NavigationItemWithPermission[] = [
   { name: 'Cashing Up', href: '/cashing-up/dashboard', icon: BanknotesIcon, permission: { module: 'cashing_up', action: 'view' } },
   { name: 'Daily Entry', href: '/cashing-up/daily', icon: BanknotesIcon, permission: { module: 'cashing_up', action: 'view' }, subItem: true },

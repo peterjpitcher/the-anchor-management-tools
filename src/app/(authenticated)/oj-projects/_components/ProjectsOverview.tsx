@@ -28,6 +28,7 @@ import {
 import { Icon } from '@/ds/icons'
 import { usePermissions } from '@/contexts/PermissionContext'
 import { createTimeEntry, createMileageEntry, createOneOffCharge, getEntries } from '@/app/actions/oj-projects/entries'
+import type { OJClientSummary } from '@/app/actions/oj-projects/clients'
 import { formatDateDdMmmmYyyy, getTodayIsoDate } from '@/lib/dateUtils'
 
 function formatCurrency(value: number): string {
@@ -38,9 +39,10 @@ interface ProjectsOverviewProps {
   projects: any[]
   entries: any[]
   workTypes: any[]
+  clients: OJClientSummary[]
 }
 
-export function ProjectsOverview({ projects, entries: initialEntries, workTypes }: ProjectsOverviewProps): React.ReactElement {
+export function ProjectsOverview({ projects, entries: initialEntries, workTypes, clients }: ProjectsOverviewProps): React.ReactElement {
   const router = useRouter()
   const { hasPermission } = usePermissions()
   const canCreate = hasPermission('oj_projects', 'create')
@@ -64,15 +66,21 @@ export function ProjectsOverview({ projects, entries: initialEntries, workTypes 
 
   const vendors = useMemo(() => {
     const map = new Map<string, string>()
+    clients.forEach((client) => map.set(client.id, client.name))
     projects.forEach((p: any) => {
       if (p.vendor?.id && p.vendor?.name) map.set(p.vendor.id, p.vendor.name)
     })
     return Array.from(map, ([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name))
-  }, [projects])
+  }, [clients, projects])
+
+  const addableProjects = useMemo(
+    () => projects.filter((p: any) => p.status !== 'completed' && p.status !== 'archived'),
+    [projects],
+  )
 
   const createProjectOptions = createForm.vendor_id
-    ? projects.filter((p: any) => p.vendor_id === createForm.vendor_id)
-    : projects
+    ? addableProjects.filter((p: any) => p.vendor_id === createForm.vendor_id)
+    : addableProjects
 
   function openCreate(): void {
     setCreateForm({
@@ -125,6 +133,7 @@ export function ProjectsOverview({ projects, entries: initialEntries, workTypes 
       toast.success('Entry created')
       setCreateOpen(false)
       await reload()
+      router.refresh()
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to create entry')
     } finally {
@@ -328,6 +337,7 @@ export function ProjectsOverview({ projects, entries: initialEntries, workTypes 
               <Select
                 value={createForm.vendor_id}
                 onChange={(e) => setCreateForm({ ...createForm, vendor_id: e.target.value, project_id: '' })}
+                required
                 options={[
                   { label: 'Select client...', value: '' },
                   ...vendors.map((v) => ({ label: v.name, value: v.id })),
@@ -343,14 +353,14 @@ export function ProjectsOverview({ projects, entries: initialEntries, workTypes 
               />
             </Field>
           </div>
-          <Field label="Project" required>
+          <Field label="Project">
             <Select
               value={createForm.project_id}
               onChange={(e) => setCreateForm({ ...createForm, project_id: e.target.value })}
               options={[
-                { label: 'Select project...', value: '' },
+                { label: 'Current retainer / General Work', value: '' },
                 ...createProjectOptions.map((p: any) => ({
-                  label: `${p.project_code} - ${p.project_name}`,
+                  label: `${p.project_code} - ${p.project_name}${p.status === 'paused' ? ' (paused)' : ''}`,
                   value: p.id,
                 })),
               ]}

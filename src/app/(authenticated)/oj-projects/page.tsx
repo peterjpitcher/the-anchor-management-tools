@@ -1,13 +1,15 @@
 import { getProjects } from '@/app/actions/oj-projects/projects'
 import { getEntries } from '@/app/actions/oj-projects/entries'
 import { getWorkTypes } from '@/app/actions/oj-projects/work-types'
+import { getOJClients } from '@/app/actions/oj-projects/clients'
 import { ProjectsOverview } from './_components/ProjectsOverview'
 
 export default async function OJProjectsOverviewPage(): Promise<React.ReactElement> {
-  const [projectsRes, entriesRes, workTypesRes] = await Promise.all([
+  const [projectsRes, entriesRes, workTypesRes, clientsRes] = await Promise.all([
     getProjects(),
     getEntries({ limit: 10 }),
     getWorkTypes(),
+    getOJClients(),
   ])
 
   return (
@@ -15,6 +17,7 @@ export default async function OJProjectsOverviewPage(): Promise<React.ReactEleme
       projects={projectsRes.projects ?? []}
       entries={entriesRes.entries ?? []}
       workTypes={workTypesRes.workTypes ?? []}
+      clients={clientsRes.clients ?? []}
     />
   )
 }

@@ -82,6 +82,7 @@ describe('getPrivateBookingPaidTotals', () => {
       balance_payments_total: 0,
       total_paid: 0,
       has_open_dispute: false,
+      event_date: null,
     })
   })
 
@@ -168,6 +169,7 @@ describe('getPrivateBookingPaidTotals', () => {
       balance_payments_total: 0,
       total_paid: 0,
       has_open_dispute: false,
+      event_date: null,
     })
   })
 })

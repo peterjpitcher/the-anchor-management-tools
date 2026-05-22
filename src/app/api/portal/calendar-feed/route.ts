@@ -120,7 +120,6 @@ export async function GET(req: NextRequest): Promise<Response> {
     ].filter(Boolean).join(' ')
 
     const descParts: string[] = [`Department: ${deptLabel || (shift.department ?? '')}`]
-    if (shift.status === 'sick') descParts.push('Status: Sick')
     if (shift.status === 'cancelled') descParts.push('Status: Cancelled')
     if (shift.notes) descParts.push(`Notes: ${shift.notes}`)
 

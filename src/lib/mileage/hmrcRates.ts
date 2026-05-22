@@ -104,6 +104,9 @@ export function recalculateAllSplits(
 export interface TaxYearStats {
   quarterTotalMiles: number
   quarterAmountDue: number
+  calendarYear: number
+  calendarYearTotalMiles: number
+  calendarYearAmountDue: number
   taxYearTotalMiles: number
   taxYearAmountDue: number
   milesToThreshold: number

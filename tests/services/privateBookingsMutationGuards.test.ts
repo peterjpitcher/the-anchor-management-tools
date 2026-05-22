@@ -421,17 +421,23 @@ describe('PrivateBookingService mutation row-effect guards', () => {
     const updateSelect = vi.fn().mockReturnValue({ maybeSingle: updateMaybeSingle })
     const updateIs = vi.fn().mockReturnValue({ select: updateSelect })
     const updateEq = vi.fn().mockReturnValue({ is: updateIs })
+    const viewMaybeSingle = vi.fn().mockResolvedValue({ data: { calculated_total: 100 }, error: null })
+    const viewEq = vi.fn().mockReturnValue({ maybeSingle: viewMaybeSingle })
+    const viewSelect = vi.fn().mockReturnValue({ eq: viewEq })
 
     mockedCreateClient.mockResolvedValue({
       from: vi.fn((table: string) => {
-        if (table !== 'private_bookings') {
-          throw new Error(`Unexpected table: ${table}`)
+        if (table === 'private_bookings_with_details') {
+          return { select: viewSelect }
+        }
+        if (table === 'private_bookings') {
+          return {
+            select: vi.fn().mockReturnValue({ eq: fetchEq }),
+            update: vi.fn().mockReturnValue({ eq: updateEq }),
+          }
         }
 
-        return {
-          select: vi.fn().mockReturnValue({ eq: fetchEq }),
-          update: vi.fn().mockReturnValue({ eq: updateEq }),
-        }
+        throw new Error(`Unexpected table: ${table}`)
       }),
     })
 
@@ -440,7 +446,7 @@ describe('PrivateBookingService mutation row-effect guards', () => {
     ).resolves.toEqual({ success: true, alreadyRecorded: true })
   })
 
-  it('recordFinalPayment throws not-found when booking update affects no rows', async () => {
+  it('recordFinalPayment is idempotent when booking update affects no rows', async () => {
     const fetchSingle = vi.fn().mockResolvedValue({
       data: {
         id: 'booking-1',
@@ -465,7 +471,8 @@ describe('PrivateBookingService mutation row-effect guards', () => {
 
     const updateMaybeSingle = vi.fn().mockResolvedValue({ data: null, error: null })
     const updateSelect = vi.fn().mockReturnValue({ maybeSingle: updateMaybeSingle })
-    const updateEq = vi.fn().mockReturnValue({ select: updateSelect })
+    const updateIs = vi.fn().mockReturnValue({ select: updateSelect })
+    const updateEq = vi.fn().mockReturnValue({ is: updateIs })
 
     mockedCreateClient.mockResolvedValue({
       from: vi.fn((table: string) => {
@@ -482,7 +489,7 @@ describe('PrivateBookingService mutation row-effect guards', () => {
 
     await expect(
       PrivateBookingService.recordFinalPayment('booking-1', 'bank_transfer')
-    ).rejects.toThrow('Booking not found')
+    ).resolves.toEqual({ success: true })
   })
 
   it('updateVenueSpace throws not-found when update affects no rows', async () => {

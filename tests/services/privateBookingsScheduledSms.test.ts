@@ -50,7 +50,9 @@ function mockSupabase(opts: {
 
   mockedCreateAdminClient.mockReturnValue({
     from: vi.fn((table: string) => {
-      if (table === 'private_bookings') return { select: bookingSelect }
+      if (table === 'private_bookings' || table === 'private_bookings_with_details') {
+        return { select: bookingSelect }
+      }
       if (table === 'private_booking_send_idempotency')
         return { select: idempSelect }
       if (table === 'private_booking_payments') return { select: paymentsSelect }

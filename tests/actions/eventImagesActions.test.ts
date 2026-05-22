@@ -17,13 +17,19 @@ vi.mock('@/lib/supabase/server', () => ({
   createClient: vi.fn(),
 }))
 
+vi.mock('@/lib/supabase/admin', () => ({
+  createAdminClient: vi.fn(),
+}))
+
 import { checkUserPermission } from '@/app/actions/rbac'
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { logAuditEvent } from '@/app/actions/audit'
 import { deleteEventImage, updateImageMetadata } from '@/app/actions/event-images'
 
 const mockedPermission = checkUserPermission as unknown as Mock
 const mockedCreateClient = createClient as unknown as Mock
+const mockedCreateAdminClient = createAdminClient as unknown as Mock
 const mockedLogAuditEvent = logAuditEvent as unknown as Mock
 
 describe('deleteEventImage rollback safety', () => {
@@ -88,6 +94,7 @@ describe('deleteEventImage rollback safety', () => {
     }
 
     mockedCreateClient.mockResolvedValue(client)
+    mockedCreateAdminClient.mockReturnValue(client)
 
     const result = await deleteEventImage(imageUrl, 'event-1')
 
@@ -153,6 +160,7 @@ describe('deleteEventImage rollback safety', () => {
     }
 
     mockedCreateClient.mockResolvedValue(client)
+    mockedCreateAdminClient.mockReturnValue(client)
 
     const result = await deleteEventImage(imageUrl, 'event-1')
 
@@ -194,6 +202,7 @@ describe('deleteEventImage rollback safety', () => {
     }
 
     mockedCreateClient.mockResolvedValue(client)
+    mockedCreateAdminClient.mockReturnValue(client)
 
     const result = await deleteEventImage('https://cdn.example.com/noop.jpg', 'event-missing')
 
@@ -206,7 +215,7 @@ describe('deleteEventImage rollback safety', () => {
     const select = vi.fn().mockReturnValue({ maybeSingle })
     const eq = vi.fn().mockReturnValue({ select })
 
-    mockedCreateClient.mockResolvedValue({
+    const client = {
       from: vi.fn((table: string) => {
         if (table !== 'event_images') {
           throw new Error(`Unexpected table: ${table}`)
@@ -216,7 +225,9 @@ describe('deleteEventImage rollback safety', () => {
           update: vi.fn().mockReturnValue({ eq }),
         }
       }),
-    })
+    }
+
+    mockedCreateAdminClient.mockReturnValue(client)
 
     const result = await updateImageMetadata('img-404', { alt_text: 'Updated alt text' })
 

@@ -376,7 +376,7 @@ describe('employee invite status transitions', () => {
                     auth_user_id: null,
                     email_address: 'employee@example.com',
                     status: 'Started Separation',
-                    employment_end_date: '2026-05-15',
+                    employment_end_date: '2099-05-15',
                   },
                   error: null,
                 }),

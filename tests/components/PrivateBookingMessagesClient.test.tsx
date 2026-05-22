@@ -22,20 +22,20 @@ const toast = vi.hoisted(() => ({
   remove: vi.fn(),
 }))
 
-vi.mock('@/components/ui-v2/feedback/Toast', () => ({
-  toast,
-  Toaster: () => null,
-}))
+vi.mock('@/ds', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/ds')>()
+  return {
+    ...actual,
+    toast,
+  }
+})
 
 const mockGetPrivateBooking = vi.fn()
 const mockSendSms = vi.fn()
 
 vi.mock('@/app/actions/privateBookingActions', () => ({
   getPrivateBooking: (...args: unknown[]) => mockGetPrivateBooking(...args),
-}))
-
-vi.mock('@/app/actions/sms', () => ({
-  sendSms: (...args: unknown[]) => mockSendSms(...args),
+  sendPrivateBookingSms: (...args: unknown[]) => mockSendSms(...args),
 }))
 
 describe('PrivateBookingMessagesClient', () => {
@@ -90,11 +90,7 @@ describe('PrivateBookingMessagesClient', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Send Message' }))
 
     await waitFor(() => {
-      expect(mockSendSms).toHaveBeenCalledWith({
-        to: '+441234567890',
-        body: 'Hello from Anchor',
-        bookingId: 'booking-1',
-      })
+      expect(mockSendSms).toHaveBeenCalledWith('booking-1', 'Hello from Anchor')
     })
 
     expect(toast.success).toHaveBeenCalledWith('Message sent successfully.')
