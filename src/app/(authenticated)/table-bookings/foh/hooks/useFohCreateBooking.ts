@@ -6,7 +6,6 @@ import type {
   FohCustomerSearchResult,
   FohEventOption,
   FohScheduleResponse,
-  SundayMenuItem,
   TimelineRange,
   WalkInTargetTable,
 } from '../types'
@@ -14,7 +13,6 @@ import type { CreateForm } from '../components/FohCreateBookingModal'
 import {
   DEFAULT_COUNTRY_CODE,
   getTableWindowMs,
-  isSundayDate,
   mapFohBlockedReason,
   mapFohEventBlockedReason,
   postBookingAction,
@@ -35,19 +33,12 @@ export type UseFohCreateBookingReturn = {
   customerQuery: string
   customerResults: FohCustomerSearchResult[]
   selectedCustomer: FohCustomerSearchResult | null
-  sundayMenuItems: SundayMenuItem[]
-  loadingSundayMenu: boolean
-  sundayMenuError: string | null
-  sundayPreorderQuantities: Record<string, string>
   eventOptions: FohEventOption[]
   loadingEventOptions: boolean
   eventOptionsError: string | null
   walkInPurposeAutoSelectionEnabled: boolean
   tableEventPromptAcknowledgedEventId: string | null
-  hasLoadedSundayMenu: boolean
   // Computed
-  sundayMenuByCategory: Record<string, SundayMenuItem[]>
-  sundaySelectedItemCount: number
   selectedEventOption: FohEventOption | null
   overlappingEventForTable: FohEventOption | null
   formRequiresDeposit: boolean
@@ -56,7 +47,6 @@ export type UseFohCreateBookingReturn = {
   setCustomerQuery: (query: string) => void
   setSelectedCustomer: (customer: FohCustomerSearchResult | null) => void
   setCustomerResults: (results: FohCustomerSearchResult[]) => void
-  setSundayPreorderQuantities: (updater: (current: Record<string, string>) => Record<string, string>) => void
   setTableEventPromptAcknowledgedEventId: (id: string | null) => void
   setWalkInPurposeAutoSelectionEnabled: (enabled: boolean) => void
   openCreateModal: (options?: {
@@ -65,7 +55,6 @@ export type UseFohCreateBookingReturn = {
   }) => void
   closeCreateModal: () => void
   handleCreateBooking: (event: FormEvent<HTMLFormElement>) => void
-  retrySundayMenu: () => void
 }
 
 export function useFohCreateBooking(input: {
@@ -88,11 +77,6 @@ export function useFohCreateBooking(input: {
   const [customerQuery, setCustomerQuery] = useState('')
   const [customerResults, setCustomerResults] = useState<FohCustomerSearchResult[]>([])
   const [selectedCustomer, setSelectedCustomer] = useState<FohCustomerSearchResult | null>(null)
-  const [sundayMenuItems, setSundayMenuItems] = useState<SundayMenuItem[]>([])
-  const [loadingSundayMenu, setLoadingSundayMenu] = useState(false)
-  const [hasLoadedSundayMenu, setHasLoadedSundayMenu] = useState(false)
-  const [sundayMenuError, setSundayMenuError] = useState<string | null>(null)
-  const [sundayPreorderQuantities, setSundayPreorderQuantities] = useState<Record<string, string>>({})
   const [eventOptions, setEventOptions] = useState<FohEventOption[]>([])
   const [loadingEventOptions, setLoadingEventOptions] = useState(false)
   const [eventOptionsError, setEventOptionsError] = useState<string | null>(null)
@@ -109,9 +93,7 @@ export function useFohCreateBooking(input: {
     time: '19:00',
     party_size: '2',
     purpose: 'food' as 'food' | 'drinks' | 'event',
-    sunday_lunch: false,
     sunday_deposit_method: 'payment_link' as 'payment_link' | 'cash',
-    sunday_preorder_mode: 'send_link' as 'send_link' | 'capture_now',
     notes: '',
     waive_deposit: false,
     is_venue_event: false
@@ -141,48 +123,6 @@ export function useFohCreateBooking(input: {
     }, 280)
     return () => { cancelled = true; window.clearTimeout(timeoutId) }
   }, [customerQuery, selectedCustomer])
-
-  // --- Sunday date guard ---
-  useEffect(() => {
-    if (isSundayDate(createForm.booking_date)) return
-    setCreateForm((current) => ({
-      ...current, sunday_lunch: false, sunday_deposit_method: 'payment_link', sunday_preorder_mode: 'send_link'
-    }))
-    setSundayPreorderQuantities({})
-  }, [createForm.booking_date])
-
-  // --- Sunday menu loader ---
-  useEffect(() => {
-    if (!isCreateModalOpen || !createForm.sunday_lunch || !isSundayDate(createForm.booking_date)) return
-    if (hasLoadedSundayMenu || loadingSundayMenu) return
-    let cancelled = false
-    const controller = new AbortController()
-    let timeoutId: number | null = null
-    const loadSundayMenu = async () => {
-      setLoadingSundayMenu(true)
-      setSundayMenuError(null)
-      try {
-        const timeoutPromise = new Promise<never>((_, reject) => {
-          timeoutId = window.setTimeout(() => { controller.abort(); reject(new Error('Loading Sunday lunch menu timed out. Please retry.')) }, 12_000)
-        })
-        const response = (await Promise.race([
-          fetch('/api/foh/sunday-preorder/menu', { cache: 'no-store', signal: controller.signal }),
-          timeoutPromise
-        ])) as Response
-        if (timeoutId != null) { window.clearTimeout(timeoutId); timeoutId = null }
-        const payload = await response.json().catch(() => null)
-        if (!response.ok || !payload?.success) throw new Error(payload?.error || 'Failed to load Sunday lunch menu')
-        if (!cancelled) setSundayMenuItems(Array.isArray(payload?.data) ? payload.data as SundayMenuItem[] : [])
-      } catch (error) {
-        if (!cancelled) setSundayMenuError(error instanceof Error ? error.message : 'Failed to load Sunday lunch menu')
-      } finally {
-        if (timeoutId != null) { window.clearTimeout(timeoutId); timeoutId = null }
-        if (!cancelled) { setLoadingSundayMenu(false); setHasLoadedSundayMenu(true) }
-      }
-    }
-    void loadSundayMenu()
-    return () => { cancelled = true; if (timeoutId != null) window.clearTimeout(timeoutId); controller.abort() }
-  }, [createForm.booking_date, createForm.sunday_lunch, hasLoadedSundayMenu, isCreateModalOpen])
 
   // --- Event options loader ---
   useEffect(() => {
@@ -227,29 +167,11 @@ export function useFohCreateBooking(input: {
   }, [date, isCreateModalOpen])
 
   // --- Overlapping event prompt acknowledgement guard ---
-  // Deposit-required decision uses the centralised 10+ rule. Legacy
-  // sunday_lunch toggle no longer drives this. Spec §8.3.
   const formRequiresDeposit =
     createMode !== 'management' && !createForm.is_venue_event && createMode !== 'walk_in' &&
     requiresDepositForParty(Number(createForm.party_size) || 0, {
       depositWaived: createForm.waive_deposit === true,
     })
-
-  const sundayMenuByCategory = useMemo(() => {
-    return sundayMenuItems.reduce<Record<string, SundayMenuItem[]>>((acc, item) => {
-      const category = item.category_name || 'Other'
-      if (!acc[category]) acc[category] = []
-      acc[category].push(item)
-      return acc
-    }, {})
-  }, [sundayMenuItems])
-
-  const sundaySelectedItemCount = useMemo(() => {
-    return sundayMenuItems.reduce((count, item) => {
-      const quantity = Number.parseInt(sundayPreorderQuantities[item.menu_dish_id] || '0', 10)
-      return count + (Number.isFinite(quantity) && quantity > 0 ? 1 : 0)
-    }, 0)
-  }, [sundayMenuItems, sundayPreorderQuantities])
 
   const selectedEventOption = useMemo(
     () => eventOptions.find((eo) => eo.id === createForm.event_id) || null,
@@ -261,7 +183,7 @@ export function useFohCreateBooking(input: {
     const tablePurpose = createForm.purpose === 'drinks' ? 'drinks' : 'food'
     const tableWindow = getTableWindowMs({
       bookingDate: createForm.booking_date, bookingTime: createForm.time,
-      purpose: tablePurpose, sundayLunch: createForm.sunday_lunch
+      purpose: tablePurpose, sundayLunch: false
     })
     if (!tableWindow) return null
     for (const eo of eventOptions) {
@@ -273,7 +195,7 @@ export function useFohCreateBooking(input: {
       if (tableWindow.startMs < eventEndMs && tableWindow.endMs > eventPromptStartMs) return eo
     }
     return null
-  }, [createForm.booking_date, createForm.purpose, createForm.sunday_lunch, createForm.time, eventOptions])
+  }, [createForm.booking_date, createForm.purpose, createForm.time, eventOptions])
 
   useEffect(() => {
     if (!overlappingEventForTable) { setTableEventPromptAcknowledgedEventId(null); return }
@@ -302,7 +224,7 @@ export function useFohCreateBooking(input: {
       const nextEventId = nextPurpose === 'event' ? defaults.eventId : ''
       const nextTime = nextPurpose === 'event' ? current.time : defaults.time
       if (current.purpose === nextPurpose && current.event_id === nextEventId && current.time === nextTime) return current
-      return { ...current, purpose: nextPurpose, event_id: nextEventId, time: nextTime, sunday_lunch: false, sunday_deposit_method: 'payment_link' }
+      return { ...current, purpose: nextPurpose, event_id: nextEventId, time: nextTime, sunday_deposit_method: 'payment_link' }
     })
   }, [clockNow, createMode, isCreateModalOpen, resolveCurrentWalkInDefaults, walkInPurposeAutoSelectionEnabled])
 
@@ -311,12 +233,11 @@ export function useFohCreateBooking(input: {
     setCreateForm((current) => ({
       booking_date: date, event_id: '', phone: '', customer_name: '', first_name: '', last_name: '',
       time: current.time || '19:00', party_size: current.party_size || '2', purpose: 'food',
-      sunday_lunch: false, sunday_deposit_method: 'payment_link', sunday_preorder_mode: 'send_link',
+      sunday_deposit_method: 'payment_link',
       notes: '', waive_deposit: false, is_venue_event: false
     }))
     setCreateMode('booking'); setWalkInTargetTable(null); setCustomerQuery(''); setCustomerResults([])
-    setSelectedCustomer(null); setHasLoadedSundayMenu(false); setLoadingSundayMenu(false); setSundayMenuItems([]); setSundayPreorderQuantities({})
-    setSundayMenuError(null); setEventOptions([]); setEventOptionsError(null)
+    setSelectedCustomer(null); setEventOptions([]); setEventOptionsError(null)
     setWalkInPurposeAutoSelectionEnabled(false); setTableEventPromptAcknowledgedEventId(null)
   }
 
@@ -337,7 +258,6 @@ export function useFohCreateBooking(input: {
       time: walkInMode ? options?.suggestedTime || walkInDefaults?.time || current.time : options?.suggestedTime || current.time,
       purpose: walkInMode ? walkInDefaults?.purpose || 'food' : options?.prefill?.purpose || current.purpose,
       event_id: walkInMode ? options?.prefill?.event_id ?? walkInDefaults?.eventId ?? '' : options?.prefill?.event_id ?? current.event_id,
-      sunday_lunch: walkInMode ? false : current.sunday_lunch,
       sunday_deposit_method: walkInMode ? 'payment_link' : current.sunday_deposit_method,
       phone: walkInMode ? '' : current.phone, customer_name: walkInMode ? '' : current.customer_name,
       first_name: walkInMode ? '' : current.first_name, last_name: walkInMode ? '' : current.last_name,
@@ -442,16 +362,6 @@ export function useFohCreateBooking(input: {
     if (requiresDepositValidation && !createForm.sunday_deposit_method) {
       setErrorMessage('Choose whether the deposit was taken in cash or should be sent by payment link.'); return
     }
-    let sundayPreorderItems: Array<{ menu_dish_id: string; quantity: number }> = []
-    if (createForm.sunday_lunch && createForm.sunday_preorder_mode === 'capture_now') {
-      if (sundayMenuItems.length === 0) { setErrorMessage('Sunday lunch menu is unavailable right now. Choose "Send link by text" instead.'); return }
-      sundayPreorderItems = sundayMenuItems.map((item) => {
-        const quantity = Number.parseInt(sundayPreorderQuantities[item.menu_dish_id] || '0', 10)
-        if (!Number.isFinite(quantity) || quantity <= 0) return null
-        return { menu_dish_id: item.menu_dish_id, quantity }
-      }).filter((item): item is { menu_dish_id: string; quantity: number } => Boolean(item))
-      if (sundayPreorderItems.length === 0) { setErrorMessage('Add at least one Sunday lunch item or choose "Send link by text".'); return }
-    }
     setSubmittingBooking(true)
     try {
       const response = await fetch('/api/foh/bookings', {
@@ -464,10 +374,7 @@ export function useFohCreateBooking(input: {
           management_override: isManagement || undefined, default_country_code: DEFAULT_COUNTRY_CODE,
           date: bookingDate, time: effectiveBookingTime, party_size: partySize,
           purpose: createForm.purpose === 'drinks' ? 'drinks' : 'food', notes: createForm.notes || undefined,
-          sunday_lunch: isManagement ? undefined : createForm.sunday_lunch,
           sunday_deposit_method: (!isWalkIn && !isManagement && !createForm.is_venue_event && requiresDepositForParty(partySize, { depositWaived: createForm.waive_deposit === true })) ? createForm.sunday_deposit_method : undefined,
-          sunday_preorder_mode: (!isManagement && createForm.sunday_lunch) ? createForm.sunday_preorder_mode : undefined,
-          sunday_preorder_items: (!isManagement && sundayPreorderItems.length > 0) ? sundayPreorderItems : undefined,
           waive_deposit: createForm.waive_deposit || undefined, is_venue_event: createForm.is_venue_event || undefined
         })
       })
@@ -487,17 +394,10 @@ export function useFohCreateBooking(input: {
           walkInTableMoveText = ` (created but not moved to ${walkInTargetTable.name}: ${moveError instanceof Error ? moveError.message : 'table assignment update failed'})`
         }
       }
-      let sundayPreorderText = ''
-      if (createForm.sunday_lunch) {
-        if (payload.data.sunday_preorder_state === 'captured') sundayPreorderText = ' Sunday pre-order captured.'
-        else if (payload.data.sunday_preorder_state === 'link_sent') sundayPreorderText = ' Sunday pre-order link sent by text.'
-        else if (payload.data.sunday_preorder_state === 'capture_blocked') sundayPreorderText = ' Sunday pre-order could not be captured.'
-        else if (payload.data.sunday_preorder_state === 'link_not_sent') sundayPreorderText = ' Sunday pre-order link could not be sent.'
-      }
       const paymentLinkText = payload.data.state === 'pending_payment' && payload.data.next_step_url ? ` Deposit link: ${payload.data.next_step_url}` : ''
       await reloadSchedule()
       const bookingLabel = isManagement ? 'Management booking' : isWalkIn ? 'Walk-in booking' : 'Table booking'
-      setStatusMessage(`${bookingLabel} ${bookingRef}${tableText}${walkInTableMoveText} was ${outcome}.${paymentLinkText}${sundayPreorderText}`)
+      setStatusMessage(`${bookingLabel} ${bookingRef}${tableText}${walkInTableMoveText} was ${outcome}.${paymentLinkText}`)
       closeCreateModal()
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : 'Failed to create booking')
@@ -507,16 +407,13 @@ export function useFohCreateBooking(input: {
   return {
     isCreateModalOpen, createMode, createForm, walkInTargetTable, submittingBooking,
     searchingCustomers, customerQuery, customerResults, selectedCustomer,
-    sundayMenuItems, loadingSundayMenu, sundayMenuError, sundayPreorderQuantities,
     eventOptions, loadingEventOptions, eventOptionsError,
     walkInPurposeAutoSelectionEnabled, tableEventPromptAcknowledgedEventId,
-    hasLoadedSundayMenu,
-    sundayMenuByCategory, sundaySelectedItemCount, selectedEventOption,
+    selectedEventOption,
     overlappingEventForTable, formRequiresDeposit,
     setCreateForm, setCustomerQuery, setSelectedCustomer, setCustomerResults,
-    setSundayPreorderQuantities, setTableEventPromptAcknowledgedEventId,
+    setTableEventPromptAcknowledgedEventId,
     setWalkInPurposeAutoSelectionEnabled,
     openCreateModal, closeCreateModal, handleCreateBooking,
-    retrySundayMenu: () => { setSundayMenuError(null); setLoadingSundayMenu(false); setHasLoadedSundayMenu(false) },
   }
 }

@@ -18,7 +18,6 @@ import {
   formatLaneMinuteLabel,
   getBookingVisualState,
   getBookingVisualLabel,
-  getSundayPreorderBorderStyle,
   resolveBookingWindowMinutes,
   statusBlockClass,
 } from '../utils'
@@ -339,7 +338,6 @@ const LaneRow = React.memo(function LaneRow(props: {
               styleVariant={styleVariant}
               className={cn(bookingBlockBaseClass, visualClassName)}
               statusClassName={visualClassName}
-              style={getSundayPreorderBorderStyle(booking)}
               title={`${booking.guest_name || 'Guest'} · ${booking.booking_reference || booking.id.slice(0, 8)} · ${formatBookingWindow(booking.start_datetime, booking.end_datetime, booking.booking_time)} · ${visualLabel}`}
               onClick={(event) => {
                 event.stopPropagation()
@@ -354,13 +352,6 @@ const LaneRow = React.memo(function LaneRow(props: {
                   ? formatBookingWindow(booking.start_datetime, booking.end_datetime, booking.booking_time)
                   : `${formatBookingWindow(booking.start_datetime, booking.end_datetime, booking.booking_time)} · ${booking.party_size || 1}p · ${visualLabel}`}
               </p>
-              {booking.booking_type === 'sunday_lunch' && (
-                <p
-                  className={`truncate text-xs font-semibold mt-0.5 ${booking.sunday_preorder_completed_at ? 'text-green-300' : 'text-amber-300'}`}
-                >
-                  {booking.sunday_preorder_completed_at ? '\u2713 Pre-order done' : '\u23F3 Pre-order pending'}
-                </p>
-              )}
             </DraggableBookingBlock>
           )
         })}

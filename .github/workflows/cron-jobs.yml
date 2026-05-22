@@ -14,8 +14,6 @@ on:
     - cron: '0 7 * * *'
     # Apply Customer Labels (2 AM daily)
     - cron: '0 2 * * *'
-    # Table Booking Reminders (Every 4 hours)
-    - cron: '0 */4 * * *'
     # Table Booking Monitoring (Hourly)
     - cron: '0 * * * *'
     # Generate Slots (2 AM on Monday)
@@ -41,7 +39,6 @@ on:
           - auto-send-invoices
           - apply-customer-labels
           - birthday-reminders
-          - table-booking-reminders
           - table-booking-monitoring
           - generate-slots
           - cleanup-rate-limits
@@ -122,28 +119,23 @@ jobs:
             run_job "/api/cron/apply-customer-labels" "Customer Labels"
           fi
 
-          # 7. Table Booking Reminders (Every 4 hours)
-          if [ "${{ github.event.schedule }}" == "0 */4 * * *" ] || [ "${{ inputs.job }}" == "table-booking-reminders" ] || [ "${{ inputs.job }}" == "all" ]; then
-            run_job "/api/cron/sunday-preorder" "Table Booking Reminders"
-          fi
-
-          # 8. Table Booking Monitoring & Reconcile SMS (Hourly)
+          # 7. Table Booking Monitoring & Reconcile SMS (Hourly)
           if [ "${{ github.event.schedule }}" == "0 * * * *" ] || [ "${{ inputs.job }}" == "table-booking-monitoring" ] || [ "${{ inputs.job }}" == "reconcile-sms" ] || [ "${{ inputs.job }}" == "all" ]; then
             run_job "/api/cron/event-booking-holds" "Table Booking Monitoring"
             run_job "/api/cron/reconcile-sms" "Reconcile SMS"
           fi
 
-          # 9. Generate Slots (2 AM Mon)
+          # 8. Generate Slots (2 AM Mon)
           if [ "${{ github.event.schedule }}" == "0 2 * * 1" ] || [ "${{ inputs.job }}" == "generate-slots" ] || [ "${{ inputs.job }}" == "all" ]; then
             run_job "/api/cron/generate-slots" "Generate Slots"
           fi
 
-          # 10. Cleanup Rate Limits (Midnight)
+          # 9. Cleanup Rate Limits (Midnight)
           if [ "${{ github.event.schedule }}" == "0 0 * * *" ] || [ "${{ inputs.job }}" == "cleanup-rate-limits" ] || [ "${{ inputs.job }}" == "all" ]; then
             run_job "/api/cron/cleanup-rate-limits" "Cleanup Rate Limits"
           fi
 
-          # 11. Private Booking Monitor (10:30 AM)
+          # 10. Private Booking Monitor (10:30 AM)
           if [ "${{ github.event.schedule }}" == "30 10 * * *" ] || [ "${{ inputs.job }}" == "private-booking-monitor" ] || [ "${{ inputs.job }}" == "all" ]; then
             run_job "/api/cron/private-booking-monitor" "Private Booking Monitor"
           fi

@@ -38,14 +38,6 @@ const tableBookingIpLimiter = createRateLimiter({
 
 type SmsSafetyMeta = Awaited<ReturnType<typeof sendTableBookingCreatedSmsIfAllowed>>['sms']
 
-const SundayPreorderItemSchema = z.object({
-  menu_dish_id: z.string().uuid(),
-  quantity: z.preprocess(
-    (value) => (typeof value === 'string' ? Number.parseInt(value, 10) : value),
-    z.number().int().min(1).max(25)
-  )
-})
-
 const CreateTableBookingSchema = z.object({
   phone: z.string().trim().min(7).max(32),
   first_name: z.string().trim().min(1).max(100).optional(),
@@ -59,10 +51,11 @@ const CreateTableBookingSchema = z.object({
   ),
   purpose: z.enum(['food', 'drinks']),
   notes: z.string().trim().max(500).optional(),
+  // Deprecated. Older public clients may still post this while their bundle
+  // rolls forward, but Sunday bookings no longer have a pre-order flow.
   sunday_lunch: z.boolean().optional(),
   dietary_requirements: z.array(z.string().trim().min(1).max(100)).max(20).optional(),
   allergies: z.array(z.string().trim().min(1).max(100)).max(20).optional(),
-  sunday_preorder_items: z.array(SundayPreorderItemSchema).max(40).optional(),
   default_country_code: z.string().regex(/^\d{1,4}$/).optional(),
   skip_customer_sms: z.boolean().optional()
 })
@@ -192,10 +185,8 @@ export async function POST(request: NextRequest) {
       party_size: payload.party_size,
       purpose: payload.purpose,
       notes: payload.notes || null,
-      sunday_lunch: payload.sunday_lunch === true,
       dietary_requirements: payload.dietary_requirements ?? null,
-      allergies: payload.allergies ?? null,
-      sunday_preorder_items: payload.sunday_preorder_items ?? null
+      allergies: payload.allergies ?? null
     })
 
     const supabase = createAdminClient()
@@ -245,8 +236,8 @@ export async function POST(request: NextRequest) {
         p_party_size: payload.party_size,
         p_booking_purpose: payload.purpose,
         p_notes: payload.notes || null,
-        // Sunday-lunch flag is legacy — new public bookings never set this. The
-        // FOH admin path retains it for legacy data entry only. Spec §8.3.
+        // Sunday-lunch flag is legacy; new public bookings always use the
+        // regular table-booking path.
         p_sunday_lunch: false,
         p_source: 'brand_site'
       })
@@ -305,9 +296,7 @@ export async function POST(request: NextRequest) {
 
       // Sunday lunch pre-order persistence has been removed from the public
       // booking path. New public bookings never use the legacy `sunday_lunch`
-      // booking_type, so persisting pre-order line items here is no longer
-      // valid. The legacy admin FOH path retains `saveSundayPreorderByBookingId`
-      // for staff-explicit legacy Sunday-lunch creation. Spec §8.3.
+      // booking type, so legacy pre-order line items are ignored.
 
       const appBaseUrl = process.env.NEXT_PUBLIC_APP_URL || request.nextUrl.origin
 
@@ -436,7 +425,7 @@ export async function POST(request: NextRequest) {
             metadata: {
               party_size: payload.party_size,
               booking_purpose: payload.purpose,
-              sunday_lunch: payload.sunday_lunch === true,
+              sunday_lunch: false,
               status: bookingResult.status || bookingResult.state,
               table_name: bookingResult.table_name || null
             }

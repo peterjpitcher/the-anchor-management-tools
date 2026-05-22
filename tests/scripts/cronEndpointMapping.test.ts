@@ -3,7 +3,6 @@ import path from 'node:path'
 
 const WORKFLOW_FILES = [
   '.github/workflows/cron-jobs.yml',
-  '.github/workflows/table-booking-reminders.yml',
   '.github/workflows/table-booking-monitoring.yml',
 ]
 
@@ -13,8 +12,12 @@ const LEGACY_BOOKING_ENDPOINTS = [
 ]
 
 const REPPOINTED_BOOKING_ENDPOINTS = [
-  '/api/cron/sunday-preorder',
   '/api/cron/event-booking-holds',
+]
+
+const RETIRED_BOOKING_ENDPOINTS = [
+  '/api/cron/sunday-preorder',
+  '/api/cron/sunday-lunch-prep',
 ]
 
 describe('booking cron workflow endpoint mapping', () => {
@@ -25,6 +28,10 @@ describe('booking cron workflow endpoint mapping', () => {
 
       for (const legacyEndpoint of LEGACY_BOOKING_ENDPOINTS) {
         expect(workflowContent).not.toContain(legacyEndpoint)
+      }
+
+      for (const retiredEndpoint of RETIRED_BOOKING_ENDPOINTS) {
+        expect(workflowContent).not.toContain(retiredEndpoint)
       }
     }
 

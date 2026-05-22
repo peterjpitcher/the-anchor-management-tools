@@ -2,9 +2,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 /**
  * A2 regression test — the public POST /api/table-bookings endpoint must
- * persist dietary/allergy arrays onto the booking row and hand structured
- * Sunday lunch pre-order items to saveSundayPreorderByBookingId, rather than
- * losing them into a free-text notes blob.
+ * persist dietary/allergy arrays onto the booking row while ignoring retired
+ * Sunday lunch pre-order payload fields.
  */
 
 const {
@@ -188,10 +187,8 @@ describe('POST /api/table-bookings — structured persistence', () => {
     expect(supabase._tableBookingsUpdateEq).toHaveBeenCalledWith('id', BOOKING_ID)
   })
 
-  // Walk-in launch (spec §6, §8.1): the public POST path no longer persists
-  // Sunday pre-order items, regardless of sunday_lunch flag or sunday_preorder_items
-  // payload. Pre-orders for legacy `booking_type='sunday_lunch'` bookings are
-  // exclusively administered via the staff admin path now.
+  // Sunday pre-order fields are now legacy input. The public POST path no
+  // longer persists or validates those line items, regardless of flag value.
   it('does NOT call saveSundayPreorderByBookingId from the public POST path even with sunday_lunch=true', async () => {
     const supabase = buildSupabase()
     ;(createAdminClient as unknown as vi.Mock).mockReturnValue(supabase)
@@ -234,7 +231,7 @@ describe('POST /api/table-bookings — structured persistence', () => {
     expect(saveSundayPreorderByBookingId).not.toHaveBeenCalled()
   })
 
-  it('rejects a payload with sunday_preorder_items containing non-UUID menu_dish_id', async () => {
+  it('ignores a stale sunday_preorder_items payload with a non-UUID menu_dish_id', async () => {
     const supabase = buildSupabase()
     ;(createAdminClient as unknown as vi.Mock).mockReturnValue(supabase)
 
@@ -250,7 +247,7 @@ describe('POST /api/table-bookings — structured persistence', () => {
 
     const response = await POST(buildRequest(body) as any)
 
-    expect(response.status).toBe(400)
+    expect(response.status).toBeLessThan(500)
     expect(saveSundayPreorderByBookingId).not.toHaveBeenCalled()
   })
 })

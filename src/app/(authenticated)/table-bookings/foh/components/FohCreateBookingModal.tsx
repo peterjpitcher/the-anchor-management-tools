@@ -12,7 +12,6 @@ import type {
   FohCreateMode,
   FohCustomerSearchResult,
   FohEventOption,
-  SundayMenuItem,
   WalkInTargetTable,
 } from '../types'
 import {
@@ -20,7 +19,6 @@ import {
   formatEventOptionDateTime,
   formatEventPaymentMode,
   formatGbp,
-  isSundayDate,
 } from '../utils'
 
 export type CreateForm = {
@@ -33,9 +31,7 @@ export type CreateForm = {
   time: string
   party_size: string
   purpose: 'food' | 'drinks' | 'event'
-  sunday_lunch: boolean
   sunday_deposit_method: 'payment_link' | 'cash'
-  sunday_preorder_mode: 'send_link' | 'capture_now'
   notes: string
   waive_deposit: boolean
   is_venue_event: boolean
@@ -61,13 +57,6 @@ type FohCreateBookingModalProps = {
   overlappingEventForTable: FohEventOption | null
   tableEventPromptAcknowledgedEventId: string | null
   walkInPurposeAutoSelectionEnabled: boolean
-  // Sunday
-  sundayMenuItems: SundayMenuItem[]
-  loadingSundayMenu: boolean
-  sundayMenuError: string | null
-  sundayPreorderQuantities: Record<string, string>
-  sundayMenuByCategory: Record<string, SundayMenuItem[]>
-  sundaySelectedItemCount: number
   // Deposit
   formRequiresDeposit: boolean
   // Messages
@@ -79,10 +68,8 @@ type FohCreateBookingModalProps = {
   onSetCustomerQuery: (query: string) => void
   onSelectCustomer: (customer: FohCustomerSearchResult) => void
   onClearCustomer: () => void
-  onSetSundayPreorderQuantities: (updater: (current: Record<string, string>) => Record<string, string>) => void
   onSetTableEventPromptAcknowledgedEventId: (id: string | null) => void
   onSetWalkInPurposeAutoSelectionEnabled: (enabled: boolean) => void
-  onRetrySundayMenu: () => void
   onSetErrorMessage: (msg: string | null) => void
 }
 
@@ -105,12 +92,6 @@ export const FohCreateBookingModal = React.memo(function FohCreateBookingModal(p
     overlappingEventForTable,
     tableEventPromptAcknowledgedEventId,
     walkInPurposeAutoSelectionEnabled,
-    sundayMenuItems,
-    loadingSundayMenu,
-    sundayMenuError,
-    sundayPreorderQuantities,
-    sundayMenuByCategory,
-    sundaySelectedItemCount,
     formRequiresDeposit,
     errorMessage,
     onClose,
@@ -119,14 +100,11 @@ export const FohCreateBookingModal = React.memo(function FohCreateBookingModal(p
     onSetCustomerQuery,
     onSelectCustomer,
     onClearCustomer,
-    onSetSundayPreorderQuantities,
     onSetTableEventPromptAcknowledgedEventId,
     onSetWalkInPurposeAutoSelectionEnabled,
-    onRetrySundayMenu,
     onSetErrorMessage,
   } = props
 
-  const sundaySelected = isSundayDate(createForm.booking_date)
   const partySizeNumber = Number.parseInt(createForm.party_size, 10)
   const formDepositAmount = formRequiresDeposit
     ? computeDepositAmount(Number.isFinite(partySizeNumber) ? partySizeNumber : 0, {
@@ -225,7 +203,6 @@ export const FohCreateBookingModal = React.memo(function FohCreateBookingModal(p
                 onSetCreateForm((current) => ({
                   ...current,
                   purpose: 'event',
-                  sunday_lunch: false,
                   sunday_deposit_method: 'payment_link',
                   event_id: eventOptions.find((item) => !item.is_full)?.id || eventOptions[0]?.id || ''
                 }))
@@ -303,7 +280,6 @@ export const FohCreateBookingModal = React.memo(function FohCreateBookingModal(p
                 onSetCreateForm((current) => ({
                   ...current,
                   purpose: nextPurpose,
-                  sunday_lunch: nextPurpose === 'event' ? false : current.sunday_lunch,
                   sunday_deposit_method: nextPurpose === 'event' ? 'payment_link' : current.sunday_deposit_method,
                   event_id:
                     nextPurpose === 'event'
@@ -453,9 +429,7 @@ export const FohCreateBookingModal = React.memo(function FohCreateBookingModal(p
 
               {formRequiresDeposit && !createForm.waive_deposit && (
                 <div className="rounded-md border border-gray-200 bg-gray-50 p-3">
-                  <p className="text-xs font-medium text-gray-800">
-                    {createForm.sunday_lunch ? 'Sunday lunch deposit' : 'Table deposit'}
-                  </p>
+                  <p className="text-xs font-medium text-gray-800">Table deposit</p>
                   <div className="mt-2 flex flex-wrap gap-4">
                     <label className="flex items-center gap-2 text-xs text-gray-700">
                       <input
@@ -488,102 +462,6 @@ export const FohCreateBookingModal = React.memo(function FohCreateBookingModal(p
                 </div>
               )}
 
-              {createForm.sunday_lunch && sundaySelected && (
-                <div className="rounded-md border border-gray-200 bg-gray-50 p-3">
-                  <p className="text-xs font-medium text-gray-800">Sunday pre-order</p>
-                  <div className="mt-2 flex flex-wrap gap-4">
-                    <label className="flex items-center gap-2 text-xs text-gray-700">
-                      <input
-                        type="radio"
-                        name="foh-sunday-preorder-mode"
-                        value="send_link"
-                        checked={createForm.sunday_preorder_mode === 'send_link'}
-                        onChange={() =>
-                          onSetCreateForm((current) => ({ ...current, sunday_preorder_mode: 'send_link' }))
-                        }
-                      />
-                      <span>Send link by text</span>
-                    </label>
-                    <label className="flex items-center gap-2 text-xs text-gray-700">
-                      <input
-                        type="radio"
-                        name="foh-sunday-preorder-mode"
-                        value="capture_now"
-                        checked={createForm.sunday_preorder_mode === 'capture_now'}
-                        onChange={() =>
-                          onSetCreateForm((current) => ({ ...current, sunday_preorder_mode: 'capture_now' }))
-                        }
-                      />
-                      <span>Capture now</span>
-                    </label>
-                  </div>
-
-                  {createForm.sunday_preorder_mode === 'capture_now' && (
-                    <div className="mt-3 space-y-3">
-                      {loadingSundayMenu && (
-                        <p className="text-xs text-gray-500">Loading Sunday lunch menu...</p>
-                      )}
-
-                      {sundayMenuError && (
-                        <div className="flex items-center justify-between gap-2">
-                          <p className="text-xs text-red-700">{sundayMenuError}</p>
-                          <button
-                            type="button"
-                            onClick={onRetrySundayMenu}
-                            className="rounded border border-gray-300 px-2 py-1 text-[11px] font-medium text-gray-700 hover:bg-gray-100"
-                          >
-                            Retry
-                          </button>
-                        </div>
-                      )}
-
-                      {!loadingSundayMenu && !sundayMenuError && sundayMenuItems.length === 0 && (
-                        <p className="text-xs text-gray-500">
-                          Sunday lunch menu is not available. Choose &quot;Send link by text&quot;.
-                        </p>
-                      )}
-
-                      {!loadingSundayMenu && !sundayMenuError && sundayMenuItems.length > 0 && (
-                        <div className="space-y-3">
-                          <p className="text-xs text-gray-600">
-                            Selected items: {sundaySelectedItemCount}
-                          </p>
-                          {Object.entries(sundayMenuByCategory).map(([category, items]) => (
-                            <div key={category} className="rounded-md border border-gray-200 bg-white p-2.5">
-                              <p className="text-xs font-semibold text-gray-900">{category}</p>
-                              <div className="mt-2 space-y-2">
-                                {items.map((item) => (
-                                  <div key={item.menu_dish_id} className="grid grid-cols-[1fr_78px] items-center gap-2">
-                                    <div>
-                                      <p className="text-xs font-medium text-gray-900">{item.name}</p>
-                                      <p className="text-[11px] text-gray-500">{formatGbp(item.price)}</p>
-                                    </div>
-                                    <input
-                                      type="number"
-                                      min={0}
-                                      step={1}
-                                      value={sundayPreorderQuantities[item.menu_dish_id] || ''}
-                                      onChange={(event) => {
-                                        const cleaned = event.target.value.replace(/[^\d]/g, '')
-                                        onSetSundayPreorderQuantities((current) => ({
-                                          ...current,
-                                          [item.menu_dish_id]: cleaned
-                                        }))
-                                      }}
-                                      className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-xs"
-                                      placeholder="0"
-                                    />
-                                  </div>
-                                ))}
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              )}
             </div>
           )}
         </div>
@@ -611,8 +489,7 @@ export const FohCreateBookingModal = React.memo(function FohCreateBookingModal(p
                   onSetCreateForm((current) => ({
                     ...current,
                     purpose: 'event',
-                    event_id: overlappingEventForTable.id,
-                    sunday_lunch: false
+                    event_id: overlappingEventForTable.id
                   }))
                   onSetTableEventPromptAcknowledgedEventId(null)
                   onSetErrorMessage(null)

@@ -3,7 +3,6 @@ import { z } from 'zod'
 import { randomBytes } from 'crypto'
 import { fromZonedTime } from 'date-fns-tz'
 import { requireFohPermission } from '@/lib/foh/api-auth'
-import { createClient } from '@/lib/supabase/server'
 import { formatPhoneForStorage } from '@/lib/utils'
 import { ensureCustomerForPhone } from '@/lib/sms/customers'
 import { logger } from '@/lib/logger'
@@ -14,25 +13,13 @@ import {
   createTablePaymentToken,
   mapTableBookingBlockedReason,
   sendManagerTableBookingCreatedEmailIfAllowed,
-  sendSundayPreorderLinkSmsIfAllowed,
   sendTableBookingCreatedSmsIfAllowed,
   type TableBookingRpcResult
 } from '@/lib/table-bookings/bookings'
-import { saveSundayPreorderByBookingId } from '@/lib/table-bookings/sunday-preorder'
 import {
   computeDepositAmount,
   requiresDeposit as requiresDepositForParty,
 } from '@/lib/table-bookings/deposit'
-
-const STRICT_SUNDAY_LUNCH_OPERATOR_EMAIL = 'manager@the-anchor.pub'
-
-const SundayPreorderItemSchema = z.object({
-  menu_dish_id: z.string().uuid(),
-  quantity: z.preprocess(
-    (value) => (typeof value === 'string' ? Number.parseInt(value, 10) : value),
-    z.number().int().min(1).max(25)
-  )
-})
 
 const CreateFohTableBookingSchema = z.object({
   customer_id: z.string().uuid().optional(),
@@ -49,10 +36,10 @@ const CreateFohTableBookingSchema = z.object({
   ),
   purpose: z.enum(['food', 'drinks']),
   notes: z.string().trim().max(500).optional(),
+  // Deprecated. Older FOH clients may still post this while their bundle rolls
+  // forward, but Sunday bookings no longer have a pre-order flow.
   sunday_lunch: z.boolean().optional(),
   sunday_deposit_method: z.enum(['cash', 'payment_link']).optional(),
-  sunday_preorder_mode: z.enum(['send_link', 'capture_now']).optional(),
-  sunday_preorder_items: z.array(SundayPreorderItemSchema).optional(),
   default_country_code: z.string().regex(/^\d{1,4}$/).optional(),
   management_override: z.boolean().optional(),
   waive_deposit: z.boolean().optional(),
@@ -87,26 +74,9 @@ const CreateFohTableBookingSchema = z.object({
     })
   }
 
-  if (value.sunday_preorder_mode === 'capture_now') {
-    if (value.sunday_lunch !== true) {
-      context.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: 'Capture now can only be used for Sunday lunch bookings'
-      })
-      return
-    }
-
-    if ((value.sunday_preorder_items || []).length === 0) {
-      context.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: 'Add at least one Sunday lunch item or choose send link'
-      })
-    }
-  }
-
   // Deposit not required for management overrides, deposit waivers, or venue events — they bypass deposit restrictions.
-  // The deposit threshold is the centralised 10+ rule; legacy `sunday_lunch` flag is kept for admin-only legacy
-  // creation but no longer drives the deposit-required decision. Spec §8.3.
+  // The deposit threshold is the centralised 10+ rule; the deprecated `sunday_lunch`
+  // flag no longer drives deposit or pre-order behaviour.
   if (
     value.management_override !== true &&
     value.waive_deposit !== true &&
@@ -148,76 +118,6 @@ function splitWalkInGuestName(fullName: string | null | undefined): {
     firstName: parts[0],
     lastName: parts.slice(1).join(' ')
   }
-}
-
-function isSundayIsoDate(dateIso: string): boolean {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateIso)) return false
-  const parsed = new Date(`${dateIso}T12:00:00Z`)
-  return Number.isFinite(parsed.getTime()) && parsed.getUTCDay() === 0
-}
-
-function hasManagerSundayLunchCutoffPassed(bookingDateIso: string, now = new Date()): boolean {
-  if (!isSundayIsoDate(bookingDateIso)) return false
-
-  const sundayMiddayUtc = new Date(`${bookingDateIso}T12:00:00Z`)
-  if (!Number.isFinite(sundayMiddayUtc.getTime())) return false
-
-  const saturdayMiddayUtc = new Date(sundayMiddayUtc)
-  saturdayMiddayUtc.setUTCDate(saturdayMiddayUtc.getUTCDate() - 1)
-  const saturdayDateIso = saturdayMiddayUtc.toISOString().slice(0, 10)
-  const cutoffDateTime = fromZonedTime(`${saturdayDateIso}T13:00:00`, 'Europe/London')
-
-  if (!Number.isFinite(cutoffDateTime.getTime())) return false
-  return now.getTime() >= cutoffDateTime.getTime()
-}
-
-function isStrictSundayLunchOperator(email: string | null | undefined): boolean {
-  return (email || '').trim().toLowerCase() === STRICT_SUNDAY_LUNCH_OPERATOR_EMAIL
-}
-
-async function shouldAutoPromoteSundayLunchForFoh(input: {
-  supabase: any
-  bookingDate: string
-  bookingTime: string
-  purpose: 'food' | 'drinks'
-  sundayLunchExplicit: boolean
-  userId: string
-}): Promise<boolean> {
-  if (input.sundayLunchExplicit || input.purpose !== 'food' || !isSundayIsoDate(input.bookingDate)) {
-    return false
-  }
-
-  const [regularWindowResult, sundayWindowResult] = await Promise.all([
-    input.supabase.rpc('table_booking_matches_service_window_v05', {
-      p_booking_date: input.bookingDate,
-      p_booking_time: input.bookingTime,
-      p_booking_purpose: input.purpose,
-      p_sunday_lunch: false
-    }),
-    input.supabase.rpc('table_booking_matches_service_window_v05', {
-      p_booking_date: input.bookingDate,
-      p_booking_time: input.bookingTime,
-      p_booking_purpose: input.purpose,
-      p_sunday_lunch: true
-    })
-  ])
-
-  if (regularWindowResult.error || sundayWindowResult.error) {
-    logger.warn('Failed to evaluate FOH Sunday lunch auto-promotion window checks', {
-      metadata: {
-        userId: input.userId,
-        bookingDate: input.bookingDate,
-        bookingTime: input.bookingTime,
-        regularError: regularWindowResult.error?.message || null,
-        sundayError: sundayWindowResult.error?.message || null
-      }
-    })
-    return false
-  }
-
-  const regularMatches = regularWindowResult.data === true
-  const sundayMatches = sundayWindowResult.data === true
-  return !regularMatches && sundayMatches
 }
 
 async function createWalkInCustomer(
@@ -271,9 +171,7 @@ function buildWalkInBookingReference(): string {
 
 function getWalkInDurationMinutes(input: {
   purpose: 'food' | 'drinks'
-  sundayLunch: boolean
 }): number {
-  if (input.sundayLunch) return 120
   return input.purpose === 'food' ? 120 : 90
 }
 
@@ -288,7 +186,6 @@ async function createManualWalkInBookingOverride(params: {
     party_size: number
     purpose: 'food' | 'drinks'
     notes?: string
-    sunday_lunch?: boolean
   }
 }): Promise<TableBookingRpcResult> {
   const bookingTime = params.payload.time.length === 5 ? `${params.payload.time}:00` : params.payload.time
@@ -299,13 +196,12 @@ async function createManualWalkInBookingOverride(params: {
   }
 
   const durationMinutes = getWalkInDurationMinutes({
-    purpose: params.payload.purpose,
-    sundayLunch: params.payload.sunday_lunch === true
+    purpose: params.payload.purpose
   })
   const startIso = start.toISOString()
   const endIso = new Date(startMs + durationMinutes * 60 * 1000).toISOString()
   const nowIso = new Date().toISOString()
-  const bookingType = params.payload.sunday_lunch === true ? 'sunday_lunch' : 'regular'
+  const bookingType = 'regular'
 
   type TableCandidate = {
     id: string
@@ -608,7 +504,7 @@ async function createManualWalkInBookingOverride(params: {
             start_datetime: startIso,
             end_datetime: endIso,
             hold_expires_at: undefined,
-            sunday_lunch: params.payload.sunday_lunch === true
+            sunday_lunch: false
           }
         }
 
@@ -785,15 +681,6 @@ export async function POST(request: NextRequest) {
     return auth.response
   }
 
-  let operatorEmail: string | null = null
-  try {
-    const supabase = await createClient()
-    const userResult = await supabase.auth.getUser()
-    operatorEmail = userResult.data.user?.email?.trim().toLowerCase() || null
-  } catch {
-    operatorEmail = null
-  }
-
   let body: unknown
   try {
     body = await request.json()
@@ -842,8 +729,7 @@ export async function POST(request: NextRequest) {
           time: bookingTime,
           party_size: payload.party_size,
           purpose: payload.purpose,
-          notes: payload.notes,
-          sunday_lunch: payload.sunday_lunch
+          notes: payload.notes
         }
       })
     } catch (mgmtError) {
@@ -1056,47 +942,11 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  let effectiveSundayLunch = payload.sunday_lunch === true
-  if (!effectiveSundayLunch) {
-    try {
-      effectiveSundayLunch = await shouldAutoPromoteSundayLunchForFoh({
-        supabase: auth.supabase,
-        bookingDate: payload.date,
-        bookingTime,
-        purpose: payload.purpose,
-        sundayLunchExplicit: payload.sunday_lunch === true,
-        userId: auth.userId
-      })
-    } catch (promotionError) {
-      logger.warn('Failed to evaluate FOH Sunday lunch auto-promotion', {
-        metadata: {
-          userId: auth.userId,
-          bookingDate: payload.date,
-          bookingTime,
-          error: promotionError instanceof Error ? promotionError.message : String(promotionError)
-        }
-      })
-      effectiveSundayLunch = false
-    }
-  }
-
-  if (
-    effectiveSundayLunch
-    && isStrictSundayLunchOperator(operatorEmail)
-    && hasManagerSundayLunchCutoffPassed(payload.date)
-  ) {
-    return NextResponse.json(
-      {
-        error: 'Sunday lunch bookings are closed after 1:00pm on Saturday for this account.'
-      },
-      { status: 403 }
-    )
-  }
+  const effectiveSundayLunch = false
 
   // Deposit-required decision uses the centralised 10+ rule with explicit
-  // waiver support. `effectiveSundayLunch` is retained ONLY for the legacy
-  // admin-creation path (RPC payload + post-create persistence); the deposit
-  // decision is now generic and unaware of booking_type. Spec §8.3.
+  // waiver support. Sunday pre-orders have been retired, so FOH bookings always
+  // enter the generic table-booking path.
   //
   // Defects AB-001 / WF-004: management_override implies waiver. Today the
   // override path returns early at line ~856 so TypeScript correctly
@@ -1129,7 +979,7 @@ export async function POST(request: NextRequest) {
     p_party_size: payload.party_size,
     p_booking_purpose: payload.purpose,
     p_notes: payload.notes || null,
-    p_sunday_lunch: effectiveSundayLunch,
+    p_sunday_lunch: false,
     p_source: payload.walk_in === true ? 'walk-in' : 'admin',
     p_bypass_cutoff: true,
     // Venue events and management overrides automatically waive the deposit,
@@ -1166,8 +1016,8 @@ export async function POST(request: NextRequest) {
 
   let nextStepUrl: string | null = null
   let holdExpiresAt = bookingResult.hold_expires_at || null
-  let sundayPreorderState: FohCreateBookingResponseData['sunday_preorder_state'] = 'not_applicable'
-  let sundayPreorderReason: string | null = null
+  const sundayPreorderState: FohCreateBookingResponseData['sunday_preorder_state'] = 'not_applicable'
+  const sundayPreorderReason: string | null = null
 
   const shouldBypassHoursForWalkIn =
     payload.walk_in === true &&
@@ -1186,8 +1036,7 @@ export async function POST(request: NextRequest) {
           time: bookingTime,
           party_size: payload.party_size,
           purpose: payload.purpose,
-          notes: payload.notes,
-          sunday_lunch: effectiveSundayLunch
+          notes: payload.notes
         }
       })
       shouldSendBookingSms = false
@@ -1491,132 +1340,6 @@ export async function POST(request: NextRequest) {
           error: managerEmailResult.error
         }
       })
-    }
-  }
-
-  // Also handle pre-orders for pending_payment bookings (payment_link deposit method):
-  // the booking exists and is not cancelled, so we can capture/send the pre-order even
-  // though the deposit hasn't been paid yet.
-  const shouldHandleSundayPreorder =
-    effectiveSundayLunch &&
-    (bookingResult.state === 'confirmed' || bookingResult.state === 'pending_payment') &&
-    Boolean(bookingResult.table_booking_id)
-
-  if (shouldHandleSundayPreorder && bookingResult.table_booking_id) {
-    const mode = payload.sunday_lunch === true
-      ? payload.sunday_preorder_mode || 'send_link'
-      : 'send_link'
-
-    if (mode === 'capture_now') {
-      let captureResult: Awaited<ReturnType<typeof saveSundayPreorderByBookingId>> | null = null
-      try {
-        // staffOverride: true so FOH staff can capture regardless of the customer-facing cutoff
-        captureResult = await saveSundayPreorderByBookingId(auth.supabase, {
-          bookingId: bookingResult.table_booking_id,
-          items: payload.sunday_preorder_items || [],
-          staffOverride: true
-        })
-      } catch (captureError) {
-        logger.warn('Failed to capture Sunday pre-order during FOH booking create', {
-          metadata: {
-            userId: auth.userId,
-            tableBookingId: bookingResult.table_booking_id,
-            error: captureError instanceof Error ? captureError.message : String(captureError),
-          }
-        })
-        // Keep the response fail-safe: the table booking is already committed, and returning
-        // 500 encourages operator retries that can create duplicates.
-        sundayPreorderReason = 'capture_exception'
-        // Audit the capture failure so operators are not silently misled
-        try {
-          await logAuditEvent({
-            user_id: auth.userId,
-            operation_type: 'create',
-            resource_type: 'sunday_preorder',
-            resource_id: bookingResult.table_booking_id,
-            operation_status: 'failure',
-            error_message: captureError instanceof Error ? captureError.message : String(captureError),
-            additional_info: { reason: 'capture_exception', booking_id: bookingResult.table_booking_id }
-          })
-        } catch {
-          // Audit log failure must not affect the booking response
-        }
-      }
-
-      if (captureResult?.state === 'saved') {
-        sundayPreorderState = 'captured'
-      } else {
-        if (!sundayPreorderReason) {
-          sundayPreorderReason = captureResult?.reason || 'capture_failed'
-        }
-        // Audit non-exception capture failures (e.g. blocked by validation)
-        if (sundayPreorderReason !== 'capture_exception') {
-          try {
-            await logAuditEvent({
-              user_id: auth.userId,
-              operation_type: 'create',
-              resource_type: 'sunday_preorder',
-              resource_id: bookingResult.table_booking_id,
-              operation_status: 'failure',
-              error_message: sundayPreorderReason,
-              additional_info: { reason: sundayPreorderReason, booking_id: bookingResult.table_booking_id }
-            })
-          } catch {
-            // Audit log failure must not affect the booking response
-          }
-        }
-
-        try {
-          const fallbackLink = await sendSundayPreorderLinkSmsIfAllowed(auth.supabase, {
-            customerId,
-            tableBookingId: bookingResult.table_booking_id,
-            bookingStartIso: bookingResult.start_datetime || null,
-            bookingReference: bookingResult.booking_reference || null,
-            appBaseUrl
-          })
-
-          if (fallbackLink.sent) {
-            sundayPreorderState = 'link_sent'
-            sundayPreorderReason = `capture_failed:${sundayPreorderReason}`
-          } else {
-            sundayPreorderState = 'capture_blocked'
-          }
-        } catch (fallbackError) {
-          logger.warn('Failed to send Sunday pre-order fallback link after capture failure', {
-            metadata: {
-              userId: auth.userId,
-              tableBookingId: bookingResult.table_booking_id,
-              error: fallbackError instanceof Error ? fallbackError.message : String(fallbackError),
-            }
-          })
-          sundayPreorderState = 'capture_blocked'
-        }
-      }
-    } else {
-      try {
-        const linkResult = await sendSundayPreorderLinkSmsIfAllowed(auth.supabase, {
-          customerId,
-          tableBookingId: bookingResult.table_booking_id,
-          bookingStartIso: bookingResult.start_datetime || null,
-          bookingReference: bookingResult.booking_reference || null,
-          appBaseUrl
-        })
-
-        sundayPreorderState = linkResult.sent ? 'link_sent' : 'link_not_sent'
-        if (!linkResult.sent) {
-          sundayPreorderReason = 'link_not_sent'
-        }
-      } catch (linkError) {
-        logger.warn('Failed to send Sunday pre-order link during FOH booking create', {
-          metadata: {
-            userId: auth.userId,
-            tableBookingId: bookingResult.table_booking_id,
-            error: linkError instanceof Error ? linkError.message : String(linkError),
-          }
-        })
-        sundayPreorderState = 'link_not_sent'
-        sundayPreorderReason = 'link_exception'
-      }
     }
   }
 

@@ -47,8 +47,8 @@ vi.mock('@/lib/analytics/events', () => ({
 }))
 
 vi.mock('@/lib/table-bookings/bookings', () => ({
-  alignTableCardCaptureHoldToScheduledSend: vi.fn(),
-  createTableCardCaptureToken: vi.fn(),
+  alignTablePaymentHoldToScheduledSend: vi.fn(),
+  createTablePaymentToken: vi.fn(),
   mapTableBookingBlockedReason: vi.fn((reason?: string) => reason || 'blocked'),
   sendManagerTableBookingCreatedEmailIfAllowed: vi.fn().mockResolvedValue({ sent: true }),
   sendTableBookingCreatedSmsIfAllowed: vi.fn(),
