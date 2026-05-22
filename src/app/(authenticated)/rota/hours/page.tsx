@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation';
 import { formatInTimeZone } from 'date-fns-tz';
 import { checkUserPermission } from '@/app/actions/rbac';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { calculatePaidHours } from '@/lib/rota/pay-calculator';
 import { PageLayout } from '@/ds';
 import { rotaNavItems } from '../nav';
 import HoursByEmployeeClient, {
@@ -19,15 +20,14 @@ export const dynamic = 'force-dynamic';
 const TIMEZONE = 'Europe/London';
 const COLOURS = [
   'var(--color-primary)',
-  'var(--color-info)',
-  'var(--color-warning)',
-  'var(--color-danger)',
   'var(--color-success)',
   '#7c3aed',
   '#0f766e',
   '#be123c',
-  '#2563eb',
   '#9333ea',
+  '#0f766e',
+  '#be185d',
+  '#6d28d9',
 ];
 
 interface HoursPageProps {
@@ -65,6 +65,16 @@ type SickShiftRow = {
   employee_id: string;
   shift_date: string;
   sick_reason: string | null;
+};
+
+type PlannedShiftRow = {
+  id: string;
+  employee_id: string;
+  shift_date: string;
+  start_time: string;
+  end_time: string;
+  unpaid_break_minutes: number;
+  is_overnight: boolean;
 };
 
 function isIsoDate(value: string | undefined): value is string {
@@ -114,6 +124,15 @@ function roundHours(value: number): number {
   return Math.round(value * 10) / 10;
 }
 
+function plannedShiftHours(shift: PlannedShiftRow): number {
+  return calculatePaidHours(
+    shift.start_time,
+    shift.end_time,
+    shift.unpaid_break_minutes,
+    shift.is_overnight,
+  );
+}
+
 function generateWeeks(fromDate: string, toDate: string): string[] {
   const start = mondayOfWeekIso(fromDate);
   const end = mondayOfWeekIso(toDate);
@@ -150,7 +169,7 @@ export default async function RotaHoursPage({ searchParams }: HoursPageProps) {
   const requestedEmployeeIds = normalizeEmployeeParams(params.employee);
   const supabase = createAdminClient();
 
-  const [employeesResult, sessionsResult, leaveDaysResult, sickShiftsResult] = await Promise.all([
+  const [employeesResult, sessionsResult, leaveDaysResult, sickShiftsResult, plannedShiftsResult] = await Promise.all([
     supabase
       .from('employees')
       .select('employee_id, first_name, last_name, job_title, status')
@@ -178,12 +197,24 @@ export default async function RotaHoursPage({ searchParams }: HoursPageProps) {
       .eq('status', 'sick')
       .not('employee_id', 'is', null)
       .order('shift_date'),
+    supabase
+      .from('rota_shifts')
+      .select('id, employee_id, shift_date, start_time, end_time, unpaid_break_minutes, is_overnight')
+      .gte('shift_date', fromDate)
+      .lte('shift_date', toDate)
+      .gt('shift_date', today)
+      .eq('status', 'scheduled')
+      .eq('is_open_shift', false)
+      .not('employee_id', 'is', null)
+      .order('shift_date')
+      .order('start_time'),
   ]);
 
   const employees = (employeesResult.data ?? []) as EmployeeRow[];
   const sessions = (sessionsResult.data ?? []) as SessionRow[];
   const leaveDays = (leaveDaysResult.data ?? []) as LeaveDayRow[];
   const sickShifts = (sickShiftsResult.data ?? []) as SickShiftRow[];
+  const plannedShifts = (plannedShiftsResult.data ?? []) as PlannedShiftRow[];
   const employeeMap = new Map(employees.map(employee => [employee.employee_id, employee]));
   const validEmployeeIds = new Set(employees.map(employee => employee.employee_id));
   const selectedEmployeeIds = requestedEmployeeIds.filter(id => validEmployeeIds.has(id));
@@ -191,6 +222,10 @@ export default async function RotaHoursPage({ searchParams }: HoursPageProps) {
 
   const completedSessions = sessions.filter(session => session.clock_out_at);
   const filteredCompletedSessions = completedSessions.filter(session => selectedSet.has(session.employee_id));
+  const completedSessionDateKeys = new Set(completedSessions.map(session => `${session.employee_id}:${session.work_date}`));
+  const reportablePlannedShifts = plannedShifts.filter(shift =>
+    !completedSessionDateKeys.has(`${shift.employee_id}:${shift.shift_date}`)
+  );
   const openSessionCount = sessions.filter(session =>
     !session.clock_out_at && selectedSet.has(session.employee_id)
   ).length;
@@ -200,6 +235,14 @@ export default async function RotaHoursPage({ searchParams }: HoursPageProps) {
     totalsByEmployee.set(
       session.employee_id,
       (totalsByEmployee.get(session.employee_id) ?? 0) + actualHours(session),
+    );
+  }
+  for (const shift of reportablePlannedShifts) {
+    const hours = plannedShiftHours(shift);
+    if (hours <= 0) continue;
+    totalsByEmployee.set(
+      shift.employee_id,
+      (totalsByEmployee.get(shift.employee_id) ?? 0) + hours,
     );
   }
 
@@ -228,6 +271,7 @@ export default async function RotaHoursPage({ searchParams }: HoursPageProps) {
   const optionIds = new Set<string>([
     ...employees.map(employee => employee.employee_id),
     ...completedSessions.map(session => session.employee_id),
+    ...reportablePlannedShifts.map(shift => shift.employee_id),
     ...leaveDays.map(day => day.employee_id),
     ...sickShifts.map(shift => shift.employee_id),
     ...selectedEmployeeIds,
@@ -294,6 +338,17 @@ export default async function RotaHoursPage({ searchParams }: HoursPageProps) {
     const current = Number(chartData[rowIndex][session.employee_id] ?? 0);
     chartData[rowIndex][session.employee_id] = roundHours(current + actualHours(session));
   }
+  for (const shift of reportablePlannedShifts) {
+    if (!selectedSet.has(shift.employee_id)) continue;
+    if (!seriesEmployees.some(employee => employee.id === shift.employee_id)) continue;
+    const weekStart = mondayOfWeekIso(shift.shift_date);
+    const rowIndex = weekIndex.get(weekStart);
+    if (rowIndex === undefined) continue;
+    const hours = plannedShiftHours(shift);
+    if (hours <= 0) continue;
+    const current = Number(chartData[rowIndex][shift.employee_id] ?? 0);
+    chartData[rowIndex][shift.employee_id] = roundHours(current + hours);
+  }
 
   for (const leaveDay of leaveDays) {
     if (!selectedSet.has(leaveDay.employee_id)) continue;
@@ -356,7 +411,10 @@ export default async function RotaHoursPage({ searchParams }: HoursPageProps) {
     row.__sickDetails = details;
   }
 
-  const totalHours = roundHours(filteredCompletedSessions.reduce((sum, session) => sum + actualHours(session), 0));
+  const totalHours = roundHours(seriesEmployees.reduce(
+    (sum, employee) => sum + (totalsByEmployee.get(employee.id) ?? 0),
+    0,
+  ));
   const totalHolidayDays = seriesEmployees.reduce(
     (sum, employee) => sum + (holidayDatesByEmployee.get(employee.id)?.length ?? 0),
     0,
@@ -387,7 +445,7 @@ export default async function RotaHoursPage({ searchParams }: HoursPageProps) {
   return (
     <PageLayout
       title="Hours by employee"
-      subtitle="Worked timeclock hours, holidays, and Couldn't Work days grouped by employee"
+      subtitle="Actual timeclock hours, future planned hours, holidays, and Couldn't Work days grouped by employee"
       navItems={rotaNavItems}
     >
       <HoursByEmployeeClient

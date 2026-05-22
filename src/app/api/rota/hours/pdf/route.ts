@@ -3,6 +3,7 @@ import { formatInTimeZone } from 'date-fns-tz';
 import { checkUserPermission } from '@/app/actions/rbac';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { generatePDFFromHTML } from '@/lib/pdf-generator';
+import { calculatePaidHours } from '@/lib/rota/pay-calculator';
 
 export const runtime = 'nodejs';
 export const maxDuration = 120;
@@ -10,18 +11,17 @@ export const maxDuration = 120;
 const TIMEZONE = 'Europe/London';
 const COLOURS = [
   '#0f766e',
-  '#2563eb',
-  '#d97706',
-  '#dc2626',
   '#16a34a',
   '#7c3aed',
   '#0f766e',
   '#be123c',
-  '#2563eb',
   '#9333ea',
+  '#0f766e',
+  '#be185d',
+  '#6d28d9',
 ];
 const HOLIDAY_COLOUR = '#d97706';
-const SICK_COLOUR = '#dc2626';
+const SICK_COLOUR = '#2563eb';
 
 type SessionRow = {
   id: string;
@@ -52,6 +52,16 @@ type SickShiftRow = {
   sick_reason: string | null;
 };
 
+type PlannedShiftRow = {
+  id: string;
+  employee_id: string;
+  shift_date: string;
+  start_time: string;
+  end_time: string;
+  unpaid_break_minutes: number;
+  is_overnight: boolean;
+};
+
 type EmployeeOption = {
   id: string;
   name: string;
@@ -79,14 +89,12 @@ type ChartRow = {
 type HolidayRecordRow = {
   employeeId: string;
   name: string;
-  colour: string;
   date: string;
 };
 
 type SickRecordRow = {
   employeeId: string;
   name: string;
-  colour: string;
   date: string;
   reason: string | null;
 };
@@ -172,6 +180,15 @@ function formatHours(value: number): string {
   return `${value.toFixed(1)}h`;
 }
 
+function plannedShiftHours(shift: PlannedShiftRow): number {
+  return calculatePaidHours(
+    shift.start_time,
+    shift.end_time,
+    shift.unpaid_break_minutes,
+    shift.is_overnight,
+  );
+}
+
 function generateWeeks(fromDate: string, toDate: string): string[] {
   const start = mondayOfWeekIso(fromDate);
   const end = mondayOfWeekIso(toDate);
@@ -201,7 +218,7 @@ function formatDayCount(value: number): string {
 
 function buildChartSvg(chartData: ChartRow[], series: HoursSeries[]): string {
   if (chartData.length === 0 || series.length === 0) {
-    return '<div class="empty-chart">Select at least one employee to show worked hours.</div>';
+    return '<div class="empty-chart">Select at least one employee to show hours.</div>';
   }
 
   const width = 1180;
@@ -229,11 +246,12 @@ function buildChartSvg(chartData: ChartRow[], series: HoursSeries[]): string {
   }
 
   const groupWidth = plotWidth / chartData.length;
-  const barCount = series.length + 2;
+  const barCount = 2;
   const gap = Math.min(2, Math.max(0.75, groupWidth * 0.08));
   const barWidth = Math.max(1.2, Math.min(14, ((groupWidth - gap * (barCount - 1)) / barCount) * 0.88));
   const barsWidth = barCount * barWidth + (barCount - 1) * gap;
   const xForIndex = (index: number) => margin.left + index * groupWidth + (groupWidth - barsWidth) / 2;
+  const xForLineIndex = (index: number) => margin.left + index * groupWidth + groupWidth / 2;
   const yForHours = (value: number) => chartBottom - (value / hourAxisMax) * plotHeight;
   const yForAbsence = (value: number) => chartBottom - (value / maxAbsenceDays) * plotHeight;
   const xTickInterval = Math.max(1, Math.ceil(chartData.length / 14));
@@ -255,24 +273,22 @@ function buildChartSvg(chartData: ChartRow[], series: HoursSeries[]): string {
     return `<text x="${width - margin.right + 12}" y="${y + 4}" class="axis-label absence-axis">${value}d</text>`;
   }).join('');
 
-  const bars = chartData.map((row, weekIndex) => {
-    const xStart = xForIndex(weekIndex);
-    const employeeBars = series.map((item, seriesIndex) => {
+  const employeeLines = series.map(item => {
+    const points = chartData.map((row, index) => {
       const value = Number(row[item.employeeId] ?? 0);
-      if (value <= 0) return '';
-      const x = xStart + seriesIndex * (barWidth + gap);
-      const y = yForHours(value);
-      const h = chartBottom - y;
-      return `<rect x="${x.toFixed(2)}" y="${y.toFixed(2)}" width="${barWidth.toFixed(2)}" height="${h.toFixed(2)}" rx="2" fill="${item.colour}" />`;
-    }).join('');
+      return `${xForLineIndex(index).toFixed(2)},${yForHours(value).toFixed(2)}`;
+    }).join(' ');
 
+    return `<polyline points="${points}" fill="none" stroke="${item.colour}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" />`;
+  }).join('');
+
+  const absenceBars = chartData.map((row, weekIndex) => {
+    const xStart = xForIndex(weekIndex);
     const holidayDays = Number(row.__holidayDays ?? 0);
     const sickDays = Number(row.__sickDays ?? 0);
-    const holidayIndex = series.length;
-    const sickIndex = series.length + 1;
     const holidayBar = holidayDays > 0
       ? (() => {
-        const x = xStart + holidayIndex * (barWidth + gap);
+        const x = xStart;
         const y = yForAbsence(holidayDays);
         const h = chartBottom - y;
         return `<rect x="${x.toFixed(2)}" y="${y.toFixed(2)}" width="${barWidth.toFixed(2)}" height="${h.toFixed(2)}" rx="2" fill="${HOLIDAY_COLOUR}" />`;
@@ -280,14 +296,14 @@ function buildChartSvg(chartData: ChartRow[], series: HoursSeries[]): string {
       : '';
     const sickBar = sickDays > 0
       ? (() => {
-        const x = xStart + sickIndex * (barWidth + gap);
+        const x = xStart + barWidth + gap;
         const y = yForAbsence(sickDays);
         const h = chartBottom - y;
         return `<rect x="${x.toFixed(2)}" y="${y.toFixed(2)}" width="${barWidth.toFixed(2)}" height="${h.toFixed(2)}" rx="2" fill="${SICK_COLOUR}" />`;
       })()
       : '';
 
-    return employeeBars + holidayBar + sickBar;
+    return holidayBar + sickBar;
   }).join('');
 
   const xLabels = chartData.map((row, index) => {
@@ -313,7 +329,7 @@ function buildChartSvg(chartData: ChartRow[], series: HoursSeries[]): string {
   }).join('');
 
   return `
-    <svg class="chart-svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="Worked hours by week chart">
+    <svg class="chart-svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="Hours by week chart">
       <style>
         .axis-label { font: 11px -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; fill: #6b7280; }
         .absence-axis { fill: #92400e; }
@@ -323,7 +339,8 @@ function buildChartSvg(chartData: ChartRow[], series: HoursSeries[]): string {
       ${grid}
       ${absenceLabels}
       <line x1="${margin.left}" y1="${chartBottom}" x2="${width - margin.right}" y2="${chartBottom}" stroke="#d1d5db" stroke-width="1" />
-      ${bars}
+      ${absenceBars}
+      ${employeeLines}
       ${xLabels}
     </svg>
   `;
@@ -333,7 +350,7 @@ function buildTableRows(model: ReportModel): { holidayRowsHtml: string; sickRows
   const holidayRowsHtml = model.holidayRows.length > 0
     ? model.holidayRows.map(row => `
       <tr>
-        <td><span class="dot" style="background:${row.colour}"></span>${escapeHtml(row.name)}</td>
+        <td><span class="dot" style="background:${HOLIDAY_COLOUR}"></span>${escapeHtml(row.name)}</td>
         <td>${escapeHtml(fullDate(row.date))}</td>
       </tr>
     `).join('')
@@ -342,7 +359,7 @@ function buildTableRows(model: ReportModel): { holidayRowsHtml: string; sickRows
   const sickRowsHtml = model.sickRows.length > 0
     ? model.sickRows.map(row => `
       <tr>
-        <td><span class="dot" style="background:${row.colour}"></span>${escapeHtml(row.name)}</td>
+        <td><span class="dot" style="background:${SICK_COLOUR}"></span>${escapeHtml(row.name)}</td>
         <td>${escapeHtml(fullDate(row.date))}</td>
         <td>${escapeHtml(row.reason || 'No reason recorded')}</td>
       </tr>
@@ -499,12 +516,12 @@ function buildReportHtml(model: ReportModel): string {
   <section class="page chart-page">
     <header class="header">
       <div>
-        <h1>Worked Hours by Week</h1>
+        <h1>Hours by Week</h1>
         <div class="meta">${escapeHtml(dateRange)} · ${escapeHtml(employeeLabel)} · generated ${escapeHtml(model.generatedAt)}</div>
       </div>
       <div class="stats">
         <div class="stat">
-          <div class="stat-label">Worked hours</div>
+          <div class="stat-label">Actual + planned hours</div>
           <div class="stat-value">${escapeHtml(formatHours(model.totalHours))}</div>
         </div>
         <div class="stat">
@@ -568,7 +585,7 @@ async function buildReportModel(searchParams: URLSearchParams): Promise<ReportMo
   const requestedEmployeeIds = normalizeEmployeeParams(searchParams);
   const supabase = createAdminClient();
 
-  const [employeesResult, sessionsResult, leaveDaysResult, sickShiftsResult] = await Promise.all([
+  const [employeesResult, sessionsResult, leaveDaysResult, sickShiftsResult, plannedShiftsResult] = await Promise.all([
     supabase
       .from('employees')
       .select('employee_id, first_name, last_name, job_title, status')
@@ -596,17 +613,30 @@ async function buildReportModel(searchParams: URLSearchParams): Promise<ReportMo
       .eq('status', 'sick')
       .not('employee_id', 'is', null)
       .order('shift_date'),
+    supabase
+      .from('rota_shifts')
+      .select('id, employee_id, shift_date, start_time, end_time, unpaid_break_minutes, is_overnight')
+      .gte('shift_date', fromDate)
+      .lte('shift_date', toDate)
+      .gt('shift_date', today)
+      .eq('status', 'scheduled')
+      .eq('is_open_shift', false)
+      .not('employee_id', 'is', null)
+      .order('shift_date')
+      .order('start_time'),
   ]);
 
   if (employeesResult.error) throw employeesResult.error;
   if (sessionsResult.error) throw sessionsResult.error;
   if (leaveDaysResult.error) throw leaveDaysResult.error;
   if (sickShiftsResult.error) throw sickShiftsResult.error;
+  if (plannedShiftsResult.error) throw plannedShiftsResult.error;
 
   const employees = (employeesResult.data ?? []) as EmployeeRow[];
   const sessions = (sessionsResult.data ?? []) as SessionRow[];
   const leaveDays = (leaveDaysResult.data ?? []) as LeaveDayRow[];
   const sickShifts = (sickShiftsResult.data ?? []) as SickShiftRow[];
+  const plannedShifts = (plannedShiftsResult.data ?? []) as PlannedShiftRow[];
   const employeeMap = new Map(employees.map(employee => [employee.employee_id, employee]));
   const validEmployeeIds = new Set(employees.map(employee => employee.employee_id));
   const selectedEmployeeIds = requestedEmployeeIds.filter(id => validEmployeeIds.has(id));
@@ -614,12 +644,24 @@ async function buildReportModel(searchParams: URLSearchParams): Promise<ReportMo
 
   const completedSessions = sessions.filter(session => session.clock_out_at);
   const filteredCompletedSessions = completedSessions.filter(session => selectedSet.has(session.employee_id));
+  const completedSessionDateKeys = new Set(completedSessions.map(session => `${session.employee_id}:${session.work_date}`));
+  const reportablePlannedShifts = plannedShifts.filter(shift =>
+    !completedSessionDateKeys.has(`${shift.employee_id}:${shift.shift_date}`)
+  );
 
   const totalsByEmployee = new Map<string, number>();
   for (const session of completedSessions) {
     totalsByEmployee.set(
       session.employee_id,
       (totalsByEmployee.get(session.employee_id) ?? 0) + actualHours(session),
+    );
+  }
+  for (const shift of reportablePlannedShifts) {
+    const hours = plannedShiftHours(shift);
+    if (hours <= 0) continue;
+    totalsByEmployee.set(
+      shift.employee_id,
+      (totalsByEmployee.get(shift.employee_id) ?? 0) + hours,
     );
   }
 
@@ -648,6 +690,7 @@ async function buildReportModel(searchParams: URLSearchParams): Promise<ReportMo
   const optionIds = new Set<string>([
     ...employees.map(employee => employee.employee_id),
     ...completedSessions.map(session => session.employee_id),
+    ...reportablePlannedShifts.map(shift => shift.employee_id),
     ...leaveDays.map(day => day.employee_id),
     ...sickShifts.map(shift => shift.employee_id),
     ...selectedEmployeeIds,
@@ -687,7 +730,6 @@ async function buildReportModel(searchParams: URLSearchParams): Promise<ReportMo
     colour: COLOURS[index % COLOURS.length],
     totalHours: employee.totalHours,
   }));
-  const colourByEmployeeId = new Map(series.map(item => [item.employeeId, item.colour]));
 
   const weeks = generateWeeks(fromDate, toDate);
   const chartData: ChartRow[] = weeks.map(weekStart => {
@@ -711,6 +753,15 @@ async function buildReportModel(searchParams: URLSearchParams): Promise<ReportMo
     const current = Number(chartData[rowIndex][session.employee_id] ?? 0);
     chartData[rowIndex][session.employee_id] = roundHours(current + actualHours(session));
   }
+  for (const shift of reportablePlannedShifts) {
+    if (!selectedSet.has(shift.employee_id)) continue;
+    const rowIndex = weekIndex.get(mondayOfWeekIso(shift.shift_date));
+    if (rowIndex === undefined) continue;
+    const hours = plannedShiftHours(shift);
+    if (hours <= 0) continue;
+    const current = Number(chartData[rowIndex][shift.employee_id] ?? 0);
+    chartData[rowIndex][shift.employee_id] = roundHours(current + hours);
+  }
 
   for (const leaveDay of leaveDays) {
     if (!selectedSet.has(leaveDay.employee_id)) continue;
@@ -731,7 +782,10 @@ async function buildReportModel(searchParams: URLSearchParams): Promise<ReportMo
     chartData[rowIndex].__sickDays += 1;
   }
 
-  const totalHours = roundHours(filteredCompletedSessions.reduce((sum, session) => sum + actualHours(session), 0));
+  const totalHours = roundHours(seriesEmployees.reduce(
+    (sum, employee) => sum + (totalsByEmployee.get(employee.id) ?? 0),
+    0,
+  ));
   const totalHolidayDays = seriesEmployees.reduce(
     (sum, employee) => sum + (holidayDatesByEmployee.get(employee.id)?.length ?? 0),
     0,
@@ -745,7 +799,6 @@ async function buildReportModel(searchParams: URLSearchParams): Promise<ReportMo
     .flatMap(employee => (holidayDatesByEmployee.get(employee.id) ?? []).sort().map(date => ({
       employeeId: employee.id,
       name: employee.name,
-      colour: colourByEmployeeId.get(employee.id) ?? COLOURS[0],
       date,
     })))
     .sort((a, b) => a.date.localeCompare(b.date) || a.name.localeCompare(b.name));
@@ -756,7 +809,6 @@ async function buildReportModel(searchParams: URLSearchParams): Promise<ReportMo
       .map(entry => ({
         employeeId: employee.id,
         name: employee.name,
-        colour: colourByEmployeeId.get(employee.id) ?? COLOURS[0],
         date: entry.date,
         reason: entry.reason,
       })))

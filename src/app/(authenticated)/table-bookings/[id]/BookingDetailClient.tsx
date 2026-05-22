@@ -1,12 +1,9 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { useRouter } from 'next/navigation'
 import toast from 'react-hot-toast'
-import { Modal } from '@/ds'
-import { ConfirmDialog } from '@/ds'
-import { Button } from '@/ds'
-import { Badge } from '@/ds'
+import { Badge, Button, ConfirmDialog, Modal } from '@/ds'
 import { RefundDialog } from '@/components/features/invoices/RefundDialog'
 import { RefundHistoryTable } from '@/components/features/invoices/RefundHistoryTable'
 import { getCanonicalDeposit } from '@/lib/table-bookings/deposit'
@@ -19,14 +16,197 @@ import {
   getTableBookingVisualState,
 } from '@/lib/table-bookings/ui'
 import { requestTableBookingAction } from '@/lib/table-bookings/client-actions'
-// formatDateInLondon uses toLocaleDateString (date-only); use Intl.DateTimeFormat directly for time display
-const formatLondonTime = (iso: string) =>
-  new Intl.DateTimeFormat('en-GB', {
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false,
-    timeZone: 'Europe/London',
-  }).format(new Date(iso))
+
+const londonDateTimeFormatter = new Intl.DateTimeFormat('en-GB', {
+  dateStyle: 'medium',
+  timeStyle: 'short',
+  hour12: false,
+  timeZone: 'Europe/London',
+})
+
+const bookingDateFormatter = new Intl.DateTimeFormat('en-GB', {
+  weekday: 'short',
+  day: '2-digit',
+  month: 'short',
+  year: 'numeric',
+  timeZone: 'UTC',
+})
+
+function formatLondonDateTime(iso?: string | null): string {
+  if (!iso) return '-'
+  const parsed = new Date(iso)
+  if (!Number.isFinite(parsed.getTime())) return iso
+  return londonDateTimeFormatter.format(parsed)
+}
+
+function formatBookingDate(date: string): string {
+  const [year, month, day] = date.split('-').map((part) => Number.parseInt(part, 10))
+  if (!year || !month || !day) return date
+  return bookingDateFormatter.format(new Date(Date.UTC(year, month - 1, day)))
+}
+
+function formatLabel(value?: string | null): string {
+  if (!value) return '-'
+  return value
+    .replace(/_/g, ' ')
+    .split(' ')
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ')
+}
+
+function formatDuration(minutes?: number | null): string {
+  if (!minutes) return '-'
+  const hours = Math.floor(minutes / 60)
+  const remaining = minutes % 60
+  if (hours === 0) return `${remaining} min`
+  if (remaining === 0) return `${hours} hr${hours === 1 ? '' : 's'}`
+  return `${hours} hr ${remaining} min`
+}
+
+function normaliseNote(value: string | string[] | null): string | null {
+  if (Array.isArray(value)) {
+    const joined = value.filter(Boolean).join(', ').trim()
+    return joined.length > 0 ? joined : null
+  }
+  const trimmed = value?.trim()
+  return trimmed && trimmed.length > 0 ? trimmed : null
+}
+
+function formatMetaValue(value: unknown): string | null {
+  if (value === null || value === undefined) return null
+  if (typeof value === 'string') return value.trim().length > 0 ? value : null
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value)
+  if (Array.isArray(value)) {
+    const rendered = value.map(formatMetaValue).filter(Boolean).join(', ')
+    return rendered.length > 0 ? rendered : null
+  }
+  return null
+}
+
+function parseMeta(meta: unknown): Record<string, unknown> {
+  if (!meta) return {}
+  if (typeof meta === 'string') {
+    try {
+      const parsed = JSON.parse(meta)
+      return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+        ? parsed as Record<string, unknown>
+        : {}
+    } catch {
+      return {}
+    }
+  }
+  return typeof meta === 'object' && !Array.isArray(meta) ? meta as Record<string, unknown> : {}
+}
+
+function formatAuditEvent(event: string): string {
+  const labels: Record<string, string> = {
+    booking_created: 'Booking created',
+    status_changed: 'Status changed',
+    status_updated: 'Status updated',
+    party_size_updated: 'Party size updated',
+    table_moved: 'Table moved',
+    table_assigned: 'Table assigned',
+    sms_sent: 'SMS sent',
+    sms_failed: 'SMS failed',
+    deposit_paid: 'Deposit paid',
+    deposit_link_created: 'Deposit link created',
+    refund_created: 'Refund created',
+    payment_completed: 'Payment completed',
+  }
+
+  return labels[event] ?? formatLabel(event)
+}
+
+function getAuditActor(entry: BookingAuditEntry): string {
+  const meta = parseMeta(entry.meta)
+  const actor = formatMetaValue(meta.actor_name) ?? formatMetaValue(meta.user_email) ?? formatMetaValue(meta.performed_by)
+  if (actor) return actor
+  return entry.created_by ? 'Team member' : 'System'
+}
+
+function getAuditDetails(entry: BookingAuditEntry): string[] {
+  const meta = parseMeta(entry.meta)
+  const details: string[] = []
+
+  if (entry.old_status || entry.new_status) {
+    details.push(`Status: ${formatLabel(entry.old_status)} -> ${formatLabel(entry.new_status)}`)
+  }
+
+  const oldPartySize = formatMetaValue(meta.old_party_size)
+  const newPartySize = formatMetaValue(meta.new_party_size ?? meta.party_size)
+  if (oldPartySize && newPartySize && oldPartySize !== newPartySize) {
+    details.push(`Party size: ${oldPartySize} -> ${newPartySize}`)
+  } else if (newPartySize && !details.some((line) => line.startsWith('Party size:'))) {
+    details.push(`Party size: ${newPartySize}`)
+  }
+
+  const fromTable = formatMetaValue(meta.from_table ?? meta.old_table_name)
+  const toTable = formatMetaValue(meta.to_table ?? meta.table_name ?? meta.new_table_name)
+  if (fromTable && toTable && fromTable !== toTable) {
+    details.push(`Table: ${fromTable} -> ${toTable}`)
+  } else if (toTable) {
+    details.push(`Table: ${toTable}`)
+  }
+
+  const description = formatMetaValue(meta.description ?? meta.reason ?? meta.note)
+  if (description) details.push(description)
+
+  const message = formatMetaValue(meta.message ?? meta.message_body ?? meta.body)
+  if (message) details.push(`Message: ${message}`)
+
+  const amount = formatMetaValue(meta.amount ?? meta.deposit_amount ?? meta.refund_amount)
+  if (amount) details.push(`Amount: ${amount}`)
+
+  const error = formatMetaValue(meta.error)
+  if (error) details.push(`Error: ${error}`)
+
+  if (details.length > 0) return details
+
+  return Object.entries(meta)
+    .filter(([key]) => !/(token|secret|signature|hash|url)/i.test(key))
+    .map(([key, value]) => {
+      const rendered = formatMetaValue(value)
+      return rendered ? `${formatLabel(key)}: ${rendered}` : null
+    })
+    .filter((line): line is string => Boolean(line))
+    .slice(0, 4)
+}
+
+function SectionCard({
+  title,
+  description,
+  action,
+  children,
+  className = '',
+}: {
+  title: string
+  description?: string
+  action?: ReactNode
+  children: ReactNode
+  className?: string
+}) {
+  return (
+    <section className={`rounded-lg border border-gray-200 bg-white ${className}`}>
+      <div className="flex flex-wrap items-start justify-between gap-3 border-b border-gray-100 px-4 py-3">
+        <div>
+          <h2 className="text-sm font-semibold text-gray-900">{title}</h2>
+          {description && <p className="mt-0.5 text-xs text-gray-500">{description}</p>}
+        </div>
+        {action}
+      </div>
+      <div className="p-4">{children}</div>
+    </section>
+  )
+}
+
+function DetailItem({ label, value }: { label: string; value: ReactNode }) {
+  return (
+    <div>
+      <dt className="text-xs font-semibold uppercase tracking-wide text-gray-500">{label}</dt>
+      <dd className="mt-1 text-sm text-gray-900">{value || '-'}</dd>
+    </div>
+  )
+}
 
 function StatusBadge({ booking }: { booking: Booking }) {
   const visualState = getTableBookingVisualState(booking)
@@ -39,8 +219,6 @@ function StatusBadge({ booking }: { booking: Booking }) {
   )
 }
 
-type Tab = 'overview' | 'sms'
-
 interface BookingCustomer {
   id: string
   first_name: string | null
@@ -50,13 +228,26 @@ interface BookingCustomer {
 
 interface BookingTableInner {
   id: string
-  name: string
+  name: string | null
   table_number: string | null
   capacity: number | null
 }
 
 interface BookingTable {
+  id: string
+  start_datetime: string | null
+  end_datetime: string | null
   table: BookingTableInner | null
+}
+
+export interface BookingAuditEntry {
+  id: number
+  event: string
+  old_status: string | null
+  new_status: string | null
+  meta: unknown
+  created_at: string
+  created_by: string | null
 }
 
 export interface Booking {
@@ -65,22 +256,36 @@ export interface Booking {
   booking_date: string
   booking_time: string | null
   party_size: number | null
+  committed_party_size: number | null
   booking_type: string | null
   booking_purpose: string | null
   status: string
+  source: string | null
   special_requirements: string | null
-  dietary_requirements: string | null
-  allergies: string | null
+  dietary_requirements: string | string[] | null
+  allergies: string | string[] | null
   celebration_type: string | null
+  internal_notes: string | null
+  cancellation_reason: string | null
+  created_at: string | null
+  updated_at: string | null
   seated_at: string | null
   left_at: string | null
   no_show_at: string | null
+  no_show_marked_at: string | null
   confirmed_at: string | null
   cancelled_at: string | null
+  completed_at: string | null
   start_datetime: string | null
   end_datetime: string | null
   duration_minutes: number | null
   deposit_waived: boolean | null
+  hold_expires_at: string | null
+  reminder_sent: boolean | null
+  review_sms_sent_at: string | null
+  review_clicked_at: string | null
+  sunday_preorder_completed_at: string | null
+  sunday_preorder_cutoff_at: string | null
   payment_status: string | null
   payment_method: string | null
   paypal_deposit_capture_id: string | null
@@ -89,6 +294,7 @@ export interface Booking {
   card_capture_completed_at: string | null
   customer: BookingCustomer | null
   table_booking_tables: BookingTable[]
+  audit_trail: BookingAuditEntry[]
 }
 
 interface Props {
@@ -115,13 +321,6 @@ type MoveTableAvailabilityResponse = {
 }
 
 export default function BookingDetailClient({ booking, canEdit, canManage, canRefund }: Props) {
-  const [tab, setTab] = useState<Tab>('overview')
-
-  const tabs: { id: Tab; label: string }[] = [
-    { id: 'overview', label: 'Overview' },
-    { id: 'sms', label: 'SMS' },
-  ]
-
   const router = useRouter()
   const [actionLoadingKey, setActionLoadingKey] = useState<string | null>(null)
   const [moveTableId, setMoveTableId] = useState<string>('')
@@ -136,6 +335,22 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
   const [partySizeEditValue, setPartySizeEditValue] = useState('')
   const [partySizeEditSendSms, setPartySizeEditSendSms] = useState(true)
   const [smsBody, setSmsBody] = useState('')
+  const [showRefundDialog, setShowRefundDialog] = useState(false)
+  const [refundTotals, setRefundTotals] = useState({ totalRefunded: 0, totalPending: 0 })
+
+  const assignedTables = useMemo(
+    () => booking.table_booking_tables.map((assignment) => assignment.table).filter((table): table is BookingTableInner => Boolean(table)),
+    [booking.table_booking_tables],
+  )
+  const assignedTableLabel =
+    assignedTables.length > 0
+      ? assignedTables
+          .map((table) => table.name || table.table_number || 'Unnamed table')
+          .join(' + ')
+      : null
+  const assignedCapacity = assignedTables.reduce((sum, table) => sum + Number(table.capacity ?? 0), 0)
+  const guestName = [booking.customer?.first_name, booking.customer?.last_name].filter(Boolean).join(' ') || 'Unknown guest'
+  const depositState = getTableBookingDepositState(booking)
   const canonicalDepositAmount = getCanonicalDeposit(
     {
       party_size: booking.party_size ?? 0,
@@ -151,11 +366,54 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
     booking.payment_status === 'completed'
       ? Math.max(0, canonicalDepositAmount)
       : Math.max(0, Number(booking.deposit_amount ?? canonicalDepositAmount ?? 0))
-  const depositState = getTableBookingDepositState(booking)
 
-  // Refund state
-  const [showRefundDialog, setShowRefundDialog] = useState(false)
-  const [refundTotals, setRefundTotals] = useState({ totalRefunded: 0, totalPending: 0 })
+  const notes = [
+    { label: 'Special requirements', value: normaliseNote(booking.special_requirements) },
+    { label: 'Dietary requirements', value: normaliseNote(booking.dietary_requirements) },
+    { label: 'Allergies', value: normaliseNote(booking.allergies) },
+    { label: 'Celebration', value: normaliseNote(booking.celebration_type) },
+    { label: 'Internal notes', value: normaliseNote(booking.internal_notes) },
+    { label: 'Cancellation reason', value: normaliseNote(booking.cancellation_reason) },
+  ].filter((note) => note.value)
+
+  const lifecycleEvents = [
+    { label: 'Created', at: booking.created_at },
+    { label: 'Confirmed', at: booking.confirmed_at },
+    { label: 'Seated', at: booking.seated_at },
+    { label: 'Left', at: booking.left_at },
+    { label: 'No-show marked', at: booking.no_show_marked_at ?? booking.no_show_at },
+    { label: 'Cancelled', at: booking.cancelled_at },
+    { label: 'Completed', at: booking.completed_at },
+    { label: 'Deposit captured', at: booking.card_capture_completed_at },
+    { label: 'Reminder sent', at: booking.reminder_sent ? booking.updated_at : null },
+    { label: 'Review SMS sent', at: booking.review_sms_sent_at },
+    { label: 'Review clicked', at: booking.review_clicked_at },
+    { label: 'Sunday pre-order completed', at: booking.sunday_preorder_completed_at },
+  ].filter((event): event is { label: string; at: string } => Boolean(event.at))
+
+  const operationalFlags = [
+    depositState.kind === 'pending'
+      ? `Deposit still pending${depositState.amount != null ? ` (${formatGbp(depositState.amount)})` : ''}`
+      : null,
+    booking.deposit_waived ? 'Deposit waived' : null,
+    assignedTables.length === 0 ? 'No table assigned' : null,
+    !booking.customer?.mobile_number ? 'No mobile number on this customer' : null,
+    notes.some((note) => note.label === 'Allergies' || note.label === 'Dietary requirements')
+      ? 'Dietary or allergy notes present'
+      : null,
+    booking.hold_expires_at ? `Payment hold expires ${formatLondonDateTime(booking.hold_expires_at)}` : null,
+    booking.sunday_preorder_cutoff_at ? `Sunday pre-order cutoff ${formatLondonDateTime(booking.sunday_preorder_cutoff_at)}` : null,
+  ].filter((flag): flag is string => Boolean(flag))
+
+  const auditTrail = useMemo(
+    () =>
+      [...(booking.audit_trail ?? [])].sort((a, b) => {
+        const left = new Date(a.created_at).getTime()
+        const right = new Date(b.created_at).getTime()
+        return (Number.isFinite(right) ? right : 0) - (Number.isFinite(left) ? left : 0)
+      }),
+    [booking.audit_trail],
+  )
 
   useEffect(() => {
     if (!booking.id || booking.payment_status !== 'completed') return
@@ -172,7 +430,9 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
         setRefundTotals({ totalRefunded: completed, totalPending: pending })
       })
     )
-    return () => { cancelled = true }
+    return () => {
+      cancelled = true
+    }
   }, [booking.id, booking.payment_status])
 
   async function runAction<T>(
@@ -204,6 +464,11 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
       },
       'Booking updated'
     )
+  }
+
+  function openPartySizeEdit() {
+    setPartySizeEditValue(String(booking.party_size ?? ''))
+    setPartySizeEditOpen(true)
   }
 
   async function handleMoveTable() {
@@ -292,6 +557,7 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
         await requestTableBookingAction(`/api/boh/table-bookings/${booking.id}/sms`, {
           body: { message: trimmed },
         })
+        setSmsBody('')
       },
       'SMS sent to guest'
     )
@@ -346,264 +612,312 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
   }, [booking.id, canEdit])
 
   return (
-    <div>
-      {/* Tab bar */}
-      <div className="flex border-b border-gray-200 mb-6">
-        {tabs.map((t) => (
-          <button
-            key={t.id}
-            type="button"
-            onClick={() => setTab(t.id)}
-            className={`px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors ${
-              tab === t.id
-                ? 'border-blue-600 text-blue-600'
-                : 'border-transparent text-gray-500 hover:text-gray-700'
-            }`}
-          >
-            {t.label}
-          </button>
-        ))}
-      </div>
-
-      {/* Tab content */}
-      {tab === 'overview' && (
-        <div className="space-y-4 max-w-2xl">
-          {/* Status strip */}
-          <div className="flex flex-wrap items-center gap-3 p-4 bg-gray-50 rounded-lg border border-gray-200">
-            <StatusBadge booking={booking} />
-            {booking.party_size != null && (
-              <span className="text-sm text-gray-600">{booking.party_size} covers</span>
-            )}
-            {booking.table_booking_tables.length > 0 && (
-              <span className="text-sm text-gray-600">
-                {booking.table_booking_tables.map((t) => t.table?.name).filter(Boolean).join(', ')}
-              </span>
-            )}
-            {booking.booking_type && (
-              <span className="text-xs font-medium uppercase tracking-wide text-gray-500 bg-gray-200 px-2 py-0.5 rounded">
-                {booking.booking_type.replace(/_/g, ' ')}
-              </span>
-            )}
-            {depositState.kind !== 'none' && (
-              <span className={`text-xs font-medium px-2 py-0.5 rounded border ${getTableBookingDepositBadgeClasses(depositState.kind)}`}>
-                {depositState.label}
-                {depositState.amount != null ? ` · ${formatGbp(depositState.amount)}` : ''}
-              </span>
-            )}
-          </div>
-
-          {/* Guest info */}
-          <div className="rounded-lg border border-gray-200 bg-white p-4 space-y-1">
-            <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 mb-2">Guest</p>
-            <p className="text-sm font-medium text-gray-900">
-              {[booking.customer?.first_name, booking.customer?.last_name].filter(Boolean).join(' ') || '—'}
-            </p>
-            {booking.customer?.mobile_number && (
-              <p className="text-sm text-gray-600">{booking.customer.mobile_number}</p>
-            )}
-            {booking.seated_at && (
-              <p className="text-xs text-gray-400">
-                Seated: {formatLondonTime(booking.seated_at)}
-              </p>
-            )}
-            {booking.left_at && (
-              <p className="text-xs text-gray-400">
-                Left: {formatLondonTime(booking.left_at)}
-              </p>
-            )}
-            {booking.no_show_at && (
-              <p className="text-xs text-red-400">
-                No-show: {formatLondonTime(booking.no_show_at)}
-              </p>
-            )}
-          </div>
-
-          {/* Notes — conditional */}
-          {(booking.special_requirements || booking.dietary_requirements || booking.allergies || booking.celebration_type) && (
-            <div className="rounded-lg border border-gray-200 bg-white p-4">
-              <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 mb-2">Notes</p>
-              {booking.special_requirements && (
-                <p className="text-sm text-gray-700 mb-1">{booking.special_requirements}</p>
+    <div className="space-y-6">
+      <section className="rounded-lg border border-gray-200 bg-white p-4">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <div className="space-y-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <StatusBadge booking={booking} />
+              {depositState.kind !== 'none' && (
+                <span className={`text-xs font-medium px-2 py-0.5 rounded border ${getTableBookingDepositBadgeClasses(depositState.kind)}`}>
+                  {depositState.label}
+                  {depositState.amount != null ? ` · ${formatGbp(depositState.amount)}` : ''}
+                </span>
               )}
-              {booking.dietary_requirements && (
-                <p className="text-sm text-gray-700 mb-1">Dietary: {booking.dietary_requirements}</p>
-              )}
-              {booking.allergies && (
-                <p className="text-sm text-gray-700 mb-1">Allergies: {booking.allergies}</p>
-              )}
-              {booking.celebration_type && (
-                <p className="text-sm text-gray-700">Celebration: {booking.celebration_type}</p>
+              {booking.booking_type && (
+                <Badge tone="neutral">{formatLabel(booking.booking_type)}</Badge>
               )}
             </div>
-          )}
-
-          {/* Deposit section — only when a deposit is involved */}
-          {depositState.kind !== 'none' && (
-            <div className="rounded-lg border border-gray-200 bg-white p-4 space-y-1">
-              <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 mb-2">Deposit</p>
-              {depositState.kind === 'paid' ? (
-                <div className="space-y-0.5">
-                  <div className="flex items-center gap-2">
-                    <span className="inline-block w-2 h-2 rounded-full bg-green-500" />
-                    <span className="text-sm font-medium text-green-700">
-                      Paid{depositState.methodLabel ? ` via ${depositState.methodLabel}` : ''}
-                    </span>
-                    <span className="text-green-500 text-sm">✓</span>
-                  </div>
-                  {refundableDepositAmount > 0 && (
-                    <p className="text-sm text-gray-700 pl-4">
-                      {formatGbp(refundableDepositAmount)}
-                    </p>
-                  )}
-                  {booking.paypal_deposit_capture_id && (
-                    <p className="text-xs text-gray-400 pl-4">
-                      Capture ID: {booking.paypal_deposit_capture_id}
-                    </p>
-                  )}
-                  {/* Refund status */}
-                  {refundTotals.totalRefunded > 0 && (
-                    <div className="pl-4 mt-1">
-                      <Badge
-                        variant={refundTotals.totalRefunded >= refundableDepositAmount ? 'info' : 'warning'}
-                        size="sm"
-                      >
-                        {refundTotals.totalRefunded >= refundableDepositAmount ? 'Refunded' : 'Partially Refunded'}
-                      </Badge>
-                    </div>
-                  )}
-                  {/* Refund button */}
-                  {canRefund && refundTotals.totalRefunded < refundableDepositAmount && (
-                    <div className="pl-4 mt-2">
-                      <Button
-                        variant="secondary"
-                        size="sm"
-                        onClick={() => setShowRefundDialog(true)}
-                      >
-                        Process Refund
-                      </Button>
-                    </div>
-                  )}
-                  {/* Refund history */}
-                  <div className="mt-3">
-                    <RefundHistoryTable
-                      sourceType="table_booking"
-                      sourceId={booking.id}
-                    />
-                  </div>
-                </div>
-              ) : (
-                <div className="flex items-center gap-2">
-                  {depositState.kind === 'pending' && <span className="text-amber-500 text-sm">⚠</span>}
-                  <span className={`text-sm font-medium ${depositState.kind === 'pending' ? 'text-amber-700' : 'text-gray-700'}`}>
-                    {depositState.label}
-                    {depositState.amount != null ? ` — ${formatGbp(depositState.amount)}` : ''}
-                  </span>
-                </div>
-              )}
+            <div>
+              <p className="text-xl font-semibold text-gray-900">{guestName}</p>
+              <p className="text-sm text-gray-500">
+                {formatBookingDate(booking.booking_date)}
+                {booking.booking_time ? ` at ${booking.booking_time.slice(0, 5)}` : ''}
+                {booking.party_size != null ? ` · ${booking.party_size} covers` : ''}
+                {assignedTableLabel ? ` · ${assignedTableLabel}` : ''}
+              </p>
             </div>
-          )}
+          </div>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:min-w-[520px]">
+            <div className="rounded-md bg-gray-50 px-3 py-2">
+              <p className="text-xs text-gray-500">Covers</p>
+              <p className="text-lg font-semibold text-gray-900">{booking.party_size ?? '-'}</p>
+            </div>
+            <div className="rounded-md bg-gray-50 px-3 py-2">
+              <p className="text-xs text-gray-500">Tables</p>
+              <p className="text-lg font-semibold text-gray-900">{assignedTables.length || '-'}</p>
+            </div>
+            <div className="rounded-md bg-gray-50 px-3 py-2">
+              <p className="text-xs text-gray-500">Capacity</p>
+              <p className="text-lg font-semibold text-gray-900">{assignedCapacity || '-'}</p>
+            </div>
+            <div className="rounded-md bg-gray-50 px-3 py-2">
+              <p className="text-xs text-gray-500">Audit</p>
+              <p className="text-lg font-semibold text-gray-900">{auditTrail.length}</p>
+            </div>
+          </div>
+        </div>
+      </section>
 
-          {/* Quick actions */}
+      <div className="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1fr)_420px]">
+        <div className="space-y-6">
+          <SectionCard title="Booking Details">
+            <dl className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
+              <DetailItem label="Reference" value={booking.booking_reference} />
+              <DetailItem label="Guest" value={guestName} />
+              <DetailItem
+                label="Mobile"
+                value={
+                  booking.customer?.mobile_number ? (
+                    <a href={`tel:${booking.customer.mobile_number}`} className="text-blue-600 hover:underline">
+                      {booking.customer.mobile_number}
+                    </a>
+                  ) : '-'
+                }
+              />
+              <DetailItem label="Date" value={formatBookingDate(booking.booking_date)} />
+              <DetailItem label="Time" value={booking.booking_time ? booking.booking_time.slice(0, 5) : '-'} />
+              <DetailItem label="Duration" value={formatDuration(booking.duration_minutes)} />
+              <DetailItem label="Party size" value={booking.party_size ?? '-'} />
+              <DetailItem label="Committed size" value={booking.committed_party_size ?? '-'} />
+              <DetailItem label="Assigned tables" value={assignedTableLabel ?? '-'} />
+              <DetailItem label="Booking type" value={formatLabel(booking.booking_type)} />
+              <DetailItem label="Purpose" value={formatLabel(booking.booking_purpose)} />
+              <DetailItem label="Source" value={formatLabel(booking.source)} />
+            </dl>
+          </SectionCard>
+
+          <SectionCard title="Notes And Requirements">
+            {notes.length > 0 ? (
+              <dl className="space-y-4">
+                {notes.map((note) => (
+                  <div key={note.label}>
+                    <dt className="text-xs font-semibold uppercase tracking-wide text-gray-500">{note.label}</dt>
+                    <dd className="mt-1 whitespace-pre-wrap text-sm text-gray-900">{note.value}</dd>
+                  </div>
+                ))}
+              </dl>
+            ) : (
+              <p className="text-sm text-gray-500">No notes, dietary requirements, allergies, or internal notes recorded.</p>
+            )}
+          </SectionCard>
+
+          <SectionCard title="Lifecycle">
+            {lifecycleEvents.length > 0 ? (
+              <ol className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                {lifecycleEvents.map((event) => (
+                  <li key={`${event.label}-${event.at}`} className="rounded-md border border-gray-100 bg-gray-50 px-3 py-2">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">{event.label}</p>
+                    <p className="mt-1 text-sm text-gray-900">{formatLondonDateTime(event.at)}</p>
+                  </li>
+                ))}
+              </ol>
+            ) : (
+              <p className="text-sm text-gray-500">No lifecycle timestamps recorded yet.</p>
+            )}
+          </SectionCard>
+        </div>
+
+        <aside className="space-y-6">
           {canEdit && (
-            <div className="rounded-lg border border-gray-200 bg-white p-4 space-y-3">
-              <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Quick actions</p>
-              <div className="flex flex-wrap gap-2">
-                <Button
-                  size="sm"
-                  onClick={() => void handleStatusAction('seated')}
-                  loading={actionLoadingKey === 'status:seated'}
-                  disabled={Boolean(actionLoadingKey)}
-                >
-                  Seat guests
-                </Button>
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  onClick={() => void handleStatusAction('left')}
-                  loading={actionLoadingKey === 'status:left'}
-                  disabled={Boolean(actionLoadingKey)}
-                >
-                  Mark left
-                </Button>
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  onClick={() => void handleStatusAction('confirmed')}
-                  loading={actionLoadingKey === 'status:confirmed'}
-                  disabled={Boolean(actionLoadingKey)}
-                >
-                  Mark confirmed
-                </Button>
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  onClick={() => void handleStatusAction('completed')}
-                  loading={actionLoadingKey === 'status:completed'}
-                  disabled={Boolean(actionLoadingKey)}
-                >
-                  Mark completed
-                </Button>
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  onClick={() => setPartySizeEditOpen(true)}
-                  disabled={Boolean(actionLoadingKey)}
-                >
-                  Edit party size
-                </Button>
-                {booking.status === 'pending_payment' && (
+            <SectionCard title="Actions">
+              <div className="space-y-4">
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    size="sm"
+                    onClick={() => void handleStatusAction('seated')}
+                    loading={actionLoadingKey === 'status:seated'}
+                    disabled={Boolean(actionLoadingKey)}
+                  >
+                    Seat guests
+                  </Button>
                   <Button
                     size="sm"
                     variant="secondary"
-                    onClick={() => void handleCopyDepositLink()}
-                    loading={actionLoadingKey === 'deposit-link'}
+                    onClick={() => void handleStatusAction('left')}
+                    loading={actionLoadingKey === 'status:left'}
                     disabled={Boolean(actionLoadingKey)}
                   >
-                    Copy deposit link
+                    Mark left
                   </Button>
-                )}
-              </div>
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    onClick={() => void handleStatusAction('confirmed')}
+                    loading={actionLoadingKey === 'status:confirmed'}
+                    disabled={Boolean(actionLoadingKey)}
+                  >
+                    Mark confirmed
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    onClick={() => void handleStatusAction('completed')}
+                    loading={actionLoadingKey === 'status:completed'}
+                    disabled={Boolean(actionLoadingKey)}
+                  >
+                    Mark completed
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    onClick={openPartySizeEdit}
+                    disabled={Boolean(actionLoadingKey)}
+                  >
+                    Edit party size
+                  </Button>
+                  {booking.status === 'pending_payment' && (
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      onClick={() => void handleCopyDepositLink()}
+                      loading={actionLoadingKey === 'deposit-link'}
+                      disabled={Boolean(actionLoadingKey)}
+                    >
+                      Copy deposit link
+                    </Button>
+                  )}
+                </div>
 
-              {/* Move table */}
-              <div className="flex flex-col gap-2 sm:flex-row pt-2 border-t border-gray-100">
-                <select
-                  value={moveTableId}
-                  onChange={(e) => setMoveTableId(e.target.value)}
-                  disabled={loadingMoveTables || availableMoveTables.length === 0}
-                  className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-gray-500 focus:outline-none focus:ring-2 focus:ring-gray-200"
-                >
-                  <option value="">
-                    {loadingMoveTables
-                      ? 'Loading available tables…'
-                      : availableMoveTables.length === 0
-                        ? 'No available tables'
-                        : 'Select table to move booking'}
-                  </option>
-                  {availableMoveTables.map((table) => (
-                    <option key={table.id} value={table.id}>
-                      {table.name}
-                      {table.table_number ? ` (${table.table_number})` : ''}
-                      {table.capacity ? ` · cap ${table.capacity}` : ''}
-                    </option>
-                  ))}
-                </select>
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  loading={actionLoadingKey === 'move-table'}
-                  disabled={loadingMoveTables || availableMoveTables.length === 0 || Boolean(actionLoadingKey)}
-                  onClick={() => void handleMoveTable()}
-                >
-                  Move
-                </Button>
+                <div className="space-y-2 border-t border-gray-100 pt-4">
+                  <label htmlFor="move-table-select" className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                    Move table
+                  </label>
+                  <div className="flex flex-col gap-2 sm:flex-row xl:flex-col 2xl:flex-row">
+                    <select
+                      id="move-table-select"
+                      value={moveTableId}
+                      onChange={(e) => setMoveTableId(e.target.value)}
+                      disabled={loadingMoveTables || availableMoveTables.length === 0}
+                      className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-gray-500 focus:outline-none focus:ring-2 focus:ring-gray-200"
+                    >
+                      <option value="">
+                        {loadingMoveTables
+                          ? 'Loading available tables...'
+                          : availableMoveTables.length === 0
+                            ? 'No available tables'
+                            : 'Select table to move booking'}
+                      </option>
+                      {availableMoveTables.map((table) => (
+                        <option key={table.id} value={table.id}>
+                          {table.name}
+                          {table.table_number ? ` (${table.table_number})` : ''}
+                          {table.capacity ? ` - cap ${table.capacity}` : ''}
+                        </option>
+                      ))}
+                    </select>
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      loading={actionLoadingKey === 'move-table'}
+                      disabled={loadingMoveTables || availableMoveTables.length === 0 || Boolean(actionLoadingKey)}
+                      onClick={() => void handleMoveTable()}
+                    >
+                      Move
+                    </Button>
+                  </div>
+                </div>
               </div>
-            </div>
+            </SectionCard>
           )}
 
-          {/* Danger zone — separate section, gated on canManage independently of canEdit */}
+          <SectionCard title="Payment And Deposit">
+            <div className="space-y-4">
+              <div className="flex flex-wrap items-center gap-2">
+                {depositState.kind !== 'none' ? (
+                  <span className={`text-xs font-medium px-2 py-0.5 rounded border ${getTableBookingDepositBadgeClasses(depositState.kind)}`}>
+                    {depositState.label}
+                    {depositState.amount != null ? ` · ${formatGbp(depositState.amount)}` : ''}
+                  </span>
+                ) : (
+                  <Badge tone="neutral">No deposit required</Badge>
+                )}
+                {booking.payment_status && <Badge tone="neutral">{formatLabel(booking.payment_status)}</Badge>}
+              </div>
+
+              <dl className="grid grid-cols-1 gap-3 text-sm sm:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2">
+                <DetailItem label="Method" value={formatLabel(booking.payment_method)} />
+                <DetailItem label="Refundable" value={refundableDepositAmount > 0 ? formatGbp(refundableDepositAmount) : '-'} />
+                <DetailItem label="Locked amount" value={booking.deposit_amount_locked != null ? formatGbp(Number(booking.deposit_amount_locked)) : '-'} />
+                <DetailItem label="Captured" value={formatLondonDateTime(booking.card_capture_completed_at)} />
+              </dl>
+
+              {booking.paypal_deposit_capture_id && (
+                <p className="break-all text-xs text-gray-500">Capture ID: {booking.paypal_deposit_capture_id}</p>
+              )}
+
+              {refundTotals.totalRefunded > 0 && (
+                <Badge
+                  variant={refundTotals.totalRefunded >= refundableDepositAmount ? 'info' : 'warning'}
+                  size="sm"
+                >
+                  {refundTotals.totalRefunded >= refundableDepositAmount ? 'Refunded' : 'Partially refunded'}
+                </Badge>
+              )}
+
+              {canRefund && booking.payment_status === 'completed' && refundTotals.totalRefunded < refundableDepositAmount && (
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => setShowRefundDialog(true)}
+                >
+                  Process refund
+                </Button>
+              )}
+
+              {booking.payment_status === 'completed' && (
+                <div className="border-t border-gray-100 pt-3">
+                  <RefundHistoryTable sourceType="table_booking" sourceId={booking.id} />
+                </div>
+              )}
+            </div>
+          </SectionCard>
+
+          <SectionCard title="Send SMS">
+            {canEdit ? (
+              <div className="space-y-3">
+                <textarea
+                  value={smsBody}
+                  onChange={(e) => setSmsBody(e.target.value)}
+                  rows={5}
+                  maxLength={640}
+                  className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:border-gray-500 focus:outline-none focus:ring-2 focus:ring-gray-200"
+                  placeholder="Type message..."
+                />
+                <div className="flex items-center justify-between">
+                  <p className="text-xs text-gray-500">{smsBody.length}/640</p>
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    loading={actionLoadingKey === 'send-sms'}
+                    disabled={Boolean(actionLoadingKey)}
+                    onClick={() => void handleSendSms()}
+                  >
+                    Send SMS
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <p className="text-sm text-gray-500">You do not have permission to send SMS messages.</p>
+            )}
+          </SectionCard>
+
+          <SectionCard title="Operational Flags">
+            {operationalFlags.length > 0 ? (
+              <ul className="space-y-2">
+                {operationalFlags.map((flag) => (
+                  <li key={flag} className="rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                    {flag}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-sm text-gray-500">No operational flags for this booking.</p>
+            )}
+          </SectionCard>
+
           {canManage && (
-            <div className="rounded-lg border border-red-200 bg-red-50 p-4 space-y-3">
-              <p className="text-xs font-semibold uppercase tracking-wide text-red-500">Danger zone</p>
+            <SectionCard title="Danger Zone" className="border-red-200">
               <div className="flex flex-wrap gap-2">
                 <Button
                   size="sm"
@@ -630,43 +944,50 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
                   Delete booking
                 </Button>
               </div>
-            </div>
+            </SectionCard>
           )}
-        </div>
-      )}
-      {tab === 'sms' && (
-        <div className="space-y-4 max-w-lg">
-          {canEdit ? (
-            <div className="rounded-lg border border-gray-200 bg-white p-4 space-y-3">
-              <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Send SMS to guest</p>
-              <textarea
-                value={smsBody}
-                onChange={(e) => setSmsBody(e.target.value)}
-                rows={5}
-                maxLength={640}
-                className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:border-gray-500 focus:outline-none focus:ring-2 focus:ring-gray-200"
-                placeholder="Type message…"
-              />
-              <div className="flex items-center justify-between">
-                <p className="text-xs text-gray-500">{smsBody.length}/640</p>
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  loading={actionLoadingKey === 'send-sms'}
-                  disabled={Boolean(actionLoadingKey)}
-                  onClick={() => void handleSendSms()}
-                >
-                  Send SMS
-                </Button>
-              </div>
-            </div>
-          ) : (
-            <p className="text-sm text-gray-500">You do not have permission to send SMS messages.</p>
-          )}
-        </div>
-      )}
+        </aside>
+      </div>
 
-      {/* No-show confirmation */}
+      <SectionCard title="Audit Trail" description="Every recorded booking audit event, newest first.">
+        {auditTrail.length === 0 ? (
+          <p className="text-sm text-gray-500">No audit events have been recorded for this booking yet.</p>
+        ) : (
+          <ol className="divide-y divide-gray-100">
+            {auditTrail.map((entry) => {
+              const details = getAuditDetails(entry)
+              return (
+                <li key={entry.id} className="grid grid-cols-1 gap-3 py-4 lg:grid-cols-[220px_minmax(0,1fr)_180px]">
+                  <div>
+                    <p className="text-sm font-medium text-gray-900">{formatLondonDateTime(entry.created_at)}</p>
+                    <p className="mt-0.5 text-xs text-gray-500">{getAuditActor(entry)}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm font-semibold text-gray-900">{formatAuditEvent(entry.event)}</p>
+                    {details.length > 0 && (
+                      <ul className="mt-2 space-y-1">
+                        {details.map((detail) => (
+                          <li key={detail} className="whitespace-pre-wrap text-sm text-gray-600">
+                            {detail}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                  <div className="lg:text-right">
+                    {entry.new_status ? (
+                      <Badge tone="neutral">{formatLabel(entry.new_status)}</Badge>
+                    ) : (
+                      <span className="text-xs text-gray-400">No status change</span>
+                    )}
+                  </div>
+                </li>
+              )
+            })}
+          </ol>
+        )}
+      </SectionCard>
+
       <ConfirmDialog
         open={noShowConfirmOpen}
         onClose={() => setNoShowConfirmOpen(false)}
@@ -681,7 +1002,6 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
         closeOnConfirm={false}
       />
 
-      {/* Cancel confirmation */}
       <ConfirmDialog
         open={cancelConfirmOpen}
         onClose={() => setCancelConfirmOpen(false)}
@@ -697,7 +1017,6 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
         closeOnConfirm={false}
       />
 
-      {/* Delete confirmation */}
       <ConfirmDialog
         open={deleteConfirmOpen}
         onClose={() => setDeleteConfirmOpen(false)}
@@ -709,7 +1028,6 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
         confirmText="Delete"
       />
 
-      {/* Party size edit modal */}
       <Modal
         open={partySizeEditOpen}
         onClose={() => setPartySizeEditOpen(false)}
@@ -756,7 +1074,6 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
         </div>
       </Modal>
 
-      {/* Refund dialog */}
       {canRefund && booking.payment_status === 'completed' && (
         <RefundDialog
           open={showRefundDialog}

@@ -8,6 +8,7 @@ import {
   Bar,
   CartesianGrid,
   ComposedChart,
+  Line,
   ResponsiveContainer,
   Tooltip as RechartsTooltip,
   XAxis,
@@ -99,17 +100,18 @@ interface HoursByEmployeeClientProps {
 interface HolidayRecordRow {
   employeeId: string;
   name: string;
-  colour: string;
   date: string;
 }
 
 interface SickRecordRow {
   employeeId: string;
   name: string;
-  colour: string;
   date: string;
   reason: string | null;
 }
+
+const HOLIDAY_COLOUR = '#d97706';
+const SICK_COLOUR = '#2563eb';
 
 function formatHours(value: number): string {
   return `${value.toFixed(1)}h`;
@@ -484,7 +486,6 @@ export default function HoursByEmployeeClient({
       .flatMap(summary => summary.dates.map(date => ({
         employeeId: summary.employeeId,
         name: summary.name,
-        colour: summary.colour,
         date,
       })))
       .sort((a, b) => a.date.localeCompare(b.date) || a.name.localeCompare(b.name)),
@@ -495,7 +496,6 @@ export default function HoursByEmployeeClient({
       .flatMap(summary => summary.entries.map(entry => ({
         employeeId: summary.employeeId,
         name: summary.name,
-        colour: summary.colour,
         date: entry.date,
         reason: entry.reason,
       })))
@@ -576,7 +576,7 @@ export default function HoursByEmployeeClient({
 
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-6">
         <Card>
-          <p className="text-xs font-medium text-text-muted">Worked hours</p>
+          <p className="text-xs font-medium text-text-muted">Actual + planned hours</p>
           <p className="mt-1 text-2xl font-semibold text-text-strong">{formatHours(totalHours)}</p>
         </Card>
         <Card>
@@ -603,15 +603,15 @@ export default function HoursByEmployeeClient({
 
       <Card>
         <CardHeader
-          title="Worked hours by week"
+          title="Hours by week"
           subtitle={`${shortDate(fromDate)} - ${shortDate(toDate)}`}
           action={
             <div className="flex items-center gap-2 text-xs text-text-muted">
               <span className="h-2.5 w-2.5 rounded-full bg-primary" />
-              <span>Worked hours</span>
-              <span className="ml-2 h-2.5 w-2.5 rounded-full bg-warning" />
+              <span>Actual + planned hours</span>
+              <span className="ml-2 h-2.5 w-2.5 rounded-full" style={{ backgroundColor: HOLIDAY_COLOUR }} />
               <span>Holiday days</span>
-              <span className="ml-2 h-2.5 w-2.5 rounded-full bg-danger" />
+              <span className="ml-2 h-2.5 w-2.5 rounded-full" style={{ backgroundColor: SICK_COLOUR }} />
               <span>Couldn&apos;t Work days</span>
             </div>
           }
@@ -619,7 +619,7 @@ export default function HoursByEmployeeClient({
         <CardBody>
           {series.length === 0 || chartData.length === 0 ? (
             <div className="rounded-default border border-dashed border-border bg-surface-2 p-8 text-center text-sm text-text-muted">
-              Select at least one employee to show worked hours.
+              Select at least one employee to show hours.
             </div>
           ) : (
             <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_300px]">
@@ -660,15 +660,16 @@ export default function HoursByEmployeeClient({
                       />
                       <RechartsTooltip content={<HoursTooltip />} cursor={{ fill: 'var(--color-surface-hover)' }} />
                       {series.map(item => (
-                        <Bar
+                        <Line
                           key={item.employeeId}
                           yAxisId="hours"
                           dataKey={item.employeeId}
                           name={item.name}
-                          fill={item.colour}
-                          radius={[4, 4, 0, 0]}
-                          maxBarSize={maxBarSize}
-                          minPointSize={2}
+                          type="linear"
+                          stroke={item.colour}
+                          strokeWidth={2}
+                          dot={false}
+                          activeDot={{ r: 3 }}
                           isAnimationActive={false}
                         />
                       ))}
@@ -676,20 +677,18 @@ export default function HoursByEmployeeClient({
                         yAxisId="absence"
                         dataKey="__holidayDays"
                         name="Holiday days"
-                        fill="var(--color-warning)"
+                        fill={HOLIDAY_COLOUR}
                         radius={[4, 4, 0, 0]}
                         maxBarSize={maxBarSize}
-                        minPointSize={2}
                         isAnimationActive={false}
                       />
                       <Bar
                         yAxisId="absence"
                         dataKey="__sickDays"
                         name="Couldn't Work days"
-                        fill="var(--color-danger)"
+                        fill={SICK_COLOUR}
                         radius={[4, 4, 0, 0]}
                         maxBarSize={maxBarSize}
-                        minPointSize={2}
                         isAnimationActive={false}
                       />
                     </ComposedChart>
@@ -750,7 +749,7 @@ export default function HoursByEmployeeClient({
                       <tr key={`${row.employeeId}-${row.date}`} className="hover:bg-surface-hover">
                         <td className="px-3 py-2">
                           <span className="flex min-w-0 items-center gap-2">
-                            <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: row.colour }} />
+                            <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: HOLIDAY_COLOUR }} />
                             <span className="truncate font-medium text-text-strong">{row.name}</span>
                           </span>
                         </td>
@@ -791,7 +790,7 @@ export default function HoursByEmployeeClient({
                       <tr key={`${row.employeeId}-${row.date}`} className="hover:bg-surface-hover">
                         <td className="px-3 py-2">
                           <span className="flex min-w-0 items-center gap-2">
-                            <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: row.colour }} />
+                            <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: SICK_COLOUR }} />
                             <span className="truncate font-medium text-text-strong">{row.name}</span>
                           </span>
                         </td>
