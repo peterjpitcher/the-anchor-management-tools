@@ -38,9 +38,9 @@ const nextConfig = {
     'get-uri',
     'data-uri-to-buffer',
   ],
-  webpack: (config) => {
-    // Keep filesystem cache enabled by default for faster incremental builds.
-    if (process.env.NEXT_DISABLE_WEBPACK_CACHE === '1') {
+  webpack: (config, { dev }) => {
+    // Production builds have intermittently emitted server chunks with stale paths.
+    if (!dev || process.env.NEXT_DISABLE_WEBPACK_CACHE === '1') {
       config.cache = false
     }
     if (Array.isArray(config.externals)) {

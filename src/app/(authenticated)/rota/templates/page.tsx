@@ -7,6 +7,7 @@ import { getShiftTemplates } from '@/app/actions/rota-templates';
 import { getActiveEmployeesForRota } from '@/app/actions/rota';
 import { getDepartments } from '@/app/actions/budgets';
 import ShiftTemplatesManager from './ShiftTemplatesManager';
+import { rotaNavItems } from '../nav';
 
 export const dynamic = 'force-dynamic';
 
@@ -28,13 +29,7 @@ export default async function ShiftTemplatesPage() {
     <PageLayout
       title="Shift Templates"
       subtitle="Create reusable shift blocks for the rota palette"
-      navItems={[
-        { label: 'Rota', href: '/rota' },
-        { label: 'Leave', href: '/rota/leave' },
-        { label: 'Timeclock', href: '/rota/timeclock' },
-        { label: 'Labour Costs', href: '/rota/dashboard' },
-        { label: 'Payroll', href: '/rota/payroll' },
-      ]}
+      navItems={rotaNavItems}
     >
       <Section
         title="Templates"
