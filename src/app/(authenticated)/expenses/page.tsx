@@ -31,6 +31,7 @@ export default async function ExpensesPage(): Promise<React.JSX.Element> {
           breadcrumbs={[{ label: 'Finance' }, { label: 'Expenses' }]}
           title="Expenses"
           subtitle="Track and manage business expenses with receipt images."
+          className="mb-0"
         />
         <Alert tone="danger" title="Failed to load expenses">
           {loadError}
@@ -45,6 +46,7 @@ export default async function ExpensesPage(): Promise<React.JSX.Element> {
         breadcrumbs={[{ label: 'Finance' }, { label: 'Expenses' }]}
         title="Expenses"
         subtitle="Track and manage business expenses with receipt images."
+        className="mb-0"
       />
       <ExpensesClient
         initialExpenses={expensesResult.data ?? []}

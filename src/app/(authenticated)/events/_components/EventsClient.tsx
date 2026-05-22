@@ -230,6 +230,7 @@ export default function EventsClient({
       <PageHeader
         title="Events"
         subtitle="Manage venue events and bookings"
+        className="mb-0"
         actions={
           <div className="flex items-center gap-3">
             <Segmented

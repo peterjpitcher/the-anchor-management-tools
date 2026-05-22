@@ -1,12 +1,11 @@
 import { getMonthlyReceiptInsights } from '@/app/actions/receipts'
 import { MonthlyCharts, StackedBreakdownChart } from './MonthlyCharts'
-import { PageLayout } from '@/ds'
 import { Card } from '@/ds'
 import { EmptyState } from '@/ds'
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { checkUserPermission } from '@/app/actions/rbac'
-import { getReceiptsNavItems } from '../receiptsNavItems'
+import { ReceiptsPageChrome } from '../_components/ReceiptsPageChrome'
 
 const currencyFormatter = new Intl.NumberFormat('en-GB', {
   style: 'currency',
@@ -97,17 +96,17 @@ export default async function ReceiptsMonthlyPage() {
 
   if (months.length === 0) {
     return (
-      <PageLayout
+      <ReceiptsPageChrome
         title="Monthly receipts overview"
         subtitle="Track income and spending trends across recent months."
-        navItems={getReceiptsNavItems({ view: 'monthly' })}
+        navState={{ view: 'monthly' }}
       >
         <EmptyState
           title="No receipt data yet"
           description="Upload a bank statement to start tracking monthly trends."
           action={<Link href="/receipts" className="text-emerald-600 hover:text-emerald-500">Go to receipts workspace</Link>}
         />
-      </PageLayout>
+      </ReceiptsPageChrome>
     )
   }
 
@@ -213,11 +212,10 @@ export default async function ReceiptsMonthlyPage() {
   }
 
   return (
-    <PageLayout
+    <ReceiptsPageChrome
       title="Monthly receipts overview"
       subtitle="Track income and spending trends across recent months."
-      backButton={{ label: 'Back to receipts', href: '/receipts' }}
-      navItems={getReceiptsNavItems({ view: 'monthly' })}
+      navState={{ view: 'monthly' }}
     >
       <section className="space-y-6">
         <div className="grid gap-4 lg:grid-cols-3">
@@ -316,7 +314,7 @@ export default async function ReceiptsMonthlyPage() {
           </div>
         </Card>
       </section>
-    </PageLayout>
+    </ReceiptsPageChrome>
   )
 }
 

@@ -306,6 +306,7 @@ export default function EventDetailClient({
           { label: 'Events', href: '/events' },
           { label: event.name },
         ]}
+        className="mb-0"
         actions={
           <div className="flex items-center gap-2">
             <Badge tone={getStatusTone(event.event_status)} dot>

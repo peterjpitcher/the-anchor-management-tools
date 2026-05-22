@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, FormEvent, ChangeEvent } from 'react'
+import { useEffect, useMemo, useState, FormEvent, ChangeEvent } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Button, Input, Select, Checkbox } from '@/ds'
 import type { ReceiptWorkspaceFilters } from '@/app/actions/receipts'
@@ -19,6 +19,8 @@ interface ReceiptFiltersProps {
   }
   availableMonths: string[]
 }
+
+type LocalFilters = ReceiptFiltersProps['filters']
 
 function formatMonthLabel(value: string) {
   const [year, month] = value.split('-').map((part) => Number.parseInt(part, 10))
@@ -39,6 +41,20 @@ function formatMonthLabel(value: string) {
 export function ReceiptFilters({ filters, availableMonths }: ReceiptFiltersProps) {
   const router = useRouter()
   const searchParams = useSearchParams()
+  const [localFilters, setLocalFilters] = useState<LocalFilters>(filters)
+
+  useEffect(() => {
+    setLocalFilters(filters)
+  }, [
+    filters.status,
+    filters.direction,
+    filters.showOnlyOutstanding,
+    filters.groupByVendor,
+    filters.missingVendorOnly,
+    filters.missingExpenseOnly,
+    filters.search,
+    filters.month,
+  ])
 
   const monthOptions = useMemo(() => {
     const result: string[] = []
@@ -48,11 +64,11 @@ export function ReceiptFilters({ filters, availableMonths }: ReceiptFiltersProps
         seen.add(value)
         result.push(value)
       })
-    if (filters.month && !seen.has(filters.month)) {
-      result.push(filters.month)
+    if (localFilters.month && !seen.has(localFilters.month)) {
+      result.push(localFilters.month)
     }
     return result.sort((a, b) => b.localeCompare(a))
-  }, [availableMonths, filters.month])
+  }, [availableMonths, localFilters.month])
 
   const statusOptions = useMemo(() => (
     [
@@ -87,48 +103,59 @@ export function ReceiptFilters({ filters, availableMonths }: ReceiptFiltersProps
     router.replace(`/receipts${query ? `?${query}` : ''}`, { scroll: false })
   }
 
+  function applyFilters(nextFilters: LocalFilters) {
+    setLocalFilters(nextFilters)
+    updateQuery({
+      status: nextFilters.status ?? null,
+      direction: nextFilters.direction,
+      outstanding: nextFilters.showOnlyOutstanding ? null : '0',
+      groupByVendor: nextFilters.groupByVendor ? null : '0',
+      needsVendor: nextFilters.missingVendorOnly ? '1' : null,
+      needsExpense: nextFilters.missingExpenseOnly ? '1' : null,
+      search: nextFilters.search.trim() || null,
+      month: nextFilters.month ?? null,
+    })
+  }
+
   function handleStatusChange(event: ChangeEvent<HTMLSelectElement>) {
-    updateQuery({ status: event.target.value })
+    applyFilters({ ...localFilters, status: event.target.value as LocalFilters['status'] })
   }
 
   function handleDirectionChange(event: ChangeEvent<HTMLSelectElement>) {
-    updateQuery({ direction: event.target.value })
+    applyFilters({ ...localFilters, direction: event.target.value as LocalFilters['direction'] })
   }
 
   function handleMonthSelect(value: string) {
-    if (!value || value === filters.month) return
-    updateQuery({ month: value })
+    if (!value || value === localFilters.month) return
+    applyFilters({ ...localFilters, month: value })
   }
 
   function handleSearchSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    const form = event.currentTarget
-    const formData = new FormData(form)
-    const query = (formData.get('search') as string)?.trim() ?? ''
-    updateQuery({ search: query || null })
+    applyFilters({ ...localFilters, search: localFilters.search.trim() })
   }
 
   function handleOutstandingToggle(checked: boolean) {
-    updateQuery({ outstanding: checked ? null : '0' })
+    applyFilters({ ...localFilters, showOnlyOutstanding: checked })
   }
 
   function handleGroupByVendorToggle(checked: boolean) {
-    updateQuery({ groupByVendor: checked ? null : '0' })
+    applyFilters({ ...localFilters, groupByVendor: checked })
   }
 
   function handleMissingVendorToggle(checked: boolean) {
-    updateQuery({ needsVendor: checked ? '1' : null })
+    applyFilters({ ...localFilters, missingVendorOnly: checked })
   }
 
   function handleMissingExpenseToggle(checked: boolean) {
-    updateQuery({ needsExpense: checked ? '1' : null })
+    applyFilters({ ...localFilters, missingExpenseOnly: checked })
   }
 
   return (
-    <div className="mb-4 space-y-3">
+    <div className="space-y-3">
       <div className="flex items-center justify-end gap-2">
-        <Select value={filters.status ?? 'all'} onChange={handleStatusChange} className="w-40" options={statusOptions} />
-        <Select value={filters.direction ?? 'all'} onChange={handleDirectionChange} className="w-40" options={directionOptions} />
+        <Select value={localFilters.status ?? 'all'} onChange={handleStatusChange} className="w-40" options={statusOptions} />
+        <Select value={localFilters.direction ?? 'all'} onChange={handleDirectionChange} className="w-40" options={directionOptions} />
       </div>
 
       {monthOptions.length > 0 && (
@@ -137,15 +164,15 @@ export function ReceiptFilters({ filters, availableMonths }: ReceiptFiltersProps
           style={{ WebkitOverflowScrolling: 'touch' }}
         >
           <Button
-            variant={!filters.month ? 'secondary' : 'ghost'}
+            variant={!localFilters.month ? 'secondary' : 'ghost'}
             size="sm"
-            onClick={() => updateQuery({ month: null })}
+            onClick={() => applyFilters({ ...localFilters, month: undefined })}
             className="whitespace-nowrap flex-shrink-0"
           >
             All time
           </Button>
           {monthOptions.map((monthValue) => {
-            const isActive = monthValue === filters.month
+            const isActive = monthValue === localFilters.month
             return (
               <Button
                 key={monthValue}
@@ -166,30 +193,31 @@ export function ReceiptFilters({ filters, availableMonths }: ReceiptFiltersProps
           <Input
             name="search"
             placeholder="Search description or type"
-            defaultValue={filters.search ?? ''}
+            value={localFilters.search ?? ''}
+            onChange={(event) => setLocalFilters((current) => ({ ...current, search: event.target.value }))}
             className="sm:w-64"
           />
           <Button type="submit" variant="secondary">Search</Button>
         </form>
-        <div className="flex flex-wrap items-center gap-3 text-sm text-gray-600">
+        <div className="flex flex-wrap items-center gap-3 text-sm text-text-muted">
           <Checkbox
             label="Outstanding only"
-            checked={filters.showOnlyOutstanding}
+            checked={localFilters.showOnlyOutstanding}
             onChange={handleOutstandingToggle}
           />
           <Checkbox
             label="Group by vendor"
-            checked={filters.groupByVendor}
+            checked={localFilters.groupByVendor}
             onChange={handleGroupByVendorToggle}
           />
           <Checkbox
             label="Missing vendor"
-            checked={filters.missingVendorOnly}
+            checked={localFilters.missingVendorOnly}
             onChange={handleMissingVendorToggle}
           />
           <Checkbox
             label="Missing expense"
-            checked={filters.missingExpenseOnly}
+            checked={localFilters.missingExpenseOnly}
             onChange={handleMissingExpenseToggle}
           />
         </div>

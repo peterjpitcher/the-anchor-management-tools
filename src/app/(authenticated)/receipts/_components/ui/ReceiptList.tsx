@@ -1,7 +1,7 @@
 'use client'
 
 import { ChangeEvent, Fragment, useMemo } from 'react'
-import { Card, Select } from '@/ds'
+import { Card, CardBody, CardHeader, Select } from '@/ds'
 import type { ReceiptWorkspaceData, ReceiptWorkspaceFilters, ClassificationRuleSuggestion } from '@/app/actions/receipts'
 import type { ReceiptTransaction } from '@/types/database'
 import { ReceiptTableRow } from './ReceiptTableRow'
@@ -20,6 +20,7 @@ type VendorGroup = {
   transactions: WorkspaceTransaction[]
   totalIn: number
   totalOut: number
+  totalAmount: number
 }
 
 const MISSING_VENDOR_LABEL = 'Missing vendor'
@@ -41,11 +42,15 @@ function buildVendorGroups(transactions: WorkspaceTransaction[]): VendorGroup[] 
       transactions: [],
       totalIn: 0,
       totalOut: 0,
+      totalAmount: 0,
     }
 
     group.transactions.push(transaction)
-    group.totalIn += Number(transaction.amount_in ?? 0)
-    group.totalOut += Number(transaction.amount_out ?? 0)
+    const amountIn = Number(transaction.amount_in ?? 0)
+    const amountOut = Number(transaction.amount_out ?? 0)
+    group.totalIn += amountIn
+    group.totalOut += amountOut
+    group.totalAmount += Number(transaction.amount_total ?? amountIn + amountOut)
     groups.set(key, group)
   })
 
@@ -137,15 +142,10 @@ export function ReceiptList({
 
   return (
     <Card>
-        <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
-          <div>
-            <h2 className="text-lg font-semibold text-gray-900">Transactions</h2>
-            <p className="text-sm text-gray-500">Tick off receipts as you collect them and keep the finance trail tidy.</p>
-          </div>
-        </div>
-
-        <div className="w-full sm:hidden mb-4">
-          <label htmlFor="mobile-receipts-sort" className="text-xs font-medium text-gray-600">Sort</label>
+      <CardHeader title="Transactions" subtitle="Tick off receipts as you collect them and keep the finance trail tidy." />
+      <CardBody className="p-0">
+        <div className="w-full p-[var(--spacing-pad-card)] sm:hidden">
+          <label htmlFor="mobile-receipts-sort" className="text-xs font-medium text-text-muted">Sort</label>
           <Select
             id="mobile-receipts-sort"
             value={mobileSortValue}
@@ -156,20 +156,21 @@ export function ReceiptList({
         </div>
 
         {/* Mobile View */}
-        <div className="flex flex-col gap-2 px-2 lg:hidden">
+        <div className="flex flex-col gap-2 px-[var(--spacing-pad-card)] pb-[var(--spacing-pad-card)] lg:hidden">
           {transactions.length === 0 ? (
-            <div className="rounded-lg border border-dashed border-gray-300 bg-gray-50 p-6 text-center text-sm text-gray-500">
+            <div className="rounded-lg border border-dashed border-border bg-surface-2 p-6 text-center text-sm text-text-muted">
               No transactions match your filters.
             </div>
           ) : shouldGroupByVendor ? (
             vendorGroups.map((group) => (
               <section key={group.key} className="space-y-2">
-                <div className="rounded-md bg-gray-50 px-3 py-2 text-sm">
+                <div className="rounded-md bg-surface-2 px-3 py-2 text-sm">
                   <div className="flex items-center justify-between gap-3">
-                    <h3 className="font-semibold text-gray-900">{group.vendorName}</h3>
-                    <span className="text-xs text-gray-500">{group.transactions.length} receipt{group.transactions.length === 1 ? '' : 's'}</span>
+                    <h3 className="font-semibold text-text-strong">{group.vendorName}</h3>
+                    <span className="text-xs font-semibold text-text-strong">Total {formatCurrency(group.totalAmount)}</span>
                   </div>
-                  <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-gray-600">
+                  <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-text-muted">
+                    <span>{group.transactions.length} receipt{group.transactions.length === 1 ? '' : 's'}</span>
                     {group.totalOut > 0 && <span>Out {formatCurrency(group.totalOut)}</span>}
                     {group.totalIn > 0 && <span>In {formatCurrency(group.totalIn)}</span>}
                   </div>
@@ -201,44 +202,45 @@ export function ReceiptList({
         {/* Desktop Table */}
         <div className="hidden lg:block">
           <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50 text-left text-sm font-semibold text-gray-600">
+            <table className="min-w-full divide-y divide-border">
+              <thead className="bg-surface-2 text-left text-xs font-medium uppercase tracking-wider text-text-muted">
                 <tr>
-                  <th className="px-4 py-3">
-                    <button type="button" className={`flex items-center gap-1 ${currentSortBy === 'transaction_date' ? 'text-emerald-700' : ''}`} onClick={() => onSort('transaction_date')}>
-                        Date {currentSortBy === 'transaction_date' && (currentSortDirection === 'asc' ? '↑' : '↓')}
+                  <th className="px-4 py-2">
+                    <button type="button" className={`flex items-center gap-1 ${currentSortBy === 'transaction_date' ? 'text-primary' : ''}`} onClick={() => onSort('transaction_date')}>
+                      Date {currentSortBy === 'transaction_date' && (currentSortDirection === 'asc' ? '↑' : '↓')}
                     </button>
                   </th>
-                  <th className="px-4 py-3">
-                    <button type="button" className={`flex items-center gap-1 ${currentSortBy === 'details' ? 'text-emerald-700' : ''}`} onClick={() => onSort('details')}>
-                        Details {currentSortBy === 'details' && (currentSortDirection === 'asc' ? '↑' : '↓')}
+                  <th className="px-4 py-2">
+                    <button type="button" className={`flex items-center gap-1 ${currentSortBy === 'details' ? 'text-primary' : ''}`} onClick={() => onSort('details')}>
+                      Details {currentSortBy === 'details' && (currentSortDirection === 'asc' ? '↑' : '↓')}
                     </button>
                   </th>
-                  <th className="px-4 py-3">Vendor</th>
-                  <th className="px-4 py-3">Expense type</th>
-                  <th className="px-4 py-3 text-right">In</th>
-                  <th className="px-4 py-3 text-right">Out</th>
-                  <th className="px-4 py-3">Status</th>
-                  <th className="px-4 py-3">Receipts</th>
-                  <th className="px-4 py-3">Notes</th>
-                  <th className="px-4 py-3">Actions</th>
+                  <th className="px-4 py-2">Vendor</th>
+                  <th className="px-4 py-2">Expense type</th>
+                  <th className="px-4 py-2 text-right">In</th>
+                  <th className="px-4 py-2 text-right">Out</th>
+                  <th className="px-4 py-2">Status</th>
+                  <th className="px-4 py-2">Receipts</th>
+                  <th className="px-4 py-2">Notes</th>
+                  <th className="px-4 py-2">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-100 text-sm text-gray-700">
-                 {transactions.length === 0 && (
-                  <tr><td colSpan={10} className="px-4 py-6 text-center text-gray-500">No transactions match your filters.</td></tr>
+              <tbody className="divide-y divide-border text-sm text-text">
+                {transactions.length === 0 && (
+                  <tr><td colSpan={10} className="px-4 py-6 text-center text-text-muted">No transactions match your filters.</td></tr>
                 )}
                 {transactions.length > 0 && shouldGroupByVendor ? (
                   vendorGroups.map((group) => (
                     <Fragment key={group.key}>
-                      <tr className="bg-gray-50">
+                      <tr className="bg-surface-2">
                         <td colSpan={10} className="px-4 py-2">
                           <div className="flex flex-wrap items-center justify-between gap-3">
                             <div className="flex items-center gap-3">
-                              <span className="font-semibold text-gray-900">{group.vendorName}</span>
-                              <span className="text-xs text-gray-500">{group.transactions.length} receipt{group.transactions.length === 1 ? '' : 's'}</span>
+                              <span className="font-semibold text-text-strong">{group.vendorName}</span>
+                              <span className="text-xs text-text-muted">{group.transactions.length} receipt{group.transactions.length === 1 ? '' : 's'}</span>
                             </div>
-                            <div className="flex flex-wrap gap-3 text-xs font-medium text-gray-600">
+                            <div className="flex flex-wrap gap-3 text-xs font-medium text-text-muted">
+                              <span className="text-text-strong">Total {formatCurrency(group.totalAmount)}</span>
                               {group.totalOut > 0 && <span>Out {formatCurrency(group.totalOut)}</span>}
                               {group.totalIn > 0 && <span>In {formatCurrency(group.totalIn)}</span>}
                             </div>
@@ -273,6 +275,7 @@ export function ReceiptList({
             </table>
           </div>
         </div>
+      </CardBody>
     </Card>
   )
 }

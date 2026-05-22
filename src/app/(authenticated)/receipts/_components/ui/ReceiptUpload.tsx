@@ -3,7 +3,7 @@
 import { useState, useTransition, FormEvent } from 'react'
 import { useRouter } from 'next/navigation'
 import { toast } from 'react-hot-toast'
-import { Button, Input, Card, Spinner } from '@/ds'
+import { Button, Input, Card, CardBody, CardHeader, Spinner } from '@/ds'
 import { importReceiptStatement } from '@/app/actions/receipts'
 import { usePermissions } from '@/contexts/PermissionContext'
 import type { ReceiptBatch } from '@/types/database'
@@ -57,38 +57,36 @@ export function ReceiptUpload({ lastImport }: ReceiptUploadProps) {
   if (!canManageReceipts) {
     return (
       <Card className="md:col-span-3">
-        <div className="space-y-2">
-          <h2 className="text-lg font-semibold text-gray-900">Upload bank statement</h2>
-          <p className="text-sm text-gray-500">You have view-only access. Ask a receipts manager to upload statements.</p>
-        </div>
+        <CardHeader title="Upload bank statement" subtitle="You have view-only access. Ask a receipts manager to upload statements." />
       </Card>
     )
   }
 
   return (
     <Card>
-      <h2 className="text-sm font-semibold text-gray-900">Upload bank statement</h2>
-      <p className="text-xs text-gray-500 mb-3">Import CSV and auto-match recurring items.</p>
-      <form onSubmit={handleStatementSubmit} className="space-y-3">
-        <Input
-          type="file"
-          accept=".csv"
-          onChange={(event) => setStatementFile(event.target.files?.[0] ?? null)}
-        />
-        <div className="flex flex-wrap gap-2">
-          <Button type="submit" size="sm" disabled={isStatementPending || !canManageReceipts}>
-            {isStatementPending && <Spinner className="mr-2 h-4 w-4" />}Upload
-          </Button>
-          <Button type="button" variant="secondary" size="sm" onClick={() => setStatementFile(null)} disabled={!statementFile || isStatementPending || !canManageReceipts}>
-            Clear
-          </Button>
-        </div>
-        {lastImport && (
-          <p className="text-xs text-gray-500">
-            Last: {formatDate(lastImport.uploaded_at)} · {lastImport.original_filename}
-          </p>
-        )}
-      </form>
+      <CardHeader title="Upload bank statement" subtitle="Import CSV and auto-match recurring items." />
+      <CardBody>
+        <form onSubmit={handleStatementSubmit} className="space-y-3">
+          <Input
+            type="file"
+            accept=".csv"
+            onChange={(event) => setStatementFile(event.target.files?.[0] ?? null)}
+          />
+          <div className="flex flex-wrap gap-2">
+            <Button type="submit" size="sm" disabled={isStatementPending || !canManageReceipts}>
+              {isStatementPending && <Spinner className="mr-2 h-4 w-4" />}Upload
+            </Button>
+            <Button type="button" variant="secondary" size="sm" onClick={() => setStatementFile(null)} disabled={!statementFile || isStatementPending || !canManageReceipts}>
+              Clear
+            </Button>
+          </div>
+          {lastImport && (
+            <p className="text-xs text-text-muted">
+              Last: {formatDate(lastImport.uploaded_at)} · {lastImport.original_filename}
+            </p>
+          )}
+        </form>
+      </CardBody>
     </Card>
   )
 }

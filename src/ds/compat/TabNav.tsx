@@ -103,7 +103,7 @@ export function TabNav({
     const isDisabled = tab.disabled
     return cn(
       'inline-flex items-center font-medium whitespace-nowrap transition-colors duration-200',
-      'focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500',
+      'focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-green-500',
       sizeClasses[size].tab,
       sizeClasses[size].gap,
       variantClasses[variant].tab,
@@ -168,7 +168,13 @@ export function TabNav({
 
   return (
     <div className={cn(variantClasses[variant].container, className)}>
-      <div ref={scrollContainerRef} className="overflow-x-auto scrollbar-hide">
+      <div
+        ref={scrollContainerRef}
+        className={cn(
+          'overflow-x-auto scrollbar-hide',
+          variant === 'pills' && '-m-1 p-1',
+        )}
+      >
         <nav
           className={cn('flex', variantClasses[variant].list, fullWidth && 'w-full')}
           aria-label={ariaLabel}

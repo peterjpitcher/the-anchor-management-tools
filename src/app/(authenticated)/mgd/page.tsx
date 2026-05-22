@@ -1,8 +1,13 @@
 import { redirect } from 'next/navigation'
 import { checkUserPermission } from '@/app/actions/rbac'
 import { getCollections, getReturns, getCurrentReturn } from '@/app/actions/mgd'
-import { PageHeader, Alert, Card, CardBody } from '@/ds'
+import { PageHeader, SectionNav, Alert, Card, CardBody } from '@/ds'
 import { MgdClient } from './_components/MgdClient'
+
+const MGD_SECTION_NAV = [
+  { id: 'collections', label: 'Collections', href: '/mgd' },
+  { id: 'insights', label: 'Insights', href: '/mgd/insights' },
+]
 
 export default async function MgdPage(): Promise<React.ReactElement> {
   const canView = await checkUserPermission('mgd', 'view')
@@ -25,7 +30,9 @@ export default async function MgdPage(): Promise<React.ReactElement> {
           breadcrumbs={[{ label: 'Finance' }, { label: 'MGD' }]}
           title="Machine Games Duty"
           subtitle="Track collections and quarterly MGD returns"
+          className="mb-0"
         />
+        <SectionNav items={MGD_SECTION_NAV} activeId="collections" />
         <Card>
           <CardBody>
             <Alert tone="danger" title="Error loading MGD data">
@@ -62,7 +69,9 @@ export default async function MgdPage(): Promise<React.ReactElement> {
         breadcrumbs={[{ label: 'Finance' }, { label: 'MGD' }]}
         title="Machine Games Duty"
         subtitle="Track collections and quarterly MGD returns"
+        className="mb-0"
       />
+      <SectionNav items={MGD_SECTION_NAV} activeId="collections" />
       <MgdClient
         initialReturn={currentReturn}
         initialCollections={initialCollections}

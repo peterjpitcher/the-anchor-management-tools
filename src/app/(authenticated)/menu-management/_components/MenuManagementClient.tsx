@@ -338,6 +338,7 @@ export default function MenuManagementClient(): React.ReactElement {
       <PageHeader
         breadcrumbs={[{ label: 'Menu' }]}
         title="Menu Management"
+        className="mb-0"
         actions={
           <div className="flex items-center gap-2">
             <Button variant="secondary" size="sm" onClick={loadDishes}>Refresh</Button>

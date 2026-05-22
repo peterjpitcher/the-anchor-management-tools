@@ -17,7 +17,7 @@ import { ReceiptList } from './ui/ReceiptList'
 import { ReceiptRules } from './ui/ReceiptRules'
 import { ReceiptReclassify } from './ui/ReceiptReclassify'
 import { usePermissions } from '@/contexts/PermissionContext'
-import { Button } from '@/ds'
+import { Button, Card, CardBody } from '@/ds'
 
 interface ReceiptsClientProps {
   initialData: ReceiptWorkspaceData
@@ -168,57 +168,63 @@ export default function ReceiptsClient({ initialData, canExport = false, initial
         </div>
       </div>
 
-      <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
-        <ReceiptFilters
-          filters={initialFilters}
-          availableMonths={availableMonths}
-        />
+      <Card>
+        <CardBody>
+          <ReceiptFilters
+            filters={initialFilters}
+            availableMonths={availableMonths}
+          />
+        </CardBody>
+      </Card>
 
-        <ReceiptList
-          transactions={transactions}
-          knownVendors={knownVendors}
-          filters={{
-              sortBy: currentSortBy,
-              sortDirection: currentSortDirection,
-              status: initialFilters.status,
-              showOnlyOutstanding: initialFilters.showOnlyOutstanding,
-              groupByVendor: initialFilters.groupByVendor,
-              missingVendorOnly: initialFilters.missingVendorOnly,
-              missingExpenseOnly: initialFilters.missingExpenseOnly,
-          }}
-          onSort={handleSort}
-          onMobileSort={handleMobileSortChange}
-          onTransactionChange={handleTransactionChange}
-          onTransactionRemove={handleTransactionRemove}
-          onRuleSuggestion={setPendingRuleSuggestion}
-        />
+      <ReceiptList
+        transactions={transactions}
+        knownVendors={knownVendors}
+        filters={{
+          sortBy: currentSortBy,
+          sortDirection: currentSortDirection,
+          status: initialFilters.status,
+          showOnlyOutstanding: initialFilters.showOnlyOutstanding,
+          groupByVendor: initialFilters.groupByVendor,
+          missingVendorOnly: initialFilters.missingVendorOnly,
+          missingExpenseOnly: initialFilters.missingExpenseOnly,
+        }}
+        onSort={handleSort}
+        onMobileSort={handleMobileSortChange}
+        onTransactionChange={handleTransactionChange}
+        onTransactionRemove={handleTransactionRemove}
+        onRuleSuggestion={setPendingRuleSuggestion}
+      />
 
-        {totalPages > 1 && (
-          <div className="mt-4 flex items-center justify-between border-t border-gray-100 pt-4">
-            <p className="text-sm text-gray-500">
-              Page {pagination.page} of {totalPages} <span className="hidden sm:inline">({pagination.total} items)</span>
-            </p>
-            <div className="flex gap-2">
-              <Button
-                variant="secondary"
-                size="sm"
-                disabled={!hasPrevPage}
-                onClick={() => handlePageChange(pagination.page - 1)}
-              >
-                Previous
-              </Button>
-              <Button
-                variant="secondary"
-                size="sm"
-                disabled={!hasNextPage}
-                onClick={() => handlePageChange(pagination.page + 1)}
-              >
-                Next
-              </Button>
+      {totalPages > 1 && (
+        <Card>
+          <CardBody>
+            <div className="flex items-center justify-between">
+              <p className="text-sm text-gray-500">
+                Page {pagination.page} of {totalPages} <span className="hidden sm:inline">({pagination.total} items)</span>
+              </p>
+              <div className="flex gap-2">
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  disabled={!hasPrevPage}
+                  onClick={() => handlePageChange(pagination.page - 1)}
+                >
+                  Previous
+                </Button>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  disabled={!hasNextPage}
+                  onClick={() => handlePageChange(pagination.page + 1)}
+                >
+                  Next
+                </Button>
+              </div>
             </div>
-          </div>
-        )}
-      </div>
+          </CardBody>
+        </Card>
+      )}
 
       <ReceiptRules
         rules={rules}

@@ -140,6 +140,7 @@ export default function EmployeesClient({ initialData, initialError, permissions
           breadcrumbs={[{ label: 'Employees' }]}
           title="Employees"
           subtitle={`${roster.statusCounts.active} active · ${roster.statusCounts.former} former · ${roster.statusCounts.onboarding} onboarding`}
+          className="mb-0"
           actions={
             <div className="flex items-center gap-2">
               {permissions.canExport && (

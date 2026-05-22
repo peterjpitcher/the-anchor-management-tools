@@ -26,7 +26,7 @@ interface PageHeaderProps {
 
 export function PageHeader({ breadcrumbs, title, subtitle, actions, className }: PageHeaderProps) {
   return (
-    <div className={cn('pb-6 border-b border-border mb-6', className)}>
+    <div className={cn('pb-4 mb-4', className)}>
       {/* Breadcrumbs */}
       {breadcrumbs && breadcrumbs.length > 0 && (
         <nav aria-label="Breadcrumbs" className="flex items-center gap-1 text-sm text-text-muted mb-2">

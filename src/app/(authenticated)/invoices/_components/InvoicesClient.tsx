@@ -296,6 +296,7 @@ export default function InvoicesClient({
         breadcrumbs={[{ label: 'Finance' }, { label: 'Invoices' }]}
         title="Invoices"
         subtitle={`${formatNumber(initialTotal)} invoices · ${formatCurrency(initialSummary.total_outstanding)} outstanding`}
+        className="mb-0"
         actions={
           <div className="flex items-center gap-2">
             {resolvedPermissions.canExport && (
@@ -510,4 +511,3 @@ export default function InvoicesClient({
     </div>
   )
 }
-

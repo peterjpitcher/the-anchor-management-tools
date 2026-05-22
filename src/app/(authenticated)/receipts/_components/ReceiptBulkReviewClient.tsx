@@ -90,6 +90,10 @@ export default function ReceiptBulkReviewClient({ initialData, initialFilters }:
 
   const [activeApplyGroup, setActiveApplyGroup] = useState<string | null>(null)
   const [activeRuleGroup, setActiveRuleGroup] = useState<string | null>(null)
+  const [localStatuses, setLocalStatuses] = useState<BulkStatus[]>(initialFilters.statuses)
+  const [localLimit, setLocalLimit] = useState(initialFilters.limit)
+  const [localOnlyUnclassified, setLocalOnlyUnclassified] = useState(initialFilters.onlyUnclassified)
+  const [localFuzzyGrouping, setLocalFuzzyGrouping] = useState(initialData.config.useFuzzyGrouping)
 
   const [vendorDrafts, setVendorDrafts] = useState<Record<string, string>>(() => {
     const map: Record<string, string> = {}
@@ -141,6 +145,18 @@ export default function ReceiptBulkReviewClient({ initialData, initialFilters }:
   const [createdRules, setCreatedRules] = useState<Record<string, { id: string; name: string }>>({})
 
   useEffect(() => {
+    setLocalStatuses(initialFilters.statuses)
+    setLocalLimit(initialFilters.limit)
+    setLocalOnlyUnclassified(initialFilters.onlyUnclassified)
+    setLocalFuzzyGrouping(initialData.config.useFuzzyGrouping)
+  }, [
+    initialFilters.statuses,
+    initialFilters.limit,
+    initialFilters.onlyUnclassified,
+    initialData.config.useFuzzyGrouping,
+  ])
+
+  useEffect(() => {
     const vendorMap: Record<string, string> = {}
     const expenseMap: Record<string, string> = {}
     const applyVendorMap: Record<string, boolean> = {}
@@ -190,7 +206,7 @@ export default function ReceiptBulkReviewClient({ initialData, initialFilters }:
     router.push(`/receipts/bulk${query ? `?${query}` : ''}`)
   }
 
-  const currentStatuses = useMemo(() => new Set(initialFilters.statuses), [initialFilters.statuses])
+  const currentStatuses = useMemo(() => new Set(localStatuses), [localStatuses])
 
   const handleStatusToggle = (status: BulkStatus) => {
     const next = new Set(currentStatuses)
@@ -203,24 +219,26 @@ export default function ReceiptBulkReviewClient({ initialData, initialFilters }:
       toast.error('Select at least one status to include')
       return
     }
+    setLocalStatuses(Array.from(next))
     updateQuery({ statuses: Array.from(next).join(',') })
   }
 
   const handleLimitChange = (value: string) => {
+    setLocalLimit(Number.parseInt(value, 10))
     updateQuery({ limit: value })
   }
 
   const handleOnlyUnclassifiedToggle = (checked: boolean) => {
+    setLocalOnlyUnclassified(checked)
     updateQuery({ all: checked ? null : '1' })
   }
 
   const handleFuzzyToggle = (checked: boolean) => {
+    setLocalFuzzyGrouping(checked)
     updateQuery({ fuzzy: checked ? '1' : null })
   }
 
-  const isFuzzyGrouping = initialData.config.useFuzzyGrouping
-
-  const statusesLabel = initialFilters.statuses.map((status) => STATUS_LABELS[status]).join(', ')
+  const statusesLabel = localStatuses.map((status) => STATUS_LABELS[status]).join(', ')
 
   const handleApplyGroup = (details: string) => {
     if (!canManageReceipts) {
@@ -376,7 +394,7 @@ export default function ReceiptBulkReviewClient({ initialData, initialFilters }:
             <label className="text-sm font-medium text-gray-700">Group limit</label>
             <Select
               className="mt-2"
-              value={String(initialFilters.limit)}
+              value={String(localLimit)}
               onChange={(event) => handleLimitChange(event.target.value)}
               options={limitOptions.map((option) => ({
                 value: String(option),
@@ -389,14 +407,14 @@ export default function ReceiptBulkReviewClient({ initialData, initialFilters }:
             <div className="mt-2">
               <Checkbox
                 label="Only show transactions missing vendor and expense tags"
-                checked={initialFilters.onlyUnclassified}
+                checked={localOnlyUnclassified}
                 onChange={(checked) => handleOnlyUnclassifiedToggle(checked)}
               />
             </div>
             <div className="mt-2">
               <Checkbox
                 label="Fuzzy group similar transactions"
-                checked={isFuzzyGrouping}
+                checked={localFuzzyGrouping}
                 onChange={(checked) => handleFuzzyToggle(checked)}
               />
             </div>
@@ -539,7 +557,7 @@ export default function ReceiptBulkReviewClient({ initialData, initialFilters }:
                       Reset to suggestion
                     </Button>
                   </div>
-                  {isFuzzyGrouping && (
+                  {localFuzzyGrouping && (
                     <p className="text-xs text-amber-700">
                       Fuzzy mode is on: &ldquo;Apply classification&rdquo; will only update transactions whose description matches exactly &ldquo;{group.details}&rdquo;.
                     </p>

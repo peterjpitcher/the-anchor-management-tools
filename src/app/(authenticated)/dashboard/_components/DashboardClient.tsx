@@ -126,6 +126,7 @@ export default function DashboardClient({
         breadcrumbs={[{ label: 'Dashboard' }]}
         title="Dashboard"
         subtitle={subtitle}
+        className="mb-0"
         actions={
           <form action={refreshAction}>
             <Button type="submit" variant="secondary" size="sm">

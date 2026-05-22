@@ -1,10 +1,9 @@
 import { getReceiptMissingExpenseSummary } from '@/app/actions/receipts'
-import { PageLayout } from '@/ds'
 import { Card } from '@/ds'
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { checkUserPermission } from '@/app/actions/rbac'
-import { getReceiptsNavItems } from '../receiptsNavItems'
+import { ReceiptsPageChrome } from '../_components/ReceiptsPageChrome'
 
 function formatCurrency(value: number) {
   return new Intl.NumberFormat('en-GB', {
@@ -33,11 +32,10 @@ export default async function ReceiptsMissingExpensePage() {
   const totalIncoming = summary.reduce((sum, item) => sum + item.totalIncoming, 0)
 
   return (
-    <PageLayout
+    <ReceiptsPageChrome
       title="Transactions needing expense category"
       subtitle="Vendors with receipts that still require an expense category."
-      backButton={{ label: 'Back to receipts', href: '/receipts' }}
-      navItems={getReceiptsNavItems({ view: 'missing-expense' })}
+      navState={{ view: 'missing-expense' }}
     >
       <div className="space-y-6">
         <div className="grid gap-4 sm:grid-cols-3">
@@ -90,7 +88,7 @@ export default async function ReceiptsMissingExpensePage() {
           </div>
         </Card>
       </div>
-    </PageLayout>
+    </ReceiptsPageChrome>
   )
 }
 

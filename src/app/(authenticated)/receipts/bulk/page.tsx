@@ -1,12 +1,11 @@
 import ReceiptBulkReviewClient from '@/app/(authenticated)/receipts/_components/ReceiptBulkReviewClient'
 import { getReceiptBulkReviewData } from '@/app/actions/receipts'
-import { PageLayout } from '@/ds'
 import { Alert } from '@/ds'
 import { redirect } from 'next/navigation'
 import { checkUserPermission } from '@/app/actions/rbac'
 import { receiptTransactionStatusSchema } from '@/lib/validation'
 import type { ReceiptTransaction } from '@/types/database'
-import { getReceiptsNavItems } from '../receiptsNavItems'
+import { ReceiptsPageChrome } from '../_components/ReceiptsPageChrome'
 
 const STATUS_VALUES = new Set(receiptTransactionStatusSchema.options)
 
@@ -60,18 +59,17 @@ export default async function ReceiptsBulkPage({ searchParams }: PageProps) {
 
   if (loadError || !data) {
     return (
-      <PageLayout
+      <ReceiptsPageChrome
         title="Bulk classification"
         subtitle="Group similar transactions, confirm AI suggestions, and roll out rules in one sweep."
-        backButton={{ label: 'Back to receipts', href: '/receipts' }}
-        navItems={getReceiptsNavItems({ view: 'bulk' })}
+        navState={{ view: 'bulk' }}
       >
         <Alert
           variant="error"
           title="Failed to load bulk review"
           description={loadError ?? 'An unexpected error occurred. Please try again.'}
         />
-      </PageLayout>
+      </ReceiptsPageChrome>
     )
   }
 
@@ -82,13 +80,12 @@ export default async function ReceiptsBulkPage({ searchParams }: PageProps) {
   }
 
   return (
-    <PageLayout
+    <ReceiptsPageChrome
       title="Bulk classification"
       subtitle="Group similar transactions, confirm AI suggestions, and roll out rules in one sweep."
-      backButton={{ label: 'Back to receipts', href: '/receipts' }}
-      navItems={getReceiptsNavItems({ view: 'bulk' })}
+      navState={{ view: 'bulk' }}
     >
       <ReceiptBulkReviewClient initialData={data} initialFilters={filters} />
-    </PageLayout>
+    </ReceiptsPageChrome>
   )
 }

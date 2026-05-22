@@ -12,10 +12,11 @@ export default async function OJProjectsLayout({
   if (!hasPermission) redirect('/unauthorized')
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-4">
       <PageHeader
         title="OJ Projects"
         subtitle="Project management and time tracking"
+        className="mb-0"
       />
       <OJProjectsNav />
       {children}
