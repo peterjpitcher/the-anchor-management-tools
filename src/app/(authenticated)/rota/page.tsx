@@ -14,11 +14,12 @@ import {
   getRotaSummaryForWeek,
 } from '@/app/actions/rota';
 import { getShiftTemplates } from '@/app/actions/rota-templates';
-import { getDepartmentBudgets, getDepartments } from '@/app/actions/budgets';
+import { getDepartments } from '@/app/actions/budgets';
 import { getRotaWeekDayInfo } from '@/app/actions/rota-day-info';
 import type { RotaDayInfo } from '@/app/actions/rota-day-info';
 import RotaGrid from './RotaGrid';
 import RotaPublishStatus from './RotaPublishStatus';
+import { rotaNavItems } from './nav';
 
 export const dynamic = 'force-dynamic';
 
@@ -87,25 +88,16 @@ export default async function RotaPage({ searchParams }: RotaPageProps) {
 
   const weekEnd = days[6];
 
-  const [weekResult, employeesResult, shiftsResult, templatesResult, leaveDaysResult, budgetsResult, dayInfoResult, deptResult] =
+  const [weekResult, employeesResult, shiftsResult, templatesResult, leaveDaysResult, dayInfoResult, deptResult] =
     await Promise.all([
       getOrCreateRotaWeek(weekStart),
       getActiveEmployeesForRota(weekStart),
       getWeekShifts(weekStart),
       getShiftTemplates(),
       getLeaveDaysForWeek(weekStart),
-      getDepartmentBudgets(parseInt(weekStart.split('-')[0])),
       getRotaWeekDayInfo(weekStart, weekEnd),
       getDepartments(),
     ]);
-
-  const rotaNavItems = [
-    { label: 'Rota', href: '/rota' },
-    { label: 'Leave', href: '/rota/leave' },
-    { label: 'Timeclock', href: '/rota/timeclock' },
-    { label: 'Labour Costs', href: '/rota/dashboard' },
-    { label: 'Payroll', href: '/rota/payroll' },
-  ];
 
   if (!weekResult.success) {
     return (
@@ -123,7 +115,6 @@ export default async function RotaPage({ searchParams }: RotaPageProps) {
   const shifts = shiftsResult.success ? shiftsResult.data : [];
   const templates = templatesResult.success ? templatesResult.data.filter(t => t.is_active) : [];
   const leaveDays = leaveDaysResult.success ? leaveDaysResult.data : [];
-  const budgets = budgetsResult.success ? budgetsResult.data : [];
   const departments = deptResult.success ? deptResult.data : [];
   const dayInfo: Record<string, RotaDayInfo> = dayInfoResult ?? {};
   const summaryResult = await getRotaSummaryForWeek(weekStart, days, employees);
@@ -139,9 +130,10 @@ export default async function RotaPage({ searchParams }: RotaPageProps) {
   return (
     <PageLayout
       title="Weekly Rota"
+      subtitle={formatWeekRange(weekStart, weekEnd)}
       navItems={rotaNavItems}
       headerActions={
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center justify-end gap-2">
           <RotaPublishStatus week={week} shifts={shifts} canPublish={canPublish} />
           <RotaFeedButton feedUrl={feedUrl} showCalendarSync={Boolean(process.env.GOOGLE_CALENDAR_ROTA_ID)} />
           <LinkButton href="/rota/templates" size="sm" variant="secondary" leftIcon={<Cog6ToothIcon className="h-4 w-4" />}>
@@ -170,7 +162,6 @@ export default async function RotaPage({ searchParams }: RotaPageProps) {
         canViewLeave={canViewLeave}
         canCreateLeave={canCreateLeave}
         canEditLeave={canEditLeave}
-        budgets={budgets}
         departments={departments}
         dayInfo={dayInfo}
         periodSummary={rotaSummary}

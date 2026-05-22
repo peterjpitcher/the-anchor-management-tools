@@ -46,8 +46,22 @@ export interface TabsProps {
 export function Tabs({ tabs: tabsProp, items, activeTab, activeKey, onTabChange, onChange, variant: _variant, bordered: _bordered, padded: _padded, destroyInactive: _destroyInactive, className }: TabsProps) {
   // Resolve legacy items -> tabs
   const tabs: Tab[] = tabsProp ?? (items ? items.map((it) => ({ id: it.key, label: it.label, content: it.content })) : [])
-  const resolvedActiveTab = activeTab ?? activeKey ?? tabs[0]?.id ?? ''
-  const resolvedOnTabChange = onTabChange ?? onChange ?? (() => {})
+  const controlledActiveTab = activeTab ?? activeKey
+  const [uncontrolledActiveTab, setUncontrolledActiveTab] = React.useState<string | undefined>(undefined)
+  const fallbackActiveTab = tabs[0]?.id ?? ''
+  const resolvedUncontrolledActiveTab =
+    uncontrolledActiveTab && tabs.some((tab) => tab.id === uncontrolledActiveTab)
+      ? uncontrolledActiveTab
+      : fallbackActiveTab
+  const resolvedActiveTab = controlledActiveTab ?? resolvedUncontrolledActiveTab
+  const resolvedOnTabChange = onTabChange ?? onChange
+
+  const handleTabChange = (id: string) => {
+    if (controlledActiveTab === undefined) {
+      setUncontrolledActiveTab(id)
+    }
+    resolvedOnTabChange?.(id)
+  }
 
   // Find the active tab's content (for legacy items pattern)
   const activeContent = tabs.find((t) => t.id === resolvedActiveTab)?.content
@@ -67,7 +81,7 @@ export function Tabs({ tabs: tabsProp, items, activeTab, activeKey, onTabChange,
                 'px-4 py-2.5 text-[13px] font-medium whitespace-nowrap relative transition-colors',
                 isActive ? 'text-primary' : 'text-text-muted hover:text-text',
               )}
-              onClick={() => resolvedOnTabChange(tab.id)}
+              onClick={() => handleTabChange(tab.id)}
             >
               {tab.label}
 

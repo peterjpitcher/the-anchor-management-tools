@@ -7,6 +7,7 @@ import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { getDepartmentBudgets } from '@/app/actions/budgets';
 import { startOfMonth, endOfMonth, format, differenceInYears, parseISO } from 'date-fns';
+import { rotaNavItems } from '../nav';
 
 const gbpFormatter = new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP', maximumFractionDigits: 0 });
 
@@ -263,13 +264,7 @@ export default async function RotaDashboardPage() {
     <PageLayout
       title="Labour Cost Dashboard"
       subtitle={`Week of ${weekStart} · ${monthLabel}`}
-      navItems={[
-        { label: 'Rota', href: '/rota' },
-        { label: 'Leave', href: '/rota/leave' },
-        { label: 'Timeclock', href: '/rota/timeclock' },
-        { label: 'Labour Costs', href: '/rota/dashboard' },
-        { label: 'Payroll', href: '/rota/payroll' },
-      ]}
+      navItems={rotaNavItems}
     >
       {/* Summary stats */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">

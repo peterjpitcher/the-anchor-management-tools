@@ -6,6 +6,7 @@ import { Section } from '@/ds';
 import { createClient } from '@/lib/supabase/server';
 import { getLeaveRequests, getHolidayUsage } from '@/app/actions/leave';
 import LeaveManagerClient from './LeaveManagerClient';
+import { rotaNavItems } from '../nav';
 
 export const dynamic = 'force-dynamic';
 
@@ -57,13 +58,7 @@ export default async function LeaveManagementPage() {
     <PageLayout
       title="Leave Requests"
       subtitle={pendingCount > 0 ? `${pendingCount} pending approval` : 'All holiday requests'}
-      navItems={[
-        { label: 'Rota', href: '/rota' },
-        { label: 'Leave', href: '/rota/leave' },
-        { label: 'Timeclock', href: '/rota/timeclock' },
-        { label: 'Labour Costs', href: '/rota/dashboard' },
-        { label: 'Payroll', href: '/rota/payroll' },
-      ]}
+      navItems={rotaNavItems}
     >
       <Section
         title="Holiday Requests"

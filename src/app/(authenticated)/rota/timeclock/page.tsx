@@ -7,6 +7,7 @@ import { getTimeclockSessionsForWeek } from '@/app/actions/timeclock';
 import { getActiveEmployeesForRota } from '@/app/actions/rota';
 import { getOrCreatePayrollPeriod } from '@/app/actions/payroll';
 import TimeclockManager from './TimeclockManager';
+import { rotaNavItems } from '../nav';
 
 export const dynamic = 'force-dynamic';
 
@@ -50,13 +51,7 @@ export default async function TimeclockPage({ searchParams }: PageProps) {
     <PageLayout
       title="Timeclock"
       subtitle="Review and correct clock-in/out times"
-      navItems={[
-        { label: 'Rota', href: '/rota' },
-        { label: 'Leave', href: '/rota/leave' },
-        { label: 'Timeclock', href: '/rota/timeclock' },
-        { label: 'Labour Costs', href: '/rota/dashboard' },
-        { label: 'Payroll', href: '/rota/payroll' },
-      ]}
+      navItems={rotaNavItems}
     >
       <Section
         title="Sessions"

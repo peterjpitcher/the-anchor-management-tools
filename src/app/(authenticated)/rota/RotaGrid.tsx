@@ -23,12 +23,12 @@ import {
   PencilSquareIcon,
   XMarkIcon,
 } from '@heroicons/react/24/outline';
-import { Button } from '@/ds';
+import { Badge, Button, Card, CardBody, CardHeader } from '@/ds';
 import { formatTime12Hour } from '@/lib/dateUtils';
 import { moveShift, autoPopulateWeekFromTemplates, upsertRotaSalesTargetOverride } from '@/app/actions/rota';
 import type { RotaWeek, RotaShift, RotaEmployee, LeaveDayWithRequest } from '@/app/actions/rota';
 import type { ShiftTemplate } from '@/app/actions/rota-templates';
-import type { DepartmentBudget, Department } from '@/app/actions/budgets';
+import type { Department } from '@/app/actions/budgets';
 import type { RotaDayInfo } from '@/app/actions/rota-day-info';
 import type { RotaSummary } from '@/lib/rota/summary';
 import ShiftDetailModal from './ShiftDetailModal';
@@ -53,7 +53,6 @@ interface RotaGridProps {
   canViewLeave: boolean;
   canCreateLeave: boolean;
   canEditLeave: boolean;
-  budgets: DepartmentBudget[];
   departments: Department[];
   dayInfo: Record<string, RotaDayInfo>;
   periodSummary: RotaSummary | null;
@@ -148,12 +147,12 @@ function employeeRole(emp: RotaEmployee): string {
 }
 
 const ROLE_STYLES = [
-  { header: 'bg-emerald-50 border-emerald-200 text-emerald-900', chip: 'bg-emerald-100 text-emerald-800', stripe: 'border-l-emerald-400' },
-  { header: 'bg-sky-50 border-sky-200 text-sky-900', chip: 'bg-sky-100 text-sky-800', stripe: 'border-l-sky-400' },
-  { header: 'bg-violet-50 border-violet-200 text-violet-900', chip: 'bg-violet-100 text-violet-800', stripe: 'border-l-violet-400' },
-  { header: 'bg-rose-50 border-rose-200 text-rose-900', chip: 'bg-rose-100 text-rose-800', stripe: 'border-l-rose-400' },
-  { header: 'bg-teal-50 border-teal-200 text-teal-900', chip: 'bg-teal-100 text-teal-800', stripe: 'border-l-teal-400' },
-  { header: 'bg-slate-50 border-slate-200 text-slate-900', chip: 'bg-slate-100 text-slate-800', stripe: 'border-l-slate-400' },
+  { header: 'bg-primary-soft border-primary/20 text-primary-soft-fg', chip: 'bg-primary-soft text-primary-soft-fg', stripe: 'border-l-primary' },
+  { header: 'bg-info-soft border-info/20 text-info-fg', chip: 'bg-info-soft text-info-fg', stripe: 'border-l-info' },
+  { header: 'bg-warning-soft border-warning/25 text-warning-fg', chip: 'bg-warning-soft text-warning-fg', stripe: 'border-l-warning' },
+  { header: 'bg-danger-soft border-danger/20 text-danger-fg', chip: 'bg-danger-soft text-danger-fg', stripe: 'border-l-danger' },
+  { header: 'bg-success-soft border-success/20 text-success-fg', chip: 'bg-success-soft text-success-fg', stripe: 'border-l-success' },
+  { header: 'bg-surface-2 border-border text-text-muted', chip: 'bg-surface-2 text-text-muted', stripe: 'border-l-border-strong' },
 ] as const;
 
 function roleStyle(role: string): typeof ROLE_STYLES[number] {
@@ -174,10 +173,35 @@ function empWeekHours(employeeId: string, shifts: RotaShift[]): number {
     .reduce((sum, s) => sum + paidHours(s.start_time, s.end_time, s.unpaid_break_minutes, s.is_overnight), 0);
 }
 
-function deptWeekHours(dept: string, shifts: RotaShift[]): number {
-  return shifts
-    .filter(s => s.department === dept && s.status !== 'cancelled')
-    .reduce((sum, s) => sum + paidHours(s.start_time, s.end_time, s.unpaid_break_minutes, s.is_overnight), 0);
+type SummaryTone = 'neutral' | 'primary' | 'success' | 'warning' | 'danger' | 'info';
+
+function SummaryPill({
+  label,
+  value,
+  detail,
+  tone = 'neutral',
+}: {
+  label: string;
+  value: React.ReactNode;
+  detail?: React.ReactNode;
+  tone?: SummaryTone;
+}) {
+  const toneStyles = {
+    neutral: 'border-border bg-surface-2 text-text-strong',
+    primary: 'border-primary/20 bg-primary-soft text-primary-soft-fg',
+    success: 'border-success/20 bg-success-soft text-success-fg',
+    warning: 'border-warning/25 bg-warning-soft text-warning-fg',
+    danger: 'border-danger/20 bg-danger-soft text-danger-fg',
+    info: 'border-info/20 bg-info-soft text-info-fg',
+  }[tone];
+
+  return (
+    <div className={`h-full min-w-0 rounded-default border px-2.5 py-1.5 ${toneStyles}`}>
+      <p className="text-[10px] font-medium uppercase leading-none opacity-75">{label}</p>
+      <p className="mt-1 text-sm font-semibold leading-none" style={{ fontVariantNumeric: 'tabular-nums' }}>{value}</p>
+      {detail && <p className="mt-1 text-[11px] leading-tight opacity-75">{detail}</p>}
+    </div>
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -202,31 +226,31 @@ function DraggableShiftBlock({
   });
 
   const ph = paidHours(shift.start_time, shift.end_time, shift.unpaid_break_minutes, shift.is_overnight);
-  const deptColour = shift.department === 'bar' ? 'bg-blue-50 border-blue-300' : 'bg-orange-50 border-orange-300';
-  const sickColour = shift.status === 'sick' ? 'bg-red-50 border-red-300' : '';
-  const cancelColour = shift.status === 'cancelled' ? 'bg-gray-50 border-gray-300 opacity-50' : '';
+  const deptColour = shift.department === 'bar' ? 'bg-info-soft border-info/25' : 'bg-warning-soft border-warning/25';
+  const sickColour = shift.status === 'sick' ? 'bg-danger-soft border-danger/25' : '';
+  const cancelColour = shift.status === 'cancelled' ? 'bg-surface-2 border-border opacity-60' : '';
   const colourClass = cancelColour || sickColour || deptColour;
 
   return (
     <div
       ref={setNodeRef}
       style={{ transform: CSS.Translate.toString(transform), opacity: isDragging ? 0.3 : 1 }}
-      className={`rounded ${isDraft ? 'border-2 border-dashed' : 'border'} ${colourClass} px-1.5 py-0.5 text-xs cursor-grab active:cursor-grabbing select-none hover:shadow-sm transition-shadow`}
+      className={`rounded-default ${isDraft ? 'border-2 border-dashed' : 'border'} ${colourClass} px-2 py-1.5 text-xs shadow-xs cursor-grab active:cursor-grabbing select-none transition-[border-color,box-shadow,transform] hover:-translate-y-px hover:shadow-sm`}
       {...attributes}
       {...listeners}
       onClick={onClick}
     >
       {isDraft && (
-        <p className="text-[9px] font-bold uppercase tracking-wider text-amber-700 leading-none mb-0.5">
+        <p className="mb-1 text-[9px] font-bold uppercase leading-none text-warning-fg">
           Unpublished
         </p>
       )}
       {shift.name && (
-        <p className="font-semibold text-gray-900 leading-tight truncate">{shift.name}</p>
+        <p className="truncate font-semibold leading-tight text-text-strong">{shift.name}</p>
       )}
-      <p className="font-medium text-gray-800 leading-tight truncate">
+      <p className="truncate font-medium leading-tight text-text">
         {formatTime12Hour(shift.start_time)}–{formatTime12Hour(shift.end_time)}{shift.is_overnight ? '+' : ''}{' '}
-        <span className="font-normal text-gray-500">{ph.toFixed(1)}h{shift.status !== 'scheduled' ? ` · ${shift.status}` : ''}</span>
+        <span className="font-normal text-text-muted">{ph.toFixed(1)}h{shift.status !== 'scheduled' ? ` · ${shift.status}` : ''}</span>
       </p>
     </div>
   );
@@ -235,16 +259,16 @@ function DraggableShiftBlock({
 // Shift block displayed in DragOverlay (no interaction)
 function ShiftBlockOverlay({ shift, isDraft }: { shift: RotaShift; isDraft: boolean }) {
   const ph = paidHours(shift.start_time, shift.end_time, shift.unpaid_break_minutes, shift.is_overnight);
-  const deptColour = shift.department === 'bar' ? 'bg-blue-100 border-blue-300' : 'bg-orange-100 border-orange-300';
+  const deptColour = shift.department === 'bar' ? 'bg-info-soft border-info/25' : 'bg-warning-soft border-warning/25';
   return (
-    <div className={`rounded ${isDraft ? 'border-2 border-dashed' : 'border'} ${deptColour} px-1.5 py-1 text-xs shadow-lg opacity-90 w-28`}>
+    <div className={`w-32 rounded-default ${isDraft ? 'border-2 border-dashed' : 'border'} ${deptColour} px-2 py-1.5 text-xs shadow-lg opacity-95`}>
       {isDraft && (
-        <p className="text-[9px] font-bold uppercase tracking-wider text-amber-700 leading-none mb-0.5">Unpublished</p>
+        <p className="mb-1 text-[9px] font-bold uppercase leading-none text-warning-fg">Unpublished</p>
       )}
-      {shift.name && <p className="font-semibold text-gray-900 truncate">{shift.name}</p>}
-      <p className="font-medium text-gray-800 truncate">
+      {shift.name && <p className="font-semibold text-text-strong truncate">{shift.name}</p>}
+      <p className="font-medium text-text truncate">
         {formatTime12Hour(shift.start_time)}–{formatTime12Hour(shift.end_time)}{' '}
-        <span className="font-normal text-gray-600">{ph.toFixed(1)}h</span>
+        <span className="font-normal text-text-muted">{ph.toFixed(1)}h</span>
       </p>
     </div>
   );
@@ -255,8 +279,8 @@ function ShiftBlockOverlay({ shift, isDraft }: { shift: RotaShift; isDraft: bool
 // ---------------------------------------------------------------------------
 
 const LEAVE_STYLES = {
-  approved: { bg: 'bg-green-50', pill: 'bg-green-200 text-green-900', label: 'HOLIDAY' },
-  pending:  { bg: 'bg-amber-50', pill: 'bg-amber-200 text-amber-900',  label: 'HOLIDAY – PENDING' },
+  approved: { bg: 'bg-success-soft', pill: 'bg-success/15 text-success-fg', label: 'HOLIDAY' },
+  pending:  { bg: 'bg-warning-soft', pill: 'bg-warning/15 text-warning-fg',  label: 'HOLIDAY – PENDING' },
 };
 
 function DroppableCell({
@@ -285,37 +309,37 @@ function DroppableCell({
 
   const today = isToday(date);
   const leaveStyle = leaveStatus ? LEAVE_STYLES[leaveStatus] : null;
-  const baseClass = 'relative min-h-[34px] border-r border-gray-100 px-1 py-0.5 transition-colors group';
-  const overClass = isOver && !disabled ? 'bg-blue-50' : today ? 'bg-yellow-50/40' : '';
+  const baseClass = 'group/cell relative min-h-[62px] border-r border-border/80 bg-surface px-2 py-1.5 transition-colors';
+  const overClass = isOver && !disabled ? 'bg-primary-soft ring-1 ring-inset ring-primary/25' : today ? 'bg-primary-soft/45' : '';
 
   return (
     <div ref={setNodeRef} className={`${baseClass} ${overClass || (leaveStyle?.bg ?? '')}`}>
       {leaveStyle && (
-        <div className="mb-0.5">
+        <div className="mb-1">
           {onLeaveClick ? (
             <button
               type="button"
               onClick={e => { e.stopPropagation(); onLeaveClick(); }}
-              className={`w-full text-center text-xs font-semibold rounded px-1 py-0.5 leading-tight tracking-wide ${leaveStyle.pill} hover:opacity-75 transition-opacity`}
+              className={`w-full rounded-default px-1.5 py-0.5 text-center text-[10px] font-semibold leading-tight transition-opacity hover:opacity-75 ${leaveStyle.pill}`}
               title="View holiday details"
             >
               {leaveStyle.label}
             </button>
           ) : (
-            <span className={`inline-block w-full text-center text-xs font-semibold rounded px-1 py-0.5 leading-tight tracking-wide ${leaveStyle.pill}`}>
+            <span className={`inline-block w-full rounded-default px-1.5 py-0.5 text-center text-[10px] font-semibold leading-tight ${leaveStyle.pill}`}>
               {leaveStyle.label}
             </span>
           )}
         </div>
       )}
-      <div className="space-y-0.5 relative z-10">{children}</div>
+      <div className="relative z-10 space-y-1">{children}</div>
       {(onAdd || onBookHoliday) && (
-        <div className="absolute bottom-0.5 right-0.5 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+        <div className="absolute bottom-1 right-1 z-20 flex items-center gap-0.5 opacity-0 transition-opacity group-hover/cell:opacity-100 group-focus-within/cell:opacity-100">
           {onBookHoliday && (
             <button
               type="button"
               onClick={e => { e.stopPropagation(); onBookHoliday(); }}
-              className="p-0.5 rounded text-gray-300 hover:!text-green-600 hover:bg-green-50"
+              className="rounded-default border border-border bg-surface p-0.5 text-text-subtle shadow-xs hover:bg-success-soft hover:text-success-fg"
               title="Book holiday"
             >
               <CalendarDaysIcon className="h-3 w-3" />
@@ -325,7 +349,7 @@ function DroppableCell({
             <button
               type="button"
               onClick={e => { e.stopPropagation(); onAdd(); }}
-              className="p-0.5 rounded text-gray-300 hover:!text-gray-600 hover:bg-gray-100"
+              className="rounded-default border border-border bg-surface p-0.5 text-text-subtle shadow-xs hover:bg-surface-hover hover:text-text"
               title="Add shift"
             >
               <PlusIcon className="h-3 w-3" />
@@ -333,38 +357,6 @@ function DroppableCell({
           )}
         </div>
       )}
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Budget bar
-// ---------------------------------------------------------------------------
-
-function BudgetBar({
-  dept,
-  scheduledHours,
-  annualHours,
-}: {
-  dept: string;
-  scheduledHours: number;
-  annualHours: number;
-}) {
-  const weeklyTarget = annualHours / 52;
-  const pct = weeklyTarget > 0 ? Math.min((scheduledHours / weeklyTarget) * 100, 120) : 0;
-  const label = weeklyTarget > 0 ? `${scheduledHours.toFixed(0)}h / ${weeklyTarget.toFixed(0)}h` : `${scheduledHours.toFixed(0)}h`;
-  const barColour =
-    pct > 100 ? 'bg-red-400' : pct > 85 ? 'bg-amber-400' : 'bg-green-400';
-
-  return (
-    <div className="min-w-[100px]">
-      <div className="flex items-center justify-between mb-0.5">
-        <span className="text-xs font-medium text-gray-600 capitalize">{dept}</span>
-        <span className="text-xs text-gray-500">{label}</span>
-      </div>
-      <div className="h-1.5 bg-gray-200 rounded-full overflow-hidden">
-        <div className={`h-full rounded-full ${barColour}`} style={{ width: `${Math.min(pct, 100)}%` }} />
-      </div>
     </div>
   );
 }
@@ -385,7 +377,6 @@ export default function RotaGrid({
   canViewLeave,
   canCreateLeave,
   canEditLeave,
-  budgets,
   departments,
   dayInfo,
   periodSummary,
@@ -444,12 +435,18 @@ export default function RotaGrid({
 
   // Separate open shifts from employee shifts
   const openShifts = useMemo(() => shifts.filter(s => s.is_open_shift), [shifts]);
-
-  // Budget data
-  const currentYear = parseInt(weekStart.slice(0, 4), 10);
-  const currentYearBudgets = useMemo(
-    () => budgets.filter(b => b.budget_year === currentYear),
-    [budgets, currentYear],
+  const activeShifts = useMemo(() => shifts.filter(s => s.status !== 'cancelled'), [shifts]);
+  const totalScheduledHours = useMemo(
+    () => activeShifts.reduce((sum, s) => sum + paidHours(s.start_time, s.end_time, s.unpaid_break_minutes, s.is_overnight), 0),
+    [activeShifts],
+  );
+  const scheduledEmployeeCount = useMemo(
+    () => new Set(activeShifts.filter(s => !s.is_open_shift && s.employee_id).map(s => s.employee_id)).size,
+    [activeShifts],
+  );
+  const unpublishedShiftCount = useMemo(
+    () => shifts.filter(s => shiftIsUnpublished(s, week)).length,
+    [shifts, week],
   );
 
   // DnD handlers
@@ -608,8 +605,8 @@ export default function RotaGrid({
     return (
       <div
         key={date}
-        className={`mt-1 rounded border px-1 py-0.5 text-left text-[10px] leading-tight ${
-          overTarget ? 'border-red-200 bg-red-50' : 'border-gray-200 bg-white'
+        className={`mt-1 rounded-default border px-1 py-0.5 text-left text-[10px] leading-tight ${
+          overTarget ? 'border-danger/25 bg-danger-soft' : 'border-border bg-surface'
         }`}
       >
         {isEditing ? (
@@ -620,7 +617,7 @@ export default function RotaGrid({
               step="1"
               value={editingTarget.amount}
               onChange={e => setEditingTarget(current => current ? { ...current, amount: e.target.value } : current)}
-              className="w-full rounded border border-gray-300 px-1 py-0.5 text-[10px]"
+              className="w-full rounded-default border border-border bg-surface px-1 py-0.5 text-[10px] text-text"
               aria-label={`Sales target for ${date}`}
             />
             <input
@@ -628,7 +625,7 @@ export default function RotaGrid({
               value={editingTarget.reason}
               onChange={e => setEditingTarget(current => current ? { ...current, reason: e.target.value } : current)}
               placeholder="Reason"
-              className="w-full rounded border border-gray-300 px-1 py-0.5 text-[10px]"
+              className="w-full rounded-default border border-border bg-surface px-1 py-0.5 text-[10px] text-text placeholder:text-text-subtle"
               aria-label={`Sales target reason for ${date}`}
             />
             <div className="flex gap-1">
@@ -636,7 +633,7 @@ export default function RotaGrid({
                 type="button"
                 onClick={saveTargetEdit}
                 disabled={targetSavePending}
-                className="rounded bg-gray-900 px-1.5 py-0.5 text-[10px] font-medium text-white disabled:opacity-50"
+                className="rounded-default bg-primary px-1.5 py-0.5 text-[10px] font-medium text-primary-fg disabled:opacity-50"
               >
                 Save
               </button>
@@ -644,7 +641,7 @@ export default function RotaGrid({
                 type="button"
                 onClick={() => setEditingTarget(null)}
                 disabled={targetSavePending}
-                className="rounded border border-gray-300 px-1 py-0.5 text-gray-500"
+                className="rounded-default border border-border px-1 py-0.5 text-text-muted hover:bg-surface-hover"
                 aria-label="Cancel target edit"
               >
                 <XMarkIcon className="h-3 w-3" />
@@ -655,17 +652,17 @@ export default function RotaGrid({
           <div className="space-y-0.5">
             <div className="flex items-center justify-between gap-1">
               <span className="truncate">
-                <span className="text-gray-400">{total?.salesTargetSource === 'actual' ? 'Actual' : 'Target'}</span>{' '}
-                <strong className="text-gray-900">{canViewSalesTargets ? formatMoney(total?.salesTarget ?? null) : 'Hidden'}</strong>
+                <span className="text-text-subtle">{total?.salesTargetSource === 'actual' ? 'Actual' : 'Target'}</span>{' '}
+                <strong className="text-text-strong">{canViewSalesTargets ? formatMoney(total?.salesTarget ?? null) : 'Hidden'}</strong>
                 {canViewSalesTargets && total?.salesTargetSource === 'override' && (
-                  <span className="ml-1 font-medium text-blue-700">O</span>
+                  <span className="ml-1 font-medium text-primary">O</span>
                 )}
               </span>
               {canEditSalesTargets && canViewSalesTargets && periodSummary.site && (
                 <button
                   type="button"
                   onClick={() => startTargetEdit(date)}
-                  className="shrink-0 rounded p-0.5 text-gray-400 hover:bg-gray-100 hover:text-gray-700"
+                  className="shrink-0 rounded-default p-0.5 text-text-subtle hover:bg-surface-hover hover:text-text"
                   title="Edit sales target"
                 >
                   <PencilSquareIcon className="h-3 w-3" />
@@ -673,15 +670,15 @@ export default function RotaGrid({
               )}
             </div>
             <p className="truncate">
-              <span className="text-gray-400">Payroll</span>{' '}
-              <strong className="text-gray-900">{canViewSpend ? formatMoney(total?.estimatedCost ?? null) : 'Hidden'}</strong>
+              <span className="text-text-subtle">Payroll</span>{' '}
+              <strong className="text-text-strong">{canViewSpend ? formatMoney(total?.estimatedCost ?? null) : 'Hidden'}</strong>
             </p>
-            <p className={`truncate font-semibold ${overTarget ? 'text-red-600' : 'text-emerald-700'}`}>
-              <span className="font-normal text-gray-400">%</span>{' '}
+            <p className={`truncate font-semibold ${overTarget ? 'text-danger' : 'text-success-fg'}`}>
+              <span className="font-normal text-text-subtle">%</span>{' '}
               {canViewSpend && canViewSalesTargets ? formatPercent(total?.wagePercent ?? null) : 'Hidden'}
             </p>
             {canViewSpend && (total?.uncostedShiftCount ?? 0) > 0 && (
-              <p className="text-[9px] text-amber-700">{total.uncostedShiftCount} uncosted</p>
+              <p className="text-[9px] text-warning-fg">{total.uncostedShiftCount} uncosted</p>
             )}
           </div>
         )}
@@ -689,162 +686,178 @@ export default function RotaGrid({
     );
   };
 
+  const weekStatusLabel = week.status === 'published'
+    ? week.has_unpublished_changes ? 'Published with changes' : 'Published'
+    : 'Draft';
+  const weekStatusTone = week.status === 'published' && !week.has_unpublished_changes ? 'success' : 'warning';
+  const wagePercentOverTarget =
+    periodSummary?.weekTotals.wagePercent !== null &&
+    periodSummary?.weekTotals.wagePercent !== undefined &&
+    periodSummary.weekTotals.wagePercent > periodSummary.weekTotals.targetPercent;
+  const uncostedShiftCount = periodSummary?.weekTotals.uncostedShiftCount ?? 0;
+
   return (
-    <div className="space-y-2">
-      {periodSummary && (
-        <div className="rounded-md border border-gray-200 bg-white px-3 py-2">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="min-w-0">
-              <p className="truncate text-xs font-semibold text-gray-900">
-                Labour planning · {periodSummary.payrollPeriod.label} · {periodSummary.payrollPeriod.start} to {periodSummary.payrollPeriod.end}
-              </p>
-            </div>
-            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
-              <span>
-                <span className="text-gray-400">Week wages</span>{' '}
-                <strong className="text-gray-900">{canViewSpend ? formatMoney(periodSummary.weekTotals.estimatedCost) : 'Hidden'}</strong>
-              </span>
-              <span>
-                <span className="text-gray-400">Target sales</span>{' '}
-                <strong className="text-gray-900">{canViewSalesTargets ? formatMoney(periodSummary.weekTotals.salesTarget) : 'Hidden'}</strong>
-              </span>
-              <span>
-                <span className="text-gray-400">Wage %</span>{' '}
-                <strong className={`${
-                  periodSummary.weekTotals.wagePercent !== null && periodSummary.weekTotals.wagePercent > periodSummary.weekTotals.targetPercent
-                    ? 'text-red-600'
-                    : 'text-emerald-700'
-                }`}>
-                  {canViewSpend && canViewSalesTargets ? formatPercent(periodSummary.weekTotals.wagePercent) : 'Hidden'}
-                </strong>
-              </span>
-              <span>
-                <span className="text-gray-400">Limit</span>{' '}
-                <strong className="text-gray-900">{periodSummary.weekTotals.targetPercent.toFixed(1)}%</strong>
-              </span>
-            </div>
-          </div>
-          {canViewSpend && periodSummary.weekTotals.uncostedShiftCount > 0 && (
-            <p className="mt-1 text-[11px] text-amber-700">
-              {periodSummary.weekTotals.uncostedShiftCount} visible shift{periodSummary.weekTotals.uncostedShiftCount === 1 ? '' : 's'} could not be costed because the shift is open or missing a rate.
-            </p>
-          )}
-        </div>
-      )}
-
-      {/* Week navigation + budget bars */}
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex items-center gap-2 flex-wrap">
-          {/* Arrow navigation */}
-          <button
-            type="button"
-            onClick={() => navigateToWeek(addWeeks(weekStart, -1))}
-            className="p-1.5 rounded-md text-gray-500 hover:text-gray-700 hover:bg-gray-100 disabled:opacity-40"
-            disabled={navPending}
-          >
-            <ChevronLeftIcon className="h-4 w-4" />
-          </button>
-          <button
-            type="button"
-            onClick={() => navigateToWeek(getLocalIsoDate())}
-            className="text-xs px-2 py-1 rounded-md text-gray-600 hover:bg-gray-100 disabled:opacity-40"
-            disabled={navPending}
-          >
-            Today
-          </button>
-          <button
-            type="button"
-            onClick={() => navigateToWeek(addWeeks(weekStart, 1))}
-            className="p-1.5 rounded-md text-gray-500 hover:text-gray-700 hover:bg-gray-100 disabled:opacity-40"
-            disabled={navPending}
-          >
-            <ChevronRightIcon className="h-4 w-4" />
-          </button>
-
-          {/* Week picker */}
-          <input
-            type="date"
-            value={weekStart}
-            onChange={e => { if (e.target.value) navigateToWeek(e.target.value); }}
-            className="text-xs border border-gray-200 rounded-md px-2 py-1.5 text-gray-600 h-8 focus:outline-none focus:ring-1 focus:ring-gray-300 cursor-pointer"
-          />
-
-          <div className="w-px h-6 bg-gray-200 mx-1" />
-
-          {/* Week range label */}
-          <span className="text-base font-bold text-gray-900 whitespace-nowrap">
-            {navPending ? '…' : formatWeekRange(days)}
-          </span>
-
-          {canEdit && hasScheduledTemplates && (
-            <Button
-              type="button"
-              size="sm"
-              variant="secondary"
-              onClick={handleApplyTemplates}
-              disabled={isPending}
-            >
-              Apply templates
-            </Button>
-          )}
-          {canEdit && hasAnyActiveTemplate && (
-            <Button
-              type="button"
-              size="sm"
-              variant="ghost"
-              onClick={() => setShowAddShifts(true)}
-              disabled={isPending}
-            >
-              Add shifts
-            </Button>
-          )}
-
-          <a
-            href={`/api/rota/pdf?week=${weekStart}`}
-            download
-            title="Download rota as PDF"
-            className="flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-md text-gray-600 border border-gray-200 hover:bg-gray-50 hover:text-gray-800 transition-colors"
-          >
-            <PrinterIcon className="h-3.5 w-3.5" />
-            Download PDF
-          </a>
-        </div>
-
-        {currentYearBudgets.length > 0 && (
-          <div className="flex gap-4">
-            {currentYearBudgets.map(b => (
-              <BudgetBar
-                key={b.department}
-                dept={b.department}
-                scheduledHours={deptWeekHours(b.department, shifts)}
-                annualHours={b.annual_hours}
-              />
-            ))}
-          </div>
-        )}
-      </div>
-
-      {/* Main DnD area */}
+    <div className="space-y-5">
       <DndContext
         sensors={sensors}
         onDragStart={handleDragStart}
         onDragEnd={handleDragEnd}
       >
-        <div className="flex gap-4">
-          {/* Grid */}
-          <div className="flex-1 min-w-0 overflow-x-auto rounded-lg border border-gray-200 bg-white">
-            <div className="min-w-[860px]">
+        <div className="min-w-0">
+          <Card className="min-w-0">
+            <CardHeader
+              title="Schedule"
+              subtitle="Weekly assignments grouped by employee and day."
+              action={<Badge tone={weekStatusTone}>{weekStatusLabel}</Badge>}
+            />
+            <CardBody className="space-y-3 border-b border-border bg-surface px-4 py-3">
+              <div className="flex flex-col gap-3 2xl:flex-row 2xl:items-center 2xl:justify-between">
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button
+                    type="button"
+                    onClick={() => navigateToWeek(addWeeks(weekStart, -1))}
+                    variant="ghost"
+                    size="sm"
+                    icon={<ChevronLeftIcon className="h-4 w-4" />}
+                    aria-label="Previous week"
+                    disabled={navPending}
+                  />
+                  <Button
+                    type="button"
+                    onClick={() => navigateToWeek(getLocalIsoDate())}
+                    variant="secondary"
+                    size="sm"
+                    disabled={navPending}
+                  >
+                    Today
+                  </Button>
+                  <Button
+                    type="button"
+                    onClick={() => navigateToWeek(addWeeks(weekStart, 1))}
+                    variant="ghost"
+                    size="sm"
+                    icon={<ChevronRightIcon className="h-4 w-4" />}
+                    aria-label="Next week"
+                    disabled={navPending}
+                  />
+
+                  <input
+                    type="date"
+                    value={weekStart}
+                    onChange={e => { if (e.target.value) navigateToWeek(e.target.value); }}
+                    className="h-[var(--spacing-btn-h-sm)] cursor-pointer rounded-[7px] border border-border bg-surface px-2 text-xs text-text focus:outline-none focus:shadow-ring"
+                  />
+
+                  <p className="ml-1 whitespace-nowrap text-base font-semibold text-text-strong">
+                    {navPending ? 'Loading week...' : formatWeekRange(days)}
+                  </p>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2">
+                  {canEdit && hasScheduledTemplates && (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="secondary"
+                      onClick={handleApplyTemplates}
+                      disabled={isPending}
+                    >
+                      Apply templates
+                    </Button>
+                  )}
+                  {canEdit && hasAnyActiveTemplate && (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => setShowAddShifts(true)}
+                      disabled={isPending}
+                    >
+                      Add shifts
+                    </Button>
+                  )}
+
+                  <a
+                    href={`/api/rota/pdf?week=${weekStart}`}
+                    download
+                    title="Download rota as PDF"
+                    className="inline-flex h-[var(--spacing-btn-h-sm)] items-center gap-1.5 rounded-[7px] border border-border-strong bg-surface px-2.5 text-xs font-semibold text-text transition-colors hover:bg-surface-hover"
+                  >
+                    <PrinterIcon className="h-3.5 w-3.5" />
+                    Download PDF
+                  </a>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-[repeat(auto-fit,minmax(120px,1fr))] gap-2">
+                <SummaryPill
+                  label="Status"
+                  value={weekStatusLabel}
+                  detail={week.published_at ? new Date(week.published_at).toLocaleDateString('en-GB') : undefined}
+                  tone={weekStatusTone}
+                />
+                <SummaryPill
+                  label="Hours"
+                  value={formatHours(totalScheduledHours)}
+                  detail={`${activeShifts.length} active shift${activeShifts.length === 1 ? '' : 's'}`}
+                  tone="neutral"
+                />
+                <SummaryPill
+                  label="Open"
+                  value={openShifts.length}
+                  detail={openShifts.length > 0 ? 'Available' : 'None'}
+                  tone={openShifts.length > 0 ? 'warning' : 'success'}
+                />
+                <SummaryPill
+                  label="People"
+                  value={`${scheduledEmployeeCount}/${employees.length}`}
+                  detail={unpublishedShiftCount > 0 ? `${unpublishedShiftCount} unpublished` : 'No unpublished'}
+                  tone={unpublishedShiftCount > 0 ? 'warning' : 'info'}
+                />
+                {periodSummary && (
+                  <>
+                    <SummaryPill
+                      label="Wages"
+                      value={canViewSpend ? formatMoney(periodSummary.weekTotals.estimatedCost) : 'Hidden'}
+                      detail={canViewSpend ? `${uncostedShiftCount} uncosted` : undefined}
+                      tone={uncostedShiftCount > 0 && canViewSpend ? 'warning' : 'neutral'}
+                    />
+                    <SummaryPill
+                      label="Target"
+                      value={canViewSalesTargets ? formatMoney(periodSummary.weekTotals.salesTarget) : 'Hidden'}
+                      detail={periodSummary.payrollPeriod.label}
+                      tone="neutral"
+                    />
+                    <SummaryPill
+                      label="Wage %"
+                      value={canViewSpend && canViewSalesTargets ? formatPercent(periodSummary.weekTotals.wagePercent) : 'Hidden'}
+                      detail={`Limit ${periodSummary.weekTotals.targetPercent.toFixed(1)}%`}
+                      tone={wagePercentOverTarget ? 'danger' : 'success'}
+                    />
+                  </>
+                )}
+              </div>
+
+              {canViewSpend && uncostedShiftCount > 0 && (
+                <p className="rounded-default border border-warning/25 bg-warning-soft px-3 py-1.5 text-xs text-warning-fg">
+                  {uncostedShiftCount} visible shift{uncostedShiftCount === 1 ? '' : 's'} could not be costed because the shift is open or missing a rate.
+                </p>
+              )}
+            </CardBody>
+            <CardBody className="p-0">
+            <div className="overflow-x-auto">
+            <div className="min-w-[1040px]">
               {/* Header row */}
-              <div className="flex border-b border-gray-200 bg-gray-50">
-                <div className="w-[240px] shrink-0 sticky left-0 z-20 bg-gray-50 px-3 py-1.5 text-xs font-medium text-gray-500 border-r border-gray-200">
+              <div className="flex border-b border-border bg-surface-2">
+                <div className="sticky left-0 z-30 w-[260px] shrink-0 border-r border-border bg-surface-2 px-4 py-2 text-xs font-semibold text-text-muted">
                   Employee
                 </div>
                 <div className="flex-1 grid grid-cols-7">
                   {days.map(d => (
                     <div
                       key={d}
-                      className={`px-1 py-1 text-xs font-medium text-center border-r border-gray-100 last:border-r-0 ${
-                        isToday(d) ? 'text-blue-700 bg-blue-50' : 'text-gray-500'
+                      className={`border-r border-border px-2 py-2 text-center text-xs font-semibold last:border-r-0 ${
+                        isToday(d) ? 'bg-primary-soft text-primary-soft-fg' : 'text-text-muted'
                       }`}
                     >
                       <span>{formatDayHeader(d)}</span>
@@ -855,9 +868,9 @@ export default function RotaGrid({
               </div>
 
               {/* Day info strip */}
-              <div className="flex border-b border-gray-100 bg-white">
-                <div className="w-[240px] shrink-0 sticky left-0 z-10 bg-white px-3 py-0.5 border-r border-gray-100 flex items-center">
-                  <span className="text-[10px] font-medium text-gray-400 uppercase tracking-wide">Today</span>
+              <div className="flex border-b border-border bg-surface">
+                <div className="sticky left-0 z-20 flex w-[260px] shrink-0 items-center border-r border-border bg-surface px-4 py-1">
+                  <span className="text-[10px] font-semibold uppercase text-text-subtle">Day notes</span>
                 </div>
                 <div className="flex-1 grid grid-cols-7">
                   {days.map(d => {
@@ -866,7 +879,7 @@ export default function RotaGrid({
                     return (
                       <div
                         key={d}
-                        className={`px-1 py-0.5 border-r border-gray-100 last:border-r-0 min-h-[22px] ${isToday(d) ? 'bg-blue-50/40' : ''}`}
+                        className={`min-h-[30px] border-r border-border px-2 py-1 last:border-r-0 ${isToday(d) ? 'bg-primary-soft/45' : ''}`}
                       >
                         {hasAnything ? (
                           <div className="space-y-px">
@@ -878,20 +891,20 @@ export default function RotaGrid({
                             ))}
                             {info.events.map((e, i) => (
                               <div key={i} className="flex items-center gap-0.5 min-w-0">
-                                <span className="shrink-0 w-1 h-1 rounded-full bg-purple-400 mt-px" />
-                                <span className="text-[10px] text-purple-700 leading-tight truncate">{e.name}</span>
+                                <span className="shrink-0 w-1 h-1 rounded-full bg-info mt-px" />
+                                <span className="text-[10px] text-info-fg leading-tight truncate">{e.name}</span>
                               </div>
                             ))}
                             {info.privateBookings.map((pb, i) => (
                               <div key={i} className="flex items-center gap-0.5 min-w-0">
-                                <span className="shrink-0 w-1 h-1 rounded-full bg-rose-400 mt-px" />
-                                <span className="text-[10px] text-rose-700 leading-tight truncate">{pb.customer_name}{pb.guest_count > 0 ? ` ·${pb.guest_count}` : ''}</span>
+                                <span className="shrink-0 w-1 h-1 rounded-full bg-danger mt-px" />
+                                <span className="text-[10px] text-danger-fg leading-tight truncate">{pb.customer_name}{pb.guest_count > 0 ? ` ·${pb.guest_count}` : ''}</span>
                               </div>
                             ))}
                             {info.tableCovers > 0 && (
                               <div className="flex items-center gap-0.5">
-                                <span className="shrink-0 w-1 h-1 rounded-full bg-teal-400 mt-px" />
-                                <span className="text-[10px] text-teal-700 leading-tight">{info.tableCovers} covers</span>
+                                <span className="shrink-0 w-1 h-1 rounded-full bg-success mt-px" />
+                                <span className="text-[10px] text-success-fg leading-tight">{info.tableCovers} covers</span>
                               </div>
                             )}
                           </div>
@@ -903,10 +916,10 @@ export default function RotaGrid({
               </div>
 
               {/* Open shifts row */}
-              <div className="flex border-b border-amber-200 bg-amber-50/60 hover:bg-amber-50">
-                <div className="w-[240px] shrink-0 sticky left-0 z-10 bg-amber-50 px-3 py-1.5 border-r border-amber-200 flex flex-col justify-center">
-                  <p className="text-xs font-semibold text-amber-700 leading-tight">Open shifts</p>
-                  <p className="text-[10px] text-amber-500">Available to staff</p>
+              <div className="flex border-b border-warning/25 bg-warning-soft/70 transition-colors hover:bg-warning-soft">
+                <div className="sticky left-0 z-20 flex w-[260px] shrink-0 flex-col justify-center border-r border-warning/25 bg-warning-soft px-4 py-2">
+                  <p className="text-xs font-semibold text-warning-fg leading-tight">Open shifts</p>
+                  <p className="text-[10px] text-warning-fg/75">Available to staff</p>
                 </div>
                 <div className="flex-1 grid grid-cols-7">
                   {days.map(d => {
@@ -936,7 +949,7 @@ export default function RotaGrid({
 
               {/* Employee rows */}
               {employees.length === 0 ? (
-                <div className="px-4 py-8 text-center text-sm text-gray-400 italic">
+                <div className="px-4 py-8 text-center text-sm text-text-muted">
                   No active employees found.
                 </div>
               ) : (
@@ -946,13 +959,13 @@ export default function RotaGrid({
                     return (
                       <div key={group.role}>
                         <div className={`flex border-b ${style.header}`}>
-                          <div className={`w-[240px] shrink-0 sticky left-0 z-10 px-3 py-0.5 border-r ${style.header}`}>
+                          <div className={`sticky left-0 z-20 w-[260px] shrink-0 border-r px-4 py-1 ${style.header}`}>
                             <p className="truncate text-xs font-semibold leading-tight">
                               {group.role} <span className="text-[10px] font-normal opacity-75">({group.employees.length})</span>
                             </p>
                           </div>
                           <div className="flex-1 grid grid-cols-7">
-                            <div className="col-span-7 px-2 py-0.5 text-[10px] opacity-70">Grouped by role</div>
+                            <div className="col-span-7 px-2 py-1 text-[10px] opacity-70">Grouped by role</div>
                           </div>
                         </div>
 
@@ -967,31 +980,31 @@ export default function RotaGrid({
                             ? Math.min((periodTotal.periodHours / periodMax) * 100, 120)
                             : 0;
                           const periodCapacityColour = overPeriodHours
-                            ? 'text-red-600'
+                            ? 'text-danger'
                             : periodUsedPercent >= 85
-                              ? 'text-amber-700'
-                              : 'text-gray-600';
+                              ? 'text-warning-fg'
+                              : 'text-text-muted';
                           const periodBarColour = overPeriodHours
-                            ? 'bg-red-500'
+                            ? 'bg-danger'
                             : periodUsedPercent >= 85
-                              ? 'bg-amber-500'
-                              : 'bg-emerald-500';
+                              ? 'bg-warning'
+                              : 'bg-success';
                           const empRole = employeeRole(emp);
                           const empStyle = roleStyle(empRole);
 
                           return (
-                            <div key={emp.employee_id} className="flex border-b border-gray-100 hover:bg-gray-50/40">
+                            <div key={emp.employee_id} className="flex border-b border-border bg-surface transition-colors hover:bg-surface-hover/70">
                               {/* Employee name column */}
-                              <div className={`w-[240px] shrink-0 sticky left-0 z-10 bg-white px-3 py-1 border-r border-l-4 ${empStyle.stripe} border-r-gray-200 flex flex-col justify-center`}>
+                              <div className={`sticky left-0 z-20 flex w-[260px] shrink-0 flex-col justify-center border-r border-l-4 ${empStyle.stripe} border-r-border bg-surface px-4 py-2`}>
                                 <div className="flex items-center gap-1.5 min-w-0">
-                                  <p className={`text-xs font-medium leading-tight truncate ${emp.is_active ? 'text-gray-800' : 'text-gray-400'}`}>
+                                  <p className={`text-xs font-medium leading-tight truncate ${emp.is_active ? 'text-text-strong' : 'text-text-subtle'}`}>
                                     {empDisplayName(emp)}
                                   </p>
-                                  <span className={`shrink-0 rounded px-1.5 py-px text-[9px] font-medium ${empStyle.chip}`}>
+                                  <span className={`shrink-0 rounded-default px-1.5 py-px text-[9px] font-medium ${empStyle.chip}`}>
                                     {empRole}
                                   </span>
                                 </div>
-                                <p className={`text-[10px] truncate ${overWeekHours || overPeriodHours ? 'text-red-600 font-semibold' : 'text-gray-400'}`}>
+                                <p className={`text-[10px] truncate ${overWeekHours || overPeriodHours ? 'text-danger font-semibold' : 'text-text-muted'}`}>
                                   {emp.is_active ? (
                                     <>
                                       W {formatHours(weekHrs)}
@@ -1010,7 +1023,7 @@ export default function RotaGrid({
                                 {periodTotal && (
                                   <div className="mt-0.5 space-y-0.5">
                                     {periodMax !== null && (
-                                      <div className="h-1.5 overflow-hidden rounded-full bg-gray-200" title={`Payroll period hours: ${formatHours(periodTotal.periodHours)} of ${formatHours(periodMax)}`}>
+                                      <div className="h-1.5 overflow-hidden rounded-full bg-surface-hover" title={`Payroll period hours: ${formatHours(periodTotal.periodHours)} of ${formatHours(periodMax)}`}>
                                         <div
                                           className={`h-full rounded-full ${periodBarColour}`}
                                           style={{ width: `${Math.min(periodUsedPercent, 100)}%` }}
@@ -1073,7 +1086,9 @@ export default function RotaGrid({
                 </>
               )}
             </div>
-          </div>
+            </div>
+            </CardBody>
+          </Card>
         </div>
 
         {/* Drag overlay */}
@@ -1084,26 +1099,18 @@ export default function RotaGrid({
         </DragOverlay>
       </DndContext>
 
-      {/* Legend */}
-      <div className="flex flex-wrap gap-3 text-xs text-gray-500">
-        <span className="flex items-center gap-1"><span className="inline-block w-3 h-3 rounded-sm bg-blue-100 border border-blue-300" /> Bar shift</span>
-        <span className="flex items-center gap-1"><span className="inline-block w-3 h-3 rounded-sm bg-orange-100 border border-orange-300" /> Kitchen shift</span>
-        <span className="flex items-center gap-1"><span className="inline-block w-3 h-3 rounded-sm bg-red-100 border border-red-300" /> Sick</span>
-        <span className="flex items-center gap-1"><span className="inline-block w-3 h-3 rounded-sm bg-green-100 border border-green-300" /> Holiday (approved)</span>
-        <span className="flex items-center gap-1"><span className="inline-block w-3 h-3 rounded-sm bg-amber-100 border border-amber-300" /> Holiday (pending)</span>
-        <span className="flex items-center gap-1"><span className="inline-block w-3 h-3 rounded-sm bg-blue-50 border-2 border-dashed border-blue-300" /> Unpublished shift</span>
-        <span className="flex items-center gap-1"><span className="inline-block w-3 h-3 rounded-sm bg-emerald-100 border-l-4 border-emerald-400" /> Employee role group</span>
-        <span className="flex items-center gap-1"><span className="inline-block w-3 h-3 rounded-sm bg-red-100 border border-red-300" /> Wage % over target</span>
-        {(canEdit || canCreateLeave) && (
-          <span className="text-gray-400">
-            {[
-              canEdit ? 'Drag shifts to move them' : null,
-              canEdit ? 'Hover a cell to add a shift (+)' : null,
-              canCreateLeave ? 'Use the calendar icon to book holiday' : null,
-            ].filter(Boolean).join(' · ')}
-          </span>
-        )}
-      </div>
+      <Card>
+        <CardBody className="flex flex-wrap items-center gap-3 py-3 text-xs text-text-muted">
+          <span className="flex items-center gap-1.5"><span className="inline-block h-3 w-3 rounded-sm border border-info/25 bg-info-soft" /> Bar shift</span>
+          <span className="flex items-center gap-1.5"><span className="inline-block h-3 w-3 rounded-sm border border-warning/25 bg-warning-soft" /> Kitchen shift</span>
+          <span className="flex items-center gap-1.5"><span className="inline-block h-3 w-3 rounded-sm border border-danger/25 bg-danger-soft" /> Sick</span>
+          <span className="flex items-center gap-1.5"><span className="inline-block h-3 w-3 rounded-sm border border-success/25 bg-success-soft" /> Holiday approved</span>
+          <span className="flex items-center gap-1.5"><span className="inline-block h-3 w-3 rounded-sm border border-warning/25 bg-warning-soft" /> Holiday pending</span>
+          <span className="flex items-center gap-1.5"><span className="inline-block h-3 w-3 rounded-sm border-2 border-dashed border-info/25 bg-info-soft" /> Unpublished shift</span>
+          <span className="flex items-center gap-1.5"><span className="inline-block h-3 w-3 rounded-sm border-l-4 border-primary bg-primary-soft" /> Role grouping</span>
+          <span className="flex items-center gap-1.5"><span className="inline-block h-3 w-3 rounded-sm border border-danger/25 bg-danger-soft" /> Wage % over target</span>
+        </CardBody>
+      </Card>
 
       {/* Shift detail modal */}
       {selectedShift && (
