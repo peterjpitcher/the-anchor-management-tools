@@ -1,73 +1,28 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireFohPermission } from '@/lib/foh/api-auth'
-import {
-  getSundayPreorderPageDataByBookingId,
-  saveSundayPreorderByBookingId,
-} from '@/lib/table-bookings/sunday-preorder'
-import type { SundayPreorderSaveInputItem } from '@/lib/table-bookings/sunday-preorder'
-import { logAuditEvent } from '@/app/actions/audit'
 
-const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+const RETIRED_PREORDER_PAYLOAD = {
+  success: false,
+  error: 'Sunday lunch pre-orders are no longer required',
+  code: 'SUNDAY_PREORDERS_RETIRED',
+}
 
 export async function GET(
   _req: NextRequest,
-  context: { params: Promise<{ id: string }> }
+  _context: { params: Promise<{ id: string }> }
 ): Promise<NextResponse> {
   const auth = await requireFohPermission('view')
   if (!auth.ok) return auth.response
 
-  const { id } = await context.params
-  if (!UUID_REGEX.test(id)) {
-    return NextResponse.json({ error: 'Invalid booking ID' }, { status: 400 })
-  }
-
-  const data = await getSundayPreorderPageDataByBookingId(auth.supabase, id)
-  return NextResponse.json(data)
+  return NextResponse.json(RETIRED_PREORDER_PAYLOAD, { status: 410 })
 }
 
 export async function POST(
-  req: NextRequest,
-  context: { params: Promise<{ id: string }> }
+  _req: NextRequest,
+  _context: { params: Promise<{ id: string }> }
 ): Promise<NextResponse> {
   const auth = await requireFohPermission('manage')
   if (!auth.ok) return auth.response
 
-  const { id } = await context.params
-  if (!UUID_REGEX.test(id)) {
-    return NextResponse.json({ error: 'Invalid booking ID' }, { status: 400 })
-  }
-
-  let body: unknown
-  try {
-    body = await req.json()
-  } catch {
-    return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 })
-  }
-
-  if (
-    !body ||
-    typeof body !== 'object' ||
-    !Array.isArray((body as Record<string, unknown>).items)
-  ) {
-    return NextResponse.json({ error: 'Request body must contain an items array' }, { status: 400 })
-  }
-
-  const items = (body as { items: SundayPreorderSaveInputItem[] }).items
-
-  const result = await saveSundayPreorderByBookingId(auth.supabase, { bookingId: id, items, staffOverride: true })
-
-  if (result.state === 'blocked') {
-    return NextResponse.json({ error: result.reason ?? 'Save blocked' }, { status: 422 })
-  }
-
-  await logAuditEvent({
-    user_id: auth.userId,
-    operation_type: 'table_booking.preorder_staff_override',
-    resource_type: 'table_booking',
-    resource_id: id,
-    operation_status: 'success',
-    additional_info: { item_count: result.item_count },
-  })
-
-  return NextResponse.json({ success: true, item_count: result.item_count })
+  return NextResponse.json(RETIRED_PREORDER_PAYLOAD, { status: 410 })
 }

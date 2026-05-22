@@ -3,7 +3,6 @@ import { headers } from 'next/headers'
 import { checkGuestTokenThrottle } from '@/lib/guest/token-throttle'
 import { formatGuestGreeting, getCustomerFirstNameById } from '@/lib/guest/names'
 import { getTableManagePreviewByRawToken } from '@/lib/table-bookings/manage-booking'
-import { createSundayPreorderToken } from '@/lib/table-bookings/sunday-preorder'
 import { GuestPageShell } from '@/components/features/shared/GuestPageShell'
 import { GuestSubmitButton } from '@/components/features/shared/GuestSubmitButton'
 import { GuestCancelBooking } from '@/components/features/shared/GuestCancelBooking'
@@ -131,24 +130,6 @@ export default async function TableManageBookingPage({
     )
   }
 
-  let sundayPreorderUrl: string | null = null
-  if (
-    preview.booking_type === 'sunday_lunch' &&
-    preview.customer_id &&
-    preview.table_booking_id
-  ) {
-    try {
-      const tokenResult = await createSundayPreorderToken(supabase, {
-        customerId: preview.customer_id,
-        tableBookingId: preview.table_booking_id,
-        bookingStartIso: preview.start_datetime || null,
-        appBaseUrl: process.env.NEXT_PUBLIC_APP_URL
-      })
-      sundayPreorderUrl = tokenResult.url
-    } catch {
-      sundayPreorderUrl = null
-    }
-  }
   const guestFirstName = await getCustomerFirstNameById(supabase, preview.customer_id)
 
   return (
@@ -181,19 +162,6 @@ export default async function TableManageBookingPage({
           <p className="mt-1"><span className="font-medium text-gray-900">Party size:</span> {preview.party_size || 1}</p>
           <p className="mt-1"><span className="font-medium text-gray-900">Status:</span> {humanizeStatus(preview.status)}</p>
         </div>
-
-        {preview.booking_type === 'sunday_lunch' && (
-          <div className="mt-4 rounded-md border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900">
-            Sunday lunch booking: use your pre-order page to update menu selections.
-            {sundayPreorderUrl ? (
-              <a href={sundayPreorderUrl} className="ml-1 inline-block rounded px-1 py-0.5 underline hover:bg-blue-100">
-                Open Sunday pre-order
-              </a>
-            ) : (
-              <span className="ml-1">The pre-order link is currently unavailable.</span>
-            )}
-          </div>
-        )}
 
         {!preview.can_edit ? (
           <p className="mt-6 text-sm text-gray-600">

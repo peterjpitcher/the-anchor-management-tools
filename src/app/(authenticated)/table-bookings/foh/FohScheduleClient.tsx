@@ -395,12 +395,6 @@ export function FohScheduleClient({
         overlappingEventForTable={createBooking.overlappingEventForTable}
         tableEventPromptAcknowledgedEventId={createBooking.tableEventPromptAcknowledgedEventId}
         walkInPurposeAutoSelectionEnabled={createBooking.walkInPurposeAutoSelectionEnabled}
-        sundayMenuItems={createBooking.sundayMenuItems}
-        loadingSundayMenu={createBooking.loadingSundayMenu}
-        sundayMenuError={createBooking.sundayMenuError}
-        sundayPreorderQuantities={createBooking.sundayPreorderQuantities}
-        sundayMenuByCategory={createBooking.sundayMenuByCategory}
-        sundaySelectedItemCount={createBooking.sundaySelectedItemCount}
         formRequiresDeposit={createBooking.formRequiresDeposit}
         errorMessage={errorMessage}
         onClose={createBooking.closeCreateModal}
@@ -412,10 +406,8 @@ export function FohScheduleClient({
           createBooking.setCreateForm((c) => ({ ...c, phone: customer.mobile_e164 || customer.mobile_number || '' }))
         }}
         onClearCustomer={() => { createBooking.setSelectedCustomer(null); createBooking.setCustomerQuery(''); createBooking.setCustomerResults([]) }}
-        onSetSundayPreorderQuantities={createBooking.setSundayPreorderQuantities}
         onSetTableEventPromptAcknowledgedEventId={createBooking.setTableEventPromptAcknowledgedEventId}
         onSetWalkInPurposeAutoSelectionEnabled={createBooking.setWalkInPurposeAutoSelectionEnabled}
-        onRetrySundayMenu={createBooking.retrySundayMenu}
         onSetErrorMessage={setErrorMessage}
       />
 

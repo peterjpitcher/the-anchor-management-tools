@@ -18,72 +18,65 @@ vi.mock('@/lib/sms/customers', () => ({
 }))
 
 vi.mock('@/lib/table-bookings/bookings', () => ({
-  alignTableCardCaptureHoldToScheduledSend: vi.fn(),
-  createTableCardCaptureToken: vi.fn(),
+  alignTablePaymentHoldToScheduledSend: vi.fn(),
+  createTablePaymentToken: vi.fn().mockResolvedValue({ url: 'https://example.com/pay' }),
   mapTableBookingBlockedReason: vi.fn(() => 'no_table'),
   sendManagerTableBookingCreatedEmailIfAllowed: vi.fn(),
-  sendSundayPreorderLinkSmsIfAllowed: vi.fn(),
   sendTableBookingCreatedSmsIfAllowed: vi.fn(),
-}))
-
-vi.mock('@/lib/table-bookings/sunday-preorder', () => ({
-  saveSundayPreorderByBookingId: vi.fn(),
 }))
 
 vi.mock('@/lib/analytics/events', () => ({
   recordAnalyticsEvent: vi.fn(),
 }))
 
+vi.mock('@/app/actions/audit', () => ({
+  logAuditEvent: vi.fn(),
+}))
+
 import { requireFohPermission } from '@/lib/foh/api-auth'
 import { ensureCustomerForPhone } from '@/lib/sms/customers'
-import { sendSundayPreorderLinkSmsIfAllowed, sendManagerTableBookingCreatedEmailIfAllowed, sendTableBookingCreatedSmsIfAllowed } from '@/lib/table-bookings/bookings'
-import { saveSundayPreorderByBookingId } from '@/lib/table-bookings/sunday-preorder'
-import { logger } from '@/lib/logger'
+import {
+  sendManagerTableBookingCreatedEmailIfAllowed,
+  sendTableBookingCreatedSmsIfAllowed,
+} from '@/lib/table-bookings/bookings'
 import { POST } from '@/app/api/foh/bookings/route'
 
-describe('FOH bookings Sunday preorder fail-safe guards', () => {
+describe('FOH bookings retired Sunday preorder guards', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-  })
-
-  it('does not return a retry-driving 500 when capture_now throws after booking creation', async () => {
     ;(ensureCustomerForPhone as unknown as vi.Mock).mockResolvedValue({
       customerId: 'customer-1',
       resolutionError: undefined,
     })
-
-    ;(sendTableBookingCreatedSmsIfAllowed as unknown as vi.Mock).mockResolvedValue({
-      sms: null,
-    })
-
+    ;(sendTableBookingCreatedSmsIfAllowed as unknown as vi.Mock).mockResolvedValue({ sms: null })
     ;(sendManagerTableBookingCreatedEmailIfAllowed as unknown as vi.Mock).mockResolvedValue({
       sent: true,
     })
+  })
 
-    ;(saveSundayPreorderByBookingId as unknown as vi.Mock).mockRejectedValueOnce(new Error('db down'))
-
-    ;(sendSundayPreorderLinkSmsIfAllowed as unknown as vi.Mock).mockResolvedValueOnce({
-      sent: true,
-      scheduledFor: undefined,
-      url: 'http://localhost/preorder',
-      sms: null,
-    })
-
+  it('ignores stale FOH pre-order payload fields and creates a regular booking', async () => {
     const supabase = {
-      rpc: vi.fn((fn: string) => {
+      rpc: vi.fn((fn: string, args: Record<string, unknown>) => {
         if (fn === 'create_table_booking_v05') {
+          expect(args).toEqual(
+            expect.objectContaining({
+              p_sunday_lunch: false,
+            })
+          )
+
           return Promise.resolve({
             data: {
               state: 'confirmed',
               table_booking_id: 'tb-1',
               booking_reference: 'TB-1',
-              start_datetime: '2026-02-16T12:00:00.000Z',
+              start_datetime: '2026-06-28T12:30:00.000Z',
               party_size: 2,
               table_name: 'A',
             },
             error: null,
           })
         }
+
         throw new Error(`Unexpected rpc: ${fn}`)
       }),
     }
@@ -103,15 +96,14 @@ describe('FOH bookings Sunday preorder fail-safe guards', () => {
         phone: '+447700900111',
         first_name: 'Pat',
         last_name: 'Guest',
-        date: '2026-02-16',
-        time: '12:00',
+        date: '2026-06-28',
+        time: '13:30',
         party_size: 2,
         purpose: 'food',
         sunday_lunch: true,
-        sunday_deposit_method: 'payment_link',
         sunday_preorder_mode: 'capture_now',
         sunday_preorder_items: [
-          { menu_dish_id: '123e4567-e89b-12d3-a456-426614174000', quantity: 1 },
+          { menu_dish_id: 'not-a-uuid', quantity: 1 },
         ],
       }),
     })
@@ -127,56 +119,20 @@ describe('FOH bookings Sunday preorder fail-safe guards', () => {
         data: expect.objectContaining({
           state: 'confirmed',
           table_booking_id: 'tb-1',
-          sunday_preorder_state: 'link_sent',
-          sunday_preorder_reason: 'capture_failed:capture_exception',
+          sunday_preorder_state: 'not_applicable',
+          sunday_preorder_reason: null,
         }),
       })
     )
-
-    expect(saveSundayPreorderByBookingId).toHaveBeenCalledTimes(1)
-    expect(sendSundayPreorderLinkSmsIfAllowed).toHaveBeenCalledTimes(1)
-    expect(logger.warn).toHaveBeenCalledWith(
-      'Failed to capture Sunday pre-order during FOH booking create',
-      expect.any(Object)
-    )
+    expect(supabase.rpc).toHaveBeenCalledTimes(1)
+    expect(sendTableBookingCreatedSmsIfAllowed).toHaveBeenCalledTimes(1)
   })
 
-  it('auto-promotes Sunday lunch slot bookings so 13:30 Sunday food bookings do not fail as outside hours', async () => {
-    ;(ensureCustomerForPhone as unknown as vi.Mock).mockResolvedValue({
-      customerId: 'customer-2',
-      resolutionError: undefined,
-    })
-
-    ;(sendTableBookingCreatedSmsIfAllowed as unknown as vi.Mock).mockResolvedValue({
-      sms: null,
-    })
-
-    ;(sendManagerTableBookingCreatedEmailIfAllowed as unknown as vi.Mock).mockResolvedValue({
-      sent: true,
-    })
-
-    ;(sendSundayPreorderLinkSmsIfAllowed as unknown as vi.Mock).mockResolvedValueOnce({
-      sent: true,
-      scheduledFor: undefined,
-      url: 'http://localhost/preorder',
-      sms: null,
-    })
-
+  it('does not auto-promote Sunday food bookings into the legacy sunday_lunch type', async () => {
     const supabase = {
       rpc: vi.fn((fn: string, args: Record<string, unknown>) => {
-        if (fn === 'table_booking_matches_service_window_v05') {
-          return Promise.resolve({
-            data: args.p_sunday_lunch === true,
-            error: null,
-          })
-        }
-
         if (fn === 'create_table_booking_v05') {
-          expect(args).toEqual(
-            expect.objectContaining({
-              p_sunday_lunch: true,
-            })
-          )
+          expect(args.p_sunday_lunch).toBe(false)
 
           return Promise.resolve({
             data: {
@@ -214,7 +170,6 @@ describe('FOH bookings Sunday preorder fail-safe guards', () => {
         time: '13:30',
         party_size: 2,
         purpose: 'food',
-        sunday_deposit_method: 'payment_link',
       }),
     })
 
@@ -223,21 +178,17 @@ describe('FOH bookings Sunday preorder fail-safe guards', () => {
     const payload = await response.json()
 
     expect(response.status).toBe(201)
-    expect(payload).toEqual(
+    expect(payload.data).toEqual(
       expect.objectContaining({
-        success: true,
-        data: expect.objectContaining({
-          state: 'confirmed',
-          table_booking_id: 'tb-2',
-          sunday_preorder_state: 'link_sent',
-        }),
+        table_booking_id: 'tb-2',
+        sunday_preorder_state: 'not_applicable',
+        sunday_preorder_reason: null,
       })
     )
 
     const serviceWindowChecks = (supabase.rpc as unknown as vi.Mock).mock.calls.filter(
       ([fn]) => fn === 'table_booking_matches_service_window_v05'
     )
-    expect(serviceWindowChecks).toHaveLength(2)
-    expect(sendSundayPreorderLinkSmsIfAllowed).toHaveBeenCalledTimes(1)
+    expect(serviceWindowChecks).toHaveLength(0)
   })
 })

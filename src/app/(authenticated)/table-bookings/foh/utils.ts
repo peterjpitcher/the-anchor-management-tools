@@ -1,4 +1,3 @@
-import { CSSProperties } from 'react'
 import { fromZonedTime } from 'date-fns-tz'
 import {
   getTableBookingStatusBadgeClasses,
@@ -49,14 +48,6 @@ export function statusBadgeClass(status?: string | null): string {
 
 export function statusBlockClass(status?: string | null): string {
   return getTableBookingStatusBlockClasses(status)
-}
-
-export function getSundayPreorderBorderStyle(booking: FohBooking): CSSProperties {
-  if (booking.booking_type !== 'sunday_lunch') return {}
-  if (booking.sunday_preorder_completed_at) {
-    return { borderLeft: '4px solid #16a34a' }  // green — submitted
-  }
-  return { borderLeft: '4px solid #d97706' }  // amber — pending
 }
 
 export function getBookingVisualState(booking: FohBooking): BookingVisualState {
@@ -439,11 +430,6 @@ export function eventPromptWindowLabel(eventOption: FohEventOption): string {
     hour12: true
   })
   return `${formatter.format(new Date(startMs - 15 * 60 * 1000))} - ${formatter.format(new Date(endMs))}`
-}
-
-export function isSundayDate(dateIso: string): boolean {
-  const parsed = new Date(`${dateIso}T12:00:00Z`)
-  return Number.isFinite(parsed.getTime()) && parsed.getUTCDay() === 0
 }
 
 export function shiftIsoDate(dateIso: string, dayDelta: number): string {

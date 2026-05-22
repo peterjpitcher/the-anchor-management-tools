@@ -18,16 +18,11 @@ vi.mock('@/lib/sms/customers', () => ({
 }))
 
 vi.mock('@/lib/table-bookings/bookings', () => ({
-  alignTableCardCaptureHoldToScheduledSend: vi.fn(),
-  createTableCardCaptureToken: vi.fn(),
+  alignTablePaymentHoldToScheduledSend: vi.fn(),
+  createTablePaymentToken: vi.fn(),
   mapTableBookingBlockedReason: vi.fn(() => 'no_table'),
   sendManagerTableBookingCreatedEmailIfAllowed: vi.fn(),
-  sendSundayPreorderLinkSmsIfAllowed: vi.fn(),
   sendTableBookingCreatedSmsIfAllowed: vi.fn(),
-}))
-
-vi.mock('@/lib/table-bookings/sunday-preorder', () => ({
-  saveSundayPreorderByBookingId: vi.fn(),
 }))
 
 vi.mock('@/lib/analytics/events', () => ({
@@ -210,4 +205,3 @@ describe('FOH bookings walk-in override cleanup guards', () => {
     )
   })
 })
-

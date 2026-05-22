@@ -19,7 +19,6 @@ import {
   getTableBookingVisualState,
 } from '@/lib/table-bookings/ui'
 import { requestTableBookingAction } from '@/lib/table-bookings/client-actions'
-import PreorderTab from './PreorderTab'
 // formatDateInLondon uses toLocaleDateString (date-only); use Intl.DateTimeFormat directly for time display
 const formatLondonTime = (iso: string) =>
   new Intl.DateTimeFormat('en-GB', {
@@ -40,7 +39,7 @@ function StatusBadge({ booking }: { booking: Booking }) {
   )
 }
 
-type Tab = 'overview' | 'preorder' | 'sms'
+type Tab = 'overview' | 'sms'
 
 interface BookingCustomer {
   id: string
@@ -81,8 +80,6 @@ export interface Booking {
   start_datetime: string | null
   end_datetime: string | null
   duration_minutes: number | null
-  sunday_preorder_cutoff_at: string | null
-  sunday_preorder_completed_at: string | null
   deposit_waived: boolean | null
   payment_status: string | null
   payment_method: string | null
@@ -119,11 +116,9 @@ type MoveTableAvailabilityResponse = {
 
 export default function BookingDetailClient({ booking, canEdit, canManage, canRefund }: Props) {
   const [tab, setTab] = useState<Tab>('overview')
-  const isSundayLunch = booking.booking_type === 'sunday_lunch'
 
   const tabs: { id: Tab; label: string }[] = [
     { id: 'overview', label: 'Overview' },
-    ...(isSundayLunch ? [{ id: 'preorder' as Tab, label: 'Pre-order' }] : []),
     { id: 'sms', label: 'SMS' },
   ]
 
@@ -508,32 +503,6 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
             </div>
           )}
 
-          {/* Pre-order banner — Sunday lunch only */}
-          {isSundayLunch && (
-            <button
-              type="button"
-              onClick={() => setTab('preorder')}
-              className={`w-full text-left rounded-lg border p-4 flex items-center justify-between transition-colors ${
-                booking.sunday_preorder_completed_at
-                  ? 'border-green-300 bg-green-50 hover:bg-green-100'
-                  : 'border-amber-300 bg-amber-50 hover:bg-amber-100'
-              }`}
-            >
-              <span
-                className={`text-sm font-medium ${booking.sunday_preorder_completed_at ? 'text-green-800' : 'text-amber-800'}`}
-              >
-                {booking.sunday_preorder_completed_at
-                  ? 'Sunday pre-order submitted'
-                  : 'Sunday pre-order not yet submitted'}
-              </span>
-              <span
-                className={`text-xs ${booking.sunday_preorder_completed_at ? 'text-green-600' : 'text-amber-600'}`}
-              >
-                View in Pre-order tab →
-              </span>
-            </button>
-          )}
-
           {/* Quick actions */}
           {canEdit && (
             <div className="rounded-lg border border-gray-200 bg-white p-4 space-y-3">
@@ -664,9 +633,6 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
             </div>
           )}
         </div>
-      )}
-      {tab === 'preorder' && isSundayLunch && (
-        <PreorderTab booking={booking} canEdit={canManage} />
       )}
       {tab === 'sms' && (
         <div className="space-y-4 max-w-lg">

@@ -914,32 +914,8 @@ export async function sendTableBookingConfirmedAfterDepositSmsIfAllowed(
     manageLink = null
   }
 
-  let sundayPreorderLink: string | null = null
-  if (booking.booking_type === 'sunday_lunch') {
-    try {
-      const token = await createSundayPreorderToken(supabase, {
-        customerId: customer.id,
-        tableBookingId,
-        bookingStartIso: booking.start_datetime || null,
-        appBaseUrl: process.env.NEXT_PUBLIC_APP_URL,
-      })
-      sundayPreorderLink = token.url
-    } catch {
-      sundayPreorderLink = null
-    }
-  }
-
-  let composedMessage = `The Anchor: ${firstName}! Deposit sorted — your table for ${partySize} ${seatWord} on ${bookingMoment} is locked in. See you then!${manageLink ? ` ${manageLink}` : ''}`
-  let templateKey = 'table_booking_deposit_confirmed'
-
-  if (sundayPreorderLink) {
-    templateKey = resolveSundayPreorderTemplateKey(booking.start_datetime)
-    const preorderIntro =
-      templateKey === 'sunday_preorder_reminder_26h'
-        ? 'Final reminder: please complete your Sunday lunch pre-order.'
-        : 'Please complete your Sunday lunch pre-order.'
-    composedMessage = `${composedMessage} ${preorderIntro} Complete here: ${sundayPreorderLink}`
-  }
+  const composedMessage = `The Anchor: ${firstName}! Deposit sorted — your table for ${partySize} ${seatWord} on ${bookingMoment} is locked in. See you then!${manageLink ? ` ${manageLink}` : ''}`
+  const templateKey = 'table_booking_deposit_confirmed'
 
   const body = ensureReplyInstruction(composedMessage, supportPhone)
 

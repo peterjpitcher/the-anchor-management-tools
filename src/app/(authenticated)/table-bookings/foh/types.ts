@@ -24,7 +24,6 @@ export type FohBooking = {
   is_private_block?: boolean
   private_booking_id?: string | null
   deposit_waived?: boolean | null
-  sunday_preorder_completed_at?: string | null
 }
 
 export type FohLane = {
@@ -153,16 +152,6 @@ export type FohMoveTableAvailabilityResponse = {
     assigned_table_ids?: string[]
     tables: FohMoveTableOption[]
   }
-}
-
-export type SundayMenuItem = {
-  menu_dish_id: string
-  name: string
-  price: number
-  category_code: string | null
-  category_name: string | null
-  item_type: 'main' | 'side' | 'extra'
-  sort_order: number
 }
 
 export type FohCustomerSearchResult = {
