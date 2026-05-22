@@ -26,9 +26,14 @@ describe('short link base URL', () => {
     expect(buildShortLinkUrl('abc123')).toBe('https://www.the-anchor.pub/l/abc123')
   })
 
-  it('avoids double slashes when codes contain a leading slash', () => {
+  it('normalises legacy vip-club configuration to the canonical short-link host', () => {
     process.env.NEXT_PUBLIC_SHORT_LINK_BASE_URL = 'https://www.vip-club.uk'
-    expect(buildShortLinkUrl('/abc123')).toBe('https://www.vip-club.uk/abc123')
+    expect(getShortLinkBaseUrl()).toBe('https://l.the-anchor.pub')
+    expect(buildShortLinkUrl('/abc123')).toBe('https://l.the-anchor.pub/abc123')
+  })
+
+  it('avoids double slashes when codes contain a leading slash', () => {
+    process.env.NEXT_PUBLIC_SHORT_LINK_BASE_URL = 'https://links.example.com/'
+    expect(buildShortLinkUrl('/abc123')).toBe('https://links.example.com/abc123')
   })
 })
-

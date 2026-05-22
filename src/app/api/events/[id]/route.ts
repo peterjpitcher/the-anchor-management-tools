@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { withApiAuth, createApiResponse, createErrorResponse } from '@/lib/api/auth';
 import { eventToSchema } from '@/lib/api/schema';
+import { buildShortLinkUrl } from '@/lib/short-links/base-url';
 
 type EventFaqRow = {
   sort_order: number | null;
@@ -35,8 +36,6 @@ type EventShortLinkRow = {
     channel?: string | null
   } | null
 }
-
-const SHORT_LINK_BASE_URL = process.env.NEXT_PUBLIC_SHORT_LINK_BASE_URL || 'https://vip-club.uk';
 
 export async function GET(
   _request: NextRequest,
@@ -171,10 +170,19 @@ export async function GET(
     const price = event.price_per_seat ?? event.price ?? 0
     const facebookShortLinkRow = resolveMarketingShortLinkRow(marketingShortLinks, 'facebook');
     const linkInBioShortLinkRow = resolveMarketingShortLinkRow(marketingShortLinks, 'lnk_bio');
+    const googleBusinessProfileShortLinkRow = resolveMarketingShortLinkRow(marketingShortLinks, 'google_business_profile');
     const metaAdsShortLinkRow = resolveMarketingShortLinkRow(marketingShortLinks, 'meta_ads');
     const facebookShortLink = formatMarketingShortLink(facebookShortLinkRow);
     const linkInBioShortLink = formatMarketingShortLink(linkInBioShortLinkRow);
+    const googleBusinessProfileShortLink = formatMarketingShortLink(googleBusinessProfileShortLinkRow);
     const metaAdsShortLink = formatMarketingShortLink(metaAdsShortLinkRow);
+    const ctaLinks = {
+      facebook: facebookShortLink,
+      instagram: linkInBioShortLink,
+      google_business_profile: googleBusinessProfileShortLink,
+      gbp: googleBusinessProfileShortLink,
+      meta_ads: metaAdsShortLink,
+    };
 
     // Add extended details with all SEO fields
     const extendedEvent = {
@@ -195,10 +203,14 @@ export async function GET(
       facebook_short_link: facebookShortLink,
       linkInBioShortLink: linkInBioShortLink,
       link_in_bio_short_link: linkInBioShortLink,
+      googleBusinessProfileShortLink: googleBusinessProfileShortLink,
+      google_business_profile_short_link: googleBusinessProfileShortLink,
       metaAdsShortLink: metaAdsShortLink,
       meta_ads_short_link: metaAdsShortLink,
       metaAdsDestinationUrl: metaAdsShortLinkRow?.destination_url || null,
       meta_ads_destination_url: metaAdsShortLinkRow?.destination_url || null,
+      ctaLinks,
+      cta_links: ctaLinks,
       booking_mode: ['table', 'general', 'mixed'].includes(String(event.booking_mode))
         ? event.booking_mode
         : 'table',
@@ -289,5 +301,5 @@ function formatMarketingShortLink(row: EventShortLinkRow | null): string | null 
     return null;
   }
 
-  return `${SHORT_LINK_BASE_URL.replace(/\/$/, '')}/${row.short_code}`;
+  return buildShortLinkUrl(row.short_code);
 }

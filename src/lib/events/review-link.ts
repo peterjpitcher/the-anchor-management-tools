@@ -1,6 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 
-const FALLBACK_REVIEW_URL = 'https://vip-club.uk/jls0mu'
+const FALLBACK_REVIEW_URL = 'https://l.the-anchor.pub/jls0mu'
 
 function pickStringValue(value: unknown): string | null {
   if (typeof value === 'string') {

@@ -37,7 +37,7 @@ describe('Meta Ads short-link API', () => {
     vi.clearAllMocks()
     createShortLinkInternalMock.mockResolvedValue({
       short_code: 'ma123',
-      full_url: 'https://vip-club.uk/ma123',
+      full_url: 'https://l.the-anchor.pub/ma123',
       already_exists: false,
     })
   })
@@ -53,7 +53,7 @@ describe('Meta Ads short-link API', () => {
 
     const payload = await response.json()
     expect(response.status).toBe(200)
-    expect(payload.data.shortUrl).toBe('https://vip-club.uk/ma123')
+    expect(payload.data.shortUrl).toBe('https://l.the-anchor.pub/ma123')
     expect(payload.data.utmDestinationUrl).toContain('utm_source=facebook')
     expect(payload.data.utmDestinationUrl).toContain('utm_medium=paid_social')
     expect(payload.data.utmDestinationUrl).toContain('utm_campaign=private_hire_push')

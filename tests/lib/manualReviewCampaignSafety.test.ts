@@ -90,7 +90,7 @@ describe('manual review campaign safety', () => {
       customerId: 'customer-1',
       primaryBookingId: 'booking-1',
       eventIds: ['event-2', 'event-1', 'event-2'],
-      reviewRedirectTarget: 'https://vip-club.uk/jls0mu'
+      reviewRedirectTarget: 'https://l.the-anchor.pub/jls0mu'
     })
 
     expect(metadata).toMatchObject({

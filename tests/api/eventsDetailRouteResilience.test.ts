@@ -193,6 +193,11 @@ describe('events detail route resilience', () => {
             updated_at: '2026-02-12T10:00:00.000Z',
             metadata: { channel: 'meta_ads' },
           },
+          {
+            short_code: 'gpabc1',
+            updated_at: '2026-02-13T10:00:00.000Z',
+            metadata: { channel: 'google_business_profile' },
+          },
         ],
       })
     )
@@ -202,11 +207,20 @@ describe('events detail route resilience', () => {
     })
     const payload = await response.json()
     expect(response.status).toBe(200)
-    expect(payload.data.facebookShortLink).toContain('/fbabc1')
-    expect(payload.data.facebook_short_link).toContain('/fbabc1')
-    expect(payload.data.linkInBioShortLink).toContain('/igabc1')
-    expect(payload.data.link_in_bio_short_link).toContain('/igabc1')
-    expect(payload.data.metaAdsShortLink).toContain('/maabc1')
-    expect(payload.data.meta_ads_short_link).toContain('/maabc1')
+    expect(payload.data.facebookShortLink).toBe('https://l.the-anchor.pub/fbabc1')
+    expect(payload.data.facebook_short_link).toBe('https://l.the-anchor.pub/fbabc1')
+    expect(payload.data.linkInBioShortLink).toBe('https://l.the-anchor.pub/igabc1')
+    expect(payload.data.link_in_bio_short_link).toBe('https://l.the-anchor.pub/igabc1')
+    expect(payload.data.googleBusinessProfileShortLink).toBe('https://l.the-anchor.pub/gpabc1')
+    expect(payload.data.google_business_profile_short_link).toBe('https://l.the-anchor.pub/gpabc1')
+    expect(payload.data.metaAdsShortLink).toBe('https://l.the-anchor.pub/maabc1')
+    expect(payload.data.meta_ads_short_link).toBe('https://l.the-anchor.pub/maabc1')
+    expect(payload.data.ctaLinks).toMatchObject({
+      facebook: 'https://l.the-anchor.pub/fbabc1',
+      instagram: 'https://l.the-anchor.pub/igabc1',
+      google_business_profile: 'https://l.the-anchor.pub/gpabc1',
+      gbp: 'https://l.the-anchor.pub/gpabc1',
+      meta_ads: 'https://l.the-anchor.pub/maabc1',
+    })
   })
 })
