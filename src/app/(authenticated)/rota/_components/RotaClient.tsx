@@ -180,6 +180,7 @@ export function RotaClient() {
         breadcrumbs={[{ label: 'Rota' }]}
         title="Rota"
         subtitle={weekLabel}
+        className="mb-0"
         actions={
           <div className="flex items-center gap-2">
             <Button variant="secondary" size="sm">Print</Button>

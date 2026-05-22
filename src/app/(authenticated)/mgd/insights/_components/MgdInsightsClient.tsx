@@ -1,13 +1,13 @@
 'use client'
 
-import { useState, useTransition } from 'react'
+import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { TabNav } from '@/ds'
 import { StatGroup } from '@/ds'
 import { Stat } from '@/ds'
 import { Card } from '@/ds'
 import { BarChart } from '@/components/charts/BarChart'
-import { getMgdInsights, type MgdInsightsData, type MgdGranularity } from '@/app/actions/mgd'
+import type { MgdInsightsData, MgdGranularity } from '@/app/actions/mgd'
 
 const PERIOD_TABS = [
   { key: 'quarterly' as const, label: 'Quarterly' },
@@ -39,24 +39,16 @@ function getMgdPeriodEnd(periodStart: string, granularity: MgdGranularity): stri
 }
 
 interface MgdInsightsClientProps {
-  initialData: MgdInsightsData
+  initialData: Record<MgdGranularity, MgdInsightsData>
 }
 
 export function MgdInsightsClient({ initialData }: MgdInsightsClientProps): React.ReactElement {
   const router = useRouter()
   const [granularity, setGranularity] = useState<MgdGranularity>('quarterly')
-  const [data, setData] = useState<MgdInsightsData>(initialData)
-  const [isPending, startTransition] = useTransition()
+  const data = initialData[granularity]
 
   function handlePeriodChange(key: string): void {
-    const newGranularity = key as MgdGranularity
-    setGranularity(newGranularity)
-    startTransition(async () => {
-      const result = await getMgdInsights(newGranularity)
-      if (!('error' in result) && result.data) {
-        setData(result.data)
-      }
-    })
+    setGranularity(key as MgdGranularity)
   }
 
   function handleBarClick(index: number): void {
@@ -84,17 +76,14 @@ export function MgdInsightsClient({ initialData }: MgdInsightsClientProps): Reac
         <Stat
           label="Total Net Takings"
           value={formatCurrency(data.totals.totalNetTake)}
-          loading={isPending}
         />
         <Stat
           label="Total MGD Due (20%)"
           value={formatCurrency(data.totals.totalMgd)}
-          loading={isPending}
         />
         <Stat
           label="Total VAT on Supplier"
           value={formatCurrency(data.totals.totalVatOnSupplier)}
-          loading={isPending}
         />
       </StatGroup>
 

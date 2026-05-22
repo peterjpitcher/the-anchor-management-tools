@@ -184,6 +184,7 @@ export default function QuotesClient({
         breadcrumbs={[{ label: 'Finance' }, { label: 'Quotes' }]}
         title="Quotes"
         subtitle="Pre-invoice proposals for OJ consultancy work"
+        className="mb-0"
         actions={
           resolvedPermissions.canCreate ? (
             <Button variant="primary" size="sm" onClick={() => router.push('/quotes/new')}>

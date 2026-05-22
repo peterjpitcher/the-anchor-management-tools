@@ -326,6 +326,7 @@ export default function PrivateBookingsClient({
         breadcrumbs={[{ label: 'Private Bookings' }]}
         title="Private Bookings"
         subtitle="Manage private venue bookings and events"
+        className="mb-0"
         actions={
           <div className="flex items-center gap-2">
             {permissions.hasCreatePermission && (

@@ -168,8 +168,8 @@ export function DataTable<T = unknown>({
 
   const sizeClasses = {
     sm: { cell: 'px-4 py-2 text-xs', header: 'px-4 py-2 text-xs' },
-    md: { cell: 'px-6 py-3 text-sm', header: 'px-6 py-3 text-sm' },
-    lg: { cell: 'px-6 py-4 text-base', header: 'px-6 py-4 text-base' },
+    md: { cell: 'px-6 py-2.5 text-sm', header: 'px-6 py-2.5 text-sm' },
+    lg: { cell: 'px-6 py-3 text-base', header: 'px-6 py-3 text-base' },
   }
 
   const toggleExpand = (key: string | number) => {

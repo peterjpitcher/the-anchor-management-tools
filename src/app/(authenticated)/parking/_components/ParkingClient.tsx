@@ -361,6 +361,7 @@ export default function ParkingClient({ permissions, initialError }: Props) {
         breadcrumbs={[{ label: 'Parking' }]}
         title="Parking"
         subtitle={`${bookings.length} booking${bookings.length !== 1 ? 's' : ''} total`}
+        className="mb-0"
         actions={
           permissions.canCreate ? (
             <Button size="sm" onClick={() => setShowCreateModal(true)}>New Booking</Button>

@@ -35,7 +35,6 @@ import {
 } from '@/app/actions/mgd'
 import type { MgdCollection, MgdReturn } from '@/app/actions/mgd'
 import { useSort } from '@/hooks/useSort'
-import { SortableHeader } from '@/ds'
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -352,10 +351,37 @@ export function MgdClient({
           <Table>
             <TableHeader>
               <TableRow>
-                <SortableHeader label="Date" column="date" currentColumn={collectionSort.column} currentDirection={collectionSort.direction} onSort={toggleCollectionSort} className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-text-muted" />
-                <SortableHeader label="Net Take" column="netTake" currentColumn={collectionSort.column} currentDirection={collectionSort.direction} onSort={toggleCollectionSort} className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider text-text-muted" />
-                <SortableHeader label="MGD (20%)" column="mgdAmount" currentColumn={collectionSort.column} currentDirection={collectionSort.direction} onSort={toggleCollectionSort} className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider text-text-muted" />
-                <SortableHeader label="VAT on Supplier" column="vatOnSupplier" currentColumn={collectionSort.column} currentDirection={collectionSort.direction} onSort={toggleCollectionSort} className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider text-text-muted" />
+                <TableHead
+                  sortable
+                  sortDirection={collectionSort.column === 'date' ? collectionSort.direction : null}
+                  onSort={() => toggleCollectionSort('date')}
+                >
+                  Date
+                </TableHead>
+                <TableHead
+                  align="right"
+                  sortable
+                  sortDirection={collectionSort.column === 'netTake' ? collectionSort.direction : null}
+                  onSort={() => toggleCollectionSort('netTake')}
+                >
+                  Net Take
+                </TableHead>
+                <TableHead
+                  align="right"
+                  sortable
+                  sortDirection={collectionSort.column === 'mgdAmount' ? collectionSort.direction : null}
+                  onSort={() => toggleCollectionSort('mgdAmount')}
+                >
+                  MGD (20%)
+                </TableHead>
+                <TableHead
+                  align="right"
+                  sortable
+                  sortDirection={collectionSort.column === 'vatOnSupplier' ? collectionSort.direction : null}
+                  onSort={() => toggleCollectionSort('vatOnSupplier')}
+                >
+                  VAT on Supplier
+                </TableHead>
                 <TableHead align="right">Actions</TableHead>
               </TableRow>
             </TableHeader>
@@ -403,11 +429,44 @@ export function MgdClient({
           <Table>
             <TableHeader>
               <TableRow>
-                <SortableHeader label="Period" column="period" currentColumn={returnSort.column} currentDirection={returnSort.direction} onSort={toggleReturnSort} className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-text-muted" />
-                <SortableHeader label="Net Take" column="netTake" currentColumn={returnSort.column} currentDirection={returnSort.direction} onSort={toggleReturnSort} className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider text-text-muted" />
-                <SortableHeader label="MGD" column="mgd" currentColumn={returnSort.column} currentDirection={returnSort.direction} onSort={toggleReturnSort} className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider text-text-muted" />
-                <SortableHeader label="Status" column="status" currentColumn={returnSort.column} currentDirection={returnSort.direction} onSort={toggleReturnSort} className="px-4 py-3 text-center text-xs font-medium uppercase tracking-wider text-text-muted" />
-                <SortableHeader label="Date Paid" column="datePaid" currentColumn={returnSort.column} currentDirection={returnSort.direction} onSort={toggleReturnSort} className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-text-muted" />
+                <TableHead
+                  sortable
+                  sortDirection={returnSort.column === 'period' ? returnSort.direction : null}
+                  onSort={() => toggleReturnSort('period')}
+                >
+                  Period
+                </TableHead>
+                <TableHead
+                  align="right"
+                  sortable
+                  sortDirection={returnSort.column === 'netTake' ? returnSort.direction : null}
+                  onSort={() => toggleReturnSort('netTake')}
+                >
+                  Net Take
+                </TableHead>
+                <TableHead
+                  align="right"
+                  sortable
+                  sortDirection={returnSort.column === 'mgd' ? returnSort.direction : null}
+                  onSort={() => toggleReturnSort('mgd')}
+                >
+                  MGD
+                </TableHead>
+                <TableHead
+                  align="center"
+                  sortable
+                  sortDirection={returnSort.column === 'status' ? returnSort.direction : null}
+                  onSort={() => toggleReturnSort('status')}
+                >
+                  Status
+                </TableHead>
+                <TableHead
+                  sortable
+                  sortDirection={returnSort.column === 'datePaid' ? returnSort.direction : null}
+                  onSort={() => toggleReturnSort('datePaid')}
+                >
+                  Date Paid
+                </TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>

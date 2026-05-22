@@ -1,11 +1,9 @@
 import { getReceiptVendorSummary } from '@/app/actions/receipts'
-import { PageLayout } from '@/ds'
 import { Card } from '@/ds'
-import Link from 'next/link'
 import VendorSummaryGrid from './_components/VendorSummaryGrid'
 import { redirect } from 'next/navigation'
 import { checkUserPermission } from '@/app/actions/rbac'
-import { getReceiptsNavItems } from '../receiptsNavItems'
+import { ReceiptsPageChrome } from '../_components/ReceiptsPageChrome'
 
 export const runtime = 'nodejs'
 
@@ -18,11 +16,10 @@ export default async function ReceiptsVendorsPage() {
   const vendors = await getReceiptVendorSummary(12)
 
   return (
-    <PageLayout
+    <ReceiptsPageChrome
       title="Vendor spending trends"
       subtitle="See which suppliers are rising in cost and where spend is stable."
-      backButton={{ label: 'Back to receipts', href: '/receipts' }}
-      navItems={getReceiptsNavItems({ view: 'vendors' })}
+      navState={{ view: 'vendors' }}
     >
       {vendors.length === 0 ? (
         <Card variant="bordered">
@@ -31,6 +28,6 @@ export default async function ReceiptsVendorsPage() {
       ) : (
         <VendorSummaryGrid vendors={vendors} />
       )}
-    </PageLayout>
+    </ReceiptsPageChrome>
   )
 }

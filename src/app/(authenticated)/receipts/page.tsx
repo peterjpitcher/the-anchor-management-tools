@@ -1,9 +1,8 @@
 import ReceiptsClient from './_components/ReceiptsClient'
 import { getReceiptWorkspaceData, type ReceiptWorkspaceFilters } from '@/app/actions/receipts'
-import { PageLayout } from '@/ds'
 import { redirect } from 'next/navigation'
 import { checkUserPermission } from '@/app/actions/rbac'
-import { getReceiptsNavItems } from './receiptsNavItems'
+import { ReceiptsPageChrome } from './_components/ReceiptsPageChrome'
 
 const STATUS_VALUES = new Set(['pending', 'completed', 'auto_completed', 'no_receipt_required', 'cant_find'])
 const DIRECTION_VALUES = new Set(['in', 'out'])
@@ -102,10 +101,10 @@ export default async function ReceiptsPage({ searchParams }: ReceiptsPageProps) 
   }
 
   return (
-    <PageLayout
+    <ReceiptsPageChrome
       title="Receipts"
       subtitle="Upload statements, tick off receipts, and download quarterly packs."
-      navItems={getReceiptsNavItems({ view: 'workspace', missingVendorOnly, missingExpenseOnly })}
+      navState={{ view: 'workspace', missingVendorOnly, missingExpenseOnly }}
     >
       <ReceiptsClient
         initialData={data}
@@ -123,6 +122,6 @@ export default async function ReceiptsPage({ searchParams }: ReceiptsPageProps) 
           sortDirection,
         }}
       />
-    </PageLayout>
+    </ReceiptsPageChrome>
   )
 }

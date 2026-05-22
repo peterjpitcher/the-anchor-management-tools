@@ -41,6 +41,7 @@ export default async function MileagePage(): Promise<React.JSX.Element> {
         breadcrumbs={[{ label: 'Finance' }, { label: 'Mileage' }]}
         title="Mileage"
         subtitle="Business trip log with HMRC-rate reimbursement"
+        className="mb-0"
       />
       <SectionNav items={MILEAGE_SECTION_NAV} activeId="trips" />
       <MileageClient

@@ -270,20 +270,20 @@ export function ReceiptTableRow({
   }
 
   return (
-    <tr className="align-top hover:bg-gray-50/50">
-      <td className="px-4 py-3 text-gray-600">{formatDate(transaction.transaction_date)}</td>
-      <td className="px-4 py-3">
-        <p className="font-medium text-gray-900">{transaction.details}</p>
-        <p className="text-xs text-gray-500">{transaction.transaction_type ?? '—'}</p>
+    <tr className="align-top hover:bg-surface-hover/50">
+      <td className="px-4 py-2 text-text-muted">{formatDate(transaction.transaction_date)}</td>
+      <td className="px-4 py-2">
+        <p className="font-medium text-text-strong">{transaction.details}</p>
+        <p className="text-xs text-text-muted">{transaction.transaction_type ?? '—'}</p>
         {transaction.rule_applied_id && (
-          <p className="mt-1 inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-xs text-emerald-700">
+          <p className="mt-1 inline-flex items-center gap-1 rounded-full bg-primary-soft px-2 py-0.5 text-xs text-primary-soft-fg">
             <ArrowPathIcon className="h-4 w-4" /> Auto rule
           </p>
         )}
       </td>
 
       {/* Vendor */}
-      <td className="px-4 py-3">
+      <td className="px-4 py-2">
         {editingField === 'vendor' ? (
           <div className="flex flex-col gap-2 min-w-[200px]">
             {isCustomVendor ? (
@@ -308,8 +308,8 @@ export function ReceiptTableRow({
           </div>
         ) : (
           <div className="flex flex-col gap-1">
-            <button type="button" className="text-left text-sm font-medium text-gray-900 hover:text-emerald-600" onClick={() => startEditing('vendor')} disabled={!canManageReceipts}>
-              {transaction.vendor_name ?? <span className="text-gray-400 font-normal">Add vendor</span>}
+            <button type="button" className="text-left text-sm font-medium text-text-strong hover:text-primary" onClick={() => startEditing('vendor')} disabled={!canManageReceipts}>
+              {transaction.vendor_name ?? <span className="text-text-subtle font-normal">Add vendor</span>}
             </button>
             <div className="flex items-center gap-2">
               <ClassificationBadge source={transaction.vendor_source} />
@@ -320,7 +320,7 @@ export function ReceiptTableRow({
       </td>
 
       {/* Expense */}
-      <td className="px-4 py-3">
+      <td className="px-4 py-2">
         {editingField === 'expense' ? (
           <div className="flex flex-col gap-2 min-w-[200px]">
             <Select autoFocus value={classificationDraft} onChange={e => setClassificationDraft(e.target.value)} disabled={isPending} options={[
@@ -334,8 +334,8 @@ export function ReceiptTableRow({
           </div>
         ) : (
           <div className="flex flex-col gap-1">
-            <button type="button" className="text-left text-sm font-medium text-gray-900 hover:text-emerald-600" onClick={() => startEditing('expense')} disabled={!canManageReceipts}>
-              {transaction.expense_category ?? <span className="text-gray-400 font-normal">Add category</span>}
+            <button type="button" className="text-left text-sm font-medium text-text-strong hover:text-primary" onClick={() => startEditing('expense')} disabled={!canManageReceipts}>
+              {transaction.expense_category ?? <span className="text-text-subtle font-normal">Add category</span>}
             </button>
             <div className="flex items-center gap-2">
               <ClassificationBadge source={transaction.expense_category_source} />
@@ -345,10 +345,10 @@ export function ReceiptTableRow({
         )}
       </td>
 
-      <td className="px-4 py-3 text-right">{formatCurrency(transaction.amount_in)}</td>
-      <td className="px-4 py-3 text-right">{formatCurrency(transaction.amount_out)}</td>
+      <td className="px-4 py-2 text-right">{formatCurrency(transaction.amount_in)}</td>
+      <td className="px-4 py-2 text-right">{formatCurrency(transaction.amount_out)}</td>
 
-      <td className="px-4 py-3">
+      <td className="px-4 py-2">
         <span className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-medium whitespace-nowrap ${statusToneClasses[transaction.status]}`}>
           {transaction.status === 'completed' && <CheckCircleIcon className="h-4 w-4" />}
           {transaction.status === 'pending' && <XCircleIcon className="h-4 w-4" />}
@@ -356,19 +356,19 @@ export function ReceiptTableRow({
         </span>
       </td>
 
-      <td className="px-4 py-3">
+      <td className="px-4 py-2">
         {transaction.files.map(f => (
           <div key={f.id} className="flex items-center gap-2 mb-1">
-            <button type="button" onClick={() => handleReceiptDownload(f.id)} className="text-emerald-700 hover:underline text-xs truncate max-w-[100px]">{f.file_name || 'View'}</button>
+            <button type="button" onClick={() => handleReceiptDownload(f.id)} className="text-primary hover:underline text-xs truncate max-w-[100px]">{f.file_name || 'View'}</button>
             <button type="button" onClick={() => handleReceiptDelete(f.id)} className="text-red-500 text-xs px-1 hover:bg-red-50 rounded" disabled={isPending}>×</button>
           </div>
         ))}
         {transaction.files.length > 0 && (
-          <p className="mt-1 text-[10px] text-gray-400">Links expire after 5 min. Refresh if a link stops working.</p>
+          <p className="mt-1 text-[10px] text-text-subtle">Links expire after 5 min. Refresh if a link stops working.</p>
         )}
       </td>
 
-      <td className="px-4 py-3 min-w-[200px]">
+      <td className="px-4 py-2 min-w-[200px]">
         {isEditingNote ? (
           <div className="space-y-2">
             <input
@@ -388,20 +388,20 @@ export function ReceiptTableRow({
           <div className="space-y-1 group">
             {transaction.notes ? (
               <>
-                <p className="text-[11px] text-gray-500 uppercase">{transaction.notes.split(' — ')[0]}</p>
-                <p className="text-sm text-gray-700 break-words">{transaction.notes.split(' — ').slice(1).join(' — ') || transaction.notes}</p>
+                <p className="text-[11px] text-text-muted uppercase">{transaction.notes.split(' — ')[0]}</p>
+                <p className="text-sm text-text break-words">{transaction.notes.split(' — ').slice(1).join(' — ') || transaction.notes}</p>
               </>
             ) : (
-              <span className="text-xs text-gray-400 italic">No notes</span>
+              <span className="text-xs text-text-subtle italic">No notes</span>
             )}
-            <button type="button" onClick={startNoteEdit} className="invisible group-hover:visible text-xs text-gray-500 flex items-center gap-1 hover:text-emerald-600" disabled={!canManageReceipts}>
+            <button type="button" onClick={startNoteEdit} className="invisible group-hover:visible text-xs text-text-muted flex items-center gap-1 hover:text-primary" disabled={!canManageReceipts}>
               <PencilSquareIcon className="h-3 w-3" /> Edit
             </button>
           </div>
         )}
       </td>
 
-      <td className="px-4 py-3">
+      <td className="px-4 py-2">
         <div className="flex flex-row items-center gap-1">
           <Button
             variant="secondary"

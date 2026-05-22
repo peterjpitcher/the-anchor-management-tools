@@ -320,6 +320,7 @@ export default function CustomersClient({
         <PageHeader
           breadcrumbs={[{ label: 'Customers', href: '/customers' }, { label: editingCustomer ? 'Edit Customer' : 'New Customer' }]}
           title={editingCustomer ? 'Edit Customer' : 'Create New Customer'}
+          className="mb-0"
         />
         <Card>
           <CardBody>
@@ -341,6 +342,7 @@ export default function CustomersClient({
           breadcrumbs={[{ label: 'Customers', href: '/customers' }, { label: 'Import' }]}
           title="Import Customers"
           subtitle="Import multiple customers from a CSV file"
+          className="mb-0"
         />
         <CustomerImport
           onImportComplete={handleImportCustomers}
@@ -358,6 +360,7 @@ export default function CustomersClient({
         breadcrumbs={[{ label: 'Customers' }]}
         title="Customers"
         subtitle={`${totalCount.toLocaleString()} customers`}
+        className="mb-0"
         actions={
           canManageCustomers ? (
             <div className="flex items-center gap-2">

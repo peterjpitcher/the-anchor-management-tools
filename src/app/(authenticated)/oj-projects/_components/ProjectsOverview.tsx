@@ -181,22 +181,20 @@ export function ProjectsOverview({ projects, entries: initialEntries, workTypes 
   }
 
   return (
-    <div className="flex flex-col gap-6">
-      {/* Quick action */}
-      {canCreate && (
-        <div className="flex justify-end">
-          <Button variant="primary" icon={<Icon name="plus" size={16} />} onClick={openCreate}>
+    <div className="flex flex-col gap-4">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+        {/* Stats row */}
+        <div className="grid flex-1 grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <Stat label="Active Projects" value={String(activeProjects.length)} icon={<Icon name="briefcase" size={20} />} />
+          <Stat label="Total Hours" value={totalHours.toFixed(1)} icon={<Icon name="clock" size={20} />} />
+          <Stat label="Revenue This Month" value={formatCurrency(revenueThisMonth)} icon={<Icon name="pound" size={20} />} />
+          <Stat label="Unbilled Entries" value={String(outstandingCount)} icon={<Icon name="clock" size={20} />} />
+        </div>
+        {canCreate && (
+          <Button variant="primary" icon={<Icon name="plus" size={16} />} onClick={openCreate} className="self-start lg:ml-4">
             New Entry
           </Button>
-        </div>
-      )}
-
-      {/* Stats row */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <Stat label="Active Projects" value={String(activeProjects.length)} icon={<Icon name="briefcase" size={20} />} />
-        <Stat label="Total Hours" value={totalHours.toFixed(1)} icon={<Icon name="clock" size={20} />} />
-        <Stat label="Revenue This Month" value={formatCurrency(revenueThisMonth)} icon={<Icon name="pound" size={20} />} />
-        <Stat label="Unbilled Entries" value={String(outstandingCount)} icon={<Icon name="clock" size={20} />} />
+        )}
       </div>
 
       {/* Recent Projects */}

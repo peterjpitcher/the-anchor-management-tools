@@ -1,72 +1,22 @@
-import { Card } from '@/ds'
+import { Alert, Stat } from '@/ds'
 import type { ReceiptWorkspaceSummary, AIUsageBreakdown } from '@/app/actions/receipts'
-
-interface SummaryCardProps {
-  title: string
-  value: number
-  tone: 'success' | 'warning' | 'info' | 'neutral' | 'danger'
-}
-
-function SummaryCard({ title, value, tone }: SummaryCardProps) {
-  const toneClasses: Record<SummaryCardProps['tone'], string> = {
-    success: 'bg-emerald-50 text-emerald-700',
-    warning: 'bg-amber-50 text-amber-700',
-    info: 'bg-blue-50 text-blue-700',
-    neutral: 'bg-gray-50 text-gray-700',
-    danger: 'bg-rose-50 text-rose-700',
-  }
-
-  return (
-    <Card className="h-full">
-      <div className="space-y-2">
-        <p className="text-sm text-gray-500">{title}</p>
-        <p className="text-3xl font-semibold text-gray-900">{value}</p>
-        <span className={`inline-flex items-center rounded-full px-2 py-1 text-xs font-medium ${toneClasses[tone]}`}>
-          {value === 0 ? 'All clear' : value === 1 ? '1 item' : `${value} items`}
-        </span>
-      </div>
-    </Card>
-  )
-}
 
 function formatCurrencyStrict(value: number) {
   return new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP' }).format(value ?? 0)
 }
 
-function CostSummaryCard({ cost, breakdown }: { cost: number; breakdown?: AIUsageBreakdown | null }) {
-  const badge = cost > 0
-    ? { label: 'Includes AI tagging', className: 'bg-blue-50 text-blue-700' }
-    : { label: 'No spend yet', className: 'bg-gray-100 text-gray-600' }
+function formatCount(value: number) {
+  return value === 0 ? 'All clear' : value === 1 ? '1 item' : `${value} items`
+}
 
+function aiSpendHint(cost: number, breakdown?: AIUsageBreakdown | null) {
   const avgPerTx = breakdown && breakdown.total_classifications > 0
     ? breakdown.total_cost / breakdown.total_classifications
     : null
 
-  return (
-    <Card className="h-full">
-      <div className="space-y-2">
-        <p className="text-sm text-gray-500">OpenAI spend</p>
-        <p className="text-3xl font-semibold text-gray-900">{formatCurrencyStrict(cost)}</p>
-        <span className={`inline-flex items-center rounded-full px-2 py-1 text-xs font-medium ${badge.className}`}>
-          {badge.label}
-        </span>
-        {breakdown && (
-          <div className="mt-2 space-y-1 text-xs text-gray-500">
-            <div className="flex justify-between">
-              <span>This month</span>
-              <span className="font-medium text-gray-700">{formatCurrencyStrict(breakdown.this_month_cost)}</span>
-            </div>
-            {avgPerTx != null && (
-              <div className="flex justify-between">
-                <span>Avg per classification</span>
-                <span className="font-medium text-gray-700">{formatCurrencyStrict(avgPerTx)}</span>
-              </div>
-            )}
-          </div>
-        )}
-      </div>
-    </Card>
-  )
+  if (!breakdown) return cost > 0 ? 'Includes AI tagging' : 'No spend yet'
+  if (avgPerTx === null) return `This month ${formatCurrencyStrict(breakdown.this_month_cost)}`
+  return `This month ${formatCurrencyStrict(breakdown.this_month_cost)} - ${formatCurrencyStrict(avgPerTx)} avg`
 }
 
 interface ReceiptStatsProps {
@@ -77,23 +27,17 @@ export function ReceiptStats({ summary }: ReceiptStatsProps) {
   return (
     <div className="space-y-3">
       {summary.failedAiJobCount > 0 && (
-        <div role="alert" className="flex items-start gap-3 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-          <span className="mt-0.5 shrink-0">&#9888;</span>
-          <span>
-            <strong>
-              {summary.failedAiJobCount} AI classification job{summary.failedAiJobCount !== 1 ? 's' : ''} failed
-            </strong>{' '}
-            and could not be retried automatically. Use the re-queue button to retry classification.
-          </span>
-        </div>
+        <Alert tone="warning" title={`${summary.failedAiJobCount} AI classification job${summary.failedAiJobCount !== 1 ? 's' : ''} failed`}>
+          These could not be retried automatically. Use the re-queue button to retry classification.
+        </Alert>
       )}
       <div className="hidden md:grid md:grid-cols-2 md:gap-4 xl:grid-cols-6">
-        <CostSummaryCard cost={summary.openAICost} breakdown={summary.aiUsageBreakdown} />
-        <SummaryCard title="Pending" value={summary.totals.pending} tone="warning" />
-        <SummaryCard title="Completed" value={summary.totals.completed} tone="success" />
-        <SummaryCard title="Auto completed" value={summary.totals.autoCompleted} tone="info" />
-        <SummaryCard title="No receipt required" value={summary.totals.noReceiptRequired} tone="neutral" />
-        <SummaryCard title="Can't find" value={summary.totals.cantFind} tone="neutral" />
+        <Stat label="OpenAI spend" value={formatCurrencyStrict(summary.openAICost)} hint={aiSpendHint(summary.openAICost, summary.aiUsageBreakdown)} />
+        <Stat label="Pending" value={summary.totals.pending} hint={formatCount(summary.totals.pending)} />
+        <Stat label="Completed" value={summary.totals.completed} hint={formatCount(summary.totals.completed)} />
+        <Stat label="Auto completed" value={summary.totals.autoCompleted} hint={formatCount(summary.totals.autoCompleted)} />
+        <Stat label="No receipt required" value={summary.totals.noReceiptRequired} hint={formatCount(summary.totals.noReceiptRequired)} />
+        <Stat label="Can't find" value={summary.totals.cantFind} hint={formatCount(summary.totals.cantFind)} />
       </div>
     </div>
   )

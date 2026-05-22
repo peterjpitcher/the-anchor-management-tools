@@ -21,7 +21,7 @@ export async function DELETE(
   }
 
   const { data: existing, error: loadError } = await auth.supabase.from('table_bookings')
-    .select('id, customer_id, booking_reference, booking_date, status, payment_status')
+    .select('id, customer_id, booking_reference, booking_date, status, payment_status, cancelled_at, cancellation_reason')
     .eq('id', id)
     .maybeSingle()
 
@@ -33,10 +33,42 @@ export async function DELETE(
     return NextResponse.json({ error: 'Booking not found' }, { status: 404 })
   }
 
-  const closedStatuses = ['completed', 'no_show', 'cancelled']
+  const nowIso = new Date().toISOString()
+
+  if (existing.status === 'cancelled') {
+    const { data: deletedBooking, error: deleteError } = await auth.supabase.from('table_bookings')
+      .delete()
+      .eq('id', id)
+      .select('id, booking_reference, status, cancelled_at, cancellation_reason')
+      .maybeSingle()
+
+    if (deleteError) {
+      return NextResponse.json({ error: 'Failed to delete booking' }, { status: 500 })
+    }
+
+    if (!deletedBooking) {
+      return NextResponse.json({ error: 'Booking not found' }, { status: 404 })
+    }
+
+    return NextResponse.json({
+      success: true,
+      data: {
+        id,
+        booking_reference: deletedBooking.booking_reference || existing.booking_reference || null,
+        status: deletedBooking.status || existing.status,
+        deleted_at: nowIso,
+        cancelled_at: deletedBooking.cancelled_at || existing.cancelled_at || nowIso,
+        cancellation_reason: deletedBooking.cancellation_reason || existing.cancellation_reason || 'boh_soft_delete',
+        hard_deleted: true,
+        soft_deleted: false
+      }
+    })
+  }
+
+  const closedStatuses = ['completed', 'no_show']
   if (closedStatuses.includes(existing.status)) {
     return NextResponse.json(
-      { error: `Booking cannot be cancelled because it is already ${existing.status.replace('_', ' ')}` },
+      { error: `Booking cannot be deleted because it is already ${existing.status.replace('_', ' ')}` },
       { status: 409 }
     )
   }
@@ -67,7 +99,6 @@ export async function DELETE(
     }
   }
 
-  const nowIso = new Date().toISOString()
   const cancellationReason = 'boh_soft_delete'
   const { data: cancelledBooking, error: cancelError } = await auth.supabase.from('table_bookings')
     .update({

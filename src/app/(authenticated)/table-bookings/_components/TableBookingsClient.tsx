@@ -103,6 +103,7 @@ export function TableBookingsClient() {
         breadcrumbs={[{ label: 'Tables' }]}
         title="Tables"
         subtitle={`${dateLabel} - ${totalCovers} covers`}
+        className="mb-0"
         actions={
           <div className="flex items-center gap-2">
             <Button variant="secondary" size="sm">Walk-in</Button>

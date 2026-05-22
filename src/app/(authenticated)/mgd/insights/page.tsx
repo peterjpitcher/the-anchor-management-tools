@@ -1,36 +1,73 @@
 import { redirect } from 'next/navigation'
 import { checkUserPermission } from '@/app/actions/rbac'
-import { getMgdInsights } from '@/app/actions/mgd'
-import { PageLayout } from '@/ds'
+import { getMgdInsights, type MgdInsightsData } from '@/app/actions/mgd'
+import { PageHeader, SectionNav } from '@/ds'
 import { Alert } from '@/ds'
 import { Card } from '@/ds'
 import { MgdInsightsClient } from './_components/MgdInsightsClient'
-import type { HeaderNavItem } from '@/ds'
 
-const navItems: HeaderNavItem[] = [
-  { label: 'Collections', href: '/mgd' },
-  { label: 'Insights', href: '/mgd/insights' },
+const MGD_SECTION_NAV = [
+  { id: 'collections', label: 'Collections', href: '/mgd' },
+  { id: 'insights', label: 'Insights', href: '/mgd/insights' },
 ]
 
 export default async function MgdInsightsPage(): Promise<React.ReactElement> {
   const canView = await checkUserPermission('mgd', 'view')
   if (!canView) redirect('/unauthorized')
 
-  const result = await getMgdInsights('quarterly')
+  const [quarterlyResult, annuallyResult, allResult] = await Promise.all([
+    getMgdInsights('quarterly'),
+    getMgdInsights('annually'),
+    getMgdInsights('all'),
+  ])
 
-  if ('error' in result) {
+  if ('error' in quarterlyResult || 'error' in annuallyResult || 'error' in allResult) {
+    const error =
+      ('error' in quarterlyResult ? quarterlyResult.error : '') ||
+      ('error' in annuallyResult ? annuallyResult.error : '') ||
+      ('error' in allResult ? allResult.error : '')
+
     return (
-      <PageLayout title="Machine Games Duty" subtitle="Insights" navItems={navItems}>
+      <div className="space-y-6">
+        <PageHeader
+          breadcrumbs={[{ label: 'Finance' }, { label: 'MGD' }]}
+          title="Machine Games Duty"
+          subtitle="Track collections and quarterly MGD returns"
+          className="mb-0"
+        />
+        <SectionNav items={MGD_SECTION_NAV} activeId="insights" />
         <Card>
-          <Alert variant="error" title="Error loading insights" description={result.error} />
+          <Alert variant="error" title="Error loading insights" description={error} />
         </Card>
-      </PageLayout>
+      </div>
     )
   }
 
+  const emptyData: MgdInsightsData = {
+    bars: [],
+    totals: {
+      totalNetTake: 0,
+      totalMgd: 0,
+      totalVatOnSupplier: 0,
+    },
+  }
+
   return (
-    <PageLayout title="Machine Games Duty" subtitle="Insights" navItems={navItems}>
-      <MgdInsightsClient initialData={result.data!} />
-    </PageLayout>
+    <div className="space-y-6">
+      <PageHeader
+        breadcrumbs={[{ label: 'Finance' }, { label: 'MGD' }]}
+        title="Machine Games Duty"
+        subtitle="Track collections and quarterly MGD returns"
+        className="mb-0"
+      />
+      <SectionNav items={MGD_SECTION_NAV} activeId="insights" />
+      <MgdInsightsClient
+        initialData={{
+          quarterly: quarterlyResult.data ?? emptyData,
+          annually: annuallyResult.data ?? emptyData,
+          all: allResult.data ?? emptyData,
+        }}
+      />
+    </div>
   )
 }
