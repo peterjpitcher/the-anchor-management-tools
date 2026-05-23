@@ -2,11 +2,16 @@ import { redirect } from 'next/navigation'
 import { PageLayout } from '@/ds'
 import { checkUserPermission, getUserPermissions } from '@/app/actions/rbac'
 import { isFohOnlyUser } from '@/lib/foh/user-mode'
+import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { BohBookingsClient } from './BohBookingsClient'
 import { LinkButton } from '@/ds'
 
 export default async function TableBookingsBohPage() {
-  const [canView, canEdit, canManage, canViewReports, canManageSettings, permissionsResult] = await Promise.all([
+  const supabase = await createClient()
+
+  const [authResult, canView, canEdit, canManage, canViewReports, canManageSettings, permissionsResult] = await Promise.all([
+    supabase.auth.getUser(),
     checkUserPermission('table_bookings', 'view'),
     checkUserPermission('table_bookings', 'edit'),
     checkUserPermission('table_bookings', 'manage'),
@@ -25,6 +30,20 @@ export default async function TableBookingsBohPage() {
 
   if (isFohOnlyUser(permissions)) {
     redirect('/table-bookings/foh')
+  }
+
+  const userId = authResult.data.user?.id
+  let canWaiveDeposit = false
+  if (userId) {
+    const admin = createAdminClient()
+    const { data: roleRows } = await admin
+      .from('user_roles')
+      .select('roles(name)')
+      .eq('user_id', userId)
+    const roles = (roleRows as Array<{ roles: { name: string } | null }> | null) ?? []
+    canWaiveDeposit = roles.some(
+      (role) => role.roles?.name === 'manager' || role.roles?.name === 'super_admin'
+    )
   }
 
   return (
@@ -50,7 +69,7 @@ export default async function TableBookingsBohPage() {
         ) : undefined
       }
     >
-      <BohBookingsClient canEdit={canEdit} canManage={canManage} />
+      <BohBookingsClient canEdit={canEdit} canManage={canManage} canWaiveDeposit={canWaiveDeposit} />
     </PageLayout>
   )
 }

@@ -1,6 +1,6 @@
 'use client'
 
-import React, { FormEvent } from 'react'
+import React, { FormEvent, useEffect } from 'react'
 import { Modal } from '@/ds'
 import { cn } from '@/lib/utils'
 import {
@@ -46,6 +46,7 @@ type FohCreateBookingModalProps = {
   submittingBooking: boolean
   // Customer search
   customerQuery: string
+  completedCustomerSearchQuery: string
   customerResults: FohCustomerSearchResult[]
   selectedCustomer: FohCustomerSearchResult | null
   searchingCustomers: boolean
@@ -73,6 +74,13 @@ type FohCreateBookingModalProps = {
   onSetErrorMessage: (msg: string | null) => void
 }
 
+function isPhoneLikeCustomerQuery(value: string): boolean {
+  const trimmed = value.trim()
+  const digits = trimmed.replace(/\D/g, '')
+
+  return digits.length >= 7 && /^[+\d\s().-]+$/.test(trimmed)
+}
+
 export const FohCreateBookingModal = React.memo(function FohCreateBookingModal(props: FohCreateBookingModalProps) {
   const {
     open,
@@ -82,6 +90,7 @@ export const FohCreateBookingModal = React.memo(function FohCreateBookingModal(p
     walkInTargetTable,
     submittingBooking,
     customerQuery,
+    completedCustomerSearchQuery,
     customerResults,
     selectedCustomer,
     searchingCustomers,
@@ -115,6 +124,27 @@ export const FohCreateBookingModal = React.memo(function FohCreateBookingModal(p
     selectedCustomer && !selectedCustomer.mobile_e164 && !selectedCustomer.mobile_number
   )
 
+  useEffect(() => {
+    const completedQuery = completedCustomerSearchQuery.trim()
+    if (!open || !completedQuery) return
+    if (selectedCustomer || searchingCustomers || customerResults.length > 0) return
+    if (completedQuery !== customerQuery.trim()) return
+    if (!isPhoneLikeCustomerQuery(completedQuery)) return
+
+    onSetCreateForm((current) => {
+      if (current.phone.trim()) return current
+      return { ...current, phone: completedQuery }
+    })
+  }, [
+    completedCustomerSearchQuery,
+    customerQuery,
+    customerResults.length,
+    onSetCreateForm,
+    open,
+    searchingCustomers,
+    selectedCustomer,
+  ])
+
   return (
     <Modal
       open={open}
@@ -124,8 +154,6 @@ export const FohCreateBookingModal = React.memo(function FohCreateBookingModal(p
       size="lg"
     >
       <form onSubmit={onSubmit} className="space-y-4">
-
-        {/* Customer search section */}
         <div className="rounded-md border border-gray-200 bg-gray-50 p-3">
           <label className="block text-xs font-medium text-gray-700">
             Find existing customer
@@ -188,33 +216,6 @@ export const FohCreateBookingModal = React.memo(function FohCreateBookingModal(p
           )}
         </div>
 
-        {createMode === 'walk_in' && walkInTargetTable && (
-          <div className="rounded-md border border-green-200 bg-green-50 px-3 py-2 text-xs text-green-900">
-            Walk-in will be moved to <span className="font-semibold">{walkInTargetTable.name}</span> after creation.
-          </div>
-        )}
-
-        {eventOptions.length > 0 && createForm.purpose !== 'event' && (
-          <div className="rounded-md border border-blue-100 bg-blue-50 px-3 py-2 text-xs text-blue-800">
-            Booking for an upcoming event?{' '}
-            <button
-              type="button"
-              onClick={() => {
-                onSetCreateForm((current) => ({
-                  ...current,
-                  purpose: 'event',
-                  sunday_deposit_method: 'payment_link',
-                  event_id: eventOptions.find((item) => !item.is_full)?.id || eventOptions[0]?.id || ''
-                }))
-                onSetTableEventPromptAcknowledgedEventId(null)
-              }}
-              className="font-semibold underline hover:text-blue-900"
-            >
-              Select event
-            </button>
-          </div>
-        )}
-
         <div className="grid gap-3 md:grid-cols-2">
           <label className="text-xs font-medium text-gray-700">
             Booking date
@@ -240,6 +241,45 @@ export const FohCreateBookingModal = React.memo(function FohCreateBookingModal(p
             </label>
           )}
 
+          <label className="text-xs font-medium text-gray-700">
+            {createForm.purpose === 'event' ? 'Seats' : 'Party size'}
+            <input
+              type="number"
+              min={1}
+              max={20}
+              required
+              value={createForm.party_size}
+              onChange={(event) => onSetCreateForm((current) => ({ ...current, party_size: event.target.value }))}
+              className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+            />
+          </label>
+
+          {!selectedCustomer && createMode !== 'walk_in' && (
+            <label className="text-xs font-medium text-gray-700">
+              First name
+              <input
+                type="text"
+                required={createMode !== 'management'}
+                value={createForm.first_name}
+                onChange={(event) => onSetCreateForm((current) => ({ ...current, first_name: event.target.value }))}
+                className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+              />
+            </label>
+          )}
+
+          {!selectedCustomer && createMode !== 'walk_in' && (
+            <label className="text-xs font-medium text-gray-700">
+              Last name
+              <input
+                type="text"
+                required={createMode !== 'management'}
+                value={createForm.last_name}
+                onChange={(event) => onSetCreateForm((current) => ({ ...current, last_name: event.target.value }))}
+                className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+              />
+            </label>
+          )}
+
           {(!selectedCustomer || selectedCustomerNeedsPhone) && (
             <label className="text-xs font-medium text-gray-700">
               {selectedCustomerNeedsPhone ? 'Phone for selected customer' : 'Phone'}
@@ -253,19 +293,6 @@ export const FohCreateBookingModal = React.memo(function FohCreateBookingModal(p
               />
             </label>
           )}
-
-          <label className="text-xs font-medium text-gray-700">
-            {createForm.purpose === 'event' ? 'Seats' : 'Party size'}
-            <input
-              type="number"
-              min={1}
-              max={20}
-              required
-              value={createForm.party_size}
-              onChange={(event) => onSetCreateForm((current) => ({ ...current, party_size: event.target.value }))}
-              className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
-            />
-          </label>
 
           <label className="text-xs font-medium text-gray-700">
             Purpose
@@ -360,32 +387,6 @@ export const FohCreateBookingModal = React.memo(function FohCreateBookingModal(p
             </label>
           )}
 
-          {!selectedCustomer && createMode !== 'walk_in' && (
-            <label className="text-xs font-medium text-gray-700">
-              First name
-              <input
-                type="text"
-                required={createMode !== 'management'}
-                value={createForm.first_name}
-                onChange={(event) => onSetCreateForm((current) => ({ ...current, first_name: event.target.value }))}
-                className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
-              />
-            </label>
-          )}
-
-          {!selectedCustomer && createMode !== 'walk_in' && (
-            <label className="text-xs font-medium text-gray-700">
-              Last name
-              <input
-                type="text"
-                required={createMode !== 'management'}
-                value={createForm.last_name}
-                onChange={(event) => onSetCreateForm((current) => ({ ...current, last_name: event.target.value }))}
-                className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
-              />
-            </label>
-          )}
-
           {createMode !== 'walk_in' && createMode !== 'management' && createForm.purpose !== 'event' && (
             <div className="space-y-2 md:col-span-2">
               <div className="flex items-center gap-2 rounded-md border border-gray-200 bg-gray-50 px-3 py-2">
@@ -403,7 +404,7 @@ export const FohCreateBookingModal = React.memo(function FohCreateBookingModal(p
                   className="h-4 w-4 rounded border-gray-300 text-sidebar focus:ring-sidebar"
                 />
                 <label htmlFor="is-venue-event" className="cursor-pointer text-xs font-medium text-gray-700">
-                  Venue event (waives deposit)
+                  Pub Event (remove deposit for 10+ group)
                 </label>
               </div>
 
@@ -465,6 +466,33 @@ export const FohCreateBookingModal = React.memo(function FohCreateBookingModal(p
             </div>
           )}
         </div>
+
+        {createMode === 'walk_in' && walkInTargetTable && (
+          <div className="rounded-md border border-green-200 bg-green-50 px-3 py-2 text-xs text-green-900">
+            Walk-in will be moved to <span className="font-semibold">{walkInTargetTable.name}</span> after creation.
+          </div>
+        )}
+
+        {eventOptions.length > 0 && createForm.purpose !== 'event' && (
+          <div className="rounded-md border border-blue-100 bg-blue-50 px-3 py-2 text-xs text-blue-800">
+            Booking for an upcoming event?{' '}
+            <button
+              type="button"
+              onClick={() => {
+                onSetCreateForm((current) => ({
+                  ...current,
+                  purpose: 'event',
+                  sunday_deposit_method: 'payment_link',
+                  event_id: eventOptions.find((item) => !item.is_full)?.id || eventOptions[0]?.id || ''
+                }))
+                onSetTableEventPromptAcknowledgedEventId(null)
+              }}
+              className="font-semibold underline hover:text-blue-900"
+            >
+              Select event
+            </button>
+          </div>
+        )}
 
         {createForm.purpose !== 'event' && (
           <label className="block text-xs font-medium text-gray-700">
