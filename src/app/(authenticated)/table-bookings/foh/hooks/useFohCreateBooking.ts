@@ -31,6 +31,7 @@ export type UseFohCreateBookingReturn = {
   submittingBooking: boolean
   searchingCustomers: boolean
   customerQuery: string
+  completedCustomerSearchQuery: string
   customerResults: FohCustomerSearchResult[]
   selectedCustomer: FohCustomerSearchResult | null
   eventOptions: FohEventOption[]
@@ -75,6 +76,7 @@ export function useFohCreateBooking(input: {
   const [submittingBooking, setSubmittingBooking] = useState(false)
   const [searchingCustomers, setSearchingCustomers] = useState(false)
   const [customerQuery, setCustomerQuery] = useState('')
+  const [completedCustomerSearchQuery, setCompletedCustomerSearchQuery] = useState('')
   const [customerResults, setCustomerResults] = useState<FohCustomerSearchResult[]>([])
   const [selectedCustomer, setSelectedCustomer] = useState<FohCustomerSearchResult | null>(null)
   const [eventOptions, setEventOptions] = useState<FohEventOption[]>([])
@@ -101,6 +103,7 @@ export function useFohCreateBooking(input: {
 
   // --- Customer search ---
   useEffect(() => {
+    setCompletedCustomerSearchQuery('')
     if (selectedCustomer) { setCustomerResults([]); return }
     const query = customerQuery.trim()
     if (query.length < 2) { setCustomerResults([]); return }
@@ -114,9 +117,13 @@ export function useFohCreateBooking(input: {
         if (!response.ok) throw new Error((payload && payload.error) || 'Customer search failed')
         if (!cancelled) {
           setCustomerResults(Array.isArray(payload?.data) ? payload.data as FohCustomerSearchResult[] : [])
+          setCompletedCustomerSearchQuery(query)
         }
       } catch {
-        if (!cancelled) setCustomerResults([])
+        if (!cancelled) {
+          setCustomerResults([])
+          setCompletedCustomerSearchQuery('')
+        }
       } finally {
         if (!cancelled) setSearchingCustomers(false)
       }
@@ -406,7 +413,7 @@ export function useFohCreateBooking(input: {
 
   return {
     isCreateModalOpen, createMode, createForm, walkInTargetTable, submittingBooking,
-    searchingCustomers, customerQuery, customerResults, selectedCustomer,
+    searchingCustomers, customerQuery, completedCustomerSearchQuery, customerResults, selectedCustomer,
     eventOptions, loadingEventOptions, eventOptionsError,
     walkInPurposeAutoSelectionEnabled, tableEventPromptAcknowledgedEventId,
     selectedEventOption,

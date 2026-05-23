@@ -385,6 +385,7 @@ export function FohScheduleClient({
         walkInTargetTable={createBooking.walkInTargetTable}
         submittingBooking={createBooking.submittingBooking}
         customerQuery={createBooking.customerQuery}
+        completedCustomerSearchQuery={createBooking.completedCustomerSearchQuery}
         customerResults={createBooking.customerResults}
         selectedCustomer={createBooking.selectedCustomer}
         searchingCustomers={createBooking.searchingCustomers}

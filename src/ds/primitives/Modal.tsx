@@ -62,39 +62,41 @@ export function Modal({
           <DialogBackdrop className="fixed inset-0 bg-black/50" />
         </TransitionChild>
 
-        <div className="fixed inset-0 flex items-center justify-center p-4">
-          <TransitionChild
-            as={Fragment}
-            enter="ease-out duration-200"
-            enterFrom="opacity-0 scale-95"
-            enterTo="opacity-100 scale-100"
-            leave="ease-in duration-150"
-            leaveFrom="opacity-100 scale-100"
-            leaveTo="opacity-0 scale-95"
-          >
-            <DialogPanel
-              className={cn(
-                'w-full bg-surface rounded-lg shadow-lg',
-                widthStyles[resolvedWidth]
-              )}
+        <div className="fixed inset-0 overflow-y-auto p-4">
+          <div className="flex min-h-full items-start justify-center sm:items-center">
+            <TransitionChild
+              as={Fragment}
+              enter="ease-out duration-200"
+              enterFrom="opacity-0 scale-95"
+              enterTo="opacity-100 scale-100"
+              leave="ease-in duration-150"
+              leaveFrom="opacity-100 scale-100"
+              leaveTo="opacity-0 scale-95"
             >
-              {title && (
-                <div className="px-6 py-4 border-b border-border">
-                  <DialogTitle className="text-base font-semibold text-text">
-                    {title}
-                  </DialogTitle>
-                </div>
-              )}
+              <DialogPanel
+                className={cn(
+                  'flex max-h-[calc(100dvh-2rem)] w-full flex-col overflow-hidden bg-surface rounded-lg shadow-lg',
+                  widthStyles[resolvedWidth]
+                )}
+              >
+                {title && (
+                  <div className="px-6 py-4 border-b border-border">
+                    <DialogTitle className="text-base font-semibold text-text">
+                      {title}
+                    </DialogTitle>
+                  </div>
+                )}
 
-              <div className="px-6 py-4">{children}</div>
+                <div className="overflow-y-auto px-6 py-4">{children}</div>
 
-              {footer && (
-                <div className="px-6 py-4 border-t border-border flex justify-end gap-3">
-                  {footer}
-                </div>
-              )}
-            </DialogPanel>
-          </TransitionChild>
+                {footer && (
+                  <div className="px-6 py-4 border-t border-border flex justify-end gap-3">
+                    {footer}
+                  </div>
+                )}
+              </DialogPanel>
+            </TransitionChild>
+          </div>
         </div>
       </Dialog>
     </Transition>

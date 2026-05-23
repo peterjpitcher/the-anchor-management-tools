@@ -2,9 +2,13 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { Plus } from 'lucide-react'
 import { Button } from '@/ds'
 import { EmptyState } from '@/ds'
 import toast from 'react-hot-toast'
+import { FohCreateBookingModal } from '../foh/components/FohCreateBookingModal'
+import { useFohCreateBooking } from '../foh/hooks/useFohCreateBooking'
+import { buildTimelineRange } from '../foh/utils'
 import {
   formatGbp,
   getTableBookingDepositBadgeClasses,
@@ -338,10 +342,12 @@ function getDeltaDisplay(
 
 export function BohBookingsClient({
   canEdit,
-  canManage
+  canManage,
+  canWaiveDeposit = false
 }: {
   canEdit: boolean
   canManage: boolean
+  canWaiveDeposit?: boolean
 }) {
   const router = useRouter()
   const [view, setView] = useState<BohViewMode>('week')
@@ -361,8 +367,12 @@ export function BohBookingsClient({
   const [actionLoadingKey, setActionLoadingKey] = useState<string | null>(null)
   const [lastInteractionAtMs, setLastInteractionAtMs] = useState<number>(() => Date.now())
   const [lastLoadedAt, setLastLoadedAt] = useState<Date | null>(null)
+  const [createErrorMessage, setCreateErrorMessage] = useState<string | null>(null)
+  const [createStatusMessage, setCreateStatusMessage] = useState<string | null>(null)
 
   const abortControllerRef = useRef<AbortController | null>(null)
+  const clockNow = useMemo(() => new Date(), [])
+  const createBookingTimeline = useMemo(() => buildTimelineRange(null), [])
 
   const loadBookings = useCallback(async (options?: { signal?: AbortSignal }) => {
     setLoading(true)
@@ -431,6 +441,19 @@ export function BohBookingsClient({
     }
   }, [focusDate, view])
 
+  const createBooking = useFohCreateBooking({
+    date: focusDate,
+    clockNow,
+    canEdit,
+    schedule: null,
+    timeline: createBookingTimeline,
+    setErrorMessage: setCreateErrorMessage,
+    setStatusMessage: setCreateStatusMessage,
+    reloadSchedule: async () => {
+      await loadBookings()
+    }
+  })
+
   useEffect(() => {
     abortControllerRef.current?.abort()
     const controller = new AbortController()
@@ -471,7 +494,7 @@ export function BohBookingsClient({
     const intervalId = window.setInterval(() => {
       const todayDate = getTodayIsoDate()
       if (focusDate === todayDate) return
-      if (actionLoadingKey) return
+      if (actionLoadingKey || createBooking.isCreateModalOpen || createBooking.submittingBooking) return
       if (document.visibilityState !== 'visible') return
 
       const activeElement = document.activeElement
@@ -492,7 +515,7 @@ export function BohBookingsClient({
     return () => {
       window.clearInterval(intervalId)
     }
-  }, [actionLoadingKey, focusDate, lastInteractionAtMs])
+  }, [actionLoadingKey, createBooking.isCreateModalOpen, createBooking.submittingBooking, focusDate, lastInteractionAtMs])
 
   const filteredBookings = useMemo(() => {
     const normalizedSearch = searchTerm.trim().toLowerCase()
@@ -641,6 +664,16 @@ export function BohBookingsClient({
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
+            {canEdit && (
+              <Button
+                variant="primary"
+                size="sm"
+                icon={<Plus className="h-4 w-4" aria-hidden="true" />}
+                onClick={() => createBooking.openCreateModal({ mode: 'booking', prefill: { booking_date: focusDate } })}
+              >
+                Book table
+              </Button>
+            )}
             <Button
               variant="secondary"
               size="sm"
@@ -728,6 +761,12 @@ export function BohBookingsClient({
                 {getStatusLabel(status)}: {count}
               </span>
             ))}
+          </div>
+        )}
+
+        {createStatusMessage && (
+          <div role="status" className="mt-3 rounded-md border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-800">
+            {createStatusMessage}
           </div>
         )}
       </div>
@@ -888,6 +927,48 @@ export function BohBookingsClient({
           )}
         </div>
       </div>
+
+      <FohCreateBookingModal
+        open={createBooking.isCreateModalOpen}
+        createMode={createBooking.createMode}
+        createForm={createBooking.createForm}
+        canWaiveDeposit={canWaiveDeposit}
+        walkInTargetTable={createBooking.walkInTargetTable}
+        submittingBooking={createBooking.submittingBooking}
+        customerQuery={createBooking.customerQuery}
+        completedCustomerSearchQuery={createBooking.completedCustomerSearchQuery}
+        customerResults={createBooking.customerResults}
+        selectedCustomer={createBooking.selectedCustomer}
+        searchingCustomers={createBooking.searchingCustomers}
+        eventOptions={createBooking.eventOptions}
+        loadingEventOptions={createBooking.loadingEventOptions}
+        eventOptionsError={createBooking.eventOptionsError}
+        selectedEventOption={createBooking.selectedEventOption}
+        overlappingEventForTable={createBooking.overlappingEventForTable}
+        tableEventPromptAcknowledgedEventId={createBooking.tableEventPromptAcknowledgedEventId}
+        walkInPurposeAutoSelectionEnabled={createBooking.walkInPurposeAutoSelectionEnabled}
+        formRequiresDeposit={createBooking.formRequiresDeposit}
+        errorMessage={createErrorMessage}
+        onClose={createBooking.closeCreateModal}
+        onSubmit={createBooking.handleCreateBooking}
+        onSetCreateForm={createBooking.setCreateForm}
+        onSetCustomerQuery={createBooking.setCustomerQuery}
+        onSelectCustomer={(customer) => {
+          createBooking.setSelectedCustomer(customer)
+          createBooking.setCreateForm((current) => ({
+            ...current,
+            phone: customer.mobile_e164 || customer.mobile_number || ''
+          }))
+        }}
+        onClearCustomer={() => {
+          createBooking.setSelectedCustomer(null)
+          createBooking.setCustomerQuery('')
+          createBooking.setCustomerResults([])
+        }}
+        onSetTableEventPromptAcknowledgedEventId={createBooking.setTableEventPromptAcknowledgedEventId}
+        onSetWalkInPurposeAutoSelectionEnabled={createBooking.setWalkInPurposeAutoSelectionEnabled}
+        onSetErrorMessage={setCreateErrorMessage}
+      />
     </div>
   )
 }
