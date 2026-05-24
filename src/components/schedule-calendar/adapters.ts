@@ -19,7 +19,21 @@ function parseLocalDate(isoDate: string, time: string = '00:00'): Date {
 function statusFromString(s: string | null | undefined): CalendarEntryStatus {
     if (!s) return null
     if (
-        ['scheduled', 'draft', 'confirmed', 'sold_out', 'postponed', 'rescheduled', 'cancelled'].includes(s)
+        [
+            'scheduled',
+            'draft',
+            'confirmed',
+            'pending_payment',
+            'pending_card_capture',
+            'sold_out',
+            'postponed',
+            'rescheduled',
+            'cancelled',
+            'no_show',
+            'completed',
+            'visited_waiting_for_review',
+            'review_clicked',
+        ].includes(s)
     ) {
         return s as CalendarEntryStatus
     }
@@ -32,15 +46,35 @@ function statusLabel(s: CalendarEntryStatus): string | null {
             return 'Draft'
         case 'sold_out':
             return 'Sold out'
+        case 'pending_payment':
+            return 'Pending payment'
+        case 'pending_card_capture':
+            return 'Pending card capture'
         case 'postponed':
             return 'Postponed'
         case 'rescheduled':
             return 'Rescheduled'
         case 'cancelled':
             return 'Cancelled'
+        case 'no_show':
+            return 'No-show'
+        case 'completed':
+            return 'Completed'
+        case 'visited_waiting_for_review':
+            return 'Visited'
+        case 'review_clicked':
+            return 'Review clicked'
         default:
             return null
     }
+}
+
+function formatCurrency(value: number): string {
+    return new Intl.NumberFormat('en-GB', {
+        style: 'currency',
+        currency: 'GBP',
+        maximumFractionDigits: 0,
+    }).format(value)
 }
 
 // --- Event ---
@@ -118,13 +152,144 @@ export function privateBookingToEntry(booking: PrivateBookingCalendarOverview): 
     }
 }
 
+// --- Private booking balance due (dashboard only) ---
+
+export interface DashboardBalanceDueInput {
+    id: string
+    customer_name: string | null
+    balance_due_date: string
+    event_date: string | null
+    status: string | null
+    total_amount: number | null
+}
+
+export function balanceDueToEntry(booking: DashboardBalanceDueInput): CalendarEntry {
+    const start = parseLocalDate(booking.balance_due_date)
+    const customerName = booking.customer_name || 'Private booking'
+    const amount = booking.total_amount != null ? Number(booking.total_amount) : null
+
+    return {
+        id: `balance:${booking.id}`,
+        kind: 'balance_due',
+        title: `Balance due: ${customerName}`,
+        start,
+        end: start,
+        allDay: true,
+        spansMultipleDays: false,
+        endsNextDay: false,
+        color: '#ef4444',
+        subtitle: amount != null && Number.isFinite(amount) ? formatCurrency(amount) : null,
+        status: statusFromString(booking.status),
+        statusLabel: statusLabel(statusFromString(booking.status)),
+        tooltipData: {
+            kind: 'balance_due',
+            customerName,
+            amount: amount != null && Number.isFinite(amount) ? amount : null,
+            eventDate: booking.event_date,
+            status: booking.status,
+        },
+        onClickHref: `/private-bookings/${booking.id}`,
+    }
+}
+
+// --- Employee birthday (dashboard only) ---
+
+export interface DashboardEmployeeBirthdayInput {
+    employee_id: string
+    employee_name: string
+    occurrence_date: string
+    turning_age: number | null
+    job_title: string | null
+}
+
+export function employeeBirthdayToEntry(birthday: DashboardEmployeeBirthdayInput): CalendarEntry {
+    const start = parseLocalDate(birthday.occurrence_date)
+
+    return {
+        id: `birthday:${birthday.employee_id}:${birthday.occurrence_date}`,
+        kind: 'birthday',
+        title: `${birthday.employee_name} birthday`,
+        start,
+        end: start,
+        allDay: true,
+        spansMultipleDays: false,
+        endsNextDay: false,
+        color: '#ec4899',
+        subtitle: birthday.turning_age != null ? `Turns ${birthday.turning_age}` : null,
+        status: null,
+        statusLabel: null,
+        tooltipData: {
+            kind: 'birthday',
+            employeeName: birthday.employee_name,
+            turningAge: birthday.turning_age,
+            jobTitle: birthday.job_title,
+        },
+        onClickHref: `/employees/${birthday.employee_id}`,
+    }
+}
+
+// --- Special hours / holidays (dashboard only) ---
+
+export interface DashboardSpecialHoursInput {
+    id: string
+    date: string
+    opens: string | null
+    closes: string | null
+    is_closed: boolean
+    is_kitchen_closed: boolean
+    note: string | null
+}
+
+export function specialHoursToEntry(specialHours: DashboardSpecialHoursInput): CalendarEntry {
+    const start = parseLocalDate(specialHours.date)
+    const timeRange = specialHours.opens && specialHours.closes
+        ? `${specialHours.opens.slice(0, 5)}–${specialHours.closes.slice(0, 5)}`
+        : null
+    const title = specialHours.note
+        || (specialHours.is_closed
+            ? 'Closed'
+            : specialHours.is_kitchen_closed
+                ? 'Kitchen closed'
+                : 'Special opening hours')
+
+    return {
+        id: `special:${specialHours.id}`,
+        kind: 'special_hours',
+        title,
+        start,
+        end: start,
+        allDay: true,
+        spansMultipleDays: false,
+        endsNextDay: false,
+        color: specialHours.is_closed ? '#ef4444' : '#64748b',
+        subtitle: specialHours.is_closed ? 'Closed' : timeRange,
+        status: null,
+        statusLabel: null,
+        tooltipData: {
+            kind: 'special_hours',
+            title,
+            note: specialHours.note,
+            date: specialHours.date,
+            timeRange,
+            isClosed: specialHours.is_closed,
+            isKitchenClosed: specialHours.is_kitchen_closed,
+        },
+        onClickHref: '/settings/business-hours',
+    }
+}
+
 // --- Calendar note ---
 
 export function calendarNoteToEntry(note: CalendarNoteCalendarOverview): CalendarEntry {
-    const start = parseLocalDate(note.note_date)
-    const rawEnd = parseLocalDate(note.end_date || note.note_date)
+    const hasStartTime = Boolean(note.start_time)
+    const start = parseLocalDate(note.note_date, note.start_time || '00:00')
+    const rawEnd = note.end_time
+        ? parseLocalDate(note.end_date || note.note_date, note.end_time)
+        : hasStartTime
+            ? addHours(start, 1)
+            : parseLocalDate(note.end_date || note.note_date)
     const end = rawEnd.getTime() < start.getTime() ? start : rawEnd // clamp corrupt ranges
-    const spansMultipleDays = end.getTime() > start.getTime()
+    const spansMultipleDays = start.toDateString() !== end.toDateString()
     const dateRange = spansMultipleDays
         ? `${format(start, 'EEE d MMM yyyy')} – ${format(end, 'EEE d MMM yyyy')}`
         : format(start, 'EEE d MMM yyyy')
@@ -134,7 +299,7 @@ export function calendarNoteToEntry(note: CalendarNoteCalendarOverview): Calenda
         title: note.title,
         start,
         end,
-        allDay: true,
+        allDay: !hasStartTime,
         spansMultipleDays,
         endsNextDay: false,
         color: note.color || '#0EA5E9',
@@ -169,6 +334,7 @@ export interface DashboardParkingInput {
 export function parkingToEntry(booking: DashboardParkingInput): CalendarEntry {
     const start = booking.start_at ? new Date(booking.start_at) : new Date()
     const end = booking.end_at ? new Date(booking.end_at) : addHours(start, 2)
+    const spansMultipleDays = start.toDateString() !== end.toDateString()
     const customerName =
         [booking.customer_first_name, booking.customer_last_name].filter(Boolean).join(' ') || 'Parking'
     const timeRange = `${format(start, 'HH:mm')}–${format(end, 'HH:mm')}`
@@ -178,9 +344,9 @@ export function parkingToEntry(booking: DashboardParkingInput): CalendarEntry {
         title: booking.reference ? `${booking.reference} · ${customerName}` : customerName,
         start,
         end,
-        allDay: false,
-        spansMultipleDays: start.toDateString() !== end.toDateString(),
-        endsNextDay: false,
+        allDay: spansMultipleDays,
+        spansMultipleDays,
+        endsNextDay: spansMultipleDays,
         color: '#14b8a6',
         subtitle: booking.vehicle_registration ?? null,
         status: null,

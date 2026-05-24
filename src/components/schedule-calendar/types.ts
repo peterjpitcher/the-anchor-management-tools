@@ -4,6 +4,9 @@ import type { ReactNode } from 'react'
 export type CalendarEntryKind =
     | 'event'
     | 'private_booking'
+    | 'balance_due'
+    | 'birthday'
+    | 'special_hours'
     | 'calendar_note'
     | 'parking'
 
@@ -11,10 +14,16 @@ export type CalendarEntryStatus =
     | 'scheduled'
     | 'draft'
     | 'confirmed'
+    | 'pending_payment'
+    | 'pending_card_capture'
     | 'sold_out'
     | 'postponed'
     | 'rescheduled'
     | 'cancelled'
+    | 'no_show'
+    | 'completed'
+    | 'visited_waiting_for_review'
+    | 'review_clicked'
     | null
 
 export interface CalendarEntry {
@@ -50,6 +59,28 @@ export type TooltipData =
           guestCount: number | null
           timeRange: string
           endsNextDay: boolean
+      }
+    | {
+          kind: 'balance_due'
+          customerName: string
+          amount: number | null
+          eventDate: string | null
+          status: string | null
+      }
+    | {
+          kind: 'birthday'
+          employeeName: string
+          turningAge: number | null
+          jobTitle: string | null
+      }
+    | {
+          kind: 'special_hours'
+          title: string
+          note: string | null
+          date: string
+          timeRange: string | null
+          isClosed: boolean
+          isKitchenClosed: boolean
       }
     | {
           kind: 'calendar_note'

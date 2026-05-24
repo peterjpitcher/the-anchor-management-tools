@@ -142,6 +142,9 @@ function kindColor(k: CalendarEntryKind): string {
     const map: Record<CalendarEntryKind, string> = {
         event: '#22c55e',
         private_booking: '#8b5cf6',
+        balance_due: '#ef4444',
+        birthday: '#ec4899',
+        special_hours: '#64748b',
         calendar_note: '#0ea5e9',
         parking: '#14b8a6',
     }
@@ -152,6 +155,9 @@ function kindLabel(k: CalendarEntryKind): string {
     const map: Record<CalendarEntryKind, string> = {
         event: 'Events',
         private_booking: 'Private bookings',
+        balance_due: 'Balance due',
+        birthday: 'Birthdays',
+        special_hours: 'Special hours',
         calendar_note: 'Calendar notes',
         parking: 'Parking',
     }

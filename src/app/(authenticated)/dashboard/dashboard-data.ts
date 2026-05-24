@@ -14,6 +14,7 @@ type EventSummary = {
   time: string | null
   capacity: number | null
   price: number | null
+  eventStatus: string | null
   bookedSeatsCount: number
 }
 
@@ -29,12 +30,23 @@ type CalendarNoteSummary = {
   color: string
 }
 
+type SpecialHoursSummary = {
+  id: string
+  date: string
+  opens: string | null
+  closes: string | null
+  is_closed: boolean
+  is_kitchen_closed: boolean
+  note: string | null
+}
+
 type EventsSnapshot = {
   permitted: boolean
   today: EventSummary[]
   upcoming: EventSummary[]
   past: EventSummary[]
   calendarNotes: CalendarNoteSummary[]
+  specialHours: SpecialHoursSummary[]
   totalUpcoming: number
   nextUpcoming?: EventSummary
   error?: string
@@ -79,10 +91,20 @@ type PrivateBookingSummary = {
   days_until_event: number | null
 }
 
+type PrivateBookingBalanceDueSummary = {
+  id: string
+  customer_name: string | null
+  balance_due_date: string
+  event_date: string | null
+  status: string | null
+  total_amount: number | null
+}
+
 type PrivateBookingsSnapshot = {
   permitted: boolean
   upcoming: PrivateBookingSummary[]
   past: PrivateBookingSummary[]
+  balanceDueDates: PrivateBookingBalanceDueSummary[]
   totalUpcoming: number
   error?: string
 }
@@ -137,7 +159,16 @@ type InvoicesSnapshot = {
 type EmployeesSnapshot = {
   permitted: boolean
   activeCount: number
+  birthdays: EmployeeBirthdaySummary[]
   error?: string
+}
+
+type EmployeeBirthdaySummary = {
+  employee_id: string
+  employee_name: string
+  occurrence_date: string
+  turning_age: number | null
+  job_title: string | null
 }
 
 type ReceiptsSnapshot = {
@@ -201,6 +232,8 @@ type CashingUpSnapshot = {
 
 type TableBookingsSnapshot = {
   permitted: boolean
+  todayTotal: number
+  todayCovers: number
   thisWeekTotal: number
   lastWeekTotal: number
   thisMonthTotal: number
@@ -301,6 +334,47 @@ function isMissingColumnError(error: unknown, columnName: string): boolean {
   return new RegExp(`\\b${columnName}\\b`, 'i').test(pgError.message ?? '')
 }
 
+function toLocalIsoDate(date: Date): string {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+}
+
+function getBirthdayOccurrencesInRange(input: {
+  employee_id: string
+  first_name: string | null
+  last_name: string | null
+  job_title: string | null
+  date_of_birth: string | null
+}, startIso: string, endIso: string): EmployeeBirthdaySummary[] {
+  if (!input.date_of_birth) return []
+
+  const dob = new Date(`${input.date_of_birth}T12:00:00`)
+  if (Number.isNaN(dob.getTime())) return []
+
+  const start = new Date(`${startIso}T12:00:00`)
+  const end = new Date(`${endIso}T12:00:00`)
+  const name = [input.first_name, input.last_name].filter(Boolean).join(' ') || 'Employee'
+  const out: EmployeeBirthdaySummary[] = []
+
+  for (let year = start.getFullYear(); year <= end.getFullYear(); year += 1) {
+    let occurrence = new Date(year, dob.getMonth(), dob.getDate(), 12, 0, 0, 0)
+    if (occurrence.getMonth() !== dob.getMonth()) {
+      occurrence = new Date(year, 1, 28, 12, 0, 0, 0)
+    }
+    const iso = toLocalIsoDate(occurrence)
+    if (iso < startIso || iso > endIso) continue
+
+    out.push({
+      employee_id: input.employee_id,
+      employee_name: name,
+      occurrence_date: iso,
+      turning_age: year - dob.getFullYear(),
+      job_title: input.job_title,
+    })
+  }
+
+  return out
+}
+
 async function fetchDashboardSnapshotImpl(userId: string): Promise<DashboardSnapshot> {
     const supabase = await createAdminClient()
     const { data: userResult, error: userLookupError } = await supabase.auth.admin.getUserById(userId)
@@ -343,6 +417,7 @@ async function fetchDashboardSnapshotImpl(userId: string): Promise<DashboardSnap
       upcoming: [],
       past: [],
       calendarNotes: [],
+      specialHours: [],
       totalUpcoming: 0,
     }
     const canViewCalendarNotes = events.permitted || hasModuleAccess(permissionsMap, 'settings')
@@ -364,6 +439,7 @@ async function fetchDashboardSnapshotImpl(userId: string): Promise<DashboardSnap
       permitted: hasModuleAccess(permissionsMap, 'private_bookings'),
       upcoming: [],
       past: [],
+      balanceDueDates: [],
       totalUpcoming: 0,
     }
 
@@ -389,6 +465,7 @@ async function fetchDashboardSnapshotImpl(userId: string): Promise<DashboardSnap
     const employees: EmployeesSnapshot = {
       permitted: hasModuleAccess(permissionsMap, 'employees'),
       activeCount: 0,
+      birthdays: [],
     }
 
     const receipts: ReceiptsSnapshot = {
@@ -442,6 +519,8 @@ async function fetchDashboardSnapshotImpl(userId: string): Promise<DashboardSnap
 
     const tableBookings: TableBookingsSnapshot = {
       permitted: hasModuleAccess(permissionsMap, 'table_bookings'),
+      todayTotal: 0,
+      todayCovers: 0,
       thisWeekTotal: 0,
       lastWeekTotal: 0,
       thisMonthTotal: 0,
@@ -615,7 +694,17 @@ async function fetchDashboardSnapshotImpl(userId: string): Promise<DashboardSnap
               ? lastMonthNaturalEnd
               : comparableLastMonthEndCandidate
 
-          const [thisWeekResult, lastWeekResult, thisMonthResult, lastMonthResult] = await Promise.all([
+          const [todayResult, todayCoversResult, thisWeekResult, lastWeekResult, thisMonthResult, lastMonthResult] = await Promise.all([
+            supabase
+              .from('table_bookings')
+              .select('id', { count: 'exact', head: true })
+              .not('status', 'in', '(cancelled,no_show)')
+              .eq('booking_date', todayIso),
+            supabase
+              .from('table_bookings')
+              .select('party_size')
+              .not('status', 'in', '(cancelled,no_show)')
+              .eq('booking_date', todayIso),
             supabase
               .from('table_bookings')
               .select('id', { count: 'exact', head: true })
@@ -642,11 +731,18 @@ async function fetchDashboardSnapshotImpl(userId: string): Promise<DashboardSnap
               .lte('booking_date', format(lastMonthEnd, 'yyyy-MM-dd')),
           ])
 
+          if (todayResult.error) throw todayResult.error
+          if (todayCoversResult.error) throw todayCoversResult.error
           if (thisWeekResult.error) throw thisWeekResult.error
           if (lastWeekResult.error) throw lastWeekResult.error
           if (thisMonthResult.error) throw thisMonthResult.error
           if (lastMonthResult.error) throw lastMonthResult.error
 
+          tableBookings.todayTotal = todayResult.count ?? 0
+          tableBookings.todayCovers = (todayCoversResult.data ?? []).reduce((sum, row) => {
+            const partySize = Number(row.party_size ?? 0)
+            return sum + (Number.isFinite(partySize) ? partySize : 0)
+          }, 0)
           tableBookings.thisWeekTotal = thisWeekResult.count ?? 0
           tableBookings.lastWeekTotal = lastWeekResult.count ?? 0
           tableBookings.thisMonthTotal = thisMonthResult.count ?? 0
@@ -669,7 +765,8 @@ async function fetchDashboardSnapshotImpl(userId: string): Promise<DashboardSnap
                   date,
                   time,
                   capacity,
-                  price
+                  price,
+                  event_status
                 `,
                 { count: 'exact' }
               )
@@ -686,7 +783,8 @@ async function fetchDashboardSnapshotImpl(userId: string): Promise<DashboardSnap
                   date,
                   time,
                   capacity,
-                  price
+                  price,
+                  event_status
                 `
               )
               .gte('date', eventsLookbackIso)
@@ -742,6 +840,7 @@ async function fetchDashboardSnapshotImpl(userId: string): Promise<DashboardSnap
             time: string | null
             capacity: number | null
             price: number | null
+            event_status?: string | null
           }): EventSummary => {
             return {
               id: event.id as string,
@@ -750,6 +849,7 @@ async function fetchDashboardSnapshotImpl(userId: string): Promise<DashboardSnap
               time: (event.time as string) ?? null,
               capacity: event.capacity ?? null,
               price: event.price ?? null,
+              eventStatus: (event.event_status as string) ?? null,
               bookedSeatsCount: bookedSeatsByEvent.get(event.id as string) ?? 0,
             }
           }
@@ -770,20 +870,30 @@ async function fetchDashboardSnapshotImpl(userId: string): Promise<DashboardSnap
 
       canViewCalendarNotes ? (async () => {
         try {
-          const { data: notes, error } = await supabase
-            .from('calendar_notes')
-            .select('id, note_date, end_date, title, notes, source, start_time, end_time, color')
-            .gte('note_date', eventsLookbackIso)
-            .lte('note_date', calendarNotesHorizonIso)
-            .order('note_date', { ascending: true })
-            .order('end_date', { ascending: true })
-            .order('start_time', { ascending: true, nullsFirst: true })
-            .order('title', { ascending: true })
-            .range(0, 999)
+          const [notesResult, specialHoursResult] = await Promise.all([
+            supabase
+              .from('calendar_notes')
+              .select('id, note_date, end_date, title, notes, source, start_time, end_time, color')
+              .lte('note_date', calendarNotesHorizonIso)
+              .or(`end_date.gte.${eventsLookbackIso},end_date.is.null`)
+              .order('note_date', { ascending: true })
+              .order('end_date', { ascending: true })
+              .order('start_time', { ascending: true, nullsFirst: true })
+              .order('title', { ascending: true })
+              .range(0, 999),
+            supabase
+              .from('special_hours')
+              .select('id, date, opens, closes, is_closed, is_kitchen_closed, note')
+              .gte('date', eventsLookbackIso)
+              .lte('date', calendarNotesHorizonIso)
+              .order('date', { ascending: true })
+              .range(0, 999),
+          ])
 
-          if (error) throw error
+          if (notesResult.error) throw notesResult.error
+          if (specialHoursResult.error) throw specialHoursResult.error
 
-          events.calendarNotes = (notes ?? []).map((note) => ({
+          events.calendarNotes = (notesResult.data ?? []).map((note) => ({
             id: String(note.id),
             note_date: String(note.note_date),
             end_date: typeof note.end_date === 'string' ? note.end_date : String(note.note_date),
@@ -794,8 +904,18 @@ async function fetchDashboardSnapshotImpl(userId: string): Promise<DashboardSnap
             end_time: typeof note.end_time === 'string' ? note.end_time : null,
             color: typeof note.color === 'string' ? note.color : '#0EA5E9',
           }))
+
+          events.specialHours = (specialHoursResult.data ?? []).map((special) => ({
+            id: String(special.id),
+            date: String(special.date),
+            opens: typeof special.opens === 'string' ? special.opens : null,
+            closes: typeof special.closes === 'string' ? special.closes : null,
+            is_closed: Boolean(special.is_closed),
+            is_kitchen_closed: Boolean(special.is_kitchen_closed),
+            note: typeof special.note === 'string' ? special.note : null,
+          }))
         } catch (error) {
-          console.error('Failed to load dashboard calendar notes:', error)
+          console.error('Failed to load dashboard calendar notes or special hours:', error)
         }
       })() : Promise.resolve(),
 
@@ -895,8 +1015,8 @@ async function fetchDashboardSnapshotImpl(userId: string): Promise<DashboardSnap
                   : null,
           })
 
-          // Upcoming + past 90 days run in parallel.
-          const [upcomingPb, pastPb] = await Promise.all([
+          // Upcoming, recent past, and balance-due markers run in parallel.
+          const [upcomingPb, pastPb, balanceDueResult] = await Promise.all([
             PrivateBookingService.getBookings({
               fromDate: todayIso,
               limit: 200,
@@ -911,7 +1031,18 @@ async function fetchDashboardSnapshotImpl(userId: string): Promise<DashboardSnap
               limit: 500,
               useAdmin: true,
             }),
+            supabase
+              .from('private_bookings')
+              .select('id, customer_name, customer_first_name, customer_last_name, balance_due_date, event_date, status, total_amount')
+              .in('status', ['confirmed'])
+              .not('balance_due_date', 'is', null)
+              .gte('balance_due_date', eventsLookbackIso)
+              .lte('balance_due_date', calendarNotesHorizonIso)
+              .order('balance_due_date', { ascending: true })
+              .range(0, 999),
           ])
+
+          if (balanceDueResult.error) throw balanceDueResult.error
 
           const filtered = (upcomingPb.data ?? []).filter((booking) => {
             const status = (booking.status as string) ?? null
@@ -930,6 +1061,21 @@ async function fetchDashboardSnapshotImpl(userId: string): Promise<DashboardSnap
             return eventDate != null && eventDate < todayIso
           })
           privateBookings.past = pastRows.slice(-50).map(toPbSummary)
+          privateBookings.balanceDueDates = (balanceDueResult.data ?? []).map((booking) => {
+            const customerName =
+              typeof booking.customer_name === 'string' && booking.customer_name
+                ? booking.customer_name
+                : [booking.customer_first_name, booking.customer_last_name].filter(Boolean).join(' ') || null
+
+            return {
+              id: String(booking.id),
+              customer_name: customerName,
+              balance_due_date: String(booking.balance_due_date),
+              event_date: typeof booking.event_date === 'string' ? booking.event_date : null,
+              status: typeof booking.status === 'string' ? booking.status : null,
+              total_amount: booking.total_amount != null ? Number(booking.total_amount) : null,
+            }
+          })
         } catch (error) {
           console.error('Failed to load dashboard private bookings:', error)
           privateBookings.error = 'Failed to load private bookings'
@@ -980,7 +1126,8 @@ async function fetchDashboardSnapshotImpl(userId: string): Promise<DashboardSnap
                 `,
                 { count: 'exact' }
               )
-              .gte('start_at', todayIso) // Changed from nowIso to todayIso
+              .gte('end_at', todayIso)
+              .lte('start_at', calendarNotesHorizonIso)
               .in('status', ['pending_payment', 'confirmed'])
               .order('start_at', { ascending: true })
               .range(0, 199),
@@ -1160,14 +1307,33 @@ async function fetchDashboardSnapshotImpl(userId: string): Promise<DashboardSnap
 
       employees.permitted ? (async () => {
         try {
-          const { count, error } = await supabase
-            .from('employees')
-            .select('employee_id', { count: 'exact', head: true })
-            .in('status', ['Active', 'Started Separation'])
+          const [activeCountResult, birthdaysResult] = await Promise.all([
+            supabase
+              .from('employees')
+              .select('employee_id', { count: 'exact', head: true })
+              .in('status', ['Active', 'Started Separation']),
+            supabase
+              .from('employees')
+              .select('employee_id, first_name, last_name, job_title, date_of_birth')
+              .in('status', ['Active', 'Started Separation'])
+              .not('date_of_birth', 'is', null)
+              .order('first_name', { ascending: true })
+              .range(0, 999),
+          ])
 
-          if (error) throw error
+          if (activeCountResult.error) throw activeCountResult.error
+          if (birthdaysResult.error) throw birthdaysResult.error
 
-          employees.activeCount = count ?? 0
+          employees.activeCount = activeCountResult.count ?? 0
+          employees.birthdays = (birthdaysResult.data ?? [])
+            .flatMap((employee) => getBirthdayOccurrencesInRange({
+              employee_id: String(employee.employee_id),
+              first_name: typeof employee.first_name === 'string' ? employee.first_name : null,
+              last_name: typeof employee.last_name === 'string' ? employee.last_name : null,
+              job_title: typeof employee.job_title === 'string' ? employee.job_title : null,
+              date_of_birth: typeof employee.date_of_birth === 'string' ? employee.date_of_birth : null,
+            }, eventsLookbackIso, calendarNotesHorizonIso))
+            .sort((a, b) => a.occurrence_date.localeCompare(b.occurrence_date) || a.employee_name.localeCompare(b.employee_name))
         } catch (error) {
           console.error('Failed to load dashboard employee metrics:', error)
           employees.error = 'Failed to load employee metrics'

@@ -6,7 +6,6 @@ import {
   Card,
   CardHeader,
   CardBody,
-  Stat,
   Badge,
   Button,
   Avatar,
@@ -19,12 +18,6 @@ import {
 } from '@/ds'
 
 /* ---------- Types ---------- */
-
-interface StatItem {
-  label: string
-  value: string
-  hint?: string
-}
 
 interface UpcomingEvent {
   id: string
@@ -84,7 +77,6 @@ interface QuickAction {
 
 interface DashboardProps {
   subtitle: string
-  stats: StatItem[]
   calendar?: React.ReactNode
   revenueData: RevenueData[]
   revenueSummary: { avgDaily: string; completedThrough: string; vsLastWeek: string; lastYearSameWeek: string }
@@ -104,7 +96,6 @@ interface DashboardProps {
 
 export default function DashboardClient({
   subtitle,
-  stats,
   calendar,
   revenueData,
   revenueSummary,
@@ -138,7 +129,7 @@ export default function DashboardClient({
 
       {/* Alerts */}
       {alerts.length > 0 && (
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
           {alerts.map((a, i) => (
             <Alert key={i} tone={a.tone} title={a.title}>
               {a.body}
@@ -147,63 +138,69 @@ export default function DashboardClient({
         </div>
       )}
 
-      {/* Stat Grid */}
-      <div className="grid grid-cols-4 gap-4">
-        {stats.map((s) => (
-          <Stat
-            key={s.label}
-            label={s.label}
-            value={s.value}
-            hint={s.hint}
-          />
-        ))}
-      </div>
-
       {/* Calendar */}
       {calendar}
 
-      {/* Revenue + Today row */}
-      <div className="grid grid-cols-3 gap-4">
-        {/* Revenue Card */}
-        <Card className="col-span-2">
-          <CardHeader
-            title="Revenue"
-            subtitle="Cashing up totals"
-          />
-          <CardBody>
-            {revenueData.length > 0 ? (
-              <RevenueChart data={revenueData} />
-            ) : (
-              <div className="h-[160px] flex items-center justify-center text-sm text-text-muted">
-                No cashing up data for this period
-              </div>
-            )}
-            <div className="flex justify-between mt-3 pt-3 border-t border-border">
-              <div>
-                <div className="text-[11px] text-text-muted">Average daily</div>
-                <div className="text-base font-semibold text-text-strong tabular-nums">{revenueSummary.avgDaily}</div>
-              </div>
-              <div>
-                <div className="text-[11px] text-text-muted">Completed through</div>
-                <div className="text-base font-semibold text-text-strong tabular-nums">{revenueSummary.completedThrough}</div>
-              </div>
-              <div>
-                <div className="text-[11px] text-text-muted">Week vs last</div>
-                <div className={`text-base font-semibold tabular-nums ${revenueSummary.vsLastWeek.startsWith('-') ? 'text-error' : revenueSummary.vsLastWeek === '--' ? 'text-text-muted' : 'text-success'}`}>{revenueSummary.vsLastWeek}</div>
-              </div>
-              <div>
-                <div className="text-[11px] text-text-muted">Last year same week</div>
-                <div className={`text-base font-semibold tabular-nums ${revenueSummary.lastYearSameWeek.startsWith('-') ? 'text-error' : revenueSummary.lastYearSameWeek === '--' ? 'text-text-muted' : 'text-success'}`}>{revenueSummary.lastYearSameWeek}</div>
-              </div>
-            </div>
-          </CardBody>
-        </Card>
+      {/* Action Items + Quick Actions row */}
+      {(actionItems.length > 0 || quickActions.filter((q) => q.permitted).length > 0) && (
+        <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
+          {actionItems.length > 0 && (
+            <Card className="xl:col-span-2">
+              <CardHeader title="Action Required" />
+              <CardBody className="flex flex-col gap-2">
+                {actionItems.map((item) => (
+                  <Link
+                    key={item.id}
+                    href={item.href}
+                    className={`flex items-start gap-3 p-3 rounded-lg border transition-colors ${
+                      item.severity === 'high'
+                        ? 'bg-danger-soft border-danger/20 hover:bg-danger-soft'
+                        : 'bg-warning-soft border-warning/20 hover:bg-warning-soft'
+                    }`}
+                  >
+                    <div className="flex-1">
+                      <p className={`text-sm font-medium ${item.severity === 'high' ? 'text-danger-fg' : 'text-warning-fg'}`}>
+                        {item.title}
+                      </p>
+                      <p className={`text-xs ${item.severity === 'high' ? 'text-danger-fg' : 'text-warning-fg'} opacity-80`}>
+                        {item.description}
+                      </p>
+                    </div>
+                  </Link>
+                ))}
+              </CardBody>
+            </Card>
+          )}
 
-        {/* Today Card */}
+          {quickActions.filter((q) => q.permitted).length > 0 && (
+            <Card>
+              <CardHeader title="Quick Actions" />
+              <CardBody>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  {quickActions
+                    .filter((qa) => qa.permitted)
+                    .map((action) => (
+                      <Link
+                        key={action.label}
+                        href={action.href}
+                        className="flex items-center justify-center p-3 bg-surface border border-border rounded-lg hover:border-primary hover:bg-primary-soft transition-all text-center text-xs font-medium text-text-muted hover:text-primary-soft-fg"
+                      >
+                        {action.label}
+                      </Link>
+                    ))}
+                </div>
+              </CardBody>
+            </Card>
+          )}
+        </div>
+      )}
+
+      {/* Today + Upcoming Events + Activity */}
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-4">
         <Card>
           <CardHeader title={todayTitle} />
           <CardBody className="flex flex-col gap-2">
-            <div className="flex items-center justify-between text-[13px]">
+            <div className="flex items-center justify-between gap-3 text-[13px]">
               <span className="text-text-muted">On rota</span>
               {todayMeta.onRota.length > 0 ? (
                 <AvatarStack names={todayMeta.onRota} max={4} size="sm" />
@@ -211,11 +208,11 @@ export default function DashboardClient({
                 <span className="text-text-subtle">--</span>
               )}
             </div>
-            <div className="flex items-center justify-between text-[13px]">
+            <div className="flex items-center justify-between gap-3 text-[13px]">
               <span className="text-text-muted">Table bookings</span>
               <span className="font-semibold text-text-strong tabular-nums">{todayMeta.bookings}</span>
             </div>
-            <div className="flex items-center justify-between text-[13px]">
+            <div className="flex items-center justify-between gap-3 text-[13px]">
               <span className="text-text-muted">Covers</span>
               <span className="font-semibold text-text-strong tabular-nums">{todayMeta.covers}</span>
             </div>
@@ -224,10 +221,10 @@ export default function DashboardClient({
               <>
                 <div className="h-px bg-border my-1" />
                 <div className="flex flex-col gap-2">
-                  {todayItems.slice(0, 5).map((item) => (
-                    <div key={item.id} className="flex items-start gap-2 text-[13px]">
-                      <span className="text-text-muted flex-1 truncate">{item.title}</span>
-                      <span className="text-text-subtle text-xs whitespace-nowrap">{item.subtitle}</span>
+                  {todayItems.slice(0, 6).map((item) => (
+                    <div key={item.id} className="flex min-w-0 items-start gap-2 text-[13px]">
+                      <span className="min-w-0 flex-1 truncate text-text-muted">{item.title}</span>
+                      <span className="max-w-[55%] truncate text-xs text-text-subtle">{item.subtitle}</span>
                     </div>
                   ))}
                 </div>
@@ -240,11 +237,8 @@ export default function DashboardClient({
             </Link>
           </CardBody>
         </Card>
-      </div>
 
-      {/* Upcoming Events + Activity */}
-      <div className="grid grid-cols-3 gap-4">
-        <Card className="col-span-2">
+        <Card className="xl:col-span-2">
           <CardHeader
             title="Upcoming events"
             subtitle={`Next 7 days · ${upcomingEvents.length} events`}
@@ -316,62 +310,43 @@ export default function DashboardClient({
         </Card>
       </div>
 
-      {/* Action Items + Quick Actions row */}
-      {(actionItems.length > 0 || quickActions.filter((q) => q.permitted).length > 0) && (
-        <div className="grid grid-cols-3 gap-4">
-          {actionItems.length > 0 && (
-            <Card className="col-span-2">
-              <CardHeader title="Action Required" />
-              <CardBody className="flex flex-col gap-2">
-                {actionItems.map((item) => (
-                  <Link
-                    key={item.id}
-                    href={item.href}
-                    className={`flex items-start gap-3 p-3 rounded-lg border transition-colors ${
-                      item.severity === 'high'
-                        ? 'bg-danger-soft border-danger/20 hover:bg-danger-soft'
-                        : 'bg-warning-soft border-warning/20 hover:bg-warning-soft'
-                    }`}
-                  >
-                    <div className="flex-1">
-                      <p className={`text-sm font-medium ${item.severity === 'high' ? 'text-danger-fg' : 'text-warning-fg'}`}>
-                        {item.title}
-                      </p>
-                      <p className={`text-xs ${item.severity === 'high' ? 'text-danger-fg' : 'text-warning-fg'} opacity-80`}>
-                        {item.description}
-                      </p>
-                    </div>
-                  </Link>
-                ))}
-              </CardBody>
-            </Card>
+      {/* Revenue */}
+      <Card>
+        <CardHeader
+          title="Revenue"
+          subtitle="Cashing up totals"
+        />
+        <CardBody>
+          {revenueData.length > 0 ? (
+            <RevenueChart data={revenueData} />
+          ) : (
+            <div className="h-[160px] flex items-center justify-center text-sm text-text-muted">
+              No cashing up data for this period
+            </div>
           )}
-
-          {quickActions.filter((q) => q.permitted).length > 0 && (
-            <Card>
-              <CardHeader title="Quick Actions" />
-              <CardBody>
-                <div className="grid grid-cols-2 gap-3">
-                  {quickActions
-                    .filter((qa) => qa.permitted)
-                    .map((action) => (
-                      <Link
-                        key={action.label}
-                        href={action.href}
-                        className="flex items-center justify-center p-3 bg-surface border border-border rounded-lg hover:border-primary hover:bg-primary-soft transition-all text-center text-xs font-medium text-text-muted hover:text-primary-soft-fg"
-                      >
-                        {action.label}
-                      </Link>
-                    ))}
-                </div>
-              </CardBody>
-            </Card>
-          )}
-        </div>
-      )}
+          <div className="grid grid-cols-2 gap-3 mt-3 pt-3 border-t border-border md:grid-cols-4">
+            <div>
+              <div className="text-[11px] text-text-muted">Average daily</div>
+              <div className="text-base font-semibold text-text-strong tabular-nums">{revenueSummary.avgDaily}</div>
+            </div>
+            <div>
+              <div className="text-[11px] text-text-muted">Completed through</div>
+              <div className="text-base font-semibold text-text-strong tabular-nums">{revenueSummary.completedThrough}</div>
+            </div>
+            <div>
+              <div className="text-[11px] text-text-muted">Week vs last</div>
+              <div className={`text-base font-semibold tabular-nums ${revenueSummary.vsLastWeek.startsWith('-') ? 'text-error' : revenueSummary.vsLastWeek === '--' ? 'text-text-muted' : 'text-success'}`}>{revenueSummary.vsLastWeek}</div>
+            </div>
+            <div>
+              <div className="text-[11px] text-text-muted">Last year same week</div>
+              <div className={`text-base font-semibold tabular-nums ${revenueSummary.lastYearSameWeek.startsWith('-') ? 'text-error' : revenueSummary.lastYearSameWeek === '--' ? 'text-text-muted' : 'text-success'}`}>{revenueSummary.lastYearSameWeek}</div>
+            </div>
+          </div>
+        </CardBody>
+      </Card>
 
       {/* Mini Metric Sparklines */}
-      <div className="grid grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {miniMetrics.map((m) => (
           <Card key={m.label}>
             <CardBody>

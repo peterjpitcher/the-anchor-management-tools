@@ -10,6 +10,10 @@ import {
   eventReminder1DayMessage,
   reviewRequestMessage,
 } from '@/lib/private-bookings/messages'
+import {
+  getFirstVisitReviewEligibleCandidateKeys,
+  reviewVisitCandidateKey,
+} from '@/lib/sms/review-once'
 
 /**
  * Reason a scheduled reminder won't actually be sent in its normal window.
@@ -24,6 +28,8 @@ import {
  *   here, but part of the spec's union for forward-compat).
  * `policy_skip` — the trigger is intentionally skipped by policy
  *   (reserved; part of the spec's union).
+ * `not_first_visit` — Google review asks are only sent after the customer's
+ *   first visit across customer-linked bookings.
  */
 export type ScheduledSmsSuppressionReason =
   | 'feature_flag_disabled'
@@ -31,6 +37,7 @@ export type ScheduledSmsSuppressionReason =
   | 'already_sent'
   | 'stop_opt_out'
   | 'policy_skip'
+  | 'not_first_visit'
 
 export type ScheduledSmsPreview = {
   trigger_type: string
@@ -58,6 +65,7 @@ export type ScheduledSmsPreview = {
  *   1. `date_tbd` (via `isBookingDateTbd`) — all date-based reminders.
  *   2. `feature_flag_disabled` — balance / event / review items only.
  *   3. `already_sent` — matching row in `private_booking_send_idempotency`.
+ *   4. `not_first_visit` — review requests only.
  */
 export async function getBookingScheduledSms(
   bookingId: string,
@@ -322,7 +330,7 @@ export async function getBookingScheduledSms(
         eventDate: eventDateReadable,
         reviewLink,
       })
-      const suppression = decideSuppression({
+      let suppression = decideSuppression({
         triggerType,
         isTbd,
         // Review request is post-event; date-TBD suppression is non-sensical
@@ -334,6 +342,30 @@ export async function getBookingScheduledSms(
         bookingId,
         windowKey: toIsoDateSlice(booking.event_date),
       })
+
+      if (!suppression && booking.customer_id) {
+        try {
+          const firstVisitEligibleKeys = await getFirstVisitReviewEligibleCandidateKeys(
+            [{
+              channel: 'private',
+              bookingId,
+              customerId: booking.customer_id,
+              visitAt: `${booking.event_date}T${booking.start_time || '00:00:00'}`,
+            }],
+            db,
+          )
+          if (!firstVisitEligibleKeys.has(reviewVisitCandidateKey({ channel: 'private', bookingId }))) {
+            suppression = 'not_first_visit'
+          }
+        } catch (error) {
+          logger.warn('getBookingScheduledSms: first-visit review lookup failed', {
+            metadata: {
+              bookingId,
+              error: error instanceof Error ? error.message : String(error),
+            },
+          })
+        }
+      }
       previews.push({
         trigger_type: triggerType,
         expected_fire_at: suppression ? null : eventDateReadable,
