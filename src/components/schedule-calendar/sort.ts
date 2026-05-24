@@ -3,19 +3,28 @@ import type { CalendarEntry, CalendarEntryKind, CalendarEntryStatus } from './ty
 
 const kindPriority: Record<CalendarEntryKind, number> = {
     calendar_note: 0,
-    private_booking: 1,
-    event: 2,
-    parking: 3,
+    special_hours: 1,
+    birthday: 2,
+    balance_due: 3,
+    private_booking: 4,
+    event: 5,
+    parking: 6,
 }
 
 const statusPriority: Record<string, number> = {
     confirmed: 0,
     scheduled: 0,
     draft: 1,
+    pending_payment: 1,
+    pending_card_capture: 1,
     sold_out: 2,
+    completed: 2,
+    visited_waiting_for_review: 2,
+    review_clicked: 2,
     postponed: 3,
     rescheduled: 3,
     cancelled: 4,
+    no_show: 4,
 }
 
 function statusRank(s: CalendarEntryStatus): number {

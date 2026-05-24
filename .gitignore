@@ -46,6 +46,8 @@ google-service-account*.json
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+node-compile-cache/
+tsx-501/
 
 # sql data dumps
 data.sql

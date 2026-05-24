@@ -99,6 +99,10 @@ export interface CashupDashboardData {
       cashTotal: number;
       cardTotal: number;
       stripeTotal: number;
+      dailyTarget: number;
+      accruedTarget: number;
+      accruedTakings: number;
+      targetPerformancePercent: number | null;
     }[];
     compliance: {
       siteId: string;
@@ -125,6 +129,7 @@ export interface CashupInsightsData {
   monthlyGrowth: {
     monthLabel: string;
     totalTakings: number;
+    targetTakings?: number;
     previousYearTakings?: number;
   }[];
 }

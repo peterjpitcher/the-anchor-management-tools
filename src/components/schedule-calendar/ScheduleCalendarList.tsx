@@ -17,9 +17,9 @@ interface DateGroup {
 }
 
 export function ScheduleCalendarList({ entries, onEntryClick }: ScheduleCalendarListProps) {
+    const today = useMemo(() => startOfToday(), [])
     const sorted = useMemo(() => [...entries].sort(compareEntries), [entries])
     const groups = useMemo(() => groupByDate(sorted), [sorted])
-    const today = useMemo(() => startOfToday(), [])
 
     // Ensure a Today group exists even when no entries land on today, so
     // scrollIntoView always has a target to anchor.

@@ -8,8 +8,11 @@ import { VenueCalendar } from '@/components/schedule-calendar'
 import type {
   VenueCalendarEvent,
   VenueCalendarBooking,
+  VenueCalendarBalanceDue,
+  VenueCalendarEmployeeBirthday,
   VenueCalendarNote,
   VenueCalendarParking,
+  VenueCalendarSpecialHours,
 } from '@/components/schedule-calendar'
 import { Modal } from '@/ds'
 import { Button } from '@/ds'
@@ -27,12 +30,18 @@ export default function UpcomingScheduleCalendar({
   events,
   calendarNotes,
   privateBookings,
+  balanceDueDates,
+  employeeBirthdays,
+  specialHours,
   parkingBookings,
   canCreateCalendarNote,
 }: {
   events: VenueCalendarEvent[]
   calendarNotes: VenueCalendarNote[]
   privateBookings: VenueCalendarBooking[]
+  balanceDueDates: VenueCalendarBalanceDue[]
+  employeeBirthdays: VenueCalendarEmployeeBirthday[]
+  specialHours: VenueCalendarSpecialHours[]
   parkingBookings: VenueCalendarParking[]
   canCreateCalendarNote?: boolean
 }) {
@@ -148,6 +157,9 @@ export default function UpcomingScheduleCalendar({
         events={events}
         calendarNotes={calendarNotes}
         privateBookings={privateBookings}
+        balanceDueDates={balanceDueDates}
+        employeeBirthdays={employeeBirthdays}
+        specialHours={specialHours}
         parkingBookings={parkingBookings}
         canCreateCalendarNote={canCreateCalendarNote}
         onEmptyDayClick={canCreateCalendarNote ? openNewNoteModal : undefined}

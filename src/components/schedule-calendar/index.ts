@@ -10,6 +10,9 @@ export type {
 export {
     eventToEntry,
     privateBookingToEntry,
+    balanceDueToEntry,
+    employeeBirthdayToEntry,
+    specialHoursToEntry,
     calendarNoteToEntry,
     parkingToEntry,
 } from './adapters'
@@ -18,6 +21,9 @@ export type {
     VenueCalendarProps,
     VenueCalendarEvent,
     VenueCalendarBooking,
+    VenueCalendarBalanceDue,
+    VenueCalendarEmployeeBirthday,
     VenueCalendarNote,
     VenueCalendarParking,
+    VenueCalendarSpecialHours,
 } from './VenueCalendar'

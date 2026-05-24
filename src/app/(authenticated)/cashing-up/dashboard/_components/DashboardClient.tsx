@@ -1,6 +1,7 @@
 'use client'
 
 import { useRouter, useSearchParams } from 'next/navigation'
+import { format } from 'date-fns'
 import { Card, CardHeader, CardBody, Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/ds'
 import { Stat, Badge, ProgressBar, Select } from '@/ds'
 
@@ -21,6 +22,10 @@ interface DashboardData {
       stripeTotal: number
       totalTakings: number
       variance: number
+      dailyTarget: number
+      accruedTarget: number
+      accruedTakings: number
+      targetPerformancePercent: number | null
       notes: string | null
     }>
   }
@@ -47,6 +52,12 @@ interface Props {
 const fmt = (num: number): string =>
   num.toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
+function formatSessionDate(date: string): string {
+  const parsed = new Date(`${date}T12:00:00`)
+  if (Number.isNaN(parsed.getTime())) return date
+  return format(parsed, 'EEEE, MMMM do yyyy')
+}
+
 const currentYear = new Date().getFullYear()
 const YEAR_OPTIONS = Array.from({ length: currentYear - 2018 }, (_, i) => ({
   label: String(currentYear - i),
@@ -56,6 +67,25 @@ const YEAR_OPTIONS = Array.from({ length: currentYear - 2018 }, (_, i) => ({
 function pctChange(current: number, previous: number): number | undefined {
   if (previous === 0) return undefined
   return Math.round(((current - previous) / previous) * 100)
+}
+
+function performanceTone(percent: number | null): 'success' | 'warning' | 'danger' | 'neutral' {
+  if (percent === null) return 'neutral'
+  if (percent >= 100) return 'success'
+  if (percent >= 90) return 'warning'
+  return 'danger'
+}
+
+function performanceRowClass(percent: number | null): string | undefined {
+  if (percent === null) return undefined
+  if (percent >= 100) return 'bg-success-soft hover:bg-success-soft'
+  if (percent >= 90) return 'bg-warning-soft hover:bg-warning-soft'
+  return 'bg-danger-soft hover:bg-danger-soft'
+}
+
+function formatPerformancePercent(percent: number | null): string {
+  if (percent === null) return 'No target'
+  return `${percent.toFixed(1)}%`
 }
 
 export function DashboardClient({ dashboardData, comparisonData, weeklyProgress, selectedYear, compareYear, error }: Props) {
@@ -194,6 +224,7 @@ export function DashboardClient({ dashboardData, comparisonData, weeklyProgress,
               <TableHead align="right">Card</TableHead>
               <TableHead align="right">Stripe</TableHead>
               <TableHead align="right">Total</TableHead>
+              <TableHead align="right">WTD Target</TableHead>
               <TableHead align="right">Variance</TableHead>
               <TableHead>Notes</TableHead>
             </TableRow>
@@ -206,26 +237,41 @@ export function DashboardClient({ dashboardData, comparisonData, weeklyProgress,
                 </TableCell>
               </TableRow>
             ) : (
-              tables.variance.slice(0, 7).map((row, idx) => (
-                <TableRow key={idx}>
-                  <TableCell>
-                    <a
-                      href={`/cashing-up/daily?date=${row.sessionDate}&siteId=${row.siteId}`}
-                      className="text-primary hover:underline font-medium"
-                    >
-                      {row.sessionDate}
-                    </a>
-                  </TableCell>
-                  <TableCell align="right" className="font-mono">{'£'}{fmt(row.cashTotal)}</TableCell>
-                  <TableCell align="right" className="font-mono">{'£'}{fmt(row.cardTotal)}</TableCell>
-                  <TableCell align="right" className="font-mono">{'£'}{fmt(row.stripeTotal)}</TableCell>
-                  <TableCell align="right" className="font-mono">{'£'}{fmt(row.totalTakings)}</TableCell>
-                  <TableCell align="right" className={`font-mono font-bold ${row.variance < 0 ? 'text-danger-fg' : 'text-success-fg'}`}>
-                    {'£'}{fmt(row.variance)}
-                  </TableCell>
-                  <TableCell className="text-text-muted italic">{row.notes || '-'}</TableCell>
-                </TableRow>
-              ))
+              tables.variance.slice(0, 7).map((row, idx) => {
+                const targetTone = performanceTone(row.targetPerformancePercent)
+                return (
+                  <TableRow key={idx} className={performanceRowClass(row.targetPerformancePercent)}>
+                    <TableCell>
+                      <a
+                        href={`/cashing-up/daily?date=${row.sessionDate}&siteId=${row.siteId}`}
+                        className="text-primary hover:underline font-medium"
+                      >
+                        {formatSessionDate(row.sessionDate)}
+                      </a>
+                    </TableCell>
+                    <TableCell align="right" className="font-mono">{'£'}{fmt(row.cashTotal)}</TableCell>
+                    <TableCell align="right" className="font-mono">{'£'}{fmt(row.cardTotal)}</TableCell>
+                    <TableCell align="right" className="font-mono">{'£'}{fmt(row.stripeTotal)}</TableCell>
+                    <TableCell align="right" className="font-mono">{'£'}{fmt(row.totalTakings)}</TableCell>
+                    <TableCell align="right">
+                      <div className="flex flex-col items-end gap-1">
+                        <Badge tone={targetTone} className="font-mono">
+                          {formatPerformancePercent(row.targetPerformancePercent)}
+                        </Badge>
+                        {row.accruedTarget > 0 && (
+                          <span className="text-[11px] text-text-muted font-mono">
+                            £{fmt(row.accruedTakings)} / £{fmt(row.accruedTarget)}
+                          </span>
+                        )}
+                      </div>
+                    </TableCell>
+                    <TableCell align="right" className={`font-mono font-bold ${row.variance < 0 ? 'text-danger-fg' : 'text-success-fg'}`}>
+                      {'£'}{fmt(row.variance)}
+                    </TableCell>
+                    <TableCell className="text-text-muted italic">{row.notes || '-'}</TableCell>
+                  </TableRow>
+                )
+              })
             )}
           </TableBody>
         </Table>
