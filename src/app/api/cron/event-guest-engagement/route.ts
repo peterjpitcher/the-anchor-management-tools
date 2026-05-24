@@ -14,7 +14,11 @@ import { getGoogleReviewLink } from '@/lib/events/review-link'
 import { recordAnalyticsEvent } from '@/lib/analytics/events'
 import { persistCronRunResult, recoverCronRunLock } from '@/lib/cron-run-results'
 import { extractSmsSafetyInfo } from '@/lib/sms/safety-info'
-import { hasCustomerReviewed } from '@/lib/sms/review-once'
+import {
+  getFirstVisitReviewEligibleCandidateKeys,
+  hasCustomerReviewed,
+  reviewVisitCandidateKey,
+} from '@/lib/sms/review-once'
 
 export const maxDuration = 300
 
@@ -851,7 +855,7 @@ async function processReviewFollowups(
   bookings: BookingWithRelations[],
   appBaseUrl: string,
   safety: EventEngagementCronSafetyState
-): Promise<{ sent: number; skipped: number }> {
+): Promise<{ sent: number; skipped: number; suppressed: number }> {
   const now = new Date()
   const nowMs = now.getTime()
   const maxAgeMs = EVENT_ENGAGEMENT_LOOKBACK_DAYS * 24 * 60 * 60 * 1000
@@ -899,6 +903,37 @@ async function processReviewFollowups(
   // Cross-channel review-once check: suppress SMS for customers who have already clicked a review link
   const eligibleCustomerIds = [...new Set(boundedPastBookings.map((b) => b.customer_id).filter(Boolean))]
   const alreadyReviewedSet = await hasCustomerReviewed(eligibleCustomerIds)
+  let firstVisitEligibleKeys = new Set<string>()
+
+  try {
+    firstVisitEligibleKeys = await getFirstVisitReviewEligibleCandidateKeys(
+      boundedPastBookings.map((booking) => ({
+        channel: 'event',
+        bookingId: booking.id,
+        customerId: booking.customer_id,
+        visitAt: resolveEventStartIso(booking.event),
+      })),
+      supabase,
+    )
+  } catch (error) {
+    logger.error('Failed loading event review first-visit eligibility', {
+      error: error instanceof Error ? error : new Error(String(error)),
+      metadata: {
+        bookingCount: boundedPastBookings.length,
+      },
+    })
+    safety.recordSafetyAbort({
+      stage: 'reviews:first_visit',
+      bookingId: null,
+      tableBookingId: null,
+      customerId: null,
+      eventId: null,
+      templateKey: TEMPLATE_REVIEW_FOLLOWUP,
+      code: 'first_visit_lookup_failed',
+      logFailure: false,
+    })
+    safety.throwSafetyAbort()
+  }
 
   const result = { sent: 0, skipped: 0, suppressed: 0 }
 
@@ -924,6 +959,20 @@ async function processReviewFollowups(
 
     if (sentSet.has(`${booking.id}:${TEMPLATE_REVIEW_FOLLOWUP}`)) {
       result.skipped += 1
+      continue
+    }
+
+    if (!firstVisitEligibleKeys.has(reviewVisitCandidateKey({ channel: 'event', bookingId: booking.id }))) {
+      result.suppressed += 1
+      const nowIso = new Date().toISOString()
+      await supabase
+        .from('bookings')
+        .update({ review_suppressed_at: nowIso, updated_at: nowIso })
+        .eq('id', booking.id)
+        .is('review_suppressed_at', null)
+      logger.info('Event review SMS suppressed: not customer first visit', {
+        metadata: { bookingId: booking.id, customerId: booking.customer_id }
+      })
       continue
     }
 
@@ -1135,7 +1184,7 @@ async function processTableReviewFollowups(
   tableBookings: TableBookingWithCustomer[],
   appBaseUrl: string,
   safety: EventEngagementCronSafetyState
-): Promise<{ sent: number; skipped: number }> {
+): Promise<{ sent: number; skipped: number; suppressed: number }> {
   const now = Date.now()
   const maxAgeMs = TABLE_ENGAGEMENT_LOOKBACK_DAYS * 24 * 60 * 60 * 1000
   const supportPhone = process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || process.env.TWILIO_PHONE_NUMBER || undefined
@@ -1180,6 +1229,37 @@ async function processTableReviewFollowups(
   // Cross-channel review-once check: suppress SMS for customers who have already clicked a review link
   const tableEligibleCustomerIds = [...new Set(boundedEligibleBookings.map((b) => b.customer_id).filter(Boolean))]
   const tableAlreadyReviewedSet = await hasCustomerReviewed(tableEligibleCustomerIds)
+  let firstVisitEligibleKeys = new Set<string>()
+
+  try {
+    firstVisitEligibleKeys = await getFirstVisitReviewEligibleCandidateKeys(
+      boundedEligibleBookings.map((booking) => ({
+        channel: 'table',
+        bookingId: booking.id,
+        customerId: booking.customer_id,
+        visitAt: booking.start_datetime,
+      })),
+      supabase,
+    )
+  } catch (error) {
+    logger.error('Failed loading table review first-visit eligibility', {
+      error: error instanceof Error ? error : new Error(String(error)),
+      metadata: {
+        bookingCount: boundedEligibleBookings.length,
+      },
+    })
+    safety.recordSafetyAbort({
+      stage: 'table_reviews:first_visit',
+      bookingId: null,
+      tableBookingId: null,
+      customerId: null,
+      eventId: null,
+      templateKey: TEMPLATE_TABLE_REVIEW_FOLLOWUP,
+      code: 'first_visit_lookup_failed',
+      logFailure: false,
+    })
+    safety.throwSafetyAbort()
+  }
 
   const result = { sent: 0, skipped: 0, suppressed: 0 }
 
@@ -1192,6 +1272,20 @@ async function processTableReviewFollowups(
 
     if (sentSet.has(`${booking.id}:${TEMPLATE_TABLE_REVIEW_FOLLOWUP}`)) {
       result.skipped += 1
+      continue
+    }
+
+    if (!firstVisitEligibleKeys.has(reviewVisitCandidateKey({ channel: 'table', bookingId: booking.id }))) {
+      result.suppressed += 1
+      const nowIso = new Date().toISOString()
+      await supabase
+        .from('table_bookings')
+        .update({ review_suppressed_at: nowIso, updated_at: nowIso })
+        .eq('id', booking.id)
+        .is('review_suppressed_at', null)
+      logger.info('Table review SMS suppressed: not customer first visit', {
+        metadata: { tableBookingId: booking.id, customerId: booking.customer_id }
+      })
       continue
     }
 

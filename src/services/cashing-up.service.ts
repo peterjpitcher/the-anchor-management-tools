@@ -1,6 +1,6 @@
 import { SupabaseClient } from '@supabase/supabase-js';
 import { UpsertCashupSessionDTO, CashupSession, CashupDashboardData, CashupInsightsData } from '@/types/cashing-up';
-import { subDays, format, subMonths } from 'date-fns';
+import { addDays, endOfMonth, subDays, format, subMonths } from 'date-fns';
 import { normalizeCashCountInputs } from '@/lib/cashing-up/cash-counts';
 
 export class CashingUpService {
@@ -17,15 +17,27 @@ export class CashingUpService {
         startDateStr = format(subMonths(new Date(), 12), 'yyyy-MM-dd'); // Last 12 months
     }
 
-    // Fetch Sessions
-    const { data: sessions, error: sessionError } = await supabase
-      .from('cashup_sessions')
-      .select('session_date, total_counted_amount, total_variance_amount')
-      .eq('site_id', siteId)
-      .gte('session_date', startDateStr)
-      .lte('session_date', endDateStr);
+    // Fetch Sessions and targets
+    const [sessionsRes, targetsRes] = await Promise.all([
+      supabase
+        .from('cashup_sessions')
+        .select('session_date, total_counted_amount, total_variance_amount')
+        .eq('site_id', siteId)
+        .gte('session_date', startDateStr)
+        .lte('session_date', endDateStr),
+      supabase
+        .from('cashup_targets')
+        .select('day_of_week, target_amount, effective_from')
+        .eq('site_id', siteId)
+        .lte('effective_from', endDateStr)
+        .order('effective_from', { ascending: false }),
+    ]);
 
-    if (sessionError) throw sessionError;
+    if (sessionsRes.error) throw sessionsRes.error;
+    if (targetsRes.error) throw targetsRes.error;
+
+    const sessions = sessionsRes.data ?? [];
+    const targetRows = targetsRes.data ?? [];
 
     // Fetch Breakdowns for Payment Mix
     const { data: breakdowns, error: bdError } = await supabase
@@ -86,11 +98,51 @@ export class CashingUpService {
     // --- 3. Monthly Growth ---
     const monthStats = new Map<string, number>();
     
-    sessions?.forEach(s => {
-      const d = new Date(s.session_date);
+    sessions.forEach(s => {
+      const d = new Date(s.session_date + 'T12:00:00');
       const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`; // YYYY-MM
       monthStats.set(key, (monthStats.get(key) || 0) + (s.total_counted_amount || 0));
     });
+
+    const todayStr = format(new Date(), 'yyyy-MM-dd');
+    const todayDate = new Date(todayStr + 'T12:00:00');
+    const monthKeyForDate = (date: Date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+    const getTargetAmount = (dateStr: string): number => {
+      const dayOfWeek = new Date(dateStr + 'T12:00:00').getDay();
+      const match = targetRows.find(t => t.day_of_week === dayOfWeek && t.effective_from <= dateStr);
+      return match ? Number(match.target_amount || 0) : 0;
+    };
+    const latestSessionDateByMonth = sessions.reduce((map, session) => {
+      const d = new Date(session.session_date + 'T12:00:00');
+      const key = monthKeyForDate(d);
+      const current = map.get(key);
+      if (!current || session.session_date > current) map.set(key, session.session_date);
+      return map;
+    }, new Map<string, string>());
+
+    const getMonthlyTarget = (monthDate: Date) => {
+      const key = monthKeyForDate(monthDate);
+      const monthStart = new Date(monthDate.getFullYear(), monthDate.getMonth(), 1);
+      const monthEnd = endOfMonth(monthStart);
+      const latestSessionDate = latestSessionDateByMonth.get(key);
+      const isCurrentMonth = key === monthKeyForDate(todayDate);
+
+      let targetEnd = monthEnd;
+      if (monthStart > todayDate) {
+        return 0;
+      }
+      if (isCurrentMonth && latestSessionDate && latestSessionDate <= todayStr) {
+        targetEnd = new Date(latestSessionDate + 'T12:00:00');
+      } else if (isCurrentMonth) {
+        targetEnd = todayDate;
+      }
+
+      let total = 0;
+      for (let d = monthStart; d <= targetEnd; d = addDays(d, 1)) {
+        total += getTargetAmount(format(d, 'yyyy-MM-dd'));
+      }
+      return total;
+    };
 
     const monthlyGrowthData = [];
     
@@ -103,7 +155,8 @@ export class CashingUpService {
             
             monthlyGrowthData.push({
                 monthLabel,
-                totalTakings: monthStats.get(key) || 0
+                totalTakings: monthStats.get(key) || 0,
+                targetTakings: getMonthlyTarget(d)
             });
         }
     } else {
@@ -116,7 +169,8 @@ export class CashingUpService {
             
             monthlyGrowthData.push({
                 monthLabel,
-                totalTakings: monthStats.get(key) || 0
+                totalTakings: monthStats.get(key) || 0,
+                targetTakings: getMonthlyTarget(d)
             });
         }
     }
@@ -453,6 +507,14 @@ export class CashingUpService {
       return match?.target_amount ?? 0;
     };
 
+    const getWeekStart = (sessionDate: string): Date => {
+      const date = new Date(sessionDate + 'T12:00:00');
+      const day = date.getDay();
+      const daysSinceMonday = day === 0 ? 6 : day - 1;
+      date.setDate(date.getDate() - daysSinceMonday);
+      return date;
+    };
+
     const sessionsWithTarget = sessions.map((s) => {
       const target = getTargetAmountForSession(s.site_id, s.session_date);
       const breakdowns = (s.cashup_payment_breakdowns as any[]) || []; // any: Supabase doesn't narrow nested join types
@@ -461,6 +523,33 @@ export class CashingUpService {
       const stripeTotal = breakdowns.find((b: any) => b.payment_type_code === 'STRIPE')?.counted_amount || 0;
       return { ...s, target, cashTotal, cardTotal, stripeTotal };
     });
+
+    const takingsBySiteDate = new Map<string, number>();
+    for (const session of sessionsWithTarget) {
+      takingsBySiteDate.set(
+        `${session.site_id}|${session.session_date}`,
+        (takingsBySiteDate.get(`${session.site_id}|${session.session_date}`) ?? 0) + (session.total_counted_amount || 0),
+      );
+    }
+
+    const getAccruedTargetPerformance = (sessionSiteId: string, sessionDate: string) => {
+      const weekStart = getWeekStart(sessionDate);
+      const sessionDay = new Date(sessionDate + 'T12:00:00');
+      let accruedTarget = 0;
+      let accruedTakings = 0;
+
+      for (let date = weekStart; date <= sessionDay; date = addDays(date, 1)) {
+        const dateStr = format(date, 'yyyy-MM-dd');
+        accruedTarget += getTargetAmountForSession(sessionSiteId, dateStr);
+        accruedTakings += takingsBySiteDate.get(`${sessionSiteId}|${dateStr}`) ?? 0;
+      }
+
+      return {
+        accruedTarget,
+        accruedTakings,
+        targetPerformancePercent: accruedTarget > 0 ? (accruedTakings / accruedTarget) * 100 : null,
+      };
+    };
 
     const totalTakings = sessionsWithTarget.reduce((sum, s) => sum + (s.total_counted_amount || 0), 0);
     const totalTarget = sessionsWithTarget.reduce((sum, s) => sum + s.target, 0);
@@ -527,19 +616,25 @@ export class CashingUpService {
         topSitesByVariance, // DEF-S04: real data aggregated by site
       },
       tables: {
-        variance: sessionsWithTarget.map(s => ({
-          siteId: s.site_id,
-          siteName: siteMap.get(s.site_id) || s.site_id, // DEF-S02: real site name via sites join
-          sessionDate: s.session_date,
-          totalTakings: s.total_counted_amount,
-          variance: s.total_variance_amount || 0,
-          variancePercent: s.total_counted_amount ? ((s.total_variance_amount || 0) / s.total_counted_amount) * 100 : 0,
-          status: s.status as any,
-          notes: s.notes,
-          cashTotal: s.cashTotal,
-          cardTotal: s.cardTotal,
-          stripeTotal: s.stripeTotal,
-        })),
+        variance: sessionsWithTarget.map(s => {
+          const targetPerformance = getAccruedTargetPerformance(s.site_id, s.session_date);
+
+          return {
+            siteId: s.site_id,
+            siteName: siteMap.get(s.site_id) || s.site_id, // DEF-S02: real site name via sites join
+            sessionDate: s.session_date,
+            totalTakings: s.total_counted_amount,
+            variance: s.total_variance_amount || 0,
+            variancePercent: s.total_counted_amount ? ((s.total_variance_amount || 0) / s.total_counted_amount) * 100 : 0,
+            status: s.status as any,
+            notes: s.notes,
+            cashTotal: s.cashTotal,
+            cardTotal: s.cardTotal,
+            stripeTotal: s.stripeTotal,
+            dailyTarget: s.target,
+            ...targetPerformance,
+          };
+        }),
         compliance, // DEF-S05: real compliance data
       },
     };

@@ -8,7 +8,7 @@ import { getInsightsDataAction } from '@/app/actions/cashing-up'
 interface InsightsData {
   dayOfWeek: Array<{ dayName: string; avgTakings: number; avgVariance: number }>
   paymentMix: Array<{ label: string; value: number; color: string; percentage: number }>
-  monthlyGrowth: Array<{ monthLabel: string; totalTakings: number }>
+  monthlyGrowth: Array<{ monthLabel: string; totalTakings: number; targetTakings?: number }>
 }
 
 interface Props {
@@ -56,6 +56,7 @@ export function InsightsClient({ initialData, selectedYear, error }: Props) {
   const chartData = data.monthlyGrowth.map((d) => ({
     day: d.monthLabel,
     amount: d.totalTakings,
+    target: d.targetTakings,
   }))
 
   // Day of week stats
