@@ -12,6 +12,7 @@ import type {
 import type { CreateForm } from '../components/FohCreateBookingModal'
 import {
   DEFAULT_COUNTRY_CODE,
+  getLondonDateKey,
   getTableWindowMs,
   mapFohBlockedReason,
   mapFohEventBlockedReason,
@@ -254,22 +255,52 @@ export function useFohCreateBooking(input: {
   }) {
     const requestedMode = options?.mode || 'booking'
     const walkInMode = requestedMode === 'walk_in'
-    const bookingDate = options?.prefill?.booking_date || date
+    const bookingDate = options?.prefill?.booking_date || getLondonDateKey(clockNow) || date
     setErrorMessage(null); setStatusMessage(null); setCreateMode(requestedMode)
     setWalkInTargetTable(
       walkInMode && options?.laneTableId ? { id: options.laneTableId, name: options.laneTableName || 'selected table' } : null
     )
-    const walkInDefaults = walkInMode ? resolveCurrentWalkInDefaults(date, clockNow) : null
-    setCreateForm((current) => ({
-      ...current, booking_date: bookingDate,
-      time: walkInMode ? options?.suggestedTime || walkInDefaults?.time || current.time : options?.suggestedTime || current.time,
-      purpose: walkInMode ? walkInDefaults?.purpose || 'food' : options?.prefill?.purpose || current.purpose,
-      event_id: walkInMode ? options?.prefill?.event_id ?? walkInDefaults?.eventId ?? '' : options?.prefill?.event_id ?? current.event_id,
-      sunday_deposit_method: walkInMode ? 'payment_link' : current.sunday_deposit_method,
-      phone: walkInMode ? '' : current.phone, customer_name: walkInMode ? '' : current.customer_name,
-      first_name: walkInMode ? '' : current.first_name, last_name: walkInMode ? '' : current.last_name,
-      notes: walkInMode ? '' : current.notes, waive_deposit: false, is_venue_event: false
-    }))
+    const walkInDefaults = walkInMode ? resolveCurrentWalkInDefaults(bookingDate, clockNow) : null
+    setCreateForm((current) => {
+      const currentTablePurpose = current.purpose === 'event' ? 'food' : current.purpose
+      const nextPurpose = walkInMode
+        ? walkInDefaults?.purpose || 'food'
+        : options?.prefill?.purpose || currentTablePurpose
+      const nextTime = (() => {
+        if (walkInMode) {
+          return options?.suggestedTime || walkInDefaults?.time || current.time
+        }
+
+        if (options?.suggestedTime) {
+          return options.suggestedTime
+        }
+
+        if (nextPurpose === 'event' || options?.prefill?.booking_date) {
+          return current.time
+        }
+
+        return suggestWalkInTime({
+          serviceDateIso: bookingDate,
+          now: clockNow,
+          serviceWindow: schedule?.service_window,
+          timelineStartMin: timeline.startMin,
+          timelineEndMin: timeline.endMin,
+          purpose: nextPurpose === 'drinks' ? 'drinks' : 'food'
+        })
+      })()
+
+      return {
+        ...current,
+        booking_date: bookingDate,
+        time: nextTime,
+        purpose: nextPurpose,
+        event_id: walkInMode ? options?.prefill?.event_id ?? walkInDefaults?.eventId ?? '' : options?.prefill?.event_id ?? current.event_id,
+        sunday_deposit_method: walkInMode ? 'payment_link' : current.sunday_deposit_method,
+        phone: walkInMode ? '' : current.phone, customer_name: walkInMode ? '' : current.customer_name,
+        first_name: walkInMode ? '' : current.first_name, last_name: walkInMode ? '' : current.last_name,
+        notes: walkInMode ? '' : current.notes, waive_deposit: false, is_venue_event: false
+      }
+    })
     if (walkInMode) {
       setCustomerQuery(''); setCustomerResults([]); setSelectedCustomer(null); setWalkInPurposeAutoSelectionEnabled(true)
     } else {

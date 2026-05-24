@@ -50,6 +50,11 @@ export const FohHeader = React.memo(function FohHeader(props: FohHeaderProps) {
   const isManagerKioskStyle = styleVariant === 'manager_kiosk'
   const londonTodayIso = getLondonDateIso(clockNow)
   const viewingToday = date === londonTodayIso
+  const openNowCreateModal = (mode: FohCreateMode) => {
+    setDate(londonTodayIso)
+    lastInteractionAtMsRef.current = Date.now()
+    onOpenCreateModal({ mode })
+  }
 
   const panelSurfaceClass = isManagerKioskStyle
     ? 'rounded-xl border border-green-200 bg-white shadow-sm'
@@ -221,12 +226,24 @@ export const FohHeader = React.memo(function FohHeader(props: FohHeaderProps) {
             </button>
             <button
               type="button"
-              onClick={() => onOpenCreateModal({ mode: 'booking' })}
+              onClick={() => openNowCreateModal('walk_in')}
               className={cn(
                 'rounded-md px-4 py-2 text-sm text-white',
                 isManagerKioskStyle
                   ? 'bg-sidebar px-2.5 py-1 text-[11px] font-semibold hover:bg-green-700'
                   : 'bg-sidebar font-medium hover:bg-sidebar/90'
+              )}
+            >
+              Walk-in
+            </button>
+            <button
+              type="button"
+              onClick={() => openNowCreateModal('booking')}
+              className={cn(
+                'rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50',
+                isManagerKioskStyle
+                  ? 'px-2.5 py-1 text-[11px]'
+                  : ''
               )}
             >
               Add booking
