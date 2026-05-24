@@ -8,6 +8,10 @@ import { persistCronRunResult, recoverCronRunLock } from '@/lib/cron-run-results
 import { getSmartFirstName } from '@/lib/sms/bulk'
 import { reportCronFailure } from '@/lib/cron/alerting'
 import { getGoogleReviewLink } from '@/lib/events/review-link'
+import {
+  getFirstVisitReviewEligibleCandidateKeys,
+  reviewVisitCandidateKey,
+} from '@/lib/sms/review-once'
 import { sendPrivateBookingOutcomeEmail } from '@/lib/private-bookings/manager-notifications'
 import {
   depositReminder7DayMessage,
@@ -996,7 +1000,7 @@ export async function GET(request: Request) {
       const { data: eligibleForReview } = await supabase
         .from('private_bookings')
         .select(
-          'id, customer_id, customer_first_name, customer_name, contact_phone, event_date, post_event_outcome, review_sms_sent_at, status, internal_notes'
+          'id, customer_id, customer_first_name, customer_name, contact_phone, event_date, start_time, post_event_outcome, review_sms_sent_at, review_processed_at, status, internal_notes'
         )
         .eq('post_event_outcome', 'went_well')
         .is('review_sms_sent_at', null)
@@ -1004,10 +1008,42 @@ export async function GET(request: Request) {
         .gte('event_date', fourteenDaysAgo)
         .lte('event_date', today)
 
-      if (eligibleForReview && eligibleForReview.length > 0) {
+      const unprocessedReviewBookings = (eligibleForReview ?? []).filter(
+        (booking) => !booking.review_processed_at
+      )
+
+      if (unprocessedReviewBookings.length > 0) {
+        let firstVisitEligibleKeys = new Set<string>()
+
+        try {
+          firstVisitEligibleKeys = await getFirstVisitReviewEligibleCandidateKeys(
+            unprocessedReviewBookings.map((booking) => ({
+              channel: 'private',
+              bookingId: booking.id,
+              customerId: booking.customer_id,
+              visitAt: `${booking.event_date}T${booking.start_time || '00:00:00'}`,
+            })),
+            supabase,
+          )
+        } catch (error) {
+          logger.error('Failed loading private booking review first-visit eligibility', {
+            error: error instanceof Error ? error : new Error(String(error)),
+            metadata: {
+              bookingCount: unprocessedReviewBookings.length,
+            },
+          })
+          recordSafetyAbort({
+            stage: 'pass5b:first_visit',
+            triggerType: 'review_request',
+            templateKey: 'private_booking_review_request',
+            reason: 'first_visit_lookup_failed',
+          })
+        }
+
         const reviewLink = await getGoogleReviewLink(supabase)
 
-        for (const booking of eligibleForReview) {
+        for (const booking of unprocessedReviewBookings) {
+          if (abortState.aborted) break
           if (!canSendMoreSms()) {
             stats.smsCapReached = true
             break
@@ -1018,11 +1054,28 @@ export async function GET(request: Request) {
 
           const eventDateIso = booking.event_date.slice(0, 10)
 
+          if (!firstVisitEligibleKeys.has(reviewVisitCandidateKey({ channel: 'private', bookingId: booking.id }))) {
+            const nowIso = new Date().toISOString()
+            await supabase
+              .from('private_bookings')
+              .update({ review_processed_at: nowIso, updated_at: nowIso })
+              .eq('id', booking.id)
+              .is('review_sms_sent_at', null)
+            logger.info('Private booking review SMS suppressed: not customer first visit', {
+              metadata: { bookingId: booking.id, customerId: booking.customer_id }
+            })
+            continue
+          }
+
           // Atomic claim on review_sms_sent_at FIRST — only one cron run can
           // "win" the right to send for a booking. Survives cron double-fire.
+          const reviewClaimedAt = new Date().toISOString()
           const { data: reviewClaim, error: reviewClaimErr } = await supabase
             .from('private_bookings')
-            .update({ review_sms_sent_at: new Date().toISOString() })
+            .update({
+              review_sms_sent_at: reviewClaimedAt,
+              review_processed_at: reviewClaimedAt
+            })
             .eq('id', booking.id)
             .is('review_sms_sent_at', null)
             .select('id')

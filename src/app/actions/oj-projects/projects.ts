@@ -5,6 +5,7 @@ import { checkUserPermission } from '@/app/actions/rbac'
 import { logAuditEvent } from '@/app/actions/audit'
 import { z } from 'zod'
 import { generateProjectCode } from '@/lib/oj-projects/project-codes'
+import { getTodayIsoDate } from '@/lib/dateUtils'
 
 const CreateProjectSchema = z.object({
   vendor_id: z.string().uuid('Invalid vendor ID'),
@@ -23,6 +24,43 @@ const CreateProjectSchema = z.object({
 const UpdateProjectSchema = CreateProjectSchema.extend({
   id: z.string().uuid('Invalid project ID'),
 })
+
+function roundMoney(value: number): number {
+  return Math.round((value + Number.EPSILON) * 100) / 100
+}
+
+function getCurrentMonthBounds(): { start: string; nextStart: string } {
+  const today = getTodayIsoDate()
+  const year = Number(today.slice(0, 4))
+  const month = Number(today.slice(5, 7))
+  const nextMonth = month === 12 ? 1 : month + 1
+  const nextYear = month === 12 ? year + 1 : year
+
+  return {
+    start: `${today.slice(0, 7)}-01`,
+    nextStart: `${nextYear}-${String(nextMonth).padStart(2, '0')}-01`,
+  }
+}
+
+function calculateEntryAmountExVat(entry: {
+  entry_type: string | null
+  duration_minutes_rounded: number | null
+  hourly_rate_ex_vat_snapshot: number | null
+  miles: number | null
+  mileage_rate_snapshot: number | null
+  amount_ex_vat_snapshot: number | null
+}): number {
+  if (entry.entry_type === 'time') {
+    return (Number(entry.duration_minutes_rounded || 0) / 60) * Number(entry.hourly_rate_ex_vat_snapshot || 0)
+  }
+  if (entry.entry_type === 'mileage') {
+    return Number(entry.miles || 0) * Number(entry.mileage_rate_snapshot || 0.42)
+  }
+  if (entry.entry_type === 'one_off') {
+    return Number(entry.amount_ex_vat_snapshot || 0)
+  }
+  return 0
+}
 
 export async function getProjects(options?: { vendorId?: string; status?: string }) {
   const hasPermission = await checkUserPermission('oj_projects', 'view')
@@ -53,6 +91,7 @@ export async function getProjects(options?: { vendorId?: string; status?: string
   // Fetch stats for these projects
   const projectIds = data?.map(p => p.id) || []
   const statsMap = new Map<string, any>()
+  const currentMonthBilledMap = new Map<string, number>()
 
   if (projectIds.length > 0) {
     const { data: stats } = await supabase
@@ -63,12 +102,39 @@ export async function getProjects(options?: { vendorId?: string; status?: string
     if (stats) {
       stats.forEach(s => statsMap.set(s.project_id, s))
     }
+
+    const { start, nextStart } = getCurrentMonthBounds()
+    const { data: currentMonthEntries } = await supabase
+      .from('oj_entries')
+      .select(`
+        project_id,
+        entry_type,
+        duration_minutes_rounded,
+        hourly_rate_ex_vat_snapshot,
+        miles,
+        mileage_rate_snapshot,
+        amount_ex_vat_snapshot
+      `)
+      .in('project_id', projectIds)
+      .eq('billable', true)
+      .gte('entry_date', start)
+      .lt('entry_date', nextStart)
+
+    if (currentMonthEntries) {
+      currentMonthEntries.forEach((entry) => {
+        const projectId = entry.project_id
+        if (!projectId) return
+        const current = currentMonthBilledMap.get(projectId) || 0
+        currentMonthBilledMap.set(projectId, current + calculateEntryAmountExVat(entry))
+      })
+    }
   }
 
   const projectsWithStats = data?.map(p => ({
     ...p,
     total_hours_used: statsMap.get(p.id)?.total_hours_used || 0,
-    total_spend_ex_vat: statsMap.get(p.id)?.total_spend_ex_vat || 0
+    total_spend_ex_vat: statsMap.get(p.id)?.total_spend_ex_vat || 0,
+    billed_this_month_ex_vat: roundMoney(currentMonthBilledMap.get(p.id) || 0),
   }))
 
   return { projects: projectsWithStats || [] }

@@ -35,6 +35,19 @@ function formatCurrency(value: number): string {
   return `£${value.toFixed(2)}`
 }
 
+function minutesToHoursInput(minutes: unknown): string {
+  const value = Number(minutes || 0)
+  if (!Number.isFinite(value) || value <= 0) return ''
+  const hours = value / 60
+  return Number.isInteger(hours) ? String(hours) : String(Number(hours.toFixed(2)))
+}
+
+function hoursInputToMinutes(value: string): string {
+  const hours = Number(value)
+  if (!Number.isFinite(hours)) return ''
+  return String(Math.round(hours * 60))
+}
+
 interface EntriesClientProps {
   initialEntries: any[]
   projects: any[]
@@ -66,7 +79,7 @@ export function EntriesClient({
     vendor_id: '',
     project_id: '',
     entry_date: getTodayIsoDate(),
-    duration_minutes: '',
+    duration_hours: '',
     miles: '',
     amount_ex_vat: '',
     work_type_id: '',
@@ -84,7 +97,7 @@ export function EntriesClient({
     vendor_id: '',
     project_id: '',
     entry_date: '',
-    duration_minutes: '',
+    duration_hours: '',
     miles: '',
     amount_ex_vat: '',
     work_type_id: '',
@@ -133,7 +146,7 @@ export function EntriesClient({
       vendor_id: entry.vendor_id,
       project_id: entry.project_id,
       entry_date: entry.entry_date,
-      duration_minutes: entry.duration_minutes_raw ? String(entry.duration_minutes_raw) : '',
+      duration_hours: minutesToHoursInput(entry.duration_minutes_raw ?? entry.duration_minutes_rounded),
       miles: entry.miles != null ? String(entry.miles) : '',
       amount_ex_vat: entry.amount_ex_vat_snapshot != null ? String(entry.amount_ex_vat_snapshot) : '',
       work_type_id: entry.work_type_id || '',
@@ -158,7 +171,7 @@ export function EntriesClient({
       fd.append('internal_notes', editForm.internal_notes)
       fd.append('billable', String(editForm.billable))
       if (editForm.entry_type === 'time') {
-        fd.append('duration_minutes', editForm.duration_minutes)
+        fd.append('duration_minutes', hoursInputToMinutes(editForm.duration_hours))
         fd.append('work_type_id', editForm.work_type_id)
       } else if (editForm.entry_type === 'mileage') {
         fd.append('miles', editForm.miles)
@@ -219,7 +232,7 @@ export function EntriesClient({
       vendor_id: '',
       project_id: '',
       entry_date: getTodayIsoDate(),
-      duration_minutes: '',
+      duration_hours: '',
       miles: '',
       amount_ex_vat: '',
       work_type_id: '',
@@ -245,7 +258,7 @@ export function EntriesClient({
 
       let res: any
       if (createType === 'time') {
-        fd.append('duration_minutes', createForm.duration_minutes)
+        fd.append('duration_minutes', hoursInputToMinutes(createForm.duration_hours))
         if (createForm.work_type_id) fd.append('work_type_id', createForm.work_type_id)
         res = await createTimeEntry(fd)
       } else if (createType === 'mileage') {
@@ -479,13 +492,14 @@ export function EntriesClient({
 
           {createType === 'time' && (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <Field label="Duration (minutes)" required>
+              <Field label="Duration (hours)" required>
                 <Input
                   type="number"
-                  min="1"
-                  value={createForm.duration_minutes}
-                  onChange={(e) => setCreateForm({ ...createForm, duration_minutes: e.target.value })}
-                  placeholder="e.g. 90"
+                  min="0.25"
+                  step="0.25"
+                  value={createForm.duration_hours}
+                  onChange={(e) => setCreateForm({ ...createForm, duration_hours: e.target.value })}
+                  placeholder="e.g. 1.5"
                   required
                 />
               </Field>
@@ -615,12 +629,13 @@ export function EntriesClient({
 
           {editForm.entry_type === 'time' && (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <Field label="Duration (minutes)" required>
+              <Field label="Duration (hours)" required>
                 <Input
                   type="number"
-                  min="1"
-                  value={editForm.duration_minutes}
-                  onChange={(e) => setEditForm({ ...editForm, duration_minutes: e.target.value })}
+                  min="0.25"
+                  step="0.25"
+                  value={editForm.duration_hours}
+                  onChange={(e) => setEditForm({ ...editForm, duration_hours: e.target.value })}
                   required
                 />
               </Field>

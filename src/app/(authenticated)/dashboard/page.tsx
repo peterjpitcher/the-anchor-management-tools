@@ -49,6 +49,15 @@ function getInvoiceVendorName(vendor: unknown): string {
   return (vendor as { name?: string | null }).name ?? 'No Vendor'
 }
 
+function uniqueById<T extends { id: string }>(items: T[]): T[] {
+  const seen = new Set<string>()
+  return items.filter((item) => {
+    if (seen.has(item.id)) return false
+    seen.add(item.id)
+    return true
+  })
+}
+
 export default async function DashboardPage() {
   const [snapshot, canManageCalendarNotes] = await Promise.all([
     loadDashboardSnapshot(),
@@ -62,33 +71,6 @@ export default async function DashboardPage() {
   const todayIso = getTodayIsoDate()
   const isToday = (dateString: string | null) => Boolean(dateString && dateString.startsWith(todayIso))
 
-  // --- Stats ---
-  const stats = [
-    {
-      label: 'Cashing up (week)',
-      value: snapshot.cashingUp.permitted
-        ? currencyFormatter.format(snapshot.cashingUp.thisWeekTotal)
-        : '--',
-      hint: snapshot.cashingUp.permitted && snapshot.cashingUp.thisWeekTarget > 0
-        ? `Target: ${currencyFormatter.format(snapshot.cashingUp.thisWeekTarget)}`
-        : undefined,
-    },
-    {
-      label: 'New customers (7d)',
-      value: snapshot.customers.permitted ? `+${snapshot.customers.newThisWeek}` : '--',
-      hint: snapshot.customers.permitted ? `${snapshot.customers.newThisMonth} this month` : undefined,
-    },
-    {
-      label: 'Upcoming events',
-      value: snapshot.events.permitted ? String(snapshot.events.totalUpcoming) : '--',
-      hint: snapshot.events.permitted ? `${snapshot.events.today.length} today` : undefined,
-    },
-    {
-      label: 'Active staff',
-      value: snapshot.employees.permitted ? String(snapshot.employees.activeCount) : '--',
-    },
-  ]
-
   // --- Today Items ---
   const privateToday = snapshot.privateBookings.permitted
     ? snapshot.privateBookings.upcoming.filter((booking) => isToday(booking.event_date))
@@ -101,6 +83,7 @@ export default async function DashboardPage() {
   const invoicesDueToday = snapshot.invoices.permitted ? snapshot.invoices.dueToday : []
   const calendarNotes = snapshot.events.calendarNotes
   const notesToday = calendarNotes.filter((note) => note.note_date <= todayIso && note.end_date >= todayIso)
+  const specialHoursToday = snapshot.events.specialHours.filter((entry) => entry.date === todayIso)
 
   const todayItems = [
     ...overdueInvoices.map((inv) => ({
@@ -145,6 +128,13 @@ export default async function DashboardPage() {
       type: 'note' as const,
       title: note.title,
       subtitle: `Note · ${formatNoteDateRange(note.note_date, note.end_date)}`,
+    })),
+    ...specialHoursToday.map((entry) => ({
+      id: `special-${entry.id}`,
+      type: 'note' as const,
+      title: entry.note || (entry.is_closed ? 'Closed' : entry.is_kitchen_closed ? 'Kitchen closed' : 'Special opening hours'),
+      subtitle: entry.is_closed ? 'Special hours · Closed' : `Special hours · ${entry.opens?.slice(0, 5) || '--'}-${entry.closes?.slice(0, 5) || '--'}`,
+      href: '/settings/business-hours',
     })),
   ]
 
@@ -304,20 +294,28 @@ export default async function DashboardPage() {
   const calendarPrivateBookings = snapshot.privateBookings.permitted
     ? [...snapshot.privateBookings.past, ...snapshot.privateBookings.upcoming]
     : []
+  const calendarBalanceDueDates = snapshot.privateBookings.permitted
+    ? snapshot.privateBookings.balanceDueDates
+    : []
+  const calendarEmployeeBirthdays = snapshot.employees.permitted
+    ? snapshot.employees.birthdays
+    : []
   const calendarParkingBookings = snapshot.parking.permitted
-    ? [...snapshot.parking.past, ...snapshot.parking.upcoming]
+    ? uniqueById([...snapshot.parking.past, ...snapshot.parking.upcoming])
     : []
 
   return (
-    <div className="p-5 max-w-[1600px] mx-auto flex flex-col gap-5">
+    <div className="flex w-full min-w-0 flex-col gap-5">
       <DashboardClient
         subtitle={subtitle}
-        stats={stats}
         calendar={
           <UpcomingScheduleCalendar
             events={calendarEvents}
             calendarNotes={calendarNotes}
             privateBookings={calendarPrivateBookings}
+            balanceDueDates={calendarBalanceDueDates}
+            employeeBirthdays={calendarEmployeeBirthdays}
+            specialHours={snapshot.events.specialHours}
             parkingBookings={calendarParkingBookings}
             canCreateCalendarNote={canManageCalendarNotes}
           />
@@ -356,10 +354,10 @@ export default async function DashboardPage() {
         todayMeta={{
           openTime: '12:00',
           onRota: snapshot.rotaToday.staffOnRota,
-          bookings: String(todayItems.filter((t) => t.type === 'booking' || t.type === 'event').length),
+          bookings: snapshot.tableBookings.permitted ? String(snapshot.tableBookings.todayTotal) : '--',
           covers: (() => {
-            if (!snapshot.privateBookings.permitted) return '--'
-            const total = privateToday.reduce((sum, b) => sum + (b.guest_count ?? 0), 0)
+            if (!snapshot.tableBookings.permitted) return '--'
+            const total = snapshot.tableBookings.todayCovers
             return total > 0 ? String(total) : '--'
           })(),
         }}

@@ -23,16 +23,31 @@ import {
   Select,
   Checkbox,
   Segmented,
+  IconButton,
   toast,
 } from '@/ds'
 import { Icon } from '@/ds/icons'
 import { usePermissions } from '@/contexts/PermissionContext'
-import { createTimeEntry, createMileageEntry, createOneOffCharge, getEntries } from '@/app/actions/oj-projects/entries'
+import { createTimeEntry, createMileageEntry, createOneOffCharge, getEntries, updateEntry } from '@/app/actions/oj-projects/entries'
 import type { OJClientSummary } from '@/app/actions/oj-projects/clients'
 import { formatDateDdMmmmYyyy, getTodayIsoDate } from '@/lib/dateUtils'
+import { getCurrentMonthEntryDateRange } from '@/lib/oj-projects/date-ranges'
 
 function formatCurrency(value: number): string {
   return `£${value.toFixed(2)}`
+}
+
+function minutesToHoursInput(minutes: unknown): string {
+  const value = Number(minutes || 0)
+  if (!Number.isFinite(value) || value <= 0) return ''
+  const hours = value / 60
+  return Number.isInteger(hours) ? String(hours) : String(Number(hours.toFixed(2)))
+}
+
+function hoursInputToMinutes(value: string): string {
+  const hours = Number(value)
+  if (!Number.isFinite(hours)) return ''
+  return String(Math.round(hours * 60))
 }
 
 interface ProjectsOverviewProps {
@@ -46,8 +61,11 @@ export function ProjectsOverview({ projects, entries: initialEntries, workTypes,
   const router = useRouter()
   const { hasPermission } = usePermissions()
   const canCreate = hasPermission('oj_projects', 'create')
+  const canEdit = hasPermission('oj_projects', 'edit')
 
   const [entries, setEntries] = useState(initialEntries)
+  const [entriesLoading, setEntriesLoading] = useState(false)
+  const [selectedVendorId, setSelectedVendorId] = useState('')
   const [createOpen, setCreateOpen] = useState(false)
   const [createType, setCreateType] = useState<'time' | 'mileage' | 'one_off'>('time')
   const [saving, setSaving] = useState(false)
@@ -55,7 +73,22 @@ export function ProjectsOverview({ projects, entries: initialEntries, workTypes,
     vendor_id: '',
     project_id: '',
     entry_date: getTodayIsoDate(),
-    duration_minutes: '',
+    duration_hours: '',
+    miles: '',
+    amount_ex_vat: '',
+    work_type_id: '',
+    description: '',
+    internal_notes: '',
+    billable: true,
+  })
+  const [editOpen, setEditOpen] = useState(false)
+  const [editForm, setEditForm] = useState({
+    id: '',
+    entry_type: 'time' as string,
+    vendor_id: '',
+    project_id: '',
+    entry_date: '',
+    duration_hours: '',
     miles: '',
     amount_ex_vat: '',
     work_type_id: '',
@@ -70,8 +103,11 @@ export function ProjectsOverview({ projects, entries: initialEntries, workTypes,
     projects.forEach((p: any) => {
       if (p.vendor?.id && p.vendor?.name) map.set(p.vendor.id, p.vendor.name)
     })
+    entries.forEach((entry: any) => {
+      if (entry.vendor?.id && entry.vendor?.name) map.set(entry.vendor.id, entry.vendor.name)
+    })
     return Array.from(map, ([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name))
-  }, [clients, projects])
+  }, [clients, entries, projects])
 
   const addableProjects = useMemo(
     () => projects.filter((p: any) => p.status !== 'completed' && p.status !== 'archived'),
@@ -82,12 +118,16 @@ export function ProjectsOverview({ projects, entries: initialEntries, workTypes,
     ? addableProjects.filter((p: any) => p.vendor_id === createForm.vendor_id)
     : addableProjects
 
+  const editProjectOptions = editForm.vendor_id
+    ? addableProjects.filter((p: any) => p.vendor_id === editForm.vendor_id)
+    : addableProjects
+
   function openCreate(): void {
     setCreateForm({
-      vendor_id: '',
+      vendor_id: selectedVendorId,
       project_id: '',
       entry_date: getTodayIsoDate(),
-      duration_minutes: '',
+      duration_hours: '',
       miles: '',
       amount_ex_vat: '',
       work_type_id: '',
@@ -99,10 +139,55 @@ export function ProjectsOverview({ projects, entries: initialEntries, workTypes,
     setCreateOpen(true)
   }
 
-  const reload = useCallback(async () => {
-    const res = await getEntries({ limit: 10 })
-    if (res.entries) setEntries(res.entries)
+  function openEdit(entry: any): void {
+    if (entry.status !== 'unbilled') {
+      toast.error('Only unbilled entries can be edited')
+      return
+    }
+
+    setEditForm({
+      id: entry.id,
+      entry_type: entry.entry_type,
+      vendor_id: entry.vendor_id,
+      project_id: entry.project_id,
+      entry_date: entry.entry_date,
+      duration_hours: minutesToHoursInput(entry.duration_minutes_raw ?? entry.duration_minutes_rounded),
+      miles: entry.miles != null ? String(entry.miles) : '',
+      amount_ex_vat: entry.amount_ex_vat_snapshot != null ? String(entry.amount_ex_vat_snapshot) : '',
+      work_type_id: entry.work_type_id || '',
+      description: entry.description || '',
+      internal_notes: entry.internal_notes || '',
+      billable: entry.billable ?? true,
+    })
+    setEditOpen(true)
+  }
+
+  const loadEntriesForClient = useCallback(async (vendorId: string) => {
+    setEntriesLoading(true)
+    setEntries([])
+    try {
+      const currentMonthRange = getCurrentMonthEntryDateRange()
+      const res = await getEntries({
+        ...currentMonthRange,
+        ...(vendorId ? { vendorId } : {}),
+      })
+      if (res.error) throw new Error(res.error)
+      if (res.entries) setEntries(res.entries)
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to load entries')
+    } finally {
+      setEntriesLoading(false)
+    }
   }, [])
+
+  const reload = useCallback(async () => {
+    await loadEntriesForClient(selectedVendorId)
+  }, [loadEntriesForClient, selectedVendorId])
+
+  function handleClientFilterChange(vendorId: string): void {
+    setSelectedVendorId(vendorId)
+    void loadEntriesForClient(vendorId)
+  }
 
   async function handleCreateSubmit(e: React.FormEvent): Promise<void> {
     e.preventDefault()
@@ -118,7 +203,7 @@ export function ProjectsOverview({ projects, entries: initialEntries, workTypes,
 
       let res: any
       if (createType === 'time') {
-        fd.append('duration_minutes', createForm.duration_minutes)
+        fd.append('duration_minutes', hoursInputToMinutes(createForm.duration_hours))
         if (createForm.work_type_id) fd.append('work_type_id', createForm.work_type_id)
         res = await createTimeEntry(fd)
       } else if (createType === 'mileage') {
@@ -141,9 +226,50 @@ export function ProjectsOverview({ projects, entries: initialEntries, workTypes,
     }
   }
 
+  async function handleEditSubmit(e: React.FormEvent): Promise<void> {
+    e.preventDefault()
+    setSaving(true)
+    try {
+      const fd = new FormData()
+      fd.append('id', editForm.id)
+      fd.append('entry_type', editForm.entry_type)
+      fd.append('vendor_id', editForm.vendor_id)
+      fd.append('project_id', editForm.project_id)
+      fd.append('entry_date', editForm.entry_date)
+      fd.append('description', editForm.description)
+      fd.append('internal_notes', editForm.internal_notes)
+      fd.append('billable', String(editForm.billable))
+
+      if (editForm.entry_type === 'time') {
+        fd.append('duration_minutes', hoursInputToMinutes(editForm.duration_hours))
+        fd.append('work_type_id', editForm.work_type_id)
+      } else if (editForm.entry_type === 'mileage') {
+        fd.append('miles', editForm.miles)
+      } else {
+        fd.append('amount_ex_vat', editForm.amount_ex_vat)
+      }
+
+      const res = await updateEntry(fd)
+      if (res.error) throw new Error(res.error)
+      toast.success('Entry updated')
+      setEditOpen(false)
+      await reload()
+      router.refresh()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to update entry')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const visibleProjects = useMemo(
+    () => selectedVendorId ? projects.filter((p) => p.vendor_id === selectedVendorId) : projects,
+    [projects, selectedVendorId],
+  )
+
   const activeProjects = useMemo(
-    () => projects.filter((p) => p.status === 'active'),
-    [projects],
+    () => visibleProjects.filter((p) => p.status === 'active'),
+    [visibleProjects],
   )
 
   const totalHours = useMemo(() => {
@@ -157,23 +283,12 @@ export function ProjectsOverview({ projects, entries: initialEntries, workTypes,
   }, [entries])
 
   const revenueThisMonth = useMemo(() => {
-    const now = new Date()
-    const monthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
     let total = 0
-    for (const entry of entries) {
-      if (!entry.entry_date?.startsWith(monthKey)) continue
-      if (entry.entry_type === 'time') {
-        const hours = Number(entry.duration_minutes_rounded || 0) / 60
-        const rate = Number(entry.hourly_rate_ex_vat_snapshot || 0)
-        total += hours * rate
-      } else if (entry.entry_type === 'mileage') {
-        total += Number(entry.miles || 0) * Number(entry.mileage_rate_snapshot || 0.42)
-      } else if (entry.entry_type === 'one_off') {
-        total += Number(entry.amount_ex_vat_snapshot || 0)
-      }
+    for (const project of visibleProjects) {
+      total += Number(project.billed_this_month_ex_vat || 0)
     }
     return Math.round(total * 100) / 100
-  }, [entries])
+  }, [visibleProjects])
 
   const outstandingCount = useMemo(
     () => entries.filter((e) => e.status === 'unbilled').length,
@@ -189,6 +304,16 @@ export function ProjectsOverview({ projects, entries: initialEntries, workTypes,
     }
   }
 
+  function entryAmount(entry: any): number {
+    if (entry.entry_type === 'time') {
+      return (Number(entry.duration_minutes_rounded || 0) / 60) * Number(entry.hourly_rate_ex_vat_snapshot || 0)
+    }
+    if (entry.entry_type === 'mileage') {
+      return Number(entry.miles || 0) * Number(entry.mileage_rate_snapshot || 0.42)
+    }
+    return Number(entry.amount_ex_vat_snapshot || 0)
+  }
+
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
@@ -199,11 +324,23 @@ export function ProjectsOverview({ projects, entries: initialEntries, workTypes,
           <Stat label="Revenue This Month" value={formatCurrency(revenueThisMonth)} icon={<Icon name="pound" size={20} />} />
           <Stat label="Unbilled Entries" value={String(outstandingCount)} icon={<Icon name="clock" size={20} />} />
         </div>
-        {canCreate && (
-          <Button variant="primary" icon={<Icon name="plus" size={16} />} onClick={openCreate} className="self-start lg:ml-4">
-            New Entry
-          </Button>
-        )}
+        <div className="flex w-full flex-col gap-3 sm:w-auto sm:flex-row sm:items-end lg:ml-4">
+          <Select
+            label="Client"
+            value={selectedVendorId}
+            onChange={(e) => handleClientFilterChange(e.target.value)}
+            options={[
+              { label: 'All clients', value: '' },
+              ...vendors.map((v) => ({ label: v.name, value: v.id })),
+            ]}
+            className="min-w-[220px]"
+          />
+          {canCreate && (
+            <Button variant="primary" icon={<Icon name="plus" size={16} />} onClick={openCreate} className="self-start sm:self-auto">
+              New Entry
+            </Button>
+          )}
+        </div>
       </div>
 
       {/* Recent Projects */}
@@ -219,6 +356,7 @@ export function ProjectsOverview({ projects, entries: initialEntries, workTypes,
                 <TableHead>Client</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead>Budget</TableHead>
+                <TableHead>Billed This Month</TableHead>
                 <TableHead>Hours Used</TableHead>
               </TableRow>
             </TableHeader>
@@ -228,6 +366,7 @@ export function ProjectsOverview({ projects, entries: initialEntries, workTypes,
                 const usedHours = Number(project.total_hours_used || 0)
                 const budgetMoney = Number(project.budget_ex_vat || 0)
                 const spentMoney = Number(project.total_spend_ex_vat || 0)
+                const billedThisMonth = Number(project.billed_this_month_ex_vat || 0)
                 const hasBudget = budgetHours > 0 || budgetMoney > 0
                 const progress = budgetHours > 0
                   ? Math.min((usedHours / budgetHours) * 100, 100)
@@ -263,6 +402,7 @@ export function ProjectsOverview({ projects, entries: initialEntries, workTypes,
                         <span className="text-xs text-text-muted italic">No budget</span>
                       )}
                     </TableCell>
+                    <TableCell className="font-medium">{formatCurrency(billedThisMonth)}</TableCell>
                     <TableCell>{usedHours.toFixed(1)}h</TableCell>
                   </TableRow>
                 )
@@ -275,8 +415,13 @@ export function ProjectsOverview({ projects, entries: initialEntries, workTypes,
       {/* Recent Entries */}
       <Card>
         <CardHeader title="Recent Entries" />
-        {entries.length === 0 ? (
-          <Empty title="No entries" description="No time entries recorded yet." />
+        {entriesLoading ? (
+          <Empty title="Loading entries" />
+        ) : entries.length === 0 ? (
+          <Empty
+            title="No entries"
+            description={selectedVendorId ? 'No entries found for this client.' : 'No time entries recorded yet.'}
+          />
         ) : (
           <Table>
             <TableHeader>
@@ -284,8 +429,10 @@ export function ProjectsOverview({ projects, entries: initialEntries, workTypes,
                 <TableHead>Date</TableHead>
                 <TableHead>Project</TableHead>
                 <TableHead>Type</TableHead>
-                <TableHead>Hours/Amount</TableHead>
+                <TableHead>Hours/Qty</TableHead>
+                <TableHead>Amount</TableHead>
                 <TableHead>Notes</TableHead>
+                <TableHead className="w-12">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -297,7 +444,7 @@ export function ProjectsOverview({ projects, entries: initialEntries, workTypes,
                 } else if (entry.entry_type === 'mileage') {
                   valueDisplay = `${entry.miles} mi`
                 } else {
-                  valueDisplay = formatCurrency(Number(entry.amount_ex_vat_snapshot || 0))
+                  valueDisplay = '-'
                 }
 
                 return (
@@ -308,8 +455,19 @@ export function ProjectsOverview({ projects, entries: initialEntries, workTypes,
                       <Badge tone={typeTone}>{entry.entry_type}</Badge>
                     </TableCell>
                     <TableCell className="font-medium">{valueDisplay}</TableCell>
+                    <TableCell className="font-medium">{formatCurrency(entryAmount(entry))}</TableCell>
                     <TableCell className="max-w-[200px] truncate text-text-muted">
                       {entry.description || '-'}
+                    </TableCell>
+                    <TableCell>
+                      {entry.status === 'unbilled' && canEdit && (
+                        <IconButton
+                          icon={<Icon name="edit" size={16} />}
+                          size="sm"
+                          label="Edit entry"
+                          onClick={() => openEdit(entry)}
+                        />
+                      )}
                     </TableCell>
                   </TableRow>
                 )
@@ -368,13 +526,14 @@ export function ProjectsOverview({ projects, entries: initialEntries, workTypes,
           </Field>
           {createType === 'time' && (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <Field label="Duration (minutes)" required>
+              <Field label="Duration (hours)" required>
                 <Input
                   type="number"
-                  min="1"
-                  value={createForm.duration_minutes}
-                  onChange={(e) => setCreateForm({ ...createForm, duration_minutes: e.target.value })}
-                  placeholder="e.g. 90"
+                  min="0.25"
+                  step="0.25"
+                  value={createForm.duration_hours}
+                  onChange={(e) => setCreateForm({ ...createForm, duration_hours: e.target.value })}
+                  placeholder="e.g. 1.5"
                   required
                 />
               </Field>
@@ -444,6 +603,134 @@ export function ProjectsOverview({ projects, entries: initialEntries, workTypes,
             </Button>
             <Button type="submit" loading={saving}>
               Create Entry
+            </Button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* Edit Entry Modal */}
+      <Modal open={editOpen} onClose={() => setEditOpen(false)} title="Edit Entry">
+        <form onSubmit={handleEditSubmit} className="flex flex-col gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <Field label="Entry Type">
+              <Input value={editForm.entry_type} disabled />
+            </Field>
+            <Field label="Date" required>
+              <Input
+                type="date"
+                value={editForm.entry_date}
+                onChange={(e) => setEditForm({ ...editForm, entry_date: e.target.value })}
+                required
+              />
+            </Field>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <Field label="Client" required>
+              <Select
+                value={editForm.vendor_id}
+                onChange={(e) => setEditForm({ ...editForm, vendor_id: e.target.value, project_id: '' })}
+                required
+                options={[
+                  { label: 'Select client...', value: '' },
+                  ...vendors.map((v) => ({ label: v.name, value: v.id })),
+                ]}
+              />
+            </Field>
+            <Field label="Project">
+              <Select
+                value={editForm.project_id}
+                onChange={(e) => setEditForm({ ...editForm, project_id: e.target.value })}
+                options={[
+                  { label: 'Current retainer / General Work', value: '' },
+                  ...editProjectOptions.map((p: any) => ({
+                    label: `${p.project_code} - ${p.project_name}${p.status === 'paused' ? ' (paused)' : ''}`,
+                    value: p.id,
+                  })),
+                ]}
+              />
+            </Field>
+          </div>
+
+          {editForm.entry_type === 'time' && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <Field label="Duration (hours)" required>
+                <Input
+                  type="number"
+                  min="0.25"
+                  step="0.25"
+                  value={editForm.duration_hours}
+                  onChange={(e) => setEditForm({ ...editForm, duration_hours: e.target.value })}
+                  required
+                />
+              </Field>
+              <Field label="Work Type">
+                <Select
+                  value={editForm.work_type_id}
+                  onChange={(e) => setEditForm({ ...editForm, work_type_id: e.target.value })}
+                  options={[
+                    { label: 'None', value: '' },
+                    ...workTypes.filter((w: any) => w.is_active).map((w: any) => ({
+                      label: w.name,
+                      value: w.id,
+                    })),
+                  ]}
+                />
+              </Field>
+            </div>
+          )}
+
+          {editForm.entry_type === 'mileage' && (
+            <Field label="Miles" required>
+              <Input
+                type="number"
+                min="0.1"
+                step="0.1"
+                value={editForm.miles}
+                onChange={(e) => setEditForm({ ...editForm, miles: e.target.value })}
+                required
+              />
+            </Field>
+          )}
+
+          {editForm.entry_type === 'one_off' && (
+            <Field label="Amount (ex VAT)" required>
+              <Input
+                type="number"
+                min="0.01"
+                step="0.01"
+                value={editForm.amount_ex_vat}
+                onChange={(e) => setEditForm({ ...editForm, amount_ex_vat: e.target.value })}
+                required
+              />
+            </Field>
+          )}
+
+          <Field label="Description">
+            <Input
+              value={editForm.description}
+              onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
+            />
+          </Field>
+          <Field label="Internal Notes">
+            <Textarea
+              value={editForm.internal_notes}
+              onChange={(e) => setEditForm({ ...editForm, internal_notes: e.target.value })}
+              rows={2}
+            />
+          </Field>
+          <Checkbox
+            label="Billable"
+            checked={editForm.billable}
+            onChange={(checked) => setEditForm({ ...editForm, billable: checked })}
+          />
+
+          <div className="flex justify-end gap-3 pt-2">
+            <Button type="button" variant="ghost" onClick={() => setEditOpen(false)}>
+              Cancel
+            </Button>
+            <Button type="submit" loading={saving}>
+              Save Changes
             </Button>
           </div>
         </form>
