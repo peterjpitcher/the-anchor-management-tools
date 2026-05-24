@@ -8,7 +8,7 @@ import {
 } from '@/ds'
 import { Field, Input, Button, Badge, Alert, Stat } from '@/ds'
 import { Icon } from '@/ds/icons'
-import { upsertSessionAction, submitSessionAction } from '@/app/actions/cashing-up'
+import { upsertSessionAction, upsertAndSubmitSessionAction } from '@/app/actions/cashing-up'
 import { getDailySummaryAction } from '@/app/actions/daily-summary'
 import { getMissingCashupDatesAction } from '@/app/actions/missing-cashups'
 import toast from 'react-hot-toast'
@@ -67,39 +67,79 @@ const dayName = (dateStr: string): string => {
   return d.toLocaleDateString('en-GB', { weekday: 'short' })
 }
 
+const numberInputNoSpinnerClass =
+  '[appearance:textfield] [&::-webkit-inner-spin-button]:m-0 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:m-0 [&::-webkit-outer-spin-button]:appearance-none'
+
+const amountInputValue = (value?: number | null): string => {
+  if (!value) return ''
+  return value.toString()
+}
+
+const getBreakdownValue = (
+  session: CashupSession | null,
+  code: string,
+  field: 'countedAmount' | 'expectedAmount'
+): number => {
+  if (!session?.cashup_payment_breakdowns) return 0
+  const bd = session.cashup_payment_breakdowns.find(
+    (b) => b.payment_type_code === code
+  )
+  if (!bd) return 0
+  return field === 'countedAmount' ? bd.counted_amount : bd.expected_amount
+}
+
+const getCashValuesFromSession = (session: CashupSession | null): Record<string, string> => {
+  const values: Record<string, string> = {}
+  if (session?.cashup_cash_counts) {
+    session.cashup_cash_counts.forEach((c) => {
+      if (c.total_amount > 0) {
+        values[c.denomination.toString()] = c.total_amount.toString()
+      }
+    })
+  }
+  return values
+}
+
 export function DailyClient({ siteId, siteName, sessionDate, dailySummary, dailyTarget, weeklyData, existingSession, missingDates: initialMissingDates }: Props) {
   const router = useRouter()
   const [missingDates, setMissingDates] = useState<string[]>(initialMissingDates)
-  const getBreakdownValue = (code: string, field: 'countedAmount' | 'expectedAmount'): number => {
-    if (!existingSession?.cashup_payment_breakdowns) return 0
-    const bd = existingSession.cashup_payment_breakdowns.find(
-      (b) => b.payment_type_code === code
-    )
-    if (!bd) return 0
-    return field === 'countedAmount' ? bd.counted_amount : bd.expected_amount
-  }
 
-  // Restore denomination values from existing cash counts
-  const getInitialCashValues = (): Record<string, string> => {
-    const values: Record<string, string> = {}
-    if (existingSession?.cashup_cash_counts) {
-      existingSession.cashup_cash_counts.forEach((c) => {
-        values[c.denomination.toString()] = c.total_amount?.toString() || '0'
-      })
-    }
-    return values
-  }
-
-  const [cashValues, setCashValues] = useState<Record<string, string>>(getInitialCashValues)
-  const [cashExpected, setCashExpected] = useState(getBreakdownValue('CASH', 'expectedAmount').toString() || '')
-  const [cardTotal, setCardTotal] = useState(getBreakdownValue('CARD', 'countedAmount').toString() || '')
-  const [stripeTotal, setStripeTotal] = useState(getBreakdownValue('STRIPE', 'countedAmount').toString() || '')
+  const [cashValues, setCashValues] = useState<Record<string, string>>(() => getCashValuesFromSession(existingSession))
+  const [cashExpected, setCashExpected] = useState(() => amountInputValue(getBreakdownValue(existingSession, 'CASH', 'expectedAmount')))
+  const [cardTotal, setCardTotal] = useState(() => amountInputValue(getBreakdownValue(existingSession, 'CARD', 'countedAmount')))
+  const [stripeTotal, setStripeTotal] = useState(() => amountInputValue(getBreakdownValue(existingSession, 'STRIPE', 'countedAmount')))
   const [notes, setNotes] = useState(existingSession?.notes || '')
   const [autoNotes, setAutoNotes] = useState(dailySummary || '')
   const [saving, setSaving] = useState(false)
   const [lastSaved, setLastSaved] = useState<string | null>(null)
   const [sessionId, setSessionId] = useState<string | null>(existingSession?.id ?? null)
   const isLocked = existingSession?.status !== 'draft' && existingSession?.status !== undefined
+
+  useEffect(() => {
+    setMissingDates(initialMissingDates)
+  }, [initialMissingDates])
+
+  const clearFormFields = useCallback(() => {
+    setCashValues({})
+    setCashExpected('')
+    setCardTotal('')
+    setStripeTotal('')
+    setNotes('')
+    setAutoNotes('')
+    setLastSaved(null)
+    setSessionId(null)
+  }, [])
+
+  useEffect(() => {
+    setCashValues(getCashValuesFromSession(existingSession))
+    setCashExpected(amountInputValue(getBreakdownValue(existingSession, 'CASH', 'expectedAmount')))
+    setCardTotal(amountInputValue(getBreakdownValue(existingSession, 'CARD', 'countedAmount')))
+    setStripeTotal(amountInputValue(getBreakdownValue(existingSession, 'STRIPE', 'countedAmount')))
+    setNotes(existingSession?.notes || '')
+    setAutoNotes(dailySummary || '')
+    setLastSaved(null)
+    setSessionId(existingSession?.id ?? null)
+  }, [dailySummary, existingSession, sessionDate])
 
   useEffect(() => {
     if (sessionDate) {
@@ -129,28 +169,30 @@ export function DailyClient({ siteId, siteName, sessionDate, dailySummary, daily
   const totalRevenue = cashCountedTotal + cardNum + stripeNum
   const target = dailyTarget
 
+  const buildSessionDTO = useCallback((status: UpsertCashupSessionDTO['status'] = 'draft'): UpsertCashupSessionDTO => {
+    const cashCounts = DENOMINATIONS.map(denom => {
+      const val = parseFloat(cashValues[denom.value] || '0')
+      return { denomination: denom.value, totalAmount: val }
+    }).filter(c => c.totalAmount > 0)
+
+    return {
+      siteId,
+      sessionDate,
+      status,
+      notes: [notes, autoNotes].filter(Boolean).join('\n\n').trim() || null,
+      paymentBreakdowns: [
+        { paymentTypeCode: 'CASH', paymentTypeLabel: 'Cash', expectedAmount: cashExpectedNum, countedAmount: cashCountedTotal },
+        { paymentTypeCode: 'CARD', paymentTypeLabel: 'Card', expectedAmount: cardNum, countedAmount: cardNum },
+        { paymentTypeCode: 'STRIPE', paymentTypeLabel: 'Stripe', expectedAmount: stripeNum, countedAmount: stripeNum },
+      ],
+      cashCounts,
+    }
+  }, [autoNotes, cardNum, cashCountedTotal, cashExpectedNum, cashValues, notes, sessionDate, siteId, stripeNum])
+
   const handleSave = useCallback(async () => {
     setSaving(true)
     try {
-      const cashCounts = DENOMINATIONS.map(denom => {
-        const val = parseFloat(cashValues[denom.value] || '0')
-        return { denomination: denom.value, totalAmount: val }
-      }).filter(c => c.totalAmount > 0)
-
-      const dto: UpsertCashupSessionDTO = {
-        siteId,
-        sessionDate,
-        status: 'draft',
-        notes: [notes, autoNotes].filter(Boolean).join('\n\n').trim() || null,
-        paymentBreakdowns: [
-          { paymentTypeCode: 'CASH', paymentTypeLabel: 'Cash', expectedAmount: cashExpectedNum, countedAmount: cashCountedTotal },
-          { paymentTypeCode: 'CARD', paymentTypeLabel: 'Card', expectedAmount: cardNum, countedAmount: cardNum },
-          { paymentTypeCode: 'STRIPE', paymentTypeLabel: 'Stripe', expectedAmount: stripeNum, countedAmount: stripeNum },
-        ],
-        cashCounts,
-      }
-
-      const res = await upsertSessionAction(dto, sessionId ?? undefined)
+      const res = await upsertSessionAction(buildSessionDTO('draft'), sessionId ?? undefined)
       if (res.success) {
         if (res.data?.id) setSessionId(res.data.id)
         setLastSaved(new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }))
@@ -166,23 +208,16 @@ export function DailyClient({ siteId, siteName, sessionDate, dailySummary, daily
     } finally {
       setSaving(false)
     }
-  }, [siteId, sessionDate, notes, autoNotes, cashValues, cashExpectedNum, cashCountedTotal, cardNum, stripeNum, sessionId])
+  }, [buildSessionDTO, sessionId, siteId])
 
   const handleSubmit = useCallback(async () => {
-    if (!sessionId) {
-      await handleSave()
-    }
-    const idToSubmit = sessionId
-    if (!idToSubmit) {
-      toast.error('Please save the session first')
-      return
-    }
     setSaving(true)
     try {
-      const res = await submitSessionAction(idToSubmit)
+      const res = await upsertAndSubmitSessionAction(buildSessionDTO('draft'), sessionId ?? undefined)
       if (res.success) {
         toast.success('Session submitted for approval')
         const nextDate = missingDates.find(d => d !== sessionDate)
+        clearFormFields()
         if (nextDate) {
           router.push(`/cashing-up/daily?date=${nextDate}&siteId=${siteId}`)
         } else {
@@ -196,7 +231,7 @@ export function DailyClient({ siteId, siteName, sessionDate, dailySummary, daily
     } finally {
       setSaving(false)
     }
-  }, [sessionId, handleSave])
+  }, [buildSessionDTO, clearFormFields, missingDates, router, sessionDate, sessionId, siteId])
 
   const onDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const newDate = e.target.value
@@ -312,13 +347,14 @@ export function DailyClient({ siteId, siteName, sessionDate, dailySummary, daily
                       <Input
                         id={`input-denom-${denom.value}`}
                         type="number"
+                        inputMode="decimal"
                         step="0.01"
                         placeholder="0.00"
                         value={cashValues[denom.value] || ''}
                         onChange={(e) => handleCashValueChange(denom.value, e.target.value)}
                         onKeyDown={(e) => handleKeyDown(e, nextId)}
                         onWheel={(e) => e.currentTarget.blur()}
-                        className="w-20 p-1 text-right text-sm bg-transparent border-none focus:outline-none focus:ring-0 font-mono"
+                        className={`${numberInputNoSpinnerClass} w-20 p-1 text-right text-sm bg-transparent border-none focus:outline-none focus:ring-0 font-mono`}
                         disabled={isLocked}
                       />
                     </div>
@@ -341,12 +377,13 @@ export function DailyClient({ siteId, siteName, sessionDate, dailySummary, daily
                   <Input
                     id="input-cash-expected"
                     type="number"
+                    inputMode="decimal"
                     step="0.01"
                     value={cashExpected}
                     onChange={(e) => setCashExpected(e.target.value)}
                     onKeyDown={(e) => handleKeyDown(e, 'input-card-total')}
                     onWheel={(e) => e.currentTarget.blur()}
-                    className="w-28 p-1 text-right text-sm font-mono"
+                    className={`${numberInputNoSpinnerClass} w-28 p-1 text-right text-sm font-mono`}
                     disabled={isLocked}
                   />
                 </div>
@@ -370,11 +407,13 @@ export function DailyClient({ siteId, siteName, sessionDate, dailySummary, daily
               <Input
                 id="input-card-total"
                 type="number"
+                inputMode="decimal"
                 step="0.01"
                 value={cardTotal}
                 onChange={(e) => setCardTotal(e.target.value)}
                 placeholder="0.00"
                 icon={<Icon name="pound" size={16} />}
+                className={numberInputNoSpinnerClass}
                 disabled={isLocked}
               />
             </Field>
@@ -383,11 +422,13 @@ export function DailyClient({ siteId, siteName, sessionDate, dailySummary, daily
               <Input
                 id="input-stripe-total"
                 type="number"
+                inputMode="decimal"
                 step="0.01"
                 value={stripeTotal}
                 onChange={(e) => setStripeTotal(e.target.value)}
                 placeholder="0.00"
                 icon={<Icon name="pound" size={16} />}
+                className={numberInputNoSpinnerClass}
                 disabled={isLocked}
               />
             </Field>

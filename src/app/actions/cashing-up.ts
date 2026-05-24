@@ -55,6 +55,47 @@ export async function upsertSessionAction(data: UpsertCashupSessionDTO, existing
   }
 }
 
+export async function upsertAndSubmitSessionAction(data: UpsertCashupSessionDTO, existingId?: string) {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+
+  if (!user) {
+    return { success: false, error: 'Unauthorized' };
+  }
+
+  const action = existingId ? 'edit' : 'create';
+  const [hasUpsertPermission, hasSubmitPermission] = await Promise.all([
+    PermissionService.checkUserPermission('cashing_up', action, user.id),
+    PermissionService.checkUserPermission('cashing_up', 'submit', user.id),
+  ]);
+
+  if (!hasUpsertPermission || !hasSubmitPermission) {
+    return { success: false, error: 'Forbidden' };
+  }
+
+  try {
+    const savedSession = await CashingUpService.upsertSession(
+      supabase,
+      { ...data, status: 'draft' },
+      user.id,
+      existingId
+    );
+    const result = await CashingUpService.submitSession(supabase, savedSession.id, user.id);
+    revalidatePath('/cashing-up');
+    revalidateTag('dashboard');
+    void logAuditEvent({
+      operation_type: existingId ? 'update' : 'create',
+      resource_type: 'cashup_session',
+      operation_status: 'success',
+    });
+    void logAuditEvent({ operation_type: 'update', resource_type: 'cashup_session', operation_status: 'success' });
+    return { success: true, data: result };
+  } catch (error: unknown) {
+    console.error('Submit cashup error:', error);
+    return { success: false, error: getErrorMessage(error) };
+  }
+}
+
 export async function submitSessionAction(id: string) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
