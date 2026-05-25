@@ -623,6 +623,7 @@ export const sendSMS = async (to: string, body: string, options: SendSMSOptions 
       if (options.skipMessageLogging !== true) {
         try {
           const failureSid = `local-fail-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+          const failureMessage = getErrorMessage(error)
           await recordOutboundSmsMessage({
             to,
             body: smsBody,
@@ -631,8 +632,9 @@ export const sendSMS = async (to: string, body: string, options: SendSMSOptions 
             status: 'failed',
             twilioStatus: String(errCode ?? 'failed'),
             metadata: {
-              error_code: errCode,
-              error_message: getErrorMessage(error)
+              ...(options.metadata ?? {}),
+              error_code: errCode !== undefined ? String(errCode) : 'failed',
+              error_message: failureMessage
             }
           })
         } catch (logError: unknown) {

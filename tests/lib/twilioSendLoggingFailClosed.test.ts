@@ -184,6 +184,86 @@ describe('sendSMS logging fail-closed behavior', () => {
     expect((result as any).logFailure).toBeUndefined()
   })
 
+  it('persists source metadata and error details when Twilio rejects a send', async () => {
+    vi.resetModules()
+
+    const { createAdminClient } = await import('@/lib/supabase/admin')
+    const twilio = (await import('twilio')).default
+
+    const twilioError = Object.assign(new Error("The 'To' number is not a valid phone number."), {
+      code: 21211,
+    })
+    const twilioCreate = vi.fn().mockRejectedValue(twilioError)
+
+    ;(twilio as unknown as vi.Mock).mockReturnValue({
+      messages: {
+        create: twilioCreate,
+      },
+    })
+
+    const customerMaybeSingle = vi.fn().mockResolvedValue({
+      data: {
+        sms_status: 'active',
+        sms_opt_in: true,
+        mobile_e164: '+447700900123',
+        mobile_number: '+447700900123',
+      },
+      error: null,
+    })
+    const customerEq = vi.fn().mockReturnValue({ maybeSingle: customerMaybeSingle })
+    const customerSelect = vi.fn().mockReturnValue({ eq: customerEq })
+
+    const messageSingle = vi.fn().mockResolvedValue({
+      data: { id: 'message-1' },
+      error: null,
+    })
+    const messageSelect = vi.fn().mockReturnValue({ single: messageSingle })
+    const messageInsert = vi.fn().mockReturnValue({ select: messageSelect })
+
+    ;(createAdminClient as unknown as vi.Mock).mockReturnValue({
+      from: vi.fn((table: string) => {
+        if (table === 'customers') {
+          return { select: customerSelect }
+        }
+        if (table === 'messages') {
+          return { insert: messageInsert }
+        }
+        throw new Error(`Unexpected table: ${table}`)
+      }),
+    })
+
+    const { sendSMS } = await import('@/lib/twilio')
+
+    const result = await sendSMS('+447700900123', 'review request', {
+      customerId: 'customer-1',
+      createCustomerIfMissing: false,
+      skipSafetyGuards: true,
+      skipQuietHours: true,
+      metadata: {
+        table_booking_id: 'table-booking-1',
+        template_key: 'table_review_followup',
+      },
+    })
+
+    expect(result).toEqual({
+      success: false,
+      error: 'Invalid phone number format',
+      code: '21211',
+    })
+    expect(messageInsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        customer_id: 'customer-1',
+        status: 'failed',
+        twilio_status: '21211',
+        table_booking_id: 'table-booking-1',
+        template_key: 'table_review_followup',
+        error_code: '21211',
+        error_message: "The 'To' number is not a valid phone number.",
+        failed_at: expect.any(String),
+      })
+    )
+  })
+
   afterEach(() => {
     if (previousTwilioAccountSid === undefined) {
       delete process.env.TWILIO_ACCOUNT_SID

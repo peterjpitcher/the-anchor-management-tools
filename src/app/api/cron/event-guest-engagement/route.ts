@@ -35,6 +35,7 @@ const TABLE_ENGAGEMENT_LOOKBACK_DAYS = 7
 const TABLE_ENGAGEMENT_LOOKAHEAD_DAYS = 1
 const MAX_EVENT_REVIEW_FOLLOWUPS_PER_RUN = 50
 const MAX_TABLE_REVIEW_FOLLOWUPS_PER_RUN = 50
+const PERMANENT_SMS_DESTINATION_FAILURE_CODES = new Set(['21211', '21610', '21612', '21614'])
 const EVENT_ENGAGEMENT_SEND_GUARD_WINDOW_MINUTES = parsePositiveIntEnv(
   'EVENT_ENGAGEMENT_SEND_GUARD_WINDOW_MINUTES',
   60
@@ -178,6 +179,11 @@ function maybeRecordFatalSmsSafetyAbort(
     code: signal.code ?? 'logging_failed',
     logFailure: signal.logFailure,
   })
+}
+
+function getPermanentSmsDestinationFailureCode(smsResult: Awaited<ReturnType<typeof sendSMS>>): string | null {
+  const signal = extractSmsSafetySignal(smsResult)
+  return signal.code && PERMANENT_SMS_DESTINATION_FAILURE_CODES.has(signal.code) ? signal.code : null
 }
 
 function parsePositiveIntEnv(name: string, fallback: number): number {
@@ -471,6 +477,50 @@ async function recordAnalyticsEventSafe(
       }
     })
   }
+}
+
+async function suppressReviewAfterPermanentSmsFailure(
+  supabase: ReturnType<typeof createAdminClient>,
+  params: {
+    bookingId?: string
+    tableBookingId?: string
+    customerId: string
+    code: string
+    error?: string
+  }
+) {
+  const nowIso = new Date().toISOString()
+  const tableName = params.tableBookingId ? 'table_bookings' : 'bookings'
+  const id = params.tableBookingId ?? params.bookingId
+  if (!id) return
+
+  const { error } = await supabase
+    .from(tableName)
+    .update({
+      review_suppressed_at: nowIso,
+      updated_at: nowIso,
+    })
+    .eq('id', id)
+    .is('review_suppressed_at', null)
+
+  const metadata = {
+    bookingId: params.bookingId ?? null,
+    tableBookingId: params.tableBookingId ?? null,
+    customerId: params.customerId,
+    code: params.code,
+    error: params.error ?? null,
+  }
+
+  if (error) {
+    logger.warn('Failed suppressing review SMS after permanent destination failure', {
+      metadata: { ...metadata, error: error.message },
+    })
+    return
+  }
+
+  logger.info('Suppressed future review SMS attempts after permanent destination failure', {
+    metadata,
+  })
 }
 
 function resolveEventStartIso(event: BookingWithRelations['event']): string | null {
@@ -1044,6 +1094,15 @@ async function processReviewFollowups(
           }
         })
       }
+      const permanentFailureCode = getPermanentSmsDestinationFailureCode(smsResult)
+      if (permanentFailureCode) {
+        await suppressReviewAfterPermanentSmsFailure(supabase, {
+          bookingId: booking.id,
+          customerId: customer.id,
+          code: permanentFailureCode,
+          error: typeof smsResult.error === 'string' ? smsResult.error : undefined,
+        })
+      }
       result.skipped += 1
       if (safety.primaryAbort) {
         safety.throwSafetyAbort()
@@ -1353,6 +1412,15 @@ async function processTableReviewFollowups(
             customerId: customer.id,
             error: deleteTokenError.message
           }
+        })
+      }
+      const permanentFailureCode = getPermanentSmsDestinationFailureCode(smsResult)
+      if (permanentFailureCode) {
+        await suppressReviewAfterPermanentSmsFailure(supabase, {
+          tableBookingId: booking.id,
+          customerId: customer.id,
+          code: permanentFailureCode,
+          error: typeof smsResult.error === 'string' ? smsResult.error : undefined,
         })
       }
       result.skipped += 1
