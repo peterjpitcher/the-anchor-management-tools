@@ -303,7 +303,7 @@ export default function DashboardClient({
               ))
             )}
             <div className="h-px bg-border" />
-            <Link href="/settings" className="text-[13px] text-primary font-medium hover:underline">
+            <Link href="/settings/audit-logs" className="text-[13px] text-primary font-medium hover:underline">
               View audit log &rarr;
             </Link>
           </CardBody>

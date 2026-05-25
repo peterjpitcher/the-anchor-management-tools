@@ -262,7 +262,7 @@ export default async function DashboardPage() {
     actionItems.push({ id: 'pb-balance', title: 'Balances Due Soon', description: `${balancesDueSoon} due in next 14 days`, href: '/private-bookings', severity: 'medium' })
   }
   if (snapshot.systemHealth.permitted && snapshot.systemHealth.smsFailures24h > 0) {
-    actionItems.push({ id: 'sms', title: 'SMS Failures', description: `${snapshot.systemHealth.smsFailures24h} failed in last 24h`, href: '/settings', severity: 'high' })
+    actionItems.push({ id: 'sms', title: 'SMS Failures', description: `${snapshot.systemHealth.smsFailures24h} failed in last 24h`, href: '/settings/sms-failures', severity: 'high' })
   }
   if (snapshot.systemHealth.permitted && snapshot.systemHealth.failedCronJobs24h > 0) {
     actionItems.push({ id: 'cron', title: 'Cron Failures', description: `${snapshot.systemHealth.failedCronJobs24h} failed in last 24h`, href: '/settings', severity: 'high' })

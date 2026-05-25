@@ -19,6 +19,14 @@ type RecordOutboundSmsParams = {
   readAt?: string | null
 }
 
+function metadataString(metadata: Record<string, unknown> | null, key: string): string | null {
+  if (!metadata) return null
+  const value = metadata[key]
+  if (typeof value === 'string') return value
+  if (typeof value === 'number' && Number.isFinite(value)) return String(value)
+  return null
+}
+
 /**
  * Persist an outbound SMS in the central `messages` table so it appears in customer timelines.
  * Falls back gracefully if no customer id is available.
@@ -69,6 +77,10 @@ export async function recordOutboundSmsMessage(params: RecordOutboundSmsParams):
     read_at: readAt ?? new Date().toISOString(),
   }
 
+  if (status === 'failed') {
+    insertPayload.failed_at = sentAt ?? new Date().toISOString()
+  }
+
   if (metadata !== null && metadata !== undefined) {
     insertPayload.metadata = metadata
 
@@ -85,6 +97,15 @@ export async function recordOutboundSmsMessage(params: RecordOutboundSmsParams):
     }
     if (typeof metadataRecord.template_key === 'string') {
       insertPayload.template_key = metadataRecord.template_key
+    }
+
+    const errorCode = metadataString(metadataRecord, 'error_code')
+    const errorMessage = metadataString(metadataRecord, 'error_message')
+    if (errorCode) {
+      insertPayload.error_code = errorCode
+    }
+    if (errorMessage) {
+      insertPayload.error_message = errorMessage
     }
   }
 
