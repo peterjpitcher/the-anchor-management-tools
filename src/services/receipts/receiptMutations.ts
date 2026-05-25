@@ -30,6 +30,7 @@ import type {
   ParsedTransactionRow,
   RuleMutationResult,
   BulkStatus,
+  ReceiptVendorWatchlistItem,
 } from './types'
 import {
   RECEIPT_BUCKET,
@@ -57,6 +58,75 @@ import {
   toOptionalNumber,
   BULK_STATUS_OPTIONS,
 } from './receiptHelpers'
+import { normalizeReceiptVendorKey } from './vendorInsights'
+
+// ---------------------------------------------------------------------------
+// performSetReceiptVendorWatched
+// ---------------------------------------------------------------------------
+
+export async function performSetReceiptVendorWatched(
+  userId: string,
+  input: {
+    vendorLabel: string
+    watched: boolean
+  },
+): Promise<{
+  success?: boolean
+  watched?: boolean
+  item?: ReceiptVendorWatchlistItem
+  error?: string
+}> {
+  const vendorLabel = normalizeVendorInput(input.vendorLabel)
+  const vendorKey = normalizeReceiptVendorKey(vendorLabel)
+
+  if (!vendorLabel || !vendorKey) {
+    return { error: 'Invalid vendor provided' }
+  }
+
+  const supabase = createAdminClient()
+
+  if (!input.watched) {
+    const { error } = await supabase
+      .from('receipt_vendor_watchlist')
+      .delete()
+      .eq('user_id', userId)
+      .eq('vendor_key', vendorKey)
+
+    if (error) {
+      console.error('Failed to remove vendor from watchlist', error)
+      return { error: 'Failed to update vendor watchlist.' }
+    }
+
+    return { success: true, watched: false }
+  }
+
+  const { data, error } = await supabase
+    .from('receipt_vendor_watchlist')
+    .upsert({
+      user_id: userId,
+      vendor_key: vendorKey,
+      vendor_label: vendorLabel,
+    }, { onConflict: 'user_id,vendor_key' })
+    .select('user_id, vendor_key, vendor_label, created_at, updated_at')
+    .single()
+
+  if (error || !data) {
+    console.error('Failed to add vendor to watchlist', error)
+    return { error: 'Failed to update vendor watchlist.' }
+  }
+
+  return {
+    success: true,
+    watched: true,
+    item: {
+      userId: data.user_id,
+      vendorKey: data.vendor_key,
+      vendorLabel: data.vendor_label,
+      createdAt: data.created_at,
+      updatedAt: data.updated_at,
+    },
+  }
+}
 
 // ---------------------------------------------------------------------------
 // applyAutomationRules — internal rule engine (no direct auth needed; called

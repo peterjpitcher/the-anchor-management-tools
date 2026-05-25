@@ -13,7 +13,7 @@ import { getDailySummaryAction } from '@/app/actions/daily-summary'
 import { getMissingCashupDatesAction } from '@/app/actions/missing-cashups'
 import toast from 'react-hot-toast'
 import { format, parseISO } from 'date-fns'
-import type { CashupSession, UpsertCashupSessionDTO } from '@/types/cashing-up'
+import type { CashupSalesCategory, CashupSession, UpsertCashupSessionDTO } from '@/types/cashing-up'
 
 const DENOMINATIONS = [
   { value: 50, label: '£50' },
@@ -88,6 +88,14 @@ const getBreakdownValue = (
   return field === 'countedAmount' ? bd.counted_amount : bd.expected_amount
 }
 
+const getSalesBreakdownValue = (
+  session: CashupSession | null,
+  category: CashupSalesCategory
+): number => {
+  if (!session?.cashup_sales_breakdowns) return 0
+  return session.cashup_sales_breakdowns.find((item) => item.sales_category === category)?.amount ?? 0
+}
+
 const getCashValuesFromSession = (session: CashupSession | null): Record<string, string> => {
   const values: Record<string, string> = {}
   if (session?.cashup_cash_counts) {
@@ -108,6 +116,9 @@ export function DailyClient({ siteId, siteName, sessionDate, dailySummary, daily
   const [cashExpected, setCashExpected] = useState(() => amountInputValue(getBreakdownValue(existingSession, 'CASH', 'expectedAmount')))
   const [cardTotal, setCardTotal] = useState(() => amountInputValue(getBreakdownValue(existingSession, 'CARD', 'countedAmount')))
   const [stripeTotal, setStripeTotal] = useState(() => amountInputValue(getBreakdownValue(existingSession, 'STRIPE', 'countedAmount')))
+  const [drinksSales, setDrinksSales] = useState(() => amountInputValue(getSalesBreakdownValue(existingSession, 'drinks_sales')))
+  const [foodSales, setFoodSales] = useState(() => amountInputValue(getSalesBreakdownValue(existingSession, 'food_sales')))
+  const [otherSales, setOtherSales] = useState(() => amountInputValue(getSalesBreakdownValue(existingSession, 'other_sales')))
   const [notes, setNotes] = useState(existingSession?.notes || '')
   const [autoNotes, setAutoNotes] = useState(dailySummary || '')
   const [saving, setSaving] = useState(false)
@@ -124,6 +135,9 @@ export function DailyClient({ siteId, siteName, sessionDate, dailySummary, daily
     setCashExpected('')
     setCardTotal('')
     setStripeTotal('')
+    setDrinksSales('')
+    setFoodSales('')
+    setOtherSales('')
     setNotes('')
     setAutoNotes('')
     setLastSaved(null)
@@ -135,6 +149,9 @@ export function DailyClient({ siteId, siteName, sessionDate, dailySummary, daily
     setCashExpected(amountInputValue(getBreakdownValue(existingSession, 'CASH', 'expectedAmount')))
     setCardTotal(amountInputValue(getBreakdownValue(existingSession, 'CARD', 'countedAmount')))
     setStripeTotal(amountInputValue(getBreakdownValue(existingSession, 'STRIPE', 'countedAmount')))
+    setDrinksSales(amountInputValue(getSalesBreakdownValue(existingSession, 'drinks_sales')))
+    setFoodSales(amountInputValue(getSalesBreakdownValue(existingSession, 'food_sales')))
+    setOtherSales(amountInputValue(getSalesBreakdownValue(existingSession, 'other_sales')))
     setNotes(existingSession?.notes || '')
     setAutoNotes(dailySummary || '')
     setLastSaved(null)
@@ -164,9 +181,15 @@ export function DailyClient({ siteId, siteName, sessionDate, dailySummary, daily
 
   const cardNum = parseFloat(cardTotal) || 0
   const stripeNum = parseFloat(stripeTotal) || 0
+  const drinksSalesNum = parseFloat(drinksSales) || 0
+  const foodSalesNum = parseFloat(foodSales) || 0
+  const otherSalesNum = parseFloat(otherSales) || 0
   const cashExpectedNum = parseFloat(cashExpected) || 0
   const cashVariance = cashCountedTotal - cashExpectedNum
   const totalRevenue = cashCountedTotal + cardNum + stripeNum
+  const salesSplitTotal = drinksSalesNum + foodSalesNum + otherSalesNum
+  const salesSplitVariance = Number((salesSplitTotal - totalRevenue).toFixed(2))
+  const salesSplitMatchesTotal = Math.abs(salesSplitVariance) <= 0.01
   const target = dailyTarget
 
   const buildSessionDTO = useCallback((status: UpsertCashupSessionDTO['status'] = 'draft'): UpsertCashupSessionDTO => {
@@ -185,9 +208,14 @@ export function DailyClient({ siteId, siteName, sessionDate, dailySummary, daily
         { paymentTypeCode: 'CARD', paymentTypeLabel: 'Card', expectedAmount: cardNum, countedAmount: cardNum },
         { paymentTypeCode: 'STRIPE', paymentTypeLabel: 'Stripe', expectedAmount: stripeNum, countedAmount: stripeNum },
       ],
+      salesBreakdowns: [
+        { salesCategory: 'drinks_sales', amount: drinksSalesNum },
+        { salesCategory: 'food_sales', amount: foodSalesNum },
+        { salesCategory: 'other_sales', amount: otherSalesNum },
+      ],
       cashCounts,
     }
-  }, [autoNotes, cardNum, cashCountedTotal, cashExpectedNum, cashValues, notes, sessionDate, siteId, stripeNum])
+  }, [autoNotes, cardNum, cashCountedTotal, cashExpectedNum, cashValues, drinksSalesNum, foodSalesNum, notes, otherSalesNum, sessionDate, siteId, stripeNum])
 
   const handleSave = useCallback(async () => {
     setSaving(true)
@@ -211,6 +239,11 @@ export function DailyClient({ siteId, siteName, sessionDate, dailySummary, daily
   }, [buildSessionDTO, sessionId, siteId])
 
   const handleSubmit = useCallback(async () => {
+    if (!salesSplitMatchesTotal) {
+      toast.error('Sales split must match total revenue before submitting')
+      return
+    }
+
     setSaving(true)
     try {
       const res = await upsertAndSubmitSessionAction(buildSessionDTO('draft'), sessionId ?? undefined)
@@ -231,7 +264,7 @@ export function DailyClient({ siteId, siteName, sessionDate, dailySummary, daily
     } finally {
       setSaving(false)
     }
-  }, [buildSessionDTO, clearFormFields, missingDates, router, sessionDate, sessionId, siteId])
+  }, [buildSessionDTO, clearFormFields, missingDates, router, salesSplitMatchesTotal, sessionDate, sessionId, siteId])
 
   const onDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const newDate = e.target.value
@@ -319,7 +352,7 @@ export function DailyClient({ siteId, siteName, sessionDate, dailySummary, daily
         </Alert>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-4 gap-4">
         {/* Column 1 — Cash denomination grid */}
         <Card>
           <CardHeader
@@ -467,14 +500,93 @@ export function DailyClient({ siteId, siteName, sessionDate, dailySummary, daily
               <Button variant="secondary" onClick={handleSave} loading={saving} disabled={isLocked}>
                 Save Draft
               </Button>
-              <Button variant="primary" onClick={handleSubmit} loading={saving} disabled={isLocked}>
+              <Button variant="primary" onClick={handleSubmit} loading={saving} disabled={isLocked || !salesSplitMatchesTotal}>
                 Submit
               </Button>
             </div>
           </CardBody>
         </Card>
 
-        {/* Column 3 — Week at a glance */}
+        {/* Column 3 — Sales split */}
+        <Card>
+          <CardHeader
+            title="Sales split"
+            subtitle="Used for P&L health checks"
+          />
+          <CardBody className="space-y-4">
+            <Field label="Drinks sales">
+              <Input
+                id="input-drinks-sales"
+                type="number"
+                inputMode="decimal"
+                step="0.01"
+                value={drinksSales}
+                onChange={(e) => setDrinksSales(e.target.value)}
+                placeholder="0.00"
+                icon={<Icon name="pound" size={16} />}
+                className={numberInputNoSpinnerClass}
+                disabled={isLocked}
+              />
+            </Field>
+
+            <Field label="Food sales">
+              <Input
+                id="input-food-sales"
+                type="number"
+                inputMode="decimal"
+                step="0.01"
+                value={foodSales}
+                onChange={(e) => setFoodSales(e.target.value)}
+                placeholder="0.00"
+                icon={<Icon name="pound" size={16} />}
+                className={numberInputNoSpinnerClass}
+                disabled={isLocked}
+              />
+            </Field>
+
+            <Field label="Other sales">
+              <Input
+                id="input-other-sales"
+                type="number"
+                inputMode="decimal"
+                step="0.01"
+                value={otherSales}
+                onChange={(e) => setOtherSales(e.target.value)}
+                placeholder="0.00"
+                icon={<Icon name="pound" size={16} />}
+                className={numberInputNoSpinnerClass}
+                disabled={isLocked}
+              />
+            </Field>
+
+            <div className="rounded-default border border-border bg-surface-2 p-3 text-sm">
+              <div className="flex justify-between gap-3">
+                <span className="text-text-muted">Split total</span>
+                <span className="font-mono font-semibold">£{fmt(salesSplitTotal)}</span>
+              </div>
+              <div className="flex justify-between gap-3">
+                <span className="text-text-muted">Total revenue</span>
+                <span className="font-mono font-semibold">£{fmt(totalRevenue)}</span>
+              </div>
+              <div className="mt-2 flex justify-between gap-3 border-t border-border pt-2">
+                <span className="font-medium">Difference</span>
+                <span className={`font-mono font-bold ${salesSplitMatchesTotal ? 'text-success-fg' : 'text-danger-fg'}`}>
+                  £{fmt(salesSplitVariance)}
+                </span>
+              </div>
+            </div>
+
+            {!salesSplitMatchesTotal && (
+              <Alert tone="warning">
+                <span className="text-sm">
+                  Drafts can be saved, but the split must match total revenue before submit. Other sales are included with food on P&L.
+                </span>
+              </Alert>
+            )}
+          </CardBody>
+        </Card>
+
+        {/* Column 4 — Week at a glance */}
         <Card>
           <CardHeader title="Week at a glance" />
           <Table>
@@ -523,7 +635,7 @@ export function DailyClient({ siteId, siteName, sessionDate, dailySummary, daily
       </div>
 
       {/* Revenue stats */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
         <Card>
           <CardBody>
             <Stat label="Cash counted" value={`£${fmt(cashCountedTotal)}`} />
@@ -546,6 +658,15 @@ export function DailyClient({ siteId, siteName, sessionDate, dailySummary, daily
               value={`£${fmt(totalRevenue)}`}
               delta={target > 0 ? Math.round((totalRevenue / target) * 100) - 100 : undefined}
               hint={target > 0 ? `Target: £${fmt(target)}` : undefined}
+            />
+          </CardBody>
+        </Card>
+        <Card>
+          <CardBody>
+            <Stat
+              label="Split difference"
+              value={`£${fmt(salesSplitVariance)}`}
+              hint={salesSplitMatchesTotal ? 'Ready for P&L' : 'Fix before submit'}
             />
           </CardBody>
         </Card>

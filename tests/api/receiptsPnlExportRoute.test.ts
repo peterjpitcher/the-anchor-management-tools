@@ -22,6 +22,10 @@ vi.mock('@/lib/pdf-generator', () => ({
   generatePDFFromHTML: vi.fn(),
 }))
 
+vi.mock('@/lib/pnl/spreadsheet-export', () => ({
+  generatePnlSpreadsheetBuffer: vi.fn(),
+}))
+
 vi.mock('@/app/actions/audit', () => ({
   logAuditEvent: vi.fn(),
 }))
@@ -36,6 +40,7 @@ import { GET } from '@/app/api/receipts/pnl/export/route'
 import { getCurrentUser } from '@/lib/audit-helpers'
 import { generatePDFFromHTML } from '@/lib/pdf-generator'
 import { generatePnlReportHTML } from '@/lib/pnl/report-template'
+import { generatePnlSpreadsheetBuffer } from '@/lib/pnl/spreadsheet-export'
 import { buildPnlReportViewModel } from '@/lib/pnl/report-view-model'
 import { FinancialService } from '@/services/financials'
 
@@ -58,6 +63,9 @@ const MOCK_VIEW_MODEL = {
     revenueActual: 0,
     revenueTarget: 0,
     revenueVariance: 0,
+    grossProfitActual: 0,
+    grossProfitTarget: 0,
+    grossProfitVariance: 0,
     expenseActual: 0,
     expenseTarget: 0,
     expenseVariance: 0,
@@ -65,6 +73,9 @@ const MOCK_VIEW_MODEL = {
     operatingProfitTarget: 0,
     operatingProfitVariance: 0,
   },
+  dataQualityWarnings: [],
+  healthStatus: 'on_track' as const,
+  healthLabel: 'On track',
 }
 
 describe('receipts P&L export route', () => {
@@ -81,6 +92,7 @@ describe('receipts P&L export route', () => {
     }))
     ;(generatePnlReportHTML as unknown as vi.Mock).mockReturnValue('<html><body>ok</body></html>')
     ;(generatePDFFromHTML as unknown as vi.Mock).mockResolvedValue(Buffer.from('fake-pdf-data'))
+    ;(generatePnlSpreadsheetBuffer as unknown as vi.Mock).mockResolvedValue(Buffer.from('fake-xlsx-data'))
     ;(getCurrentUser as unknown as vi.Mock).mockResolvedValue({ user_id: 'user-1', user_email: 'user@example.com' })
     ;(logAuditEvent as unknown as vi.Mock).mockResolvedValue(undefined)
   })
@@ -142,7 +154,7 @@ describe('receipts P&L export route', () => {
     expect(response.status).toBe(200)
     expect(response.headers.get('Content-Type')).toBe('application/pdf')
     expect(response.headers.get('Content-Disposition')).toContain(
-      'attachment; filename="pnl-shadow-report-3m-2026-02-23.pdf"'
+      'attachment; filename="pnl-greene-king-comparison-3m-2026-02-23.pdf"'
     )
 
     const body = await response.arrayBuffer()
@@ -150,5 +162,19 @@ describe('receipts P&L export route', () => {
 
     expect(buildPnlReportViewModel).toHaveBeenCalledWith(MOCK_DASHBOARD, '3m', expect.any(Date))
     expect(logAuditEvent).toHaveBeenCalledTimes(1)
+  })
+
+  it('returns an XLSX attachment when requested', async () => {
+    const request = new Request('http://localhost/api/receipts/pnl/export?timeframe=1m&format=xlsx')
+
+    const response = await GET(request as any)
+
+    expect(response.status).toBe(200)
+    expect(response.headers.get('Content-Type')).toBe('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+    expect(response.headers.get('Content-Disposition')).toContain(
+      'attachment; filename="pnl-greene-king-comparison-1m-2026-02-23.xlsx"'
+    )
+    expect(generatePnlSpreadsheetBuffer).toHaveBeenCalledWith(expect.objectContaining({ timeframe: '1m' }))
+    expect(generatePDFFromHTML).not.toHaveBeenCalled()
   })
 })

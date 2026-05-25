@@ -2,32 +2,12 @@
 
 import { useMemo, useState, useTransition, useRef, ChangeEvent } from 'react'
 import { PNL_METRICS, PNL_TIMEFRAMES, MANUAL_METRIC_KEYS } from '@/lib/pnl/constants'
+import { buildPnlReportViewModel, formatPnlMetricValue, type PnlReportRow } from '@/lib/pnl/report-view-model'
 import type { PnlDashboardData, PnlTimeframeKey } from '@/app/actions/pnl'
 import { savePlManualActualsAction, savePlTargetsAction } from '@/app/actions/pnl'
-import { Button, Input, toast, Spinner, Card, Select } from '@/ds'
+import { Alert, Button, Card, CardBody, CardHeader, Input, Select, Spinner, toast } from '@/ds'
 import { DocumentArrowDownIcon } from '@heroicons/react/24/outline'
 import clsx from 'clsx'
-
-const GROUP_LABELS: Record<string, string> = {
-  sales: 'Sales',
-  sales_mix: 'Sales mix',
-  sales_totals: 'Gross profit % targets',
-  expenses: 'Expenses',
-  occupancy: 'Occupancy costs',
-}
-
-const CURRENCY_FORMATTER = new Intl.NumberFormat('en-GB', {
-  style: 'currency',
-  currency: 'GBP',
-  minimumFractionDigits: 2,
-  maximumFractionDigits: 2,
-})
-
-const PERCENT_FORMATTER = new Intl.NumberFormat('en-GB', {
-  style: 'percent',
-  minimumFractionDigits: 1,
-  maximumFractionDigits: 1,
-})
 
 const TARGET_TIMEFRAME: PnlTimeframeKey = '12m'
 
@@ -36,6 +16,7 @@ type EditableMap = Record<string, Record<string, string>>
 type Props = {
   initialData: PnlDashboardData
   canExport?: boolean
+  canManage?: boolean
 }
 
 function normaliseNumericInput(value: string): number | null {
@@ -43,19 +24,6 @@ function normaliseNumericInput(value: string): number | null {
   if (!trimmed) return null
   const parsed = Number.parseFloat(trimmed)
   return Number.isFinite(parsed) ? parsed : null
-}
-
-function formatValue(value: number | null, format: 'currency' | 'percent' = 'currency') {
-  if (value === null || Number.isNaN(value)) return '—'
-  if (format === 'percent') {
-    return PERCENT_FORMATTER.format(value / 100)
-  }
-  return CURRENCY_FORMATTER.format(value)
-}
-
-function variance(actual: number | null, target: number | null): number | null {
-  if (actual === null || target === null) return null
-  return Number((actual - target).toFixed(2))
 }
 
 function buildInitialEditableMap(
@@ -74,23 +42,53 @@ function buildInitialEditableMap(
   return map
 }
 
-function deriveTargetValue(
-  metricFormat: 'currency' | 'percent' | undefined,
-  timeframe: PnlTimeframeKey,
-  annualValue: number | null
-) {
-  if (annualValue === null || annualValue === undefined) return null
-  if (metricFormat === 'percent') {
-    return annualValue
-  }
-  const timeframeConfig = PNL_TIMEFRAMES.find((tf) => tf.key === timeframe)
-  const annualConfig = PNL_TIMEFRAMES.find((tf) => tf.key === TARGET_TIMEFRAME)
-  if (!timeframeConfig || !annualConfig) return annualValue
-  const ratio = timeframeConfig.days / annualConfig.days
-  return Number((annualValue * ratio).toFixed(2))
+function varianceClass(value: number | null, invert = false) {
+  if (value === null || Math.abs(value) < 0.01) return 'bg-slate-100 text-slate-700'
+  const favourable = invert ? value <= 0 : value >= 0
+  return favourable ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'
 }
 
-export default function PnlClient({ initialData, canExport = false }: Props) {
+function healthClass(status: string) {
+  if (status === 'on_track') return 'border-emerald-200 bg-emerald-50 text-emerald-800'
+  if (status === 'watch') return 'border-amber-200 bg-amber-50 text-amber-800'
+  if (status === 'off_track') return 'border-rose-200 bg-rose-50 text-rose-800'
+  return 'border-slate-200 bg-slate-50 text-slate-800'
+}
+
+function formatDate(value: string) {
+  const date = new Date(`${value}T12:00:00`)
+  return date.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
+}
+
+function MetricCard({ row, invertVariance = false }: { row: PnlReportRow; invertVariance?: boolean }) {
+  return (
+    <div className="rounded-md border border-gray-200 bg-white p-3">
+      <div className="flex items-start justify-between gap-3">
+        <h3 className="text-sm font-semibold text-gray-900">{row.label}</h3>
+        <span className={clsx('shrink-0 rounded px-2 py-0.5 text-xs font-semibold', varianceClass(row.variance, invertVariance))}>
+          {formatPnlMetricValue(row.variance, row.format)}
+        </span>
+      </div>
+      <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
+        <div>
+          <p className="text-xs uppercase tracking-wide text-gray-500">Actual</p>
+          <p className="font-semibold text-gray-900">{formatPnlMetricValue(row.actual, row.format)}</p>
+        </div>
+        <div>
+          <p className="text-xs uppercase tracking-wide text-gray-500">GK target</p>
+          <p className="font-semibold text-gray-900">{formatPnlMetricValue(row.timeframeTarget, row.format)}</p>
+        </div>
+      </div>
+      {row.detailLines.length > 0 && (
+        <div className="mt-3 space-y-1 border-t border-gray-100 pt-2 text-xs text-gray-600">
+          {row.detailLines.map((line) => <p key={line}>{line}</p>)}
+        </div>
+      )}
+    </div>
+  )
+}
+
+export default function PnlClient({ initialData, canExport = false, canManage = false }: Props) {
   const [selectedTimeframe, setSelectedTimeframe] = useState<PnlTimeframeKey>('12m')
   const [isSavingManual, startSavingManual] = useTransition()
   const [isSavingTargets, startSavingTargets] = useTransition()
@@ -109,95 +107,45 @@ export default function PnlClient({ initialData, canExport = false }: Props) {
   const manualInitialRef = useRef(manualValues)
   const targetInitialRef = useRef(targetValues)
 
-  const annualTargetValues = useMemo(() => {
-    const map: Record<string, number | null> = {}
-    initialData.metrics.forEach((metric) => {
-      map[metric.key] = normaliseNumericInput(targetValues[metric.key]?.[TARGET_TIMEFRAME] ?? '')
-    })
-    return map
-  }, [targetValues, initialData.metrics])
+  const workingData = useMemo<PnlDashboardData>(() => {
+    const actuals = {
+      '1m': { ...initialData.actuals['1m'] },
+      '3m': { ...initialData.actuals['3m'] },
+      '12m': { ...initialData.actuals['12m'] },
+    }
+    const targets = { ...initialData.targets }
 
-  const actualValues = useMemo(() => {
-    const map: Record<string, number> = {}
     initialData.metrics.forEach((metric) => {
-      if (metric.type === 'manual') {
-        const raw = manualValues[metric.key]?.[selectedTimeframe] ?? ''
-        map[metric.key] = normaliseNumericInput(raw) ?? 0
-      } else {
-        map[metric.key] = initialData.actuals[selectedTimeframe]?.[metric.key] ?? 0
-      }
+      const annualTarget = normaliseNumericInput(targetValues[metric.key]?.[TARGET_TIMEFRAME] ?? '')
+      targets[metric.key] = { ...(targets[metric.key] ?? {}), [TARGET_TIMEFRAME]: annualTarget }
     })
 
-    return map
-  }, [manualValues, initialData.actuals, initialData.metrics, selectedTimeframe])
-
-  const derivedTargetValues = useMemo(() => {
-    const map: Record<string, number | null> = {}
-    initialData.metrics.forEach((metric) => {
-      map[metric.key] = deriveTargetValue(metric.format, selectedTimeframe, annualTargetValues[metric.key] ?? null)
-    })
-    initialData.metrics
-      .filter((metric) => metric.type === 'expense')
-      .forEach((metric) => {
-        map[metric.key] = deriveTargetValue('currency', selectedTimeframe, annualTargetValues[metric.key] ?? null)
+    MANUAL_METRIC_KEYS.forEach((metricKey) => {
+      PNL_TIMEFRAMES.forEach((tf) => {
+        const enteredActual = normaliseNumericInput(manualValues[metricKey]?.[tf.key] ?? '')
+        const metric = initialData.metrics.find((item) => item.key === metricKey)
+        const fallbackTarget = metric?.group === 'sales_totals'
+          ? normaliseNumericInput(targetValues[metricKey]?.[TARGET_TIMEFRAME] ?? '')
+          : null
+        actuals[tf.key][metricKey] = enteredActual ?? fallbackTarget ?? 0
       })
-    return map
-  }, [annualTargetValues, initialData.metrics, selectedTimeframe])
+    })
 
-  const salesActualTotal = useMemo(() => (
-    initialData.metrics
-      .filter((metric) => metric.group === 'sales')
-      .reduce((sum, metric) => sum + (actualValues[metric.key] ?? 0), 0)
-  ), [actualValues, initialData.metrics])
+    return {
+      ...initialData,
+      actuals,
+      targets,
+    }
+  }, [initialData, manualValues, targetValues])
 
-  const salesTargetTotal = useMemo(() => (
-    initialData.metrics
-      .filter((metric) => metric.group === 'sales')
-      .reduce((sum, metric) => sum + (derivedTargetValues[metric.key] ?? 0), 0)
-  ), [derivedTargetValues, initialData.metrics])
-  const salesAnnualTargetTotal = useMemo(() => (
-    initialData.metrics
-      .filter((metric) => metric.group === 'sales')
-      .reduce((sum, metric) => sum + (annualTargetValues[metric.key] ?? 0), 0)
-  ), [annualTargetValues, initialData.metrics])
+  const viewModel = useMemo(
+    () => buildPnlReportViewModel(workingData, selectedTimeframe),
+    [workingData, selectedTimeframe]
+  )
 
-  const expenseActualTotal = useMemo(() => {
-    const automaticExpenses = initialData.expenseTotals[selectedTimeframe] ?? 0
-    const occupancyActual = initialData.metrics
-      .filter((metric) => metric.group === 'occupancy')
-      .reduce((sum, metric) => sum + (actualValues[metric.key] ?? 0), 0)
-    return Number((automaticExpenses + occupancyActual).toFixed(2))
-  }, [initialData.expenseTotals, initialData.metrics, actualValues, selectedTimeframe])
-
-  const expenseTargetTotal = useMemo(() => {
-    const automaticTarget = initialData.metrics
-      .filter((metric) => metric.type === 'expense')
-      .reduce((sum, metric) => sum + (derivedTargetValues[metric.key] ?? 0), 0)
-    const occupancyTarget = initialData.metrics
-      .filter((metric) => metric.group === 'occupancy')
-      .reduce((sum, metric) => sum + (derivedTargetValues[metric.key] ?? 0), 0)
-    return Number((automaticTarget + occupancyTarget).toFixed(2))
-  }, [initialData.metrics, derivedTargetValues])
-  const expenseAnnualTargetTotal = useMemo(() => {
-    const automaticAnnualTarget = initialData.metrics
-      .filter((metric) => metric.type === 'expense')
-      .reduce((sum, metric) => sum + (annualTargetValues[metric.key] ?? 0), 0)
-    const occupancyAnnualTarget = initialData.metrics
-      .filter((metric) => metric.group === 'occupancy')
-      .reduce((sum, metric) => sum + (annualTargetValues[metric.key] ?? 0), 0)
-    return Number((automaticAnnualTarget + occupancyAnnualTarget).toFixed(2))
-  }, [initialData.metrics, annualTargetValues])
-
-  const operatingProfitActual = Number((salesActualTotal - expenseActualTotal).toFixed(2))
-  const operatingProfitTarget = Number((salesTargetTotal - expenseTargetTotal).toFixed(2))
-
-  const groupedMetrics = useMemo(() => (
-    PNL_METRICS.reduce<Record<string, typeof PNL_METRICS>>((acc, metric) => {
-      if (!acc[metric.group]) acc[metric.group] = []
-      acc[metric.group].push(metric)
-      return acc
-    }, {})
-  ), [])
+  const timeframeLabel = PNL_TIMEFRAMES.find((tf) => tf.key === selectedTimeframe)?.label ?? selectedTimeframe
+  const benchmark = initialData.greeneKingBenchmark
+  const selectedCashupSummary = initialData.cashupSales[selectedTimeframe]
 
   const handleManualChange = (metric: string, timeframe: string, value: string) => {
     setManualValues((prev) => ({
@@ -219,14 +167,15 @@ export default function PnlClient({ initialData, canExport = false }: Props) {
     }))
   }
 
-  const saveManualValues = () => {
+  const saveManualValues = (timeframeToSave = selectedTimeframe) => {
+    if (!canManage) return
     startSavingManual(async () => {
       try {
         const payload = MANUAL_METRIC_KEYS.flatMap((metric) =>
-          PNL_TIMEFRAMES.map((tf) => ({
+          [timeframeToSave].map((timeframe) => ({
             metric,
-            timeframe: tf.key,
-            value: normaliseNumericInput(manualValues[metric]?.[tf.key] ?? ''),
+            timeframe,
+            value: normaliseNumericInput(manualValues[metric]?.[timeframe] ?? ''),
           }))
         )
 
@@ -237,16 +186,26 @@ export default function PnlClient({ initialData, canExport = false }: Props) {
           toast.error(result.error)
           return
         }
-        manualInitialRef.current = manualValues
-        toast.success('Manual inputs saved')
+        manualInitialRef.current = {
+          ...manualInitialRef.current,
+          ...MANUAL_METRIC_KEYS.reduce<EditableMap>((acc, metric) => {
+            acc[metric] = {
+              ...manualInitialRef.current[metric],
+              [timeframeToSave]: manualValues[metric]?.[timeframeToSave] ?? '',
+            }
+            return acc
+          }, {}),
+        }
+        toast.success('P&L inputs saved')
       } catch (error) {
-        console.error('Failed to save manual inputs', error)
-        toast.error('Failed to save manual inputs')
+        console.error('Failed to save P&L inputs', error)
+        toast.error('Failed to save P&L inputs')
       }
     })
   }
 
   const saveTargetValues = () => {
+    if (!canManage) return
     startSavingTargets(async () => {
       try {
         const payload = PNL_METRICS.map((metric) => ({
@@ -263,333 +222,297 @@ export default function PnlClient({ initialData, canExport = false }: Props) {
           return
         }
         targetInitialRef.current = targetValues
-        toast.success('Targets saved')
+        toast.success('Greene King targets saved')
       } catch (error) {
-        console.error('Failed to save targets', error)
-        toast.error('Failed to save targets')
+        console.error('Failed to save Greene King targets', error)
+        toast.error('Failed to save Greene King targets')
       }
     })
   }
 
-  const timeframeLabel = PNL_TIMEFRAMES.find((tf) => tf.key === selectedTimeframe)?.label ?? ''
-  const timeframeVsShadowLabel = `${timeframeLabel.toUpperCase()} VS. SHADOW P&L`
-  const exportUrl = `/api/receipts/pnl/export?timeframe=${encodeURIComponent(selectedTimeframe)}`
-
-  const downloadReport = () => {
-    window.location.assign(exportUrl)
+  const downloadReport = (format: 'pdf' | 'xlsx') => {
+    window.location.assign(`/api/receipts/pnl/export?timeframe=${encodeURIComponent(selectedTimeframe)}&format=${format}`)
   }
 
-  const renderTimeframeSelector = () => (
-    <div className="flex flex-wrap items-center gap-3">
-      <label className="text-sm font-medium text-gray-700" htmlFor="pnl-timeframe">View timeframe</label>
-      <Select
-        id="pnl-timeframe"
-        value={selectedTimeframe}
-        onChange={(event: ChangeEvent<HTMLSelectElement>) =>
-          setSelectedTimeframe(event.target.value as PnlTimeframeKey)
-        }
-        options={PNL_TIMEFRAMES.map((tf) => ({ value: tf.key, label: tf.label }))}
-      />
-    </div>
-  )
+  const salesSection = viewModel.sections.find((section) => section.key === 'sales')
+  const grossProfitSection = viewModel.sections.find((section) => section.key === 'sales_totals')
+  const expensesSection = viewModel.sections.find((section) => section.key === 'expenses')
+  const rentSection = viewModel.sections.find((section) => section.key === 'occupancy')
+  const manualInputMetrics = initialData.metrics.filter((metric) => metric.type === 'manual')
 
-  const renderActualCell = (metricKey: string, metricFormat: 'currency' | 'percent' | undefined, isManual: boolean) => {
-    const value = actualValues[metricKey] ?? 0
-    if (isManual) {
-      const inputValue = manualValues[metricKey]?.[selectedTimeframe] ?? ''
-      return (
-        <Input
-          type="number"
-          step={metricFormat === 'percent' ? '0.1' : '0.01'}
-          value={inputValue}
-          onChange={(event) => handleManualChange(metricKey, selectedTimeframe, event.target.value)}
-          className="w-full text-right"
-        />
-      )
-    }
-    return <span>{formatValue(value, metricFormat ?? 'currency')}</span>
-  }
-
-const renderPeriodTargetCell = (
-  metricFormat: 'currency' | 'percent' | undefined,
-  periodTarget: number | null,
-  detailLines?: string[]
-) => (
-  <div className="flex flex-col items-end gap-1 text-right">
-    <span className="font-medium text-gray-900">{formatValue(periodTarget, metricFormat ?? 'currency')}</span>
-    {detailLines && detailLines.length > 0 && (
-      <div className="space-y-0.5 text-xs text-gray-500">
-        {detailLines.map((line, index) => (
-          <div key={index}>{line}</div>
-        ))}
-      </div>
-    )}
-  </div>
-)
-
-  const renderVarianceCell = (
-    metricKey: string,
-    metricFormat: 'currency' | 'percent' | undefined,
-    periodTarget: number | null,
-    invertVariance = false
-  ) => {
-    const actual = actualValues[metricKey] ?? null
-    const diff = variance(actual, periodTarget)
-    if (diff === null) return <span>—</span>
-    const favourable = invertVariance ? diff <= 0 : diff >= 0
-    return (
-      <span
-        className={clsx(
-          'inline-flex rounded px-2 py-0.5 text-xs font-semibold',
-          favourable ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'
-        )}
-      >
-        {formatValue(diff, metricFormat ?? 'currency')}
-      </span>
-    )
-  }
+  const summaryCards = [
+    {
+      label: 'Actual income',
+      value: viewModel.summary.revenueActual,
+      targetLabel: 'GK target income',
+      target: viewModel.summary.revenueTarget,
+      variance: viewModel.summary.revenueVariance,
+      invert: false,
+    },
+    {
+      label: 'Actual expenses',
+      value: viewModel.summary.expenseActual,
+      targetLabel: 'GK target expenses',
+      target: viewModel.summary.expenseTarget,
+      variance: viewModel.summary.expenseVariance,
+      invert: true,
+    },
+    {
+      label: 'Gross profit',
+      value: viewModel.summary.grossProfitActual,
+      targetLabel: 'GK gross profit',
+      target: viewModel.summary.grossProfitTarget,
+      variance: viewModel.summary.grossProfitVariance,
+      invert: false,
+    },
+    {
+      label: 'Operating profit',
+      value: viewModel.summary.operatingProfitActual,
+      targetLabel: 'GK operating profit',
+      target: viewModel.summary.operatingProfitTarget,
+      variance: viewModel.summary.operatingProfitVariance,
+      invert: false,
+    },
+  ]
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        {renderTimeframeSelector()}
+        <div className="flex flex-wrap items-center gap-3">
+          <label className="text-sm font-medium text-gray-700" htmlFor="pnl-timeframe">View timeframe</label>
+          <Select
+            id="pnl-timeframe"
+            value={selectedTimeframe}
+            onChange={(event: ChangeEvent<HTMLSelectElement>) =>
+              setSelectedTimeframe(event.target.value as PnlTimeframeKey)
+            }
+            options={PNL_TIMEFRAMES.map((tf) => ({ value: tf.key, label: tf.label }))}
+          />
+          <span className={clsx('rounded-md border px-2.5 py-1 text-sm font-semibold', healthClass(viewModel.healthStatus))}>
+            {viewModel.healthLabel}
+          </span>
+        </div>
+
         <div className="flex flex-wrap items-center gap-2">
           {canExport && (
-            <Button variant="secondary" onClick={downloadReport} data-export-url={exportUrl}>
-              <DocumentArrowDownIcon className="mr-2 h-4 w-4" />
-              Download P&L report (PDF)
-            </Button>
+            <>
+              <Button
+                variant="secondary"
+                onClick={() => downloadReport('pdf')}
+                data-export-url={`/api/receipts/pnl/export?timeframe=${selectedTimeframe}&format=pdf`}
+              >
+                <DocumentArrowDownIcon className="mr-2 h-4 w-4" />
+                PDF
+              </Button>
+              <Button
+                variant="secondary"
+                onClick={() => downloadReport('xlsx')}
+                data-export-url={`/api/receipts/pnl/export?timeframe=${selectedTimeframe}&format=xlsx`}
+              >
+                <DocumentArrowDownIcon className="mr-2 h-4 w-4" />
+                Spreadsheet
+              </Button>
+            </>
           )}
-          <Button onClick={saveManualValues} disabled={isSavingManual}>
-            {isSavingManual && <Spinner className="mr-2 h-4 w-4" />}Save manual inputs
-          </Button>
-          <Button onClick={saveTargetValues} disabled={isSavingTargets}>
-            {isSavingTargets && <Spinner className="mr-2 h-4 w-4" />}Save Shadow P&L targets
-          </Button>
+          {canManage && (
+            <>
+              <Button onClick={() => saveManualValues()} disabled={isSavingManual}>
+                {isSavingManual && <Spinner className="mr-2 h-4 w-4" />}Save inputs
+              </Button>
+              <Button onClick={saveTargetValues} disabled={isSavingTargets}>
+                {isSavingTargets && <Spinner className="mr-2 h-4 w-4" />}Save GK targets
+              </Button>
+            </>
+          )}
         </div>
       </div>
-      <p className="text-sm text-gray-600">
-        Targets in this dashboard are set from your Shadow P&amp;L target values.
-      </p>
 
-      {Object.entries(groupedMetrics).map(([group, metrics]) => {
-        const sectionTitle = (group === 'sales' || group === 'expenses')
-          ? `${GROUP_LABELS[group] ?? group} - ${timeframeVsShadowLabel}`
-          : GROUP_LABELS[group] ?? group
-        const sectionSubtotal = group === 'sales'
-          ? {
-              label: 'Total sales',
-              actual: salesActualTotal,
-              annualTarget: salesAnnualTargetTotal,
-              periodTarget: salesTargetTotal,
-              variance: Number((salesActualTotal - salesTargetTotal).toFixed(2)),
-              invertVariance: false,
-            }
-          : group === 'expenses'
-            ? {
-                label: 'Total expenses (incl occupancy)',
-                actual: expenseActualTotal,
-                annualTarget: expenseAnnualTargetTotal,
-                periodTarget: expenseTargetTotal,
-                variance: Number((expenseActualTotal - expenseTargetTotal).toFixed(2)),
-                invertVariance: true,
-              }
-            : null
+      {viewModel.dataQualityWarnings.length > 0 && (
+        <Alert tone="warning">
+          <div className="space-y-1 text-sm">
+            <p className="font-semibold">Data confidence warnings</p>
+            {viewModel.dataQualityWarnings.slice(0, 5).map((warning) => <p key={warning}>{warning}</p>)}
+          </div>
+        </Alert>
+      )}
 
-        return (
-          <section key={group} className="space-y-3">
-            <h2 className="text-lg font-semibold text-gray-900">{sectionTitle}</h2>
-            <div className="overflow-x-auto rounded-lg border border-gray-200">
-              <table className="min-w-full divide-y divide-gray-200 text-sm">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="px-4 py-3 text-left font-semibold text-gray-600">Metric</th>
-                    <th className="px-4 py-3 text-right font-semibold text-gray-600">Actual</th>
-                    <th className="px-4 py-3 text-right font-semibold text-gray-600">Annual</th>
-                    <th className="px-4 py-3 text-right font-semibold text-gray-600">P&L Target</th>
-                    <th className="px-4 py-3 text-right font-semibold text-gray-600">Var</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100">
-                  {metrics.map((metric) => {
-                    const actualValue = actualValues[metric.key] ?? 0
-                    const annualTarget = annualTargetValues[metric.key] ?? null
-                    const periodTarget = derivedTargetValues[metric.key] ?? null
+      <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-4" aria-label="Business health">
+        {summaryCards.map((item) => (
+          <Card key={item.label}>
+            <CardBody>
+              <p className="text-xs uppercase tracking-wide text-gray-500">{item.label}</p>
+              <p className="mt-2 text-2xl font-bold text-gray-950">{formatPnlMetricValue(item.value)}</p>
+              <div className="mt-3 space-y-1 text-sm text-gray-700">
+                <div className="flex justify-between gap-2">
+                  <span>{item.targetLabel}</span>
+                  <span className="font-semibold">{formatPnlMetricValue(item.target)}</span>
+                </div>
+                <div className="flex justify-between gap-2">
+                  <span>Variance</span>
+                  <span className={clsx('rounded px-2 py-0.5 text-xs font-semibold', varianceClass(item.variance, item.invert))}>
+                    {formatPnlMetricValue(item.variance)}
+                  </span>
+                </div>
+              </div>
+            </CardBody>
+          </Card>
+        ))}
+      </section>
 
-                    const detailLines: string[] = []
-
-                    if (metric.baseMetricKey) {
-                      const baseActual = actualValues[metric.baseMetricKey] ?? 0
-                      const baseTarget = derivedTargetValues[metric.baseMetricKey] ?? null
-
-                      if (metric.group === 'sales_mix') {
-                        const actualCurrency = Number((baseActual * (actualValue / 100)).toFixed(2))
-                        const targetCurrency = baseTarget !== null && periodTarget !== null
-                          ? Number((baseTarget * (periodTarget / 100)).toFixed(2))
-                          : null
-                        detailLines.push(`Actual ${formatValue(actualCurrency)}`)
-                        if (targetCurrency !== null) {
-                          detailLines.push(`P&L Target ${formatValue(targetCurrency)}`)
-                        }
-                      }
-
-                      if (metric.group === 'sales_totals') {
-                        const gpActual = Number((baseActual * (actualValue / 100)).toFixed(2))
-                        const costActual = Number((baseActual - gpActual).toFixed(2))
-                        const gpTarget = baseTarget !== null && periodTarget !== null
-                          ? Number((baseTarget * (periodTarget / 100)).toFixed(2))
-                          : null
-                        const costTarget = gpTarget !== null && baseTarget !== null
-                          ? Number((baseTarget - gpTarget).toFixed(2))
-                          : null
-                        detailLines.push(`Actual GP ${formatValue(gpActual)} · Cost ${formatValue(costActual)}`)
-                        if (gpTarget !== null && costTarget !== null) {
-                          detailLines.push(`P&L Target GP ${formatValue(gpTarget)} · Cost ${formatValue(costTarget)}`)
-                        }
-                      }
-                    }
-
-                    return (
-                      <tr key={metric.key} className="align-top">
-                        <td className="px-4 py-3 text-sm font-medium text-gray-900">{metric.label}</td>
-                        <td className="px-4 py-3 min-w-[140px] text-right text-gray-900">
-                          {renderActualCell(metric.key, metric.format, metric.type === 'manual')}
-                        </td>
-                        <td className="px-4 py-3 min-w-[140px] text-right">
-                          <Input
-                            type="number"
-                            step={metric.format === 'percent' ? '0.1' : '0.01'}
-                            value={targetValues[metric.key]?.[TARGET_TIMEFRAME] ?? ''}
-                            onChange={(event) => handleTargetChange(metric.key, event.target.value)}
-                            className="w-full text-right"
-                          />
-                        </td>
-                        <td className="px-4 py-3 min-w-[180px] text-right text-gray-900">
-                          {renderPeriodTargetCell(metric.format, periodTarget, detailLines)}
-                        </td>
-                        <td className="px-4 py-3 min-w-[140px] text-right text-gray-900">
-                          {renderVarianceCell(metric.key, metric.format, periodTarget, metric.group === 'expenses' || metric.group === 'occupancy')}
-                        </td>
-                      </tr>
-                    )
-                  })}
-                  {sectionSubtotal && (
-                    <tr className="bg-indigo-50/60">
-                      <td className="px-4 py-3 text-sm font-semibold text-gray-900">{sectionSubtotal.label}</td>
-                      <td className="px-4 py-3 min-w-[140px] text-right font-semibold text-gray-900">
-                        {formatValue(sectionSubtotal.actual)}
-                      </td>
-                      <td className="px-4 py-3 min-w-[140px] text-right font-semibold text-gray-900">
-                        {formatValue(sectionSubtotal.annualTarget)}
-                      </td>
-                      <td className="px-4 py-3 min-w-[180px] text-right font-semibold text-gray-900">
-                        {formatValue(sectionSubtotal.periodTarget)}
-                      </td>
-                      <td className="px-4 py-3 min-w-[140px] text-right text-gray-900">
-                        <span
-                          className={clsx(
-                            'inline-flex rounded px-2 py-0.5 text-xs font-semibold',
-                            sectionSubtotal.invertVariance
-                              ? sectionSubtotal.variance <= 0
-                                ? 'bg-emerald-50 text-emerald-700'
-                                : 'bg-rose-50 text-rose-700'
-                              : sectionSubtotal.variance >= 0
-                                ? 'bg-emerald-50 text-emerald-700'
-                                : 'bg-rose-50 text-rose-700'
-                          )}
-                        >
-                          {formatValue(sectionSubtotal.variance)}
-                        </span>
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
+      <section className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
+        <Card>
+          <CardHeader title="Sales performance" subtitle={`${timeframeLabel} against Greene King target`} />
+          <CardBody>
+            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+              {salesSection?.rows.map((row) => <MetricCard key={row.key} row={row} />)}
             </div>
-          </section>
-        )
-      })}
+            <div className="mt-4 rounded-md border border-gray-200 bg-gray-50 p-3 text-sm">
+              <div className="grid gap-2 sm:grid-cols-4">
+                <div>
+                  <p className="text-xs uppercase tracking-wide text-gray-500">Sales days</p>
+                  <p className="font-semibold text-gray-900">{selectedCashupSummary.sessionCount}</p>
+                </div>
+                <div>
+                  <p className="text-xs uppercase tracking-wide text-gray-500">Latest sales day</p>
+                  <p className="font-semibold text-gray-900">
+                    {selectedCashupSummary.latestSessionDate ? formatDate(selectedCashupSummary.latestSessionDate) : 'None'}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs uppercase tracking-wide text-gray-500">Missing splits</p>
+                  <p className="font-semibold text-gray-900">{selectedCashupSummary.missingSplitCount}</p>
+                </div>
+                <div>
+                  <p className="text-xs uppercase tracking-wide text-gray-500">Unallocated</p>
+                  <p className="font-semibold text-gray-900">{formatPnlMetricValue(selectedCashupSummary.unallocatedSales)}</p>
+                </div>
+              </div>
+            </div>
+          </CardBody>
+        </Card>
+
+        <Card>
+          <CardHeader title="Greene King benchmark" subtitle={`${benchmark.pubCode} - ${benchmark.pubName}`} />
+          <CardBody>
+            <dl className="space-y-2 text-sm">
+              <div className="flex justify-between gap-3">
+                <dt className="text-gray-500">Assessment</dt>
+                <dd className="font-medium text-gray-900">{formatDate(benchmark.assessmentDate)}</dd>
+              </div>
+              <div className="flex justify-between gap-3">
+                <dt className="text-gray-500">Report date</dt>
+                <dd className="font-medium text-gray-900">{formatDate(benchmark.reportDate)}</dd>
+              </div>
+              <div className="flex justify-between gap-3">
+                <dt className="text-gray-500">Proposal</dt>
+                <dd className="font-medium text-gray-900">{benchmark.proposalId}</dd>
+              </div>
+              <div className="flex justify-between gap-3">
+                <dt className="text-gray-500">Agreement</dt>
+                <dd className="text-right font-medium text-gray-900">{benchmark.agreementType}</dd>
+              </div>
+              <div className="flex justify-between gap-3">
+                <dt className="text-gray-500">Reason</dt>
+                <dd className="text-right font-medium text-gray-900">{benchmark.agreementReason}</dd>
+              </div>
+            </dl>
+          </CardBody>
+        </Card>
+      </section>
 
       <Card>
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <div className="rounded-md border border-gray-200 p-4">
-            <p className="text-xs uppercase tracking-wide text-gray-500">{timeframeLabel}</p>
-            <div className="mt-2 space-y-2 text-sm text-gray-700">
-              <div className="flex items-center justify-between">
-                <span>Total revenue</span>
-                <span className="font-semibold text-gray-900">{formatValue(salesActualTotal)}</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span>Total expenses</span>
-                <span className="font-semibold text-gray-900">{formatValue(expenseActualTotal)}</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span>Operating profit</span>
-                <span className={clsx(
-                  'font-semibold',
-                  operatingProfitActual >= 0 ? 'text-emerald-700' : 'text-rose-700'
-                )}>
-                  {formatValue(operatingProfitActual)}
-                </span>
-              </div>
-            </div>
+        <CardHeader title="Expense performance" subtitle="Receipt categories against Greene King model" />
+        <CardBody>
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+            {expensesSection?.rows.map((row) => <MetricCard key={row.key} row={row} invertVariance />)}
           </div>
-          <div className="rounded-md border border-gray-200 p-4">
-            <p className="text-xs uppercase tracking-wide text-gray-500">{timeframeLabel} targets (Shadow P&L)</p>
-            <div className="mt-2 space-y-2 text-sm text-gray-700">
-              <div className="flex items-center justify-between">
-                <span>Revenue P&L Target</span>
-                <span className="font-semibold text-gray-900">{formatValue(salesTargetTotal)}</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span>Expense P&L Target</span>
-                <span className="font-semibold text-gray-900">{formatValue(expenseTargetTotal)}</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span>Profit P&L Target</span>
-                <span className={clsx(
-                  'font-semibold',
-                  operatingProfitTarget >= 0 ? 'text-emerald-700' : 'text-rose-700'
-                )}>
-                  {formatValue(operatingProfitTarget)}
-                </span>
-              </div>
-            </div>
+        </CardBody>
+      </Card>
+
+      <Card>
+        <CardHeader title="Gross profit / operating profit" subtitle="Operating profit is before rent, matching the Shadow P&L" />
+        <CardBody>
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+            {grossProfitSection?.rows.map((row) => <MetricCard key={row.key} row={row} />)}
+            {grossProfitSection?.subtotal && (
+              <MetricCard
+                row={{
+                  key: 'gross_profit_total',
+                  label: grossProfitSection.subtotal.label,
+                  group: 'sales_totals',
+                  format: 'currency',
+                  actual: grossProfitSection.subtotal.actual,
+                  annualTarget: grossProfitSection.subtotal.annualTarget,
+                  timeframeTarget: grossProfitSection.subtotal.timeframeTarget,
+                  variance: grossProfitSection.subtotal.variance,
+                  detailLines: [],
+                }}
+              />
+            )}
           </div>
-          <div className="rounded-md border border-gray-200 p-4">
-            <p className="text-xs uppercase tracking-wide text-gray-500">Variance (£)</p>
-            <div className="mt-2 space-y-2 text-sm text-gray-700">
-              <div className="flex items-center justify-between">
-                <span>Revenue</span>
-                <span className={clsx(
-                  'font-semibold',
-                  salesActualTotal - salesTargetTotal >= 0 ? 'text-emerald-700' : 'text-rose-700'
-                )}>
-                  {formatValue(salesActualTotal - salesTargetTotal)}
-                </span>
+        </CardBody>
+      </Card>
+
+      <Card>
+        <CardHeader
+          title="P&L inputs"
+          subtitle={canManage ? `${timeframeLabel} inputs` : 'Read-only'}
+          action={canManage ? (
+            <Button onClick={() => saveManualValues(selectedTimeframe)} disabled={isSavingManual}>
+              {isSavingManual && <Spinner className="mr-2 h-4 w-4" />}Save P&L inputs
+            </Button>
+          ) : undefined}
+        />
+        <CardBody>
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+            {manualInputMetrics.map((metric) => (
+              <div key={metric.key}>
+                <Input
+                  label={metric.label}
+                  type="number"
+                  step={metric.format === 'percent' ? '0.1' : '0.01'}
+                  value={manualValues[metric.key]?.[selectedTimeframe] ?? ''}
+                  onChange={(event) => handleManualChange(metric.key, selectedTimeframe, event.target.value)}
+                  disabled={!canManage}
+                  className="w-full"
+                />
               </div>
-              <div className="flex items-center justify-between">
-                <span>Expenses</span>
-                <span className={clsx(
-                  'font-semibold',
-                  expenseActualTotal - expenseTargetTotal <= 0 ? 'text-emerald-700' : 'text-rose-700'
-                )}>
-                  {formatValue(expenseActualTotal - expenseTargetTotal)}
-                </span>
+            ))}
+          </div>
+        </CardBody>
+      </Card>
+
+      <Card>
+        <CardHeader title="Rent/divisible balance assumptions" subtitle="Shown separately from operating profit" />
+        <CardBody>
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+            {rentSection?.rows.map((row) => <MetricCard key={row.key} row={row} />)}
+          </div>
+        </CardBody>
+      </Card>
+
+      <details className="rounded-md border border-gray-200 bg-white">
+        <summary className="cursor-pointer px-4 py-3 text-sm font-semibold text-gray-900">
+          Greene King benchmark target values
+        </summary>
+        <div className="border-t border-gray-100 p-4">
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+            {initialData.metrics.map((metric) => (
+              <div key={metric.key}>
+                <Input
+                  label={metric.label}
+                  type="number"
+                  step={metric.format === 'percent' ? '0.1' : '0.01'}
+                  value={targetValues[metric.key]?.[TARGET_TIMEFRAME] ?? ''}
+                  onChange={(event) => handleTargetChange(metric.key, event.target.value)}
+                  disabled={!canManage}
+                  className="w-full"
+                />
               </div>
-              <div className="flex items-center justify-between">
-                <span>Operating profit</span>
-                <span className={clsx(
-                  'font-semibold',
-                  operatingProfitActual - operatingProfitTarget >= 0 ? 'text-emerald-700' : 'text-rose-700'
-                )}>
-                  {formatValue(operatingProfitActual - operatingProfitTarget)}
-                </span>
-              </div>
-            </div>
+            ))}
           </div>
         </div>
-      </Card>
+      </details>
     </div>
   )
 }

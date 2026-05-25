@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import { PNL_METRICS, PNL_TIMEFRAMES, MANUAL_METRIC_KEYS } from '@/lib/pnl/constants'
+import { GREENE_KING_BENCHMARK } from '@/lib/pnl/greene-king-benchmark'
 import { buildPnlReportViewModel } from '@/lib/pnl/report-view-model'
 import type { PnlDashboardData } from '@/services/financials'
 
@@ -68,6 +69,50 @@ function createDashboardData(): PnlDashboardData {
       '3m': 700,
       '12m': 2800,
     },
+    cashupSales: {
+      '1m': {
+        totalRevenue: 150,
+        drinksSales: 100,
+        foodSales: 50,
+        otherSales: 0,
+        foodPlusOtherSales: 50,
+        unallocatedSales: 0,
+        sessionCount: 1,
+        missingSplitCount: 0,
+        excludedDraftCount: 0,
+        latestSessionDate: '2026-02-22',
+      },
+      '3m': {
+        totalRevenue: 470,
+        drinksSales: 300,
+        foodSales: 170,
+        otherSales: 0,
+        foodPlusOtherSales: 170,
+        unallocatedSales: 0,
+        sessionCount: 1,
+        missingSplitCount: 0,
+        excludedDraftCount: 0,
+        latestSessionDate: '2026-02-22',
+      },
+      '12m': {
+        totalRevenue: 4380,
+        drinksSales: 3650,
+        foodSales: 730,
+        otherSales: 0,
+        foodPlusOtherSales: 730,
+        unallocatedSales: 0,
+        sessionCount: 1,
+        missingSplitCount: 0,
+        excludedDraftCount: 0,
+        latestSessionDate: '2026-02-22',
+      },
+    },
+    dataQuality: {
+      warnings: [],
+      receiptAggregationFailed: false,
+      cashupAggregationFailed: false,
+    },
+    greeneKingBenchmark: GREENE_KING_BENCHMARK,
   }
 }
 
@@ -115,7 +160,7 @@ describe('buildPnlReportViewModel', () => {
     ])
   })
 
-  it('computes totals using sales revenue and expenses + occupancy parity rules', () => {
+  it('computes totals using cash-up income, gross profit, and expenses before rent', () => {
     const data = createDashboardData()
     const viewModel = buildPnlReportViewModel(data, '1m', new Date('2026-02-23T12:00:00Z'))
     const salesSection = findSection(viewModel, 'sales')
@@ -125,12 +170,15 @@ describe('buildPnlReportViewModel', () => {
       revenueActual: 150,
       revenueTarget: 900,
       revenueVariance: -750,
-      expenseActual: 400,
-      expenseTarget: 600,
-      expenseVariance: -200,
-      operatingProfitActual: -250,
-      operatingProfitTarget: 300,
-      operatingProfitVariance: -550,
+      grossProfitActual: 70,
+      grossProfitTarget: 240,
+      grossProfitVariance: -170,
+      expenseActual: 250,
+      expenseTarget: 300,
+      expenseVariance: -50,
+      operatingProfitActual: -180,
+      operatingProfitTarget: -60,
+      operatingProfitVariance: -120,
     })
 
     expect(salesSection.subtotal).toEqual({
@@ -143,12 +191,12 @@ describe('buildPnlReportViewModel', () => {
     })
 
     expect(expensesSection.subtotal).toEqual({
-      label: 'Total expenses (incl occupancy)',
+      label: 'Total expenses',
       format: 'currency',
-      actual: 400,
-      annualTarget: 7300,
-      timeframeTarget: 600,
-      variance: -200,
+      actual: 250,
+      annualTarget: 3650,
+      timeframeTarget: 300,
+      variance: -50,
       invertVariance: true,
     })
   })

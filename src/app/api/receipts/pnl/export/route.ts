@@ -6,6 +6,7 @@ import { getCurrentUser } from '@/lib/audit-helpers'
 import { generatePDFFromHTML } from '@/lib/pdf-generator'
 import { buildPnlReportViewModel } from '@/lib/pnl/report-view-model'
 import { generatePnlReportHTML } from '@/lib/pnl/report-template'
+import { generatePnlSpreadsheetBuffer } from '@/lib/pnl/spreadsheet-export'
 import { pnlExportSchema } from '@/lib/validation'
 import { FinancialService } from '@/services/financials'
 
@@ -15,7 +16,7 @@ export const maxDuration = 120
 const EXPORT_FAILURE_MESSAGE = 'Failed to generate P&L report export.'
 const INVALID_TIMEFRAME_MESSAGE = 'Invalid timeframe parameter.'
 
-async function logExportAudit(timeframe: '1m' | '3m' | '12m') {
+async function logExportAudit(timeframe: '1m' | '3m' | '12m', format: 'pdf' | 'xlsx') {
   try {
     const userInfo = await getCurrentUser()
 
@@ -28,6 +29,7 @@ async function logExportAudit(timeframe: '1m' | '3m' | '12m') {
       additional_info: {
         report: 'pnl',
         timeframe,
+        format,
       },
     })
   } catch (error) {
@@ -35,8 +37,8 @@ async function logExportAudit(timeframe: '1m' | '3m' | '12m') {
   }
 }
 
-function buildFilename(timeframe: '1m' | '3m' | '12m', now: Date) {
-  return `pnl-shadow-report-${timeframe}-${now.toISOString().slice(0, 10)}.pdf`
+function buildFilename(timeframe: '1m' | '3m' | '12m', format: 'pdf' | 'xlsx', now: Date) {
+  return `pnl-greene-king-comparison-${timeframe}-${now.toISOString().slice(0, 10)}.${format}`
 }
 
 export async function GET(request: NextRequest) {
@@ -49,7 +51,8 @@ export async function GET(request: NextRequest) {
     }
 
     const timeframeRaw = url.searchParams.get('timeframe') ?? undefined
-    const parsed = pnlExportSchema.safeParse({ timeframe: timeframeRaw })
+    const formatRaw = url.searchParams.get('format') ?? undefined
+    const parsed = pnlExportSchema.safeParse({ timeframe: timeframeRaw, format: formatRaw })
 
     if (!parsed.success) {
       return NextResponse.json({ error: INVALID_TIMEFRAME_MESSAGE }, { status: 400 })
@@ -58,6 +61,20 @@ export async function GET(request: NextRequest) {
     const now = new Date()
     const dashboardData = await FinancialService.getPlDashboardData()
     const viewModel = buildPnlReportViewModel(dashboardData, parsed.data.timeframe, now)
+
+    if (parsed.data.format === 'xlsx') {
+      const spreadsheetBuffer = await generatePnlSpreadsheetBuffer(viewModel)
+      await logExportAudit(parsed.data.timeframe, parsed.data.format)
+
+      return new NextResponse(spreadsheetBuffer as unknown as BodyInit, {
+        status: 200,
+        headers: {
+          'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+          'Content-Disposition': `attachment; filename="${buildFilename(parsed.data.timeframe, parsed.data.format, now)}"`,
+          'Cache-Control': 'no-store',
+        },
+      })
+    }
 
     const appUrl = process.env.NEXT_PUBLIC_APP_URL || url.origin
     const logoUrl = `${appUrl}/logo-oj.jpg`
@@ -75,13 +92,13 @@ export async function GET(request: NextRequest) {
       },
     })
 
-    await logExportAudit(parsed.data.timeframe)
+    await logExportAudit(parsed.data.timeframe, parsed.data.format)
 
     return new NextResponse(pdfBuffer as unknown as BodyInit, {
       status: 200,
       headers: {
         'Content-Type': 'application/pdf',
-        'Content-Disposition': `attachment; filename="${buildFilename(parsed.data.timeframe, now)}"`,
+        'Content-Disposition': `attachment; filename="${buildFilename(parsed.data.timeframe, parsed.data.format, now)}"`,
         'Cache-Control': 'no-store',
       },
     })

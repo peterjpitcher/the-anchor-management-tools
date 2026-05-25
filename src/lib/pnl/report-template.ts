@@ -226,7 +226,7 @@ export function generatePnlReportHTML(
 
           .summary-grid {
             display: grid;
-            grid-template-columns: repeat(3, minmax(0, 1fr));
+            grid-template-columns: repeat(4, minmax(0, 1fr));
             gap: 8px;
           }
 
@@ -418,6 +418,12 @@ export function generatePnlReportHTML(
                 <div class="summary-row"><span>Variance</span><span class="${varianceClass(viewModel.summary.expenseVariance, true)}">${formatPnlMetricValue(viewModel.summary.expenseVariance)}</span></div>
               </article>
               <article class="summary-card">
+                <h3>Gross profit</h3>
+                <div class="summary-row"><span>Actual</span><span>${formatPnlMetricValue(viewModel.summary.grossProfitActual)}</span></div>
+                <div class="summary-row"><span>P&amp;L Target</span><span>${formatPnlMetricValue(viewModel.summary.grossProfitTarget)}</span></div>
+                <div class="summary-row"><span>Variance</span><span class="${varianceClass(viewModel.summary.grossProfitVariance)}">${formatPnlMetricValue(viewModel.summary.grossProfitVariance)}</span></div>
+              </article>
+              <article class="summary-card">
                 <h3>Operating profit</h3>
                 <div class="summary-row"><span>Actual</span><span>${formatPnlMetricValue(viewModel.summary.operatingProfitActual)}</span></div>
                 <div class="summary-row"><span>P&amp;L Target</span><span>${formatPnlMetricValue(viewModel.summary.operatingProfitTarget)}</span></div>
@@ -432,9 +438,12 @@ export function generatePnlReportHTML(
             <h2>Notes & assumptions</h2>
             <p>
               This report is generated from saved database values at the timestamp shown above. Target values are sourced from the
-              Shadow P&amp;L. Currency targets are pro-rated from annual targets by timeframe days (30/90/365). Percentage targets
-              remain unchanged by timeframe.
+              Greene King Shadow P&amp;L. Currency targets are pro-rated from annual targets by timeframe days (30/90/365).
+              Percentage targets remain unchanged by timeframe. Operating profit is shown before rent, matching the Shadow P&amp;L.
             </p>
+            ${viewModel.dataQualityWarnings.length ? `
+              <p><strong>Data checks:</strong> ${escapeHtml(viewModel.dataQualityWarnings.join(' '))}</p>
+            ` : ''}
           </section>
         </main>
       </body>
