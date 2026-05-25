@@ -8,7 +8,7 @@ export const PNL_TIMEFRAMES: Array<{ key: PnlTimeframeKey; label: string; days: 
   { key: '12m', label: 'Last 365 days', days: 365 },
 ]
 
-export type PnlMetricType = 'manual' | 'expense'
+export type PnlMetricType = 'cashup' | 'manual' | 'expense'
 export type PnlMetricFormat = 'currency' | 'percent'
 export type PnlMetricGroup =
   | 'sales'
@@ -27,6 +27,8 @@ export type PnlMetric = {
   expenseCategory?: ReceiptExpenseCategory
   baseMetricKey?: string
 }
+
+export const CASHUP_SALES_METRIC_KEYS = ['drinks_sales', 'food_sales'] as const
 
 const EXPENSE_METRIC_DEFS: Array<{ key: string; label: string; category: ReceiptExpenseCategory }> = [
   { key: 'total_staff', label: 'Total Staff', category: 'Total Staff' },
@@ -56,19 +58,17 @@ const EXPENSE_METRIC_DEFS: Array<{ key: string; label: string; category: Receipt
 ]
 
 export const PNL_METRICS: PnlMetric[] = [
-  { key: 'drinks_sales', label: 'Drinks sales', type: 'manual', group: 'sales', format: 'currency' },
+  { key: 'drinks_sales', label: 'Drinks sales', type: 'cashup', group: 'sales', format: 'currency' },
   { key: 'draught_beer_pct', label: 'Draught beer sales %', type: 'manual', group: 'sales_mix', format: 'percent', baseMetricKey: 'drinks_sales' },
   { key: 'cask_ale_pct', label: 'Cask ale %', type: 'manual', group: 'sales_mix', format: 'percent', baseMetricKey: 'drinks_sales' },
   { key: 'keg_beer_pct', label: 'Keg beer %', type: 'manual', group: 'sales_mix', format: 'percent', baseMetricKey: 'drinks_sales' },
   { key: 'cask_beer_pct', label: 'Cask beer %', type: 'manual', group: 'sales_mix', format: 'percent', baseMetricKey: 'drinks_sales' },
-  { key: 'food_sales', label: 'Food sales', type: 'manual', group: 'sales', format: 'currency' },
+  { key: 'food_sales', label: 'Food + other sales', type: 'cashup', group: 'sales', format: 'currency' },
   { key: 'accommodation_sales', label: 'Accommodation sales', type: 'manual', group: 'sales', format: 'currency' },
-  { key: 'other_sales', label: 'Other sales', type: 'manual', group: 'sales', format: 'currency' },
   { key: 'net_machine_income', label: 'Net machine income', type: 'manual', group: 'sales', format: 'currency' },
   { key: 'total_drinks_post_wastage', label: 'Drinks GP %', type: 'manual', group: 'sales_totals', format: 'percent', baseMetricKey: 'drinks_sales' },
-  { key: 'total_food', label: 'Food GP %', type: 'manual', group: 'sales_totals', format: 'percent', baseMetricKey: 'food_sales' },
+  { key: 'total_food', label: 'Food + other GP %', type: 'manual', group: 'sales_totals', format: 'percent', baseMetricKey: 'food_sales' },
   { key: 'total_accommodation', label: 'Accommodation GP %', type: 'manual', group: 'sales_totals', format: 'percent', baseMetricKey: 'accommodation_sales' },
-  { key: 'total_other_sales', label: 'Other sales GP %', type: 'manual', group: 'sales_totals', format: 'percent', baseMetricKey: 'other_sales' },
   { key: 'rent', label: 'Rent', type: 'manual', group: 'occupancy', format: 'currency' },
   { key: 'royalty', label: 'Royalty', type: 'manual', group: 'occupancy', format: 'currency' },
   ...EXPENSE_METRIC_DEFS.map(({ key, label, category }) => ({
@@ -83,3 +83,5 @@ export const PNL_METRICS: PnlMetric[] = [
 
 export const EXPENSE_METRIC_KEYS = EXPENSE_METRIC_DEFS.map(({ key }) => key)
 export const MANUAL_METRIC_KEYS = PNL_METRICS.filter((metric) => metric.type === 'manual').map((metric) => metric.key)
+export const PNL_TARGET_METRIC_KEYS = PNL_METRICS.map((metric) => metric.key)
+export const PNL_METRIC_BY_KEY = new Map(PNL_METRICS.map((metric) => [metric.key, metric]))

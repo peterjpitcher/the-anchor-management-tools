@@ -50,7 +50,12 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { logAuditEvent } from '@/app/actions/audit'
 import {
   deleteReceiptFile,
+  getReceiptVendorAiSummary,
+  getReceiptVendorCostReview,
+  getReceiptVendorDetail,
+  getReceiptVendorMovements,
   markReceiptTransaction,
+  setReceiptVendorWatched,
   toggleReceiptRule,
   updateReceiptClassification,
   updateReceiptRule,
@@ -535,5 +540,56 @@ describe('deleteReceiptFile rollback safety', () => {
 
     expect(result).toEqual({ error: 'Receipt was removed, but transaction no longer exists.' })
     expect(mockedLogAuditEvent).not.toHaveBeenCalled()
+  })
+})
+
+describe('receipt vendor insight action permissions', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockedPermission.mockResolvedValue(false)
+    mockedGetCurrentUser.mockResolvedValue({ user_id: 'user-1', user_email: 'user@example.com' })
+  })
+
+  it('blocks vendor detail when user lacks receipt view permission', async () => {
+    const result = await getReceiptVendorDetail({ vendorLabel: 'Brewery A' })
+
+    expect(result).toEqual({ error: 'Insufficient permissions' })
+    expect(mockedCreateAdminClient).not.toHaveBeenCalled()
+  })
+
+  it('blocks vendor cost review when user lacks receipt view permission', async () => {
+    const result = await getReceiptVendorCostReview({ monthWindow: 12 })
+
+    expect(result).toEqual({ success: false, signals: [], error: 'Insufficient permissions' })
+    expect(mockedCreateAdminClient).not.toHaveBeenCalled()
+  })
+
+  it('blocks vendor movements when user lacks receipt view permission', async () => {
+    const result = await getReceiptVendorMovements({ range: '36m', comparison: 'yoy' })
+
+    expect(result).toEqual({ success: false, movements: [], signals: [], error: 'Insufficient permissions' })
+    expect(mockedCreateAdminClient).not.toHaveBeenCalled()
+  })
+
+  it('requires current user context for watched-only vendor movements', async () => {
+    mockedPermission.mockResolvedValue(true)
+    mockedGetCurrentUser.mockResolvedValue({ user_id: null, user_email: null })
+
+    await expect(getReceiptVendorMovements({ watchedOnly: true })).rejects.toThrow('Unauthorized')
+    expect(mockedCreateAdminClient).not.toHaveBeenCalled()
+  })
+
+  it('blocks vendor AI summary when user lacks receipt view permission', async () => {
+    const result = await getReceiptVendorAiSummary({ vendorLabel: 'Brewery A' })
+
+    expect(result).toEqual({ success: false, signals: [], error: 'Insufficient permissions' })
+    expect(mockedCreateAdminClient).not.toHaveBeenCalled()
+  })
+
+  it('blocks vendor watchlist updates when user lacks receipt view permission', async () => {
+    const result = await setReceiptVendorWatched({ vendorLabel: 'Brewery A', watched: true })
+
+    expect(result).toEqual({ error: 'Insufficient permissions' })
+    expect(mockedCreateAdminClient).not.toHaveBeenCalled()
   })
 })

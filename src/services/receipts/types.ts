@@ -174,6 +174,137 @@ export type ReceiptVendorMonthTransaction = Pick<ReceiptTransaction,
   'id' | 'transaction_date' | 'details' | 'amount_in' | 'amount_out' | 'status' | 'transaction_type' | 'vendor_name'
 >
 
+export type ReceiptVendorCostSignal = {
+  vendorLabel: string
+  severity: 'medium' | 'high'
+  direction: 'spike' | 'drop' | 'new'
+  recentAverageOutgoing: number
+  previousAverageOutgoing: number
+  recentTotalOutgoing: number
+  previousTotalOutgoing: number
+  absoluteDelta: number
+  percentageChange: number
+  reason: string
+}
+
+export type ReceiptVendorMovementRange = '12m' | '24m' | '36m' | 'all'
+
+export type ReceiptVendorMovementComparison = 'mom' | 'yoy'
+
+export type ReceiptVendorMovementDirection = 'spike' | 'drop' | 'new' | 'resumed'
+
+export type ReceiptVendorMovementSignal = {
+  vendorLabel: string
+  severity: 'medium' | 'high'
+  direction: ReceiptVendorMovementDirection
+  comparison: ReceiptVendorMovementComparison
+  monthStart: string
+  currentOutgoing: number
+  baselineOutgoing: number
+  baselineMonthStart: string | null
+  absoluteDelta: number
+  percentageChange: number
+  reason: string
+}
+
+export type ReceiptVendorMovementMonth = ReceiptVendorTrendMonth & {
+  momBaselineMonthStart: string | null
+  momBaselineOutgoing: number | null
+  momDelta: number | null
+  momPercentageChange: number | null
+  momBaselineAvailable: boolean
+  momSignal: ReceiptVendorMovementSignal | null
+  yoyBaselineMonthStart: string | null
+  yoyBaselineOutgoing: number | null
+  yoyDelta: number | null
+  yoyPercentageChange: number | null
+  yoyBaselineAvailable: boolean
+  yoySignal: ReceiptVendorMovementSignal | null
+}
+
+export type ReceiptVendorMovementSummary = {
+  vendorLabel: string
+  range: ReceiptVendorMovementRange
+  comparison: ReceiptVendorMovementComparison
+  months: ReceiptVendorMovementMonth[]
+  latestMonthStart: string | null
+  latestOutgoing: number
+  latestTransactionCount: number
+  baselineMonthStart: string | null
+  baselineOutgoing: number | null
+  delta: number | null
+  percentageChange: number | null
+  signal: ReceiptVendorMovementSignal | null
+  totalOutgoing: number
+  transactionCount: number
+}
+
+export type ReceiptVendorAiReviewItem = {
+  vendorLabel: string
+  severity: 'medium' | 'high'
+  direction: 'spike' | 'drop' | 'new' | 'resumed'
+  reason: string
+  suggestedReview: string
+}
+
+export type ReceiptVendorAiReview = {
+  overview: string
+  reviewItems: ReceiptVendorAiReviewItem[]
+  source: 'ai' | 'deterministic'
+  generatedAt: string
+  model?: string | null
+}
+
+export type ReceiptVendorExpenseBreakdown = {
+  expenseCategory: string
+  totalOutgoing: number
+  transactionCount: number
+}
+
+export type ReceiptVendorDetailTransaction = Pick<ReceiptTransaction,
+  | 'id'
+  | 'transaction_date'
+  | 'details'
+  | 'amount_in'
+  | 'amount_out'
+  | 'status'
+  | 'transaction_type'
+  | 'vendor_name'
+  | 'vendor_source'
+  | 'expense_category'
+  | 'expense_category_source'
+>
+
+export type ReceiptVendorDetail = {
+  vendorLabel: string
+  months: ReceiptVendorTrendMonth[]
+  totalOutgoing: number
+  totalIncome: number
+  transactionCount: number
+  historyTotalOutgoing: number
+  historyTotalIncome: number
+  historyTransactionCount: number
+  historyStartDate: string | null
+  historyEndDate: string | null
+  recentAverageOutgoing: number
+  previousAverageOutgoing: number
+  changePercentage: number
+  signals: ReceiptVendorCostSignal[]
+  movementMonths: ReceiptVendorMovementMonth[]
+  movementSignals: ReceiptVendorMovementSignal[]
+  categoryBreakdown: ReceiptVendorExpenseBreakdown[]
+  transactions: ReceiptVendorDetailTransaction[]
+  recentTransactions: ReceiptVendorDetailTransaction[]
+}
+
+export type ReceiptVendorWatchlistItem = {
+  userId: string
+  vendorKey: string
+  vendorLabel: string
+  createdAt: string
+  updatedAt: string
+}
+
 export type ReceiptDetailGroupSuggestion = {
   vendorName: string | null
   expenseCategory: ReceiptExpenseCategory | null

@@ -6,7 +6,7 @@
  */
 
 import { createAdminClient } from '@/lib/supabase/admin'
-import { classifyReceiptTransaction } from '@/lib/openai'
+import { classifyReceiptTransaction, summarizeReceiptVendorCostReview } from '@/lib/openai'
 import { getOpenAIConfig } from '@/lib/openai/config'
 import { getRuleMatch } from '@/lib/receipts/rule-matching'
 import { recordAIUsage } from '@/lib/receipts/ai-classification'
@@ -27,6 +27,16 @@ import type {
   ReceiptVendorSummary,
   ReceiptVendorTrendMonth,
   ReceiptVendorMonthTransaction,
+  ReceiptVendorDetail,
+  ReceiptVendorDetailTransaction,
+  ReceiptVendorExpenseBreakdown,
+  ReceiptVendorAiReview,
+  ReceiptVendorCostSignal,
+  ReceiptVendorMovementComparison,
+  ReceiptVendorMovementRange,
+  ReceiptVendorMovementSignal,
+  ReceiptVendorMovementSummary,
+  ReceiptVendorWatchlistItem,
   ReceiptMissingExpenseSummaryItem,
   AIUsageBreakdown,
   RpcDetailGroupRow,
@@ -55,6 +65,18 @@ import {
   EXPENSE_CATEGORY_OPTIONS,
   bulkGroupQuerySchema,
 } from './receiptHelpers'
+import {
+  buildDeterministicVendorAiReview,
+  buildReceiptVendorCostSignals,
+  buildReceiptVendorMovementMonthsForVendor,
+  buildReceiptVendorMovementSummaries,
+  calculateReceiptVendorTrendStats,
+  normalizeReceiptMonthWindow,
+  normalizeReceiptVendorKey,
+  normalizeReceiptVendorMovementComparison,
+  normalizeReceiptVendorMovementRange,
+  receiptVendorMovementRangeMonths,
+} from './vendorInsights'
 
 // ---------------------------------------------------------------------------
 // buildGroupSuggestion — AI-assisted classification for bulk review groups
@@ -640,6 +662,312 @@ export async function queryMonthlyReceiptInsights(limit = 12): Promise<ReceiptMo
   return { months }
 }
 
+type VendorRuleJoin = { set_vendor_name?: string | null }
+
+type VendorTransactionRow = {
+  id: string
+  transaction_date: string
+  details: string | null
+  amount_in: number | string | null
+  amount_out: number | string | null
+  status: ReceiptTransaction['status']
+  vendor_name: string | null
+  vendor_source?: ReceiptTransaction['vendor_source']
+  transaction_type: string | null
+  expense_category?: ReceiptTransaction['expense_category']
+  expense_category_source?: ReceiptTransaction['expense_category_source']
+  receipt_rules?: VendorRuleJoin | VendorRuleJoin[] | null
+}
+
+type VendorMonthlyTotalRow = {
+  vendor_key?: string | null
+  vendor_label?: string | null
+  month_start?: string | null
+  total_outgoing?: number | string | null
+  total_income?: number | string | null
+  transaction_count?: number | string | null
+}
+
+const VENDOR_TRANSACTION_SELECT = 'id, transaction_date, details, amount_in, amount_out, status, vendor_name, vendor_source, transaction_type, expense_category, expense_category_source, receipt_rules!receipt_transactions_vendor_rule_id_fkey(set_vendor_name)'
+const VENDOR_HISTORY_FALLBACK_PAGE_SIZE = 1000
+
+function getVendorRuleName(row: VendorTransactionRow): string | null {
+  const join = row.receipt_rules
+  if (Array.isArray(join)) {
+    return normalizeVendorInput(join[0]?.set_vendor_name)
+  }
+  return normalizeVendorInput(join?.set_vendor_name)
+}
+
+function getCanonicalVendorLabel(row: VendorTransactionRow): string | null {
+  return getVendorRuleName(row) ?? normalizeVendorInput(row.vendor_name)
+}
+
+function getCanonicalVendorKey(row: VendorTransactionRow): string | null {
+  return normalizeReceiptVendorKey(getCanonicalVendorLabel(row))
+}
+
+function transactionMonthStart(value: string): string {
+  const date = new Date(value)
+  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), 1)).toISOString().slice(0, 10)
+}
+
+function addUtcMonths(monthStart: string, offset: number): string {
+  const date = new Date(monthStart)
+  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + offset, 1)).toISOString().slice(0, 10)
+}
+
+function latestVendorSummaryMonth(vendors: ReceiptVendorSummary[]): string {
+  const latest = vendors.reduce<string | null>((current, vendor) => {
+    for (const month of vendor.months) {
+      const monthStart = typeof month.monthStart === 'string' ? month.monthStart.slice(0, 10) : null
+      if (monthStart && (!current || monthStart > current)) {
+        current = monthStart
+      }
+    }
+    return current
+  }, null)
+
+  if (latest) return latest
+
+  const now = new Date()
+  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)).toISOString().slice(0, 10)
+}
+
+function shapeVendorTransaction(row: VendorTransactionRow): ReceiptVendorDetailTransaction {
+  return {
+    id: row.id,
+    transaction_date: row.transaction_date,
+    details: row.details ?? '',
+    amount_in: parseNumeric(row.amount_in) || null,
+    amount_out: parseNumeric(row.amount_out) || null,
+    status: row.status,
+    transaction_type: row.transaction_type,
+    vendor_name: getCanonicalVendorLabel(row),
+    vendor_source: row.vendor_source ?? null,
+    expense_category: coerceExpenseCategory(row.expense_category) ?? null,
+    expense_category_source: row.expense_category_source ?? null,
+  }
+}
+
+function aggregateVendorMonths(rows: VendorTransactionRow[]): ReceiptVendorTrendMonth[] {
+  const monthMap = new Map<string, ReceiptVendorTrendMonth>()
+
+  rows.forEach((row) => {
+    const monthStart = transactionMonthStart(row.transaction_date)
+    const existing = monthMap.get(monthStart) ?? {
+      monthStart,
+      totalOutgoing: 0,
+      totalIncome: 0,
+      transactionCount: 0,
+    }
+
+    existing.totalOutgoing += parseNumeric(row.amount_out)
+    existing.totalIncome += parseNumeric(row.amount_in)
+    existing.transactionCount += 1
+    monthMap.set(monthStart, existing)
+  })
+
+  return Array.from(monthMap.values())
+    .map((month) => ({
+      ...month,
+      totalOutgoing: roundToCurrency(month.totalOutgoing),
+      totalIncome: roundToCurrency(month.totalIncome),
+    }))
+    .sort((a, b) => a.monthStart.localeCompare(b.monthStart))
+}
+
+function buildVendorExpenseBreakdown(rows: VendorTransactionRow[]): ReceiptVendorExpenseBreakdown[] {
+  const categoryMap = new Map<string, ReceiptVendorExpenseBreakdown>()
+
+  rows.forEach((row) => {
+    const amountOut = parseNumeric(row.amount_out)
+    if (amountOut <= 0) return
+
+    const expenseCategory = coerceExpenseCategory(row.expense_category) ?? 'Uncategorised'
+    const existing = categoryMap.get(expenseCategory) ?? {
+      expenseCategory,
+      totalOutgoing: 0,
+      transactionCount: 0,
+    }
+    existing.totalOutgoing += amountOut
+    existing.transactionCount += 1
+    categoryMap.set(expenseCategory, existing)
+  })
+
+  return Array.from(categoryMap.values())
+    .map((entry) => ({ ...entry, totalOutgoing: roundToCurrency(entry.totalOutgoing) }))
+    .sort((a, b) => b.totalOutgoing - a.totalOutgoing)
+}
+
+function queryRangeMonthsForMovement(range: ReceiptVendorMovementRange): number | null {
+  const rangeMonths = receiptVendorMovementRangeMonths(range)
+  return rangeMonths === null ? null : rangeMonths + 12
+}
+
+function isMissingVendorMonthlyTotalsRpcError(error: any): boolean {
+  const code = typeof error?.code === 'string' ? error.code : ''
+  const message = typeof error?.message === 'string' ? error.message : ''
+  return code === 'PGRST202' || code === '42883' || message.includes('get_receipt_vendor_monthly_totals')
+}
+
+function groupVendorMonthlyTotals(rows: VendorMonthlyTotalRow[]): Array<{ vendorLabel: string; months: ReceiptVendorTrendMonth[] }> {
+  const grouped = new Map<string, { vendorLabel: string; months: Map<string, ReceiptVendorTrendMonth> }>()
+
+  rows.forEach((row) => {
+    const vendorLabel = normalizeVendorInput(row.vendor_label) ?? 'Uncategorised'
+    const vendorKey = normalizeReceiptVendorKey(row.vendor_key ?? vendorLabel)
+    const monthStart = typeof row.month_start === 'string' ? row.month_start.slice(0, 10) : null
+    if (!vendorKey || !monthStart) return
+
+    const group = grouped.get(vendorKey) ?? {
+      vendorLabel,
+      months: new Map<string, ReceiptVendorTrendMonth>(),
+    }
+    const month = group.months.get(monthStart) ?? {
+      monthStart,
+      totalOutgoing: 0,
+      totalIncome: 0,
+      transactionCount: 0,
+    }
+    month.totalOutgoing += parseNumeric(row.total_outgoing)
+    month.totalIncome += parseNumeric(row.total_income)
+    month.transactionCount += Number(row.transaction_count ?? 0)
+    group.months.set(monthStart, month)
+    grouped.set(vendorKey, group)
+  })
+
+  return Array.from(grouped.values())
+    .map((group) => ({
+      vendorLabel: group.vendorLabel,
+      months: Array.from(group.months.values())
+        .map((month) => ({
+          ...month,
+          totalOutgoing: roundToCurrency(month.totalOutgoing),
+          totalIncome: roundToCurrency(month.totalIncome),
+        }))
+        .sort((a, b) => a.monthStart.localeCompare(b.monthStart)),
+    }))
+}
+
+function groupVendorTransactionsByMonth(rows: VendorTransactionRow[]): Array<{ vendorLabel: string; months: ReceiptVendorTrendMonth[] }> {
+  const grouped = new Map<string, { vendorLabel: string; rows: VendorTransactionRow[] }>()
+
+  rows.forEach((row) => {
+    const vendorLabel = getCanonicalVendorLabel(row) ?? 'Uncategorised'
+    const vendorKey = normalizeReceiptVendorKey(vendorLabel)
+    if (!vendorKey) return
+    const group = grouped.get(vendorKey) ?? { vendorLabel, rows: [] }
+    group.rows.push(row)
+    grouped.set(vendorKey, group)
+  })
+
+  return Array.from(grouped.values()).map((group) => ({
+    vendorLabel: group.vendorLabel,
+    months: aggregateVendorMonths(group.rows),
+  }))
+}
+
+async function queryReceiptVendorMonthlyMovementSources(
+  range: ReceiptVendorMovementRange,
+): Promise<{ sources: Array<{ vendorLabel: string; months: ReceiptVendorTrendMonth[] }>; error?: unknown }> {
+  const supabase = createAdminClient()
+  const rangeMonths = queryRangeMonthsForMovement(range)
+  const { data, error } = await supabase.rpc('get_receipt_vendor_monthly_totals', {
+    range_months: rangeMonths,
+  })
+
+  if (!error) {
+    return { sources: groupVendorMonthlyTotals((Array.isArray(data) ? data : []) as VendorMonthlyTotalRow[]) }
+  }
+
+  if (!isMissingVendorMonthlyTotalsRpcError(error)) {
+    return { sources: [], error }
+  }
+
+  console.warn('Receipt vendor monthly totals RPC is unavailable; falling back to paged transaction scan')
+
+  const rows: VendorTransactionRow[] = []
+  let from = 0
+
+  while (true) {
+    const to = from + VENDOR_HISTORY_FALLBACK_PAGE_SIZE - 1
+    const page = await supabase
+      .from('receipt_transactions')
+      .select(VENDOR_TRANSACTION_SELECT)
+      .order('transaction_date', { ascending: false })
+      .range(from, to)
+
+    if (page.error) {
+      return { sources: [], error: page.error }
+    }
+
+    const pageRows = Array.isArray(page.data) ? (page.data as VendorTransactionRow[]) : []
+    rows.push(...pageRows)
+
+    if (pageRows.length < VENDOR_HISTORY_FALLBACK_PAGE_SIZE) {
+      break
+    }
+
+    from += VENDOR_HISTORY_FALLBACK_PAGE_SIZE
+  }
+
+  return { sources: groupVendorTransactionsByMonth(rows) }
+}
+
+function isMissingVendorHistoryRpcError(error: any): boolean {
+  const code = typeof error?.code === 'string' ? error.code : ''
+  const message = typeof error?.message === 'string' ? error.message : ''
+  return code === 'PGRST202' || code === '42883' || message.includes('get_receipt_vendor_transactions')
+}
+
+async function queryReceiptVendorHistoryRows(
+  supabase: AdminClient,
+  vendorLabel: string,
+  vendorKey: string,
+): Promise<{ rows: VendorTransactionRow[]; error?: unknown }> {
+  const { data, error } = await supabase.rpc('get_receipt_vendor_transactions', {
+    target_vendor_label: vendorLabel,
+  })
+
+  if (!error) {
+    return { rows: (Array.isArray(data) ? data : []) as VendorTransactionRow[] }
+  }
+
+  if (!isMissingVendorHistoryRpcError(error)) {
+    return { rows: [], error }
+  }
+
+  console.warn('Receipt vendor history RPC is unavailable; falling back to paged transaction scan')
+
+  const rows: VendorTransactionRow[] = []
+  let from = 0
+
+  while (true) {
+    const to = from + VENDOR_HISTORY_FALLBACK_PAGE_SIZE - 1
+    const page = await supabase
+      .from('receipt_transactions')
+      .select(VENDOR_TRANSACTION_SELECT)
+      .order('transaction_date', { ascending: false })
+      .range(from, to)
+
+    if (page.error) {
+      return { rows: [], error: page.error }
+    }
+
+    const pageRows = Array.isArray(page.data) ? (page.data as VendorTransactionRow[]) : []
+    rows.push(...pageRows.filter((row) => getCanonicalVendorKey(row) === vendorKey))
+
+    if (pageRows.length < VENDOR_HISTORY_FALLBACK_PAGE_SIZE) {
+      break
+    }
+
+    from += VENDOR_HISTORY_FALLBACK_PAGE_SIZE
+  }
+
+  return { rows }
+}
+
 // ---------------------------------------------------------------------------
 // getReceiptVendorSummary
 // ---------------------------------------------------------------------------
@@ -719,6 +1047,67 @@ export async function queryReceiptVendorSummary(monthWindow = 12): Promise<Recei
 }
 
 // ---------------------------------------------------------------------------
+// getReceiptVendorMovements
+// ---------------------------------------------------------------------------
+
+export async function queryReceiptVendorMovements(input: {
+  range?: ReceiptVendorMovementRange
+  comparison?: ReceiptVendorMovementComparison
+  watchedOnly?: boolean
+  userId?: string
+} = {}): Promise<{
+  success: boolean
+  movements: ReceiptVendorMovementSummary[]
+  signals: ReceiptVendorMovementSignal[]
+  error?: string
+}> {
+  const range = normalizeReceiptVendorMovementRange(input.range)
+  const comparison = normalizeReceiptVendorMovementComparison(input.comparison)
+  const sourceResult = await queryReceiptVendorMonthlyMovementSources(range)
+
+  if (sourceResult.error) {
+    console.error('Failed to load vendor movement totals', sourceResult.error)
+    return {
+      success: false,
+      movements: [],
+      signals: [],
+      error: 'Failed to load vendor movement data.',
+    }
+  }
+
+  let sources = sourceResult.sources
+
+  if (input.watchedOnly) {
+    if (!input.userId) {
+      return {
+        success: false,
+        movements: [],
+        signals: [],
+        error: 'Unable to load watched vendors for this user.',
+      }
+    }
+
+    const watchlist = await queryReceiptVendorWatchlist(input.userId)
+    const watchedKeys = new Set(watchlist.map((item) => item.vendorKey))
+    sources = sources.filter((source) => {
+      const key = normalizeReceiptVendorKey(source.vendorLabel)
+      return key ? watchedKeys.has(key) : false
+    })
+  }
+
+  const movements = buildReceiptVendorMovementSummaries(sources, { range, comparison })
+  const signals = movements
+    .map((movement) => movement.signal)
+    .filter((signal): signal is ReceiptVendorMovementSignal => Boolean(signal))
+
+  return {
+    success: true,
+    movements,
+    signals,
+  }
+}
+
+// ---------------------------------------------------------------------------
 // getReceiptVendorMonthTransactions
 // ---------------------------------------------------------------------------
 
@@ -726,8 +1115,8 @@ export async function queryReceiptVendorMonthTransactions(input: {
   vendorLabel: string
   monthStart: string
 }): Promise<{ transactions: ReceiptVendorMonthTransaction[]; error?: string }> {
-  const normalizedVendor = normalizeVendorInput(input.vendorLabel)
-  if (!normalizedVendor) {
+  const vendorKey = normalizeReceiptVendorKey(input.vendorLabel)
+  if (!vendorKey) {
     return { transactions: [] }
   }
 
@@ -743,8 +1132,7 @@ export async function queryReceiptVendorMonthTransactions(input: {
 
   const { data, error } = await supabase
     .from('receipt_transactions')
-    .select('id, transaction_date, details, amount_in, amount_out, status, vendor_name, transaction_type')
-    .eq('vendor_name', normalizedVendor)
+    .select(VENDOR_TRANSACTION_SELECT)
     .gte('transaction_date', start.toISOString())
     .lt('transaction_date', end.toISOString())
     .order('transaction_date', { ascending: true })
@@ -756,19 +1144,264 @@ export async function queryReceiptVendorMonthTransactions(input: {
   }
 
   const rows = Array.isArray(data) ? data : []
+  const matchingRows = (rows as VendorTransactionRow[])
+    .filter((row) => getCanonicalVendorKey(row) === vendorKey)
 
   return {
-    transactions: rows.map((row: any) => ({
+    transactions: matchingRows.map((row: VendorTransactionRow) => ({
       id: row.id,
       transaction_date: row.transaction_date,
-      details: row.details,
-      amount_in: row.amount_in,
-      amount_out: row.amount_out,
+      details: row.details ?? '',
+      amount_in: parseNumeric(row.amount_in) || null,
+      amount_out: parseNumeric(row.amount_out) || null,
       status: row.status,
       transaction_type: row.transaction_type,
-      vendor_name: row.vendor_name,
+      vendor_name: getCanonicalVendorLabel(row),
     })),
   }
+}
+
+// ---------------------------------------------------------------------------
+// getReceiptVendorDetail
+// ---------------------------------------------------------------------------
+
+export async function queryReceiptVendorDetail(input: {
+  vendorLabel: string
+  monthWindow?: number
+}): Promise<{ detail?: ReceiptVendorDetail; error?: string }> {
+  const vendorKey = normalizeReceiptVendorKey(input.vendorLabel)
+  if (!vendorKey) {
+    return { error: 'Invalid vendor provided' }
+  }
+
+  const monthWindow = normalizeReceiptMonthWindow(input.monthWindow)
+  const summaries = await queryReceiptVendorSummary(monthWindow)
+  const matchingSummary = summaries.find((summary) => normalizeReceiptVendorKey(summary.vendorLabel) === vendorKey)
+  const referenceMonthStart = latestVendorSummaryMonth(summaries)
+  const supabase = createAdminClient()
+
+  const historyResult = await queryReceiptVendorHistoryRows(supabase, input.vendorLabel, vendorKey)
+
+  if (historyResult.error) {
+    console.error('Failed to load vendor detail transactions', historyResult.error)
+    return { error: 'Failed to load vendor details.' }
+  }
+
+  const matchingRows = historyResult.rows
+
+  if (!matchingSummary && matchingRows.length === 0) {
+    return { error: 'Vendor not found' }
+  }
+
+  const startMonth = addUtcMonths(referenceMonthStart, -(monthWindow - 1))
+  const endMonth = addUtcMonths(referenceMonthStart, 1)
+  const windowRows = matchingRows.filter((row) => row.transaction_date >= startMonth && row.transaction_date < endMonth)
+  const months = matchingSummary?.months ?? aggregateVendorMonths(windowRows)
+  const trendStats = calculateReceiptVendorTrendStats(months, {
+    monthWindow,
+    referenceMonthStart,
+  })
+
+  const summaryFallback: ReceiptVendorSummary = matchingSummary ?? {
+    vendorLabel: input.vendorLabel,
+    months,
+    totalOutgoing: roundToCurrency(windowRows.reduce((sum, row) => sum + parseNumeric(row.amount_out), 0)),
+    totalIncome: roundToCurrency(windowRows.reduce((sum, row) => sum + parseNumeric(row.amount_in), 0)),
+    recentAverageOutgoing: trendStats.recentAverageOutgoing,
+    previousAverageOutgoing: trendStats.previousAverageOutgoing,
+    changePercentage: trendStats.percentageChange,
+  }
+
+  const allSignals = buildReceiptVendorCostSignals(summaries.length ? summaries : [summaryFallback], {
+    monthWindow,
+    referenceMonthStart,
+  })
+  const signals = allSignals.filter((signal) => normalizeReceiptVendorKey(signal.vendorLabel) === vendorKey)
+  const detailVendorLabel = matchingSummary?.vendorLabel ?? getCanonicalVendorLabel(matchingRows[0]) ?? input.vendorLabel
+  const movementMonths = buildReceiptVendorMovementMonthsForVendor(
+    detailVendorLabel,
+    aggregateVendorMonths(matchingRows),
+    { range: 'all' },
+  )
+  const movementSignals = movementMonths
+    .flatMap((month) => [month.momSignal, month.yoySignal])
+    .filter((signal): signal is ReceiptVendorMovementSignal => Boolean(signal))
+    .sort((a, b) => {
+      if (a.severity !== b.severity) return a.severity === 'high' ? -1 : 1
+      return b.absoluteDelta - a.absoluteDelta
+    })
+  const transactions = matchingRows.map(shapeVendorTransaction)
+  const historyTotalOutgoing = roundToCurrency(matchingRows.reduce((sum, row) => sum + parseNumeric(row.amount_out), 0))
+  const historyTotalIncome = roundToCurrency(matchingRows.reduce((sum, row) => sum + parseNumeric(row.amount_in), 0))
+  const sortedDates = matchingRows
+    .map((row) => row.transaction_date)
+    .filter(Boolean)
+    .sort((a, b) => a.localeCompare(b))
+
+  return {
+    detail: {
+      vendorLabel: detailVendorLabel,
+      months,
+      totalOutgoing: matchingSummary?.totalOutgoing ?? summaryFallback.totalOutgoing,
+      totalIncome: matchingSummary?.totalIncome ?? summaryFallback.totalIncome,
+      transactionCount: months.reduce((sum, month) => sum + month.transactionCount, 0),
+      historyTotalOutgoing,
+      historyTotalIncome,
+      historyTransactionCount: transactions.length,
+      historyStartDate: sortedDates[0] ?? null,
+      historyEndDate: sortedDates[sortedDates.length - 1] ?? null,
+      recentAverageOutgoing: trendStats.recentAverageOutgoing,
+      previousAverageOutgoing: trendStats.previousAverageOutgoing,
+      changePercentage: trendStats.percentageChange,
+      signals,
+      movementMonths,
+      movementSignals,
+      categoryBreakdown: buildVendorExpenseBreakdown(matchingRows),
+      transactions,
+      recentTransactions: transactions.slice(0, 50),
+    },
+  }
+}
+
+// ---------------------------------------------------------------------------
+// getReceiptVendorCostReview
+// ---------------------------------------------------------------------------
+
+export async function queryReceiptVendorCostReview(input: {
+  monthWindow?: number
+} = {}): Promise<{
+  success: boolean
+  signals: ReceiptVendorCostSignal[]
+  review?: ReceiptVendorAiReview
+  error?: string
+}> {
+  const monthWindow = normalizeReceiptMonthWindow(input.monthWindow)
+  const summaries = await queryReceiptVendorSummary(monthWindow)
+  const signals = buildReceiptVendorCostSignals(summaries, { monthWindow })
+  const movementResult = await queryReceiptVendorMovements({ range: '36m', comparison: 'yoy' })
+  const movementSignals = movementResult.success ? movementResult.signals : []
+  const deterministicReview = buildDeterministicVendorAiReview(signals, { movementSignals })
+
+  if (signals.length === 0 && movementSignals.length === 0) {
+    return { success: true, signals, review: deterministicReview }
+  }
+
+  const supabase = createAdminClient()
+
+  try {
+    const outcome = await summarizeReceiptVendorCostReview({
+      signals,
+      movementSignals,
+      monthWindow,
+    })
+
+    if (outcome?.result) {
+      await recordAIUsage(supabase, outcome.usage, 'receipt_vendor_cost_review')
+      return { success: true, signals, review: outcome.result }
+    }
+  } catch (error) {
+    console.error('AI vendor cost review failed, using deterministic review', error)
+  }
+
+  return { success: true, signals, review: deterministicReview }
+}
+
+// ---------------------------------------------------------------------------
+// getReceiptVendorAiSummary
+// ---------------------------------------------------------------------------
+
+export async function queryReceiptVendorAiSummary(input: {
+  vendorLabel: string
+  monthWindow?: number
+}): Promise<{
+  success: boolean
+  review?: ReceiptVendorAiReview
+  signals: ReceiptVendorCostSignal[]
+  error?: string
+}> {
+  const monthWindow = normalizeReceiptMonthWindow(input.monthWindow)
+  const detailResult = await queryReceiptVendorDetail({
+    vendorLabel: input.vendorLabel,
+    monthWindow,
+  })
+
+  if (detailResult.error || !detailResult.detail) {
+    return {
+      success: false,
+      signals: [],
+      error: detailResult.error ?? 'Vendor not found',
+    }
+  }
+
+  const detail = detailResult.detail
+  const deterministicReview = buildDeterministicVendorAiReview(detail.signals, {
+    scopeLabel: detail.vendorLabel,
+    movementSignals: detail.movementSignals,
+  })
+  const supabase = createAdminClient()
+
+  try {
+    const outcome = await summarizeReceiptVendorCostReview({
+      signals: detail.signals,
+      movementSignals: detail.movementSignals,
+      monthWindow,
+      vendorLabel: detail.vendorLabel,
+      detail,
+    })
+
+    if (outcome?.result) {
+      await recordAIUsage(supabase, outcome.usage, `receipt_vendor_cost_review:${hashDetails(detail.vendorLabel)}`)
+      return {
+        success: true,
+        signals: detail.signals,
+        review: outcome.result,
+      }
+    }
+  } catch (error) {
+    console.error('AI vendor detail summary failed, using deterministic review', error)
+  }
+
+  return {
+    success: true,
+    signals: detail.signals,
+    review: deterministicReview,
+  }
+}
+
+// ---------------------------------------------------------------------------
+// getReceiptVendorWatchlist
+// ---------------------------------------------------------------------------
+
+export async function queryReceiptVendorWatchlist(userId: string): Promise<ReceiptVendorWatchlistItem[]> {
+  const supabase = createAdminClient()
+  const { data, error } = await supabase
+    .from('receipt_vendor_watchlist')
+    .select('user_id, vendor_key, vendor_label, created_at, updated_at')
+    .eq('user_id', userId)
+    .order('vendor_label', { ascending: true })
+
+  if (error) {
+    if ((error as { code?: string }).code === '42P01') {
+      console.warn('Receipt vendor watchlist table is not available yet; returning an empty watchlist.')
+      return []
+    }
+    console.error('Failed to load receipt vendor watchlist', error)
+    throw error
+  }
+
+  return ((data ?? []) as Array<{
+    user_id: string
+    vendor_key: string
+    vendor_label: string
+    created_at: string
+    updated_at: string
+  }>).map((row) => ({
+    userId: row.user_id,
+    vendorKey: row.vendor_key,
+    vendorLabel: row.vendor_label,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  }))
 }
 
 // ---------------------------------------------------------------------------

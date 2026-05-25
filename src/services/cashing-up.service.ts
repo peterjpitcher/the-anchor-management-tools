@@ -1,21 +1,153 @@
 import { SupabaseClient } from '@supabase/supabase-js';
-import { UpsertCashupSessionDTO, CashupSession, CashupDashboardData, CashupInsightsData } from '@/types/cashing-up';
+import {
+  UpsertCashupSessionDTO,
+  CashupSession,
+  CashupDashboardData,
+  CashupInsightsData,
+  type CashupInsightsPeriod,
+  type CashupSalesCategory,
+} from '@/types/cashing-up';
 import { addDays, endOfMonth, subDays, format, subMonths } from 'date-fns';
 import { normalizeCashCountInputs } from '@/lib/cashing-up/cash-counts';
 
-export class CashingUpService {
-  static async getInsightsData(supabase: SupabaseClient, siteId: string, year?: number): Promise<CashupInsightsData> {
-    // DEF-M02: use format() (local time) instead of toISOString() (UTC) to avoid date boundary shift
-    let startDateStr: string;
-    let endDateStr: string;
+const SALES_CATEGORIES: CashupSalesCategory[] = ['drinks_sales', 'food_sales', 'other_sales'];
+const SALES_CATEGORY_META: Record<CashupSalesCategory, { label: string; color: string }> = {
+  drinks_sales: { label: 'Drinks', color: '#2563EB' },
+  food_sales: { label: 'Food', color: '#16A34A' },
+  other_sales: { label: 'Other', color: '#F59E0B' },
+};
+const INSIGHTS_PERIOD_DAYS: Record<Exclude<CashupInsightsPeriod, '12m'>, number> = {
+  '30d': 30,
+  '90d': 90,
+  '180d': 180,
+  '365d': 365,
+};
 
-    if (year) {
-        startDateStr = format(new Date(year, 0, 1), 'yyyy-MM-dd'); // Jan 1st of the year
-        endDateStr = format(new Date(year, 11, 31), 'yyyy-MM-dd'); // Dec 31st of the year
-    } else {
-        endDateStr = format(new Date(), 'yyyy-MM-dd');
-        startDateStr = format(subMonths(new Date(), 12), 'yyyy-MM-dd'); // Last 12 months
+type CashupInsightsOptions = {
+  year?: number;
+  period?: CashupInsightsPeriod;
+};
+type ResolvedCashupInsightsOptions = {
+  year?: number;
+  period: CashupInsightsPeriod;
+};
+
+function roundCurrency(value: number): number {
+  return Number(value.toFixed(2));
+}
+
+function normaliseSalesBreakdowns(
+  salesBreakdowns: UpsertCashupSessionDTO['salesBreakdowns']
+): Array<{ sales_category: CashupSalesCategory; amount: number }> {
+  if (!salesBreakdowns) return [];
+
+  const amounts = new Map<CashupSalesCategory, number>(
+    SALES_CATEGORIES.map((category) => [category, 0])
+  );
+
+  for (const item of salesBreakdowns) {
+    if (!SALES_CATEGORIES.includes(item.salesCategory)) {
+      throw new Error('Invalid sales split category');
     }
+
+    const amount = Number(item.amount);
+    if (!Number.isFinite(amount) || amount < 0) {
+      throw new Error('Sales split values must be valid positive numbers');
+    }
+
+    amounts.set(item.salesCategory, roundCurrency((amounts.get(item.salesCategory) ?? 0) + amount));
+  }
+
+  return SALES_CATEGORIES.map((category) => ({
+    sales_category: category,
+    amount: roundCurrency(amounts.get(category) ?? 0),
+  }));
+}
+
+function assertSalesSplitMatchesTotal(totalCounted: number, salesRows: Array<{ amount: number }>) {
+  const splitTotal = roundCurrency(salesRows.reduce((sum, item) => sum + Number(item.amount || 0), 0));
+  const variance = roundCurrency(splitTotal - totalCounted);
+
+  if (Math.abs(variance) > 0.01) {
+    throw new Error('Sales split must match the total sales before submitting.');
+  }
+}
+
+function parseLocalDate(dateStr: string): Date {
+  return new Date(`${dateStr}T12:00:00`);
+}
+
+function monthKeyForDate(date: Date): string {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+}
+
+function monthStartForDate(date: Date): Date {
+  return new Date(date.getFullYear(), date.getMonth(), 1);
+}
+
+function resolveInsightsOptions(input?: number | CashupInsightsOptions): ResolvedCashupInsightsOptions {
+  if (typeof input === 'number') {
+    return { year: input, period: '12m' };
+  }
+
+  return {
+    year: input?.year,
+    period: input?.period ?? '12m',
+  };
+}
+
+function getInsightsDateWindow(options: ResolvedCashupInsightsOptions) {
+  const today = new Date();
+
+  if (options.year) {
+    return {
+      startDateStr: format(new Date(options.year, 0, 1), 'yyyy-MM-dd'),
+      endDateStr: format(new Date(options.year, 11, 31), 'yyyy-MM-dd'),
+    };
+  }
+
+  if (options.period === '12m') {
+    return {
+      startDateStr: format(monthStartForDate(subMonths(today, 11)), 'yyyy-MM-dd'),
+      endDateStr: format(today, 'yyyy-MM-dd'),
+    };
+  }
+
+  const dayCount = INSIGHTS_PERIOD_DAYS[options.period];
+  return {
+    startDateStr: format(subDays(today, dayCount - 1), 'yyyy-MM-dd'),
+    endDateStr: format(today, 'yyyy-MM-dd'),
+  };
+}
+
+function buildMonthBuckets(startDateStr: string, endDateStr: string, year?: number) {
+  const buckets: Array<{ key: string; monthStart: string; monthLabel: string; date: Date }> = [];
+  const startMonth = monthStartForDate(parseLocalDate(startDateStr));
+  const endMonth = monthStartForDate(parseLocalDate(endDateStr));
+
+  for (let date = startMonth; date <= endMonth; date = new Date(date.getFullYear(), date.getMonth() + 1, 1)) {
+    buckets.push({
+      key: monthKeyForDate(date),
+      monthStart: format(date, 'yyyy-MM-dd'),
+      monthLabel: date.toLocaleString('default', year ? { month: 'short' } : { month: 'short', year: '2-digit' }),
+      date,
+    });
+  }
+
+  return buckets;
+}
+
+function getJoinedSessionDate(row: { cashup_sessions?: { session_date?: string } | Array<{ session_date?: string }> }): string | null {
+  const joinedSession = Array.isArray(row.cashup_sessions) ? row.cashup_sessions[0] : row.cashup_sessions;
+  return joinedSession?.session_date ?? null;
+}
+
+export class CashingUpService {
+  static async getInsightsData(supabase: SupabaseClient, siteId: string, optionsOrYear?: number | CashupInsightsOptions): Promise<CashupInsightsData> {
+    // DEF-M02: use format() (local time) instead of toISOString() (UTC) to avoid date boundary shift
+    const insightsOptions = resolveInsightsOptions(optionsOrYear);
+    const { startDateStr, endDateStr } = getInsightsDateWindow(insightsOptions);
+    const monthBuckets = buildMonthBuckets(startDateStr, endDateStr, insightsOptions.year);
 
     // Fetch Sessions and targets
     const [sessionsRes, targetsRes] = await Promise.all([
@@ -39,15 +171,39 @@ export class CashingUpService {
     const sessions = sessionsRes.data ?? [];
     const targetRows = targetsRes.data ?? [];
 
-    // Fetch Breakdowns for Payment Mix
-    const { data: breakdowns, error: bdError } = await supabase
-      .from('cashup_payment_breakdowns')
-      .select('payment_type_label, counted_amount, cashup_sessions!inner(site_id, session_date)')
-      .eq('cashup_sessions.site_id', siteId)
-      .gte('cashup_sessions.session_date', startDateStr)
-      .lte('cashup_sessions.session_date', endDateStr);
+    // Fetch Breakdowns for Payment Mix and Sales Mix
+    const [paymentBreakdownsRes, salesBreakdownsRes, importedSalesRes] = await Promise.all([
+      supabase
+        .from('cashup_payment_breakdowns')
+        .select('payment_type_label, counted_amount, cashup_sessions!inner(site_id, session_date)')
+        .eq('cashup_sessions.site_id', siteId)
+        .gte('cashup_sessions.session_date', startDateStr)
+        .lte('cashup_sessions.session_date', endDateStr),
+      supabase
+        .from('cashup_sales_breakdowns')
+        .select('sales_category, amount, cashup_sessions!inner(site_id, session_date)')
+        .eq('cashup_sessions.site_id', siteId)
+        .gte('cashup_sessions.session_date', startDateStr)
+        .lte('cashup_sessions.session_date', endDateStr),
+      supabase
+        .from('pnl_sales_imports')
+        .select('sale_date, drinks_sales, food_sales, other_sales')
+        .eq('site_id', siteId)
+        .eq('source', 'till_csv')
+        .eq('source_section', 'Net sales')
+        .gte('sale_date', startDateStr)
+        .lte('sale_date', endDateStr),
+    ]);
 
-    if (bdError) throw bdError;
+    if (paymentBreakdownsRes.error) throw paymentBreakdownsRes.error;
+    if (salesBreakdownsRes.error) throw salesBreakdownsRes.error;
+    if (importedSalesRes.error && !importedSalesRes.error.message.includes('pnl_sales_imports')) {
+      throw importedSalesRes.error;
+    }
+
+    const breakdowns = paymentBreakdownsRes.data ?? [];
+    const salesBreakdowns = salesBreakdownsRes.data ?? [];
+    const importedSalesRows = importedSalesRes.error ? [] : (importedSalesRes.data ?? []);
 
     // --- 1. Day of Week Analysis ---
     const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -95,7 +251,79 @@ export class CashingUpService {
       color: label.toLowerCase().includes('cash') ? '#10B981' : (label.toLowerCase().includes('card') ? '#3B82F6' : '#F59E0B')
     })).sort((a, b) => b.value - a.value);
 
-    // --- 3. Monthly Growth ---
+    // --- 3. Sales Mix ---
+    const salesMixMap = new Map<CashupSalesCategory, number>(
+      SALES_CATEGORIES.map((category) => [category, 0])
+    );
+    const salesMixMonthMap = new Map<string, Record<CashupSalesCategory, number>>(
+      monthBuckets.map((bucket) => [
+        bucket.key,
+        { drinks_sales: 0, food_sales: 0, other_sales: 0 },
+      ])
+    );
+    let totalSalesMix = 0;
+    const addSalesMixAmount = (category: CashupSalesCategory, amount: number, dateStr?: string | null) => {
+      const value = Number(amount || 0);
+      salesMixMap.set(category, roundCurrency((salesMixMap.get(category) ?? 0) + value));
+      totalSalesMix += value;
+
+      if (!dateStr) return;
+      const monthTotals = salesMixMonthMap.get(monthKeyForDate(parseLocalDate(dateStr)));
+      if (!monthTotals) return;
+      monthTotals[category] = roundCurrency(monthTotals[category] + value);
+    };
+
+    if (importedSalesRows.length > 0) {
+      importedSalesRows.forEach((row) => {
+        const drinksSales = Number(row.drinks_sales || 0);
+        const foodSales = Number(row.food_sales || 0);
+        const otherSales = Number(row.other_sales || 0);
+
+        addSalesMixAmount('drinks_sales', drinksSales, row.sale_date);
+        addSalesMixAmount('food_sales', foodSales, row.sale_date);
+        addSalesMixAmount('other_sales', otherSales, row.sale_date);
+      });
+    } else {
+      salesBreakdowns.forEach((breakdown) => {
+        const category = breakdown.sales_category as CashupSalesCategory;
+        if (!SALES_CATEGORIES.includes(category)) return;
+
+        addSalesMixAmount(category, Number(breakdown.amount || 0), getJoinedSessionDate(breakdown));
+      });
+    }
+
+    const salesMixData = SALES_CATEGORIES.map((category) => {
+      const value = roundCurrency(salesMixMap.get(category) ?? 0);
+      const meta = SALES_CATEGORY_META[category];
+
+      return {
+        label: meta.label,
+        value,
+        percentage: totalSalesMix ? (value / totalSalesMix) * 100 : 0,
+        color: meta.color,
+      };
+    });
+    const salesMixMonthlyData = monthBuckets.map((bucket) => {
+      const totals = salesMixMonthMap.get(bucket.key) ?? { drinks_sales: 0, food_sales: 0, other_sales: 0 };
+      const drinksSales = roundCurrency(totals.drinks_sales);
+      const foodSales = roundCurrency(totals.food_sales);
+      const otherSales = roundCurrency(totals.other_sales);
+      const totalSales = roundCurrency(drinksSales + foodSales + otherSales);
+
+      return {
+        monthStart: bucket.monthStart,
+        monthLabel: bucket.monthLabel,
+        drinksSales,
+        foodSales,
+        otherSales,
+        totalSales,
+        drinksPercentage: totalSales ? (drinksSales / totalSales) * 100 : 0,
+        foodPercentage: totalSales ? (foodSales / totalSales) * 100 : 0,
+        otherPercentage: totalSales ? (otherSales / totalSales) * 100 : 0,
+      };
+    });
+
+    // --- 4. Monthly Growth ---
     const monthStats = new Map<string, number>();
     
     sessions.forEach(s => {
@@ -106,7 +334,8 @@ export class CashingUpService {
 
     const todayStr = format(new Date(), 'yyyy-MM-dd');
     const todayDate = new Date(todayStr + 'T12:00:00');
-    const monthKeyForDate = (date: Date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+    const rangeStartDate = parseLocalDate(startDateStr);
+    const rangeEndDate = parseLocalDate(endDateStr);
     const getTargetAmount = (dateStr: string): number => {
       const dayOfWeek = new Date(dateStr + 'T12:00:00').getDay();
       const match = targetRows.find(t => t.day_of_week === dayOfWeek && t.effective_from <= dateStr);
@@ -127,57 +356,39 @@ export class CashingUpService {
       const latestSessionDate = latestSessionDateByMonth.get(key);
       const isCurrentMonth = key === monthKeyForDate(todayDate);
 
-      let targetEnd = monthEnd;
-      if (monthStart > todayDate) {
+      const targetStart = monthStart < rangeStartDate ? rangeStartDate : monthStart;
+      let targetEnd = monthEnd > rangeEndDate ? rangeEndDate : monthEnd;
+
+      if (targetStart > todayDate || targetStart > targetEnd) {
         return 0;
       }
-      if (isCurrentMonth && latestSessionDate && latestSessionDate <= todayStr) {
-        targetEnd = new Date(latestSessionDate + 'T12:00:00');
-      } else if (isCurrentMonth) {
+
+      if (targetEnd > todayDate) {
         targetEnd = todayDate;
+      }
+      if (isCurrentMonth && latestSessionDate && latestSessionDate <= todayStr) {
+        const latestDate = parseLocalDate(latestSessionDate);
+        if (latestDate < targetEnd) targetEnd = latestDate;
       }
 
       let total = 0;
-      for (let d = monthStart; d <= targetEnd; d = addDays(d, 1)) {
+      for (let d = targetStart; d <= targetEnd; d = addDays(d, 1)) {
         total += getTargetAmount(format(d, 'yyyy-MM-dd'));
       }
       return total;
     };
 
-    const monthlyGrowthData = [];
-    
-    if (year) {
-        // Generate all 12 months for the specific year
-        for (let i = 0; i < 12; i++) {
-            const d = new Date(year, i, 1);
-            const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-            const monthLabel = d.toLocaleString('default', { month: 'short' });
-            
-            monthlyGrowthData.push({
-                monthLabel,
-                totalTakings: monthStats.get(key) || 0,
-                targetTakings: getMonthlyTarget(d)
-            });
-        }
-    } else {
-        // Generate last 12 months keys to ensure continuity
-        for (let i = 11; i >= 0; i--) {
-            const d = new Date();
-            d.setMonth(d.getMonth() - i);
-            const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-            const monthLabel = d.toLocaleString('default', { month: 'short', year: '2-digit' });
-            
-            monthlyGrowthData.push({
-                monthLabel,
-                totalTakings: monthStats.get(key) || 0,
-                targetTakings: getMonthlyTarget(d)
-            });
-        }
-    }
+    const monthlyGrowthData = monthBuckets.map((bucket) => ({
+      monthLabel: bucket.monthLabel,
+      totalTakings: monthStats.get(bucket.key) || 0,
+      targetTakings: getMonthlyTarget(bucket.date),
+    }));
 
     return {
       dayOfWeek: dayOfWeekData,
       paymentMix: paymentMixData,
+      salesMix: salesMixData,
+      salesMixMonthly: salesMixMonthlyData,
       monthlyGrowth: monthlyGrowthData
     };
   }
@@ -188,7 +399,8 @@ export class CashingUpService {
       .select(`
         *,
         cashup_payment_breakdowns (*),
-        cashup_cash_counts (*)
+        cashup_cash_counts (*),
+        cashup_sales_breakdowns (*)
       `)
       .eq('id', id)
       .single();
@@ -203,7 +415,8 @@ export class CashingUpService {
       .select(`
         *,
         cashup_payment_breakdowns (*),
-        cashup_cash_counts (*)
+        cashup_cash_counts (*),
+        cashup_sales_breakdowns (*)
       `)
       .eq('site_id', siteId)
       .eq('session_date', sessionDate)
@@ -218,6 +431,11 @@ export class CashingUpService {
     const totalExpected = data.paymentBreakdowns.reduce((sum, item) => sum + item.expectedAmount, 0);
     const totalCounted = data.paymentBreakdowns.reduce((sum, item) => sum + item.countedAmount, 0);
     const totalVariance = totalCounted - totalExpected;
+    const salesBreakdownRows = normaliseSalesBreakdowns(data.salesBreakdowns);
+
+    if ((data.status ?? 'draft') !== 'draft') {
+      assertSalesSplitMatchesTotal(totalCounted, salesBreakdownRows);
+    }
 
     // Prepare session data
     const sessionData = {
@@ -285,12 +503,39 @@ export class CashingUpService {
 
     // Handle children (Replace strategy with compensating restore on failure — DEF-C05)
     // Fetch existing children before deleting so we can restore if insert fails
-    const [existingBreakdownsRes, existingCountsRes] = await Promise.all([
+    const [existingBreakdownsRes, existingCountsRes, existingSalesRes] = await Promise.all([
       supabase.from('cashup_payment_breakdowns').select('*').eq('cashup_session_id', sessionId),
       supabase.from('cashup_cash_counts').select('*').eq('cashup_session_id', sessionId),
+      supabase.from('cashup_sales_breakdowns').select('*').eq('cashup_session_id', sessionId),
     ]);
     const existingBreakdowns = existingBreakdownsRes.data ?? [];
     const existingCounts = existingCountsRes.data ?? [];
+    const existingSales = existingSalesRes.data ?? [];
+
+    const restoreOrRollbackChildren = async () => {
+      if (isNewSession) {
+        await supabase.from('cashup_sessions').delete().eq('id', sessionId).then(() => {}, () => {});
+        return;
+      }
+
+      await Promise.all([
+        supabase.from('cashup_payment_breakdowns').delete().eq('cashup_session_id', sessionId).then(() => {}, () => {}),
+        supabase.from('cashup_cash_counts').delete().eq('cashup_session_id', sessionId).then(() => {}, () => {}),
+        supabase.from('cashup_sales_breakdowns').delete().eq('cashup_session_id', sessionId).then(() => {}, () => {}),
+      ]);
+
+      await Promise.all([
+        existingBreakdowns.length > 0
+          ? supabase.from('cashup_payment_breakdowns').insert(existingBreakdowns).throwOnError()
+          : Promise.resolve(),
+        existingCounts.length > 0
+          ? supabase.from('cashup_cash_counts').insert(existingCounts).throwOnError()
+          : Promise.resolve(),
+        existingSales.length > 0
+          ? supabase.from('cashup_sales_breakdowns').insert(existingSales).throwOnError()
+          : Promise.resolve(),
+      ]);
+    };
 
     // Delete existing
     const { error: deleteBreakdownsError } = await supabase
@@ -305,6 +550,12 @@ export class CashingUpService {
       .eq('cashup_session_id', sessionId);
     if (deleteCountsError) throw deleteCountsError;
 
+    const { error: deleteSalesError } = await supabase
+      .from('cashup_sales_breakdowns')
+      .delete()
+      .eq('cashup_session_id', sessionId);
+    if (deleteSalesError) throw deleteSalesError;
+
     // Insert new
     const breakdowns = data.paymentBreakdowns.map(b => ({
       cashup_session_id: sessionId,
@@ -318,20 +569,7 @@ export class CashingUpService {
     if (breakdowns.length > 0) {
       const { error: bdError } = await supabase.from('cashup_payment_breakdowns').insert(breakdowns);
       if (bdError) {
-        if (isNewSession) {
-          // New session: compensating delete of orphaned session header
-          await supabase.from('cashup_sessions').delete().eq('id', sessionId).then(() => {}, () => {});
-        } else {
-          // Existing session: attempt to restore original children
-          await Promise.all([
-            existingBreakdowns.length > 0
-              ? supabase.from('cashup_payment_breakdowns').insert(existingBreakdowns).throwOnError()
-              : Promise.resolve(),
-            existingCounts.length > 0
-              ? supabase.from('cashup_cash_counts').insert(existingCounts).throwOnError()
-              : Promise.resolve(),
-          ]);
-        }
+        await restoreOrRollbackChildren();
         throw bdError;
       }
     }
@@ -346,24 +584,50 @@ export class CashingUpService {
     if (counts.length > 0) {
       const { error: cError } = await supabase.from('cashup_cash_counts').insert(counts);
       if (cError) {
-        if (isNewSession) {
-          // New session: compensating delete of orphaned session header (breakdowns already inserted ok)
-          await supabase.from('cashup_sessions').delete().eq('id', sessionId).then(() => {}, () => {});
-        } else {
-          // Existing session: attempt to restore original counts
-          if (existingCounts.length > 0) {
-            await supabase.from('cashup_cash_counts').insert(existingCounts).throwOnError();
-          }
-        }
+        await restoreOrRollbackChildren();
         throw cError;
+      }
+    }
+
+    if (data.salesBreakdowns) {
+      const salesRows = salesBreakdownRows.map((item) => ({
+        cashup_session_id: sessionId,
+        sales_category: item.sales_category,
+        amount: item.amount,
+      }));
+
+      const { error: salesError } = await supabase.from('cashup_sales_breakdowns').insert(salesRows);
+      if (salesError) {
+        await restoreOrRollbackChildren();
+        throw salesError;
       }
     }
 
     return this.getSession(supabase, sessionId!);
   }
 
+  static async validatePersistedSalesSplit(supabase: SupabaseClient, id: string) {
+    const { data, error } = await supabase
+      .from('cashup_sessions')
+      .select(`
+        id,
+        total_counted_amount,
+        cashup_sales_breakdowns (
+          sales_category,
+          amount
+        )
+      `)
+      .eq('id', id)
+      .single();
+
+    if (error) throw error;
+    const rows = (data?.cashup_sales_breakdowns ?? []) as Array<{ sales_category: CashupSalesCategory; amount: number }>;
+    assertSalesSplitMatchesTotal(Number(data?.total_counted_amount ?? 0), rows);
+  }
+
   static async submitSession(supabase: SupabaseClient, id: string, userId: string) {
-    // validations can be added here
+    await this.validatePersistedSalesSplit(supabase, id);
+
     const { data: updatedRow, error } = await supabase
       .from('cashup_sessions')
       .update({ 
@@ -383,6 +647,8 @@ export class CashingUpService {
   }
 
   static async approveSession(supabase: SupabaseClient, id: string, userId: string) {
+    await this.validatePersistedSalesSplit(supabase, id);
+
     const { data: updatedRow, error } = await supabase
       .from('cashup_sessions')
       .update({ 
@@ -402,6 +668,8 @@ export class CashingUpService {
   }
 
   static async lockSession(supabase: SupabaseClient, id: string, userId: string) {
+    await this.validatePersistedSalesSplit(supabase, id);
+
     const { data: updatedRow, error } = await supabase
       .from('cashup_sessions')
       .update({ status: 'locked', updated_by_user_id: userId, updated_at: new Date().toISOString() })

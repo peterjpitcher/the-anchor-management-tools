@@ -1,6 +1,8 @@
 import { User as SupabaseUser } from '@supabase/supabase-js';
 
 export type CashupStatus = 'draft' | 'submitted' | 'approved' | 'locked';
+export type CashupSalesCategory = 'drinks_sales' | 'food_sales' | 'other_sales';
+export type CashupInsightsPeriod = '30d' | '90d' | '180d' | '365d' | '12m';
 
 export interface CashupSession {
   id: string;
@@ -19,6 +21,7 @@ export interface CashupSession {
   updated_by_user_id: string;
   cashup_payment_breakdowns: CashupPaymentBreakdown[]; // Added
   cashup_cash_counts: CashupCashCount[]; // Added
+  cashup_sales_breakdowns: CashupSalesBreakdown[];
 }
 
 export interface CashupPaymentBreakdown {
@@ -37,6 +40,15 @@ export interface CashupCashCount {
   denomination: number;
   quantity: number;
   total_amount: number;
+}
+
+export interface CashupSalesBreakdown {
+  id: string;
+  cashup_session_id: string;
+  sales_category: CashupSalesCategory;
+  amount: number;
+  created_at?: string;
+  updated_at?: string;
 }
 
 export interface CashupWeeklyView {
@@ -65,6 +77,10 @@ export interface UpsertCashupSessionDTO {
   cashCounts: {
     denomination: number;
     totalAmount: number;
+  }[];
+  salesBreakdowns?: {
+    salesCategory: CashupSalesCategory;
+    amount: number;
   }[];
 }
 
@@ -125,6 +141,23 @@ export interface CashupInsightsData {
     value: number;
     percentage: number;
     color: string;
+  }[];
+  salesMix: {
+    label: string;
+    value: number;
+    percentage: number;
+    color: string;
+  }[];
+  salesMixMonthly: {
+    monthStart: string;
+    monthLabel: string;
+    drinksSales: number;
+    foodSales: number;
+    otherSales: number;
+    totalSales: number;
+    drinksPercentage: number;
+    foodPercentage: number;
+    otherPercentage: number;
   }[];
   monthlyGrowth: {
     monthLabel: string;

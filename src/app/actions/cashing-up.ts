@@ -3,7 +3,7 @@
 import { createClient } from '@/lib/supabase/server';
 import { PermissionService } from '@/services/permission';
 import { CashingUpService } from '@/services/cashing-up.service';
-import { UpsertCashupSessionDTO } from '@/types/cashing-up';
+import { type CashupInsightsPeriod, UpsertCashupSessionDTO } from '@/types/cashing-up';
 import { revalidatePath, revalidateTag } from 'next/cache';
 import { logAuditEvent } from '@/app/actions/audit';
 import { getErrorMessage } from '@/lib/errors';
@@ -211,7 +211,7 @@ export async function getDashboardDataAction(siteId?: string, fromDate?: string,
   }
 }
 
-export async function getInsightsDataAction(siteId?: string, year?: number) {
+export async function getInsightsDataAction(siteId?: string, year?: number, period?: CashupInsightsPeriod) {
   try {
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
@@ -234,7 +234,7 @@ export async function getInsightsDataAction(siteId?: string, year?: number) {
        return { success: false, error: 'No site found' };
     }
 
-    const data = await CashingUpService.getInsightsData(supabase, targetSiteId, year);
+    const data = await CashingUpService.getInsightsData(supabase, targetSiteId, { year, period });
     return { success: true, data };
   } catch (error) {
     console.error('Error fetching insights data:', error);

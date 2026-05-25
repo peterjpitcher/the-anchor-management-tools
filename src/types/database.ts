@@ -243,6 +243,53 @@ export interface PLManualActual {
   updated_at: string;
 }
 
+export interface GreeneKingPnlBenchmark {
+  id: string;
+  benchmark_key: string;
+  pub_code: string;
+  pub_name: string;
+  proposal_id: string | null;
+  assessment_date: string;
+  report_date: string;
+  agreement_type: string | null;
+  agreement_reason: string | null;
+  tie_details: string | null;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface GreeneKingPnlBenchmarkRow {
+  id: string;
+  benchmark_id: string;
+  section: 'sales' | 'income' | 'expenses' | 'profit' | 'adjustments' | 'rent';
+  metric_key: string;
+  label: string;
+  row_order: number;
+  annual_amount: number | null;
+  gross_profit: number | null;
+  gross_profit_percent: number | null;
+  sales_mix_percent: number | null;
+  percent_of_sales: number | null;
+  metadata: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PnlSalesImport {
+  id: string;
+  site_id: string;
+  sale_date: string;
+  source: string;
+  source_section: string;
+  drinks_sales: number;
+  food_sales: number;
+  other_sales: number;
+  total_sales: number;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface Customer {
   id: string;
   first_name: string;

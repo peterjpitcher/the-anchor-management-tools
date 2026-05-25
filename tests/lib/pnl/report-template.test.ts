@@ -51,7 +51,7 @@ const MOCK_VIEW_MODEL: PnlReportViewModel = {
         },
       ],
       subtotal: {
-        label: 'Total expenses (incl occupancy)',
+        label: 'Total expenses',
         format: 'currency',
         actual: 70,
         annualTarget: 80,
@@ -65,6 +65,9 @@ const MOCK_VIEW_MODEL: PnlReportViewModel = {
     revenueActual: 100,
     revenueTarget: 120,
     revenueVariance: -20,
+    grossProfitActual: 65,
+    grossProfitTarget: 75,
+    grossProfitVariance: -10,
     expenseActual: 70,
     expenseTarget: 80,
     expenseVariance: -10,
@@ -72,6 +75,9 @@ const MOCK_VIEW_MODEL: PnlReportViewModel = {
     operatingProfitTarget: 40,
     operatingProfitVariance: -10,
   },
+  dataQualityWarnings: [],
+  healthStatus: 'watch',
+  healthLabel: 'Watch closely',
 }
 
 describe('generatePnlReportHTML', () => {
@@ -79,7 +85,7 @@ describe('generatePnlReportHTML', () => {
     const html = generatePnlReportHTML(MOCK_VIEW_MODEL)
 
     expect(html).toContain('Total sales')
-    expect(html).toContain('Total expenses (incl occupancy)')
+    expect(html).toContain('Total expenses')
     expect(html).toContain('class="subtotal-row"')
     expect(html).toContain('Shadow P&amp;L')
     expect(html).toContain('Sales - LAST 365 DAYS VS. SHADOW P&amp;L')

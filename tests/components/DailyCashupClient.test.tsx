@@ -79,12 +79,14 @@ describe('DailyClient', () => {
     const cashExpected = getInput(container, '#input-cash-expected')
     const cardTotal = getInput(container, '#input-card-total')
     const stripeTotal = getInput(container, '#input-stripe-total')
+    const drinksSales = getInput(container, '#input-drinks-sales')
     const notes = getInput(container, '#input-notes')
 
     fireEvent.change(cash50, { target: { value: '50' } })
     fireEvent.change(cashExpected, { target: { value: '45' } })
     fireEvent.change(cardTotal, { target: { value: '10' } })
     fireEvent.change(stripeTotal, { target: { value: '5' } })
+    fireEvent.change(drinksSales, { target: { value: '65' } })
     fireEvent.change(notes, { target: { value: 'All checked' } })
     fireEvent.click(screen.getByRole('button', { name: 'Submit' }))
 
@@ -104,6 +106,11 @@ describe('DailyClient', () => {
           { paymentTypeCode: 'CASH', paymentTypeLabel: 'Cash', expectedAmount: 45, countedAmount: 50 },
           { paymentTypeCode: 'CARD', paymentTypeLabel: 'Card', expectedAmount: 10, countedAmount: 10 },
           { paymentTypeCode: 'STRIPE', paymentTypeLabel: 'Stripe', expectedAmount: 5, countedAmount: 5 },
+        ],
+        salesBreakdowns: [
+          { salesCategory: 'drinks_sales', amount: 65 },
+          { salesCategory: 'food_sales', amount: 0 },
+          { salesCategory: 'other_sales', amount: 0 },
         ],
       }),
       undefined

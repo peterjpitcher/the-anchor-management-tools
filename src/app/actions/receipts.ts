@@ -25,6 +25,19 @@ export type {
   ReceiptVendorTrendMonth,
   ReceiptVendorSummary,
   ReceiptVendorMonthTransaction,
+  ReceiptVendorCostSignal,
+  ReceiptVendorMovementRange,
+  ReceiptVendorMovementComparison,
+  ReceiptVendorMovementDirection,
+  ReceiptVendorMovementSignal,
+  ReceiptVendorMovementMonth,
+  ReceiptVendorMovementSummary,
+  ReceiptVendorAiReviewItem,
+  ReceiptVendorAiReview,
+  ReceiptVendorExpenseBreakdown,
+  ReceiptVendorDetailTransaction,
+  ReceiptVendorDetail,
+  ReceiptVendorWatchlistItem,
   ReceiptDetailGroupSuggestion,
   ReceiptDetailGroup,
   ReceiptBulkReviewData,
@@ -45,6 +58,11 @@ import {
   queryMonthlyReceiptInsights,
   queryReceiptVendorSummary,
   queryReceiptVendorMonthTransactions,
+  queryReceiptVendorDetail,
+  queryReceiptVendorMovements,
+  queryReceiptVendorCostReview,
+  queryReceiptVendorAiSummary,
+  queryReceiptVendorWatchlist,
   queryReceiptMissingExpenseSummary,
   queryAIUsageBreakdown,
   queryPreviewReceiptRule,
@@ -62,6 +80,7 @@ import {
   performDeleteReceiptRule,
   performApplyReceiptGroupClassification,
   performRequeueUnclassifiedTransactions,
+  performSetReceiptVendorWatched,
   applyAutomationRules,
   // Helpers
   fileSchema,
@@ -81,6 +100,14 @@ import type {
   ReceiptMonthlyInsights,
   ReceiptVendorSummary,
   ReceiptVendorMonthTransaction,
+  ReceiptVendorDetail,
+  ReceiptVendorAiReview,
+  ReceiptVendorCostSignal,
+  ReceiptVendorMovementComparison,
+  ReceiptVendorMovementRange,
+  ReceiptVendorMovementSignal,
+  ReceiptVendorMovementSummary,
+  ReceiptVendorWatchlistItem,
   ReceiptMissingExpenseSummaryItem,
   AIUsageBreakdown,
   RulePreviewResult,
@@ -185,6 +212,108 @@ export async function getReceiptVendorMonthTransactions(input: {
     return { transactions: [], error: 'Insufficient permissions' }
   }
   return queryReceiptVendorMonthTransactions(input)
+}
+
+export async function getReceiptVendorDetail(input: {
+  vendorLabel: string
+  monthWindow?: number
+}): Promise<{ detail?: ReceiptVendorDetail; error?: string }> {
+  const canView = await checkUserPermission('receipts', 'view')
+  if (!canView) {
+    return { error: 'Insufficient permissions' }
+  }
+  return queryReceiptVendorDetail(input)
+}
+
+export async function getReceiptVendorMovements(input: {
+  range?: ReceiptVendorMovementRange
+  comparison?: ReceiptVendorMovementComparison
+  watchedOnly?: boolean
+} = {}): Promise<{
+  success: boolean
+  movements: ReceiptVendorMovementSummary[]
+  signals: ReceiptVendorMovementSignal[]
+  error?: string
+}> {
+  const canView = await checkUserPermission('receipts', 'view')
+  if (!canView) {
+    return { success: false, movements: [], signals: [], error: 'Insufficient permissions' }
+  }
+
+  const { user_id } = input.watchedOnly
+    ? await requireCurrentUser()
+    : { user_id: undefined as string | undefined }
+
+  return queryReceiptVendorMovements({
+    range: input.range,
+    comparison: input.comparison,
+    watchedOnly: input.watchedOnly,
+    userId: user_id,
+  })
+}
+
+export async function getReceiptVendorCostReview(input: {
+  monthWindow?: number
+} = {}): Promise<{
+  success: boolean
+  signals: ReceiptVendorCostSignal[]
+  review?: ReceiptVendorAiReview
+  error?: string
+}> {
+  const canView = await checkUserPermission('receipts', 'view')
+  if (!canView) {
+    return { success: false, signals: [], error: 'Insufficient permissions' }
+  }
+  return queryReceiptVendorCostReview(input)
+}
+
+export async function getReceiptVendorAiSummary(input: {
+  vendorLabel: string
+  monthWindow?: number
+}): Promise<{
+  success: boolean
+  review?: ReceiptVendorAiReview
+  signals: ReceiptVendorCostSignal[]
+  error?: string
+}> {
+  const canView = await checkUserPermission('receipts', 'view')
+  if (!canView) {
+    return { success: false, signals: [], error: 'Insufficient permissions' }
+  }
+  return queryReceiptVendorAiSummary(input)
+}
+
+export async function getReceiptVendorWatchlist(): Promise<ReceiptVendorWatchlistItem[]> {
+  const canView = await checkUserPermission('receipts', 'view')
+  if (!canView) {
+    throw new Error('Insufficient permissions')
+  }
+  const { user_id } = await requireCurrentUser()
+  return queryReceiptVendorWatchlist(user_id)
+}
+
+export async function setReceiptVendorWatched(input: {
+  vendorLabel: string
+  watched: boolean
+}): Promise<{
+  success?: boolean
+  watched?: boolean
+  item?: ReceiptVendorWatchlistItem
+  error?: string
+}> {
+  const canView = await checkUserPermission('receipts', 'view')
+  if (!canView) {
+    return { error: 'Insufficient permissions' }
+  }
+
+  const { user_id } = await requireCurrentUser()
+  const result = await performSetReceiptVendorWatched(user_id, input)
+
+  if (result.success) {
+    revalidatePath('/receipts/vendors')
+  }
+
+  return result
 }
 
 export async function getReceiptMissingExpenseSummary(): Promise<ReceiptMissingExpenseSummaryItem[]> {

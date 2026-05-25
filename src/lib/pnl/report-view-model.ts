@@ -1,4 +1,4 @@
-import { PNL_TIMEFRAMES, type PnlMetricFormat, type PnlMetricGroup, type PnlTimeframeKey } from '@/lib/pnl/constants'
+import { EXPENSE_METRIC_KEYS, PNL_TIMEFRAMES, type PnlMetricFormat, type PnlMetricGroup, type PnlTimeframeKey } from '@/lib/pnl/constants'
 import type { PnlDashboardData } from '@/services/financials'
 
 const TARGET_TIMEFRAME: PnlTimeframeKey = '12m'
@@ -10,7 +10,7 @@ export const PNL_REPORT_GROUP_LABELS: Record<PnlMetricGroup, string> = {
   sales_mix: 'Sales mix',
   sales_totals: 'Gross profit % targets',
   expenses: 'Expenses',
-  occupancy: 'Occupancy costs',
+  occupancy: 'Rent/divisible balance assumptions',
 }
 
 const CURRENCY_FORMATTER = new Intl.NumberFormat('en-GB', {
@@ -59,6 +59,9 @@ export type PnlReportSummary = {
   revenueActual: number
   revenueTarget: number
   revenueVariance: number
+  grossProfitActual: number
+  grossProfitTarget: number
+  grossProfitVariance: number
   expenseActual: number
   expenseTarget: number
   expenseVariance: number
@@ -74,6 +77,9 @@ export type PnlReportViewModel = {
   generatedAtLabel: string
   sections: PnlReportSection[]
   summary: PnlReportSummary
+  dataQualityWarnings: string[]
+  healthStatus: 'on_track' | 'watch' | 'off_track' | 'incomplete'
+  healthLabel: string
 }
 
 function toFiniteNumber(value: number | null | undefined): number | null {
@@ -111,6 +117,41 @@ function variance(actual: number, target: number | null): number | null {
   return roundCurrency(actual - target)
 }
 
+function sumTargets(keys: string[], values: Record<string, number | null>): number {
+  return roundCurrency(keys.reduce((sum, key) => sum + (values[key] ?? 0), 0))
+}
+
+function getPercent(
+  actualValues: Record<string, number>,
+  targetValues: Record<string, number | null>,
+  key: string,
+  warnings: string[],
+  label: string
+): number {
+  const actual = actualValues[key]
+  if (actual > 0) return actual
+  const target = targetValues[key]
+  if (target !== null && target > 0) {
+    warnings.push(`${label} is using Greene King target GP % until an actual GP % is entered.`)
+    return target
+  }
+  return 0
+}
+
+function benchmarkNumber(data: PnlDashboardData, metricKey: string, field: 'annualAmount' | 'grossProfit'): number | null {
+  const row = data.greeneKingBenchmark?.rows.find((item) => item.metricKey === metricKey)
+  const value = row?.[field]
+  return typeof value === 'number' && Number.isFinite(value) ? value : null
+}
+
+function canUseBenchmarkGrossProfit(data: PnlDashboardData, annualTargetValues: Record<string, number | null>): boolean {
+  const keys = ['drinks_sales', 'food_sales', 'accommodation_sales', 'net_machine_income']
+  return keys.every((key) => {
+    const benchmarkValue = benchmarkNumber(data, key, 'annualAmount')
+    return benchmarkValue !== null && annualTargetValues[key] === benchmarkValue
+  })
+}
+
 export function formatPnlMetricValue(value: number | null, format: PnlMetricFormat = 'currency'): string {
   if (value === null || Number.isNaN(value)) return '—'
   if (format === 'percent') {
@@ -127,14 +168,28 @@ export function buildPnlReportViewModel(
   const annualTargetValues: Record<string, number | null> = {}
   const actualValues: Record<string, number> = {}
   const timeframeTargetValues: Record<string, number | null> = {}
+  const dataQualityWarnings = [...(data.dataQuality?.warnings ?? [])]
 
   for (const metric of data.metrics) {
     annualTargetValues[metric.key] = toFiniteNumber(data.targets[metric.key]?.[TARGET_TIMEFRAME] ?? null)
-    actualValues[metric.key] = toFiniteNumber(data.actuals[timeframe]?.[metric.key] ?? null) ?? 0
-
     const targetFormat: PnlMetricFormat = metric.type === 'expense' ? 'currency' : (metric.format ?? 'currency')
     timeframeTargetValues[metric.key] = deriveTargetValue(targetFormat, timeframe, annualTargetValues[metric.key])
+    const rawActual = toFiniteNumber(data.actuals[timeframe]?.[metric.key] ?? null) ?? 0
+    actualValues[metric.key] = metric.group === 'sales_totals' && rawActual === 0 && timeframeTargetValues[metric.key]
+      ? timeframeTargetValues[metric.key] ?? 0
+      : rawActual
   }
+
+  const cashupSales = data.cashupSales?.[timeframe]
+  if (cashupSales) {
+    actualValues.drinks_sales = cashupSales.drinksSales
+    actualValues.food_sales = cashupSales.foodPlusOtherSales
+  }
+  const cashupRevenueActual = cashupSales?.totalRevenue ?? (
+    (actualValues.drinks_sales ?? 0) +
+    (actualValues.food_sales ?? 0) +
+    (actualValues.accommodation_sales ?? 0)
+  )
 
   const sections: PnlReportSection[] = GROUP_ORDER.map((group) => {
     const rows = data.metrics
@@ -204,47 +259,55 @@ export function buildPnlReportViewModel(
     }
   })
 
-  const salesActual = roundCurrency(
-    data.metrics
-      .filter((metric) => metric.group === 'sales')
-      .reduce((sum, metric) => sum + (actualValues[metric.key] ?? 0), 0)
-  )
+  const salesActual = roundCurrency(cashupRevenueActual + (actualValues.net_machine_income ?? 0))
 
-  const salesTarget = roundCurrency(
-    data.metrics
-      .filter((metric) => metric.group === 'sales')
-      .reduce((sum, metric) => sum + (timeframeTargetValues[metric.key] ?? 0), 0)
-  )
+  const salesTarget = sumTargets(['drinks_sales', 'food_sales', 'accommodation_sales', 'net_machine_income'], timeframeTargetValues)
   const salesAnnualTarget = roundCurrency(
-    data.metrics
-      .filter((metric) => metric.group === 'sales')
-      .reduce((sum, metric) => sum + (annualTargetValues[metric.key] ?? 0), 0)
+    ['drinks_sales', 'food_sales', 'accommodation_sales', 'net_machine_income']
+      .reduce((sum, key) => sum + (annualTargetValues[key] ?? 0), 0)
   )
 
-  const occupancyActual = data.metrics
-    .filter((metric) => metric.group === 'occupancy')
-    .reduce((sum, metric) => sum + (actualValues[metric.key] ?? 0), 0)
-
-  const occupancyTarget = data.metrics
-    .filter((metric) => metric.group === 'occupancy')
-    .reduce((sum, metric) => sum + (timeframeTargetValues[metric.key] ?? 0), 0)
-  const occupancyAnnualTarget = data.metrics
-    .filter((metric) => metric.group === 'occupancy')
-    .reduce((sum, metric) => sum + (annualTargetValues[metric.key] ?? 0), 0)
-
-  const automaticExpenseTarget = data.metrics
-    .filter((metric) => metric.type === 'expense')
-    .reduce((sum, metric) => sum + (timeframeTargetValues[metric.key] ?? 0), 0)
+  const automaticExpenseTarget = EXPENSE_METRIC_KEYS
+    .reduce((sum, key) => sum + (timeframeTargetValues[key] ?? 0), 0)
   const automaticExpenseAnnualTarget = data.metrics
     .filter((metric) => metric.type === 'expense')
     .reduce((sum, metric) => sum + (annualTargetValues[metric.key] ?? 0), 0)
 
-  const expenseActual = roundCurrency((data.expenseTotals[timeframe] ?? 0) + occupancyActual)
-  const expenseTarget = roundCurrency(automaticExpenseTarget + occupancyTarget)
-  const expenseAnnualTarget = roundCurrency(automaticExpenseAnnualTarget + occupancyAnnualTarget)
+  const drinksGpActualPercent = getPercent(actualValues, timeframeTargetValues, 'total_drinks_post_wastage', dataQualityWarnings, 'Drinks GP')
+  const foodGpActualPercent = getPercent(actualValues, timeframeTargetValues, 'total_food', dataQualityWarnings, 'Food + other GP')
+  const accommodationGpActualPercent = getPercent(actualValues, timeframeTargetValues, 'total_accommodation', dataQualityWarnings, 'Accommodation GP')
+  const grossProfitActual = roundCurrency(
+    ((actualValues.drinks_sales ?? 0) * (drinksGpActualPercent / 100)) +
+    ((actualValues.food_sales ?? 0) * (foodGpActualPercent / 100)) +
+    ((actualValues.accommodation_sales ?? 0) * (accommodationGpActualPercent / 100)) +
+    (actualValues.net_machine_income ?? 0)
+  )
+  const benchmarkGrossProfit = canUseBenchmarkGrossProfit(data, annualTargetValues)
+    ? benchmarkNumber(data, 'total_income', 'grossProfit')
+    : null
+  const grossProfitAnnualTarget = benchmarkGrossProfit ?? roundCurrency(
+    ((annualTargetValues.drinks_sales ?? 0) * ((annualTargetValues.total_drinks_post_wastage ?? 0) / 100)) +
+    ((annualTargetValues.food_sales ?? 0) * ((annualTargetValues.total_food ?? 0) / 100)) +
+    ((annualTargetValues.accommodation_sales ?? 0) * ((annualTargetValues.total_accommodation ?? 0) / 100)) +
+    (annualTargetValues.net_machine_income ?? 0)
+  )
+  const timeframeConfig = PNL_TIMEFRAMES.find((item) => item.key === timeframe)
+  const annualConfig = PNL_TIMEFRAMES.find((item) => item.key === TARGET_TIMEFRAME)
+  const grossProfitTarget = benchmarkGrossProfit !== null && timeframeConfig && annualConfig
+    ? roundCurrency(benchmarkGrossProfit * (timeframeConfig.days / annualConfig.days))
+    : roundCurrency(
+      ((timeframeTargetValues.drinks_sales ?? 0) * ((timeframeTargetValues.total_drinks_post_wastage ?? 0) / 100)) +
+      ((timeframeTargetValues.food_sales ?? 0) * ((timeframeTargetValues.total_food ?? 0) / 100)) +
+      ((timeframeTargetValues.accommodation_sales ?? 0) * ((timeframeTargetValues.total_accommodation ?? 0) / 100)) +
+      (timeframeTargetValues.net_machine_income ?? 0)
+    )
 
-  const operatingProfitActual = roundCurrency(salesActual - expenseActual)
-  const operatingProfitTarget = roundCurrency(salesTarget - expenseTarget)
+  const expenseActual = roundCurrency(data.expenseTotals[timeframe] ?? 0)
+  const expenseTarget = roundCurrency(automaticExpenseTarget)
+  const expenseAnnualTarget = roundCurrency(automaticExpenseAnnualTarget)
+
+  const operatingProfitActual = roundCurrency(grossProfitActual - expenseActual)
+  const operatingProfitTarget = roundCurrency(grossProfitTarget - expenseTarget)
   const sectionsWithSubtotals = sections.map<PnlReportSection>((section) => {
     if (section.key === 'sales') {
       return {
@@ -260,11 +323,25 @@ export function buildPnlReportViewModel(
       }
     }
 
+    if (section.key === 'sales_totals') {
+      return {
+        ...section,
+        subtotal: {
+          label: 'Gross profit / income',
+          format: 'currency',
+          actual: grossProfitActual,
+          annualTarget: grossProfitAnnualTarget,
+          timeframeTarget: grossProfitTarget,
+          variance: roundCurrency(grossProfitActual - grossProfitTarget),
+        },
+      }
+    }
+
     if (section.key === 'expenses') {
       return {
         ...section,
         subtotal: {
-          label: 'Total expenses (incl occupancy)',
+          label: 'Total expenses',
           format: 'currency',
           actual: expenseActual,
           annualTarget: expenseAnnualTarget,
@@ -279,6 +356,25 @@ export function buildPnlReportViewModel(
   })
 
   const timeframeLabel = PNL_TIMEFRAMES.find((item) => item.key === timeframe)?.label ?? timeframe
+  const operatingProfitVariance = roundCurrency(operatingProfitActual - operatingProfitTarget)
+  const targetBase = Math.max(Math.abs(operatingProfitTarget), 1)
+  const hasCriticalDataGap = dataQualityWarnings.some((warning) =>
+    warning.includes('could not be loaded') || warning.includes('No completed cash-up sessions')
+  )
+  const healthStatus = hasCriticalDataGap
+    ? 'incomplete'
+    : operatingProfitVariance >= 0
+      ? 'on_track'
+      : Math.abs(operatingProfitVariance) / targetBase <= 0.05
+        ? 'watch'
+        : 'off_track'
+  const healthLabel = healthStatus === 'on_track'
+    ? 'On track'
+    : healthStatus === 'watch'
+      ? 'Watch closely'
+      : healthStatus === 'off_track'
+        ? 'Needs attention'
+        : 'Data incomplete'
 
   return {
     timeframe,
@@ -298,12 +394,18 @@ export function buildPnlReportViewModel(
       revenueActual: salesActual,
       revenueTarget: salesTarget,
       revenueVariance: roundCurrency(salesActual - salesTarget),
+      grossProfitActual,
+      grossProfitTarget,
+      grossProfitVariance: roundCurrency(grossProfitActual - grossProfitTarget),
       expenseActual,
       expenseTarget,
       expenseVariance: roundCurrency(expenseActual - expenseTarget),
       operatingProfitActual,
       operatingProfitTarget,
-      operatingProfitVariance: roundCurrency(operatingProfitActual - operatingProfitTarget),
+      operatingProfitVariance,
     },
+    dataQualityWarnings: Array.from(new Set(dataQualityWarnings)),
+    healthStatus,
+    healthLabel,
   }
 }

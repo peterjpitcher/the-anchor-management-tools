@@ -11,6 +11,7 @@ export * from './types'
 
 // Pure helpers / utilities
 export * from './receiptHelpers'
+export * from './vendorInsights'
 
 // Read-only query operations
 export * from './receiptQueries'

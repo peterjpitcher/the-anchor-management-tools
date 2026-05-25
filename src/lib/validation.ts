@@ -242,4 +242,5 @@ export const receiptQuarterExportSchema = z.object({
 
 export const pnlExportSchema = z.object({
   timeframe: z.enum(['1m', '3m', '12m']).default('12m'),
+  format: z.enum(['pdf', 'xlsx']).default('pdf'),
 });

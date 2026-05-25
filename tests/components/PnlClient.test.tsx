@@ -1,8 +1,10 @@
 import { describe, expect, it, vi } from 'vitest'
-import { fireEvent, render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import PnlClient from '@/app/(authenticated)/receipts/_components/PnlClient'
+import { savePlManualActualsAction } from '@/app/actions/pnl'
 import type { PnlDashboardData } from '@/app/actions/pnl'
 import { MANUAL_METRIC_KEYS, PNL_METRICS, PNL_TIMEFRAMES } from '@/lib/pnl/constants'
+import { GREENE_KING_BENCHMARK } from '@/lib/pnl/greene-king-benchmark'
 
 vi.mock('@/app/actions/pnl', () => ({
   savePlManualActualsAction: vi.fn().mockResolvedValue({ success: true }),
@@ -55,6 +57,50 @@ function createInitialDashboardData(): PnlDashboardData {
       '3m': 0,
       '12m': 0,
     },
+    cashupSales: {
+      '1m': {
+        totalRevenue: 0,
+        drinksSales: 0,
+        foodSales: 0,
+        otherSales: 0,
+        foodPlusOtherSales: 0,
+        unallocatedSales: 0,
+        sessionCount: 0,
+        missingSplitCount: 0,
+        excludedDraftCount: 0,
+        latestSessionDate: null,
+      },
+      '3m': {
+        totalRevenue: 0,
+        drinksSales: 0,
+        foodSales: 0,
+        otherSales: 0,
+        foodPlusOtherSales: 0,
+        unallocatedSales: 0,
+        sessionCount: 0,
+        missingSplitCount: 0,
+        excludedDraftCount: 0,
+        latestSessionDate: null,
+      },
+      '12m': {
+        totalRevenue: 100,
+        drinksSales: 100,
+        foodSales: 0,
+        otherSales: 0,
+        foodPlusOtherSales: 0,
+        unallocatedSales: 0,
+        sessionCount: 1,
+        missingSplitCount: 0,
+        excludedDraftCount: 0,
+        latestSessionDate: '2026-02-23',
+      },
+    },
+    dataQuality: {
+      warnings: [],
+      receiptAggregationFailed: false,
+      cashupAggregationFailed: false,
+    },
+    greeneKingBenchmark: GREENE_KING_BENCHMARK,
   }
 }
 
@@ -63,8 +109,6 @@ describe('PnlClient currency detail formatting', () => {
     const { container } = render(<PnlClient initialData={createInitialDashboardData()} canExport />)
     const text = container.textContent ?? ''
 
-    expect(text).toContain('Actual £50.00')
-    expect(text).toContain('P&L Target £72.00')
     expect(text).toContain('Actual GP £70.00 · Cost £30.00')
     expect(text).toContain('P&L Target GP £96.00 · Cost £24.00')
     expect(text).not.toContain('££')
@@ -74,37 +118,65 @@ describe('PnlClient currency detail formatting', () => {
     const data = createInitialDashboardData()
     const { rerender } = render(<PnlClient initialData={data} canExport={false} />)
 
-    expect(screen.queryByRole('button', { name: 'Download P&L report (PDF)' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'PDF' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Spreadsheet' })).toBeNull()
 
     rerender(<PnlClient initialData={data} canExport />)
 
-    expect(screen.getByRole('button', { name: 'Download P&L report (PDF)' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'PDF' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Spreadsheet' })).toBeInTheDocument()
   })
 
   it('uses the selected timeframe when triggering PDF export', () => {
     render(<PnlClient initialData={createInitialDashboardData()} canExport />)
 
     const timeframeSelect = screen.getByLabelText('View timeframe')
-    const exportButton = screen.getByRole('button', { name: 'Download P&L report (PDF)' })
+    const exportButton = screen.getByRole('button', { name: 'PDF' })
 
     fireEvent.change(timeframeSelect, { target: { value: '1m' } })
-    expect(exportButton).toHaveAttribute('data-export-url', '/api/receipts/pnl/export?timeframe=1m')
+    expect(exportButton).toHaveAttribute('data-export-url', '/api/receipts/pnl/export?timeframe=1m&format=pdf')
 
     fireEvent.change(timeframeSelect, { target: { value: '3m' } })
-    expect(exportButton).toHaveAttribute('data-export-url', '/api/receipts/pnl/export?timeframe=3m')
+    expect(exportButton).toHaveAttribute('data-export-url', '/api/receipts/pnl/export?timeframe=3m&format=pdf')
 
     fireEvent.change(timeframeSelect, { target: { value: '12m' } })
-    expect(exportButton).toHaveAttribute('data-export-url', '/api/receipts/pnl/export?timeframe=12m')
+    expect(exportButton).toHaveAttribute('data-export-url', '/api/receipts/pnl/export?timeframe=12m&format=pdf')
   })
 
-  it('renders section subtotal rows for sales and expenses', () => {
+  it('renders business health and comparison sections', () => {
     render(<PnlClient initialData={createInitialDashboardData()} canExport />)
 
-    expect(screen.getByText('Sales - LAST 365 DAYS VS. SHADOW P&L')).toBeInTheDocument()
-    expect(screen.getByText('Expenses - LAST 365 DAYS VS. SHADOW P&L')).toBeInTheDocument()
-    expect(screen.getByText('Total sales')).toBeInTheDocument()
-    expect(screen.getByText('Total expenses (incl occupancy)')).toBeInTheDocument()
-    expect(screen.getByText('Targets in this dashboard are set from your Shadow P&L target values.')).toBeInTheDocument()
-    expect(screen.getAllByText('Annual').length).toBeGreaterThan(0)
+    expect(screen.getByText('Actual income')).toBeInTheDocument()
+    expect(screen.getByText('Sales performance')).toBeInTheDocument()
+    expect(screen.getByText('Expense performance')).toBeInTheDocument()
+    expect(screen.getByText('Gross profit / operating profit')).toBeInTheDocument()
+    expect(screen.getByText('Greene King benchmark')).toBeInTheDocument()
+    expect(screen.getByText('Greene King benchmark target values')).toBeInTheDocument()
+  })
+
+  it('saves P&L inputs for the selected timeframe only', async () => {
+    render(<PnlClient initialData={createInitialDashboardData()} canManage />)
+
+    fireEvent.change(screen.getByLabelText('View timeframe'), { target: { value: '3m' } })
+    fireEvent.change(screen.getAllByLabelText('Accommodation sales')[0], { target: { value: '123.45' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save P&L inputs' }))
+
+    await waitFor(() => {
+      expect(savePlManualActualsAction).toHaveBeenCalled()
+    })
+
+    const formData = vi.mocked(savePlManualActualsAction).mock.calls[0][0] as FormData
+    const payload = JSON.parse(String(formData.get('data'))) as Array<{
+      metric: string
+      timeframe: string
+      value: number | null
+    }>
+
+    expect(new Set(payload.map((entry) => entry.timeframe))).toEqual(new Set(['3m']))
+    expect(payload.find((entry) => entry.metric === 'accommodation_sales')).toMatchObject({
+      timeframe: '3m',
+      value: 123.45,
+    })
+    expect(payload).toHaveLength(MANUAL_METRIC_KEYS.length)
   })
 })
