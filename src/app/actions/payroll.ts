@@ -13,6 +13,7 @@ import { format, differenceInYears, parseISO } from 'date-fns';
 import { toZonedTime, fromZonedTime } from 'date-fns-tz';
 import { logAuditEvent } from '@/app/actions/audit';
 import { getRotaSettings } from '@/app/actions/rota-settings';
+import { PAYROLL_COULDNT_WORK_FLAG } from '@/lib/rota/payroll-flags';
 
 // ---------------------------------------------------------------------------
 // Payroll periods
@@ -325,16 +326,21 @@ export async function getPayrollMonthData(year: number, month: number): Promise<
     if (salaryEmployeeIds.has(shift.employee_id)) continue;
 
     const employeeName = [emp.first_name, emp.last_name].filter(Boolean).join(' ');
-    const plannedHours = calculatePaidHours(
-      shift.start_time,
-      shift.end_time,
-      shift.unpaid_break_minutes,
-      shift.is_overnight,
-    );
+    const isCouldntWork = shift.status === 'sick';
+    const plannedHours = isCouldntWork
+      ? null
+      : calculatePaidHours(
+        shift.start_time,
+        shift.end_time,
+        shift.unpaid_break_minutes,
+        shift.is_overnight,
+      );
 
     const session =
-      takeLinkedSessionForShift(shift.id) ??
-      takeBestUnlinkedSession(shift.employee_id, shift.shift_date, shift.start_time);
+      isCouldntWork
+        ? null
+        : takeLinkedSessionForShift(shift.id) ??
+          takeBestUnlinkedSession(shift.employee_id, shift.shift_date, shift.start_time);
 
     const actualHours = session
       ? calculateActualPaidHours(session.clock_in_at as string, (session.clock_out_at as string | null) ?? null) ?? null
@@ -349,10 +355,14 @@ export async function getPayrollMonthData(year: number, month: number): Promise<
     const flagParts: string[] = [];
     if (session?.is_auto_close) flagParts.push('auto_close');
     if (session?.is_unscheduled) flagParts.push('unscheduled');
-    if (shift.status === 'sick') flagParts.push('sick');
+    if (isCouldntWork) flagParts.push(PAYROLL_COULDNT_WORK_FLAG);
     if (plannedHours !== null && actualHours !== null && Math.abs(plannedHours - actualHours) > 0.5) {
       flagParts.push('variance');
     }
+
+    const sickReason = typeof shift.sick_reason === 'string' && shift.sick_reason.trim()
+      ? shift.sick_reason.trim()
+      : null;
 
     rows.push({
       employeeName,
@@ -364,14 +374,15 @@ export async function getPayrollMonthData(year: number, month: number): Promise<
       hourlyRate,
       totalPay,
       flags: flagParts.join(', '),
-      plannedStart: shift.start_time ?? null,
-      plannedEnd: shift.end_time ?? null,
+      plannedStart: isCouldntWork ? null : shift.start_time ?? null,
+      plannedEnd: isCouldntWork ? null : shift.end_time ?? null,
       actualStart: session ? toLocalHHMM(session.clock_in_at as string) : null,
       actualEnd: session ? toLocalHHMM((session.clock_out_at as string | null) ?? null) : null,
       shiftId: shift.id,
       sessionId: (session?.id as string | undefined) ?? null,
       note: null, // populated after note fetch below
       sessionNote: [session?.notes, session?.manager_note].filter(Boolean).join(' · ') || null,
+      sickReason: isCouldntWork ? sickReason : null,
     });
   }
 
@@ -424,6 +435,7 @@ export async function getPayrollMonthData(year: number, month: number): Promise<
       sessionId: sessionId,
       note: null,
       sessionNote: [session.notes, session.manager_note].filter(Boolean).join(' · ') || null,
+      sickReason: null,
     });
   }
 

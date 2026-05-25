@@ -1,4 +1,5 @@
 import ExcelJS from 'exceljs';
+import { formatPayrollFlags } from './payroll-flags';
 
 export type PayrollRow = {
   employeeName: string;
@@ -9,7 +10,7 @@ export type PayrollRow = {
   actualHours: number | null;
   hourlyRate: number | null;
   totalPay: number | null;
-  flags: string;          // comma-separated: "auto_close", "unscheduled", "variance", "sick"
+  flags: string;          // comma-separated: "auto_close", "unscheduled", "variance", "couldnt_work"
   plannedStart: string | null;  // HH:MM
   plannedEnd: string | null;    // HH:MM
   actualStart: string | null;   // HH:MM Europe/London
@@ -18,6 +19,7 @@ export type PayrollRow = {
   sessionId: string | null;   // timeclock_session id (for edit/delete)
   note: string | null;        // payroll reconciliation note (editable on payroll page)
   sessionNote: string | null; // note from timeclock manager (read-only on payroll page)
+  sickReason?: string | null; // Couldn't Work reason for marker rows
 };
 
 /**
@@ -69,6 +71,7 @@ export async function buildPayrollWorkbook(
       ...row,
       hourlyRate: row.hourlyRate != null ? row.hourlyRate : 'N/A',
       totalPay: row.totalPay != null ? row.totalPay : 'N/A',
+      flags: formatPayrollFlags(row.flags),
     });
 
     // Highlight flagged rows

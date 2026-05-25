@@ -13,6 +13,7 @@ import type { PayrollEmployeeSummary } from '@/lib/rota/email-templates';
 import type { PayrollMonthApproval, PayrollPeriod } from '@/app/actions/payroll';
 import type { RotaDayInfo } from '@/app/actions/rota-day-info';
 import { getTodayIsoDate } from '@/lib/dateUtils';
+import { hasCouldntWorkPayrollFlag, isCouldntWorkPayrollFlag, parsePayrollFlags, payrollFlagLabel } from '@/lib/rota/payroll-flags';
 import { PayrollSummaryBar } from './PayrollSummaryBar';
 import { computeEmployeeCards } from './payrollCycleStats';
 
@@ -104,25 +105,36 @@ function diffLabel(diff: number) {
   return `${diff > 0 ? '+' : ''}${diff.toFixed(1)}h`;
 }
 
-function FlagChips({ flags }: { flags: string }) {
-  const parts = flags.split(', ').filter(Boolean);
+function FlagChips({ flags, couldntWorkReason }: { flags: string; couldntWorkReason?: string | null }) {
+  const parts = parsePayrollFlags(flags);
   if (!parts.length) return null;
+  const reason = couldntWorkReason?.trim();
+  const showCouldntWorkReason = reason && parts.some(isCouldntWorkPayrollFlag);
+
   return (
-    <div className="flex flex-wrap gap-1">
-      {parts.map(f => (
-        <span
-          key={f}
-          className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${
-            f === 'sick'          ? 'bg-red-100 text-red-700' :
-            f === 'variance'      ? 'bg-amber-100 text-amber-700' :
-            f === 'auto_close'    ? 'bg-purple-100 text-purple-700' :
-            f === 'unscheduled'   ? 'bg-orange-100 text-orange-700' :
-            'bg-gray-100 text-gray-600'
-          }`}
-        >
-          {f}
-        </span>
-      ))}
+    <div className="space-y-1">
+      <div className="flex flex-wrap gap-1">
+        {parts.map(f => (
+          <span
+            key={f}
+            className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${
+              isCouldntWorkPayrollFlag(f) ? 'bg-red-100 text-red-700' :
+              f === 'variance'           ? 'bg-amber-100 text-amber-700' :
+              f === 'auto_close'         ? 'bg-purple-100 text-purple-700' :
+              f === 'unscheduled'        ? 'bg-orange-100 text-orange-700' :
+              'bg-gray-100 text-gray-600'
+            }`}
+          >
+            {payrollFlagLabel(f)}
+          </span>
+        ))}
+      </div>
+      {showCouldntWorkReason && (
+        <p className="text-[10px] leading-snug text-red-700">
+          <span className="font-medium">Reason: </span>
+          {reason}
+        </p>
+      )}
     </div>
   );
 }
@@ -446,6 +458,7 @@ export default function PayrollClient({
                       const empDiff = (row.actualHours ?? 0) - (row.plannedHours ?? 0);
                       const isEditing = editingKey === rowKey;
                       const isConfirmingDelete = confirmDeleteKey === rowKey;
+                      const isCouldntWork = hasCouldntWorkPayrollFlag(row.flags);
 
                       const dataRow = (
                         <tr key={`row-${rowKey}`} className="group border-t border-gray-100 bg-white hover:bg-gray-50">
@@ -455,7 +468,9 @@ export default function PayrollClient({
                             <span className="ml-2 text-xs text-gray-400 capitalize">{row.department}</span>
                           </td>
                           <td className="px-3 py-2 text-right text-gray-600 text-xs tabular-nums">
-                            {row.plannedStart
+                            {isCouldntWork
+                              ? null
+                              : row.plannedStart
                               ? <>{formatTime12h(row.plannedStart)}–{formatTime12h(row.plannedEnd)}{' '}<span className="text-gray-400">({row.plannedHours?.toFixed(1)}h)</span></>
                               : row.plannedHours != null ? `${row.plannedHours.toFixed(1)}h` : '—'
                             }
@@ -470,7 +485,7 @@ export default function PayrollClient({
                             {row.actualHours != null ? diffLabel(empDiff) : '—'}
                           </td>
                           <td className="px-3 py-2">
-                            <FlagChips flags={row.flags} />
+                            <FlagChips flags={row.flags} couldntWorkReason={row.sickReason} />
                             {row.sessionNote && (
                               <p className="mt-1 text-[10px] text-gray-500 italic">
                                 <span className="not-italic font-medium text-gray-400">Timeclock: </span>
@@ -544,7 +559,7 @@ export default function PayrollClient({
                             Edit actual times for <span className="font-medium text-gray-700">{row.employeeName}</span>
                           </td>
                           <td className="px-3 py-2 text-right text-xs text-gray-400 tabular-nums">
-                            {row.plannedStart ? `${formatTime12h(row.plannedStart)}–${formatTime12h(row.plannedEnd)}` : '—'}
+                            {isCouldntWork ? null : row.plannedStart ? `${formatTime12h(row.plannedStart)}–${formatTime12h(row.plannedEnd)}` : '—'}
                           </td>
                           <td className="px-3 py-2 text-right" colSpan={2}>
                             <div className="flex items-center justify-end gap-1.5">
