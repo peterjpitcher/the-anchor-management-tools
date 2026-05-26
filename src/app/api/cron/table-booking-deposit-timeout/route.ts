@@ -5,6 +5,7 @@ import { sendTableBookingCancelledSmsIfAllowed } from '@/lib/table-bookings/book
 import { logAuditEvent } from '@/app/actions/audit'
 import { authorizeCronRequest } from '@/lib/cron-auth'
 import { reportCronFailure } from '@/lib/cron/alerting'
+import { logger } from '@/lib/logger'
 
 export const maxDuration = 60
 
@@ -91,7 +92,9 @@ export async function GET(request: NextRequest) {
       cancelled++
     }
 
-    console.warn(`[deposit-timeout] cancelled ${cancelled} booking(s)`)
+    logger.info('[deposit-timeout] completed', {
+      metadata: { cancelled }
+    })
     return NextResponse.json({ cancelled })
   } catch (error) {
     console.error('[deposit-timeout] Fatal error:', error)

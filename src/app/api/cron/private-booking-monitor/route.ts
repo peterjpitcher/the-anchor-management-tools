@@ -357,7 +357,7 @@ export async function GET(request: Request) {
       )
     }
 
-    console.warn('Starting private booking monitor...')
+    logger.info('Starting private booking monitor')
 
     const now = new Date()
     const stats = {
@@ -1169,7 +1169,9 @@ export async function GET(request: Request) {
       }
     }
 
-    console.warn('Private booking monitor completed:', stats)
+    logger.info('Private booking monitor completed', {
+      metadata: { stats }
+    })
     await resolveCronRunResult(
       supabase,
       runId,

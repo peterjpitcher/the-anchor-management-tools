@@ -53,6 +53,24 @@ function sanitizeHeadersForLog(headers: Record<string, string>): Record<string, 
   return sanitized
 }
 
+async function writePrivateBookingAudit(
+  supabase: ReturnType<typeof createAdminClient>,
+  params: {
+    operationType: string
+    bookingId: string
+    operationStatus?: 'success' | 'failure'
+    additionalInfo: Record<string, unknown>
+  }
+) {
+  return supabase.from('audit_logs').insert({
+    operation_type: params.operationType,
+    resource_type: 'private_booking',
+    resource_id: params.bookingId,
+    operation_status: params.operationStatus ?? 'success',
+    additional_info: params.additionalInfo,
+  })
+}
+
 async function logPayPalWebhook(
   supabase: ReturnType<typeof createAdminClient>,
   input: {
@@ -341,19 +359,16 @@ async function handleDepositCaptureCompleted(
 
   // D15: Audit log BEFORE finalization so the capture attempt is recorded
   // even if finalizeDepositPayment throws
-  const { error: preAuditError } = await supabase
-    .from('audit_logs')
-    .insert({
-      action: 'paypal_deposit_capture_attempted_via_webhook',
-      entity_type: 'private_booking',
-      entity_id: bookingId,
-      metadata: {
-        capture_id: captureId,
-        event_id: event.id,
-        amount: resource.amount?.value ?? null,
-        status: 'attempted',
-      }
-    })
+  const { error: preAuditError } = await writePrivateBookingAudit(supabase, {
+    operationType: 'paypal_deposit_capture_attempted_via_webhook',
+    bookingId,
+    additionalInfo: {
+      capture_id: captureId,
+      event_id: event.id,
+      amount: resource.amount?.value ?? null,
+      status: 'attempted',
+    }
+  })
 
   if (preAuditError) {
     logger.error('Failed to write pre-finalization PayPal webhook audit log', {
@@ -376,18 +391,15 @@ async function handleDepositCaptureCompleted(
     return
   }
 
-  const { error: auditError } = await supabase
-    .from('audit_logs')
-    .insert({
-      action: 'paypal_deposit_captured_via_webhook',
-      entity_type: 'private_booking',
-      entity_id: bookingId,
-      metadata: {
-        capture_id: captureId,
-        event_id: event.id,
-        amount: resource.amount?.value ?? null,
-      }
-    })
+  const { error: auditError } = await writePrivateBookingAudit(supabase, {
+    operationType: 'paypal_deposit_captured_via_webhook',
+    bookingId,
+    additionalInfo: {
+      capture_id: captureId,
+      event_id: event.id,
+      amount: resource.amount?.value ?? null,
+    }
+  })
 
   if (auditError) {
     throw new Error(`Failed to write private booking deposit webhook audit log: ${auditError.message}`)
@@ -424,17 +436,14 @@ async function handleDepositCaptureDenied(
     throw new Error(`Failed to clear denied PayPal order on private booking: ${updateError.message}`)
   }
 
-  const { error: auditError } = await supabase
-    .from('audit_logs')
-    .insert({
-      action: 'paypal_deposit_capture_denied',
-      entity_type: 'private_booking',
-      entity_id: bookingId,
-      metadata: {
-        event_id: event.id,
-        reason: resource.status_details?.reason ?? 'DENIED',
-      }
-    })
+  const { error: auditError } = await writePrivateBookingAudit(supabase, {
+    operationType: 'paypal_deposit_capture_denied',
+    bookingId,
+    additionalInfo: {
+      event_id: event.id,
+      reason: resource.status_details?.reason ?? 'DENIED',
+    }
+  })
 
   if (auditError) {
     throw new Error(`Failed to write private booking deposit denied audit log: ${auditError.message}`)

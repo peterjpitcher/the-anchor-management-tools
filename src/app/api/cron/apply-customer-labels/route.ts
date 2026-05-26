@@ -2,13 +2,14 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { logAuditEvent } from '@/app/actions/audit'
 import { authorizeCronRequest } from '@/lib/cron-auth'
+import { logger } from '@/lib/logger'
 
 function isHealthCheck(request: NextRequest): boolean {
   return request.nextUrl.searchParams.get('health') === 'true'
 }
 
 export async function GET(request: NextRequest) {
-  console.warn('[Cron] Customer labels endpoint called')
+  logger.info('[Cron] Customer labels endpoint called')
   
   try {
     // Verify this is a Vercel cron request
@@ -30,23 +31,25 @@ export async function GET(request: NextRequest) {
       })
     }
 
-    console.warn('[Cron] Starting customer label application')
+    logger.info('[Cron] Starting customer label application')
     
     const supabase = createAdminClient()
     
     // First, rebuild customer category stats to ensure they're up to date
-    console.warn('[Cron] Rebuilding customer category stats...')
+    logger.info('[Cron] Rebuilding customer category stats')
     const { data: backfillData, error: backfillError } = await supabase.rpc('rebuild_customer_category_stats')
     
     if (backfillError) {
       console.error('[Cron] Error rebuilding customer stats:', backfillError)
       // Continue anyway - partial data is better than none
     } else {
-      console.warn(`[Cron] Rebuilt ${backfillData || 0} customer category stats`)
+      logger.info('[Cron] Rebuilt customer category stats', {
+        metadata: { count: backfillData || 0 }
+      })
     }
     
     // Call the database function to apply labels retroactively
-    console.warn('[Cron] Applying customer labels retroactively...')
+    logger.info('[Cron] Applying customer labels retroactively')
     const { data, error } = await supabase.rpc('apply_customer_labels_retroactively')
     
     if (error) {
@@ -68,7 +71,7 @@ export async function GET(request: NextRequest) {
       }
     })
     
-    console.warn('[Cron] Customer labels applied successfully')
+    logger.info('[Cron] Customer labels applied successfully')
     
     return NextResponse.json({
       success: true,

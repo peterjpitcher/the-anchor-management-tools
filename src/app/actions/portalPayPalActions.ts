@@ -16,6 +16,23 @@ function amountsMatch(actual: number, expected: number): boolean {
   return Math.abs(actual - expected) <= 0.01
 }
 
+async function writePrivateBookingAudit(
+  admin: ReturnType<typeof createAdminClient>,
+  params: {
+    operationType: string
+    bookingId: string
+    additionalInfo: Record<string, unknown>
+  }
+) {
+  return admin.from('audit_logs').insert({
+    operation_type: params.operationType,
+    resource_type: 'private_booking',
+    resource_id: params.bookingId,
+    operation_status: 'success',
+    additional_info: params.additionalInfo,
+  })
+}
+
 /**
  * Create a fresh PayPal deposit order from the signed booking portal link.
  * This lets customers recover from an expired PayPal approval URL without staff
@@ -95,11 +112,10 @@ export async function createDepositPaymentOrderByToken(
       return { error: 'Unable to prepare your payment link. Please contact us.' }
     }
 
-    const { error: auditError } = await admin.from('audit_logs').insert({
-      action: 'paypal_deposit_order_created_via_portal',
-      entity_type: 'private_booking',
-      entity_id: bookingId,
-      metadata: {
+    const { error: auditError } = await writePrivateBookingAudit(admin, {
+      operationType: 'paypal_deposit_order_created_via_portal',
+      bookingId,
+      additionalInfo: {
         order_id: result.orderId,
         source: 'booking_portal',
       },
@@ -209,16 +225,22 @@ export async function captureDepositPaymentByToken(
 
     // Audit log
     if (!finalizeResult.alreadyRecorded) {
-      await admin.from('audit_logs').insert({
-        action: 'paypal_deposit_captured_via_portal',
-        entity_type: 'private_booking',
-        entity_id: bookingId,
-        metadata: {
+      const { error: auditError } = await writePrivateBookingAudit(admin, {
+        operationType: 'paypal_deposit_captured_via_portal',
+        bookingId,
+        additionalInfo: {
           capture_id: captureResult.transactionId,
           order_id: paypalOrderId,
           amount: captureResult.amount,
         }
       })
+
+      if (auditError) {
+        logger.error('Portal capture: failed to write audit log', {
+          error: auditError,
+          metadata: { bookingId, captureId: captureResult.transactionId },
+        })
+      }
     }
 
     logger.info('Portal capture: deposit recorded successfully', {

@@ -10,6 +10,77 @@ type PayPalLink = { rel: string; href: string };
 
 let cachedToken: { token: string; expiresAt: number } | null = null;
 
+type PayPalErrorBody = {
+  name?: string;
+  message?: string;
+  details?: Array<{ issue?: string; description?: string }>;
+  [key: string]: unknown;
+};
+
+export class PayPalApiError extends Error {
+  readonly status: number;
+  readonly statusText: string;
+  readonly details: unknown;
+
+  constructor(action: string, response: Response, details: unknown) {
+    const body = details as PayPalErrorBody;
+    const remoteMessage = typeof body?.message === 'string'
+      ? body.message
+      : typeof details === 'string' && details.trim()
+        ? details.trim()
+        : response.statusText;
+
+    super(`Failed to ${action}: ${response.status} ${remoteMessage}`);
+    this.name = 'PayPalApiError';
+    this.status = response.status;
+    this.statusText = response.statusText;
+    this.details = details;
+  }
+}
+
+async function readPayPalErrorBody(response: Response): Promise<unknown> {
+  const body = await response.text();
+  if (!body) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(body);
+  } catch {
+    return body;
+  }
+}
+
+function getPayPalErrorIssues(details: unknown): string[] {
+  const body = details as PayPalErrorBody | null;
+  if (!body || !Array.isArray(body.details)) {
+    return [];
+  }
+
+  return body.details
+    .map((detail) => detail.issue)
+    .filter((issue): issue is string => typeof issue === 'string')
+    .map((issue) => issue.toUpperCase());
+}
+
+export function isPayPalOrderNotFoundError(error: unknown): error is PayPalApiError {
+  if (!(error instanceof PayPalApiError)) {
+    return false;
+  }
+
+  if (error.status === 404) {
+    return true;
+  }
+
+  const body = error.details as PayPalErrorBody | null;
+  const errorName = typeof body?.name === 'string' ? body.name.toUpperCase() : '';
+  const issues = getPayPalErrorIssues(error.details);
+
+  return errorName === 'RESOURCE_NOT_FOUND' ||
+    issues.includes('INVALID_RESOURCE_ID') ||
+    issues.includes('ORDER_NOT_FOUND');
+}
+
 function getPayPalConfig(): PayPalConfig {
   const clientId = process.env.PAYPAL_CLIENT_ID;
   const clientSecret = process.env.PAYPAL_CLIENT_SECRET;
@@ -279,9 +350,9 @@ export async function capturePayPalPayment(orderId: string) {
   );
 
   if (!response.ok) {
-    const error = await response.json();
+    const error = await readPayPalErrorBody(response);
     console.error('PayPal capture error:', error);
-    throw new Error('Failed to capture PayPal payment');
+    throw new PayPalApiError('capture PayPal payment', response, error);
   }
 
   const data = await response.json();
@@ -400,7 +471,8 @@ export async function getPayPalOrder(orderId: string) {
   );
 
   if (!response.ok) {
-    throw new Error('Failed to get PayPal order details');
+    const error = await readPayPalErrorBody(response);
+    throw new PayPalApiError('get PayPal order details', response, error);
   }
 
   return response.json();
