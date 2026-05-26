@@ -13,7 +13,7 @@ import { getDailySummaryAction } from '@/app/actions/daily-summary'
 import { getMissingCashupDatesAction } from '@/app/actions/missing-cashups'
 import toast from 'react-hot-toast'
 import { format, parseISO } from 'date-fns'
-import type { CashupSalesCategory, CashupSession, UpsertCashupSessionDTO } from '@/types/cashing-up'
+import type { CashupSalesCategory, CashupSession, CashupStatus, UpsertCashupSessionDTO } from '@/types/cashing-up'
 
 const DENOMINATIONS = [
   { value: 50, label: '£50' },
@@ -50,6 +50,7 @@ interface Props {
   weeklyData: WeeklyRow[]
   existingSession: CashupSession | null
   missingDates: string[]
+  initialEditMode: boolean
 }
 
 const fmt = (num: number): string =>
@@ -110,7 +111,20 @@ const getCashValuesFromSession = (session: CashupSession | null): Record<string,
   return values
 }
 
-export function DailyClient({ siteId, siteName, sessionDate, dailySummary, dailyTarget, weeklyData, existingSession, missingDates: initialMissingDates }: Props) {
+const shouldStartInEditMode = (session: CashupSession | null, requestedEditMode: boolean): boolean =>
+  !session || session.status === 'draft' || (requestedEditMode && session.status !== 'locked')
+
+export function DailyClient({
+  siteId,
+  siteName,
+  sessionDate,
+  dailySummary,
+  dailyTarget,
+  weeklyData,
+  existingSession,
+  missingDates: initialMissingDates,
+  initialEditMode,
+}: Props) {
   const router = useRouter()
   const [missingDates, setMissingDates] = useState<string[]>(initialMissingDates)
 
@@ -126,7 +140,11 @@ export function DailyClient({ siteId, siteName, sessionDate, dailySummary, daily
   const [saving, setSaving] = useState(false)
   const [lastSaved, setLastSaved] = useState<string | null>(null)
   const [sessionId, setSessionId] = useState<string | null>(existingSession?.id ?? null)
-  const isLocked = existingSession?.status !== 'draft' && existingSession?.status !== undefined
+  const [currentStatus, setCurrentStatus] = useState<CashupStatus | null>(existingSession?.status ?? null)
+  const [editMode, setEditMode] = useState(() => shouldStartInEditMode(existingSession, initialEditMode))
+  const isReadOnlyStatus = currentStatus !== null && currentStatus !== 'draft'
+  const isLockedStatus = currentStatus === 'locked'
+  const fieldsDisabled = isLockedStatus || (isReadOnlyStatus && !editMode)
 
   useEffect(() => {
     setMissingDates(initialMissingDates)
@@ -144,6 +162,8 @@ export function DailyClient({ siteId, siteName, sessionDate, dailySummary, daily
     setAutoNotes('')
     setLastSaved(null)
     setSessionId(null)
+    setCurrentStatus(null)
+    setEditMode(true)
   }, [])
 
   useEffect(() => {
@@ -158,7 +178,9 @@ export function DailyClient({ siteId, siteName, sessionDate, dailySummary, daily
     setAutoNotes(dailySummary || '')
     setLastSaved(null)
     setSessionId(existingSession?.id ?? null)
-  }, [dailySummary, existingSession, sessionDate])
+    setCurrentStatus(existingSession?.status ?? null)
+    setEditMode(shouldStartInEditMode(existingSession, initialEditMode))
+  }, [dailySummary, existingSession, initialEditMode, sessionDate])
 
   useEffect(() => {
     if (sessionDate) {
@@ -224,11 +246,14 @@ export function DailyClient({ siteId, siteName, sessionDate, dailySummary, daily
       const res = await upsertSessionAction(buildSessionDTO('draft'), sessionId ?? undefined)
       if (res.success) {
         if (res.data?.id) setSessionId(res.data.id)
+        setCurrentStatus(res.data?.status ?? 'draft')
+        setEditMode(true)
         setLastSaved(new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }))
         toast.success('Session saved')
         getMissingCashupDatesAction(siteId).then(r => {
           if (r.success && r.dates) setMissingDates(r.dates)
         })
+        router.refresh()
       } else {
         toast.error(res.error || 'Failed to save')
       }
@@ -237,20 +262,32 @@ export function DailyClient({ siteId, siteName, sessionDate, dailySummary, daily
     } finally {
       setSaving(false)
     }
-  }, [buildSessionDTO, sessionId, siteId])
+  }, [buildSessionDTO, router, sessionId, siteId])
 
   const handleSubmit = useCallback(async () => {
+    const shouldStayOnCurrentDate = Boolean(sessionId && editMode && currentStatus && currentStatus !== 'draft')
     setSaving(true)
     try {
       const res = await upsertAndSubmitSessionAction(buildSessionDTO('draft'), sessionId ?? undefined)
       if (res.success) {
         toast.success('Session submitted for approval')
-        const nextDate = missingDates.find(d => d !== sessionDate)
-        clearFormFields()
-        if (nextDate) {
-          router.push(`/cashing-up/daily?date=${nextDate}&siteId=${siteId}`)
+        setCurrentStatus(res.data?.status ?? 'submitted')
+        setEditMode(false)
+        if (res.data?.id) setSessionId(res.data.id)
+        getMissingCashupDatesAction(siteId).then(r => {
+          if (r.success && r.dates) setMissingDates(r.dates)
+        })
+        if (shouldStayOnCurrentDate) {
+          router.replace(`/cashing-up/daily?date=${sessionDate}&siteId=${siteId}`)
+          router.refresh()
         } else {
-          router.push('/cashing-up/dashboard')
+          const nextDate = missingDates.find(d => d !== sessionDate)
+          clearFormFields()
+          if (nextDate) {
+            router.push(`/cashing-up/daily?date=${nextDate}&siteId=${siteId}`)
+          } else {
+            router.push('/cashing-up/dashboard')
+          }
         }
       } else {
         toast.error(res.error || 'Failed to submit')
@@ -260,7 +297,21 @@ export function DailyClient({ siteId, siteName, sessionDate, dailySummary, daily
     } finally {
       setSaving(false)
     }
-  }, [buildSessionDTO, clearFormFields, missingDates, router, sessionDate, sessionId, siteId])
+  }, [buildSessionDTO, clearFormFields, currentStatus, editMode, missingDates, router, sessionDate, sessionId, siteId])
+
+  const handleOpenForEditing = useCallback(() => {
+    if (isLockedStatus) {
+      toast.error('Locked sessions cannot be edited')
+      return
+    }
+    setEditMode(true)
+  }, [isLockedStatus])
+
+  const cashupDateUrl = useCallback((date: string, openForEditing = false): string => {
+    const params = new URLSearchParams({ date, siteId })
+    if (openForEditing) params.set('edit', '1')
+    return `/cashing-up/daily?${params.toString()}`
+  }, [siteId])
 
   const onDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const newDate = e.target.value
@@ -303,6 +354,11 @@ export function DailyClient({ siteId, siteName, sessionDate, dailySummary, daily
               <Icon name="building" size={14} />
               <span>{siteName}</span>
             </div>
+            {currentStatus && (
+              <Badge tone={statusTone(currentStatus)} dot>
+                {currentStatus}
+              </Badge>
+            )}
             {dailyTarget > 0 && (
               <div className="ml-auto flex items-center gap-1.5 text-sm">
                 <span className="text-text-muted">Target:</span>
@@ -384,7 +440,7 @@ export function DailyClient({ siteId, siteName, sessionDate, dailySummary, daily
                         onKeyDown={(e) => handleKeyDown(e, nextId)}
                         onWheel={(e) => e.currentTarget.blur()}
                         className={`${numberInputNoSpinnerClass} w-20 p-1 text-right text-sm bg-transparent border-none focus:outline-none focus:ring-0 font-mono`}
-                        disabled={isLocked}
+                        disabled={fieldsDisabled}
                       />
                     </div>
                   </div>
@@ -413,7 +469,7 @@ export function DailyClient({ siteId, siteName, sessionDate, dailySummary, daily
                     onKeyDown={(e) => handleKeyDown(e, 'input-card-total')}
                     onWheel={(e) => e.currentTarget.blur()}
                     className={`${numberInputNoSpinnerClass} w-28 p-1 text-right text-sm font-mono`}
-                    disabled={isLocked}
+                    disabled={fieldsDisabled}
                   />
                 </div>
               </div>
@@ -443,7 +499,7 @@ export function DailyClient({ siteId, siteName, sessionDate, dailySummary, daily
                 placeholder="0.00"
                 icon={<Icon name="pound" size={16} />}
                 className={numberInputNoSpinnerClass}
-                disabled={isLocked}
+                disabled={fieldsDisabled}
               />
             </Field>
 
@@ -458,7 +514,7 @@ export function DailyClient({ siteId, siteName, sessionDate, dailySummary, daily
                 placeholder="0.00"
                 icon={<Icon name="pound" size={16} />}
                 className={numberInputNoSpinnerClass}
-                disabled={isLocked}
+                disabled={fieldsDisabled}
               />
             </Field>
 
@@ -479,7 +535,7 @@ export function DailyClient({ siteId, siteName, sessionDate, dailySummary, daily
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
                 placeholder="Enter your notes here..."
-                disabled={isLocked}
+                disabled={fieldsDisabled}
               />
             </Field>
 
@@ -493,12 +549,25 @@ export function DailyClient({ siteId, siteName, sessionDate, dailySummary, daily
 
             {/* Action buttons */}
             <div className="flex gap-3 pt-2">
-              <Button variant="secondary" onClick={handleSave} loading={saving} disabled={isLocked}>
-                Save Draft
-              </Button>
-              <Button variant="primary" onClick={handleSubmit} loading={saving} disabled={isLocked}>
-                Submit
-              </Button>
+              {isReadOnlyStatus && !editMode ? (
+                <Button
+                  variant="secondary"
+                  onClick={handleOpenForEditing}
+                  disabled={isLockedStatus}
+                  icon={<Icon name="edit" size={14} />}
+                >
+                  Edit takings
+                </Button>
+              ) : (
+                <>
+                  <Button variant="secondary" onClick={handleSave} loading={saving} disabled={fieldsDisabled}>
+                    Save Draft
+                  </Button>
+                  <Button variant="primary" onClick={handleSubmit} loading={saving} disabled={fieldsDisabled}>
+                    Submit
+                  </Button>
+                </>
+              )}
             </div>
           </CardBody>
         </Card>
@@ -521,7 +590,7 @@ export function DailyClient({ siteId, siteName, sessionDate, dailySummary, daily
                 placeholder="0.00"
                 icon={<Icon name="pound" size={16} />}
                 className={numberInputNoSpinnerClass}
-                disabled={isLocked}
+                disabled={fieldsDisabled}
               />
             </Field>
 
@@ -536,7 +605,7 @@ export function DailyClient({ siteId, siteName, sessionDate, dailySummary, daily
                 placeholder="0.00"
                 icon={<Icon name="pound" size={16} />}
                 className={numberInputNoSpinnerClass}
-                disabled={isLocked}
+                disabled={fieldsDisabled}
               />
             </Field>
 
@@ -551,7 +620,7 @@ export function DailyClient({ siteId, siteName, sessionDate, dailySummary, daily
                 placeholder="0.00"
                 icon={<Icon name="pound" size={16} />}
                 className={numberInputNoSpinnerClass}
-                disabled={isLocked}
+                disabled={fieldsDisabled}
               />
             </Field>
 
@@ -610,9 +679,22 @@ export function DailyClient({ siteId, siteName, sessionDate, dailySummary, daily
                       £{fmt(row.total_counted_amount ?? 0)}
                     </TableCell>
                     <TableCell>
-                      <Badge tone={statusTone(row.status)} dot>
-                        {row.status}
-                      </Badge>
+                      <div className="flex flex-col items-start gap-1">
+                        <Badge tone={statusTone(row.status)} dot>
+                          {row.status}
+                        </Badge>
+                        <Button
+                          variant="secondary"
+                          size="xs"
+                          onClick={() => router.push(cashupDateUrl(row.session_date, row.status !== 'locked'))}
+                          disabled={row.status === 'locked'}
+                          icon={<Icon name="edit" size={12} />}
+                          aria-label={`Edit takings for ${format(parseISO(row.session_date), 'EEEE dd MMM')}`}
+                          title="Edit takings"
+                        >
+                          Edit
+                        </Button>
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))

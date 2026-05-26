@@ -7,7 +7,7 @@ import { CashingUpService } from '@/services/cashing-up.service'
 import { getTodayIsoDate } from '@/lib/dateUtils'
 import { DailyClient } from './_components/DailyClient'
 
-export default async function DailyCashupPage(props: { searchParams: Promise<{ date?: string; siteId?: string }> }) {
+export default async function DailyCashupPage(props: { searchParams: Promise<{ date?: string; siteId?: string; edit?: string }> }) {
   const searchParams = await props.searchParams
 
   const supabase = await createClient()
@@ -21,6 +21,7 @@ export default async function DailyCashupPage(props: { searchParams: Promise<{ d
 
   const todayIso = getTodayIsoDate()
   const sessionDate = searchParams.date || todayIso
+  const initialEditMode = searchParams.edit === '1' || searchParams.edit === 'true'
 
   // Calculate week start (Monday)
   const dateObj = new Date(sessionDate + 'T12:00:00')
@@ -49,6 +50,7 @@ export default async function DailyCashupPage(props: { searchParams: Promise<{ d
       weeklyData={weeklyRes.data ?? []}
       existingSession={existingSession ? JSON.parse(JSON.stringify(existingSession)) : null}
       missingDates={missingRes.success && missingRes.dates ? missingRes.dates : []}
+      initialEditMode={initialEditMode}
     />
   )
 }
