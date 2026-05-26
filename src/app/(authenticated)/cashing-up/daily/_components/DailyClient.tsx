@@ -73,6 +73,8 @@ const dayName = (dateStr: string): string => {
 const numberInputNoSpinnerClass =
   '[appearance:textfield] [&::-webkit-inner-spin-button]:m-0 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:m-0 [&::-webkit-outer-spin-button]:appearance-none'
 
+const compactAmountInputClass = `${numberInputNoSpinnerClass} h-8 py-1 text-xs`
+
 const amountInputValue = (value?: number | null): string => {
   if (!value) return ''
   return value.toString()
@@ -116,7 +118,6 @@ const shouldStartInEditMode = (session: CashupSession | null, requestedEditMode:
 
 export function DailyClient({
   siteId,
-  siteName,
   sessionDate,
   dailySummary,
   dailyTarget,
@@ -332,35 +333,31 @@ export function DailyClient({
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       {/* Date picker row */}
       <Card>
-        <CardBody>
-          <div className="flex flex-wrap items-center gap-4">
+        <CardBody className="p-3">
+          <div className="flex flex-wrap items-center gap-3">
             <Field label="Date" className="flex-shrink-0">
               <div className="flex items-center gap-2">
                 <input
                   type="date"
                   value={sessionDate}
                   onChange={onDateChange}
-                  className="rounded-default border border-border bg-surface px-3 py-1.5 text-sm font-medium text-text focus:outline-none focus:ring-2 focus:ring-primary/50"
+                  className="rounded-default border border-border bg-surface px-2.5 py-1 text-xs font-medium text-text focus:outline-none focus:ring-2 focus:ring-primary/50"
                 />
                 <Badge tone="neutral">
                   {format(parseISO(sessionDate), 'EEEE')}
                 </Badge>
               </div>
             </Field>
-            <div className="flex items-center gap-2 text-sm text-text-muted">
-              <Icon name="building" size={14} />
-              <span>{siteName}</span>
-            </div>
             {currentStatus && (
               <Badge tone={statusTone(currentStatus)} dot>
                 {currentStatus}
               </Badge>
             )}
             {dailyTarget > 0 && (
-              <div className="ml-auto flex items-center gap-1.5 text-sm">
+              <div className="ml-auto flex items-center gap-1.5 text-xs">
                 <span className="text-text-muted">Target:</span>
                 <span className="font-semibold font-mono">£{fmt(dailyTarget)}</span>
               </div>
@@ -371,8 +368,8 @@ export function DailyClient({
 
       {/* Missing dates alert */}
       {missingDates.length > 0 && (
-        <Alert tone="warning">
-          <div className="space-y-2">
+        <Alert tone="warning" className="p-3">
+          <div className="space-y-1.5">
             <div className="flex items-center gap-2">
               <Icon name="alertTriangle" size={16} />
               <span className="font-semibold text-sm">
@@ -404,27 +401,28 @@ export function DailyClient({
         </Alert>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-4 gap-4">
-        {/* Column 1 — Cash denomination grid */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-3">
+        {/* Column 1 — Cash and payment totals */}
         <Card>
           <CardHeader
-            title="Cash"
-            subtitle={lastSaved ? `Saved at ${lastSaved}` : 'Cash drawer count'}
+            title="Cash, Card & Stripe"
+            subtitle={lastSaved ? `Saved at ${lastSaved}` : 'Cash drawer and payment totals'}
+            className="py-2"
           />
-          <CardBody>
-            <p className="text-xs font-semibold text-text-muted uppercase mb-2">
+          <CardBody className="space-y-3 p-3">
+            <p className="text-xs font-semibold text-text-muted uppercase mb-1">
               Cash drawer count (total value)
             </p>
-            <div className="grid grid-cols-2 gap-1.5">
+            <div className="grid grid-cols-2 gap-1">
               {DENOMINATIONS.map((denom, index) => {
                 const nextDenom = DENOMINATIONS[index + 1]
                 const nextId = nextDenom ? `input-denom-${nextDenom.value}` : 'input-cash-expected'
                 return (
                   <div
                     key={denom.value}
-                    className="flex items-center justify-between bg-surface-2 px-2 py-1 rounded-default border border-border"
+                    className="flex items-center justify-between bg-surface-2 px-1.5 py-0.5 rounded-default border border-border"
                   >
-                    <span className="text-xs font-medium text-text-muted w-8 text-center">
+                    <span className="text-[11px] font-medium text-text-muted w-7 text-center">
                       {denom.label}
                     </span>
                     <div className="flex items-center gap-0.5">
@@ -439,7 +437,7 @@ export function DailyClient({
                         onChange={(e) => handleCashValueChange(denom.value, e.target.value)}
                         onKeyDown={(e) => handleKeyDown(e, nextId)}
                         onWheel={(e) => e.currentTarget.blur()}
-                        className={`${numberInputNoSpinnerClass} w-20 p-1 text-right text-sm bg-transparent border-none focus:outline-none focus:ring-0 font-mono`}
+                        className={`${numberInputNoSpinnerClass} h-6 w-14 p-0 text-right text-xs bg-transparent border-none focus:outline-none focus:ring-0 font-mono`}
                         disabled={fieldsDisabled}
                       />
                     </div>
@@ -449,14 +447,14 @@ export function DailyClient({
             </div>
 
             {/* Cash totals */}
-            <div className="mt-3 pt-3 border-t border-border space-y-2">
+            <div className="pt-2 border-t border-border space-y-1.5">
               <div className="flex justify-between items-center">
-                <span className="text-sm font-semibold text-text-strong">Total counted:</span>
-                <span className="font-mono font-bold text-lg">£{fmt(cashCountedTotal)}</span>
+                <span className="text-xs font-semibold text-text-strong">Total counted:</span>
+                <span className="font-mono font-bold text-base">£{fmt(cashCountedTotal)}</span>
               </div>
 
-              <div className="flex justify-between items-center pt-2 border-t border-border">
-                <span className="text-sm text-text-muted font-medium">Expected (Z-Read):</span>
+              <div className="flex justify-between items-center pt-1.5 border-t border-border">
+                <span className="text-xs text-text-muted font-medium">Expected (Z-Read):</span>
                 <div className="flex items-center gap-1">
                   <span className="text-text-subtle text-xs">£</span>
                   <Input
@@ -468,58 +466,112 @@ export function DailyClient({
                     onChange={(e) => setCashExpected(e.target.value)}
                     onKeyDown={(e) => handleKeyDown(e, 'input-card-total')}
                     onWheel={(e) => e.currentTarget.blur()}
-                    className={`${numberInputNoSpinnerClass} w-28 p-1 text-right text-sm font-mono`}
+                    className={`${numberInputNoSpinnerClass} h-7 w-24 p-0 text-right text-xs font-mono`}
                     disabled={fieldsDisabled}
                   />
                 </div>
               </div>
 
               <div className="flex justify-between items-center">
-                <span className="text-sm font-medium text-text">Variance:</span>
+                <span className="text-xs font-medium text-text">Variance:</span>
                 <span className={`font-mono font-bold ${cashVariance < 0 ? 'text-danger-fg' : 'text-success-fg'}`}>
                   £{fmt(cashVariance)}
                 </span>
               </div>
             </div>
+
+            <div className="grid grid-cols-1 gap-3 border-t border-border pt-3 sm:grid-cols-2 lg:grid-cols-2">
+              <Field label="Card total (terminal)">
+                <Input
+                  id="input-card-total"
+                  type="number"
+                  inputMode="decimal"
+                  step="0.01"
+                  value={cardTotal}
+                  onChange={(e) => setCardTotal(e.target.value)}
+                  onKeyDown={(e) => handleKeyDown(e, 'input-stripe-total')}
+                  placeholder="0.00"
+                  icon={<Icon name="pound" size={16} />}
+                  className={compactAmountInputClass}
+                  disabled={fieldsDisabled}
+                />
+              </Field>
+
+              <Field label="Stripe total (dashboard)">
+                <Input
+                  id="input-stripe-total"
+                  type="number"
+                  inputMode="decimal"
+                  step="0.01"
+                  value={stripeTotal}
+                  onChange={(e) => setStripeTotal(e.target.value)}
+                  onKeyDown={(e) => handleKeyDown(e, 'input-drinks-sales')}
+                  placeholder="0.00"
+                  icon={<Icon name="pound" size={16} />}
+                  className={compactAmountInputClass}
+                  disabled={fieldsDisabled}
+                />
+              </Field>
+            </div>
+
           </CardBody>
         </Card>
 
-        {/* Column 2 — Card, Stripe, Notes */}
+        {/* Column 2 — Sales split, notes and actions */}
         <Card>
-          <CardHeader title="Card & Stripe" />
-          <CardBody className="space-y-4">
-            <Field label="Card total (terminal)">
-              <Input
-                id="input-card-total"
-                type="number"
-                inputMode="decimal"
-                step="0.01"
-                value={cardTotal}
-                onChange={(e) => setCardTotal(e.target.value)}
-                placeholder="0.00"
-                icon={<Icon name="pound" size={16} />}
-                className={numberInputNoSpinnerClass}
-                disabled={fieldsDisabled}
-              />
-            </Field>
+          <CardHeader title="Sales split" subtitle="Used for P&L health checks" className="py-2" />
+          <CardBody className="space-y-3 p-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 lg:grid-cols-3">
+              <Field label="Drinks sales">
+                <Input
+                  id="input-drinks-sales"
+                  type="number"
+                  inputMode="decimal"
+                  step="0.01"
+                  value={drinksSales}
+                  onChange={(e) => setDrinksSales(e.target.value)}
+                  onKeyDown={(e) => handleKeyDown(e, 'input-food-sales')}
+                  placeholder="0.00"
+                  icon={<Icon name="pound" size={16} />}
+                  className={compactAmountInputClass}
+                  disabled={fieldsDisabled}
+                />
+              </Field>
 
-            <Field label="Stripe total (dashboard)">
-              <Input
-                id="input-stripe-total"
-                type="number"
-                inputMode="decimal"
-                step="0.01"
-                value={stripeTotal}
-                onChange={(e) => setStripeTotal(e.target.value)}
-                placeholder="0.00"
-                icon={<Icon name="pound" size={16} />}
-                className={numberInputNoSpinnerClass}
-                disabled={fieldsDisabled}
-              />
-            </Field>
+              <Field label="Food sales">
+                <Input
+                  id="input-food-sales"
+                  type="number"
+                  inputMode="decimal"
+                  step="0.01"
+                  value={foodSales}
+                  onChange={(e) => setFoodSales(e.target.value)}
+                  onKeyDown={(e) => handleKeyDown(e, 'input-other-sales')}
+                  placeholder="0.00"
+                  icon={<Icon name="pound" size={16} />}
+                  className={compactAmountInputClass}
+                  disabled={fieldsDisabled}
+                />
+              </Field>
+
+              <Field label="Other sales">
+                <Input
+                  id="input-other-sales"
+                  type="number"
+                  inputMode="decimal"
+                  step="0.01"
+                  value={otherSales}
+                  onChange={(e) => setOtherSales(e.target.value)}
+                  placeholder="0.00"
+                  icon={<Icon name="pound" size={16} />}
+                  className={compactAmountInputClass}
+                  disabled={fieldsDisabled}
+                />
+              </Field>
+            </div>
 
             {/* Variance summary */}
-            <Alert tone="info">
+            <Alert tone="info" className="p-3">
               <div className="flex justify-between items-center">
                 <span>Cash variance:</span>
                 <strong className={cashVariance < 0 ? 'text-danger-fg' : 'text-success-fg'}>
@@ -535,6 +587,7 @@ export function DailyClient({
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
                 placeholder="Enter your notes here..."
+                className="h-8 py-1 text-xs"
                 disabled={fieldsDisabled}
               />
             </Field>
@@ -548,10 +601,11 @@ export function DailyClient({
             )}
 
             {/* Action buttons */}
-            <div className="flex gap-3 pt-2">
+            <div className="flex gap-2 pt-1">
               {isReadOnlyStatus && !editMode ? (
                 <Button
                   variant="secondary"
+                  size="sm"
                   onClick={handleOpenForEditing}
                   disabled={isLockedStatus}
                   icon={<Icon name="edit" size={14} />}
@@ -560,10 +614,10 @@ export function DailyClient({
                 </Button>
               ) : (
                 <>
-                  <Button variant="secondary" onClick={handleSave} loading={saving} disabled={fieldsDisabled}>
+                  <Button variant="secondary" size="sm" onClick={handleSave} loading={saving} disabled={fieldsDisabled}>
                     Save Draft
                   </Button>
-                  <Button variant="primary" onClick={handleSubmit} loading={saving} disabled={fieldsDisabled}>
+                  <Button variant="primary" size="sm" onClick={handleSubmit} loading={saving} disabled={fieldsDisabled}>
                     Submit
                   </Button>
                 </>
@@ -572,80 +626,9 @@ export function DailyClient({
           </CardBody>
         </Card>
 
-        {/* Column 3 — Sales split */}
+        {/* Column 3 — Week at a glance */}
         <Card>
-          <CardHeader
-            title="Sales split"
-            subtitle="Used for P&L health checks"
-          />
-          <CardBody className="space-y-4">
-            <Field label="Drinks sales">
-              <Input
-                id="input-drinks-sales"
-                type="number"
-                inputMode="decimal"
-                step="0.01"
-                value={drinksSales}
-                onChange={(e) => setDrinksSales(e.target.value)}
-                placeholder="0.00"
-                icon={<Icon name="pound" size={16} />}
-                className={numberInputNoSpinnerClass}
-                disabled={fieldsDisabled}
-              />
-            </Field>
-
-            <Field label="Food sales">
-              <Input
-                id="input-food-sales"
-                type="number"
-                inputMode="decimal"
-                step="0.01"
-                value={foodSales}
-                onChange={(e) => setFoodSales(e.target.value)}
-                placeholder="0.00"
-                icon={<Icon name="pound" size={16} />}
-                className={numberInputNoSpinnerClass}
-                disabled={fieldsDisabled}
-              />
-            </Field>
-
-            <Field label="Other sales">
-              <Input
-                id="input-other-sales"
-                type="number"
-                inputMode="decimal"
-                step="0.01"
-                value={otherSales}
-                onChange={(e) => setOtherSales(e.target.value)}
-                placeholder="0.00"
-                icon={<Icon name="pound" size={16} />}
-                className={numberInputNoSpinnerClass}
-                disabled={fieldsDisabled}
-              />
-            </Field>
-
-            <div className="rounded-default border border-border bg-surface-2 p-3 text-sm">
-              <div className="flex justify-between gap-3">
-                <span className="text-text-muted">Split total</span>
-                <span className="font-mono font-semibold">£{fmt(salesSplitTotal)}</span>
-              </div>
-              <div className="flex justify-between gap-3">
-                <span className="text-text-muted">Total revenue</span>
-                <span className="font-mono font-semibold">£{fmt(totalRevenue)}</span>
-              </div>
-              <div className="mt-2 flex justify-between gap-3 border-t border-border pt-2">
-                <span className="font-medium">Difference</span>
-                <span className="font-mono font-bold text-text-strong">
-                  £{fmt(salesSplitVariance)}
-                </span>
-              </div>
-            </div>
-          </CardBody>
-        </Card>
-
-        {/* Column 4 — Week at a glance */}
-        <Card>
-          <CardHeader title="Week at a glance" />
+          <CardHeader title="Week at a glance" className="py-2" />
           <Table>
             <TableHeader>
               <TableRow>
@@ -653,7 +636,6 @@ export function DailyClient({
                 <TableHead align="right">Cash</TableHead>
                 <TableHead align="right">Card</TableHead>
                 <TableHead align="right">Total</TableHead>
-                <TableHead>Status</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -667,7 +649,18 @@ export function DailyClient({
                 weeklyData.map((row) => (
                   <TableRow key={row.session_date}>
                     <TableCell className="font-medium">
-                      {dayName(row.session_date)}
+                      <div className="flex items-center gap-2">
+                        <span>{dayName(row.session_date)}</span>
+                        <Button
+                          variant="secondary"
+                          size="xs"
+                          onClick={() => router.push(cashupDateUrl(row.session_date, row.status !== 'locked'))}
+                          disabled={row.status === 'locked'}
+                          icon={<Icon name="edit" size={12} />}
+                          aria-label={`Edit takings for ${format(parseISO(row.session_date), 'EEEE dd MMM')}`}
+                          title="Edit takings"
+                        />
+                      </div>
                     </TableCell>
                     <TableCell align="right" className="font-mono text-xs">
                       £{fmt(row.cash_counted_amount ?? 0)}
@@ -677,24 +670,6 @@ export function DailyClient({
                     </TableCell>
                     <TableCell align="right" className="font-mono text-xs">
                       £{fmt(row.total_counted_amount ?? 0)}
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex flex-col items-start gap-1">
-                        <Badge tone={statusTone(row.status)} dot>
-                          {row.status}
-                        </Badge>
-                        <Button
-                          variant="secondary"
-                          size="xs"
-                          onClick={() => router.push(cashupDateUrl(row.session_date, row.status !== 'locked'))}
-                          disabled={row.status === 'locked'}
-                          icon={<Icon name="edit" size={12} />}
-                          aria-label={`Edit takings for ${format(parseISO(row.session_date), 'EEEE dd MMM')}`}
-                          title="Edit takings"
-                        >
-                          Edit
-                        </Button>
-                      </div>
                     </TableCell>
                   </TableRow>
                 ))
