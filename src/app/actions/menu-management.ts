@@ -399,6 +399,7 @@ export async function listMenusWithCategories() {
 // would wipe all child records (ingredients, recipes, assignments).
 
 const FieldPriceSchema = z.number().nonnegative();
+const IngredientDietaryFlagSchema = z.enum(['vegetarian', 'vegan', 'gluten_free', 'halal']);
 
 export async function updateIngredientPackCost(id: string, packCost: number) {
   try {
@@ -422,8 +423,6 @@ export async function updateIngredientPackCost(id: string, packCost: number) {
       },
     });
 
-    revalidatePath('/menu-management/ingredients');
-    revalidatePath('/menu-management');
     return { success: true };
   } catch (error: unknown) {
     console.error('updateIngredientPackCost unexpected error:', error);
@@ -452,11 +451,42 @@ export async function toggleIngredientActive(id: string) {
       },
     });
 
-    revalidatePath('/menu-management/ingredients');
-    revalidatePath('/menu-management');
-    return { success: true };
+    return { success: true, data: { is_active: newValue } };
   } catch (error: unknown) {
     console.error('toggleIngredientActive unexpected error:', error);
+    return { error: getErrorMessage(error) };
+  }
+}
+
+export async function toggleIngredientDietaryFlag(id: string, flag: string) {
+  try {
+    const hasPermission = await checkUserPermission('menu_management', 'manage');
+    if (!hasPermission) {
+      return { error: 'You do not have permission to manage menu ingredients' };
+    }
+
+    const validatedFlag = IngredientDietaryFlagSchema.parse(flag);
+    const { previousValue, newValue, dietaryFlags } = await MenuService.toggleIngredientDietaryFlag(
+      id,
+      validatedFlag
+    );
+
+    await logAuditEvent({
+      operation_type: 'update',
+      resource_type: 'menu_ingredient',
+      resource_id: id,
+      operation_status: 'success',
+      additional_info: {
+        field: 'dietary_flags',
+        flag: validatedFlag,
+        previous_value: previousValue,
+        new_value: newValue,
+      },
+    });
+
+    return { success: true, data: { dietary_flags: dietaryFlags } };
+  } catch (error: unknown) {
+    console.error('toggleIngredientDietaryFlag unexpected error:', error);
     return { error: getErrorMessage(error) };
   }
 }

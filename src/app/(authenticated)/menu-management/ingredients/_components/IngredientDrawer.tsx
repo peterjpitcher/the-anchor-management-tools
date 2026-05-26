@@ -80,11 +80,11 @@ const ALLERGEN_OPTIONS = [
 ];
 
 const DIETARY_OPTIONS = [
-  { value: 'vegan', label: 'Vegan' },
   { value: 'vegetarian', label: 'Vegetarian' },
+  { value: 'vegan', label: 'Vegan' },
   { value: 'gluten_free', label: 'Gluten Free' },
-  { value: 'dairy_free', label: 'Dairy Free' },
   { value: 'halal', label: 'Halal' },
+  { value: 'dairy_free', label: 'Dairy Free' },
   { value: 'kosher', label: 'Kosher' },
 ];
 
