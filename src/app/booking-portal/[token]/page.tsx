@@ -5,13 +5,14 @@ import { formatDateFull, formatTime12Hour } from '@/lib/dateUtils'
 import { formatCurrency } from '@/lib/format'
 import { COMPANY_DETAILS } from '@/lib/company-details'
 import { PayPalCaptureClient } from './PayPalCaptureClient'
+import { FreshPayPalLinkClient } from './FreshPayPalLinkClient'
 import type { BookingStatus } from '@/types/private-bookings'
 
 export const dynamic = 'force-dynamic'
 
 interface PageProps {
   params: Promise<{ token: string }>
-  searchParams: Promise<{ payment_pending?: string }>
+  searchParams: Promise<{ fresh_payment_link?: string; payment_pending?: string }>
 }
 
 // Status badge colours — customer-friendly language only
@@ -124,7 +125,7 @@ function DescriptionItem({ label, value }: { label: string; value: string | null
 
 export default async function BookingPortalPage({ params, searchParams }: PageProps) {
   const { token } = await params
-  const { payment_pending } = await searchParams
+  const { fresh_payment_link } = await searchParams
 
   // Verify the HMAC-signed token — this is the access control mechanism
   const bookingId = verifyBookingToken(token)
@@ -285,6 +286,10 @@ export default async function BookingPortalPage({ params, searchParams }: PagePr
               </span>
             </div>
           </div>
+
+          {depositRequired && !depositPaid && b.status !== 'cancelled' && b.status !== 'completed' && (
+            <FreshPayPalLinkClient portalToken={token} autoStart={fresh_payment_link === '1'} />
+          )}
 
           {/* Total / balance row */}
           <div className="flex items-center justify-between py-3 border-b border-gray-100 last:border-0">

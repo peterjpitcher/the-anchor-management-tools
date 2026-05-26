@@ -1,7 +1,7 @@
 'use server'
 
 import { createAdminClient } from '@/lib/supabase/admin'
-import { capturePayPalPayment, getPayPalOrder } from '@/lib/paypal'
+import { capturePayPalPayment, createSimplePayPalOrder, getPayPalOrder } from '@/lib/paypal'
 import { verifyBookingToken } from '@/lib/private-bookings/booking-token'
 import { logger } from '@/lib/logger'
 import { finalizeDepositPayment } from '@/services/private-bookings'
@@ -14,6 +14,112 @@ function getPayPalOrderAmount(order: any): number | null {
 
 function amountsMatch(actual: number, expected: number): boolean {
   return Math.abs(actual - expected) <= 0.01
+}
+
+/**
+ * Create a fresh PayPal deposit order from the signed booking portal link.
+ * This lets customers recover from an expired PayPal approval URL without staff
+ * manually resending the email.
+ */
+export async function createDepositPaymentOrderByToken(
+  portalToken: string
+): Promise<{ success?: boolean; approveUrl?: string; error?: string }> {
+  const bookingId = verifyBookingToken(portalToken)
+  if (!bookingId) {
+    return { error: 'Invalid booking link' }
+  }
+
+  const admin = createAdminClient()
+  const { data: booking, error: fetchError } = await admin
+    .from('private_bookings')
+    .select('id, deposit_amount, deposit_paid_date, status, event_date, event_type')
+    .eq('id', bookingId)
+    .maybeSingle()
+
+  if (fetchError) {
+    logger.error('Portal PayPal order: failed to load booking', {
+      error: fetchError,
+      metadata: { bookingId },
+    })
+    return { error: 'Unable to load booking details' }
+  }
+
+  if (!booking) {
+    return { error: 'Booking not found' }
+  }
+
+  if (booking.status === 'cancelled' || booking.status === 'completed') {
+    return { error: 'This booking can no longer accept a deposit payment' }
+  }
+
+  if (booking.deposit_paid_date) {
+    return { error: 'Deposit has already been paid' }
+  }
+
+  const depositAmount = Number(booking.deposit_amount ?? 0)
+  if (depositAmount <= 0) {
+    return { error: 'No deposit is required for this booking' }
+  }
+
+  try {
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL || ''
+    const portalUrl = `${appUrl}/booking-portal/${portalToken}`
+    const result = await createSimplePayPalOrder({
+      customId: `pb-deposit-${bookingId}`,
+      reference: bookingId,
+      description: `Deposit for ${booking.event_type || 'Private Booking'} on ${booking.event_date}`,
+      amount: depositAmount,
+      returnUrl: `${portalUrl}?payment_pending=1`,
+      cancelUrl: portalUrl,
+      currency: 'GBP',
+      brandName: 'The Anchor',
+      requestId: `pb-deposit-portal-${bookingId}-${Date.now()}`,
+    })
+
+    const { data: updatedBooking, error: updateError } = await admin
+      .from('private_bookings')
+      .update({
+        paypal_deposit_order_id: result.orderId,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', bookingId)
+      .is('deposit_paid_date', null)
+      .select('id')
+      .maybeSingle()
+
+    if (updateError || !updatedBooking) {
+      logger.error('Portal PayPal order: failed to persist order ID', {
+        error: updateError ?? new Error('Portal PayPal order update affected no rows'),
+        metadata: { bookingId, orderId: result.orderId },
+      })
+      return { error: 'Unable to prepare your payment link. Please contact us.' }
+    }
+
+    const { error: auditError } = await admin.from('audit_logs').insert({
+      action: 'paypal_deposit_order_created_via_portal',
+      entity_type: 'private_booking',
+      entity_id: bookingId,
+      metadata: {
+        order_id: result.orderId,
+        source: 'booking_portal',
+      },
+    })
+
+    if (auditError) {
+      logger.error('Portal PayPal order: failed to write audit log', {
+        error: auditError,
+        metadata: { bookingId, orderId: result.orderId },
+      })
+    }
+
+    return { success: true, approveUrl: result.approveUrl }
+  } catch (error) {
+    logger.error('Portal PayPal order: failed to create PayPal order', {
+      error: error instanceof Error ? error : new Error(String(error)),
+      metadata: { bookingId },
+    })
+    return { error: 'Unable to create a fresh payment link. Please contact us.' }
+  }
 }
 
 /**
