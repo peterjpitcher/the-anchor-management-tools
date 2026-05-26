@@ -23,6 +23,7 @@ import { EditableCurrencyCell } from '../_components/EditableCurrencyCell';
 import { StatusToggleCell } from '../_components/StatusToggleCell';
 import { IngredientExpandedRow, type Ingredient } from './_components/IngredientExpandedRow';
 import { IngredientDrawer } from './_components/IngredientDrawer';
+import { IngredientDietaryFlagsCell } from './_components/IngredientDietaryFlagsCell';
 import { PriceHistoryPopover } from './_components/PriceHistoryPopover';
 import { listMenuIngredients, deleteMenuIngredient, updateIngredientPackCost, toggleIngredientActive } from '@/app/actions/menu-management';
 import type { AiParsedIngredient } from '@/app/actions/ai-menu-parsing';
@@ -42,7 +43,7 @@ const ALLERGEN_VALUES = [
   'celery','gluten','crustaceans','eggs','fish','lupin','milk',
   'molluscs','mustard','nuts','peanuts','sesame','soya','sulphites',
 ];
-const DIETARY_VALUES = ['vegan','vegetarian','gluten_free','dairy_free','halal','kosher'];
+const DIETARY_VALUES = ['vegetarian','vegan','gluten_free','halal','dairy_free','kosher'];
 
 function orderByOptions(values: string[], preferredOrder: string[]): string[] {
   const unique = Array.from(new Set(values));
@@ -112,12 +113,22 @@ const ALLERGEN_FILTER_OPTIONS = ALLERGEN_VALUES.map((v) => ({
   label: v.charAt(0).toUpperCase() + v.slice(1),
 }));
 
+const DIETARY_FILTER_OPTIONS = [
+  { value: 'vegetarian', label: 'Vegetarian' },
+  { value: 'vegan', label: 'Vegan' },
+  { value: 'gluten_free', label: 'Gluten Free' },
+  { value: 'halal', label: 'Halal' },
+  { value: 'dairy_free', label: 'Dairy Free' },
+  { value: 'kosher', label: 'Kosher' },
+];
+
 const filterDefinitions: FilterDefinition[] = [
   { id: 'status', label: 'Status', type: 'select', options: STATUS_OPTIONS, pinned: true },
   { id: 'purchase_department', label: 'Department', type: 'select', options: PURCHASE_DEPARTMENT_OPTIONS, pinned: true },
   { id: 'storage_type', label: 'Storage Type', type: 'select', options: STORAGE_TYPE_OPTIONS },
   { id: 'supplier_name', label: 'Supplier', type: 'text', placeholder: 'Filter by supplier...' },
   { id: 'allergens', label: 'Allergens', type: 'multiselect', options: ALLERGEN_FILTER_OPTIONS },
+  { id: 'dietary_flags', label: 'Dietary', type: 'multiselect', options: DIETARY_FILTER_OPTIONS },
 ];
 
 function ingredientFilterFn(item: Record<string, unknown>, filters: Record<string, unknown>): boolean {
@@ -144,6 +155,11 @@ function ingredientFilterFn(item: Record<string, unknown>, filters: Record<strin
   if (Array.isArray(filters.allergens) && filters.allergens.length > 0) {
     const required = filters.allergens as string[];
     if (!required.every((a) => ingredient.allergens.includes(a))) return false;
+  }
+
+  if (Array.isArray(filters.dietary_flags) && filters.dietary_flags.length > 0) {
+    const required = filters.dietary_flags as string[];
+    if (!required.every((flag) => ingredient.dietary_flags.includes(flag))) return false;
   }
 
   return true;
@@ -265,6 +281,17 @@ export default function MenuIngredientsPage(): React.ReactElement {
     }
     void loadIngredients();
   }, [permissionsLoading]);  
+
+  const updateIngredientLocally = useCallback((id: string, patch: Partial<Ingredient>) => {
+    setIngredients((prev) =>
+      prev.map((ingredient) =>
+        ingredient.id === id ? { ...ingredient, ...patch } : ingredient
+      )
+    );
+    setEditingIngredient((prev) =>
+      prev && prev.id === id ? { ...prev, ...patch } : prev
+    );
+  }, []);
 
   // ---- Pipeline ----
 
@@ -441,8 +468,16 @@ export default function MenuIngredientsPage(): React.ReactElement {
               value={Number(ingredient.latest_pack_cost ?? ingredient.pack_cost)}
               entityName={ingredient.name}
               fieldLabel="pack cost"
-              onSave={(val) => updateIngredientPackCost(ingredient.id, val)}
-              onSaved={() => void loadIngredients()}
+              onSave={async (val) => {
+                const result = await updateIngredientPackCost(ingredient.id, val);
+                if (!result.error) {
+                  updateIngredientLocally(ingredient.id, {
+                    pack_cost: val,
+                    latest_pack_cost: val,
+                  });
+                }
+                return result;
+              }}
             />
           ) : (
             <span className="text-sm">
@@ -480,6 +515,23 @@ export default function MenuIngredientsPage(): React.ReactElement {
         },
       },
       {
+        key: 'dietary_flags',
+        header: 'Dietary',
+        width: '230px',
+        cell: (row) => {
+          const ingredient = row as unknown as Ingredient;
+          return (
+            <IngredientDietaryFlagsCell
+              ingredient={ingredient}
+              canManage={canManage}
+              onChange={(dietaryFlags) =>
+                updateIngredientLocally(ingredient.id, { dietary_flags: dietaryFlags })
+              }
+            />
+          );
+        },
+      },
+      {
         key: 'status',
         header: 'Status',
         sortable: true,
@@ -494,8 +546,13 @@ export default function MenuIngredientsPage(): React.ReactElement {
             <StatusToggleCell
               isActive={ingredient.is_active}
               entityName={ingredient.name}
-              onToggle={() => toggleIngredientActive(ingredient.id)}
-              onToggled={() => void loadIngredients()}
+              onToggle={async () => {
+                const result = await toggleIngredientActive(ingredient.id);
+                if (!result.error && result.data) {
+                  updateIngredientLocally(ingredient.id, { is_active: result.data.is_active });
+                }
+                return result;
+              }}
             />
           ) : (
             <Badge variant={ingredient.is_active ? 'success' : 'error'}>
@@ -540,7 +597,7 @@ export default function MenuIngredientsPage(): React.ReactElement {
         },
       },
     ],
-    [canManage, loadIngredients]
+    [canManage, updateIngredientLocally]
   );
 
   // ---- Header actions ----
@@ -612,7 +669,7 @@ export default function MenuIngredientsPage(): React.ReactElement {
           showSearch
           searchValue={pipeline.searchQuery}
           onSearchChange={pipeline.setSearchQuery}
-          searchPlaceholder="Search name, supplier, allergens..."
+          searchPlaceholder="Search name, supplier, allergens or dietary..."
           layout="horizontal"
           onReset={pipeline.clearFilters}
         />

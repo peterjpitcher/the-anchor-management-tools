@@ -10,11 +10,19 @@ const UNITS = [
 ] as const;
 
 const STORAGE_TYPES = ['ambient', 'chilled', 'frozen', 'dry', 'other'] as const;
+const INGREDIENT_DIETARY_FLAG_ORDER = ['vegetarian', 'vegan', 'gluten_free', 'halal', 'dairy_free', 'kosher'] as const;
 const INGREDIENT_SELECT_WITH_DEPARTMENT = 'id, name, description, default_unit, storage_type, purchase_department, supplier_name, supplier_sku, brand, pack_size, pack_size_unit, pack_cost, portions_per_pack, wastage_pct, shelf_life_days, allergens, dietary_flags, notes, is_active, latest_pack_cost, latest_unit_cost, abv';
 const INGREDIENT_SELECT_WITHOUT_DEPARTMENT = 'id, name, description, default_unit, storage_type, supplier_name, supplier_sku, brand, pack_size, pack_size_unit, pack_cost, portions_per_pack, wastage_pct, shelf_life_days, allergens, dietary_flags, notes, is_active, latest_pack_cost, latest_unit_cost, abv';
 
 function isMissingPurchaseDepartmentColumn(error: { code?: string; message?: string } | null): boolean {
   return error?.code === '42703' && /purchase_department/i.test(error.message ?? '');
+}
+
+function orderUniqueValues(values: string[], preferredOrder: readonly string[]): string[] {
+  const unique = Array.from(new Set(values));
+  const ordered = preferredOrder.filter((value) => unique.includes(value));
+  const remainder = unique.filter((value) => !preferredOrder.includes(value));
+  return [...ordered, ...remainder];
 }
 
 export const IngredientSchema = z.object({
@@ -1514,6 +1522,50 @@ export class MenuService {
     }
 
     return { previousValue, newValue };
+  }
+
+  /**
+   * Toggle one dietary flag on an ingredient.
+   * Bypasses the full ingredient update so inline table edits cannot overwrite other fields.
+   */
+  static async toggleIngredientDietaryFlag(
+    id: string,
+    flag: string
+  ): Promise<{ previousValue: boolean; newValue: boolean; dietaryFlags: string[] }> {
+    const supabase = createAdminClient();
+
+    const { data: existing, error: fetchError } = await supabase
+      .from('menu_ingredients')
+      .select('dietary_flags')
+      .eq('id', id)
+      .single();
+
+    if (fetchError || !existing) {
+      throw new Error('Ingredient not found');
+    }
+
+    const currentFlags = Array.isArray(existing.dietary_flags)
+      ? existing.dietary_flags
+          .map((value) => (value ?? '').toString().trim().toLowerCase())
+          .filter(Boolean)
+      : [];
+    const previousValue = currentFlags.includes(flag);
+    const nextFlags = previousValue
+      ? currentFlags.filter((value) => value !== flag)
+      : [...currentFlags, flag];
+    const dietaryFlags = orderUniqueValues(nextFlags, INGREDIENT_DIETARY_FLAG_ORDER);
+
+    const { error: updateError } = await supabase
+      .from('menu_ingredients')
+      .update({ dietary_flags: dietaryFlags })
+      .eq('id', id);
+
+    if (updateError) {
+      console.error('toggleIngredientDietaryFlag error:', updateError);
+      throw new Error('Failed to update ingredient dietary flag');
+    }
+
+    return { previousValue, newValue: !previousValue, dietaryFlags };
   }
 
   /**
