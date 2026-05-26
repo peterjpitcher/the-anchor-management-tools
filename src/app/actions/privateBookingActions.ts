@@ -2096,7 +2096,7 @@ export async function sendDepositPaymentLink(
       .update({ paypal_deposit_order_id: result.orderId })
       .eq('id', bookingId)
 
-    await sendDepositPaymentLinkEmail(booking, result.approveUrl)
+    await sendDepositPaymentLinkEmail(booking, result.approveUrl, `${portalUrl}?fresh_payment_link=1`)
 
     logger.info('Deposit payment link sent to customer', { metadata: { bookingId, orderId: result.orderId } })
     return { success: true }

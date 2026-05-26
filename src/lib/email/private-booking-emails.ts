@@ -341,7 +341,7 @@ export async function sendDepositPaymentLinkEmail(booking: {
   event_date: string;
   event_type?: string | null;
   deposit_amount?: number | null;
-}, paypalApproveUrl: string): Promise<void> {
+}, paypalApproveUrl: string, freshLinkUrl?: string): Promise<void> {
   if (!booking.contact_email) return;
 
   try {
@@ -354,6 +354,17 @@ export async function sendDepositPaymentLinkEmail(booking: {
     const dateFormatted = formatDate(booking.event_date);
     const depositFormatted = formatCurrency(booking.deposit_amount ?? null);
     const subject = `Deposit payment — ${eventLabel} on ${dateFormatted}`;
+    const freshLinkHtml = freshLinkUrl
+      ? `
+  <p style="font-family: ${FONT_FAMILY}; font-size: 13px; color: #666666;">PayPal payment links usually expire 6 hours after this email is sent. If the PayPal button no longer works, use the button below to create a fresh payment link.</p>
+  <p style="font-family: ${FONT_FAMILY};">
+    <a href="${freshLinkUrl}" style="font-family: ${FONT_FAMILY}; display: inline-block; padding: 10px 18px; background-color: #f3f4f6; color: #1f2937; text-decoration: none; border-radius: 4px; font-weight: bold; font-size: 14px;">
+      Get a fresh payment link
+    </a>
+  </p>
+  <p style="font-family: ${FONT_FAMILY}; font-size: 13px; color: #666666;">Fresh link page:<br><a href="${freshLinkUrl}" style="font-family: ${FONT_FAMILY}; color: #0070ba; word-break: break-all;">${freshLinkUrl}</a></p>`
+      : `
+  <p style="font-family: ${FONT_FAMILY}; font-size: 13px; color: #666666;">PayPal payment links usually expire 6 hours after this email is sent. If the PayPal button no longer works, please contact us and we can send a fresh payment link.</p>`;
 
     const html = `
 <div style="font-family: ${FONT_FAMILY}; max-width: 600px; margin: 0 auto; padding: 20px; color: #1a1a1a;">
@@ -367,6 +378,7 @@ export async function sendDepositPaymentLinkEmail(booking: {
     </a>
   </p>
   <p style="font-family: ${FONT_FAMILY}; font-size: 13px; color: #666666;">Or copy this link into your browser:<br><a href="${paypalApproveUrl}" style="font-family: ${FONT_FAMILY}; color: #0070ba; word-break: break-all;">${paypalApproveUrl}</a></p>
+  ${freshLinkHtml}
   <p style="font-family: ${FONT_FAMILY};">If you have any questions about your booking, please don't hesitate to get in touch.</p>
   <p style="font-family: ${FONT_FAMILY}; margin-bottom: 0;">Kind regards,<br><strong>The Anchor Events Team</strong><br><span style="color: #666666;">Orange Jelly Limited, trading as The Anchor</span></p>
   <hr style="margin: 24px 0; border: none; border-top: 1px solid #eeeeee;">
