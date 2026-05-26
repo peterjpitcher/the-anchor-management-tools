@@ -31,6 +31,13 @@ type ResolvedCashupInsightsOptions = {
   year?: number;
   period: CashupInsightsPeriod;
 };
+type JoinedSessionDateRow = {
+  cashup_sessions?: { session_date?: string } | Array<{ session_date?: string }>;
+};
+type WeeklyPaymentBreakdownRow = JoinedSessionDateRow & {
+  payment_type_code?: string | null;
+  counted_amount?: number | string | null;
+};
 
 function roundCurrency(value: number): number {
   return Number(value.toFixed(2));
@@ -62,15 +69,6 @@ function normaliseSalesBreakdowns(
     sales_category: category,
     amount: roundCurrency(amounts.get(category) ?? 0),
   }));
-}
-
-function assertSalesSplitMatchesTotal(totalCounted: number, salesRows: Array<{ amount: number }>) {
-  const splitTotal = roundCurrency(salesRows.reduce((sum, item) => sum + Number(item.amount || 0), 0));
-  const variance = roundCurrency(splitTotal - totalCounted);
-
-  if (Math.abs(variance) > 0.01) {
-    throw new Error('Sales split must match the total sales before submitting.');
-  }
 }
 
 function parseLocalDate(dateStr: string): Date {
@@ -137,7 +135,7 @@ function buildMonthBuckets(startDateStr: string, endDateStr: string, year?: numb
   return buckets;
 }
 
-function getJoinedSessionDate(row: { cashup_sessions?: { session_date?: string } | Array<{ session_date?: string }> }): string | null {
+function getJoinedSessionDate(row: JoinedSessionDateRow): string | null {
   const joinedSession = Array.isArray(row.cashup_sessions) ? row.cashup_sessions[0] : row.cashup_sessions;
   return joinedSession?.session_date ?? null;
 }
@@ -433,10 +431,6 @@ export class CashingUpService {
     const totalVariance = totalCounted - totalExpected;
     const salesBreakdownRows = normaliseSalesBreakdowns(data.salesBreakdowns);
 
-    if ((data.status ?? 'draft') !== 'draft') {
-      assertSalesSplitMatchesTotal(totalCounted, salesBreakdownRows);
-    }
-
     // Prepare session data
     const sessionData = {
       site_id: data.siteId,
@@ -606,28 +600,7 @@ export class CashingUpService {
     return this.getSession(supabase, sessionId!);
   }
 
-  static async validatePersistedSalesSplit(supabase: SupabaseClient, id: string) {
-    const { data, error } = await supabase
-      .from('cashup_sessions')
-      .select(`
-        id,
-        total_counted_amount,
-        cashup_sales_breakdowns (
-          sales_category,
-          amount
-        )
-      `)
-      .eq('id', id)
-      .single();
-
-    if (error) throw error;
-    const rows = (data?.cashup_sales_breakdowns ?? []) as Array<{ sales_category: CashupSalesCategory; amount: number }>;
-    assertSalesSplitMatchesTotal(Number(data?.total_counted_amount ?? 0), rows);
-  }
-
   static async submitSession(supabase: SupabaseClient, id: string, userId: string) {
-    await this.validatePersistedSalesSplit(supabase, id);
-
     const { data: updatedRow, error } = await supabase
       .from('cashup_sessions')
       .update({ 
@@ -647,8 +620,6 @@ export class CashingUpService {
   }
 
   static async approveSession(supabase: SupabaseClient, id: string, userId: string) {
-    await this.validatePersistedSalesSplit(supabase, id);
-
     const { data: updatedRow, error } = await supabase
       .from('cashup_sessions')
       .update({ 
@@ -668,8 +639,6 @@ export class CashingUpService {
   }
 
   static async lockSession(supabase: SupabaseClient, id: string, userId: string) {
-    await this.validatePersistedSalesSplit(supabase, id);
-
     const { data: updatedRow, error } = await supabase
       .from('cashup_sessions')
       .update({ status: 'locked', updated_by_user_id: userId, updated_at: new Date().toISOString() })
@@ -705,8 +674,8 @@ export class CashingUpService {
       return format(d, 'yyyy-MM-dd');
     })();
 
-    // Fetch view rows and targets in parallel (N+1 fix: one targets query instead of per-row)
-    const [viewRes, targetsRes] = await Promise.all([
+    // Fetch view rows, targets, and payment breakdowns in parallel (N+1 fix: one query per source)
+    const [viewRes, targetsRes, breakdownsRes] = await Promise.all([
       supabase
         .from('cashup_weekly_view')
         .select('*')
@@ -719,23 +688,64 @@ export class CashingUpService {
         .eq('site_id', siteId)
         .lte('effective_from', weekEndDate)
         .order('effective_from', { ascending: false }),
+      supabase
+        .from('cashup_payment_breakdowns')
+        .select('payment_type_code, counted_amount, cashup_sessions!inner(site_id, session_date)')
+        .eq('cashup_sessions.site_id', siteId)
+        .gte('cashup_sessions.session_date', weekStartDate)
+        .lte('cashup_sessions.session_date', weekEndDate),
     ]);
 
     if (viewRes.error) throw viewRes.error;
+    if (breakdownsRes.error) throw breakdownsRes.error;
 
     const targetRows = targetsRes.data ?? [];
+    const paymentTotalsByDate = new Map<string, { cash: number; card: number; stripe: number }>();
+    for (const breakdown of (breakdownsRes.data ?? []) as WeeklyPaymentBreakdownRow[]) {
+      const sessionDate = getJoinedSessionDate(breakdown);
+      if (!sessionDate) continue;
+
+      const totals = paymentTotalsByDate.get(sessionDate) ?? { cash: 0, card: 0, stripe: 0 };
+      const amount = Number(breakdown.counted_amount ?? 0);
+      if (!Number.isFinite(amount)) continue;
+
+      switch (breakdown.payment_type_code) {
+        case 'CASH':
+          totals.cash = roundCurrency(totals.cash + amount);
+          break;
+        case 'CARD':
+          totals.card = roundCurrency(totals.card + amount);
+          break;
+        case 'STRIPE':
+          totals.stripe = roundCurrency(totals.stripe + amount);
+          break;
+      }
+
+      paymentTotalsByDate.set(sessionDate, totals);
+    }
+
     const getTargetAmount = (sessionDate: string): number => {
-      const dow = new Date(sessionDate).getDay();
+      const dow = parseLocalDate(sessionDate).getDay();
       const match = targetRows.find(t => t.day_of_week === dow && t.effective_from <= sessionDate);
       return match?.target_amount ?? 0;
     };
 
     return (viewRes.data ?? []).map((row) => {
+      const totalExpected = Number(row.total_expected_amount ?? 0);
+      const totalCounted = Number(row.total_counted_amount ?? 0);
       const target = getTargetAmount(row.session_date);
+      const paymentTotals = paymentTotalsByDate.get(row.session_date) ?? { cash: 0, card: 0, stripe: 0 };
       return {
         ...row,
+        total_expected_amount: totalExpected,
+        total_counted_amount: totalCounted,
+        total_variance_amount: roundCurrency(totalCounted - totalExpected),
+        cash_counted_amount: paymentTotals.cash,
+        card_counted_amount: paymentTotals.card,
+        stripe_counted_amount: paymentTotals.stripe,
+        non_cash_counted_amount: roundCurrency(paymentTotals.card + paymentTotals.stripe),
         target_amount: target,
-        variance_vs_target: (row.total_counted_amount || 0) - target,
+        variance_vs_target: roundCurrency(totalCounted - target),
       };
     });
   }
@@ -1002,7 +1012,7 @@ export class CashingUpService {
     const weekEndDate = toStr.split('T')[0];
 
     // Parallelise: fetch all targets and all sessions in one query each
-    const dayOfWeeks = dates.map(ds => new Date(ds).getDay());
+    const dayOfWeeks = dates.map(ds => parseLocalDate(ds).getDay());
     const [targetsData, sessionsData] = await Promise.all([
       supabase
         .from('cashup_targets')
@@ -1028,7 +1038,7 @@ export class CashingUpService {
     // For each date, pick the most-recent target effective on or before that date
     const targetRows = targetsData.data ?? [];
     const getTargetAmount = (ds: string): number => {
-      const dow = new Date(ds).getDay();
+      const dow = parseLocalDate(ds).getDay();
       const match = targetRows.find(t => t.day_of_week === dow && t.effective_from <= ds);
       return match?.target_amount ?? 0;
     };
@@ -1054,7 +1064,7 @@ export class CashingUpService {
     const endDate = dates[6];
 
     // 2. Fetch sessions and targets in parallel — one query each instead of N getDailyTarget() calls
-    const dayOfWeeks = dates.map(ds => new Date(ds).getDay());
+    const dayOfWeeks = dates.map(ds => parseLocalDate(ds).getDay());
     const [sessionsRes, targetsRes] = await Promise.all([
       supabase
         .from('cashup_sessions')
@@ -1091,13 +1101,14 @@ export class CashingUpService {
     ]);
 
     if (sessionsRes.error) throw sessionsRes.error;
+    if (targetsRes.error) throw targetsRes.error;
 
     const sessions = sessionsRes.data ?? [];
     const targetRows = targetsRes.data ?? [];
 
     // Pick the most-recent target effective on or before each date
     const getTargetAmount = (ds: string): number => {
-      const dow = new Date(ds).getDay();
+      const dow = parseLocalDate(ds).getDay();
       const match = targetRows.find(t => t.day_of_week === dow && t.effective_from <= ds);
       return match?.target_amount ?? 0;
     };
@@ -1116,27 +1127,33 @@ export class CashingUpService {
       const card = session?.cashup_payment_breakdowns.find(b => b.payment_type_code === 'CARD');
       const stripe = session?.cashup_payment_breakdowns.find(b => b.payment_type_code === 'STRIPE');
 
-      const totalActual = session?.total_counted_amount || 0;
+      const cashExpected = Number(cash?.expected_amount ?? 0);
+      const cashActual = Number(cash?.counted_amount ?? 0);
+      const cardExpected = Number(card?.expected_amount ?? 0);
+      const cardActual = Number(card?.counted_amount ?? 0);
+      const stripeActual = Number(stripe?.counted_amount ?? 0);
+      const totalExpected = Number(session?.total_expected_amount ?? 0);
+      const totalActual = Number(session?.total_counted_amount ?? 0);
 
-      runningTarget += dailyTarget;
-      runningRevenue += totalActual;
+      runningTarget = roundCurrency(runningTarget + dailyTarget);
+      runningRevenue = roundCurrency(runningRevenue + totalActual);
 
       return {
         date,
         status: session?.status || 'missing',
         notes: session?.notes || null,
 
-        cash_expected: cash?.expected_amount || 0,
-        cash_actual: cash?.counted_amount || 0,
+        cash_expected: cashExpected,
+        cash_actual: cashActual,
 
-        card_expected: card?.expected_amount || 0,
-        card_actual: card?.counted_amount || 0,
+        card_expected: cardExpected,
+        card_actual: cardActual,
 
-        stripe_actual: stripe?.counted_amount || 0,
+        stripe_actual: stripeActual,
 
-        total_expected: session?.total_expected_amount || 0,
+        total_expected: totalExpected,
         total_actual: totalActual,
-        total_variance: session?.total_variance_amount || 0,
+        total_variance: roundCurrency(totalActual - totalExpected),
 
         daily_target: dailyTarget,
         accumulated_target: runningTarget,

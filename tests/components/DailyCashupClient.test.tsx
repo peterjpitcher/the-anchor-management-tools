@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { DailyClient } from '@/app/(authenticated)/cashing-up/daily/_components/DailyClient'
 
 const routerPushMock = vi.hoisted(() => vi.fn())
@@ -86,7 +86,7 @@ describe('DailyClient', () => {
     fireEvent.change(cashExpected, { target: { value: '45' } })
     fireEvent.change(cardTotal, { target: { value: '10' } })
     fireEvent.change(stripeTotal, { target: { value: '5' } })
-    fireEvent.change(drinksSales, { target: { value: '65' } })
+    fireEvent.change(drinksSales, { target: { value: '60' } })
     fireEvent.change(notes, { target: { value: 'All checked' } })
     fireEvent.click(screen.getByRole('button', { name: 'Submit' }))
 
@@ -108,7 +108,7 @@ describe('DailyClient', () => {
           { paymentTypeCode: 'STRIPE', paymentTypeLabel: 'Stripe', expectedAmount: 5, countedAmount: 5 },
         ],
         salesBreakdowns: [
-          { salesCategory: 'drinks_sales', amount: 65 },
+          { salesCategory: 'drinks_sales', amount: 60 },
           { salesCategory: 'food_sales', amount: 0 },
           { salesCategory: 'other_sales', amount: 0 },
         ],
@@ -137,5 +137,33 @@ describe('DailyClient', () => {
     await waitFor(() => {
       expect(cardTotal.value).toBe('')
     })
+  })
+
+  it('shows payment breakdown totals in the week at a glance table', () => {
+    render(
+      <DailyClient
+        {...baseProps}
+        weeklyData={[
+          {
+            session_date: '2026-05-23',
+            status: 'submitted',
+            total_expected_amount: 1842.33,
+            total_counted_amount: 1828.43,
+            total_variance_amount: -13.9,
+            cash_counted_amount: 154.2,
+            non_cash_counted_amount: 1674.23,
+          },
+        ]}
+      />
+    )
+
+    const saturdayRow = screen.getByText('Sat').closest('tr')
+    expect(saturdayRow).not.toBeNull()
+    const row = within(saturdayRow as HTMLTableRowElement)
+
+    expect(row.getByText('£154.20')).toBeInTheDocument()
+    expect(row.getByText('£1,674.23')).toBeInTheDocument()
+    expect(row.getByText('£1,828.43')).toBeInTheDocument()
+    expect(row.queryByText('£3,670.76')).not.toBeInTheDocument()
   })
 })

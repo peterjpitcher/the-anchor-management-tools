@@ -59,6 +59,10 @@ export interface CashupWeeklyView {
   total_expected_amount: number;
   total_counted_amount: number;
   total_variance_amount: number;
+  cash_counted_amount?: number;
+  card_counted_amount?: number;
+  stripe_counted_amount?: number;
+  non_cash_counted_amount?: number;
 }
 
 // DTOs for API/Actions

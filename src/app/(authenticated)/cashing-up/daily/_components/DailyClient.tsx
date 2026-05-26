@@ -36,6 +36,8 @@ interface WeeklyRow {
   total_expected_amount?: number
   total_counted_amount?: number
   total_variance_amount?: number
+  cash_counted_amount?: number
+  non_cash_counted_amount?: number
   target_amount?: number
 }
 
@@ -189,7 +191,6 @@ export function DailyClient({ siteId, siteName, sessionDate, dailySummary, daily
   const totalRevenue = cashCountedTotal + cardNum + stripeNum
   const salesSplitTotal = drinksSalesNum + foodSalesNum + otherSalesNum
   const salesSplitVariance = Number((salesSplitTotal - totalRevenue).toFixed(2))
-  const salesSplitMatchesTotal = Math.abs(salesSplitVariance) <= 0.01
   const target = dailyTarget
 
   const buildSessionDTO = useCallback((status: UpsertCashupSessionDTO['status'] = 'draft'): UpsertCashupSessionDTO => {
@@ -239,11 +240,6 @@ export function DailyClient({ siteId, siteName, sessionDate, dailySummary, daily
   }, [buildSessionDTO, sessionId, siteId])
 
   const handleSubmit = useCallback(async () => {
-    if (!salesSplitMatchesTotal) {
-      toast.error('Sales split must match total revenue before submitting')
-      return
-    }
-
     setSaving(true)
     try {
       const res = await upsertAndSubmitSessionAction(buildSessionDTO('draft'), sessionId ?? undefined)
@@ -264,7 +260,7 @@ export function DailyClient({ siteId, siteName, sessionDate, dailySummary, daily
     } finally {
       setSaving(false)
     }
-  }, [buildSessionDTO, clearFormFields, missingDates, router, salesSplitMatchesTotal, sessionDate, sessionId, siteId])
+  }, [buildSessionDTO, clearFormFields, missingDates, router, sessionDate, sessionId, siteId])
 
   const onDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const newDate = e.target.value
@@ -500,7 +496,7 @@ export function DailyClient({ siteId, siteName, sessionDate, dailySummary, daily
               <Button variant="secondary" onClick={handleSave} loading={saving} disabled={isLocked}>
                 Save Draft
               </Button>
-              <Button variant="primary" onClick={handleSubmit} loading={saving} disabled={isLocked || !salesSplitMatchesTotal}>
+              <Button variant="primary" onClick={handleSubmit} loading={saving} disabled={isLocked}>
                 Submit
               </Button>
             </div>
@@ -570,19 +566,11 @@ export function DailyClient({ siteId, siteName, sessionDate, dailySummary, daily
               </div>
               <div className="mt-2 flex justify-between gap-3 border-t border-border pt-2">
                 <span className="font-medium">Difference</span>
-                <span className={`font-mono font-bold ${salesSplitMatchesTotal ? 'text-success-fg' : 'text-danger-fg'}`}>
+                <span className="font-mono font-bold text-text-strong">
                   £{fmt(salesSplitVariance)}
                 </span>
               </div>
             </div>
-
-            {!salesSplitMatchesTotal && (
-              <Alert tone="warning">
-                <span className="text-sm">
-                  Drafts can be saved, but the split must match total revenue before submit. Other sales are included with food on P&L.
-                </span>
-              </Alert>
-            )}
           </CardBody>
         </Card>
 
@@ -613,13 +601,13 @@ export function DailyClient({ siteId, siteName, sessionDate, dailySummary, daily
                       {dayName(row.session_date)}
                     </TableCell>
                     <TableCell align="right" className="font-mono text-xs">
-                      £{fmt(row.total_expected_amount ?? 0)}
+                      £{fmt(row.cash_counted_amount ?? 0)}
+                    </TableCell>
+                    <TableCell align="right" className="font-mono text-xs">
+                      £{fmt(row.non_cash_counted_amount ?? 0)}
                     </TableCell>
                     <TableCell align="right" className="font-mono text-xs">
                       £{fmt(row.total_counted_amount ?? 0)}
-                    </TableCell>
-                    <TableCell align="right" className="font-mono text-xs">
-                      £{fmt((row.total_expected_amount ?? 0) + (row.total_counted_amount ?? 0))}
                     </TableCell>
                     <TableCell>
                       <Badge tone={statusTone(row.status)} dot>
@@ -666,7 +654,7 @@ export function DailyClient({ siteId, siteName, sessionDate, dailySummary, daily
             <Stat
               label="Split difference"
               value={`£${fmt(salesSplitVariance)}`}
-              hint={salesSplitMatchesTotal ? 'Ready for P&L' : 'Fix before submit'}
+              hint="For P&L reference"
             />
           </CardBody>
         </Card>

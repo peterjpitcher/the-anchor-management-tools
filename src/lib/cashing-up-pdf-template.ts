@@ -30,7 +30,7 @@ interface TemplateProps {
 }
 
 function getWeekNumber(d: string) {
-  const date = new Date(d);
+  const date = new Date(`${d}T12:00:00`);
   date.setHours(0, 0, 0, 0);
   date.setDate(date.getDate() + 3 - (date.getDay() + 6) % 7);
   const week1 = new Date(date.getFullYear(), 0, 4);
@@ -38,7 +38,7 @@ function getWeekNumber(d: string) {
 }
 
 function formatDate(d: string) {
-  return new Date(d).toLocaleDateString('en-GB', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+  return new Date(`${d}T12:00:00`).toLocaleDateString('en-GB', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
 }
 
 function formatCurrency(val: number) {
@@ -54,7 +54,7 @@ export function generateWeeklyCashupHTML({ weekData, siteName, weekStartDate, lo
   const formattedDate = formatDate(weekStartDate);
 
   const rows = weekData.map(row => {
-    const dateObj = new Date(row.date);
+    const dateObj = new Date(`${row.date}T12:00:00`);
     const dayNum = dateObj.toLocaleDateString('en-GB', { month: 'long', day: 'numeric' });
     const weekDay = dateObj.toLocaleDateString('en-GB', { weekday: 'long' });
     
@@ -104,12 +104,17 @@ export function generateWeeklyCashupHTML({ weekData, siteName, weekStartDate, lo
     stripe_actual: acc.stripe_actual + r.stripe_actual,
     total_expected: acc.total_expected + r.total_expected,
     total_actual: acc.total_actual + r.total_actual,
-    total_variance: acc.total_variance + r.total_variance
+    total_variance: acc.total_variance + r.total_variance,
+    target: acc.target + r.daily_target
   }), { 
     cash_expected: 0, cash_actual: 0, cash_variance: 0,
     card_expected: 0, stripe_actual: 0,
-    total_expected: 0, total_actual: 0, total_variance: 0
+    total_expected: 0, total_actual: 0, total_variance: 0,
+    target: 0
   });
+  const totalTargetDelivery = totals.target > 0
+    ? Math.round((totals.total_actual / totals.target) * 100)
+    : 0;
 
   // Denominations Breakdown
   const DENOMINATIONS = [50, 20, 10, 5, 2, 1, 0.5, 0.2, 0.1, 0.05, 0.02, 0.01];
@@ -123,7 +128,7 @@ export function generateWeeklyCashupHTML({ weekData, siteName, weekStartDate, lo
     
     return `
       <tr class="border-b text-xs hover:bg-gray-50">
-        <td class="border border-black p-0.5 whitespace-nowrap font-medium text-gray-900">${new Date(row.date).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric' })}</td>
+        <td class="border border-black p-0.5 whitespace-nowrap font-medium text-gray-900">${new Date(`${row.date}T12:00:00`).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric' })}</td>
         ${cells}
       </tr>
     `;
@@ -233,7 +238,10 @@ export function generateWeeklyCashupHTML({ weekData, siteName, weekStartDate, lo
             <td class="p-0.5 text-right">${formatCurrency(totals.total_expected)}</td>
             <td class="p-0.5 text-right">${formatCurrency(totals.total_actual)}</td>
             <td class="p-0.5 text-right">${formatCurrency(totals.total_variance)}</td>
-            <td class="p-0.5" colspan="4"></td>
+            <td class="p-0.5 text-right">${formatCurrency(totals.target)}</td>
+            <td class="p-0.5 text-right">${formatCurrency(totals.total_actual)}</td>
+            <td class="p-0.5 text-center">${totalTargetDelivery}%</td>
+            <td class="p-0.5"></td>
           </tr>
         </tfoot>
       </table>

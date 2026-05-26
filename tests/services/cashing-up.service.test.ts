@@ -254,23 +254,18 @@ describe('CashingUpService', () => {
     ).rejects.toThrow('not in draft status');
   });
 
-  it('should reject submitSession when the saved sales split does not match total sales', async () => {
-    mockSingle.mockResolvedValueOnce({
-      data: {
-        id: 'session-1',
-        total_counted_amount: 100,
-        cashup_sales_breakdowns: [
-          { sales_category: 'drinks_sales', amount: 80 },
-          { sales_category: 'food_sales', amount: 10 },
-          { sales_category: 'other_sales', amount: 0 },
-        ],
-      },
-      error: null,
-    });
+  it('should submitSession without validating the saved sales split total', async () => {
+    mockMaybeSingle.mockResolvedValueOnce({ data: { id: 'session-1' }, error: null });
+    mockSingle.mockResolvedValueOnce({ data: { id: 'session-1', status: 'submitted' }, error: null });
 
     await expect(
       CashingUpService.submitSession(mockSupabase, 'session-1', 'user-1')
-    ).rejects.toThrow('Sales split must match the total sales');
+    ).resolves.toEqual(expect.objectContaining({ id: 'session-1' }));
+
+    expect(mockUpdate).toHaveBeenCalledWith(expect.objectContaining({
+      status: 'submitted',
+      approved_by_user_id: null,
+    }));
   });
 
   it('should reject approveSession when session is not submitted', async () => {
@@ -327,6 +322,133 @@ describe('CashingUpService', () => {
     await expect(
       CashingUpService.unlockSession(mockSupabase, 'session-1', 'user-1')
     ).rejects.toThrow('Session not found or not locked');
+  });
+});
+
+describe('CashingUpService.getWeeklyData', () => {
+  function createWeeklyQuery(response: { data: unknown[]; error: null }, terminalMethod: 'lte' | 'order') {
+    const chain: Record<string, ReturnType<typeof vi.fn>> = {};
+    chain.select = vi.fn(() => chain);
+    chain.eq = vi.fn(() => chain);
+    chain.gte = vi.fn(() => chain);
+    chain.lte = vi.fn(() => (terminalMethod === 'lte' ? response : chain));
+    chain.order = vi.fn(() => (terminalMethod === 'order' ? response : chain));
+    return chain;
+  }
+
+  it('enriches weekly rows with cash and non-cash payment totals', async () => {
+    const queries = {
+      cashup_weekly_view: createWeeklyQuery({
+        data: [
+          {
+            site_id: 'site-1',
+            week_start_date: '2026-05-18',
+            session_date: '2026-05-23',
+            status: 'submitted',
+            total_expected_amount: 1842.33,
+            total_counted_amount: 1828.43,
+            total_variance_amount: 999,
+          },
+        ],
+        error: null,
+      }, 'order'),
+      cashup_targets: createWeeklyQuery({ data: [], error: null }, 'order'),
+      cashup_payment_breakdowns: createWeeklyQuery({
+        data: [
+          { payment_type_code: 'CASH', counted_amount: 154.2, cashup_sessions: { session_date: '2026-05-23' } },
+          { payment_type_code: 'CARD', counted_amount: 1600, cashup_sessions: { session_date: '2026-05-23' } },
+          { payment_type_code: 'STRIPE', counted_amount: 74.23, cashup_sessions: { session_date: '2026-05-23' } },
+        ],
+        error: null,
+      }, 'lte'),
+    };
+    const supabase = {
+      from: vi.fn((table: keyof typeof queries) => queries[table]),
+    } as unknown as SupabaseClient;
+
+    const rows = await CashingUpService.getWeeklyData(supabase, 'site-1', '2026-05-18');
+
+    expect((supabase.from as unknown as ReturnType<typeof vi.fn>)).toHaveBeenCalledWith('cashup_payment_breakdowns');
+    expect(rows[0]).toEqual(expect.objectContaining({
+      cash_counted_amount: 154.2,
+      card_counted_amount: 1600,
+      stripe_counted_amount: 74.23,
+      non_cash_counted_amount: 1674.23,
+      total_counted_amount: 1828.43,
+      total_variance_amount: -13.9,
+    }));
+  });
+});
+
+describe('CashingUpService.getWeeklyReportData', () => {
+  function createWeeklyReportQuery(response: { data: unknown[]; error: null }, terminalMethod: 'order') {
+    const chain: Record<string, ReturnType<typeof vi.fn>> = {};
+    chain.select = vi.fn(() => chain);
+    chain.eq = vi.fn(() => chain);
+    chain.gte = vi.fn(() => chain);
+    chain.lte = vi.fn(() => chain);
+    chain.in = vi.fn(() => chain);
+    chain.order = vi.fn(() => (terminalMethod === 'order' ? response : chain));
+    return chain;
+  }
+
+  it('builds weekly PDF rows with derived totals, target accumulation, and cash counts', async () => {
+    const queries = {
+      cashup_sessions: createWeeklyReportQuery({
+        data: [
+          {
+            session_date: '2026-05-23',
+            status: 'submitted',
+            notes: 'Saturday note',
+            total_expected_amount: 1842.33,
+            total_counted_amount: 1828.43,
+            total_variance_amount: 999,
+            cashup_payment_breakdowns: [
+              { payment_type_code: 'CASH', expected_amount: 168.1, counted_amount: 154.2, variance_amount: -13.9 },
+              { payment_type_code: 'CARD', expected_amount: 1674.23, counted_amount: 1674.23, variance_amount: 0 },
+              { payment_type_code: 'STRIPE', expected_amount: 0, counted_amount: 0, variance_amount: 0 },
+            ],
+            cashup_cash_counts: [
+              { denomination: 20, quantity: 4, total_amount: 80 },
+              { denomination: 10, quantity: 7, total_amount: 70 },
+            ],
+          },
+        ],
+        error: null,
+      }, 'order'),
+      cashup_targets: createWeeklyReportQuery({
+        data: [
+          { day_of_week: 6, target_amount: 1400, effective_from: '2026-01-01' },
+        ],
+        error: null,
+      }, 'order'),
+    };
+    const supabase = {
+      from: vi.fn((table: keyof typeof queries) => queries[table]),
+    } as unknown as SupabaseClient;
+
+    const rows = await CashingUpService.getWeeklyReportData(supabase, 'site-1', '2026-05-18');
+    const saturday = rows.find((row) => row.date === '2026-05-23');
+
+    expect(saturday).toEqual(expect.objectContaining({
+      status: 'submitted',
+      notes: 'Saturday note',
+      cash_expected: 168.1,
+      cash_actual: 154.2,
+      card_expected: 1674.23,
+      card_actual: 1674.23,
+      stripe_actual: 0,
+      total_expected: 1842.33,
+      total_actual: 1828.43,
+      total_variance: -13.9,
+      daily_target: 1400,
+      accumulated_target: 1400,
+      accumulated_revenue: 1828.43,
+    }));
+    expect(saturday?.cash_counts).toEqual([
+      { denomination: 20, total: 80 },
+      { denomination: 10, total: 70 },
+    ]);
   });
 });
 
