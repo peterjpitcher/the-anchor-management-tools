@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { cleanupRateLimits } from '@/lib/rate-limiter';
 import { authorizeCronRequest } from '@/lib/cron-auth';
+import { logger } from '@/lib/logger';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -15,12 +16,12 @@ export async function GET(request: Request) {
       return new NextResponse('Unauthorized', { status: 401 });
     }
 
-    console.warn('Starting rate limit cleanup...');
+    logger.info('Starting rate limit cleanup');
 
     // Clean up old rate limit entries
     await cleanupRateLimits();
     
-    console.warn('Rate limit cleanup completed successfully');
+    logger.info('Rate limit cleanup completed successfully');
     
     return new NextResponse(
       JSON.stringify({

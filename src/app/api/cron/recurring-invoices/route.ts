@@ -9,6 +9,7 @@ import { resolveVendorInvoiceRecipients } from '@/lib/invoice-recipients'
 import type { InvoiceLineItemInput, InvoiceWithDetails, RecurringFrequency } from '@/types/invoices'
 import { logAuditEvent } from '@/app/actions/audit'
 import { reportCronFailure } from '@/lib/cron/alerting'
+import { logger } from '@/lib/logger'
 import {
   claimIdempotencyKey,
   computeIdempotencyRequestHash,
@@ -28,7 +29,7 @@ export async function GET(request: Request) {
   }
 
   try {
-    console.warn('[Cron] Starting recurring invoices processing')
+    logger.info('[Cron] Starting recurring invoices processing')
     
     const supabase = createAdminClient()
     const emailConfigured = isGraphConfigured()
@@ -67,7 +68,9 @@ export async function GET(request: Request) {
       }, { status: 500 })
     }
 
-    console.warn(`[Cron] Found ${dueRecurringInvoices?.length || 0} recurring invoices to process`)
+    logger.info('[Cron] Found recurring invoices to process', {
+      metadata: { count: dueRecurringInvoices?.length || 0 }
+    })
 
     const results = {
       processed: 0,
@@ -504,7 +507,9 @@ export async function GET(request: Request) {
       }
     }
 
-    console.warn('[Cron] Recurring invoices processing completed:', results)
+    logger.info('[Cron] Recurring invoices processing completed', {
+      metadata: { results }
+    })
 
     return NextResponse.json({
       success: true,

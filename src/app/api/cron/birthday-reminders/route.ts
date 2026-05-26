@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { sendBirthdayRemindersInternal } from '@/app/actions/employee-birthdays';
 import { authorizeCronRequest } from '@/lib/cron-auth';
+import { logger } from '@/lib/logger';
 
 export async function GET(request: NextRequest) {
   try {
@@ -21,7 +22,9 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    console.warn(`Birthday reminders sent: ${result.sent} employees`);
+    logger.info('Birthday reminders sent', {
+      metadata: { sent: result.sent },
+    });
 
     return NextResponse.json({
       success: true,

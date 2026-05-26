@@ -156,12 +156,6 @@ export async function GET(_request: NextRequest) {
   const sundayOverrides = serviceOverrides['sunday_lunch'] || [];
   const sundayLunchEnabled = sundayLunchStatus ? sundayLunchStatus.isEnabled : true;
 
-  console.warn('[BusinessHours API] Sunday Lunch Status:', {
-    status: sundayLunchStatus,
-    enabled: sundayLunchEnabled,
-    overridesCount: sundayOverrides.length
-  });
-
   // Calculate current status in London timezone
   const timeZone = 'Europe/London';
   const now = new Date();

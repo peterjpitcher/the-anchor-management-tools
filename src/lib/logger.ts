@@ -9,10 +9,62 @@ interface LogContext {
 
 class Logger {
   private isDevelopment = process.env.NODE_ENV === 'development';
+
+  private serializeForJson(value: unknown, seen = new WeakSet<object>()): unknown {
+    if (value instanceof Error) {
+      const extraFields = Object.fromEntries(
+        Object.entries(value).map(([key, entry]) => [key, this.serializeForJson(entry, seen)])
+      );
+
+      return {
+        name: value.name,
+        message: value.message,
+        ...extraFields,
+        ...(this.isDevelopment && value.stack ? { stack: value.stack } : {}),
+      };
+    }
+
+    if (typeof value === 'bigint') {
+      return value.toString();
+    }
+
+    if (typeof value === 'function') {
+      return `[Function ${value.name || 'anonymous'}]`;
+    }
+
+    if (typeof value === 'symbol') {
+      return value.toString();
+    }
+
+    if (!value || typeof value !== 'object') {
+      return value;
+    }
+
+    if (seen.has(value)) {
+      return '[Circular]';
+    }
+    seen.add(value);
+
+    if (Array.isArray(value)) {
+      return value.map((entry) => this.serializeForJson(entry, seen));
+    }
+
+    return Object.fromEntries(
+      Object.entries(value).map(([key, entry]) => [key, this.serializeForJson(entry, seen)])
+    );
+  }
+
+  private stringifyContext(context: LogContext): string {
+    try {
+      return JSON.stringify(this.serializeForJson(context));
+    } catch {
+      return JSON.stringify({ message: 'Failed to serialize log context' });
+    }
+  }
   
   private formatMessage(level: LogLevel, message: string, context?: LogContext): string {
     const timestamp = new Date().toISOString();
-    const contextStr = context ? ` ${JSON.stringify(context)}` : '';
+    const contextStr = context ? ` ${this.stringifyContext(context)}` : '';
     return `[${timestamp}] [${level.toUpperCase()}] ${message}${contextStr}`;
   }
 
@@ -57,11 +109,6 @@ class Logger {
 
   error(message: string, context?: LogContext & { error?: Error }) {
     this.log('error', message, context);
-    
-    // Log the error stack trace if available
-    if (context?.error?.stack) {
-      console.error(context.error.stack);
-    }
   }
 }
 

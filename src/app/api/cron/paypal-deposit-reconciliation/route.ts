@@ -1,12 +1,92 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { authorizeCronRequest } from '@/lib/cron-auth'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { getPayPalOrder, capturePayPalPayment } from '@/lib/paypal'
+import { getPayPalOrder, capturePayPalPayment, isPayPalOrderNotFoundError } from '@/lib/paypal'
 import { logger } from '@/lib/logger'
 import { finalizeDepositPayment } from '@/services/private-bookings'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
+
+async function writePayPalReconciliationAudit(
+  admin: ReturnType<typeof createAdminClient>,
+  params: {
+    operationType: string
+    bookingId: string
+    additionalInfo: Record<string, unknown>
+  }
+): Promise<boolean> {
+  const { error } = await admin.from('audit_logs').insert({
+    operation_type: params.operationType,
+    resource_type: 'private_booking',
+    resource_id: params.bookingId,
+    operation_status: 'success',
+    additional_info: {
+      ...params.additionalInfo,
+      source: 'reconciliation_cron'
+    }
+  })
+
+  if (error) {
+    logger.warn('PayPal reconciliation: failed to write audit log', {
+      error: error instanceof Error ? error : new Error(String(error)),
+      metadata: {
+        operationType: params.operationType,
+        bookingId: params.bookingId
+      }
+    })
+    return false
+  }
+
+  return true
+}
+
+async function clearStalePayPalOrder(
+  admin: ReturnType<typeof createAdminClient>,
+  params: {
+    bookingId: string
+    orderId: string
+    reason: string
+    auditAction?: string
+    orderStatus?: string
+  }
+): Promise<boolean> {
+  const { data, error } = await admin
+    .from('private_bookings')
+    .update({ paypal_deposit_order_id: null, updated_at: new Date().toISOString() })
+    .eq('id', params.bookingId)
+    .eq('paypal_deposit_order_id', params.orderId)
+    .is('deposit_paid_date', null)
+    .select('id')
+    .maybeSingle()
+
+  if (error) {
+    logger.error('PayPal reconciliation: failed to clear stale order id', {
+      error: error instanceof Error ? error : new Error(String(error)),
+      metadata: params
+    })
+    return false
+  }
+
+  if (!data) {
+    logger.warn('PayPal reconciliation: stale order id clear skipped because booking changed', {
+      metadata: params
+    })
+    return false
+  }
+
+  await writePayPalReconciliationAudit(admin, {
+    operationType: params.auditAction ?? 'paypal_deposit_order_cleared',
+    bookingId: params.bookingId,
+    additionalInfo: {
+      order_id: params.orderId,
+      order_status: params.orderStatus ?? null,
+      reason: params.reason,
+    }
+  })
+
+  return true
+}
 
 export async function GET(request: NextRequest) {
   logger.info('PayPal deposit reconciliation cron starting', {
@@ -51,6 +131,11 @@ export async function GET(request: NextRequest) {
     const bookingId = booking.id
     const orderId = booking.paypal_deposit_order_id
 
+    if (!orderId) {
+      results.push({ bookingId, outcome: 'missing_order_id' })
+      continue
+    }
+
     try {
       const order = await getPayPalOrder(orderId)
       const orderStatus: string = order.status
@@ -76,11 +161,10 @@ export async function GET(request: NextRequest) {
         }, admin)
 
         if (!finalizeResult.alreadyRecorded) {
-          await admin.from('audit_logs').insert({
-            action: 'paypal_deposit_reconciled',
-            entity_type: 'private_booking',
-            entity_id: bookingId,
-            metadata: { capture_id: captureId, order_id: orderId, amount: capturedAmount, source: 'reconciliation_cron' }
+          await writePayPalReconciliationAudit(admin, {
+            operationType: 'paypal_deposit_reconciled',
+            bookingId,
+            additionalInfo: { capture_id: captureId, order_id: orderId, amount: capturedAmount }
           })
           results.push({ bookingId, outcome: 'recorded_completed' })
         } else {
@@ -110,11 +194,15 @@ export async function GET(request: NextRequest) {
           }, admin)
 
           if (!finalizeResult.alreadyRecorded) {
-            await admin.from('audit_logs').insert({
-              action: 'paypal_deposit_reconciled',
-              entity_type: 'private_booking',
-              entity_id: bookingId,
-              metadata: { capture_id: captureResult.transactionId, order_id: orderId, amount: captureResult.amount, source: 'reconciliation_cron_captured' }
+            await writePayPalReconciliationAudit(admin, {
+              operationType: 'paypal_deposit_reconciled',
+              bookingId,
+              additionalInfo: {
+                capture_id: captureResult.transactionId,
+                order_id: orderId,
+                amount: captureResult.amount,
+                source_detail: 'reconciliation_cron_captured'
+              }
             })
             results.push({ bookingId, outcome: 'captured_and_recorded' })
           } else {
@@ -130,26 +218,31 @@ export async function GET(request: NextRequest) {
 
       } else if (orderStatus === 'VOIDED' || orderStatus === 'EXPIRED' || orderStatus === 'SAVED') {
         // Order expired or voided — clear the order ID so staff can resend
-        await admin
-          .from('private_bookings')
-          .update({ paypal_deposit_order_id: null, updated_at: new Date().toISOString() })
-          .eq('id', bookingId)
-          .is('deposit_paid_date', null)
-
-        await admin.from('audit_logs').insert({
-          action: 'paypal_deposit_order_expired',
-          entity_type: 'private_booking',
-          entity_id: bookingId,
-          metadata: { order_id: orderId, order_status: orderStatus, source: 'reconciliation_cron' }
+        const cleared = await clearStalePayPalOrder(admin, {
+          bookingId,
+          orderId,
+          orderStatus,
+          reason: `paypal_order_${orderStatus.toLowerCase()}`,
+          auditAction: 'paypal_deposit_order_expired'
         })
 
-        results.push({ bookingId, outcome: `cleared_${orderStatus.toLowerCase()}` })
+        results.push({ bookingId, outcome: cleared ? `cleared_${orderStatus.toLowerCase()}` : `clear_${orderStatus.toLowerCase()}_failed` })
 
       } else {
         // CREATED, PAYER_ACTION_REQUIRED, etc. — customer hasn't completed approval yet
         results.push({ bookingId, outcome: `pending_${orderStatus.toLowerCase()}` })
       }
     } catch (error) {
+      if (isPayPalOrderNotFoundError(error)) {
+        const cleared = await clearStalePayPalOrder(admin, {
+          bookingId,
+          orderId,
+          reason: 'paypal_order_not_found'
+        })
+        results.push({ bookingId, outcome: cleared ? 'cleared_missing_order' : 'missing_order_clear_failed' })
+        continue
+      }
+
       logger.error('PayPal reconciliation: failed to check order', {
         error: error instanceof Error ? error : new Error(String(error)),
         metadata: { bookingId, orderId }

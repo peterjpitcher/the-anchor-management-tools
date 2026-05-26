@@ -3,6 +3,7 @@ import { addDays, addHours } from 'date-fns'
 import { formatInTimeZone, fromZonedTime } from 'date-fns-tz'
 import type { PrivateBooking } from '@/types/private-bookings'
 import { getErrorMessage, getErrorCode, getErrorDetails } from '@/lib/errors'
+import { logger } from '@/lib/logger'
 
 // Initialize the calendar API
 const calendar = google.calendar('v3')
@@ -19,7 +20,7 @@ function parseServiceAccountKey(jsonString: string): any {
     if (parsed.private_key && typeof parsed.private_key === 'string') {
       // Check if the private key has escaped newlines that need to be converted
       if (parsed.private_key.includes('\\n') && !parsed.private_key.includes('\n')) {
-        console.warn('[Google Calendar] Converting escaped newlines in private key')
+        logger.info('[Google Calendar] Converting escaped newlines in private key')
         parsed.private_key = parsed.private_key.replace(/\\n/g, '\n')
       }
     }
@@ -39,7 +40,7 @@ function parseServiceAccountKey(jsonString: string): any {
       // Fix escaped newlines in private key if needed
       if (parsed.private_key && typeof parsed.private_key === 'string') {
         if (parsed.private_key.includes('\\n') && !parsed.private_key.includes('\n')) {
-          console.warn('[Google Calendar] Converting escaped newlines in private key')
+          logger.info('[Google Calendar] Converting escaped newlines in private key')
           parsed.private_key = parsed.private_key.replace(/\\n/g, '\n')
         }
       }
@@ -67,7 +68,7 @@ function parseServiceAccountKey(jsonString: string): any {
         // Fix escaped newlines in private key if needed
         if (parsed.private_key && typeof parsed.private_key === 'string') {
           if (parsed.private_key.includes('\\n') && !parsed.private_key.includes('\n')) {
-            console.warn('[Google Calendar] Converting escaped newlines in private key')
+            logger.info('[Google Calendar] Converting escaped newlines in private key')
             parsed.private_key = parsed.private_key.replace(/\\n/g, '\n')
           }
         }
@@ -139,7 +140,7 @@ function getInterviewCalendarId(): string | undefined {
 
 // Initialize OAuth2 client
 export async function getOAuth2Client() {
-  console.warn('[Google Calendar] Getting OAuth2 client...')
+  logger.info('[Google Calendar] Getting OAuth2 client')
 
   try {
     // Check for OAuth2 configuration first
@@ -151,7 +152,7 @@ export async function getOAuth2Client() {
 
     // Use service account if available (recommended for server-to-server)
     if (process.env.GOOGLE_SERVICE_ACCOUNT_KEY) {
-      console.warn('[Google Calendar] Using service account authentication')
+      logger.info('[Google Calendar] Using service account authentication')
       try {
         const serviceAccount = parseServiceAccountKey(process.env.GOOGLE_SERVICE_ACCOUNT_KEY)
 
@@ -186,13 +187,15 @@ export async function getOAuth2Client() {
           scopes: ['https://www.googleapis.com/auth/calendar']
         })
 
-        console.warn('[Google Calendar] Service account initialized:', {
-          clientEmail: serviceAccount.client_email,
-          projectId: serviceAccount.project_id
+        logger.info('[Google Calendar] Service account initialized', {
+          metadata: {
+            clientEmail: serviceAccount.client_email,
+            projectId: serviceAccount.project_id
+          }
         })
 
         const client = await auth.getClient()
-        console.warn('[Google Calendar] Auth client obtained successfully')
+        logger.info('[Google Calendar] Auth client obtained successfully')
         return client
       } catch (error: unknown) {
         console.error('Error initializing Google Service Account: ', error)

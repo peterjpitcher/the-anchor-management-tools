@@ -14,6 +14,7 @@ import {
 
 const FALLBACK_REDIRECT_URL = 'https://www.the-anchor.pub'
 const MISSING_RELATION_CODE = '42P01'
+let hasLoggedMissingAliasTable = false
 const PASSTHROUGH_TRACKING_PARAMS = [
   'fbclid',
   'gclid',
@@ -38,6 +39,15 @@ type ShortLinkRow = {
 
 function isMissingRelationError(error: unknown): boolean {
   return typeof error === 'object' && error !== null && (error as { code?: string }).code === MISSING_RELATION_CODE
+}
+
+function logMissingAliasTableOnce() {
+  if (hasLoggedMissingAliasTable) {
+    return
+  }
+
+  hasLoggedMissingAliasTable = true
+  console.warn('Short link alias table missing. Apply latest Supabase migrations to enable aliases.')
 }
 
 function normalizeShortCode(raw: string | undefined | null): string | null {
@@ -329,7 +339,7 @@ export async function GET(
 
       if (aliasError) {
         if (isMissingRelationError(aliasError)) {
-          console.warn('Short link alias table missing. Apply latest Supabase migrations to enable aliases.')
+          logMissingAliasTableOnce()
           return NextResponse.redirect(FALLBACK_REDIRECT_URL)
         }
         console.error('Short link alias lookup error:', shortCode, aliasError)

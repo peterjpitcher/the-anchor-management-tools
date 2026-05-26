@@ -327,11 +327,16 @@ function isMissingColumnError(error: unknown, columnName: string): boolean {
   }
 
   const pgError = error as { code?: string | null; message?: string | null }
-  if (pgError.code !== '42703') {
+  const message = pgError.message ?? ''
+  const mentionsColumn = new RegExp(`\\b${columnName}\\b`, 'i').test(message)
+
+  if (!mentionsColumn) {
     return false
   }
 
-  return new RegExp(`\\b${columnName}\\b`, 'i').test(pgError.message ?? '')
+  return pgError.code === '42703' ||
+    pgError.code === 'PGRST204' ||
+    /schema cache|column/i.test(message)
 }
 
 function toLocalIsoDate(date: Date): string {
