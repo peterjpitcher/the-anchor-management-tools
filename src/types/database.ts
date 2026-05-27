@@ -129,6 +129,32 @@ export type ReceiptExpenseCategory =
 
 export type ReceiptRuleDirection = 'in' | 'out' | 'both';
 
+export type ReceiptRuleKind =
+  | 'standard'
+  | 'payroll'
+  | 'tax'
+  | 'income_settlement'
+  | 'utility'
+  | 'bank_fee'
+  | 'receipt_not_required';
+
+export type ReceiptVendorStatus = 'unconfirmed' | 'confirmed' | 'merged' | 'inactive';
+
+export type ReceiptSignalSource = 'rule' | 'ai' | 'human' | 'migration' | 'system';
+
+export type ReceiptRuleSuggestionStatus = 'pending' | 'approved' | 'declined' | 'expired';
+
+export type ReceiptDuplicateReviewDecision = 'same' | 'different' | 'ignored';
+
+export type ReceiptInvoiceMatchStatus =
+  | 'matched'
+  | 'payment_recorded'
+  | 'already_paid'
+  | 'missing_invoice'
+  | 'multiple_invoice_refs'
+  | 'amount_mismatch'
+  | 'review_required';
+
 export interface ReceiptBatch {
   id: string;
   uploaded_at: string;
@@ -144,6 +170,8 @@ export interface ReceiptRule {
   id: string;
   name: string;
   description: string | null;
+  priority: number;
+  kind: ReceiptRuleKind;
   match_description: string | null;
   match_transaction_type: string | null;
   match_direction: ReceiptRuleDirection;
@@ -157,6 +185,11 @@ export interface ReceiptRule {
   updated_at: string;
   set_vendor_name: string | null;
   set_expense_category: ReceiptExpenseCategory | null;
+  vendor_id: string | null;
+  reviewed_at: string | null;
+  reviewed_by: string | null;
+  deactivated_at: string | null;
+  deactivated_by: string | null;
 }
 
 export interface ReceiptTransaction {
@@ -178,6 +211,8 @@ export interface ReceiptTransaction {
   marked_at: string | null;
   marked_method: string | null;
   rule_applied_id: string | null;
+  auto_completed_reason: string | null;
+  vendor_id: string | null;
   vendor_name: string | null;
   vendor_source: ReceiptClassificationSource | null;
   vendor_rule_id: string | null;
@@ -200,6 +235,8 @@ export interface ReceiptFile {
   file_name: string;
   mime_type: string | null;
   file_size_bytes: number | null;
+  content_hash: string | null;
+  hash_verified_at: string | null;
   uploaded_by: string | null;
   uploaded_at: string;
 }
@@ -214,6 +251,125 @@ export interface ReceiptTransactionLog {
   performed_by: string | null;
   rule_id: string | null;
   performed_at: string;
+}
+
+export interface ReceiptVendor {
+  id: string;
+  canonical_name: string;
+  vendor_key: string;
+  status: ReceiptVendorStatus;
+  invoice_vendor_id: string | null;
+  merged_into_vendor_id: string | null;
+  category_hint: string | null;
+  default_expense_category: ReceiptExpenseCategory | string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ReceiptVendorAlias {
+  id: string;
+  vendor_id: string;
+  alias: string;
+  alias_key: string;
+  source: 'migration' | 'manual' | 'rule' | 'ai' | 'system';
+  confidence: number | null;
+  created_at: string;
+}
+
+export interface ReceiptClassificationSignal {
+  id: string;
+  transaction_id: string;
+  source: ReceiptSignalSource;
+  signal_type: string;
+  prior_vendor_id: string | null;
+  new_vendor_id: string | null;
+  prior_vendor_name: string | null;
+  new_vendor_name: string | null;
+  prior_expense_category: ReceiptExpenseCategory | string | null;
+  new_expense_category: ReceiptExpenseCategory | string | null;
+  prior_status: ReceiptTransactionStatus | null;
+  new_status: ReceiptTransactionStatus | null;
+  rule_id: string | null;
+  ai_confidence: number | null;
+  payload: Record<string, unknown>;
+  performed_by: string | null;
+  performed_at: string;
+}
+
+export interface ReceiptRuleSuggestion {
+  id: string;
+  status: ReceiptRuleSuggestionStatus;
+  suggested_name: string;
+  match_description: string | null;
+  match_transaction_type: string | null;
+  match_direction: ReceiptRuleDirection;
+  match_min_amount: number | null;
+  match_max_amount: number | null;
+  set_vendor_id: string | null;
+  set_vendor_name: string | null;
+  set_expense_category: ReceiptExpenseCategory | string | null;
+  auto_status: ReceiptTransactionStatus;
+  evidence_transaction_ids: string[];
+  evidence: Record<string, unknown>;
+  approved_rule_id: string | null;
+  declined_reason: string | null;
+  created_at: string;
+  reviewed_at: string | null;
+  reviewed_by: string | null;
+}
+
+export interface ReceiptRuleConflict {
+  id: string;
+  rule_id: string;
+  overlapping_rule_id: string;
+  overlap_count: number;
+  same_priority: boolean;
+  sample_transaction_ids: string[];
+  detected_at: string;
+  resolved_at: string | null;
+}
+
+export interface ReceiptDuplicateReview {
+  id: string;
+  transaction_id: string | null;
+  duplicate_transaction_id: string | null;
+  file_id: string | null;
+  duplicate_file_id: string | null;
+  review_type: 'transaction' | 'file';
+  decision: ReceiptDuplicateReviewDecision;
+  reason: string | null;
+  reviewed_by: string | null;
+  reviewed_at: string;
+  created_at: string;
+}
+
+export interface ReceiptInvoiceMatch {
+  id: string;
+  receipt_transaction_id: string;
+  invoice_id: string | null;
+  invoice_payment_id: string | null;
+  invoice_number: string;
+  match_status: ReceiptInvoiceMatchStatus;
+  amount_match: boolean;
+  transaction_date: string;
+  matched_amount: number | null;
+  invoice_total_amount: number | null;
+  invoice_paid_amount_before: number | null;
+  matched_at: string;
+  updated_at: string;
+  payload: Record<string, unknown>;
+}
+
+export interface ReceiptAnomaly {
+  id: string;
+  anomaly_type: string;
+  severity: 'info' | 'low' | 'medium' | 'high';
+  vendor_id: string | null;
+  vendor_name: string | null;
+  transaction_id: string | null;
+  detected_at: string;
+  resolved_at: string | null;
+  payload: Record<string, unknown>;
 }
 
 export interface AIUsageEvent {

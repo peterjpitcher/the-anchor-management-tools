@@ -78,9 +78,12 @@ import {
   performUpdateReceiptRule,
   performToggleReceiptRule,
   performDeleteReceiptRule,
+  performHardDeleteReceiptRule,
   performApplyReceiptGroupClassification,
   performRequeueUnclassifiedTransactions,
   performSetReceiptVendorWatched,
+  performApproveReceiptRuleSuggestion,
+  performDeclineReceiptRuleSuggestion,
   applyAutomationRules,
   // Helpers
   fileSchema,
@@ -144,6 +147,31 @@ function revalidateReceiptPaths(): void {
 function optionalRuleFormText(formData: FormData, key: string): string | undefined {
   const value = formData.get(key)
   return typeof value === 'string' && value.trim().length ? value.trim() : undefined
+}
+
+export async function currentUserCanGovernReceiptRules(): Promise<boolean> {
+  const { user_id } = await requireCurrentUser()
+  const { createAdminClient } = await import('@/lib/supabase/admin')
+  const supabase = createAdminClient()
+
+  const { data: rpcData, error: rpcError } = await supabase.rpc('is_super_admin', {
+    check_user_id: user_id,
+  })
+
+  if (!rpcError && typeof rpcData === 'boolean') {
+    return rpcData
+  }
+
+  const { data: roles, error } = await supabase
+    .from('user_roles')
+    .select('roles!inner(name)')
+    .eq('user_id', user_id)
+
+  if (error || !roles) {
+    return false
+  }
+
+  return roles.some((row: any) => row.roles?.name === 'super_admin')
 }
 
 // ---------------------------------------------------------------------------
@@ -603,7 +631,8 @@ export async function createReceiptRule(formData: FormData): Promise<RuleMutatio
   }
 
   const { user_id } = await requireCurrentUser()
-  const result = await performCreateReceiptRule(user_id, formData)
+  const canGovernRules = await currentUserCanGovernReceiptRules()
+  const result = await performCreateReceiptRule(user_id, formData, { canGovernRules })
 
   if ('success' in result && result.success) {
     await logAuditEvent({
@@ -626,7 +655,8 @@ export async function updateReceiptRule(ruleId: string, formData: FormData): Pro
   }
 
   const { user_id } = await requireCurrentUser()
-  const result = await performUpdateReceiptRule(user_id, ruleId, formData)
+  const canGovernRules = await currentUserCanGovernReceiptRules()
+  const result = await performUpdateReceiptRule(user_id, ruleId, formData, { canGovernRules })
 
   if ('success' in result && result.success) {
     await logAuditEvent({
@@ -648,7 +678,8 @@ export async function toggleReceiptRule(ruleId: string, isActive: boolean) {
     return { error: 'Insufficient permissions' }
   }
 
-  const result = await performToggleReceiptRule(ruleId, isActive)
+  const { user_id } = await requireCurrentUser()
+  const result = await performToggleReceiptRule(ruleId, isActive, user_id)
 
   if (result.success) {
     await logAuditEvent({
@@ -671,17 +702,106 @@ export async function deleteReceiptRule(ruleId: string) {
     return { error: 'Insufficient permissions' }
   }
 
-  const result = await performDeleteReceiptRule(ruleId)
+  const { user_id } = await requireCurrentUser()
+  const result = await performDeleteReceiptRule(ruleId, user_id)
 
   if (result.success) {
     await logAuditEvent({
-      operation_type: 'delete',
+      operation_type: 'deactivate',
       resource_type: 'receipt_rule',
       resource_id: ruleId,
       operation_status: 'success',
     })
     revalidatePath('/receipts')
     revalidateTag('dashboard')
+  }
+
+  return result
+}
+
+export async function hardDeleteReceiptRule(ruleId: string) {
+  const canManage = await checkUserPermission('receipts', 'manage')
+  if (!canManage) {
+    return { error: 'Insufficient permissions' }
+  }
+
+  const canGovernRules = await currentUserCanGovernReceiptRules()
+  if (!canGovernRules) {
+    return { error: 'Only super admins can permanently delete rules.' }
+  }
+
+  const result = await performHardDeleteReceiptRule(ruleId)
+
+  if (result.success) {
+    await logAuditEvent({
+      operation_type: 'hard_delete',
+      resource_type: 'receipt_rule',
+      resource_id: ruleId,
+      operation_status: 'success',
+    })
+    revalidatePath('/receipts')
+    revalidateTag('dashboard')
+  }
+
+  return result
+}
+
+export async function approveReceiptRuleSuggestion(
+  suggestionId: string,
+  options: { active?: boolean } = {}
+) {
+  const canManage = await checkUserPermission('receipts', 'manage')
+  if (!canManage) {
+    return { error: 'Insufficient permissions' }
+  }
+
+  const { user_id } = await requireCurrentUser()
+  const canGovernRules = await currentUserCanGovernReceiptRules()
+  if (!canGovernRules) {
+    return { error: 'Only super admins can approve suggested rules.' }
+  }
+
+  const result = await performApproveReceiptRuleSuggestion(user_id, suggestionId, options)
+
+  if (result.success) {
+    await logAuditEvent({
+      operation_type: 'approve_suggestion',
+      resource_type: 'receipt_rule_suggestion',
+      resource_id: suggestionId,
+      operation_status: 'success',
+      additional_info: { rule_id: result.rule?.id ?? null },
+    })
+    revalidateReceiptPaths()
+  }
+
+  return result
+}
+
+export async function declineReceiptRuleSuggestion(
+  suggestionId: string,
+  reason?: string
+) {
+  const canManage = await checkUserPermission('receipts', 'manage')
+  if (!canManage) {
+    return { error: 'Insufficient permissions' }
+  }
+
+  const { user_id } = await requireCurrentUser()
+  const canGovernRules = await currentUserCanGovernReceiptRules()
+  if (!canGovernRules) {
+    return { error: 'Only super admins can decline suggested rules.' }
+  }
+
+  const result = await performDeclineReceiptRuleSuggestion(user_id, suggestionId, reason)
+
+  if (result.success) {
+    await logAuditEvent({
+      operation_type: 'decline_suggestion',
+      resource_type: 'receipt_rule_suggestion',
+      resource_id: suggestionId,
+      operation_status: 'success',
+    })
+    revalidatePath('/receipts')
   }
 
   return result

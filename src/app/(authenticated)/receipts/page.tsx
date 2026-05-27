@@ -1,5 +1,5 @@
 import ReceiptsClient from './_components/ReceiptsClient'
-import { getReceiptWorkspaceData, type ReceiptWorkspaceFilters } from '@/app/actions/receipts'
+import { currentUserCanGovernReceiptRules, getReceiptWorkspaceData, type ReceiptWorkspaceFilters } from '@/app/actions/receipts'
 import { redirect } from 'next/navigation'
 import { checkUserPermission } from '@/app/actions/rbac'
 import { ReceiptsPageChrome } from './_components/ReceiptsPageChrome'
@@ -84,6 +84,7 @@ export default async function ReceiptsPage({ searchParams }: ReceiptsPageProps) 
   }
 
   let data = await getReceiptWorkspaceData(filters)
+  const canGovernRules = await currentUserCanGovernReceiptRules()
 
   if (
     !rawMonth &&
@@ -109,6 +110,7 @@ export default async function ReceiptsPage({ searchParams }: ReceiptsPageProps) 
       <ReceiptsClient
         initialData={data}
         canExport={canExport}
+        canGovernRules={canGovernRules}
         initialFilters={{
           status,
           direction,

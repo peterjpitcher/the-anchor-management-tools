@@ -124,18 +124,22 @@ async function loadOjProjectInvoiceIdsPaidInQuarter(
 
   const [
     paymentInvoiceIds,
+    receiptMatchInvoiceIds,
     entryPaidAtInvoiceIds,
     recurringPaidAtInvoiceIds,
   ] = await Promise.all([
     loadInvoiceIdsFromPaymentsInRange(supabase, startDate, endDate),
+    loadInvoiceIdsFromReceiptMatchesInRange(supabase, startDate, endDate),
     loadLinkedInvoiceIdsPaidAtInRange(supabase, 'oj_entries', startDate, paidAtEndExclusive),
     loadLinkedInvoiceIdsPaidAtInRange(supabase, 'oj_recurring_charge_instances', startDate, paidAtEndExclusive),
   ])
 
   const ojLinkedPaymentInvoiceIds = await filterOjProjectInvoiceIds(supabase, paymentInvoiceIds)
+  const ojLinkedReceiptMatchInvoiceIds = await filterOjProjectInvoiceIds(supabase, receiptMatchInvoiceIds)
 
   return uniqueStrings([
     ...ojLinkedPaymentInvoiceIds,
+    ...ojLinkedReceiptMatchInvoiceIds,
     ...entryPaidAtInvoiceIds,
     ...recurringPaidAtInvoiceIds,
   ])
@@ -156,6 +160,28 @@ async function loadInvoiceIdsFromPaymentsInRange(
   if (error) {
     console.error('Failed to fetch paid invoice ids for receipts export:', error)
     throw new Error('Failed to load invoice payments for export.')
+  }
+
+  return uniqueStrings((data ?? []).map((row: { invoice_id?: string | null }) => row.invoice_id))
+}
+
+async function loadInvoiceIdsFromReceiptMatchesInRange(
+  supabase: SupabaseAdminClient,
+  startDate: string,
+  endDate: string
+): Promise<string[]> {
+  const { data, error } = await supabase
+    .from('receipt_invoice_matches')
+    .select('invoice_id')
+    .not('invoice_id', 'is', null)
+    .gte('transaction_date', startDate)
+    .lte('transaction_date', endDate)
+    .in('match_status', ['matched', 'payment_recorded', 'already_paid', 'amount_mismatch'])
+    .order('transaction_date', { ascending: true })
+
+  if (error) {
+    console.error('Failed to fetch receipt invoice matches for receipts export:', error)
+    throw new Error('Failed to load matched invoice payments for export.')
   }
 
   return uniqueStrings((data ?? []).map((row: { invoice_id?: string | null }) => row.invoice_id))

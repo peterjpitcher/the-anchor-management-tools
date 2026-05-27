@@ -11,28 +11,48 @@ import {
   updateReceiptRule,
   deleteReceiptRule,
   previewReceiptRule,
+  approveReceiptRuleSuggestion,
+  declineReceiptRuleSuggestion,
   type ClassificationRuleSuggestion,
   type RulePreviewResult,
 } from '@/app/actions/receipts'
-import { receiptExpenseCategorySchema } from '@/lib/validation'
+import { receiptExpenseCategorySchema, receiptRuleKindSchema } from '@/lib/validation'
 import { useRetroRuleRunner } from '@/hooks/useRetroRuleRunner'
 import { usePermissions } from '@/contexts/PermissionContext'
-import type { ReceiptRule, ReceiptTransaction } from '@/types/database'
+import type { ReceiptRule, ReceiptRuleConflict, ReceiptRuleSuggestion, ReceiptTransaction } from '@/types/database'
 
 interface ReceiptRulesProps {
   rules: ReceiptRule[]
+  ruleConflicts: ReceiptRuleConflict[]
+  ruleSuggestions: ReceiptRuleSuggestion[]
+  canGovernRules: boolean
   pendingSuggestion: ClassificationRuleSuggestion | null
   onApplySuggestion: (suggestion: ClassificationRuleSuggestion) => void
   onDismissSuggestion: () => void
 }
 
 const expenseCategoryOptions = receiptExpenseCategorySchema.options
+const ruleKindOptions = receiptRuleKindSchema.options
 const statusLabels: Record<ReceiptTransaction['status'], string> = {
   pending: 'Pending',
   completed: 'Completed',
   auto_completed: 'Auto completed',
   no_receipt_required: 'No receipt required',
   cant_find: "Can't find",
+}
+
+const kindLabels: Record<ReceiptRule['kind'], string> = {
+  standard: 'Standard',
+  payroll: 'Payroll',
+  tax: 'Tax',
+  income_settlement: 'Income settlement',
+  utility: 'Utility',
+  bank_fee: 'Bank fee',
+  receipt_not_required: 'Receipt not required',
+}
+
+function formatRuleKind(kind: ReceiptRule['kind'] | null | undefined): string {
+  return kind ? kindLabels[kind] ?? kind : 'Standard'
 }
 
 function MatchDescriptionTokenPreview({ value }: { value: string }) {
@@ -83,7 +103,15 @@ function RulePreviewPanel({ preview }: { preview: RulePreviewResult }) {
   )
 }
 
-export function ReceiptRules({ rules, pendingSuggestion, onApplySuggestion, onDismissSuggestion }: ReceiptRulesProps) {
+export function ReceiptRules({
+  rules,
+  ruleConflicts,
+  ruleSuggestions,
+  canGovernRules,
+  pendingSuggestion,
+  onApplySuggestion,
+  onDismissSuggestion,
+}: ReceiptRulesProps) {
   const router = useRouter()
   const { hasPermission } = usePermissions()
   const canManageReceipts = hasPermission('receipts', 'manage')
@@ -121,6 +149,8 @@ export function ReceiptRules({ rules, pendingSuggestion, onApplySuggestion, onDi
       const haystack = [
         rule.name,
         rule.description,
+        String(rule.priority ?? 1000),
+        formatRuleKind(rule.kind),
         rule.match_description,
         rule.match_transaction_type,
         rule.match_direction,
@@ -144,6 +174,19 @@ export function ReceiptRules({ rules, pendingSuggestion, onApplySuggestion, onDi
     () => expandedRuleKeys.filter((key) => visibleRuleIds.has(key)).length,
     [expandedRuleKeys, visibleRuleIds]
   )
+  const conflictsByRule = useMemo(() => {
+    const map = new Map<string, ReceiptRuleConflict[]>()
+    ruleConflicts.forEach((conflict) => {
+      const left = map.get(conflict.rule_id) ?? []
+      left.push(conflict)
+      map.set(conflict.rule_id, left)
+
+      const right = map.get(conflict.overlapping_rule_id) ?? []
+      right.push(conflict)
+      map.set(conflict.overlapping_rule_id, right)
+    })
+    return map
+  }, [ruleConflicts])
 
   function expandAllVisibleRules() {
     setExpandedRuleKeys((current) => {
@@ -255,7 +298,7 @@ export function ReceiptRules({ rules, pendingSuggestion, onApplySuggestion, onDi
 
   async function handleRuleDelete(ruleId: string) {
     if (!canManageReceipts) return
-    if (!confirm('Delete this rule?')) return
+    if (!confirm('Deactivate this rule?')) return
     setActiveRuleId(ruleId)
     startRuleTransition(async () => {
       const result = await deleteReceiptRule(ruleId)
@@ -264,7 +307,39 @@ export function ReceiptRules({ rules, pendingSuggestion, onApplySuggestion, onDi
         setActiveRuleId(null)
         return
       }
-      toast.success('Rule deleted')
+      toast.success('Rule deactivated')
+      router.refresh()
+      setActiveRuleId(null)
+    })
+  }
+
+  async function handleApproveSuggestion(suggestionId: string, active = true) {
+    if (!canGovernRules) return
+    setActiveRuleId(suggestionId)
+    startRuleTransition(async () => {
+      const result = await approveReceiptRuleSuggestion(suggestionId, { active })
+      if (result?.error) {
+        toast.error(result.error)
+        setActiveRuleId(null)
+        return
+      }
+      toast.success(active ? 'Suggested rule approved' : 'Suggested rule approved as disabled')
+      router.refresh()
+      setActiveRuleId(null)
+    })
+  }
+
+  async function handleDeclineSuggestion(suggestionId: string) {
+    if (!canGovernRules) return
+    setActiveRuleId(suggestionId)
+    startRuleTransition(async () => {
+      const result = await declineReceiptRuleSuggestion(suggestionId)
+      if (result?.error) {
+        toast.error(result.error)
+        setActiveRuleId(null)
+        return
+      }
+      toast.success('Suggested rule declined')
       router.refresh()
       setActiveRuleId(null)
     })
@@ -308,6 +383,8 @@ export function ReceiptRules({ rules, pendingSuggestion, onApplySuggestion, onDi
           <div className="flex items-center gap-2">
             <h2 className="text-lg font-semibold text-gray-900">Automation rules</h2>
             {pendingSuggestion && <Badge tone="success">Suggestion</Badge>}
+            {ruleSuggestions.length > 0 && <Badge tone="success">{ruleSuggestions.length} pending suggestions</Badge>}
+            {ruleConflicts.length > 0 && <Badge tone="warning">{ruleConflicts.length} conflicts</Badge>}
           </div>
           <p className="text-sm text-gray-500">Automatically tick off known transactions (e.g. card settlements).</p>
         </div>
@@ -354,6 +431,50 @@ export function ReceiptRules({ rules, pendingSuggestion, onApplySuggestion, onDi
                     <p className="mt-1">Prefill the form to auto-tag similar transactions next time.</p>
                   </div>
                 )}
+                {ruleSuggestions.length > 0 && (
+                  <div className="mb-3 space-y-2 rounded-md border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
+                    <p className="font-semibold">System suggestions</p>
+                    {ruleSuggestions.slice(0, 5).map((suggestion) => (
+                      <div key={suggestion.id} className="flex flex-wrap items-center justify-between gap-2 border-t border-amber-200 pt-2 first:border-t-0 first:pt-0">
+                        <div className="min-w-0">
+                          <p className="font-medium text-amber-900">{suggestion.suggested_name}</p>
+                          <p>
+                            Match {suggestion.match_description ?? suggestion.match_transaction_type ?? 'rule evidence'}; set {suggestion.set_vendor_name ?? suggestion.set_expense_category ?? 'classification'}.
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            disabled={!canGovernRules || (isRulePending && activeRuleId === suggestion.id)}
+                            onClick={() => handleApproveSuggestion(suggestion.id, true)}
+                          >
+                            Approve
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            disabled={!canGovernRules || (isRulePending && activeRuleId === suggestion.id)}
+                            onClick={() => handleApproveSuggestion(suggestion.id, false)}
+                          >
+                            Approve disabled
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            disabled={!canGovernRules || (isRulePending && activeRuleId === suggestion.id)}
+                            onClick={() => handleDeclineSuggestion(suggestion.id)}
+                          >
+                            Decline
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                    {!canGovernRules && (
+                      <p>Super admin approval is required before a suggestion can become a rule.</p>
+                    )}
+                  </div>
+                )}
                 {retroPrompt && (
                   <div className="mb-3 rounded-md border border-blue-200 bg-blue-50 p-3 text-xs text-blue-700">
                     <div className="flex flex-wrap items-center justify-between gap-2">
@@ -395,6 +516,21 @@ export function ReceiptRules({ rules, pendingSuggestion, onApplySuggestion, onDi
                 )}
                 <form ref={newRuleFormRef} onSubmit={(event) => handleRuleSubmit(event)} className="space-y-3">
                   <Input name="name" placeholder="Rule name" required />
+                  {canGovernRules && (
+                    <div className="space-y-2">
+                      <div className="grid grid-cols-2 gap-2">
+                        <Input name="priority" placeholder="Priority" type="number" min={0} step={1} defaultValue={1000} />
+                        <Select name="kind" defaultValue="standard" options={ruleKindOptions.map((option) => ({
+                          value: option,
+                          label: kindLabels[option],
+                        }))} />
+                      </div>
+                      <label className="flex items-center gap-2 text-xs text-gray-600">
+                        <input type="checkbox" name="reviewed" className="h-4 w-4 rounded border-gray-300" />
+                        Mark reviewed
+                      </label>
+                    </div>
+                  )}
                   <div>
                     <Input
                       name="match_description"
@@ -503,8 +639,17 @@ export function ReceiptRules({ rules, pendingSuggestion, onApplySuggestion, onDi
                       ),
                       extra: (
                         <div className="flex items-center gap-2">
+                          {conflictsByRule.get(rule.id)?.length ? (
+                            <Badge tone="warning">Conflict</Badge>
+                          ) : null}
                           <Badge tone={rule.is_active ? 'success' : 'neutral'}>
                             {rule.is_active ? 'Active' : 'Disabled'}
+                          </Badge>
+                          <Badge tone="neutral">
+                            P{rule.priority ?? 1000}
+                          </Badge>
+                          <Badge tone="info">
+                            {formatRuleKind(rule.kind)}
                           </Badge>
                           <Badge tone="neutral">
                             {statusLabels[rule.auto_status]}
@@ -568,13 +713,28 @@ export function ReceiptRules({ rules, pendingSuggestion, onApplySuggestion, onDi
                               onClick={() => handleRuleDelete(rule.id)}
                               disabled={(isRulePending && activeRuleId === rule.id) || !canManageReceipts}
                             >
-                              Delete
+                              Deactivate
                             </Button>
                           </div>
 
                           {editingRuleId === rule.id ? (
                             <form onSubmit={(event) => handleRuleSubmit(event, rule.id)} className="space-y-3">
                               <Input name="name" defaultValue={rule.name} required />
+                              {canGovernRules && (
+                                <div className="space-y-2">
+                                  <div className="grid grid-cols-2 gap-2">
+                                    <Input name="priority" type="number" min={0} step={1} defaultValue={rule.priority ?? 1000} />
+                                    <Select name="kind" defaultValue={rule.kind ?? 'standard'} options={ruleKindOptions.map((option) => ({
+                                      value: option,
+                                      label: kindLabels[option],
+                                    }))} />
+                                  </div>
+                                  <label className="flex items-center gap-2 text-xs text-gray-600">
+                                    <input type="checkbox" name="reviewed" className="h-4 w-4 rounded border-gray-300" defaultChecked={Boolean(rule.reviewed_at)} />
+                                    Mark reviewed
+                                  </label>
+                                </div>
+                              )}
                               <Input name="match_description" defaultValue={rule.match_description ?? ''} />
                               <Input name="match_transaction_type" defaultValue={rule.match_transaction_type ?? ''} />
                               <div className="grid grid-cols-2 gap-2">
@@ -603,12 +763,19 @@ export function ReceiptRules({ rules, pendingSuggestion, onApplySuggestion, onDi
                             </form>
                           ) : (
                             <div className="space-y-1 text-xs text-gray-500">
+                              <p>Priority: {rule.priority ?? 1000}</p>
+                              <p>Kind: {formatRuleKind(rule.kind)}</p>
                               <p>Direction: {rule.match_direction}</p>
                               {rule.match_min_amount != null && <p>Min amount: £{rule.match_min_amount.toFixed(2)}</p>}
                               {rule.match_max_amount != null && <p>Max amount: £{rule.match_max_amount.toFixed(2)}</p>}
                               <p>Outcome: {statusLabels[rule.auto_status]}</p>
                               {rule.set_vendor_name && <p>Sets vendor: {rule.set_vendor_name}</p>}
                               {rule.set_expense_category && <p>Sets expense: {rule.set_expense_category}</p>}
+                              {conflictsByRule.get(rule.id)?.map((conflict) => (
+                                <p key={conflict.id} className="text-amber-700">
+                                  Conflict warning: overlaps {conflict.overlap_count} sampled transaction{conflict.overlap_count === 1 ? '' : 's'}.
+                                </p>
+                              ))}
                             </div>
                           )}
                         </div>

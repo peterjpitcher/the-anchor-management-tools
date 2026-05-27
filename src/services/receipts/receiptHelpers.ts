@@ -270,6 +270,7 @@ export function normalizeVendorInput(value: unknown): string | null {
   if (typeof value !== 'string') return null
   const trimmed = value.trim()
   if (!trimmed) return null
+  if (trimmed.toLowerCase() === 'null') return null
   return trimmed.slice(0, 120)
 }
 

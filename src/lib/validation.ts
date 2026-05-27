@@ -189,10 +189,21 @@ export const receiptExpenseCategorySchema = z.enum([
 ]);
 
 export const receiptRuleDirectionSchema = z.enum(['in', 'out', 'both']);
+export const receiptRuleKindSchema = z.enum([
+  'standard',
+  'payroll',
+  'tax',
+  'income_settlement',
+  'utility',
+  'bank_fee',
+  'receipt_not_required',
+]);
 
 export const receiptRuleSchema = z.object({
   name: z.string().min(1, 'Rule name is required').max(120, 'Keep the name under 120 characters'),
   description: z.string().trim().max(500).optional(),
+  priority: z.number().int().min(0).max(100000).optional(),
+  kind: receiptRuleKindSchema.default('standard'),
   match_description: z.string().trim().max(300).refine(
     (val) => {
       if (!val) return true

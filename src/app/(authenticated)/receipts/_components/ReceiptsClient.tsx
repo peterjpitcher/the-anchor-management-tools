@@ -22,6 +22,7 @@ import { Button, Card, CardBody } from '@/ds'
 interface ReceiptsClientProps {
   initialData: ReceiptWorkspaceData
   canExport?: boolean
+  canGovernRules?: boolean
   initialFilters: {
     status: ReceiptWorkspaceFilters['status'] | 'all'
     direction: 'in' | 'out' | 'all'
@@ -64,7 +65,7 @@ function updateSummaryForStatusChange(
   }))
 }
 
-export default function ReceiptsClient({ initialData, canExport = false, initialFilters }: ReceiptsClientProps) {
+export default function ReceiptsClient({ initialData, canExport = false, canGovernRules = false, initialFilters }: ReceiptsClientProps) {
   const router = useRouter()
   const searchParams = useSearchParams()
   const { hasPermission } = usePermissions()
@@ -228,6 +229,9 @@ export default function ReceiptsClient({ initialData, canExport = false, initial
 
       <ReceiptRules
         rules={rules}
+        ruleConflicts={initialData.ruleConflicts}
+        ruleSuggestions={initialData.ruleSuggestions}
+        canGovernRules={canGovernRules}
         pendingSuggestion={pendingRuleSuggestion}
         onApplySuggestion={() => setPendingRuleSuggestion(null)}
         onDismissSuggestion={() => setPendingRuleSuggestion(null)}
