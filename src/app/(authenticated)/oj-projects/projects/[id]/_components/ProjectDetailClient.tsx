@@ -68,7 +68,7 @@ export function ProjectDetailClient({
         exVat = hours * rate
         t.hours += hours
       } else if (entry.entry_type === 'mileage') {
-        exVat = Number(entry.miles || 0) * Number(entry.mileage_rate_snapshot || 0.42)
+        exVat = Number(entry.miles || 0) * Number(entry.mileage_rate_snapshot || 0.55)
       } else if (entry.entry_type === 'one_off') {
         exVat = Number(entry.amount_ex_vat_snapshot || 0)
       }
@@ -287,7 +287,7 @@ export function ProjectDetailClient({
                     if (entry.entry_type === 'time') {
                       amount = (Number(entry.duration_minutes_rounded || 0) / 60) * Number(entry.hourly_rate_ex_vat_snapshot || 0)
                     } else if (entry.entry_type === 'mileage') {
-                      amount = Number(entry.miles || 0) * Number(entry.mileage_rate_snapshot || 0.42)
+                      amount = Number(entry.miles || 0) * Number(entry.mileage_rate_snapshot || 0.55)
                     } else {
                       amount = Number(entry.amount_ex_vat_snapshot || 0)
                     }

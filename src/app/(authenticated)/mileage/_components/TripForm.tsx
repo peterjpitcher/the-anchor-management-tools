@@ -11,7 +11,7 @@ import {
 } from '@/app/actions/mileage'
 import {
   calculateHmrcRateSplit,
-  STANDARD_RATE,
+  getStandardRate,
   REDUCED_RATE,
   THRESHOLD_MILES,
 } from '@/lib/mileage/hmrcRates'
@@ -208,7 +208,8 @@ export function TripForm({
     stops.reduce((sum, s) => sum + (parseFloat(s.miles) || 0), 0) +
     (parseFloat(returnMiles) || 0)
 
-  const rateSplit = calculateHmrcRateSplit(cumulativeMilesBefore, totalMiles)
+  const standardRate = getStandardRate(tripDate)
+  const rateSplit = calculateHmrcRateSplit(cumulativeMilesBefore, totalMiles, tripDate)
   const crossesThreshold =
     rateSplit.milesAtStandardRate > 0 && rateSplit.milesAtReducedRate > 0
 
@@ -416,8 +417,8 @@ export function TripForm({
               {crossesThreshold ? (
                 <>
                   <div>
-                    {rateSplit.milesAtStandardRate.toFixed(1)} mi @ {'\u00A3'}{STANDARD_RATE.toFixed(2)} ={' '}
-                    {'\u00A3'}{(rateSplit.milesAtStandardRate * STANDARD_RATE).toFixed(2)}
+                    {rateSplit.milesAtStandardRate.toFixed(1)} mi @ {'\u00A3'}{standardRate.toFixed(2)} ={' '}
+                    {'\u00A3'}{(rateSplit.milesAtStandardRate * standardRate).toFixed(2)}
                   </div>
                   <div>
                     {rateSplit.milesAtReducedRate.toFixed(1)} mi @ {'\u00A3'}{REDUCED_RATE.toFixed(2)} ={' '}
@@ -433,7 +434,7 @@ export function TripForm({
               ) : (
                 <div>
                   {totalMiles.toFixed(1)} mi @{' '}
-                  {'\u00A3'}{rateSplit.milesAtReducedRate > 0 ? REDUCED_RATE.toFixed(2) : STANDARD_RATE.toFixed(2)}{' '}
+                  {'\u00A3'}{rateSplit.milesAtReducedRate > 0 ? REDUCED_RATE.toFixed(2) : standardRate.toFixed(2)}{' '}
                   = {'\u00A3'}{rateSplit.amountDue.toFixed(2)}
                 </div>
               )}

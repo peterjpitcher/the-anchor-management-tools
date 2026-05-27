@@ -445,7 +445,7 @@ function buildInvoiceNotes(input: {
         const mileageMiles = cfMileage.reduce((acc: number, e: any) => acc + Number(e.miles || 0), 0)
         const mileageIncVat = cfMileage.reduce((acc: number, e: any) => {
           const miles = Number(e.miles || 0)
-          const rate = Number(e.mileage_rate_snapshot || 0.42)
+          const rate = Number(e.mileage_rate_snapshot || 0.55)
           return acc + roundMoney(miles * rate)
         }, 0)
 
@@ -479,7 +479,7 @@ function getEntryCharge(entry: any, settings: any) {
   const entryType = String(entry?.entry_type || '')
   if (entryType === 'mileage') {
     const miles = Number(entry.miles || 0)
-    const rate = Number(entry.mileage_rate_snapshot || settings?.mileage_rate || 0.42)
+    const rate = Number(entry.mileage_rate_snapshot || settings?.mileage_rate || 0.55)
     const exVat = roundMoney(miles * rate)
     const vatRate = 0
     const incVat = roundMoney(exVat)
@@ -798,7 +798,7 @@ async function splitMileageEntryForCap(input: {
   const totalMiles = Number(candidate.miles || 0)
   if (!Number.isFinite(totalMiles) || totalMiles <= 0) return null
 
-  const rate = Number(candidate.mileage_rate_snapshot || input.settings?.mileage_rate || 0.42)
+  const rate = Number(candidate.mileage_rate_snapshot || input.settings?.mileage_rate || 0.55)
   const partial = computePartialMilesForHeadroom(totalMiles, rate, input.headroom)
   if (!partial) return null
   if (partial.miles < 0.01) return null
@@ -1358,7 +1358,7 @@ function buildDetailedLineItems(input: {
   const selectedMileage = input.selectedMileageEntries || []
   if (selectedMileage.length > 0) {
     const totalMiles = selectedMileage.reduce((acc: number, e: any) => acc + Number(e.miles || 0), 0)
-    const rateSet = new Set(selectedMileage.map((e: any) => Number(e.mileage_rate_snapshot || input.settings?.mileage_rate || 0.42)))
+    const rateSet = new Set(selectedMileage.map((e: any) => Number(e.mileage_rate_snapshot || input.settings?.mileage_rate || 0.55)))
     if (rateSet.size === 1) {
       const rate = [...rateSet][0]
       lineItems.push({
@@ -1372,7 +1372,7 @@ function buildDetailedLineItems(input: {
     } else {
       const totalExVat = selectedMileage.reduce((acc: number, e: any) => {
         const miles = Number(e.miles || 0)
-        const rate = Number(e.mileage_rate_snapshot || input.settings?.mileage_rate || 0.42)
+        const rate = Number(e.mileage_rate_snapshot || input.settings?.mileage_rate || 0.55)
         return acc + roundMoney(miles * rate)
       }, 0)
       lineItems.push({
@@ -2895,7 +2895,7 @@ export async function GET(request: Request) {
 
       for (const e of mileageEntries) {
         const miles = Number(e.miles || 0)
-        const rate = Number(e.mileage_rate_snapshot || settings?.mileage_rate || 0.42)
+        const rate = Number(e.mileage_rate_snapshot || settings?.mileage_rate || 0.55)
         const exVat = roundMoney(miles * rate)
         const incVat = exVat
         if (includeItem(incVat)) selectedMileage.push(e)
@@ -2964,7 +2964,7 @@ export async function GET(request: Request) {
             }, 0) +
             (skippedMileage || []).reduce((acc: number, item: any) => {
               const miles = Number(item.miles || 0)
-              const rate = Number(item.mileage_rate_snapshot || settings?.mileage_rate || 0.42)
+              const rate = Number(item.mileage_rate_snapshot || settings?.mileage_rate || 0.55)
               return acc + roundMoney(miles * rate)
             }, 0) +
             (skippedTime || []).reduce((acc: number, item: any) => {

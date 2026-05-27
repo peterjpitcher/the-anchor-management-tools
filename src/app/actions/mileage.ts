@@ -9,8 +9,8 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { getTodayIsoDate } from '@/lib/dateUtils'
 import {
   getTaxYearBounds,
+  getStandardRate,
   THRESHOLD_MILES,
-  STANDARD_RATE,
   type TaxYearStats,
 } from '@/lib/mileage/hmrcRates'
 import { recalculateTaxYearMileage } from '@/lib/mileage/recalculateTaxYear'
@@ -887,7 +887,7 @@ export async function createTrip(input: {
         total_miles: totalMiles,
         miles_at_standard_rate: totalMiles,
         miles_at_reduced_rate: 0,
-        amount_due: roundCurrency(totalMiles * STANDARD_RATE),
+        amount_due: roundCurrency(totalMiles * getStandardRate(tripDate)),
         source: 'manual',
         created_by: userId,
       })
@@ -1004,7 +1004,7 @@ export async function updateTrip(input: {
         total_miles: totalMiles,
         miles_at_standard_rate: totalMiles,
         miles_at_reduced_rate: 0,
-        amount_due: roundCurrency(totalMiles * STANDARD_RATE),
+        amount_due: roundCurrency(totalMiles * getStandardRate(tripDate)),
       })
       .eq('id', input.id)
 

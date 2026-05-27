@@ -12,7 +12,13 @@ import {
   formatCurrency,
   buildCsvBuffer,
 } from './csv-helpers'
-import { getTaxYearBounds, STANDARD_RATE, REDUCED_RATE } from '@/lib/mileage/hmrcRates'
+import {
+  getTaxYearBounds,
+  STANDARD_RATE_LEGACY,
+  STANDARD_RATE_CURRENT,
+  REDUCED_RATE,
+  RATE_CHANGE_DATE,
+} from '@/lib/mileage/hmrcRates'
 
 export interface MileageTripRow {
   id: string
@@ -36,6 +42,11 @@ export interface MileageTripLegRow {
 export interface MileageSummary {
   totalTrips: number
   totalMiles: number
+  /** Standard-rate miles from trips before RATE_CHANGE_DATE (legacy £0.45). */
+  totalMilesAtStandardLegacy: number
+  /** Standard-rate miles from trips on or after RATE_CHANGE_DATE (current £0.55). */
+  totalMilesAtStandardCurrent: number
+  /** Total standard-rate miles across both rate bands. */
   totalMilesAtStandard: number
   totalMilesAtReduced: number
   totalClaimAmount: number
@@ -98,13 +109,24 @@ export async function buildMileageCsv(
     0
   )
 
-  // Aggregate quarter stats
+  // Aggregate quarter stats. Standard-rate miles are bucketed by trip date so
+  // pre-2026-04-01 trips (£0.45) and current trips (£0.55) are tracked separately
+  // for clear reporting.
   const totalTrips = rows.length
   const totalMiles = rows.reduce((sum, t) => sum + Number(t.total_miles), 0)
-  const totalMilesAtStandard = rows.reduce(
-    (sum, t) => sum + Number(t.miles_at_standard_rate),
+  const totalMilesAtStandardLegacy = rows.reduce(
+    (sum, t) =>
+      sum +
+      (t.trip_date < RATE_CHANGE_DATE ? Number(t.miles_at_standard_rate) : 0),
     0
   )
+  const totalMilesAtStandardCurrent = rows.reduce(
+    (sum, t) =>
+      sum +
+      (t.trip_date >= RATE_CHANGE_DATE ? Number(t.miles_at_standard_rate) : 0),
+    0
+  )
+  const totalMilesAtStandard = totalMilesAtStandardLegacy + totalMilesAtStandardCurrent
   const totalMilesAtReduced = rows.reduce(
     (sum, t) => sum + Number(t.miles_at_reduced_rate),
     0
@@ -114,6 +136,8 @@ export async function buildMileageCsv(
   const summary: MileageSummary = {
     totalTrips,
     totalMiles,
+    totalMilesAtStandardLegacy,
+    totalMilesAtStandardCurrent,
     totalMilesAtStandard,
     totalMilesAtReduced,
     totalClaimAmount,
@@ -121,25 +145,42 @@ export async function buildMileageCsv(
   }
 
   // Build CSV rows
+  const ratesAppliedSegments: string[] = []
+  if (totalMilesAtStandardLegacy > 0) {
+    ratesAppliedSegments.push(
+      `${formatCurrency(totalMilesAtStandardLegacy)} miles @ \u00A3${STANDARD_RATE_LEGACY.toFixed(2)}`
+    )
+  }
+  if (totalMilesAtStandardCurrent > 0) {
+    ratesAppliedSegments.push(
+      `${formatCurrency(totalMilesAtStandardCurrent)} miles @ \u00A3${STANDARD_RATE_CURRENT.toFixed(2)}`
+    )
+  }
+  if (totalMilesAtReduced > 0) {
+    ratesAppliedSegments.push(
+      `${formatCurrency(totalMilesAtReduced)} miles @ \u00A3${REDUCED_RATE.toFixed(2)}`
+    )
+  }
+
   const summaryRows: string[][] = [
     ['Quarter', `Q${quarter} ${year}`],
     ['Total Trips', String(totalTrips)],
     ['Total Miles', formatCurrency(totalMiles)],
     ['Total Claim (GBP)', formatCurrency(totalClaimAmount)],
     ['Tax Year Miles (cumulative)', formatCurrency(taxYearTotalMiles)],
-    [
-      'Rates Applied',
-      `${formatCurrency(totalMilesAtStandard)} miles @ \u00A3${STANDARD_RATE.toFixed(2)}, ${formatCurrency(totalMilesAtReduced)} miles @ \u00A3${REDUCED_RATE.toFixed(2)}`,
-    ],
+    ['Rates Applied', ratesAppliedSegments.join(', ') || '\u2014'],
     [],
   ]
 
+  // The "Miles @ Standard" column contains the threshold-standard portion of
+  // each trip; the rate per trip depends on whether the trip date is before
+  // or on/after 2026-04-01 (see the "Rates Applied" summary row above).
   const headerRow = [
     'Date',
     'Route',
     'Total Miles',
-    'Miles @ \u00A30.45',
-    'Miles @ \u00A30.25',
+    'Miles @ Standard',
+    `Miles @ \u00A3${REDUCED_RATE.toFixed(2)}`,
     'Amount (\u00A3)',
     'Source',
   ]

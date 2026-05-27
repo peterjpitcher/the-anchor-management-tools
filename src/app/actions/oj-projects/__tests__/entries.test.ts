@@ -38,7 +38,7 @@ function makeSupabaseMock() {
           select: vi.fn().mockReturnThis(),
           eq: vi.fn().mockReturnThis(),
           maybeSingle: vi.fn().mockResolvedValue({
-            data: { hourly_rate_ex_vat: 75, vat_rate: 20, mileage_rate: 0.42 },
+            data: { hourly_rate_ex_vat: 75, vat_rate: 20, mileage_rate: 0.55 },
           }),
         }
       }
@@ -187,7 +187,7 @@ describe('createTimeEntry', () => {
               data: {
                 hourly_rate_ex_vat: 75,
                 vat_rate: 20,
-                mileage_rate: 0.42,
+                mileage_rate: 0.55,
                 retainer_included_hours_per_month: 10,
               },
               error: null,

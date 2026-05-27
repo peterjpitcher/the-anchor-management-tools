@@ -315,7 +315,7 @@ describe('OJ project action mutation row-effect guards', () => {
     const projectEq = vi.fn().mockReturnValue({ single: projectSingle })
 
     const settingsMaybeSingle = vi.fn().mockResolvedValue({
-      data: { hourly_rate_ex_vat: 90, vat_rate: 20, mileage_rate: 0.45 },
+      data: { hourly_rate_ex_vat: 90, vat_rate: 20, mileage_rate: 0.55 },
       error: null,
     })
     const settingsEq = vi.fn().mockReturnValue({ maybeSingle: settingsMaybeSingle })

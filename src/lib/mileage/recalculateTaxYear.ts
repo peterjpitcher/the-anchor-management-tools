@@ -3,8 +3,9 @@
  *
  * Called by the application layer after any mutation that affects mileage_trips
  * (both manual trip saves and OJ-Projects mileage sync). The DB trigger only
- * sets default rates (all at £0.45); this function applies the cumulative
- * threshold logic (first 10,000 miles at £0.45, remainder at £0.25).
+ * sets default rates as if every mile were at the standard rate; this function
+ * applies the cumulative threshold logic and the date-aware standard rate
+ * (£0.45 before 1 April 2026, £0.55 on or after) with £0.25 above 10,000 miles.
  */
 
 import { createAdminClient } from '@/lib/supabase/admin'
@@ -24,7 +25,7 @@ export async function recalculateTaxYearMileage(tripDate: string): Promise<void>
   // Fetch all trips in this tax year, ordered deterministically
   const { data: trips, error: fetchError } = await db
     .from('mileage_trips')
-    .select('id, total_miles')
+    .select('id, trip_date, total_miles')
     .gte('trip_date', start)
     .lte('trip_date', end)
     .order('trip_date', { ascending: true })
@@ -36,9 +37,13 @@ export async function recalculateTaxYearMileage(tripDate: string): Promise<void>
 
   if (!trips || trips.length === 0) return
 
-  // Calculate new splits using the shared pure function
+  // Calculate new splits using the shared pure function. The trip date selects
+  // the correct standard rate band (legacy £0.45 vs current £0.55).
   const splits = recalculateAllSplits(
-    trips.map((t) => ({ totalMiles: Number(t.total_miles) }))
+    trips.map((t) => ({
+      totalMiles: Number(t.total_miles),
+      tripDate: t.trip_date,
+    }))
   )
 
   // Batch-update each trip with its recalculated split.

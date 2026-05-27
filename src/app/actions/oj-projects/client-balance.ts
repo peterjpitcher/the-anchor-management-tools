@@ -84,7 +84,7 @@ export async function getClientBalance(
       unbilledTimeTotal = roundMoney(unbilledTimeTotal + (mins / 60) * rate)
     } else if (entry.entry_type === 'mileage') {
       const miles = Number(entry.miles || 0)
-      const mileageRate = Number(entry.mileage_rate_snapshot || 0.42)
+      const mileageRate = Number(entry.mileage_rate_snapshot || 0.55)
       unbilledMileageTotal = roundMoney(unbilledMileageTotal + miles * mileageRate)
     } else if (entry.entry_type === 'one_off') {
       const amount = Number(entry.amount_ex_vat_snapshot || 0)

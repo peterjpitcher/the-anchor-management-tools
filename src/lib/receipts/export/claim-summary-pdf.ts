@@ -11,7 +11,11 @@
 import PDFDocument from 'pdfkit'
 import { PassThrough } from 'stream'
 import type { Archiver } from 'archiver'
-import { STANDARD_RATE, REDUCED_RATE } from '@/lib/mileage/hmrcRates'
+import {
+  STANDARD_RATE_LEGACY,
+  STANDARD_RATE_CURRENT,
+  REDUCED_RATE,
+} from '@/lib/mileage/hmrcRates'
 import type { MileageSummary } from './mileage-csv'
 import type { MileageTripRow } from './mileage-csv'
 import type { ExpensesSummary } from './expenses-csv'
@@ -112,11 +116,18 @@ export async function appendClaimSummaryPdf(
     addRow(doc, 'Total trips', String(mileage.totalTrips))
     addRow(doc, 'Total miles', formatMiles(mileage.totalMiles))
 
-    if (mileage.totalMilesAtStandard > 0) {
+    if (mileage.totalMilesAtStandardLegacy > 0) {
       addRow(
         doc,
-        `Miles @ \u00A3${STANDARD_RATE.toFixed(2)}`,
-        formatMiles(mileage.totalMilesAtStandard)
+        `Miles @ \u00A3${STANDARD_RATE_LEGACY.toFixed(2)}`,
+        formatMiles(mileage.totalMilesAtStandardLegacy)
+      )
+    }
+    if (mileage.totalMilesAtStandardCurrent > 0) {
+      addRow(
+        doc,
+        `Miles @ \u00A3${STANDARD_RATE_CURRENT.toFixed(2)}`,
+        formatMiles(mileage.totalMilesAtStandardCurrent)
       )
     }
     if (mileage.totalMilesAtReduced > 0) {

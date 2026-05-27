@@ -146,7 +146,7 @@ describe('Synced trip default properties', () => {
       totalMiles,
       milesAtStandardRate: totalMiles,
       milesAtReducedRate: 0,
-      amountDue: totalMiles * 0.45,
+      amountDue: totalMiles * 0.55,
       description: description ?? 'OJ Projects mileage',
     }
   }
@@ -155,7 +155,7 @@ describe('Synced trip default properties', () => {
     const trip = buildSyncedTripDefaults(25.5, 'Site visit')
     expect(trip.milesAtStandardRate).toBe(25.5)
     expect(trip.milesAtReducedRate).toBe(0)
-    expect(trip.amountDue).toBeCloseTo(11.475, 2)
+    expect(trip.amountDue).toBeCloseTo(14.025, 2)
   })
 
   it('should satisfy the CHECK constraint: total = standard + reduced', () => {
@@ -204,7 +204,7 @@ describe('Idempotent synced trip upsert', () => {
       totalMiles,
       milesAtStandardRate: totalMiles,
       milesAtReducedRate: 0,
-      amountDue: Math.round(totalMiles * 0.45 * 100) / 100,
+      amountDue: Math.round(totalMiles * 0.55 * 100) / 100,
     }
 
     const existingIndex = rows.findIndex((row) => row.ojEntryId === entry.id)
@@ -228,7 +228,7 @@ describe('Idempotent synced trip upsert', () => {
       ojEntryId: 'entry-1',
       source: 'oj_projects',
       totalMiles: 12.4,
-      amountDue: 5.58,
+      amountDue: 6.82,
     })
   })
 
