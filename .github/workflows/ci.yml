@@ -37,6 +37,8 @@ jobs:
           NEXT_PUBLIC_SUPABASE_URL: https://placeholder.supabase.co
           NEXT_PUBLIC_SUPABASE_ANON_KEY: placeholder-anon-key
           NEXT_PUBLIC_APP_URL: https://placeholder.example.com
+          SUPABASE_SERVICE_ROLE_KEY: placeholder-service-role-key
+          CRON_SECRET: placeholder-cron-secret
 
   supabase-dry-run:
     runs-on: ubuntu-latest
@@ -62,4 +64,3 @@ jobs:
         if: ${{ env.SUPABASE_ACCESS_TOKEN != '' && env.SUPABASE_PROJECT_ID != '' }}
         run: |
           supabase db push --dry-run
-
