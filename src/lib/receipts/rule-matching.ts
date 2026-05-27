@@ -1,5 +1,7 @@
 export type ReceiptRuleMatchable = {
   id: string
+  priority?: number | null
+  created_at?: string | null
   match_description: string | null
   match_transaction_type: string | null
   match_direction: 'in' | 'out' | 'both'
@@ -17,7 +19,7 @@ type MatchContext = {
   amountValue: number
 }
 
-type RuleMatchResult = {
+export type RuleMatchResult = {
   matched: boolean
   matchedNeedleLength: number
   hasTransactionTypeMatch: boolean
@@ -132,24 +134,60 @@ export function getRuleMatch(
   }
 }
 
-function isBetterMatch(candidate: RuleMatchResult, currentBest: RuleMatchResult): boolean {
+function normalizedPriority(rule: ReceiptRuleMatchable): number {
+  const value = typeof rule.priority === 'number' ? rule.priority : Number(rule.priority ?? 1000)
+  return Number.isFinite(value) ? value : 1000
+}
+
+function compareCreatedAt(a: string | null | undefined, b: string | null | undefined): number {
+  if (!a && !b) return 0
+  if (!a) return 1
+  if (!b) return -1
+  return a.localeCompare(b)
+}
+
+export function compareReceiptRuleMatches(
+  candidateRule: ReceiptRuleMatchable,
+  candidate: RuleMatchResult,
+  currentRule: ReceiptRuleMatchable,
+  currentBest: RuleMatchResult
+): number {
+  const priorityDelta = normalizedPriority(candidateRule) - normalizedPriority(currentRule)
+  if (priorityDelta !== 0) {
+    return priorityDelta
+  }
+
   if (candidate.matchedNeedleLength !== currentBest.matchedNeedleLength) {
-    return candidate.matchedNeedleLength > currentBest.matchedNeedleLength
+    return currentBest.matchedNeedleLength - candidate.matchedNeedleLength
   }
 
   if (Number(candidate.hasTransactionTypeMatch) !== Number(currentBest.hasTransactionTypeMatch)) {
-    return Number(candidate.hasTransactionTypeMatch) > Number(currentBest.hasTransactionTypeMatch)
+    return Number(currentBest.hasTransactionTypeMatch) - Number(candidate.hasTransactionTypeMatch)
   }
 
   if (Number(candidate.isDirectionSpecific) !== Number(currentBest.isDirectionSpecific)) {
-    return Number(candidate.isDirectionSpecific) > Number(currentBest.isDirectionSpecific)
+    return Number(currentBest.isDirectionSpecific) - Number(candidate.isDirectionSpecific)
   }
 
   if (candidate.amountConstraintCount !== currentBest.amountConstraintCount) {
-    return candidate.amountConstraintCount > currentBest.amountConstraintCount
+    return currentBest.amountConstraintCount - candidate.amountConstraintCount
   }
 
-  return false
+  const createdAtDelta = compareCreatedAt(candidateRule.created_at, currentRule.created_at)
+  if (createdAtDelta !== 0) {
+    return createdAtDelta
+  }
+
+  return candidateRule.id.localeCompare(currentRule.id)
+}
+
+function isBetterMatch(
+  candidateRule: ReceiptRuleMatchable,
+  candidate: RuleMatchResult,
+  currentRule: ReceiptRuleMatchable,
+  currentBest: RuleMatchResult
+): boolean {
+  return compareReceiptRuleMatches(candidateRule, candidate, currentRule, currentBest) < 0
 }
 
 export function selectBestReceiptRule<TRule extends ReceiptRuleMatchable>(
@@ -164,7 +202,7 @@ export function selectBestReceiptRule<TRule extends ReceiptRuleMatchable>(
     const match = getRuleMatch(rule, transaction, context)
     if (!match.matched) continue
 
-    if (!bestMatch || isBetterMatch(match, bestMatch)) {
+    if (!bestRule || !bestMatch || isBetterMatch(rule, match, bestRule, bestMatch)) {
       bestRule = rule
       bestMatch = match
     }
@@ -172,4 +210,3 @@ export function selectBestReceiptRule<TRule extends ReceiptRuleMatchable>(
 
   return bestRule
 }
-

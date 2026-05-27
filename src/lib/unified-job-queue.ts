@@ -32,6 +32,10 @@ export type JobType =
   | 'sync_calendar'
   | 'cleanup_old_data'
   | 'classify_receipt_transactions'
+  | 'detect_receipt_rule_conflicts'
+  | 'suggest_receipt_rules'
+  | 'refresh_receipt_duplicate_candidates'
+  | 'reconcile_receipt_invoice_payments'
 
 const SUPPORTED_JOB_TYPES: JobType[] = [
   'send_sms',
@@ -43,6 +47,10 @@ const SUPPORTED_JOB_TYPES: JobType[] = [
   'sync_calendar',
   'cleanup_old_data',
   'classify_receipt_transactions',
+  'detect_receipt_rule_conflicts',
+  'suggest_receipt_rules',
+  'refresh_receipt_duplicate_candidates',
+  'reconcile_receipt_invoice_payments',
 ]
 
 const STALE_JOB_MINUTES = Number.isFinite(Number(process.env.JOB_QUEUE_STALE_MINUTES))
@@ -982,6 +990,33 @@ export class UnifiedJobQueue {
 
         await classifyReceiptTransactionsWithAI(supabase, transactionIds)
         return { processed: transactionIds.length }
+      }
+
+      case 'detect_receipt_rule_conflicts': {
+        const { performDetectReceiptRuleConflicts } = await import('@/services/receipts')
+        return performDetectReceiptRuleConflicts()
+      }
+
+      case 'suggest_receipt_rules': {
+        const { performSuggestReceiptRules } = await import('@/services/receipts')
+        return performSuggestReceiptRules()
+      }
+
+      case 'refresh_receipt_duplicate_candidates': {
+        const { performRefreshReceiptDuplicateCandidates } = await import('@/services/receipts')
+        const result = await performRefreshReceiptDuplicateCandidates()
+        if (result.error) {
+          throw new Error(result.error)
+        }
+        return result
+      }
+
+      case 'reconcile_receipt_invoice_payments': {
+        const { performReconcileReceiptInvoicePayments } = await import('@/services/receipts')
+        const transactionIds = Array.isArray(payload.transaction_ids)
+          ? payload.transaction_ids.filter((id): id is string => typeof id === 'string')
+          : undefined
+        return performReconcileReceiptInvoicePayments({ transactionIds })
       }
 
       case 'send_sms':

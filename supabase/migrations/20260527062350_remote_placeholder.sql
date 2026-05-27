@@ -1,0 +1,4 @@
+-- Placeholder for 20260527062350_remote_placeholder.sql
+-- This migration exists in the linked Supabase project's migration history but
+-- is not present in the local repository. Keep this no-op file so Supabase CLI
+-- can compare local and remote migration history before applying newer changes.

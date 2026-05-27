@@ -59,6 +59,29 @@ import {
   BULK_STATUS_OPTIONS,
 } from './receiptHelpers'
 import { normalizeReceiptVendorKey } from './vendorInsights'
+import {
+  recordReceiptClassificationSignals,
+  resolveReceiptVendorId,
+} from './receiptGovernance'
+
+async function enqueueReceiptSystemJob(
+  type: Parameters<typeof jobQueue.enqueue>[0],
+  uniqueSuffix: string,
+  payload: Record<string, unknown> = {}
+): Promise<void> {
+  const result = await jobQueue.enqueue(
+    type,
+    payload,
+    {
+      priority: -10,
+      unique: `receipts:${type}:${uniqueSuffix}`,
+    }
+  )
+
+  if (!result.success) {
+    console.warn(`Failed to enqueue receipt system job ${type}`, result.error)
+  }
+}
 
 // ---------------------------------------------------------------------------
 // performSetReceiptVendorWatched
@@ -171,6 +194,7 @@ export async function applyAutomationRules(
     .from('receipt_rules')
     .select('*')
     .eq('is_active', true)
+    .order('priority', { ascending: true })
     .order('created_at', { ascending: true })
 
   if (targetRuleId) {
@@ -257,6 +281,7 @@ export async function applyAutomationRules(
   let vendorIntended = 0
   let expenseIntended = 0
   const classificationLogs: Array<Omit<ReceiptTransactionLog, 'id'>> = []
+  const classificationSignals: Array<Parameters<typeof recordReceiptClassificationSignals>[1][number]> = []
   const now = new Date().toISOString()
   const inspectedTransactions: ReceiptTransaction[] = []
   const unmatchedSamples: Array<AutomationResult['samples'][number]> = []
@@ -339,6 +364,9 @@ export async function applyAutomationRules(
         updatePayload.marked_at = now
         updatePayload.marked_method = 'rule'
         updatePayload.rule_applied_id = matchingRule.id
+        if (targetStatus === 'auto_completed') {
+          updatePayload.auto_completed_reason = `trusted_rule:${matchingRule.id}`
+        }
       } else if (targetStatus !== 'pending') {
         updatePayload.receipt_required = false
         updatePayload.marked_by = null
@@ -351,8 +379,10 @@ export async function applyAutomationRules(
     }
 
     if (shouldUpdateVendor) {
+      const targetVendorId = matchingRule.vendor_id ?? await resolveReceiptVendorId(supabase, matchingRule.set_vendor_name)
       vendorIntended += 1
       updatePayload.vendor_name = matchingRule.set_vendor_name
+      updatePayload.vendor_id = targetVendorId
       updatePayload.vendor_source = 'rule'
       updatePayload.vendor_rule_id = matchingRule.id
       updatePayload.vendor_updated_at = now
@@ -416,6 +446,24 @@ export async function applyAutomationRules(
         rule_id: matchingRule.id,
         performed_at: now,
       })
+      classificationSignals.push({
+        transaction_id: transaction.id,
+        source: 'rule',
+        signal_type: 'rule_auto_mark',
+        prior_vendor_id: transaction.vendor_id ?? null,
+        new_vendor_id: transaction.vendor_id ?? null,
+        prior_vendor_name: transaction.vendor_name,
+        new_vendor_name: transaction.vendor_name,
+        prior_expense_category: transaction.expense_category,
+        new_expense_category: transaction.expense_category,
+        prior_status: transaction.status,
+        new_status: targetStatus,
+        rule_id: matchingRule.id,
+        ai_confidence: null,
+        performed_by: null,
+        performed_at: now,
+        payload: { rule_name: matchingRule.name },
+      })
     }
 
     if (classificationNotes.length) {
@@ -429,6 +477,24 @@ export async function applyAutomationRules(
         rule_id: matchingRule.id,
         performed_at: now,
       })
+      classificationSignals.push({
+        transaction_id: transaction.id,
+        source: 'rule',
+        signal_type: 'rule_classification',
+        prior_vendor_id: transaction.vendor_id ?? null,
+        new_vendor_id: (updatePayload.vendor_id as string | null | undefined) ?? transaction.vendor_id ?? null,
+        prior_vendor_name: transaction.vendor_name,
+        new_vendor_name: (updatePayload.vendor_name as string | null | undefined) ?? transaction.vendor_name,
+        prior_expense_category: transaction.expense_category,
+        new_expense_category: (updatePayload.expense_category as ReceiptExpenseCategory | null | undefined) ?? transaction.expense_category,
+        prior_status: transaction.status,
+        new_status: statusChanged ? targetStatus : transaction.status,
+        rule_id: matchingRule.id,
+        ai_confidence: null,
+        performed_by: null,
+        performed_at: now,
+        payload: { note: classificationNotes.join(' | '), rule_name: matchingRule.name },
+      })
       classificationUpdated += 1
     }
   }
@@ -439,6 +505,8 @@ export async function applyAutomationRules(
       console.error('Failed to record automation classification logs', classificationLogError)
     }
   }
+
+  await recordReceiptClassificationSignals(supabase, classificationSignals)
 
   if (targetRuleId) {
     const summary = {
@@ -644,6 +712,10 @@ export async function performImportReceiptStatement(
     const queuedResult = await enqueueReceiptAiClassificationJobs(insertedIds, batch.id)
     aiJobsQueued = queuedResult.queued
     aiJobsFailed = queuedResult.failed
+    await enqueueReceiptSystemJob('reconcile_receipt_invoice_payments', batch.id, {
+      transaction_ids: insertedIds,
+    })
+    await enqueueReceiptSystemJob('refresh_receipt_duplicate_candidates', batch.id)
   } catch (enqueueError) {
     console.error('Failed to enqueue AI classification jobs:', enqueueError)
     aiEnqueueWarning = 'AI classification could not be queued — use the re-queue button to retry.'
@@ -836,7 +908,9 @@ export async function performUpdateReceiptClassification(
   if (hasVendorField) {
     const currentVendor = transaction.vendor_name ?? null
     if (currentVendor !== (vendorName ?? null)) {
+      const vendorId = vendorName ? await resolveReceiptVendorId(supabase, vendorName) : null
       updatePayload.vendor_name = vendorName ?? null
+      updatePayload.vendor_id = vendorId
       updatePayload.vendor_source = (vendorName ? 'manual' : null) as ReceiptClassificationSource | null
       updatePayload.vendor_rule_id = null
       updatePayload.vendor_updated_at = now
@@ -891,6 +965,27 @@ export async function performUpdateReceiptClassification(
   if (classifyLogError) {
     console.error('Failed to record manual classification transaction log', classifyLogError)
   }
+
+  await recordReceiptClassificationSignals(supabase, [{
+    transaction_id: transactionId,
+    source: 'human',
+    signal_type: 'manual_classification',
+    prior_vendor_id: transaction.vendor_id ?? null,
+    new_vendor_id: (updatePayload.vendor_id as string | null | undefined) ?? transaction.vendor_id ?? null,
+    prior_vendor_name: transaction.vendor_name,
+    new_vendor_name: (updatePayload.vendor_name as string | null | undefined) ?? transaction.vendor_name,
+    prior_expense_category: transaction.expense_category,
+    new_expense_category: (updatePayload.expense_category as ReceiptExpenseCategory | null | undefined) ?? transaction.expense_category,
+    prior_status: transaction.status,
+    new_status: updated.status,
+    rule_id: null,
+    ai_confidence: null,
+    performed_by: userId,
+    performed_at: now,
+    payload: { note: changeNotes.join(' | ') },
+  }])
+
+  await enqueueReceiptSystemJob('suggest_receipt_rules', new Date().toISOString().slice(0, 10))
 
   const ruleSuggestion = buildRuleSuggestion(updated, {
     vendorName: vendorChanged ? vendorName ?? null : undefined,
@@ -961,6 +1056,7 @@ async function recordUploadedReceiptForTransaction(params: {
   fileName: string
   fileType: string
   fileSize: number
+  contentHash?: string | null
 }): Promise<{ success?: boolean; error?: string; receipt?: any }> {
   const {
     supabase,
@@ -973,6 +1069,7 @@ async function recordUploadedReceiptForTransaction(params: {
     fileName,
     fileType,
     fileSize,
+    contentHash,
   } = params
 
   const now = new Date().toISOString()
@@ -985,6 +1082,8 @@ async function recordUploadedReceiptForTransaction(params: {
       file_name: fileName,
       mime_type: fileType || null,
       file_size_bytes: fileSize,
+      content_hash: contentHash ?? null,
+      hash_verified_at: contentHash ? now : null,
       uploaded_by: userId,
     })
     .select('*')
@@ -1056,6 +1155,25 @@ async function recordUploadedReceiptForTransaction(params: {
   if (uploadLogError) {
     console.error('Failed to record receipt upload transaction log:', uploadLogError)
   }
+
+  await recordReceiptClassificationSignals(supabase, [{
+    transaction_id: transactionId,
+    source: 'human',
+    signal_type: 'receipt_upload',
+    prior_vendor_id: null,
+    new_vendor_id: null,
+    prior_vendor_name: null,
+    new_vendor_name: null,
+    prior_expense_category: null,
+    new_expense_category: null,
+    prior_status: transaction.status,
+    new_status: 'completed',
+    rule_id: null,
+    ai_confidence: null,
+    performed_by: userId,
+    performed_at: now,
+    payload: { file_name: fileName, content_hash: contentHash ?? null },
+  }])
 
   return { success: true, receipt }
 }
@@ -1129,6 +1247,16 @@ export async function performCompleteReceiptUpload(
     return { error: 'Uploaded receipt path is invalid' }
   }
 
+  let contentHash: string | null = null
+  const { data: storedFile, error: downloadError } = await supabase.storage
+    .from(RECEIPT_BUCKET)
+    .download(validation.data.storagePath)
+  if (!downloadError && storedFile) {
+    contentHash = createHash('sha256')
+      .update(Buffer.from(await storedFile.arrayBuffer()))
+      .digest('hex')
+  }
+
   return recordUploadedReceiptForTransaction({
     supabase,
     userId,
@@ -1140,6 +1268,7 @@ export async function performCompleteReceiptUpload(
     fileName: validation.data.fileName,
     fileType: validation.data.fileType,
     fileSize: validation.data.fileSize,
+    contentHash,
   })
 }
 
@@ -1157,6 +1286,7 @@ export async function performUploadReceiptForTransaction(
   }
 
   const buffer = Buffer.from(await file.arrayBuffer())
+  const contentHash = createHash('sha256').update(buffer).digest('hex')
 
   const extension = file.name.includes('.') ? file.name.split('.').pop() || 'pdf' : 'pdf'
   const amount = transaction.amount_out ?? transaction.amount_in ?? 0
@@ -1185,6 +1315,7 @@ export async function performUploadReceiptForTransaction(
     fileName: friendlyName,
     fileType: file.type || 'application/octet-stream',
     fileSize: file.size,
+    contentHash,
   })
 }
 
@@ -1329,10 +1460,21 @@ function optionalRuleText(input: FormDataEntryValue | null): string | undefined 
   return typeof input === 'string' && input.trim().length ? input.trim() : undefined
 }
 
+function optionalRuleInteger(input: FormDataEntryValue | null): number | undefined {
+  if (typeof input !== 'string') return undefined
+  const cleaned = input.trim()
+  if (!cleaned) return undefined
+  const value = Number.parseInt(cleaned, 10)
+  return Number.isFinite(value) ? value : undefined
+}
+
 function getRuleFormData(formData: FormData) {
   return {
     name: formData.get('name'),
     description: optionalRuleText(formData.get('description')),
+    priority: optionalRuleInteger(formData.get('priority')),
+    kind: optionalRuleText(formData.get('kind')) ?? 'standard',
+    reviewed: formData.get('reviewed') === 'on',
     match_description: optionalRuleText(formData.get('match_description')),
     match_transaction_type: optionalRuleText(formData.get('match_transaction_type')),
     match_direction: formData.get('match_direction') || 'both',
@@ -1348,6 +1490,9 @@ function buildRuleWritePayload(
   data: {
     name: string
     description?: string
+    priority?: number
+    kind?: ReceiptRule['kind']
+    reviewed?: boolean
     match_description?: string
     match_transaction_type?: string
     match_direction: ReceiptRule['match_direction']
@@ -1358,7 +1503,11 @@ function buildRuleWritePayload(
     set_expense_category?: ReceiptRule['set_expense_category']
   },
   userId: string,
-  includeCreatedBy = false
+  includeCreatedBy = false,
+  options: {
+    canGovernRules?: boolean
+    vendorId?: string | null
+  } = {}
 ) {
   const payload: Record<string, unknown> = {
     name: data.name,
@@ -1371,7 +1520,17 @@ function buildRuleWritePayload(
     auto_status: data.auto_status,
     set_vendor_name: data.set_vendor_name ?? null,
     set_expense_category: data.set_expense_category ?? null,
+    vendor_id: options.vendorId ?? null,
     updated_by: userId,
+  }
+
+  if (options.canGovernRules) {
+    payload.priority = data.priority ?? 1000
+    payload.kind = data.kind ?? 'standard'
+    if (data.reviewed) {
+      payload.reviewed_at = new Date().toISOString()
+      payload.reviewed_by = userId
+    }
   }
 
   if (includeCreatedBy) {
@@ -1383,7 +1542,8 @@ function buildRuleWritePayload(
 
 export async function performCreateReceiptRule(
   userId: string,
-  formData: FormData
+  formData: FormData,
+  options: { canGovernRules?: boolean } = {}
 ): Promise<RuleMutationResult> {
   const rawData = getRuleFormData(formData)
 
@@ -1396,10 +1556,14 @@ export async function performCreateReceiptRule(
   }
 
   const supabase = createAdminClient()
+  const vendorId = await resolveReceiptVendorId(supabase, parsed.data.set_vendor_name)
 
   const { data: rule, error } = await supabase
     .from('receipt_rules')
-    .insert(buildRuleWritePayload(parsed.data, userId, true))
+    .insert(buildRuleWritePayload(parsed.data, userId, true, {
+      canGovernRules: options.canGovernRules,
+      vendorId,
+    }))
     .select('*')
     .single()
 
@@ -1407,6 +1571,8 @@ export async function performCreateReceiptRule(
     console.error('Failed to create rule:', error)
     return { error: 'Failed to create rule.' }
   }
+
+  await enqueueReceiptSystemJob('detect_receipt_rule_conflicts', rule.id)
 
   return { success: true, rule, canPromptRetro: true }
 }
@@ -1419,7 +1585,8 @@ export async function performCreateReceiptRule(
 export async function performUpdateReceiptRule(
   userId: string,
   ruleId: string,
-  formData: FormData
+  formData: FormData,
+  options: { canGovernRules?: boolean } = {}
 ): Promise<RuleMutationResult> {
   const rawData = getRuleFormData(formData)
 
@@ -1432,10 +1599,14 @@ export async function performUpdateReceiptRule(
   }
 
   const supabase = createAdminClient()
+  const vendorId = await resolveReceiptVendorId(supabase, parsed.data.set_vendor_name)
 
   const { data: updated, error } = await supabase
     .from('receipt_rules')
-    .update(buildRuleWritePayload(parsed.data, userId))
+    .update(buildRuleWritePayload(parsed.data, userId, false, {
+      canGovernRules: options.canGovernRules,
+      vendorId,
+    }))
     .eq('id', ruleId)
     .select('*')
     .maybeSingle()
@@ -1447,6 +1618,8 @@ export async function performUpdateReceiptRule(
     return { error: 'Rule not found' }
   }
 
+  await enqueueReceiptSystemJob('detect_receipt_rule_conflicts', updated.id)
+
   return { success: true, rule: updated, canPromptRetro: true }
 }
 
@@ -1457,12 +1630,18 @@ export async function performUpdateReceiptRule(
 
 export async function performToggleReceiptRule(
   ruleId: string,
-  isActive: boolean
+  isActive: boolean,
+  userId?: string
 ): Promise<{ success?: boolean; error?: string; rule?: ReceiptRule }> {
   const supabase = createAdminClient()
+  const now = new Date().toISOString()
   const { data: updated, error } = await supabase
     .from('receipt_rules')
-    .update({ is_active: isActive })
+    .update({
+      is_active: isActive,
+      deactivated_at: isActive ? null : now,
+      deactivated_by: isActive ? null : userId ?? null,
+    })
     .eq('id', ruleId)
     .select('*')
     .maybeSingle()
@@ -1478,6 +1657,8 @@ export async function performToggleReceiptRule(
     await refreshAutomationForPendingTransactions()
   }
 
+  await enqueueReceiptSystemJob('detect_receipt_rule_conflicts', updated.id)
+
   return { success: true, rule: updated }
 }
 
@@ -1487,6 +1668,35 @@ export async function performToggleReceiptRule(
 // ---------------------------------------------------------------------------
 
 export async function performDeleteReceiptRule(
+  ruleId: string,
+  userId?: string
+): Promise<{ success?: boolean; error?: string }> {
+  const supabase = createAdminClient()
+  const { data: updated, error } = await supabase
+    .from('receipt_rules')
+    .update({
+      is_active: false,
+      deactivated_at: new Date().toISOString(),
+      deactivated_by: userId ?? null,
+    })
+    .eq('id', ruleId)
+    .select('id')
+    .maybeSingle()
+
+  if (error) {
+    return { error: 'Failed to deactivate rule.' }
+  }
+
+  if (!updated) {
+    return { error: 'Rule not found' }
+  }
+
+  await enqueueReceiptSystemJob('detect_receipt_rule_conflicts', ruleId)
+
+  return { success: true }
+}
+
+export async function performHardDeleteReceiptRule(
   ruleId: string
 ): Promise<{ success?: boolean; error?: string }> {
   const supabase = createAdminClient()
@@ -1498,6 +1708,8 @@ export async function performDeleteReceiptRule(
   if (error) {
     return { error: 'Failed to delete rule.' }
   }
+
+  await enqueueReceiptSystemJob('detect_receipt_rule_conflicts', ruleId)
 
   return { success: true }
 }
@@ -1547,7 +1759,7 @@ export async function performApplyReceiptGroupClassification(
 
   const selection = supabase
     .from('receipt_transactions')
-    .select('id, status, amount_in, amount_out, vendor_name, vendor_source, vendor_rule_id, vendor_updated_at')
+    .select('id, status, amount_in, amount_out, vendor_id, vendor_name, vendor_source, vendor_rule_id, vendor_updated_at, expense_category')
     .eq('details', parsed.data.details)
     .in('status', statuses)
 
@@ -1559,10 +1771,12 @@ export async function performApplyReceiptGroupClassification(
   }
 
   const matchRows = (matches ?? []) as Array<Pick<ReceiptTransaction, 'id' | 'status' | 'amount_in' | 'amount_out'> & {
+    vendor_id: string | null
     vendor_name: string | null
     vendor_source: string | null
     vendor_rule_id: string | null
     vendor_updated_at: string | null
+    expense_category: ReceiptExpenseCategory | null
   }>
 
   if (!matchRows.length) {
@@ -1584,6 +1798,7 @@ export async function performApplyReceiptGroupClassification(
 
   // Capture previous vendor values so rollback can restore originals (not null them).
   const previousVendorValues = new Map<string, {
+    vendor_id: string | null
     vendor_name: string | null
     vendor_source: string | null
     vendor_rule_id: string | null
@@ -1591,6 +1806,7 @@ export async function performApplyReceiptGroupClassification(
   }>()
   for (const row of matchRows) {
     previousVendorValues.set(row.id, {
+      vendor_id: row.vendor_id,
       vendor_name: row.vendor_name,
       vendor_source: row.vendor_source,
       vendor_rule_id: row.vendor_rule_id,
@@ -1602,9 +1818,12 @@ export async function performApplyReceiptGroupClassification(
   // Because the row sets differ, these cannot be merged into a single UPDATE call.
   // True atomicity would require a DB-level transaction (RPC) — tracked as tech debt (DEF-007).
 
+  let bulkVendorId: string | null = null
   if (vendorProvided) {
+    bulkVendorId = normalizedVendor ? await resolveReceiptVendorId(supabase, normalizedVendor) : null
     const vendorPayload: Record<string, unknown> = {
       updated_at: now,
+      vendor_id: bulkVendorId,
       vendor_name: normalizedVendor,
       vendor_source: normalizedVendor ? 'manual' : null,
       vendor_rule_id: null,
@@ -1654,6 +1873,7 @@ export async function performApplyReceiptGroupClassification(
             const { error: revertError } = await supabase
               .from('receipt_transactions')
               .update({
+                vendor_id: prev?.vendor_id ?? null,
                 vendor_name: prev?.vendor_name ?? null,
                 vendor_source: prev?.vendor_source ?? null,
                 vendor_rule_id: prev?.vendor_rule_id ?? null,
@@ -1709,6 +1929,33 @@ export async function performApplyReceiptGroupClassification(
       console.error('Failed to record bulk classification logs', logError)
     }
   }
+
+  await recordReceiptClassificationSignals(
+    supabase,
+    updatedIds.map((id) => {
+      const row = matchRows.find((match) => match.id === id)
+      return {
+        transaction_id: id,
+        source: 'human',
+        signal_type: 'bulk_classification',
+        prior_vendor_id: row?.vendor_id ?? null,
+        new_vendor_id: vendorProvided ? bulkVendorId : row?.vendor_id ?? null,
+        prior_vendor_name: row?.vendor_name ?? null,
+        new_vendor_name: vendorProvided ? normalizedVendor ?? null : row?.vendor_name ?? null,
+        prior_expense_category: row?.expense_category ?? null,
+        new_expense_category: expenseProvided ? normalizedExpense ?? null : row?.expense_category ?? null,
+        prior_status: row?.status ?? null,
+        new_status: row?.status ?? null,
+        rule_id: null,
+        ai_confidence: null,
+        performed_by: userId,
+        performed_at: now,
+        payload: { note },
+      }
+    })
+  )
+
+  await enqueueReceiptSystemJob('suggest_receipt_rules', new Date().toISOString().slice(0, 10))
 
   return { success: true, updated: updatedIds.length, skippedIncomingCount }
 }

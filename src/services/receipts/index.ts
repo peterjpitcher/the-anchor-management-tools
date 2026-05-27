@@ -18,3 +18,7 @@ export * from './receiptQueries'
 
 // Mutation operations (INSERT / UPDATE / DELETE)
 export * from './receiptMutations'
+
+// Governance jobs, canonical vendors, suggestions, and diagnostics
+export * from './receiptGovernance'
+export * from './receiptInvoiceReconciliation'

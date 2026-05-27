@@ -12,6 +12,10 @@ import { getOpenAIConfig } from '@/lib/openai/config'
 import { receiptExpenseCategorySchema } from '@/lib/validation'
 import type { ReceiptTransaction, ReceiptTransactionLog, ReceiptExpenseCategory } from '@/types/database'
 import { getTransactionDirection as getCanonicalDirection } from './direction'
+import {
+  recordReceiptClassificationSignals,
+  resolveReceiptVendorId,
+} from '@/services/receipts/receiptGovernance'
 
 type AdminClient = ReturnType<typeof createAdminClient>
 
@@ -146,7 +150,7 @@ export async function classifyReceiptTransactionsWithAI(
   const { data: transactions, error } = await client
     .from('receipt_transactions')
     .select(
-      'id, details, transaction_type, amount_in, amount_out, vendor_name, vendor_source, vendor_rule_id, expense_category, expense_category_source, expense_rule_id, status, ai_confidence, ai_suggested_keywords'
+      'id, details, transaction_type, amount_in, amount_out, vendor_id, vendor_name, vendor_source, vendor_rule_id, expense_category, expense_category_source, expense_rule_id, status, ai_confidence, ai_suggested_keywords'
     )
     .in('id', transactionIds)
 
@@ -209,6 +213,7 @@ export async function classifyReceiptTransactionsWithAI(
   )
 
   const logs: Array<Omit<ReceiptTransactionLog, 'id'>> = []
+  const signals: Array<Parameters<typeof recordReceiptClassificationSignals>[1][number]> = []
   const now = new Date().toISOString()
 
   if (!batchOutcome) {
@@ -259,6 +264,8 @@ export async function classifyReceiptTransactionsWithAI(
     const changeNotes: string[] = []
 
     if (needsVendor && vendorName) {
+      const vendorId = await resolveReceiptVendorId(supabase, vendorName)
+      updatePayload.vendor_id = vendorId
       updatePayload.vendor_name = vendorName
       updatePayload.vendor_source = 'ai'
       updatePayload.vendor_rule_id = null
@@ -340,6 +347,24 @@ export async function classifyReceiptTransactionsWithAI(
         rule_id: null,
         performed_at: now,
       })
+      signals.push({
+        transaction_id: transaction.id,
+        source: 'ai',
+        signal_type: 'ai_classification',
+        prior_vendor_id: transaction.vendor_id ?? null,
+        new_vendor_id: (updatePayload.vendor_id as string | null | undefined) ?? transaction.vendor_id ?? null,
+        prior_vendor_name: transaction.vendor_name,
+        new_vendor_name: (updatePayload.vendor_name as string | null | undefined) ?? transaction.vendor_name,
+        prior_expense_category: transaction.expense_category,
+        new_expense_category: (updatePayload.expense_category as ReceiptExpenseCategory | null | undefined) ?? transaction.expense_category,
+        prior_status: transaction.status,
+        new_status: transaction.status,
+        rule_id: null,
+        ai_confidence: confidence ?? null,
+        performed_by: null,
+        performed_at: now,
+        payload: { reasoning, suggested_rule_keywords: suggestedRuleKeywords ?? null },
+      })
     }
   }
 
@@ -351,4 +376,6 @@ export async function classifyReceiptTransactionsWithAI(
     const { error: logError } = await client.from('receipt_transaction_logs').insert(logs)
     if (logError) console.error('Failed to insert transaction log:', logError)
   }
+
+  await recordReceiptClassificationSignals(supabase, signals)
 }

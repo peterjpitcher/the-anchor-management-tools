@@ -77,6 +77,7 @@ import {
   normalizeReceiptVendorMovementRange,
   receiptVendorMovementRangeMonths,
 } from './vendorInsights'
+import { queryReceiptGovernanceItems } from './receiptGovernance'
 
 // ---------------------------------------------------------------------------
 // buildGroupSuggestion — AI-assisted classification for bulk review groups
@@ -303,10 +304,14 @@ export async function queryReceiptWorkspaceData(filters: ReceiptWorkspaceFilters
 
   const vendorQuery = supabase
     .from('receipt_transactions')
-    .select('vendor_name')
-    .not('vendor_name', 'is', null)
-    .neq('vendor_name', '')
+    .select('vendor_name, receipt_vendors(canonical_name)')
     .order('vendor_name', { ascending: true })
+    .limit(2000)
+
+  const canonicalVendorQuery = supabase
+    .from('receipt_vendors')
+    .select('canonical_name')
+    .order('canonical_name', { ascending: true })
     .limit(2000)
 
   const monthsQuery = supabase.rpc('get_receipt_monthly_summary', {
@@ -318,16 +323,21 @@ export async function queryReceiptWorkspaceData(filters: ReceiptWorkspaceFilters
     { data: rules },
     summary,
     { data: vendorRecords, error: vendorError },
+    { data: canonicalVendorRecords, error: canonicalVendorError },
     { data: monthSummary, error: monthError },
+    governance,
   ] = await Promise.all([
     baseQuery,
     supabase
       .from('receipt_rules')
       .select('*')
+      .order('priority', { ascending: true })
       .order('created_at', { ascending: true }),
     fetchSummary(),
     vendorQuery,
+    canonicalVendorQuery,
     monthsQuery,
+    queryReceiptGovernanceItems(),
   ])
 
   if (error) {
@@ -337,6 +347,10 @@ export async function queryReceiptWorkspaceData(filters: ReceiptWorkspaceFilters
 
   if (vendorError) {
     console.error('Failed to load vendor list for receipts workspace:', vendorError)
+  }
+
+  if (canonicalVendorError) {
+    console.error('Failed to load canonical receipt vendors:', canonicalVendorError)
   }
 
   if (monthError) {
@@ -352,7 +366,16 @@ export async function queryReceiptWorkspaceData(filters: ReceiptWorkspaceFilters
   const knownVendorSet = new Set<string>()
 
   ;(vendorRecords ?? []).forEach((record: any) => {
-    const normalized = normalizeVendorInput(record.vendor_name)
+    const join = record.receipt_vendors
+    const canonicalName = Array.isArray(join) ? join[0]?.canonical_name : join?.canonical_name
+    const normalized = normalizeVendorInput(canonicalName ?? record.vendor_name)
+    if (normalized) {
+      knownVendorSet.add(normalized)
+    }
+  })
+
+  ;(canonicalVendorRecords ?? []).forEach((record: any) => {
+    const normalized = normalizeVendorInput(record.canonical_name)
     if (normalized) {
       knownVendorSet.add(normalized)
     }
@@ -406,6 +429,8 @@ export async function queryReceiptWorkspaceData(filters: ReceiptWorkspaceFilters
   return {
     transactions: shapedTransactions,
     rules: rules ?? [],
+    ruleConflicts: governance.conflicts,
+    ruleSuggestions: governance.suggestions,
     summary: enrichedSummary,
     pagination: {
       page,
@@ -663,6 +688,7 @@ export async function queryMonthlyReceiptInsights(limit = 12): Promise<ReceiptMo
 }
 
 type VendorRuleJoin = { set_vendor_name?: string | null }
+type VendorCanonicalJoin = { canonical_name?: string | null; vendor_key?: string | null }
 
 type VendorTransactionRow = {
   id: string
@@ -677,6 +703,7 @@ type VendorTransactionRow = {
   expense_category?: ReceiptTransaction['expense_category']
   expense_category_source?: ReceiptTransaction['expense_category_source']
   receipt_rules?: VendorRuleJoin | VendorRuleJoin[] | null
+  receipt_vendors?: VendorCanonicalJoin | VendorCanonicalJoin[] | null
 }
 
 type VendorMonthlyTotalRow = {
@@ -688,7 +715,7 @@ type VendorMonthlyTotalRow = {
   transaction_count?: number | string | null
 }
 
-const VENDOR_TRANSACTION_SELECT = 'id, transaction_date, details, amount_in, amount_out, status, vendor_name, vendor_source, transaction_type, expense_category, expense_category_source, receipt_rules!receipt_transactions_vendor_rule_id_fkey(set_vendor_name)'
+const VENDOR_TRANSACTION_SELECT = 'id, transaction_date, details, amount_in, amount_out, status, vendor_name, vendor_source, transaction_type, expense_category, expense_category_source, receipt_rules!receipt_transactions_vendor_rule_id_fkey(set_vendor_name), receipt_vendors(canonical_name, vendor_key)'
 const VENDOR_HISTORY_FALLBACK_PAGE_SIZE = 1000
 
 function getVendorRuleName(row: VendorTransactionRow): string | null {
@@ -699,12 +726,22 @@ function getVendorRuleName(row: VendorTransactionRow): string | null {
   return normalizeVendorInput(join?.set_vendor_name)
 }
 
+function getCanonicalVendorName(row: VendorTransactionRow): string | null {
+  const join = row.receipt_vendors
+  if (Array.isArray(join)) {
+    return normalizeVendorInput(join[0]?.canonical_name)
+  }
+  return normalizeVendorInput(join?.canonical_name)
+}
+
 function getCanonicalVendorLabel(row: VendorTransactionRow): string | null {
-  return getVendorRuleName(row) ?? normalizeVendorInput(row.vendor_name)
+  return getCanonicalVendorName(row) ?? getVendorRuleName(row) ?? normalizeVendorInput(row.vendor_name)
 }
 
 function getCanonicalVendorKey(row: VendorTransactionRow): string | null {
-  return normalizeReceiptVendorKey(getCanonicalVendorLabel(row))
+  const join = row.receipt_vendors
+  const joinedKey = Array.isArray(join) ? join[0]?.vendor_key : join?.vendor_key
+  return normalizeReceiptVendorKey(joinedKey ?? getCanonicalVendorLabel(row))
 }
 
 function transactionMonthStart(value: string): string {

@@ -12,6 +12,8 @@ import type {
   ReceiptFile,
   ReceiptExpenseCategory,
   ReceiptClassificationSource,
+  ReceiptRuleConflict,
+  ReceiptRuleSuggestion,
 } from '@/types/database'
 import { createAdminClient } from '@/lib/supabase/admin'
 import {
@@ -111,6 +113,8 @@ export type ReceiptWorkspaceData = {
     autoRule?: Pick<ReceiptRule, 'id' | 'name'> | null
   })[]
   rules: ReceiptRule[]
+  ruleConflicts: ReceiptRuleConflict[]
+  ruleSuggestions: ReceiptRuleSuggestion[]
   summary: ReceiptWorkspaceSummary
   pagination: {
     page: number
