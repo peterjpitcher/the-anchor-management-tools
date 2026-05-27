@@ -51,7 +51,6 @@ interface BookingRow {
   final_payment_date: string | null
   contact_email: string | null
   customer_requests: string | null
-  accessibility_needs: string | null
 }
 
 function InvalidToken() {
@@ -138,7 +137,7 @@ export default async function BookingPortalPage({ params, searchParams }: PagePr
   const { data: booking, error } = await supabase
     .from('private_bookings_with_details')
     .select(
-      'id, customer_first_name, customer_last_name, customer_name, customer_full_name, event_date, start_time, end_time, end_time_next_day, guest_count, event_type, status, deposit_amount, deposit_paid_date, total_amount, calculated_total, balance_due_date, final_payment_date, contact_email, customer_requests, accessibility_needs'
+      'id, customer_first_name, customer_last_name, customer_name, customer_full_name, event_date, start_time, end_time, end_time_next_day, guest_count, event_type, status, deposit_amount, deposit_paid_date, total_amount, calculated_total, balance_due_date, final_payment_date, contact_email, customer_requests'
     )
     .eq('id', bookingId)
     .single()
@@ -333,18 +332,13 @@ export default async function BookingPortalPage({ params, searchParams }: PagePr
         </div>
 
         {/* Special requests — only if present */}
-        {(b.customer_requests || b.accessibility_needs) && (
+        {b.customer_requests && (
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-4">
             <h2 className="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-4">
               Your Requests
             </h2>
             <dl className="space-y-3">
-              {b.customer_requests && (
-                <DescriptionItem label="Special requests" value={b.customer_requests} />
-              )}
-              {b.accessibility_needs && (
-                <DescriptionItem label="Accessibility needs" value={b.accessibility_needs} />
-              )}
+              <DescriptionItem label="Special requests" value={b.customer_requests} />
             </dl>
           </div>
         )}
