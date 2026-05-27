@@ -45,9 +45,10 @@ describe('recalculateTaxYearMileage', () => {
   })
 
   it('should recalculate splits for trips within standard rate threshold', async () => {
+    // 2026-06-15 is in tax year 2026/27, post 2026-04-01, so the £0.55 rate applies.
     const trips = [
-      { id: 'trip-1', total_miles: '100' },
-      { id: 'trip-2', total_miles: '200' },
+      { id: 'trip-1', trip_date: '2026-06-15', total_miles: '100' },
+      { id: 'trip-2', trip_date: '2026-06-15', total_miles: '200' },
     ]
 
     // Setup the chain for fetching trips
@@ -79,14 +80,42 @@ describe('recalculateTaxYearMileage', () => {
     expect(mockUpdate).toHaveBeenNthCalledWith(1, {
       miles_at_standard_rate: 100,
       miles_at_reduced_rate: 0,
-      amount_due: 45, // 100 * 0.45
+      amount_due: 55, // 100 * 0.55
     })
 
     // Second trip: 200 miles at standard
     expect(mockUpdate).toHaveBeenNthCalledWith(2, {
       miles_at_standard_rate: 200,
       miles_at_reduced_rate: 0,
-      amount_due: 90, // 200 * 0.45
+      amount_due: 110, // 200 * 0.55
+    })
+  })
+
+  it('should apply the legacy rate to pre-2026-04-01 trips', async () => {
+    // Tax year 2025/26 (6 April 2025 -> 5 April 2026). All trip dates are
+    // before the 2026-04-01 rate change.
+    const trips = [
+      { id: 'legacy-1', trip_date: '2025-09-10', total_miles: '120' },
+    ]
+
+    const mockOrderInner = vi.fn().mockResolvedValue({ data: trips, error: null })
+    mockOrder.mockReturnValue({ order: mockOrderInner })
+
+    const mockUpdateEq = vi.fn().mockResolvedValue({ error: null })
+    mockUpdate.mockReturnValue({ eq: mockUpdateEq })
+    mockFrom.mockImplementation(() => {
+      if (mockFrom.mock.calls.length === 1) {
+        return { select: mockSelect }
+      }
+      return { update: mockUpdate }
+    })
+
+    await recalculateTaxYearMileage('2025-09-10')
+
+    expect(mockUpdate).toHaveBeenNthCalledWith(1, {
+      miles_at_standard_rate: 120,
+      miles_at_reduced_rate: 0,
+      amount_due: 54, // 120 * 0.45
     })
   })
 

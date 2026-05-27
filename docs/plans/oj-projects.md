@@ -145,7 +145,7 @@ Peter manages a list of work types (e.g., Consulting, Development, Photography).
   - Retainer included-hours warning (UI-only; no rollover)
 
 ### Vendor (client) settings
-- Hourly rate ex VAT (default 75), VAT rate, mileage rate (default 0.42)
+- Hourly rate ex VAT (default 75), VAT rate, mileage rate (default 0.55)
 - Billing mode: pay in full vs monthly cap (cap amount stored **inc VAT**)
 - Recurring charges management
 - Contacts list with “Receive invoice copy” checkbox

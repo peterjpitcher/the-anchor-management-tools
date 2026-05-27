@@ -26,7 +26,12 @@ import {
   type MileageTrip,
   type MileageDestination,
 } from '@/app/actions/mileage'
-import type { TaxYearStats } from '@/lib/mileage/hmrcRates'
+import {
+  REDUCED_RATE,
+  getStandardRate,
+  type TaxYearStats,
+} from '@/lib/mileage/hmrcRates'
+import { getTodayIsoDate } from '@/lib/dateUtils'
 import { TripForm } from './TripForm'
 import { formatDateInLondon } from '@/lib/dateUtils'
 import { useSort } from '@/hooks/useSort'
@@ -199,8 +204,8 @@ export function MileageClient({
           value={`${stats.milesToThreshold.toFixed(1)} mi`}
           hint={
             stats.milesToThreshold > 0
-              ? `${stats.milesToThreshold.toLocaleString()} mi left at £0.45`
-              : 'Now at reduced rate (£0.25/mi)'
+              ? `${stats.milesToThreshold.toLocaleString()} mi left at £${getStandardRate(getTodayIsoDate()).toFixed(2)}`
+              : `Now at reduced rate (£${REDUCED_RATE.toFixed(2)}/mi)`
           }
         />
       </div>
@@ -316,7 +321,11 @@ export function MileageClient({
                     {trip.totalMiles.toFixed(1)}
                   </TableCell>
                   <TableCell align="right">
-                    {hasMixedRates ? 'Mixed' : trip.milesAtReducedRate > 0 ? '£0.25' : '£0.45'}
+                    {hasMixedRates
+                      ? 'Mixed'
+                      : trip.milesAtReducedRate > 0
+                        ? `£${REDUCED_RATE.toFixed(2)}`
+                        : `£${getStandardRate(trip.tripDate).toFixed(2)}`}
                   </TableCell>
                   <TableCell align="right" className="font-medium">
                     {formatCurrency(trip.amountDue)}

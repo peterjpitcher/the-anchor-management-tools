@@ -74,7 +74,7 @@ async function getVendorSettingsOrDefault(supabase: Awaited<ReturnType<typeof cr
   return {
     hourly_rate_ex_vat: typeof data?.hourly_rate_ex_vat === 'number' ? data.hourly_rate_ex_vat : 75,
     vat_rate: typeof data?.vat_rate === 'number' ? data.vat_rate : 20,
-    mileage_rate: typeof data?.mileage_rate === 'number' ? data.mileage_rate : 0.42,
+    mileage_rate: typeof data?.mileage_rate === 'number' ? data.mileage_rate : 0.55,
     retainer_included_hours_per_month: typeof data?.retainer_included_hours_per_month === 'number' ? data.retainer_included_hours_per_month : null,
   }
 }

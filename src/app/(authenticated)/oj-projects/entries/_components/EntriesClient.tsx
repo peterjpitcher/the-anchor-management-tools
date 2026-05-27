@@ -285,7 +285,7 @@ export function EntriesClient({
     if (entry.entry_type === 'time') {
       return (Number(entry.duration_minutes_rounded || 0) / 60) * Number(entry.hourly_rate_ex_vat_snapshot || 0)
     } else if (entry.entry_type === 'mileage') {
-      return Number(entry.miles || 0) * Number(entry.mileage_rate_snapshot || 0.42)
+      return Number(entry.miles || 0) * Number(entry.mileage_rate_snapshot || 0.55)
     }
     return Number(entry.amount_ex_vat_snapshot || 0)
   }

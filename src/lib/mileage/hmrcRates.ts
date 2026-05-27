@@ -2,13 +2,40 @@
  * HMRC Mileage Rate Calculation Utility
  *
  * Tax year runs 6 April to 5 April (London timezone boundaries).
- * First 10,000 miles in a tax year: standard rate (£0.45/mile).
+ * First 10,000 miles in a tax year: standard rate.
  * Miles above 10,000: reduced rate (£0.25/mile).
+ *
+ * The standard rate is date-aware:
+ *   - Trips before 1 April 2026: £0.45/mile (legacy AMAP)
+ *   - Trips on or after 1 April 2026: £0.55/mile
  */
 
-const STANDARD_RATE = 0.45
+/** Date from which the new HMRC standard rate applies (inclusive, YYYY-MM-DD). */
+export const RATE_CHANGE_DATE = '2026-04-01'
+
+/** Standard rate for trips before {@link RATE_CHANGE_DATE}. */
+export const STANDARD_RATE_LEGACY = 0.45
+
+/** Standard rate for trips on or after {@link RATE_CHANGE_DATE}. */
+export const STANDARD_RATE_CURRENT = 0.55
+
 const REDUCED_RATE = 0.25
 const THRESHOLD_MILES = 10_000
+
+/**
+ * Current standard rate, retained for callers that unambiguously deal with new
+ * trips (placeholders that will be overwritten by recalculation, "miles left"
+ * hints, etc.). Date-sensitive call sites must use {@link getStandardRate}.
+ */
+const STANDARD_RATE = STANDARD_RATE_CURRENT
+
+/**
+ * Returns the HMRC standard rate that applies to a trip on the given date.
+ * Relies on lexicographic comparison of zero-padded YYYY-MM-DD strings.
+ */
+export function getStandardRate(tripDate: string): number {
+  return tripDate < RATE_CHANGE_DATE ? STANDARD_RATE_LEGACY : STANDARD_RATE_CURRENT
+}
 
 export interface HmrcRateSplit {
   milesAtStandardRate: number
@@ -48,11 +75,13 @@ export function getTaxYearBounds(tripDate: string): TaxYearBounds {
 
 /**
  * Given cumulative miles already claimed in the tax year BEFORE this trip,
- * and the miles for the current trip, calculate the HMRC rate split.
+ * the miles for the current trip, and the trip date, calculate the HMRC rate
+ * split. The trip's date selects the standard rate band (legacy vs current).
  */
 export function calculateHmrcRateSplit(
   cumulativeMilesBefore: number,
-  tripMiles: number
+  tripMiles: number,
+  tripDate: string,
 ): HmrcRateSplit {
   const totalAfter = cumulativeMilesBefore + tripMiles
 
@@ -73,8 +102,9 @@ export function calculateHmrcRateSplit(
     milesAtReducedRate = tripMiles - milesAtStandardRate
   }
 
+  const standardRate = getStandardRate(tripDate)
   const amountDue = round2(
-    milesAtStandardRate * STANDARD_RATE + milesAtReducedRate * REDUCED_RATE
+    milesAtStandardRate * standardRate + milesAtReducedRate * REDUCED_RATE
   )
 
   return {
@@ -84,17 +114,23 @@ export function calculateHmrcRateSplit(
   }
 }
 
+export interface RecalculateTripInput {
+  totalMiles: number
+  tripDate: string
+}
+
 /**
  * Recalculate rate splits for an ordered list of trips in a tax year.
- * Each trip receives updated milesAtStandardRate / milesAtReducedRate / amountDue.
+ * Each trip receives updated milesAtStandardRate / milesAtReducedRate / amountDue,
+ * applying the rate band appropriate to its trip date.
  * Returns a new array (does not mutate input).
  */
 export function recalculateAllSplits(
-  trips: Array<{ totalMiles: number }>
+  trips: ReadonlyArray<RecalculateTripInput>
 ): HmrcRateSplit[] {
   let cumulative = 0
   return trips.map((trip) => {
-    const split = calculateHmrcRateSplit(cumulative, trip.totalMiles)
+    const split = calculateHmrcRateSplit(cumulative, trip.totalMiles, trip.tripDate)
     cumulative += trip.totalMiles
     return split
   })
