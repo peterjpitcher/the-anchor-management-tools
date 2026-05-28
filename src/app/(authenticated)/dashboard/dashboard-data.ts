@@ -1437,7 +1437,18 @@ async function fetchDashboardSnapshotImpl(userId: string): Promise<DashboardSnap
           quotes.totalExpiredValue = sumAmounts(expiredRes.data as Array<{ total_amount?: number | null }> | null)
           quotes.totalAcceptedValue = sumAmounts(acceptedRes.data as Array<{ total_amount?: number | null }> | null)
         } catch (error) {
-          console.error('Failed to load dashboard quote metrics:', error)
+          const supabaseError = error as {
+            code?: string
+            message?: string
+            details?: string
+            hint?: string
+          }
+          console.error('Failed to load dashboard quote metrics:', {
+            code: supabaseError?.code,
+            message: supabaseError?.message,
+            details: supabaseError?.details,
+            hint: supabaseError?.hint,
+          })
           quotes.error = 'Failed to load quote metrics'
         }
       })() : Promise.resolve(),

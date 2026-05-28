@@ -452,10 +452,11 @@ async function handlePaymentCompleted(supabase: ReturnType<typeof createAdminCli
   const { error: auditError } = await supabase
     .from('audit_logs')
     .insert({
-      action: 'payment_webhook_confirmed',
-      entity_type: 'parking_booking',
-      entity_id: bookingId,
-      metadata: {
+      operation_type: 'payment_webhook_confirmed',
+      resource_type: 'parking_booking',
+      resource_id: bookingId,
+      operation_status: 'success',
+      additional_info: {
         amount,
         event_id: event.id,
         transaction_id: captureId,
@@ -521,10 +522,11 @@ async function handlePaymentDenied(supabase: ReturnType<typeof createAdminClient
   const { error: auditError } = await supabase
     .from('audit_logs')
     .insert({
-      action: 'payment_webhook_denied',
-      entity_type: 'parking_booking',
-      entity_id: bookingId,
-      metadata: {
+      operation_type: 'payment_webhook_denied',
+      resource_type: 'parking_booking',
+      resource_id: bookingId,
+      operation_status: 'failure',
+      additional_info: {
         event_id: event.id,
         reason: resource.status_details?.reason
       }
@@ -534,4 +536,3 @@ async function handlePaymentDenied(supabase: ReturnType<typeof createAdminClient
     throw new Error(`Failed to write denied parking payment audit log: ${auditError.message}`)
   }
 }
-

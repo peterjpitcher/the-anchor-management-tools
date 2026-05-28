@@ -1,8 +1,8 @@
 ---
 generated: true
-last_updated: 2026-04-24T00:00:00Z
+last_updated: 2026-05-27T00:00:00Z
 source: session-setup
-project: anchor-management-tools
+project: OJ-AnchorManagementTools
 ---
 
 # Architecture Docs
@@ -14,20 +14,22 @@ project: anchor-management-tools
 
 | Doc | Status | Description |
 |-----|--------|-------------|
-| [[overview]] | Updated 2026-04-24 | Stack, route groups, auth model, integrations |
-| [[routes]] | Updated 2026-04-24 | Full route table: pages, API routes, cron, webhooks |
-| [[server-actions]] | Updated 2026-04-24 | Server actions grouped by domain with tables and audit info |
-| [[data-model]] | Updated 2026-04-24 | Known tables from codebase scan; full schema via DB agent |
-| [[relationships]] | Updated 2026-04-24 | Cross-reference: tables → actions → routes → integrations |
+| [[overview]] | Updated 2026-05-27 | Stack, route groups, auth model, integrations |
+| [[routes]] | Updated 2026-05-27 | Full route table: pages, API routes, cron, webhooks |
+| [[server-actions]] | Updated 2026-05-27 | Server actions grouped by domain |
+| [[data-model]] | Updated 2026-05-27 | Known tables from codebase scan; full schema via DB agent |
+| [[relationships]] | Updated 2026-05-27 | Cross-reference: tables → actions → routes → integrations |
 
-## Quick Stats (2026-04-24 scan)
+## Quick Stats (2026-05-27 scan)
 
-- **Route files scanned:** ~120 (page.tsx + route.ts + layout.tsx)
-- **Server action files:** ~60+ under `src/app/actions/` and co-located `actions.ts`
-- **Authenticated page modules:** cashing-up, customers, employees, events, private-bookings, receipts, rota, timeclock, payroll, messages, parking, invoices, settings
-- **Cron jobs:** 6 (parking-notifications, rota-auto-close, rota-manager-alert, rota-staff-email, private-bookings-weekly-summary, reconcile-sms)
-- **Webhook domains:** Twilio, Stripe, PayPal (×4 sub-routes)
-- **External integrations:** Twilio, Microsoft Graph, Stripe, PayPal, OpenAI, Google Calendar (optional), Cloudflare Turnstile
+- **Pages (`page.tsx`):** 146
+- **API/route handlers (`route.ts`):** 147
+- **Server action files (`'use server'`):** 95
+- **Service modules (`src/services/`):** 39
+- **Distinct tables referenced via `.from('...')`:** 174
+- **Vercel cron jobs:** 30 (see [[routes#Cron jobs]])
+- **Webhook domains:** Twilio, Stripe, PayPal (root + parking + private-bookings + table-bookings)
+- **External integrations:** Twilio, Microsoft Graph (Outlook), Stripe, PayPal, OpenAI, Google Calendar, googleapis, Cloudflare Turnstile, GitHub (bug reporter)
 
 ## Refresh
 

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { checkUserPermission } from '@/app/actions/rbac'
 import { generateContractHTML } from '@/lib/contract-template'
 import { logger } from '@/lib/logger'
@@ -73,7 +74,8 @@ export async function GET(request: NextRequest) {
   // Audit log + version increment — best-effort: failure does NOT block HTML delivery
   const newVersion = (booking.contract_version ?? 0) + 1
   try {
-    const { error: auditError } = await supabase.from('private_booking_audit').insert({
+    const admin = createAdminClient()
+    const { error: auditError } = await admin.from('private_booking_audit').insert({
       booking_id: bookingId,
       action: 'contract_generated',
       performed_by: user.id,
@@ -84,7 +86,7 @@ export async function GET(request: NextRequest) {
     })
     if (auditError) {
       logger.error('Contract audit log failed (non-blocking)', {
-        error: auditError,
+        error: new Error(auditError.message),
         metadata: { bookingId, newVersion }
       })
     }
@@ -95,7 +97,7 @@ export async function GET(request: NextRequest) {
       .eq('id', bookingId)
     if (versionError) {
       logger.error('Contract version update failed (non-blocking)', {
-        error: versionError,
+        error: new Error(versionError.message),
         metadata: { bookingId, newVersion }
       })
     }

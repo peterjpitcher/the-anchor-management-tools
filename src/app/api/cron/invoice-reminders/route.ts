@@ -432,7 +432,7 @@ Orange Jelly Limited
             resource_id: invoice.id,
             user_id: 'system',
             operation_status: 'success',
-            operation_details: {
+            additional_info: {
               action: 'reminder_sent',
               reminder_type: reminderType,
               days_overdue: daysOverdue,

@@ -4,9 +4,11 @@ import { PageLayout } from '@/ds';
 import { Card } from '@/ds';
 import { Section } from '@/ds';
 import { createClient } from '@/lib/supabase/server';
-import { getPayrollMonthData, getOrCreatePayrollPeriod } from '@/app/actions/payroll';
+import { ensurePayrollPeriodsAhead, getPayrollMonthData, getOrCreatePayrollPeriod } from '@/app/actions/payroll';
 import type { PayrollMonthApproval, PayrollPeriod } from '@/app/actions/payroll';
 import { getRotaWeekDayInfo } from '@/app/actions/rota-day-info';
+import { getTodayIsoDate } from '@/lib/dateUtils';
+import { buildPayrollMonthOptions } from '@/lib/rota/payroll-periods';
 import PayrollClient from './PayrollClient';
 import { rotaNavItems } from '../nav';
 
@@ -28,16 +30,20 @@ export default async function PayrollPage({ searchParams }: PayrollPageProps) {
   const resolvedParams = await Promise.resolve(searchParams ?? {});
   const params = resolvedParams as { year?: string; month?: string };
 
-  const today = new Date();
-  // Default to current month
-  const year = params.year ? parseInt(params.year) : today.getFullYear();
-  const month = params.month ? parseInt(params.month) : today.getMonth() + 1;
+  const todayIso = getTodayIsoDate();
+  const availablePeriods = await ensurePayrollPeriodsAhead(todayIso);
+  const defaultPeriod = availablePeriods[0];
+  const year = params.year ? parseInt(params.year) : defaultPeriod.year;
+  const month = params.month ? parseInt(params.month) : defaultPeriod.month;
 
   const supabase = await createClient();
 
   // Fetch period first — its start/end dates define the range for day info.
   // getOrCreatePayrollPeriod may insert a row so it runs sequentially first.
-  const payrollPeriod = await getOrCreatePayrollPeriod(year, month) as PayrollPeriod;
+  const payrollPeriod = (
+    availablePeriods.find(period => period.year === year && period.month === month)
+    ?? await getOrCreatePayrollPeriod(year, month)
+  ) as PayrollPeriod;
 
   const [payrollResult, approvalResult] = await Promise.all([
     getPayrollMonthData(year, month),
@@ -54,18 +60,7 @@ export default async function PayrollPage({ searchParams }: PayrollPageProps) {
     month: 'long', year: 'numeric',
   });
 
-  // Build month navigation options (current year + last year)
-  const monthOptions: { label: string; value: string }[] = [];
-  for (let y = today.getFullYear(); y >= today.getFullYear() - 1; y--) {
-    for (let m = 12; m >= 1; m--) {
-      const d = new Date(y, m - 1, 1);
-      if (d > today) continue;
-      monthOptions.push({
-        label: d.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' }),
-        value: `?year=${y}&month=${m}`,
-      });
-    }
-  }
+  const monthOptions = buildPayrollMonthOptions(defaultPeriod);
 
   const approval = approvalResult.data as PayrollMonthApproval | null;
 

@@ -293,10 +293,11 @@ async function handleDashboardRefund(
   const { error: auditError } = await supabase
     .from('audit_logs')
     .insert({
-      action: 'paypal_dashboard_refund_reconciled',
-      entity_type: sourceType,
-      entity_id: sourceId,
-      metadata: {
+      operation_type: 'paypal_dashboard_refund_reconciled',
+      resource_type: sourceType,
+      resource_id: sourceId,
+      operation_status: 'success',
+      additional_info: {
         paypal_refund_id: paypalRefundId,
         paypal_capture_id: paypalCaptureId,
         amount: refundAmount,
