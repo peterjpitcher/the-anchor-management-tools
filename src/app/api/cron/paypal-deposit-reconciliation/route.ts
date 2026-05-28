@@ -1,12 +1,103 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { authorizeCronRequest } from '@/lib/cron-auth'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { getPayPalOrder, capturePayPalPayment, isPayPalOrderNotFoundError } from '@/lib/paypal'
+import { getPayPalOrder, capturePayPalPayment, isPayPalOrderNotFoundError, PayPalApiError } from '@/lib/paypal'
 import { logger } from '@/lib/logger'
 import { finalizeDepositPayment } from '@/services/private-bookings'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
+
+const MAX_PAYPAL_RECONCILIATION_ATTEMPTS = 5
+
+type PendingPayPalBooking = {
+  id: string
+  paypal_deposit_order_id: string | null
+  deposit_amount: number | null
+  status: string | null
+  paypal_reconciliation_attempts?: number | null
+  paypal_reconciliation_last_error?: string | null
+}
+
+function summarizePayPalLookupError(error: unknown): string {
+  if (error instanceof PayPalApiError) {
+    return JSON.stringify({
+      name: error.name,
+      message: error.message,
+      status: error.status,
+      statusText: error.statusText,
+      details: error.details,
+    })
+  }
+
+  if (error instanceof Error) {
+    return JSON.stringify({
+      name: error.name,
+      message: error.message,
+    })
+  }
+
+  return String(error)
+}
+
+async function resetPayPalReconciliationFailures(
+  admin: ReturnType<typeof createAdminClient>,
+  params: { bookingId: string; orderId: string }
+): Promise<void> {
+  const { error } = await admin
+    .from('private_bookings')
+    .update({
+      paypal_reconciliation_attempts: 0,
+      paypal_reconciliation_last_error: null,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', params.bookingId)
+    .eq('paypal_deposit_order_id', params.orderId)
+    .is('deposit_paid_date', null)
+
+  if (error) {
+    logger.warn('PayPal reconciliation: failed to reset lookup failure counter', {
+      metadata: { ...params, error: error.message },
+    })
+  }
+}
+
+async function recordPayPalReconciliationFailure(
+  admin: ReturnType<typeof createAdminClient>,
+  params: {
+    bookingId: string
+    orderId: string
+    currentAttempts: number | null | undefined
+    error: unknown
+  }
+): Promise<number> {
+  const attempts = (params.currentAttempts ?? 0) + 1
+  const lastError = summarizePayPalLookupError(params.error).slice(0, 2000)
+
+  const { error } = await admin
+    .from('private_bookings')
+    .update({
+      paypal_reconciliation_attempts: attempts,
+      paypal_reconciliation_last_error: lastError,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', params.bookingId)
+    .eq('paypal_deposit_order_id', params.orderId)
+    .is('deposit_paid_date', null)
+
+  if (error) {
+    logger.error('PayPal reconciliation: failed to record lookup failure', {
+      error: error instanceof Error ? error : new Error(String(error)),
+      metadata: {
+        bookingId: params.bookingId,
+        orderId: params.orderId,
+        attempts,
+      },
+    })
+  }
+
+  return attempts
+}
 
 async function writePayPalReconciliationAudit(
   admin: ReturnType<typeof createAdminClient>,
@@ -53,7 +144,12 @@ async function clearStalePayPalOrder(
 ): Promise<boolean> {
   const { data, error } = await admin
     .from('private_bookings')
-    .update({ paypal_deposit_order_id: null, updated_at: new Date().toISOString() })
+    .update({
+      paypal_deposit_order_id: null,
+      paypal_reconciliation_attempts: 0,
+      paypal_reconciliation_last_error: null,
+      updated_at: new Date().toISOString(),
+    })
     .eq('id', params.bookingId)
     .eq('paypal_deposit_order_id', params.orderId)
     .is('deposit_paid_date', null)
@@ -107,7 +203,7 @@ export async function GET(request: NextRequest) {
   // Find all bookings with a PayPal order but no deposit recorded
   const { data: pendingBookings, error: queryError } = await admin
     .from('private_bookings')
-    .select('id, paypal_deposit_order_id, deposit_amount, status')
+    .select('id, paypal_deposit_order_id, deposit_amount, status, paypal_reconciliation_attempts, paypal_reconciliation_last_error')
     .not('paypal_deposit_order_id', 'is', null)
     .is('deposit_paid_date', null)
     .in('status', ['draft', 'confirmed'])
@@ -127,7 +223,7 @@ export async function GET(request: NextRequest) {
 
   const results: Array<{ bookingId: string; outcome: string }> = []
 
-  for (const booking of pendingBookings) {
+  for (const booking of pendingBookings as PendingPayPalBooking[]) {
     const bookingId = booking.id
     const orderId = booking.paypal_deposit_order_id
 
@@ -136,8 +232,58 @@ export async function GET(request: NextRequest) {
       continue
     }
 
+    let order: Awaited<ReturnType<typeof getPayPalOrder>>
     try {
-      const order = await getPayPalOrder(orderId)
+      order = await getPayPalOrder(orderId)
+      if ((booking.paypal_reconciliation_attempts ?? 0) > 0 || booking.paypal_reconciliation_last_error) {
+        await resetPayPalReconciliationFailures(admin, { bookingId, orderId })
+      }
+    } catch (error) {
+      if (isPayPalOrderNotFoundError(error)) {
+        const cleared = await clearStalePayPalOrder(admin, {
+          bookingId,
+          orderId,
+          reason: 'paypal_order_not_found'
+        })
+        results.push({ bookingId, outcome: cleared ? 'cleared_missing_order' : 'missing_order_clear_failed' })
+        continue
+      }
+
+      const attempts = await recordPayPalReconciliationFailure(admin, {
+        bookingId,
+        orderId,
+        currentAttempts: booking.paypal_reconciliation_attempts,
+        error,
+      })
+
+      logger.error('PayPal reconciliation: failed to check order', {
+        error: error instanceof Error ? error : new Error(String(error)),
+        metadata: {
+          bookingId,
+          orderId,
+          attempts,
+          maxAttempts: MAX_PAYPAL_RECONCILIATION_ATTEMPTS,
+          paypalStatus: error instanceof PayPalApiError ? error.status : null,
+          paypalDetails: error instanceof PayPalApiError ? error.details : null,
+          errorMessage: error instanceof Error ? error.message : String(error),
+        }
+      })
+
+      if (attempts >= MAX_PAYPAL_RECONCILIATION_ATTEMPTS) {
+        const cleared = await clearStalePayPalOrder(admin, {
+          bookingId,
+          orderId,
+          reason: 'paypal_order_exhausted_retries'
+        })
+        results.push({ bookingId, outcome: cleared ? 'cleared_exhausted_retries' : 'exhausted_retry_clear_failed' })
+        continue
+      }
+
+      results.push({ bookingId, outcome: 'lookup_failed' })
+      continue
+    }
+
+    try {
       const orderStatus: string = order.status
 
       if (orderStatus === 'COMPLETED') {
@@ -233,17 +379,7 @@ export async function GET(request: NextRequest) {
         results.push({ bookingId, outcome: `pending_${orderStatus.toLowerCase()}` })
       }
     } catch (error) {
-      if (isPayPalOrderNotFoundError(error)) {
-        const cleared = await clearStalePayPalOrder(admin, {
-          bookingId,
-          orderId,
-          reason: 'paypal_order_not_found'
-        })
-        results.push({ bookingId, outcome: cleared ? 'cleared_missing_order' : 'missing_order_clear_failed' })
-        continue
-      }
-
-      logger.error('PayPal reconciliation: failed to check order', {
+      logger.error('PayPal reconciliation: failed to process order', {
         error: error instanceof Error ? error : new Error(String(error)),
         metadata: { bookingId, orderId }
       })

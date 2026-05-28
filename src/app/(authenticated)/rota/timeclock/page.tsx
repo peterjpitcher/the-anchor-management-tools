@@ -5,7 +5,9 @@ import { Card } from '@/ds';
 import { Section } from '@/ds';
 import { getTimeclockSessionsForWeek } from '@/app/actions/timeclock';
 import { getActiveEmployeesForRota } from '@/app/actions/rota';
-import { getOrCreatePayrollPeriod } from '@/app/actions/payroll';
+import { ensurePayrollPeriodsAhead, getOrCreatePayrollPeriod } from '@/app/actions/payroll';
+import { getTodayIsoDate } from '@/lib/dateUtils';
+import { buildPayrollMonthOptions } from '@/lib/rota/payroll-periods';
 import TimeclockManager from './TimeclockManager';
 import { rotaNavItems } from '../nav';
 
@@ -20,13 +22,16 @@ export default async function TimeclockPage({ searchParams }: PageProps) {
   if (!canView) redirect('/');
 
   const params = await searchParams;
-  const today = new Date();
-  const year = params.year ? parseInt(params.year) : today.getFullYear();
-  const month = params.month ? parseInt(params.month) : today.getMonth() + 1;
+  const todayIso = getTodayIsoDate();
+  const availablePeriods = await ensurePayrollPeriodsAhead(todayIso);
+  const defaultPeriod = availablePeriods[0];
+  const year = params.year ? parseInt(params.year) : defaultPeriod.year;
+  const month = params.month ? parseInt(params.month) : defaultPeriod.month;
 
   // Fetch the pay period and employees in parallel, then sessions using period dates
   const [period, employeesResult] = await Promise.all([
-    getOrCreatePayrollPeriod(year, month),
+    availablePeriods.find(availablePeriod => availablePeriod.year === year && availablePeriod.month === month)
+      ?? getOrCreatePayrollPeriod(year, month),
     getActiveEmployeesForRota(),
   ]);
 
@@ -34,18 +39,7 @@ export default async function TimeclockPage({ searchParams }: PageProps) {
   const sessions = result.success ? result.data : [];
   const employees = employeesResult.success ? employeesResult.data : [];
 
-  // Build month selector options (current year + last year, newest first)
-  const monthOptions: { label: string; value: string }[] = [];
-  for (let y = today.getFullYear(); y >= today.getFullYear() - 1; y--) {
-    for (let m = 12; m >= 1; m--) {
-      const d = new Date(y, m - 1, 1);
-      if (d > today) continue;
-      monthOptions.push({
-        label: d.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' }),
-        value: `?year=${y}&month=${m}`,
-      });
-    }
-  }
+  const monthOptions = buildPayrollMonthOptions(defaultPeriod);
 
   return (
     <PageLayout

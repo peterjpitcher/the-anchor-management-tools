@@ -7638,6 +7638,8 @@ export type Database = {
           internal_notes: string | null
           paypal_deposit_capture_id: string | null
           paypal_deposit_order_id: string | null
+          paypal_reconciliation_attempts: number
+          paypal_reconciliation_last_error: string | null
           review_clicked_at: string | null
           review_processed_at: string | null
           setup_date: string | null
@@ -7685,6 +7687,8 @@ export type Database = {
           internal_notes?: string | null
           paypal_deposit_capture_id?: string | null
           paypal_deposit_order_id?: string | null
+          paypal_reconciliation_attempts?: number
+          paypal_reconciliation_last_error?: string | null
           review_clicked_at?: string | null
           review_processed_at?: string | null
           setup_date?: string | null
@@ -7732,6 +7736,8 @@ export type Database = {
           internal_notes?: string | null
           paypal_deposit_capture_id?: string | null
           paypal_deposit_order_id?: string | null
+          paypal_reconciliation_attempts?: number
+          paypal_reconciliation_last_error?: string | null
           review_clicked_at?: string | null
           review_processed_at?: string | null
           setup_date?: string | null

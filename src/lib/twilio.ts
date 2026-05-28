@@ -264,7 +264,7 @@ export const sendSMS = async (to: string, body: string, options: SendSMSOptions 
       });
 
       if (!safetyLimits.allowed) {
-        logger.error('Outbound SMS blocked by safety limits', {
+        logger.warn('Outbound SMS blocked by safety limits', {
           metadata: {
             to,
             code: safetyLimits.code,
@@ -302,7 +302,7 @@ export const sendSMS = async (to: string, body: string, options: SendSMSOptions 
       }
 
       if (claimResult === 'conflict') {
-        logger.error('SMS send blocked by idempotency conflict', {
+        logger.warn('SMS send blocked by idempotency conflict', {
           metadata: {
             to,
             templateKey: (options.metadata as Record<string, unknown> | undefined)?.template_key

@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server';
 import { redirect } from 'next/navigation';
 import { getEmployeeShifts, getOpenShiftsForPortal } from '@/app/actions/rota';
+import { getOrCreatePayrollPeriodForDate } from '@/app/actions/payroll';
 import type { RotaShift } from '@/app/actions/rota';
 import { formatTime12Hour, getTodayIsoDate } from '@/lib/dateUtils';
 import { generateCalendarToken } from '@/lib/portal/calendar-token';
@@ -190,13 +191,7 @@ export default async function MyShiftsPage() {
   const isHourly = !paySettings || paySettings.pay_type === 'hourly';
 
   if (isHourly) {
-    // Current period: must contain today (not just started before today)
-    const { data: currentPeriod } = await supabase
-      .from('payroll_periods')
-      .select('id, year, month, period_start, period_end')
-      .lte('period_start', today)
-      .gte('period_end', today)
-      .single();
+    const currentPeriod = await getOrCreatePayrollPeriodForDate(today);
 
     if (currentPeriod) {
       // Previous period: ends before current starts

@@ -14,6 +14,13 @@ import { toZonedTime, fromZonedTime } from 'date-fns-tz';
 import { logAuditEvent } from '@/app/actions/audit';
 import { getRotaSettings } from '@/app/actions/rota-settings';
 import { PAYROLL_COULDNT_WORK_FLAG } from '@/lib/rota/payroll-flags';
+import { getTodayIsoDate } from '@/lib/dateUtils';
+import {
+  addPayrollMonths,
+  getDefaultPayrollPeriodDates,
+  getPayrollMonthForIsoDate,
+  PAYROLL_PERIOD_FUTURE_MONTHS,
+} from '@/lib/rota/payroll-periods';
 
 // ---------------------------------------------------------------------------
 // Payroll periods
@@ -26,10 +33,6 @@ export type PayrollPeriod = {
   period_start: string; // YYYY-MM-DD
   period_end: string;   // YYYY-MM-DD
 };
-
-function isoDate(d: Date): string {
-  return d.toISOString().split('T')[0];
-}
 
 function toLocalHHMM(isoUtc: string | null | undefined): string | null {
   if (!isoUtc) return null;
@@ -51,14 +54,12 @@ async function invalidatePayrollApproval(
 
 export async function getOrCreatePayrollPeriod(year: number, month: number): Promise<PayrollPeriod> {
   const supabase = createAdminClient();
-
-  const end = new Date(Date.UTC(year, month - 1, 24));
-  const start = new Date(Date.UTC(year, month - 2, 25));
+  const { period_start, period_end } = getDefaultPayrollPeriodDates(year, month);
 
   // Attempt insert first; if a unique violation occurs (concurrent insert), fall back to select
   const { data: created, error: insertError } = await supabase
     .from('payroll_periods')
-    .insert({ year, month, period_start: isoDate(start), period_end: isoDate(end) })
+    .insert({ year, month, period_start, period_end })
     .select('id, year, month, period_start, period_end')
     .single();
 
@@ -78,6 +79,39 @@ export async function getOrCreatePayrollPeriod(year: number, month: number): Pro
   }
 
   throw new Error(insertError.message);
+}
+
+export async function getOrCreatePayrollPeriodForDate(anchorDateIso: string = getTodayIsoDate()): Promise<PayrollPeriod> {
+  const supabase = createAdminClient();
+  const { data, error } = await supabase
+    .from('payroll_periods')
+    .select('id, year, month, period_start, period_end')
+    .lte('period_start', anchorDateIso)
+    .gte('period_end', anchorDateIso)
+    .order('period_start', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) throw new Error(error.message);
+  if (data) return data as PayrollPeriod;
+
+  const { year, month } = getPayrollMonthForIsoDate(anchorDateIso);
+  return getOrCreatePayrollPeriod(year, month);
+}
+
+export async function ensurePayrollPeriodsAhead(
+  anchorDateIso: string = getTodayIsoDate(),
+  futureMonths: number = PAYROLL_PERIOD_FUTURE_MONTHS,
+): Promise<PayrollPeriod[]> {
+  const currentPeriod = await getOrCreatePayrollPeriodForDate(anchorDateIso);
+  const futurePeriods = await Promise.all(
+    Array.from({ length: futureMonths }, (_, index) => {
+      const { year, month } = addPayrollMonths(currentPeriod, index + 1);
+      return getOrCreatePayrollPeriod(year, month);
+    }),
+  );
+
+  return [currentPeriod, ...futurePeriods];
 }
 
 export async function updatePayrollPeriod(

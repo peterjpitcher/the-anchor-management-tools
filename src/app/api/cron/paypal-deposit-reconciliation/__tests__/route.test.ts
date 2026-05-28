@@ -13,6 +13,11 @@ vi.mock('@/lib/paypal', () => ({
   getPayPalOrder: mockGetPayPalOrder,
   capturePayPalPayment: mockCapturePayPalPayment,
   isPayPalOrderNotFoundError: mockIsPayPalOrderNotFoundError,
+  PayPalApiError: class PayPalApiError extends Error {
+    status = 500
+    statusText = 'Internal Server Error'
+    details = null
+  },
 }))
 
 vi.mock('@/services/private-bookings', () => ({
@@ -122,5 +127,44 @@ describe('PayPal deposit reconciliation cron', () => {
       }),
     }))
     expect(mockCapturePayPalPayment).not.toHaveBeenCalled()
+  })
+
+  it('clears a PayPal order id after repeated lookup failures', async () => {
+    mockFetchLimit.mockResolvedValueOnce({
+      data: [{
+        id: 'booking-1',
+        paypal_deposit_order_id: 'ORDER-STUCK',
+        deposit_amount: 100,
+        status: 'confirmed',
+        paypal_reconciliation_attempts: 4,
+      }],
+      error: null,
+    })
+    mockGetPayPalOrder.mockRejectedValueOnce(new Error('PayPal lookup failed'))
+    mockIsPayPalOrderNotFoundError.mockReturnValueOnce(false)
+
+    const response = await callRoute()
+    const body = await response.json()
+
+    expect(response.status).toBe(200)
+    expect(body.results).toEqual([{ bookingId: 'booking-1', outcome: 'cleared_exhausted_retries' }])
+    expect(mockUpdate).toHaveBeenNthCalledWith(1, expect.objectContaining({
+      paypal_reconciliation_attempts: 5,
+      paypal_reconciliation_last_error: expect.stringContaining('PayPal lookup failed'),
+      updated_at: expect.any(String),
+    }))
+    expect(mockUpdate).toHaveBeenNthCalledWith(2, expect.objectContaining({
+      paypal_deposit_order_id: null,
+      paypal_reconciliation_attempts: 0,
+      paypal_reconciliation_last_error: null,
+      updated_at: expect.any(String),
+    }))
+    expect(mockAuditInsert).toHaveBeenCalledWith(expect.objectContaining({
+      operation_type: 'paypal_deposit_order_cleared',
+      additional_info: expect.objectContaining({
+        order_id: 'ORDER-STUCK',
+        reason: 'paypal_order_exhausted_retries',
+      }),
+    }))
   })
 })

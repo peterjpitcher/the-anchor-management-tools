@@ -10,8 +10,8 @@ import { createClient } from '@/lib/supabase/server'
 export const runtime = 'nodejs'
 export const maxDuration = 60
 
-const INGREDIENT_ALLERGEN_SELECT_WITH_DEPARTMENT = 'id, name, brand, supplier_name, supplier_sku, purchase_department, allergens, is_active'
-const INGREDIENT_ALLERGEN_SELECT_WITHOUT_DEPARTMENT = 'id, name, brand, supplier_name, supplier_sku, allergens, is_active'
+const INGREDIENT_ALLERGEN_SELECT_WITH_DEPARTMENT = 'id, name, brand, supplier_name, supplier_sku, purchase_department, allergens, dietary_flags, is_active'
+const INGREDIENT_ALLERGEN_SELECT_WITHOUT_DEPARTMENT = 'id, name, brand, supplier_name, supplier_sku, allergens, dietary_flags, is_active'
 
 function isMissingPurchaseDepartmentColumn(error: { code?: string; message?: string } | null): boolean {
   return error?.code === '42703' && /purchase_department/i.test(error.message ?? '')

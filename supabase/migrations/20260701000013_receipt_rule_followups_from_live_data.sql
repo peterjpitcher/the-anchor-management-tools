@@ -2,14 +2,14 @@
 -- These rules are intentionally narrow: they classify clear bank descriptors without
 -- broadening generic retailer categories or auto-closing unclear card purchases.
 
-CREATE OR REPLACE FUNCTION pg_temp.receipt_vendor_key(p_name TEXT)
+CREATE OR REPLACE FUNCTION pg_temp.receipt_vendor_key_followup(p_name TEXT)
 RETURNS TEXT
 LANGUAGE sql
 AS $$
   SELECT public.normalize_receipt_vendor_key(p_name);
 $$;
 
-CREATE OR REPLACE FUNCTION pg_temp.ensure_receipt_vendor(
+CREATE OR REPLACE FUNCTION pg_temp.ensure_receipt_vendor_followup(
   p_name TEXT
 )
 RETURNS UUID
@@ -17,7 +17,7 @@ LANGUAGE plpgsql
 AS $$
 DECLARE
   v_name TEXT := NULLIF(TRIM(COALESCE(p_name, '')), '');
-  v_key TEXT := pg_temp.receipt_vendor_key(p_name);
+  v_key TEXT := pg_temp.receipt_vendor_key_followup(p_name);
   v_id UUID;
 BEGIN
   IF v_name IS NULL OR v_key IS NULL OR LOWER(v_name) = 'null' THEN
@@ -76,7 +76,7 @@ BEGIN
 END;
 $$;
 
-CREATE OR REPLACE FUNCTION pg_temp.upsert_receipt_rule(
+CREATE OR REPLACE FUNCTION pg_temp.upsert_receipt_rule_followup(
   p_name TEXT,
   p_match_description TEXT,
   p_match_transaction_type TEXT,
@@ -94,7 +94,7 @@ DECLARE
   v_rule_id UUID;
   v_vendor_id UUID;
 BEGIN
-  v_vendor_id := pg_temp.ensure_receipt_vendor(p_vendor_name);
+  v_vendor_id := pg_temp.ensure_receipt_vendor_followup(p_vendor_name);
 
   SELECT id INTO v_rule_id
   FROM public.receipt_rules
@@ -186,7 +186,7 @@ SET
   updated_at = NOW()
 WHERE vendor_key = 'null';
 
-SELECT pg_temp.upsert_receipt_rule(
+SELECT pg_temp.upsert_receipt_rule_followup(
   'Nicholas McLernon payroll',
   'Nicholas McLernon The Anchor,Nicholas McLernon Money Owed,Nicholas McLernon Monies Owed',
   NULL,
@@ -198,7 +198,7 @@ SELECT pg_temp.upsert_receipt_rule(
   1000
 );
 
-SELECT pg_temp.upsert_receipt_rule(
+SELECT pg_temp.upsert_receipt_rule_followup(
   'Billy''s Payroll',
   'Billy Summers The Anchor,Billy Summers WEEK,B Summers Week',
   NULL,
@@ -210,7 +210,7 @@ SELECT pg_temp.upsert_receipt_rule(
   1000
 );
 
-SELECT pg_temp.upsert_receipt_rule(
+SELECT pg_temp.upsert_receipt_rule_followup(
   'Billy Summers inbound cash deposits',
   'Billy Summers WEEK,B Summers Week',
   'Inward Payment',
@@ -222,7 +222,7 @@ SELECT pg_temp.upsert_receipt_rule(
   1000
 );
 
-SELECT pg_temp.upsert_receipt_rule(
+SELECT pg_temp.upsert_receipt_rule_followup(
   'Sharon Morris Latham duplicate payment correction',
   'MORRIS-LATHAM S DUP PYMT ERROR',
   'Inward Payment',
@@ -234,7 +234,7 @@ SELECT pg_temp.upsert_receipt_rule(
   1000
 );
 
-SELECT pg_temp.upsert_receipt_rule(
+SELECT pg_temp.upsert_receipt_rule_followup(
   'HMRC Corporation Tax inbound payments',
   'HMRC COTAX',
   'BACS Payment Received',
@@ -246,7 +246,7 @@ SELECT pg_temp.upsert_receipt_rule(
   1000
 );
 
-SELECT pg_temp.upsert_receipt_rule(
+SELECT pg_temp.upsert_receipt_rule_followup(
   'Residential Solutions inbound payment review',
   'RESIDENTIAL SOLUTI',
   'BACS Payment Received',
@@ -258,7 +258,7 @@ SELECT pg_temp.upsert_receipt_rule(
   1000
 );
 
-SELECT pg_temp.upsert_receipt_rule(
+SELECT pg_temp.upsert_receipt_rule_followup(
   'Airbnb owner transfer income',
   'MR P J PITCHER AirBNB',
   'TRANSFER',
@@ -270,7 +270,7 @@ SELECT pg_temp.upsert_receipt_rule(
   1000
 );
 
-SELECT pg_temp.upsert_receipt_rule(
+SELECT pg_temp.upsert_receipt_rule_followup(
   'Stanwell Moor community income transfer',
   'STANWELL MOOR COMMUNITY AND WELLBEI',
   'TRANSFER',
@@ -282,7 +282,7 @@ SELECT pg_temp.upsert_receipt_rule(
   1000
 );
 
-SELECT pg_temp.upsert_receipt_rule(
+SELECT pg_temp.upsert_receipt_rule_followup(
   'JJ Eade Kiki payment',
   'EADE JJ KIKI PAYMENT',
   'Inward Payment',
@@ -294,7 +294,7 @@ SELECT pg_temp.upsert_receipt_rule(
   1000
 );
 
-SELECT pg_temp.upsert_receipt_rule(
+SELECT pg_temp.upsert_receipt_rule_followup(
   'Dojo card processing fees',
   'DOJOUK',
   'Direct Debit',
@@ -306,7 +306,7 @@ SELECT pg_temp.upsert_receipt_rule(
   1000
 );
 
-SELECT pg_temp.upsert_receipt_rule(
+SELECT pg_temp.upsert_receipt_rule_followup(
   'GoCardless Direct Debit payments',
   'GOCARDLESS',
   'Direct Debit',
@@ -318,7 +318,7 @@ SELECT pg_temp.upsert_receipt_rule(
   1000
 );
 
-SELECT pg_temp.upsert_receipt_rule(
+SELECT pg_temp.upsert_receipt_rule_followup(
   'Loomly subscriptions',
   'LOOMLY',
   'Card Transaction',
@@ -330,7 +330,7 @@ SELECT pg_temp.upsert_receipt_rule(
   1000
 );
 
-SELECT pg_temp.upsert_receipt_rule(
+SELECT pg_temp.upsert_receipt_rule_followup(
   'Two Rivers Retail Park card purchases',
   'TWO RIVERS RETAIL PARK',
   'Card Transaction',
@@ -342,7 +342,7 @@ SELECT pg_temp.upsert_receipt_rule(
   1000
 );
 
-SELECT pg_temp.upsert_receipt_rule(
+SELECT pg_temp.upsert_receipt_rule_followup(
   'Temu card purchases',
   'Temu.com AppPay',
   'Card Transaction',
@@ -354,7 +354,7 @@ SELECT pg_temp.upsert_receipt_rule(
   1000
 );
 
-SELECT pg_temp.upsert_receipt_rule(
+SELECT pg_temp.upsert_receipt_rule_followup(
   'MTCGAME card purchases',
   'WWW.MTCGAME.COM',
   'Card Transaction',
@@ -366,7 +366,7 @@ SELECT pg_temp.upsert_receipt_rule(
   1000
 );
 
-SELECT pg_temp.upsert_receipt_rule(
+SELECT pg_temp.upsert_receipt_rule_followup(
   'M6 Toll card purchases',
   'M6 TOLL',
   'Card Transaction',
@@ -378,7 +378,7 @@ SELECT pg_temp.upsert_receipt_rule(
   1000
 );
 
-SELECT pg_temp.upsert_receipt_rule(
+SELECT pg_temp.upsert_receipt_rule_followup(
   'SECC Arena card purchases',
   'SECC ARENA',
   'Card Transaction',
@@ -390,7 +390,7 @@ SELECT pg_temp.upsert_receipt_rule(
   1000
 );
 
-SELECT pg_temp.upsert_receipt_rule(
+SELECT pg_temp.upsert_receipt_rule_followup(
   'Benihana Covent Garden card purchases',
   'BENIHANA COVENT GARDEN',
   'Card Transaction',
@@ -402,7 +402,7 @@ SELECT pg_temp.upsert_receipt_rule(
   1000
 );
 
-SELECT pg_temp.upsert_receipt_rule(
+SELECT pg_temp.upsert_receipt_rule_followup(
   'Garsons card purchases',
   'CLR Garsons',
   'Card Transaction',
@@ -414,7 +414,7 @@ SELECT pg_temp.upsert_receipt_rule(
   1000
 );
 
-SELECT pg_temp.upsert_receipt_rule(
+SELECT pg_temp.upsert_receipt_rule_followup(
   'Brighton North Laine card purchases',
   'Brighton North Laine',
   'Card Transaction',
@@ -426,7 +426,7 @@ SELECT pg_temp.upsert_receipt_rule(
   1000
 );
 
-SELECT pg_temp.upsert_receipt_rule(
+SELECT pg_temp.upsert_receipt_rule_followup(
   'SCE dishwasher and ice machine repairs',
   'SCE dishwasher and Ice Marchine',
   'Outward Faster Payment',

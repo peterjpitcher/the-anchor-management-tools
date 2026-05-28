@@ -7,6 +7,7 @@ import { PageLayout } from '@/ds';
 import { Section } from '@/ds';
 import { Card } from '@/ds';
 import { Button } from '@/ds';
+import { Select } from '@/ds';
 import { DataTable, type Column } from '@/ds';
 import { Badge } from '@/ds';
 import { FilterPanel, type FilterDefinition } from '@/ds';
@@ -568,8 +569,36 @@ export default function MenuDishesPage(): React.ReactElement {
 
   const addDishLabel = selectedMenu ? `Add ${selectedMenu.name} Dish` : 'Add Dish';
 
+  function handleDownloadDishAllergenPdf(category: 'all' | 'food' | 'drinks') {
+    const params = new URLSearchParams({ download: '1' });
+    if (category !== 'all') params.set('category', category);
+    const link = document.createElement('a');
+    link.href = `/api/menu-management/dishes/allergens/pdf?${params.toString()}`;
+    link.rel = 'noopener';
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+  }
+
+  const [allergenCategory, setAllergenCategory] = useState<'all' | 'food' | 'drinks'>('all');
+
   const headerActions = (
-    <div className="flex items-center gap-2">
+    <div className="flex items-end gap-2">
+      <div className="w-36">
+        <Select
+          aria-label="Allergen report category"
+          value={allergenCategory}
+          onChange={(e) => setAllergenCategory(e.target.value as 'all' | 'food' | 'drinks')}
+          options={[
+            { value: 'all', label: 'All dishes' },
+            { value: 'food', label: 'Food' },
+            { value: 'drinks', label: 'Drinks' },
+          ]}
+        />
+      </div>
+      <Button variant="secondary" size="sm" onClick={() => handleDownloadDishAllergenPdf(allergenCategory)}>
+        Download Allergens
+      </Button>
       {canManage && <Button onClick={openCreate}>{addDishLabel}</Button>}
       {canManage && (
         <LinkButton href="/settings/menu-target" variant="secondary" size="sm">

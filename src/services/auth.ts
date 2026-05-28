@@ -16,8 +16,6 @@ export class AuthService {
     });
 
     if (error) {
-      console.error('Supabase Auth Error:', error.message); // Log actual error for debugging
-
       // Check for system/connection errors (e.g. Supabase returning 500 HTML instead of JSON)
       const isSystemError = error.message.includes('Unexpected token') || 
                            error.message.includes('fetch failed') ||
