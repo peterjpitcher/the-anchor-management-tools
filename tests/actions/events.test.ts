@@ -317,7 +317,7 @@ describe('Events actions', () => {
   // -----------------------------------------------------------------------
 
   describe('deleteEvent', () => {
-    it('should return error when user lacks events manage permission', async () => {
+    it('should return error when user lacks events delete and manage permission', async () => {
       mockedPermission.mockResolvedValue(false)
       mockSupabaseClientForEvents()
 
@@ -355,6 +355,17 @@ describe('Events actions', () => {
           resource_id: 'event-1',
         }),
       )
+    })
+
+    it('should allow users with events delete permission', async () => {
+      mockedPermission.mockImplementation((_moduleName: string, action: string) => Promise.resolve(action === 'delete'))
+      mockSupabaseClientForEvents()
+
+      ;(EventService.deleteEvent as Mock).mockResolvedValue({ id: 'event-1', name: 'Old Event' })
+
+      const result = await deleteEvent('event-1')
+
+      expect(result).toHaveProperty('success', true)
     })
   })
 

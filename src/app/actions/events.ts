@@ -554,12 +554,13 @@ export async function updateEvent(id: string, formData: FormData) {
 export async function deleteEvent(id: string) {
   try {
     const supabase = await createClient();
-    const [canManageEvents, { data: { user }, error: authError }] = await Promise.all([
+    const [canDeleteEvents, canManageEvents, { data: { user }, error: authError }] = await Promise.all([
+      checkUserPermission('events', 'delete'),
       checkUserPermission('events', 'manage'),
       supabase.auth.getUser(),
     ]);
 
-    if (!canManageEvents) {
+    if (!canDeleteEvents && !canManageEvents) {
       return { error: 'Insufficient permissions to delete events' };
     }
     if (authError || !user) {

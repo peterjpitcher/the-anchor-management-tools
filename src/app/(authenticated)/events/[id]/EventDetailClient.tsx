@@ -2,6 +2,7 @@
 
 import { useState, useCallback, useTransition, useMemo } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import {
   Card, CardHeader, CardBody,
   PageHeader,
@@ -26,6 +27,7 @@ import {
   createEventManualBooking,
   updateEventManualBookingSeats,
   cancelEventManualBooking,
+  deleteEvent,
 } from '@/app/actions/events'
 import {
   regenerateEventMarketingLinks,
@@ -96,6 +98,7 @@ export default function EventDetailClient({
   permissions,
   initialError,
 }: EventDetailClientProps) {
+  const router = useRouter()
   const [event, setEvent] = useState<Event | null>(initialEvent)
   const [activeTab, setActiveTab] = useState('overview')
   const [bookings, setBookings] = useState<EventBookingRow[]>(initialBookings)
@@ -103,6 +106,7 @@ export default function EventDetailClient({
   const [showCancelled, setShowCancelled] = useState(false)
   const [isPending, startTransition] = useTransition()
   const [drawerOpen, setDrawerOpen] = useState(false)
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
 
   // Manual booking form state
   const [newPhone, setNewPhone] = useState('')
@@ -146,6 +150,8 @@ export default function EventDetailClient({
     () => links.reduce((sum, l) => sum + (l.clickCount ?? 0), 0),
     [links],
   )
+
+  const canDeleteEvent = permissions.canDelete || permissions.canManage
 
   /* ---- Refresh bookings ---- */
 
@@ -254,6 +260,24 @@ export default function EventDetailClient({
     setLinks((prev) => [...prev, link])
   }, [])
 
+  /* ---- Delete event ---- */
+
+  const handleConfirmDeleteEvent = useCallback(() => {
+    const eventId = event?.id
+    if (!eventId) return
+    startTransition(async () => {
+      const result = await deleteEvent(eventId)
+      if ('error' in result) {
+        toast.error(result.error ?? 'Failed to delete event')
+        return
+      }
+
+      toast.success('Event deleted successfully')
+      router.push('/events')
+      router.refresh()
+    })
+  }, [event, router])
+
   /* ---- Error / missing event ---- */
 
   if (initialError && !event) {
@@ -320,6 +344,17 @@ export default function EventDetailClient({
             {permissions.canEdit && (
               <Button variant="secondary" size="sm" icon={<Icon name="edit" size={14} />} onClick={() => setDrawerOpen(true)}>
                 Edit
+              </Button>
+            )}
+            {canDeleteEvent && (
+              <Button
+                variant="danger"
+                size="sm"
+                icon={<Icon name="trash" size={14} />}
+                onClick={() => setDeleteDialogOpen(true)}
+                loading={isPending}
+              >
+                Delete
               </Button>
             )}
           </div>
@@ -424,6 +459,18 @@ export default function EventDetailClient({
         message="Are you sure you want to cancel this booking? This action cannot be undone."
         confirmLabel="Cancel Booking"
         tone="danger"
+      />
+
+      {/* Delete event confirmation dialog */}
+      <ConfirmDialog
+        open={deleteDialogOpen}
+        onClose={() => setDeleteDialogOpen(false)}
+        onConfirm={handleConfirmDeleteEvent}
+        title="Delete Event"
+        message={`Delete "${event.name}"? This action cannot be undone. Events with active bookings must be cancelled before deletion.`}
+        confirmLabel="Delete"
+        tone="danger"
+        loading={isPending}
       />
 
       {/* Edit event drawer */}

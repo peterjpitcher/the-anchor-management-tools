@@ -353,35 +353,49 @@ describe('Mutation race/row-effect guards', () => {
   })
 
   it('EventService.deleteEvent throws not-found when delete affects no rows after prefetch', async () => {
-    const fetchSingle = vi.fn().mockResolvedValue({
+    const fetchMaybeSingle = vi.fn().mockResolvedValue({
       data: {
         name: 'Live Jazz',
         date: '2026-03-01',
       },
       error: null,
     })
-    const fetchEq = vi.fn().mockReturnValue({ single: fetchSingle })
+    const fetchEq = vi.fn().mockReturnValue({ maybeSingle: fetchMaybeSingle })
 
     // Mock bookings active-check: return 0 active bookings so deletion proceeds
     const bookingsSelectIn = vi.fn().mockResolvedValue({ count: 0, error: null })
     const bookingsSelectEq = vi.fn().mockReturnValue({ in: bookingsSelectIn })
     const bookingsSelect = vi.fn().mockReturnValue({ eq: bookingsSelectEq })
 
+    const zeroCountEq = vi.fn().mockResolvedValue({ count: 0, error: null })
+    const zeroCountSelect = vi.fn().mockReturnValue({ eq: zeroCountEq })
+
+    const cleanupEq = vi.fn().mockResolvedValue({ error: null })
+    const cleanupDelete = vi.fn().mockReturnValue({ eq: cleanupEq })
+
     const deleteMaybeSingle = vi.fn().mockResolvedValue({ data: null, error: null })
     const deleteSelect = vi.fn().mockReturnValue({ maybeSingle: deleteMaybeSingle })
     const deleteEq = vi.fn().mockReturnValue({ select: deleteSelect })
 
-    mockedCreateClient.mockResolvedValue({
+    mockedCreateAdminClient.mockReturnValue({
       from: vi.fn((table: string) => {
         if (table === 'bookings') {
           return { select: bookingsSelect }
+        }
+        if (table === 'event_check_ins') {
+          return { select: zeroCountSelect }
+        }
+        if (table === 'sms_promo_context' || table === 'promo_sequence') {
+          return { delete: cleanupDelete }
         }
         if (table !== 'events') {
           throw new Error(`Unexpected table: ${table}`)
         }
 
         return {
-          select: vi.fn().mockReturnValue({ eq: fetchEq }),
+          select: vi.fn((_columns: string, options?: { count?: string; head?: boolean }) => (
+            options?.count ? { eq: zeroCountEq } : { eq: fetchEq }
+          )),
           delete: vi.fn().mockReturnValue({ eq: deleteEq }),
         }
       }),
