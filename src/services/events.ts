@@ -16,6 +16,20 @@ function sanitizeEventSearchTerm(value: string): string {
     .slice(0, 80);
 }
 
+function getSupabaseErrorMessage(error: unknown): string {
+  if (!error) return 'Unknown database error';
+  if (error instanceof Error) return error.message;
+  if (typeof error === 'object' && 'message' in error && typeof error.message === 'string') {
+    return error.message;
+  }
+
+  try {
+    return JSON.stringify(error);
+  } catch {
+    return String(error);
+  }
+}
+
 export type CreateEventInput = {
   name: string;
   date: string;
@@ -580,29 +594,80 @@ export class EventService {
   }
 
   static async deleteEvent(id: string): Promise<{ name: string; date: string } | { error: string }> {
-    const supabase = await createClient();
+    const supabase = createAdminClient();
 
     // Get event details for return/audit
-    const { data: event } = await supabase
+    const { data: event, error: eventError } = await supabase
       .from('events')
       .select('name, date')
       .eq('id', id)
-      .single();
+      .maybeSingle();
+
+    if (eventError) {
+      logger.error('Event deletion prefetch error', {
+        error: new Error(getSupabaseErrorMessage(eventError)),
+        metadata: { eventId: id },
+      });
+      throw new Error('Failed to load event');
+    }
 
     if (!event) {
       throw new Error('Event not found');
     }
 
     // Check for active bookings before deletion
-    const { count: activeBookings } = await supabase
+    const { count: activeBookings, error: activeBookingsError } = await supabase
       .from('bookings')
-      .select('*', { count: 'exact', head: true })
+      .select('id', { count: 'exact', head: true })
       .eq('event_id', id)
       .in('status', ['confirmed', 'pending_payment'])
+
+    if (activeBookingsError) {
+      logger.error('Event active-booking deletion check error', {
+        error: new Error(getSupabaseErrorMessage(activeBookingsError)),
+        metadata: { eventId: id },
+      });
+      throw new Error('Failed to check event bookings');
+    }
 
     if (activeBookings && activeBookings > 0) {
       return {
         error: `Cannot delete this event — it has ${activeBookings} active booking${activeBookings !== 1 ? 's' : ''}. Cancel the event first to notify customers and process refunds, then delete.`
+      }
+    }
+
+    const { count: checkIns, error: checkInsError } = await supabase
+      .from('event_check_ins')
+      .select('id', { count: 'exact', head: true })
+      .eq('event_id', id)
+
+    if (checkInsError) {
+      logger.error('Event check-in deletion check error', {
+        error: new Error(getSupabaseErrorMessage(checkInsError)),
+        metadata: { eventId: id },
+      });
+      throw new Error('Failed to check event history');
+    }
+
+    if (checkIns && checkIns > 0) {
+      return {
+        error: `Cannot delete this event — it has ${checkIns} check-in record${checkIns !== 1 ? 's' : ''}.`
+      }
+    }
+
+    const cleanupTables = ['sms_promo_context', 'promo_sequence'] as const;
+    for (const table of cleanupTables) {
+      const { error: cleanupError } = await supabase
+        .from(table)
+        .delete()
+        .eq('event_id', id);
+
+      if (cleanupError) {
+        logger.error('Event deletion cleanup error', {
+          error: new Error(getSupabaseErrorMessage(cleanupError)),
+          metadata: { eventId: id, table },
+        });
+        throw new Error('Failed to clean up event references');
       }
     }
 
@@ -614,8 +679,17 @@ export class EventService {
       .maybeSingle();
 
     if (error) {
-      logger.error('Event deletion error', { error: error instanceof Error ? error : new Error(String(error)) });
-      throw new Error('Failed to delete event');
+      const message = getSupabaseErrorMessage(error);
+      logger.error('Event deletion error', {
+        error: new Error(message),
+        metadata: { eventId: id },
+      });
+
+      if (message.toLowerCase().includes('active booking')) {
+        return { error: 'Cannot delete this event — it has active bookings. Cancel the event first, then delete.' };
+      }
+
+      throw new Error(message || 'Failed to delete event');
     }
 
     if (!deletedEvent) {
