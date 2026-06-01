@@ -8,6 +8,7 @@ import { sendSMS } from '@/lib/twilio'
 import { getSmartFirstName } from '@/lib/sms/bulk'
 import { createEventManageToken } from '@/lib/events/manage-booking'
 import { createGuestToken } from '@/lib/guest/tokens'
+import { sendEmail } from '@/lib/email/emailService'
 import { sendCrossPromoForEvent, sendFollowUpForEvent, hasReachedDailyPromoLimit } from '@/lib/sms/cross-promo'
 import type { FollowUpRecipient } from '@/lib/sms/cross-promo'
 import { getGoogleReviewLink } from '@/lib/events/review-link'
@@ -90,7 +91,10 @@ type BookingWithRelations = {
     id: string
     first_name: string | null
     mobile_number: string | null
+    email?: string | null
     sms_status: string | null
+    email_status?: string | null
+    email_deactivated_at?: string | null
   } | null
 }
 
@@ -106,7 +110,10 @@ type TableBookingWithCustomer = {
     id: string
     first_name: string | null
     mobile_number: string | null
+    email?: string | null
     sms_status: string | null
+    email_status?: string | null
+    email_deactivated_at?: string | null
   } | null
 }
 
@@ -431,6 +438,15 @@ function chunkArray<T>(input: T[], size = 200): T[][] {
   return chunks
 }
 
+function escapeHtml(value: string): string {
+  return value
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;')
+}
+
 async function sendSmsSafe(
   to: string,
   body: string,
@@ -459,6 +475,38 @@ async function sendSmsSafe(
       success: false,
       error: smsError instanceof Error ? smsError.message : 'Failed to send SMS'
     } as Awaited<ReturnType<typeof sendSMS>>
+  }
+}
+
+function isReviewEmailEligible(customer: { email?: string | null; email_status?: string | null; email_deactivated_at?: string | null }): boolean {
+  const email = customer.email?.trim()
+  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    return false
+  }
+  if (customer.email_deactivated_at) {
+    return false
+  }
+  return !['invalid', 'bounced', 'complained'].includes(customer.email_status ?? 'unknown')
+}
+
+function buildTableReviewEmail(input: { firstName: string; redirectUrl: string }): { subject: string; html: string; text: string } {
+  const safeFirstName = escapeHtml(input.firstName)
+  const safeRedirectUrl = escapeHtml(input.redirectUrl)
+
+  return {
+    subject: 'Thanks for visiting The Anchor',
+    html: [
+      '<div style="font-family:Arial,sans-serif;line-height:1.5;color:#1f2937">',
+      `<p>Hi ${safeFirstName}, thanks for popping in.</p>`,
+      `<p>If you have 30 seconds, a quick review means the world to us: <a href="${safeRedirectUrl}">leave a review</a>.</p>`,
+      '<p>The Anchor</p>',
+      '</div>',
+    ].join(''),
+    text: [
+      `Hi ${input.firstName}, thanks for popping in.`,
+      `If you have 30 seconds, a quick review means the world to us: ${input.redirectUrl}`,
+      'The Anchor',
+    ].join('\n'),
   }
 }
 
@@ -696,7 +744,10 @@ async function loadEventBookingsForEngagement(
         id,
         first_name,
         mobile_number,
-        sms_status
+        email,
+        sms_status,
+        email_status,
+        email_deactivated_at
       )
     `)
     .in('status', ['confirmed'])
@@ -737,7 +788,10 @@ async function loadTableBookingsForEngagement(
         id,
         first_name,
         mobile_number,
-        sms_status
+        email,
+        sms_status,
+        email_status,
+        email_deactivated_at
       )
     `)
     .eq('status', 'confirmed')
@@ -1324,7 +1378,10 @@ async function processTableReviewFollowups(
 
   for (const booking of boundedEligibleBookings) {
     const customer = booking.customer
-    if (!customer || !customer.mobile_number || customer.sms_status !== 'active') {
+    const hasEmailChannel = customer ? isReviewEmailEligible(customer) : false
+    const hasSmsChannel = Boolean(customer?.mobile_number && customer.sms_status === 'active')
+
+    if (!customer || (!hasEmailChannel && !hasSmsChannel)) {
       result.skipped += 1
       continue
     }
@@ -1378,29 +1435,64 @@ async function processTableReviewFollowups(
       supportPhone
     )
 
-    const smsResult = await sendSmsSafe(customer.mobile_number, messageBody, {
-      customerId: customer.id,
-      metadata: {
-        table_booking_id: booking.id,
-        template_key: TEMPLATE_TABLE_REVIEW_FOLLOWUP,
-        review_redirect_target: reviewLinkTarget
+    let smsResult: Awaited<ReturnType<typeof sendSMS>> | null = null
+    let emailSent = false
+
+    if (hasEmailChannel && customer.email) {
+      const email = buildTableReviewEmail({ firstName, redirectUrl })
+      const emailResult = await sendEmail({
+        to: customer.email,
+        subject: email.subject,
+        html: email.html,
+        text: email.text,
+        commType: TEMPLATE_TABLE_REVIEW_FOLLOWUP,
+        customerId: customer.id,
+        tableBookingId: booking.id,
+        metadata: {
+          table_booking_id: booking.id,
+          template_key: TEMPLATE_TABLE_REVIEW_FOLLOWUP,
+          review_redirect_target: reviewLinkTarget,
+          channel_policy: 'email_first',
+        },
+      })
+
+      emailSent = emailResult.success
+      if (!emailResult.success) {
+        logger.warn('Table review email failed; falling back to SMS when available', {
+          metadata: {
+            tableBookingId: booking.id,
+            customerId: customer.id,
+            error: emailResult.error,
+          },
+        })
       }
-    }, {
-      customerId: customer.id,
-      tableBookingId: booking.id,
-      templateKey: TEMPLATE_TABLE_REVIEW_FOLLOWUP
-    })
+    }
 
-    maybeRecordFatalSmsSafetyAbort(safety, smsResult, {
-      stage: 'table_reviews:send_sms',
-      bookingId: null,
-      tableBookingId: booking.id,
-      customerId: customer.id,
-      eventId: null,
-      templateKey: TEMPLATE_TABLE_REVIEW_FOLLOWUP,
-    })
+    if (!emailSent && hasSmsChannel && customer.mobile_number) {
+      smsResult = await sendSmsSafe(customer.mobile_number, messageBody, {
+        customerId: customer.id,
+        metadata: {
+          table_booking_id: booking.id,
+          template_key: TEMPLATE_TABLE_REVIEW_FOLLOWUP,
+          review_redirect_target: reviewLinkTarget
+        }
+      }, {
+        customerId: customer.id,
+        tableBookingId: booking.id,
+        templateKey: TEMPLATE_TABLE_REVIEW_FOLLOWUP
+      })
 
-    if (!smsResult.success) {
+      maybeRecordFatalSmsSafetyAbort(safety, smsResult, {
+        stage: 'table_reviews:send_sms',
+        bookingId: null,
+        tableBookingId: booking.id,
+        customerId: customer.id,
+        eventId: null,
+        templateKey: TEMPLATE_TABLE_REVIEW_FOLLOWUP,
+      })
+    }
+
+    if (!emailSent && (!smsResult || !smsResult.success)) {
       const { error: deleteTokenError } = await supabase
         .from('guest_tokens')
         .delete()
@@ -1414,13 +1506,13 @@ async function processTableReviewFollowups(
           }
         })
       }
-      const permanentFailureCode = getPermanentSmsDestinationFailureCode(smsResult)
+      const permanentFailureCode = smsResult ? getPermanentSmsDestinationFailureCode(smsResult) : null
       if (permanentFailureCode) {
         await suppressReviewAfterPermanentSmsFailure(supabase, {
           tableBookingId: booking.id,
           customerId: customer.id,
           code: permanentFailureCode,
-          error: typeof smsResult.error === 'string' ? smsResult.error : undefined,
+          error: typeof smsResult?.error === 'string' ? smsResult.error : undefined,
         })
       }
       result.skipped += 1
@@ -1430,7 +1522,7 @@ async function processTableReviewFollowups(
       continue
     }
 
-    const reviewSentAt = smsResult.scheduledFor || new Date().toISOString()
+    const reviewSentAt = smsResult?.scheduledFor || new Date().toISOString()
     const reviewWindowClosesAt = new Date(Date.parse(reviewSentAt) + 7 * 24 * 60 * 60 * 1000).toISOString()
 
     // STEP 1: Set the dedup flag independently — this is the primary guard against re-sends.

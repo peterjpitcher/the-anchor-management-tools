@@ -109,7 +109,7 @@ function doesCustomerPhoneMatchTo(params: {
   return toNumbersToMatch.some(value => customerVariants.has(value));
 }
 
-async function isCustomerSmsSendAllowed(
+export async function isCustomerSmsSendAllowed(
   customerId: string,
   to: string,
   options?: { allowTransactionalOverride?: boolean }

@@ -1,6 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { createGuestToken, hashGuestToken } from '@/lib/guest/tokens'
 import { sendEmail } from '@/lib/email/emailService'
+import { notifyCustomer } from '@/lib/notifications/notify'
 import { sendSMS } from '@/lib/twilio'
 import { getSmartFirstName } from '@/lib/sms/bulk'
 import { ensureReplyInstruction } from '@/lib/sms/support'
@@ -113,6 +114,12 @@ type CustomerNotificationRow = {
   mobile_e164: string | null
   mobile_number: string | null
   email: string | null
+  sms_status?: string | null
+  sms_opt_in?: boolean | null
+  marketing_sms_opt_in?: boolean | null
+  email_status?: string | null
+  email_deactivated_at?: string | null
+  marketing_email_opt_in?: boolean | null
 }
 
 export const MANAGER_TABLE_BOOKING_EMAIL = 'manager@the-anchor.pub'
@@ -263,6 +270,78 @@ function formatBookingTimeLabel(booking: TableBookingNotificationRow): string {
   }
 
   return 'Unknown time'
+}
+
+function buildTableBookingCustomerEmail(input: {
+  firstName: string
+  bookingMoment: string
+  partySize: number
+  seatWord: string
+  bookingReference?: string | null
+  state: TableBookingState
+  manageLink?: string | null
+  paymentLink?: string | null
+  depositLabel?: string | null
+}): { subject: string; html: string; text: string } {
+  const safeFirstName = escapeHtml(input.firstName)
+  const safeBookingMoment = escapeHtml(input.bookingMoment)
+  const safePartySize = escapeHtml(String(input.partySize))
+  const safeSeatWord = escapeHtml(input.seatWord)
+  const safeReference = input.bookingReference ? escapeHtml(input.bookingReference) : null
+  const isPendingPayment = input.state === 'pending_payment'
+  const subject = isPendingPayment
+    ? 'Secure your table at The Anchor'
+    : 'Your table booking at The Anchor is confirmed'
+
+  const intro = isPendingPayment
+    ? `Hi ${safeFirstName}, please pay your ${escapeHtml(input.depositLabel || 'table deposit')} to secure your table.`
+    : `Hi ${safeFirstName}, your table booking is confirmed.`
+
+  const cta = isPendingPayment
+    ? input.paymentLink
+      ? `<p><a href="${escapeHtml(input.paymentLink)}">Pay now</a></p>`
+      : '<p>We will send your payment link shortly.</p>'
+    : input.manageLink
+      ? `<p><a href="${escapeHtml(input.manageLink)}">Manage your booking</a></p>`
+      : ''
+
+  const html = [
+    '<div style="font-family:Arial,sans-serif;line-height:1.5;color:#1f2937">',
+    `<p>${intro}</p>`,
+    '<ul>',
+    safeReference ? `<li><strong>Reference:</strong> ${safeReference}</li>` : '',
+    `<li><strong>When:</strong> ${safeBookingMoment}</li>`,
+    `<li><strong>Party size:</strong> ${safePartySize} ${safeSeatWord}</li>`,
+    '</ul>',
+    cta,
+    '<p>If you need to change anything, reply to this email or call the pub.</p>',
+    '<p>The Anchor</p>',
+    '</div>',
+  ].join('')
+
+  const textLines = [
+    isPendingPayment
+      ? `Hi ${input.firstName}, please pay your ${input.depositLabel || 'table deposit'} to secure your table.`
+      : `Hi ${input.firstName}, your table booking is confirmed.`,
+    input.bookingReference ? `Reference: ${input.bookingReference}` : null,
+    `When: ${input.bookingMoment}`,
+    `Party size: ${input.partySize} ${input.seatWord}`,
+    isPendingPayment
+      ? input.paymentLink
+        ? `Pay now: ${input.paymentLink}`
+        : 'We will send your payment link shortly.'
+      : input.manageLink
+        ? `Manage booking: ${input.manageLink}`
+        : null,
+    'If you need to change anything, reply to this email or call the pub.',
+    'The Anchor',
+  ].filter((line): line is string => Boolean(line))
+
+  return {
+    subject,
+    html,
+    text: textLines.join('\n'),
+  }
 }
 
 export async function sendManagerTableBookingCreatedEmailIfAllowed(
@@ -714,14 +793,14 @@ export async function sendTableBookingCreatedSmsIfAllowed(
     bookingResult: TableBookingRpcResult
     nextStepUrl?: string | null
   }
-): Promise<{ scheduledFor?: string; sms: SmsSafetyMeta }> {
+): Promise<{ scheduledFor?: string; sms: SmsSafetyMeta; email?: { success: boolean; error?: string | null } | null }> {
   const { data: customer, error } = await supabase
     .from('customers')
-    .select('id, first_name, mobile_number, sms_status')
+    .select('id, first_name, last_name, mobile_e164, mobile_number, email, sms_status, sms_opt_in, marketing_sms_opt_in, email_status, email_deactivated_at, marketing_email_opt_in')
     .eq('id', input.customerId)
     .maybeSingle()
 
-  if (error || !customer || customer.sms_status !== 'active') {
+  if (error || !customer) {
     return { sms: null }
   }
 
@@ -763,25 +842,58 @@ export async function sendTableBookingCreatedSmsIfAllowed(
     smsBody = `The Anchor: Hi ${firstName}, your table booking for ${partySize} ${seatWord} on ${bookingMoment} is confirmed.${manageLink ? ` Manage booking: ${manageLink}` : ''}`
   }
 
-  let result: Awaited<ReturnType<typeof sendSMS>>
+  const templateKey = input.bookingResult.state === 'pending_payment'
+    ? 'table_booking_pending_payment'
+    : 'table_booking_confirmed'
+  const emailContent = buildTableBookingCustomerEmail({
+    firstName,
+    bookingMoment,
+    partySize,
+    seatWord,
+    bookingReference: input.bookingResult.booking_reference || null,
+    state: input.bookingResult.state,
+    manageLink,
+    paymentLink: input.nextStepUrl || null,
+    depositLabel,
+  })
+
+  let notificationResult: Awaited<ReturnType<typeof notifyCustomer>>
   try {
-    result = await sendSMS(
-      customer.mobile_number || input.normalizedPhone,
-      ensureReplyInstruction(smsBody, supportPhone),
-      {
-        customerId: input.customerId,
+    notificationResult = await notifyCustomer({
+      supabase,
+      customerId: input.customerId,
+      customer,
+      policy: 'email_first',
+      urgency: 'standard',
+      category: 'transactional',
+      email: {
+        to: customer.email,
+        subject: emailContent.subject,
+        html: emailContent.html,
+        text: emailContent.text,
+        commType: templateKey,
+        tableBookingId: input.bookingResult.table_booking_id ?? null,
         metadata: {
           table_booking_id: input.bookingResult.table_booking_id,
-          template_key:
-            input.bookingResult.state === 'pending_payment'
-              ? 'table_booking_pending_payment'
-              : 'table_booking_confirmed'
-        }
-      }
-    )
+          template_key: templateKey,
+          channel_policy: 'email_first',
+        },
+      },
+      sms: {
+        to: customer.mobile_number || input.normalizedPhone,
+        body: ensureReplyInstruction(smsBody, supportPhone),
+        options: {
+          customerId: input.customerId,
+          metadata: {
+            table_booking_id: input.bookingResult.table_booking_id,
+            template_key: templateKey,
+          },
+        },
+      },
+    })
   } catch (smsError) {
     const thrownSafety = normalizeThrownSmsSafety(smsError)
-    logger.warn('Table booking created SMS threw unexpectedly', {
+    logger.warn('Table booking created notification threw unexpectedly', {
       metadata: {
         tableBookingId: input.bookingResult.table_booking_id,
         customerId: input.customerId,
@@ -791,13 +903,13 @@ export async function sendTableBookingCreatedSmsIfAllowed(
       }
     })
     await AuditService.logAuditEvent({
-      operation_type: 'table_booking.sms_failed',
+      operation_type: 'table_booking.notification_failed',
       resource_type: 'table_booking',
       resource_id: input.bookingResult.table_booking_id ?? undefined,
       operation_status: 'failure',
       error_message: smsError instanceof Error ? smsError.message : String(smsError),
       additional_info: {
-        sms_type: input.bookingResult.state === 'pending_payment' ? 'table_booking_pending_payment' : 'table_booking_confirmed',
+        comm_type: templateKey,
         customer_id: input.customerId,
         code: thrownSafety.code,
       },
@@ -811,9 +923,13 @@ export async function sendTableBookingCreatedSmsIfAllowed(
     }
   }
 
-  const smsCode = typeof result.code === 'string' ? result.code : null
-  const smsLogFailure = result.logFailure === true || smsCode === 'logging_failed'
-  const smsDeliveredOrUnknown = result.success === true || smsLogFailure
+  const smsAttempt = notificationResult.attempts.find(attempt => attempt.channel === 'sms')
+  const emailAttempt = notificationResult.attempts.find(attempt => attempt.channel === 'email')
+  const smsCode = typeof smsAttempt?.code === 'string' ? smsAttempt.code : null
+  const smsLogFailure = smsAttempt?.logFailure === true || smsCode === 'logging_failed'
+  const smsDeliveredOrUnknown = smsAttempt ? (smsAttempt.success === true || smsLogFailure) : false
+  const emailDeliveredOrUnknown = emailAttempt?.success === true
+  const notificationDeliveredOrUnknown = smsDeliveredOrUnknown || emailDeliveredOrUnknown
 
   if (smsLogFailure) {
     logger.error('Table booking created SMS sent but outbound message logging failed', {
@@ -826,40 +942,49 @@ export async function sendTableBookingCreatedSmsIfAllowed(
     })
   }
 
-  if (!result.success) {
+  if (smsAttempt && !smsAttempt.success) {
     logger.warn('Table booking created SMS send returned non-success', {
       metadata: {
         tableBookingId: input.bookingResult.table_booking_id,
         customerId: input.customerId,
         state: input.bookingResult.state,
-        error: result.error,
+        error: smsAttempt.error,
         code: smsCode,
       }
     })
   }
 
-  const smsType = input.bookingResult.state === 'pending_payment' ? 'table_booking_pending_payment' : 'table_booking_confirmed'
-
   await AuditService.logAuditEvent({
-    operation_type: smsDeliveredOrUnknown ? 'table_booking.sms_sent' : 'table_booking.sms_failed',
+    operation_type: notificationDeliveredOrUnknown ? 'table_booking.notification_sent' : 'table_booking.notification_failed',
     resource_type: 'table_booking',
     resource_id: input.bookingResult.table_booking_id ?? undefined,
-    operation_status: smsDeliveredOrUnknown ? 'success' : 'failure',
-    error_message: smsDeliveredOrUnknown ? undefined : (result.error ?? smsCode ?? undefined),
+    operation_status: notificationDeliveredOrUnknown ? 'success' : 'failure',
+    error_message: notificationDeliveredOrUnknown ? undefined : (emailAttempt?.error ?? smsAttempt?.error ?? smsCode ?? undefined),
     additional_info: {
-      sms_type: smsType,
+      comm_type: templateKey,
       customer_id: input.customerId,
       code: smsCode,
+      selected_channels: notificationResult.selectedChannels,
+      email_sent: emailDeliveredOrUnknown,
+      sms_sent: smsDeliveredOrUnknown,
     },
   })
 
   return {
-    scheduledFor: smsDeliveredOrUnknown ? result.scheduledFor : undefined,
-    sms: {
-      success: smsDeliveredOrUnknown,
-      code: smsCode,
-      logFailure: smsLogFailure,
-    },
+    scheduledFor: smsDeliveredOrUnknown ? smsAttempt?.scheduledFor : undefined,
+    sms: smsAttempt
+      ? {
+        success: smsDeliveredOrUnknown,
+        code: smsCode,
+        logFailure: smsLogFailure,
+      }
+      : null,
+    email: emailAttempt
+      ? {
+        success: emailAttempt.success,
+        error: emailAttempt.error ?? null,
+      }
+      : null,
   }
 }
 
