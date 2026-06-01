@@ -81,7 +81,10 @@ function sanitizeParamsForLog(params: Record<string, string>): Record<string, st
     'From',
     'To',
     'ErrorCode',
-    'AccountSid'
+    'AccountSid',
+    'Price',
+    'PriceUnit',
+    'NumSegments'
   ]
 
   for (const key of keys) {
@@ -96,6 +99,38 @@ function sanitizeParamsForLog(params: Record<string, string>): Record<string, st
   }
 
   return picked
+}
+
+function parseTwilioNumericParam(value: string | undefined): number | null {
+  if (!value) {
+    return null
+  }
+
+  const parsed = Number(value)
+  return Number.isFinite(parsed) ? parsed : null
+}
+
+function buildTwilioCostUpdate(params: Record<string, string>): Record<string, unknown> {
+  const update: Record<string, unknown> = {}
+  const price = parseTwilioNumericParam(params.Price)
+  const numSegments = parseTwilioNumericParam(params.NumSegments)
+  const priceUnit = params.PriceUnit?.trim()
+
+  if (price !== null) {
+    const absolutePrice = Math.abs(price)
+    update.price = absolutePrice
+    update.cost_usd = absolutePrice
+  }
+
+  if (priceUnit) {
+    update.price_unit = priceUnit
+  }
+
+  if (numSegments !== null) {
+    update.segments = Math.max(1, Math.round(numSegments))
+  }
+
+  return update
 }
 
 async function logWebhookAttempt(
@@ -884,6 +919,7 @@ async function handleStatusUpdate(
         twilio_status: messageStatus,
         error_code: errorCode,
         error_message: errorMessage || (errorCode ? formatErrorMessage(errorCode) : null),
+        ...buildTwilioCostUpdate(params),
         updated_at: new Date().toISOString(),
         ...(messageStatus === 'delivered' && { delivered_at: new Date().toISOString() }),
         ...(messageStatus === 'failed' && { failed_at: new Date().toISOString() }),
