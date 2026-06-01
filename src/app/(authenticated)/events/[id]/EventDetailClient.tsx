@@ -20,6 +20,7 @@ import { Icon } from '@/ds/icons'
 import type { Event } from '@/types/database'
 import type { EventBookingRow } from '@/app/actions/events'
 import type { EventMarketingLink } from '@/app/actions/event-marketing-links'
+import type { EventMarketingMessage } from '@/app/actions/event-marketing-messages'
 import type { EventCategory } from '@/types/event-categories'
 import {
   getEventById,
@@ -49,6 +50,7 @@ interface EventDetailClientProps {
   event: Event | null
   bookings: EventBookingRow[]
   marketingLinks: EventMarketingLink[]
+  marketingMessages: EventMarketingMessage[]
   categories: EventCategory[]
   permissions: { canEdit: boolean; canDelete: boolean; canManage: boolean }
   initialError: string | null
@@ -94,6 +96,7 @@ export default function EventDetailClient({
   event: initialEvent,
   bookings: initialBookings,
   marketingLinks: initialLinks,
+  marketingMessages,
   categories,
   permissions,
   initialError,
@@ -424,6 +427,7 @@ export default function EventDetailClient({
                 onCancelBooking={setCancellingBookingId}
                 isPending={isPending}
               />
+              <MarketingMessagesCard messages={marketingMessages} />
             </div>
           )}
 
@@ -869,6 +873,102 @@ function AttendeesTab({
         </CardBody>
       </Card>
     </div>
+  )
+}
+
+/* ================================================================== */
+/*  Sent Marketing Messages                                            */
+/* ================================================================== */
+
+function formatMarketingTemplateLabel(templateKey: string): string {
+  const labels: Record<string, string> = {
+    bulk_sms_campaign: 'Bulk campaign',
+    event_cross_promo_14d: 'Cross-promo 14d',
+    event_cross_promo_14d_paid: 'Cross-promo 14d paid',
+    event_general_promo_14d: 'General promo 14d',
+    event_general_promo_14d_paid: 'General promo 14d paid',
+    event_reminder_promo_7d: 'Promo reminder 7d',
+    event_reminder_promo_7d_paid: 'Promo reminder 7d paid',
+    event_reminder_promo_3d: 'Promo reminder 3d',
+    event_reminder_promo_3d_paid: 'Promo reminder 3d paid',
+  }
+
+  return labels[templateKey] ?? formatStatusLabel(templateKey)
+}
+
+function getMessageStatusTone(status: string): BadgeTone {
+  switch (status.toLowerCase()) {
+    case 'sent':
+    case 'delivered':
+      return 'success'
+    case 'queued':
+    case 'scheduled':
+    case 'accepted':
+      return 'warning'
+    case 'failed':
+    case 'undelivered':
+      return 'danger'
+    default:
+      return 'neutral'
+  }
+}
+
+function MarketingMessagesCard({ messages }: { messages: EventMarketingMessage[] }) {
+  const sortedMessages = useMemo(
+    () => [...messages].sort((a, b) => new Date(b.sentAt).getTime() - new Date(a.sentAt).getTime()),
+    [messages],
+  )
+
+  return (
+    <Card>
+      <CardHeader
+        title="Sent Marketing Messages"
+        action={messages.length > 0 ? (
+          <Badge tone="info" size="sm">{messages.length}</Badge>
+        ) : null}
+      />
+      <CardBody>
+        {sortedMessages.length === 0 ? (
+          <EmptyState
+            title="No Marketing Messages Sent"
+            description="No event marketing SMS messages have been logged for this event yet."
+          />
+        ) : (
+          <div className="space-y-3">
+            {sortedMessages.map((message) => {
+              const recipient = message.customerName || message.recipientPhone || 'Unknown recipient'
+              const hasBody = Boolean(message.body?.trim())
+
+              return (
+                <div key={message.id} className="rounded-md border border-border bg-surface-2 p-3">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Badge tone="info" size="sm">
+                      {formatMarketingTemplateLabel(message.templateKey)}
+                    </Badge>
+                    <Badge tone={getMessageStatusTone(message.status)} size="sm">
+                      {formatStatusLabel(message.status)}
+                    </Badge>
+                    <span className="text-xs text-text-muted">
+                      Sent {formatDateInLondon(message.sentAt, {
+                        day: 'numeric',
+                        month: 'short',
+                        year: 'numeric',
+                        hour: '2-digit',
+                        minute: '2-digit',
+                      })}
+                    </span>
+                    <span className="text-xs text-text-muted">to {recipient}</span>
+                  </div>
+                  <p className={`mt-2 whitespace-pre-wrap break-words text-sm ${hasBody ? 'text-text' : 'text-text-muted italic'}`}>
+                    {hasBody ? message.body : 'Message body was not logged, but the marketing send was recorded.'}
+                  </p>
+                </div>
+              )
+            })}
+          </div>
+        )}
+      </CardBody>
+    </Card>
   )
 }
 

@@ -19,6 +19,19 @@ export interface EventMarketingLink {
   lastClickedAt?: string;
 }
 
+export interface EventMarketingMessage {
+  id: string;
+  messageId: string | null;
+  customerId: string | null;
+  customerName: string | null;
+  recipientPhone: string | null;
+  templateKey: string;
+  body: string | null;
+  status: string;
+  sentAt: string;
+  createdAt: string;
+}
+
 interface ExistingShortLink {
   id: string;
   short_code: string;
@@ -26,6 +39,38 @@ interface ExistingShortLink {
   metadata: any;
   updated_at: string | null;
 }
+
+type PromoContextRow = {
+  id: string;
+  customer_id: string;
+  phone_number: string;
+  event_id: string;
+  template_key: string;
+  message_id: string | null;
+  created_at: string | null;
+};
+
+type SmsMessageRow = {
+  id: string;
+  customer_id: string;
+  body: string;
+  status: string;
+  twilio_status: string | null;
+  sent_at: string | null;
+  created_at: string;
+  to_number: string | null;
+  template_key: string | null;
+  message_sid: string | null;
+  metadata?: unknown;
+};
+
+type CustomerSummaryRow = {
+  id: string;
+  first_name: string | null;
+  last_name: string | null;
+  mobile_number: string | null;
+  mobile_e164: string | null;
+};
 
 interface EventRecord {
   id: string;
@@ -62,6 +107,78 @@ function needsUpdate(existing: ExistingShortLink, payload: EventMarketingLinkPay
   return false;
 }
 
+function clampMessageLimit(limit: number): number {
+  if (!Number.isFinite(limit)) return 50;
+  return Math.max(1, Math.min(200, Math.floor(limit)));
+}
+
+function isNonEmptyString(value: unknown): value is string {
+  return typeof value === 'string' && value.trim().length > 0;
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null;
+}
+
+function getCustomerName(customer: CustomerSummaryRow | undefined): string | null {
+  if (!customer) return null;
+  const name = [customer.first_name, customer.last_name]
+    .map(part => part?.trim())
+    .filter(Boolean)
+    .join(' ');
+  return name || null;
+}
+
+function getMessageTemplateKey(message: SmsMessageRow, fallback?: string | null): string {
+  if (isNonEmptyString(message.template_key)) {
+    return message.template_key;
+  }
+
+  const metadata = asRecord(message.metadata);
+  const metadataTemplateKey = metadata?.template_key;
+  return isNonEmptyString(metadataTemplateKey) ? metadataTemplateKey : fallback || 'marketing_sms';
+}
+
+function isMarketingMetadataMessage(message: SmsMessageRow): boolean {
+  const metadata = asRecord(message.metadata);
+  const templateKey = getMessageTemplateKey(message);
+
+  return (
+    metadata?.marketing === true ||
+    metadata?.bulk_sms === true ||
+    templateKey === 'bulk_sms_campaign' ||
+    templateKey.startsWith('event_cross_promo_') ||
+    templateKey.startsWith('event_general_promo_') ||
+    templateKey.startsWith('event_reminder_promo_')
+  );
+}
+
+function toMarketingMessage(params: {
+  context?: PromoContextRow;
+  message?: SmsMessageRow;
+  customer?: CustomerSummaryRow;
+}): EventMarketingMessage {
+  const { context, message, customer } = params;
+  const templateKey = message ? getMessageTemplateKey(message, context?.template_key) : context?.template_key || 'marketing_sms';
+  const sentAt = message?.sent_at || context?.created_at || message?.created_at || new Date(0).toISOString();
+  const createdAt = context?.created_at || message?.created_at || sentAt;
+
+  return {
+    id: context?.id || message?.id || `${templateKey}:${sentAt}`,
+    messageId: message?.id || context?.message_id || null,
+    customerId: context?.customer_id || message?.customer_id || null,
+    customerName: getCustomerName(customer),
+    recipientPhone: message?.to_number || context?.phone_number || customer?.mobile_e164 || customer?.mobile_number || null,
+    templateKey,
+    body: message?.body || null,
+    status: message?.twilio_status || message?.status || 'sent',
+    sentAt,
+    createdAt,
+  };
+}
+
 async function insertShortLinkWithRetries(event: EventRecord, payload: EventMarketingLinkPayload, metadata: any, maxAttempts = 3) {
   const supabase = createAdminClient();
 
@@ -94,6 +211,111 @@ async function insertShortLinkWithRetries(event: EventRecord, payload: EventMark
 }
 
 export class EventMarketingService {
+  static async getSentMessages(eventId: string, limit = 50): Promise<EventMarketingMessage[]> {
+    const supabase = createAdminClient();
+    const safeLimit = clampMessageLimit(limit);
+
+    const { data: contexts, error: contextsError } = await supabase
+      .from('sms_promo_context')
+      .select('id, customer_id, phone_number, event_id, template_key, message_id, created_at')
+      .eq('event_id', eventId)
+      .order('created_at', { ascending: false })
+      .limit(safeLimit);
+
+    if (contextsError) {
+      throw new Error('Failed to load sent marketing messages');
+    }
+
+    const contextRows = (contexts || []) as PromoContextRow[];
+    const messageIds = Array.from(new Set(contextRows.map(row => row.message_id).filter(isNonEmptyString)));
+    const messagesById = new Map<string, SmsMessageRow>();
+
+    if (messageIds.length > 0) {
+      const { data: messages, error: messagesError } = await supabase
+        .from('messages')
+        .select('id, customer_id, body, status, twilio_status, sent_at, created_at, to_number, template_key, message_sid')
+        .in('id', messageIds);
+
+      if (messagesError) {
+        console.warn('Failed to load sent marketing message bodies', messagesError);
+      } else {
+        for (const message of (messages || []) as SmsMessageRow[]) {
+          messagesById.set(message.id, message);
+        }
+      }
+    }
+
+    // Newer deployments may have a messages.metadata JSON column, which lets manual
+    // bulk campaigns selected for an event show up alongside automated promo sends.
+    const metadataMessages: SmsMessageRow[] = [];
+    try {
+      const { data, error } = await (supabase.from('messages') as any)
+        .select('id, customer_id, body, status, twilio_status, sent_at, created_at, to_number, template_key, message_sid, metadata')
+        .eq('direction', 'outbound')
+        .contains('metadata', { event_id: eventId })
+        .order('sent_at', { ascending: false })
+        .limit(safeLimit);
+
+      if (error) {
+        const message = typeof error.message === 'string' ? error.message.toLowerCase() : '';
+        if (!message.includes('metadata')) {
+          console.warn('Failed to load metadata-tagged event marketing messages', error);
+        }
+      } else {
+        metadataMessages.push(...((data || []) as SmsMessageRow[]).filter(isMarketingMetadataMessage));
+      }
+    } catch {
+      // The metadata column is optional in older schemas.
+    }
+
+    const partialMessages: Array<{ context?: PromoContextRow; message?: SmsMessageRow }> = [];
+    const seenMessageIds = new Set<string>();
+
+    for (const context of contextRows) {
+      const message = context.message_id ? messagesById.get(context.message_id) : undefined;
+      if (message?.id) {
+        seenMessageIds.add(message.id);
+      }
+      partialMessages.push({ context, message });
+    }
+
+    for (const message of metadataMessages) {
+      if (seenMessageIds.has(message.id)) continue;
+      seenMessageIds.add(message.id);
+      partialMessages.push({ message });
+    }
+
+    const customerIds = Array.from(new Set(
+      partialMessages
+        .map(item => item.context?.customer_id || item.message?.customer_id)
+        .filter(isNonEmptyString)
+    ));
+    const customersById = new Map<string, CustomerSummaryRow>();
+
+    if (customerIds.length > 0) {
+      const { data: customers, error: customersError } = await supabase
+        .from('customers')
+        .select('id, first_name, last_name, mobile_number, mobile_e164')
+        .in('id', customerIds);
+
+      if (customersError) {
+        console.warn('Failed to load sent marketing message recipients', customersError);
+      } else {
+        for (const customer of (customers || []) as CustomerSummaryRow[]) {
+          customersById.set(customer.id, customer);
+        }
+      }
+    }
+
+    return partialMessages
+      .map(item => toMarketingMessage({
+        ...item,
+        customer: customersById.get(item.context?.customer_id || item.message?.customer_id || ''),
+      }))
+      .sort((a, b) => new Date(b.sentAt).getTime() - new Date(a.sentAt).getTime())
+      .slice(0, safeLimit);
+  }
+
   static async generateLinks(eventId: string): Promise<EventMarketingLink[]> {
     const supabase = createAdminClient();
 

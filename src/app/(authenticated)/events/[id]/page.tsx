@@ -4,6 +4,8 @@ import { getEventById, getEventBookings } from '@/app/actions/events'
 import { getActiveEventCategories } from '@/app/actions/event-categories'
 import { getEventMarketingLinks } from '@/app/actions/event-marketing-links'
 import type { EventMarketingLink } from '@/app/actions/event-marketing-links'
+import { getEventMarketingMessages } from '@/app/actions/event-marketing-messages'
+import type { EventMarketingMessage } from '@/app/actions/event-marketing-messages'
 import type { EventBookingRow } from '@/app/actions/events'
 import EventDetailClient from './EventDetailClient'
 
@@ -100,6 +102,19 @@ export default async function EventDetailPage({ params }: PageProps) {
     }
   }
 
+  // Fetch sent marketing messages (non-fatal)
+  let marketingMessages: EventMarketingMessage[] = []
+  if (eventData) {
+    try {
+      const messagesResult = await getEventMarketingMessages(eventId)
+      if (messagesResult.messages) {
+        marketingMessages = messagesResult.messages
+      }
+    } catch {
+      // Non-fatal: page still renders, marketing messages section will be empty
+    }
+  }
+
   // Fetch event categories for the edit drawer (non-fatal)
   const categoriesResult = await getActiveEventCategories()
   const categories = categoriesResult.data ?? []
@@ -115,6 +130,7 @@ export default async function EventDetailPage({ params }: PageProps) {
       event={eventData}
       bookings={bookings}
       marketingLinks={marketingLinks}
+      marketingMessages={marketingMessages}
       categories={categories}
       permissions={{ canEdit, canDelete, canManage }}
       initialError={initialError}
