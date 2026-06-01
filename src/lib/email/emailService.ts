@@ -36,7 +36,12 @@ type EmailSendResult = { success: boolean; error?: string; messageId?: string };
 let cachedResendClient: Resend | null = null;
 
 function getEmailProvider(): EmailProvider {
-  return process.env.EMAIL_PROVIDER === 'resend' ? 'resend' : 'graph';
+  const configuredProvider = process.env.EMAIL_PROVIDER?.trim().toLowerCase();
+  if (configuredProvider === 'graph' || configuredProvider === 'resend') {
+    return configuredProvider;
+  }
+
+  return process.env.RESEND_API_KEY && process.env.EMAIL_FROM_ADDRESS ? 'resend' : 'graph';
 }
 
 function getResendClient(): Resend | null {

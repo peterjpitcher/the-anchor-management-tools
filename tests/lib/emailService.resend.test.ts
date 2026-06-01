@@ -127,6 +127,29 @@ describe('sendEmail Resend provider', () => {
     }))
   })
 
+  it('uses Resend automatically when Resend credentials are configured', async () => {
+    delete process.env.EMAIL_PROVIDER
+    mockAdminClient()
+    resendSend.mockResolvedValue({
+      data: { id: 'resend-email-auto' },
+      error: null,
+    })
+
+    const { sendEmail } = await import('@/lib/email/emailService')
+    const result = await sendEmail({
+      to: 'guest@example.com',
+      subject: 'Automatic provider',
+      text: 'Hello',
+    })
+
+    expect(result).toEqual({ success: true, messageId: 'resend-email-auto' })
+    expect(resendSend).toHaveBeenCalledWith(expect.objectContaining({
+      from: 'The Anchor <noreply@auth.orangejelly.co.uk>',
+      to: 'guest@example.com',
+      subject: 'Automatic provider',
+    }))
+  })
+
   it('handles Resend SDK non-throwing errors as failed sends', async () => {
     mockAdminClient()
     resendSend.mockResolvedValue({
