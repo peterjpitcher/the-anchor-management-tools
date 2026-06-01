@@ -106,3 +106,195 @@ describe('EventMarketingService mutation guards', () => {
     )
   })
 })
+
+describe('EventMarketingService.getSentMessages', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks()
+    vi.clearAllMocks()
+  })
+
+  it('loads sent marketing SMS rows from promo context with message bodies and recipients', async () => {
+    const promoRows = [
+      {
+        id: 'promo-1',
+        customer_id: 'customer-1',
+        phone_number: '+447700900001',
+        event_id: 'event-1',
+        template_key: 'event_cross_promo_14d',
+        message_id: 'message-1',
+        created_at: '2026-04-10T10:00:00.000Z',
+      },
+    ]
+    const messageRows = [
+      {
+        id: 'message-1',
+        customer_id: 'customer-1',
+        body: 'The Anchor: Sarah! Music Bingo is coming up.',
+        status: 'sent',
+        twilio_status: 'queued',
+        sent_at: '2026-04-10T10:00:05.000Z',
+        created_at: '2026-04-10T10:00:05.000Z',
+        to_number: '+447700900001',
+        template_key: 'event_cross_promo_14d',
+        message_sid: 'SM123',
+      },
+    ]
+    const customerRows = [
+      {
+        id: 'customer-1',
+        first_name: 'Sarah',
+        last_name: 'Jones',
+        mobile_number: '07700 900001',
+        mobile_e164: '+447700900001',
+      },
+    ]
+
+    const client = {
+      from: vi.fn((table: string) => {
+        if (table === 'sms_promo_context') {
+          return {
+            select: vi.fn().mockReturnValue({
+              eq: vi.fn().mockReturnValue({
+                order: vi.fn().mockReturnValue({
+                  limit: vi.fn().mockResolvedValue({ data: promoRows, error: null }),
+                }),
+              }),
+            }),
+          }
+        }
+
+        if (table === 'messages') {
+          return {
+            select: vi.fn((columns: string) => {
+              if (columns.includes('metadata')) {
+                return {
+                  eq: vi.fn().mockReturnValue({
+                    contains: vi.fn().mockReturnValue({
+                      order: vi.fn().mockReturnValue({
+                        limit: vi.fn().mockResolvedValue({ data: [], error: null }),
+                      }),
+                    }),
+                  }),
+                }
+              }
+
+              return {
+                in: vi.fn().mockResolvedValue({ data: messageRows, error: null }),
+              }
+            }),
+          }
+        }
+
+        if (table === 'customers') {
+          return {
+            select: vi.fn().mockReturnValue({
+              in: vi.fn().mockResolvedValue({ data: customerRows, error: null }),
+            }),
+          }
+        }
+
+        throw new Error(`Unexpected table: ${table}`)
+      }),
+    }
+
+    mockedCreateAdminClient.mockReturnValue(client)
+
+    const result = await EventMarketingService.getSentMessages('event-1')
+
+    expect(result).toEqual([
+      expect.objectContaining({
+        id: 'promo-1',
+        messageId: 'message-1',
+        customerName: 'Sarah Jones',
+        recipientPhone: '+447700900001',
+        templateKey: 'event_cross_promo_14d',
+        body: 'The Anchor: Sarah! Music Bingo is coming up.',
+        status: 'queued',
+        sentAt: '2026-04-10T10:00:05.000Z',
+      }),
+    ])
+  })
+
+  it('includes metadata-tagged bulk campaigns when the messages metadata column is available', async () => {
+    const metadataMessageRows = [
+      {
+        id: 'message-2',
+        customer_id: 'customer-2',
+        body: 'The Anchor: New event this Friday.',
+        status: 'sent',
+        twilio_status: 'sent',
+        sent_at: '2026-04-11T10:00:00.000Z',
+        created_at: '2026-04-11T10:00:00.000Z',
+        to_number: '+447700900002',
+        template_key: 'bulk_sms_campaign',
+        message_sid: 'SM456',
+        metadata: {
+          event_id: 'event-1',
+          bulk_sms: true,
+          template_key: 'bulk_sms_campaign',
+        },
+      },
+    ]
+
+    const client = {
+      from: vi.fn((table: string) => {
+        if (table === 'sms_promo_context') {
+          return {
+            select: vi.fn().mockReturnValue({
+              eq: vi.fn().mockReturnValue({
+                order: vi.fn().mockReturnValue({
+                  limit: vi.fn().mockResolvedValue({ data: [], error: null }),
+                }),
+              }),
+            }),
+          }
+        }
+
+        if (table === 'messages') {
+          return {
+            select: vi.fn((columns: string) => {
+              if (!columns.includes('metadata')) {
+                return {
+                  in: vi.fn().mockResolvedValue({ data: [], error: null }),
+                }
+              }
+
+              return {
+                eq: vi.fn().mockReturnValue({
+                  contains: vi.fn().mockReturnValue({
+                    order: vi.fn().mockReturnValue({
+                      limit: vi.fn().mockResolvedValue({ data: metadataMessageRows, error: null }),
+                    }),
+                  }),
+                }),
+              }
+            }),
+          }
+        }
+
+        if (table === 'customers') {
+          return {
+            select: vi.fn().mockReturnValue({
+              in: vi.fn().mockResolvedValue({ data: [], error: null }),
+            }),
+          }
+        }
+
+        throw new Error(`Unexpected table: ${table}`)
+      }),
+    }
+
+    mockedCreateAdminClient.mockReturnValue(client)
+
+    const result = await EventMarketingService.getSentMessages('event-1')
+
+    expect(result).toHaveLength(1)
+    expect(result[0]).toMatchObject({
+      id: 'message-2',
+      messageId: 'message-2',
+      templateKey: 'bulk_sms_campaign',
+      body: 'The Anchor: New event this Friday.',
+      recipientPhone: '+447700900002',
+    })
+  })
+})
