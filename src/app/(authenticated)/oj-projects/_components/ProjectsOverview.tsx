@@ -2,6 +2,7 @@
 
 import { useMemo, useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import {
   Stat,
   Card,
@@ -96,6 +97,9 @@ export function ProjectsOverview({ projects, entries: initialEntries, workTypes,
     description: '',
     internal_notes: '',
     billable: true,
+    linked_invoice_id: '',
+    linked_invoice_number: '',
+    linked_invoice_status: '',
   })
 
   const vendors = useMemo(() => {
@@ -152,8 +156,8 @@ export function ProjectsOverview({ projects, entries: initialEntries, workTypes,
   }
 
   function openEdit(entry: any): void {
-    if (entry.status !== 'unbilled') {
-      toast.error('Only unbilled entries can be edited')
+    if (!isEntryEditable(entry)) {
+      toast.error('Only unbilled or unpaid invoiced entries can be edited')
       return
     }
 
@@ -170,6 +174,9 @@ export function ProjectsOverview({ projects, entries: initialEntries, workTypes,
       description: entry.description || '',
       internal_notes: entry.internal_notes || '',
       billable: entry.billable ?? true,
+      linked_invoice_id: entry.invoice?.id || '',
+      linked_invoice_number: entry.invoice?.invoice_number || '',
+      linked_invoice_status: entry.invoice?.status || '',
     })
     setEditOpen(true)
   }
@@ -262,8 +269,9 @@ export function ProjectsOverview({ projects, entries: initialEntries, workTypes,
       }
 
       const res = await updateEntry(fd)
-      if (res.error) throw new Error(res.error)
-      toast.success('Entry updated')
+      if ('error' in res && res.error) throw new Error(res.error)
+      const invoiceRevision = 'invoiceRevision' in res ? res.invoiceRevision : undefined
+      toast.success(invoiceRevision ? `Entry updated; ${invoiceRevision.invoice_number} recalculated` : 'Entry updated')
       setEditOpen(false)
       await reload()
       router.refresh()
@@ -320,6 +328,24 @@ export function ProjectsOverview({ projects, entries: initialEntries, workTypes,
       case 'completed': return 'info'
       default: return 'neutral'
     }
+  }
+
+  const entryStatusTone = (status: string): 'success' | 'warning' | 'info' | 'neutral' => {
+    switch (status) {
+      case 'paid': return 'success'
+      case 'billed': return 'info'
+      case 'unbilled': return 'warning'
+      default: return 'neutral'
+    }
+  }
+
+  function isEntryEditable(entry: any): boolean {
+    if (entry.status === 'unbilled') return true
+    if (!['billed', 'billing_pending'].includes(String(entry.status))) return false
+    if (!entry.invoice_id || !entry.invoice) return false
+    const invoiceStatus = String(entry.invoice.status || '')
+    if (['paid', 'partially_paid', 'void', 'written_off'].includes(invoiceStatus)) return false
+    return Number(entry.invoice.paid_amount || 0) <= 0
   }
 
   function entryAmount(entry: any): number {
@@ -450,6 +476,7 @@ export function ProjectsOverview({ projects, entries: initialEntries, workTypes,
                 <TableHead>Hours/Qty</TableHead>
                 <TableHead>Amount</TableHead>
                 <TableHead>Notes</TableHead>
+                <TableHead>Status</TableHead>
                 <TableHead className="w-12">Actions</TableHead>
               </TableRow>
             </TableHeader>
@@ -478,11 +505,21 @@ export function ProjectsOverview({ projects, entries: initialEntries, workTypes,
                       {entry.description || '-'}
                     </TableCell>
                     <TableCell>
-                      {entry.status === 'unbilled' && canEdit && (
+                      <div className="flex flex-col gap-1">
+                        <Badge tone={entryStatusTone(entry.status)}>{entry.status}</Badge>
+                        {entry.invoice?.invoice_number && (
+                          <Link href={`/invoices/${entry.invoice.id}`} className="text-xs text-primary hover:underline">
+                            {entry.invoice.invoice_number}
+                          </Link>
+                        )}
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      {isEntryEditable(entry) && canEdit && (
                         <IconButton
                           icon={<Icon name="edit" size={16} />}
                           size="sm"
-                          label="Edit entry"
+                          label={entry.status === 'unbilled' ? 'Edit entry' : 'Edit and revise invoice'}
                           onClick={() => openEdit(entry)}
                         />
                       )}
@@ -657,6 +694,15 @@ export function ProjectsOverview({ projects, entries: initialEntries, workTypes,
             </Field>
           </div>
 
+          {editForm.linked_invoice_number && (
+            <Field label="Invoice">
+              <Input
+                value={`${editForm.linked_invoice_number}${editForm.linked_invoice_status ? ` (${editForm.linked_invoice_status})` : ''}`}
+                disabled
+              />
+            </Field>
+          )}
+
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Field label="Client" required>
               <Select
@@ -762,7 +808,7 @@ export function ProjectsOverview({ projects, entries: initialEntries, workTypes,
               Cancel
             </Button>
             <Button type="submit" loading={saving}>
-              Save Changes
+              {editForm.linked_invoice_number ? 'Save and Recalculate Invoice' : 'Save Changes'}
             </Button>
           </div>
         </form>
