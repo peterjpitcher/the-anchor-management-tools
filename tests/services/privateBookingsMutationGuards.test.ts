@@ -57,6 +57,74 @@ describe('PrivateBookingService mutation row-effect guards', () => {
     })
   })
 
+  const cancelledBooking = {
+    id: 'booking-1',
+    status: 'cancelled',
+    contact_phone: '+447788379576',
+    contact_email: 'chloe@tlc-logistics.co.uk',
+    customer_first_name: 'Chloe',
+    customer_last_name: 'Weightman',
+    customer_name: 'Chloe Weightman',
+    event_date: '2026-09-24',
+    start_time: '18:00:00',
+    setup_date: null,
+    setup_time: null,
+    end_time: '22:00:00',
+    end_time_next_day: false,
+    customer_id: 'customer-1',
+    internal_notes: null,
+    balance_due_date: '2026-09-17',
+    calendar_event_id: null,
+    hold_expiry: null,
+    deposit_paid_date: null,
+    guest_count: 50,
+    event_type: 'Social/Private Quiz Night',
+    source: 'phone',
+    customer_requests: null,
+    contract_note: null,
+    special_requirements: null,
+    accessibility_needs: null,
+    date_tbd: false,
+  }
+
+  function mockCancelledBookingUpdate(updateResult: Record<string, unknown> = {}) {
+    const fetchSingle = vi.fn().mockResolvedValue({
+      data: cancelledBooking,
+      error: null,
+    })
+    const fetchEq = vi.fn().mockReturnValue({ single: fetchSingle })
+
+    let updatePayload: Record<string, unknown> | null = null
+    const updateMaybeSingle = vi.fn().mockResolvedValue({
+      data: {
+        ...cancelledBooking,
+        ...updateResult,
+      },
+      error: null,
+    })
+    const updateSelect = vi.fn().mockReturnValue({ maybeSingle: updateMaybeSingle })
+    const updateEq = vi.fn().mockReturnValue({ select: updateSelect })
+    const update = vi.fn((payload: Record<string, unknown>) => {
+      updatePayload = payload
+      return { eq: updateEq }
+    })
+
+    mockedCreateClient.mockResolvedValue({
+      from: vi.fn((table: string) => {
+        if (table !== 'private_bookings') {
+          throw new Error(`Unexpected table: ${table}`)
+        }
+
+        return {
+          select: vi.fn().mockReturnValue({ eq: fetchEq }),
+          update,
+        }
+      }),
+    })
+
+    return { update, getUpdatePayload: () => updatePayload }
+  }
+
   it('createBooking fails closed when customer cannot be resolved', async () => {
     const rpc = vi.fn()
 
@@ -479,6 +547,56 @@ describe('PrivateBookingService mutation row-effect guards', () => {
     expect(selectCalls[1]).not.toContain('date_tbd')
     expect(updatePayload).not.toHaveProperty('date_tbd')
     expect(update).toHaveBeenCalledTimes(1)
+  })
+
+  it('updateBooking allows contact email corrections on cancelled bookings', async () => {
+    const { update, getUpdatePayload } = mockCancelledBookingUpdate({
+      contact_email: 'mandy@ukacc2000.co.uk',
+    })
+
+    const result = await PrivateBookingService.updateBooking('booking-1', {
+      customer_first_name: 'Chloe',
+      customer_last_name: 'Weightman',
+      customer_id: 'customer-1',
+      contact_phone: '+447788379576',
+      contact_email: 'mandy@ukacc2000.co.uk',
+      default_country_code: '44',
+      event_date: '2026-09-24',
+      start_time: '18:00',
+      end_time: '22:00',
+      setup_date: '',
+      setup_time: '',
+      guest_count: 50,
+      event_type: 'Social/Private Quiz Night',
+      source: 'phone',
+      status: 'cancelled',
+      internal_notes: '',
+      contract_note: '',
+      customer_requests: '',
+      special_requirements: '',
+      accessibility_needs: '',
+      date_tbd: false,
+    })
+
+    expect(result.contact_email).toBe('mandy@ukacc2000.co.uk')
+    expect(getUpdatePayload()).toMatchObject({
+      contact_email: 'mandy@ukacc2000.co.uk',
+      status: 'cancelled',
+    })
+    expect(update).toHaveBeenCalledTimes(1)
+  })
+
+  it('updateBooking still blocks event detail edits on cancelled bookings', async () => {
+    const { update } = mockCancelledBookingUpdate()
+
+    await expect(
+      PrivateBookingService.updateBooking('booking-1', {
+        event_type: 'Changed event type',
+        status: 'cancelled',
+      })
+    ).rejects.toThrow('Cannot edit a cancelled booking. Only status changes are allowed.')
+
+    expect(update).not.toHaveBeenCalled()
   })
 
   it('recordDeposit is idempotent when booking update affects no rows', async () => {
