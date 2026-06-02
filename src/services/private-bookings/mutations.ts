@@ -144,6 +144,25 @@ type CancellationSmsVariant = {
   retainedAmount: number
 }
 
+const UPDATE_BOOKING_BASE_SELECT =
+  'status, contact_phone, customer_first_name, customer_last_name, customer_name, event_date, start_time, setup_date, setup_time, end_time, end_time_next_day, customer_id, internal_notes, balance_due_date, calendar_event_id, hold_expiry, deposit_paid_date'
+
+function isMissingDateTbdColumnError(error: unknown): boolean {
+  if (!error || typeof error !== 'object') {
+    return false
+  }
+
+  const candidate = error as { code?: unknown; message?: unknown; details?: unknown }
+  const text = `${String(candidate.code ?? '')} ${String(candidate.message ?? '')} ${String(candidate.details ?? '')}`.toLowerCase()
+
+  return text.includes('date_tbd') && (
+    text.includes('schema cache') ||
+    text.includes('column') ||
+    text.includes('does not exist') ||
+    text.includes('pgrst204')
+  )
+}
+
 /**
  * Resolve the cancellation SMS variant for a booking from its financial
  * outcome. Returns the trigger/template keys and the rendered message body
@@ -414,13 +433,23 @@ export async function updateBooking(id: string, input: UpdatePrivateBookingInput
   const supabase = await createClient();
 
   // 1. Get Current Booking
-  const { data: currentBooking, error: fetchError } = await supabase
+  let hasDateTbdColumn = true;
+  let currentBookingResult = await supabase
     .from('private_bookings')
-    .select(
-      'status, contact_phone, customer_first_name, customer_last_name, customer_name, event_date, start_time, setup_date, setup_time, end_time, end_time_next_day, customer_id, internal_notes, balance_due_date, calendar_event_id, hold_expiry, deposit_paid_date, date_tbd'
-    )
+    .select(`${UPDATE_BOOKING_BASE_SELECT}, date_tbd`)
     .eq('id', id)
     .single();
+
+  if (currentBookingResult.error && isMissingDateTbdColumnError(currentBookingResult.error)) {
+    hasDateTbdColumn = false;
+    currentBookingResult = await supabase
+      .from('private_bookings')
+      .select(UPDATE_BOOKING_BASE_SELECT)
+      .eq('id', id)
+      .single();
+  }
+
+  const { data: currentBooking, error: fetchError } = currentBookingResult;
 
   if (fetchError || !currentBooking) {
     throw new Error('Booking not found');
@@ -549,7 +578,7 @@ export async function updateBooking(id: string, input: UpdatePrivateBookingInput
     updated_at: new Date().toISOString()
   };
 
-  // Remove non-column fields (date_tbd IS a real column now, keep it)
+  // Remove non-column fields.
   delete updatePayload.items;
   delete updatePayload.default_country_code;
 
@@ -573,6 +602,10 @@ export async function updateBooking(id: string, input: UpdatePrivateBookingInput
     // Still TBD — keep nulls
     updatePayload.balance_due_date = null;
     updatePayload.hold_expiry = null;
+  }
+
+  if (!hasDateTbdColumn) {
+    delete updatePayload.date_tbd;
   }
 
   // Clean up undefined values
