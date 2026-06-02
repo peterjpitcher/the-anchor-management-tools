@@ -350,6 +350,43 @@ describe('OJ project action mutation row-effect guards', () => {
     expect(result).toEqual({ error: 'Entry not found' })
   })
 
+  it('routes billed entry deletes through linked invoice validation', async () => {
+    const ENTRY_UUID = '550e8400-e29b-41d4-a716-446655440010'
+
+    const prefetchSingle = vi.fn().mockResolvedValue({
+      data: {
+        id: ENTRY_UUID,
+        status: 'billed',
+        invoice_id: null,
+        vendor_id: '550e8400-e29b-41d4-a716-446655440000',
+        entry_type: 'time',
+        entry_date: '2026-02-14',
+      },
+      error: null,
+    })
+    const prefetchEq = vi.fn().mockReturnValue({ single: prefetchSingle })
+
+    mockedCreateClient.mockResolvedValue({
+      auth: mockAuth,
+      from: vi.fn((table: string) => {
+        if (table !== 'oj_entries') {
+          throw new Error(`Unexpected table: ${table}`)
+        }
+
+        return {
+          select: vi.fn().mockReturnValue({ eq: prefetchEq }),
+        }
+      }),
+    })
+
+    const formData = new FormData()
+    formData.set('id', ENTRY_UUID)
+
+    const result = await deleteEntry(formData)
+
+    expect(result).toEqual({ error: 'Billed entry is not linked to an invoice' })
+  })
+
   it('returns entry-not-found when mileage entry update affects no rows', async () => {
     const entryFetchSingle = vi.fn().mockResolvedValue({
       data: { id: '550e8400-e29b-41d4-a716-446655440010', status: 'unbilled' },
