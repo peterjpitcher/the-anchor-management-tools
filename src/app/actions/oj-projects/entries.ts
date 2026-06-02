@@ -292,6 +292,37 @@ type RevisableLinkedInvoice = {
   status: string | null
 }
 
+type OjInvoiceRevisionResult = {
+  invoice_id: string
+  invoice_number: string
+  previous_total_amount: number
+  total_amount: number
+  mode: 'updated' | 'replacement'
+  voided_invoice_id?: string
+  voided_invoice_number?: string
+}
+
+function encodeInvoiceSequence(sequence: number): string {
+  return `INV-${(sequence + 5000).toString(36).toUpperCase().padStart(5, '0')}`
+}
+
+async function generateInvoiceNumber(admin: ReturnType<typeof createAdminClient>): Promise<string> {
+  const { data, error } = await admin
+    .rpc('get_and_increment_invoice_series', { p_series_code: 'INV' })
+    .single()
+
+  if (error) {
+    throw new Error(error.message || 'Failed to generate replacement invoice number')
+  }
+
+  const sequence = Number((data as { next_sequence?: number } | null)?.next_sequence)
+  if (!Number.isFinite(sequence)) {
+    throw new Error('Replacement invoice number sequence was invalid')
+  }
+
+  return encodeInvoiceSequence(sequence)
+}
+
 async function getLinkedInvoiceForRevision(input: {
   invoiceId: string | null
   vendorId: string
@@ -355,7 +386,7 @@ async function recalculateLinkedOjInvoice(input: {
   invoiceId: string
   changedEntryId: string
   user?: { id?: string | null; email?: string | null } | null
-}) {
+}): Promise<{ invoiceRevision: OjInvoiceRevisionResult } | { error: string }> {
   const admin = createAdminClient()
   const { data: invoice, error: invoiceError } = await admin
     .from('invoices')
@@ -376,6 +407,11 @@ async function recalculateLinkedOjInvoice(input: {
 
   const blockReason = getOjInvoiceRevisionBlockReason(invoice, paymentCount ?? 0)
   if (blockReason) return { error: blockReason }
+
+  const invoiceStatus = String(invoice.status || '')
+  if (!['draft', 'sent', 'overdue'].includes(invoiceStatus)) {
+    return { error: 'Only draft or sent unpaid invoices can be revised from OJ Projects entries' }
+  }
 
   const [
     { data: entries, error: entriesError },
@@ -437,20 +473,111 @@ async function recalculateLinkedOjInvoice(input: {
   if (recurringError) return { error: recurringError.message }
   if (settingsError) return { error: settingsError.message }
 
+  const revisedAtIso = new Date().toISOString()
+  const linkedEntries = (entries || []) as OjInvoiceRevisionEntry[]
+  const linkedRecurringInstances = (recurringInstances || []) as OjInvoiceRevisionRecurringInstance[]
+  const replacementInvoiceNumber = invoiceStatus === 'draft' ? null : await generateInvoiceNumber(admin)
+  const invoiceForRevision = replacementInvoiceNumber
+    ? { ...invoice, invoice_number: replacementInvoiceNumber }
+    : invoice
+
   let revision
   try {
     revision = buildOjInvoiceRevision({
-      invoice,
+      invoice: invoiceForRevision,
       settings,
-      entries: (entries || []) as OjInvoiceRevisionEntry[],
-      recurringInstances: (recurringInstances || []) as OjInvoiceRevisionRecurringInstance[],
-      revisedAtIso: new Date().toISOString(),
+      entries: linkedEntries,
+      recurringInstances: linkedRecurringInstances,
+      revisedAtIso,
     })
   } catch (error) {
     return { error: error instanceof Error ? error.message : 'Failed to rebuild invoice' }
   }
 
   const previousTotal = Number(invoice.total_amount || 0)
+
+  if (invoiceStatus !== 'draft') {
+    const replacementEntryIds = linkedEntries
+      .filter((entry) => entry.billable !== false)
+      .map((entry) => entry.id)
+    const replacementRecurringIds = linkedRecurringInstances
+      .filter((instance) => instance.recurring_charge?.is_active !== false)
+      .map((instance) => instance.id)
+    const replacementNotes = `Replacement for voided invoice ${invoice.invoice_number}.\n\n${revision.notes}`
+    const replacementInternalNotes = `${revision.internalNotes}\n\n[OJ_PROJECTS_REPLACES ${revisedAtIso}] Replaces invoice ${invoice.invoice_number} (${invoice.id}). Replacement created as draft for review before sending.`
+
+    const { data: replacementResult, error: replacementError } = await (admin as any).rpc('replace_oj_invoice_transaction', {
+      p_old_invoice_id: input.invoiceId,
+      p_replacement_invoice_data: {
+        invoice_number: replacementInvoiceNumber,
+        vendor_id: invoice.vendor_id,
+        invoice_date: invoice.invoice_date,
+        due_date: invoice.due_date,
+        reference: invoice.reference,
+        invoice_discount_percentage: invoice.invoice_discount_percentage || 0,
+        subtotal_amount: revision.totals.subtotalBeforeInvoiceDiscount,
+        discount_amount: revision.totals.invoiceDiscountAmount,
+        vat_amount: revision.totals.vatAmount,
+        total_amount: revision.totals.totalAmount,
+        notes: replacementNotes,
+        internal_notes: replacementInternalNotes,
+      },
+      p_line_items: revision.lineItems,
+      p_entry_ids: replacementEntryIds,
+      p_recurring_instance_ids: replacementRecurringIds,
+      p_void_reason: `OJ Projects entry revised; replaced by ${replacementInvoiceNumber}`,
+      p_changed_entry_id: input.changedEntryId,
+    })
+
+    if (replacementError) return { error: replacementError.message || 'Failed to create replacement invoice' }
+
+    const replacementInvoice = (replacementResult as any)?.replacement_invoice
+    if (!replacementInvoice?.id || !replacementInvoice?.invoice_number) {
+      return { error: 'Replacement invoice was created but the response was invalid' }
+    }
+
+    await logAuditEvent({
+      user_id: input.user?.id || undefined,
+      user_email: input.user?.email || undefined,
+      operation_type: 'update',
+      resource_type: 'invoice',
+      resource_id: input.invoiceId,
+      operation_status: 'success',
+      old_values: { status: invoice.status, total_amount: previousTotal },
+      new_values: {
+        status: 'void',
+        replacement_invoice_id: replacementInvoice.id,
+        replacement_invoice_number: replacementInvoice.invoice_number,
+        total_amount: revision.totals.totalAmount,
+      },
+      additional_info: {
+        action: 'oj_projects_invoice_replacement',
+        invoice_number: invoice.invoice_number,
+        replacement_invoice_number: replacementInvoice.invoice_number,
+        changed_entry_id: input.changedEntryId,
+      },
+    })
+
+    revalidatePath('/invoices')
+    revalidatePath(`/invoices/${input.invoiceId}`)
+    revalidatePath(`/invoices/${replacementInvoice.id}`)
+    revalidatePath('/oj-projects')
+    revalidatePath('/oj-projects/entries')
+    revalidateTag('dashboard')
+
+    return {
+      invoiceRevision: {
+        invoice_id: String(replacementInvoice.id),
+        invoice_number: String(replacementInvoice.invoice_number),
+        previous_total_amount: previousTotal,
+        total_amount: Number(replacementInvoice.total_amount || revision.totals.totalAmount),
+        mode: 'replacement',
+        voided_invoice_id: input.invoiceId,
+        voided_invoice_number: String(invoice.invoice_number),
+      },
+    }
+  }
+
   const { data: updatedInvoice, error: updateError } = await admin
     .from('invoices')
     .update({
@@ -512,6 +639,7 @@ async function recalculateLinkedOjInvoice(input: {
       invoice_number: String(updatedInvoice.invoice_number || invoice.invoice_number),
       previous_total_amount: previousTotal,
       total_amount: Number(updatedInvoice.total_amount || revision.totals.totalAmount),
+      mode: 'updated',
     },
   }
 }
@@ -534,7 +662,7 @@ async function buildUpdateEntryResult(input: {
   if ('error' in revision) {
     return {
       entry: input.entry,
-      error: `Entry updated, but linked invoice ${input.revisableInvoice.invoice_number} could not be recalculated: ${revision.error}`,
+      error: `Entry updated, but linked invoice ${input.revisableInvoice.invoice_number} could not be revised: ${revision.error}`,
     }
   }
 

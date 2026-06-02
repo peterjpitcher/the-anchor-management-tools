@@ -24,6 +24,39 @@ type CreateInvoiceResult = { error: string } | { success: true; invoice: Invoice
 type InvoiceEmailRecipients = { to: string | null; cc: string[] }
 type RemittanceAdviceResult = { sent: boolean; skippedReason?: string; error?: string }
 
+async function markLinkedOjRowsBilled(invoiceId: string) {
+  const admin = createAdminClient()
+  const nowIso = new Date().toISOString()
+
+  const [{ error: entriesError }, { error: recurringError }] = await Promise.all([
+    admin
+      .from('oj_entries')
+      .update({
+        status: 'billed',
+        billed_at: nowIso,
+        updated_at: nowIso,
+      })
+      .eq('invoice_id', invoiceId)
+      .eq('status', 'billing_pending'),
+    admin
+      .from('oj_recurring_charge_instances')
+      .update({
+        status: 'billed',
+        billed_at: nowIso,
+        updated_at: nowIso,
+      })
+      .eq('invoice_id', invoiceId)
+      .eq('status', 'billing_pending'),
+  ])
+
+  if (entriesError) {
+    console.error('[Invoices] Failed to finalize linked OJ entries after invoice send:', entriesError)
+  }
+  if (recurringError) {
+    console.error('[Invoices] Failed to finalize linked OJ recurring charges after invoice send:', recurringError)
+  }
+}
+
 function parseRecipientList(raw: string | null | undefined): string[] {
   if (!raw) return []
   return String(raw)
@@ -520,6 +553,9 @@ export async function updateInvoiceStatus(formData: FormData) {
 
     // Remittance advice is handled by the dedicated payment recording flow,
     // since 'paid' status is blocked from this generic status update path.
+    if (oldStatus === 'draft' && newStatus === 'sent') {
+      await markLinkedOjRowsBilled(invoiceId)
+    }
 
     revalidatePath('/invoices')
     revalidatePath(`/invoices/${invoiceId}`)

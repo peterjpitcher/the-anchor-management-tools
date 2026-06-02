@@ -35,6 +35,43 @@ const SendQuoteEmailSchema = z.object({
   body: z.string().optional()
 })
 
+async function markLinkedOjRowsBilled(
+  admin: ReturnType<typeof createAdminClient>,
+  invoiceId: string,
+  warnings: string[]
+) {
+  const nowIso = new Date().toISOString()
+  const { error: entriesError } = await admin
+    .from('oj_entries')
+    .update({
+      status: 'billed',
+      billed_at: nowIso,
+      updated_at: nowIso,
+    })
+    .eq('invoice_id', invoiceId)
+    .eq('status', 'billing_pending')
+
+  if (entriesError) {
+    console.error('Error finalizing linked OJ entries after invoice send:', entriesError)
+    warnings.push('Email sent but linked OJ entries were not finalized')
+  }
+
+  const { error: recurringError } = await admin
+    .from('oj_recurring_charge_instances')
+    .update({
+      status: 'billed',
+      billed_at: nowIso,
+      updated_at: nowIso,
+    })
+    .eq('invoice_id', invoiceId)
+    .eq('status', 'billing_pending')
+
+  if (recurringError) {
+    console.error('Error finalizing linked OJ recurring charges after invoice send:', recurringError)
+    warnings.push('Email sent but linked OJ recurring charges were not finalized')
+  }
+}
+
 function splitRawRecipients(raw: string): string[] {
   return raw
     .split(/[;,]/)
@@ -273,6 +310,8 @@ export async function sendInvoiceViaEmail(formData: FormData) {
           warnings.push('Email sent but invoice status update failed')
         } else if (!statusUpdate) {
           warnings.push('Email sent but invoice status changed before update finalized')
+        } else {
+          await markLinkedOjRowsBilled(admin, validatedData.invoiceId, warnings)
         }
       }
 
