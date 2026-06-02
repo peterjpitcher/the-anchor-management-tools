@@ -207,7 +207,13 @@ export function EntriesClient({
       const res = await updateEntry(fd)
       if ('error' in res && res.error) throw new Error(res.error)
       const invoiceRevision = 'invoiceRevision' in res ? res.invoiceRevision : undefined
-      toast.success(invoiceRevision ? `Entry updated; ${invoiceRevision.invoice_number} recalculated` : 'Entry updated')
+      toast.success(
+        invoiceRevision
+          ? invoiceRevision.mode === 'replacement'
+            ? `Entry updated; ${invoiceRevision.voided_invoice_number} voided and draft ${invoiceRevision.invoice_number} created`
+            : `Entry updated; ${invoiceRevision.invoice_number} recalculated`
+          : 'Entry updated'
+      )
       setEditOpen(false)
       await reload()
       router.refresh()
@@ -839,7 +845,11 @@ export function EntriesClient({
               Cancel
             </Button>
             <Button type="submit" loading={saving}>
-              {editForm.linked_invoice_number ? 'Save and Recalculate Invoice' : 'Save Changes'}
+              {editForm.linked_invoice_number
+                ? editForm.linked_invoice_status === 'draft'
+                  ? 'Save and Recalculate Draft'
+                  : 'Save and Create Replacement Draft'
+                : 'Save Changes'}
             </Button>
           </div>
         </form>
