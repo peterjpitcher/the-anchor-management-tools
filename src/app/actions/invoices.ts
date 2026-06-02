@@ -57,6 +57,48 @@ async function markLinkedOjRowsBilled(invoiceId: string) {
   }
 }
 
+async function reverseLinkedOjRowsForVoid(invoiceId: string) {
+  const admin = createAdminClient()
+  const nowIso = new Date().toISOString()
+
+  const [{ error: entriesError }, { error: recurringError }] = await Promise.all([
+    admin
+      .from('oj_entries')
+      .update({
+        status: 'unbilled',
+        billing_run_id: null,
+        invoice_id: null,
+        billed_at: null,
+        paid_at: null,
+        updated_at: nowIso,
+      })
+      .eq('invoice_id', invoiceId),
+    admin
+      .from('oj_recurring_charge_instances')
+      .update({
+        status: 'unbilled',
+        billing_run_id: null,
+        invoice_id: null,
+        billed_at: null,
+        paid_at: null,
+        updated_at: nowIso,
+      })
+      .eq('invoice_id', invoiceId),
+  ])
+
+  if (entriesError) {
+    console.error('[Invoices] Failed to reverse linked OJ entries after invoice void:', entriesError)
+    return { error: entriesError.message || 'Failed to reverse linked OJ entries after invoice void' }
+  }
+
+  if (recurringError) {
+    console.error('[Invoices] Failed to reverse linked OJ recurring charges after invoice void:', recurringError)
+    return { error: recurringError.message || 'Failed to reverse linked OJ recurring charges after invoice void' }
+  }
+
+  return { success: true as const }
+}
+
 function parseRecipientList(raw: string | null | undefined): string[] {
   if (!raw) return []
   return String(raw)
@@ -501,14 +543,18 @@ export async function updateInvoiceStatus(formData: FormData) {
       return { error: 'Payment statuses must be set through the payment recording flow' }
     }
 
-    // Prevent voiding invoices that have linked OJ Projects items, unless explicitly overridden.
-    if (newStatus === 'void' && !force) {
+    if (newStatus === 'void') {
       const adminClient = createAdminClient()
 
       const [
+        { count: paymentCount, error: paymentError },
         { count: entryCount, error: entryError },
         { count: recurringCount, error: recurringError },
       ] = await Promise.all([
+        adminClient
+          .from('invoice_payments')
+          .select('id', { count: 'exact', head: true })
+          .eq('invoice_id', invoiceId),
         adminClient
           .from('oj_entries')
           .select('id', { count: 'exact', head: true })
@@ -519,6 +565,14 @@ export async function updateInvoiceStatus(formData: FormData) {
           .eq('invoice_id', invoiceId),
       ])
 
+      if (paymentError) {
+        return { error: paymentError.message || 'Failed to check invoice payments' }
+      }
+
+      if ((paymentCount ?? 0) > 0) {
+        return { error: 'Cannot void an invoice after a payment has been recorded. Issue a credit note instead.' }
+      }
+
       if (entryError) {
         return { error: entryError.message || 'Failed to check linked OJ Projects entries' }
       }
@@ -528,9 +582,9 @@ export async function updateInvoiceStatus(formData: FormData) {
       }
 
       const linkedCount = (entryCount ?? 0) + (recurringCount ?? 0)
-      if (linkedCount > 0) {
+      if (linkedCount > 0 && !force) {
         return {
-          error: 'This invoice has linked OJ Projects items. Voiding it will not automatically revert or unbill those entries/charges.',
+          error: 'This invoice has linked OJ Projects items. Voiding it will revert those entries/charges to unbilled and remove the invoice link.',
           code: 'OJ_LINKED_ITEMS',
         }
       }
@@ -555,6 +609,10 @@ export async function updateInvoiceStatus(formData: FormData) {
     // since 'paid' status is blocked from this generic status update path.
     if (oldStatus === 'draft' && newStatus === 'sent') {
       await markLinkedOjRowsBilled(invoiceId)
+    }
+    if (newStatus === 'void') {
+      const reverseResult = await reverseLinkedOjRowsForVoid(invoiceId)
+      if ('error' in reverseResult) return reverseResult
     }
 
     revalidatePath('/invoices')
@@ -892,34 +950,8 @@ export async function voidInvoice(
       return { error: updateError.message || 'Failed to void invoice' }
     }
 
-    // Reverse linked oj_entries: set status back to 'unbilled', clear billing_run_id and invoice_id
-    const { error: entriesError } = await adminClient
-      .from('oj_entries')
-      .update({
-        status: 'unbilled',
-        billing_run_id: null,
-        invoice_id: null,
-      })
-      .eq('invoice_id', invoiceId)
-
-    if (entriesError) {
-      console.error('[Invoices] Failed to reverse OJ entries on void:', entriesError)
-      // Continue — the invoice is already voided, log the issue
-    }
-
-    // Reverse linked oj_recurring_charge_instances: same treatment
-    const { error: recurringError } = await adminClient
-      .from('oj_recurring_charge_instances')
-      .update({
-        status: 'unbilled',
-        billing_run_id: null,
-        invoice_id: null,
-      })
-      .eq('invoice_id', invoiceId)
-
-    if (recurringError) {
-      console.error('[Invoices] Failed to reverse OJ recurring instances on void:', recurringError)
-    }
+    const reverseResult = await reverseLinkedOjRowsForVoid(invoiceId)
+    if ('error' in reverseResult) return reverseResult
 
     await logAuditEvent({
       user_id: user.id,

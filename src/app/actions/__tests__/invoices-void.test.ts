@@ -212,6 +212,9 @@ describe('voidInvoice', () => {
       status: 'unbilled',
       billing_run_id: null,
       invoice_id: null,
+      billed_at: null,
+      paid_at: null,
+      updated_at: expect.any(String),
     })
 
     // oj_recurring_charge_instances should also be reversed
@@ -221,6 +224,9 @@ describe('voidInvoice', () => {
       status: 'unbilled',
       billing_run_id: null,
       invoice_id: null,
+      billed_at: null,
+      paid_at: null,
+      updated_at: expect.any(String),
     })
   })
 
