@@ -115,7 +115,7 @@ export default function InvoiceDetailClient({
       let result: any = await updateInvoiceStatus(formData)
 
       if (newStatus === 'void' && result?.error && result?.code === 'OJ_LINKED_ITEMS') {
-        const force = window.confirm(`${result.error}\n\nForce void anyway? This will not unbill linked OJ Projects items.`)
+        const force = window.confirm(`${result.error}\n\nVoid and unbill linked OJ Projects items?`)
         if (!force) {
           throw new Error(result.error)
         }
