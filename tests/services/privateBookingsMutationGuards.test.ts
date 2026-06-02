@@ -394,6 +394,93 @@ describe('PrivateBookingService mutation row-effect guards', () => {
     ).rejects.toThrow('Booking not found')
   })
 
+  it('updateBooking does not write date_tbd when the column is unavailable', async () => {
+    const missingDateTbdError = {
+      code: 'PGRST204',
+      message: "Could not find the 'date_tbd' column of 'private_bookings' in the schema cache",
+    }
+    const legacyBooking = {
+      status: 'draft',
+      contact_phone: null,
+      customer_first_name: 'Alex',
+      customer_last_name: 'Smith',
+      customer_name: 'Alex Smith',
+      event_date: '2026-03-10',
+      start_time: '18:00',
+      setup_date: null,
+      setup_time: null,
+      end_time: null,
+      end_time_next_day: false,
+      customer_id: null,
+      internal_notes: null,
+      balance_due_date: null,
+      calendar_event_id: null,
+      hold_expiry: null,
+      deposit_paid_date: null,
+    }
+
+    const modernSingle = vi.fn().mockResolvedValue({
+      data: null,
+      error: missingDateTbdError,
+    })
+    const legacySingle = vi.fn().mockResolvedValue({
+      data: legacyBooking,
+      error: null,
+    })
+    const selectCalls: string[] = []
+    const fetchSelect = vi.fn((columns: string) => {
+      selectCalls.push(columns)
+      return {
+        eq: vi.fn().mockReturnValue({
+          single: columns.includes('date_tbd') ? modernSingle : legacySingle,
+        }),
+      }
+    })
+
+    let updatePayload: Record<string, unknown> | null = null
+    const updateMaybeSingle = vi.fn().mockResolvedValue({
+      data: {
+        ...legacyBooking,
+        customer_first_name: 'Alex',
+        customer_last_name: 'Jones',
+        customer_name: 'Alex Jones',
+      },
+      error: null,
+    })
+    const updateSelect = vi.fn().mockReturnValue({ maybeSingle: updateMaybeSingle })
+    const updateEq = vi.fn().mockReturnValue({ select: updateSelect })
+    const update = vi.fn((payload: Record<string, unknown>) => {
+      updatePayload = payload
+      return { eq: updateEq }
+    })
+
+    mockedCreateClient.mockResolvedValue({
+      from: vi.fn((table: string) => {
+        if (table !== 'private_bookings') {
+          throw new Error(`Unexpected table: ${table}`)
+        }
+
+        return {
+          select: fetchSelect,
+          update,
+        }
+      }),
+    })
+
+    const result = await PrivateBookingService.updateBooking('booking-1', {
+      customer_first_name: 'Alex',
+      customer_last_name: 'Jones',
+      date_tbd: false,
+    })
+
+    expect(result.customer_name).toBe('Alex Jones')
+    expect(selectCalls).toHaveLength(2)
+    expect(selectCalls[0]).toContain('date_tbd')
+    expect(selectCalls[1]).not.toContain('date_tbd')
+    expect(updatePayload).not.toHaveProperty('date_tbd')
+    expect(update).toHaveBeenCalledTimes(1)
+  })
+
   it('recordDeposit is idempotent when booking update affects no rows', async () => {
     const fetchSingle = vi.fn().mockResolvedValue({
       data: {
