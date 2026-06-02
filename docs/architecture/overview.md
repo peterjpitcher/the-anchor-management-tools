@@ -1,8 +1,8 @@
 ---
 generated: true
-last_updated: 2026-05-27T00:00:00Z
+last_updated: 2026-05-31T00:00:00Z
 source: session-setup
-project: OJ-AnchorManagementTools
+project: the-anchor-management-tools
 ---
 
 # Architecture Overview
@@ -19,10 +19,10 @@ project: OJ-AnchorManagementTools
 - **Hosting:** Vercel (serverless functions + cron)
 - **Node:** 20 LTS (pinned via `.nvmrc`, enforced by `package.json` engines)
 
-## Codebase size (2026-05-27 scan)
+## Codebase size (2026-05-31 scan)
 
 - 146 pages (`page.tsx`)
-- 147 API route handlers (`route.ts`)
+- 148 API route handlers (`route.ts`)
 - 95 files containing `'use server'` directives
 - 39 service modules under `src/services/`
 - 174 distinct table names referenced via `.from('table')`

@@ -1,8 +1,8 @@
 ---
 generated: true
-last_updated: 2026-05-27T00:00:00Z
+last_updated: 2026-05-31T00:00:00Z
 source: session-setup
-project: OJ-AnchorManagementTools
+project: the-anchor-management-tools
 ---
 
 # Architecture Docs
@@ -14,20 +14,20 @@ project: OJ-AnchorManagementTools
 
 | Doc | Status | Description |
 |-----|--------|-------------|
-| [[overview]] | Updated 2026-05-27 | Stack, route groups, auth model, integrations |
-| [[routes]] | Updated 2026-05-27 | Full route table: pages, API routes, cron, webhooks |
-| [[server-actions]] | Updated 2026-05-27 | Server actions grouped by domain |
-| [[data-model]] | Updated 2026-05-27 | Known tables from codebase scan; full schema via DB agent |
-| [[relationships]] | Updated 2026-05-27 | Cross-reference: tables → actions → routes → integrations |
+| [[overview]] | Updated 2026-05-31 | Stack, route groups, auth model, integrations |
+| [[routes]] | Updated 2026-05-31 | Full route table: pages, API routes, cron, webhooks |
+| [[server-actions]] | Updated 2026-05-31 | Server actions grouped by domain |
+| [[data-model]] | Updated 2026-05-31 | Known tables from codebase scan; full schema via DB agent |
+| [[relationships]] | Updated 2026-05-31 | Cross-reference: tables → actions → routes → integrations |
 
-## Quick Stats (2026-05-27 scan)
+## Quick Stats (2026-05-31 scan)
 
 - **Pages (`page.tsx`):** 146
-- **API/route handlers (`route.ts`):** 147
+- **API/route handlers (`route.ts`):** 148
 - **Server action files (`'use server'`):** 95
 - **Service modules (`src/services/`):** 39
 - **Distinct tables referenced via `.from('...')`:** 174
-- **Vercel cron jobs:** 30 (see [[routes#Cron jobs]])
+- **Vercel cron jobs:** 32 (see [[routes#Cron jobs]])
 - **Webhook domains:** Twilio, Stripe, PayPal (root + parking + private-bookings + table-bookings)
 - **External integrations:** Twilio, Microsoft Graph (Outlook), Stripe, PayPal, OpenAI, Google Calendar, googleapis, Cloudflare Turnstile, GitHub (bug reporter)
 

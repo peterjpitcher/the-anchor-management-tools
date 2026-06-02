@@ -155,6 +155,73 @@ function isMarketingMetadataMessage(message: SmsMessageRow): boolean {
   );
 }
 
+const UNLINKED_CONTEXT_MATCH_WINDOW_MS = 36 * 60 * 60 * 1000;
+const UNLINKED_CONTEXT_EARLY_TOLERANCE_MS = 5 * 60 * 1000;
+
+function timestampMs(value: string | null | undefined): number | null {
+  if (!value) return null;
+  const parsed = new Date(value).getTime();
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function normalizePhoneForComparison(value: string | null | undefined): string | null {
+  if (!isNonEmptyString(value)) return null;
+  return value.replace(/[^\d+]/g, '');
+}
+
+function phoneDigits(value: string | null | undefined): string | null {
+  if (!isNonEmptyString(value)) return null;
+  const digits = value.replace(/\D/g, '');
+  return digits.length > 0 ? digits : null;
+}
+
+function phoneNumbersMatch(left: string | null | undefined, right: string | null | undefined): boolean {
+  const normalizedLeft = normalizePhoneForComparison(left);
+  const normalizedRight = normalizePhoneForComparison(right);
+  if (!normalizedLeft || !normalizedRight) return false;
+  if (normalizedLeft === normalizedRight) return true;
+
+  const leftDigits = phoneDigits(left);
+  const rightDigits = phoneDigits(right);
+  if (!leftDigits || !rightDigits || leftDigits.length < 10 || rightDigits.length < 10) return false;
+
+  return leftDigits.slice(-10) === rightDigits.slice(-10);
+}
+
+function findMatchingUnlinkedMessage(
+  context: PromoContextRow,
+  candidates: SmsMessageRow[],
+  usedMessageIds: Set<string>
+): SmsMessageRow | undefined {
+  const contextAt = timestampMs(context.created_at);
+  if (!contextAt) return undefined;
+
+  let bestMatch: SmsMessageRow | undefined;
+  let bestDelta = Number.POSITIVE_INFINITY;
+
+  for (const message of candidates) {
+    if (usedMessageIds.has(message.id)) continue;
+    if (message.customer_id !== context.customer_id) continue;
+    if (getMessageTemplateKey(message) !== context.template_key) continue;
+    if (!phoneNumbersMatch(message.to_number, context.phone_number)) continue;
+
+    const messageAt = timestampMs(message.sent_at || message.created_at);
+    if (!messageAt) continue;
+
+    const delta = messageAt - contextAt;
+    if (delta < -UNLINKED_CONTEXT_EARLY_TOLERANCE_MS || delta > UNLINKED_CONTEXT_MATCH_WINDOW_MS) {
+      continue;
+    }
+
+    if (delta < bestDelta) {
+      bestDelta = delta;
+      bestMatch = message;
+    }
+  }
+
+  return bestMatch;
+}
+
 function toMarketingMessage(params: {
   context?: PromoContextRow;
   message?: SmsMessageRow;
@@ -229,6 +296,7 @@ export class EventMarketingService {
     const contextRows = (contexts || []) as PromoContextRow[];
     const messageIds = Array.from(new Set(contextRows.map(row => row.message_id).filter(isNonEmptyString)));
     const messagesById = new Map<string, SmsMessageRow>();
+    const unlinkedMessagesByContextId = new Map<string, SmsMessageRow>();
 
     if (messageIds.length > 0) {
       const { data: messages, error: messagesError } = await supabase
@@ -241,6 +309,37 @@ export class EventMarketingService {
       } else {
         for (const message of (messages || []) as SmsMessageRow[]) {
           messagesById.set(message.id, message);
+        }
+      }
+    }
+
+    const unlinkedContexts = contextRows.filter(context => !isNonEmptyString(context.message_id));
+    if (unlinkedContexts.length > 0) {
+      const customerIdsForUnlinked = Array.from(new Set(unlinkedContexts.map(row => row.customer_id).filter(isNonEmptyString)));
+      const templateKeysForUnlinked = Array.from(new Set(unlinkedContexts.map(row => row.template_key).filter(isNonEmptyString)));
+
+      if (customerIdsForUnlinked.length > 0 && templateKeysForUnlinked.length > 0) {
+        const { data: candidateMessages, error: candidateMessagesError } = await supabase
+          .from('messages')
+          .select('id, customer_id, body, status, twilio_status, sent_at, created_at, to_number, template_key, message_sid')
+          .eq('direction', 'outbound')
+          .in('customer_id', customerIdsForUnlinked)
+          .in('template_key', templateKeysForUnlinked)
+          .order('sent_at', { ascending: false })
+          .limit(Math.min(200, safeLimit * 4));
+
+        if (candidateMessagesError) {
+          console.warn('Failed to load fallback sent marketing message bodies', candidateMessagesError);
+        } else {
+          const usedRecoveredMessageIds = new Set<string>();
+          const candidates = (candidateMessages || []) as SmsMessageRow[];
+          for (const context of unlinkedContexts) {
+            const message = findMatchingUnlinkedMessage(context, candidates, usedRecoveredMessageIds);
+            if (message?.id) {
+              usedRecoveredMessageIds.add(message.id);
+              unlinkedMessagesByContextId.set(context.id, message);
+            }
+          }
         }
       }
     }
@@ -272,7 +371,7 @@ export class EventMarketingService {
     const seenMessageIds = new Set<string>();
 
     for (const context of contextRows) {
-      const message = context.message_id ? messagesById.get(context.message_id) : undefined;
+      const message = context.message_id ? messagesById.get(context.message_id) : unlinkedMessagesByContextId.get(context.id);
       if (message?.id) {
         seenMessageIds.add(message.id);
       }

@@ -297,4 +297,116 @@ describe('EventMarketingService.getSentMessages', () => {
       recipientPhone: '+447700900002',
     })
   })
+
+  it('recovers message bodies for deferred promo context rows without a message id', async () => {
+    const promoRows = [
+      {
+        id: 'promo-1',
+        customer_id: 'customer-1',
+        phone_number: '+447700900001',
+        event_id: 'event-1',
+        template_key: 'event_reminder_promo_3d',
+        message_id: null,
+        created_at: '2026-05-30T01:00:00.000Z',
+      },
+    ]
+    const recoveredMessageRows = [
+      {
+        id: 'message-1',
+        customer_id: 'customer-1',
+        body: 'The Anchor: Quiz Night is this Wednesday.',
+        status: 'sent',
+        twilio_status: 'queued',
+        sent_at: '2026-05-30T08:00:00.000Z',
+        created_at: '2026-05-30T08:00:00.000Z',
+        to_number: '+447700900001',
+        template_key: 'event_reminder_promo_3d',
+        message_sid: 'SM789',
+      },
+    ]
+    const customerRows = [
+      {
+        id: 'customer-1',
+        first_name: 'Sarah',
+        last_name: 'Jones',
+        mobile_number: '07700 900001',
+        mobile_e164: '+447700900001',
+      },
+    ]
+
+    const candidateQuery: any = {
+      eq: vi.fn(),
+      in: vi.fn(),
+      order: vi.fn(),
+    }
+    candidateQuery.eq.mockReturnValue(candidateQuery)
+    candidateQuery.in.mockReturnValue(candidateQuery)
+    candidateQuery.order.mockReturnValue({
+      limit: vi.fn().mockResolvedValue({ data: recoveredMessageRows, error: null }),
+    })
+
+    const client = {
+      from: vi.fn((table: string) => {
+        if (table === 'sms_promo_context') {
+          return {
+            select: vi.fn().mockReturnValue({
+              eq: vi.fn().mockReturnValue({
+                order: vi.fn().mockReturnValue({
+                  limit: vi.fn().mockResolvedValue({ data: promoRows, error: null }),
+                }),
+              }),
+            }),
+          }
+        }
+
+        if (table === 'messages') {
+          return {
+            select: vi.fn((columns: string) => {
+              if (columns.includes('metadata')) {
+                return {
+                  eq: vi.fn().mockReturnValue({
+                    contains: vi.fn().mockReturnValue({
+                      order: vi.fn().mockReturnValue({
+                        limit: vi.fn().mockResolvedValue({ data: [], error: null }),
+                      }),
+                    }),
+                  }),
+                }
+              }
+
+              return candidateQuery
+            }),
+          }
+        }
+
+        if (table === 'customers') {
+          return {
+            select: vi.fn().mockReturnValue({
+              in: vi.fn().mockResolvedValue({ data: customerRows, error: null }),
+            }),
+          }
+        }
+
+        throw new Error(`Unexpected table: ${table}`)
+      }),
+    }
+
+    mockedCreateAdminClient.mockReturnValue(client)
+
+    const result = await EventMarketingService.getSentMessages('event-1')
+
+    expect(result).toHaveLength(1)
+    expect(result[0]).toMatchObject({
+      id: 'promo-1',
+      messageId: 'message-1',
+      customerName: 'Sarah Jones',
+      templateKey: 'event_reminder_promo_3d',
+      body: 'The Anchor: Quiz Night is this Wednesday.',
+      status: 'queued',
+      sentAt: '2026-05-30T08:00:00.000Z',
+    })
+    expect(candidateQuery.eq).toHaveBeenCalledWith('direction', 'outbound')
+    expect(candidateQuery.in).toHaveBeenCalledWith('customer_id', ['customer-1'])
+    expect(candidateQuery.in).toHaveBeenCalledWith('template_key', ['event_reminder_promo_3d'])
+  })
 })
