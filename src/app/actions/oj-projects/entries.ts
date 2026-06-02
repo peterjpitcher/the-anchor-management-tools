@@ -1,12 +1,20 @@
 'use server'
 
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { checkUserPermission } from '@/app/actions/rbac'
 import { logAuditEvent } from '@/app/actions/audit'
 import { recalculateTaxYearMileage } from '@/lib/mileage/recalculateTaxYear'
 import { getTaxYearBounds } from '@/lib/mileage/hmrcRates'
 import { generateProjectCode } from '@/lib/oj-projects/project-codes'
 import { getEntryDatePeriod } from '@/lib/oj-projects/retainers'
+import {
+  buildOjInvoiceRevision,
+  getOjInvoiceRevisionBlockReason,
+  type OjInvoiceRevisionEntry,
+  type OjInvoiceRevisionRecurringInstance,
+} from '@/lib/oj-projects/invoice-revision'
+import { revalidatePath, revalidateTag } from 'next/cache'
 import { z } from 'zod'
 
 function hasAtMostOneDecimalPlace(value: number): boolean {
@@ -278,6 +286,253 @@ async function getWorkTypeName(
   return data?.name ? String(data.name) : null
 }
 
+type RevisableLinkedInvoice = {
+  id: string
+  invoice_number: string
+  status: string | null
+  paid_amount: number | null
+}
+
+async function getLinkedInvoiceForRevision(input: {
+  invoiceId: string | null
+  vendorId: string
+}) {
+  if (!input.invoiceId) {
+    return { error: 'Billed entry is not linked to an invoice' }
+  }
+
+  const hasInvoicePermission = await checkUserPermission('invoices', 'edit')
+  if (!hasInvoicePermission) {
+    return { error: 'You do not have permission to revise linked invoices' }
+  }
+
+  const admin = createAdminClient()
+  const { data: invoice, error: invoiceError } = await admin
+    .from('invoices')
+    .select('id, invoice_number, vendor_id, status, paid_amount')
+    .eq('id', input.invoiceId)
+    .is('deleted_at', null)
+    .maybeSingle()
+
+  if (invoiceError) return { error: invoiceError.message }
+  if (!invoice) return { error: 'Linked invoice not found' }
+  if (invoice.vendor_id !== input.vendorId) {
+    return { error: 'Linked invoice does not belong to the entry client' }
+  }
+
+  const { count: paymentCount, error: paymentError } = await admin
+    .from('invoice_payments')
+    .select('id', { count: 'exact', head: true })
+    .eq('invoice_id', input.invoiceId)
+
+  if (paymentError) return { error: paymentError.message }
+
+  const blockReason = getOjInvoiceRevisionBlockReason(invoice, paymentCount ?? 0)
+  if (blockReason) return { error: blockReason }
+
+  return { invoice: invoice as RevisableLinkedInvoice }
+}
+
+function serializeInvoiceLineItems(invoiceId: string, lineItems: Array<{
+  catalog_item_id?: string | null
+  description: string
+  quantity: number
+  unit_price: number
+  discount_percentage: number
+  vat_rate: number
+}>) {
+  return lineItems.map((item) => ({
+    invoice_id: invoiceId,
+    catalog_item_id: item.catalog_item_id || null,
+    description: item.description,
+    quantity: item.quantity,
+    unit_price: item.unit_price,
+    discount_percentage: item.discount_percentage,
+    vat_rate: item.vat_rate,
+  }))
+}
+
+async function recalculateLinkedOjInvoice(input: {
+  invoiceId: string
+  changedEntryId: string
+  user?: { id?: string | null; email?: string | null } | null
+}) {
+  const admin = createAdminClient()
+  const { data: invoice, error: invoiceError } = await admin
+    .from('invoices')
+    .select('id, invoice_number, vendor_id, invoice_date, due_date, reference, status, paid_amount, total_amount, notes, internal_notes, invoice_discount_percentage')
+    .eq('id', input.invoiceId)
+    .is('deleted_at', null)
+    .maybeSingle()
+
+  if (invoiceError) return { error: invoiceError.message }
+  if (!invoice) return { error: 'Linked invoice not found' }
+
+  const { count: paymentCount, error: paymentError } = await admin
+    .from('invoice_payments')
+    .select('id', { count: 'exact', head: true })
+    .eq('invoice_id', input.invoiceId)
+
+  if (paymentError) return { error: paymentError.message }
+
+  const blockReason = getOjInvoiceRevisionBlockReason(invoice, paymentCount ?? 0)
+  if (blockReason) return { error: blockReason }
+
+  const [
+    { data: entries, error: entriesError },
+    { data: recurringInstances, error: recurringError },
+    { data: settings, error: settingsError },
+  ] = await Promise.all([
+    admin
+      .from('oj_entries')
+      .select(`
+        id,
+        entry_type,
+        entry_date,
+        project_id,
+        duration_minutes_rounded,
+        miles,
+        hourly_rate_ex_vat_snapshot,
+        vat_rate_snapshot,
+        mileage_rate_snapshot,
+        amount_ex_vat_snapshot,
+        billable,
+        description,
+        work_type_name_snapshot,
+        project:oj_projects(
+          project_code,
+          project_name
+        ),
+        work_type:oj_work_types(
+          name
+        )
+      `)
+      .eq('invoice_id', input.invoiceId)
+      .order('entry_date', { ascending: true })
+      .order('created_at', { ascending: true }),
+    admin
+      .from('oj_recurring_charge_instances')
+      .select('id, period_yyyymm, description_snapshot, amount_ex_vat_snapshot, vat_rate_snapshot, sort_order_snapshot')
+      .eq('invoice_id', input.invoiceId)
+      .order('period_end', { ascending: true })
+      .order('sort_order_snapshot', { ascending: true })
+      .order('created_at', { ascending: true }),
+    admin
+      .from('oj_vendor_billing_settings')
+      .select('hourly_rate_ex_vat, mileage_rate, vat_rate, statement_mode')
+      .eq('vendor_id', invoice.vendor_id)
+      .maybeSingle(),
+  ])
+
+  if (entriesError) return { error: entriesError.message }
+  if (recurringError) return { error: recurringError.message }
+  if (settingsError) return { error: settingsError.message }
+
+  let revision
+  try {
+    revision = buildOjInvoiceRevision({
+      invoice,
+      settings,
+      entries: (entries || []) as OjInvoiceRevisionEntry[],
+      recurringInstances: (recurringInstances || []) as OjInvoiceRevisionRecurringInstance[],
+      revisedAtIso: new Date().toISOString(),
+    })
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : 'Failed to rebuild invoice' }
+  }
+
+  const previousTotal = Number(invoice.total_amount || 0)
+  const { data: updatedInvoice, error: updateError } = await admin
+    .from('invoices')
+    .update({
+      subtotal_amount: revision.totals.subtotalBeforeInvoiceDiscount,
+      discount_amount: revision.totals.invoiceDiscountAmount,
+      vat_amount: revision.totals.vatAmount,
+      total_amount: revision.totals.totalAmount,
+      notes: revision.notes,
+      internal_notes: revision.internalNotes,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', input.invoiceId)
+    .or('paid_amount.eq.0,paid_amount.is.null')
+    .not('status', 'in', '(paid,partially_paid,void,written_off)')
+    .is('deleted_at', null)
+    .select('id, invoice_number, total_amount')
+    .maybeSingle()
+
+  if (updateError) return { error: updateError.message }
+  if (!updatedInvoice) return { error: 'Invoice could not be revised because it is no longer unpaid' }
+
+  const { error: deleteLineItemsError } = await admin
+    .from('invoice_line_items')
+    .delete()
+    .eq('invoice_id', input.invoiceId)
+
+  if (deleteLineItemsError) return { error: deleteLineItemsError.message }
+
+  const { error: insertLineItemsError } = await admin
+    .from('invoice_line_items')
+    .insert(serializeInvoiceLineItems(input.invoiceId, revision.lineItems))
+
+  if (insertLineItemsError) return { error: insertLineItemsError.message }
+
+  await logAuditEvent({
+    user_id: input.user?.id || undefined,
+    user_email: input.user?.email || undefined,
+    operation_type: 'update',
+    resource_type: 'invoice',
+    resource_id: input.invoiceId,
+    operation_status: 'success',
+    old_values: { total_amount: previousTotal },
+    new_values: { total_amount: revision.totals.totalAmount },
+    additional_info: {
+      action: 'oj_projects_invoice_revision',
+      invoice_number: invoice.invoice_number,
+      changed_entry_id: input.changedEntryId,
+    },
+  })
+
+  revalidatePath('/invoices')
+  revalidatePath(`/invoices/${input.invoiceId}`)
+  revalidatePath('/oj-projects')
+  revalidatePath('/oj-projects/entries')
+  revalidateTag('dashboard')
+
+  return {
+    invoiceRevision: {
+      invoice_id: input.invoiceId,
+      invoice_number: String(updatedInvoice.invoice_number || invoice.invoice_number),
+      previous_total_amount: previousTotal,
+      total_amount: Number(updatedInvoice.total_amount || revision.totals.totalAmount),
+    },
+  }
+}
+
+async function buildUpdateEntryResult(input: {
+  entry: any
+  revisableInvoice: RevisableLinkedInvoice | null
+  user?: { id?: string | null; email?: string | null } | null
+}) {
+  if (!input.revisableInvoice) {
+    return { entry: input.entry, success: true as const }
+  }
+
+  const revision = await recalculateLinkedOjInvoice({
+    invoiceId: input.revisableInvoice.id,
+    changedEntryId: input.entry.id,
+    user: input.user,
+  })
+
+  if ('error' in revision) {
+    return {
+      entry: input.entry,
+      error: `Entry updated, but linked invoice ${input.revisableInvoice.invoice_number} could not be recalculated: ${revision.error}`,
+    }
+  }
+
+  return { entry: input.entry, success: true as const, invoiceRevision: revision.invoiceRevision }
+}
+
 export async function getEntries(options?: {
   vendorId?: string
   projectId?: string
@@ -305,6 +560,13 @@ export async function getEntries(options?: {
       vendor:invoice_vendors(
         id,
         name
+      ),
+      invoice:invoices(
+        id,
+        invoice_number,
+        status,
+        paid_amount,
+        total_amount
       ),
       work_type:oj_work_types(
         id,
@@ -573,12 +835,24 @@ export async function updateEntry(formData: FormData) {
 
   const { data: existing, error: fetchError } = await supabase
     .from('oj_entries')
-    .select('id, status, start_at, end_at, entry_type, entry_date')
+    .select('id, status, start_at, end_at, entry_type, entry_date, invoice_id, vendor_id')
     .eq('id', parsed.data.id)
     .single()
 
   if (fetchError || !existing) return { error: fetchError?.message || 'Entry not found' }
-  if (existing.status !== 'unbilled') return { error: 'Only unbilled entries can be edited' }
+  let revisableInvoice: RevisableLinkedInvoice | null = null
+  if (existing.status !== 'unbilled') {
+    if (!['billed', 'billing_pending'].includes(String(existing.status))) {
+      return { error: 'Only unbilled or unpaid invoiced entries can be edited' }
+    }
+
+    const invoiceCheck = await getLinkedInvoiceForRevision({
+      invoiceId: existing.invoice_id,
+      vendorId: existing.vendor_id,
+    })
+    if ('error' in invoiceCheck) return { error: invoiceCheck.error }
+    revisableInvoice = invoiceCheck.invoice
+  }
 
   const projectResolution = await resolveProjectForEntry(supabase, {
     projectId: parsed.data.project_id || null,
@@ -653,7 +927,7 @@ export async function updateEntry(formData: FormData) {
       await recalculateTaxYearMileage(existing.entry_date)
     }
 
-    return { entry: data, success: true as const }
+    return buildUpdateEntryResult({ entry: data, revisableInvoice, user })
   }
 
   // one_off
@@ -708,7 +982,7 @@ export async function updateEntry(formData: FormData) {
       await recalculateTaxYearMileage(existing.entry_date)
     }
 
-    return { entry: data, success: true as const }
+    return buildUpdateEntryResult({ entry: data, revisableInvoice, user })
   }
 
   // mileage
@@ -768,7 +1042,7 @@ export async function updateEntry(formData: FormData) {
     }
   }
 
-  return { entry: data, success: true as const }
+  return buildUpdateEntryResult({ entry: data, revisableInvoice, user })
 }
 
 export async function deleteEntry(formData: FormData) {

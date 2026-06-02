@@ -2,6 +2,7 @@
 
 import { useMemo, useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import {
   Card,
   Table,
@@ -70,6 +71,9 @@ export function EntriesClient({
 
   const [entries, setEntries] = useState(initialEntries)
   const [search, setSearch] = useState('')
+  const [clientFilter, setClientFilter] = useState('all')
+  const [projectFilter, setProjectFilter] = useState('all')
+  const [invoiceFilter, setInvoiceFilter] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
   const [typeFilter, setTypeFilter] = useState('all')
 
@@ -105,6 +109,9 @@ export function EntriesClient({
     description: '',
     internal_notes: '',
     billable: true,
+    linked_invoice_id: '',
+    linked_invoice_number: '',
+    linked_invoice_status: '',
   })
 
   // Delete confirm state
@@ -112,6 +119,20 @@ export function EntriesClient({
 
   const filtered = useMemo(() => {
     let list = entries
+    if (clientFilter !== 'all') {
+      list = list.filter((e) => e.vendor_id === clientFilter)
+    }
+    if (projectFilter !== 'all') {
+      list = list.filter((e) => e.project_id === projectFilter)
+    }
+    if (invoiceFilter.trim()) {
+      const q = invoiceFilter.trim().toLowerCase()
+      list = list.filter(
+        (e) =>
+          e.invoice?.invoice_number?.toLowerCase().includes(q) ||
+          e.invoice_id?.toLowerCase().includes(q),
+      )
+    }
     if (statusFilter !== 'all') {
       list = list.filter((e) => e.status === statusFilter)
     }
@@ -125,11 +146,12 @@ export function EntriesClient({
           e.project?.project_name?.toLowerCase().includes(q) ||
           e.project?.project_code?.toLowerCase().includes(q) ||
           e.vendor?.name?.toLowerCase().includes(q) ||
+          e.invoice?.invoice_number?.toLowerCase().includes(q) ||
           e.description?.toLowerCase().includes(q),
       )
     }
     return list
-  }, [entries, search, statusFilter, typeFilter])
+  }, [clientFilter, entries, invoiceFilter, projectFilter, search, statusFilter, typeFilter])
 
   const reload = useCallback(async () => {
     const res = await getEntries({ limit: 200 })
@@ -137,8 +159,8 @@ export function EntriesClient({
   }, [])
 
   function openEdit(entry: any): void {
-    if (entry.status !== 'unbilled') {
-      toast.error('Only unbilled entries can be edited')
+    if (!isEntryEditable(entry)) {
+      toast.error('Only unbilled or unpaid invoiced entries can be edited')
       return
     }
     setEditForm({
@@ -154,6 +176,9 @@ export function EntriesClient({
       description: entry.description || '',
       internal_notes: entry.internal_notes || '',
       billable: entry.billable ?? true,
+      linked_invoice_id: entry.invoice?.id || '',
+      linked_invoice_number: entry.invoice?.invoice_number || '',
+      linked_invoice_status: entry.invoice?.status || '',
     })
     setEditOpen(true)
   }
@@ -180,8 +205,9 @@ export function EntriesClient({
         fd.append('amount_ex_vat', editForm.amount_ex_vat)
       }
       const res = await updateEntry(fd)
-      if (res.error) throw new Error(res.error)
-      toast.success('Entry updated')
+      if ('error' in res && res.error) throw new Error(res.error)
+      const invoiceRevision = 'invoiceRevision' in res ? res.invoiceRevision : undefined
+      toast.success(invoiceRevision ? `Entry updated; ${invoiceRevision.invoice_number} recalculated` : 'Entry updated')
       setEditOpen(false)
       await reload()
       router.refresh()
@@ -218,6 +244,23 @@ export function EntriesClient({
     })
     return Array.from(map, ([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name))
   }, [clients, entries, projects])
+
+  const filterProjectOptions = useMemo(() => {
+    const projectMap = new Map<string, any>()
+    projects.forEach((project: any) => projectMap.set(project.id, project))
+    entries.forEach((entry: any) => {
+      if (entry.project_id && entry.project && !projectMap.has(entry.project_id)) {
+        projectMap.set(entry.project_id, {
+          ...entry.project,
+          id: entry.project_id,
+          vendor_id: entry.vendor_id,
+        })
+      }
+    })
+    return Array.from(projectMap.values())
+      .filter((project: any) => clientFilter === 'all' || project.vendor_id === clientFilter)
+      .sort((a: any, b: any) => String(a.project_name || '').localeCompare(String(b.project_name || '')))
+  }, [clientFilter, entries, projects])
 
   const addableProjects = useMemo(
     () => projects.filter((p: any) => p.status !== 'completed' && p.status !== 'archived'),
@@ -314,14 +357,25 @@ export function EntriesClient({
     switch (status) {
       case 'paid': return 'success'
       case 'billed': return 'info'
+      case 'billing_pending': return 'neutral'
       case 'unbilled': return 'warning'
       default: return 'neutral'
     }
   }
 
+  function isEntryEditable(entry: any): boolean {
+    if (entry.status === 'unbilled') return true
+    if (!['billed', 'billing_pending'].includes(String(entry.status))) return false
+    if (!entry.invoice_id || !entry.invoice) return false
+    const invoiceStatus = String(entry.invoice.status || '')
+    if (['paid', 'partially_paid', 'void', 'written_off'].includes(invoiceStatus)) return false
+    return Number(entry.invoice.paid_amount || 0) <= 0
+  }
+
   const statusOptions = [
     { label: 'All Statuses', value: 'all' },
     { label: 'Unbilled', value: 'unbilled' },
+    { label: 'Billing Pending', value: 'billing_pending' },
     { label: 'Billed', value: 'billed' },
     { label: 'Paid', value: 'paid' },
   ]
@@ -345,8 +399,38 @@ export function EntriesClient({
           <SearchInput
             value={search}
             onChange={setSearch}
-            placeholder="Search entries..."
-            className="flex-1 sm:max-w-xs"
+            placeholder="Search descriptions..."
+            className="flex-1 min-w-[220px] sm:max-w-xs"
+          />
+          <Select
+            value={clientFilter}
+            onChange={(e) => {
+              setClientFilter(e.target.value)
+              setProjectFilter('all')
+            }}
+            options={[
+              { label: 'All clients', value: 'all' },
+              ...vendors.map((v) => ({ label: v.name, value: v.id })),
+            ]}
+            className="w-44"
+          />
+          <Select
+            value={projectFilter}
+            onChange={(e) => setProjectFilter(e.target.value)}
+            options={[
+              { label: 'All projects', value: 'all' },
+              ...filterProjectOptions.map((p: any) => ({
+                label: p.project_code ? `${p.project_code} - ${p.project_name}` : p.project_name || 'Unknown project',
+                value: p.id,
+              })),
+            ]}
+            className="w-52"
+          />
+          <Input
+            value={invoiceFilter}
+            onChange={(e) => setInvoiceFilter(e.target.value)}
+            placeholder="Invoice no."
+            className="w-36"
           />
           <Select
             value={statusFilter}
@@ -383,6 +467,7 @@ export function EntriesClient({
                 <TableHead>Date</TableHead>
                 <TableHead>Client</TableHead>
                 <TableHead>Project</TableHead>
+                <TableHead>Description</TableHead>
                 <TableHead>Type</TableHead>
                 <TableHead>Duration/Qty</TableHead>
                 <TableHead>Amount</TableHead>
@@ -403,6 +488,9 @@ export function EntriesClient({
                       )}
                     </div>
                   </TableCell>
+                  <TableCell className="max-w-[320px] whitespace-normal break-words text-text-muted">
+                    {entry.description || '-'}
+                  </TableCell>
                   <TableCell>
                     <Badge tone={typeTone(entry.entry_type)}>{entry.entry_type}</Badge>
                   </TableCell>
@@ -417,20 +505,30 @@ export function EntriesClient({
                     {formatCurrency(entryAmount(entry))}
                   </TableCell>
                   <TableCell>
-                    <Badge tone={statusTone(entry.status)}>{entry.status}</Badge>
+                    <div className="flex flex-col gap-1">
+                      <Badge tone={statusTone(entry.status)}>{entry.status}</Badge>
+                      {entry.invoice?.invoice_number && (
+                        <Link
+                          href={`/invoices/${entry.invoice.id}`}
+                          className="text-xs text-primary hover:underline"
+                        >
+                          {entry.invoice.invoice_number}
+                        </Link>
+                      )}
+                    </div>
                   </TableCell>
                   <TableCell>
-                    {entry.status === 'unbilled' && (
+                    {isEntryEditable(entry) && (
                       <div className="flex gap-1">
                         {canEdit && (
                           <IconButton
                             icon={<Icon name="edit" size={16} />}
                             size="sm"
-                            label="Edit"
+                            label={entry.status === 'unbilled' ? 'Edit' : 'Edit and revise invoice'}
                             onClick={() => openEdit(entry)}
                           />
                         )}
-                        {canDelete && (
+                        {entry.status === 'unbilled' && canDelete && (
                           <IconButton
                             icon={<Icon name="trash" size={16} />}
                             size="sm"
@@ -626,6 +724,15 @@ export function EntriesClient({
             </Field>
           </div>
 
+          {editForm.linked_invoice_number && (
+            <Field label="Invoice">
+              <Input
+                value={`${editForm.linked_invoice_number}${editForm.linked_invoice_status ? ` (${editForm.linked_invoice_status})` : ''}`}
+                disabled
+              />
+            </Field>
+          )}
+
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Field label="Client" required>
               <Select
@@ -732,7 +839,7 @@ export function EntriesClient({
               Cancel
             </Button>
             <Button type="submit" loading={saving}>
-              Save Changes
+              {editForm.linked_invoice_number ? 'Save and Recalculate Invoice' : 'Save Changes'}
             </Button>
           </div>
         </form>
