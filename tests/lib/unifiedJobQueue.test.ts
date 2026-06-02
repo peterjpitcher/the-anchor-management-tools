@@ -36,6 +36,13 @@ vi.mock('@/lib/twilio', () => ({
   sendSMS: twilioMocks.mockedSendSMS,
 }))
 
+const promoContextMocks = vi.hoisted(() => ({
+  mockedBackfillSmsPromoContextMessageId: vi.fn(),
+}))
+vi.mock('@/lib/sms/promo-context', () => ({
+  backfillSmsPromoContextMessageId: promoContextMocks.mockedBackfillSmsPromoContextMessageId,
+}))
+
 import { createAdminClient } from '@/lib/supabase/admin'
 import { UnifiedJobQueue } from '@/lib/unified-job-queue'
 
@@ -308,6 +315,7 @@ describe('UnifiedJobQueue send_bulk_sms bulkJobId selection', () => {
 describe('UnifiedJobQueue send_sms payload guards', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    promoContextMocks.mockedBackfillSmsPromoContextMessageId.mockResolvedValue({ skipped: false, updated: 1 })
   })
 
   it('fails closed when the send_sms payload is missing customer_id', async () => {
@@ -357,6 +365,41 @@ describe('UnifiedJobQueue send_sms payload guards', () => {
         customer_id: 'customer-2',
       })
     ).rejects.toThrow('SMS sending paused by safety guard')
+  })
+
+  it('backfills promo context when a deferred marketing SMS job is sent and logged', async () => {
+    twilioMocks.mockedSendSMS.mockResolvedValue({
+      success: true,
+      sid: 'SM-1',
+      status: 'sent',
+      messageId: 'message-1',
+      customerId: 'customer-1',
+    })
+
+    const queue = UnifiedJobQueue.getInstance()
+
+    await (queue as any).executeJob('send_sms', {
+      to: '+447700900123',
+      message: 'Hello',
+      customer_id: 'customer-1',
+      metadata: {
+        event_id: 'event-1',
+        template_key: 'event_reminder_promo_3d',
+        marketing: true,
+        idempotency_key: 'event_reminder_promo_3d_customer-1_event-1',
+      },
+    })
+
+    expect(promoContextMocks.mockedBackfillSmsPromoContextMessageId).toHaveBeenCalledWith({
+      customerId: 'customer-1',
+      to: '+447700900123',
+      messageId: 'message-1',
+      metadata: expect.objectContaining({
+        event_id: 'event-1',
+        template_key: 'event_reminder_promo_3d',
+        marketing: true,
+      }),
+    })
   })
 })
 

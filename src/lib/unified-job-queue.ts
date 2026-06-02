@@ -1088,6 +1088,16 @@ export class UnifiedJobQueue {
             throw new Error(result.error || 'Failed to send SMS')
           }
 
+          if (typeof result.messageId === 'string' && result.messageId.trim().length > 0) {
+            const { backfillSmsPromoContextMessageId } = await import('@/lib/sms/promo-context')
+            await backfillSmsPromoContextMessageId({
+              customerId,
+              to: payload.to,
+              messageId: result.messageId,
+              metadata: baseMetadata,
+            })
+          }
+
           return result
         }
 
