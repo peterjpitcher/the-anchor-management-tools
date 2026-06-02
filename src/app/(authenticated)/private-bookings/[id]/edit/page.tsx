@@ -84,7 +84,7 @@ export default function EditPrivateBookingPage({
       if ('error' in result) {
         setError(result.error || 'An error occurred')
       } else if (result.data) {
-        if (result.data.status === 'completed' || result.data.status === 'cancelled') {
+        if (result.data.status === 'completed') {
           router.push(`/private-bookings/${id}`)
           return
         }
@@ -140,15 +140,15 @@ export default function EditPrivateBookingPage({
     loadBooking()
   }, [id])
 
-  // Update form when customer is selected
-  useEffect(() => {
-    if (selectedCustomer) {
-      setCustomerFirstName(selectedCustomer.first_name)
-      setCustomerLastName(selectedCustomer.last_name ?? '')
-      setContactPhone(selectedCustomer.mobile_number || '')
-      setContactEmail(selectedCustomer.email || '')
+  const handleCustomerSelect = (customer: Customer | null) => {
+    setSelectedCustomer(customer)
+    if (customer) {
+      setCustomerFirstName(customer.first_name)
+      setCustomerLastName(customer.last_name ?? '')
+      setContactPhone(customer.mobile_number || '')
+      setContactEmail(customer.email || '')
     }
-  }, [selectedCustomer])
+  }
 
   const handleToggleDateTbd = (checked: boolean) => {
     setDateTbd(checked)
@@ -238,7 +238,7 @@ export default function EditPrivateBookingPage({
                   Change Customer
                 </label>
                 <CustomerSearchInput
-                  onCustomerSelect={setSelectedCustomer}
+                  onCustomerSelect={handleCustomerSelect}
                   placeholder="Search to change customer..."
                   selectedCustomerId={selectedCustomer?.id || booking.customer_id}
                 />

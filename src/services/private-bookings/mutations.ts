@@ -145,7 +145,53 @@ type CancellationSmsVariant = {
 }
 
 const UPDATE_BOOKING_BASE_SELECT =
-  'status, contact_phone, customer_first_name, customer_last_name, customer_name, event_date, start_time, setup_date, setup_time, end_time, end_time_next_day, customer_id, internal_notes, balance_due_date, calendar_event_id, hold_expiry, deposit_paid_date'
+  'status, contact_phone, contact_email, customer_first_name, customer_last_name, customer_name, event_date, start_time, setup_date, setup_time, end_time, end_time_next_day, customer_id, internal_notes, balance_due_date, calendar_event_id, hold_expiry, deposit_paid_date, guest_count, event_type, source, customer_requests, contract_note, special_requirements, accessibility_needs'
+
+const CANCELLED_BOOKING_CORRECTION_FIELDS = new Set([
+  'contact_email',
+])
+
+const IMMUTABLE_BOOKING_NULLABLE_TEXT_FIELDS = new Set([
+  'accessibility_needs',
+  'contract_note',
+  'customer_requests',
+  'end_time',
+  'event_type',
+  'internal_notes',
+  'setup_date',
+  'setup_time',
+  'source',
+  'special_requirements',
+])
+
+const IMMUTABLE_BOOKING_TIME_FIELDS = new Set([
+  'end_time',
+  'setup_time',
+  'start_time',
+])
+
+function normalizeImmutableBookingValue(key: string, value: unknown): unknown {
+  if (value === undefined) {
+    return undefined
+  }
+
+  if (value === '' && IMMUTABLE_BOOKING_NULLABLE_TEXT_FIELDS.has(key)) {
+    return null
+  }
+
+  if (typeof value === 'string' && IMMUTABLE_BOOKING_TIME_FIELDS.has(key)) {
+    const match = value.match(/^(\d{2}:\d{2})(?::\d{2})?$/)
+    if (match) {
+      return match[1]
+    }
+  }
+
+  return value
+}
+
+function immutableBookingValuesDiffer(key: string, nextValue: unknown, currentValue: unknown): boolean {
+  return normalizeImmutableBookingValue(key, nextValue) !== normalizeImmutableBookingValue(key, currentValue)
+}
 
 function isMissingDateTbdColumnError(error: unknown): boolean {
   if (!error || typeof error !== 'object') {
@@ -622,9 +668,12 @@ export async function updateBooking(id: string, input: UpdatePrivateBookingInput
       k !== 'status' &&
       k !== 'updated_at' &&
       updatePayload[k] !== undefined &&
-      updatePayload[k] !== currentBooking[k as keyof typeof currentBooking]
+      immutableBookingValuesDiffer(k, updatePayload[k], currentBooking[k as keyof typeof currentBooking])
     );
-    if (changedNonStatusKeys.length > 0) {
+    const disallowedChangedKeys = changedNonStatusKeys.filter(k =>
+      currentBooking.status !== 'cancelled' || !CANCELLED_BOOKING_CORRECTION_FIELDS.has(k)
+    )
+    if (disallowedChangedKeys.length > 0) {
       throw new Error(`Cannot edit a ${currentBooking.status} booking. Only status changes are allowed.`);
     }
   }
