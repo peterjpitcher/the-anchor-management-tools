@@ -231,9 +231,17 @@ export function EntriesClient({
       fd.append('id', deleteId)
       const res = await deleteEntry(fd)
       if (res.error) throw new Error(res.error)
-      toast.success('Entry deleted')
+      const invoiceRevision = 'invoiceRevision' in res ? res.invoiceRevision : undefined
+      toast.success(
+        invoiceRevision
+          ? invoiceRevision.mode === 'replacement'
+            ? `Entry deleted; ${invoiceRevision.voided_invoice_number} voided and draft ${invoiceRevision.invoice_number} created`
+            : `Entry deleted; ${invoiceRevision.invoice_number} recalculated`
+          : 'Entry deleted'
+      )
       setDeleteId(null)
       await reload()
+      router.refresh()
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to delete entry')
     }
@@ -396,6 +404,7 @@ export function EntriesClient({
   const vendorProjectOptions = addableProjects.filter((p) =>
     projectMatchesEntryContext(p, editForm.vendor_id, editForm.entry_date),
   )
+  const deleteEntryTarget = deleteId ? entries.find((entry) => entry.id === deleteId) : null
 
   return (
     <div className="flex flex-col gap-4">
@@ -534,11 +543,11 @@ export function EntriesClient({
                             onClick={() => openEdit(entry)}
                           />
                         )}
-                        {entry.status === 'unbilled' && canDelete && (
+                        {canDelete && (
                           <IconButton
                             icon={<Icon name="trash" size={16} />}
                             size="sm"
-                            label="Delete"
+                            label={entry.status === 'unbilled' ? 'Delete' : 'Delete and revise invoice'}
                             onClick={() => setDeleteId(entry.id)}
                           />
                         )}
@@ -861,7 +870,11 @@ export function EntriesClient({
         onClose={() => setDeleteId(null)}
         onConfirm={handleDelete}
         title="Delete Entry"
-        message="Are you sure you want to delete this entry? This cannot be undone."
+        message={
+          deleteEntryTarget?.invoice?.invoice_number
+            ? `Delete this entry and revise linked invoice ${deleteEntryTarget.invoice.invoice_number}? This cannot be undone.`
+            : 'Are you sure you want to delete this entry? This cannot be undone.'
+        }
         confirmLabel="Delete"
         tone="danger"
       />

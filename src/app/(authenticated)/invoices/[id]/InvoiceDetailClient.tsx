@@ -3,7 +3,11 @@
 import { useState, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { getInvoice, updateInvoiceStatus, deleteInvoice } from '@/app/actions/invoices'
-import { getEmailConfigStatus } from '@/app/actions/email'
+import {
+  getOjInvoiceReissuePreview,
+  reissueOjInvoice,
+  type OjInvoiceReissuePreview,
+} from '@/app/actions/oj-projects/invoice-reissue'
 import { PageLayout } from '@/ds'
 import { Card } from '@/ds'
 import { Button } from '@/ds'
@@ -12,7 +16,8 @@ import { Alert } from '@/ds'
 import { DataTable } from '@/ds'
 import { toast } from '@/ds'
 import { ConfirmDialog } from '@/ds'
-import { Download, Mail, Edit, Trash2, Copy, CheckCircle, XCircle, Clock } from 'lucide-react'
+import { Modal } from '@/ds'
+import { Download, Mail, Edit, Trash2, Copy, CheckCircle, XCircle, Clock, RefreshCw } from 'lucide-react'
 import dynamic from 'next/dynamic'
 
 const EmailInvoiceModal = dynamic(
@@ -23,7 +28,7 @@ const ChasePaymentModal = dynamic(
   () => import('@/components/modals/ChasePaymentModal').then(mod => mod.ChasePaymentModal),
   { ssr: false }
 )
-import type { InvoiceWithDetails, InvoiceStatus, InvoiceLineItem } from '@/types/invoices'
+import type { InvoiceWithDetails, InvoiceStatus, InvoiceLineItem, InvoiceLineItemInput } from '@/types/invoices'
 import { usePermissions } from '@/contexts/PermissionContext'
 import { calculateInvoiceTotals, type InvoiceTotalsResult } from '@/lib/invoiceCalculations'
 import { downloadInvoicePdf } from '@/lib/invoices/download-pdf'
@@ -31,6 +36,196 @@ import { downloadInvoicePdf } from '@/lib/invoices/download-pdf'
 interface InvoiceDetailClientProps {
   initialInvoice: InvoiceWithDetails
   emailConfigured: boolean
+}
+
+type EligibleOjInvoiceReissuePreview = Extract<OjInvoiceReissuePreview, { eligible: true }>
+type ReissuePreviewEntry = EligibleOjInvoiceReissuePreview['includedEntries'][number]
+type ReissuePreviewRecurring = EligibleOjInvoiceReissuePreview['includedRecurring'][number]
+
+function formatMoney(value: number | null | undefined): string {
+  return `£${Number(value || 0).toFixed(2)}`
+}
+
+function formatPreviewDate(value: string): string {
+  const date = new Date(`${value}T00:00:00.000Z`)
+  if (Number.isNaN(date.getTime())) return value
+  return date.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'UTC' })
+}
+
+function formatStatus(value: string | null | undefined): string {
+  return String(value || '').replace(/_/g, ' ')
+}
+
+function isOjInvoiceCandidate(invoice: InvoiceWithDetails): boolean {
+  const haystack = [
+    invoice.reference || '',
+    invoice.notes || '',
+    invoice.internal_notes || '',
+  ].join('\n')
+  return /OJ Projects\s+\d{4}-\d{2}/i.test(haystack) || /OJ Projects/i.test(haystack)
+}
+
+function canAttemptOjReissue(invoice: InvoiceWithDetails): boolean {
+  if (!isOjInvoiceCandidate(invoice)) return false
+  if (!['draft', 'sent', 'overdue', 'void'].includes(invoice.status)) return false
+  if (Number(invoice.paid_amount || 0) > 0) return false
+  if ((invoice.payments || []).length > 0) return false
+  return true
+}
+
+function PreviewSection({
+  title,
+  count,
+  children,
+}: {
+  title: string
+  count?: number
+  children: React.ReactNode
+}) {
+  return (
+    <section className="space-y-2">
+      <div className="flex items-center justify-between gap-3">
+        <h3 className="text-sm font-semibold text-gray-900">{title}</h3>
+        {typeof count === 'number' && (
+          <span className="text-xs font-medium text-gray-500">{count}</span>
+        )}
+      </div>
+      {children}
+    </section>
+  )
+}
+
+function EmptyPreviewMessage({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="rounded-md border border-dashed border-gray-200 bg-gray-50 px-3 py-4 text-sm text-gray-500">
+      {children}
+    </div>
+  )
+}
+
+function EntryPreviewTable({
+  entries,
+  showReason = false,
+}: {
+  entries: ReissuePreviewEntry[]
+  showReason?: boolean
+}) {
+  if (entries.length === 0) {
+    return <EmptyPreviewMessage>No entries</EmptyPreviewMessage>
+  }
+
+  return (
+    <div className="overflow-x-auto rounded-md border border-gray-200">
+      <table className="min-w-full divide-y divide-gray-200 text-sm">
+        <thead className="bg-gray-50 text-xs uppercase text-gray-500">
+          <tr>
+            <th className="px-3 py-2 text-left font-semibold">Date</th>
+            <th className="px-3 py-2 text-left font-semibold">Project</th>
+            <th className="px-3 py-2 text-left font-semibold">Description</th>
+            <th className="px-3 py-2 text-left font-semibold">Type</th>
+            <th className="px-3 py-2 text-right font-semibold">Qty</th>
+            <th className="px-3 py-2 text-right font-semibold">Amount</th>
+            <th className="px-3 py-2 text-left font-semibold">Status</th>
+            {showReason && <th className="px-3 py-2 text-left font-semibold">Reason</th>}
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-gray-100 bg-white">
+          {entries.map((entry) => (
+            <tr key={entry.id}>
+              <td className="whitespace-nowrap px-3 py-2 text-gray-700">{formatPreviewDate(entry.entry_date)}</td>
+              <td className="min-w-[180px] px-3 py-2">
+                <div className="font-medium text-gray-900">{entry.project_name}</div>
+                {entry.project_code && <div className="text-xs text-gray-500">{entry.project_code}</div>}
+              </td>
+              <td className="min-w-[220px] px-3 py-2 text-gray-700">{entry.description || '-'}</td>
+              <td className="whitespace-nowrap px-3 py-2 text-gray-700">{entry.entry_type}</td>
+              <td className="whitespace-nowrap px-3 py-2 text-right text-gray-700">{entry.quantity_label}</td>
+              <td className="whitespace-nowrap px-3 py-2 text-right font-medium text-gray-900">{formatMoney(entry.amount_ex_vat)}</td>
+              <td className="whitespace-nowrap px-3 py-2 text-gray-700">
+                {formatStatus(entry.status)}
+                {entry.invoice_number && <div className="text-xs text-gray-500">{entry.invoice_number}</div>}
+              </td>
+              {showReason && <td className="min-w-[180px] px-3 py-2 text-gray-700">{entry.reason || '-'}</td>}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
+function RecurringPreviewTable({
+  items,
+  showReason = false,
+}: {
+  items: ReissuePreviewRecurring[]
+  showReason?: boolean
+}) {
+  if (items.length === 0) {
+    return <EmptyPreviewMessage>No recurring charges</EmptyPreviewMessage>
+  }
+
+  return (
+    <div className="overflow-x-auto rounded-md border border-gray-200">
+      <table className="min-w-full divide-y divide-gray-200 text-sm">
+        <thead className="bg-gray-50 text-xs uppercase text-gray-500">
+          <tr>
+            <th className="px-3 py-2 text-left font-semibold">Description</th>
+            <th className="px-3 py-2 text-left font-semibold">Period</th>
+            <th className="px-3 py-2 text-right font-semibold">Amount</th>
+            <th className="px-3 py-2 text-right font-semibold">VAT</th>
+            <th className="px-3 py-2 text-left font-semibold">Status</th>
+            {showReason && <th className="px-3 py-2 text-left font-semibold">Reason</th>}
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-gray-100 bg-white">
+          {items.map((item) => (
+            <tr key={item.id}>
+              <td className="min-w-[220px] px-3 py-2 font-medium text-gray-900">
+                {item.description}
+                {item.is_virtual && <div className="text-xs text-gray-500">Will be created on reissue</div>}
+              </td>
+              <td className="whitespace-nowrap px-3 py-2 text-gray-700">{item.period_yyyymm}</td>
+              <td className="whitespace-nowrap px-3 py-2 text-right font-medium text-gray-900">{formatMoney(item.amount_ex_vat)}</td>
+              <td className="whitespace-nowrap px-3 py-2 text-right text-gray-700">{item.vat_rate}%</td>
+              <td className="whitespace-nowrap px-3 py-2 text-gray-700">
+                {formatStatus(item.status)}
+                {item.invoice_number && <div className="text-xs text-gray-500">{item.invoice_number}</div>}
+              </td>
+              {showReason && <td className="min-w-[180px] px-3 py-2 text-gray-700">{item.reason || '-'}</td>}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
+function LineItemsPreviewTable({ lineItems }: { lineItems: InvoiceLineItemInput[] }) {
+  return (
+    <div className="overflow-x-auto rounded-md border border-gray-200">
+      <table className="min-w-full divide-y divide-gray-200 text-sm">
+        <thead className="bg-gray-50 text-xs uppercase text-gray-500">
+          <tr>
+            <th className="px-3 py-2 text-left font-semibold">Description</th>
+            <th className="px-3 py-2 text-right font-semibold">Qty</th>
+            <th className="px-3 py-2 text-right font-semibold">Unit price</th>
+            <th className="px-3 py-2 text-right font-semibold">VAT</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-gray-100 bg-white">
+          {lineItems.map((item, index) => (
+            <tr key={`${item.description}-${index}`}>
+              <td className="min-w-[260px] px-3 py-2 font-medium text-gray-900">{item.description}</td>
+              <td className="whitespace-nowrap px-3 py-2 text-right text-gray-700">{item.quantity}</td>
+              <td className="whitespace-nowrap px-3 py-2 text-right text-gray-700">{formatMoney(item.unit_price)}</td>
+              <td className="whitespace-nowrap px-3 py-2 text-right text-gray-700">{item.vat_rate}%</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
 }
 
 export default function InvoiceDetailClient({ 
@@ -52,6 +247,10 @@ export default function InvoiceDetailClient({
   // We accept initial state but can also check again if needed, though passing from server is better
   const [emailConfigured] = useState(initialEmailConfigured) 
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [showReissueModal, setShowReissueModal] = useState(false)
+  const [reissuePreview, setReissuePreview] = useState<OjInvoiceReissuePreview | null>(null)
+  const [reissueLoading, setReissueLoading] = useState(false)
+  const [reissueSubmitting, setReissueSubmitting] = useState(false)
   
   const readOnly = !permissionsLoading && !canEdit && !canDelete
 
@@ -171,6 +370,73 @@ export default function InvoiceDetailClient({
     }
   }
 
+  async function handleOpenReissuePreview() {
+    if (!invoice || reissueLoading || reissueSubmitting) return
+    if (!canEdit) {
+      toast.error('You do not have permission to reissue invoices')
+      return
+    }
+
+    setShowReissueModal(true)
+    setReissuePreview(null)
+    setReissueLoading(true)
+
+    try {
+      const preview = await getOjInvoiceReissuePreview(invoice.id)
+      setReissuePreview(preview)
+      if (!preview.eligible) {
+        toast.error(preview.error)
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to build OJ invoice reissue preview'
+      setReissuePreview({ eligible: false, error: message })
+      toast.error(message)
+    } finally {
+      setReissueLoading(false)
+    }
+  }
+
+  async function handleSubmitReissue() {
+    if (!invoice || !reissuePreview?.eligible || reissueSubmitting) return
+    if (!canEdit) {
+      toast.error('You do not have permission to reissue invoices')
+      return
+    }
+
+    setReissueSubmitting(true)
+
+    try {
+      const formData = new FormData()
+      formData.append('invoiceId', invoice.id)
+      const result = await reissueOjInvoice(formData)
+
+      if (result.error) {
+        throw new Error(result.error)
+      }
+
+      const prefix = result.mode === 'rebuild_draft' ? 'Draft' : 'Replacement draft'
+      const verb = result.mode === 'rebuild_draft' ? 'rebuilt from' : 'created from'
+      toast.success(`${prefix} ${result.invoice_number} ${verb} OJ Projects ${result.period_label}`)
+      setShowReissueModal(false)
+      setReissuePreview(null)
+
+      if (result.invoice_id === invoice.id) {
+        const refreshResult = await getInvoice(invoice.id)
+        if (refreshResult.invoice) {
+          setInvoice(refreshResult.invoice)
+        }
+        router.refresh()
+      } else {
+        router.push(`/invoices/${result.invoice_id}`)
+        router.refresh()
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to reissue OJ invoice')
+    } finally {
+      setReissueSubmitting(false)
+    }
+  }
+
   async function handleDownloadPdf() {
     if (!invoice || actionLoading) return
 
@@ -212,9 +478,23 @@ export default function InvoiceDetailClient({
   }
 
   const { totals: invoiceTotals, lineTotals } = invoiceMath
+  const showOjReissueAction = canEdit && canAttemptOjReissue(invoice)
 
   const headerActions = (
     <div className="flex flex-wrap items-center gap-2">
+      {showOjReissueAction && (
+        <Button
+          variant="primary"
+          size="sm"
+          onClick={() => void handleOpenReissuePreview()}
+          disabled={actionLoading || reissueLoading || reissueSubmitting}
+          loading={reissueLoading}
+          leftIcon={<RefreshCw className="h-4 w-4" />}
+        >
+          Reissue OJ Invoice
+        </Button>
+      )}
+
       {invoice.status === 'draft' && canEdit && (
         <Button
           variant="secondary"
@@ -552,6 +832,19 @@ export default function InvoiceDetailClient({
               >
                 Copy Link
               </Button>
+
+              {showOjReissueAction && (
+                <Button
+                  variant="primary"
+                  fullWidth
+                  onClick={() => void handleOpenReissuePreview()}
+                  disabled={actionLoading || reissueLoading || reissueSubmitting}
+                  loading={reissueLoading}
+                  leftIcon={<RefreshCw className="h-4 w-4" />}
+                >
+                  Reissue OJ Invoice
+                </Button>
+              )}
               
               {invoice.status !== 'void' && invoice.status !== 'written_off' && canEdit && (
                 <Button
@@ -568,6 +861,144 @@ export default function InvoiceDetailClient({
           </Card>
         </div>
       </div>
+
+      <Modal
+        open={showReissueModal}
+        onClose={() => {
+          if (!reissueSubmitting) {
+            setShowReissueModal(false)
+          }
+        }}
+        title="Reissue OJ Invoice"
+        width="xl"
+        footer={(
+          <>
+            <Button
+              variant="secondary"
+              onClick={() => setShowReissueModal(false)}
+              disabled={reissueSubmitting}
+            >
+              Cancel
+            </Button>
+            {reissuePreview?.eligible && (
+              <Button
+                variant="primary"
+                onClick={() => void handleSubmitReissue()}
+                loading={reissueSubmitting}
+                disabled={reissueLoading}
+              >
+                {reissuePreview.actionLabel}
+              </Button>
+            )}
+          </>
+        )}
+      >
+        {reissueLoading && (
+          <div className="py-8 text-center text-sm text-gray-600">
+            Building OJ invoice reissue preview...
+          </div>
+        )}
+
+        {!reissueLoading && reissuePreview && !reissuePreview.eligible && (
+          <div className="space-y-4">
+            <Alert variant="error" description={reissuePreview.error} />
+            {reissuePreview.warnings && reissuePreview.warnings.length > 0 && (
+              <Alert variant="warning">
+                <ul className="list-disc space-y-1 pl-4">
+                  {reissuePreview.warnings.map((warning) => (
+                    <li key={warning}>{warning}</li>
+                  ))}
+                </ul>
+              </Alert>
+            )}
+          </div>
+        )}
+
+        {!reissueLoading && reissuePreview?.eligible && (
+          <div className="space-y-6">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              <div className="rounded-md border border-gray-200 bg-gray-50 p-3">
+                <div className="text-xs font-semibold uppercase text-gray-500">Source</div>
+                <div className="mt-1 font-medium text-gray-900">{reissuePreview.sourceInvoice.invoice_number}</div>
+                <div className="text-xs text-gray-600">{formatStatus(reissuePreview.sourceInvoice.status)}</div>
+              </div>
+              <div className="rounded-md border border-gray-200 bg-gray-50 p-3">
+                <div className="text-xs font-semibold uppercase text-gray-500">Client</div>
+                <div className="mt-1 font-medium text-gray-900">{reissuePreview.sourceInvoice.vendor_name || 'Unknown client'}</div>
+                <div className="text-xs text-gray-600">{reissuePreview.period.label}</div>
+              </div>
+              <div className="rounded-md border border-gray-200 bg-gray-50 p-3">
+                <div className="text-xs font-semibold uppercase text-gray-500">Paid</div>
+                <div className="mt-1 font-medium text-gray-900">{formatMoney(reissuePreview.sourceInvoice.paid_amount)}</div>
+                <div className="text-xs text-gray-600">No email will be sent</div>
+              </div>
+              <div className="rounded-md border border-gray-200 bg-gray-50 p-3">
+                <div className="text-xs font-semibold uppercase text-gray-500">Rebuilt Total</div>
+                <div className="mt-1 font-medium text-gray-900">{formatMoney(reissuePreview.totals.totalAmount)}</div>
+                <div className="text-xs text-gray-600">{reissuePreview.actionLabel}</div>
+              </div>
+            </div>
+
+            {reissuePreview.warnings.length > 0 && (
+              <Alert variant="warning">
+                <ul className="list-disc space-y-1 pl-4">
+                  {reissuePreview.warnings.map((warning) => (
+                    <li key={warning}>{warning}</li>
+                  ))}
+                </ul>
+              </Alert>
+            )}
+
+            <Alert variant="info" description="Review this preview, then create the draft. The client is not emailed until you send the resulting draft invoice." />
+
+            <PreviewSection title="Included Month Entries" count={reissuePreview.includedEntries.length}>
+              <EntryPreviewTable entries={reissuePreview.includedEntries} />
+            </PreviewSection>
+
+            <PreviewSection title="Included Active Recurring Charges" count={reissuePreview.includedRecurring.length}>
+              <RecurringPreviewTable items={reissuePreview.includedRecurring} />
+            </PreviewSection>
+
+            <PreviewSection
+              title="Excluded Entries"
+              count={reissuePreview.excludedEntries.length}
+            >
+              <EntryPreviewTable entries={reissuePreview.excludedEntries} showReason />
+            </PreviewSection>
+
+            <PreviewSection
+              title="Excluded Recurring Charges"
+              count={reissuePreview.excludedRecurring.length}
+            >
+              <RecurringPreviewTable items={reissuePreview.excludedRecurring} showReason />
+            </PreviewSection>
+
+            <PreviewSection title="Replacement Line Items" count={reissuePreview.lineItems.length}>
+              <LineItemsPreviewTable lineItems={reissuePreview.lineItems} />
+              <div className="mt-3 rounded-md border border-gray-200 bg-gray-50 p-3 text-sm">
+                <div className="flex justify-between gap-4">
+                  <span className="text-gray-600">Subtotal</span>
+                  <span className="font-medium">{formatMoney(reissuePreview.totals.subtotalBeforeInvoiceDiscount)}</span>
+                </div>
+                {reissuePreview.totals.invoiceDiscountAmount > 0 && (
+                  <div className="flex justify-between gap-4">
+                    <span className="text-gray-600">Invoice discount</span>
+                    <span className="font-medium">-{formatMoney(reissuePreview.totals.invoiceDiscountAmount)}</span>
+                  </div>
+                )}
+                <div className="flex justify-between gap-4">
+                  <span className="text-gray-600">VAT</span>
+                  <span className="font-medium">{formatMoney(reissuePreview.totals.vatAmount)}</span>
+                </div>
+                <div className="mt-2 flex justify-between gap-4 border-t border-gray-200 pt-2 text-base font-semibold">
+                  <span>Total</span>
+                  <span>{formatMoney(reissuePreview.totals.totalAmount)}</span>
+                </div>
+              </div>
+            </PreviewSection>
+          </div>
+        )}
+      </Modal>
 
       {invoice && canEdit && (
         <>

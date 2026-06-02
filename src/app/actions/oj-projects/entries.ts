@@ -669,6 +669,30 @@ async function buildUpdateEntryResult(input: {
   return { entry: input.entry, success: true as const, invoiceRevision: revision.invoiceRevision }
 }
 
+async function buildDeleteEntryResult(input: {
+  entry: { id: string }
+  revisableInvoice: RevisableLinkedInvoice | null
+  user?: { id?: string | null; email?: string | null } | null
+}) {
+  if (!input.revisableInvoice) {
+    return { success: true as const }
+  }
+
+  const revision = await recalculateLinkedOjInvoice({
+    invoiceId: input.revisableInvoice.id,
+    changedEntryId: input.entry.id,
+    user: input.user,
+  })
+
+  if ('error' in revision) {
+    return {
+      error: `Entry deleted, but linked invoice ${input.revisableInvoice.invoice_number} could not be revised: ${revision.error}`,
+    }
+  }
+
+  return { success: true as const, invoiceRevision: revision.invoiceRevision }
+}
+
 export async function getEntries(options?: {
   vendorId?: string
   projectId?: string
@@ -1195,12 +1219,24 @@ export async function deleteEntry(formData: FormData) {
 
   const { data: entry, error: fetchError } = await supabase
     .from('oj_entries')
-    .select('id, status, entry_type, entry_date')
+    .select('id, status, entry_type, entry_date, invoice_id, vendor_id')
     .eq('id', id)
     .single()
 
   if (fetchError || !entry) return { error: fetchError?.message || 'Entry not found' }
-  if (entry.status !== 'unbilled') return { error: 'Only unbilled entries can be deleted' }
+  let revisableInvoice: RevisableLinkedInvoice | null = null
+  if (entry.status !== 'unbilled') {
+    if (!['billed', 'billing_pending'].includes(String(entry.status))) {
+      return { error: 'Only unbilled or unpaid invoiced entries can be deleted' }
+    }
+
+    const invoiceCheck = await getLinkedInvoiceForRevision({
+      invoiceId: entry.invoice_id,
+      vendorId: entry.vendor_id,
+    })
+    if ('error' in invoiceCheck) return { error: invoiceCheck.error }
+    revisableInvoice = invoiceCheck.invoice
+  }
 
   const { data: deletedEntry, error } = await supabase
     .from('oj_entries')
@@ -1227,5 +1263,5 @@ export async function deleteEntry(formData: FormData) {
     await recalculateTaxYearMileage(entry.entry_date)
   }
 
-  return { success: true as const }
+  return buildDeleteEntryResult({ entry: deletedEntry, revisableInvoice, user })
 }

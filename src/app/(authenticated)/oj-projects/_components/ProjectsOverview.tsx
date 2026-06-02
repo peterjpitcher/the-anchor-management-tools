@@ -25,11 +25,12 @@ import {
   Checkbox,
   Segmented,
   IconButton,
+  ConfirmDialog,
   toast,
 } from '@/ds'
 import { Icon } from '@/ds/icons'
 import { usePermissions } from '@/contexts/PermissionContext'
-import { createTimeEntry, createMileageEntry, createOneOffCharge, getEntries, updateEntry } from '@/app/actions/oj-projects/entries'
+import { createTimeEntry, createMileageEntry, createOneOffCharge, deleteEntry, getEntries, updateEntry } from '@/app/actions/oj-projects/entries'
 import type { OJClientSummary } from '@/app/actions/oj-projects/clients'
 import { formatDateDdMmmmYyyy, getTodayIsoDate } from '@/lib/dateUtils'
 import { getCurrentMonthEntryDateRange } from '@/lib/oj-projects/date-ranges'
@@ -64,6 +65,7 @@ export function ProjectsOverview({ projects, entries: initialEntries, workTypes,
   const { hasPermission } = usePermissions()
   const canCreate = hasPermission('oj_projects', 'create')
   const canEdit = hasPermission('oj_projects', 'edit')
+  const canDelete = hasPermission('oj_projects', 'delete')
 
   const [entries, setEntries] = useState(initialEntries)
   const [entriesLoading, setEntriesLoading] = useState(false)
@@ -84,6 +86,7 @@ export function ProjectsOverview({ projects, entries: initialEntries, workTypes,
     billable: true,
   })
   const [editOpen, setEditOpen] = useState(false)
+  const [deleteId, setDeleteId] = useState<string | null>(null)
   const [editForm, setEditForm] = useState({
     id: '',
     entry_type: 'time' as string,
@@ -137,6 +140,7 @@ export function ProjectsOverview({ projects, entries: initialEntries, workTypes,
   const editProjectOptions = addableProjects.filter((p: any) =>
     projectMatchesEntryContext(p, editForm.vendor_id, editForm.entry_date),
   )
+  const deleteEntryTarget = deleteId ? entries.find((entry) => entry.id === deleteId) : null
 
   function openCreate(): void {
     setCreateForm({
@@ -285,6 +289,29 @@ export function ProjectsOverview({ projects, entries: initialEntries, workTypes,
       toast.error(err instanceof Error ? err.message : 'Failed to update entry')
     } finally {
       setSaving(false)
+    }
+  }
+
+  async function handleDelete(): Promise<void> {
+    if (!deleteId) return
+    try {
+      const fd = new FormData()
+      fd.append('id', deleteId)
+      const res = await deleteEntry(fd)
+      if ('error' in res && res.error) throw new Error(res.error)
+      const invoiceRevision = 'invoiceRevision' in res ? res.invoiceRevision : undefined
+      toast.success(
+        invoiceRevision
+          ? invoiceRevision.mode === 'replacement'
+            ? `Entry deleted; ${invoiceRevision.voided_invoice_number} voided and draft ${invoiceRevision.invoice_number} created`
+            : `Entry deleted; ${invoiceRevision.invoice_number} recalculated`
+          : 'Entry deleted'
+      )
+      setDeleteId(null)
+      await reload()
+      router.refresh()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to delete entry')
     }
   }
 
@@ -521,13 +548,25 @@ export function ProjectsOverview({ projects, entries: initialEntries, workTypes,
                       </div>
                     </TableCell>
                     <TableCell>
-                      {isEntryEditable(entry) && canEdit && (
-                        <IconButton
-                          icon={<Icon name="edit" size={16} />}
-                          size="sm"
-                          label={entry.status === 'unbilled' ? 'Edit entry' : 'Edit and revise invoice'}
-                          onClick={() => openEdit(entry)}
-                        />
+                      {isEntryEditable(entry) && (
+                        <div className="flex gap-1">
+                          {canEdit && (
+                            <IconButton
+                              icon={<Icon name="edit" size={16} />}
+                              size="sm"
+                              label={entry.status === 'unbilled' ? 'Edit entry' : 'Edit and revise invoice'}
+                              onClick={() => openEdit(entry)}
+                            />
+                          )}
+                          {canDelete && (
+                            <IconButton
+                              icon={<Icon name="trash" size={16} />}
+                              size="sm"
+                              label={entry.status === 'unbilled' ? 'Delete entry' : 'Delete and revise invoice'}
+                              onClick={() => setDeleteId(entry.id)}
+                            />
+                          )}
+                        </div>
                       )}
                     </TableCell>
                   </TableRow>
@@ -823,6 +862,19 @@ export function ProjectsOverview({ projects, entries: initialEntries, workTypes,
           </div>
         </form>
       </Modal>
+      <ConfirmDialog
+        open={!!deleteId}
+        onClose={() => setDeleteId(null)}
+        onConfirm={handleDelete}
+        title="Delete Entry"
+        message={
+          deleteEntryTarget?.invoice?.invoice_number
+            ? `Delete this entry and revise linked invoice ${deleteEntryTarget.invoice.invoice_number}? This cannot be undone.`
+            : 'Are you sure you want to delete this entry? This cannot be undone.'
+        }
+        confirmLabel="Delete"
+        tone="danger"
+      />
     </div>
   )
 }
