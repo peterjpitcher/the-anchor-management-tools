@@ -3,10 +3,10 @@ import { buildOjInvoiceRevision, getOjInvoiceRevisionBlockReason } from '../invo
 
 describe('OJ Projects invoice revision', () => {
   it('blocks paid and partially paid invoices from revision', () => {
-    expect(getOjInvoiceRevisionBlockReason({ status: 'paid', paid_amount: 100 }, 0)).toBe(
+    expect(getOjInvoiceRevisionBlockReason({ status: 'paid' }, 0)).toBe(
       'Only unpaid active invoices can be revised from OJ Projects entries'
     )
-    expect(getOjInvoiceRevisionBlockReason({ status: 'sent', paid_amount: 0 }, 1)).toBe(
+    expect(getOjInvoiceRevisionBlockReason({ status: 'sent' }, 1)).toBe(
       'Cannot revise an invoice after a payment has been recorded'
     )
   })
@@ -35,6 +35,14 @@ describe('OJ Projects invoice revision', () => {
           description_snapshot: 'Hosting',
           amount_ex_vat_snapshot: 50,
           vat_rate_snapshot: 20,
+        },
+        {
+          id: 'rec-disabled',
+          period_yyyymm: '2026-06',
+          description_snapshot: 'Disabled hosting',
+          amount_ex_vat_snapshot: 100,
+          vat_rate_snapshot: 20,
+          recurring_charge: { is_active: false },
         },
       ],
       entries: [
@@ -78,6 +86,9 @@ describe('OJ Projects invoice revision', () => {
       expect.objectContaining({ description: 'Mileage (10.00 miles @ GBP 0.550/mile)', quantity: 10, unit_price: 0.55, vat_rate: 0 }),
       expect.objectContaining({ description: 'OJP-001 - Retainer (2.00h)', quantity: 1, unit_price: 150, vat_rate: 20 }),
     ])
+    expect(revision.lineItems).not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ description: 'Disabled hosting' })])
+    )
     expect(revision.totals.subtotalBeforeInvoiceDiscount).toBe(205.5)
     expect(revision.totals.vatAmount).toBe(40)
     expect(revision.totals.totalAmount).toBe(245.5)

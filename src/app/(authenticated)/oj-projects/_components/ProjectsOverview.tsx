@@ -345,7 +345,7 @@ export function ProjectsOverview({ projects, entries: initialEntries, workTypes,
     if (!entry.invoice_id || !entry.invoice) return false
     const invoiceStatus = String(entry.invoice.status || '')
     if (['paid', 'partially_paid', 'void', 'written_off'].includes(invoiceStatus)) return false
-    return Number(entry.invoice.paid_amount || 0) <= 0
+    return true
   }
 
   function entryAmount(entry: any): number {

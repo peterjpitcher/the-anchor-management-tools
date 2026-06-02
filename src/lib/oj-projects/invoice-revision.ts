@@ -48,6 +48,7 @@ export type OjInvoiceRevisionRecurringInstance = {
   amount_ex_vat_snapshot: number
   vat_rate_snapshot: number
   sort_order_snapshot?: number | null
+  recurring_charge?: { is_active?: boolean | null } | null
 }
 
 export type OjInvoiceRevisionResult = {
@@ -109,6 +110,10 @@ function getRecurringCharge(instance: OjInvoiceRevisionRecurringInstance) {
   const exVat = roundMoney(Number(instance.amount_ex_vat_snapshot || 0))
   const vatRate = Number(instance.vat_rate_snapshot || 0)
   return { exVat, vatRate, incVat: moneyIncVat(exVat, vatRate) }
+}
+
+function isRecurringChargeInstanceActive(instance: OjInvoiceRevisionRecurringInstance): boolean {
+  return instance.recurring_charge?.is_active !== false
 }
 
 function buildStatementLineItems(input: {
@@ -302,7 +307,7 @@ function appendRevisionInternalNote(existingNotes: string | null | undefined, in
 }
 
 export function getOjInvoiceRevisionBlockReason(
-  invoice: { status?: string | null; paid_amount?: number | null } | null | undefined,
+  invoice: { status?: string | null } | null | undefined,
   paymentCount = 0
 ): string | null {
   if (!invoice) return 'Invoice not found'
@@ -310,7 +315,7 @@ export function getOjInvoiceRevisionBlockReason(
   if (['paid', 'partially_paid', 'void', 'written_off'].includes(status)) {
     return 'Only unpaid active invoices can be revised from OJ Projects entries'
   }
-  if (Number(invoice.paid_amount || 0) > 0 || paymentCount > 0) {
+  if (paymentCount > 0) {
     return 'Cannot revise an invoice after a payment has been recorded'
   }
   return null
@@ -325,17 +330,18 @@ export function buildOjInvoiceRevision(input: {
 }): OjInvoiceRevisionResult {
   const settings = input.settings || {}
   const billableEntries = input.entries.filter((entry) => entry.billable !== false)
+  const activeRecurringInstances = input.recurringInstances.filter(isRecurringChargeInstanceActive)
   const periodYyyymm = periodFromReference(input.invoice.reference)
   const statementMode = Boolean(settings.statement_mode) || String(input.invoice.internal_notes || '').includes('Statement mode')
 
   const lineItems = statementMode
     ? buildStatementLineItems({
-        recurringInstances: input.recurringInstances,
+        recurringInstances: activeRecurringInstances,
         entries: billableEntries,
         settings,
       })
     : buildDetailedLineItems({
-        recurringInstances: input.recurringInstances,
+        recurringInstances: activeRecurringInstances,
         entries: billableEntries,
         settings,
         periodYyyymm,
@@ -348,7 +354,7 @@ export function buildOjInvoiceRevision(input: {
   const totals = calculateInvoiceTotals(lineItems, Number(input.invoice.invoice_discount_percentage || 0))
   const notes = buildRevisionNotes({
     invoice: input.invoice,
-    recurringInstances: input.recurringInstances,
+    recurringInstances: activeRecurringInstances,
     entries: billableEntries,
     revisedAtIso: input.revisedAtIso,
   })
