@@ -32,6 +32,7 @@ import { createTimeEntry, createMileageEntry, createOneOffCharge, getEntries, up
 import type { OJClientSummary } from '@/app/actions/oj-projects/clients'
 import { formatDateDdMmmmYyyy, getTodayIsoDate } from '@/lib/dateUtils'
 import { getCurrentMonthEntryDateRange } from '@/lib/oj-projects/date-ranges'
+import { getEntryDatePeriod, isProjectSelectableForEntryDate } from '@/lib/oj-projects/retainers'
 
 function formatCurrency(value: number): string {
   return `£${value.toFixed(2)}`
@@ -114,13 +115,24 @@ export function ProjectsOverview({ projects, entries: initialEntries, workTypes,
     [projects],
   )
 
-  const createProjectOptions = createForm.vendor_id
-    ? addableProjects.filter((p: any) => p.vendor_id === createForm.vendor_id)
-    : addableProjects
+  function projectMatchesEntryContext(project: any, vendorId: string, entryDate: string): boolean {
+    if (vendorId && project.vendor_id !== vendorId) return false
+    return isProjectSelectableForEntryDate(project, entryDate)
+  }
 
-  const editProjectOptions = editForm.vendor_id
-    ? addableProjects.filter((p: any) => p.vendor_id === editForm.vendor_id)
-    : addableProjects
+  function keepProjectForEntryDate(projectId: string, vendorId: string, entryDate: string): string {
+    if (!projectId) return ''
+    const project = addableProjects.find((item: any) => item.id === projectId)
+    return project && projectMatchesEntryContext(project, vendorId, entryDate) ? projectId : ''
+  }
+
+  const createProjectOptions = addableProjects.filter((p: any) =>
+    projectMatchesEntryContext(p, createForm.vendor_id, createForm.entry_date),
+  )
+
+  const editProjectOptions = addableProjects.filter((p: any) =>
+    projectMatchesEntryContext(p, editForm.vendor_id, editForm.entry_date),
+  )
 
   function openCreate(): void {
     setCreateForm({
@@ -149,7 +161,7 @@ export function ProjectsOverview({ projects, entries: initialEntries, workTypes,
       id: entry.id,
       entry_type: entry.entry_type,
       vendor_id: entry.vendor_id,
-      project_id: entry.project_id,
+      project_id: entry.project && !isProjectSelectableForEntryDate(entry.project, entry.entry_date) ? '' : entry.project_id,
       entry_date: entry.entry_date,
       duration_hours: minutesToHoursInput(entry.duration_minutes_raw ?? entry.duration_minutes_rounded),
       miles: entry.miles != null ? String(entry.miles) : '',
@@ -267,9 +279,15 @@ export function ProjectsOverview({ projects, entries: initialEntries, workTypes,
     [projects, selectedVendorId],
   )
 
+  const currentPeriod = getEntryDatePeriod(getTodayIsoDate())
+
   const activeProjects = useMemo(
-    () => visibleProjects.filter((p) => p.status === 'active'),
-    [visibleProjects],
+    () => visibleProjects.filter((p) => {
+      if (p.status !== 'active') return false
+      if (!p.is_retainer) return true
+      return p.retainer_period_yyyymm === currentPeriod
+    }),
+    [currentPeriod, visibleProjects],
   )
 
   const totalHours = useMemo(() => {
@@ -506,7 +524,14 @@ export function ProjectsOverview({ projects, entries: initialEntries, workTypes,
               <Input
                 type="date"
                 value={createForm.entry_date}
-                onChange={(e) => setCreateForm({ ...createForm, entry_date: e.target.value })}
+                onChange={(e) => {
+                  const entryDate = e.target.value
+                  setCreateForm({
+                    ...createForm,
+                    entry_date: entryDate,
+                    project_id: keepProjectForEntryDate(createForm.project_id, createForm.vendor_id, entryDate),
+                  })
+                }}
                 required
               />
             </Field>
@@ -619,7 +644,14 @@ export function ProjectsOverview({ projects, entries: initialEntries, workTypes,
               <Input
                 type="date"
                 value={editForm.entry_date}
-                onChange={(e) => setEditForm({ ...editForm, entry_date: e.target.value })}
+                onChange={(e) => {
+                  const entryDate = e.target.value
+                  setEditForm({
+                    ...editForm,
+                    entry_date: entryDate,
+                    project_id: keepProjectForEntryDate(editForm.project_id, editForm.vendor_id, entryDate),
+                  })
+                }}
                 required
               />
             </Field>

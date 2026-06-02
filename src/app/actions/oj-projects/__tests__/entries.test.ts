@@ -171,6 +171,47 @@ describe('createTimeEntry', () => {
     expect(result).toEqual({ error: 'Cannot add entries to a closed retainer' })
   })
 
+  it('should reject selected retainer projects that do not match the entry month', async () => {
+    mockCreateClient.mockResolvedValue({
+      auth: {
+        getUser: vi.fn().mockResolvedValue({
+          data: { user: { id: 'user-1', email: 'test@test.com' } },
+        }),
+      },
+      from: vi.fn().mockImplementation((table: string) => {
+        if (table === 'oj_projects') {
+          return {
+            select: vi.fn().mockReturnThis(),
+            eq: vi.fn().mockReturnThis(),
+            single: vi.fn().mockResolvedValue({
+              data: {
+                id: 'b0000000-0000-0000-0000-000000000001',
+                vendor_id: 'a0000000-0000-0000-0000-000000000001',
+                status: 'active',
+                is_retainer: true,
+                retainer_period_yyyymm: '2026-05',
+              },
+              error: null,
+            }),
+          }
+        }
+        throw new Error(`Unexpected table: ${table}`)
+      }),
+    } as any)
+
+    const fd = makeFormData({
+      vendor_id: 'a0000000-0000-0000-0000-000000000001',
+      project_id: 'b0000000-0000-0000-0000-000000000001',
+      entry_date: '2026-06-02',
+      duration_minutes: '450',
+    })
+
+    const result = await createTimeEntry(fd)
+    expect(result).toEqual({
+      error: 'Selected retainer does not match the entry date. Use Current retainer / General Work to route this entry to the correct monthly retainer.',
+    })
+  })
+
   it('should reject auto-routed entries when the matching monthly retainer is closed', async () => {
     mockCreateClient.mockResolvedValue({
       auth: {

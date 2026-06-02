@@ -6,6 +6,7 @@ import { logAuditEvent } from '@/app/actions/audit'
 import { recalculateTaxYearMileage } from '@/lib/mileage/recalculateTaxYear'
 import { getTaxYearBounds } from '@/lib/mileage/hmrcRates'
 import { generateProjectCode } from '@/lib/oj-projects/project-codes'
+import { getEntryDatePeriod } from '@/lib/oj-projects/retainers'
 import { z } from 'zod'
 
 function hasAtMostOneDecimalPlace(value: number): boolean {
@@ -82,11 +83,12 @@ async function getVendorSettingsOrDefault(supabase: Awaited<ReturnType<typeof cr
 async function ensureProjectMatchesVendor(
   supabase: Awaited<ReturnType<typeof createClient>>,
   projectId: string,
-  vendorId: string
+  vendorId: string,
+  entryDate: string
 ) {
   const { data: project, error } = await supabase
     .from('oj_projects')
-    .select('id, vendor_id, status, is_retainer')
+    .select('id, vendor_id, status, is_retainer, retainer_period_yyyymm')
     .eq('id', projectId)
     .single()
 
@@ -100,6 +102,9 @@ async function ensureProjectMatchesVendor(
     }
     return { error: 'Cannot add entries to a closed project' }
   }
+  if (project.is_retainer && project.retainer_period_yyyymm !== getEntryDatePeriod(entryDate)) {
+    return { error: 'Selected retainer does not match the entry date. Use Current retainer / General Work to route this entry to the correct monthly retainer.' }
+  }
   return { success: true as const }
 }
 
@@ -107,7 +112,7 @@ const GENERAL_PROJECT_NAME = 'General Work'
 const GENERAL_PROJECT_NOTES = 'Auto-created by OJ Projects for client-level entries without a specific project.'
 
 function periodFromEntryDate(entryDate: string): string {
-  return entryDate.slice(0, 7)
+  return getEntryDatePeriod(entryDate)
 }
 
 function monthLabelFromPeriod(periodYyyymm: string): string {
@@ -246,7 +251,7 @@ async function resolveProjectForEntry(
   input: { projectId?: string | null; vendorId: string; entryDate: string }
 ) {
   if (input.projectId) {
-    const match = await ensureProjectMatchesVendor(supabase, input.projectId, input.vendorId)
+    const match = await ensureProjectMatchesVendor(supabase, input.projectId, input.vendorId, input.entryDate)
     if ('error' in match) return { error: match.error }
     return { projectId: input.projectId }
   }
@@ -293,7 +298,9 @@ export async function getEntries(options?: {
       project:oj_projects(
         id,
         project_code,
-        project_name
+        project_name,
+        is_retainer,
+        retainer_period_yyyymm
       ),
       vendor:invoice_vendors(
         id,
