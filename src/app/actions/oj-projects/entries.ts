@@ -290,7 +290,6 @@ type RevisableLinkedInvoice = {
   id: string
   invoice_number: string
   status: string | null
-  paid_amount: number | null
 }
 
 async function getLinkedInvoiceForRevision(input: {
@@ -309,7 +308,7 @@ async function getLinkedInvoiceForRevision(input: {
   const admin = createAdminClient()
   const { data: invoice, error: invoiceError } = await admin
     .from('invoices')
-    .select('id, invoice_number, vendor_id, status, paid_amount')
+    .select('id, invoice_number, vendor_id, status')
     .eq('id', input.invoiceId)
     .is('deleted_at', null)
     .maybeSingle()
@@ -360,7 +359,7 @@ async function recalculateLinkedOjInvoice(input: {
   const admin = createAdminClient()
   const { data: invoice, error: invoiceError } = await admin
     .from('invoices')
-    .select('id, invoice_number, vendor_id, invoice_date, due_date, reference, status, paid_amount, total_amount, notes, internal_notes, invoice_discount_percentage')
+    .select('id, invoice_number, vendor_id, invoice_date, due_date, reference, status, total_amount, notes, internal_notes, invoice_discount_percentage')
     .eq('id', input.invoiceId)
     .is('deleted_at', null)
     .maybeSingle()
@@ -412,7 +411,17 @@ async function recalculateLinkedOjInvoice(input: {
       .order('created_at', { ascending: true }),
     admin
       .from('oj_recurring_charge_instances')
-      .select('id, period_yyyymm, description_snapshot, amount_ex_vat_snapshot, vat_rate_snapshot, sort_order_snapshot')
+      .select(`
+        id,
+        period_yyyymm,
+        description_snapshot,
+        amount_ex_vat_snapshot,
+        vat_rate_snapshot,
+        sort_order_snapshot,
+        recurring_charge:oj_vendor_recurring_charges(
+          is_active
+        )
+      `)
       .eq('invoice_id', input.invoiceId)
       .order('period_end', { ascending: true })
       .order('sort_order_snapshot', { ascending: true })
@@ -454,7 +463,6 @@ async function recalculateLinkedOjInvoice(input: {
       updated_at: new Date().toISOString(),
     })
     .eq('id', input.invoiceId)
-    .or('paid_amount.eq.0,paid_amount.is.null')
     .not('status', 'in', '(paid,partially_paid,void,written_off)')
     .is('deleted_at', null)
     .select('id, invoice_number, total_amount')
@@ -565,7 +573,6 @@ export async function getEntries(options?: {
         id,
         invoice_number,
         status,
-        paid_amount,
         total_amount
       ),
       work_type:oj_work_types(

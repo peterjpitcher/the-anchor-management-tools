@@ -509,6 +509,10 @@ function getRecurringCharge(instance: any) {
   return { exVat, vatRate, incVat }
 }
 
+function isRecurringInstanceActive(instance: any) {
+  return instance?.recurring_charge?.is_active !== false
+}
+
 function computeTimeCharge(rate: number, vatRate: number, minutes: number) {
   const exVat = roundMoney((minutes / 60) * rate)
   const incVat = moneyIncVat(exVat, vatRate)
@@ -1453,7 +1457,7 @@ async function buildDryRunPreview(input: {
 
   const { data: existingInstances, error: existingInstanceError } = await supabase
     .from('oj_recurring_charge_instances')
-    .select('*')
+    .select('*, recurring_charge:oj_vendor_recurring_charges(is_active)')
     .eq('vendor_id', vendorId)
     .eq('status', 'unbilled')
     .lte('period_end', period.period_end)
@@ -1462,6 +1466,7 @@ async function buildDryRunPreview(input: {
     .order('created_at', { ascending: true })
     .limit(10000)
   if (existingInstanceError) throw new Error(existingInstanceError.message)
+  const activeExistingInstances = (existingInstances || []).filter(isRecurringInstanceActive)
 
   const { data: periodInstances, error: periodInstancesError } = await supabase
     .from('oj_recurring_charge_instances')
@@ -1499,7 +1504,7 @@ async function buildDryRunPreview(input: {
     })
   }
 
-  const eligibleRecurringInstances = [...(existingInstances || []), ...virtualInstances].sort((a: any, b: any) => {
+  const eligibleRecurringInstances = [...activeExistingInstances, ...virtualInstances].sort((a: any, b: any) => {
     if (String(a.period_end || '') !== String(b.period_end || '')) {
       return String(a.period_end || '').localeCompare(String(b.period_end || ''))
     }
@@ -2813,7 +2818,7 @@ export async function GET(request: Request) {
       // Load eligible recurring charge instances (including older carry-forward items)
       const { data: eligibleRecurringInstances, error: recurringInstanceError } = await supabase
         .from('oj_recurring_charge_instances')
-        .select('*')
+        .select('*, recurring_charge:oj_vendor_recurring_charges(is_active)')
         .eq('vendor_id', vendorId)
         .eq('status', 'unbilled')
         .lte('period_end', period.period_end)
@@ -2823,6 +2828,7 @@ export async function GET(request: Request) {
         .limit(10000)
 
       if (recurringInstanceError) throw new Error(recurringInstanceError.message)
+      const activeEligibleRecurringInstances = (eligibleRecurringInstances || []).filter(isRecurringInstanceActive)
 
       // Load eligible entries
       const { data: eligibleEntries, error: entriesError } = await supabase
@@ -2879,7 +2885,7 @@ export async function GET(request: Request) {
         return false
       }
 
-      for (const c of eligibleRecurringInstances || []) {
+      for (const c of activeEligibleRecurringInstances || []) {
         const exVat = roundMoney(Number(c.amount_ex_vat_snapshot || 0))
         const vatRate = Number(c.vat_rate_snapshot || 0)
         const incVat = moneyIncVat(exVat, vatRate)
@@ -2991,7 +2997,7 @@ export async function GET(request: Request) {
       })
 
       // If nothing selected and nothing eligible, mark run sent (no invoice).
-      const hasAnyEligible = (eligibleRecurringInstances?.length || 0) > 0 || (eligibleEntries?.length || 0) > 0
+      const hasAnyEligible = (activeEligibleRecurringInstances?.length || 0) > 0 || (eligibleEntries?.length || 0) > 0
       const hasAnySelected = selectedRecurringInstances.length + selectedOneOff.length + selectedMileage.length + selectedTime.length > 0
 
       if (!hasAnySelected) {
