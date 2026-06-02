@@ -2,6 +2,7 @@ export type OJBillingMode = 'full' | 'cap'
 export type OJProjectStatus = 'active' | 'paused' | 'completed' | 'archived'
 export type OJEntryType = 'time' | 'mileage' | 'one_off'
 export type OJEntryStatus = 'unbilled' | 'billing_pending' | 'billed' | 'paid'
+export type OJRecurringChargeFrequency = 'monthly' | 'quarterly' | 'annually'
 
 export type OJWorkType = {
   id: string
@@ -32,6 +33,7 @@ export type OJVendorRecurringCharge = {
   description: string
   amount_ex_vat: number
   vat_rate: number
+  frequency: OJRecurringChargeFrequency
   is_active: boolean
   sort_order: number
   created_at: string

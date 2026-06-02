@@ -5,13 +5,26 @@ import { checkUserPermission } from '@/app/actions/rbac'
 import { logAuditEvent } from '@/app/actions/audit'
 import { z } from 'zod'
 
+const formBooleanSchema = z.preprocess((value) => {
+  if (value == null || value === '') return undefined
+  if (typeof value === 'boolean') return value
+
+  if (typeof value === 'string') {
+    const normalized = value.toLowerCase()
+    if (normalized === 'true' || normalized === 'on' || normalized === '1') return true
+    if (normalized === 'false' || normalized === 'off' || normalized === '0') return false
+  }
+
+  return value
+}, z.boolean().optional())
+
 const RecurringChargeSchema = z.object({
   vendor_id: z.string().uuid('Invalid vendor ID'),
   description: z.string().min(1, 'Description is required').max(200),
   amount_ex_vat: z.coerce.number().min(0),
   vat_rate: z.coerce.number().min(0).max(100),
   frequency: z.enum(['monthly', 'quarterly', 'annually']).default('monthly'),
-  is_active: z.coerce.boolean().optional(),
+  is_active: formBooleanSchema,
   sort_order: z.coerce.number().int().min(0).max(1000).optional(),
 })
 

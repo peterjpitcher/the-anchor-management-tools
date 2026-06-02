@@ -3,7 +3,6 @@
 import { useMemo, useState } from 'react'
 import {
   Card,
-  CardHeader,
   Table,
   TableHeader,
   TableBody,
@@ -14,14 +13,25 @@ import {
   Button,
   SearchInput,
   Drawer,
+  Modal,
   Field,
   Input,
+  Select,
+  Checkbox,
   Empty,
-  Stat,
+  ConfirmDialog,
   toast,
 } from '@/ds'
+import { Icon } from '@/ds/icons'
+import { usePermissions } from '@/contexts/PermissionContext'
 import { getClientBalance } from '@/app/actions/oj-projects/client-balance'
 import { getClientStatement, sendStatementEmail } from '@/app/actions/oj-projects/client-statement'
+import {
+  createRecurringCharge,
+  disableRecurringCharge,
+  getRecurringCharges,
+  updateRecurringCharge,
+} from '@/app/actions/oj-projects/recurring-charges'
 import type { ClientBalance } from '@/app/actions/oj-projects/client-balance'
 import type { ClientStatementData } from '@/app/actions/oj-projects/client-statement'
 import type { OJClientSummary } from '@/app/actions/oj-projects/clients'
@@ -31,15 +41,79 @@ function formatCurrency(value: number): string {
   return `£${value.toFixed(2)}`
 }
 
+type RecurringChargeFrequency = 'monthly' | 'quarterly' | 'annually'
+
+type RecurringCharge = {
+  id: string
+  vendor_id: string
+  description: string
+  amount_ex_vat: number
+  vat_rate: number
+  frequency: RecurringChargeFrequency
+  is_active: boolean
+  sort_order: number
+  created_at: string
+  updated_at: string
+}
+
+type RecurringChargeForm = {
+  id?: string
+  description: string
+  amount_ex_vat: string
+  vat_rate: string
+  frequency: RecurringChargeFrequency
+  is_active: boolean
+  sort_order: string
+}
+
+const emptyRecurringChargeForm: RecurringChargeForm = {
+  description: '',
+  amount_ex_vat: '',
+  vat_rate: '20',
+  frequency: 'monthly',
+  is_active: true,
+  sort_order: '0',
+}
+
+const recurringFrequencyOptions = [
+  { label: 'Monthly', value: 'monthly' },
+  { label: 'Quarterly', value: 'quarterly' },
+  { label: 'Annually', value: 'annually' },
+]
+
+function formatFrequency(value: string): string {
+  switch (value) {
+    case 'quarterly':
+      return 'Quarterly'
+    case 'annually':
+      return 'Annually'
+    default:
+      return 'Monthly'
+  }
+}
+
+function calculateIncVat(amountExVat: number, vatRate: number): number {
+  return amountExVat * (1 + vatRate / 100)
+}
+
 interface ClientsClientProps {
   initialClients: OJClientSummary[]
 }
 
 export function ClientsClient({ initialClients }: ClientsClientProps): React.ReactElement {
+  const { hasPermission } = usePermissions()
+  const canEditRecurringCharges = hasPermission('oj_projects', 'edit')
+
   const [search, setSearch] = useState('')
   const [drawerVendor, setDrawerVendor] = useState<OJClientSummary | null>(null)
   const [balance, setBalance] = useState<ClientBalance | null>(null)
   const [loadingBalance, setLoadingBalance] = useState(false)
+  const [recurringCharges, setRecurringCharges] = useState<RecurringCharge[]>([])
+  const [loadingRecurringCharges, setLoadingRecurringCharges] = useState(false)
+  const [chargeModalOpen, setChargeModalOpen] = useState(false)
+  const [chargeForm, setChargeForm] = useState<RecurringChargeForm>(emptyRecurringChargeForm)
+  const [chargeSaving, setChargeSaving] = useState(false)
+  const [disableChargeId, setDisableChargeId] = useState<string | null>(null)
 
   // Statement state
   const [statementFrom, setStatementFrom] = useState('')
@@ -57,8 +131,10 @@ export function ClientsClient({ initialClients }: ClientsClientProps): React.Rea
   async function openDrawer(client: OJClientSummary): Promise<void> {
     setDrawerVendor(client)
     setBalance(null)
+    setRecurringCharges([])
     setStatement(null)
     setLoadingBalance(true)
+    setLoadingRecurringCharges(true)
 
     // Default statement date range to last 3 months
     const now = new Date()
@@ -67,16 +143,110 @@ export function ClientsClient({ initialClients }: ClientsClientProps): React.Rea
     setStatementTo(now.toISOString().split('T')[0])
 
     try {
-      const res = await getClientBalance(client.id)
+      const [balanceRes, chargesRes] = await Promise.all([
+        getClientBalance(client.id),
+        getRecurringCharges(client.id),
+      ])
+
+      if (balanceRes.error) {
+        toast.error(balanceRes.error)
+      } else {
+        setBalance(balanceRes.balance ?? null)
+      }
+
+      if (chargesRes.error) {
+        toast.error(chargesRes.error)
+      } else {
+        setRecurringCharges((chargesRes.charges ?? []) as RecurringCharge[])
+      }
+    } catch {
+      toast.error('Failed to load client details')
+    } finally {
+      setLoadingBalance(false)
+      setLoadingRecurringCharges(false)
+    }
+  }
+
+  async function reloadRecurringCharges(vendorId = drawerVendor?.id): Promise<void> {
+    if (!vendorId) return
+
+    setLoadingRecurringCharges(true)
+    try {
+      const res = await getRecurringCharges(vendorId)
       if (res.error) {
         toast.error(res.error)
       } else {
-        setBalance(res.balance ?? null)
+        setRecurringCharges((res.charges ?? []) as RecurringCharge[])
       }
     } catch {
-      toast.error('Failed to load balance')
+      toast.error('Failed to load recurring charges')
     } finally {
-      setLoadingBalance(false)
+      setLoadingRecurringCharges(false)
+    }
+  }
+
+  function openCreateCharge(): void {
+    setChargeForm(emptyRecurringChargeForm)
+    setChargeModalOpen(true)
+  }
+
+  function openEditCharge(charge: RecurringCharge): void {
+    setChargeForm({
+      id: charge.id,
+      description: charge.description || '',
+      amount_ex_vat: String(charge.amount_ex_vat ?? ''),
+      vat_rate: String(charge.vat_rate ?? 20),
+      frequency: charge.frequency || 'monthly',
+      is_active: charge.is_active,
+      sort_order: String(charge.sort_order ?? 0),
+    })
+    setChargeModalOpen(true)
+  }
+
+  async function handleChargeSubmit(e: React.FormEvent): Promise<void> {
+    e.preventDefault()
+    if (!drawerVendor) return
+
+    setChargeSaving(true)
+    try {
+      const fd = new FormData()
+      fd.append('vendor_id', drawerVendor.id)
+      fd.append('description', chargeForm.description)
+      fd.append('amount_ex_vat', chargeForm.amount_ex_vat)
+      fd.append('vat_rate', chargeForm.vat_rate)
+      fd.append('frequency', chargeForm.frequency)
+      fd.append('is_active', String(chargeForm.is_active))
+      fd.append('sort_order', chargeForm.sort_order)
+      if (chargeForm.id) fd.append('id', chargeForm.id)
+
+      const res = chargeForm.id ? await updateRecurringCharge(fd) : await createRecurringCharge(fd)
+      if (res.error) throw new Error(res.error)
+
+      toast.success(chargeForm.id ? 'Recurring charge updated' : 'Recurring charge added')
+      setChargeModalOpen(false)
+      setChargeForm(emptyRecurringChargeForm)
+      await reloadRecurringCharges(drawerVendor.id)
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to save recurring charge')
+    } finally {
+      setChargeSaving(false)
+    }
+  }
+
+  async function handleDisableCharge(): Promise<void> {
+    if (!disableChargeId || !drawerVendor) return
+
+    try {
+      const fd = new FormData()
+      fd.append('id', disableChargeId)
+      const res = await disableRecurringCharge(fd)
+      if (res.error) throw new Error(res.error)
+
+      toast.success('Recurring charge disabled')
+      setDisableChargeId(null)
+      await reloadRecurringCharges(drawerVendor.id)
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to disable recurring charge')
     }
   }
 
@@ -256,6 +426,73 @@ export function ClientsClient({ initialClients }: ClientsClientProps): React.Rea
               </div>
             )}
 
+            {/* Recurring charges */}
+            <div className="border-t border-border pt-4">
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <h3 className="text-sm font-semibold text-text">Recurring Charges</h3>
+                {canEditRecurringCharges && (
+                  <Button
+                    variant="secondary"
+                    size="xs"
+                    icon={<Icon name="plus" size={14} />}
+                    onClick={openCreateCharge}
+                  >
+                    Add
+                  </Button>
+                )}
+              </div>
+
+              {loadingRecurringCharges ? (
+                <p className="py-2 text-sm text-text-muted">Loading charges...</p>
+              ) : recurringCharges.length === 0 ? (
+                <p className="py-2 text-sm text-text-muted">No recurring charges set up.</p>
+              ) : (
+                <div className="flex flex-col gap-2">
+                  {recurringCharges.map((charge) => {
+                    const incVat = calculateIncVat(Number(charge.amount_ex_vat || 0), Number(charge.vat_rate || 0))
+                    return (
+                      <div key={charge.id} className="rounded-lg border border-border bg-surface p-3">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-medium text-text">{charge.description}</p>
+                            <p className="mt-1 text-xs text-text-muted">
+                              {formatFrequency(charge.frequency)} · {formatCurrency(Number(charge.amount_ex_vat || 0))} ex VAT · {formatCurrency(incVat)} inc VAT
+                            </p>
+                          </div>
+                          <Badge tone={charge.is_active ? 'success' : 'neutral'}>
+                            {charge.is_active ? 'Active' : 'Inactive'}
+                          </Badge>
+                        </div>
+
+                        {canEditRecurringCharges && (
+                          <div className="mt-3 flex gap-2">
+                            <Button
+                              variant="ghost"
+                              size="xs"
+                              icon={<Icon name="edit" size={14} />}
+                              onClick={() => openEditCharge(charge)}
+                            >
+                              Edit
+                            </Button>
+                            {charge.is_active && (
+                              <Button
+                                variant="ghost"
+                                size="xs"
+                                icon={<Icon name="x" size={14} />}
+                                onClick={() => setDisableChargeId(charge.id)}
+                              >
+                                Disable
+                              </Button>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+
             {/* Statement generator */}
             <div className="border-t border-border pt-4">
               <h3 className="text-sm font-semibold text-text mb-3">Account Statement</h3>
@@ -341,6 +578,97 @@ export function ClientsClient({ initialClients }: ClientsClientProps): React.Rea
           <p className="text-sm text-text-muted py-4">Select a client to view balance details.</p>
         )}
       </Drawer>
+
+      <Modal
+        open={chargeModalOpen}
+        onClose={() => setChargeModalOpen(false)}
+        title={chargeForm.id ? 'Edit Recurring Charge' : 'Add Recurring Charge'}
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setChargeModalOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              form="oj-recurring-charge-form"
+              loading={chargeSaving}
+            >
+              {chargeForm.id ? 'Save Changes' : 'Add Charge'}
+            </Button>
+          </>
+        }
+      >
+        <form id="oj-recurring-charge-form" onSubmit={handleChargeSubmit} className="flex flex-col gap-4">
+          <Field label="Description" required>
+            <Input
+              value={chargeForm.description}
+              onChange={(e) => setChargeForm((current) => ({ ...current, description: e.target.value }))}
+              maxLength={200}
+              required
+            />
+          </Field>
+
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Amount ex VAT" required>
+              <Input
+                type="number"
+                min="0"
+                step="0.01"
+                value={chargeForm.amount_ex_vat}
+                onChange={(e) => setChargeForm((current) => ({ ...current, amount_ex_vat: e.target.value }))}
+                required
+              />
+            </Field>
+            <Field label="VAT Rate" required>
+              <Input
+                type="number"
+                min="0"
+                max="100"
+                step="0.01"
+                value={chargeForm.vat_rate}
+                onChange={(e) => setChargeForm((current) => ({ ...current, vat_rate: e.target.value }))}
+                required
+              />
+            </Field>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Frequency" required>
+              <Select
+                value={chargeForm.frequency}
+                onChange={(e) => setChargeForm((current) => ({ ...current, frequency: e.target.value as RecurringChargeFrequency }))}
+                options={recurringFrequencyOptions}
+              />
+            </Field>
+            <Field label="Sort Order">
+              <Input
+                type="number"
+                min="0"
+                max="1000"
+                step="1"
+                value={chargeForm.sort_order}
+                onChange={(e) => setChargeForm((current) => ({ ...current, sort_order: e.target.value }))}
+              />
+            </Field>
+          </div>
+
+          <Checkbox
+            label="Active"
+            checked={chargeForm.is_active}
+            onChange={(checked) => setChargeForm((current) => ({ ...current, is_active: Boolean(checked) }))}
+          />
+        </form>
+      </Modal>
+
+      <ConfirmDialog
+        open={!!disableChargeId}
+        onClose={() => setDisableChargeId(null)}
+        onConfirm={handleDisableCharge}
+        title="Disable Recurring Charge"
+        message="This recurring charge will stop being included in future billing runs."
+        confirmLabel="Disable"
+        tone="warning"
+      />
     </div>
   )
 }

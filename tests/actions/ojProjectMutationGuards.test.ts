@@ -9,6 +9,10 @@ vi.mock('@/lib/supabase/server', () => ({
   createClient: vi.fn(),
 }))
 
+vi.mock('@/app/actions/audit', () => ({
+  logAuditEvent: vi.fn(),
+}))
+
 import { checkUserPermission } from '@/app/actions/rbac'
 import { createClient } from '@/lib/supabase/server'
 import { removeProjectContact } from '@/app/actions/oj-projects/project-contacts'
@@ -167,6 +171,55 @@ describe('OJ project action mutation row-effect guards', () => {
     const result = await updateRecurringCharge(formData)
 
     expect(result).toEqual({ error: 'Charge not found' })
+  })
+
+  it('preserves false active state when updating a recurring charge', async () => {
+    const updatedPayloads: Array<Record<string, unknown>> = []
+    const maybeSingle = vi.fn().mockResolvedValue({
+      data: {
+        id: 'charge-1',
+        vendor_id: '550e8400-e29b-41d4-a716-446655440000',
+        description: 'Retainer',
+        amount_ex_vat: 100,
+        vat_rate: 20,
+        frequency: 'monthly',
+        is_active: false,
+        sort_order: 1,
+      },
+      error: null,
+    })
+    const select = vi.fn().mockReturnValue({ maybeSingle })
+    const eq = vi.fn().mockReturnValue({ select })
+    const update = vi.fn((payload: Record<string, unknown>) => {
+      updatedPayloads.push(payload)
+      return { eq }
+    })
+
+    mockedCreateClient.mockResolvedValue({
+      auth: mockAuth,
+      from: vi.fn((table: string) => {
+        if (table !== 'oj_vendor_recurring_charges') {
+          throw new Error(`Unexpected table: ${table}`)
+        }
+
+        return { update }
+      }),
+    })
+
+    const formData = new FormData()
+    formData.set('id', 'charge-1')
+    formData.set('vendor_id', '550e8400-e29b-41d4-a716-446655440000')
+    formData.set('description', 'Retainer')
+    formData.set('amount_ex_vat', '100')
+    formData.set('vat_rate', '20')
+    formData.set('frequency', 'monthly')
+    formData.set('is_active', 'false')
+    formData.set('sort_order', '1')
+
+    const result = await updateRecurringCharge(formData)
+
+    expect(result.success).toBe(true)
+    expect(updatedPayloads[0]).toEqual(expect.objectContaining({ is_active: false }))
   })
 
   it('returns project-not-found when deleteProject delete affects no rows after entry precheck', async () => {
