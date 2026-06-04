@@ -8,9 +8,18 @@ import { updateTableBookingByRawToken } from '@/lib/table-bookings/manage-bookin
 const ActionSchema = z.object({
   action: z.enum(['update', 'cancel']),
   party_size: z
-    .preprocess((value) => (typeof value === 'string' && value.length > 0 ? Number.parseInt(value, 10) : undefined), z.number().int().min(1).max(20))
-    .optional(),
-  notes: z.string().max(500).optional()
+    .preprocess((value) => {
+      if (value == null) return undefined
+      if (typeof value === 'string') {
+        const trimmed = value.trim()
+        return trimmed.length > 0 ? Number.parseInt(trimmed, 10) : undefined
+      }
+      return value
+    }, z.number().int().min(1).max(20).optional()),
+  notes: z.preprocess(
+    (value) => (typeof value === 'string' ? value : undefined),
+    z.string().max(500).optional()
+  )
 })
 
 function redirectWithStatus(request: NextRequest, token: string, status: string) {
@@ -42,6 +51,17 @@ export async function POST(
   })
 
   if (!parsed.success) {
+    logger.warn('Guest table-manage action form validation failed', {
+      metadata: {
+        issues: parsed.error.issues.map((issue) => ({
+          path: issue.path.join('.'),
+          code: issue.code
+        })),
+        action: formData.get('action'),
+        hasPartySize: formData.has('party_size'),
+        hasNotes: formData.has('notes')
+      }
+    })
     return redirectWithStatus(request, token, 'error')
   }
 
@@ -57,6 +77,13 @@ export async function POST(
     })
 
     if (result.state === 'blocked') {
+      logger.warn('Guest table-manage action blocked', {
+        metadata: {
+          reason: result.reason || 'unknown',
+          action: parsed.data.action,
+          tableBookingId: result.table_booking_id || null
+        }
+      })
       return redirectWithStatus(request, token, 'error')
     }
 
@@ -75,7 +102,7 @@ export async function POST(
   } catch (error) {
     logger.warn('Guest table-manage action failed unexpectedly', {
       metadata: {
-        token,
+        action: parsed.data.action,
         error: error instanceof Error ? error.message : String(error)
       }
     })
