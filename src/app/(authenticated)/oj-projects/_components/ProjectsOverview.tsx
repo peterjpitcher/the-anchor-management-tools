@@ -60,6 +60,21 @@ interface ProjectsOverviewProps {
   clients: OJClientSummary[]
 }
 
+function createBlankEntryForm(vendorId = '') {
+  return {
+    vendor_id: vendorId,
+    project_id: '',
+    entry_date: getTodayIsoDate(),
+    duration_hours: '',
+    miles: '',
+    amount_ex_vat: '',
+    work_type_id: '',
+    description: '',
+    internal_notes: '',
+    billable: true,
+  }
+}
+
 export function ProjectsOverview({ projects, entries: initialEntries, workTypes, clients }: ProjectsOverviewProps): React.ReactElement {
   const router = useRouter()
   const { hasPermission } = usePermissions()
@@ -70,21 +85,11 @@ export function ProjectsOverview({ projects, entries: initialEntries, workTypes,
   const [entries, setEntries] = useState(initialEntries)
   const [entriesLoading, setEntriesLoading] = useState(false)
   const [selectedVendorId, setSelectedVendorId] = useState('')
+  const [lastCreateVendorId, setLastCreateVendorId] = useState('')
   const [createOpen, setCreateOpen] = useState(false)
   const [createType, setCreateType] = useState<'time' | 'mileage' | 'one_off'>('time')
   const [saving, setSaving] = useState(false)
-  const [createForm, setCreateForm] = useState({
-    vendor_id: '',
-    project_id: '',
-    entry_date: getTodayIsoDate(),
-    duration_hours: '',
-    miles: '',
-    amount_ex_vat: '',
-    work_type_id: '',
-    description: '',
-    internal_notes: '',
-    billable: true,
-  })
+  const [createForm, setCreateForm] = useState(createBlankEntryForm)
   const [editOpen, setEditOpen] = useState(false)
   const [deleteId, setDeleteId] = useState<string | null>(null)
   const [editForm, setEditForm] = useState({
@@ -143,18 +148,7 @@ export function ProjectsOverview({ projects, entries: initialEntries, workTypes,
   const deleteEntryTarget = deleteId ? entries.find((entry) => entry.id === deleteId) : null
 
   function openCreate(): void {
-    setCreateForm({
-      vendor_id: selectedVendorId,
-      project_id: '',
-      entry_date: getTodayIsoDate(),
-      duration_hours: '',
-      miles: '',
-      amount_ex_vat: '',
-      work_type_id: '',
-      description: '',
-      internal_notes: '',
-      billable: true,
-    })
+    setCreateForm(createBlankEntryForm(selectedVendorId || lastCreateVendorId))
     setCreateType('time')
     setCreateOpen(true)
   }
@@ -209,6 +203,7 @@ export function ProjectsOverview({ projects, entries: initialEntries, workTypes,
 
   function handleClientFilterChange(vendorId: string): void {
     setSelectedVendorId(vendorId)
+    setLastCreateVendorId(vendorId)
     void loadEntriesForClient(vendorId)
   }
 
@@ -238,9 +233,13 @@ export function ProjectsOverview({ projects, entries: initialEntries, workTypes,
       }
 
       if (res.error) throw new Error(res.error)
+      const submittedVendorId = createForm.vendor_id
       toast.success('Entry created')
+      setSelectedVendorId(submittedVendorId)
+      setLastCreateVendorId(submittedVendorId)
+      setCreateForm(createBlankEntryForm(submittedVendorId))
       setCreateOpen(false)
-      await reload()
+      await loadEntriesForClient(submittedVendorId)
       router.refresh()
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to create entry')
@@ -594,7 +593,11 @@ export function ProjectsOverview({ projects, entries: initialEntries, workTypes,
             <Field label="Client" required>
               <Select
                 value={createForm.vendor_id}
-                onChange={(e) => setCreateForm({ ...createForm, vendor_id: e.target.value, project_id: '' })}
+                onChange={(e) => {
+                  const vendorId = e.target.value
+                  setLastCreateVendorId(vendorId)
+                  setCreateForm({ ...createForm, vendor_id: vendorId, project_id: '' })
+                }}
                 required
                 options={[
                   { label: 'Select client...', value: '' },
