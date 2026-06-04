@@ -57,6 +57,21 @@ interface EntriesClientProps {
   clients: OJClientSummary[]
 }
 
+function createBlankEntryForm(vendorId = '') {
+  return {
+    vendor_id: vendorId,
+    project_id: '',
+    entry_date: getTodayIsoDate(),
+    duration_hours: '',
+    miles: '',
+    amount_ex_vat: '',
+    work_type_id: '',
+    description: '',
+    internal_notes: '',
+    billable: true,
+  }
+}
+
 export function EntriesClient({
   initialEntries,
   projects,
@@ -80,18 +95,8 @@ export function EntriesClient({
   // Create modal state
   const [createOpen, setCreateOpen] = useState(false)
   const [createType, setCreateType] = useState<'time' | 'mileage' | 'one_off'>('time')
-  const [createForm, setCreateForm] = useState({
-    vendor_id: '',
-    project_id: '',
-    entry_date: getTodayIsoDate(),
-    duration_hours: '',
-    miles: '',
-    amount_ex_vat: '',
-    work_type_id: '',
-    description: '',
-    internal_notes: '',
-    billable: true,
-  })
+  const [lastCreateVendorId, setLastCreateVendorId] = useState('')
+  const [createForm, setCreateForm] = useState(createBlankEntryForm)
 
   // Edit modal state
   const [editOpen, setEditOpen] = useState(false)
@@ -297,18 +302,8 @@ export function EntriesClient({
   )
 
   function openCreate(): void {
-    setCreateForm({
-      vendor_id: '',
-      project_id: '',
-      entry_date: getTodayIsoDate(),
-      duration_hours: '',
-      miles: '',
-      amount_ex_vat: '',
-      work_type_id: '',
-      description: '',
-      internal_notes: '',
-      billable: true,
-    })
+    const filterVendorId = clientFilter === 'all' ? '' : clientFilter
+    setCreateForm(createBlankEntryForm(filterVendorId || lastCreateVendorId))
     setCreateType('time')
     setCreateOpen(true)
   }
@@ -339,7 +334,12 @@ export function EntriesClient({
       }
 
       if (res.error) throw new Error(res.error)
+      const submittedVendorId = createForm.vendor_id
       toast.success('Entry created')
+      setClientFilter(submittedVendorId)
+      setProjectFilter('all')
+      setLastCreateVendorId(submittedVendorId)
+      setCreateForm(createBlankEntryForm(submittedVendorId))
       setCreateOpen(false)
       await reload()
       router.refresh()
@@ -420,7 +420,9 @@ export function EntriesClient({
           <Select
             value={clientFilter}
             onChange={(e) => {
-              setClientFilter(e.target.value)
+              const vendorId = e.target.value
+              setClientFilter(vendorId)
+              setLastCreateVendorId(vendorId === 'all' ? '' : vendorId)
               setProjectFilter('all')
             }}
             options={[
@@ -583,7 +585,11 @@ export function EntriesClient({
             <Field label="Client" required>
               <Select
                 value={createForm.vendor_id}
-                onChange={(e) => setCreateForm({ ...createForm, vendor_id: e.target.value, project_id: '' })}
+                onChange={(e) => {
+                  const vendorId = e.target.value
+                  setLastCreateVendorId(vendorId)
+                  setCreateForm({ ...createForm, vendor_id: vendorId, project_id: '' })
+                }}
                 required
                 options={[
                   { label: 'Select client...', value: '' },
