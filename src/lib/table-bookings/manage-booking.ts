@@ -566,15 +566,37 @@ export async function updateTableBookingByRawToken(
       }
     }
 
-    const feePerHead = await getFeePerHead(supabase)
-    const remainingCap = await computePerHeadFeeCapRemaining(supabase, {
-      bookingId,
-      committedPartySize: oldCommittedSize,
-      feePerHead
-    })
+    let chargeAmount = 0
+    let feePerHead = 0
 
-    const suggestedAmount = Number((oldPartySize * feePerHead).toFixed(2))
-    const chargeAmount = Math.max(0, Math.min(suggestedAmount, remainingCap))
+    try {
+      feePerHead = await getFeePerHead(supabase)
+      const remainingCap = await computePerHeadFeeCapRemaining(supabase, {
+        bookingId,
+        committedPartySize: oldCommittedSize,
+        feePerHead
+      })
+
+      const suggestedAmount = Number((oldPartySize * feePerHead).toFixed(2))
+      chargeAmount = Math.max(0, Math.min(suggestedAmount, remainingCap))
+    } catch (chargeEvaluationError) {
+      logger.error('Failed to evaluate late-cancel charge after guest cancellation', {
+        error: chargeEvaluationError instanceof Error ? chargeEvaluationError : new Error(String(chargeEvaluationError)),
+        metadata: {
+          bookingId,
+          customerId
+        }
+      })
+
+      return {
+        state: 'cancelled',
+        table_booking_id: bookingId,
+        customer_id: customerId,
+        status: 'cancelled',
+        charge_request_id: null,
+        charge_amount: null
+      }
+    }
 
     if (chargeAmount <= 0) {
       return {
@@ -587,8 +609,6 @@ export async function updateTableBookingByRawToken(
       }
     }
 
-    let chargeRequestId: string | null = null
-    let finalChargeAmount: number | null = null
     try {
       const chargeRequest = await createSystemChargeRequestWithApproval(supabase, {
         bookingId,
@@ -604,9 +624,14 @@ export async function updateTableBookingByRawToken(
           ...(committedPartySizeWasNull ? { committed_party_size_was_null: true } : {})
         }
       })
-      chargeRequestId = chargeRequest.chargeRequestId
-      if (chargeRequestId) {
-        finalChargeAmount = chargeAmount
+
+      return {
+        state: 'cancelled',
+        table_booking_id: bookingId,
+        customer_id: customerId,
+        status: 'cancelled',
+        charge_request_id: chargeRequest.chargeRequestId,
+        charge_amount: chargeRequest.chargeRequestId ? chargeAmount : null
       }
     } catch (chargeRequestError) {
       logger.error('Failed to create late-cancel charge request after guest cancellation', {
@@ -617,15 +642,15 @@ export async function updateTableBookingByRawToken(
           chargeAmount
         }
       })
-    }
 
-    return {
-      state: 'cancelled',
-      table_booking_id: bookingId,
-      customer_id: customerId,
-      status: 'cancelled',
-      charge_request_id: chargeRequestId,
-      charge_amount: finalChargeAmount
+      return {
+        state: 'cancelled',
+        table_booking_id: bookingId,
+        customer_id: customerId,
+        status: 'cancelled',
+        charge_request_id: null,
+        charge_amount: null
+      }
     }
   }
 

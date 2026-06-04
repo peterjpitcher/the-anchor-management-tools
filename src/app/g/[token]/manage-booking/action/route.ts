@@ -7,7 +7,9 @@ import {
   getEventManagePreviewByRawToken,
   getEventRefundPolicy,
   processEventRefund,
-  updateEventBookingSeatsByRawToken
+  updateEventBookingSeatsByRawToken,
+  type EventManageCancelResult,
+  type EventRefundResult,
 } from '@/lib/events/manage-booking'
 import { checkGuestTokenThrottle } from '@/lib/guest/token-throttle'
 import { recordAnalyticsEvent } from '@/lib/analytics/events'
@@ -56,6 +58,87 @@ async function recordGuestManageBookingAnalyticsSafe(
   }
 }
 
+async function processGuestCancellationRefundSafe(
+  supabase: ReturnType<typeof createAdminClient>,
+  cancelResult: EventManageCancelResult
+): Promise<{ refundStatus: EventRefundResult['status']; refundAmount: number }> {
+  if (
+    cancelResult.payment_mode !== 'prepaid' ||
+    cancelResult.previous_status !== 'confirmed' ||
+    !cancelResult.booking_id ||
+    !cancelResult.customer_id ||
+    !cancelResult.event_id ||
+    !cancelResult.event_start_datetime
+  ) {
+    return { refundStatus: 'none', refundAmount: 0 }
+  }
+
+  const seatCount = Math.max(1, Number(cancelResult.seats ?? 1))
+  const pricePerSeat = Math.max(0, Number(cancelResult.price_per_seat ?? 0))
+  const policy = getEventRefundPolicy(cancelResult.event_start_datetime)
+  const candidateRefundAmount = toMoney(seatCount * pricePerSeat * policy.refundRate)
+
+  if (candidateRefundAmount <= 0) {
+    return { refundStatus: 'none', refundAmount: 0 }
+  }
+
+  try {
+    const refundResult = await processEventRefund(supabase, {
+      bookingId: cancelResult.booking_id,
+      customerId: cancelResult.customer_id,
+      eventId: cancelResult.event_id,
+      amount: candidateRefundAmount,
+      reason: `event_cancel_${policy.policyBand}`
+    })
+
+    return {
+      refundStatus: refundResult.status,
+      refundAmount: refundResult.amount
+    }
+  } catch (refundError) {
+    logger.error('Failed to process refund after guest event booking cancellation', {
+      error: refundError instanceof Error ? refundError : new Error(String(refundError)),
+      metadata: {
+        bookingId: cancelResult.booking_id,
+        customerId: cancelResult.customer_id,
+        eventId: cancelResult.event_id,
+        refundAmount: candidateRefundAmount
+      }
+    })
+
+    return {
+      refundStatus: 'manual_required',
+      refundAmount: candidateRefundAmount
+    }
+  }
+}
+
+async function syncGuestCancellationCalendarSafe(
+  supabase: ReturnType<typeof createAdminClient>,
+  cancelResult: EventManageCancelResult
+): Promise<void> {
+  try {
+    if (cancelResult.event_id) {
+      await syncPubOpsEventCalendarByEventId(supabase, cancelResult.event_id, {
+        bookingId: cancelResult.booking_id ?? null,
+        context: 'guest_event_booking_cancelled',
+      })
+    } else if (cancelResult.booking_id) {
+      await syncPubOpsEventCalendarByBookingId(supabase, cancelResult.booking_id, {
+        context: 'guest_event_booking_cancelled',
+      })
+    }
+  } catch (calendarError) {
+    logger.warn('Failed to sync calendar after guest event booking cancellation', {
+      metadata: {
+        bookingId: cancelResult.booking_id ?? null,
+        eventId: cancelResult.event_id ?? null,
+        error: calendarError instanceof Error ? calendarError.message : String(calendarError)
+      }
+    })
+  }
+}
+
 export async function POST(request: NextRequest, context: RouteContext) {
   const { token } = await context.params
   const throttle = await checkGuestTokenThrottle({
@@ -99,31 +182,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
         })
       }
 
-      let refundStatus = 'none'
-      let refundAmount = 0
-
-      if (
-        cancelResult.payment_mode === 'prepaid' &&
-        cancelResult.previous_status === 'confirmed' &&
-        cancelResult.booking_id &&
-        cancelResult.customer_id &&
-        cancelResult.event_id &&
-        cancelResult.event_start_datetime
-      ) {
-        const seatCount = Math.max(1, Number(cancelResult.seats ?? 1))
-        const pricePerSeat = Math.max(0, Number(cancelResult.price_per_seat ?? 0))
-        const policy = getEventRefundPolicy(cancelResult.event_start_datetime)
-        const candidateRefundAmount = toMoney(seatCount * pricePerSeat * policy.refundRate)
-        const refundResult = await processEventRefund(supabase, {
-          bookingId: cancelResult.booking_id,
-          customerId: cancelResult.customer_id,
-          eventId: cancelResult.event_id,
-          amount: candidateRefundAmount,
-          reason: `event_cancel_${policy.policyBand}`
-        })
-        refundStatus = refundResult.status
-        refundAmount = refundResult.amount
-      }
+      const { refundStatus, refundAmount } = await processGuestCancellationRefundSafe(supabase, cancelResult)
 
       if (cancelResult.customer_id && cancelResult.booking_id) {
         await recordGuestManageBookingAnalyticsSafe(supabase, {
@@ -144,16 +203,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
         })
       }
 
-      if (cancelResult.event_id) {
-        await syncPubOpsEventCalendarByEventId(supabase, cancelResult.event_id, {
-          bookingId: cancelResult.booking_id ?? null,
-          context: 'guest_event_booking_cancelled',
-        })
-      } else if (cancelResult.booking_id) {
-        await syncPubOpsEventCalendarByBookingId(supabase, cancelResult.booking_id, {
-          context: 'guest_event_booking_cancelled',
-        })
-      }
+      await syncGuestCancellationCalendarSafe(supabase, cancelResult)
 
       return redirectToState(request, token, {
         state: 'cancelled',
