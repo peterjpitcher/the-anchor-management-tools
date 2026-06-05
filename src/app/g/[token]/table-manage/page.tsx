@@ -85,10 +85,13 @@ export default async function TableManageBookingPage({
   searchParams
 }: {
   params: Promise<{ token: string }>
-  searchParams: Promise<{ status?: string }>
+  searchParams: Promise<{ confirmCancel?: string; status?: string }>
 }) {
   const { token } = await params
   const query = await searchParams
+  const manageUrl = `/g/${token}/table-manage`
+  const actionUrl = `${manageUrl}/action`
+  const confirmCancel = query.confirmCancel === '1'
   const headerValues = await headers()
   const throttle = await checkGuestTokenThrottle({
     headers: headerValues,
@@ -168,7 +171,7 @@ export default async function TableManageBookingPage({
             Booking changes are no longer available. Please call to make any changes.
           </p>
         ) : (
-          <form method="post" action={`/g/${token}/table-manage/action`} className="mt-6 space-y-4">
+          <form method="post" action={actionUrl} className="mt-6 space-y-4">
             <input type="hidden" name="action" value="update" />
 
             <div>
@@ -212,7 +215,9 @@ export default async function TableManageBookingPage({
 
         {preview.can_cancel && (
           <GuestCancelBooking
-            actionUrl={`/g/${token}/table-manage/action`}
+            actionUrl={actionUrl}
+            confirmCancel={confirmCancel}
+            manageUrl={manageUrl}
             specialRequirements={preview.special_requirements || ''}
           />
         )}
