@@ -5,7 +5,6 @@ import { GuestCancelBooking } from '@/components/features/shared/GuestCancelBook
 const baseProps = {
   actionUrl: '/g/raw-token/table-manage/action',
   manageUrl: '/g/raw-token/table-manage',
-  specialRequirements: '',
 }
 
 describe('GuestCancelBooking', () => {
@@ -18,19 +17,19 @@ describe('GuestCancelBooking', () => {
     )
   })
 
-  it('renders a native cancel form in the confirmation state', () => {
+  it('renders a link-based cancel action in the confirmation state', () => {
     const { container } = render(<GuestCancelBooking {...baseProps} confirmCancel />)
 
     expect(screen.getByText('Are you sure you want to cancel?')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Yes, cancel my booking' })).toHaveAttribute('type', 'submit')
+    expect(screen.getByRole('link', { name: 'Yes, cancel my booking' })).toHaveAttribute(
+      'href',
+      '/g/raw-token/table-manage/action?action=cancel&confirm=1'
+    )
     expect(screen.getByRole('link', { name: 'No, keep my booking' })).toHaveAttribute(
       'href',
       '/g/raw-token/table-manage'
     )
 
-    const form = container.querySelector('form')
-    expect(form).toHaveAttribute('method', 'post')
-    expect(form).toHaveAttribute('action', '/g/raw-token/table-manage/action')
-    expect(container.querySelector('input[name="action"]')).toHaveAttribute('value', 'cancel')
+    expect(container.querySelector('form')).toBeNull()
   })
 })

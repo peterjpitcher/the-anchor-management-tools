@@ -2,18 +2,17 @@
  * Cancel booking section for the guest manage page.
  * Uses URL state for the confirmation step so the first click works even if
  * the browser has not hydrated the React client yet. The final confirmation is
- * also a plain HTML submit button for the same reason.
+ * a link to a guarded GET action because sandboxed frames without allow-forms
+ * block form submissions before they reach the server.
  */
 export function GuestCancelBooking({
   actionUrl,
   confirmCancel,
   manageUrl,
-  specialRequirements,
 }: {
   actionUrl: string
   confirmCancel: boolean
   manageUrl: string
-  specialRequirements: string
 }) {
   if (!confirmCancel) {
     return (
@@ -39,16 +38,13 @@ export function GuestCancelBooking({
           This cannot be undone. Cancelling within 24 hours may incur a fee.
         </p>
         <div className="mt-3 flex flex-col gap-2 sm:flex-row">
-          <form method="post" action={actionUrl}>
-            <input type="hidden" name="action" value="cancel" />
-            <input type="hidden" name="notes" value={specialRequirements} />
-            <button
-              type="submit"
-              className="inline-flex w-full items-center justify-center rounded-md bg-red-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50 sm:w-auto"
-            >
-              Yes, cancel my booking
-            </button>
-          </form>
+          <a
+            href={`${actionUrl}?action=cancel&confirm=1`}
+            rel="nofollow"
+            className="inline-flex w-full items-center justify-center rounded-md bg-red-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-red-700 sm:w-auto"
+          >
+            Yes, cancel my booking
+          </a>
           <a
             href={manageUrl}
             className="inline-flex w-full items-center justify-center rounded-md border border-gray-300 px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 sm:w-auto"

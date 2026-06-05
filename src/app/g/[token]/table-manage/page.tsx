@@ -218,7 +218,6 @@ export default async function TableManageBookingPage({
             actionUrl={actionUrl}
             confirmCancel={confirmCancel}
             manageUrl={manageUrl}
-            specialRequirements={preview.special_requirements || ''}
           />
         )}
       </div>
