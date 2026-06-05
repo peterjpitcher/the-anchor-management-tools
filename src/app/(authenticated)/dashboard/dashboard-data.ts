@@ -6,6 +6,10 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { PrivateBookingService } from '@/services/private-bookings'
 import { getLocalIsoDateDaysAgo, getLocalIsoDateDaysAhead, getTodayIsoDate } from '@/lib/dateUtils'
 import { startOfWeek, subWeeks, format, addDays, differenceInCalendarDays, getISOWeek, setISOWeek } from 'date-fns'
+import {
+  buildPrivateBookingBalanceDueSummaries,
+  type DashboardPrivateBookingBalanceDueSummary as PrivateBookingBalanceDueSummary,
+} from './private-booking-balances'
 
 type EventSummary = {
   id: string
@@ -89,15 +93,6 @@ type PrivateBookingSummary = {
   deposit_status: 'Paid' | 'Required' | 'Not Required' | null
   balance_due_date: string | null
   days_until_event: number | null
-}
-
-type PrivateBookingBalanceDueSummary = {
-  id: string
-  customer_name: string | null
-  balance_due_date: string
-  event_date: string | null
-  status: string | null
-  total_amount: number | null
 }
 
 type PrivateBookingsSnapshot = {
@@ -1037,8 +1032,8 @@ async function fetchDashboardSnapshotImpl(userId: string): Promise<DashboardSnap
               useAdmin: true,
             }),
             supabase
-              .from('private_bookings')
-              .select('id, customer_name, customer_first_name, customer_last_name, balance_due_date, event_date, status, total_amount')
+              .from('private_bookings_with_details')
+              .select('id, customer_name, customer_first_name, customer_last_name, balance_due_date, event_date, status, total_amount, calculated_total, final_payment_date')
               .in('status', ['confirmed'])
               .not('balance_due_date', 'is', null)
               .gte('balance_due_date', eventsLookbackIso)
@@ -1048,6 +1043,24 @@ async function fetchDashboardSnapshotImpl(userId: string): Promise<DashboardSnap
           ])
 
           if (balanceDueResult.error) throw balanceDueResult.error
+
+          const balanceDueRows = balanceDueResult.data ?? []
+          let balancePayments: { booking_id?: unknown; amount?: unknown }[] = []
+
+          const balanceDueBookingIds = balanceDueRows
+            .map((booking) => (booking.id == null ? null : String(booking.id)))
+            .filter((id): id is string => Boolean(id))
+
+          if (balanceDueBookingIds.length > 0) {
+            const { data: paymentRows, error: paymentsError } = await supabase
+              .from('private_booking_payments')
+              .select('booking_id, amount')
+              .in('booking_id', balanceDueBookingIds)
+
+            if (paymentsError) throw paymentsError
+
+            balancePayments = paymentRows ?? []
+          }
 
           const filtered = (upcomingPb.data ?? []).filter((booking) => {
             const status = (booking.status as string) ?? null
@@ -1066,21 +1079,7 @@ async function fetchDashboardSnapshotImpl(userId: string): Promise<DashboardSnap
             return eventDate != null && eventDate < todayIso
           })
           privateBookings.past = pastRows.slice(-50).map(toPbSummary)
-          privateBookings.balanceDueDates = (balanceDueResult.data ?? []).map((booking) => {
-            const customerName =
-              typeof booking.customer_name === 'string' && booking.customer_name
-                ? booking.customer_name
-                : [booking.customer_first_name, booking.customer_last_name].filter(Boolean).join(' ') || null
-
-            return {
-              id: String(booking.id),
-              customer_name: customerName,
-              balance_due_date: String(booking.balance_due_date),
-              event_date: typeof booking.event_date === 'string' ? booking.event_date : null,
-              status: typeof booking.status === 'string' ? booking.status : null,
-              total_amount: booking.total_amount != null ? Number(booking.total_amount) : null,
-            }
-          })
+          privateBookings.balanceDueDates = buildPrivateBookingBalanceDueSummaries(balanceDueRows, balancePayments)
         } catch (error) {
           console.error('Failed to load dashboard private bookings:', error)
           privateBookings.error = 'Failed to load private bookings'
