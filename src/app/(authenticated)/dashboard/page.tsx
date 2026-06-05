@@ -246,9 +246,9 @@ export default async function DashboardPage() {
 
   const balanceDueCutoffIso = getLocalIsoDateDaysAhead(14)
   const balancesDueSoon = snapshot.privateBookings.permitted
-    ? snapshot.privateBookings.upcoming.filter((booking) => {
-        if (booking.status !== 'confirmed') return false
+    ? snapshot.privateBookings.balanceDueDates.filter((booking) => {
         if (!booking.balance_due_date) return false
+        if (Number(booking.total_amount ?? 0) <= 0) return false
         return booking.balance_due_date >= todayIso && booking.balance_due_date <= balanceDueCutoffIso
       }).length
     : 0
