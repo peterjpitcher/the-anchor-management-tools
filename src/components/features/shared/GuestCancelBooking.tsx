@@ -1,9 +1,8 @@
-import { GuestSubmitButton } from './GuestSubmitButton'
-
 /**
  * Cancel booking section for the guest manage page.
  * Uses URL state for the confirmation step so the first click works even if
- * the browser has not hydrated the React client yet.
+ * the browser has not hydrated the React client yet. The final confirmation is
+ * also a plain HTML submit button for the same reason.
  */
 export function GuestCancelBooking({
   actionUrl,
@@ -43,12 +42,12 @@ export function GuestCancelBooking({
           <form method="post" action={actionUrl}>
             <input type="hidden" name="action" value="cancel" />
             <input type="hidden" name="notes" value={specialRequirements} />
-            <GuestSubmitButton
+            <button
+              type="submit"
               className="inline-flex w-full items-center justify-center rounded-md bg-red-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50 sm:w-auto"
-              loadingText="Cancelling..."
             >
               Yes, cancel my booking
-            </GuestSubmitButton>
+            </button>
           </form>
           <a
             href={manageUrl}
