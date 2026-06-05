@@ -146,7 +146,7 @@ async function lockRowsForBillingRunOrThrow(input: {
     return
   }
 
-  const { data: lockedRows, count: lockedCount, error: lockError } = await input.supabase
+  let lockQuery = input.supabase
     .from(input.table)
     .update({
       status: 'billing_pending',
@@ -155,6 +155,12 @@ async function lockRowsForBillingRunOrThrow(input: {
     })
     .in('id', uniqueIds)
     .eq('status', 'unbilled')
+
+  if (input.table === 'oj_entries') {
+    lockQuery = lockQuery.eq('billable', true)
+  }
+
+  const { data: lockedRows, count: lockedCount, error: lockError } = await lockQuery
     .select('id', { count: 'exact' })
 
   if (lockError) {
@@ -184,6 +190,7 @@ async function updateSelectedRowsByIdsOrThrow(input: {
   context: string
   expectedStatus?: string
   billingRunId?: string
+  requireBillable?: boolean
 }) {
   const uniqueIds = Array.from(new Set((input.ids || []).map((id) => String(id))))
   if (uniqueIds.length === 0) {
@@ -201,6 +208,10 @@ async function updateSelectedRowsByIdsOrThrow(input: {
 
   if (input.billingRunId) {
     query = query.eq('billing_run_id', input.billingRunId)
+  }
+
+  if (input.table === 'oj_entries' && input.requireBillable) {
+    query = query.eq('billable', true)
   }
 
   const { data: updatedRows, count: updatedCount, error: updateError } = await query
@@ -2351,6 +2362,7 @@ export async function GET(request: Request) {
               .from('oj_entries')
               .update(updatePayload)
               .eq('billing_run_id', billingRun.id)
+              .eq('billable', true)
               .eq('status', 'billing_pending'),
             `Failed to reconcile OJ entry statuses for billing run ${billingRun.id}`
           )
@@ -2412,6 +2424,7 @@ export async function GET(request: Request) {
             `
             )
             .eq('billing_run_id', billingRun.id)
+            .eq('billable', true)
             .order('entry_date', { ascending: true })
             .order('created_at', { ascending: true })
             .limit(10000)
@@ -2673,6 +2686,7 @@ export async function GET(request: Request) {
               updated_at: new Date().toISOString(),
             })
             .eq('billing_run_id', billingRun.id)
+            .eq('billable', true)
             .eq('status', 'billing_pending'),
           `Failed to mark OJ entries as billed for billing run ${billingRun.id}`
         )
@@ -3502,6 +3516,7 @@ export async function GET(request: Request) {
           },
           expectedStatus: 'billing_pending',
           billingRunId: billingRun.id,
+          requireBillable: true,
           context: `Failed to mark selected OJ entries as billed for billing run ${billingRun.id}.`,
         })
       }

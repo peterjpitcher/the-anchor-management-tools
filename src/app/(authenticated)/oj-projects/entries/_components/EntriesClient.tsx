@@ -50,6 +50,10 @@ function hoursInputToMinutes(value: string): string {
   return String(Math.round(hours * 60))
 }
 
+function isEntryBillable(entry: any): boolean {
+  return entry.billable !== false
+}
+
 interface EntriesClientProps {
   initialEntries: any[]
   projects: any[]
@@ -91,6 +95,7 @@ export function EntriesClient({
   const [invoiceFilter, setInvoiceFilter] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
   const [typeFilter, setTypeFilter] = useState('all')
+  const [billingFilter, setBillingFilter] = useState('all')
 
   // Create modal state
   const [createOpen, setCreateOpen] = useState(false)
@@ -144,6 +149,10 @@ export function EntriesClient({
     if (typeFilter !== 'all') {
       list = list.filter((e) => e.entry_type === typeFilter)
     }
+    if (billingFilter !== 'all') {
+      const billable = billingFilter === 'billable'
+      list = list.filter((e) => isEntryBillable(e) === billable)
+    }
     if (search.trim()) {
       const q = search.toLowerCase()
       list = list.filter(
@@ -156,7 +165,7 @@ export function EntriesClient({
       )
     }
     return list
-  }, [clientFilter, entries, invoiceFilter, projectFilter, search, statusFilter, typeFilter])
+  }, [billingFilter, clientFilter, entries, invoiceFilter, projectFilter, search, statusFilter, typeFilter])
 
   const reload = useCallback(async () => {
     const res = await getEntries({ limit: 200 })
@@ -401,6 +410,12 @@ export function EntriesClient({
     { label: 'One-off', value: 'one_off' },
   ]
 
+  const billingOptions = [
+    { label: 'All Billing', value: 'all' },
+    { label: 'Billable', value: 'billable' },
+    { label: 'Non-billable', value: 'non_billable' },
+  ]
+
   const vendorProjectOptions = addableProjects.filter((p) =>
     projectMatchesEntryContext(p, editForm.vendor_id, editForm.entry_date),
   )
@@ -461,6 +476,12 @@ export function EntriesClient({
             options={typeOptions}
             className="w-32"
           />
+          <Select
+            value={billingFilter}
+            onChange={(e) => setBillingFilter(e.target.value)}
+            options={billingOptions}
+            className="w-36"
+          />
         </div>
         {canCreate && (
           <Button
@@ -488,76 +509,86 @@ export function EntriesClient({
                 <TableHead>Type</TableHead>
                 <TableHead>Duration/Qty</TableHead>
                 <TableHead>Amount</TableHead>
+                <TableHead>Billing</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead className="w-20">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filtered.map((entry) => (
-                <TableRow key={entry.id}>
-                  <TableCell>{formatDateDdMmmmYyyy(entry.entry_date)}</TableCell>
-                  <TableCell>{entry.vendor?.name || 'Unknown'}</TableCell>
-                  <TableCell>
-                    <div>
-                      <span className="font-medium">{entry.project?.project_name || 'Unknown'}</span>
-                      {entry.project?.project_code && (
-                        <span className="block text-xs text-text-muted">{entry.project.project_code}</span>
-                      )}
-                    </div>
-                  </TableCell>
-                  <TableCell className="max-w-[320px] whitespace-normal break-words text-text-muted">
-                    {entry.description || '-'}
-                  </TableCell>
-                  <TableCell>
-                    <Badge tone={typeTone(entry.entry_type)}>{entry.entry_type}</Badge>
-                  </TableCell>
-                  <TableCell>
-                    {entry.entry_type === 'time'
-                      ? `${(Number(entry.duration_minutes_rounded || 0) / 60).toFixed(1)}h`
-                      : entry.entry_type === 'mileage'
-                        ? `${entry.miles} mi`
-                        : '-'}
-                  </TableCell>
-                  <TableCell className="font-medium">
-                    {formatCurrency(entryAmount(entry))}
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex flex-col gap-1">
-                      <Badge tone={statusTone(entry.status)}>{entry.status}</Badge>
-                      {entry.invoice?.invoice_number && (
-                        <Link
-                          href={`/invoices/${entry.invoice.id}`}
-                          className="text-xs text-primary hover:underline"
-                        >
-                          {entry.invoice.invoice_number}
-                        </Link>
-                      )}
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    {isEntryEditable(entry) && (
-                      <div className="flex gap-1">
-                        {canEdit && (
-                          <IconButton
-                            icon={<Icon name="edit" size={16} />}
-                            size="sm"
-                            label={entry.status === 'unbilled' ? 'Edit' : 'Edit and revise invoice'}
-                            onClick={() => openEdit(entry)}
-                          />
-                        )}
-                        {canDelete && (
-                          <IconButton
-                            icon={<Icon name="trash" size={16} />}
-                            size="sm"
-                            label={entry.status === 'unbilled' ? 'Delete' : 'Delete and revise invoice'}
-                            onClick={() => setDeleteId(entry.id)}
-                          />
+              {filtered.map((entry) => {
+                const billable = isEntryBillable(entry)
+
+                return (
+                  <TableRow key={entry.id}>
+                    <TableCell>{formatDateDdMmmmYyyy(entry.entry_date)}</TableCell>
+                    <TableCell>{entry.vendor?.name || 'Unknown'}</TableCell>
+                    <TableCell>
+                      <div>
+                        <span className="font-medium">{entry.project?.project_name || 'Unknown'}</span>
+                        {entry.project?.project_code && (
+                          <span className="block text-xs text-text-muted">{entry.project.project_code}</span>
                         )}
                       </div>
-                    )}
-                  </TableCell>
-                </TableRow>
-              ))}
+                    </TableCell>
+                    <TableCell className="max-w-[320px] whitespace-normal break-words text-text-muted">
+                      {entry.description || '-'}
+                    </TableCell>
+                    <TableCell>
+                      <Badge tone={typeTone(entry.entry_type)}>{entry.entry_type}</Badge>
+                    </TableCell>
+                    <TableCell>
+                      {entry.entry_type === 'time'
+                        ? `${(Number(entry.duration_minutes_rounded || 0) / 60).toFixed(1)}h`
+                        : entry.entry_type === 'mileage'
+                          ? `${entry.miles} mi`
+                          : '-'}
+                    </TableCell>
+                    <TableCell className="font-medium">
+                      {formatCurrency(entryAmount(entry))}
+                    </TableCell>
+                    <TableCell>
+                      <Badge tone={billable ? 'success' : 'neutral'}>
+                        {billable ? 'Billable' : 'Non-billable'}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex flex-col gap-1">
+                        <Badge tone={statusTone(entry.status)}>{entry.status}</Badge>
+                        {entry.invoice?.invoice_number && (
+                          <Link
+                            href={`/invoices/${entry.invoice.id}`}
+                            className="text-xs text-primary hover:underline"
+                          >
+                            {entry.invoice.invoice_number}
+                          </Link>
+                        )}
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      {isEntryEditable(entry) && (
+                        <div className="flex gap-1">
+                          {canEdit && (
+                            <IconButton
+                              icon={<Icon name="edit" size={16} />}
+                              size="sm"
+                              label={entry.status === 'unbilled' ? 'Edit' : 'Edit and revise invoice'}
+                              onClick={() => openEdit(entry)}
+                            />
+                          )}
+                          {canDelete && (
+                            <IconButton
+                              icon={<Icon name="trash" size={16} />}
+                              size="sm"
+                              label={entry.status === 'unbilled' ? 'Delete' : 'Delete and revise invoice'}
+                              onClick={() => setDeleteId(entry.id)}
+                            />
+                          )}
+                        </div>
+                      )}
+                    </TableCell>
+                  </TableRow>
+                )
+              })}
             </TableBody>
           </Table>
         )}

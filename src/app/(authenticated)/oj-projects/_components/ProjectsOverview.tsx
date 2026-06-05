@@ -53,6 +53,10 @@ function hoursInputToMinutes(value: string): string {
   return String(Math.round(hours * 60))
 }
 
+function isEntryBillable(entry: any): boolean {
+  return entry.billable !== false
+}
+
 interface ProjectsOverviewProps {
   projects: any[]
   entries: any[]
@@ -348,8 +352,8 @@ export function ProjectsOverview({ projects, entries: initialEntries, workTypes,
     return Math.round(total * 100) / 100
   }, [visibleProjects])
 
-  const outstandingCount = useMemo(
-    () => entries.filter((e) => e.status === 'unbilled').length,
+  const billableUnbilledCount = useMemo(
+    () => entries.filter((e) => e.status === 'unbilled' && isEntryBillable(e)).length,
     [entries],
   )
 
@@ -398,7 +402,7 @@ export function ProjectsOverview({ projects, entries: initialEntries, workTypes,
           <Stat label="Active Projects" value={String(activeProjects.length)} icon={<Icon name="briefcase" size={20} />} />
           <Stat label="Total Hours" value={totalHours.toFixed(1)} icon={<Icon name="clock" size={20} />} />
           <Stat label="Revenue This Month" value={formatCurrency(revenueThisMonth)} icon={<Icon name="pound" size={20} />} />
-          <Stat label="Unbilled Entries" value={String(outstandingCount)} icon={<Icon name="clock" size={20} />} />
+          <Stat label="Billable Unbilled" value={String(billableUnbilledCount)} icon={<Icon name="clock" size={20} />} />
         </div>
         <div className="flex w-full flex-col gap-3 sm:w-auto sm:flex-row sm:items-end lg:ml-4">
           <Select
@@ -507,6 +511,7 @@ export function ProjectsOverview({ projects, entries: initialEntries, workTypes,
                 <TableHead>Type</TableHead>
                 <TableHead>Hours/Qty</TableHead>
                 <TableHead>Amount</TableHead>
+                <TableHead>Billing</TableHead>
                 <TableHead>Notes</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead className="w-12">Actions</TableHead>
@@ -524,6 +529,8 @@ export function ProjectsOverview({ projects, entries: initialEntries, workTypes,
                   valueDisplay = '-'
                 }
 
+                const billable = isEntryBillable(entry)
+
                 return (
                   <TableRow key={entry.id}>
                     <TableCell>{formatDateDdMmmmYyyy(entry.entry_date)}</TableCell>
@@ -533,6 +540,11 @@ export function ProjectsOverview({ projects, entries: initialEntries, workTypes,
                     </TableCell>
                     <TableCell className="font-medium">{valueDisplay}</TableCell>
                     <TableCell className="font-medium">{formatCurrency(entryAmount(entry))}</TableCell>
+                    <TableCell>
+                      <Badge tone={billable ? 'success' : 'neutral'}>
+                        {billable ? 'Billable' : 'Non-billable'}
+                      </Badge>
+                    </TableCell>
                     <TableCell className="max-w-[200px] truncate text-text-muted">
                       {entry.description || '-'}
                     </TableCell>

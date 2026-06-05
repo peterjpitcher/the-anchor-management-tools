@@ -77,6 +77,22 @@ describe('OJ Projects invoice revision', () => {
           billable: true,
           description: 'Travel',
         },
+        {
+          id: 'entry-non-billable',
+          entry_type: 'time',
+          entry_date: '2026-06-04',
+          project_id: 'project-1',
+          project: { project_code: 'OJP-001', project_name: 'Retainer' },
+          duration_minutes_rounded: 60,
+          miles: null,
+          hourly_rate_ex_vat_snapshot: 75,
+          vat_rate_snapshot: 20,
+          mileage_rate_snapshot: null,
+          amount_ex_vat_snapshot: null,
+          billable: false,
+          description: 'Internal tidy-up',
+          work_type_name_snapshot: 'Admin',
+        },
       ],
       revisedAtIso: '2026-06-02T12:00:00.000Z',
     })
@@ -89,6 +105,7 @@ describe('OJ Projects invoice revision', () => {
     expect(revision.lineItems).not.toEqual(
       expect.arrayContaining([expect.objectContaining({ description: 'Disabled hosting' })])
     )
+    expect(revision.notes).not.toContain('Internal tidy-up')
     expect(revision.totals.subtotalBeforeInvoiceDiscount).toBe(205.5)
     expect(revision.totals.vatAmount).toBe(40)
     expect(revision.totals.totalAmount).toBe(245.5)
