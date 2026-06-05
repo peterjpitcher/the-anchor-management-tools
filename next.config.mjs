@@ -15,23 +15,6 @@ const nextConfig = {
       bodySizeLimit: '20mb',
     },
   },
-  async headers() {
-    return [
-      {
-        source: '/g/:token/table-manage',
-        headers: [
-          {
-            key: 'Content-Security-Policy',
-            value: "frame-ancestors 'none'",
-          },
-          {
-            key: 'X-Frame-Options',
-            value: 'DENY',
-          },
-        ],
-      },
-    ]
-  },
   serverExternalPackages: [
     'exceljs',
     'pdfkit',

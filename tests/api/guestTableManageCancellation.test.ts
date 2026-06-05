@@ -29,13 +29,19 @@ vi.mock('@/lib/logger', () => ({
   logger: mocks.logger,
 }))
 
-import { POST } from '@/app/g/[token]/table-manage/action/route'
+import { GET, POST } from '@/app/g/[token]/table-manage/action/route'
 
 function buildCancelRequest() {
   return new NextRequest('http://localhost/g/raw-token/table-manage/action', {
     method: 'POST',
     headers: { 'content-type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams({ action: 'cancel' }),
+  })
+}
+
+function buildCancelLinkRequest() {
+  return new NextRequest('http://localhost/g/raw-token/table-manage/action?action=cancel&confirm=1', {
+    method: 'GET',
   })
 }
 
@@ -77,6 +83,28 @@ describe('guest table-manage cancellation route', () => {
     expect(mocks.logger.warn).not.toHaveBeenCalledWith(
       'Guest table-manage action form validation failed',
       expect.any(Object)
+    )
+  })
+
+  it('accepts the guarded cancel link for sandboxed browsers that block forms', async () => {
+    const response = await GET(buildCancelLinkRequest(), {
+      params: Promise.resolve({ token: 'raw-token' }),
+    })
+
+    expect(response.status).toBe(303)
+
+    const redirectUrl = new URL(response.headers.get('location') || '')
+    expect(redirectUrl.pathname).toBe('/g/raw-token/table-manage')
+    expect(redirectUrl.searchParams.get('status')).toBe('cancelled')
+
+    expect(mocks.updateTableBookingByRawToken).toHaveBeenCalledWith(
+      expect.any(Object),
+      expect.objectContaining({
+        rawToken: 'raw-token',
+        action: 'cancel',
+        newPartySize: undefined,
+        notes: undefined,
+      })
     )
   })
 })
