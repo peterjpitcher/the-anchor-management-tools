@@ -52,7 +52,7 @@ describe('ProjectsOverview', () => {
     getEntries.mockResolvedValue({ entries: [] })
   })
 
-  function renderOverview(): void {
+  function renderOverview(entries: any[] = []): void {
     render(
       <PermissionProvider
         initialPermissions={[
@@ -61,7 +61,7 @@ describe('ProjectsOverview', () => {
       >
         <ProjectsOverview
           projects={[]}
-          entries={[]}
+          entries={entries}
           workTypes={[]}
           clients={[
             { id: '11111111-1111-1111-1111-111111111111', name: 'Alpha Client', projectCount: 0, retainerHours: null },
@@ -91,5 +91,44 @@ describe('ProjectsOverview', () => {
     const nextDialog = await screen.findByRole('dialog', { name: 'New Entry' })
     const nextClientSelect = within(nextDialog).getAllByRole('combobox')[0] as HTMLSelectElement
     expect(nextClientSelect.value).toBe('22222222-2222-2222-2222-222222222222')
+  })
+
+  it('shows billable state and only counts billable unbilled entries', () => {
+    renderOverview([
+      {
+        id: 'entry-billable',
+        vendor_id: '11111111-1111-1111-1111-111111111111',
+        project_id: 'project-1',
+        entry_type: 'time',
+        entry_date: '2026-06-02',
+        duration_minutes_rounded: 60,
+        hourly_rate_ex_vat_snapshot: 75,
+        billable: true,
+        status: 'unbilled',
+        description: 'Client change',
+        project: { project_name: 'Website', project_code: 'OJP-001' },
+        vendor: { id: '11111111-1111-1111-1111-111111111111', name: 'Alpha Client' },
+      },
+      {
+        id: 'entry-non-billable',
+        vendor_id: '11111111-1111-1111-1111-111111111111',
+        project_id: 'project-1',
+        entry_type: 'time',
+        entry_date: '2026-06-03',
+        duration_minutes_rounded: 45,
+        hourly_rate_ex_vat_snapshot: 75,
+        billable: false,
+        status: 'unbilled',
+        description: 'Internal tidy-up',
+        project: { project_name: 'Website', project_code: 'OJP-001' },
+        vendor: { id: '11111111-1111-1111-1111-111111111111', name: 'Alpha Client' },
+      },
+    ])
+
+    expect(screen.getByText('Billable')).toBeInTheDocument()
+    expect(screen.getByText('Non-billable')).toBeInTheDocument()
+    const stat = screen.getByText('Billable Unbilled').closest('div')
+    expect(stat).not.toBeNull()
+    expect(within(stat as HTMLElement).getByText('1')).toBeInTheDocument()
   })
 })

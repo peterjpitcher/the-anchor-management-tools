@@ -611,6 +611,21 @@ async function recalculateLinkedOjInvoice(input: {
 
   if (insertLineItemsError) return { error: insertLineItemsError.message }
 
+  const { error: detachNonBillableEntriesError } = await admin
+    .from('oj_entries')
+    .update({
+      invoice_id: null,
+      billing_run_id: null,
+      status: 'unbilled',
+      billed_at: null,
+      paid_at: null,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('invoice_id', input.invoiceId)
+    .eq('billable', false)
+
+  if (detachNonBillableEntriesError) return { error: detachNonBillableEntriesError.message }
+
   await logAuditEvent({
     user_id: input.user?.id || undefined,
     user_email: input.user?.email || undefined,
