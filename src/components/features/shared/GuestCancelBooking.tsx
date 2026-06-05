@@ -1,31 +1,30 @@
-'use client'
-
-import { useState } from 'react'
 import { GuestSubmitButton } from './GuestSubmitButton'
 
 /**
  * Cancel booking section for the guest manage page.
- * Shows a confirmation step before submitting the native form POST.
+ * Uses URL state for the confirmation step so the first click works even if
+ * the browser has not hydrated the React client yet.
  */
 export function GuestCancelBooking({
   actionUrl,
+  confirmCancel,
+  manageUrl,
   specialRequirements,
 }: {
   actionUrl: string
+  confirmCancel: boolean
+  manageUrl: string
   specialRequirements: string
 }) {
-  const [confirming, setConfirming] = useState(false)
-
-  if (!confirming) {
+  if (!confirmCancel) {
     return (
       <div className="mt-6 border-t border-gray-200 pt-4">
-        <button
-          type="button"
-          onClick={() => setConfirming(true)}
+        <a
+          href={`${manageUrl}?confirmCancel=1`}
           className="inline-flex w-full items-center justify-center rounded-md border border-red-300 px-4 py-2.5 text-sm font-medium text-red-700 hover:bg-red-50 sm:w-auto"
         >
           Cancel booking
-        </button>
+        </a>
         <p className="mt-2 text-xs text-gray-500">
           Cancelling within 24 hours of your booking may incur a late-cancellation fee.
         </p>
@@ -51,13 +50,12 @@ export function GuestCancelBooking({
               Yes, cancel my booking
             </GuestSubmitButton>
           </form>
-          <button
-            type="button"
-            onClick={() => setConfirming(false)}
+          <a
+            href={manageUrl}
             className="inline-flex w-full items-center justify-center rounded-md border border-gray-300 px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 sm:w-auto"
           >
             No, keep my booking
-          </button>
+          </a>
         </div>
       </div>
     </div>
