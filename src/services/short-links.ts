@@ -63,6 +63,36 @@ export type CreateShortLinkInput = z.infer<typeof CreateShortLinkSchema>;
 export type UpdateShortLinkInput = z.infer<typeof UpdateShortLinkSchema>;
 export type GetShortLinkVolumeAdvancedInput = z.infer<typeof GetShortLinkVolumeAdvancedSchema>;
 
+type ShortLinkVariantRow = {
+  id: string;
+  short_code: string;
+  destination_url: string;
+  metadata: Record<string, unknown> | null;
+};
+
+type ShortLinkParentRow = {
+  id: string;
+  short_code: string;
+  destination_url: string;
+  link_type: string | null;
+  expires_at: string | null;
+  metadata: Record<string, unknown> | null;
+};
+
+function normalizeShortCode(value: string): string {
+  const normalized = value.trim().replace(/^\//, '').toLowerCase();
+  if (!/^[a-z0-9-]+$/.test(normalized)) {
+    throw new Error('Parent short code is invalid');
+  }
+  return normalized;
+}
+
+function withUtmContent(destinationUrl: string, utmContent: string): string {
+  const url = new URL(destinationUrl);
+  url.searchParams.set('utm_content', utmContent.trim().toLowerCase());
+  return url.toString();
+}
+
 export class ShortLinkService {
   private static async findShortLinkByDestinationUrl(
     supabase: Awaited<ReturnType<typeof createClient>> | ReturnType<typeof createAdminClient>,
@@ -78,6 +108,20 @@ export class ShortLinkService {
 
     if (error) throw new Error('Failed to check for existing short links');
     return data;
+  }
+
+  private static async findShortLinkByShortCode(
+    supabase: Awaited<ReturnType<typeof createClient>> | ReturnType<typeof createAdminClient>,
+    shortCode: string
+  ): Promise<ShortLinkParentRow | null> {
+    const { data, error } = await supabase
+      .from('short_links')
+      .select('id, short_code, destination_url, link_type, expires_at, metadata')
+      .eq('short_code', normalizeShortCode(shortCode))
+      .maybeSingle();
+
+    if (error) throw new Error('Failed to load parent short link');
+    return (data ?? null) as ShortLinkParentRow | null;
   }
 
   static async createShortLink(data: CreateShortLinkInput): Promise<{
@@ -328,6 +372,108 @@ export class ShortLinkService {
     return {
       short_code: shortCode,
       full_url: buildShortLinkUrl(shortCode),
+      already_exists: false,
+    };
+  }
+
+  static async getOrCreateShortLinkVariantInternal(data: {
+    parent_short_code: string;
+    destination_url?: string;
+    utm_content: string;
+    name?: string;
+    metadata?: Record<string, any>;
+  }): Promise<{
+    id: string;
+    short_code: string;
+    full_url: string;
+    destination_url: string;
+    already_exists: boolean;
+  }> {
+    const supabase = createAdminClient();
+    const parent = await this.findShortLinkByShortCode(supabase, data.parent_short_code);
+    if (!parent) {
+      throw new Error('Parent short link not found');
+    }
+
+    const utmContent = data.utm_content.trim().toLowerCase();
+    const destinationUrl = withUtmContent(data.destination_url || parent.destination_url, utmContent);
+    const metadata = {
+      ...(parent.metadata?.event_id ? { event_id: parent.metadata.event_id } : {}),
+      channel: 'meta_ads',
+      parent_link_id: parent.id,
+      parent_short_code: parent.short_code,
+      utm_variant: true,
+      utm_content: utmContent,
+      ...(data.metadata || {}),
+    };
+
+    const { data: existingRows, error: existingError } = await supabase
+      .from('short_links')
+      .select('id, short_code, destination_url, metadata')
+      .eq('parent_link_id', parent.id)
+      .contains('metadata', { channel: 'meta_ads', utm_content: utmContent });
+
+    if (existingError) throw new Error('Failed to check for existing short link variant');
+
+    const existing = Array.isArray(existingRows) && existingRows.length > 0
+      ? existingRows[0] as ShortLinkVariantRow
+      : null;
+
+    if (existing) {
+      if (existing.destination_url !== destinationUrl) {
+        await supabase
+          .from('short_links')
+          .update({
+            destination_url: destinationUrl,
+            metadata: { ...(existing.metadata || {}), ...metadata },
+            name: data.name || `Meta ad ${utmContent}`,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', existing.id);
+      }
+
+      return {
+        id: existing.id,
+        short_code: existing.short_code,
+        full_url: buildShortLinkUrl(existing.short_code),
+        destination_url: destinationUrl,
+        already_exists: true,
+      };
+    }
+
+    const { data: result, error: createError } = await supabase
+      .rpc('create_short_link', {
+        p_destination_url: destinationUrl,
+        p_link_type: parent.link_type || 'custom',
+        p_metadata: metadata,
+        p_expires_at: parent.expires_at || null,
+        p_custom_code: null,
+      })
+      .single();
+
+    if (createError) throw new Error(createError.message || 'Failed to create short link variant');
+
+    const shortCode = (result as Record<string, unknown>)?.short_code as string;
+    await supabase
+      .from('short_links')
+      .update({
+        parent_link_id: parent.id,
+        name: data.name || `Meta ad ${utmContent}`,
+        metadata,
+      })
+      .eq('short_code', shortCode);
+
+    const { data: created } = await supabase
+      .from('short_links')
+      .select('id')
+      .eq('short_code', shortCode)
+      .maybeSingle();
+
+    return {
+      id: (created as { id?: string } | null)?.id || '',
+      short_code: shortCode,
+      full_url: buildShortLinkUrl(shortCode),
+      destination_url: destinationUrl,
       already_exists: false,
     };
   }
