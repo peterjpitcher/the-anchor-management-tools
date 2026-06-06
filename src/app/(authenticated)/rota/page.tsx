@@ -24,6 +24,7 @@ import type { RotaDayInfo } from '@/app/actions/rota-day-info';
 import RotaGrid from './RotaGrid';
 import RotaPublishStatus from './RotaPublishStatus';
 import { rotaNavItems } from './nav';
+import type { PublishedShiftSnapshot } from '@/lib/rota/publish-status';
 
 export const dynamic = 'force-dynamic';
 
@@ -171,7 +172,7 @@ export default async function RotaPage({ searchParams }: RotaPageProps) {
   });
   const shiftIds = shifts.map(shift => shift.id);
   const admin = createAdminClient();
-  const [{ data: auditRows }, { data: rejectedShiftRows }] = await Promise.all([
+  const [{ data: auditRows }, { data: rejectedShiftRows }, { data: publishedShiftRows }] = await Promise.all([
     shiftIds.length
       ? admin
           .from('audit_logs')
@@ -189,6 +190,12 @@ export default async function RotaPage({ searchParams }: RotaPageProps) {
       .lte('shift_date', weekEnd)
       .order('shift_date', { ascending: true })
       .order('start_time', { ascending: true }),
+    week.status === 'published'
+      ? admin
+          .from('rota_published_shifts')
+          .select('id, employee_id, shift_date, start_time, end_time, unpaid_break_minutes, department, status, notes, is_overnight, is_open_shift, name')
+          .eq('week_id', week.id)
+      : Promise.resolve({ data: [] }),
   ]);
 
   type AuditRow = {
@@ -217,6 +224,7 @@ export default async function RotaPage({ searchParams }: RotaPageProps) {
       additional_info: row.additional_info,
     }));
   const rejectedShifts = (rejectedShiftRows ?? []) as RejectedShiftRecord[];
+  const publishedShifts = (publishedShiftRows ?? []) as PublishedShiftSnapshot[];
 
   // Per-user HMAC token — no global secret reaches the browser
   const feedToken = generateRotaFeedToken(user.id);
@@ -229,7 +237,7 @@ export default async function RotaPage({ searchParams }: RotaPageProps) {
       navItems={rotaNavItems}
       headerActions={
         <div className="flex flex-wrap items-center justify-end gap-2">
-          <RotaPublishStatus week={week} shifts={shifts} canPublish={canPublish} />
+          <RotaPublishStatus week={week} shifts={shifts} publishedShifts={publishedShifts} canPublish={canPublish} />
           <RotaFeedButton feedUrl={feedUrl} showCalendarSync={Boolean(process.env.GOOGLE_CALENDAR_ROTA_ID)} />
           <LinkButton href="/rota/templates" size="sm" variant="secondary" leftIcon={<Cog6ToothIcon className="h-4 w-4" />}>
             Templates
@@ -248,6 +256,7 @@ export default async function RotaPage({ searchParams }: RotaPageProps) {
         key={weekStart}
         week={week}
         shifts={shifts}
+        publishedShifts={publishedShifts}
         employees={employees}
         templates={templates}
         leaveDays={leaveDays}
