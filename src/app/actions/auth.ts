@@ -4,21 +4,36 @@ import { AuthService } from '@/services/auth';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { getErrorMessage } from '@/lib/errors';
 
+const PORTAL_ONLY_ROLES = new Set(['portal_shift_manager']);
+
+type UserRoleRow = {
+  roles: { name: string | null } | { name: string | null }[] | null;
+};
+
+function roleNameFromRow(row: UserRoleRow): string | null {
+  if (Array.isArray(row.roles)) return row.roles[0]?.name ?? null;
+  return row.roles?.name ?? null;
+}
+
 export async function signIn(email: string, password: string) {
   try {
     const result = await AuthService.signIn(email, password);
 
     if (result.success && result.userId) {
-      // Portal-only employees have no RBAC roles. Route them to the portal
-      // rather than /dashboard which they cannot use.
+      // Portal-only employees have no management permissions. Route them to the
+      // portal rather than /dashboard which they cannot use.
       const admin = createAdminClient();
       const { data: roles } = await admin
         .from('user_roles')
-        .select('role_id')
+        .select('roles(name)')
         .eq('user_id', result.userId)
-        .limit(1);
+        .returns<UserRoleRow[]>();
 
-      if (!roles || roles.length === 0) {
+      const roleNames = (roles ?? [])
+        .map(roleNameFromRow)
+        .filter((roleName): roleName is string => Boolean(roleName));
+
+      if (roleNames.length === 0 || roleNames.every(roleName => PORTAL_ONLY_ROLES.has(roleName))) {
         return { success: true as const, redirectTo: '/portal/shifts' };
       }
     }
