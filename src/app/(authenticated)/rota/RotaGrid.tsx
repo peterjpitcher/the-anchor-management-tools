@@ -34,6 +34,7 @@ import type { ShiftTemplate } from '@/app/actions/rota-templates';
 import type { Department } from '@/app/actions/budgets';
 import type { RotaDayInfo } from '@/app/actions/rota-day-info';
 import type { RotaSummary } from '@/lib/rota/summary';
+import { shiftIsUnpublished, type PublishedShiftSnapshot } from '@/lib/rota/publish-status';
 import ShiftDetailModal from './ShiftDetailModal';
 import CreateShiftModal from './CreateShiftModal';
 import BookHolidayModal from './BookHolidayModal';
@@ -48,6 +49,7 @@ import MarkSickModal from './MarkSickModal';
 interface RotaGridProps {
   week: RotaWeek;
   shifts: RotaShift[];
+  publishedShifts: PublishedShiftSnapshot[];
   employees: RotaEmployee[];
   templates: ShiftTemplate[];
   leaveDays: LeaveDayWithRequest[];
@@ -81,16 +83,6 @@ const SHIFT_ACCEPTANCE_CUTOFF_DAYS = 14;
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-function shiftIsUnpublished(shift: RotaShift, week: RotaWeek): boolean {
-  if (shift.status === 'sick') return false;       // absence marker, like holiday blocks
-  if (shift.is_open_shift && shift.reassignment_reason?.startsWith("Couldn't Work")) return false;
-  if (week.status === 'draft') return true;         // never published
-  if (!week.published_at) return false;             // published but no timestamp — treat all as published
-  // A shift is unpublished if it was created OR modified after the last publish.
-  // updated_at changes on every write (move, edit, status change) via DB trigger.
-  return shift.created_at > week.published_at || shift.updated_at > week.published_at;
-}
 
 function paidHours(start: string, end: string, breakMins: number, overnight: boolean): number {
   const [sh, sm] = start.split(':').map(Number);
@@ -575,6 +567,7 @@ function DroppableCell({
 export default function RotaGrid({
   week,
   shifts: initialShifts,
+  publishedShifts,
   employees,
   templates,
   leaveDays,
@@ -660,6 +653,14 @@ export default function RotaGrid({
     () => Object.fromEntries(employeeNameById),
     [employeeNameById],
   );
+  const publishedShiftById = useMemo(
+    () => new Map(publishedShifts.map(shift => [shift.id, shift])),
+    [publishedShifts],
+  );
+  const isShiftUnpublished = useCallback(
+    (shift: RotaShift) => shiftIsUnpublished(shift, week, publishedShiftById),
+    [week, publishedShiftById],
+  );
 
   // Separate open shifts from employee shifts
   const openShifts = useMemo(() => shifts.filter(s => s.is_open_shift), [shifts]);
@@ -673,8 +674,8 @@ export default function RotaGrid({
     [activeShifts],
   );
   const unpublishedShiftCount = useMemo(
-    () => shifts.filter(s => shiftIsUnpublished(s, week)).length,
-    [shifts, week],
+    () => shifts.filter(isShiftUnpublished).length,
+    [shifts, isShiftUnpublished],
   );
 
   // DnD handlers
@@ -1165,7 +1166,7 @@ export default function RotaGrid({
                             key={s.id}
                             shift={s}
                             disabled={!canEdit || isPending}
-                            isDraft={shiftIsUnpublished(s, week)}
+                            isDraft={isShiftUnpublished(s)}
                             onClick={() => setSelectedShift(s)}
                           />
                         ))}
@@ -1326,7 +1327,7 @@ export default function RotaGrid({
                                           key={s.id}
                                           shift={s}
                                           disabled={!canEdit || isPending || s.status !== 'scheduled'}
-                                          isDraft={shiftIsUnpublished(s, week)}
+                                          isDraft={isShiftUnpublished(s)}
                                           onClick={() => setSelectedShift(s)}
                                         />
                                       ))}
@@ -1351,7 +1352,7 @@ export default function RotaGrid({
         {/* Drag overlay */}
         <DragOverlay dropAnimation={null}>
           {activeItem?.type === 'shift' && (
-            <ShiftBlockOverlay shift={activeItem.shift} isDraft={shiftIsUnpublished(activeItem.shift, week)} />
+            <ShiftBlockOverlay shift={activeItem.shift} isDraft={isShiftUnpublished(activeItem.shift)} />
           )}
         </DragOverlay>
       </DndContext>

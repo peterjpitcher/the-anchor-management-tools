@@ -6,26 +6,24 @@ import toast from 'react-hot-toast';
 import { CheckCircleIcon, ExclamationTriangleIcon } from '@heroicons/react/24/outline';
 import { publishRotaWeek } from '@/app/actions/rota';
 import type { RotaShift, RotaWeek } from '@/app/actions/rota';
-
-function shiftIsUnpublished(shift: RotaShift, week: RotaWeek): boolean {
-  if (week.status === 'draft') return true;
-  if (!week.published_at) return false;
-  return shift.created_at > week.published_at || shift.updated_at > week.published_at;
-}
+import { shiftIsUnpublished, type PublishedShiftSnapshot } from '@/lib/rota/publish-status';
 
 export default function RotaPublishStatus({
   week,
   shifts,
+  publishedShifts,
   canPublish,
 }: {
   week: RotaWeek;
   shifts: RotaShift[];
+  publishedShifts: PublishedShiftSnapshot[];
   canPublish: boolean;
 }) {
   const router = useRouter();
   const [publishPending, startPublishTransition] = useTransition();
+  const publishedShiftById = new Map(publishedShifts.map(shift => [shift.id, shift]));
   const activeShifts = shifts.filter(shift => shift.status !== 'cancelled');
-  const unpublishedShifts = activeShifts.filter(shift => shiftIsUnpublished(shift, week));
+  const unpublishedShifts = activeShifts.filter(shift => shiftIsUnpublished(shift, week, publishedShiftById));
   const hasAnyUnpublished = unpublishedShifts.length > 0;
   const hasAnyPublished = unpublishedShifts.length < activeShifts.length && activeShifts.length > 0;
   const isPublished = week.status === 'published' && !hasAnyUnpublished;
