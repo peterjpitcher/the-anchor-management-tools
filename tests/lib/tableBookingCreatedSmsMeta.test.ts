@@ -15,10 +15,17 @@ vi.mock('@/lib/logger', () => ({
 
 vi.mock('@/lib/twilio', () => ({
   sendSMS: vi.fn(),
+  isCustomerSmsSendAllowed: vi.fn().mockResolvedValue({ allowed: true }),
 }))
 
 vi.mock('@/lib/sms/support', () => ({
   ensureReplyInstruction: vi.fn((value: string) => value),
+}))
+
+vi.mock('@/services/audit', () => ({
+  AuditService: {
+    logAuditEvent: vi.fn().mockResolvedValue(undefined),
+  },
 }))
 
 import { sendSMS } from '@/lib/twilio'
@@ -79,6 +86,7 @@ describe('table booking created SMS safety meta', () => {
         code: 'logging_failed',
         logFailure: true,
       },
+      email: null,
     })
     expect(error).toHaveBeenCalledWith(
       'Table booking created SMS sent but outbound message logging failed',
@@ -141,6 +149,7 @@ describe('table booking created SMS safety meta', () => {
         code: 'logging_failed',
         logFailure: true,
       },
+      email: null,
     })
   })
 
@@ -191,7 +200,7 @@ describe('table booking created SMS safety meta', () => {
       logFailure: true,
     })
     expect(warn).toHaveBeenCalledWith(
-      'Table booking created SMS threw unexpectedly',
+      'Table booking created notification threw unexpectedly',
       expect.objectContaining({
         metadata: expect.objectContaining({
           code: 'logging_failed',

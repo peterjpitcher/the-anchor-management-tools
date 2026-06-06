@@ -31,9 +31,9 @@ console.log('   You can specify the Node.js version in package.json:')
 console.log('   "engines": { "node": "20.x" }\n')
 
 console.log('4. **Temporary Workaround:**')
-console.log('   You can disable calendar sync temporarily by removing GOOGLE_CALENDAR_ID')
-console.log('   from your environment variables. The app will continue to work without')
-console.log('   calendar integration.\n')
+console.log('   You can disable calendar sync temporarily by removing Google auth')
+console.log('   credentials such as GOOGLE_SERVICE_ACCOUNT_KEY or OAuth refresh-token')
+console.log('   credentials. The app will continue to work without calendar integration.\n')
 
 // Check if we can create a compatibility patch
 console.log('Checking current Node.js version:')

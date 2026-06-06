@@ -17,6 +17,10 @@ import {
   type PortalShiftEmailSummary,
 } from '@/lib/rota/email-templates';
 import {
+  recordCouldntWorkReliabilityEvent,
+  recordShiftReliabilityEvent,
+} from '@/services/employee-reliability';
+import {
   buildRotaSummary,
   dayOfWeekForIsoDate,
   resolveSalesTargets,
@@ -1427,6 +1431,24 @@ export async function markEmployeeCouldntWork(input: z.infer<typeof MarkEmployee
     },
   });
 
+  await recordCouldntWorkReliabilityEvent({
+    employeeId: parsed.data.employeeId,
+    markerShift: {
+      id: marker.id,
+      week_id: marker.week_id,
+      employee_id: parsed.data.employeeId,
+      shift_date: parsed.data.shiftDate,
+      start_time: '00:00',
+      end_time: '00:00',
+      department: marker.department,
+      name: marker.name,
+    },
+    reason: parsed.data.reason,
+    eventAt: (marker as Partial<RotaShift>).created_at ?? new Date().toISOString(),
+    userId: user?.id,
+    impactedShiftIds: shiftIdsToOpen,
+  });
+
   revalidatePath('/rota');
   revalidatePath('/rota/hours');
   revalidatePath('/portal/shifts');
@@ -1652,6 +1674,7 @@ export async function acceptPortalShift(shiftId: string): Promise<
   if (!parsed.success) return { success: false, error: 'Invalid shift' };
 
   const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
   const employee = await getOwnPortalEmployee(supabase);
   if (!employee) return { success: false, error: 'Unauthorized' };
 
@@ -1697,7 +1720,7 @@ export async function acceptPortalShift(shiftId: string): Promise<
   if (!updated.data) return { success: false, error: 'Shift not found' };
 
   void logAuditEvent({
-    user_id: (await supabase.auth.getUser()).data.user?.id,
+    user_id: user?.id,
     operation_type: insideCutoff ? 'auto_accept' : 'accept',
     resource_type: 'rota_shift',
     resource_id: parsed.data.shiftId,
@@ -1705,7 +1728,22 @@ export async function acceptPortalShift(shiftId: string): Promise<
     new_values: { acceptance_status: nextAcceptance.acceptance_status },
   });
 
+  await recordShiftReliabilityEvent({
+    eventType: insideCutoff ? 'shift_auto_accepted' : 'shift_accepted',
+    employeeId: employee.employee_id,
+    shift: shift as RotaShift,
+    eventAt: nextAcceptance.acceptance_decided_at,
+    source: insideCutoff ? 'portal_accept_inside_cutoff' : 'portal_accept',
+    userId: user?.id,
+    userEmail: user?.email ?? null,
+    metadata: {
+      acceptance_status: nextAcceptance.acceptance_status,
+      inside_cutoff: insideCutoff,
+    },
+  });
+
   revalidatePath('/portal/shifts');
+  revalidatePath(`/employees/${employee.employee_id}`);
   return {
     success: true,
     data: updated.data,
@@ -1742,10 +1780,12 @@ export async function rejectPortalShift(input: z.infer<typeof PortalShiftRejectS
   }
 
   const now = new Date();
+  const rejectedAt = now.toISOString();
+  const rejectionNote = parsed.data.note?.trim() || null;
   if (isInsideAcceptanceCutoff(shift.shift_date, shift.start_time, now)) {
     const updated = await setPublishedAndLiveAcceptance(parsed.data.shiftId, employee.employee_id, {
       acceptance_status: 'auto_accepted',
-      acceptance_decided_at: now.toISOString(),
+      acceptance_decided_at: rejectedAt,
       acceptance_decided_by: employee.employee_id,
       acceptance_note: null,
       auto_accept_reason: SHIFT_AUTO_ACCEPT_POLICY_NOTE,
@@ -1754,6 +1794,37 @@ export async function rejectPortalShift(input: z.infer<typeof PortalShiftRejectS
     if (updated.error) return { success: false, error: updated.error };
     if (!updated.data) return { success: false, error: 'Shift not found' };
 
+    await recordShiftReliabilityEvent({
+      eventType: 'late_shift_rejection_attempt',
+      employeeId: employee.employee_id,
+      shift: shift as RotaShift,
+      eventAt: rejectedAt,
+      source: 'portal_reject_inside_cutoff',
+      userId: user.id,
+      userEmail: user.email ?? null,
+      note: rejectionNote,
+      metadata: {
+        reason: 'inside_acceptance_cutoff',
+        policy_note: SHIFT_AUTO_ACCEPT_POLICY_NOTE,
+      },
+    });
+
+    await recordShiftReliabilityEvent({
+      eventType: 'shift_auto_accepted',
+      employeeId: employee.employee_id,
+      shift: shift as RotaShift,
+      eventAt: rejectedAt,
+      source: 'portal_reject_inside_cutoff_auto_accept',
+      userId: user.id,
+      userEmail: user.email ?? null,
+      metadata: {
+        acceptance_status: 'auto_accepted',
+        inside_cutoff: true,
+        reason: SHIFT_AUTO_ACCEPT_POLICY_NOTE,
+      },
+    });
+
+    revalidatePath(`/employees/${employee.employee_id}`);
     return {
       success: true,
       data: updated.data,
@@ -1761,8 +1832,6 @@ export async function rejectPortalShift(input: z.infer<typeof PortalShiftRejectS
     };
   }
 
-  const rejectedAt = now.toISOString();
-  const rejectionNote = parsed.data.note?.trim() || null;
   await recordCalendarCancellation(admin, shift as Parameters<typeof recordCalendarCancellation>[1], 'Rejected by staff');
 
   const openPayload = {
@@ -1852,6 +1921,21 @@ export async function rejectPortalShift(input: z.infer<typeof PortalShiftRejectS
     operation_status: 'success',
     old_values: { employee_id: employee.employee_id },
     new_values: { employee_id: null, is_open_shift: true, acceptance_status: 'rejected' },
+  });
+
+  await recordShiftReliabilityEvent({
+    eventType: 'shift_rejected',
+    employeeId: employee.employee_id,
+    shift: shift as RotaShift,
+    eventAt: rejectedAt,
+    source: 'portal_reject',
+    userId: user.id,
+    userEmail: user.email ?? null,
+    note: rejectionNote,
+    metadata: {
+      acceptance_status: 'rejected',
+      opened_shift: true,
+    },
   });
 
   revalidatePath('/portal/shifts');

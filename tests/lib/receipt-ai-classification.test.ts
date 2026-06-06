@@ -18,6 +18,20 @@ const mockedGetOpenAIConfig = getOpenAIConfig as unknown as Mock
 const mockedClassifyReceipt = classifyReceiptTransaction as unknown as Mock
 const mockedClassifyBatch = classifyReceiptTransactionsBatch as unknown as Mock
 
+function getReceiptGovernanceMockTable(table: string) {
+  if (table === 'receipt_vendors') {
+    const maybeSingle = vi.fn().mockResolvedValue({ data: { id: 'vendor-1' }, error: null })
+    const eq = vi.fn().mockReturnValue({ maybeSingle })
+    return { select: vi.fn().mockReturnValue({ eq }) }
+  }
+
+  if (table === 'receipt_vendor_aliases' || table === 'receipt_classification_signals') {
+    return { insert: vi.fn().mockResolvedValue({ error: null }) }
+  }
+
+  return null
+}
+
 function makeMockSupabase(tx: Record<string, unknown>) {
   const updatePayloads: Record<string, unknown>[] = []
 
@@ -51,6 +65,8 @@ function makeMockSupabase(tx: Record<string, unknown>) {
       if (table === 'ai_usage_events') {
         return { insert: vi.fn().mockResolvedValue({ error: null }) }
       }
+      const governanceTable = getReceiptGovernanceMockTable(table)
+      if (governanceTable) return governanceTable
       throw new Error(`Unexpected table: ${table}`)
     }),
   }
@@ -212,6 +228,8 @@ describe('AI receipt classification batch — single API call', () => {
         if (table === 'ai_usage_events') {
           return { insert: vi.fn().mockResolvedValue({ error: null }) }
         }
+        const governanceTable = getReceiptGovernanceMockTable(table)
+        if (governanceTable) return governanceTable
         throw new Error(`Unexpected table: ${table}`)
       }),
     }
@@ -294,6 +312,8 @@ describe('AI receipt classification batch — skip vendor-locked transactions', 
         if (table === 'ai_usage_events') {
           return { insert: vi.fn().mockResolvedValue({ error: null }) }
         }
+        const governanceTable = getReceiptGovernanceMockTable(table)
+        if (governanceTable) return governanceTable
         throw new Error(`Unexpected table: ${table}`)
       }),
     }

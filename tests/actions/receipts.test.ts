@@ -92,12 +92,44 @@ function buildMockClient(
   tables: Record<string, Record<string, unknown>>,
   storage?: Record<string, unknown>
 ) {
+  const vendorMaybeSingle = vi.fn().mockResolvedValue({ data: null, error: null })
+  const vendorEq = vi.fn().mockReturnValue({ maybeSingle: vendorMaybeSingle })
+  const vendorSelect = vi.fn().mockReturnValue({ eq: vendorEq })
+  const vendorInsertMaybeSingle = vi.fn().mockResolvedValue({ data: { id: 'vendor-1' }, error: null })
+  const vendorInsertSelect = vi.fn().mockReturnValue({ maybeSingle: vendorInsertMaybeSingle })
+
+  const defaultTables: Record<string, Record<string, unknown>> = {
+    receipt_vendors: {
+      select: vendorSelect,
+      insert: vi.fn().mockReturnValue({ select: vendorInsertSelect }),
+    },
+    receipt_vendor_aliases: {
+      insert: vi.fn().mockResolvedValue({ error: null }),
+    },
+    receipt_classification_signals: {
+      insert: vi.fn().mockResolvedValue({ error: null }),
+    },
+  }
+
+  const storageClient = storage
+    ? {
+        download: vi.fn().mockResolvedValue({
+          data: {
+            arrayBuffer: vi.fn().mockResolvedValue(new TextEncoder().encode('receipt-content').buffer),
+          },
+          error: null,
+        }),
+        ...storage,
+      }
+    : undefined
+
   return {
     from: vi.fn((table: string) => {
       if (tables[table]) return tables[table]
+      if (defaultTables[table]) return defaultTables[table]
       throw new Error(`Unexpected table: ${table}`)
     }),
-    ...(storage ? { storage: { from: vi.fn().mockReturnValue(storage) } } : {}),
+    ...(storageClient ? { storage: { from: vi.fn().mockReturnValue(storageClient) } } : {}),
   }
 }
 

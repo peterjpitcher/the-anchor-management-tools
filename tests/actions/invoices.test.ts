@@ -100,6 +100,28 @@ function mockSupabaseClient() {
   return client
 }
 
+function mockAdminBillingClient() {
+  const makeUpdateChain = () => {
+    const secondEq = vi.fn().mockResolvedValue({ error: null })
+    const firstEq = vi.fn().mockReturnValue({ eq: secondEq })
+    return {
+      update: vi.fn().mockReturnValue({ eq: firstEq }),
+    }
+  }
+
+  const client = {
+    from: vi.fn().mockImplementation((table: string) => {
+      if (table === 'oj_entries' || table === 'oj_recurring_charge_instances') {
+        return makeUpdateChain()
+      }
+      throw new Error(`Unexpected table: ${table}`)
+    }),
+  }
+
+  mockedCreateAdminClient.mockReturnValue(client)
+  return client
+}
+
 function buildFormData(fields: Record<string, string>): FormData {
   const fd = new FormData()
   for (const [k, v] of Object.entries(fields)) {
@@ -337,7 +359,8 @@ describe('Invoice actions', () => {
 
     it('should update status successfully for valid non-payment status', async () => {
       mockedPermission.mockResolvedValue(true)
-      const client = mockSupabaseClient()
+      mockSupabaseClient()
+      mockAdminBillingClient()
 
       ;(InvoiceService.updateInvoiceStatus as Mock).mockResolvedValue({
         updatedInvoice: { invoice_number: 'INV-042' },

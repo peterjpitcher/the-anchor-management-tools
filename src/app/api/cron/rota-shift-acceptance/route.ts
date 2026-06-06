@@ -7,6 +7,7 @@ import {
   buildShiftAutoAcceptWarningEmailHtml,
   type PortalShiftEmailSummary,
 } from '@/lib/rota/email-templates';
+import { recordShiftReliabilityEvent } from '@/services/employee-reliability';
 
 const TIMEZONE = 'Europe/London';
 const MANAGER_SHIFT_EMAIL = 'manager@the-anchor.pub';
@@ -25,6 +26,7 @@ type PendingShiftRow = {
   department: string;
   name: string | null;
   auto_accept_warning_sent_at: string | null;
+  published_at: string | null;
 };
 
 type EmployeeRow = {
@@ -100,7 +102,7 @@ export async function GET(request: Request) {
 
   const { data: shifts, error: shiftsError } = await supabase
     .from('rota_published_shifts')
-    .select('id, week_id, employee_id, shift_date, start_time, end_time, department, name, auto_accept_warning_sent_at')
+    .select('id, week_id, employee_id, shift_date, start_time, end_time, department, name, auto_accept_warning_sent_at, published_at')
     .eq('status', 'scheduled')
     .eq('is_open_shift', false)
     .eq('acceptance_status', 'pending')
@@ -235,6 +237,19 @@ export async function GET(request: Request) {
         reason: SHIFT_AUTO_ACCEPT_POLICY_NOTE,
         source: 'rota-shift-acceptance-cron',
       },
+    });
+
+    await recordShiftReliabilityEvent({
+      eventType: 'shift_auto_accepted',
+      employeeId: shift.employee_id,
+      shift,
+      eventAt: acceptedAt,
+      source: 'rota-shift-acceptance-cron',
+      metadata: {
+        acceptance_status: 'auto_accepted',
+        reason: SHIFT_AUTO_ACCEPT_POLICY_NOTE,
+      },
+      supabase,
     });
 
     autoAccepted += 1;
