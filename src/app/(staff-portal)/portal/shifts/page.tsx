@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/server';
+import { createAdminClient } from '@/lib/supabase/admin';
 import { redirect } from 'next/navigation';
 import { getOrCreatePayrollPeriod, getOrCreatePayrollPeriodForDate, type PayrollPeriod } from '@/app/actions/payroll';
 import { formatTime12Hour, getTodayIsoDate } from '@/lib/dateUtils';
@@ -15,6 +16,8 @@ import OpenShiftRequestButton from './OpenShiftRequestButton';
 import type { ShiftAcceptanceStatus } from '@/app/actions/rota';
 
 export const dynamic = 'force-dynamic';
+
+const PORTAL_SHIFT_MANAGER_ROLE = 'portal_shift_manager';
 
 type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
 
@@ -35,6 +38,7 @@ type PortalShift = {
   acceptance_status: ShiftAcceptanceStatus | null;
   acceptance_decided_at: string | null;
   auto_accept_reason: string | null;
+  employee_name?: string | null;
 };
 
 type CouldntWorkRecord = {
@@ -42,6 +46,10 @@ type CouldntWorkRecord = {
   shift_date: string;
   sick_reason: string | null;
   created_at: string;
+};
+
+type UserRoleRow = {
+  roles: { name: string | null } | { name: string | null }[] | null;
 };
 
 const SHIFT_AUTO_ACCEPT_POLICY_NOTE =
@@ -87,6 +95,15 @@ function deptColour(dept: string): string {
   return dept === 'bar'
     ? 'bg-blue-50 border-blue-200 text-blue-800'
     : 'bg-orange-50 border-orange-200 text-orange-800';
+}
+
+function employeeDisplayName(employee: { first_name: string | null; last_name: string | null } | null | undefined): string {
+  return [employee?.first_name, employee?.last_name].filter(Boolean).join(' ') || 'Staff member';
+}
+
+function roleNameFromRow(row: UserRoleRow): string | null {
+  if (Array.isArray(row.roles)) return row.roles[0]?.name ?? null;
+  return row.roles?.name ?? null;
 }
 
 function shiftStartTime(shift: Pick<PortalShift, 'shift_date' | 'start_time'>): number {
@@ -139,14 +156,20 @@ async function periodHasPortalData(
   supabase: SupabaseServerClient,
   employeeId: string,
   period: Pick<PayrollPeriod, 'period_start' | 'period_end'>,
+  canViewAllShifts: boolean,
 ): Promise<boolean> {
-  const { count } = await supabase
+  let query = supabase
     .from('rota_published_shifts')
     .select('*', { count: 'exact', head: true })
     .gte('shift_date', period.period_start)
     .lte('shift_date', period.period_end)
-    .eq('status', 'scheduled')
-    .or(`employee_id.eq.${employeeId},is_open_shift.eq.true`);
+    .eq('status', 'scheduled');
+
+  if (!canViewAllShifts) {
+    query = query.or(`employee_id.eq.${employeeId},is_open_shift.eq.true`);
+  }
+
+  const { count } = await query;
 
   return Boolean(count && count > 0);
 }
@@ -156,6 +179,7 @@ async function findAdjacentPeriod(
   employeeId: string,
   current: PayrollPeriod,
   direction: 'previous' | 'next',
+  canViewAllShifts: boolean,
 ): Promise<PayrollPeriod | null> {
   const query = supabase
     .from('payroll_periods')
@@ -168,7 +192,7 @@ async function findAdjacentPeriod(
     : await query.gt('period_start', current.period_end);
 
   for (const period of (data ?? []) as PayrollPeriod[]) {
-    if (await periodHasPortalData(supabase, employeeId, period)) return period;
+    if (await periodHasPortalData(supabase, employeeId, period, canViewAllShifts)) return period;
   }
 
   return null;
@@ -271,12 +295,34 @@ export default async function MyShiftsPage({
   }
 
   const today = getTodayIsoDate();
+  const admin = createAdminClient();
+  const { data: userRoles } = await admin
+    .from('user_roles')
+    .select('roles(name)')
+    .eq('user_id', user.id)
+    .returns<UserRoleRow[]>();
+  const isPortalShiftManager = (userRoles ?? [])
+    .map(roleNameFromRow)
+    .includes(PORTAL_SHIFT_MANAGER_ROLE);
+
   const resolvedParams = await searchParams;
   const requestedPeriod = parsePeriodParams(resolvedParams ?? {});
   const currentPeriod = await getOrCreatePayrollPeriodForDate(today);
   const period = requestedPeriod
     ? await getOrCreatePayrollPeriod(requestedPeriod.year, requestedPeriod.month)
     : currentPeriod;
+
+  let shiftsQuery = supabase
+    .from('rota_published_shifts')
+    .select('*')
+    .gte('shift_date', period.period_start)
+    .lte('shift_date', period.period_end)
+    .eq('status', 'scheduled')
+    .eq('is_open_shift', false);
+
+  if (!isPortalShiftManager) {
+    shiftsQuery = shiftsQuery.eq('employee_id', employee.employee_id);
+  }
 
   const [
     previousPeriod,
@@ -286,16 +332,9 @@ export default async function MyShiftsPage({
     couldntWorkResult,
     paySettingsResult,
   ] = await Promise.all([
-    findAdjacentPeriod(supabase, employee.employee_id, period, 'previous'),
-    findAdjacentPeriod(supabase, employee.employee_id, period, 'next'),
-    supabase
-      .from('rota_published_shifts')
-      .select('*')
-      .eq('employee_id', employee.employee_id)
-      .gte('shift_date', period.period_start)
-      .lte('shift_date', period.period_end)
-      .eq('status', 'scheduled')
-      .eq('is_open_shift', false)
+    findAdjacentPeriod(supabase, employee.employee_id, period, 'previous', isPortalShiftManager),
+    findAdjacentPeriod(supabase, employee.employee_id, period, 'next', isPortalShiftManager),
+    shiftsQuery
       .order('shift_date')
       .order('start_time'),
     supabase
@@ -324,11 +363,40 @@ export default async function MyShiftsPage({
   ]);
 
   const now = new Date();
-  const shifts = ((shiftsResult.data ?? []) as PortalShift[])
+  const rawShifts = (shiftsResult.data ?? []) as PortalShift[];
+  const employeeNameById = new Map<string, string>();
+
+  if (isPortalShiftManager) {
+    const shiftEmployeeIds = Array.from(new Set(
+      rawShifts
+        .map(shift => shift.employee_id)
+        .filter((employeeId): employeeId is string => Boolean(employeeId)),
+    ));
+
+    if (shiftEmployeeIds.length > 0) {
+      const { data: shiftEmployees } = await admin
+        .from('employees')
+        .select('employee_id, first_name, last_name')
+        .in('employee_id', shiftEmployeeIds);
+
+      for (const shiftEmployee of shiftEmployees ?? []) {
+        employeeNameById.set(
+          shiftEmployee.employee_id,
+          employeeDisplayName({
+            first_name: shiftEmployee.first_name,
+            last_name: shiftEmployee.last_name,
+          }),
+        );
+      }
+    }
+  }
+
+  const shifts = rawShifts
     .map(shift => {
       const acceptanceStatus = resolvePortalAcceptanceStatus(shift, now);
       return {
         ...shift,
+        employee_name: shift.employee_id ? employeeNameById.get(shift.employee_id) ?? null : null,
         acceptance_status: acceptanceStatus,
         auto_accept_reason: acceptanceStatus === 'auto_accepted'
           ? shift.auto_accept_reason ?? SHIFT_AUTO_ACCEPT_POLICY_NOTE
@@ -374,7 +442,7 @@ export default async function MyShiftsPage({
       <div>
         <h2 className="text-xl font-semibold text-gray-900">My Shifts</h2>
         <p className="text-sm text-gray-500 mt-0.5">
-          Hi {empName} - here are your published shifts for this pay period.
+          Hi {empName} - here are {isPortalShiftManager ? 'the' : 'your'} published shifts for this pay period.
         </p>
       </div>
 
@@ -427,6 +495,8 @@ export default async function MyShiftsPage({
               </div>
               <div className="divide-y divide-gray-50">
                 {byDate[date].map(shift => {
+                  const isOwnShift = shift.employee_id === employee.employee_id;
+                  const isOtherStaffShift = isPortalShiftManager && !isOwnShift;
                   const paidHours = calculatePaidHours(
                     shift.start_time,
                     shift.end_time,
@@ -434,33 +504,55 @@ export default async function MyShiftsPage({
                     shift.is_overnight,
                   );
                   return (
-                    <div key={shift.id} className="px-4 py-3">
+                    <div
+                      key={shift.id}
+                      className={`px-4 py-3 ${isOtherStaffShift ? 'bg-gray-50/80 text-gray-500' : ''}`}
+                    >
                       <div className="flex items-start justify-between gap-3">
                         <div>
-                          {shift.name && <p className="text-sm font-semibold text-gray-900">{shift.name}</p>}
-                          <p className="text-sm font-medium text-gray-900">
+                          {isPortalShiftManager && (
+                            <p className={`mb-1 text-xs font-semibold ${isOwnShift ? 'text-blue-700' : 'text-gray-500'}`}>
+                              {isOwnShift ? 'You' : shift.employee_name ?? 'Staff member'}
+                            </p>
+                          )}
+                          {shift.name && (
+                            <p className={`text-sm font-semibold ${isOtherStaffShift ? 'text-gray-500' : 'text-gray-900'}`}>
+                              {shift.name}
+                            </p>
+                          )}
+                          <p className={`text-sm font-medium ${isOtherStaffShift ? 'text-gray-500' : 'text-gray-900'}`}>
                             {formatTime12Hour(shift.start_time)} - {formatTime12Hour(shift.end_time)}
                             {shift.is_overnight ? ' (+1)' : ''}
                           </p>
                           <div className="flex flex-wrap items-center gap-2 mt-1">
-                            <span className={`text-xs px-1.5 py-0.5 rounded border ${deptColour(shift.department)} font-medium`}>
+                            <span className={`text-xs px-1.5 py-0.5 rounded border ${isOtherStaffShift ? 'border-gray-200 bg-gray-100 text-gray-500' : deptColour(shift.department)} font-medium`}>
                               {shift.department}
                             </span>
-                            <span className="text-xs text-gray-500">{paidHours.toFixed(1)}h paid</span>
+                            <span className={`text-xs ${isOtherStaffShift ? 'text-gray-400' : 'text-gray-500'}`}>
+                              {paidHours.toFixed(1)}h paid
+                            </span>
                             {shift.unpaid_break_minutes > 0 && (
-                              <span className="text-xs text-gray-400">{shift.unpaid_break_minutes} min break</span>
+                              <span className={`text-xs ${isOtherStaffShift ? 'text-gray-300' : 'text-gray-400'}`}>
+                                {shift.unpaid_break_minutes} min break
+                              </span>
                             )}
                           </div>
-                          {shift.notes && <p className="mt-1 text-xs text-gray-500">{shift.notes}</p>}
+                          {shift.notes && (
+                            <p className={`mt-1 text-xs ${isOtherStaffShift ? 'text-gray-400' : 'text-gray-500'}`}>
+                              {shift.notes}
+                            </p>
+                          )}
                         </div>
                       </div>
-                      <ShiftDecisionControls
-                        shiftId={shift.id}
-                        acceptanceStatus={shift.acceptance_status}
-                        acceptedAt={shift.acceptance_decided_at}
-                        autoAcceptReason={shift.auto_accept_reason}
-                        autoAcceptDeadline={autoAcceptDeadlineLabel(shift)}
-                      />
+                      {isOwnShift && (
+                        <ShiftDecisionControls
+                          shiftId={shift.id}
+                          acceptanceStatus={shift.acceptance_status}
+                          acceptedAt={shift.acceptance_decided_at}
+                          autoAcceptReason={shift.auto_accept_reason}
+                          autoAcceptDeadline={autoAcceptDeadlineLabel(shift)}
+                        />
+                      )}
                     </div>
                   );
                 })}
