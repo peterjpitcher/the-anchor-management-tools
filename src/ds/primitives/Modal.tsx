@@ -62,8 +62,8 @@ export function Modal({
           <DialogBackdrop className="fixed inset-0 bg-black/50" />
         </TransitionChild>
 
-        <div className="fixed inset-0 overflow-y-auto p-4">
-          <div className="flex min-h-full items-start justify-center sm:items-center">
+        <div className="fixed inset-0 overflow-y-auto p-0 sm:p-4">
+          <div className="flex min-h-full items-end justify-center sm:items-center">
             <TransitionChild
               as={Fragment}
               enter="ease-out duration-200"
@@ -75,22 +75,22 @@ export function Modal({
             >
               <DialogPanel
                 className={cn(
-                  'flex max-h-[calc(100dvh-2rem)] w-full flex-col overflow-hidden bg-surface rounded-lg shadow-lg',
+                  'flex max-h-[92dvh] w-full flex-col overflow-hidden bg-surface rounded-t-xl shadow-lg sm:max-h-[calc(100dvh-2rem)] sm:rounded-lg',
                   widthStyles[resolvedWidth]
                 )}
               >
                 {title && (
-                  <div className="px-6 py-4 border-b border-border">
+                  <div className="px-4 py-4 border-b border-border sm:px-6">
                     <DialogTitle className="text-base font-semibold text-text">
                       {title}
                     </DialogTitle>
                   </div>
                 )}
 
-                <div className="overflow-y-auto px-6 py-4">{children}</div>
+                <div className="overflow-y-auto px-4 py-4 sm:px-6">{children}</div>
 
                 {footer && (
-                  <div className="px-6 py-4 border-t border-border flex justify-end gap-3">
+                  <div className="flex flex-col-reverse gap-2 border-t border-border px-4 py-4 sm:flex-row sm:justify-end sm:gap-3 sm:px-6">
                     {footer}
                   </div>
                 )}

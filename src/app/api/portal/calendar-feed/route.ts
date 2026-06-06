@@ -52,40 +52,16 @@ export async function GET(req: NextRequest): Promise<Response> {
   const fromStr = from.toISOString().split('T')[0]
   const toStr = to.toISOString().split('T')[0]
 
-  // ── QA-005: Lightweight ETag pre-check before full ICS generation ──
-  const { data: meta } = await supabase
-    .from('rota_published_shifts')
-    .select('published_at')
-    .eq('employee_id', employeeId)
-    .gte('shift_date', fromStr)
-    .lte('shift_date', toStr)
-    .order('published_at', { ascending: false })
-    .limit(1)
-    .maybeSingle()
-
-  const { count } = await supabase
-    .from('rota_published_shifts')
-    .select('*', { count: 'exact', head: true })
-    .eq('employee_id', employeeId)
-    .gte('shift_date', fromStr)
-    .lte('shift_date', toStr)
-
-  const metaEtag = `"meta-${createHash('sha256').update(`${meta?.published_at ?? 'none'}-${count ?? 0}`).digest('hex').substring(0, 32)}"`
-
-  const ifNoneMatch = req.headers.get('if-none-match')
-  if (ifNoneMatch === metaEtag) {
-    return new Response(null, { status: 304, headers: { 'ETag': metaEtag } })
-  }
-
   // ── Full query (QA-008: explicit column selection) ──
   // Include cancelled shifts so Google Calendar receives explicit STATUS:CANCELLED VEVENTs
   // and removes them, rather than silently leaving stale events when UIDs disappear.
   const { data: shifts, error: shiftsError } = await supabase
     .from('rota_published_shifts')
-    .select('id, shift_date, start_time, end_time, department, status, notes, is_overnight, is_open_shift, name, published_at')
+    .select('id, shift_date, start_time, end_time, department, status, notes, is_overnight, is_open_shift, name, published_at, acceptance_status')
     .eq('employee_id', employeeId)
     .gte('shift_date', fromStr)
     .lte('shift_date', toStr)
+    .or('acceptance_status.is.null,acceptance_status.in.(pending,accepted,auto_accepted)')
     .order('shift_date')
     .order('start_time')
 
@@ -94,6 +70,47 @@ export async function GET(req: NextRequest): Promise<Response> {
   }
 
   const typedShifts = (shifts ?? []) as unknown as PublishedShiftRow[]
+  const activeShiftIds = new Set(typedShifts.map(shift => shift.id))
+
+  const { data: cancellationRows, error: cancellationsError } = await supabase
+    .from('rota_shift_calendar_cancellations')
+    .select('shift_id, shift_date, start_time, end_time, unpaid_break_minutes, department, notes, is_overnight, name, cancelled_at, reason')
+    .eq('employee_id', employeeId)
+    .gte('shift_date', fromStr)
+    .lte('shift_date', toStr)
+    .order('shift_date')
+    .order('start_time')
+
+  if (cancellationsError) {
+    return new Response('Error loading shift cancellations', { status: 500 })
+  }
+
+  const cancelledShifts = ((cancellationRows ?? []) as Array<{
+    shift_id: string
+    shift_date: string
+    start_time: string
+    end_time: string
+    department: string | null
+    notes: string | null
+    is_overnight: boolean
+    name: string | null
+    cancelled_at: string
+    reason: string
+  }>)
+    .filter(row => !activeShiftIds.has(row.shift_id))
+    .map((row): PublishedShiftRow => ({
+      id: row.shift_id,
+      shift_date: row.shift_date,
+      start_time: row.start_time,
+      end_time: row.end_time,
+      department: row.department,
+      status: 'cancelled',
+      notes: row.reason || row.notes,
+      is_overnight: row.is_overnight,
+      is_open_shift: false,
+      name: row.name,
+      published_at: row.cancelled_at,
+    }))
 
   const lines: string[] = [
     'BEGIN:VCALENDAR',
@@ -126,22 +143,53 @@ export async function GET(req: NextRequest): Promise<Response> {
     lines.push(...buildVEvent({ shift, uidPrefix: 'staff-shift', summary, descriptionParts: descParts }))
   }
 
+  for (const shift of cancelledShifts) {
+    const deptLabel = formatDeptLabel(shift.department)
+    const summary = [
+      'Shift at The Anchor',
+      deptLabel ? `(${deptLabel})` : null,
+      shift.name ? `— ${shift.name}` : null,
+    ].filter(Boolean).join(' ')
+    const descParts = [
+      'Status: Cancelled',
+      `Reason: ${shift.notes ?? 'Shift removed from your rota'}`,
+      `Department: ${deptLabel || (shift.department ?? '')}`,
+    ]
+
+    lines.push(...buildVEvent({ shift, uidPrefix: 'staff-shift', summary, descriptionParts: descParts }))
+  }
+
   lines.push('END:VCALENDAR')
 
   const ics = lines.map(foldLine).join('\r\n')
+  const etag = `"${createHash('sha256').update(ics).digest('hex').substring(0, 32)}"`
 
   // Last-Modified: most recent published_at across all returned shifts
-  const mostRecentPublish = findMostRecentPublish(typedShifts)
+  const mostRecentPublish = findMostRecentPublish([...typedShifts, ...cancelledShifts])
   const lastModifiedHeader = mostRecentPublish
     ? mostRecentPublish.toUTCString()
     : new Date().toUTCString()
+  const ifNoneMatch = req.headers.get('if-none-match')
+  if (ifNoneMatch === etag) {
+    return new Response(null, { status: 304, headers: { ETag: etag, 'Last-Modified': lastModifiedHeader } })
+  }
+
+  const ifModifiedSince = req.headers.get('if-modified-since')
+  if (mostRecentPublish && ifModifiedSince) {
+    const since = new Date(ifModifiedSince)
+    if (!Number.isNaN(since.getTime()) && mostRecentPublish.getTime() <= since.getTime()) {
+      return new Response(null, { status: 304, headers: { ETag: etag, 'Last-Modified': lastModifiedHeader } })
+    }
+  }
 
   return new Response(ics, {
     headers: {
       'Content-Type': 'text/calendar; charset=utf-8',
       'Content-Disposition': `inline; filename="${empName.replace(/\s+/g, '-')}-shifts.ics"`,
-      'Cache-Control': 'max-age=300, stale-while-revalidate=600',
-      'ETag': metaEtag,
+      'Cache-Control': 'no-cache, no-store, must-revalidate',
+      'Pragma': 'no-cache',
+      'Expires': '0',
+      'ETag': etag,
       'Last-Modified': lastModifiedHeader,
     },
   })

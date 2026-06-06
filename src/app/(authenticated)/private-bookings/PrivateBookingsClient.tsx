@@ -728,7 +728,7 @@ export default function PrivateBookingsClient({
                 }
               ]}
                 renderMobileCard={(booking) => (
-                  <div>
+                  <div className="rounded-lg border border-border bg-surface p-4 shadow-sm">
                     <div className="flex justify-between items-start mb-3">
                       <div className="flex-1 min-w-0 mr-2">
                         <div className="font-medium text-gray-900 truncate">{booking.customer_name}</div>

@@ -202,6 +202,10 @@
       "schedule": "0 21 * * 0"
     },
     {
+      "path": "/api/cron/rota-shift-acceptance",
+      "schedule": "30 7 * * *"
+    },
+    {
       "path": "/api/cron/table-booking-deposit-timeout",
       "schedule": "0 * * * *"
     },

@@ -25,11 +25,14 @@ import { LinkButton } from '@/ds'
 import { ArrowDownTrayIcon } from '@heroicons/react/24/outline'
 import EmployeePayTab from '@/components/features/employees/EmployeePayTab'
 import EmployeeHolidaysTab from '@/components/features/employees/EmployeeHolidaysTab'
+import EmployeeRejectedShiftsTab from '@/components/features/employees/EmployeeRejectedShiftsTab'
 import { getEmployeePaySettings, getEmployeeRateOverrides } from '@/app/actions/pay-bands'
 import { getHourlyRate } from '@/lib/rota/pay-calculator'
 import { getLeaveRequests } from '@/app/actions/leave'
 import { getRotaSettings } from '@/app/actions/rota-settings'
 import { checkUserPermission } from '@/app/actions/rbac'
+import { createAdminClient } from '@/lib/supabase/admin'
+import type { RejectedShiftRecord } from '@/app/actions/rota'
 
 export const dynamic = 'force-dynamic'
 
@@ -105,6 +108,15 @@ export default async function EmployeeDetailPage({ params }: EmployeeDetailPageP
   // Resolve current rate for display (today's date in London timezone)
   const today = getTodayIsoDate()
   const currentRate = await getHourlyRate(employeeId, today)
+  const admin = createAdminClient()
+  const { data: rejectedShiftRows } = await admin
+    .from('rota_shift_rejections')
+    .select('id, shift_id, employee_id, week_id, shift_date, start_time, end_time, unpaid_break_minutes, department, notes, is_overnight, name, rejection_note, rejected_at, rejected_by, created_at')
+    .eq('employee_id', employeeId)
+    .order('shift_date', { ascending: false })
+    .order('rejected_at', { ascending: false })
+    .limit(100)
+  const rejectedShifts = (rejectedShiftRows ?? []) as RejectedShiftRecord[]
 
   const attachmentCategoryMap = attachmentCategories.reduce<Record<string, string>>((acc, category) => {
     acc[category.category_id] = category.category_name
@@ -248,6 +260,11 @@ export default async function EmployeeDetailPage({ params }: EmployeeDetailPageP
           rotaSettings={rotaSettings}
         />
       )
+    },
+    {
+      key: 'rejected_shifts',
+      label: 'Rejected Shifts',
+      content: <EmployeeRejectedShiftsTab rejectedShifts={rejectedShifts} />
     }
   ]
 

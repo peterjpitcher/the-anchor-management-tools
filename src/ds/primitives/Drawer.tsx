@@ -20,7 +20,7 @@ export interface DrawerProps {
   children: React.ReactNode
   /** @deprecated Accepted for backward compatibility */
   footer?: React.ReactNode
-  side?: 'right' | 'left'
+  side?: 'right' | 'left' | 'bottom'
   /** @deprecated Use `side` instead */
   position?: string
   width?: string
@@ -50,8 +50,9 @@ export function Drawer({
   size: _size,
   mobileFullscreen: _mfs,
 }: DrawerProps) {
-  const resolvedSide = side ?? (position === 'left' ? 'left' : 'right')
+  const resolvedSide = side ?? (position === 'left' || position === 'bottom' ? position : 'right')
   const isRight = resolvedSide === 'right'
+  const isBottom = resolvedSide === 'bottom'
 
   return (
     <Transition show={open} as={Fragment}>
@@ -72,18 +73,21 @@ export function Drawer({
           <TransitionChild
             as={Fragment}
             enter="ease-out duration-300"
-            enterFrom={isRight ? 'translate-x-full' : '-translate-x-full'}
-            enterTo="translate-x-0"
+            enterFrom={isBottom ? 'translate-y-full' : isRight ? 'translate-x-full' : '-translate-x-full'}
+            enterTo={isBottom ? 'translate-y-0' : 'translate-x-0'}
             leave="ease-in duration-200"
-            leaveFrom="translate-x-0"
-            leaveTo={isRight ? 'translate-x-full' : '-translate-x-full'}
+            leaveFrom={isBottom ? 'translate-y-0' : 'translate-x-0'}
+            leaveTo={isBottom ? 'translate-y-full' : isRight ? 'translate-x-full' : '-translate-x-full'}
           >
             <DialogPanel
               className={cn(
-                'fixed top-0 h-full bg-surface shadow-lg flex flex-col',
-                isRight ? 'right-0' : 'left-0'
+                'fixed bg-surface shadow-lg flex flex-col',
+                isBottom
+                  ? 'inset-x-0 bottom-0 max-h-[90dvh] rounded-t-xl'
+                  : 'top-0 h-full',
+                !isBottom && (isRight ? 'right-0' : 'left-0')
               )}
-              style={{ width }}
+              style={isBottom ? undefined : { width }}
             >
               {title && (
                 <div className="px-5 py-4 border-b border-border flex items-center justify-between">

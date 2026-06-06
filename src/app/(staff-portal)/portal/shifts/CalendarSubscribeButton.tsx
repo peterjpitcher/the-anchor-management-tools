@@ -20,34 +20,36 @@ export default function CalendarSubscribeButton({ feedUrl }: { feedUrl: string }
   }
 
   return (
-    <div className="bg-white rounded-xl border border-gray-200 p-4">
-      <div className="flex items-center gap-2 mb-3">
-        <CalendarDaysIcon className="h-5 w-5 text-gray-400 shrink-0" />
+    <div className="rounded-lg border border-gray-200 bg-white p-3">
+      <div className="mb-2 flex items-start gap-2">
+        <CalendarDaysIcon className="h-4 w-4 text-gray-400 shrink-0 mt-0.5" />
         <div>
-          <p className="text-sm font-semibold text-gray-900">Sync shifts to your calendar</p>
-          <p className="text-xs text-gray-500">Subscribe to keep your calendar automatically up to date when the rota changes.</p>
+          <p className="text-xs font-semibold text-gray-900">Sync shifts to your calendar</p>
+          <p className="text-xs text-gray-500">
+            Pending and accepted shifts are included. Google Calendar can take several hours to update.
+          </p>
         </div>
       </div>
       <div className="flex flex-wrap gap-2">
         <a
           href={webcalUrl}
-          className="inline-flex items-center gap-1.5 rounded-md bg-gray-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-gray-700 transition-colors"
+          className="inline-flex items-center gap-1.5 rounded-md bg-gray-900 px-2.5 py-1 text-xs font-medium text-white hover:bg-gray-700 transition-colors"
         >
           <CalendarDaysIcon className="h-3.5 w-3.5" />
-          Subscribe (Apple / Outlook)
+          Apple / Outlook
         </a>
         <a
           href={googleUrl}
           target="_blank"
           rel="noopener noreferrer"
-          className="inline-flex items-center gap-1.5 rounded-md border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+          className="inline-flex items-center gap-1.5 rounded-md border border-gray-200 bg-white px-2.5 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50 transition-colors"
         >
-          Add to Google Calendar
+          Google Calendar
         </a>
         <button
           type="button"
           onClick={handleCopy}
-          className="inline-flex items-center gap-1.5 rounded-md border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+          className="inline-flex items-center gap-1.5 rounded-md border border-gray-200 bg-white px-2.5 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50 transition-colors"
         >
           {copied ? (
             <><CheckIcon className="h-3.5 w-3.5 text-green-600" /><span className="text-green-600">Copied!</span></>

@@ -19,6 +19,8 @@ import {
   ChevronRightIcon,
   PlusIcon,
   CalendarDaysIcon,
+  CheckIcon,
+  ClockIcon,
   ExclamationTriangleIcon,
   PrinterIcon,
   PencilSquareIcon,
@@ -27,7 +29,7 @@ import {
 import { Badge, Button, Card, CardBody, CardHeader } from '@/ds';
 import { formatTime12Hour } from '@/lib/dateUtils';
 import { moveShift, autoPopulateWeekFromTemplates, upsertRotaSalesTargetOverride } from '@/app/actions/rota';
-import type { RotaWeek, RotaShift, RotaEmployee, LeaveDayWithRequest } from '@/app/actions/rota';
+import type { RotaWeek, RotaShift, RotaEmployee, LeaveDayWithRequest, OpenShiftRequestSummary, RejectedShiftRecord, ShiftAuditTrailEntry } from '@/app/actions/rota';
 import type { ShiftTemplate } from '@/app/actions/rota-templates';
 import type { Department } from '@/app/actions/budgets';
 import type { RotaDayInfo } from '@/app/actions/rota-day-info';
@@ -61,6 +63,9 @@ interface RotaGridProps {
   canViewSpend: boolean;
   canViewSalesTargets: boolean;
   canEditSalesTargets: boolean;
+  openShiftRequests?: OpenShiftRequestSummary[];
+  shiftAuditTrail?: ShiftAuditTrailEntry[];
+  rejectedShifts?: RejectedShiftRecord[];
 }
 
 type ActiveItem = { type: 'shift'; shift: RotaShift };
@@ -70,6 +75,8 @@ type CouldntWorkTarget = {
   employeeId: string;
   date: string;
 };
+
+const SHIFT_ACCEPTANCE_CUTOFF_DAYS = 14;
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -171,6 +178,90 @@ function roleStyle(role: string): typeof ROLE_STYLES[number] {
   return ROLE_STYLES[hash];
 }
 
+function shiftStartDate(shift: RotaShift): Date | null {
+  const time = shift.start_time.length === 5 ? `${shift.start_time}:00` : shift.start_time;
+  const date = new Date(`${shift.shift_date}T${time}`);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function effectiveAcceptanceStatus(shift: RotaShift): RotaShift['acceptance_status'] {
+  if (shift.acceptance_status) return shift.acceptance_status;
+  if (shift.is_open_shift || shift.status !== 'scheduled') return null;
+
+  const start = shiftStartDate(shift);
+  if (!start) return null;
+
+  const cutoffMs = SHIFT_ACCEPTANCE_CUTOFF_DAYS * 24 * 60 * 60 * 1000;
+  return start.getTime() - Date.now() <= cutoffMs ? 'auto_accepted' : null;
+}
+
+function shiftAcceptanceDisplay(shift: RotaShift): {
+  title: string;
+  icon: 'check' | 'clock' | 'x';
+  className: string;
+  auto?: boolean;
+} | null {
+  if (shift.is_open_shift && shift.acceptance_status !== 'rejected') return null;
+  const acceptanceStatus = effectiveAcceptanceStatus(shift);
+
+  if (acceptanceStatus === 'accepted') {
+    return {
+      title: 'Accepted by staff',
+      icon: 'check',
+      className: 'border-success/30 bg-success-soft text-success-fg',
+    };
+  }
+
+  if (acceptanceStatus === 'auto_accepted') {
+    return {
+      title: 'Auto-accepted by the two-week rule',
+      icon: 'check',
+      className: 'border-success/30 bg-success-soft text-success-fg',
+      auto: true,
+    };
+  }
+
+  if (acceptanceStatus === 'rejected') {
+    return {
+      title: shift.is_open_shift ? 'Rejected by staff and now open' : 'Rejected by staff',
+      icon: 'x',
+      className: 'border-danger/30 bg-danger-soft text-danger-fg',
+    };
+  }
+
+  return {
+    title: 'Waiting for staff response',
+    icon: 'clock',
+    className: 'border-warning/35 bg-warning-soft text-warning-fg',
+  };
+}
+
+function ShiftAcceptanceIcon({ shift }: { shift: RotaShift }) {
+  const display = shiftAcceptanceDisplay(shift);
+  if (!display) return null;
+
+  const Icon = display.icon === 'check'
+    ? CheckIcon
+    : display.icon === 'x'
+      ? XMarkIcon
+      : ClockIcon;
+
+  return (
+    <span
+      className={`absolute right-1 top-1 flex h-4 w-4 items-center justify-center rounded-full border shadow-xs ${display.className}`}
+      title={display.title}
+      aria-label={display.title}
+    >
+      <Icon className="h-3 w-3" />
+      {display.auto && (
+        <span className="absolute -bottom-1 -right-1 flex h-2.5 min-w-2.5 items-center justify-center rounded-full bg-success text-[7px] font-bold leading-none text-white">
+          A
+        </span>
+      )}
+    </span>
+  );
+}
+
 function addWeeks(weekStart: string, n: number): string {
   const d = new Date(weekStart + 'T12:00:00Z');
   d.setUTCDate(d.getUTCDate() + n * 7);
@@ -246,11 +337,12 @@ function DraggableShiftBlock({
     <div
       ref={setNodeRef}
       style={{ transform: CSS.Translate.toString(transform), opacity: isDragging ? 0.3 : 1 }}
-      className={`rounded-default ${isDraft ? 'border-2 border-dashed' : 'border'} ${colourClass} px-2 py-1.5 text-xs shadow-xs cursor-grab active:cursor-grabbing select-none transition-[border-color,box-shadow,transform] hover:-translate-y-px hover:shadow-sm`}
+      className={`relative rounded-default ${isDraft ? 'border-2 border-dashed' : 'border'} ${colourClass} px-2 py-1.5 pr-6 text-xs shadow-xs cursor-grab active:cursor-grabbing select-none transition-[border-color,box-shadow,transform] hover:-translate-y-px hover:shadow-sm`}
       {...attributes}
       {...listeners}
       onClick={onClick}
     >
+      <ShiftAcceptanceIcon shift={shift} />
       {isDraft && (
         <p className="mb-1 text-[9px] font-bold uppercase leading-none text-warning-fg">
           Unpublished
@@ -276,7 +368,8 @@ function ShiftBlockOverlay({ shift, isDraft }: { shift: RotaShift; isDraft: bool
   const ph = paidHours(shift.start_time, shift.end_time, shift.unpaid_break_minutes, shift.is_overnight);
   const deptColour = shift.department === 'bar' ? 'bg-info-soft border-info/25' : 'bg-warning-soft border-warning/25';
   return (
-    <div className={`w-32 rounded-default ${isDraft ? 'border-2 border-dashed' : 'border'} ${deptColour} px-2 py-1.5 text-xs shadow-lg opacity-95`}>
+    <div className={`relative w-32 rounded-default ${isDraft ? 'border-2 border-dashed' : 'border'} ${deptColour} px-2 py-1.5 pr-6 text-xs shadow-lg opacity-95`}>
+      <ShiftAcceptanceIcon shift={shift} />
       {isDraft && (
         <p className="mb-1 text-[9px] font-bold uppercase leading-none text-warning-fg">Unpublished</p>
       )}
@@ -302,6 +395,12 @@ const COULDNT_WORK_STYLE = {
   bg: 'bg-danger-soft',
   pill: 'bg-danger/10 text-danger-fg',
   label: "COULDN'T WORK",
+};
+
+const REJECTED_SHIFT_STYLE = {
+  bg: 'bg-rose-50',
+  pill: 'bg-rose-100 text-rose-700',
+  label: 'REJECTED',
 };
 
 function CouldntWorkBlock({
@@ -330,12 +429,55 @@ function CouldntWorkBlock({
   );
 }
 
+function RejectedShiftBlock({
+  rejection,
+  onClick,
+}: {
+  rejection: RejectedShiftRecord;
+  onClick?: () => void;
+}) {
+  const content = (
+    <>
+      <span>{REJECTED_SHIFT_STYLE.label}</span>
+      <span className="block font-normal">
+        {formatTime12Hour(rejection.start_time)}–{formatTime12Hour(rejection.end_time)}
+        {rejection.is_overnight ? '+' : ''}
+      </span>
+    </>
+  );
+
+  return (
+    <div className="mb-1">
+      {onClick ? (
+        <button
+          type="button"
+          onClick={event => { event.stopPropagation(); onClick(); }}
+          className={`w-full rounded-default px-1.5 py-0.5 text-center text-[10px] font-semibold leading-tight transition-opacity hover:opacity-75 ${REJECTED_SHIFT_STYLE.pill}`}
+          title="View rejected shift details"
+        >
+          {content}
+        </button>
+      ) : (
+        <span className={`block w-full rounded-default px-1.5 py-0.5 text-center text-[10px] font-semibold leading-tight ${REJECTED_SHIFT_STYLE.pill}`}>
+          {content}
+        </span>
+      )}
+      {rejection.rejection_note && (
+        <p className="mt-0.5 whitespace-normal break-words text-[10px] leading-tight text-rose-700/80">
+          {rejection.rejection_note}
+        </p>
+      )}
+    </div>
+  );
+}
+
 function DroppableCell({
   employeeId,
   date,
   children,
   leaveStatus,
   hasCouldntWork,
+  hasRejectedShift,
   disabled,
   onAdd,
   onBookHoliday,
@@ -347,6 +489,7 @@ function DroppableCell({
   children: React.ReactNode;
   leaveStatus?: 'approved' | 'pending';
   hasCouldntWork?: boolean;
+  hasRejectedShift?: boolean;
   disabled: boolean;
   onAdd?: () => void;
   onBookHoliday?: () => void;
@@ -361,11 +504,12 @@ function DroppableCell({
   const today = isToday(date);
   const leaveStyle = leaveStatus ? LEAVE_STYLES[leaveStatus] : null;
   const couldntWorkStyle = hasCouldntWork ? COULDNT_WORK_STYLE : null;
+  const rejectedShiftStyle = hasRejectedShift ? REJECTED_SHIFT_STYLE : null;
   const baseClass = 'group/cell relative min-h-[62px] border-r border-border/80 bg-surface px-2 py-1.5 transition-colors';
   const overClass = isOver && !disabled ? 'bg-primary-soft ring-1 ring-inset ring-primary/25' : today ? 'bg-primary-soft/45' : '';
 
   return (
-    <div ref={setNodeRef} className={`${baseClass} ${overClass || (leaveStyle?.bg ?? couldntWorkStyle?.bg ?? '')}`}>
+    <div ref={setNodeRef} className={`${baseClass} ${overClass || (leaveStyle?.bg ?? couldntWorkStyle?.bg ?? rejectedShiftStyle?.bg ?? '')}`}>
       {leaveStyle && (
         <div className="mb-1">
           {onLeaveClick ? (
@@ -446,6 +590,9 @@ export default function RotaGrid({
   canViewSpend,
   canViewSalesTargets,
   canEditSalesTargets,
+  openShiftRequests = [],
+  shiftAuditTrail = [],
+  rejectedShifts = [],
 }: RotaGridProps) {
   const router = useRouter();
   const [shifts, setShifts] = useState<RotaShift[]>(initialShifts);
@@ -460,6 +607,14 @@ export default function RotaGrid({
   const [targetSavePending, startTargetSaveTransition] = useTransition();
   const [holidayDetailTarget, setHolidayDetailTarget] = useState<{ requestId: string; employeeName: string } | null>(null);
   const [editingTarget, setEditingTarget] = useState<{ date: string; amount: string; reason: string } | null>(null);
+
+  useEffect(() => {
+    setShifts(initialShifts);
+  }, [initialShifts]);
+
+  useEffect(() => {
+    setActiveLeaveDays(leaveDays);
+  }, [leaveDays]);
 
   const navigateToWeek = useCallback((week: string) => {
     startNavTransition(() => { router.push(`/rota?week=${week}`); });
@@ -495,6 +650,15 @@ export default function RotaGrid({
           .map(l => [`${l.employee_id}:${l.leave_date}`, l]),
       ),
     [activeLeaveDays],
+  );
+
+  const employeeNameById = useMemo(
+    () => new Map(employees.map(emp => [emp.employee_id, empDisplayName(emp)])),
+    [employees],
+  );
+  const employeeNameRecord = useMemo(
+    () => Object.fromEntries(employeeNameById),
+    [employeeNameById],
   );
 
   // Separate open shifts from employee shifts
@@ -1114,6 +1278,9 @@ export default function RotaGrid({
                                   );
                                   const couldntWorkShifts = cellShifts.filter(s => s.status === 'sick' && !s.is_open_shift);
                                   const workedShifts = cellShifts.filter(s => s.status !== 'sick');
+                                  const rejectedShiftRecords = rejectedShifts.filter(
+                                    rejection => rejection.employee_id === emp.employee_id && rejection.shift_date === d,
+                                  );
                                   const sickCandidate =
                                     cellShifts.find(s => s.status === 'scheduled' && !s.is_open_shift) ??
                                     cellShifts.find(s => s.status === 'sick' && !s.is_open_shift) ??
@@ -1127,6 +1294,7 @@ export default function RotaGrid({
                                       date={d}
                                       leaveStatus={leaveStatus}
                                       hasCouldntWork={couldntWorkShifts.length > 0}
+                                      hasRejectedShift={rejectedShiftRecords.length > 0}
                                       disabled={!canEdit || isPending}
                                       onAdd={canEdit && !isPending ? () => setCreateTarget({ employeeId: emp.employee_id, date: d }) : undefined}
                                       onBookHoliday={canCreateLeave && !isPending ? () => setHolidayTarget({ employeeId: emp.employee_id, date: d }) : undefined}
@@ -1143,6 +1311,16 @@ export default function RotaGrid({
                                           onClick={() => setSelectedShift(s)}
                                         />
                                       ))}
+                                      {rejectedShiftRecords.map(rejection => {
+                                        const matchingShift = shifts.find(s => s.id === rejection.shift_id);
+                                        return (
+                                          <RejectedShiftBlock
+                                            key={rejection.id}
+                                            rejection={rejection}
+                                            onClick={matchingShift ? () => setSelectedShift(matchingShift) : undefined}
+                                          />
+                                        );
+                                      })}
                                       {workedShifts.map(s => (
                                         <DraggableShiftBlock
                                           key={s.id}
@@ -1180,9 +1358,35 @@ export default function RotaGrid({
 
       <Card>
         <CardBody className="flex flex-wrap items-center gap-3 py-3 text-xs text-text-muted">
+          <span className="flex items-center gap-1.5">
+            <span className="inline-flex h-4 w-4 items-center justify-center rounded-full border border-warning/35 bg-warning-soft text-warning-fg">
+              <ClockIcon className="h-3 w-3" />
+            </span>
+            Waiting
+          </span>
+          <span className="flex items-center gap-1.5">
+            <span className="inline-flex h-4 w-4 items-center justify-center rounded-full border border-success/30 bg-success-soft text-success-fg">
+              <CheckIcon className="h-3 w-3" />
+            </span>
+            Accepted
+          </span>
+          <span className="flex items-center gap-1.5">
+            <span className="relative inline-flex h-4 w-4 items-center justify-center rounded-full border border-success/30 bg-success-soft text-success-fg">
+              <CheckIcon className="h-3 w-3" />
+              <span className="absolute -bottom-1 -right-1 flex h-2.5 min-w-2.5 items-center justify-center rounded-full bg-success text-[7px] font-bold leading-none text-white">A</span>
+            </span>
+            Auto accepted
+          </span>
+          <span className="flex items-center gap-1.5">
+            <span className="inline-flex h-4 w-4 items-center justify-center rounded-full border border-danger/30 bg-danger-soft text-danger-fg">
+              <XMarkIcon className="h-3 w-3" />
+            </span>
+            Rejected
+          </span>
           <span className="flex items-center gap-1.5"><span className="inline-block h-3 w-3 rounded-sm border border-info/25 bg-info-soft" /> Bar shift</span>
           <span className="flex items-center gap-1.5"><span className="inline-block h-3 w-3 rounded-sm border border-warning/25 bg-warning-soft" /> Kitchen shift</span>
           <span className="flex items-center gap-1.5"><span className="inline-block h-3 w-3 rounded-sm border border-danger/25 bg-danger-soft" /> Couldn&apos;t Work</span>
+          <span className="flex items-center gap-1.5"><span className="inline-block h-3 w-3 rounded-sm border border-rose-200 bg-rose-50" /> Rejected shift</span>
           <span className="flex items-center gap-1.5"><span className="inline-block h-3 w-3 rounded-sm border border-success/25 bg-success-soft" /> Holiday approved</span>
           <span className="flex items-center gap-1.5"><span className="inline-block h-3 w-3 rounded-sm border border-warning/25 bg-warning-soft" /> Holiday pending</span>
           <span className="flex items-center gap-1.5"><span className="inline-block h-3 w-3 rounded-sm border-2 border-dashed border-info/25 bg-info-soft" /> Unpublished shift</span>
@@ -1196,8 +1400,13 @@ export default function RotaGrid({
         <ShiftDetailModal
           shift={selectedShift}
           employee={employees.find(e => e.employee_id === selectedShift.employee_id)}
+          acceptanceDeciderName={selectedShift.acceptance_decided_by ? empDisplayName(employees.find(e => e.employee_id === selectedShift.acceptance_decided_by) ?? { employee_id: '', first_name: null, last_name: null, job_title: null, max_weekly_hours: null, is_active: true }) : null}
           canEdit={canEdit}
           departments={departments}
+          openShiftRequests={openShiftRequests.filter(request => request.shift_id === selectedShift.id)}
+          auditTrail={shiftAuditTrail.filter(entry => entry.shift_id === selectedShift.id)}
+          rejectionHistory={rejectedShifts.filter(rejection => rejection.shift_id === selectedShift.id)}
+          rejectedEmployeeNames={employeeNameRecord}
           onClose={() => setSelectedShift(null)}
           onUpdated={handleShiftUpdated}
           onDeleted={handleShiftDeleted}

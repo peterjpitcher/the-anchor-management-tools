@@ -13,20 +13,20 @@ export default async function StaffPortalLayout({ children }: { children: ReactN
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="staff-portal-shell min-h-screen bg-gray-50">
       <header className="bg-white border-b border-gray-200 sticky top-0 z-10">
-        <div className="mx-auto max-w-2xl px-4 py-4 flex items-center justify-between">
+        <div className="mx-auto flex max-w-2xl flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:py-4">
           <div>
             <h1 className="text-lg font-semibold text-gray-900">The Anchor</h1>
             <p className="text-sm text-gray-500">Staff Portal</p>
           </div>
-          <nav className="flex items-center gap-4 text-sm">
-            <a href="/portal/shifts" className="text-gray-600 hover:text-gray-900">My Shifts</a>
-            <a href="/portal/leave" className="text-gray-600 hover:text-gray-900">Holiday</a>
+          <nav className="-mx-1 flex items-center gap-2 overflow-x-auto px-1 text-sm scrollbar-hide sm:mx-0 sm:gap-4 sm:overflow-visible sm:px-0">
+            <a href="/portal/shifts" className="shrink-0 rounded-lg px-2.5 py-2 text-gray-600 hover:text-gray-900 sm:rounded-none sm:px-0 sm:py-0">My Shifts</a>
+            <a href="/portal/leave" className="shrink-0 rounded-lg px-2.5 py-2 text-gray-600 hover:text-gray-900 sm:rounded-none sm:px-0 sm:py-0">Holiday</a>
           </nav>
         </div>
       </header>
-      <main className="mx-auto max-w-2xl px-4 py-6">
+      <main className="mx-auto max-w-2xl px-4 py-5 sm:py-6">
         {children}
       </main>
     </div>

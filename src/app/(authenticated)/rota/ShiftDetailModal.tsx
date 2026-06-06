@@ -11,15 +11,20 @@ import { FormGroup } from '@/ds';
 import { Badge } from '@/ds';
 import { Alert } from '@/ds';
 import { updateShift, deleteShift } from '@/app/actions/rota';
-import type { RotaShift, RotaEmployee } from '@/app/actions/rota';
+import type { RotaShift, RotaEmployee, OpenShiftRequestSummary, RejectedShiftRecord, ShiftAuditTrailEntry } from '@/app/actions/rota';
 import type { Department } from '@/app/actions/budgets';
 import MarkSickModal from './MarkSickModal';
 
 interface ShiftDetailModalProps {
   shift: RotaShift;
   employee: RotaEmployee | undefined;
+  acceptanceDeciderName?: string | null;
   canEdit: boolean;
   departments: Department[];
+  openShiftRequests?: OpenShiftRequestSummary[];
+  auditTrail?: ShiftAuditTrailEntry[];
+  rejectionHistory?: RejectedShiftRecord[];
+  rejectedEmployeeNames?: Record<string, string>;
   onClose: () => void;
   onUpdated: (shift: RotaShift) => void;
   onDeleted: (shiftId: string) => void;
@@ -51,12 +56,90 @@ const STATUS_LABEL: Record<string, string> = {
   sick: "Couldn't Work",
   cancelled: 'Cancelled',
 };
+const ACCEPTANCE_LABEL: Record<string, string> = {
+  pending: 'Pending',
+  accepted: 'Accepted',
+  auto_accepted: 'Auto-accepted',
+  rejected: 'Rejected',
+};
+
+const FIELD_LABELS: Record<string, string> = {
+  employee_id: 'Employee',
+  shift_date: 'Date',
+  start_time: 'Start time',
+  end_time: 'End time',
+  unpaid_break_minutes: 'Break',
+  department: 'Department',
+  notes: 'Notes',
+  status: 'Status',
+  sick_reason: "Couldn't Work reason",
+  is_overnight: 'Overnight',
+  is_open_shift: 'Open shift',
+  acceptance_status: 'Acceptance',
+  acceptance_decided_at: 'Acceptance time',
+  acceptance_decided_by: 'Accepted/rejected by',
+  acceptance_note: 'Acceptance note',
+  auto_accept_reason: 'Auto-accept reason',
+};
+
+function formatDateTime(iso: string): string {
+  return new Date(iso).toLocaleString('en-GB', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
+function operationLabel(operation: string): string {
+  return operation
+    .split('_')
+    .map(part => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ');
+}
+
+function valueLabel(value: unknown): string {
+  if (value === null || value === undefined || value === '') return 'blank';
+  if (typeof value === 'boolean') return value ? 'yes' : 'no';
+  if (Array.isArray(value)) return value.map(valueLabel).join(', ');
+  if (typeof value === 'object') return JSON.stringify(value);
+  return String(value);
+}
+
+function auditLines(entry: ShiftAuditTrailEntry): string[] {
+  const oldValues = entry.old_values ?? {};
+  const newValues = entry.new_values ?? {};
+  const keys = [...new Set([...Object.keys(oldValues), ...Object.keys(newValues)])]
+    .filter(key => key in FIELD_LABELS);
+
+  return keys.map(key => {
+    const label = FIELD_LABELS[key] ?? key;
+    const hasOld = Object.prototype.hasOwnProperty.call(oldValues, key);
+    const hasNew = Object.prototype.hasOwnProperty.call(newValues, key);
+    if (hasOld && hasNew) return `${label}: ${valueLabel(oldValues[key])} -> ${valueLabel(newValues[key])}`;
+    if (hasNew) return `${label}: ${valueLabel(newValues[key])}`;
+    return `${label}: was ${valueLabel(oldValues[key])}`;
+  });
+}
+
+function acceptanceBadgeVariant(status: RotaShift['acceptance_status']): 'success' | 'warning' | 'error' | 'default' {
+  if (status === 'pending') return 'warning';
+  if (status === 'rejected') return 'error';
+  if (status === 'accepted' || status === 'auto_accepted') return 'success';
+  return 'default';
+}
 
 export default function ShiftDetailModal({
   shift: initialShift,
   employee,
+  acceptanceDeciderName,
   canEdit,
   departments,
+  openShiftRequests = [],
+  auditTrail = [],
+  rejectionHistory = [],
+  rejectedEmployeeNames = {},
   onClose,
   onUpdated,
   onDeleted,
@@ -80,6 +163,15 @@ export default function ShiftDetailModal({
 
   const paidH = paidHoursNum(shift.start_time, shift.end_time, shift.unpaid_break_minutes, shift.is_overnight);
   const isCouldntWork = shift.status === 'sick';
+  const acceptanceStatus = shift.acceptance_status
+    ? ACCEPTANCE_LABEL[shift.acceptance_status] ?? shift.acceptance_status
+    : shift.is_open_shift
+      ? 'Open'
+      : 'Not set';
+  const acceptanceDetail = [
+    shift.acceptance_decided_at ? formatDateTime(shift.acceptance_decided_at) : null,
+    acceptanceDeciderName ? `by ${acceptanceDeciderName}` : null,
+  ].filter(Boolean).join(' ');
 
   const handleSaveEdit = () => {
     if (!startTime || !endTime) { setError('Start and end time are required'); return; }
@@ -144,6 +236,9 @@ export default function ShiftDetailModal({
                 <Badge variant={STATUS_BADGE[shift.status] ?? 'default'} size="sm">
                   {STATUS_LABEL[shift.status] ?? shift.status}
                 </Badge>
+                <Badge variant={acceptanceBadgeVariant(shift.acceptance_status)} size="sm">
+                  {acceptanceStatus}
+                </Badge>
               </div>
 
               <dl className="space-y-2">
@@ -163,6 +258,14 @@ export default function ShiftDetailModal({
                     </div>
                   </>
                 )}
+                <div className="flex justify-between text-sm">
+                  <dt className="text-gray-500">Acceptance</dt>
+                  <dd className="text-gray-900 text-right max-w-[260px]">
+                    <span className="font-medium">{acceptanceStatus}</span>
+                    {acceptanceDetail && <span className="block text-xs text-gray-500">{acceptanceDetail}</span>}
+                    {shift.auto_accept_reason && <span className="block text-xs text-gray-500">{shift.auto_accept_reason}</span>}
+                  </dd>
+                </div>
                 {shift.notes && (
                   <div className="flex justify-between text-sm">
                     <dt className="text-gray-500">Notes</dt>
@@ -176,6 +279,76 @@ export default function ShiftDetailModal({
                   </div>
                 )}
               </dl>
+
+              {shift.is_open_shift && (
+                <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
+                  <p className="text-sm font-semibold text-amber-950">Open shift requests</p>
+                  {openShiftRequests.length === 0 ? (
+                    <p className="mt-1 text-xs text-amber-800">No requests yet.</p>
+                  ) : (
+                    <div className="mt-2 space-y-2">
+                      {openShiftRequests.map(request => (
+                        <div key={request.id} className="rounded-md bg-white/70 px-3 py-2 text-xs text-amber-950">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="font-medium">{request.employee_name}</span>
+                            <span className="capitalize text-amber-700">{request.status}</span>
+                          </div>
+                          {request.note && <p className="mt-1 text-amber-800">{request.note}</p>}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {rejectionHistory.length > 0 && (
+                <div className="rounded-lg border border-rose-200 bg-rose-50 p-3">
+                  <p className="text-sm font-semibold text-rose-950">Rejected shift history</p>
+                  <div className="mt-2 space-y-2">
+                    {rejectionHistory.map(rejection => (
+                      <div key={rejection.id} className="rounded-md bg-white/75 px-3 py-2 text-xs text-rose-950">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <span className="font-medium">{rejectedEmployeeNames[rejection.employee_id] ?? 'Unknown staff member'}</span>
+                          <span className="text-rose-700">{formatDateTime(rejection.rejected_at)}</span>
+                        </div>
+                        <p className="mt-1 text-rose-800">
+                          {formatTime12Hour(rejection.start_time)} – {formatTime12Hour(rejection.end_time)}
+                          {rejection.is_overnight ? ' (+1)' : ''}
+                          {rejection.department ? ` · ${rejection.department}` : ''}
+                        </p>
+                        {rejection.rejection_note && <p className="mt-1 text-rose-800">{rejection.rejection_note}</p>}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
+                <p className="text-sm font-semibold text-gray-900">Shift audit trail</p>
+                {auditTrail.length === 0 ? (
+                  <p className="mt-1 text-xs text-gray-500">No recorded changes for this shift.</p>
+                ) : (
+                  <div className="mt-2 space-y-3">
+                    {auditTrail.map(entry => {
+                      const lines = auditLines(entry);
+                      return (
+                        <div key={entry.id} className="border-l-2 border-gray-300 pl-3">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <p className="text-xs font-semibold text-gray-900">{operationLabel(entry.operation_type)}</p>
+                            <p className="text-xs text-gray-500">{formatDateTime(entry.created_at)}</p>
+                          </div>
+                          <p className="mt-0.5 text-xs text-gray-500">By {entry.user_email || 'System'}</p>
+                          {lines.length > 0 && (
+                            <ul className="mt-1 space-y-0.5 text-xs text-gray-700">
+                              {lines.map(line => <li key={line}>{line}</li>)}
+                            </ul>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
 
               {canEdit && (
                 <div className="flex flex-wrap gap-2 pt-2">

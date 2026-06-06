@@ -102,6 +102,7 @@ function mockSupabaseClient(overrides: Record<string, unknown> = {}) {
     ...overrides,
   }
   mockedCreateClient.mockResolvedValue(client)
+  mockedCreateAdminClient.mockReturnValue(client)
   return client
 }
 
@@ -253,6 +254,52 @@ describe('Rota actions', () => {
       expect(result).toEqual({
         success: true,
         data: shifts.map(shift => ({ ...shift, sick_reason: null })),
+      })
+      expect(select).toHaveBeenCalledTimes(2)
+    })
+
+    it('should keep returning shifts if the acceptance migration is not applied yet', async () => {
+      mockedPermission.mockResolvedValue(true)
+
+      const shifts = [
+        { id: 'shift-1', shift_date: '2026-04-06', start_time: '09:00', status: 'scheduled' },
+        { id: 'shift-2', shift_date: '2026-04-07', start_time: '10:00', status: 'scheduled' },
+      ]
+
+      const makeQueryResult = (result: unknown) => ({
+        gte: vi.fn().mockReturnValue({
+          lte: vi.fn().mockReturnValue({
+            order: vi.fn().mockReturnValue({
+              order: vi.fn().mockResolvedValue(result),
+            }),
+          }),
+        }),
+      })
+
+      const select = vi
+        .fn()
+        .mockReturnValueOnce(makeQueryResult({
+          data: null,
+          error: { code: '42703', message: 'column rota_shifts.acceptance_status does not exist' },
+        }))
+        .mockReturnValueOnce(makeQueryResult({ data: shifts, error: null }))
+
+      const client = mockSupabaseClient()
+      client.from = vi.fn().mockReturnValue({ select })
+
+      const result = await getWeekShifts('2026-04-06')
+
+      expect(result).toEqual({
+        success: true,
+        data: shifts.map(shift => ({
+          ...shift,
+          acceptance_status: null,
+          acceptance_decided_at: null,
+          acceptance_decided_by: null,
+          acceptance_note: null,
+          auto_accept_reason: null,
+          auto_accept_warning_sent_at: null,
+        })),
       })
       expect(select).toHaveBeenCalledTimes(2)
     })
@@ -515,6 +562,20 @@ describe('Rota actions', () => {
       client.from = vi.fn().mockImplementation((table: string) => {
         if (table === 'rota_shifts') {
           return {
+            select: vi.fn().mockReturnValue({
+              eq: vi.fn().mockReturnValue({
+                single: vi.fn().mockResolvedValue({
+                  data: {
+                    employee_id: 'employee-1',
+                    is_open_shift: false,
+                    status: 'scheduled',
+                    shift_date: '2026-04-06',
+                    start_time: '09:00',
+                  },
+                  error: null,
+                }),
+              }),
+            }),
             update: vi.fn().mockReturnValue({
               eq: vi.fn().mockReturnValue({
                 select: vi.fn().mockReturnValue({
