@@ -48,6 +48,7 @@ import {
   createShift,
   deleteShift,
   updateShift,
+  acceptPortalShift,
   markEmployeeCouldntWork,
   markShiftSick,
 } from '@/app/actions/rota'
@@ -322,6 +323,99 @@ describe('Rota actions', () => {
 
       const result = await getWeekShifts('2026-04-06')
       expect(result).toEqual({ success: false, error: 'DB error' })
+    })
+  })
+
+  // -----------------------------------------------------------------------
+  // acceptPortalShift
+  // -----------------------------------------------------------------------
+
+  describe('acceptPortalShift', () => {
+    it('returns the real update error when the shift is found but acceptance cannot be saved', async () => {
+      const shiftId = '550e8400-e29b-41d4-a716-446655440001'
+      const employeeId = '660e8400-e29b-41d4-a716-446655440001'
+      const employee = {
+        employee_id: employeeId,
+        first_name: 'Peter',
+        last_name: 'Pitcher',
+        email_address: 'peter@example.com',
+      }
+      const shift = {
+        id: shiftId,
+        week_id: '770e8400-e29b-41d4-a716-446655440001',
+        employee_id: employeeId,
+        shift_date: '2099-01-01',
+        start_time: '09:00',
+        end_time: '17:00',
+        unpaid_break_minutes: 30,
+        department: 'bar',
+        status: 'scheduled',
+        is_open_shift: false,
+        acceptance_status: 'pending',
+      }
+
+      const serverClient = {
+        auth: {
+          getUser: vi.fn().mockResolvedValue({
+            data: { user: { id: 'user-1', email: 'staff@example.com' } },
+            error: null,
+          }),
+        },
+        from: vi.fn().mockImplementation((table: string) => {
+          if (table === 'employees') {
+            return {
+              select: vi.fn().mockReturnValue({
+                eq: vi.fn().mockReturnValue({
+                  in: vi.fn().mockReturnValue({
+                    maybeSingle: vi.fn().mockResolvedValue({ data: employee, error: null }),
+                  }),
+                }),
+              }),
+            }
+          }
+          throw new Error(`Unexpected table: ${table}`)
+        }),
+      }
+
+      const publishedUpdateError = 'column rota_published_shifts.acceptance_status does not exist'
+      const publishedUpdateMaybeSingle = vi.fn().mockResolvedValue({
+        data: null,
+        error: { message: publishedUpdateError },
+      })
+      const publishedUpdate = vi.fn().mockReturnValue({
+        eq: vi.fn().mockReturnValue({
+          eq: vi.fn().mockReturnValue({
+            select: vi.fn().mockReturnValue({
+              maybeSingle: publishedUpdateMaybeSingle,
+            }),
+          }),
+        }),
+      })
+      const liveUpdate = vi.fn()
+      const adminClient = {
+        from: vi.fn().mockImplementation((table: string) => {
+          if (table === 'rota_published_shifts') {
+            return {
+              select: vi.fn().mockReturnValue(makeEqChain(4, {
+                maybeSingle: vi.fn().mockResolvedValue({ data: shift, error: null }),
+              })),
+              update: publishedUpdate,
+            }
+          }
+          if (table === 'rota_shifts') {
+            return { update: liveUpdate }
+          }
+          throw new Error(`Unexpected table: ${table}`)
+        }),
+      }
+
+      mockedCreateClient.mockResolvedValue(serverClient)
+      mockedCreateAdminClient.mockReturnValue(adminClient)
+
+      const result = await acceptPortalShift(shiftId)
+
+      expect(result).toEqual({ success: false, error: publishedUpdateError })
+      expect(liveUpdate).not.toHaveBeenCalled()
     })
   })
 

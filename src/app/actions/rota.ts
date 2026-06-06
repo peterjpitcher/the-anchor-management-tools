@@ -1606,7 +1606,7 @@ async function setPublishedAndLiveAcceptance(
     auto_accept_reason: string | null;
     auto_accept_warning_sent_at?: string | null;
   },
-): Promise<RotaShift | null> {
+): Promise<{ data: RotaShift | null; error: string | null }> {
   const admin = createAdminClient();
   const updatePayload = {
     acceptance_status: acceptance.acceptance_status,
@@ -1617,7 +1617,7 @@ async function setPublishedAndLiveAcceptance(
     auto_accept_warning_sent_at: acceptance.auto_accept_warning_sent_at ?? null,
   };
 
-  const { data } = await admin
+  const { data, error: publishedUpdateError } = await admin
     .from('rota_published_shifts')
     .update(updatePayload)
     .eq('id', shiftId)
@@ -1625,13 +1625,24 @@ async function setPublishedAndLiveAcceptance(
     .select('*')
     .maybeSingle();
 
-  await admin
+  if (publishedUpdateError) return { data: null, error: publishedUpdateError.message };
+  if (!data) return { data: null, error: null };
+
+  const { error: liveUpdateError } = await admin
     .from('rota_shifts')
     .update(updatePayload)
     .eq('id', shiftId)
     .eq('employee_id', employeeId);
 
-  return data as RotaShift | null;
+  if (liveUpdateError) {
+    console.error('Failed to sync portal shift acceptance onto rota_shifts', {
+      shiftId,
+      employeeId,
+      error: liveUpdateError.message,
+    });
+  }
+
+  return { data: data as RotaShift, error: null };
 }
 
 export async function acceptPortalShift(shiftId: string): Promise<
@@ -1682,7 +1693,8 @@ export async function acceptPortalShift(shiftId: string): Promise<
       };
 
   const updated = await setPublishedAndLiveAcceptance(parsed.data.shiftId, employee.employee_id, nextAcceptance);
-  if (!updated) return { success: false, error: 'Shift not found' };
+  if (updated.error) return { success: false, error: updated.error };
+  if (!updated.data) return { success: false, error: 'Shift not found' };
 
   void logAuditEvent({
     user_id: (await supabase.auth.getUser()).data.user?.id,
@@ -1696,7 +1708,7 @@ export async function acceptPortalShift(shiftId: string): Promise<
   revalidatePath('/portal/shifts');
   return {
     success: true,
-    data: updated,
+    data: updated.data,
     ...(insideCutoff ? { message: 'This shift is inside the two-week cutoff and has been auto-accepted.' } : {}),
   };
 }
@@ -1739,9 +1751,12 @@ export async function rejectPortalShift(input: z.infer<typeof PortalShiftRejectS
       auto_accept_reason: SHIFT_AUTO_ACCEPT_POLICY_NOTE,
       auto_accept_warning_sent_at: null,
     });
+    if (updated.error) return { success: false, error: updated.error };
+    if (!updated.data) return { success: false, error: 'Shift not found' };
+
     return {
       success: true,
-      data: updated,
+      data: updated.data,
       message: 'This shift is inside the two-week cutoff and has been auto-accepted. Please contact Billy if you need to change it.',
     };
   }
