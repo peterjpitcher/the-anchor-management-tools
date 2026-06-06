@@ -3,6 +3,7 @@ import type { Employee } from '@/types/database';
 import { format, getYear } from 'date-fns';
 import { createHash } from 'crypto';
 import { getErrorMessage, getErrorCode, getErrorDetails } from '@/lib/errors';
+import { getSharedOperationsCalendarId } from '@/lib/google-calendar-targets';
 
 // Minimal employee type for birthday sync
 interface EmployeeBirthday {
@@ -54,7 +55,7 @@ export async function syncBirthdayCalendarEvent(employee: EmployeeBirthday | Emp
 
     console.warn('[Birthday Calendar] Getting auth client...');
     const auth = await getOAuth2Client();
-    const calendarId = process.env.GOOGLE_CALENDAR_ID || 'primary';
+    const calendarId = getSharedOperationsCalendarId();
     console.warn('[Birthday Calendar] Using calendar ID:', calendarId);
 
     // Parse date of birth
@@ -172,7 +173,7 @@ export async function syncBirthdayCalendarEvent(employee: EmployeeBirthday | Emp
       console.error('[Birthday Calendar] Authentication error:', errorMsg);
       console.error('Please check your Google Calendar configuration in environment variables.');
     } else if (errorCode === 404) {
-      console.error('[Birthday Calendar] Calendar not found. Please check GOOGLE_CALENDAR_ID:', process.env.GOOGLE_CALENDAR_ID);
+      console.error('[Birthday Calendar] Calendar not found. Please check shared operations calendar:', getSharedOperationsCalendarId());
       console.error('Ensure the calendar exists and is accessible by the service account.');
     } else if (errorCode === 403) {
       const email = typeof error === 'object' && error !== null && 'email' in error ? (error as { email: string }).email : 'unknown';
@@ -203,7 +204,7 @@ export async function deleteBirthdayCalendarEvent(employeeId: string): Promise<b
     }
 
     const auth = await getOAuth2Client();
-    const calendarId = process.env.GOOGLE_CALENDAR_ID || 'primary';
+    const calendarId = getSharedOperationsCalendarId();
     const eventId = generateBirthdayEventId(employeeId);
 
     const calendar = await getCalendarClient();

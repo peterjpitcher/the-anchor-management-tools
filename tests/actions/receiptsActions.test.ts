@@ -28,7 +28,7 @@ vi.mock('@/lib/receipts/rule-matching', () => ({
 
 vi.mock('@/lib/unified-job-queue', () => ({
   jobQueue: {
-    enqueue: vi.fn(),
+    enqueue: vi.fn().mockResolvedValue({ success: true }),
   },
 }))
 
@@ -201,17 +201,29 @@ describe('deleteReceiptFile rollback safety', () => {
     const updateMaybeSingle = vi.fn().mockResolvedValue({ data: null, error: null })
     const updateSelect = vi.fn().mockReturnValue({ maybeSingle: updateMaybeSingle })
     const updateEq = vi.fn().mockReturnValue({ select: updateSelect })
+    const vendorMaybeSingle = vi.fn().mockResolvedValue({ data: { id: 'vendor-1' }, error: null })
+    const vendorEq = vi.fn().mockReturnValue({ maybeSingle: vendorMaybeSingle })
+    const vendorSelect = vi.fn().mockReturnValue({ eq: vendorEq })
+    const aliasInsert = vi.fn().mockResolvedValue({ error: null })
 
     mockedCreateAdminClient.mockReturnValue({
       from: vi.fn((table: string) => {
-        if (table !== 'receipt_transactions') {
-          throw new Error(`Unexpected table: ${table}`)
+        if (table === 'receipt_transactions') {
+          return {
+            select: vi.fn().mockReturnValue({ eq: fetchEq }),
+            update: vi.fn().mockReturnValue({ eq: updateEq }),
+          }
         }
 
-        return {
-          select: vi.fn().mockReturnValue({ eq: fetchEq }),
-          update: vi.fn().mockReturnValue({ eq: updateEq }),
+        if (table === 'receipt_vendors') {
+          return { select: vendorSelect }
         }
+
+        if (table === 'receipt_vendor_aliases') {
+          return { insert: aliasInsert }
+        }
+
+        throw new Error(`Unexpected table: ${table}`)
       }),
     })
 

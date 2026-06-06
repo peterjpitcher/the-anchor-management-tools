@@ -14,6 +14,10 @@ import {
 } from '@/lib/rota/email-templates';
 import { logAuditEvent } from '@/app/actions/audit';
 import { getRotaSettings } from '@/app/actions/rota-settings';
+import {
+  recordHolidayAuditOnly,
+  recordHolidayReliabilityEvents,
+} from '@/services/employee-reliability';
 
 export type LeaveRequest = {
   id: string;
@@ -195,8 +199,17 @@ export async function submitLeaveRequest(input: z.infer<typeof SubmitLeaveSchema
     new_values: { employee_id: employeeId, start_date: startDate, end_date: endDate },
   });
 
+  await recordHolidayReliabilityEvents({
+    leave: request as LeaveRequest,
+    source: 'holiday_request',
+    userId: user?.id,
+    userEmail: user?.email ?? null,
+    includeRequested: true,
+  });
+
   revalidatePath('/rota/leave');
   revalidatePath('/portal/leave');
+  revalidatePath(`/employees/${employeeId}`);
   return { success: true, data: request as LeaveRequest };
 }
 
@@ -217,20 +230,21 @@ export async function reviewLeaveRequest(
 
   const { data: request, error: fetchError } = await supabase
     .from('leave_requests')
-    .select('id, status, start_date, end_date, employee_id, employees(email_address, first_name)')
+    .select('id, status, start_date, end_date, employee_id, note, created_at, employees(email_address, first_name)')
     .eq('id', requestId)
     .single();
 
   if (fetchError || !request) return { success: false, error: 'Request not found' };
   if (request.status !== 'pending') return { success: false, error: 'Request is not pending' };
 
+  const reviewedAt = new Date().toISOString();
   const { error } = await supabase
     .from('leave_requests')
     .update({
       status: decision,
       manager_note: managerNote ?? null,
       reviewed_by: user?.id,
-      reviewed_at: new Date().toISOString(),
+      reviewed_at: reviewedAt,
     })
     .eq('id', requestId);
 
@@ -279,9 +293,44 @@ export async function reviewLeaveRequest(
     new_values: { status: decision, manager_note: managerNote },
   });
 
+  const reviewedLeave: LeaveRequest = {
+    id: request.id,
+    employee_id: request.employee_id,
+    start_date: request.start_date,
+    end_date: request.end_date,
+    note: request.note ?? null,
+    status: decision,
+    manager_note: managerNote ?? null,
+    reviewed_by: user?.id ?? null,
+    reviewed_at: reviewedAt,
+    holiday_year: 0,
+    created_at: request.created_at,
+    updated_at: reviewedAt,
+  };
+
+  if (decision === 'approved') {
+    await recordHolidayReliabilityEvents({
+      leave: reviewedLeave,
+      source: 'holiday_approval',
+      userId: user?.id,
+      userEmail: user?.email ?? null,
+      includeApproved: true,
+      includeLateAndConflict: true,
+    });
+  } else {
+    await recordHolidayAuditOnly({
+      leave: reviewedLeave,
+      action: 'holiday_declined',
+      userId: user?.id,
+      userEmail: user?.email ?? null,
+      additionalInfo: { manager_note: managerNote ?? null },
+    });
+  }
+
   revalidatePath('/rota');
   revalidatePath('/rota/leave');
   revalidatePath('/portal/leave');
+  revalidatePath(`/employees/${request.employee_id}`);
   return { success: true };
 }
 
@@ -365,8 +414,19 @@ export async function bookApprovedHoliday(input: {
     new_values: { employee_id: employeeId, start_date: startDate, end_date: endDate, status: 'approved' },
   });
 
+  await recordHolidayReliabilityEvents({
+    leave: request as LeaveRequest,
+    source: 'holiday_direct_booking',
+    userId: user?.id,
+    userEmail: user?.email ?? null,
+    includeRequested: true,
+    includeApproved: true,
+    includeLateAndConflict: true,
+  });
+
   revalidatePath('/rota');
   revalidatePath('/rota/leave');
+  revalidatePath(`/employees/${employeeId}`);
 
   return {
     success: true,
@@ -505,12 +565,11 @@ export async function deleteLeaveRequest(
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
 
-  // leave_days are removed by the FK ON DELETE CASCADE.
   const { data: deletedRequest, error } = await supabase
     .from('leave_requests')
     .delete()
     .eq('id', parsedRequestId.data)
-    .select('id')
+    .select('id, employee_id, start_date, end_date, note, status, manager_note, reviewed_by, reviewed_at, holiday_year, created_at, updated_at')
     .single();
   if (error || !deletedRequest) {
     if (error?.code === 'PGRST116') return { success: false, error: 'Request not found' };
@@ -525,9 +584,17 @@ export async function deleteLeaveRequest(
     operation_status: 'success',
   });
 
+  await recordHolidayAuditOnly({
+    leave: deletedRequest as LeaveRequest,
+    action: 'holiday_deleted',
+    userId: user?.id,
+    userEmail: user?.email ?? null,
+  });
+
   revalidatePath('/rota');
   revalidatePath('/rota/leave');
   revalidatePath('/portal/leave');
+  revalidatePath(`/employees/${deletedRequest.employee_id}`);
   return { success: true };
 }
 
@@ -561,7 +628,7 @@ export async function updateLeaveRequestDates(
 
   const { data: request, error: fetchError } = await supabase
     .from('leave_requests')
-    .select('id, employee_id, status')
+    .select('id, employee_id, status, start_date, end_date, note, manager_note, reviewed_by, reviewed_at, holiday_year, created_at, updated_at')
     .eq('id', parsedRequestId)
     .single();
   if (fetchError || !request) return { success: false, error: 'Request not found' };
@@ -609,8 +676,40 @@ export async function updateLeaveRequestDates(
     new_values: { start_date: parsedStartDate, end_date: parsedEndDate, holiday_year: holidayYear },
   });
 
+  const updatedLeave: LeaveRequest = {
+    ...(request as LeaveRequest),
+    start_date: parsedStartDate,
+    end_date: parsedEndDate,
+    holiday_year: holidayYear,
+    updated_at: new Date().toISOString(),
+  };
+
+  await recordHolidayAuditOnly({
+    leave: updatedLeave,
+    action: 'holiday_updated',
+    userId: user?.id,
+    userEmail: user?.email ?? null,
+    additionalInfo: {
+      previous_start_date: request.start_date,
+      previous_end_date: request.end_date,
+      new_start_date: parsedStartDate,
+      new_end_date: parsedEndDate,
+    },
+  });
+
+  if (request.status === 'approved') {
+    await recordHolidayReliabilityEvents({
+      leave: updatedLeave,
+      source: 'holiday_edit',
+      userId: user?.id,
+      userEmail: user?.email ?? null,
+      includeLateAndConflict: true,
+    });
+  }
+
   revalidatePath('/rota');
   revalidatePath('/rota/leave');
   revalidatePath('/portal/leave');
+  revalidatePath(`/employees/${request.employee_id}`);
   return { success: true };
 }

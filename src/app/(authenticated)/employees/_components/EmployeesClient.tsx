@@ -143,6 +143,9 @@ export default function EmployeesClient({ initialData, initialError, permissions
           className="mb-0"
           actions={
             <div className="flex items-center gap-2">
+              <Link href="/employees/reliability">
+                <Button variant="secondary" size="sm">Reliability</Button>
+              </Link>
               {permissions.canExport && (
                 <Dropdown
                   trigger={<Button variant="secondary" size="sm" icon={<Icon name="download" size={15} />}>Export</Button>}

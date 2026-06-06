@@ -1,4 +1,5 @@
 #!/usr/bin/env tsx
+/* eslint-disable no-console */
 /**
  * Private bookings -> Google Calendar resync (dangerous).
  *
@@ -9,12 +10,19 @@
 
 import path from 'path'
 import { config } from 'dotenv'
+import { google } from 'googleapis'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { isCalendarConfigured, syncCalendarEvent } from '@/lib/google-calendar'
+import { getOAuth2Client, isCalendarConfigured, syncCalendarEvent } from '@/lib/google-calendar'
+import { getErrorCode, getErrorMessage } from '@/lib/errors'
+import { isBookingDateTbd } from '@/lib/private-bookings/tbd-detection'
+import { getSharedOperationsCalendarId } from '@/lib/google-calendar-targets'
 import type { PrivateBooking } from '@/types/private-bookings'
 import { assertScriptMutationAllowed, assertScriptMutationSucceeded } from '@/lib/script-mutation-safety'
 
 config({ path: path.resolve(process.cwd(), '.env.local') })
+
+const RESYNCABLE_STATUSES = new Set(['draft', 'confirmed'])
+const calendar = google.calendar('v3')
 
 function getArgValue(flag: string): string | null {
   const idx = process.argv.indexOf(flag)
@@ -59,6 +67,37 @@ function assertMutationAllowed(params: { baseUrl?: string }) {
   })
 }
 
+function getSkipReason(booking: PrivateBooking): string | null {
+  if (!RESYNCABLE_STATUSES.has(booking.status)) {
+    return `status=${booking.status}`
+  }
+  if (isBookingDateTbd(booking)) {
+    return 'date_tbd=true'
+  }
+  return null
+}
+
+async function deleteLegacyCalendarEvent(params: {
+  auth: Awaited<ReturnType<typeof getOAuth2Client>>
+  calendarId: string
+  eventId: string
+}): Promise<'deleted' | 'missing'> {
+  try {
+    await calendar.events.delete({
+      auth: params.auth as any,
+      calendarId: params.calendarId,
+      eventId: params.eventId,
+    })
+    return 'deleted'
+  } catch (error) {
+    const code = getErrorCode(error)
+    if (code === 404 || code === 410) {
+      return 'missing'
+    }
+    throw error
+  }
+}
+
 async function main() {
   console.log('\n=== Private Bookings -> Google Calendar Resync ===\n')
 
@@ -66,6 +105,10 @@ async function main() {
   const today = new Date().toISOString().slice(0, 10)
   const fromDate = parseIsoDate(getArgValue('--from-date') ?? process.env.CALENDAR_RESYNC_FROM_DATE ?? null, today)
   const includeSynced = isFlagPresent('--include-synced')
+  const legacyDeleteCalendarId =
+    getArgValue('--delete-legacy-calendar-id') ??
+    process.env.CALENDAR_RESYNC_DELETE_LEGACY_CALENDAR_ID ??
+    null
 
   // Always cap query volume even in dry-run.
   const queryLimit = parseLimit(
@@ -78,6 +121,7 @@ async function main() {
   console.log(`Target booking id: ${bookingId ?? '(none)'} (set --booking-id or CALENDAR_RESYNC_BOOKING_ID)`)
   console.log(`From date: ${fromDate}`)
   console.log(`Include already-synced bookings: ${includeSynced ? 'yes' : 'no'} (--include-synced)`)
+  console.log(`Delete legacy calendar events: ${legacyDeleteCalendarId ? legacyDeleteCalendarId : 'no'} (--delete-legacy-calendar-id)`)
   console.log(`Limit: ${queryLimit}${bookingId ? ' (forced to 1 by --booking-id)' : ''}`)
   console.log('')
 
@@ -132,9 +176,36 @@ async function main() {
     return
   }
 
-  console.log(`Found ${bookings.length} booking(s).\n`)
+  const skippedByEligibility: Array<{ booking: PrivateBooking; reason: string }> = []
+  const eligibleBookings: PrivateBooking[] = []
+
   for (const booking of bookings) {
-    console.log(`- ${booking.id} | ${booking.customer_name} | ${booking.event_date} ${booking.start_time} | calendar_event_id=${booking.calendar_event_id ?? '(missing)'}`)
+    const skipReason = getSkipReason(booking)
+    if (skipReason) {
+      skippedByEligibility.push({ booking, reason: skipReason })
+    } else {
+      eligibleBookings.push(booking)
+    }
+  }
+
+  console.log(`Found ${bookings.length} booking(s).`)
+  console.log(`Eligible for resync: ${eligibleBookings.length}`)
+  console.log(`Skipped by eligibility: ${skippedByEligibility.length}\n`)
+
+  for (const booking of eligibleBookings) {
+    console.log(`- ${booking.id} | ${booking.customer_name} | ${booking.event_date} ${booking.start_time} | status=${booking.status} | calendar_event_id=${booking.calendar_event_id ?? '(missing)'}`)
+  }
+
+  if (skippedByEligibility.length > 0) {
+    console.log('\nSkipped booking(s):')
+    for (const { booking, reason } of skippedByEligibility) {
+      console.log(`- ${booking.id} | ${booking.customer_name} | ${booking.event_date} ${booking.start_time} | ${reason}`)
+    }
+  }
+
+  if (eligibleBookings.length === 0) {
+    console.log('\nNo eligible bookings found after safety filters.')
+    return
   }
 
   if (!isFlagPresent('--confirm')) {
@@ -158,11 +229,19 @@ async function main() {
   let synced = 0
   let skipped = 0
   let failed = 0
+  let legacyDeleted = 0
+  let legacyMissing = 0
+  let legacyDeleteFailed = 0
   const failures: string[] = []
+  const legacyDeleteFailures: string[] = []
+  const sharedCalendarId = getSharedOperationsCalendarId()
+  const shouldDeleteLegacyEvents =
+    Boolean(legacyDeleteCalendarId) && legacyDeleteCalendarId !== sharedCalendarId
+  const legacyDeleteAuth = shouldDeleteLegacyEvents ? await getOAuth2Client() : null
 
   console.log('\nStarting resync...\n')
 
-  for (const booking of bookings) {
+  for (const booking of eligibleBookings) {
     if (!booking.start_time || !booking.event_date) {
       console.warn(`Skipping booking ${booking.id} - missing date/time`)
       skipped += 1
@@ -194,6 +273,27 @@ async function main() {
         updatedRows: updatedRow ? [updatedRow] : [],
       })
 
+      if (shouldDeleteLegacyEvents && legacyDeleteAuth && booking.calendar_event_id) {
+        process.stdout.write(' deleting legacy event... ')
+        try {
+          const legacyDeleteState = await deleteLegacyCalendarEvent({
+            auth: legacyDeleteAuth,
+            calendarId: legacyDeleteCalendarId!,
+            eventId: booking.calendar_event_id,
+          })
+          if (legacyDeleteState === 'deleted') {
+            legacyDeleted += 1
+          } else {
+            legacyMissing += 1
+          }
+        } catch (legacyDeleteError) {
+          legacyDeleteFailed += 1
+          const message = getErrorMessage(legacyDeleteError)
+          legacyDeleteFailures.push(`${booking.id}: ${message}`)
+          console.warn(`legacy delete failed: ${message}`)
+        }
+      }
+
       console.log('done')
       synced += 1
     } catch (err) {
@@ -207,9 +307,23 @@ async function main() {
   console.log(`Synced successfully: ${synced}`)
   console.log(`Skipped (missing info): ${skipped}`)
   console.log(`Failed: ${failed}`)
+  if (legacyDeleteCalendarId) {
+    console.log(`Legacy events deleted: ${legacyDeleted}`)
+    console.log(`Legacy events already missing: ${legacyMissing}`)
+    console.log(`Legacy delete failures: ${legacyDeleteFailed}`)
+  }
 
-  if (failed > 0) {
-    throw new Error(`resync-private-bookings-calendar completed with ${failed} failure(s)`)
+  if (legacyDeleteFailures.length > 0) {
+    console.log('\nLegacy delete failures:')
+    for (const failure of legacyDeleteFailures) {
+      console.log(`- ${failure}`)
+    }
+  }
+
+  if (failed > 0 || legacyDeleteFailed > 0) {
+    throw new Error(
+      `resync-private-bookings-calendar completed with ${failed} sync failure(s) and ${legacyDeleteFailed} legacy delete failure(s)`
+    )
   }
 
   console.log('\n✅ Resync completed without failures.')

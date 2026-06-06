@@ -67,7 +67,19 @@ export function EmployeeAuditTrail({
         update_health_records: 'updated health records',
         update_right_to_work: 'updated right to work',
         update_onboarding_checklist: 'updated onboarding checklist',
-        mark_shift_sick: "marked a shift as Couldn't Work"
+        mark_shift_sick: "marked a shift as Couldn't Work",
+        shift_accepted: 'accepted a shift',
+        shift_auto_accepted: 'had a shift auto-accepted',
+        shift_rejected: 'rejected a shift',
+        late_shift_rejection_attempt: 'tried to reject a shift inside cutoff',
+        couldnt_work: "recorded Couldn't Work",
+        holiday_requested: 'requested holiday',
+        holiday_approved: 'had holiday approved',
+        late_holiday: 'booked late holiday',
+        holiday_conflict: 'had holiday conflict with the rota',
+        holiday_declined: 'had holiday declined',
+        holiday_deleted: 'had holiday deleted',
+        holiday_updated: 'updated holiday'
       }
       return specificActions[additionalInfo.action] || additionalInfo.action
     }
@@ -154,6 +166,67 @@ export function EmployeeAuditTrail({
 
       if (sickReason) {
         details.push(`Reason: ${sickReason}`)
+      }
+    }
+
+    const reliabilityActions = new Set([
+      'shift_accepted',
+      'shift_auto_accepted',
+      'shift_rejected',
+      'late_shift_rejection_attempt',
+      'couldnt_work',
+      'holiday_requested',
+      'holiday_approved',
+      'late_holiday',
+      'holiday_conflict',
+      'holiday_declined',
+      'holiday_deleted',
+      'holiday_updated',
+    ])
+    const action = typeof additionalInfo.action === 'string' ? additionalInfo.action : null
+    if (action && reliabilityActions.has(action)) {
+      const shiftDate = typeof additionalInfo.shift_date === 'string' ? additionalInfo.shift_date : null
+      const startTime = typeof additionalInfo.start_time === 'string' ? additionalInfo.start_time : null
+      const endTime = typeof additionalInfo.end_time === 'string' ? additionalInfo.end_time : null
+      const startDate = typeof additionalInfo.start_date === 'string' ? additionalInfo.start_date : null
+      const endDate = typeof additionalInfo.end_date === 'string' ? additionalInfo.end_date : null
+      const note = typeof additionalInfo.note === 'string' && additionalInfo.note.trim() ? additionalInfo.note.trim() : null
+      const noticeDays = typeof additionalInfo.notice_days === 'number' ? additionalInfo.notice_days : null
+      const impactedShiftCount = typeof additionalInfo.impacted_shift_count === 'number' ? additionalInfo.impacted_shift_count : null
+
+      if (shiftDate) {
+        const dateLabel = new Date(`${shiftDate}T00:00:00`).toLocaleDateString('en-GB', {
+          day: 'numeric',
+          month: 'short',
+          year: 'numeric'
+        })
+        details.push(`Shift: ${dateLabel}${startTime && endTime ? ` ${startTime.slice(0, 5)}-${endTime.slice(0, 5)}` : ''}`)
+      }
+
+      if (startDate && endDate) {
+        const startLabel = new Date(`${startDate}T00:00:00`).toLocaleDateString('en-GB', {
+          day: 'numeric',
+          month: 'short',
+          year: 'numeric'
+        })
+        const endLabel = new Date(`${endDate}T00:00:00`).toLocaleDateString('en-GB', {
+          day: 'numeric',
+          month: 'short',
+          year: 'numeric'
+        })
+        details.push(`Holiday: ${startLabel} to ${endLabel}`)
+      }
+
+      if (noticeDays !== null) {
+        details.push(`Notice: ${noticeDays} day${noticeDays === 1 ? '' : 's'}`)
+      }
+
+      if (impactedShiftCount && impactedShiftCount > 0) {
+        details.push(`Impacted shifts: ${impactedShiftCount}`)
+      }
+
+      if (note) {
+        details.push(`Note: ${note.substring(0, 80)}${note.length > 80 ? '...' : ''}`)
       }
     }
 

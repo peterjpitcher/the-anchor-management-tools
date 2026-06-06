@@ -63,7 +63,20 @@ function chain() {
 }
 
 function mockUpdateClient(options: {
-  request?: { id: string; employee_id: string; status: 'pending' | 'approved' | 'declined' } | null
+  request?: {
+    id: string
+    employee_id: string
+    status: 'pending' | 'approved' | 'declined'
+    start_date?: string
+    end_date?: string
+    note?: string | null
+    manager_note?: string | null
+    reviewed_by?: string | null
+    reviewed_at?: string | null
+    holiday_year?: number
+    created_at?: string
+    updated_at?: string
+  } | null
   fetchError?: { code?: string; message: string } | null
   overlapping?: Array<{ id: string }>
   overlappingError?: { message: string } | null
@@ -71,7 +84,20 @@ function mockUpdateClient(options: {
   const fetchQuery = chain()
   fetchQuery.single.mockResolvedValue({
     data: options.request === undefined
-      ? { id: REQUEST_ID, employee_id: EMPLOYEE_ID, status: 'approved' }
+      ? {
+          id: REQUEST_ID,
+          employee_id: EMPLOYEE_ID,
+          status: 'approved',
+          start_date: '2026-06-10',
+          end_date: '2026-06-12',
+          note: null,
+          manager_note: null,
+          reviewed_by: null,
+          reviewed_at: '2026-05-01T09:00:00Z',
+          holiday_year: 2026,
+          created_at: '2026-05-01T09:00:00Z',
+          updated_at: '2026-05-01T09:00:00Z',
+        }
       : options.request,
     error: options.fetchError ?? null,
   })
@@ -84,7 +110,7 @@ function mockUpdateClient(options: {
 
   const leaveRequestsTable = {
     select: vi.fn((columns: string) => {
-      if (columns === 'id, employee_id, status') return fetchQuery
+      if (columns === 'id, employee_id, status, start_date, end_date, note, manager_note, reviewed_by, reviewed_at, holiday_year, created_at, updated_at') return fetchQuery
       if (columns === 'id') return overlapQuery
       throw new Error(`Unexpected select columns: ${columns}`)
     }),
@@ -108,12 +134,40 @@ function mockUpdateClient(options: {
 }
 
 function mockDeleteClient(options: {
-  data?: { id: string } | null
+  data?: {
+    id: string
+    employee_id: string
+    start_date: string
+    end_date: string
+    note: string | null
+    status: 'pending' | 'approved' | 'declined'
+    manager_note: string | null
+    reviewed_by: string | null
+    reviewed_at: string | null
+    holiday_year: number
+    created_at: string
+    updated_at: string
+  } | null
   error?: { code?: string; message: string } | null
 } = {}) {
   const deleteQuery = chain()
   deleteQuery.single.mockResolvedValue({
-    data: options.data === undefined ? { id: REQUEST_ID } : options.data,
+    data: options.data === undefined
+      ? {
+          id: REQUEST_ID,
+          employee_id: EMPLOYEE_ID,
+          start_date: '2026-06-10',
+          end_date: '2026-06-12',
+          note: null,
+          status: 'approved',
+          manager_note: null,
+          reviewed_by: null,
+          reviewed_at: '2026-05-01T09:00:00Z',
+          holiday_year: 2026,
+          created_at: '2026-05-01T09:00:00Z',
+          updated_at: '2026-05-01T09:00:00Z',
+        }
+      : options.data,
     error: options.error ?? null,
   })
 

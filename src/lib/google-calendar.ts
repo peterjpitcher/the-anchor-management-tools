@@ -3,6 +3,7 @@ import { addDays, addHours } from 'date-fns'
 import { formatInTimeZone, fromZonedTime } from 'date-fns-tz'
 import type { PrivateBooking } from '@/types/private-bookings'
 import { getErrorMessage, getErrorCode, getErrorDetails } from '@/lib/errors'
+import { formatCalendarIdForLog, getSharedOperationsCalendarId } from '@/lib/google-calendar-targets'
 import { logger } from '@/lib/logger'
 
 // Initialize the calendar API
@@ -119,23 +120,10 @@ function isServiceAccountAttendeeError(error: unknown): boolean {
   return getErrorCode(error) === 403 && /service accounts/i.test(message) && /invite attendees/i.test(message)
 }
 
-function formatCalendarIdForLog(calendarId?: string): string {
-  if (!calendarId) return 'NOT SET'
-  if (calendarId === 'primary') return 'primary'
-  return `${calendarId.substring(0, 10)}...`
-}
-
-function getInterviewCalendarId(): string | undefined {
+function getInterviewCalendarId(): string {
   const interviewId = process.env.GOOGLE_CALENDAR_INTERVIEW_ID
   if (interviewId?.trim()) return interviewId.trim()
-  const fallbackId = process.env.GOOGLE_CALENDAR_ID
-  if (fallbackId?.trim()) return fallbackId.trim()
-  const hasOAuth = Boolean(
-    process.env.GOOGLE_CLIENT_ID &&
-    process.env.GOOGLE_CLIENT_SECRET &&
-    process.env.GOOGLE_REFRESH_TOKEN
-  )
-  return hasOAuth ? 'primary' : undefined
+  return getSharedOperationsCalendarId()
 }
 
 // Initialize OAuth2 client
@@ -274,6 +262,8 @@ function formatBookingDetails(booking: PrivateBooking): string {
 
 // Create or update calendar event
 export async function syncCalendarEvent(booking: PrivateBooking): Promise<string | null> {
+  const calendarId = getSharedOperationsCalendarId()
+
   console.warn('[Google Calendar] Starting calendar sync for booking:', {
     bookingId: booking.id,
     status: booking.status,
@@ -300,7 +290,6 @@ export async function syncCalendarEvent(booking: PrivateBooking): Promise<string
 
     console.warn('[Google Calendar] Getting auth client...')
     const auth = await getOAuth2Client()
-    const calendarId = process.env.GOOGLE_CALENDAR_ID || 'primary'
     console.warn('[Google Calendar] Using calendar ID:', calendarId)
 
     const startUtc = combineDateAndTime(booking.event_date, booking.start_time)
@@ -414,7 +403,7 @@ export async function syncCalendarEvent(booking: PrivateBooking): Promise<string
       console.error('[Google Calendar] Authentication error:', errorMsg)
       console.error('Please check your Google Calendar configuration in environment variables.')
     } else if (errorCode === 404) {
-      console.error('[Google Calendar] Calendar not found. Please check GOOGLE_CALENDAR_ID:', process.env.GOOGLE_CALENDAR_ID)
+      console.error('[Google Calendar] Calendar not found. Please check shared operations calendar:', calendarId)
       console.error('Ensure the calendar exists and is accessible by the service account.')
     } else if (errorCode === 403) {
       const email = typeof error === 'object' && error !== null && 'email' in error ? (error as { email: string }).email : 'unknown'
@@ -446,7 +435,7 @@ export async function deleteCalendarEvent(eventId: string): Promise<boolean> {
     }
 
     const auth = await getOAuth2Client()
-    const calendarId = process.env.GOOGLE_CALENDAR_ID || 'primary'
+    const calendarId = getSharedOperationsCalendarId()
 
     await calendar.events.delete({
       auth: auth as any,
@@ -493,22 +482,21 @@ function getEventColor(status: string): string {
 
 // Check if calendar integration is configured
 export function isCalendarConfigured(): boolean {
-  const hasCalendarId = !!process.env.GOOGLE_CALENDAR_ID
+  const calendarId = getSharedOperationsCalendarId()
+  const hasCalendarId = !!calendarId
   const hasServiceAccount = !!process.env.GOOGLE_SERVICE_ACCOUNT_KEY
   const hasOAuth = !!(
     process.env.GOOGLE_CLIENT_ID &&
     process.env.GOOGLE_CLIENT_SECRET &&
     process.env.GOOGLE_REFRESH_TOKEN
   )
-  const usesPrimaryCalendar = hasOAuth && !hasCalendarId
-  const isConfigured = (hasCalendarId || usesPrimaryCalendar) && (hasServiceAccount || hasOAuth)
+  const isConfigured = hasCalendarId && (hasServiceAccount || hasOAuth)
 
   console.warn('[Google Calendar] Configuration check:', {
     hasCalendarId,
-    calendarId: process.env.GOOGLE_CALENDAR_ID ? `${process.env.GOOGLE_CALENDAR_ID.substring(0, 10)}...` : 'NOT SET',
+    calendarId: formatCalendarIdForLog(calendarId),
     hasServiceAccount,
     hasOAuth,
-    usesPrimaryCalendar,
     isConfigured
   })
 
@@ -517,17 +505,17 @@ export function isCalendarConfigured(): boolean {
 
 export function isInterviewCalendarConfigured(): boolean {
   const hasInterviewCalendarId = !!process.env.GOOGLE_CALENDAR_INTERVIEW_ID
-  const hasCalendarId = !!process.env.GOOGLE_CALENDAR_ID
+  const calendarId = getSharedOperationsCalendarId()
+  const hasCalendarId = !!calendarId
   const hasServiceAccount = !!process.env.GOOGLE_SERVICE_ACCOUNT_KEY
   const hasOAuth = !!(
     process.env.GOOGLE_CLIENT_ID &&
     process.env.GOOGLE_CLIENT_SECRET &&
     process.env.GOOGLE_REFRESH_TOKEN
   )
-  const usesPrimaryCalendar = hasOAuth && !(hasInterviewCalendarId || hasCalendarId)
   const calendarIdValue = getInterviewCalendarId()
   const calendarLabel = formatCalendarIdForLog(calendarIdValue)
-  const isConfigured = (hasInterviewCalendarId || hasCalendarId || usesPrimaryCalendar) && (hasServiceAccount || hasOAuth)
+  const isConfigured = (hasInterviewCalendarId || hasCalendarId) && (hasServiceAccount || hasOAuth)
 
   console.warn('[Google Calendar] Interview configuration check:', {
     hasInterviewCalendarId,
@@ -535,7 +523,6 @@ export function isInterviewCalendarConfigured(): boolean {
     calendarId: calendarLabel,
     hasServiceAccount,
     hasOAuth,
-    usesPrimaryCalendar,
     isConfigured
   })
 
@@ -599,7 +586,7 @@ export async function testCalendarConnection(): Promise<{
         success: false,
         message: 'Google Calendar is not configured. Please check environment variables.',
         details: {
-          hasCalendarId: !!process.env.GOOGLE_CALENDAR_ID,
+          hasCalendarId: !!getSharedOperationsCalendarId(),
           hasAuth: !!(process.env.GOOGLE_SERVICE_ACCOUNT_KEY ||
             (process.env.GOOGLE_CLIENT_ID &&
               process.env.GOOGLE_CLIENT_SECRET &&
@@ -609,7 +596,7 @@ export async function testCalendarConnection(): Promise<{
     }
 
     const auth = await getOAuth2Client()
-    const calendarId = process.env.GOOGLE_CALENDAR_ID || 'primary'
+    const calendarId = getSharedOperationsCalendarId()
 
     console.warn('[Google Calendar] Testing calendar access for:', calendarId)
 
@@ -670,7 +657,7 @@ export async function testCalendarConnection(): Promise<{
       if (calendarError.code === 404) {
         return {
           success: false,
-          message: `Calendar not found: ${calendarId}. Please check GOOGLE_CALENDAR_ID.`,
+          message: `Calendar not found: ${calendarId}. Please check the shared operations calendar.`,
           details: { calendarId, errorCode: 404 }
         }
       } else if (calendarError.code === 403) {
@@ -755,7 +742,7 @@ export async function createInterviewEvent(options: InterviewEventOptions): Prom
     }
 
     const auth = await getOAuth2Client()
-    const calendarId = getInterviewCalendarId() || 'primary'
+    const calendarId = getInterviewCalendarId()
     const accessWarning = await verifyInterviewCalendarAccess(auth, calendarId)
     if (accessWarning) {
       console.warn('[Google Calendar] Interview calendar access check failed:', {

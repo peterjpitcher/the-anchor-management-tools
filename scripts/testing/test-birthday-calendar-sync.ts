@@ -41,7 +41,7 @@ async function testBirthdayCalendarSync() {
     
     if (!isConfigured) {
       throw new Error(
-        'Google Calendar is not properly configured. Ensure GOOGLE_CALENDAR_ID and GOOGLE_SERVICE_ACCOUNT_KEY (or OAuth credentials) are set.'
+        'Google Calendar is not properly configured. Ensure GOOGLE_SERVICE_ACCOUNT_KEY or OAuth credentials are set.'
       )
     }
 

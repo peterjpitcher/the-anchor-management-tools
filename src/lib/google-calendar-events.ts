@@ -7,10 +7,10 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { addDays, addMinutes } from 'date-fns'
 import { formatInTimeZone, fromZonedTime } from 'date-fns-tz'
 import { getOAuth2Client } from '@/lib/google-calendar'
+import { PUB_OPS_EVENT_BOOKINGS_CALENDAR_ID } from '@/lib/google-calendar-targets'
 import { logger } from '@/lib/logger'
 
-export const PUB_OPS_EVENT_BOOKINGS_CALENDAR_ID =
-  'f9712733d9040b99f0ac9846911447034a4d70e8a6f06b571be130014606c504@group.calendar.google.com'
+export { PUB_OPS_EVENT_BOOKINGS_CALENDAR_ID } from '@/lib/google-calendar-targets'
 
 const CALENDAR_TIME_ZONE = 'Europe/London'
 const DEFAULT_EVENT_DURATION_MINUTES = 120

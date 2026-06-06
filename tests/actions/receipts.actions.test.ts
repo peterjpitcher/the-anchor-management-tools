@@ -168,6 +168,7 @@ describe('Receipts actions expense-direction safeguards', () => {
     }))
 
     const logInsert = vi.fn().mockResolvedValue({ error: null })
+    const signalInsert = vi.fn().mockResolvedValue({ error: null })
 
     mockedCreateAdminClient.mockReturnValue({
       from: vi.fn((table: string) => {
@@ -176,6 +177,9 @@ describe('Receipts actions expense-direction safeguards', () => {
         }
         if (table === 'receipt_transaction_logs') {
           return { insert: logInsert }
+        }
+        if (table === 'receipt_classification_signals') {
+          return { insert: signalInsert }
         }
         throw new Error(`Unexpected table: ${table}`)
       }),
@@ -281,6 +285,11 @@ describe('Receipts actions expense-direction safeguards', () => {
     })
 
     const logInsert = vi.fn().mockResolvedValue({ error: null })
+    const vendorMaybeSingle = vi.fn().mockResolvedValue({ data: { id: 'vendor-1' }, error: null })
+    const vendorEq = vi.fn().mockReturnValue({ maybeSingle: vendorMaybeSingle })
+    const vendorSelect = vi.fn().mockReturnValue({ eq: vendorEq })
+    const aliasInsert = vi.fn().mockResolvedValue({ error: null })
+    const signalInsert = vi.fn().mockResolvedValue({ error: null })
 
     mockedCreateAdminClient.mockReturnValue({
       from: vi.fn((table: string) => {
@@ -292,6 +301,15 @@ describe('Receipts actions expense-direction safeguards', () => {
         }
         if (table === 'receipt_transaction_logs') {
           return { insert: logInsert }
+        }
+        if (table === 'receipt_vendors') {
+          return { select: vendorSelect }
+        }
+        if (table === 'receipt_vendor_aliases') {
+          return { insert: aliasInsert }
+        }
+        if (table === 'receipt_classification_signals') {
+          return { insert: signalInsert }
         }
         throw new Error(`Unexpected table: ${table}`)
       }),

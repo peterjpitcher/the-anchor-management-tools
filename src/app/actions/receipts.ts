@@ -149,29 +149,66 @@ function optionalRuleFormText(formData: FormData, key: string): string | undefin
   return typeof value === 'string' && value.trim().length ? value.trim() : undefined
 }
 
+function getReceiptRuleValidationInput(formData: FormData) {
+  return {
+    name: formData.get('name') ?? '',
+    description: optionalRuleFormText(formData, 'description'),
+    priority: toOptionalNumber(formData.get('priority')),
+    kind: optionalRuleFormText(formData, 'kind') ?? 'standard',
+    match_description: optionalRuleFormText(formData, 'match_description'),
+    match_transaction_type: optionalRuleFormText(formData, 'match_transaction_type'),
+    match_direction: formData.get('match_direction') ?? 'both',
+    match_min_amount: toOptionalNumber(formData.get('match_min_amount')),
+    match_max_amount: toOptionalNumber(formData.get('match_max_amount')),
+    auto_status: formData.get('auto_status') ?? 'no_receipt_required',
+    set_vendor_name: optionalRuleFormText(formData, 'set_vendor_name'),
+    set_expense_category: optionalRuleFormText(formData, 'set_expense_category'),
+  }
+}
+
+function validateReceiptRuleForm(formData: FormData): { success: true } | { success: false; error: string } {
+  const parsed = receiptRuleSchema.safeParse(getReceiptRuleValidationInput(formData))
+
+  if (!parsed.success) {
+    return { success: false, error: parsed.error.issues[0]?.message ?? 'Invalid rule details' }
+  }
+  if (parsed.data.set_expense_category && parsed.data.match_direction !== 'out') {
+    return { success: false, error: 'Expense auto-tagging rules must use outgoing direction' }
+  }
+
+  return { success: true }
+}
+
 export async function currentUserCanGovernReceiptRules(): Promise<boolean> {
   const { user_id } = await requireCurrentUser()
   const { createAdminClient } = await import('@/lib/supabase/admin')
   const supabase = createAdminClient()
 
-  const { data: rpcData, error: rpcError } = await supabase.rpc('is_super_admin', {
-    check_user_id: user_id,
-  })
+  try {
+    const rpc = (supabase as unknown as { rpc?: unknown }).rpc
+    if (typeof rpc === 'function') {
+      const { data: rpcData, error: rpcError } = await rpc.call(supabase, 'is_super_admin', {
+        check_user_id: user_id,
+      }) as { data: unknown; error: unknown }
 
-  if (!rpcError && typeof rpcData === 'boolean') {
-    return rpcData
-  }
+      if (!rpcError && typeof rpcData === 'boolean') {
+        return rpcData
+      }
+    }
 
-  const { data: roles, error } = await supabase
-    .from('user_roles')
-    .select('roles!inner(name)')
-    .eq('user_id', user_id)
+    const { data: roles, error } = await supabase
+      .from('user_roles')
+      .select('roles!inner(name)')
+      .eq('user_id', user_id)
 
-  if (error || !roles) {
+    if (error || !roles) {
+      return false
+    }
+
+    return roles.some((row: any) => row.roles?.name === 'super_admin')
+  } catch {
     return false
   }
-
-  return roles.some((row: any) => row.roles?.name === 'super_admin')
 }
 
 // ---------------------------------------------------------------------------
@@ -366,19 +403,7 @@ export async function previewReceiptRule(formData: FormData): Promise<{ success:
     return { success: false, error: 'Insufficient permissions' }
   }
 
-  const parsed = receiptRuleSchema.safeParse({
-    name: formData.get('name') ?? '',
-    description: optionalRuleFormText(formData, 'description'),
-    match_description: optionalRuleFormText(formData, 'match_description'),
-    match_transaction_type: optionalRuleFormText(formData, 'match_transaction_type'),
-    match_direction: formData.get('match_direction') ?? 'both',
-    match_min_amount: toOptionalNumber(formData.get('match_min_amount')),
-    match_max_amount: toOptionalNumber(formData.get('match_max_amount')),
-    auto_status: formData.get('auto_status') ?? 'no_receipt_required',
-    set_vendor_name: optionalRuleFormText(formData, 'set_vendor_name'),
-    set_expense_category: optionalRuleFormText(formData, 'set_expense_category'),
-  })
-
+  const parsed = receiptRuleSchema.safeParse(getReceiptRuleValidationInput(formData))
   if (!parsed.success) {
     return { success: false, error: parsed.error.issues[0]?.message ?? 'Invalid rule' }
   }
@@ -630,6 +655,11 @@ export async function createReceiptRule(formData: FormData): Promise<RuleMutatio
     return { error: 'Insufficient permissions' }
   }
 
+  const validation = validateReceiptRuleForm(formData)
+  if (!validation.success) {
+    return { error: validation.error }
+  }
+
   const { user_id } = await requireCurrentUser()
   const canGovernRules = await currentUserCanGovernReceiptRules()
   const result = await performCreateReceiptRule(user_id, formData, { canGovernRules })
@@ -652,6 +682,11 @@ export async function updateReceiptRule(ruleId: string, formData: FormData): Pro
   const canManage = await checkUserPermission('receipts', 'manage')
   if (!canManage) {
     return { error: 'Insufficient permissions' }
+  }
+
+  const validation = validateReceiptRuleForm(formData)
+  if (!validation.success) {
+    return { error: validation.error }
   }
 
   const { user_id } = await requireCurrentUser()
