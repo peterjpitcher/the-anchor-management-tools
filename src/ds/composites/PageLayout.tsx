@@ -167,7 +167,7 @@ export function PageLayout({
   headerClassName,
   contentClassName,
   showHeaderActionsOnMobile = false,
-  hideMobileMenuButton = false,
+  hideMobileMenuButton = true,
   compactHeader = false,
 }: PageLayoutProps) {
   const router = useRouter()

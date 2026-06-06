@@ -118,7 +118,7 @@ export default async function TableBookingsFohPage() {
       contentClassName={contentClassName}
       headerActions={headerActions}
       showHeaderActionsOnMobile={useManagerKioskStyle}
-      hideMobileMenuButton={useManagerKioskStyle}
+      hideMobileMenuButton
       compactHeader={useManagerKioskStyle}
       padded={!useManagerKioskStyle}
     >

@@ -20,8 +20,8 @@ interface TableProps {
 
 export function Table({ children, className }: TableProps) {
   return (
-    <div className={cn('overflow-x-auto', className)}>
-      <table className="w-full border-collapse">
+    <div className={cn('-mx-4 overflow-x-auto px-4 sm:mx-0 sm:px-0', className)}>
+      <table className="w-full min-w-[560px] border-collapse sm:min-w-0">
         {children}
       </table>
     </div>

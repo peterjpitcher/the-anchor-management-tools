@@ -79,7 +79,7 @@ export function DataTable<T = unknown>({
   size = 'md',
   bordered = true,
   striped = false,
-  mobileBreakpoint = 768,
+  mobileBreakpoint = 821,
   renderMobileCard,
   expandable = false,
   renderExpandedContent,
@@ -260,11 +260,14 @@ export function DataTable<T = unknown>({
           const key = getRowKey(row)
           const isSelected = internalSelectedKeys.has(key)
           const isExpanded = expandedKeys.has(key)
+          const mobileColumns = columns.filter((column) => !column.hideOnMobile)
+          const [primaryColumn, ...secondaryColumns] = mobileColumns
 
           if (renderMobileCard) {
             return (
               <div
                 key={key}
+                className={cn(clickableRows && 'cursor-pointer', isSelected && 'rounded-lg ring-2 ring-primary')}
                 onClick={(event) => {
                   if (!clickableRows || !onRowClick) return
                   if (shouldIgnoreRowClick(event.target)) return
@@ -280,9 +283,9 @@ export function DataTable<T = unknown>({
             <div
               key={key}
               className={cn(
-                'bg-white shadow rounded-lg p-4 space-y-3',
-                clickableRows && 'cursor-pointer hover:shadow-md transition-shadow',
-                isSelected && 'ring-2 ring-green-500',
+                'rounded-lg border border-border bg-surface p-4 shadow-sm',
+                clickableRows && 'cursor-pointer active:bg-surface-hover',
+                isSelected && 'ring-2 ring-primary',
               )}
               onClick={(event) => {
                 if (!clickableRows || !onRowClick) return
@@ -302,14 +305,29 @@ export function DataTable<T = unknown>({
                 </div>
               )}
 
-              {columns
-                .filter((column) => !column.hideOnMobile)
-                .map((column) => (
-                  <div key={column.key} className="flex justify-between items-start">
-                    <span className="text-xs font-medium text-gray-500">{column.header}</span>
-                    <span className="text-sm text-gray-900 text-right">{column.cell(row)}</span>
+              {primaryColumn && (
+                <div className="border-b border-border pb-3">
+                  <div className="text-[11px] font-semibold uppercase tracking-wide text-text-muted">
+                    {primaryColumn.header}
                   </div>
-                ))}
+                  <div className="mt-1 min-w-0 text-sm font-semibold text-text-strong">
+                    {primaryColumn.cell(row)}
+                  </div>
+                </div>
+              )}
+
+              {secondaryColumns.length > 0 && (
+                <dl className="mt-3 grid gap-2">
+                  {secondaryColumns.map((column) => (
+                    <div key={column.key} className="flex items-start justify-between gap-4">
+                      <dt className="shrink-0 text-xs font-medium text-text-muted">{column.header}</dt>
+                      <dd className="min-w-0 text-right text-sm text-text [&_*]:break-words">
+                        {column.cell(row)}
+                      </dd>
+                    </div>
+                  ))}
+                </dl>
+              )}
 
               {expandable && renderExpandedContent && (
                 <>
@@ -331,7 +349,7 @@ export function DataTable<T = unknown>({
                     {isExpanded ? 'Hide details' : 'View details'}
                   </button>
                   {isExpanded && (
-                    <div className="mt-3 border-t border-gray-200 pt-3 text-sm text-gray-700">
+                    <div className="mt-3 border-t border-border pt-3 text-sm text-text">
                       {renderExpandedContent(row)}
                     </div>
                   )}

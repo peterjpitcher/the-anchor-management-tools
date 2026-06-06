@@ -29,6 +29,31 @@ export type LeavingEmployee = {
   employmentEndDate: string; // YYYY-MM-DD
 };
 
+export type PortalShiftEmailSummary = {
+  employeeName?: string;
+  date: string;
+  startTime: string;
+  endTime: string;
+  department: string;
+  templateName?: string | null;
+  note?: string | null;
+};
+
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function shiftLine(shift: PortalShiftEmailSummary): string {
+  const date = format(parseISO(shift.date), 'EEE d MMM yyyy');
+  const name = shift.templateName ? ` — ${escapeHtml(shift.templateName)}` : '';
+  return `${date}, ${escapeHtml(shift.startTime)} – ${escapeHtml(shift.endTime)} (${escapeHtml(shift.department)})${name}`;
+}
+
 /**
  * Weekly rota email sent to each staff member on Sunday evening.
  */
@@ -298,6 +323,99 @@ export function buildHolidayDecisionEmailHtml(
       ${managerNote ? `<p><em>${managerNote}</em></p>` : ''}
       <p>
         <a href="${APP_URL}/portal/leave">View your holiday requests</a>
+      </p>
+      <p style="color:#aaa;font-size:12px">The Anchor</p>
+    </div>
+  `;
+}
+
+export function buildShiftRejectedManagerEmailHtml(
+  shift: PortalShiftEmailSummary,
+  rejectionNote?: string | null,
+): string {
+  const staffName = escapeHtml(shift.employeeName || 'A staff member');
+  const noteHtml = rejectionNote?.trim()
+    ? `<p><strong>Staff note:</strong> ${escapeHtml(rejectionNote.trim())}</p>`
+    : '<p><strong>Staff note:</strong> No note provided.</p>';
+
+  return `
+    <div style="font-family:sans-serif;max-width:600px;margin:0 auto">
+      <h2 style="color:#b91c1c">Shift Rejected</h2>
+      <p>${staffName} rejected this shift:</p>
+      <p><strong>${shiftLine(shift)}</strong></p>
+      ${noteHtml}
+      <p>The shift has been moved to open shifts.</p>
+      <p>
+        <a href="${APP_URL}/rota"
+           style="display:inline-block;background:#1F5C2E;color:#fff;padding:10px 20px;border-radius:4px;text-decoration:none;font-size:14px">
+          Open rota
+        </a>
+      </p>
+      <p style="color:#aaa;font-size:12px">The Anchor Management Tools</p>
+    </div>
+  `;
+}
+
+export function buildOpenShiftRequestManagerEmailHtml(
+  shift: PortalShiftEmailSummary,
+  requestNote?: string | null,
+): string {
+  const staffName = escapeHtml(shift.employeeName || 'A staff member');
+  const noteHtml = requestNote?.trim()
+    ? `<p><strong>Staff note:</strong> ${escapeHtml(requestNote.trim())}</p>`
+    : '<p><strong>Staff note:</strong> No note provided.</p>';
+
+  return `
+    <div style="font-family:sans-serif;max-width:600px;margin:0 auto">
+      <h2 style="color:#1a1a1a">Open Shift Request</h2>
+      <p>${staffName} has asked to work this open shift:</p>
+      <p><strong>${shiftLine(shift)}</strong></p>
+      ${noteHtml}
+      <p>This has not assigned the shift automatically. Please review it in the rota.</p>
+      <p>
+        <a href="${APP_URL}/rota"
+           style="display:inline-block;background:#1F5C2E;color:#fff;padding:10px 20px;border-radius:4px;text-decoration:none;font-size:14px">
+          Open rota
+        </a>
+      </p>
+      <p style="color:#aaa;font-size:12px">The Anchor Management Tools</p>
+    </div>
+  `;
+}
+
+export function buildShiftAutoAcceptWarningEmailHtml(
+  employeeName: string,
+  shifts: PortalShiftEmailSummary[],
+): string {
+  const rows = shifts.map(shift => `
+    <tr>
+      <td style="padding:8px 12px;border-bottom:1px solid #eee">${format(parseISO(shift.date), 'EEE d MMM yyyy')}</td>
+      <td style="padding:8px 12px;border-bottom:1px solid #eee">${escapeHtml(shift.startTime)} – ${escapeHtml(shift.endTime)}</td>
+      <td style="padding:8px 12px;border-bottom:1px solid #eee;text-transform:capitalize">${escapeHtml(shift.department)}</td>
+    </tr>
+  `).join('');
+
+  return `
+    <div style="font-family:sans-serif;max-width:600px;margin:0 auto">
+      <h2 style="color:#1a1a1a">Shift Acceptance Reminder</h2>
+      <p>Hi ${escapeHtml(employeeName)},</p>
+      <p>The following shifts are still waiting for you to accept or reject. They will be automatically accepted in 2 days.</p>
+      <table style="width:100%;border-collapse:collapse;margin:16px 0">
+        <thead>
+          <tr style="background:#1F5C2E;color:#fff">
+            <th style="padding:8px 12px;text-align:left">Day</th>
+            <th style="padding:8px 12px;text-align:left">Time</th>
+            <th style="padding:8px 12px;text-align:left">Area</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+      <p><strong>Policy:</strong> All shifts must be accepted or rejected no less than two weeks before the shift.</p>
+      <p>
+        <a href="${APP_URL}/portal/shifts"
+           style="display:inline-block;background:#1F5C2E;color:#fff;padding:10px 20px;border-radius:4px;text-decoration:none;font-size:14px">
+          Review shifts
+        </a>
       </p>
       <p style="color:#aaa;font-size:12px">The Anchor</p>
     </div>

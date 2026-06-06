@@ -9,6 +9,13 @@ import { z } from 'zod';
 import { logAuditEvent } from '@/app/actions/audit';
 import { sendRotaWeekEmails, sendRotaWeekChangeEmails, type DiffShiftRow } from '@/lib/rota/send-rota-emails';
 import { getRotaSettings } from '@/app/actions/rota-settings';
+import { sendEmail } from '@/lib/email/emailService';
+import { fromZonedTime } from 'date-fns-tz';
+import {
+  buildOpenShiftRequestManagerEmailHtml,
+  buildShiftRejectedManagerEmailHtml,
+  type PortalShiftEmailSummary,
+} from '@/lib/rota/email-templates';
 import {
   buildRotaSummary,
   dayOfWeekForIsoDate,
@@ -56,8 +63,71 @@ export type RotaShift = {
   reassigned_at: string | null;
   reassigned_by: string | null;
   reassignment_reason: string | null;
+  acceptance_status: ShiftAcceptanceStatus | null;
+  acceptance_decided_at: string | null;
+  acceptance_decided_by: string | null;
+  acceptance_note: string | null;
+  auto_accept_reason: string | null;
+  auto_accept_warning_sent_at: string | null;
   created_at: string;
   updated_at: string;
+};
+
+export type ShiftAcceptanceStatus = 'pending' | 'accepted' | 'rejected' | 'auto_accepted';
+
+export type OpenShiftRequest = {
+  id: string;
+  shift_id: string;
+  employee_id: string;
+  note: string | null;
+  status: 'pending' | 'approved' | 'declined' | 'cancelled';
+  requested_at: string;
+  decided_at: string | null;
+  decided_by: string | null;
+  manager_note: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type OpenShiftRequestSummary = {
+  id: string;
+  shift_id: string;
+  employee_id: string;
+  employee_name: string;
+  note: string | null;
+  status: 'pending' | 'approved' | 'declined' | 'cancelled';
+  requested_at: string;
+};
+
+export type ShiftAuditTrailEntry = {
+  id: string;
+  shift_id: string;
+  created_at: string;
+  user_email: string | null;
+  user_id: string | null;
+  operation_type: string;
+  old_values: Record<string, unknown> | null;
+  new_values: Record<string, unknown> | null;
+  additional_info: Record<string, unknown> | null;
+};
+
+export type RejectedShiftRecord = {
+  id: string;
+  shift_id: string;
+  employee_id: string;
+  week_id: string | null;
+  shift_date: string;
+  start_time: string;
+  end_time: string;
+  unpaid_break_minutes: number;
+  department: string;
+  notes: string | null;
+  is_overnight: boolean;
+  name: string | null;
+  rejection_note: string | null;
+  rejected_at: string;
+  rejected_by: string | null;
+  created_at: string;
 };
 
 // ---------------------------------------------------------------------------
@@ -81,6 +151,209 @@ function addDaysIso(isoDate: string, days: number): string {
   const d = new Date(isoDate + 'T00:00:00Z');
   d.setUTCDate(d.getUTCDate() + days);
   return d.toISOString().split('T')[0];
+}
+
+const SHIFT_AUTO_ACCEPT_POLICY_NOTE =
+  'In line with our policy, all shifts must be accepted or rejected no less than two weeks before the shift.';
+
+const SHIFT_ACCEPTANCE_CUTOFF_DAYS = 14;
+const MANAGER_SHIFT_EMAIL = 'manager@the-anchor.pub';
+
+const ACCEPTANCE_RESET_FIELDS = new Set([
+  'start_time',
+  'end_time',
+  'unpaid_break_minutes',
+  'status',
+  'is_overnight',
+  'department',
+  'shift_date',
+  'employee_id',
+]);
+
+function shiftStartInstant(shiftDate: string, startTime: string): Date {
+  return fromZonedTime(`${shiftDate}T${startTime}`, 'Europe/London');
+}
+
+function isInsideAcceptanceCutoff(shiftDate: string, startTime: string, now: Date = new Date()): boolean {
+  const shiftStart = shiftStartInstant(shiftDate, startTime);
+  const cutoffMs = SHIFT_ACCEPTANCE_CUTOFF_DAYS * 24 * 60 * 60 * 1000;
+  return shiftStart.getTime() - now.getTime() <= cutoffMs;
+}
+
+function initialAcceptanceForShift(input: {
+  employee_id?: string | null;
+  is_open_shift?: boolean | null;
+  status?: string | null;
+  shift_date: string;
+  start_time: string;
+}, now: Date = new Date()): {
+  acceptance_status: ShiftAcceptanceStatus | null;
+  acceptance_decided_at: string | null;
+  acceptance_decided_by: string | null;
+  acceptance_note: string | null;
+  auto_accept_reason: string | null;
+  auto_accept_warning_sent_at: string | null;
+} {
+  if (input.is_open_shift || !input.employee_id || input.status === 'sick' || input.status === 'cancelled') {
+    return {
+      acceptance_status: null,
+      acceptance_decided_at: null,
+      acceptance_decided_by: null,
+      acceptance_note: null,
+      auto_accept_reason: null,
+      auto_accept_warning_sent_at: null,
+    };
+  }
+
+  if (isInsideAcceptanceCutoff(input.shift_date, input.start_time, now)) {
+    return {
+      acceptance_status: 'auto_accepted',
+      acceptance_decided_at: now.toISOString(),
+      acceptance_decided_by: input.employee_id,
+      acceptance_note: null,
+      auto_accept_reason: SHIFT_AUTO_ACCEPT_POLICY_NOTE,
+      auto_accept_warning_sent_at: null,
+    };
+  }
+
+  return {
+    acceptance_status: 'pending',
+    acceptance_decided_at: null,
+    acceptance_decided_by: null,
+    acceptance_note: null,
+    auto_accept_reason: null,
+    auto_accept_warning_sent_at: null,
+  };
+}
+
+function employeeDisplayName(employee: { first_name?: string | null; last_name?: string | null } | null | undefined): string {
+  return [employee?.first_name, employee?.last_name].filter(Boolean).join(' ') || 'Unknown staff member';
+}
+
+function shiftEmailSummary(shift: {
+  shift_date: string;
+  start_time: string;
+  end_time: string;
+  department: string;
+  name?: string | null;
+}, employeeName?: string): PortalShiftEmailSummary {
+  return {
+    employeeName,
+    date: shift.shift_date,
+    startTime: shift.start_time,
+    endTime: shift.end_time,
+    department: shift.department,
+    templateName: shift.name ?? null,
+  };
+}
+
+async function getOwnPortalEmployee(supabase: Awaited<ReturnType<typeof createClient>>, employeeId?: string): Promise<{
+  employee_id: string;
+  first_name: string | null;
+  last_name: string | null;
+  email_address: string | null;
+} | null> {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return null;
+
+  let query = supabase
+    .from('employees')
+    .select('employee_id, first_name, last_name, email_address')
+    .eq('auth_user_id', user.id)
+    .in('status', ['Active', 'Started Separation']);
+
+  if (employeeId) query = query.eq('employee_id', employeeId);
+
+  const { data } = await query.maybeSingle();
+  return data as {
+    employee_id: string;
+    first_name: string | null;
+    last_name: string | null;
+    email_address: string | null;
+  } | null;
+}
+
+async function recordCalendarCancellation(
+  admin: ReturnType<typeof createAdminClient>,
+  shift: {
+    id: string;
+    employee_id: string | null;
+    week_id: string;
+    shift_date: string;
+    start_time: string;
+    end_time: string;
+    unpaid_break_minutes?: number | null;
+    department: string;
+    notes?: string | null;
+    is_overnight?: boolean | null;
+    name?: string | null;
+  },
+  reason: string,
+): Promise<void> {
+  if (!shift.employee_id) return;
+  await admin
+    .from('rota_shift_calendar_cancellations')
+    .upsert({
+      shift_id: shift.id,
+      employee_id: shift.employee_id,
+      week_id: shift.week_id,
+      shift_date: shift.shift_date,
+      start_time: shift.start_time,
+      end_time: shift.end_time,
+      unpaid_break_minutes: shift.unpaid_break_minutes ?? 0,
+      department: shift.department,
+      notes: shift.notes ?? null,
+      is_overnight: Boolean(shift.is_overnight),
+      name: shift.name ?? null,
+      cancelled_at: new Date().toISOString(),
+      reason,
+    }, { onConflict: 'shift_id,employee_id' });
+}
+
+async function recordShiftRejection(
+  admin: ReturnType<typeof createAdminClient>,
+  shift: {
+    id: string;
+    employee_id: string | null;
+    week_id: string | null;
+    shift_date: string;
+    start_time: string;
+    end_time: string;
+    unpaid_break_minutes?: number | null;
+    department: string;
+    notes?: string | null;
+    is_overnight?: boolean | null;
+    name?: string | null;
+  },
+  rejection: {
+    employeeId: string;
+    rejectedAt: string;
+    rejectedBy: string;
+    note: string | null;
+  },
+): Promise<void> {
+  await admin
+    .from('rota_shift_rejections')
+    .insert({
+      shift_id: shift.id,
+      employee_id: rejection.employeeId,
+      week_id: shift.week_id ?? null,
+      shift_date: shift.shift_date,
+      start_time: shift.start_time,
+      end_time: shift.end_time,
+      unpaid_break_minutes: shift.unpaid_break_minutes ?? 0,
+      department: shift.department,
+      notes: shift.notes ?? null,
+      is_overnight: Boolean(shift.is_overnight),
+      name: shift.name ?? null,
+      rejection_note: rejection.note,
+      rejected_at: rejection.rejectedAt,
+      rejected_by: rejection.rejectedBy,
+    });
+}
+
+function pickChangedValues(source: Record<string, unknown>, keys: string[]): Record<string, unknown> {
+  return Object.fromEntries(keys.map(key => [key, source[key] ?? null]));
 }
 
 function formatMonthLabel(year: number, month: number): string {
@@ -194,19 +467,21 @@ export async function getOrCreateRotaWeek(weekStart: string): Promise<
 // Load a week's shifts with employee data
 // ---------------------------------------------------------------------------
 
-export async function getWeekShifts(weekStart: string): Promise<
+export async function getWeekShifts(weekStart: string, userId?: string): Promise<
   { success: true; data: RotaShift[] } | { success: false; error: string }
 > {
-  const canView = await checkUserPermission('rota', 'view');
+  const canView = await checkUserPermission('rota', 'view', userId);
   if (!canView) return { success: false, error: 'Permission denied' };
 
-  const supabase = await createClient();
+  const supabase = createAdminClient();
 
   const sundayIso = addDaysIso(weekStart, 6);
 
   // Explicit column list matching RotaShift type — avoids fetching unnecessary columns
-  const rotaShiftColumns = 'id, week_id, employee_id, template_id, shift_date, start_time, end_time, unpaid_break_minutes, department, status, sick_reason, notes, is_overnight, is_open_shift, name, reassigned_from_id, reassigned_at, reassigned_by, reassignment_reason, created_at, updated_at' as const;
-  const rotaShiftColumnsWithoutSickReason = 'id, week_id, employee_id, template_id, shift_date, start_time, end_time, unpaid_break_minutes, department, status, notes, is_overnight, is_open_shift, name, reassigned_from_id, reassigned_at, reassigned_by, reassignment_reason, created_at, updated_at' as const;
+  const rotaShiftColumns = 'id, week_id, employee_id, template_id, shift_date, start_time, end_time, unpaid_break_minutes, department, status, sick_reason, notes, is_overnight, is_open_shift, name, reassigned_from_id, reassigned_at, reassigned_by, reassignment_reason, acceptance_status, acceptance_decided_at, acceptance_decided_by, acceptance_note, auto_accept_reason, auto_accept_warning_sent_at, created_at, updated_at' as const;
+  const rotaShiftColumnsWithoutSickReason = 'id, week_id, employee_id, template_id, shift_date, start_time, end_time, unpaid_break_minutes, department, status, notes, is_overnight, is_open_shift, name, reassigned_from_id, reassigned_at, reassigned_by, reassignment_reason, acceptance_status, acceptance_decided_at, acceptance_decided_by, acceptance_note, auto_accept_reason, auto_accept_warning_sent_at, created_at, updated_at' as const;
+  const rotaShiftColumnsWithoutAcceptance = 'id, week_id, employee_id, template_id, shift_date, start_time, end_time, unpaid_break_minutes, department, status, sick_reason, notes, is_overnight, is_open_shift, name, reassigned_from_id, reassigned_at, reassigned_by, reassignment_reason, created_at, updated_at' as const;
+  const rotaShiftColumnsWithoutSickReasonOrAcceptance = 'id, week_id, employee_id, template_id, shift_date, start_time, end_time, unpaid_break_minutes, department, status, notes, is_overnight, is_open_shift, name, reassigned_from_id, reassigned_at, reassigned_by, reassignment_reason, created_at, updated_at' as const;
 
   type RotaShiftQueryResult = {
     data: Array<Partial<RotaShift>> | null;
@@ -232,17 +507,184 @@ export async function getWeekShifts(weekStart: string): Promise<
     error = fallback.error;
   }
 
+  if (error && isMissingAcceptanceColumn(error)) {
+    const fallback = await loadShifts(rotaShiftColumnsWithoutAcceptance);
+    data = ((fallback.data ?? []) as Partial<RotaShift>[]).map(withEmptyAcceptanceFields);
+    error = fallback.error;
+  }
+
+  if (error && isMissingSickReasonColumn(error)) {
+    const fallback = await loadShifts(rotaShiftColumnsWithoutSickReasonOrAcceptance);
+    data = fallback.data?.map(shift => withEmptyAcceptanceFields({ ...shift, sick_reason: null })) ?? null;
+    error = fallback.error;
+  }
+
   if (error) return { success: false, error: error.message };
-  return { success: true, data: (data ?? []) as RotaShift[] };
+
+  const liveRows = (data ?? []) as RotaShift[];
+  const hasLiveScheduledShifts = liveRows.some(shift => !shift.status || shift.status === 'scheduled');
+  if (hasLiveScheduledShifts) return { success: true, data: liveRows };
+
+  const publishedShiftColumns = 'id, week_id, employee_id, shift_date, start_time, end_time, unpaid_break_minutes, department, status, notes, is_overnight, is_open_shift, name, acceptance_status, acceptance_decided_at, acceptance_decided_by, acceptance_note, auto_accept_reason, auto_accept_warning_sent_at, published_at' as const;
+  const publishedShiftColumnsWithoutAcceptance = 'id, week_id, employee_id, shift_date, start_time, end_time, unpaid_break_minutes, department, status, notes, is_overnight, is_open_shift, name, published_at' as const;
+  type PublishedShiftQueryResult = {
+    data: Array<Partial<RotaShift> & { published_at?: string | null }> | null;
+    error: { code?: string; message: string } | null;
+  };
+  const loadPublishedShifts = async (columns: string): Promise<PublishedShiftQueryResult> => {
+    const result = await supabase
+      .from('rota_published_shifts')
+      .select(columns)
+      .gte('shift_date', weekStart)
+      .lte('shift_date', sundayIso)
+      .order('shift_date')
+      .order('start_time');
+    return result as unknown as PublishedShiftQueryResult;
+  };
+
+  let { data: publishedRows, error: publishedError } = await loadPublishedShifts(publishedShiftColumns);
+  if (publishedError && isMissingAcceptanceColumn(publishedError)) {
+    const fallback = await loadPublishedShifts(publishedShiftColumnsWithoutAcceptance);
+    publishedRows = ((fallback.data ?? []) as Partial<RotaShift>[]).map(withEmptyAcceptanceFields);
+    publishedError = fallback.error;
+  }
+
+  if (publishedError) return { success: false, error: publishedError.message };
+
+  type PublishedShiftRow = Omit<Partial<RotaShift>, 'created_at' | 'updated_at'> & {
+    id: string;
+    week_id: string;
+    shift_date: string;
+    start_time: string;
+    end_time: string;
+    unpaid_break_minutes: number;
+    department: string;
+    status: RotaShift['status'];
+    is_overnight: boolean;
+    is_open_shift: boolean;
+    published_at: string | null;
+  };
+
+  const restoredShifts: RotaShift[] = ((publishedRows ?? []) as unknown as PublishedShiftRow[]).map(row => {
+    const timestamp = row.published_at ?? new Date().toISOString();
+    return {
+      id: row.id,
+      week_id: row.week_id,
+      employee_id: row.employee_id ?? null,
+      template_id: null,
+      shift_date: row.shift_date,
+      start_time: row.start_time,
+      end_time: row.end_time,
+      unpaid_break_minutes: row.unpaid_break_minutes ?? 0,
+      department: row.department,
+      status: row.status ?? 'scheduled',
+      sick_reason: null,
+      notes: row.notes ?? null,
+      is_overnight: Boolean(row.is_overnight),
+      is_open_shift: Boolean(row.is_open_shift),
+      name: row.name ?? null,
+      reassigned_from_id: null,
+      reassigned_at: null,
+      reassigned_by: null,
+      reassignment_reason: null,
+      acceptance_status: row.acceptance_status ?? null,
+      acceptance_decided_at: row.acceptance_decided_at ?? null,
+      acceptance_decided_by: row.acceptance_decided_by ?? null,
+      acceptance_note: row.acceptance_note ?? null,
+      auto_accept_reason: row.auto_accept_reason ?? null,
+      auto_accept_warning_sent_at: row.auto_accept_warning_sent_at ?? null,
+      created_at: timestamp,
+      updated_at: timestamp,
+    };
+  });
+
+  if (restoredShifts.length === 0) return { success: true, data: liveRows };
+
+  const canEdit = await checkUserPermission('rota', 'edit', userId);
+  if (canEdit && restoredShifts.length > 0) {
+    const admin = createAdminClient();
+    await admin
+      .from('rota_shifts')
+      .upsert(restoredShifts.map(shift => ({
+        id: shift.id,
+        week_id: shift.week_id,
+        employee_id: shift.employee_id,
+        template_id: shift.template_id,
+        shift_date: shift.shift_date,
+        start_time: shift.start_time,
+        end_time: shift.end_time,
+        unpaid_break_minutes: shift.unpaid_break_minutes,
+        department: shift.department,
+        status: shift.status,
+        sick_reason: shift.sick_reason,
+        notes: shift.notes,
+        is_overnight: shift.is_overnight,
+        is_open_shift: shift.is_open_shift,
+        name: shift.name,
+        reassigned_from_id: shift.reassigned_from_id,
+        reassigned_at: shift.reassigned_at,
+        reassigned_by: shift.reassigned_by,
+        reassignment_reason: shift.reassignment_reason,
+        acceptance_status: shift.acceptance_status,
+        acceptance_decided_at: shift.acceptance_decided_at,
+        acceptance_decided_by: shift.acceptance_decided_by,
+        acceptance_note: shift.acceptance_note,
+        auto_accept_reason: shift.auto_accept_reason,
+        auto_accept_warning_sent_at: shift.auto_accept_warning_sent_at,
+        created_at: shift.created_at,
+        updated_at: shift.updated_at,
+      })), { onConflict: 'id' });
+  }
+
+  const restoredIds = new Set(restoredShifts.map(shift => shift.id));
+  const liveRowsNotInSnapshot = liveRows.filter(shift => !restoredIds.has(shift.id));
+  return { success: true, data: [...liveRowsNotInSnapshot, ...restoredShifts] };
 }
 
 function isMissingSickReasonColumn(error: { code?: string; message?: string } | null | undefined): boolean {
   if (!error) return false;
   const message = error.message?.toLowerCase() ?? '';
-  return error.code === '42703' || (
+  return (error.code === '42703' && message.includes('sick_reason')) || (
     message.includes('sick_reason') &&
     (message.includes('does not exist') || message.includes('could not find'))
   );
+}
+
+function isMissingAcceptanceColumn(error: { code?: string; message?: string } | null | undefined): boolean {
+  if (!error) return false;
+  const message = error.message?.toLowerCase() ?? '';
+  const missingColumn = message.includes('does not exist') || message.includes('could not find');
+  return (error.code === '42703' && message.includes('acceptance_')) || (
+    missingColumn &&
+    (
+      message.includes('acceptance_status') ||
+      message.includes('acceptance_decided_at') ||
+      message.includes('acceptance_decided_by') ||
+      message.includes('acceptance_note') ||
+      message.includes('auto_accept_reason') ||
+      message.includes('auto_accept_warning_sent_at')
+    )
+  );
+}
+
+function withEmptyAcceptanceFields<T extends Partial<RotaShift>>(shift: T): T & Pick<
+  RotaShift,
+  'acceptance_status' |
+  'acceptance_decided_at' |
+  'acceptance_decided_by' |
+  'acceptance_note' |
+  'auto_accept_reason' |
+  'auto_accept_warning_sent_at'
+> {
+  return {
+    ...shift,
+    acceptance_status: null,
+    acceptance_decided_at: null,
+    acceptance_decided_by: null,
+    acceptance_note: null,
+    auto_accept_reason: null,
+    auto_accept_warning_sent_at: null,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -563,6 +1005,13 @@ export async function createShift(input: z.infer<typeof CreateShiftSchema>): Pro
       department: parsed.data.department,
       notes: parsed.data.notes ?? null,
       is_overnight: parsed.data.isOvernight,
+      ...initialAcceptanceForShift({
+        employee_id: parsed.data.isOpenShift ? null : (parsed.data.employeeId ?? null),
+        is_open_shift: parsed.data.isOpenShift,
+        status: 'scheduled',
+        shift_date: parsed.data.shiftDate,
+        start_time: parsed.data.startTime,
+      }),
       created_by: user?.id,
     })
     .select('*')
@@ -605,9 +1054,30 @@ export async function updateShift(
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
 
+  const { data: current, error: currentError } = await supabase
+    .from('rota_shifts')
+    .select('employee_id, is_open_shift, status, shift_date, start_time, end_time, unpaid_break_minutes, department, notes, is_overnight, acceptance_status, acceptance_decided_at, acceptance_decided_by, acceptance_note, auto_accept_reason, auto_accept_warning_sent_at')
+    .eq('id', shiftId)
+    .single();
+
+  if (currentError || !current) return { success: false, error: 'Shift not found' };
+
+  const currentValues = current as Record<string, unknown>;
+  const updatePayload: Record<string, unknown> = { ...updates };
+  const resetsAcceptance = Object.keys(updates).some(key => ACCEPTANCE_RESET_FIELDS.has(key));
+  if (resetsAcceptance) {
+    Object.assign(updatePayload, initialAcceptanceForShift({
+      employee_id: current.employee_id as string | null,
+      is_open_shift: current.is_open_shift as boolean,
+      status: (updates.status ?? current.status) as string,
+      shift_date: current.shift_date as string,
+      start_time: (updates.start_time ?? current.start_time) as string,
+    }));
+  }
+
   const { data, error } = await supabase
     .from('rota_shifts')
-    .update(updates)
+    .update(updatePayload)
     .eq('id', shiftId)
     .select('*')
     .single();
@@ -628,7 +1098,8 @@ export async function updateShift(
     resource_type: 'rota_shift',
     resource_id: shiftId,
     operation_status: 'success',
-    new_values: updates as Record<string, unknown>,
+    old_values: pickChangedValues(currentValues, Object.keys(updatePayload)),
+    new_values: updatePayload,
   });
 
   revalidatePath('/rota');
@@ -839,7 +1310,7 @@ export async function markEmployeeCouldntWork(input: z.infer<typeof MarkEmployee
 
   const { data: shiftsToOpen, error: shiftsToOpenError } = await supabase
     .from('rota_shifts')
-    .select('id')
+    .select('id, week_id, employee_id, shift_date, start_time, end_time, unpaid_break_minutes, department, notes, is_overnight, name')
     .eq('week_id', parsed.data.weekId)
     .eq('employee_id', parsed.data.employeeId)
     .eq('shift_date', parsed.data.shiftDate)
@@ -852,12 +1323,23 @@ export async function markEmployeeCouldntWork(input: z.infer<typeof MarkEmployee
   if (shiftIdsToOpen.length > 0) {
     const reassignedAt = new Date().toISOString();
     const reassignmentReason = `Couldn't Work: ${parsed.data.reason}`;
+    const admin = createAdminClient();
+
+    await Promise.all((shiftsToOpen ?? []).map(shift =>
+      recordCalendarCancellation(admin, shift as Parameters<typeof recordCalendarCancellation>[1], "Couldn't Work"),
+    ));
 
     const { error: moveError } = await supabase
       .from('rota_shifts')
       .update({
         employee_id: null,
         is_open_shift: true,
+        acceptance_status: null,
+        acceptance_decided_at: null,
+        acceptance_decided_by: null,
+        acceptance_note: null,
+        auto_accept_reason: null,
+        auto_accept_warning_sent_at: null,
         reassigned_from_id: parsed.data.employeeId,
         reassigned_at: reassignedAt,
         reassigned_by: user?.id,
@@ -867,11 +1349,17 @@ export async function markEmployeeCouldntWork(input: z.infer<typeof MarkEmployee
 
     if (moveError) return { success: false, error: moveError.message };
 
-    const { error: publishedSnapshotError } = await createAdminClient()
+    const { error: publishedSnapshotError } = await admin
       .from('rota_published_shifts')
       .update({
         employee_id: null,
         is_open_shift: true,
+        acceptance_status: null,
+        acceptance_decided_at: null,
+        acceptance_decided_by: null,
+        acceptance_note: null,
+        auto_accept_reason: null,
+        auto_accept_warning_sent_at: null,
         published_at: reassignedAt,
       })
       .in('id', shiftIdsToOpen);
@@ -879,6 +1367,28 @@ export async function markEmployeeCouldntWork(input: z.infer<typeof MarkEmployee
     if (publishedSnapshotError) {
       return { success: false, error: `Couldn't Work was recorded and shifts were moved to open shifts, but the employee portal could not be updated: ${publishedSnapshotError.message}` };
     }
+
+    void Promise.all((shiftsToOpen ?? []).map(shift => logAuditEvent({
+      user_id: user?.id,
+      operation_type: 'open_shift',
+      resource_type: 'rota_shift',
+      resource_id: shift.id as string,
+      operation_status: 'success',
+      old_values: {
+        employee_id: parsed.data.employeeId,
+        is_open_shift: false,
+        status: 'scheduled',
+      },
+      new_values: {
+        employee_id: null,
+        is_open_shift: true,
+        acceptance_status: null,
+      },
+      additional_info: {
+        reason: reassignmentReason,
+        sick_marker_shift_id: marker.id,
+      },
+    })));
   }
 
   const auditInfo = {
@@ -952,11 +1462,19 @@ export async function reassignShift(
     .from('rota_shifts')
     .update({
       employee_id: newEmployeeId,
+      is_open_shift: false,
       original_employee_id: current.original_employee_id ?? current.employee_id,
       reassigned_from_id: current.employee_id,
       reassigned_at: new Date().toISOString(),
       reassigned_by: user?.id,
       reassignment_reason: reason ?? null,
+      ...initialAcceptanceForShift({
+        employee_id: newEmployeeId,
+        is_open_shift: false,
+        status: current.status,
+        shift_date: current.shift_date,
+        start_time: current.start_time,
+      }),
     })
     .eq('id', shiftId)
     .select('*')
@@ -1017,6 +1535,7 @@ export async function getEmployeeShifts(
     .select('*')
     .eq('employee_id', employeeId)
     .eq('status', 'scheduled')
+    .or('acceptance_status.is.null,acceptance_status.in.(pending,accepted,auto_accepted)')
     .gte('shift_date', fromDate)
     .lte('shift_date', toDate)
     .order('shift_date')
@@ -1062,6 +1581,343 @@ export async function getOpenShiftsForPortal(
   return { success: true, data: (data ?? []) as RotaShift[] };
 }
 
+const PortalShiftDecisionSchema = z.object({
+  shiftId: z.string().uuid(),
+});
+
+const PortalShiftRejectSchema = z.object({
+  shiftId: z.string().uuid(),
+  note: z.string().max(500).nullable().optional(),
+});
+
+const PortalOpenShiftRequestSchema = z.object({
+  shiftId: z.string().uuid(),
+  note: z.string().max(500).nullable().optional(),
+});
+
+async function setPublishedAndLiveAcceptance(
+  shiftId: string,
+  employeeId: string,
+  acceptance: ReturnType<typeof initialAcceptanceForShift> | {
+    acceptance_status: ShiftAcceptanceStatus;
+    acceptance_decided_at: string;
+    acceptance_decided_by: string;
+    acceptance_note: string | null;
+    auto_accept_reason: string | null;
+    auto_accept_warning_sent_at?: string | null;
+  },
+): Promise<RotaShift | null> {
+  const admin = createAdminClient();
+  const updatePayload = {
+    acceptance_status: acceptance.acceptance_status,
+    acceptance_decided_at: acceptance.acceptance_decided_at,
+    acceptance_decided_by: acceptance.acceptance_decided_by,
+    acceptance_note: acceptance.acceptance_note,
+    auto_accept_reason: acceptance.auto_accept_reason,
+    auto_accept_warning_sent_at: acceptance.auto_accept_warning_sent_at ?? null,
+  };
+
+  const { data } = await admin
+    .from('rota_published_shifts')
+    .update(updatePayload)
+    .eq('id', shiftId)
+    .eq('employee_id', employeeId)
+    .select('*')
+    .maybeSingle();
+
+  await admin
+    .from('rota_shifts')
+    .update(updatePayload)
+    .eq('id', shiftId)
+    .eq('employee_id', employeeId);
+
+  return data as RotaShift | null;
+}
+
+export async function acceptPortalShift(shiftId: string): Promise<
+  { success: true; data: RotaShift; message?: string } | { success: false; error: string }
+> {
+  const parsed = PortalShiftDecisionSchema.safeParse({ shiftId });
+  if (!parsed.success) return { success: false, error: 'Invalid shift' };
+
+  const supabase = await createClient();
+  const employee = await getOwnPortalEmployee(supabase);
+  if (!employee) return { success: false, error: 'Unauthorized' };
+
+  const admin = createAdminClient();
+  const { data: shift, error } = await admin
+    .from('rota_published_shifts')
+    .select('*')
+    .eq('id', parsed.data.shiftId)
+    .eq('employee_id', employee.employee_id)
+    .eq('is_open_shift', false)
+    .eq('status', 'scheduled')
+    .maybeSingle();
+
+  if (error) return { success: false, error: error.message };
+  if (!shift) return { success: false, error: 'Shift not found' };
+
+  if (shift.acceptance_status === 'accepted' || shift.acceptance_status === 'auto_accepted') {
+    return { success: true, data: shift as RotaShift };
+  }
+
+  const now = new Date();
+  const insideCutoff = isInsideAcceptanceCutoff(shift.shift_date, shift.start_time, now);
+  const nextAcceptance = insideCutoff
+    ? {
+        acceptance_status: 'auto_accepted' as const,
+        acceptance_decided_at: now.toISOString(),
+        acceptance_decided_by: employee.employee_id,
+        acceptance_note: null,
+        auto_accept_reason: SHIFT_AUTO_ACCEPT_POLICY_NOTE,
+        auto_accept_warning_sent_at: null,
+      }
+    : {
+        acceptance_status: 'accepted' as const,
+        acceptance_decided_at: now.toISOString(),
+        acceptance_decided_by: employee.employee_id,
+        acceptance_note: null,
+        auto_accept_reason: null,
+        auto_accept_warning_sent_at: null,
+      };
+
+  const updated = await setPublishedAndLiveAcceptance(parsed.data.shiftId, employee.employee_id, nextAcceptance);
+  if (!updated) return { success: false, error: 'Shift not found' };
+
+  void logAuditEvent({
+    user_id: (await supabase.auth.getUser()).data.user?.id,
+    operation_type: insideCutoff ? 'auto_accept' : 'accept',
+    resource_type: 'rota_shift',
+    resource_id: parsed.data.shiftId,
+    operation_status: 'success',
+    new_values: { acceptance_status: nextAcceptance.acceptance_status },
+  });
+
+  revalidatePath('/portal/shifts');
+  return {
+    success: true,
+    data: updated,
+    ...(insideCutoff ? { message: 'This shift is inside the two-week cutoff and has been auto-accepted.' } : {}),
+  };
+}
+
+export async function rejectPortalShift(input: z.infer<typeof PortalShiftRejectSchema>): Promise<
+  { success: true; data: RotaShift | null; message?: string } | { success: false; error: string }
+> {
+  const parsed = PortalShiftRejectSchema.safeParse(input);
+  if (!parsed.success) return { success: false, error: 'Invalid shift' };
+
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  const employee = await getOwnPortalEmployee(supabase);
+  if (!user || !employee) return { success: false, error: 'Unauthorized' };
+
+  const admin = createAdminClient();
+  const { data: shift, error } = await admin
+    .from('rota_published_shifts')
+    .select('*')
+    .eq('id', parsed.data.shiftId)
+    .eq('employee_id', employee.employee_id)
+    .eq('is_open_shift', false)
+    .eq('status', 'scheduled')
+    .maybeSingle();
+
+  if (error) return { success: false, error: error.message };
+  if (!shift) return { success: false, error: 'Shift not found' };
+
+  if (shift.acceptance_status === 'accepted' || shift.acceptance_status === 'auto_accepted') {
+    return { success: false, error: 'This shift has already been accepted. Please contact Billy if you need to change it.' };
+  }
+
+  const now = new Date();
+  if (isInsideAcceptanceCutoff(shift.shift_date, shift.start_time, now)) {
+    const updated = await setPublishedAndLiveAcceptance(parsed.data.shiftId, employee.employee_id, {
+      acceptance_status: 'auto_accepted',
+      acceptance_decided_at: now.toISOString(),
+      acceptance_decided_by: employee.employee_id,
+      acceptance_note: null,
+      auto_accept_reason: SHIFT_AUTO_ACCEPT_POLICY_NOTE,
+      auto_accept_warning_sent_at: null,
+    });
+    return {
+      success: true,
+      data: updated,
+      message: 'This shift is inside the two-week cutoff and has been auto-accepted. Please contact Billy if you need to change it.',
+    };
+  }
+
+  const rejectedAt = now.toISOString();
+  const rejectionNote = parsed.data.note?.trim() || null;
+  await recordCalendarCancellation(admin, shift as Parameters<typeof recordCalendarCancellation>[1], 'Rejected by staff');
+
+  const openPayload = {
+    employee_id: null,
+    is_open_shift: true,
+    acceptance_status: 'rejected',
+    acceptance_decided_at: rejectedAt,
+    acceptance_decided_by: employee.employee_id,
+    acceptance_note: rejectionNote,
+    auto_accept_reason: null,
+    auto_accept_warning_sent_at: null,
+    published_at: rejectedAt,
+  };
+
+  const { data: updated, error: publishedUpdateError } = await admin
+    .from('rota_published_shifts')
+    .update(openPayload)
+    .eq('id', parsed.data.shiftId)
+    .eq('employee_id', employee.employee_id)
+    .select('*')
+    .maybeSingle();
+
+  if (publishedUpdateError) return { success: false, error: publishedUpdateError.message };
+
+  await admin
+    .from('rota_shifts')
+    .update({
+      employee_id: null,
+      is_open_shift: true,
+      acceptance_status: 'rejected',
+      acceptance_decided_at: rejectedAt,
+      acceptance_decided_by: employee.employee_id,
+      acceptance_note: rejectionNote,
+      auto_accept_reason: null,
+      auto_accept_warning_sent_at: null,
+      reassigned_from_id: employee.employee_id,
+      reassigned_at: rejectedAt,
+      reassigned_by: user.id,
+      reassignment_reason: rejectionNote ? `Rejected by staff: ${rejectionNote}` : 'Rejected by staff',
+    })
+    .eq('id', parsed.data.shiftId);
+
+  await recordShiftRejection(
+    admin,
+    shift as Parameters<typeof recordShiftRejection>[1],
+    {
+      employeeId: employee.employee_id,
+      rejectedAt,
+      rejectedBy: employee.employee_id,
+      note: rejectionNote,
+    },
+  );
+
+  const staffName = employeeDisplayName(employee);
+  const subject = `Shift rejected: ${staffName} on ${shift.shift_date}`;
+  let emailStatus: 'sent' | 'failed' = 'failed';
+  let emailError: string | null = null;
+  try {
+    const emailResult = await sendEmail({
+      to: MANAGER_SHIFT_EMAIL,
+      subject,
+      html: buildShiftRejectedManagerEmailHtml(shiftEmailSummary(shift, staffName), rejectionNote),
+    });
+    emailStatus = emailResult.success ? 'sent' : 'failed';
+    emailError = emailResult.success ? null : emailResult.error ?? null;
+  } catch (sendError) {
+    emailStatus = 'failed';
+    emailError = sendError instanceof Error ? sendError.message : String(sendError);
+  }
+
+  await admin.from('rota_email_log').insert({
+    email_type: 'shift_rejected',
+    entity_type: 'rota_shift',
+    entity_id: parsed.data.shiftId,
+    to_addresses: [MANAGER_SHIFT_EMAIL],
+    subject,
+    status: emailStatus,
+    error_message: emailError,
+    sent_by: user.id,
+  });
+
+  void logAuditEvent({
+    user_id: user.id,
+    operation_type: 'reject',
+    resource_type: 'rota_shift',
+    resource_id: parsed.data.shiftId,
+    operation_status: 'success',
+    old_values: { employee_id: employee.employee_id },
+    new_values: { employee_id: null, is_open_shift: true, acceptance_status: 'rejected' },
+  });
+
+  revalidatePath('/portal/shifts');
+  revalidatePath('/rota');
+  revalidatePath(`/employees/${employee.employee_id}`);
+  return { success: true, data: updated as RotaShift | null };
+}
+
+export async function requestOpenShift(input: z.infer<typeof PortalOpenShiftRequestSchema>): Promise<
+  { success: true; data: OpenShiftRequest } | { success: false; error: string }
+> {
+  const parsed = PortalOpenShiftRequestSchema.safeParse(input);
+  if (!parsed.success) return { success: false, error: 'Invalid shift request' };
+
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  const employee = await getOwnPortalEmployee(supabase);
+  if (!user || !employee) return { success: false, error: 'Unauthorized' };
+
+  const admin = createAdminClient();
+  const { data: shift, error: shiftError } = await admin
+    .from('rota_published_shifts')
+    .select('*')
+    .eq('id', parsed.data.shiftId)
+    .eq('is_open_shift', true)
+    .eq('status', 'scheduled')
+    .maybeSingle();
+
+  if (shiftError) return { success: false, error: shiftError.message };
+  if (!shift) return { success: false, error: 'Open shift not found' };
+
+  const { data: request, error } = await admin
+    .from('rota_open_shift_requests')
+    .insert({
+      shift_id: parsed.data.shiftId,
+      employee_id: employee.employee_id,
+      note: parsed.data.note?.trim() || null,
+    })
+    .select('*')
+    .single();
+
+  if (error) {
+    if (error.code === '23505') return { success: false, error: 'You have already requested this shift' };
+    return { success: false, error: error.message };
+  }
+
+  const staffName = employeeDisplayName(employee);
+  const subject = `Open shift request: ${staffName} on ${shift.shift_date}`;
+  let emailStatus: 'sent' | 'failed' = 'failed';
+  let emailError: string | null = null;
+  try {
+    const emailResult = await sendEmail({
+      to: MANAGER_SHIFT_EMAIL,
+      subject,
+      html: buildOpenShiftRequestManagerEmailHtml(
+        shiftEmailSummary(shift, staffName),
+        parsed.data.note?.trim() || null,
+      ),
+    });
+    emailStatus = emailResult.success ? 'sent' : 'failed';
+    emailError = emailResult.success ? null : emailResult.error ?? null;
+  } catch (sendError) {
+    emailStatus = 'failed';
+    emailError = sendError instanceof Error ? sendError.message : String(sendError);
+  }
+
+  await admin.from('rota_email_log').insert({
+    email_type: 'open_shift_requested',
+    entity_type: 'rota_shift',
+    entity_id: parsed.data.shiftId,
+    to_addresses: [MANAGER_SHIFT_EMAIL],
+    subject,
+    status: emailStatus,
+    error_message: emailError,
+    sent_by: user.id,
+  });
+
+  revalidatePath('/portal/shifts');
+  return { success: true, data: request as OpenShiftRequest };
+}
+
 // ---------------------------------------------------------------------------
 // Move an existing shift to a new employee / date (within same week)
 // ---------------------------------------------------------------------------
@@ -1079,7 +1935,7 @@ export async function moveShift(
 
   const { data: currentShift, error: shiftError } = await supabase
     .from('rota_shifts')
-    .select('week_id')
+    .select('week_id, employee_id, shift_date, status, start_time, is_open_shift')
     .eq('id', shiftId)
     .single();
 
@@ -1105,6 +1961,13 @@ export async function moveShift(
       employee_id: newEmployeeId,
       is_open_shift: newEmployeeId === null,
       shift_date: newShiftDate,
+      ...initialAcceptanceForShift({
+        employee_id: newEmployeeId,
+        is_open_shift: newEmployeeId === null,
+        status: currentShift.status,
+        shift_date: newShiftDate,
+        start_time: currentShift.start_time,
+      }),
     })
     .eq('id', shiftId)
     .select('*')
@@ -1125,6 +1988,11 @@ export async function moveShift(
     resource_type: 'rota_shift',
     resource_id: shiftId,
     operation_status: 'success',
+    old_values: {
+      employee_id: currentShift.employee_id,
+      shift_date: currentShift.shift_date,
+      is_open_shift: currentShift.is_open_shift,
+    },
     new_values: { employee_id: newEmployeeId, shift_date: newShiftDate },
   });
 
@@ -1193,6 +2061,13 @@ export async function autoPopulateWeekFromTemplates(
       unpaid_break_minutes: t.unpaid_break_minutes,
       department: t.department,
       is_overnight: false,
+      ...initialAcceptanceForShift({
+        employee_id: t.employee_id ?? null,
+        is_open_shift: !t.employee_id,
+        status: 'scheduled',
+        shift_date: date,
+        start_time: (t.start_time as string).slice(0, 5),
+      }),
       created_by: user?.id,
     });
   }
@@ -1297,6 +2172,13 @@ export async function addShiftsFromTemplates(
       unpaid_break_minutes: t.unpaid_break_minutes,
       department: t.department,
       is_overnight: false,
+      ...initialAcceptanceForShift({
+        employee_id: t.employee_id ?? null,
+        is_open_shift: !t.employee_id,
+        status: 'scheduled',
+        shift_date: sel.date,
+        start_time: (t.start_time as string).slice(0, 5),
+      }),
       created_by: user?.id,
     });
   }
@@ -1525,7 +2407,7 @@ export async function publishRotaWeek(weekId: string): Promise<
   // what was published, not in-progress edits.
   const { data: currentShifts } = await supabase
     .from('rota_shifts')
-    .select('id, week_id, employee_id, shift_date, start_time, end_time, unpaid_break_minutes, department, status, notes, is_overnight, is_open_shift, name')
+    .select('id, week_id, employee_id, shift_date, start_time, end_time, unpaid_break_minutes, department, status, notes, is_overnight, is_open_shift, name, acceptance_status, acceptance_decided_at, acceptance_decided_by, acceptance_note, auto_accept_reason, auto_accept_warning_sent_at')
     .eq('week_id', weekId)
     .neq('status', 'cancelled');
 
@@ -1541,13 +2423,101 @@ export async function publishRotaWeek(weekId: string): Promise<
   // For a re-publish, capture the previous snapshot BEFORE we overwrite it so we
   // can compute the per-employee diff and only email staff whose shifts changed.
   let previousPublishedShifts: DiffShiftRow[] = [];
+  let previousSnapshot: RotaShift[] = [];
   if (isRepublish) {
     const { data: prev } = await admin
       .from('rota_published_shifts')
-      .select('id, employee_id, shift_date, start_time, end_time, department, name, is_open_shift, status')
+      .select('id, week_id, employee_id, shift_date, start_time, end_time, unpaid_break_minutes, department, status, notes, is_overnight, is_open_shift, name, acceptance_status, acceptance_decided_at, acceptance_decided_by, acceptance_note, auto_accept_reason, auto_accept_warning_sent_at')
       .eq('week_id', weekId);
-    previousPublishedShifts = (prev ?? []) as DiffShiftRow[];
+    previousSnapshot = (prev ?? []) as RotaShift[];
+    previousPublishedShifts = previousSnapshot.map(s => ({
+      id: s.id,
+      employee_id: s.employee_id,
+      shift_date: s.shift_date,
+      start_time: s.start_time,
+      end_time: s.end_time,
+      department: s.department,
+      name: s.name,
+      is_open_shift: s.is_open_shift,
+      status: s.status,
+    }));
   }
+
+  const currentSnapshot = (currentShifts ?? []) as RotaShift[];
+  const previousById = new Map(previousSnapshot.map(s => [s.id, s]));
+  const currentById = new Map(currentSnapshot.map(s => [s.id, s]));
+
+  const scheduleChanged = (prev: RotaShift, curr: RotaShift): boolean => (
+    prev.employee_id !== curr.employee_id ||
+    prev.shift_date !== curr.shift_date ||
+    prev.start_time !== curr.start_time ||
+    prev.end_time !== curr.end_time ||
+    prev.unpaid_break_minutes !== curr.unpaid_break_minutes ||
+    prev.department !== curr.department ||
+    prev.is_overnight !== curr.is_overnight ||
+    prev.is_open_shift !== curr.is_open_shift ||
+    prev.status !== curr.status
+  );
+
+  await Promise.all(previousSnapshot.map(async prev => {
+    if (!prev.employee_id || prev.is_open_shift || prev.status !== 'scheduled') return;
+    const curr = currentById.get(prev.id);
+    if (curr && curr.employee_id === prev.employee_id && !curr.is_open_shift && curr.status === 'scheduled') return;
+    await recordCalendarCancellation(admin, prev, curr ? 'Shift reassigned or opened' : 'Shift removed');
+  }));
+
+  const rowsToPublish = currentSnapshot.map(shift => {
+    const prev = previousById.get(shift.id);
+    if (shift.is_open_shift) {
+      const openAcceptance = shift.acceptance_status === 'rejected'
+        ? {
+            acceptance_status: 'rejected' as const,
+            acceptance_decided_at: shift.acceptance_decided_at ?? prev?.acceptance_decided_at ?? null,
+            acceptance_decided_by: shift.acceptance_decided_by ?? prev?.acceptance_decided_by ?? null,
+            acceptance_note: shift.acceptance_note ?? prev?.acceptance_note ?? null,
+            auto_accept_reason: null,
+            auto_accept_warning_sent_at: null,
+          }
+        : {
+            acceptance_status: null,
+            acceptance_decided_at: null,
+            acceptance_decided_by: null,
+            acceptance_note: null,
+            auto_accept_reason: null,
+            auto_accept_warning_sent_at: null,
+          };
+
+      return {
+        ...shift,
+        ...openAcceptance,
+        published_at: now,
+      };
+    }
+
+    const shouldResetAcceptance = !prev || scheduleChanged(prev, shift);
+    const acceptance = shouldResetAcceptance
+      ? initialAcceptanceForShift({
+          employee_id: shift.employee_id,
+          is_open_shift: shift.is_open_shift,
+          status: shift.status,
+          shift_date: shift.shift_date,
+          start_time: shift.start_time,
+        })
+      : {
+          acceptance_status: shift.acceptance_status ?? prev.acceptance_status ?? null,
+          acceptance_decided_at: shift.acceptance_decided_at ?? prev.acceptance_decided_at ?? null,
+          acceptance_decided_by: shift.acceptance_decided_by ?? prev.acceptance_decided_by ?? null,
+          acceptance_note: shift.acceptance_note ?? prev.acceptance_note ?? null,
+          auto_accept_reason: shift.auto_accept_reason ?? prev.auto_accept_reason ?? null,
+          auto_accept_warning_sent_at: shift.auto_accept_warning_sent_at ?? prev.auto_accept_warning_sent_at ?? null,
+        };
+
+    return {
+      ...shift,
+      ...acceptance,
+      published_at: now,
+    };
+  });
 
   const { error: deleteError } = await admin
     .from('rota_published_shifts')
@@ -1555,10 +2525,10 @@ export async function publishRotaWeek(weekId: string): Promise<
     .eq('week_id', weekId);
   if (deleteError) return { success: false, error: deleteError.message };
 
-  if (currentShifts?.length) {
+  if (rowsToPublish.length) {
     const { error: insertError } = await admin
       .from('rota_published_shifts')
-      .insert(currentShifts.map(s => ({ ...s, published_at: now })));
+      .insert(rowsToPublish);
     if (insertError) return { success: false, error: insertError.message };
   }
 
@@ -1589,7 +2559,7 @@ export async function publishRotaWeek(weekId: string): Promise<
   // On re-publish: only staff whose shifts changed get an update email.
   if (weekRow?.week_start) {
     if (isRepublish) {
-      const newShiftsForDiff: DiffShiftRow[] = (currentShifts ?? []).map(s => ({
+      const newShiftsForDiff: DiffShiftRow[] = rowsToPublish.map(s => ({
         id: s.id,
         employee_id: s.employee_id,
         shift_date: s.shift_date,

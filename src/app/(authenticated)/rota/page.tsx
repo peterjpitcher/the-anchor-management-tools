@@ -2,6 +2,7 @@ import { checkUserPermission } from '@/app/actions/rbac';
 import { redirect } from 'next/navigation';
 import { generateRotaFeedToken } from '@/lib/portal/calendar-token';
 import { createClient } from '@/lib/supabase/server';
+import { createAdminClient } from '@/lib/supabase/admin';
 import { PageLayout } from '@/ds';
 import { LinkButton } from '@/ds';
 import { Cog6ToothIcon } from '@heroicons/react/24/outline';
@@ -12,6 +13,9 @@ import {
   getActiveEmployeesForRota,
   getLeaveDaysForWeek,
   getRotaSummaryForWeek,
+  type OpenShiftRequestSummary,
+  type RejectedShiftRecord,
+  type ShiftAuditTrailEntry,
 } from '@/app/actions/rota';
 import { getShiftTemplates } from '@/app/actions/rota-templates';
 import { getDepartments } from '@/app/actions/budgets';
@@ -92,7 +96,7 @@ export default async function RotaPage({ searchParams }: RotaPageProps) {
     await Promise.all([
       getOrCreateRotaWeek(weekStart),
       getActiveEmployeesForRota(weekStart),
-      getWeekShifts(weekStart),
+      getWeekShifts(weekStart, user.id),
       getShiftTemplates(),
       getLeaveDaysForWeek(weekStart),
       getRotaWeekDayInfo(weekStart, weekEnd),
@@ -110,9 +114,20 @@ export default async function RotaPage({ searchParams }: RotaPageProps) {
     );
   }
 
+  if (!shiftsResult.success) {
+    return (
+      <PageLayout
+        title="Rota"
+        subtitle="Weekly rota planning"
+        navItems={rotaNavItems}
+        error={shiftsResult.error ?? 'Failed to load shifts. Please try again.'}
+      />
+    );
+  }
+
   const week = weekResult.data;
   const employees = employeesResult.success ? employeesResult.data : [];
-  const shifts = shiftsResult.success ? shiftsResult.data : [];
+  const shifts = shiftsResult.data;
   const templates = templatesResult.success ? templatesResult.data.filter(t => t.is_active) : [];
   const leaveDays = leaveDaysResult.success ? leaveDaysResult.data : [];
   const departments = deptResult.success ? deptResult.data : [];
@@ -122,6 +137,86 @@ export default async function RotaPage({ searchParams }: RotaPageProps) {
   const canViewSpend = summaryResult.success ? summaryResult.canViewSpend : false;
   const canViewSalesTargets = summaryResult.success ? summaryResult.canViewSalesTargets : false;
   const canEditSalesTargets = summaryResult.success ? summaryResult.canEditSalesTargets : false;
+  const openShiftIds = shifts.filter(shift => shift.is_open_shift).map(shift => shift.id);
+  const { data: openShiftRequestRows } = openShiftIds.length
+    ? await supabase
+        .from('rota_open_shift_requests')
+        .select('id, shift_id, employee_id, note, status, requested_at, employees(first_name, last_name)')
+        .in('shift_id', openShiftIds)
+        .order('requested_at', { ascending: false })
+    : { data: [] };
+
+  type OpenShiftRequestRow = {
+    id: string;
+    shift_id: string;
+    employee_id: string;
+    note: string | null;
+    status: OpenShiftRequestSummary['status'];
+    requested_at: string;
+    employees: { first_name: string | null; last_name: string | null } | { first_name: string | null; last_name: string | null }[] | null;
+  };
+
+  const openShiftRequests: OpenShiftRequestSummary[] = ((openShiftRequestRows ?? []) as OpenShiftRequestRow[]).map((row) => {
+    const employeeRow = Array.isArray(row.employees) ? row.employees[0] : row.employees;
+    const employeeName = [employeeRow?.first_name, employeeRow?.last_name].filter(Boolean).join(' ') || 'Unknown staff member';
+    return {
+      id: row.id,
+      shift_id: row.shift_id,
+      employee_id: row.employee_id,
+      employee_name: employeeName,
+      note: row.note ?? null,
+      status: row.status,
+      requested_at: row.requested_at,
+    };
+  });
+  const shiftIds = shifts.map(shift => shift.id);
+  const admin = createAdminClient();
+  const [{ data: auditRows }, { data: rejectedShiftRows }] = await Promise.all([
+    shiftIds.length
+      ? admin
+          .from('audit_logs')
+          .select('id, created_at, user_email, user_id, operation_type, resource_id, old_values, new_values, additional_info')
+          .eq('resource_type', 'rota_shift')
+          .eq('operation_status', 'success')
+          .in('resource_id', shiftIds)
+          .order('created_at', { ascending: false })
+          .limit(500)
+      : Promise.resolve({ data: [] }),
+    admin
+      .from('rota_shift_rejections')
+      .select('id, shift_id, employee_id, week_id, shift_date, start_time, end_time, unpaid_break_minutes, department, notes, is_overnight, name, rejection_note, rejected_at, rejected_by, created_at')
+      .gte('shift_date', weekStart)
+      .lte('shift_date', weekEnd)
+      .order('shift_date', { ascending: true })
+      .order('start_time', { ascending: true }),
+  ]);
+
+  type AuditRow = {
+    id: string;
+    created_at: string;
+    user_email: string | null;
+    user_id: string | null;
+    operation_type: string;
+    resource_id: string | null;
+    old_values: Record<string, unknown> | null;
+    new_values: Record<string, unknown> | null;
+    additional_info: Record<string, unknown> | null;
+  };
+
+  const shiftAuditTrail: ShiftAuditTrailEntry[] = ((auditRows ?? []) as AuditRow[])
+    .filter(row => Boolean(row.resource_id))
+    .map(row => ({
+      id: row.id,
+      shift_id: row.resource_id!,
+      created_at: row.created_at,
+      user_email: row.user_email,
+      user_id: row.user_id,
+      operation_type: row.operation_type,
+      old_values: row.old_values,
+      new_values: row.new_values,
+      additional_info: row.additional_info,
+    }));
+  const rejectedShifts = (rejectedShiftRows ?? []) as RejectedShiftRecord[];
 
   // Per-user HMAC token — no global secret reaches the browser
   const feedToken = generateRotaFeedToken(user.id);
@@ -168,6 +263,9 @@ export default async function RotaPage({ searchParams }: RotaPageProps) {
         canViewSpend={canViewSpend}
         canViewSalesTargets={canViewSalesTargets}
         canEditSalesTargets={canEditSalesTargets}
+        openShiftRequests={openShiftRequests}
+        shiftAuditTrail={shiftAuditTrail}
+        rejectedShifts={rejectedShifts}
       />
     </PageLayout>
   );

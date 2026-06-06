@@ -6,7 +6,7 @@ export const dynamic = 'force-dynamic';
 // No authentication required — accessible on the till iPad.
 export default function TimeclockLayout({ children }: { children: ReactNode }) {
   return (
-    <div className="min-h-screen bg-gray-900 text-white">
+    <div className="timeclock-shell min-h-screen bg-gray-900 text-white">
       {children}
     </div>
   );
