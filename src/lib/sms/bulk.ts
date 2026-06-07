@@ -201,7 +201,7 @@ export async function sendBulkSms(request: BulkSmsRequest): Promise<BulkSmsResul
     if (eventId) {
       const { data: event, error: eventError } = await supabase
         .from('events')
-        .select('name, date, time')
+        .select('name, date, time, promo_sms_enabled')
         .eq('id', eventId)
         .maybeSingle()
 
@@ -214,6 +214,13 @@ export async function sendBulkSms(request: BulkSmsRequest): Promise<BulkSmsResul
 
       if (!event) {
         return { success: false, error: 'Event not found for bulk SMS context' }
+      }
+
+      if ((event as { promo_sms_enabled?: boolean | null }).promo_sms_enabled === false) {
+        logger.warn('Bulk SMS blocked because promotional SMS is disabled for event', {
+          metadata: { bulkJobId, eventId },
+        })
+        return { success: false, error: 'Promotional SMS is disabled for this event' }
       }
 
       eventDetails = { name: event.name, date: event.date, time: event.time }

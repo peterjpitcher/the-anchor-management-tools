@@ -144,6 +144,61 @@ describe('bulk SMS marketing eligibility', () => {
     expect(sendSMS).not.toHaveBeenCalled()
   })
 
+  it('blocks event-scoped bulk SMS when promotional SMS is disabled for the event', async () => {
+    const customersIn = vi.fn().mockResolvedValue({
+      data: [
+        {
+          id: 'customer-1',
+          first_name: 'Alex',
+          last_name: null,
+          mobile_e164: '+447700900111',
+          mobile_number: '+447700900111',
+          sms_opt_in: true,
+          marketing_sms_opt_in: true,
+          sms_status: 'active',
+        },
+      ],
+      error: null,
+    })
+    const customersSelect = vi.fn().mockReturnValue({ in: customersIn })
+    const eventMaybeSingle = vi.fn().mockResolvedValue({
+      data: {
+        name: 'World Cup 2026: England vs Croatia (Group L)',
+        date: '2026-06-17',
+        time: '21:00',
+        promo_sms_enabled: false,
+      },
+      error: null,
+    })
+    const eventEq = vi.fn().mockReturnValue({ maybeSingle: eventMaybeSingle })
+    const eventSelect = vi.fn().mockReturnValue({ eq: eventEq })
+
+    ;(createAdminClient as unknown as vi.Mock).mockReturnValue({
+      from: vi.fn((table: string) => {
+        if (table === 'customers') {
+          return { select: customersSelect }
+        }
+        if (table === 'events') {
+          return { select: eventSelect }
+        }
+        throw new Error(`Unexpected table: ${table}`)
+      }),
+    })
+
+    const result = await sendBulkSms({
+      customerIds: ['customer-1'],
+      message: 'England match tonight',
+      eventId: 'event-world-cup',
+    })
+
+    expect(result).toEqual({
+      success: false,
+      error: 'Promotional SMS is disabled for this event',
+    })
+    expect(eventSelect).toHaveBeenCalledWith('name, date, time, promo_sms_enabled')
+    expect(sendSMS).not.toHaveBeenCalled()
+  })
+
   it('fails closed when customer lookup errors', async () => {
     const customersIn = vi.fn().mockResolvedValue({
       data: null,
@@ -173,4 +228,3 @@ describe('bulk SMS marketing eligibility', () => {
     expect(sendSMS).not.toHaveBeenCalled()
   })
 })
-

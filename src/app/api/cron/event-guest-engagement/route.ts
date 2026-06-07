@@ -54,16 +54,21 @@ const EVENT_ENGAGEMENT_TEMPLATE_KEYS = [
   TEMPLATE_REVIEW_FOLLOWUP,
   TEMPLATE_TABLE_REVIEW_FOLLOWUP
 ]
-const EVENT_PROMO_LOOKAHEAD_DAYS = parsePositiveIntEnv('EVENT_PROMO_LOOKAHEAD_DAYS', 14)
-const MAX_EVENT_PROMOS_PER_RUN = parsePositiveIntEnv('MAX_EVENT_PROMOS_PER_RUN', 100)
-const EVENT_PROMO_HOURLY_SEND_GUARD_LIMIT = parsePositiveIntEnv('EVENT_PROMO_HOURLY_SEND_GUARD_LIMIT', 120)
+const EVENT_PROMO_INTRO_DAYS_AHEAD = parsePositiveIntEnv('EVENT_PROMO_INTRO_DAYS_AHEAD', 7)
+const MAX_EVENT_PROMOS_PER_RUN = parsePositiveIntEnv('MAX_EVENT_PROMOS_PER_RUN', 30)
+const EVENT_PROMO_MAX_RECIPIENTS_PER_EVENT = parsePositiveIntEnv('EVENT_PROMO_MAX_RECIPIENTS_PER_EVENT', 30)
+const EVENT_PROMO_HOURLY_SEND_GUARD_LIMIT = parsePositiveIntEnv('EVENT_PROMO_HOURLY_SEND_GUARD_LIMIT', 30)
 const EVENT_PROMO_TEMPLATE_KEYS = [
+  'event_cross_promo_7d',
+  'event_cross_promo_7d_paid',
+  'event_general_promo_7d',
+  'event_general_promo_7d_paid',
   'event_cross_promo_14d',
   'event_cross_promo_14d_paid',
   'event_general_promo_14d',
   'event_general_promo_14d_paid',
-  'event_reminder_promo_7d',
-  'event_reminder_promo_7d_paid',
+  'event_reminder_promo_24h',
+  'event_reminder_promo_24h_paid',
   'event_reminder_promo_3d',
   'event_reminder_promo_3d_paid',
 ] as const
@@ -215,6 +220,17 @@ function allowEventEngagementSendGuardSchemaGaps(): boolean {
 
 function pad2(value: number): string {
   return String(value).padStart(2, '0')
+}
+
+function getLondonDateString(daysAhead = 0, now: Date = new Date()): string {
+  const target = new Date(now.getTime() + daysAhead * 24 * 60 * 60 * 1000)
+  const londonDate = toZonedTime(target, LONDON_TIMEZONE)
+
+  return [
+    londonDate.getFullYear(),
+    pad2(londonDate.getMonth() + 1),
+    pad2(londonDate.getDate())
+  ].join('-')
 }
 
 function getLondonRunKey(now: Date = new Date()): string {
@@ -1821,18 +1837,15 @@ type UpcomingPromoEvent = {
 async function loadUpcomingEventsForPromo(
   supabase: ReturnType<typeof createAdminClient>
 ): Promise<UpcomingPromoEvent[]> {
-  const nowIso = new Date().toISOString()
-  const windowEndIso = new Date(
-    Date.now() + EVENT_PROMO_LOOKAHEAD_DAYS * 24 * 60 * 60 * 1000
-  ).toISOString()
+  const introDate = getLondonDateString(EVENT_PROMO_INTRO_DAYS_AHEAD)
 
   const { data, error } = await supabase
     .from('events')
     .select('id, name, date, payment_mode, category_id')
     .eq('booking_open', true)
     .eq('promo_sms_enabled', true)
-    .gte('date', nowIso.slice(0, 10))
-    .lte('date', windowEndIso.slice(0, 10))
+    .eq('event_status', 'scheduled')
+    .eq('date', introDate)
     .not('category_id', 'is', null)
     .order('date', { ascending: true })
     .limit(50)
@@ -1849,13 +1862,8 @@ async function loadFollowUpEvents(
   daysAheadMin: number,
   daysAheadMax: number
 ): Promise<UpcomingPromoEvent[]> {
-  const nowMs = Date.now()
-  const windowStartIso = new Date(nowMs + daysAheadMin * 24 * 60 * 60 * 1000)
-    .toISOString()
-    .slice(0, 10)
-  const windowEndIso = new Date(nowMs + daysAheadMax * 24 * 60 * 60 * 1000)
-    .toISOString()
-    .slice(0, 10)
+  const windowStartIso = getLondonDateString(daysAheadMin)
+  const windowEndIso = getLondonDateString(daysAheadMax)
 
   const { data, error } = await supabase
     .from('events')
@@ -1878,7 +1886,7 @@ async function loadFollowUpEvents(
 
 async function processFollowUps(
   supabase: ReturnType<typeof createAdminClient>,
-  touchType: '7d' | '3d',
+  touchType: '24h',
   daysAheadMin: number,
   daysAheadMax: number,
   minGapDays: number,
@@ -1971,9 +1979,17 @@ async function processFollowUps(
 
 async function processCrossPromo(
   supabase: ReturnType<typeof createAdminClient>,
-  runStartMs: number
+  runStartMs: number,
+  remainingBudget: { value: number }
 ): Promise<{ sent: number; skipped: number; errors: number; eventsProcessed: number }> {
   const result = { sent: 0, skipped: 0, errors: 0, eventsProcessed: 0 }
+
+  if (remainingBudget.value <= 0) {
+    logger.info('Cross-promo stage skipped: shared promo budget exhausted', {
+      metadata: { maxPerRun: MAX_EVENT_PROMOS_PER_RUN }
+    })
+    return result
+  }
 
   // Guard: skip if too close to the Vercel function timeout (300s)
   const elapsedSeconds = (Date.now() - runStartMs) / 1000
@@ -2014,7 +2030,7 @@ async function processCrossPromo(
   const events = await loadUpcomingEventsForPromo(supabase)
 
   for (const event of events) {
-    if (result.sent >= MAX_EVENT_PROMOS_PER_RUN) {
+    if (remainingBudget.value <= 0 || result.sent >= MAX_EVENT_PROMOS_PER_RUN) {
       logger.info('Cross-promo: per-run cap reached', {
         metadata: { maxPerRun: MAX_EVENT_PROMOS_PER_RUN, eventsProcessed: result.eventsProcessed }
       })
@@ -2027,12 +2043,16 @@ async function processCrossPromo(
       date: event.date,
       payment_mode: event.payment_mode ?? 'free',
       category_id: event.category_id,
+    }, {
+      startTime: runStartMs,
+      maxRecipients: Math.min(remainingBudget.value, EVENT_PROMO_MAX_RECIPIENTS_PER_EVENT),
     })
 
     result.sent += eventResult.sent
     result.skipped += eventResult.skipped
     result.errors += eventResult.errors
     result.eventsProcessed += 1
+    remainingBudget.value -= eventResult.sent
   }
 
   return result
@@ -2146,17 +2166,14 @@ export async function GET(request: NextRequest) {
     const tableReviews = await processTableReviewFollowups(supabase, tableBookings, appBaseUrl, safetyState)
     const tableCompletion = await processTableReviewWindowCompletion(supabase)
 
-    // Stage 3: Multi-touch follow-ups + cross-promotion (marketing — runs last, after all transactional stages)
+    // Stage 3: Promotional SMS (marketing — runs last, after all transactional stages)
     const promoBudget = { value: MAX_EVENT_PROMOS_PER_RUN }
 
-    // 3d follow-ups (highest priority)
-    const followUp3d = await processFollowUps(supabase, '3d', 2, 4, 7, runStartMs, promoBudget)
+    // 24h follow-ups for customers who received the 7d intro and have not booked
+    const followUp24h = await processFollowUps(supabase, '24h', 1, 1, 1, runStartMs, promoBudget)
 
-    // 7d follow-ups
-    const followUp7d = await processFollowUps(supabase, '7d', 6, 8, 3, runStartMs, promoBudget)
-
-    // 14d new intros (lowest priority)
-    const crossPromo = await processCrossPromo(supabase, runStartMs)
+    // 7d new intros
+    const crossPromo = await processCrossPromo(supabase, runStartMs, promoBudget)
 
     // Cleanup: remove sms_promo_context rows older than 30 days
     await supabase.from('sms_promo_context' as never)
@@ -2177,8 +2194,7 @@ export async function GET(request: NextRequest) {
       tableReviews,
       tableCompletion,
       marketing,
-      followUp3d,
-      followUp7d,
+      followUp24h,
       crossPromo,
       runKey,
       guard,

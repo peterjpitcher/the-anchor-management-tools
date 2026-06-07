@@ -136,6 +136,16 @@ function normalizeSlugValue(value: string): string {
     .replace(/^-+|-+$/g, '')
 }
 
+function isWorldCup2026EventName(value: string | null | undefined): boolean {
+  const normalized = typeof value === 'string' ? value.trim().toLowerCase() : ''
+  return normalized.startsWith('world cup 2026:') || normalized.includes('fifa world cup 2026')
+}
+
+export function isWorldCup2026Event(input: { name?: string | null; slug?: string | null }): boolean {
+  const normalizedSlug = typeof input.slug === 'string' ? normalizeSlugValue(input.slug) : ''
+  return normalizedSlug.startsWith('world-cup-2026-') || isWorldCup2026EventName(input.name)
+}
+
 export function getPublishValidationIssues(input: PublishValidationInput): PublishValidationResult {
   if (!isPublishedStatus(input.status || null)) {
     return { errors: [], warnings: [] }
@@ -415,9 +425,12 @@ export class EventService {
     }
 
     // Prepare payload
+    const forcePromoSmsDisabled = isWorldCup2026Event({ name: input.name, slug })
+
     const eventData = {
       ...input,
       slug,
+      ...(forcePromoSmsDisabled ? { promo_sms_enabled: false } : {}),
       // Ensure arrays are not undefined
       highlights: input.highlights || [],
       keywords: input.keywords || [],
@@ -554,9 +567,15 @@ export class EventService {
     }
 
     // Prepare payload
+    const forcePromoSmsDisabled = isWorldCup2026Event({
+      name: nextName,
+      slug: slug ?? currentEvent.slug,
+    })
+
     const eventData = {
       ...input,
-      slug // might be undefined, handled by COALESCE in SQL
+      slug, // might be undefined, handled by COALESCE in SQL
+      ...(forcePromoSmsDisabled ? { promo_sms_enabled: false } : {})
     };
 
     // Execute RPC

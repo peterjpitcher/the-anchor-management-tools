@@ -192,9 +192,10 @@ describe('sendCrossPromoForEvent', () => {
       expect(body).toContain('Alice')
       expect(body).toContain('Quiz Night')
       expect(body).toContain('Saturday, 18 April 2026')
-      expect(body).toContain('reply with how many seats')
+      expect(body).toContain('Reply with seats')
+      expect(body).toContain('Reply STOP to opt out')
       expect(body).not.toContain('http') // free template has no link
-      expect(options.metadata?.template_key).toBe('event_cross_promo_14d')
+      expect(options.metadata?.template_key).toBe('event_cross_promo_7d')
     })
 
     it('does not call generateSingleLink for free events', async () => {
@@ -220,7 +221,7 @@ describe('sendCrossPromoForEvent', () => {
           customer_id: AUDIENCE_ROW.customer_id,
           phone_number: AUDIENCE_ROW.phone_number,
           event_id: FREE_EVENT.id,
-          template_key: 'event_cross_promo_14d',
+          template_key: 'event_cross_promo_7d',
           message_id: 'msg-123',
           booking_created: false,
         })
@@ -255,8 +256,9 @@ describe('sendCrossPromoForEvent', () => {
 
       const [, body, options] = mockSendSMS.mock.calls[0]
       expect(body).toContain('https://the-anchor.pub/s/spABC123')
+      expect(body).toContain('Reply STOP to opt out')
       expect(body).not.toContain('reply with how many seats')
-      expect(options.metadata?.template_key).toBe('event_cross_promo_14d_paid')
+      expect(options.metadata?.template_key).toBe('event_cross_promo_7d_paid')
     })
 
     it('generates the short link only once regardless of audience size', async () => {
@@ -352,7 +354,7 @@ describe('sendCrossPromoForEvent', () => {
   })
 
   describe('general audience — free event', () => {
-    it('sends a warm general promo with last event name referenced', async () => {
+    it('sends a broad general promo without referencing the last event name', async () => {
       const db = buildDbMock({ audienceRows: [GENERAL_AUDIENCE_ROW] })
       mockCreateAdminClient.mockReturnValue(db as unknown as ReturnType<typeof createAdminClient>)
       mockSendSMS.mockResolvedValue(makeSmsSuccess() as Awaited<ReturnType<typeof sendSMS>>)
@@ -365,15 +367,17 @@ describe('sendCrossPromoForEvent', () => {
       const [to, body, options] = mockSendSMS.mock.calls[0]
       expect(to).toBe(GENERAL_AUDIENCE_ROW.phone_number)
       expect(body).toContain('Bob')
-      expect(body).toContain('Drag Bingo')
+      expect(body).not.toContain('Drag Bingo')
+      expect(body).not.toContain('Had a great time at')
       expect(body).toContain('Quiz Night')
       expect(body).toContain('Saturday, 18 April 2026')
-      expect(body).toContain('reply with how many seats')
+      expect(body).toContain('Reply with seats')
+      expect(body).toContain('Reply STOP to opt out')
       expect(body).not.toContain('http')
-      expect(options.metadata?.template_key).toBe('event_general_promo_14d')
+      expect(options.metadata?.template_key).toBe('event_general_promo_7d')
     })
 
-    it('falls back to "one of our events" when last_event_name is null', async () => {
+    it('does not mention a placeholder event when last_event_name is null', async () => {
       const db = buildDbMock({ audienceRows: [GENERAL_AUDIENCE_ROW_NO_EVENT_NAME] })
       mockCreateAdminClient.mockReturnValue(db as unknown as ReturnType<typeof createAdminClient>)
       mockSendSMS.mockResolvedValue(makeSmsSuccess() as Awaited<ReturnType<typeof sendSMS>>)
@@ -381,7 +385,7 @@ describe('sendCrossPromoForEvent', () => {
       await sendCrossPromoForEvent(FREE_EVENT)
 
       const [, body] = mockSendSMS.mock.calls[0]
-      expect(body).toContain('one of our events')
+      expect(body).not.toContain('one of our events')
       expect(body).not.toContain('null')
     })
   })
@@ -412,10 +416,12 @@ describe('sendCrossPromoForEvent', () => {
       expect(result.sent).toBe(1)
 
       const [, body, options] = mockSendSMS.mock.calls[0]
-      expect(body).toContain('Drag Bingo')
+      expect(body).not.toContain('Drag Bingo')
+      expect(body).not.toContain('Had a great time at')
       expect(body).toContain('https://the-anchor.pub/s/spABC123')
+      expect(body).toContain('Reply STOP to opt out')
       expect(body).not.toContain('reply with how many seats')
-      expect(options.metadata?.template_key).toBe('event_general_promo_14d_paid')
+      expect(options.metadata?.template_key).toBe('event_general_promo_7d_paid')
     })
   })
 
@@ -433,18 +439,18 @@ describe('sendCrossPromoForEvent', () => {
 
       // First call — category match
       const [, body1, opts1] = mockSendSMS.mock.calls[0]
-      expect(opts1.metadata?.template_key).toBe('event_cross_promo_14d')
+      expect(opts1.metadata?.template_key).toBe('event_cross_promo_7d')
       expect(body1).toContain('Alice')
 
       // Second call — general recent
       const [, body2, opts2] = mockSendSMS.mock.calls[1]
-      expect(opts2.metadata?.template_key).toBe('event_general_promo_14d')
+      expect(opts2.metadata?.template_key).toBe('event_general_promo_7d')
       expect(body2).toContain('Bob')
-      expect(body2).toContain('Drag Bingo')
+      expect(body2).not.toContain('Drag Bingo')
     })
   })
 
-  describe('promo_sequence insert from 14d flow', () => {
+  describe('promo_sequence insert from intro flow', () => {
     it('inserts a promo_sequence row after successful send', async () => {
       const db = buildDbMock()
       mockCreateAdminClient.mockReturnValue(db as unknown as ReturnType<typeof createAdminClient>)
@@ -522,7 +528,7 @@ describe('hasReachedDailyPromoLimit', () => {
     expect(result).toBe(true)
   })
 
-  it('returns false (allow send) when the query errors', async () => {
+  it('returns true (block send) when the query errors', async () => {
     const db = buildDbMock()
     db.gte.mockReturnValue(Promise.resolve({ count: null, error: { message: 'db error' } }))
 
@@ -530,7 +536,7 @@ describe('hasReachedDailyPromoLimit', () => {
       db as unknown as Parameters<typeof hasReachedDailyPromoLimit>[0],
       'cust-uuid-001'
     )
-    expect(result).toBe(false)
+    expect(result).toBe(true)
   })
 })
 
@@ -549,15 +555,15 @@ describe('sendFollowUpForEvent', () => {
     vi.clearAllMocks()
   })
 
-  describe('7d free event follow-up', () => {
-    it('sends a short reminder with reply-to-book', async () => {
+  describe('24h free event follow-up', () => {
+    it('sends a compliant final reminder with reply-to-book', async () => {
       const db = buildDbMock()
       mockCreateAdminClient.mockReturnValue(db as unknown as ReturnType<typeof createAdminClient>)
       mockSendSMS.mockResolvedValue(makeSmsSuccess() as Awaited<ReturnType<typeof sendSMS>>)
 
       const result = await sendFollowUpForEvent(
         { id: FREE_EVENT.id, name: FREE_EVENT.name, date: FREE_EVENT.date, payment_mode: FREE_EVENT.payment_mode },
-        '7d',
+        '24h',
         [FOLLOW_UP_RECIPIENT]
       )
 
@@ -565,35 +571,15 @@ describe('sendFollowUpForEvent', () => {
       const [, body, options] = mockSendSMS.mock.calls[0]
       expect(body).toContain('Dave')
       expect(body).toContain('Quiz Night')
-      expect(body).toContain('just a week away')
-      expect(body).toContain('Reply with how many seats')
-      expect(options.metadata?.template_key).toBe('event_reminder_promo_7d')
+      expect(body).toContain('is tomorrow')
+      expect(body).toContain('Reply with seats')
+      expect(body).toContain('Reply STOP to opt out')
+      expect(options.metadata?.template_key).toBe('event_reminder_promo_24h')
     })
   })
 
-  describe('3d free event follow-up', () => {
-    it('sends a last-chance reminder with weekday name', async () => {
-      const db = buildDbMock()
-      mockCreateAdminClient.mockReturnValue(db as unknown as ReturnType<typeof createAdminClient>)
-      mockSendSMS.mockResolvedValue(makeSmsSuccess() as Awaited<ReturnType<typeof sendSMS>>)
-
-      const result = await sendFollowUpForEvent(
-        { id: FREE_EVENT.id, name: FREE_EVENT.name, date: FREE_EVENT.date, payment_mode: FREE_EVENT.payment_mode },
-        '3d',
-        [FOLLOW_UP_RECIPIENT]
-      )
-
-      expect(result.sent).toBe(1)
-      const [, body, options] = mockSendSMS.mock.calls[0]
-      expect(body).toContain('Dave')
-      expect(body).toContain('Quiz Night')
-      expect(body).toContain('reply with how many and you\'re in')
-      expect(options.metadata?.template_key).toBe('event_reminder_promo_3d')
-    })
-  })
-
-  describe('7d paid event follow-up', () => {
-    it('sends a reminder with booking link', async () => {
+  describe('24h paid event follow-up', () => {
+    it('sends a compliant final reminder with booking link', async () => {
       const db = buildDbMock()
       mockCreateAdminClient.mockReturnValue(db as unknown as ReturnType<typeof createAdminClient>)
       mockSendSMS.mockResolvedValue(makeSmsSuccess() as Awaited<ReturnType<typeof sendSMS>>)
@@ -605,32 +591,7 @@ describe('sendFollowUpForEvent', () => {
 
       const result = await sendFollowUpForEvent(
         { id: PAID_EVENT.id, name: PAID_EVENT.name, date: PAID_EVENT.date, payment_mode: PAID_EVENT.payment_mode },
-        '7d',
-        [FOLLOW_UP_RECIPIENT]
-      )
-
-      expect(result.sent).toBe(1)
-      const [, body, options] = mockSendSMS.mock.calls[0]
-      expect(body).toContain('https://the-anchor.pub/s/spABC123')
-      expect(body).not.toContain('reply with how many')
-      expect(options.metadata?.template_key).toBe('event_reminder_promo_7d_paid')
-    })
-  })
-
-  describe('3d paid event follow-up', () => {
-    it('sends a last-chance message with booking link', async () => {
-      const db = buildDbMock()
-      mockCreateAdminClient.mockReturnValue(db as unknown as ReturnType<typeof createAdminClient>)
-      mockSendSMS.mockResolvedValue(makeSmsSuccess() as Awaited<ReturnType<typeof sendSMS>>)
-      mockGenerateSingleLink.mockResolvedValue({
-        id: 'link-001', channel: 'sms_promo', label: 'SMS Promo', type: 'digital',
-        shortCode: 'spABC123', shortUrl: 'https://the-anchor.pub/s/spABC123',
-        destinationUrl: 'https://www.the-anchor.pub/events/comedy-night', utm: {},
-      })
-
-      const result = await sendFollowUpForEvent(
-        { id: PAID_EVENT.id, name: PAID_EVENT.name, date: PAID_EVENT.date, payment_mode: PAID_EVENT.payment_mode },
-        '3d',
+        '24h',
         [FOLLOW_UP_RECIPIENT]
       )
 
@@ -638,7 +599,8 @@ describe('sendFollowUpForEvent', () => {
       const [, body, options] = mockSendSMS.mock.calls[0]
       expect(body).toContain('Last chance to grab seats')
       expect(body).toContain('https://the-anchor.pub/s/spABC123')
-      expect(options.metadata?.template_key).toBe('event_reminder_promo_3d_paid')
+      expect(body).toContain('Reply STOP to opt out')
+      expect(options.metadata?.template_key).toBe('event_reminder_promo_24h_paid')
     })
   })
 
@@ -649,7 +611,7 @@ describe('sendFollowUpForEvent', () => {
 
     await sendFollowUpForEvent(
       { id: FREE_EVENT.id, name: FREE_EVENT.name, date: FREE_EVENT.date, payment_mode: FREE_EVENT.payment_mode },
-      '7d',
+      '24h',
       [FOLLOW_UP_RECIPIENT]
     )
 
@@ -664,7 +626,7 @@ describe('sendFollowUpForEvent', () => {
 
     await sendFollowUpForEvent(
       { id: FREE_EVENT.id, name: FREE_EVENT.name, date: FREE_EVENT.date, payment_mode: FREE_EVENT.payment_mode },
-      '7d',
+      '24h',
       [FOLLOW_UP_RECIPIENT]
     )
 

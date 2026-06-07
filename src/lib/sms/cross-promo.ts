@@ -1,7 +1,7 @@
 /**
  * Cross-promotion SMS send logic.
  *
- * Sends promotional SMS messages to past event attendees 14 days before
+ * Sends promotional SMS messages to past event attendees before
  * similar upcoming events. Uses the sms_promo_context table to track
  * sends and prevent frequency abuse.
  */
@@ -13,21 +13,45 @@ import { EventMarketingService } from '@/services/event-marketing'
 import { logger } from '@/lib/logger'
 import { getSmartFirstName } from '@/lib/sms/bulk'
 
-const EVENT_PROMO_REPLY_WINDOW_HOURS = 48
-const EVENT_PROMO_MIN_CAPACITY = 10
+const EVENT_PROMO_REPLY_WINDOW_HOURS = parsePositiveIntEnv('EVENT_PROMO_REPLY_WINDOW_HOURS', 48)
+const EVENT_PROMO_MIN_CAPACITY = parsePositiveIntEnv('EVENT_PROMO_MIN_CAPACITY', 10)
+const EVENT_PROMO_FREQUENCY_CAP_DAYS = parsePositiveIntEnv('EVENT_PROMO_FREQUENCY_CAP_DAYS', 7)
+const EVENT_PROMO_MAX_RECIPIENTS_PER_EVENT = parsePositiveIntEnv(
+  'EVENT_PROMO_MAX_RECIPIENTS_PER_EVENT',
+  30
+)
+const EVENT_PROMO_CATEGORY_RECENCY_DAYS = parsePositiveIntEnv(
+  'EVENT_PROMO_CATEGORY_RECENCY_DAYS',
+  90
+)
+const EVENT_PROMO_GENERAL_RECENCY_DAYS = parsePositiveIntEnv(
+  'EVENT_PROMO_GENERAL_RECENCY_DAYS',
+  42
+)
 
-const TEMPLATE_CROSS_PROMO_FREE = 'event_cross_promo_14d'
-const TEMPLATE_CROSS_PROMO_PAID = 'event_cross_promo_14d_paid'
-const TEMPLATE_GENERAL_PROMO_FREE = 'event_general_promo_14d'
-const TEMPLATE_GENERAL_PROMO_PAID = 'event_general_promo_14d_paid'
+const TEMPLATE_CROSS_PROMO_FREE = 'event_cross_promo_7d'
+const TEMPLATE_CROSS_PROMO_PAID = 'event_cross_promo_7d_paid'
+const TEMPLATE_GENERAL_PROMO_FREE = 'event_general_promo_7d'
+const TEMPLATE_GENERAL_PROMO_PAID = 'event_general_promo_7d_paid'
 
-const TEMPLATE_REMINDER_7D_FREE = 'event_reminder_promo_7d'
-const TEMPLATE_REMINDER_7D_PAID = 'event_reminder_promo_7d_paid'
-const TEMPLATE_REMINDER_3D_FREE = 'event_reminder_promo_3d'
-const TEMPLATE_REMINDER_3D_PAID = 'event_reminder_promo_3d_paid'
+const TEMPLATE_REMINDER_24H_FREE = 'event_reminder_promo_24h'
+const TEMPLATE_REMINDER_24H_PAID = 'event_reminder_promo_24h_paid'
+
+const PROMO_OPT_OUT_TEXT = ' Reply STOP to opt out.'
 
 const SEND_LOOP_TIME_BUDGET_MS = 240_000 // 4 minutes — leave headroom for 300s cron timeout
 const SEND_LOOP_CHECK_INTERVAL = 25 // check every N recipients
+
+function parsePositiveIntEnv(name: string, fallback: number): number {
+  const raw = process.env[name]
+  if (!raw) return fallback
+  const parsed = Number.parseInt(raw, 10)
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback
+}
+
+function withPromoOptOut(message: string): string {
+  return `${message}${PROMO_OPT_OUT_TEXT}`
+}
 
 type CrossPromoAudienceRow = {
   customer_id: string
@@ -66,7 +90,7 @@ function buildFreeMessage(
   eventName: string,
   eventDate: string
 ): string {
-  return `The Anchor: ${firstName}! Loved having you at ${lastEventCategory} — ${eventName} is coming up on ${eventDate}. Fancy it? Just reply with how many seats and you're sorted! Offer open for 48hrs.`
+  return withPromoOptOut(`The Anchor: ${firstName}! Loved having you at ${lastEventCategory} — ${eventName} is coming up on ${eventDate}. Reply with seats.`)
 }
 
 function buildPaidMessage(
@@ -76,60 +100,41 @@ function buildPaidMessage(
   eventDate: string,
   eventLink: string
 ): string {
-  return `The Anchor: ${firstName}! Loved having you at ${lastEventCategory} — ${eventName} is coming up on ${eventDate}. Fancy it? Grab your seats here: ${eventLink}`
+  return withPromoOptOut(`The Anchor: ${firstName}! Loved having you at ${lastEventCategory} — ${eventName} is coming up on ${eventDate}. Fancy it? Grab your seats here: ${eventLink}`)
 }
 
 function buildGeneralFreeMessage(
   firstName: string,
-  lastEventName: string,
   eventName: string,
   eventDate: string
 ): string {
-  return `The Anchor: ${firstName}! Had a great time at ${lastEventName}? ${eventName} is coming up on ${eventDate} — could be your kind of thing! Just reply with how many seats and you're sorted! Offer open for 48hrs.`
+  return withPromoOptOut(`The Anchor: ${firstName}! ${eventName} is coming up on ${eventDate}. Reply with seats.`)
 }
 
 function buildGeneralPaidMessage(
   firstName: string,
-  lastEventName: string,
   eventName: string,
   eventDate: string,
   eventLink: string
 ): string {
-  return `The Anchor: ${firstName}! Had a great time at ${lastEventName}? ${eventName} is coming up on ${eventDate} — could be your kind of thing! Grab your seats here: ${eventLink}`
+  return withPromoOptOut(`The Anchor: ${firstName}! ${eventName} is coming up on ${eventDate} — could be your kind of thing! Grab your seats here: ${eventLink}`)
 }
 
-function buildReminder7dFreeMessage(
+function buildReminder24hFreeMessage(
   firstName: string,
   eventName: string,
   eventDate: string
 ): string {
-  return `The Anchor: ${firstName}! ${eventName} is just a week away — ${eventDate}. Fancy it? Reply with how many seats! Offer open 48hrs.`
+  return withPromoOptOut(`The Anchor: ${firstName}! ${eventName} is tomorrow — ${eventDate}. Reply with seats.`)
 }
 
-function buildReminder7dPaidMessage(
+function buildReminder24hPaidMessage(
   firstName: string,
   eventName: string,
   eventDate: string,
   eventLink: string
 ): string {
-  return `The Anchor: ${firstName}! ${eventName} is just a week away — ${eventDate}. Grab your seats: ${eventLink}`
-}
-
-function buildReminder3dFreeMessage(
-  firstName: string,
-  eventName: string,
-  weekday: string
-): string {
-  return `The Anchor: ${firstName}! ${eventName} is this ${weekday}! Still got seats — reply with how many and you're in! Offer open 48hrs.`
-}
-
-function buildReminder3dPaidMessage(
-  firstName: string,
-  eventName: string,
-  weekday: string,
-  eventLink: string
-): string {
-  return `The Anchor: ${firstName}! ${eventName} is this ${weekday}! Last chance to grab seats: ${eventLink}`
+  return withPromoOptOut(`The Anchor: ${firstName}! ${eventName} is tomorrow — ${eventDate}. Last chance to grab seats: ${eventLink}`)
 }
 
 async function sendSmsSafe(
@@ -165,10 +170,10 @@ export async function hasReachedDailyPromoLimit(
     .gte('created_at', todayStart)
 
   if (error) {
-    logger.warn('Daily promo limit check failed; allowing send as fallback', {
+    logger.warn('Daily promo limit check failed; blocking send as fallback', {
       metadata: { customerId, error: error.message },
     })
-    return false
+    return true
   }
 
   return (count ?? 0) >= 1
@@ -188,7 +193,7 @@ export async function sendCrossPromoForEvent(
     payment_mode: string
     category_id: string | null
   },
-  options?: { startTime?: number }
+  options?: { startTime?: number; maxRecipients?: number }
 ): Promise<SendCrossPromoResult> {
   const db = createAdminClient()
   const stats: SendCrossPromoResult = { sent: 0, skipped: 0, errors: 0 }
@@ -242,10 +247,13 @@ export async function sendCrossPromoForEvent(
   const { data: audience, error: audienceError } = await db.rpc('get_cross_promo_audience', {
     p_event_id: event.id,
     p_category_id: event.category_id,
-    p_recency_months: 6,
-    p_general_recency_months: 3,
-    p_frequency_cap_days: 7,
-    p_max_recipients: 200,
+    p_recency_days: EVENT_PROMO_CATEGORY_RECENCY_DAYS,
+    p_general_recency_days: EVENT_PROMO_GENERAL_RECENCY_DAYS,
+    p_frequency_cap_days: EVENT_PROMO_FREQUENCY_CAP_DAYS,
+    p_max_recipients: Math.max(
+      1,
+      Math.min(options?.maxRecipients ?? EVENT_PROMO_MAX_RECIPIENTS_PER_EVENT, EVENT_PROMO_MAX_RECIPIENTS_PER_EVENT)
+    ),
   })
 
   if (audienceError) {
@@ -319,7 +327,6 @@ export async function sendCrossPromoForEvent(
 
     const firstName = getSmartFirstName(recipient.first_name)
     const isGeneral = recipient.audience_type === 'general_recent'
-    const lastEventName = recipient.last_event_name || 'one of our events'
 
     let messageBody: string
     let templateKey: string
@@ -327,8 +334,8 @@ export async function sendCrossPromoForEvent(
     if (isGeneral) {
       templateKey = isPaid ? TEMPLATE_GENERAL_PROMO_PAID : TEMPLATE_GENERAL_PROMO_FREE
       messageBody = isPaid
-        ? buildGeneralPaidMessage(firstName, lastEventName, event.name, eventDate, eventLink!)
-        : buildGeneralFreeMessage(firstName, lastEventName, event.name, eventDate)
+        ? buildGeneralPaidMessage(firstName, event.name, eventDate, eventLink!)
+        : buildGeneralFreeMessage(firstName, event.name, eventDate)
     } else {
       const lastEventCategory = recipient.last_event_category || 'our events'
       templateKey = isPaid ? TEMPLATE_CROSS_PROMO_PAID : TEMPLATE_CROSS_PROMO_FREE
@@ -403,7 +410,7 @@ export async function sendCrossPromoForEvent(
 
 export async function sendFollowUpForEvent(
   event: { id: string; name: string; date: string; payment_mode: string },
-  touchType: '7d' | '3d',
+  touchType: '24h',
   recipients: FollowUpRecipient[],
   options?: { startTime?: number }
 ): Promise<SendCrossPromoResult> {
@@ -432,17 +439,13 @@ export async function sendFollowUpForEvent(
   const eventDate = formatDateInLondon(event.date, {
     weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
   })
-  const weekday = formatDateInLondon(event.date, { weekday: 'long' })
 
   const replyWindowExpiresAt = new Date(
     Date.now() + EVENT_PROMO_REPLY_WINDOW_HOURS * 60 * 60 * 1000
   ).toISOString()
 
-  const templateKey = touchType === '7d'
-    ? (isPaid ? TEMPLATE_REMINDER_7D_PAID : TEMPLATE_REMINDER_7D_FREE)
-    : (isPaid ? TEMPLATE_REMINDER_3D_PAID : TEMPLATE_REMINDER_3D_FREE)
-
-  const touchColumn = touchType === '7d' ? 'touch_7d_sent_at' : 'touch_3d_sent_at'
+  const templateKey = isPaid ? TEMPLATE_REMINDER_24H_PAID : TEMPLATE_REMINDER_24H_FREE
+  const touchColumn = 'touch_24h_sent_at'
 
   for (const recipient of recipients) {
     // Elapsed-time safety check
@@ -471,16 +474,9 @@ export async function sendFollowUpForEvent(
       .is('booking_created', false)
       .gt('reply_window_expires_at', new Date().toISOString())
 
-    let messageBody: string
-    if (touchType === '7d') {
-      messageBody = isPaid
-        ? buildReminder7dPaidMessage(firstName, event.name, eventDate, eventLink!)
-        : buildReminder7dFreeMessage(firstName, event.name, eventDate)
-    } else {
-      messageBody = isPaid
-        ? buildReminder3dPaidMessage(firstName, event.name, weekday, eventLink!)
-        : buildReminder3dFreeMessage(firstName, event.name, weekday)
-    }
+    const messageBody = isPaid
+      ? buildReminder24hPaidMessage(firstName, event.name, eventDate, eventLink!)
+      : buildReminder24hFreeMessage(firstName, event.name, eventDate)
 
     const idempotencyKey = `${templateKey}_${recipient.customer_id}_${event.id}`
     const smsResult = await sendSmsSafe(recipient.phone_number, messageBody, {
