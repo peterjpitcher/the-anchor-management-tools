@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { eventSchema, getPublishValidationIssues } from '@/services/events'
+import { eventSchema, getPublishValidationIssues, isWorldCup2026Event } from '@/services/events'
 
 const baseEventInput = {
   name: 'Test Event',
@@ -58,6 +58,27 @@ describe('eventSchema time normalization', () => {
         sort_order: 1,
       },
     ])
+  })
+})
+
+describe('isWorldCup2026Event', () => {
+  it('matches World Cup 2026 event names and slugs', () => {
+    expect(isWorldCup2026Event({
+      name: 'World Cup 2026: England vs Croatia (Group L)',
+      slug: 'world-cup-2026-england-vs-croatia-group-stage-2026-06-17',
+    })).toBe(true)
+
+    expect(isWorldCup2026Event({
+      name: 'FIFA World Cup 2026 Final',
+      slug: 'custom-final-slug',
+    })).toBe(true)
+  })
+
+  it('does not match ordinary events', () => {
+    expect(isWorldCup2026Event({
+      name: 'Quiz Night',
+      slug: 'quiz-night-2026-06-15',
+    })).toBe(false)
   })
 })
 
