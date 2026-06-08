@@ -49,6 +49,29 @@ function normalizeThrownSmsSafety(error: unknown): { code: string; logFailure: b
   }
 }
 
+async function getAssignedTableCapacity(
+  supabase: SupabaseClient<any, 'public', any>,
+  tableBookingId: string
+): Promise<number | null> {
+  const { data, error } = await supabase.from('booking_table_assignments')
+    .select('table_id, tables(capacity)')
+    .eq('table_booking_id', tableBookingId)
+
+  if (error) {
+    throw error
+  }
+
+  const rows = Array.isArray(data) ? data : []
+  if (rows.length === 0) {
+    return null
+  }
+
+  return rows.reduce((sum, row) => {
+    const table = Array.isArray(row?.tables) ? row.tables[0] : row?.tables
+    return sum + Math.max(0, Number(table?.capacity || 0))
+  }, 0)
+}
+
 export function mapSeatUpdateBlockedReason(reason: string | null | undefined): string {
   switch (reason) {
     case 'invalid_seats':
@@ -59,6 +82,8 @@ export function mapSeatUpdateBlockedReason(reason: string | null | undefined): s
       return 'This event has already started.'
     case 'insufficient_capacity':
       return 'There are not enough seats available for that increase.'
+    case 'table_capacity_insufficient':
+      return 'The assigned table is too small for that party size. Move the booking to a larger table first.'
     case 'booking_not_found':
       return 'Booking was not found.'
     case 'event_not_found':
@@ -128,6 +153,24 @@ export async function updateTableBookingPartySizeWithLinkedEventSeats(
         sms_sent: false,
         sms: null,
         event_id: tableBooking.event_id || null
+      }
+    }
+
+    if (newPartySize > oldPartySize) {
+      const assignedCapacity = await getAssignedTableCapacity(supabase, tableBooking.id)
+      if (assignedCapacity !== null && assignedCapacity < newPartySize) {
+        return {
+          state: 'blocked',
+          reason: 'table_capacity_insufficient',
+          table_booking_id: tableBooking.id,
+          event_booking_id: null,
+          old_party_size: oldPartySize,
+          new_party_size: oldPartySize,
+          delta: 0,
+          sms_sent: false,
+          sms: null,
+          event_id: tableBooking.event_id || null
+        }
       }
     }
 
