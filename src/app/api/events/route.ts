@@ -5,6 +5,7 @@ import { eventToSchema } from '@/lib/api/schema';
 import { getTodayIsoDate } from '@/lib/dateUtils';
 import { resolveStatusFilters } from '@/lib/events/status-filters';
 import { buildEventSearchOrFilter } from '@/lib/events/api-search';
+import { resolveEventPaymentMode, resolveEventPriceAmount } from '@/lib/events/pricing';
 import { logger } from '@/lib/logger';
 // Removed unused date-fns imports
 
@@ -153,10 +154,8 @@ export async function GET(_request: NextRequest) {
       const isFull =
         capacityRow?.is_full ??
         (typeof seatsRemaining === 'number' ? seatsRemaining <= 0 : false)
-      const paymentMode =
-        event.payment_mode ||
-        ((event.is_free === true || Number(event.price || 0) === 0) ? 'free' : 'cash_only')
-      const price = event.price_per_seat ?? event.price ?? 0
+      const price = resolveEventPriceAmount(event)
+      const paymentMode = resolveEventPaymentMode(event)
 
       return {
         id: event.id,

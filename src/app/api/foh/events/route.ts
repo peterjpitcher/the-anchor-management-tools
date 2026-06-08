@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { fromZonedTime } from 'date-fns-tz'
 import { getLondonDateIso, requireFohPermission } from '@/lib/foh/api-auth'
 import { isSundayLunchOnlyEvent } from '@/lib/events/sunday-lunch-only-policy'
+import { resolveEventPaymentMode, resolveEventPriceAmount } from '@/lib/events/pricing'
 
 type EventCapacityRow = {
   event_id: string
@@ -120,7 +121,8 @@ export async function GET(request: NextRequest) {
     const isFull =
       capacityRow?.is_full ??
       (typeof seatsRemaining === 'number' ? seatsRemaining <= 0 : false)
-    const paymentMode = row.payment_mode || ((Number(row.price || 0) > 0) ? 'cash_only' : 'free')
+    const paymentMode = resolveEventPaymentMode(row)
+    const price = resolveEventPriceAmount(row)
     const eventStartIso = toEventStartIso({
       start_datetime: row.start_datetime || null,
       date: row.date || null,
@@ -144,12 +146,7 @@ export async function GET(request: NextRequest) {
       booking_mode: ['table', 'general', 'mixed'].includes(String(row.booking_mode))
         ? row.booking_mode
         : 'table',
-      price_per_seat:
-        typeof row.price_per_seat === 'number'
-          ? row.price_per_seat
-          : typeof row.price === 'number'
-            ? row.price
-            : null,
+      price_per_seat: price > 0 ? price : null,
       capacity: typeof row.capacity === 'number' ? row.capacity : null,
       seats_remaining: seatsRemaining,
       is_full: isFull
