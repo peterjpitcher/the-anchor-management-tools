@@ -235,6 +235,11 @@ async function sendEmailViaGraph(options: EmailOptions): Promise<EmailSendResult
       message.bccRecipients = bccRecipients;
     }
 
+    const replyToAddress = (options.replyTo ?? process.env.EMAIL_REPLY_TO)?.trim();
+    if (replyToAddress) {
+      message.replyTo = [{ emailAddress: { address: replyToAddress } }];
+    }
+
     if (attachments.length > 0) {
       message.attachments = attachments;
     }

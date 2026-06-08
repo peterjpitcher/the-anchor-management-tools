@@ -1,4 +1,5 @@
 import type { Database as GeneratedDatabase } from './database.generated';
+import type { RecruitmentDatabaseExtension } from './database.recruitment';
 
 export interface Event {
   id: string;
@@ -791,7 +792,12 @@ export interface Profile {
   updated_at: string;
 }
 
-export type Database = GeneratedDatabase;
+export type Database = Omit<GeneratedDatabase, 'public'> & {
+  public: Omit<GeneratedDatabase['public'], 'Tables' | 'Functions'> & {
+    Tables: GeneratedDatabase['public']['Tables'] & RecruitmentDatabaseExtension['public']['Tables'];
+    Functions: GeneratedDatabase['public']['Functions'] & RecruitmentDatabaseExtension['public']['Functions'];
+  };
+};
 
 export type HiringJobStatus = 'draft' | 'open' | 'closed' | 'archived' | 'expired';
 export type HiringApplicationStage = 'new' | 'screening' | 'screened' | 'in_conversation' | 'interview_scheduled' | 'interviewed' | 'offer' | 'hired' | 'rejected' | 'withdrawn';

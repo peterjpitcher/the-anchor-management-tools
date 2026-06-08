@@ -160,7 +160,7 @@ export function createApiResponse(
     'Cache-Control': cacheControl,
     'Access-Control-Allow-Origin': corsOrigin,
     'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-API-Key, Idempotency-Key',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-API-Key, Idempotency-Key, X-Turnstile-Token',
     ...headers,
   }
 

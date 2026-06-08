@@ -2,9 +2,8 @@
 
 import { usePathname } from 'next/navigation'
 import { CalendarIcon, UserGroupIcon, HomeIcon, IdentificationIcon, PencilSquareIcon, CogIcon, EnvelopeIcon, BuildingOfficeIcon, DocumentTextIcon, LinkIcon, ReceiptRefundIcon, TruckIcon, Squares2X2Icon, BanknotesIcon, MicrophoneIcon, BriefcaseIcon, CalendarDaysIcon, UserCircleIcon, UsersIcon, ShieldCheckIcon, DocumentDuplicateIcon, ChevronRightIcon, MapIcon, MapPinIcon, CurrencyPoundIcon, ReceiptPercentIcon } from '@heroicons/react/24/outline'
-import { useMemo, useState } from 'react'
+import { useState } from 'react'
 import { cn } from '@/lib/utils'
-import { usePermissions } from '@/contexts/PermissionContext'
 import { Badge } from '@/ds'
 import type { ModuleName, ActionType } from '@/types/rbac'
 import { useUnreadMessageCount } from '@/hooks/useUnreadMessageCount'
@@ -37,6 +36,7 @@ const secondaryNavigation: NavigationItemWithPermission[] = [
 // Staff ops group: Employees, Rota (+ sub-pages), Quick Add Note
 const staffOpsNavigation: NavigationItemWithPermission[] = [
   { name: 'Employees', href: '/employees', icon: IdentificationIcon, permission: { module: 'employees', action: 'view' } },
+  { name: 'Recruitment', href: '/recruitment', icon: BriefcaseIcon, permission: { module: 'recruitment', action: 'view' } },
   { name: 'Rota', href: '/rota', icon: CalendarDaysIcon, permission: { module: 'rota', action: 'view' } },
   { name: 'Leave', href: '/rota/leave', icon: CalendarDaysIcon, permission: { module: 'leave', action: 'view' }, subItem: true },
   { name: 'Timeclock', href: '/rota/timeclock', icon: CalendarDaysIcon, permission: { module: 'timeclock', action: 'view' }, subItem: true },
@@ -143,45 +143,14 @@ export function AppNavigation({ onQuickAddNoteClick, onNavigate }: AppNavigation
     });
   };
 
-  const { hasPermission, loading: permissionsLoading } = usePermissions()
   const unreadCount = useUnreadMessageCount()
   const { counts: outstandingCounts } = useOutstandingCounts()
 
-  // Filter navigation items based on permissions
-  const filteredPrimaryNav = useMemo(() => {
-    if (permissionsLoading) return [];
-    return primaryNavigation.filter(item =>
-      !item.permission || hasPermission(item.permission.module, item.permission.action)
-    );
-  }, [hasPermission, permissionsLoading]);
-
-  const filteredSecondaryNav = useMemo(() => {
-    if (permissionsLoading) return [];
-    return secondaryNavigation.filter(item =>
-      !item.permission || hasPermission(item.permission.module, item.permission.action)
-    );
-  }, [hasPermission, permissionsLoading]);
-
-  const filteredStaffOpsNav = useMemo(() => {
-    if (permissionsLoading) return [];
-    return staffOpsNavigation.filter(item =>
-      !item.permission || hasPermission(item.permission.module, item.permission.action)
-    );
-  }, [hasPermission, permissionsLoading]);
-
-  const filteredFinanceNav = useMemo(() => {
-    if (permissionsLoading) return [];
-    return financeNavigation.filter(item =>
-      !item.permission || hasPermission(item.permission.module, item.permission.action)
-    );
-  }, [hasPermission, permissionsLoading]);
-
-  const filteredSettingsNav = useMemo(() => {
-    if (permissionsLoading) return [];
-    return settingsNavigation.filter(item =>
-      !item.permission || hasPermission(item.permission.module, item.permission.action)
-    );
-  }, [hasPermission, permissionsLoading]);
+  const filteredPrimaryNav = primaryNavigation
+  const filteredSecondaryNav = secondaryNavigation
+  const filteredStaffOpsNav = staffOpsNavigation
+  const filteredFinanceNav = financeNavigation
+  const filteredSettingsNav = settingsNavigation
 
   const getOutstandingCount = (name: string) => {
     if (!outstandingCounts) return 0
@@ -311,18 +280,6 @@ export function AppNavigation({ onQuickAddNoteClick, onNavigate }: AppNavigation
       </div>
     );
   };
-
-  if (permissionsLoading) {
-    return (
-      <Sidebar>
-        <div className="animate-pulse space-y-2">
-          {[...Array(4)].map((_, i) => (
-            <div key={i} className="h-9 bg-green-700 rounded opacity-50"></div>
-          ))}
-        </div>
-      </Sidebar>
-    );
-  }
 
   return (
     <Sidebar>
