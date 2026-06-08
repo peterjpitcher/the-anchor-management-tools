@@ -1,5 +1,6 @@
 // Schema.org structured data helpers
 import { format } from 'date-fns';
+import { resolveEventPriceAmount } from '@/lib/events/pricing';
 
 export interface SchemaEvent {
   '@type': 'Event';
@@ -196,6 +197,7 @@ export function eventToSchema(event: any, faqs?: any[]): SchemaEvent {
   const endDateTime = event.end_time 
     ? `${event.date}T${event.end_time}+00:00`
     : undefined;
+  const offerPrice = resolveEventPriceAmount(event);
 
   const availability =
     event.event_status === 'sold_out'
@@ -239,7 +241,7 @@ export function eventToSchema(event: any, faqs?: any[]): SchemaEvent {
     offers: {
       '@type': 'Offer',
       url: event.booking_url || `${process.env.NEXT_PUBLIC_APP_URL}/events/${event.slug || event.id}`,
-      price: event.price?.toString() || '0',
+      price: offerPrice.toString(),
       priceCurrency: 'GBP',
       availability,
       validFrom: new Date().toISOString(),

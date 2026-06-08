@@ -3,6 +3,7 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import { withApiAuth, createApiResponse, createErrorResponse } from '@/lib/api/auth';
 import { eventToSchema } from '@/lib/api/schema';
 import { buildShortLinkUrl } from '@/lib/short-links/base-url';
+import { resolveEventPaymentMode, resolveEventPriceAmount } from '@/lib/events/pricing';
 
 type EventFaqRow = {
   sort_order: number | null;
@@ -164,10 +165,8 @@ export async function GET(
       }
     }
 
-    const paymentMode =
-      event.payment_mode ||
-      ((event.is_free === true || Number(event.price || 0) === 0) ? 'free' : 'cash_only')
-    const price = event.price_per_seat ?? event.price ?? 0
+    const price = resolveEventPriceAmount(event)
+    const paymentMode = resolveEventPaymentMode(event)
     const facebookShortLinkRow = resolveMarketingShortLinkRow(marketingShortLinks, 'facebook');
     const linkInBioShortLinkRow = resolveMarketingShortLinkRow(marketingShortLinks, 'lnk_bio');
     const googleBusinessProfileShortLinkRow = resolveMarketingShortLinkRow(marketingShortLinks, 'google_business_profile');
