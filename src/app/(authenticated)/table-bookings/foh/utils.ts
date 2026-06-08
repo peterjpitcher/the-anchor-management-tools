@@ -245,6 +245,8 @@ export function mapFohEventBlockedReason(reason?: string | null): string {
   switch (reason) {
     case 'insufficient_capacity':
       return 'This event is full for the requested seats.'
+    case 'table_capacity_insufficient':
+      return 'The assigned table is too small for that party size. Move the booking to a larger table first.'
     case 'booking_closed':
       return 'Booking is closed for this event.'
     case 'not_bookable':

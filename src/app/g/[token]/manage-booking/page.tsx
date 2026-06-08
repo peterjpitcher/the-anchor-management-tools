@@ -50,6 +50,8 @@ function blockedReasonMessage(reason: string | undefined): string {
       return 'This event has already started, so online changes are closed.'
     case 'insufficient_capacity':
       return 'No more seats are available for that increase.'
+    case 'table_capacity_insufficient':
+      return 'Your assigned table is not large enough for that increase. Please contact the venue and we will move you if space is available.'
     case 'invalid_target_seats':
       return 'Please enter a seat count larger than your current booking.'
     case 'booking_not_confirmed':
