@@ -39,12 +39,23 @@ describe('staff seat update mutation guards', () => {
     const updateEq = vi.fn().mockReturnValue({ select: updateSelect })
     const update = vi.fn().mockReturnValue({ eq: updateEq })
 
+    const assignmentEq = vi.fn().mockResolvedValue({
+      data: [],
+      error: null,
+    })
+    const assignmentSelect = vi.fn().mockReturnValue({ eq: assignmentEq })
+
     const supabase = {
       from: vi.fn((table: string) => {
         if (table === 'table_bookings') {
           return {
             select: lookupSelect,
             update,
+          }
+        }
+        if (table === 'booking_table_assignments') {
+          return {
+            select: assignmentSelect,
           }
         }
         throw new Error(`Unexpected table: ${table}`)
@@ -60,6 +71,69 @@ describe('staff seat update mutation guards', () => {
 
     expect(result.state).toBe('blocked')
     expect(result.reason).toBe('booking_not_found')
+    expect(sendEventBookingSeatUpdateSms).not.toHaveBeenCalled()
+    expect(updateEventBookingSeatsById).not.toHaveBeenCalled()
+  })
+
+  it('blocks direct table-booking party-size increases that exceed assigned table capacity', async () => {
+    const lookupMaybeSingle = vi.fn().mockResolvedValue({
+      data: {
+        id: 'table-booking-1',
+        status: 'confirmed',
+        party_size: 2,
+        event_booking_id: null,
+        event_id: 'event-1',
+      },
+      error: null,
+    })
+    const lookupEq = vi.fn().mockReturnValue({ maybeSingle: lookupMaybeSingle })
+    const lookupSelect = vi.fn().mockReturnValue({ eq: lookupEq })
+
+    const update = vi.fn()
+
+    const assignmentEq = vi.fn().mockResolvedValue({
+      data: [
+        {
+          table_id: 'table-1',
+          tables: { capacity: 2 },
+        },
+      ],
+      error: null,
+    })
+    const assignmentSelect = vi.fn().mockReturnValue({ eq: assignmentEq })
+
+    const supabase = {
+      from: vi.fn((table: string) => {
+        if (table === 'table_bookings') {
+          return {
+            select: lookupSelect,
+            update,
+          }
+        }
+        if (table === 'booking_table_assignments') {
+          return {
+            select: assignmentSelect,
+          }
+        }
+        throw new Error(`Unexpected table: ${table}`)
+      }),
+    }
+
+    const result = await updateTableBookingPartySizeWithLinkedEventSeats(supabase as any, {
+      tableBookingId: 'table-booking-1',
+      partySize: 4,
+      actor: 'foh',
+      sendSms: true,
+    })
+
+    expect(result).toMatchObject({
+      state: 'blocked',
+      reason: 'table_capacity_insufficient',
+      old_party_size: 2,
+      new_party_size: 2,
+      delta: 0,
+    })
+    expect(update).not.toHaveBeenCalled()
     expect(sendEventBookingSeatUpdateSms).not.toHaveBeenCalled()
     expect(updateEventBookingSeatsById).not.toHaveBeenCalled()
   })
