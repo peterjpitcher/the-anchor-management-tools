@@ -32,6 +32,8 @@
     "@supabase/ssr": "^0.10.0",
     "@supabase/supabase-js": "^2.55.0",
     "@types/sharp": "^0.31.1",
+    "@upstash/ratelimit": "^2.0.8",
+    "@upstash/redis": "^1.38.0",
     "@vercel/functions": "^3.4.3",
     "@zxing/browser": "^0.1.5",
     "@zxing/library": "^0.21.3",

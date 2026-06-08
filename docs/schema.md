@@ -771,10 +771,21 @@ OJ billing and recurring charge management.
 
 ---
 
-## Hiring (ATS)
+## Recruitment ATS
 
-### hiring_jobs / hiring_job_templates / hiring_candidates / hiring_applications / hiring_notes / hiring_interviews / hiring_interview_attendees / hiring_candidate_documents / hiring_candidate_events / hiring_candidate_profile_versions / hiring_application_messages / hiring_application_overrides / hiring_screening_runs / hiring_outreach_messages
-Full applicant tracking system module.
+### recruitment_job_postings / recruitment_candidates / recruitment_applications / recruitment_application_status_events
+Recruitment source-of-truth tables for public job postings, candidate records, applications, duplicate tracking, status history, CV metadata, consents, and conversion to employees.
+
+### recruitment_ai_runs
+Audit table for recruitment CV extraction, application scoring, and email-draft runs. Usage is also recorded in `ai_usage_events`.
+
+### recruitment_appointment_slots / recruitment_candidate_appointments
+Interview and trial-shift scheduling tables, including single-capacity slot claiming, token booking, reminder state, and Graph/ICS calendar sync status.
+
+### recruitment_email_templates / recruitment_communications
+Recruitment-specific email templates and outbound email/SMS audit log. Recruitment SMS does not create or link `customers`.
+
+Legacy `hiring_*` documents and scripts are historical references only; the live v1 ATS uses the `recruitment_*` schema and `recruitment` RBAC module.
 
 ---
 
