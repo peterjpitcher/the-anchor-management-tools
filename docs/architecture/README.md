@@ -1,6 +1,6 @@
 ---
 generated: true
-last_updated: 2026-05-31T00:00:00Z
+last_updated: 2026-06-08T00:00:00Z
 source: session-setup
 project: the-anchor-management-tools
 ---
@@ -14,22 +14,22 @@ project: the-anchor-management-tools
 
 | Doc | Status | Description |
 |-----|--------|-------------|
-| [[overview]] | Updated 2026-05-31 | Stack, route groups, auth model, integrations |
-| [[routes]] | Updated 2026-05-31 | Full route table: pages, API routes, cron, webhooks |
-| [[server-actions]] | Updated 2026-05-31 | Server actions grouped by domain |
-| [[data-model]] | Updated 2026-05-31 | Known tables from codebase scan; full schema via DB agent |
-| [[relationships]] | Updated 2026-05-31 | Cross-reference: tables → actions → routes → integrations |
+| [[overview]] | Updated 2026-06-08 | Stack, route groups, auth model, integrations |
+| [[routes]] | Updated 2026-06-08 | Full route table: pages, API routes, cron, webhooks |
+| [[server-actions]] | Updated 2026-06-08 | Server actions grouped by domain, with tables/auth/audit |
+| [[data-model]] | Updated 2026-06-08 | Pointer to session-context.md; populated by DB agent |
+| [[relationships]] | Updated 2026-06-08 | Cross-reference: tables → actions → routes → integrations |
 
-## Quick Stats (2026-05-31 scan)
+## Quick Stats (2026-06-08 scan)
 
-- **Pages (`page.tsx`):** 146
-- **API/route handlers (`route.ts`):** 148
-- **Server action files (`'use server'`):** 95
-- **Service modules (`src/services/`):** 39
-- **Distinct tables referenced via `.from('...')`:** 174
-- **Vercel cron jobs:** 32 (see [[routes#Cron jobs]])
-- **Webhook domains:** Twilio, Stripe, PayPal (root + parking + private-bookings + table-bookings)
-- **External integrations:** Twilio, Microsoft Graph (Outlook), Stripe, PayPal, OpenAI, Google Calendar, googleapis, Cloudflare Turnstile, GitHub (bug reporter)
+- **Pages (`page.tsx`):** 151
+- **API/route handlers (`route.ts`):** 147 (incl. 36 cron, 6 webhook)
+- **Server action files (`'use server'`):** 89
+- **Service modules (`src/services/`):** ~39
+- **Distinct tables referenced via `.from('...')`:** ~190
+- **Vercel cron jobs:** 36 (see [[routes#Cron]])
+- **Webhook domains:** Twilio, Resend, PayPal (general + parking + private-bookings + table-bookings); Stripe via `/api/stripe/webhook` (see [[routes#Webhooks]])
+- **External integrations:** Twilio, Microsoft Graph (Outlook), Stripe, PayPal, OpenAI, Google Calendar (`googleapis`), PDFKit/Puppeteer, QR codes, Cloudflare Turnstile, GitHub (bug reporter) — see [[overview#Key Integrations]]
 
 ## Refresh
 
