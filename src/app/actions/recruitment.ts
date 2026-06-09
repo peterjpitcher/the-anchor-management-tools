@@ -14,9 +14,12 @@ import {
   createRecruitmentJobPosting,
   eraseRecruitmentCandidate,
   getRecruitmentDashboard,
+  getRecruitmentCandidatesPage,
   getRecruitmentCvSignedUrl,
   issueRecruitmentBookingLink,
   listRecruitmentAdminData,
+  type RecruitmentCandidatesPage,
+  type RecruitmentCandidatesPageParams,
   matchRecruitmentCandidateToPosting,
   recordRecruitmentAppointmentOutcome,
   rescoreRecruitmentApplication,
@@ -144,6 +147,19 @@ export async function getRecruitmentPageData(): Promise<ActionResult> {
     return { success: true, data: { dashboard, ...adminData } }
   } catch (error) {
     return { success: false, error: error instanceof Error ? error.message : 'Failed to load recruitment data.' }
+  }
+}
+
+export async function getRecruitmentCandidates(
+  params: RecruitmentCandidatesPageParams,
+): Promise<ActionResult<RecruitmentCandidatesPage>> {
+  try {
+    await requireRecruitmentUser()
+    const supabase = createAdminClient()
+    const data = await getRecruitmentCandidatesPage(supabase, params)
+    return { success: true, data }
+  } catch (error) {
+    return { success: false, error: error instanceof Error ? error.message : 'Failed to load candidates.' }
   }
 }
 
