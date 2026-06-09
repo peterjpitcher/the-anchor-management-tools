@@ -187,8 +187,84 @@ export async function listPublicRecruitmentPostings(supabase: GenericClient = cr
   return data ?? []
 }
 
+export const RECRUITMENT_CANDIDATES_PAGE_SIZE = 25
+
+export type RecruitmentCandidatesPageParams = {
+  page?: number
+  pageSize?: number
+  search?: string | null
+  extractionStatus?: string | null
+  source?: string | null
+  converted?: 'yes' | 'no' | null
+}
+
+export type RecruitmentCandidatesPage = {
+  candidates: RecruitmentCandidate[]
+  totalCount: number
+  page: number
+  pageSize: number
+}
+
+/**
+ * Server-side paginated, searchable, filterable list of candidates (talent pool).
+ * Mirrors the getCustomerList shape: parallel exact-count + data queries with
+ * .or(ilike) search, .eq/.is filters, and .range() pagination. Used both for the
+ * dashboard's initial talent-pool page and for client-side page/filter changes.
+ */
+export async function getRecruitmentCandidatesPage(
+  supabase: GenericClient = createAdminClient(),
+  params: RecruitmentCandidatesPageParams = {},
+): Promise<RecruitmentCandidatesPage> {
+  const page = Math.max(1, Math.floor(params.page ?? 1))
+  const pageSize = Math.min(100, Math.max(1, Math.floor(params.pageSize ?? RECRUITMENT_CANDIDATES_PAGE_SIZE)))
+  const from = (page - 1) * pageSize
+  const to = from + pageSize - 1
+
+  // Strip PostgREST .or() control characters (% and ,) from the search term.
+  const term = params.search?.trim().replace(/[%,]/g, ' ').trim()
+  const orFilter = term ? `first_name.ilike.%${term}%,last_name.ilike.%${term}%,email.ilike.%${term}%` : null
+
+  let countQuery = supabase.from('recruitment_candidates').select('id', { count: 'exact', head: true })
+  let dataQuery = supabase.from('recruitment_candidates').select('*')
+
+  if (orFilter) {
+    countQuery = countQuery.or(orFilter)
+    dataQuery = dataQuery.or(orFilter)
+  }
+  if (params.extractionStatus) {
+    countQuery = countQuery.eq('cv_extraction_status', params.extractionStatus)
+    dataQuery = dataQuery.eq('cv_extraction_status', params.extractionStatus)
+  }
+  if (params.source) {
+    countQuery = countQuery.eq('source', params.source)
+    dataQuery = dataQuery.eq('source', params.source)
+  }
+  if (params.converted === 'yes') {
+    countQuery = countQuery.not('converted_employee_id', 'is', null)
+    dataQuery = dataQuery.not('converted_employee_id', 'is', null)
+  } else if (params.converted === 'no') {
+    countQuery = countQuery.is('converted_employee_id', null)
+    dataQuery = dataQuery.is('converted_employee_id', null)
+  }
+
+  const [countResult, dataResult] = await Promise.all([
+    countQuery,
+    dataQuery.order('created_at', { ascending: false }).range(from, to),
+  ])
+
+  if (countResult.error) throw countResult.error
+  if (dataResult.error) throw dataResult.error
+
+  return {
+    candidates: (dataResult.data ?? []) as RecruitmentCandidate[],
+    totalCount: countResult.count ?? 0,
+    page,
+    pageSize,
+  }
+}
+
 export async function listRecruitmentAdminData(supabase: GenericClient = createAdminClient()) {
-  const [postings, applications, candidates, slots, appointments, templates, statusEvents, aiRuns, communications] = await Promise.all([
+  const [postings, applications, candidatesPage, slots, appointments, templates, statusEvents, aiRuns, communications] = await Promise.all([
     supabase
       .from('recruitment_job_postings')
       .select('*')
@@ -198,11 +274,7 @@ export async function listRecruitmentAdminData(supabase: GenericClient = createA
       .select('*, candidate:recruitment_candidates(*), job_posting:recruitment_job_postings(*)')
       .order('created_at', { ascending: false })
       .limit(100),
-    supabase
-      .from('recruitment_candidates')
-      .select('*')
-      .order('created_at', { ascending: false })
-      .limit(100),
+    getRecruitmentCandidatesPage(supabase, { page: 1, pageSize: RECRUITMENT_CANDIDATES_PAGE_SIZE }),
     supabase
       .from('recruitment_appointment_slots')
       .select('*')
@@ -236,14 +308,15 @@ export async function listRecruitmentAdminData(supabase: GenericClient = createA
       .limit(300),
   ])
 
-  for (const result of [postings, applications, candidates, slots, appointments, templates, statusEvents, aiRuns, communications]) {
+  for (const result of [postings, applications, slots, appointments, templates, statusEvents, aiRuns, communications]) {
     if (result.error) throw result.error
   }
 
   return {
     postings: postings.data ?? [],
     applications: applications.data ?? [],
-    candidates: candidates.data ?? [],
+    candidates: candidatesPage.candidates,
+    candidatesTotal: candidatesPage.totalCount,
     slots: slots.data ?? [],
     appointments: appointments.data ?? [],
     templates: templates.data ?? [],
