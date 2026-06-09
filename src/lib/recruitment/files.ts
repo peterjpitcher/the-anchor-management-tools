@@ -61,9 +61,23 @@ export function buildRecruitmentCvStoragePath(candidateId: string, upload: Recru
   return `candidates/${candidateId}/${Date.now()}-${fileHash}${extension}`
 }
 
+// Postgres text/jsonb columns cannot store NUL bytes and reject them with error
+// 22P05 ("unsupported Unicode escape sequence"). Extracted PDF/DOCX text can
+// contain NUL and other C0 control characters, so strip them before they reach
+// the database, while preserving tab (charCode 9) and newline (charCode 10).
+function stripDisallowedControlChars(value: string): string {
+  let result = ''
+  for (let i = 0; i < value.length; i += 1) {
+    const code = value.charCodeAt(i)
+    if (code > 31 || code === 9 || code === 10) {
+      result += value[i]
+    }
+  }
+  return result
+}
+
 function normaliseExtractedText(value: string): string {
-  return value
-    .replace(/\r/g, '\n')
+  return stripDisallowedControlChars(value.replace(/\r/g, '\n'))
     .replace(/[ \t]+/g, ' ')
     .replace(/\n{3,}/g, '\n\n')
     .trim()
