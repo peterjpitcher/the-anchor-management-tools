@@ -64,6 +64,8 @@ analyze-*.txt
 # temp data exports
 temp/*.csv
 temp/logs_result*.json
+temp/*.log
+temp/recruitment-cv-import-*.json
 
 # Playwright test artifacts
 .playwright-mcp/
