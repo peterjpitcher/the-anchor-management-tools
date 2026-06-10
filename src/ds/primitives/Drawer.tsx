@@ -37,6 +37,14 @@ const CloseIcon = () => (
   </svg>
 )
 
+const sizeWidths: Record<string, string> = {
+  sm: 'min(380px, 100vw)',
+  md: 'min(480px, 100vw)',
+  lg: 'min(640px, 100vw)',
+  xl: 'min(960px, 100vw)',
+  full: '100vw',
+}
+
 export function Drawer({
   open,
   onClose,
@@ -46,13 +54,14 @@ export function Drawer({
   footer,
   side,
   position,
-  width = '380px',
-  size: _size,
+  width,
+  size,
   mobileFullscreen: _mfs,
 }: DrawerProps) {
   const resolvedSide = side ?? (position === 'left' || position === 'bottom' ? position : 'right')
   const isRight = resolvedSide === 'right'
   const isBottom = resolvedSide === 'bottom'
+  const resolvedWidth = width ?? (size ? sizeWidths[size] ?? size : sizeWidths.sm)
 
   return (
     <Transition show={open} as={Fragment}>
@@ -87,11 +96,11 @@ export function Drawer({
                   : 'top-0 h-full',
                 !isBottom && (isRight ? 'right-0' : 'left-0')
               )}
-              style={isBottom ? undefined : { width }}
+              style={isBottom ? undefined : { width: resolvedWidth }}
             >
               {title && (
-                <div className="px-5 py-4 border-b border-border flex items-center justify-between">
-                  <DialogTitle className="text-base font-semibold text-text-strong">
+                <div className="px-5 py-4 border-b border-border flex items-center justify-between gap-3">
+                  <DialogTitle className="min-w-0 truncate text-base font-semibold text-text-strong">
                     {title}
                   </DialogTitle>
                   <button
@@ -110,7 +119,7 @@ export function Drawer({
               </div>
 
               {footer && (
-                <div className="px-5 py-4 border-t border-border flex justify-end gap-3">
+                <div className="shrink-0 px-5 py-4 border-t border-border flex justify-end gap-3">
                   {footer}
                 </div>
               )}

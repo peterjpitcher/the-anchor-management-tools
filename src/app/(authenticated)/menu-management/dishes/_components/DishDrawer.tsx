@@ -491,6 +491,7 @@ export function DishDrawer({
         open={open}
         onClose={requestClose}
         size={isMobile ? 'full' : 'xl'}
+        width={isMobile ? '100vw' : 'min(1040px, calc(100vw - 72px))'}
         title={drawerTitle}
         description={
           loadingDetail
@@ -498,7 +499,7 @@ export function DishDrawer({
             : undefined
         }
         footer={
-          <DrawerActions align="between">
+          <DrawerActions align="between" className="mt-0 w-full border-t-0 pt-0">
             <div className="flex items-center gap-2">
               {isEditing && (
                 <Button

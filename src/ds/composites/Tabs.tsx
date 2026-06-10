@@ -67,7 +67,7 @@ export function Tabs({ tabs: tabsProp, items, activeTab, activeKey, onTabChange,
   const activeContent = tabs.find((t) => t.id === resolvedActiveTab)?.content
   return (
     <div>
-      <div className={cn('flex items-center border-b border-border', className)}>
+      <div className={cn('flex items-center overflow-x-auto border-b border-border scrollbar-hide', className)}>
         {tabs.map((tab) => {
           const isActive = tab.id === resolvedActiveTab
 
