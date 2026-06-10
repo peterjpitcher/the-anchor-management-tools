@@ -17,6 +17,7 @@ import { listMenuDishes, listMenuIngredients } from '@/app/actions/menu-manageme
 import { MenuDishesTable, type MenuDishesFilter } from '../_components/MenuDishesTable'
 import { DishDrawer } from '../dishes/_components/DishDrawer'
 import type { DishListItem, IngredientSummary, RecipeSummary, MenuSummary } from '../dishes/_components/DishExpandedRow'
+import { exportDesignerMenuCsv } from '../_lib/menuDesignerExport'
 
 /* ------------------------------------------------------------------ */
 /*  Data mapping (same as dishes page)                                 */
@@ -323,6 +324,25 @@ export default function MenuManagementClient(): React.ReactElement {
 
   const clearFilters = useCallback(() => { setSelectedMenu('all'); setSelectedCategory('all'); setGpStatusFilter('all'); setShowActive('active') }, [])
 
+  const handleDesignerExport = useCallback(() => {
+    if (selectedMenu === 'all') {
+      toast.error('Select a menu first')
+      return
+    }
+
+    const menuName = menus.find((menu) => menu.code === selectedMenu)?.name
+      ?? availableMenus.find((menu) => menu.code === selectedMenu)?.name
+      ?? selectedMenu
+    const result = exportDesignerMenuCsv(dishes, { menuCode: selectedMenu, menuName, menus })
+
+    if (result.rowCount === 0) {
+      toast.error('No active items found for this menu')
+      return
+    }
+
+    toast.success(`Exported ${result.rowCount} active items`)
+  }, [availableMenus, dishes, menus, selectedMenu])
+
   const hasActiveFilters = selectedMenu !== 'all' || selectedCategory !== 'all' || gpStatusFilter !== 'all' || showActive !== 'active'
 
   const effectiveTableFilter: MenuDishesFilter = gpStatusFilter === 'below-target' || gpStatusFilter === 'missing-costing' ? gpStatusFilter as MenuDishesFilter : 'all'
@@ -341,6 +361,14 @@ export default function MenuManagementClient(): React.ReactElement {
         className="mb-0"
         actions={
           <div className="flex items-center gap-2">
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={handleDesignerExport}
+              icon={<Icon name="download" size={14} />}
+            >
+              Export Menu
+            </Button>
             <Button variant="secondary" size="sm" onClick={loadDishes}>Refresh</Button>
           </div>
         }
