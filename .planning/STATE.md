@@ -115,9 +115,10 @@ None yet.
 | # | Description | Date | Commit | Directory |
 |---|-------------|------|--------|-----------|
 | 260519-ice | Restore events detail page with attendees, marketing links, promotion content, and full metadata display | 2026-05-19 | 95c18f0d | [260519-ice-restore-events-detail-page-with-attendee](./quick/260519-ice-restore-events-detail-page-with-attendee/) |
+| 260610-bop | Delete dead unauthenticated RLS-bypassing phone-cleanup server actions (audit finding F5) | 2026-06-10 | 98dadb72 | [260610-bop-delete-dead-unauthenticated-fix-phone-nu](./quick/260610-bop-delete-dead-unauthenticated-fix-phone-nu/) |
 
 ## Session Continuity
 
-Last activity: 2026-05-19 - Completed quick task 260519-ice: Restore events detail page
+Last activity: 2026-06-10 - Completed quick task 260610-bop: Delete dead unauthenticated phone-cleanup actions (audit F5)
 Stopped at: Completed 04-02-PLAN.md — All phases complete
 Resume file: .planning/ROADMAP.md
