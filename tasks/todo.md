@@ -34,6 +34,18 @@
 - Email consent/bounce/suppression/unsubscribe: ABSENT — must be built
 - Resend: not installed; returns {error} (no throw); needs verified domain + webhook
 
+## 2026-06-10: Wire SMS emergency suspension kill switch (audit finding F4) — DONE
+
+- [x] Call `resolveSmsSuspensionReason` at top of `sendSMS` (src/lib/twilio.ts) before any side effects
+- [x] Return blocked result `{ success: false, code: 'sms_suspended' }` — no throw; `console.warn` the reason (logger.warn is silent outside development)
+- [x] Read flags from `process.env` at call time (matches safety.ts `parseBooleanEnv` pattern)
+- [x] Add `tests/lib/twilioSmsSuspension.test.ts`: SUSPEND_ALL_SMS blocks, normal send passes, event-scoped block/pass
+- [x] Lint, typecheck and tests green
+
+**Result:** lint 0 warnings, tsc clean, 2710/2710 tests pass (TDD: red → green). One unrelated suite fails to *load* (`tests/actions/fixPhoneNumbersActions.test.ts`) because a concurrent GSD quick task has staged the deletion of `src/app/actions/fix-phone-numbers.ts` without yet removing its test — belongs to that task, not this one.
+
 ## Completed
+
+- 2026-06-10: Whole-application review (5 parallel audits: security, payments/domain rules, consistency, reliability/ops, build health). 30 findings → `docs/audits/2026-06-10-application-review.md`. Headline: deposit threshold code(10+) vs CLAUDE.md(7+) needs ruling; guest cancel never refunds deposit; private-booking delete cascades payment records; SMS kill switch unwired. Pipeline fully green (2707/2707 tests).
 
 ## Review Notes
