@@ -20,6 +20,9 @@ interface DesignerMenuExportRow {
   price: number;
   description: string;
   gpPct: string;
+  allergens: string;
+  removableAllergens: string;
+  dietaryClaims: string;
   categoryRank: number;
 }
 
@@ -31,6 +34,9 @@ const DESIGNER_EXPORT_HEADERS = [
   'Price (GBP)',
   'Description',
   'GP %',
+  'Allergens',
+  'Removable Allergens',
+  'Dietary Claims',
 ];
 
 function escapeCsvValue(value: CsvValue): string {
@@ -51,6 +57,9 @@ function toCsv(rows: DesignerMenuExportRow[]): string {
     row.price.toFixed(2),
     row.description,
     row.gpPct,
+    row.allergens,
+    row.removableAllergens,
+    row.dietaryClaims,
   ]);
 
   return [
@@ -63,6 +72,13 @@ function formatGpPct(value: number | null | undefined): string {
   if (typeof value !== 'number' || !Number.isFinite(value)) return '';
   const percentage = value > 1 ? value : value * 100;
   return `${percentage.toFixed(1)}%`;
+}
+
+function formatList(values: string[] | null | undefined): string {
+  return (values ?? [])
+    .filter(Boolean)
+    .map((value) => value.replace(/_/g, ' '))
+    .join('; ');
 }
 
 function slugify(value: string): string {
@@ -97,6 +113,9 @@ export function buildDesignerMenuExportRows(
           price: dish.selling_price,
           description: dish.description ?? '',
           gpPct: formatGpPct(dish.gp_pct),
+          allergens: formatList(dish.allergen_flags),
+          removableAllergens: formatList(dish.removable_allergens),
+          dietaryClaims: formatList(dish.dietary_flags),
           categoryRank: categoryOrder.get(assignment.category_code) ?? Number.MAX_SAFE_INTEGER,
         }))
     )
