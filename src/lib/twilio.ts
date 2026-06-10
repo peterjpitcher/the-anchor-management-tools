@@ -5,6 +5,7 @@ import { logger } from './logger';
 import { TWILIO_STATUS_CALLBACK, TWILIO_STATUS_CALLBACK_METHOD, env } from './env';
 import { ensureCustomerForPhone } from '@/lib/sms/customers';
 import { recordOutboundSmsMessage } from '@/lib/sms/logging';
+import { resolveSmsSuspensionReason } from '@/lib/sms/suspension';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { evaluateSmsQuietHours } from '@/lib/sms/quiet-hours';
 import { shortenUrlsInSmsBody } from '@/lib/sms/link-shortening';
@@ -205,6 +206,32 @@ function buildDeferredSmsUniqueKey(params: {
 }
 
 export const sendSMS = async (to: string, body: string, options: SendSMSOptions = {}) => {
+  // Emergency kill switch — checked before any side effects (customer creation, DB writes).
+  // Flags are read at call time so they also cover deferred sends replayed via the job queue.
+  const suspensionReason = resolveSmsSuspensionReason({
+    suspendAllSms: process.env.SUSPEND_ALL_SMS,
+    suspendEventSms: process.env.SUSPEND_EVENT_SMS,
+    metadata: options.metadata
+  });
+
+  if (suspensionReason) {
+    // logger.warn is silent outside development; an active kill switch must show in production logs.
+    console.warn(
+      `Outbound SMS blocked: emergency suspension active (${suspensionReason === 'all_sms' ? 'SUSPEND_ALL_SMS' : 'SUSPEND_EVENT_SMS'})`,
+      JSON.stringify({
+        to,
+        suspensionReason,
+        templateKey: options.metadata?.template_key ?? null
+      })
+    );
+    return {
+      success: false,
+      error: 'SMS sending is currently suspended',
+      code: 'sms_suspended',
+      suspensionReason
+    };
+  }
+
   let supabase: ReturnType<typeof createAdminClient> | null = null;
   let dedupContext: ReturnType<typeof buildSmsDedupContext> = null;
   let claimedDedupContext = false;
