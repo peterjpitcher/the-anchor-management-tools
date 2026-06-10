@@ -1,6 +1,6 @@
 ---
 generated: true
-last_updated: 2026-06-08T00:00:00Z
+last_updated: 2026-06-10T00:00:00Z
 source: session-setup
 project: the-anchor-management-tools
 ---
@@ -11,7 +11,7 @@ project: the-anchor-management-tools
 
 See `session-context.md` for the full schema. This file is populated by the database agent.
 
-This codebase references roughly **190 distinct tables/views** via `.from('...')` calls. For how each table is used by the application layer, see [[relationships#Table → Actions]]. For the actions that mutate them, see [[server-actions]].
+This codebase references roughly **190 distinct tables/views** via `.from('...')` calls. For how each table is used by the application layer, see [[relationships#Table → Action files]]. For the actions that mutate them, see [[server-actions]].
 
 ## Related Docs
 
