@@ -96,6 +96,7 @@ export function useFohCreateBooking(input: {
     time: '19:00',
     party_size: '2',
     purpose: 'food' as 'food' | 'drinks' | 'event',
+    seating_preference: 'seated',
     sunday_deposit_method: 'payment_link' as 'payment_link' | 'cash',
     notes: '',
     waive_deposit: false,
@@ -206,6 +207,15 @@ export function useFohCreateBooking(input: {
   }, [createForm.booking_date, createForm.purpose, createForm.time, eventOptions])
 
   useEffect(() => {
+    if (createForm.purpose !== 'event' || selectedEventOption?.booking_mode !== 'communal') return
+    const seatedRemaining = selectedEventOption.seated_remaining ?? 0
+    const standingRemaining = selectedEventOption.standing_remaining ?? 0
+    if (createForm.seating_preference === 'seated' && seatedRemaining <= 0 && standingRemaining > 0) {
+      setCreateForm((current) => ({ ...current, seating_preference: 'standing' }))
+    }
+  }, [createForm.purpose, createForm.seating_preference, selectedEventOption])
+
+  useEffect(() => {
     if (!overlappingEventForTable) { setTableEventPromptAcknowledgedEventId(null); return }
     if (tableEventPromptAcknowledgedEventId && tableEventPromptAcknowledgedEventId !== overlappingEventForTable.id) {
       setTableEventPromptAcknowledgedEventId(null)
@@ -241,6 +251,7 @@ export function useFohCreateBooking(input: {
     setCreateForm((current) => ({
       booking_date: date, event_id: '', phone: '', customer_name: '', first_name: '', last_name: '',
       time: current.time || '19:00', party_size: current.party_size || '2', purpose: 'food',
+      seating_preference: 'seated',
       sunday_deposit_method: 'payment_link',
       notes: '', waive_deposit: false, is_venue_event: false
     }))
@@ -295,6 +306,7 @@ export function useFohCreateBooking(input: {
         time: nextTime,
         purpose: nextPurpose,
         event_id: walkInMode ? options?.prefill?.event_id ?? walkInDefaults?.eventId ?? '' : options?.prefill?.event_id ?? current.event_id,
+        seating_preference: 'seated',
         sunday_deposit_method: walkInMode ? 'payment_link' : current.sunday_deposit_method,
         phone: walkInMode ? '' : current.phone, customer_name: walkInMode ? '' : current.customer_name,
         first_name: walkInMode ? '' : current.first_name, last_name: walkInMode ? '' : current.last_name,
@@ -352,7 +364,11 @@ export function useFohCreateBooking(input: {
             customer_id: selectedCustomer?.id || undefined, phone: createForm.phone.trim() || undefined,
             first_name: firstName, last_name: lastName, walk_in: isWalkIn || undefined,
             walk_in_guest_name: isWalkIn ? createForm.customer_name.trim() || undefined : undefined,
-            default_country_code: DEFAULT_COUNTRY_CODE, event_id: createForm.event_id, seats
+            default_country_code: DEFAULT_COUNTRY_CODE, event_id: createForm.event_id, seats,
+            seating_preference:
+              selectedEventOption?.booking_mode === 'communal'
+                ? createForm.seating_preference
+                : undefined
           })
         })
         const payload = (await response.json()) as FohCreateEventBookingResponse
@@ -379,7 +395,8 @@ export function useFohCreateBooking(input: {
         const paymentLinkText = payload.data.next_step_url ? ` Payment link: ${payload.data.next_step_url}` : ''
         const manageLinkText = payload.data.manage_booking_url ? ` Manage link: ${payload.data.manage_booking_url}` : ''
         const bookingLabel = isWalkIn ? 'Walk-in event booking' : 'Event booking'
-        setStatusMessage(`${bookingLabel} ${bookingRef}${eventNameText} was ${outcome}.${tableText}${walkInTableMoveText}${paymentLinkText}${manageLinkText}`)
+        const seatingText = payload.data.event_seating_type ? ` (${payload.data.event_seating_type})` : ''
+        setStatusMessage(`${bookingLabel} ${bookingRef}${eventNameText}${seatingText} was ${outcome}.${tableText}${walkInTableMoveText}${paymentLinkText}${manageLinkText}`)
         closeCreateModal()
       } catch (error) {
         setErrorMessage(error instanceof Error ? error.message : 'Failed to create event booking')

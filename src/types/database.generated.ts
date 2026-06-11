@@ -765,6 +765,7 @@ export type Database = {
           created_at: string
           customer_id: string
           event_id: string
+          event_seating_type: string
           expired_at: string | null
           hold_expires_at: string | null
           id: string
@@ -788,6 +789,7 @@ export type Database = {
           created_at?: string
           customer_id: string
           event_id: string
+          event_seating_type?: string
           expired_at?: string | null
           hold_expires_at?: string | null
           id?: string
@@ -811,6 +813,7 @@ export type Database = {
           created_at?: string
           customer_id?: string
           event_id?: string
+          event_seating_type?: string
           expired_at?: string | null
           hold_expires_at?: string | null
           id?: string
@@ -2625,6 +2628,74 @@ export type Database = {
           },
         ]
       }
+      event_communal_seat_allocations: {
+        Row: {
+          created_at: string
+          end_datetime: string
+          event_booking_id: string
+          event_id: string
+          id: string
+          seats: number
+          start_datetime: string
+          table_booking_id: string | null
+          table_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          end_datetime: string
+          event_booking_id: string
+          event_id: string
+          id?: string
+          seats: number
+          start_datetime: string
+          table_booking_id?: string | null
+          table_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          end_datetime?: string
+          event_booking_id?: string
+          event_id?: string
+          id?: string
+          seats?: number
+          start_datetime?: string
+          table_booking_id?: string | null
+          table_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "event_communal_seat_allocations_event_booking_id_fkey"
+            columns: ["event_booking_id"]
+            isOneToOne: false
+            referencedRelation: "bookings"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "event_communal_seat_allocations_event_id_fkey"
+            columns: ["event_id"]
+            isOneToOne: false
+            referencedRelation: "events"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "event_communal_seat_allocations_table_booking_id_fkey"
+            columns: ["table_booking_id"]
+            isOneToOne: false
+            referencedRelation: "table_bookings"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "event_communal_seat_allocations_table_id_fkey"
+            columns: ["table_id"]
+            isOneToOne: false
+            referencedRelation: "tables"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       event_checklist_statuses: {
         Row: {
           completed_at: string | null
@@ -2911,10 +2982,12 @@ export type Database = {
           primary_keywords: Json | null
           promo_video_url: string | null
           secondary_keywords: Json | null
+          seated_capacity: number | null
           short_description: string | null
           slug: string
           social_copy_whatsapp: string | null
           start_datetime: string | null
+          standing_capacity: number | null
           thumbnail_image_url: string | null
           time: string
         }
@@ -2965,10 +3038,12 @@ export type Database = {
           primary_keywords?: Json | null
           promo_video_url?: string | null
           secondary_keywords?: Json | null
+          seated_capacity?: number | null
           short_description?: string | null
           slug: string
           social_copy_whatsapp?: string | null
           start_datetime?: string | null
+          standing_capacity?: number | null
           thumbnail_image_url?: string | null
           time: string
         }
@@ -3019,10 +3094,12 @@ export type Database = {
           primary_keywords?: Json | null
           promo_video_url?: string | null
           secondary_keywords?: Json | null
+          seated_capacity?: number | null
           short_description?: string | null
           slug?: string
           social_copy_whatsapp?: string | null
           start_datetime?: string | null
+          standing_capacity?: number | null
           thumbnail_image_url?: string | null
           time?: string
         }
@@ -9131,7 +9208,7 @@ export type Database = {
       service_slot_config: {
         Row: {
           booking_type: Database["public"]["Enums"]["table_booking_type"]
-          capacity: number
+          capacity: number | null
           created_at: string | null
           day_of_week: number
           ends_at: string
@@ -11817,6 +11894,7 @@ export type Database = {
           p_customer_id: string
           p_event_id: string
           p_seats: number
+          p_seating_preference?: string
           p_source?: string
         }
         Returns: Json
@@ -12193,12 +12271,18 @@ export type Database = {
       get_event_capacity_snapshot_v05: {
         Args: { p_event_ids?: string[] }
         Returns: {
-          capacity: number
+          capacity: number | null
+          communal_seated_capacity: number | null
+          communal_seated_reserved: number
           confirmed_seats: number
           event_id: string
           held_seats: number
           is_full: boolean
-          seats_remaining: number
+          seats_remaining: number | null
+          seated_remaining: number | null
+          standing_capacity: number
+          standing_remaining: number | null
+          total_remaining: number | null
         }[]
       }
       get_invoice_summary_stats: {

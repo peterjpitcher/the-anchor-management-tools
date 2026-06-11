@@ -24,6 +24,7 @@ type EventRow = {
   performer_type: string | null
   price: number | null
   is_free: boolean | null
+  payment_mode: string | null
   booking_url: string | null
   category?: { name: string | null } | { name: string | null }[] | null
 }
@@ -51,77 +52,71 @@ function sanitizeFilename(value: string, fallback: string): string {
 }
 
 function formatTime(value: string | null): string {
-  if (!value) return 'TBC'
+  if (!value) return ''
   const [hours, minutes] = value.split(':')
   if (!hours || !minutes) return value
   return `${hours.padStart(2, '0')}:${minutes.padStart(2, '0')}`
 }
 
-function formatStatus(value: string | null): string {
-  if (!value) return 'Scheduled'
-  return value
-    .split('_')
-    .map((segment) => `${segment.charAt(0).toUpperCase()}${segment.slice(1)}`)
-    .join(' ')
+function formatTimes(event: EventRow): string {
+  const parts = [
+    ['Doors', event.doors_time],
+    ['Start', event.time],
+    ['End', event.end_time],
+    ['Last entry', event.last_entry_time],
+  ]
+    .map(([label, value]) => {
+      const formatted = formatTime(value as string | null)
+      return formatted ? `${label}: ${formatted}` : null
+    })
+    .filter(Boolean)
+
+  if (event.duration_minutes) {
+    parts.push(`Duration: ${event.duration_minutes} mins`)
+  }
+
+  return parts.join(' | ')
 }
 
 function formatPrice(event: EventRow): string {
   if (event.is_free) return 'Free'
   if (typeof event.price === 'number') return currencyFormatter.format(event.price)
-  return '—'
+  return ''
 }
 
-function formatField(label: string, value: string | number | null | undefined): string {
-  const hasValue = value !== null && value !== undefined && String(value).trim() !== ''
-  return `${label}: ${hasValue ? value : '—'}`
+function formatPaymentMode(value: string | null): string {
+  switch (value) {
+    case 'free':
+      return 'Free'
+    case 'cash_only':
+      return 'Cash on arrival'
+    case 'prepaid':
+      return 'Prepaid online'
+    default:
+      return ''
+  }
 }
 
-function formatMultilineField(label: string, value: string | null | undefined): string {
-  const text = value?.trim() ?? ''
-  if (!text) return `${label}: —`
-  return `${label}:\n${text}`
+function csvCell(value: string | number | null | undefined): string {
+  const text = value === null || value === undefined ? '' : String(value)
+  return `"${text.replaceAll('"', '""')}"`
 }
 
-function buildExportText(events: EventRow[], startDate: string, endDate: string): string {
-  const headerLines = [
-    'Events Export',
-    `Range: ${startDate} to ${endDate}`,
-    `Generated: ${new Date().toISOString()}`,
-    `Total events: ${events.length}`,
-    '',
-  ]
-  const divider = '-'.repeat(64)
+function buildExportCsv(events: EventRow[]): string {
+  const headers = ['Event Name', 'Date', 'Times', 'Host', 'Price', 'How Paid', 'Brief']
+  const rows = events.map((event) => [
+    event.name,
+    event.date,
+    formatTimes(event),
+    event.performer_name ?? '',
+    formatPrice(event),
+    formatPaymentMode(event.payment_mode),
+    event.brief ?? '',
+  ])
 
-  const eventBlocks = events.map((event, index) => {
-    const categoryRecord = Array.isArray(event.category) ? event.category[0] : event.category
-    const categoryName = categoryRecord?.name ?? null
-    const performerParts = [event.performer_name, event.performer_type].filter(Boolean)
-    const performerLabel = performerParts.length ? performerParts.join(' • ') : null
-
-    const lines = [
-      `Event ${index + 1}: ${event.name}`,
-      formatField('Status', formatStatus(event.event_status)),
-      formatField('Category', categoryName),
-      formatField('Date', event.date),
-      formatField('Start time', formatTime(event.time)),
-      formatField('End time', formatTime(event.end_time)),
-      formatField('Doors time', formatTime(event.doors_time)),
-      formatField('Last entry', formatTime(event.last_entry_time)),
-      formatField('Duration (mins)', event.duration_minutes ?? null),
-      formatField('Capacity', event.capacity ?? null),
-      formatField('Price', formatPrice(event)),
-      formatField('Booking URL', event.booking_url ?? null),
-      formatField('Performer', performerLabel),
-      formatMultilineField('Brief', event.brief),
-      formatMultilineField('Short description', event.short_description),
-      formatMultilineField('Long description', event.long_description),
-    ]
-
-    const block = lines.join('\n')
-    return index === events.length - 1 ? block : `${block}\n${divider}`
-  })
-
-  return [headerLines.join('\n'), ...eventBlocks].join('\n')
+  return [headers, ...rows]
+    .map((row) => row.map(csvCell).join(','))
+    .join('\n')
 }
 
 export async function GET(request: NextRequest) {
@@ -169,6 +164,7 @@ export async function GET(request: NextRequest) {
         performer_type,
         price,
         is_free,
+        payment_mode,
         booking_url,
         category:event_categories(name)
       `
@@ -195,12 +191,12 @@ export async function GET(request: NextRequest) {
       return new NextResponse('No events found for the selected criteria.', { status: 404 })
     }
 
-    const exportText = buildExportText(events, startDate, endDate)
-    const buffer = Buffer.from(exportText, 'utf-8')
+    const exportCsv = buildExportCsv(events)
+    const buffer = Buffer.from(`\uFEFF${exportCsv}`, 'utf-8')
     const baseFilename = eventId
       ? sanitizeFilename(`event-${events[0]?.name ?? eventId}`, `event-${eventId}`)
       : `events_${startDate}_to_${endDate}`
-    const filename = `${baseFilename}.txt`
+    const filename = `${baseFilename}.csv`
 
     const userInfo = await getCurrentUser()
     await logAuditEvent({
@@ -220,7 +216,7 @@ export async function GET(request: NextRequest) {
     return new NextResponse(buffer, {
       status: 200,
       headers: {
-        'Content-Type': 'text/plain; charset=utf-8',
+        'Content-Type': 'text/csv; charset=utf-8',
         'Content-Disposition': `attachment; filename=\"${filename}\"`,
         'Cache-Control': 'no-store',
         'Content-Length': buffer.length.toString(),

@@ -1,6 +1,7 @@
 'use client'
 
-import { SearchInput, Select, DateTimePicker } from '@/ds'
+import { Button, SearchInput, Select, DateTimePicker } from '@/ds'
+import { Icon } from '@/ds/icons'
 import type { EventCategory } from '@/types/event-categories'
 
 export interface EventFilters {
@@ -15,6 +16,8 @@ interface EventFilterPanelProps {
   filters: EventFilters
   onFilterChange: (filters: EventFilters) => void
   categories: EventCategory[]
+  onExportDateRange?: () => void
+  isExporting?: boolean
 }
 
 const STATUS_OPTIONS = [
@@ -26,7 +29,13 @@ const STATUS_OPTIONS = [
   { value: 'sold_out', label: 'Sold Out' },
 ]
 
-export function EventFilterPanel({ filters, onFilterChange, categories }: EventFilterPanelProps) {
+export function EventFilterPanel({
+  filters,
+  onFilterChange,
+  categories,
+  onExportDateRange,
+  isExporting = false,
+}: EventFilterPanelProps) {
   const categoryOptions = [
     { value: 'all', label: 'All Categories' },
     ...categories.map((c) => ({ value: c.id, label: c.name })),
@@ -79,6 +88,18 @@ export function EventFilterPanel({ filters, onFilterChange, categories }: EventF
           placeholder="To date"
         />
       </div>
+
+      {onExportDateRange && (
+        <Button
+          type="button"
+          variant="secondary"
+          icon={<Icon name="download" size={16} />}
+          loading={isExporting}
+          onClick={onExportDateRange}
+        >
+          Export CSV
+        </Button>
+      )}
     </div>
   )
 }

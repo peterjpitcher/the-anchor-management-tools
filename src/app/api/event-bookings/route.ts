@@ -33,6 +33,7 @@ const CreateEventBookingSchema = z.object({
     (value) => (typeof value === 'string' ? Number.parseInt(value, 10) : value),
     z.number().int().min(1).max(20)
   ),
+  seating_preference: z.enum(['seated', 'standing']).optional(),
   expected_event_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   source_url: z.string().trim().url().max(2048).optional(),
   landing_path: z.string().trim().min(1).max(512).optional(),
@@ -126,6 +127,7 @@ export async function POST(request: NextRequest) {
       last_name: parsed.data.last_name || null,
       email: parsed.data.email || null,
       seats: parsed.data.seats,
+      seating_preference: parsed.data.seating_preference || 'seated',
       expected_event_date: parsed.data.expected_event_date || null,
     })
     const attribution = buildBookingAttribution(parsed.data)
@@ -233,6 +235,7 @@ export async function POST(request: NextRequest) {
         seats: parsed.data.seats,
         source: 'brand_site',
         bookingMode,
+        seatingPreference: parsed.data.seating_preference,
         appBaseUrl,
         shouldSendSms: true,
         firstName: parsed.data.first_name || customerResolution.resolvedFirstName,
@@ -265,7 +268,17 @@ export async function POST(request: NextRequest) {
         )
       }
 
-      const { resolvedState, resolvedReason, bookingId, seatsRemaining, nextStepUrl, manageUrl, smsMeta } = result
+      const {
+        resolvedState,
+        resolvedReason,
+        bookingId,
+        seatsRemaining,
+        nextStepUrl,
+        manageUrl,
+        smsMeta,
+        eventSeatingType,
+        rpcResult
+      } = result
 
       const responseStatus = resolvedState === 'confirmed' || resolvedState === 'pending_payment' ? 201 : 200
       const responsePayload = {
@@ -275,6 +288,10 @@ export async function POST(request: NextRequest) {
           booking_id: resolvedState === 'confirmed' || resolvedState === 'pending_payment' ? bookingId : null,
           reason: resolvedReason,
           seats_remaining: resolvedState === 'confirmed' || resolvedState === 'pending_payment' ? seatsRemaining : null,
+          seated_remaining: rpcResult.seated_remaining ?? null,
+          standing_remaining: rpcResult.standing_remaining ?? null,
+          total_remaining: rpcResult.total_remaining ?? null,
+          event_seating_type: eventSeatingType,
           next_step_url: nextStepUrl,
           manage_booking_url: manageUrl
         },

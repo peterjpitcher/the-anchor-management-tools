@@ -376,6 +376,8 @@ export function formatEventBookingMode(mode: FohEventOption['booking_mode']): st
       return 'General entry'
     case 'mixed':
       return 'Mixed'
+    case 'communal':
+      return 'Communal'
     case 'table':
     default:
       return 'Table'

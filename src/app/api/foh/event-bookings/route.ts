@@ -25,7 +25,8 @@ const CreateFohEventBookingSchema = z.object({
   seats: z.preprocess(
     (value) => (typeof value === 'string' ? Number.parseInt(value, 10) : value),
     z.number().int().min(1).max(20)
-  )
+  ),
+  seating_preference: z.enum(['seated', 'standing']).optional()
 }).superRefine((value, context) => {
   if (!value.customer_id && !value.phone && value.walk_in !== true) {
     context.addIssue({
@@ -59,7 +60,11 @@ type FohEventBookingResponseData = {
   manage_booking_url: string | null
   event_name: string | null
   payment_mode: 'free' | 'cash_only' | 'prepaid' | null
-  booking_mode: 'table' | 'general' | 'mixed' | null
+  booking_mode: 'table' | 'general' | 'mixed' | 'communal' | null
+  event_seating_type: 'seated' | 'standing' | null
+  seated_remaining: number | null
+  standing_remaining: number | null
+  total_remaining: number | null
   table_booking_id: string | null
   table_name: string | null
 }
@@ -353,6 +358,7 @@ export async function POST(request: NextRequest) {
     seats: payload.seats,
     source,
     bookingMode,
+    seatingPreference: payload.seating_preference,
     appBaseUrl,
     shouldSendSms: shouldSendBookingSms && Boolean(normalizedPhone),
     supabaseClient: auth.supabase,
@@ -394,6 +400,7 @@ export async function POST(request: NextRequest) {
     smsMeta,
     tableBookingId,
     tableName,
+    eventSeatingType,
     rpcResult
   } = result
 
@@ -435,6 +442,7 @@ export async function POST(request: NextRequest) {
               state: resolvedState,
               payment_mode: rpcResult.payment_mode || null,
               booking_mode: bookingMode,
+              event_seating_type: eventSeatingType,
               table_booking_id: tableBookingId,
               source: 'foh'
             }
@@ -531,6 +539,10 @@ export async function POST(request: NextRequest) {
         event_name: rpcResult.event_name ?? null,
         payment_mode: rpcResult.payment_mode ?? null,
         booking_mode: bookingMode,
+        event_seating_type: eventSeatingType,
+        seated_remaining: rpcResult.seated_remaining ?? null,
+        standing_remaining: rpcResult.standing_remaining ?? null,
+        total_remaining: rpcResult.total_remaining ?? null,
         table_booking_id: tableBookingId,
         table_name: tableName
       } satisfies FohEventBookingResponseData,

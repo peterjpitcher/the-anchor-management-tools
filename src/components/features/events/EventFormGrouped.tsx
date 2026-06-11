@@ -92,8 +92,8 @@ export function EventFormGrouped({ event, categories, onSubmit, onCancel, active
   const [endTime, setEndTime] = useState(event?.end_time ?? '')
   const [categoryId, setCategoryId] = useState(event?.category_id ?? '')
   const [eventStatus, setEventStatus] = useState(event?.event_status ?? 'draft')
-  const [bookingMode, setBookingMode] = useState<'table' | 'general' | 'mixed'>(
-    (event?.booking_mode as 'table' | 'general' | 'mixed') ?? 'table'
+  const [bookingMode, setBookingMode] = useState<'table' | 'general' | 'mixed' | 'communal'>(
+    (event?.booking_mode as 'table' | 'general' | 'mixed' | 'communal') ?? 'table'
   )
   const [performerName, setPerformerName] = useState(event?.performer_name ?? '')
   const [performerType, setPerformerType] = useState(event?.performer_type ?? '')
@@ -773,12 +773,13 @@ export function EventFormGrouped({ event, categories, onSubmit, onCancel, active
               <Select
                 id="booking_mode"
                 value={bookingMode}
-                onChange={(e) => setBookingMode(e.target.value as 'table' | 'general' | 'mixed')}
+                onChange={(e) => setBookingMode(e.target.value as 'table' | 'general' | 'mixed' | 'communal')}
                 fullWidth
               >
                 <option value="table">Table bookings (default)</option>
                 <option value="general">General entry only</option>
                 <option value="mixed">Mixed (table + general)</option>
+                <option value="communal">Communal table seating</option>
               </Select>
             </div>
           </div>

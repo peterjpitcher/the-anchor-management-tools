@@ -31,6 +31,7 @@ export type CreateForm = {
   time: string
   party_size: string
   purpose: 'food' | 'drinks' | 'event'
+  seating_preference: 'seated' | 'standing'
   sunday_deposit_method: 'payment_link' | 'cash'
   notes: string
   waive_deposit: boolean
@@ -308,6 +309,7 @@ export const FohCreateBookingModal = React.memo(function FohCreateBookingModal(p
                   ...current,
                   purpose: nextPurpose,
                   sunday_deposit_method: nextPurpose === 'event' ? 'payment_link' : current.sunday_deposit_method,
+                  seating_preference: 'seated',
                   event_id:
                     nextPurpose === 'event'
                       ? current.event_id || eventOptions.find((item) => !item.is_full)?.id || eventOptions[0]?.id || ''
@@ -333,7 +335,7 @@ export const FohCreateBookingModal = React.memo(function FohCreateBookingModal(p
                     if (createMode === 'walk_in') {
                       onSetWalkInPurposeAutoSelectionEnabled(false)
                     }
-                    onSetCreateForm((current) => ({ ...current, event_id: event.target.value }))
+                    onSetCreateForm((current) => ({ ...current, event_id: event.target.value, seating_preference: 'seated' }))
                   }}
                   className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
                 >
@@ -346,7 +348,7 @@ export const FohCreateBookingModal = React.memo(function FohCreateBookingModal(p
                       value={eventOption.id}
                       disabled={eventOption.is_full}
                     >
-                      {eventOption.name} · {formatEventOptionDateTime(eventOption)} · {formatEventBookingMode(eventOption.booking_mode)} · {eventOption.is_full ? 'Full' : `${eventOption.seats_remaining ?? '-'} seats left`}
+                      {eventOption.name} · {formatEventOptionDateTime(eventOption)} · {formatEventBookingMode(eventOption.booking_mode)} · {eventOption.is_full ? 'Full' : `${eventOption.total_remaining ?? eventOption.seats_remaining ?? '-'} left`}
                     </option>
                   ))}
                 </select>
@@ -363,8 +365,40 @@ export const FohCreateBookingModal = React.memo(function FohCreateBookingModal(p
                   <p className="mt-1">
                     {selectedEventOption.is_full
                       ? 'This event is currently full.'
-                      : `${selectedEventOption.seats_remaining ?? '-'} seats remaining`}
+                      : selectedEventOption.booking_mode === 'communal'
+                        ? `${selectedEventOption.seated_remaining ?? '-'} seated · ${selectedEventOption.standing_remaining ?? '-'} standing · ${selectedEventOption.total_remaining ?? selectedEventOption.seats_remaining ?? '-'} total`
+                        : `${selectedEventOption.seats_remaining ?? '-'} seats remaining`}
                   </p>
+                </div>
+              )}
+
+              {selectedEventOption?.booking_mode === 'communal' && (
+                <div className="rounded-md border border-gray-200 bg-white px-3 py-2 md:col-span-2">
+                  <p className="text-xs font-medium text-gray-800">Ticket type</p>
+                  <div className="mt-2 flex flex-wrap gap-4">
+                    <label className="flex items-center gap-2 text-xs text-gray-700">
+                      <input
+                        type="radio"
+                        name="foh-event-seating-preference"
+                        value="seated"
+                        checked={createForm.seating_preference === 'seated'}
+                        onChange={() => onSetCreateForm((current) => ({ ...current, seating_preference: 'seated' }))}
+                        disabled={(selectedEventOption.seated_remaining ?? 0) <= 0}
+                      />
+                      <span>Seated</span>
+                    </label>
+                    <label className="flex items-center gap-2 text-xs text-gray-700">
+                      <input
+                        type="radio"
+                        name="foh-event-seating-preference"
+                        value="standing"
+                        checked={createForm.seating_preference === 'standing'}
+                        onChange={() => onSetCreateForm((current) => ({ ...current, seating_preference: 'standing' }))}
+                        disabled={(selectedEventOption.standing_remaining ?? 0) <= 0}
+                      />
+                      <span>Standing</span>
+                    </label>
+                  </div>
                 </div>
               )}
 
@@ -483,6 +517,7 @@ export const FohCreateBookingModal = React.memo(function FohCreateBookingModal(p
                   ...current,
                   purpose: 'event',
                   sunday_deposit_method: 'payment_link',
+                  seating_preference: 'seated',
                   event_id: eventOptions.find((item) => !item.is_full)?.id || eventOptions[0]?.id || ''
                 }))
                 onSetTableEventPromptAcknowledgedEventId(null)
@@ -517,7 +552,8 @@ export const FohCreateBookingModal = React.memo(function FohCreateBookingModal(p
                   onSetCreateForm((current) => ({
                     ...current,
                     purpose: 'event',
-                    event_id: overlappingEventForTable.id
+                    event_id: overlappingEventForTable.id,
+                    seating_preference: 'seated'
                   }))
                   onSetTableEventPromptAcknowledgedEventId(null)
                   onSetErrorMessage(null)

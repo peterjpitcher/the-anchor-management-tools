@@ -81,6 +81,49 @@ function formatCurrency(amount: number | null | undefined): string {
   return new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP' }).format(amount)
 }
 
+function formatBookingMode(mode: Event['booking_mode']): string {
+  switch (mode) {
+    case 'general':
+      return 'General entry'
+    case 'mixed':
+      return 'Mixed'
+    case 'communal':
+      return 'Communal seating'
+    case 'table':
+      return 'Table booking'
+    default:
+      return 'Table booking'
+  }
+}
+
+function formatPaymentMode(paymentMode: Event['payment_mode']): string | null {
+  switch (paymentMode) {
+    case 'prepaid':
+      return 'paid online'
+    case 'cash_only':
+      return 'cash on arrival'
+    case 'free':
+      return 'free'
+    default:
+      return null
+  }
+}
+
+function formatEventCost(event: Event): string {
+  const price = event.price_per_seat ?? event.price ?? null
+  const paymentMode = formatPaymentMode(event.payment_mode)
+
+  if (event.is_free === true || event.payment_mode === 'free' || price === 0) {
+    return 'Free'
+  }
+
+  if (price === null || price === undefined) {
+    return paymentMode ? formatStatusLabel(event.payment_mode) : '-'
+  }
+
+  return `${formatCurrency(price)} per person${paymentMode ? `, ${paymentMode}` : ''}`
+}
+
 function copyToClipboard(text: string, label: string): void {
   navigator.clipboard.writeText(text).then(
     () => toast.success(`${label} copied to clipboard`),
@@ -116,6 +159,7 @@ export default function EventDetailClient({
   const [newFirstName, setNewFirstName] = useState('')
   const [newLastName, setNewLastName] = useState('')
   const [newSeats, setNewSeats] = useState('')
+  const [newSeatingPreference, setNewSeatingPreference] = useState<'seated' | 'standing'>('seated')
   const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null)
 
   // Edit seats state
@@ -187,6 +231,7 @@ export default function EventDetailClient({
         eventId: event.id,
         phone: newPhone.trim(),
         seats: Math.max(1, Math.min(20, Number(newSeats) || 1)),
+        seatingPreference: event.booking_mode === 'communal' ? newSeatingPreference : undefined,
         firstName: newFirstName.trim() || undefined,
         lastName: newLastName.trim() || undefined,
       })
@@ -198,11 +243,12 @@ export default function EventDetailClient({
         setNewFirstName('')
         setNewLastName('')
         setNewSeats('')
+        setNewSeatingPreference('seated')
         setSelectedCustomerId(null)
         await refreshBookings()
       }
     })
-  }, [event, newPhone, newSeats, newFirstName, newLastName, refreshBookings])
+  }, [event, newPhone, newSeats, newSeatingPreference, newFirstName, newLastName, refreshBookings])
 
   /* ---- Edit seats ---- */
 
@@ -417,6 +463,8 @@ export default function EventDetailClient({
                 onNewPhoneChange={setNewPhone}
                 newSeats={newSeats}
                 onNewSeatsChange={setNewSeats}
+                newSeatingPreference={newSeatingPreference}
+                onNewSeatingPreferenceChange={setNewSeatingPreference}
                 onCreateBooking={handleCreateBooking}
                 editingBookingId={editingBookingId}
                 editSeatsValue={editSeatsValue}
@@ -516,7 +564,20 @@ function OverviewTab({ event }: { event: Event }) {
             {event.end_time && <DetailRow label="End Time" value={formatTime12Hour(event.end_time)} />}
             {event.doors_time && <DetailRow label="Doors" value={formatTime12Hour(event.doors_time)} />}
             {event.last_entry_time && <DetailRow label="Last Entry" value={formatTime12Hour(event.last_entry_time)} />}
-            {event.capacity !== null && <DetailRow label="Capacity" value={String(event.capacity)} />}
+            {event.booking_mode === 'communal' ? (
+              <>
+                {(event as any).seated_capacity !== null && (event as any).seated_capacity !== undefined && (
+                  <DetailRow label="Seated Capacity" value={String((event as any).seated_capacity)} />
+                )}
+                {(event as any).standing_capacity !== null && (event as any).standing_capacity !== undefined && (
+                  <DetailRow label="Standing Capacity" value={String((event as any).standing_capacity)} />
+                )}
+              </>
+            ) : (
+              event.capacity !== null && <DetailRow label="Capacity" value={String(event.capacity)} />
+            )}
+            <DetailRow label="Booking Type" value={formatBookingMode(event.booking_mode)} />
+            <DetailRow label="Cost" value={formatEventCost(event)} />
             {event.performer_name && <DetailRow label="Performer" value={`${event.performer_name}${event.performer_type ? ` (${event.performer_type})` : ''}`} />}
             {event.slug && (
               <DetailRow label="Slug" value={event.slug}>
@@ -649,6 +710,8 @@ function AttendeesTab({
   onNewPhoneChange,
   newSeats,
   onNewSeatsChange,
+  newSeatingPreference,
+  onNewSeatingPreferenceChange,
   onCreateBooking,
   editingBookingId,
   editSeatsValue,
@@ -675,6 +738,8 @@ function AttendeesTab({
   onNewPhoneChange: (v: string) => void
   newSeats: string
   onNewSeatsChange: (v: string) => void
+  newSeatingPreference: 'seated' | 'standing'
+  onNewSeatingPreferenceChange: (v: 'seated' | 'standing') => void
   onCreateBooking: () => void
   editingBookingId: string | null
   editSeatsValue: string
@@ -735,7 +800,7 @@ function AttendeesTab({
                   />
                 </div>
               )}
-              <div className="flex items-end gap-3">
+              <div className="flex flex-wrap items-end gap-3">
                 <div className="w-24">
                   <label className="block text-xs font-medium text-text-muted mb-1">Seats</label>
                   <Input
@@ -747,6 +812,19 @@ function AttendeesTab({
                     placeholder="1"
                   />
                 </div>
+                {event.booking_mode === 'communal' && (
+                  <div>
+                    <label className="block text-xs font-medium text-text-muted mb-1">Ticket type</label>
+                    <select
+                      value={newSeatingPreference}
+                      onChange={(e) => onNewSeatingPreferenceChange(e.target.value === 'standing' ? 'standing' : 'seated')}
+                      className="h-10 rounded-md border border-border bg-surface px-3 text-sm"
+                    >
+                      <option value="seated">Seated</option>
+                      <option value="standing">Standing</option>
+                    </select>
+                  </div>
+                )}
                 <Button
                   variant="primary"
                   onClick={onCreateBooking}
@@ -782,6 +860,7 @@ function AttendeesTab({
                     <TableHead>Name</TableHead>
                     <TableHead>Phone</TableHead>
                     <TableHead>Seats</TableHead>
+                    {event.booking_mode === 'communal' && <TableHead>Type</TableHead>}
                     <TableHead>Status</TableHead>
                     <TableHead>Created</TableHead>
                     {canManage && <TableHead>Actions</TableHead>}
@@ -824,6 +903,13 @@ function AttendeesTab({
                             booking.seats ?? '-'
                           )}
                         </TableCell>
+                        {event.booking_mode === 'communal' && (
+                          <TableCell>
+                            <Badge tone={booking.event_seating_type === 'standing' ? 'warning' : 'info'}>
+                              {booking.event_seating_type === 'standing' ? 'Standing' : 'Seated'}
+                            </Badge>
+                          </TableCell>
+                        )}
                         <TableCell>
                           <Badge
                             tone={booking.status === 'cancelled' ? 'danger' : booking.status === 'confirmed' ? 'success' : 'neutral'}

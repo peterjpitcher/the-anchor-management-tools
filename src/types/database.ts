@@ -7,8 +7,10 @@ export interface Event {
   date: string;
   time: string;
   capacity: number | null;
+  seated_capacity?: number | null;
+  standing_capacity?: number | null;
   payment_mode?: 'free' | 'cash_only' | 'prepaid' | null;
-  booking_mode?: 'table' | 'general' | 'mixed' | null;
+  booking_mode?: 'table' | 'general' | 'mixed' | 'communal' | null;
   event_type?: string | null;
   category_id?: string | null;
   created_at: string;

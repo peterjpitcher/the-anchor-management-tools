@@ -34,6 +34,7 @@ export type EventBookingRow = {
   notes: string | null
   created_at: string
   status?: string | null
+  event_seating_type?: 'seated' | 'standing' | null
   customer?: {
     id: string
     first_name: string | null
@@ -158,7 +159,10 @@ async function prepareEventDataFromFormData(formData: FormData, _existingEventId
 
   const bookingModeInput = rawData.booking_mode
   const bookingMode: CreateEventInput['booking_mode'] =
-    bookingModeInput === 'table' || bookingModeInput === 'general' || bookingModeInput === 'mixed'
+    bookingModeInput === 'table' ||
+    bookingModeInput === 'general' ||
+    bookingModeInput === 'mixed' ||
+    bookingModeInput === 'communal'
       ? bookingModeInput
       : 'table'
 
@@ -169,6 +173,12 @@ async function prepareEventDataFromFormData(formData: FormData, _existingEventId
     time: rawData.time as string || categoryDefaults.time,
     ...(rawData.capacity !== undefined && rawData.capacity !== null && rawData.capacity !== ''
       ? { capacity: Number(rawData.capacity) || null }
+      : {}),
+    ...(rawData.seated_capacity !== undefined && rawData.seated_capacity !== null
+      ? { seated_capacity: rawData.seated_capacity === '' ? null : Number(rawData.seated_capacity) || null }
+      : {}),
+    ...(rawData.standing_capacity !== undefined && rawData.standing_capacity !== null
+      ? { standing_capacity: rawData.standing_capacity === '' ? null : Number(rawData.standing_capacity) || null }
       : {}),
     ...(rawData.payment_mode && ['free', 'cash_only', 'prepaid'].includes(rawData.payment_mode as string)
       ? { payment_mode: rawData.payment_mode as 'free' | 'cash_only' | 'prepaid' }
@@ -661,7 +671,7 @@ export async function getEventBookings(eventId: string): Promise<{ data?: EventB
     const supabase = createAdminClient()
     const { data, error } = await supabase
       .from('bookings')
-      .select('id, customer_id, event_id, seats, is_reminder_only, notes, created_at, status, customer:customers(id, first_name, last_name, mobile_number, email)')
+      .select('id, customer_id, event_id, seats, event_seating_type, is_reminder_only, notes, created_at, status, customer:customers(id, first_name, last_name, mobile_number, email)')
       .eq('event_id', eventId)
       .order('created_at', { ascending: false })
 
@@ -682,6 +692,7 @@ const createEventManualBookingSchema = z.object({
   phone: z.string().trim().min(7).max(32),
   defaultCountryCode: z.string().regex(/^\d{1,4}$/).optional(),
   seats: z.number().int().min(1).max(20),
+  seatingPreference: z.enum(['seated', 'standing']).optional(),
   firstName: z.string().trim().max(80).optional(),
   lastName: z.string().trim().max(80).optional()
 })
@@ -700,6 +711,7 @@ type EventManualBookingResult =
       next_step_url: string | null
       table_booking_id: string | null
       table_name: string | null
+      event_seating_type: 'seated' | 'standing' | null
     }
     meta?: {
       sms: SmsSafetyMeta
@@ -710,6 +722,7 @@ export async function createEventManualBooking(input: {
   eventId: string
   phone: string
   seats: number
+  seatingPreference?: 'seated' | 'standing'
   defaultCountryCode?: string
   firstName?: string
   lastName?: string
@@ -779,7 +792,8 @@ export async function createEventManualBooking(input: {
           manage_booking_url: null,
           next_step_url: null,
           table_booking_id: null,
-          table_name: null
+          table_name: null,
+          event_seating_type: null
         }
       }
     }
@@ -792,6 +806,7 @@ export async function createEventManualBooking(input: {
       seats: parsed.data.seats,
       source: 'admin',
       bookingMode,
+      seatingPreference: parsed.data.seatingPreference,
       appBaseUrl: process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000',
       shouldSendSms: true,
       supabaseClient: supabase,
@@ -815,7 +830,7 @@ export async function createEventManualBooking(input: {
       return { error: 'Booking could not be created because the payment link failed. Please try again.' }
     }
 
-    const { resolvedState, resolvedReason, bookingId, nextStepUrl, manageUrl, tableBookingId, tableName, smsMeta } = result
+    const { resolvedState, resolvedReason, bookingId, nextStepUrl, manageUrl, tableBookingId, tableName, eventSeatingType, smsMeta } = result
 
     if (resolvedState === 'blocked') {
       // Return as success with blocked state to match existing UI contract
@@ -829,7 +844,8 @@ export async function createEventManualBooking(input: {
           manage_booking_url: null,
           next_step_url: null,
           table_booking_id: null,
-          table_name: null
+          table_name: null,
+          event_seating_type: null
         }
       }
     }
@@ -848,6 +864,7 @@ export async function createEventManualBooking(input: {
           event_id: parsed.data.eventId,
           customer_id: customerId,
           seats: parsed.data.seats,
+          event_seating_type: eventSeatingType,
           state: resolvedState,
           source: 'admin'
         }
@@ -868,7 +885,8 @@ export async function createEventManualBooking(input: {
         manage_booking_url: manageUrl,
         next_step_url: nextStepUrl,
         table_booking_id: tableBookingId,
-        table_name: tableName
+        table_name: tableName,
+        event_seating_type: eventSeatingType
       },
       meta: {
         sms: smsMeta,

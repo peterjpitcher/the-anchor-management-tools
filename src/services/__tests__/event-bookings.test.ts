@@ -174,7 +174,8 @@ describe('EventBookingService.createBooking', () => {
       p_event_id: BASE_PARAMS.eventId,
       p_customer_id: BASE_PARAMS.customerId,
       p_seats: BASE_PARAMS.seats,
-      p_source: 'brand_site'
+      p_source: 'brand_site',
+      p_seating_preference: 'seated'
     })
   })
 
@@ -400,6 +401,39 @@ describe('EventBookingService.createBooking', () => {
     expect(tableRpcCall).toBeUndefined()
   })
 
+  it('skips table reservation RPC for communal mode and forwards standing preference', async () => {
+    const supabase = makeSupabaseMock({
+      rpcResults: {
+        create_event_booking_v05: {
+          data: {
+            ...CONFIRMED_RPC_RESULT,
+            event_seating_type: 'standing',
+            table_name: null
+          },
+          error: null
+        }
+      }
+    })
+    ;(createAdminClient as ReturnType<typeof vi.fn>).mockReturnValue(supabase)
+
+    const result = await EventBookingService.createBooking({
+      ...BASE_PARAMS,
+      bookingMode: 'communal',
+      seatingPreference: 'standing'
+    })
+
+    expect(supabase.rpc).toHaveBeenCalledWith(
+      'create_event_booking_v05',
+      expect.objectContaining({
+        p_seating_preference: 'standing'
+      })
+    )
+    const rpcCalls = (supabase.rpc as ReturnType<typeof vi.fn>).mock.calls
+    const tableRpcCall = rpcCalls.find((c: unknown[]) => c[0] === 'create_event_table_reservation_v05')
+    expect(tableRpcCall).toBeUndefined()
+    expect(result.eventSeatingType).toBe('standing')
+  })
+
   it('returns blocked and rollbackFailed=true when rollback throws after table reservation failure', async () => {
     const tableReservationResult = {
       state: 'blocked' as const,
@@ -561,6 +595,7 @@ describe('EventBookingService.normalizeBookingMode', () => {
     ['table', 'table'],
     ['general', 'general'],
     ['mixed', 'mixed'],
+    ['communal', 'communal'],
     [undefined, 'table'],
     [null, 'table'],
     ['unknown_value', 'table']
