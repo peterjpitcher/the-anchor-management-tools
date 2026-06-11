@@ -36,6 +36,27 @@ function buildGuestName(customer: any): string | null {
   return fullName || null
 }
 
+function isActiveEventBookingForCapacity(booking: any): boolean {
+  if (!booking) return false
+  if (booking.status === 'confirmed') return true
+  if (booking.status !== 'pending_payment') return false
+  if (!booking.hold_expires_at) return true
+  const holdMs = Date.parse(booking.hold_expires_at)
+  return Number.isFinite(holdMs) && holdMs > Date.now()
+}
+
+function formatLondonClockFromIso(value: string | null | undefined): string {
+  if (!value) return '00:00'
+  const parsed = Date.parse(value)
+  if (!Number.isFinite(parsed)) return '00:00'
+  return new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Europe/London',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false
+  }).format(new Date(parsed))
+}
+
 function buildPrivateBookingGuestName(privateBooking: any): string {
   const firstName =
     typeof privateBooking?.customer_first_name === 'string'
@@ -340,9 +361,11 @@ export async function GET(request: NextRequest) {
   const bookingIds = bookings.map((booking) => booking.id)
   const privateRangeStart = shiftIsoDate(date, -1)
   const privateRangeEnd = shiftIsoDate(date, 1)
+  const scheduleStartIso = fromZonedTime(`${date}T00:00:00`, 'Europe/London').toISOString()
+  const scheduleEndIso = fromZonedTime(`${shiftIsoDate(date, 1)}T06:00:00`, 'Europe/London').toISOString()
 
-  // Run all three follow-up queries in parallel (they only depend on the initial results, not each other)
-  const [eventsResult, assignmentsResult, privateBookingsResult] = await Promise.all([
+  // Run follow-up queries in parallel (they only depend on the initial results, not each other)
+  const [eventsResult, assignmentsResult, privateBookingsResult, communalAllocationsResult, standingBookingsResult] = await Promise.all([
     eventIds.length > 0
       ? supabase.from('events').select('id, name').in('id', eventIds)
       : { data: [], error: null },
@@ -357,7 +380,44 @@ export async function GET(request: NextRequest) {
       )
       .in('status', ['draft', 'confirmed'])
       .gte('event_date', privateRangeStart)
-      .lte('event_date', privateRangeEnd)
+      .lte('event_date', privateRangeEnd),
+    supabase.from('event_communal_seat_allocations')
+      .select(`
+        id,
+        event_id,
+        event_booking_id,
+        table_id,
+        seats,
+        start_datetime,
+        end_datetime,
+        booking:bookings!event_communal_seat_allocations_event_booking_id_fkey(
+          id,
+          customer_id,
+          seats,
+          status,
+          event_seating_type,
+          hold_expires_at,
+          customer:customers!bookings_customer_id_fkey(first_name,last_name),
+          event:events!bookings_event_id_fkey(id,name)
+        )
+      `)
+      .lt('start_datetime', scheduleEndIso)
+      .gt('end_datetime', scheduleStartIso),
+    supabase.from('bookings')
+      .select(`
+        id,
+        event_id,
+        seats,
+        status,
+        event_seating_type,
+        hold_expires_at,
+        created_at,
+        customer:customers!bookings_customer_id_fkey(first_name,last_name),
+        event:events!inner(id,name,date,start_datetime,time,end_time,duration_minutes)
+      `)
+      .eq('event_seating_type', 'standing')
+      .eq('event.date', date)
+      .in('status', ['confirmed', 'pending_payment'])
   ])
 
   const eventNameById = new Map<string, string>()
@@ -372,6 +432,19 @@ export async function GET(request: NextRequest) {
   if (assignmentsResult.error) {
     return NextResponse.json({ error: 'Failed to load table assignments' }, { status: 500 })
   }
+
+  const communalRows =
+    communalAllocationsResult.error && isMissingSchemaError(communalAllocationsResult.error)
+      ? []
+      : communalAllocationsResult.error
+        ? []
+        : communalAllocationsResult.data || []
+  const standingRows =
+    standingBookingsResult.error && isMissingSchemaError(standingBookingsResult.error)
+      ? []
+      : standingBookingsResult.error
+        ? []
+        : standingBookingsResult.data || []
 
   const assignmentsByBooking = new Map<string, any[]>()
   for (const row of (assignmentsResult.data || [])) {
@@ -486,6 +559,63 @@ export async function GET(request: NextRequest) {
     }
   }
 
+  const communalTableIdsByBookingId = new Map<string, Set<string>>()
+  for (const allocation of communalRows as any[]) {
+    const bookingId = allocation?.event_booking_id
+    const tableId = allocation?.table_id
+    if (!bookingId || !tableId) continue
+    const current = communalTableIdsByBookingId.get(bookingId) || new Set<string>()
+    current.add(tableId)
+    communalTableIdsByBookingId.set(bookingId, current)
+  }
+
+  const communalBookingsByTableId = new Map<string, any[]>()
+  for (const allocation of communalRows as any[]) {
+    const booking = Array.isArray(allocation?.booking) ? allocation.booking[0] : allocation?.booking
+    if (!isActiveEventBookingForCapacity(booking)) continue
+    if (booking?.event_seating_type !== 'seated') continue
+    if (!visibleTableIds.has(allocation.table_id)) continue
+
+    const eventRow = Array.isArray(booking?.event) ? booking.event[0] : booking?.event
+    const eventName = eventRow?.name || 'Event'
+    const allTableIds = Array.from(communalTableIdsByBookingId.get(allocation.event_booking_id) || new Set([allocation.table_id]))
+    const notes = [
+      `Event: ${eventName}`,
+      `Communal seated`,
+      `${allocation.seats} on this table`
+    ].join(' · ')
+    const block = {
+      id: `communal-${allocation.id}`,
+      booking_reference: `EV-${String(allocation.event_booking_id).slice(0, 8).toUpperCase()}`,
+      guest_name: buildGuestName(booking?.customer),
+      event_name: eventName,
+      booking_time: formatLondonClockFromIso(allocation.start_datetime),
+      party_size: allocation.seats,
+      booking_type: 'event',
+      booking_purpose: 'event',
+      status: booking?.status || null,
+      payment_status: null,
+      payment_method: null,
+      deposit_amount: null,
+      deposit_amount_locked: null,
+      hold_expires_at: booking?.hold_expires_at || null,
+      notes,
+      seated_at: null,
+      left_at: null,
+      no_show_at: null,
+      assigned_table_ids: allTableIds,
+      assignment_count: allTableIds.length,
+      start_datetime: allocation.start_datetime,
+      end_datetime: allocation.end_datetime,
+      is_private_block: false,
+      event_seating_type: 'seated'
+    }
+
+    const current = communalBookingsByTableId.get(allocation.table_id) || []
+    current.push(block)
+    communalBookingsByTableId.set(allocation.table_id, current)
+  }
+
   const lanes = tables.map((table) => {
     const tableBookings = bookings
       .filter((booking) => {
@@ -533,7 +663,8 @@ export async function GET(request: NextRequest) {
       })
 
     const privateBlocks = privateBlocksByTableId.get(table.id) || []
-    const combinedBookings = [...tableBookings, ...privateBlocks].sort((a, b) =>
+    const communalBlocks = communalBookingsByTableId.get(table.id) || []
+    const combinedBookings = [...tableBookings, ...privateBlocks, ...communalBlocks].sort((a, b) =>
       (a.start_datetime || '').localeCompare(b.start_datetime || '')
     )
 
@@ -588,13 +719,59 @@ export async function GET(request: NextRequest) {
       is_private_block: false
     }))
 
+  const standingEventBookings = (standingRows as any[])
+    .filter((booking) => isActiveEventBookingForCapacity(booking))
+    .map((booking) => {
+      const eventRow = Array.isArray(booking.event) ? booking.event[0] : booking.event
+      const eventName = eventRow?.name || 'Event'
+      const startIso =
+        eventRow?.start_datetime ||
+        (eventRow?.date && eventRow?.time
+          ? toLondonIso(eventRow.date, eventRow.time, '19:00')
+          : null)
+      const durationMinutes =
+        typeof eventRow?.duration_minutes === 'number' && eventRow.duration_minutes > 0
+          ? eventRow.duration_minutes
+          : 180
+      const startMs = startIso ? Date.parse(startIso) : Number.NaN
+      const endIso = Number.isFinite(startMs)
+        ? new Date(startMs + durationMinutes * 60 * 1000).toISOString()
+        : null
+
+      return {
+        event_name: eventName,
+        id: `standing-${booking.id}`,
+        booking_reference: `EV-${String(booking.id).slice(0, 8).toUpperCase()}`,
+        guest_name: buildGuestName(booking.customer),
+        booking_time: formatLondonClockFromIso(startIso),
+        party_size: booking.seats,
+        deposit_waived: false,
+        booking_type: 'event',
+        booking_purpose: 'event',
+        status: booking.status,
+        payment_status: null,
+        payment_method: null,
+        deposit_amount: null,
+        deposit_amount_locked: null,
+        hold_expires_at: booking.hold_expires_at || null,
+        notes: `Event: ${eventName} · Standing`,
+        seated_at: null,
+        left_at: null,
+        no_show_at: null,
+        start_datetime: startIso,
+        end_datetime: endIso,
+        is_private_block: false,
+        event_seating_type: 'standing'
+      }
+    })
+
   return NextResponse.json({
     success: true,
     data: {
       date,
       service_window: serviceWindow,
       lanes,
-      unassigned_bookings: unassignedBookings
+      unassigned_bookings: [...unassignedBookings, ...standingEventBookings]
     }
   })
 }

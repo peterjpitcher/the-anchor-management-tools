@@ -35,8 +35,10 @@ export type CreateEventInput = {
   date: string;
   time: string;
   capacity?: number | null;
+  seated_capacity?: number | null;
+  standing_capacity?: number | null;
   payment_mode?: 'free' | 'cash_only' | 'prepaid' | null;
-  booking_mode?: 'table' | 'general' | 'mixed' | null;
+  booking_mode?: 'table' | 'general' | 'mixed' | 'communal' | null;
   // Derived from event_categories.slug — not user-editable. Set by prepareEventDataFromFormData.
   event_type?: string | null;
   category_id?: string | null;
@@ -78,6 +80,23 @@ export type CreateEventInput = {
   bookings_enabled?: boolean;
 };
 
+type EventBookingMode = NonNullable<CreateEventInput['booking_mode']>;
+
+export function normalizeEventBookingMode(value: unknown): EventBookingMode {
+  return value === 'general' || value === 'mixed' || value === 'communal' || value === 'table'
+    ? value
+    : 'table'
+}
+
+export function isCommunalBookingModeTransition(
+  currentMode: unknown,
+  nextMode: unknown
+): boolean {
+  const current = normalizeEventBookingMode(currentMode)
+  const next = normalizeEventBookingMode(nextMode)
+  return current !== next && (current === 'communal' || next === 'communal')
+}
+
 export type UpdateEventInput = Partial<CreateEventInput>;
 
 const eventFaqSchema = z.object({
@@ -89,6 +108,15 @@ const eventFaqSchema = z.object({
     return Number.isNaN(parsed) ? undefined : parsed
   }, z.number().int().min(0).optional())
 })
+
+const nullableCapacitySchema = z.preprocess(
+  (val) => {
+    if (val === '' || val === null || val === undefined) return null;
+    const num = Number(val);
+    return isNaN(num) ? null : num;
+  },
+  z.number().min(0, 'Capacity cannot be negative').max(10000, 'Capacity too large').nullable()
+)
 
 const PUBLISHED_EVENT_STATUSES = new Set([
   'scheduled',
@@ -139,6 +167,35 @@ function normalizeSlugValue(value: string): string {
 function isWorldCup2026EventName(value: string | null | undefined): boolean {
   const normalized = typeof value === 'string' ? value.trim().toLowerCase() : ''
   return normalized.startsWith('world cup 2026:') || normalized.includes('fifa world cup 2026')
+}
+
+async function updateEventSplitCapacities(
+  eventId: string,
+  input: Pick<UpdateEventInput, 'seated_capacity' | 'standing_capacity'>
+) {
+  const payload: { seated_capacity?: number | null; standing_capacity?: number | null } = {}
+  if (input.seated_capacity !== undefined) payload.seated_capacity = input.seated_capacity
+  if (input.standing_capacity !== undefined) payload.standing_capacity = input.standing_capacity
+
+  if (Object.keys(payload).length === 0) return null
+
+  const admin = createAdminClient()
+  const { data, error } = await admin
+    .from('events')
+    .update(payload)
+    .eq('id', eventId)
+    .select('*')
+    .maybeSingle()
+
+  if (error) {
+    logger.error('Failed to update event split capacities', {
+      error: error instanceof Error ? error : new Error(String(error)),
+      metadata: { eventId }
+    })
+    throw new Error('Failed to update event capacity split')
+  }
+
+  return data
 }
 
 export function isWorldCup2026Event(input: { name?: string | null; slug?: string | null }): boolean {
@@ -250,6 +307,8 @@ export const eventSchema = z.object({
     },
     z.number().min(1, 'Capacity must be at least 1').max(10000, 'Capacity too large').nullable()
   ),
+  seated_capacity: nullableCapacitySchema.optional(),
+  standing_capacity: nullableCapacitySchema.optional(),
   category_id: z.string().uuid().nullable().optional(),
   short_description: z.string().max(500).nullable().optional(),
   long_description: z.string().nullable().optional(),
@@ -291,7 +350,7 @@ export const eventSchema = z.object({
     return `${parts[0].padStart(2, '0')}:${parts[1].padStart(2, '0')}`
   }),
   event_status: z.enum(['scheduled', 'cancelled', 'postponed', 'rescheduled', 'sold_out', 'draft']).default('scheduled'),
-  booking_mode: z.enum(['table', 'general', 'mixed']).default('table'),
+  booking_mode: z.enum(['table', 'general', 'mixed', 'communal']).default('table'),
   payment_mode: z.enum(['free', 'cash_only', 'prepaid']).nullable().optional(),
   event_type: z.string().trim().max(120).nullable().optional().transform((val) => {
     if (!val) return null
@@ -449,19 +508,25 @@ export class EventService {
       throw new Error('Failed to create event');
     }
 
+    const capacityEvent = await updateEventSplitCapacities(event.id, {
+      seated_capacity: input.seated_capacity,
+      standing_capacity: input.standing_capacity,
+    })
+    const savedEvent = capacityEvent || event
+
     // Attempt marketing link generation — non-blocking for save, but capture failures
     let marketingLinksWarning: string | null = null
     try {
-      await generateEventMarketingLinks(event.id)
+      await generateEventMarketingLinks(savedEvent.id)
     } catch (e) {
       logger.warn('Failed to generate marketing links', {
         error: e instanceof Error ? e : new Error(String(e)),
-        metadata: { eventId: event.id }
+        metadata: { eventId: savedEvent.id }
       })
       marketingLinksWarning = 'Event saved but marketing links failed to generate. You can retry from the event detail page.'
     }
 
-    return { ...event, marketingLinksWarning };
+    return { ...savedEvent, marketingLinksWarning };
   }
 
   static async updateEvent(id: string, input: UpdateEventInput) {
@@ -482,7 +547,10 @@ export class EventService {
         poster_image_url,
         is_free,
         price,
-        payment_mode
+        payment_mode,
+        booking_mode,
+        seated_capacity,
+        standing_capacity
       `)
       .eq('id', id)
       .maybeSingle()
@@ -528,7 +596,30 @@ export class EventService {
       }
     }
 
-    const nextBookingMode = input.booking_mode ?? null
+    const currentBookingMode = normalizeEventBookingMode(currentEvent.booking_mode)
+    const requestedBookingMode = input.booking_mode === undefined
+      ? undefined
+      : normalizeEventBookingMode(input.booking_mode)
+    const nextBookingMode = requestedBookingMode ?? currentBookingMode
+
+    if (
+      requestedBookingMode !== undefined &&
+      isCommunalBookingModeTransition(currentBookingMode, requestedBookingMode)
+    ) {
+      const { count: activeBookings, error: activeBookingsError } = await supabase
+        .from('bookings')
+        .select('id', { count: 'exact', head: true })
+        .eq('event_id', id)
+        .in('status', ['confirmed', 'pending_payment'])
+
+      if (activeBookingsError) {
+        throw new Error('Failed to check active event bookings')
+      }
+
+      if ((activeBookings ?? 0) > 0) {
+        throw new Error('Cannot change communal seating mode while this event has active bookings.')
+      }
+    }
 
     const publishValidation = getPublishValidationIssues({
       status: nextStatus,
@@ -574,6 +665,7 @@ export class EventService {
 
     const eventData = {
       ...input,
+      ...(requestedBookingMode !== undefined ? { booking_mode: requestedBookingMode } : {}),
       slug, // might be undefined, handled by COALESCE in SQL
       ...(forcePromoSmsDisabled ? { promo_sms_enabled: false } : {})
     };
@@ -590,10 +682,16 @@ export class EventService {
       throw new Error('Failed to update event');
     }
 
+    const capacityEvent = await updateEventSplitCapacities(id, {
+      seated_capacity: input.seated_capacity,
+      standing_capacity: input.standing_capacity,
+    })
+    const savedEvent = capacityEvent || event
+
     // Attempt marketing link refresh — non-blocking for save, but capture failures
     let marketingLinksWarning: string | null = null
     try {
-      await generateEventMarketingLinks(event.id)
+      await generateEventMarketingLinks(savedEvent.id)
     } catch (e) {
       logger.warn('Failed to refresh marketing links', {
         error: e instanceof Error ? e : new Error(String(e)),
@@ -603,7 +701,7 @@ export class EventService {
     }
 
     return {
-      ...event,
+      ...savedEvent,
       _oldDate: currentEvent.date as string | null,
       _oldTime: currentEvent.time as string | null,
       _oldName: currentEvent.name as string | null,

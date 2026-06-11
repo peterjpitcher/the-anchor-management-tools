@@ -33,6 +33,12 @@ const VIEW_OPTIONS = [
   { id: 'board', label: 'Board' },
 ]
 
+function getFilenameFromHeaders(headers: Headers): string | null {
+  const disposition = headers.get('content-disposition') ?? ''
+  const filenameMatch = disposition.match(/filename="?([^";]+)"?/i)
+  return filenameMatch?.[1] ?? null
+}
+
 interface EventsClientProps {
   initialEvents: Event[]
   initialPagination?: {
@@ -88,6 +94,7 @@ export default function EventsClient({
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [activeEvent, setActiveEvent] = useState<Event | null>(null)
+  const [isExporting, setIsExporting] = useState(false)
   const [isPending, startTransition] = useTransition()
 
   const fetchEvents = useCallback(
@@ -225,6 +232,53 @@ export default function EventsClient({
     })
   }, [selectedIds, fetchEvents, pagination.currentPage, filters])
 
+  const handleExportDateRange = useCallback(async () => {
+    const startDate = filters.dateFrom
+    const endDate = filters.dateTo
+
+    if (!startDate || !endDate) {
+      toast.error('Select a start and end date first.')
+      return
+    }
+
+    if (startDate > endDate) {
+      toast.error('Start date must be before the end date.')
+      return
+    }
+
+    setIsExporting(true)
+
+    try {
+      const params = new URLSearchParams({
+        start_date: startDate,
+        end_date: endDate,
+      })
+      const response = await fetch(`/api/events/export?${params.toString()}`)
+
+      if (!response.ok) {
+        const message = await response.text().catch(() => '')
+        throw new Error(message || 'Failed to export events.')
+      }
+
+      const blob = await response.blob()
+      const filename = getFilenameFromHeaders(response.headers) ?? `events_${startDate}_to_${endDate}.csv`
+      const url = window.URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = filename
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+      window.URL.revokeObjectURL(url)
+
+      toast.success('CSV export downloaded.')
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to export events.')
+    } finally {
+      setIsExporting(false)
+    }
+  }, [filters.dateFrom, filters.dateTo])
+
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
@@ -255,6 +309,8 @@ export default function EventsClient({
           filters={filters}
           onFilterChange={handleFilterChange}
           categories={categories}
+          onExportDateRange={handleExportDateRange}
+          isExporting={isExporting}
         />
       )}
 

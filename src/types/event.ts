@@ -9,6 +9,8 @@ export interface Event {
   doors_time: string | null
   last_entry_time: string | null
   capacity: number | null
+  seated_capacity: number | null
+  standing_capacity: number | null
   category_id: string | null
   description: string | null
   short_description: string | null
@@ -85,6 +87,8 @@ export interface EventFormData {
   doors_time?: string
   last_entry_time?: string
   capacity?: number
+  seated_capacity?: number
+  standing_capacity?: number
   category_id?: string
   description?: string
   short_description?: string

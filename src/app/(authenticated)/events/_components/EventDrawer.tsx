@@ -52,6 +52,7 @@ const BOOKING_MODE_OPTIONS = [
   { value: 'table', label: 'Table bookings' },
   { value: 'general', label: 'General entry only' },
   { value: 'mixed', label: 'Mixed (table + general)' },
+  { value: 'communal', label: 'Communal table seating' },
 ]
 
 const PERFORMER_TYPE_OPTIONS = [
@@ -76,6 +77,8 @@ export function EventDrawer({ open, onClose, event, categories, onSave }: EventD
   const [categoryId, setCategoryId] = useState('')
   const [status, setStatus] = useState('scheduled')
   const [capacity, setCapacity] = useState('')
+  const [seatedCapacity, setSeatedCapacity] = useState('')
+  const [standingCapacity, setStandingCapacity] = useState('')
   const [brief, setBrief] = useState('')
 
   // ── Time & schedule ──
@@ -152,6 +155,8 @@ export function EventDrawer({ open, onClose, event, categories, onSave }: EventD
       setCategoryId(event.category_id || '')
       setStatus(event.event_status || 'scheduled')
       setCapacity(event.capacity?.toString() || '')
+      setSeatedCapacity((event as any).seated_capacity?.toString() || '')
+      setStandingCapacity((event as any).standing_capacity?.toString() || '')
       setBrief(event.brief || '')
       setDoorsTime(event.doors_time || '')
       setLastEntryTime(event.last_entry_time || '')
@@ -189,6 +194,8 @@ export function EventDrawer({ open, onClose, event, categories, onSave }: EventD
       setCategoryId('')
       setStatus('scheduled')
       setCapacity('')
+      setSeatedCapacity('')
+      setStandingCapacity('')
       setBrief('')
       setDoorsTime('')
       setLastEntryTime('')
@@ -310,8 +317,18 @@ export function EventDrawer({ open, onClose, event, categories, onSave }: EventD
       if (endTime) formData.set('end_time', endTime)
       if (categoryId) formData.set('category_id', categoryId)
       formData.set('event_status', status)
-      if (capacity) formData.set('capacity', capacity)
       formData.set('booking_mode', bookingMode)
+      if (bookingMode === 'communal') {
+        const seated = seatedCapacity ? Number.parseInt(seatedCapacity, 10) : null
+        const standing = standingCapacity ? Number.parseInt(standingCapacity, 10) : null
+        formData.set('seated_capacity', seatedCapacity)
+        formData.set('standing_capacity', standingCapacity)
+        if (seated !== null || standing !== null) {
+          formData.set('capacity', String((seated || 0) + (standing || 0)))
+        }
+      } else if (capacity) {
+        formData.set('capacity', capacity)
+      }
 
       // Performer
       if (performerName.trim()) formData.set('performer_name', performerName.trim())
@@ -458,7 +475,9 @@ export function EventDrawer({ open, onClose, event, categories, onSave }: EventD
         date: date || null,
         time: time || null,
         categoryName: selectedCategory?.name ?? null,
-        capacity: capacity ? parseInt(capacity) : null,
+        capacity: bookingMode === 'communal'
+          ? (Number.parseInt(seatedCapacity || '0', 10) || 0) + (Number.parseInt(standingCapacity || '0', 10) || 0)
+          : capacity ? parseInt(capacity) : null,
         brief: brief.trim() || null,
         performerName: performerName.trim() || null,
         performerType: performerType.trim() || null,
@@ -545,13 +564,32 @@ export function EventDrawer({ open, onClose, event, categories, onSave }: EventD
                 onChange={(e) => setStatus(e.target.value)}
               />
             </div>
-            <Input
-              label="Capacity"
-              type="number"
-              value={capacity}
-              onChange={(e) => setCapacity(e.target.value)}
-              placeholder="Unlimited"
-            />
+            {bookingMode === 'communal' ? (
+              <div className="grid grid-cols-2 gap-3">
+                <Input
+                  label="Seated capacity"
+                  type="number"
+                  value={seatedCapacity}
+                  onChange={(e) => setSeatedCapacity(e.target.value)}
+                  placeholder="Table seats"
+                />
+                <Input
+                  label="Standing capacity"
+                  type="number"
+                  value={standingCapacity}
+                  onChange={(e) => setStandingCapacity(e.target.value)}
+                  placeholder="Standing tickets"
+                />
+              </div>
+            ) : (
+              <Input
+                label="Capacity"
+                type="number"
+                value={capacity}
+                onChange={(e) => setCapacity(e.target.value)}
+                placeholder="Unlimited"
+              />
+            )}
             <SquareImageUpload
               entityId={event?.id || 'new'}
               entityType="event"

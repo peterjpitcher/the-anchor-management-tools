@@ -16,6 +16,9 @@ type EventFaqRow = {
 type EventCapacityRow = {
   event_id: string
   seats_remaining: number | null
+  seated_remaining: number | null
+  standing_remaining: number | null
+  total_remaining: number | null
   is_full: boolean
 }
 
@@ -169,9 +172,14 @@ export async function GET(_request: NextRequest) {
         is_full: isFull,
         waitlist_enabled: typeof event.capacity === 'number' && event.capacity > 0,
         payment_mode: paymentMode,
-        booking_mode: ['table', 'general', 'mixed'].includes(String(event.booking_mode))
+        booking_mode: ['table', 'general', 'mixed', 'communal'].includes(String(event.booking_mode))
           ? event.booking_mode
           : 'table',
+        seated_capacity: event.seated_capacity ?? null,
+        standing_capacity: event.standing_capacity ?? null,
+        seated_remaining: capacityRow?.seated_remaining ?? null,
+        standing_remaining: capacityRow?.standing_remaining ?? null,
+        total_remaining: capacityRow?.total_remaining ?? seatsRemaining,
         price,
         primary_keywords: event.primary_keywords || [],
         secondary_keywords: event.secondary_keywords || [],

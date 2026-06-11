@@ -38,12 +38,19 @@ export type EventBookingRpcResult = {
   booking_id?: string
   status?: string
   payment_mode?: 'free' | 'cash_only' | 'prepaid'
+  event_seating_type?: 'seated' | 'standing'
   event_id?: string
   event_name?: string
   event_start_datetime?: string
   hold_expires_at?: string
-  seats_remaining?: number
+  seats_remaining?: number | null
+  seated_remaining?: number | null
+  standing_remaining?: number | null
+  total_remaining?: number | null
   reason?: string
+  table_name?: string | null
+  table_names?: string[]
+  table_ids?: string[]
 }
 
 export type EventTableReservationRpcResult = {
@@ -76,7 +83,8 @@ export type CreateBookingParams = {
   /** Booking source forwarded to the RPC as p_source */
   source: EventBookingSource
   /** Booking mode resolved from the event row prior to this call */
-  bookingMode: 'table' | 'general' | 'mixed'
+  bookingMode: 'table' | 'general' | 'mixed' | 'communal'
+  seatingPreference?: 'seated' | 'standing'
   /** Base URL for payment/manage token generation (e.g. process.env.NEXT_PUBLIC_APP_URL) */
   appBaseUrl: string
   /**
@@ -119,6 +127,7 @@ export type CreateBookingResult = {
   smsMeta: SmsSafetyMeta
   tableBookingId: string | null
   tableName: string | null
+  eventSeatingType: 'seated' | 'standing' | null
   /** Full RPC result for callers that need extra fields (event_name, payment_mode, etc.) */
   rpcResult: EventBookingRpcResult
   /**
@@ -139,11 +148,15 @@ export type CreateBookingResult = {
 
 // ─── Helpers (module-private) ─────────────────────────────────────────────────
 
-function normalizeBookingMode(value: unknown): 'table' | 'general' | 'mixed' {
-  if (value === 'general' || value === 'mixed' || value === 'table') {
+function normalizeBookingMode(value: unknown): 'table' | 'general' | 'mixed' | 'communal' {
+  if (value === 'general' || value === 'mixed' || value === 'table' || value === 'communal') {
     return value
   }
   return 'table'
+}
+
+function normalizeSeatingPreference(value: unknown): 'seated' | 'standing' {
+  return value === 'standing' ? 'standing' : 'seated'
 }
 
 function formatLondonDateTime(isoDateTime: string | null | undefined): string {
@@ -440,6 +453,7 @@ export class EventBookingService {
       seats,
       source,
       bookingMode,
+      seatingPreference,
       appBaseUrl,
       shouldSendSms = true,
       supabaseClient,
@@ -460,7 +474,8 @@ export class EventBookingService {
         p_event_id: eventId,
         p_customer_id: customerId,
         p_seats: seats,
-        p_source: source
+        p_source: source,
+        p_seating_preference: normalizeSeatingPreference(seatingPreference)
       }
     )
 
@@ -479,6 +494,7 @@ export class EventBookingService {
         smsMeta: null,
         tableBookingId: null,
         tableName: null,
+        eventSeatingType: null,
         rpcResult: {} as EventBookingRpcResult,
         rpcFailed: true
       }
@@ -491,12 +507,14 @@ export class EventBookingService {
     let nextStepUrl: string | null = null
     let manageUrl: string | null = null
     let tableBookingId: string | null = null
-    let tableName: string | null = null
+    let tableName: string | null =
+      bookingMode === 'communal' ? rpcResult.table_name || null : null
 
     // ── 2. Table reservation (table / mixed modes) ────────────────────────────
     if (
       (state === 'confirmed' || state === 'pending_payment') &&
       bookingMode !== 'general' &&
+      bookingMode !== 'communal' &&
       rpcResult.booking_id
     ) {
       const { data: tableReservationRaw, error: tableReservationError } = await supabase.rpc(
@@ -538,6 +556,7 @@ export class EventBookingService {
             smsMeta: null,
             tableBookingId: null,
             tableName: null,
+            eventSeatingType: rpcResult.event_seating_type ?? null,
             rpcResult,
             rollbackFailed: true
           }
@@ -597,6 +616,7 @@ export class EventBookingService {
           smsMeta: null,
           tableBookingId,
           tableName,
+          eventSeatingType: rpcResult.event_seating_type ?? null,
           rpcResult,
           rollbackFailed,
           paymentLinkFailed: true
@@ -646,6 +666,8 @@ export class EventBookingService {
                 seats,
                 state: resolvedState,
                 payment_mode: rpcResult.payment_mode || null,
+                booking_mode: bookingMode,
+                event_seating_type: rpcResult.event_seating_type || null,
                 source,
                 attribution,
                 source_url: attribution?.source_url ?? null,
@@ -734,12 +756,17 @@ export class EventBookingService {
       smsMeta,
       tableBookingId,
       tableName,
+      eventSeatingType: rpcResult.event_seating_type ?? null,
       rpcResult
     }
   }
 
   /** Exposed for re-use: normalise a booking_mode value from the DB. */
-  static normalizeBookingMode(value: unknown): 'table' | 'general' | 'mixed' {
+  static normalizeBookingMode(value: unknown): 'table' | 'general' | 'mixed' | 'communal' {
     return normalizeBookingMode(value)
+  }
+
+  static normalizeSeatingPreference(value: unknown): 'seated' | 'standing' {
+    return normalizeSeatingPreference(value)
   }
 }

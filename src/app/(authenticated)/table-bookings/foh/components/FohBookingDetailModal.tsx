@@ -80,6 +80,8 @@ export const FohBookingDetailModal = React.memo(function FohBookingDetailModal(p
   const selectedBookingVisualState = getBookingVisualState(selectedBooking)
   const selectedBookingVisualLabel = getBookingVisualLabel(selectedBooking)
   const selectedBookingDeposit = getTableBookingDepositState(selectedBooking)
+  const selectedBookingIsEventOnly =
+    selectedBooking.id.startsWith('communal-') || selectedBooking.id.startsWith('standing-')
   const selectedBookingSeatedTime = formatLifecycleTime(selectedBooking.seated_at)
   const selectedBookingLeftTime = formatLifecycleTime(selectedBooking.left_at)
   const selectedBookingNoShowTime = formatLifecycleTime(selectedBooking.no_show_at)
@@ -116,6 +118,7 @@ export const FohBookingDetailModal = React.memo(function FohBookingDetailModal(p
           </p>
           <p className="mt-1 text-xs text-gray-500">
             {selectedBooking.booking_type || 'regular'} · {selectedBooking.booking_purpose || 'food'}
+            {selectedBooking.event_seating_type ? ` · ${selectedBooking.event_seating_type}` : ''}
             {selectedBooking.assignment_count && selectedBooking.assignment_count > 1 ? ` · joined ${selectedBooking.assignment_count} tables` : ''}
             {selectedBookingContext?.laneTableName ? ` · table ${selectedBookingContext.laneTableName}` : ''}
           </p>
@@ -146,7 +149,13 @@ export const FohBookingDetailModal = React.memo(function FohBookingDetailModal(p
           </div>
         )}
 
-        {canEdit && !selectedBooking.is_private_block && (
+        {selectedBookingIsEventOnly && (
+          <div className="rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-800">
+            Manage this event booking from the event attendees list.
+          </div>
+        )}
+
+        {canEdit && !selectedBooking.is_private_block && !selectedBookingIsEventOnly && (
           <BookingActions
             selectedBooking={selectedBooking}
             bookingActionInFlight={bookingActionInFlight}

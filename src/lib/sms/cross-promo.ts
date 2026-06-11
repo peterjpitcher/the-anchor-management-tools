@@ -66,9 +66,9 @@ type CrossPromoAudienceRow = {
 
 type CapacitySnapshotRow = {
   event_id: string
-  seats_remaining: number
+  seats_remaining: number | null
   is_full: boolean
-  capacity: number
+  capacity: number | null
   confirmed_seats: number
   held_seats: number
 }

@@ -26,6 +26,9 @@ type EventMessageTemplateRow = {
 type EventCapacityRow = {
   event_id: string
   seats_remaining: number | null
+  seated_remaining: number | null
+  standing_remaining: number | null
+  total_remaining: number | null
   is_full: boolean
 }
 
@@ -149,6 +152,9 @@ export async function GET(
     const lastUpdated = event.updated_at || event.created_at;
     let seatsRemaining: number | null =
       typeof event.capacity === 'number' ? event.capacity : null
+    let seatedRemaining: number | null = null
+    let standingRemaining: number | null = null
+    let totalRemaining: number | null = seatsRemaining
     let isFull =
       typeof seatsRemaining === 'number' ? seatsRemaining <= 0 : false
 
@@ -161,6 +167,9 @@ export async function GET(
       if (!capacityError && Array.isArray(capacityRows) && capacityRows.length > 0) {
         const capacityRow = capacityRows[0] as EventCapacityRow
         seatsRemaining = capacityRow.seats_remaining
+        seatedRemaining = capacityRow.seated_remaining ?? null
+        standingRemaining = capacityRow.standing_remaining ?? null
+        totalRemaining = capacityRow.total_remaining ?? seatsRemaining
         isFull = capacityRow.is_full
       }
     }
@@ -210,7 +219,7 @@ export async function GET(
       meta_ads_destination_url: metaAdsShortLinkRow?.destination_url || null,
       ctaLinks,
       cta_links: ctaLinks,
-      booking_mode: ['table', 'general', 'mixed'].includes(String(event.booking_mode))
+      booking_mode: ['table', 'general', 'mixed', 'communal'].includes(String(event.booking_mode))
         ? event.booking_mode
         : 'table',
       payment_mode: paymentMode,
@@ -218,7 +227,12 @@ export async function GET(
       price_per_seat: event.price_per_seat ?? null,
       is_free: event.is_free === true,
       capacity: event.capacity,
+      seated_capacity: event.seated_capacity ?? null,
+      standing_capacity: event.standing_capacity ?? null,
       seats_remaining: seatsRemaining,
+      seated_remaining: seatedRemaining,
+      standing_remaining: standingRemaining,
+      total_remaining: totalRemaining,
       is_full: isFull,
       waitlist_enabled: typeof event.capacity === 'number' && event.capacity > 0,
       performer_name: event.performer_name || null,

@@ -24,6 +24,7 @@ export type FohBooking = {
   is_private_block?: boolean
   private_booking_id?: string | null
   deposit_waived?: boolean | null
+  event_seating_type?: 'seated' | 'standing' | null
 }
 
 export type FohLane = {
@@ -101,7 +102,11 @@ export type FohCreateEventBookingResponse = {
     manage_booking_url: string | null
     event_name: string | null
     payment_mode: 'free' | 'cash_only' | 'prepaid' | null
-    booking_mode: 'table' | 'general' | 'mixed' | null
+    booking_mode: 'table' | 'general' | 'mixed' | 'communal' | null
+    event_seating_type: 'seated' | 'standing' | null
+    seated_remaining: number | null
+    standing_remaining: number | null
+    total_remaining: number | null
     table_booking_id: string | null
     table_name: string | null
   }
@@ -118,9 +123,14 @@ export type FohEventOption = {
   payment_mode: 'free' | 'cash_only' | 'prepaid' | null
   price_per_seat: number | null
   capacity: number | null
+  seated_capacity: number | null
+  standing_capacity: number | null
   seats_remaining: number | null
+  seated_remaining: number | null
+  standing_remaining: number | null
+  total_remaining: number | null
   is_full: boolean
-  booking_mode: 'table' | 'general' | 'mixed'
+  booking_mode: 'table' | 'general' | 'mixed' | 'communal'
 }
 
 export type FohUpcomingEvent = {

@@ -104,7 +104,7 @@ export default function EventExportPanel({
       const blob = await response.blob()
       const filename =
         getFilenameFromHeaders(response.headers) ??
-        `events_${startDate}_to_${endDate}${mode === 'single' ? '_single' : ''}.txt`
+        `events_${startDate}_to_${endDate}${mode === 'single' ? '_single' : ''}.csv`
       const url = window.URL.createObjectURL(blob)
       const link = document.createElement('a')
       link.href = url
@@ -207,7 +207,7 @@ export default function EventExportPanel({
       </div>
 
       <p className="mt-2 text-xs text-gray-500">
-        Exports a .txt file with each event&#39;s brief, dates, times, status, and booking details.
+        Exports a .csv file with each event&#39;s name, date, times, host, price, payment method, and full brief.
       </p>
     </div>
   )

@@ -7,6 +7,9 @@ import { resolveEventPaymentMode, resolveEventPriceAmount } from '@/lib/events/p
 type EventCapacityRow = {
   event_id: string
   seats_remaining: number | null
+  seated_remaining: number | null
+  standing_remaining: number | null
+  total_remaining: number | null
   is_full: boolean
 }
 
@@ -75,7 +78,7 @@ export async function GET(request: NextRequest) {
 
   const { data: events, error } = await auth.supabase.from('events')
     .select(
-      'id, name, date, time, end_time, start_datetime, duration_minutes, payment_mode, price_per_seat, price, capacity, booking_open, event_status, booking_mode'
+      'id, name, date, time, end_time, start_datetime, duration_minutes, payment_mode, price_per_seat, price, capacity, seated_capacity, standing_capacity, booking_open, event_status, booking_mode'
     )
     .eq('date', bookingDate)
     .or('booking_open.is.null,booking_open.eq.true')
@@ -143,12 +146,17 @@ export async function GET(request: NextRequest) {
       start_datetime: eventStartIso,
       end_datetime: eventEndIso,
       payment_mode: paymentMode,
-      booking_mode: ['table', 'general', 'mixed'].includes(String(row.booking_mode))
+      booking_mode: ['table', 'general', 'mixed', 'communal'].includes(String(row.booking_mode))
         ? row.booking_mode
         : 'table',
       price_per_seat: price > 0 ? price : null,
       capacity: typeof row.capacity === 'number' ? row.capacity : null,
+      seated_capacity: typeof row.seated_capacity === 'number' ? row.seated_capacity : null,
+      standing_capacity: typeof row.standing_capacity === 'number' ? row.standing_capacity : null,
       seats_remaining: seatsRemaining,
+      seated_remaining: capacityRow?.seated_remaining ?? null,
+      standing_remaining: capacityRow?.standing_remaining ?? null,
+      total_remaining: capacityRow?.total_remaining ?? seatsRemaining,
       is_full: isFull
     }
   })
