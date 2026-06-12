@@ -11,7 +11,7 @@ import { createClient } from '@/lib/supabase/server' // Required for getting use
 import { createAdminClient } from '@/lib/supabase/admin'
 import { formatPhoneForStorage } from '@/lib/utils'
 import { ensureCustomerForPhone } from '@/lib/sms/customers'
-import { createEventManageToken, updateEventBookingSeatsById } from '@/lib/events/manage-booking'
+import { updateEventBookingSeatsById } from '@/lib/events/manage-booking'
 import { sendEventBookingSeatUpdateSms } from '@/lib/events/event-payments'
 import { recordAnalyticsEvent } from '@/lib/analytics/events'
 import {
@@ -23,7 +23,8 @@ import { ensureReplyInstruction } from '@/lib/sms/support'
 import { getSmartFirstName } from '@/lib/sms/bulk'
 import { logger } from '@/lib/logger'
 import { buildKeywordsUnion } from '@/lib/keywords'
-import { buildEventRescheduledSms, buildEventCancelledSms, buildRefundNote } from '@/lib/sms/templates'
+import { normalizeEventPricingFields } from '@/lib/events/pricing'
+import { jobQueue } from '@/lib/unified-job-queue'
 
 export type EventBookingRow = {
   id: string
@@ -156,6 +157,11 @@ async function prepareEventDataFromFormData(formData: FormData, _existingEventId
   }
 
   const rawData = Object.fromEntries(formData.entries());
+  const rawIsFree = rawData.is_free
+  const isFree =
+    rawIsFree === undefined
+      ? categoryDefaults.is_free ?? false
+      : rawIsFree === 'true'
 
   const bookingModeInput = rawData.booking_mode
   const bookingMode: CreateEventInput['booking_mode'] =
@@ -211,7 +217,7 @@ async function prepareEventDataFromFormData(formData: FormData, _existingEventId
     performer_name: rawData.performer_name as string || null,
     performer_type: rawData.performer_type as string || categoryDefaults.performer_type || null,
     price: (rawData.price as string) ? Number(rawData.price) : categoryDefaults.price || 0,
-    is_free: rawData.is_free === 'true' || categoryDefaults.is_free || false,
+    is_free: isFree,
     booking_url: rawData.booking_url as string || categoryDefaults.booking_url || null,
     hero_image_url: rawData.hero_image_url as string || categoryDefaults.hero_image_url || null,
     thumbnail_image_url: rawData.thumbnail_image_url as string || null,
@@ -222,6 +228,15 @@ async function prepareEventDataFromFormData(formData: FormData, _existingEventId
     promo_sms_enabled: rawData.promo_sms_enabled === 'true' ? true : rawData.promo_sms_enabled === 'false' ? false : categoryDefaults.promo_sms_enabled ?? true,
     bookings_enabled: rawData.bookings_enabled === 'true' ? true : rawData.bookings_enabled === 'false' ? false : categoryDefaults.bookings_enabled ?? true
   };
+
+  const pricing = normalizeEventPricingFields({
+    price: data.price,
+    is_free: data.is_free,
+    payment_mode: data.payment_mode,
+  })
+  data.price = pricing.price
+  data.is_free = pricing.is_free
+  data.payment_mode = pricing.payment_mode
 
   // Derive flat keywords as union of three tiers (primary > secondary > local)
   const primaryKw = (data.primary_keywords as string[]) || [];
@@ -301,156 +316,6 @@ export async function createEvent(formData: FormData): Promise<CreateEventResult
   }
 }
 
-// ─── Reschedule Notification Dispatch (fire-and-forget) ─────────────────────
-
-function formatLondonDateTime(isoDateTime: string | null | undefined): string {
-  if (!isoDateTime) return 'your event time'
-  try {
-    return new Intl.DateTimeFormat('en-GB', {
-      timeZone: 'Europe/London',
-      weekday: 'short',
-      day: 'numeric',
-      month: 'short',
-      hour: 'numeric',
-      minute: '2-digit',
-      hour12: true
-    }).format(new Date(isoDateTime))
-  } catch {
-    return 'your event time'
-  }
-}
-
-async function dispatchRescheduleNotifications(params: {
-  eventId: string
-  eventName: string
-  oldDate: string | null
-  oldTime: string | null
-  newDate: string
-  newTime: string
-  userId: string
-}): Promise<void> {
-  const { eventId, eventName, oldDate, oldTime, newDate, newTime, userId } = params
-  const db = createAdminClient()
-
-  // 1. Query affected bookings with customer data
-  const { data: bookings, error } = await db
-    .from('bookings')
-    .select('id, customer_id, seats, status, customers!inner(id, first_name, mobile_number, sms_status)')
-    .eq('event_id', eventId)
-    .in('status', ['confirmed', 'pending_payment'])
-
-  if (error || !bookings || bookings.length === 0) return
-
-  // 2. Compute new formatted datetime for SMS
-  const newStartIso = `${newDate}T${newTime || '00:00'}:00`
-  const formattedNewDate = formatLondonDateTime(newStartIso)
-
-  // 3. Recalculate hold_expires_at for pending-payment bookings (D10)
-  const pendingBookingIds = bookings
-    .filter(b => b.status === 'pending_payment')
-    .map(b => b.id)
-
-  if (pendingBookingIds.length > 0) {
-    const newStartDatetime = new Date(newStartIso).toISOString()
-
-    // Update bookings.hold_expires_at — only extend, don't shorten past the 24h window
-    await db
-      .from('bookings')
-      .update({ hold_expires_at: newStartDatetime })
-      .in('id', pendingBookingIds)
-      .lt('hold_expires_at', newStartDatetime)
-
-    // Update booking_holds.expires_at
-    await db
-      .from('booking_holds')
-      .update({ expires_at: newStartDatetime })
-      .in('event_booking_id', pendingBookingIds)
-      .eq('status', 'active')
-  }
-
-  // 4. Send reschedule SMS in batches of 20
-  const BATCH_SIZE = 20
-  const smsTargets = bookings.filter(b => {
-    const customer = b.customers as unknown as {
-      id: string
-      first_name: string | null
-      mobile_number: string | null
-      sms_status: string | null
-    }
-    return customer?.sms_status === 'active' && customer?.mobile_number
-  })
-
-  for (let i = 0; i < smsTargets.length; i += BATCH_SIZE) {
-    const batch = smsTargets.slice(i, i + BATCH_SIZE)
-
-    await Promise.allSettled(
-      batch.map(async (booking) => {
-        const customer = booking.customers as unknown as {
-          id: string
-          first_name: string | null
-          mobile_number: string | null
-          sms_status: string | null
-        }
-
-        // Generate fresh manage-booking token
-        let manageLink: string | null = null
-        try {
-          const manageToken = await createEventManageToken(db, {
-            customerId: customer.id,
-            bookingId: booking.id,
-            eventStartIso: newStartIso,
-            appBaseUrl: process.env.NEXT_PUBLIC_APP_URL || ''
-          })
-          manageLink = manageToken.url
-        } catch {
-          // Non-fatal: send SMS without manage link
-        }
-
-        const smsBody = buildEventRescheduledSms({
-          firstName: customer.first_name,
-          eventName,
-          newDate: formattedNewDate,
-          seats: booking.seats || 1,
-          manageLink
-        })
-
-        await sendSMS(customer.mobile_number!, smsBody, {
-          customerId: customer.id,
-          metadata: {
-            template_key: 'event_rescheduled',
-            event_id: eventId,
-            event_booking_id: booking.id,
-            old_date: oldDate,
-            new_date: newDate
-          }
-        })
-      })
-    )
-
-    // Throttle between batches
-    if (i + BATCH_SIZE < smsTargets.length) {
-      await new Promise(resolve => setTimeout(resolve, 1000))
-    }
-  }
-
-  // 5. Audit log for reschedule notification dispatch
-  await logAuditEvent({
-    user_id: userId,
-    operation_type: 'reschedule',
-    resource_type: 'event',
-    resource_id: eventId,
-    operation_status: 'success',
-    additional_info: {
-      old_date: oldDate,
-      old_time: oldTime,
-      new_date: newDate,
-      new_time: newTime,
-      bookings_notified: smsTargets.length,
-      total_bookings_affected: bookings.length
-    }
-  })
-}
-
 // ─── Update Event ───────────────────────────────────────────────────────────
 
 export async function updateEvent(id: string, formData: FormData) {
@@ -480,6 +345,7 @@ export async function updateEvent(id: string, formData: FormData) {
 
     // Extract old values and marketing warning returned by the service
     const { _oldDate, _oldTime, _oldName, _oldStatus, marketingLinksWarning, ...event } = eventResult
+    const warnings = marketingLinksWarning ? [marketingLinksWarning] : []
 
     await logAuditEvent({
       user_id: user.id,
@@ -495,52 +361,75 @@ export async function updateEvent(id: string, formData: FormData) {
       }
     });
 
-    // Detect date/time change and dispatch reschedule notifications asynchronously
+    // Detect date/time change and queue reschedule notifications.
     const newDate = validationResult.data.date
     const newTime = validationResult.data.time
     const dateChanged =
       (newDate && newDate !== _oldDate) || (newTime && newTime !== _oldTime)
 
     if (dateChanged) {
-      void dispatchRescheduleNotifications({
-        eventId: id,
-        eventName: event.name || _oldName || 'your event',
-        oldDate: _oldDate,
-        oldTime: _oldTime,
-        newDate: newDate || _oldDate || '',
-        newTime: newTime || _oldTime || '',
-        userId: user.id,
-      }).catch((err) => {
-        logger.error('Failed to dispatch reschedule notifications', {
-          error: err instanceof Error ? err : new Error(String(err)),
-          metadata: { eventId: id },
+      const enqueueResult = await jobQueue.enqueue(
+        'send_event_reschedule_notifications',
+        {
+          eventId: id,
+          eventName: event.name || _oldName || 'your event',
+          oldDate: _oldDate,
+          oldTime: _oldTime,
+          newDate: newDate || _oldDate || '',
+          newTime: newTime || _oldTime || '',
+          userId: user.id,
+        },
+        {
+          priority: 20,
+          maxAttempts: 3,
+          unique: `event_reschedule:${id}:${_oldDate ?? ''}:${_oldTime ?? ''}:${newDate ?? ''}:${newTime ?? ''}`,
+        },
+      )
+
+      if (!enqueueResult.success) {
+        logger.error('Failed to queue event reschedule notifications', {
+          metadata: { eventId: id, error: enqueueResult.error },
         })
-      })
+        warnings.push('Event saved, but reschedule notifications could not be queued.')
+      }
     }
 
-    // Detect cancellation and run cascade synchronously
+    // Detect cancellation and queue the cascade.
     const statusChangedToCancelled =
       validationResult.data.event_status === 'cancelled' && _oldStatus !== 'cancelled'
 
     if (statusChangedToCancelled) {
-      const db = createAdminClient()
-      const cascadeResult = await EventService.cancelEventBookings({
-        eventId: id,
-        eventName: validationResult.data.name || _oldName || 'Event',
-        eventDate: _oldDate || validationResult.data.date || '',
-        eventTime: _oldTime || validationResult.data.time || '',
-        cancelledBy: user.id,
-        supabase: db
-      })
+      const enqueueResult = await jobQueue.enqueue(
+        'cancel_event_bookings',
+        {
+          eventId: id,
+          eventName: validationResult.data.name || _oldName || 'Event',
+          eventDate: _oldDate || validationResult.data.date || '',
+          eventTime: _oldTime || validationResult.data.time || '',
+          cancelledBy: user.id,
+        },
+        {
+          priority: 30,
+          maxAttempts: 3,
+          unique: `cancel_event_bookings:${id}`,
+        },
+      )
 
-      await logAuditEvent({
-        user_id: user.id,
-        operation_type: 'cancel_event',
-        resource_type: 'event',
-        resource_id: id,
-        operation_status: 'success',
-        additional_info: cascadeResult
-      })
+      if (enqueueResult.success) {
+        await logAuditEvent({
+          user_id: user.id,
+          operation_type: 'cancel_event_queued',
+          resource_type: 'event',
+          resource_id: id,
+          operation_status: 'success',
+          additional_info: { job_id: enqueueResult.jobId ?? null },
+        })
+      } else {
+        logger.error('Failed to queue event cancellation cascade', {
+          metadata: { eventId: id, error: enqueueResult.error },
+        })
+        warnings.push('Event saved as cancelled, but booking cancellation could not be queued.')
+      }
     }
 
     await syncPubOpsEventCalendarByEventId(createAdminClient(), id, {
@@ -551,7 +440,7 @@ export async function updateEvent(id: string, formData: FormData) {
     revalidatePath(`/events/${id}`);
     revalidatePath(`/events/${id}/edit`);
     revalidateTag('dashboard')
-    return { success: true, data: event as Event, warning: marketingLinksWarning || undefined };
+    return { success: true, data: event as Event, warning: warnings.length > 0 ? warnings.join(' ') : undefined };
   } catch (error: unknown) {
     logger.error('Unexpected error updating event', {
       error: error instanceof Error ? error : new Error(String(error)),

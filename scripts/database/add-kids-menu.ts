@@ -31,6 +31,7 @@ type IngredientLine = {
 type KidsDish = {
   name: string;
   slug: string;
+  previousSlugs?: string[];
   description: string;
   selling_price: number;
   dietary_flags: string[];
@@ -96,28 +97,70 @@ const kidsDishes: KidsDish[] = [
   {
     name: 'Kids Mac & Cheese',
     slug: 'kids-mac-and-cheese',
-    description: 'Macaroni cheese served with garlic bread.',
-    selling_price: 7,
+    description: 'Macaroni cheese.',
+    selling_price: 8,
     dietary_flags: ['vegetarian'],
     sort_order: 50,
     ingredients: [
-      { name: 'Brakes Essentials Macaroni Cheese', quantity: 0.5, unit: 'each' },
-      { name: 'Brakes Essentials Garlic & Parsley Bread Slices', quantity: 1, unit: 'slice' },
+      { name: 'Brakes Essentials Macaroni Cheese', quantity: 1, unit: 'each' },
     ],
   },
   {
-    name: 'Kids Veg Cannelloni',
-    slug: 'kids-veg-cannelloni',
-    description: 'Spinach and ricotta cannelloni served with garlic bread.',
-    selling_price: 7,
-    dietary_flags: ['vegetarian'],
+    name: 'Kids Chicken Burger & Chips',
+    slug: 'kids-chicken-burger-and-chips',
+    description: 'Chicken fillet in a floured bap, served with a half portion of chips.',
+    selling_price: 8,
+    dietary_flags: ['halal'],
     sort_order: 60,
     ingredients: [
-      { name: 'Sysco Classic Spinach & Ricotta Cannelloni 2kg', quantity: 0.5, unit: 'each' },
-      { name: 'Brakes Essentials Garlic & Parsley Bread Slices', quantity: 1, unit: 'slice' },
+      { name: "Chef's Larder 24 American Style Chicken Fillets", quantity: 1, unit: 'each' },
+      { name: "Chef's Larder 48 Floured Baps", quantity: 1, unit: 'each' },
+      { name: "Chef's Essentials Straight Cut Chips 4 x 2.5kg", quantity: 0.5, unit: 'portion' },
+    ],
+  },
+  {
+    name: 'Kids Veg Burger & Chips',
+    slug: 'kids-veg-burger-and-chips',
+    previousSlugs: ['kids-veg-cheeseburger-and-chips'],
+    description: 'Bangkok vegetable burger in a floured bap, served with a half portion of chips.',
+    selling_price: 8,
+    dietary_flags: ['vegetarian'],
+    sort_order: 70,
+    ingredients: [
+      { name: 'The Fat Chef Bangkok Bad Boy Burger', quantity: 1, unit: 'each' },
+      { name: "Chef's Larder 48 Floured Baps", quantity: 1, unit: 'each' },
+      { name: "Chef's Essentials Straight Cut Chips 4 x 2.5kg", quantity: 0.5, unit: 'portion' },
+    ],
+  },
+  {
+    name: 'Kids Fish Finger Wrap & Chips',
+    slug: 'kids-fish-finger-wrap-and-chips',
+    description: 'Three fish fingers in a tortilla wrap, served with a half portion of chips.',
+    selling_price: 7,
+    dietary_flags: [],
+    sort_order: 80,
+    ingredients: [
+      { name: "Chef's Essentials 60 White Fillet Fish Fingers 1.5kg", quantity: 3, unit: 'each' },
+      { name: 'H.W. Nevills Plain White Tortilla Wraps 8 Pack', quantity: 1, unit: 'each' },
+      { name: "Chef's Essentials Straight Cut Chips 4 x 2.5kg", quantity: 0.5, unit: 'portion' },
+    ],
+  },
+  {
+    name: 'Kids Chicken Goujon Wrap & Chips',
+    slug: 'kids-chicken-goujon-wrap-and-chips',
+    description: 'Three chicken goujons in a tortilla wrap, served with a half portion of chips.',
+    selling_price: 7,
+    dietary_flags: [],
+    sort_order: 90,
+    ingredients: [
+      { name: 'Chicken Breast Goujons', quantity: 3, unit: 'each' },
+      { name: 'H.W. Nevills Plain White Tortilla Wraps 8 Pack', quantity: 1, unit: 'each' },
+      { name: "Chef's Essentials Straight Cut Chips 4 x 2.5kg", quantity: 0.5, unit: 'portion' },
     ],
   },
 ];
+
+const retiredDishSlugs = ['kids-veg-cannelloni'];
 
 async function requireSingle<T>(label: string, query: PromiseLike<{ data: T | null; error: { message: string } | null }>) {
   const { data, error } = await query;
@@ -195,7 +238,8 @@ async function main() {
     const { data: existing, error: existingError } = await supabase
       .from('menu_dishes')
       .select('id')
-      .eq('slug', dish.slug)
+      .in('slug', [dish.slug, ...(dish.previousSlugs ?? [])])
+      .limit(1)
       .maybeSingle();
 
     if (existingError) {
@@ -208,6 +252,7 @@ async function main() {
         .from('menu_dishes')
         .update({
           name: dish.name,
+          slug: dish.slug,
           description: dish.description,
           selling_price: dish.selling_price,
           target_gp_pct: 0.7,
@@ -300,6 +345,15 @@ async function main() {
     if (refreshError) {
       throw new Error(`Refresh failed for ${dish.name}: ${refreshError.message}`);
     }
+
+    const { error: dietaryFlagsError } = await supabase
+      .from('menu_dishes')
+      .update({ dietary_flags: dish.dietary_flags })
+      .eq('id', dishId);
+
+    if (dietaryFlagsError) {
+      throw new Error(`Dietary flag update failed for ${dish.name}: ${dietaryFlagsError.message}`);
+    }
   }
 
   const { data: dishRows, error: dishRowsError } = await supabase
@@ -350,6 +404,41 @@ async function main() {
     }
   } else {
     console.warn(`Main Menu > Kids still has ${remainingMainKidsCount} item(s), so the category link was left in place.`);
+  }
+
+  const { data: retiredDishes, error: retiredDishesError } = await supabase
+    .from('menu_dishes')
+    .select('id, name')
+    .in('slug', retiredDishSlugs);
+
+  if (retiredDishesError) {
+    throw new Error(`Retired dish lookup failed: ${retiredDishesError.message}`);
+  }
+
+  const retiredDishIds = (retiredDishes ?? []).map(dish => dish.id);
+  if (retiredDishIds.length > 0) {
+    const { error: removeRetiredAssignmentsError } = await supabase
+      .from('menu_dish_menu_assignments')
+      .delete()
+      .in('dish_id', retiredDishIds);
+
+    if (removeRetiredAssignmentsError) {
+      throw new Error(`Retired dish assignment cleanup failed: ${removeRetiredAssignmentsError.message}`);
+    }
+
+    const { error: retireDishesError } = await supabase
+      .from('menu_dishes')
+      .update({
+        is_active: false,
+        notes: 'Retired from kids menu: item cannot be portioned for children.',
+      })
+      .in('id', retiredDishIds);
+
+    if (retireDishesError) {
+      throw new Error(`Retired dish update failed: ${retireDishesError.message}`);
+    }
+
+    console.warn(`Retired ${retiredDishes?.map(dish => dish.name).join(', ')}`);
   }
 
   const { data: verification, error: verificationError } = await supabase

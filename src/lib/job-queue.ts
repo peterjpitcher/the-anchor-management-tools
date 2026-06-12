@@ -8,6 +8,8 @@ import { jobQueue as unifiedJobQueue } from './unified-job-queue'
 export type JobType = 
   | 'export_employees' 
   | 'send_bulk_sms' 
+  | 'send_event_reschedule_notifications'
+  | 'cancel_event_bookings'
   | 'rebuild_category_stats' 
   | 'categorize_historical_events'
 

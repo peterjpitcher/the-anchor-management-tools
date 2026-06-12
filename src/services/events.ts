@@ -7,6 +7,8 @@ import { sendSMS } from '@/lib/twilio';
 import { buildEventCancelledSms, buildRefundNote } from '@/lib/sms/templates';
 import { processEventRefund } from '@/lib/events/manage-booking';
 import { logger } from '@/lib/logger';
+import { normalizeEventPricingFields } from '@/lib/events/pricing';
+import { buildEventBookingStats } from '@/lib/events/stats';
 
 function sanitizeEventSearchTerm(value: string): string {
   return value
@@ -226,14 +228,19 @@ export function getPublishValidationIssues(input: PublishValidationInput): Publi
     errors.push('event image')
   }
 
-  const isFree = input.is_free === true
-  const price = typeof input.price === 'number' && Number.isFinite(input.price) ? input.price : null
+  const pricing = normalizeEventPricingFields({
+    price: input.price,
+    is_free: input.is_free,
+    payment_mode: input.payment_mode,
+  })
+  const isFree = pricing.is_free
+  const price = pricing.price
 
   if (!isFree && (price === null || price <= 0)) {
     errors.push('ticket price (or mark event as free)')
   }
 
-  if (input.payment_mode === 'prepaid' && (price === null || price <= 0)) {
+  if (pricing.payment_mode === 'prepaid' && price <= 0) {
     errors.push('Prepaid events must have a price set')
   }
 
@@ -485,10 +492,18 @@ export class EventService {
 
     // Prepare payload
     const forcePromoSmsDisabled = isWorldCup2026Event({ name: input.name, slug })
+    const pricing = normalizeEventPricingFields({
+      price: input.price,
+      is_free: input.is_free,
+      payment_mode: input.payment_mode,
+    })
 
     const eventData = {
       ...input,
       slug,
+      price: pricing.price,
+      is_free: pricing.is_free,
+      payment_mode: pricing.payment_mode,
       ...(forcePromoSmsDisabled ? { promo_sms_enabled: false } : {}),
       // Ensure arrays are not undefined
       highlights: input.highlights || [],
@@ -662,10 +677,18 @@ export class EventService {
       name: nextName,
       slug: slug ?? currentEvent.slug,
     })
+    const pricing = normalizeEventPricingFields({
+      price: nextPrice,
+      is_free: nextIsFree,
+      payment_mode: nextPaymentMode,
+    })
 
     const eventData = {
       ...input,
       ...(requestedBookingMode !== undefined ? { booking_mode: requestedBookingMode } : {}),
+      price: pricing.price,
+      is_free: pricing.is_free,
+      payment_mode: pricing.payment_mode,
       slug, // might be undefined, handled by COALESCE in SQL
       ...(forcePromoSmsDisabled ? { promo_sms_enabled: false } : {})
     };
@@ -879,7 +902,7 @@ export class EventService {
 
     let query = supabase
       .from('events')
-      .select('*, category:event_categories(*), bookings:bookings(seats, status)', { count: 'exact' });
+      .select('*, category:event_categories(*), bookings:bookings(seats, status, is_reminder_only)', { count: 'exact' });
 
     if (status !== 'all') {
       query = query.eq('event_status', status);
@@ -934,10 +957,16 @@ export class EventService {
     }
 
     const events = (data || []).map((row: Record<string, unknown>) => {
-      const bookings = Array.isArray(row.bookings) ? row.bookings as { seats: number | null; status: string | null }[] : []
-      const activeBookings = bookings.filter((b) => b.status !== 'cancelled')
-      const booked_count = activeBookings.reduce((sum, b) => sum + (b.seats ?? 0), 0)
-      const link_clicks = clickCountMap[row.id as string] || 0
+      const bookings = Array.isArray(row.bookings)
+        ? row.bookings as { seats: number | null; status: string | null; is_reminder_only?: boolean | null }[]
+        : []
+      const stats = buildEventBookingStats(
+        row as Record<string, unknown>,
+        bookings,
+        [{ clickCount: clickCountMap[row.id as string] || 0 }],
+      )
+      const booked_count = stats.totalSeats
+      const link_clicks = stats.totalLinkClicks
       const { bookings: _bookings, ...event } = row
       return { ...event, booked_count, link_clicks }
     })

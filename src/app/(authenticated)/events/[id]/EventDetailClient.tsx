@@ -39,6 +39,8 @@ import { EventMarketingLinksCard } from '@/components/features/events/EventMarke
 import { EventPromotionContentCard } from '@/components/features/events/EventPromotionContentCard'
 import { EventChecklistCard } from '@/components/features/events/EventChecklistCard'
 import { formatDateInLondon, formatTime12Hour } from '@/lib/dateUtils'
+import { resolveEventPaymentMode, resolveEventPriceAmount } from '@/lib/events/pricing'
+import { buildEventBookingStats } from '@/lib/events/stats'
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -110,15 +112,12 @@ function formatPaymentMode(paymentMode: Event['payment_mode']): string | null {
 }
 
 function formatEventCost(event: Event): string {
-  const price = event.price_per_seat ?? event.price ?? null
-  const paymentMode = formatPaymentMode(event.payment_mode)
+  const price = resolveEventPriceAmount(event)
+  const paymentModeValue = resolveEventPaymentMode(event) as Event['payment_mode']
+  const paymentMode = formatPaymentMode(paymentModeValue)
 
-  if (event.is_free === true || event.payment_mode === 'free' || price === 0) {
+  if (price === 0 && paymentModeValue === 'free') {
     return 'Free'
-  }
-
-  if (price === null || price === undefined) {
-    return paymentMode ? formatStatusLabel(event.payment_mode) : '-'
   }
 
   return `${formatCurrency(price)} per person${paymentMode ? `, ${paymentMode}` : ''}`
@@ -172,7 +171,7 @@ export default function EventDetailClient({
   /* ---- Derived data ---- */
 
   const activeBookings = useMemo(
-    () => bookings.filter((b) => b.status !== 'cancelled'),
+    () => bookings.filter((b) => b.status !== 'cancelled' && b.is_reminder_only !== true),
     [bookings],
   )
 
@@ -181,24 +180,19 @@ export default function EventDetailClient({
     [showCancelled, bookings, activeBookings],
   )
 
-  const totalSeats = useMemo(
-    () => activeBookings.reduce((sum, b) => sum + (b.seats ?? 0), 0),
-    [activeBookings],
+  const eventStats = useMemo(
+    () => event ? buildEventBookingStats(event, bookings, links) : null,
+    [event, bookings, links],
   )
 
-  const capacityPct = useMemo(() => {
-    if (!event?.capacity) return null
-    return Math.round((totalSeats / event.capacity) * 100)
-  }, [totalSeats, event?.capacity])
-
-  const estimatedRevenue = event?.price ? totalSeats * event.price : null
-
-  const totalLinkClicks = useMemo(
-    () => links.reduce((sum, l) => sum + (l.clickCount ?? 0), 0),
-    [links],
-  )
+  const totalSeats = eventStats?.totalSeats ?? 0
+  const capacityPct = eventStats?.capacityPct ?? null
+  const estimatedRevenue = eventStats?.estimatedRevenue ?? 0
+  const totalLinkClicks = eventStats?.totalLinkClicks ?? 0
 
   const canDeleteEvent = permissions.canDelete || permissions.canManage
+  const resolvedEventPrice = event ? resolveEventPriceAmount(event) : 0
+  const resolvedPaymentMode = event ? resolveEventPaymentMode(event) : 'free'
 
   /* ---- Refresh bookings ---- */
 
@@ -385,10 +379,10 @@ export default function EventDetailClient({
             <Badge tone={getStatusTone(event.event_status)} dot>
               {formatStatusLabel(event.event_status)}
             </Badge>
-            {event.is_free ? (
+            {resolvedEventPrice === 0 && resolvedPaymentMode === 'free' ? (
               <Badge tone="info">Free</Badge>
-            ) : event.price ? (
-              <Badge tone="neutral">{formatCurrency(event.price)}</Badge>
+            ) : resolvedEventPrice > 0 ? (
+              <Badge tone="neutral">{formatCurrency(resolvedEventPrice)}</Badge>
             ) : null}
             {permissions.canEdit && (
               <Button variant="secondary" size="sm" icon={<Icon name="edit" size={14} />} onClick={() => setDrawerOpen(true)}>
@@ -844,9 +838,22 @@ function AttendeesTab({
         <CardHeader
           title="Attendees"
           action={
-            <Button variant="ghost" size="sm" onClick={onToggleCancelled}>
-              {showCancelled ? 'Hide Cancelled' : 'Show Cancelled'}
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="secondary"
+                size="sm"
+                icon={<Icon name="download" size={14} />}
+                onClick={() => {
+                  window.location.href = `/api/events/${event.id}/booking-sheets`
+                }}
+                disabled={activeBookingsCount === 0}
+              >
+                Booking Sheets
+              </Button>
+              <Button variant="ghost" size="sm" onClick={onToggleCancelled}>
+                {showCancelled ? 'Hide Cancelled' : 'Show Cancelled'}
+              </Button>
+            </div>
           }
         />
         <CardBody>
