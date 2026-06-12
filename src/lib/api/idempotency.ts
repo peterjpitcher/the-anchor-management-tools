@@ -18,6 +18,12 @@ type IdempotencyRecord = {
   expires_at: string | null
 }
 
+// A claim stuck in {state: 'processing'} longer than this is provably dead: Vercel caps
+// function execution at 300s, so after 10 minutes the claiming invocation cannot still be
+// running (e.g. it was killed mid-flight when the caller disconnected). Allow reclaiming it
+// so the same idempotency key can be retried instead of blocking until the 24h TTL expires.
+export const STALE_PROCESSING_MS = 10 * 60 * 1000
+
 export function stableSerialize(value: unknown): string {
   if (value === null || typeof value !== 'object') {
     return JSON.stringify(value)
@@ -111,7 +117,8 @@ export async function claimIdempotencyKey(
   supabase: SupabaseClient<any, 'public', any>,
   key: string,
   requestHash: string,
-  ttlHours = 24
+  ttlHours = 24,
+  staleProcessingMs = STALE_PROCESSING_MS
 ): Promise<IdempotencyClaimResult> {
   const nowIso = new Date().toISOString()
   const expiresAt = new Date(Date.now() + ttlHours * 60 * 60 * 1000).toISOString()
@@ -119,7 +126,8 @@ export async function claimIdempotencyKey(
     key,
     request_hash: requestHash,
     response: {
-      state: 'processing'
+      state: 'processing',
+      claimed_at: nowIso
     },
     expires_at: expiresAt
   }
@@ -161,7 +169,8 @@ export async function claimIdempotencyKey(
       .update({
         request_hash: requestHash,
         response: {
-          state: 'processing'
+          state: 'processing',
+          claimed_at: nowIso
         },
         expires_at: expiresAt
       })
@@ -219,8 +228,61 @@ export async function claimIdempotencyKey(
     return { state: 'conflict' }
   }
 
-  const response = existing.response as { state?: string } | null
+  const response = existing.response as { state?: string; claimed_at?: string } | null
   if (response?.state === 'processing') {
+    const claimedAt = typeof response.claimed_at === 'string' ? response.claimed_at : null
+    const staleCutoffIso = new Date(Date.now() - staleProcessingMs).toISOString()
+
+    // Claims without claimed_at predate this field and are treated as stale.
+    if (claimedAt && claimedAt >= staleCutoffIso) {
+      return { state: 'in_progress' }
+    }
+
+    let reclaimQuery = supabase
+      .from('idempotency_keys')
+      .update({
+        request_hash: requestHash,
+        response: {
+          state: 'processing',
+          claimed_at: nowIso
+        },
+        expires_at: expiresAt
+      })
+      .eq('key', key)
+      .eq('request_hash', requestHash)
+      .filter('response->>state', 'eq', 'processing')
+
+    reclaimQuery = claimedAt
+      ? reclaimQuery.filter('response->>claimed_at', 'eq', claimedAt)
+      : reclaimQuery.filter('response->>claimed_at', 'is', null)
+
+    const { data: reclaimed, error: reclaimError } = await reclaimQuery
+      .select('key')
+      .maybeSingle()
+
+    if (reclaimError) {
+      throw reclaimError
+    }
+
+    if (reclaimed) {
+      return { state: 'claimed' }
+    }
+
+    // Lost the race: another instance reclaimed it, or the original finished and
+    // persisted its response between our read and the conditional update.
+    const latest = await lookupIdempotencyKey(supabase, key, requestHash)
+    if (latest.state === 'conflict') {
+      return { state: 'conflict' }
+    }
+
+    if (latest.state === 'replay') {
+      const latestResponse = latest.response as { state?: string } | null
+      if (latestResponse?.state === 'processing') {
+        return { state: 'in_progress' }
+      }
+      return { state: 'replay', response: latest.response }
+    }
+
     return { state: 'in_progress' }
   }
 

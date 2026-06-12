@@ -218,6 +218,10 @@
       "schedule": "*/30 * * * *"
     },
     {
+      "path": "/api/cron/recruitment-ai-sweep",
+      "schedule": "*/30 * * * *"
+    },
+    {
       "path": "/api/cron/recruitment-retention",
       "schedule": "30 2 * * *"
     },

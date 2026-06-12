@@ -74,6 +74,24 @@ class IdempotencyTableQuery {
     return this
   }
 
+  filter(column: string, operator: string, value: unknown) {
+    this.filters.push((row) => {
+      const jsonMatch = column.match(/^response->>(.+)$/)
+      const actual = jsonMatch
+        ? (row.response as Record<string, unknown> | null)?.[jsonMatch[1]]
+        : row[column as keyof IdempotencyRow]
+
+      if (operator === 'eq') {
+        return actual === value
+      }
+      if (operator === 'is') {
+        return value === null ? actual == null : actual === value
+      }
+      throw new Error(`Unsupported filter operator: ${operator}`)
+    })
+    return this
+  }
+
   maybeSingle() {
     const matches = [...this.rows.values()].filter((row) => this.filters.every((fn) => fn(row)))
 
@@ -237,7 +255,8 @@ describe('idempotency key lifecycle', () => {
 
     expect(claim).toEqual({ state: 'claimed' })
     expect(supabase.get('reclaim-key')?.request_hash).toBe('new-hash')
-    expect(supabase.get('reclaim-key')?.response).toEqual({ state: 'processing' })
+    expect(supabase.get('reclaim-key')?.response).toMatchObject({ state: 'processing' })
+    expect(typeof (supabase.get('reclaim-key')?.response as { claimed_at?: unknown })?.claimed_at).toBe('string')
   })
 
   it('keeps active processing keys in progress', async () => {
@@ -245,7 +264,7 @@ describe('idempotency key lifecycle', () => {
     supabase.seed({
       key: 'processing-key',
       request_hash: 'same-hash',
-      response: { state: 'processing' },
+      response: { state: 'processing', claimed_at: new Date().toISOString() },
       expires_at: new Date(Date.now() + 60_000).toISOString()
     })
 
@@ -257,5 +276,47 @@ describe('idempotency key lifecycle', () => {
     )
 
     expect(claim).toEqual({ state: 'in_progress' })
+  })
+
+  it('reclaims processing claims abandoned by killed invocations', async () => {
+    const supabase = new IdempotencySupabaseMock()
+    const staleClaimedAt = new Date(Date.now() - 11 * 60 * 1000).toISOString()
+    supabase.seed({
+      key: 'abandoned-key',
+      request_hash: 'same-hash',
+      response: { state: 'processing', claimed_at: staleClaimedAt },
+      expires_at: new Date(Date.now() + 60 * 60 * 1000).toISOString()
+    })
+
+    const claim = await claimIdempotencyKey(
+      supabase as unknown as Parameters<typeof claimIdempotencyKey>[0],
+      'abandoned-key',
+      'same-hash',
+      1
+    )
+
+    expect(claim).toEqual({ state: 'claimed' })
+    const response = supabase.get('abandoned-key')?.response as { state: string; claimed_at: string }
+    expect(response.state).toBe('processing')
+    expect(response.claimed_at > staleClaimedAt).toBe(true)
+  })
+
+  it('treats legacy processing claims without claimed_at as stale', async () => {
+    const supabase = new IdempotencySupabaseMock()
+    supabase.seed({
+      key: 'legacy-key',
+      request_hash: 'same-hash',
+      response: { state: 'processing' },
+      expires_at: new Date(Date.now() + 60 * 60 * 1000).toISOString()
+    })
+
+    const claim = await claimIdempotencyKey(
+      supabase as unknown as Parameters<typeof claimIdempotencyKey>[0],
+      'legacy-key',
+      'same-hash',
+      1
+    )
+
+    expect(claim).toEqual({ state: 'claimed' })
   })
 })

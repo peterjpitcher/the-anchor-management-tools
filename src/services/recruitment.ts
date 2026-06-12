@@ -635,6 +635,83 @@ export async function rescoreRecruitmentApplication(
   return runApplicationScoring(data as RecruitmentApplication, data.candidate as RecruitmentCandidate, supabase, currentUserId)
 }
 
+// Deferred AI pass for a freshly created application (created with skipAi). Idempotent:
+// only runs CV extraction when it has never been attempted, and scoring only while the
+// application is still 'new' and unscored — so it is safe to call from both the intake
+// route's after() hook and the recruitment-ai-sweep cron without double-processing.
+export async function processRecruitmentApplicationAi(
+  applicationId: string,
+  supabase: GenericClient = createAdminClient()
+): Promise<{
+  application: RecruitmentApplication | null
+  cvExtractionError: string | null
+  scoringError: string | null
+}> {
+  const { data, error } = await supabase
+    .from('recruitment_applications')
+    .select('*, candidate:recruitment_candidates(*), job_posting:recruitment_job_postings(*)')
+    .eq('id', applicationId)
+    .maybeSingle()
+
+  if (error) throw error
+  if (!data?.candidate) {
+    return { application: null, cvExtractionError: null, scoringError: null }
+  }
+
+  const application = data as RecruitmentApplication
+  let candidate = data.candidate as RecruitmentCandidate
+  let cvExtractionError: string | null = null
+
+  if (application.duplicate_of_application_id) {
+    return { application, cvExtractionError: null, scoringError: null }
+  }
+
+  if (candidate.cv_text && !candidate.extracted_data) {
+    const extraction = await extractRecruitmentCandidateFromCv(supabase, {
+      candidateId: candidate.id,
+      cvText: candidate.cv_text,
+    })
+
+    if (extraction.result) {
+      const extracted = extraction.result
+      const { data: updatedCandidate, error: candidateError } = await supabase
+        .from('recruitment_candidates')
+        .update({
+          first_name: candidate.first_name ?? extracted.first_name,
+          last_name: candidate.last_name ?? extracted.last_name,
+          email: candidate.email ?? normalizeEmail(extracted.email),
+          phone: candidate.phone ?? extracted.phone,
+          location: candidate.location ?? extracted.location,
+          cv_summary: extracted.experience_summary,
+          extracted_data: extracted,
+          cv_extraction_status: 'done',
+        })
+        .eq('id', candidate.id)
+        .select('*')
+        .single()
+
+      if (!candidateError && updatedCandidate) {
+        candidate = updatedCandidate as RecruitmentCandidate
+      }
+    } else if (extraction.error) {
+      cvExtractionError = extraction.error
+      await supabase
+        .from('recruitment_candidates')
+        .update({
+          extracted_data: { extraction_error: extraction.error },
+        })
+        .eq('id', candidate.id)
+    }
+  }
+
+  if (application.status !== 'new' || application.ai_score != null) {
+    return { application, cvExtractionError, scoringError: null }
+  }
+
+  const scoring = await runApplicationScoring(application, candidate, supabase, null)
+  return { application: scoring.application, cvExtractionError, scoringError: scoring.scoringError }
+}
+
 export async function matchRecruitmentCandidateToPosting(
   candidateId: string,
   jobPostingId: string,
