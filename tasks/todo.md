@@ -1,6 +1,44 @@
 # Task Tracker
 
-## Current Task: Email-equivalent comms + Resend migration — Discovery & Spec
+## Current Task: Harden recruitment application pipeline (2026-06-12)
+
+**Context:** Application from Chloe Rogers (12 Jun 07:04) arrived only as a fallback email — never
+reached the DB. Root cause: management intake does AI work inline and blew the website proxy's 15s
+timeout; Vercel killed the invocation just after the idempotency claim, leaving a stale
+`{state: processing}` claim that blocks same-key retries for 24h. Latent bug: idempotency request
+hash includes per-request `consent_at`, so any same-key retry 409-CONFLICTs instead of replaying.
+
+### Management app (this repo)
+- [x] `src/lib/api/idempotency.ts` — add `claimed_at` to processing claims; reclaim stale
+      processing claims (>10 min — provably dead; Vercel max duration ≤ 300s) via
+      optimistic-lock conditional update. Affects all idempotent routes; strictly safer.
+- [x] `src/services/recruitment.ts` — new `processRecruitmentApplicationAi()` (idempotent;
+      callable from `after()` and cron): CV extraction + scoring for `new` apps missing scores.
+- [x] `src/app/api/recruitment/applications/route.ts` — drop volatile `consent_at` from hash
+      input (stable hash → retries replay); best-effort `phone_e164` normalisation;
+      `skipAi: true` (request path = DB/storage only); defer AI + manager alert via `after()`;
+      `export const maxDuration = 120`; split rate limit (authenticated callers 60/h —
+      website egress IPs are shared, 8/h would bounce real applicants in an ad burst).
+- [x] New cron `/api/cron/recruitment-ai-sweep` + vercel.json `*/30 * * * *`: catch-up scoring
+      and missing manager alerts for apps 10 min–48 h old (safety net if deferred work dies).
+- [x] Tests: `src/lib/api/__tests__/idempotency.test.ts` (12 new) + updated
+      `tests/lib/idempotency.test.ts` (stale-reclaim semantics; mock gained `.filter()`).
+- [x] Pipeline: lint ✓, typecheck ✓, tests 2729/2729 ✓, build ✓.
+
+### Website (/Users/peterpitcher/Cursor/OJ-The-Anchor.pub)
+- [x] `app/api/enquiry/recruitment/route.ts` — retry management call (2 attempts, 25s/20s, same
+      idempotency key — replay-safe); 409 retryable (replay resolves "possible duplicate");
+      429 → email fallback instead of bouncing the applicant; `possibleDuplicate` only when
+      last failure was abort/408/409; attempt count in fallback email; `maxDuration = 90`.
+- [x] Update Jest tests `tests/api/recruitment-enquiry-proxy.test.ts` (4 → 8 cases).
+- [x] Pipeline: lint ✓, typecheck ✓, route tests 8/8 ✓, build ✓ (pre-existing failures in
+      `tests/unit/ManagementTableBookingForm.test.tsx` confirmed unrelated by stash-test).
+
+### Out of scope (flagged to user)
+- Re-entering Chloe Rogers' application (production data write — needs explicit go-ahead).
+- Reconciling historic fallback emails into the DB.
+
+## Previous Task: Email-equivalent comms + Resend migration — Discovery & Spec
 
 **Goal:** Cut Twilio SMS cost by sending email to customers who have an email on file. Produce a thorough, critical spec covering:
 1. Every communication that needs an email equivalent

@@ -1,5 +1,5 @@
 import crypto from 'crypto'
-import { NextRequest } from 'next/server'
+import { NextRequest, after } from 'next/server'
 import {
   createApiResponse,
   createErrorResponse,
@@ -17,8 +17,13 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { getClientIp, verifyTurnstileToken } from '@/lib/turnstile'
 import { getRecruitmentCvMaxBytes, validateRecruitmentCvUpload } from '@/lib/recruitment/files'
 import { sendRecruitmentManagerAlert } from '@/lib/recruitment/communications'
-import { createRecruitmentApplication } from '@/services/recruitment'
+import { formatPhoneForStorage } from '@/lib/utils'
+import { createRecruitmentApplication, processRecruitmentApplicationAi } from '@/services/recruitment'
 import type { RecruitmentCvUpload } from '@/types/recruitment'
+
+// The response itself is sent within seconds (DB/storage writes only); the remaining budget
+// is for the after() hook, which runs OpenAI extraction/scoring and the manager alert.
+export const maxDuration = 120
 
 function formString(formData: FormData, key: string): string | null {
   const value = formData.get(key)
@@ -112,18 +117,30 @@ async function handleRecruitmentApplication(request: NextRequest) {
     ? crypto.createHash('sha256').update(cvUpload.buffer).digest('hex')
     : null
 
+  const phone = formString(formData, 'phone')
+  let phoneE164 = formString(formData, 'phone_e164')
+  if (!phoneE164 && phone) {
+    try {
+      phoneE164 = formatPhoneForStorage(phone)
+    } catch {
+      phoneE164 = null
+    }
+  }
+
+  // consent_at is intentionally NOT set here: the service defaults it at processing time.
+  // Anything time-derived in this input would change the idempotency request hash between
+  // attempts, turning legitimate same-key retries into 409 conflicts instead of replays.
   const applicationInput = {
     candidate: {
       first_name: formString(formData, 'first_name'),
       last_name: formString(formData, 'last_name'),
       email: normalizedEmail,
-      phone: formString(formData, 'phone'),
-      phone_e164: formString(formData, 'phone_e164'),
+      phone,
+      phone_e164: phoneE164,
       location: formString(formData, 'location'),
       source: 'website' as const,
       provided_details: formString(formData, 'provided_details'),
       consent_source: 'public_website',
-      consent_at: new Date().toISOString(),
       privacy_notice_version: formString(formData, 'privacy_notice_version'),
       sms_consent: formBool(formData, 'sms_consent'),
       future_recruitment_consent: formBool(formData, 'future_recruitment_consent'),
@@ -175,24 +192,14 @@ async function handleRecruitmentApplication(request: NextRequest) {
   }
 
   try {
+    // skipAi keeps the request path to DB/storage writes only, so the submitting site gets
+    // its 201 in seconds. AI extraction/scoring and the manager alert run post-response via
+    // after(); the recruitment-ai-sweep cron is the safety net if that work dies.
     const result = await createRecruitmentApplication(applicationInput, {
       cvUpload,
       uploadKind: 'public',
+      skipAi: true,
     }, supabase)
-
-    await sendRecruitmentManagerAlert({
-      applicationId: result.application.id,
-      alertType: result.application.ai_recommendation === 'fast_track' ? 'fast-track' : 'new application',
-      alertBody: [
-        `${result.candidate.first_name ?? ''} ${result.candidate.last_name ?? ''}`.trim() || result.candidate.email || 'A candidate',
-        result.application.job_posting?.title ? `applied for ${result.application.job_posting.title}.` : 'joined the recruitment talent pool.',
-        result.application.ai_score != null ? `AI score: ${result.application.ai_score}.` : '',
-        result.cvExtractionError ? `CV review needed: ${result.cvExtractionError}.` : '',
-        result.scoringError ? `Scoring review needed: ${result.scoringError}.` : '',
-      ].filter(Boolean).join(' '),
-    }, supabase).catch(error => {
-      console.error('Recruitment manager alert failed', error)
-    })
 
     const responsePayload = {
       success: true,
@@ -202,7 +209,8 @@ async function handleRecruitmentApplication(request: NextRequest) {
         status: result.application.status,
         duplicate_of_application_id: result.duplicateOfApplicationId,
         cv_extraction_error: result.cvExtractionError,
-        scoring_error: result.scoringError,
+        scoring_error: null,
+        ai_processing: result.duplicateOfApplicationId ? 'skipped' : 'deferred',
       },
       meta: {
         status_code: 201,
@@ -210,6 +218,34 @@ async function handleRecruitmentApplication(request: NextRequest) {
     }
 
     await persistIdempotencyResponse(supabase, idempotencyKey, requestHash, responsePayload)
+
+    after(async () => {
+      let processed: Awaited<ReturnType<typeof processRecruitmentApplicationAi>> | null = null
+      try {
+        processed = await processRecruitmentApplicationAi(result.application.id, supabase)
+      } catch (error) {
+        console.error('Deferred recruitment AI processing failed', error)
+      }
+
+      const application = processed?.application ?? result.application
+      const cvExtractionError = processed?.cvExtractionError ?? result.cvExtractionError
+      try {
+        await sendRecruitmentManagerAlert({
+          applicationId: application.id,
+          alertType: application.ai_recommendation === 'fast_track' ? 'fast-track' : 'new application',
+          alertBody: [
+            `${result.candidate.first_name ?? ''} ${result.candidate.last_name ?? ''}`.trim() || result.candidate.email || 'A candidate',
+            application.job_posting?.title ? `applied for ${application.job_posting.title}.` : 'joined the recruitment talent pool.',
+            application.ai_score != null ? `AI score: ${application.ai_score}.` : '',
+            cvExtractionError ? `CV review needed: ${cvExtractionError}.` : '',
+            processed?.scoringError ? `Scoring review needed: ${processed.scoringError}.` : '',
+          ].filter(Boolean).join(' '),
+        }, supabase)
+      } catch (error) {
+        console.error('Recruitment manager alert failed', error)
+      }
+    })
+
     return createApiResponse(responsePayload, 201, {}, request.method)
   } catch (error) {
     await releaseIdempotencyClaim(supabase, idempotencyKey, requestHash)
@@ -227,15 +263,25 @@ export async function OPTIONS() {
 }
 
 export async function POST(request: NextRequest) {
-  const rateLimit = await applyDistributedRateLimit(request, {
-    prefix: 'recruitment-public-upload',
-    window: '1 h',
-    max: 8,
-    message: 'Too many recruitment applications from this address. Please try again later.',
-  })
-  if (rateLimit) return rateLimit
-
   const hasApiKey = Boolean(request.headers.get('x-api-key') || request.headers.get('authorization'))
+
+  // Authenticated server-to-server callers (the website proxy) funnel every applicant
+  // through a handful of Vercel egress IPs, so the strict per-IP ceiling meant for anonymous
+  // posts would reject legitimate applicants during a busy spell (e.g. a job-ad burst).
+  const rateLimit = await applyDistributedRateLimit(request, hasApiKey
+    ? {
+        prefix: 'recruitment-api-upload',
+        window: '1 h',
+        max: 60,
+        message: 'Too many recruitment applications from this address. Please try again later.',
+      }
+    : {
+        prefix: 'recruitment-public-upload',
+        window: '1 h',
+        max: 8,
+        message: 'Too many recruitment applications from this address. Please try again later.',
+      })
+  if (rateLimit) return rateLimit
   if (hasApiKey) {
     return withApiAuth(
       () => handleRecruitmentApplication(request),
