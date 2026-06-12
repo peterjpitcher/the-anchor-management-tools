@@ -232,7 +232,11 @@ async function handleRecruitmentApplication(request: NextRequest) {
       try {
         await sendRecruitmentManagerAlert({
           applicationId: application.id,
-          alertType: application.ai_recommendation === 'fast_track' ? 'fast-track' : 'new application',
+          alertType: application.status === 'talent_pool'
+            ? 'talent pool candidate'
+            : application.ai_recommendation === 'fast_track'
+              ? 'fast-track'
+              : 'new application',
           alertBody: [
             `${result.candidate.first_name ?? ''} ${result.candidate.last_name ?? ''}`.trim() || result.candidate.email || 'A candidate',
             application.job_posting?.title ? `applied for ${application.job_posting.title}.` : 'joined the recruitment talent pool.',

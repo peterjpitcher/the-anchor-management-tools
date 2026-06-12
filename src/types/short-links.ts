@@ -1,4 +1,11 @@
 /** Short link as returned by getShortLinks — a subset of the full row */
+export interface ShortLinkMetadata {
+  channel?: string
+  parent_link_id?: string
+  utm_variant?: boolean
+  [key: string]: unknown
+}
+
 export interface ShortLink {
   id: string
   name?: string | null
@@ -10,6 +17,7 @@ export interface ShortLink {
   expires_at: string | null
   last_clicked_at: string | null
   parent_link_id: string | null
+  metadata?: ShortLinkMetadata | null
   created_by?: string | null
 }
 

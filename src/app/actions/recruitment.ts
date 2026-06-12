@@ -227,7 +227,11 @@ export async function createManualRecruitmentApplicationAction(_prevState: unkno
 
     await notifyRecruitmentManager({
       applicationId: result.application.id,
-      alertType: result.application.ai_recommendation === 'fast_track' ? 'fast-track' : 'new application',
+      alertType: result.application.status === 'talent_pool'
+        ? 'talent pool candidate'
+        : result.application.ai_recommendation === 'fast_track'
+          ? 'fast-track'
+          : 'new application',
       alertBody: [
         `${result.candidate.first_name ?? ''} ${result.candidate.last_name ?? ''}`.trim() || result.candidate.email || 'A candidate',
         result.application.job_posting?.title ? `applied for ${result.application.job_posting.title}.` : 'was added to the talent pool.',

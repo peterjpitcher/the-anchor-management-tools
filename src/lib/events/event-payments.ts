@@ -11,6 +11,7 @@ import { sendSMS } from '@/lib/twilio'
 import { getSmartFirstName } from '@/lib/sms/bulk'
 import { createEventManageToken } from '@/lib/events/manage-booking'
 import { extractSmsSafetyInfo } from '@/lib/sms/safety-info'
+import { resolveEventPriceAmount } from '@/lib/events/pricing'
 
 export type EventPaymentTokenResult = {
   rawToken: string
@@ -198,7 +199,7 @@ export async function getEventPaymentPreviewByRawToken(
   }
 
   const seats = Math.max(1, Number(booking.seats ?? 1))
-  const unitPrice = Number(eventRow.price_per_seat ?? eventRow.price ?? 0)
+  const unitPrice = resolveEventPriceAmount(eventRow)
   const totalAmount = Number((unitPrice * seats).toFixed(2))
 
   if (!Number.isFinite(totalAmount) || totalAmount <= 0) {

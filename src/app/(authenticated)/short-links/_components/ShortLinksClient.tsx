@@ -15,9 +15,9 @@ import {
 } from '@/app/actions/short-links'
 import { ShortLinkFormModal } from './ShortLinkFormModal'
 import { ShortLinkAnalyticsModal } from './ShortLinkAnalyticsModal'
-import { UtmDropdown } from './UtmDropdown'
-import { downloadQrPng, safeQrFilename } from './qr-download'
+import { ShortLinkActionsMenu } from './ShortLinkActionsMenu'
 import { buildShortLinkUrl } from '@/lib/short-links/base-url'
+import { CHANNEL_MAP } from '@/lib/short-links/channels'
 import { formatDate } from '@/lib/dateUtils'
 import type { ShortLink } from '@/types/short-links'
 
@@ -51,10 +51,23 @@ type VolumeRow = {
 type TrendTone = 'success' | 'danger' | 'neutral'
 
 function getVariantLabel(link: ShortLink): string {
+  const channelKey = typeof link.metadata?.channel === 'string' ? link.metadata.channel : null
+  const channelConfig = channelKey ? CHANNEL_MAP.get(channelKey) : null
+  if (channelConfig) return channelConfig.label
+
   if (link.name?.includes('\u2014')) {
     return link.name.split('\u2014').pop()?.trim() || 'UTM variant'
   }
   return link.name || 'UTM variant'
+}
+
+function formatUrlForDisplay(value: string): string {
+  try {
+    const url = new URL(value)
+    return `${url.hostname}${url.pathname}${url.search}${url.hash}`
+  } catch {
+    return value.replace(/^https?:\/\//, '')
+  }
 }
 
 function toNumber(value: unknown): number {
@@ -232,19 +245,21 @@ export function ShortLinksClient({ initialLinks, initialTotal, initialLinkTotal,
   }, [debouncedSearch])
 
   const handleCopyLink = async (link: ShortLink) => {
-    const fullUrl = buildShortLinkUrl(link.short_code)
-    await navigator.clipboard.writeText(fullUrl)
-    toast.success('Link copied!')
-  }
-
-  const handleDownloadQrCode = async (link: ShortLink) => {
     try {
       const fullUrl = buildShortLinkUrl(link.short_code)
-      await downloadQrPng(fullUrl, safeQrFilename(link.short_code))
-      toast.success('QR code downloaded')
-    } catch (error) {
-      console.error('Failed to download QR code', error)
-      toast.error('Failed to download QR code')
+      await navigator.clipboard.writeText(fullUrl)
+      toast.success('Link copied!')
+    } catch {
+      toast.error('Copy was blocked')
+    }
+  }
+
+  const handleCopyDestination = async (destinationUrl: string) => {
+    try {
+      await navigator.clipboard.writeText(destinationUrl)
+      toast.success('Destination URL copied')
+    } catch {
+      toast.error('Copy was blocked')
     }
   }
 
@@ -306,15 +321,15 @@ export function ShortLinksClient({ initialLinks, initialTotal, initialLinkTotal,
 
       {/* Table */}
       <Card>
-        <Table>
+        <Table className="[&>table]:table-fixed">
           <TableHeader>
             <TableRow>
-              <TableHead className="w-[29%] py-1.5">Short URL</TableHead>
-              <TableHead className="w-[41%] py-1.5">Destination</TableHead>
+              <TableHead className="w-[32%] py-1.5">Short URL</TableHead>
+              <TableHead className="w-[42%] py-1.5">Destination</TableHead>
               <TableHead align="right" className="w-[7%] py-1.5">Clicks</TableHead>
               <TableHead className="w-[10%] py-1.5">Created</TableHead>
-              <TableHead className="w-[6%] py-1.5">Type</TableHead>
-              <TableHead align="right" className="w-[7%] py-1.5">Actions</TableHead>
+              <TableHead className="w-[5%] py-1.5">Type</TableHead>
+              <TableHead align="right" className="w-[4%] py-1.5">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -327,9 +342,9 @@ export function ShortLinksClient({ initialLinks, initialTotal, initialLinkTotal,
             ) : (
               displayLinks.map((link) => (
                 <TableRow key={link.id} className={link.isVariant ? 'bg-surface-2/40' : undefined}>
-                  <TableCell className="py-2 align-middle">
+                  <TableCell className="min-w-0 py-2 align-middle">
                     <div className={link.isVariant ? 'pl-6' : undefined}>
-                      <div className="flex items-center gap-2 whitespace-nowrap">
+                      <div className="flex min-w-0 items-center gap-2 whitespace-nowrap">
                         {!link.isVariant && (link.variantCount ?? 0) > 0 && (
                           <IconButton
                             icon={<Icon name={expandedParents.has(link.id) ? 'chevronDown' : 'chevronRight'} size={14} />}
@@ -338,30 +353,38 @@ export function ShortLinksClient({ initialLinks, initialTotal, initialLinkTotal,
                             onClick={() => toggleExpanded(link.id)}
                           />
                         )}
-                        <code className="whitespace-nowrap text-xs font-mono bg-surface-2 px-2 py-0.5 rounded">
-                          {buildShortLinkUrl(link.short_code).replace(/^https?:\/\//, '')}
-                        </code>
-                        <IconButton
-                          icon={<Icon name="copy" size={14} />}
-                          label="Copy link"
-                          size="sm"
+                        <button
+                          type="button"
+                          className="min-w-0 flex-shrink-0 rounded bg-surface-2 px-2 py-0.5 text-left font-mono text-xs hover:bg-surface-hover"
                           onClick={() => handleCopyLink(link)}
-                        />
+                          title="Click to copy short URL"
+                        >
+                          <code>{buildShortLinkUrl(link.short_code).replace(/^https?:\/\//, '')}</code>
+                        </button>
                         {link.isVariant ? (
                           <Badge tone="neutral">{getVariantLabel(link)}</Badge>
                         ) : (
                           <>
-                            {link.name && <span className="text-xs text-text-muted">{link.name}</span>}
-                            {(link.variantCount ?? 0) > 0 && <Badge tone="neutral">{link.variantCount} variants</Badge>}
+                            {link.name && <span className="min-w-0 truncate text-xs text-text-muted">{link.name}</span>}
+                            {(link.variantCount ?? 0) > 0 && (
+                              <button type="button" onClick={() => toggleExpanded(link.id)} className="flex-shrink-0">
+                                <Badge tone="neutral">{link.variantCount} variants</Badge>
+                              </button>
+                            )}
                           </>
                         )}
                       </div>
                     </div>
                   </TableCell>
-                  <TableCell className="py-2 align-middle">
-                    <span className="block whitespace-nowrap text-xs text-text-muted" title={link.destination_url}>
-                      {link.destination_url}
-                    </span>
+                  <TableCell className="min-w-0 py-2 align-middle">
+                    <button
+                      type="button"
+                      className="block max-w-full truncate text-left text-xs text-text-muted hover:text-text"
+                      title={`${link.destination_url}\nClick to copy destination URL`}
+                      onClick={() => handleCopyDestination(link.destination_url)}
+                    >
+                      {formatUrlForDisplay(link.destination_url)}
+                    </button>
                   </TableCell>
                   <TableCell align="right" className="py-2 font-mono align-middle">
                     {link.click_count ?? 0}
@@ -370,41 +393,18 @@ export function ShortLinksClient({ initialLinks, initialTotal, initialLinkTotal,
                     {formatDate(link.created_at)}
                   </TableCell>
                   <TableCell className="py-2 align-middle">
-                    <Badge tone="info">{link.link_type}</Badge>
+                    <Badge tone={link.isVariant ? 'neutral' : 'info'}>{link.isVariant ? 'variant' : link.link_type}</Badge>
                   </TableCell>
                   <TableCell align="right" className="py-2 align-middle">
                     <div className="flex items-center justify-end gap-1">
-                      {canManage && !link.parent_link_id && (
-                        <UtmDropdown parentId={link.id} onVariantReady={handleVariantReady} />
-                      )}
-                      <IconButton
-                        icon={<Icon name="download" size={14} />}
-                        label="Download QR"
-                        size="sm"
-                        onClick={() => handleDownloadQrCode(link)}
+                      <ShortLinkActionsMenu
+                        link={link}
+                        canManage={canManage}
+                        onVariantReady={handleVariantReady}
+                        onAnalytics={(target) => { setActiveLink(target); setAnalyticsModalOpen(true) }}
+                        onEdit={(target) => { setActiveLink(target); setFormModalOpen(true) }}
+                        onDelete={setDeleteTarget}
                       />
-                      <IconButton
-                        icon={<Icon name="trendUp" size={14} />}
-                        label="Analytics"
-                        size="sm"
-                        onClick={() => { setActiveLink(link); setAnalyticsModalOpen(true) }}
-                      />
-                      {canManage && (
-                        <>
-                          <IconButton
-                            icon={<Icon name="edit" size={14} />}
-                            label="Edit"
-                            size="sm"
-                            onClick={() => { setActiveLink(link); setFormModalOpen(true) }}
-                          />
-                          <IconButton
-                            icon={<Icon name="trash" size={14} />}
-                            label="Delete"
-                            size="sm"
-                            onClick={() => setDeleteTarget(link)}
-                          />
-                        </>
-                      )}
                     </div>
                   </TableCell>
                 </TableRow>

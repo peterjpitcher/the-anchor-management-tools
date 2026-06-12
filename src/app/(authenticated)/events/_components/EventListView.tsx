@@ -9,6 +9,7 @@ import { BarMini } from './BarMini'
 import type { Event } from '@/types/database'
 import { formatDateInLondon } from '@/lib/dateUtils'
 import { useState, useCallback } from 'react'
+import { resolveEventPaymentMode, resolveEventPriceAmount } from '@/lib/events/pricing'
 
 type BadgeTone = 'neutral' | 'primary' | 'success' | 'warning' | 'danger' | 'info'
 
@@ -128,6 +129,8 @@ export function EventListView({
               const booked = (event as Event & { booked_count?: number }).booked_count ?? 0
               const bookedRatio = capacity > 0 ? Math.round((booked / capacity) * 100) : 0
               const linkClicks = (event as Event & { link_clicks?: number }).link_clicks ?? 0
+              const price = resolveEventPriceAmount(event)
+              const paymentMode = resolveEventPaymentMode(event)
               return (
                 <TableRow key={event.id} onClick={() => onEventClick(event)}>
                   <TableCell>
@@ -164,7 +167,7 @@ export function EventListView({
                     <span className="text-xs text-text-muted">{linkClicks > 0 ? linkClicks.toLocaleString() : '-'}</span>
                   </TableCell>
                   <TableCell align="right">
-                    {formatCurrency(event.price)}
+                    {price === 0 && paymentMode === 'free' ? 'Free' : formatCurrency(price)}
                   </TableCell>
                   <TableCell>
                     <Badge tone={getStatusTone(event.event_status)} dot>

@@ -272,6 +272,7 @@ export async function listRecruitmentAdminData(supabase: GenericClient = createA
     supabase
       .from('recruitment_applications')
       .select('*, candidate:recruitment_candidates(*), job_posting:recruitment_job_postings(*)')
+      .neq('status', 'talent_pool')
       .order('created_at', { ascending: false })
       .limit(100),
     getRecruitmentCandidatesPage(supabase, { page: 1, pageSize: RECRUITMENT_CANDIDATES_PAGE_SIZE }),
@@ -974,7 +975,11 @@ export async function createRecruitmentApplication(
     duplicateOfApplicationId = duplicate?.id ?? null
   }
 
-  const initialStatus = duplicateOfApplicationId ? 'declined_duplicate' : 'new'
+  const initialStatus = duplicateOfApplicationId
+    ? 'declined_duplicate'
+    : parsed.job_posting_id
+      ? 'new'
+      : 'talent_pool'
   const { data: applicationData, error: applicationError } = await supabase
     .from('recruitment_applications')
     .insert({
@@ -1000,7 +1005,11 @@ export async function createRecruitmentApplication(
     applicationId: application.id,
     toStatus: initialStatus,
     changedBy: options.currentUserId ?? null,
-    note: duplicateOfApplicationId ? 'Duplicate application for the same posting' : 'Application created',
+    note: duplicateOfApplicationId
+      ? 'Duplicate application for the same posting'
+      : parsed.job_posting_id
+        ? 'Application created'
+        : 'Added to talent pool',
     metadata: duplicateOfApplicationId ? { duplicate_of_application_id: duplicateOfApplicationId } : null,
   })
 

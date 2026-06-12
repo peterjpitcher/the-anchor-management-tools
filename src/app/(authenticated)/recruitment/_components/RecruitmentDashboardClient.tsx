@@ -20,6 +20,7 @@ import {
   Card,
   CardBody,
   CardHeader,
+  Drawer,
   Input,
   SearchInput,
   Select,
@@ -68,6 +69,7 @@ type Props = {
 
 const statusOptions = [
   'new',
+  'ai_screened',
   'shortlisted',
   'interview_invited',
   'interview_scheduled',
@@ -205,6 +207,7 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
   const [statusFilter, setStatusFilter] = useState('')
   const [selectedApplicationId, setSelectedApplicationId] = useState<string | null>(null)
   const [selectedCandidateId, setSelectedCandidateId] = useState<string | null>(null)
+  const [detailDrawerOpen, setDetailDrawerOpen] = useState(false)
   const [emailDraft, setEmailDraft] = useState<{ type: string; subject: string; body: string; error?: string } | null>(null)
   const [printableText, setPrintableText] = useState<string | null>(null)
   const [clientMessage, setClientMessage] = useState<string | null>(null)
@@ -235,8 +238,11 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
   const statusEvents = initialData.statusEvents ?? []
   const aiRuns = initialData.aiRuns ?? []
   const dashboard = initialData.dashboard
-  const selectedApplication = applications.find((application: any) => application.id === selectedApplicationId) ?? applications[0] ?? null
-  const selectedCandidate = candidates.find((candidate: any) => candidate.id === (selectedCandidateId ?? selectedApplication?.candidate_id)) ?? selectedApplication?.candidate ?? candidates[0] ?? null
+  const activeApplications = applications.filter((application: any) => application.status !== 'talent_pool')
+  const selectedApplication = applications.find((application: any) => application.id === selectedApplicationId) ?? null
+  const selectedCandidate = selectedApplication?.candidate
+    ?? candidates.find((candidate: any) => candidate.id === (selectedCandidateId ?? selectedApplication?.candidate_id))
+    ?? null
   const selectedCvExtractionMessage = cvExtractionMessage(selectedApplication?.candidate)
   const selectedCvProfileSummary = profileSummary(selectedApplication?.candidate)
   const selectedStrengths = asStringArray(selectedApplication?.ai_strengths).length > 0
@@ -259,7 +265,8 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
         application.status,
         application.ai_recommendation,
       ].filter(Boolean).join(' ').toLowerCase()
-      return (!query || haystack.includes(query)) && (!statusFilter || application.status === statusFilter)
+      const matchesStatus = statusFilter ? application.status === statusFilter : application.status !== 'talent_pool'
+      return (!query || haystack.includes(query)) && matchesStatus
     })
   }, [applications, search, statusFilter])
 
@@ -364,6 +371,15 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
     loadTalent({ page, search: talentSearch, status: talentStatusFilter, source: talentSourceFilter })
   }
 
+  function openApplicationDetail(application: any) {
+    setSelectedApplicationId(application.id)
+    setSelectedCandidateId(application.candidate_id)
+    setEmailDraft(null)
+    setPrintableText(null)
+    setClientMessage(null)
+    setDetailDrawerOpen(true)
+  }
+
   const talentTotalPages = Math.max(1, Math.ceil(talentTotal / TALENT_PAGE_SIZE))
 
   return (
@@ -410,7 +426,7 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
             activeTab={activeTab}
             onTabChange={(id) => setActiveTab(id as typeof activeTab)}
             tabs={[
-              { id: 'applications', label: 'Applications', count: applications.length },
+              { id: 'applications', label: 'Applications', count: activeApplications.length },
               { id: 'postings', label: 'Postings', count: postings.length },
               { id: 'schedule', label: 'Schedule', count: appointments.length },
               { id: 'talent', label: 'Talent pool', count: talentTotal },
@@ -434,7 +450,7 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                 onChange={event => setStatusFilter(event.target.value)}
                 className="md:w-48"
               >
-                <option value="">All statuses</option>
+                <option value="">Active statuses</option>
                 {statusOptions.map(status => (
                   <option key={status} value={status}>{status.replaceAll('_', ' ')}</option>
                 ))}
@@ -454,10 +470,7 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                       <button
                         type="button"
                         key={application.id}
-                        onClick={() => {
-                          setSelectedApplicationId(application.id)
-                          setSelectedCandidateId(application.candidate_id)
-                        }}
+                        onClick={() => openApplicationDetail(application)}
                         className="w-full rounded-md border border-border bg-surface-2 p-2 text-left hover:border-primary"
                       >
                         <p className="truncate text-sm font-medium text-text-strong">{candidateName(application.candidate)}</p>
@@ -519,10 +532,7 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                               size="sm"
                               variant="secondary"
                               icon={<EyeIcon className="h-4 w-4" />}
-                              onClick={() => {
-                                setSelectedApplicationId(application.id)
-                                setSelectedCandidateId(application.candidate_id)
-                              }}
+                              onClick={() => openApplicationDetail(application)}
                             >
                               Detail
                             </Button>
@@ -567,10 +577,14 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
               </CardBody>
             </Card>
 
-            {selectedApplication && (
-              <Card>
-                <CardHeader title="Application Detail" />
-                <CardBody className="space-y-5">
+            <Drawer
+              open={detailDrawerOpen && Boolean(selectedApplication)}
+              onClose={() => setDetailDrawerOpen(false)}
+              title={selectedApplication ? candidateName(selectedApplication.candidate) : 'Application detail'}
+              width="min(980px, 100vw)"
+            >
+              {selectedApplication && (
+                <div className="space-y-5">
                   <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
                     <div className="space-y-3">
                       <div>
@@ -772,9 +786,9 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                       {printableText}
                     </pre>
                   )}
-                </CardBody>
-              </Card>
-            )}
+                </div>
+              )}
+            </Drawer>
 
             {permissions.canCreate && (
               <Card>

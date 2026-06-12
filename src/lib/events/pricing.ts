@@ -5,6 +5,8 @@ type EventPricingInput = {
   price_per_seat?: number | string | null;
 };
 
+export type EventPaymentMode = 'free' | 'cash_only' | 'prepaid';
+
 function positiveMoney(value: unknown): number | null {
   if (value === null || value === undefined || value === '') return null;
   const amount = typeof value === 'number' ? value : Number(value);
@@ -12,8 +14,10 @@ function positiveMoney(value: unknown): number | null {
 }
 
 export function resolveEventPriceAmount(event: EventPricingInput): number {
+  const positivePrice = positiveMoney(event.price_per_seat) ?? positiveMoney(event.price);
+  if (positivePrice !== null) return positivePrice;
   if (event.is_free === true) return 0;
-  return positiveMoney(event.price_per_seat) ?? positiveMoney(event.price) ?? 0;
+  return 0;
 }
 
 export function resolveEventPaymentMode(event: EventPricingInput): string {
@@ -23,8 +27,30 @@ export function resolveEventPaymentMode(event: EventPricingInput): string {
       ? event.payment_mode.trim()
       : null;
 
-  if (event.is_free === true) return 'free';
   if (amount > 0 && explicit === 'free') return 'cash_only';
+  if (amount > 0) return explicit === 'prepaid' ? 'prepaid' : 'cash_only';
+  if (event.is_free === true) return 'free';
   if (explicit) return explicit;
-  return amount > 0 ? 'cash_only' : 'free';
+  return 'free';
+}
+
+export function normalizeEventPricingFields(event: EventPricingInput): {
+  price: number;
+  is_free: boolean;
+  payment_mode: EventPaymentMode;
+} {
+  const price = resolveEventPriceAmount(event);
+  const resolved = resolveEventPaymentMode(event);
+  const paymentMode: EventPaymentMode =
+    resolved === 'prepaid' || resolved === 'cash_only' || resolved === 'free'
+      ? resolved
+      : price > 0
+        ? 'cash_only'
+        : 'free';
+
+  return {
+    price,
+    is_free: price === 0 && paymentMode === 'free',
+    payment_mode: paymentMode,
+  };
 }

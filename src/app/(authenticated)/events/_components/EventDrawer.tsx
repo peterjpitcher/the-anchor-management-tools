@@ -17,6 +17,7 @@ import { SquareImageUpload } from '@/components/features/shared/SquareImageUploa
 import type { Event } from '@/types/database'
 import type { EventCategory } from '@/types/event-categories'
 import type { EventChecklistItem } from '@/lib/event-checklist'
+import { resolveEventPaymentMode, resolveEventPriceAmount } from '@/lib/events/pricing'
 
 type GenerationPhase = 'checking' | 'drafting' | null
 
@@ -163,9 +164,11 @@ export function EventDrawer({ open, onClose, event, categories, onSave }: EventD
       setDurationMinutes(event.duration_minutes?.toString() || '')
       setPerformerName(event.performer_name || '')
       setPerformerType(event.performer_type || '')
-      setPrice(event.price?.toString() || '0')
-      setIsFree(event.is_free ?? true)
-      setPaymentMode(event.payment_mode || 'free')
+      const resolvedPrice = resolveEventPriceAmount(event)
+      const resolvedPaymentMode = resolveEventPaymentMode(event)
+      setPrice(resolvedPrice > 0 ? resolvedPrice.toString() : '0')
+      setIsFree(resolvedPrice === 0 && resolvedPaymentMode === 'free')
+      setPaymentMode(resolvedPaymentMode)
       setBookingMode(event.booking_mode || 'table')
       setBookingUrl(event.booking_url || '')
       setBookingsEnabled(event.bookings_enabled ?? true)
@@ -680,6 +683,7 @@ export function EventDrawer({ open, onClose, event, categories, onSave }: EventD
                 setPrice(e.target.value)
                 const v = e.target.value ? parseFloat(e.target.value) : 0
                 setIsFree(v === 0)
+                if (v > 0 && paymentMode === 'free') setPaymentMode('cash_only')
               }}
               placeholder="0.00"
             />

@@ -27,3 +27,9 @@
 **Mistake:** Deleted `src/app/actions/fix-phone-numbers.ts` (audit F5) after a "zero importers" check scoped to `src/` and `scripts/`. A test in `tests/actions/fixPhoneNumbersActions.test.ts` still imported it, so the Vitest suite broke (suite failed to load). The deletion's verification ran lint + tsc but skipped `npm test` on the "no importers" assumption — and tsc didn't flag it because test files weren't in the type-check include.
 
 **Rule:** Before deleting any module, grep the WHOLE repo for references — `src/`, `scripts/`, AND `tests/` (plus any co-located `__tests__/`). A test file is an importer. If the only remaining reference is a test that exists solely to exercise the deleted code, remove it in the same change. Never skip `npm test` for a deletion just because production code has no importers — run the suite, since tsc may not type-check test files.
+
+## 2026-06-12: A push is not a deploy — always verify the deployment landed
+
+**Mistake:** Pushed the recruitment fix to both apps' `main` and reported the work shipped. The management app auto-deployed (Ready), but the-anchor.pub does NOT auto-deploy `main`, so the website fix sat undeployed and not live. A redesign branch I had published also produced a failing preview build I never checked. The user had to tell me "always verify deployments".
+
+**Rule:** After any push expected to deploy, verify before claiming done. For Vercel: `vercel ls <project> --scope <team>` then `vercel inspect <url>` — confirm a NEW deployment exists, state is Ready (not Error/Building/Canceled), and the production / `git-main` alias points to the new commit (not an older one). Learn each project's deploy model: `anchor-management-tools` auto-deploys `main`; `the-anchor-pub` (website) is a manual production deploy by the user. Never equate `git push` with "live".

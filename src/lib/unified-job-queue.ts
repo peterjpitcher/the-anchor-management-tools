@@ -25,6 +25,8 @@ function logQueueDebug(message: string, metadata?: Record<string, unknown>) {
 export type JobType =
   | 'send_sms'
   | 'send_bulk_sms'
+  | 'send_event_reschedule_notifications'
+  | 'cancel_event_bookings'
   | 'export_employees'
   | 'rebuild_category_stats'
   | 'categorize_historical_events'
@@ -40,6 +42,8 @@ export type JobType =
 const SUPPORTED_JOB_TYPES: JobType[] = [
   'send_sms',
   'send_bulk_sms',
+  'send_event_reschedule_notifications',
+  'cancel_event_bookings',
   'export_employees',
   'rebuild_category_stats',
   'categorize_historical_events',
@@ -67,6 +71,8 @@ const HEARTBEAT_MS = Number.isFinite(Number(process.env.JOB_QUEUE_HEARTBEAT_MS))
   : 30000
 const JOB_TIMEOUTS_MS: Partial<Record<JobType, number>> = {
   send_bulk_sms: 0,
+  send_event_reschedule_notifications: 0,
+  cancel_event_bookings: 0,
 }
 
 function resolveJobTimeoutMs(type: JobType): number {
@@ -1129,6 +1135,68 @@ export class UnifiedJobQueue {
           }
           return result
         }
+
+      case 'send_event_reschedule_notifications': {
+        const eventId = typeof payload.eventId === 'string' ? payload.eventId : ''
+        const eventName = typeof payload.eventName === 'string' ? payload.eventName : 'your event'
+        const oldDate = typeof payload.oldDate === 'string' ? payload.oldDate : null
+        const oldTime = typeof payload.oldTime === 'string' ? payload.oldTime : null
+        const newDate = typeof payload.newDate === 'string' ? payload.newDate : ''
+        const newTime = typeof payload.newTime === 'string' ? payload.newTime : ''
+        const userId = typeof payload.userId === 'string' ? payload.userId : ''
+
+        if (!eventId || !newDate || !userId) {
+          throw new Error('send_event_reschedule_notifications job blocked: missing required payload')
+        }
+
+        const { dispatchEventRescheduleNotifications } = await import('@/lib/events/reschedule-notifications')
+        return dispatchEventRescheduleNotifications({
+          eventId,
+          eventName,
+          oldDate,
+          oldTime,
+          newDate,
+          newTime,
+          userId,
+        })
+      }
+
+      case 'cancel_event_bookings': {
+        const eventId = typeof payload.eventId === 'string' ? payload.eventId : ''
+        const eventName = typeof payload.eventName === 'string' ? payload.eventName : 'Event'
+        const eventDate = typeof payload.eventDate === 'string' ? payload.eventDate : ''
+        const eventTime = typeof payload.eventTime === 'string' ? payload.eventTime : ''
+        const cancelledBy = typeof payload.cancelledBy === 'string' ? payload.cancelledBy : ''
+
+        if (!eventId || !cancelledBy) {
+          throw new Error('cancel_event_bookings job blocked: missing required payload')
+        }
+
+        const [{ EventService }, { logAuditEvent }] = await Promise.all([
+          import('@/services/events'),
+          import('@/app/actions/audit'),
+        ])
+        const supabase = createAdminClient()
+        const result = await EventService.cancelEventBookings({
+          eventId,
+          eventName,
+          eventDate,
+          eventTime,
+          cancelledBy,
+          supabase,
+        })
+
+        await logAuditEvent({
+          user_id: cancelledBy,
+          operation_type: 'cancel_event',
+          resource_type: 'event',
+          resource_id: eventId,
+          operation_status: 'success',
+          additional_info: result,
+        })
+
+        return result
+      }
 
       case 'export_employees':
         const { exportEmployees } = await import('@/app/actions/employeeExport')
