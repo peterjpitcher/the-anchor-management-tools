@@ -41,6 +41,7 @@ type RecruitmentCandidateRow = {
   cv_file_name: string | null
   cv_mime_type: string | null
   cv_file_size_bytes: number | null
+  cv_sha256: string | null
   cv_text: string | null
   cv_extraction_status: string
   provided_details: string | null

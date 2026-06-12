@@ -4,6 +4,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import {
   buildRecruitmentCvStoragePath,
   getRecruitmentCvMaxBytes,
+  getRecruitmentCvSha256,
   parseRecruitmentCv,
   RECRUITMENT_CV_BUCKET,
   validateRecruitmentCvUpload,
@@ -109,6 +110,43 @@ function toIsoOrNull(value: Date | string | null | undefined): string | null {
 function isInfrastructureStorageError(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error ?? '')
   return /network|timeout|storage|supabase|database|fetch/i.test(message)
+}
+
+async function findSingleActiveCandidateBy(
+  supabase: GenericClient,
+  column: string,
+  value: string | null | undefined
+): Promise<RecruitmentCandidate | null> {
+  const trimmed = value?.trim()
+  if (!trimmed) return null
+
+  const { data, error } = await supabase
+    .from('recruitment_candidates')
+    .select('*')
+    .eq(column, trimmed)
+    .is('anonymised_at', null)
+    .order('updated_at', { ascending: false })
+    .limit(2)
+
+  if (error) throw error
+  return data?.length === 1 ? data[0] as RecruitmentCandidate : null
+}
+
+async function findExistingRecruitmentCandidate(
+  supabase: GenericClient,
+  input: {
+    email: string | null
+    phoneE164: string | null
+    phone: string | null
+    cvSha256: string | null
+  }
+): Promise<RecruitmentCandidate | null> {
+  return (
+    await findSingleActiveCandidateBy(supabase, 'email_normalized', input.email)
+    ?? await findSingleActiveCandidateBy(supabase, 'phone_e164', input.phoneE164)
+    ?? await findSingleActiveCandidateBy(supabase, 'phone', input.phone)
+    ?? await findSingleActiveCandidateBy(supabase, 'cv_sha256', input.cvSha256)
+  )
 }
 
 async function insertStatusEvent(
@@ -713,6 +751,171 @@ export async function processRecruitmentApplicationAi(
   return { application: scoring.application, cvExtractionError, scoringError: scoring.scoringError }
 }
 
+export type RecruitmentCvReprocessResult = {
+  candidateId: string
+  cvStatus: string
+  cvExtractionError: string | null
+  aiExtractionError: string | null
+  rescoredApplications: string[]
+  scoringFailures: Array<{ applicationId: string; error: string }>
+}
+
+export async function reprocessRecruitmentCandidateCv(
+  candidateId: string,
+  currentUserId?: string | null,
+  supabase: GenericClient = createAdminClient()
+): Promise<RecruitmentCvReprocessResult> {
+  const { data: candidateData, error: candidateError } = await supabase
+    .from('recruitment_candidates')
+    .select('*')
+    .eq('id', candidateId)
+    .maybeSingle()
+
+  if (candidateError) throw candidateError
+  const candidate = candidateData as RecruitmentCandidate | null
+  if (!candidate?.cv_file_path) {
+    throw new Error('Candidate has no stored CV to reprocess.')
+  }
+
+  const { data: fileData, error: downloadError } = await supabase.storage
+    .from(RECRUITMENT_CV_BUCKET)
+    .download(candidate.cv_file_path)
+
+  if (downloadError) throw new Error(`CV download failed: ${downloadError.message}`)
+
+  const buffer = Buffer.from(await fileData.arrayBuffer())
+  const upload: RecruitmentCvUpload = {
+    buffer,
+    fileName: candidate.cv_file_name || 'candidate-cv',
+    mimeType: candidate.cv_mime_type || 'application/octet-stream',
+    sizeBytes: candidate.cv_file_size_bytes ?? buffer.byteLength,
+  }
+  const cvSha256 = getRecruitmentCvSha256(upload)
+  const parsedCv = await parseRecruitmentCv(upload, { ocr: true })
+
+  if (parsedCv.status !== 'done') {
+    await supabase
+      .from('recruitment_candidates')
+      .update({
+        cv_sha256: cvSha256,
+        cv_text: null,
+        cv_extraction_status: parsedCv.status,
+        extracted_data: { extraction_error: parsedCv.error },
+      })
+      .eq('id', candidate.id)
+
+    return {
+      candidateId: candidate.id,
+      cvStatus: parsedCv.status,
+      cvExtractionError: parsedCv.error,
+      aiExtractionError: null,
+      rescoredApplications: [],
+      scoringFailures: [],
+    }
+  }
+
+  const extraction = await extractRecruitmentCandidateFromCv(supabase, {
+    candidateId: candidate.id,
+    cvText: parsedCv.text,
+  })
+
+  const aiExtractionError: string | null = extraction.error ?? null
+  const extracted = extraction.result
+
+  const { error: updateError } = await supabase
+    .from('recruitment_candidates')
+    .update({
+      first_name: candidate.first_name ?? extracted?.first_name ?? null,
+      last_name: candidate.last_name ?? extracted?.last_name ?? null,
+      email: candidate.email ?? normalizeEmail(extracted?.email),
+      phone: candidate.phone ?? extracted?.phone ?? null,
+      location: candidate.location ?? extracted?.location ?? null,
+      cv_sha256: cvSha256,
+      cv_text: parsedCv.text,
+      cv_extraction_status: 'done',
+      cv_summary: extracted?.experience_summary ?? candidate.cv_summary,
+      extracted_data: extracted ?? { extraction_error: aiExtractionError },
+    })
+    .eq('id', candidate.id)
+
+  if (updateError) throw updateError
+
+  const { data: applications, error: applicationsError } = await supabase
+    .from('recruitment_applications')
+    .select('id')
+    .eq('candidate_id', candidate.id)
+    .is('duplicate_of_application_id', null)
+    .not('job_posting_id', 'is', null)
+    .in('status', ['new', 'ai_screened'])
+    .limit(10)
+
+  if (applicationsError) throw applicationsError
+
+  const rescoredApplications: string[] = []
+  const scoringFailures: Array<{ applicationId: string; error: string }> = []
+
+  for (const application of applications ?? []) {
+    try {
+      const scoring = await rescoreRecruitmentApplication(application.id, currentUserId ?? null, supabase)
+      if (scoring.scoringError) {
+        scoringFailures.push({ applicationId: application.id, error: scoring.scoringError })
+      } else {
+        rescoredApplications.push(application.id)
+      }
+    } catch (error) {
+      scoringFailures.push({
+        applicationId: application.id,
+        error: error instanceof Error ? error.message : 'Re-score failed',
+      })
+    }
+  }
+
+  return {
+    candidateId: candidate.id,
+    cvStatus: 'done',
+    cvExtractionError: null,
+    aiExtractionError,
+    rescoredApplications,
+    scoringFailures,
+  }
+}
+
+export async function reprocessRecruitmentManualReviewCvs(
+  limit = 10,
+  currentUserId?: string | null,
+  supabase: GenericClient = createAdminClient()
+): Promise<{
+  processed: RecruitmentCvReprocessResult[]
+  failures: Array<{ candidateId: string; error: string }>
+}> {
+  const batchLimit = Math.max(1, Math.min(limit, 25))
+  const { data: candidates, error } = await supabase
+    .from('recruitment_candidates')
+    .select('id')
+    .not('cv_file_path', 'is', null)
+    .in('cv_extraction_status', ['failed', 'unsupported'])
+    .order('updated_at', { ascending: true })
+    .limit(batchLimit)
+
+  if (error) throw error
+
+  const processed: RecruitmentCvReprocessResult[] = []
+  const failures: Array<{ candidateId: string; error: string }> = []
+
+  for (const candidate of candidates ?? []) {
+    try {
+      processed.push(await reprocessRecruitmentCandidateCv(candidate.id, currentUserId, supabase))
+    } catch (error) {
+      failures.push({
+        candidateId: candidate.id,
+        error: error instanceof Error ? error.message : 'CV reprocess failed',
+      })
+    }
+  }
+
+  return { processed, failures }
+}
+
 export async function matchRecruitmentCandidateToPosting(
   candidateId: string,
   jobPostingId: string,
@@ -801,6 +1004,7 @@ export async function createRecruitmentApplication(
   const parsed = RecruitmentApplicationInputSchema.parse(input)
   const suppliedEmail = normalizeEmail(parsed.candidate.email)
   const consentAt = parsed.candidate.consent_at ?? new Date().toISOString()
+  const cvSha256 = options.cvUpload ? getRecruitmentCvSha256(options.cvUpload) : null
 
   if (!suppliedEmail && !options.cvUpload) {
     throw new Error('Add an email address or upload a CV.')
@@ -834,24 +1038,17 @@ export async function createRecruitmentApplication(
 
   const extracted = preExtraction?.result ?? null
   const candidateEmail = suppliedEmail ?? normalizeEmail(extracted?.email)
-
-  let existingCandidate: RecruitmentCandidate | null = null
-  if (candidateEmail) {
-    const { data, error } = await supabase
-      .from('recruitment_candidates')
-      .select('*')
-      .eq('email_normalized', candidateEmail)
-      .is('anonymised_at', null)
-      .maybeSingle()
-
-    if (error) throw error
-    existingCandidate = data as RecruitmentCandidate | null
-  }
-
   const firstName = nullIfBlank(parsed.candidate.first_name) ?? nullIfBlank(extracted?.first_name)
   const lastName = nullIfBlank(parsed.candidate.last_name) ?? nullIfBlank(extracted?.last_name)
   const phone = nullIfBlank(parsed.candidate.phone) ?? nullIfBlank(extracted?.phone)
+  const phoneE164 = nullIfBlank(parsed.candidate.phone_e164)
   const location = nullIfBlank(parsed.candidate.location) ?? nullIfBlank(extracted?.location)
+  const existingCandidate = await findExistingRecruitmentCandidate(supabase, {
+    email: candidateEmail,
+    phoneE164,
+    phone,
+    cvSha256,
+  })
 
   let candidate = existingCandidate
   if (!candidate) {
@@ -862,9 +1059,10 @@ export async function createRecruitmentApplication(
         last_name: lastName,
         email: candidateEmail,
         phone,
-        phone_e164: nullIfBlank(parsed.candidate.phone_e164),
+        phone_e164: phoneE164,
         location,
         source: parsed.candidate.source,
+        cv_sha256: cvSha256,
         provided_details: nullIfBlank(parsed.candidate.provided_details),
         extracted_data: extracted,
         cv_summary: extracted?.experience_summary ?? null,
@@ -892,8 +1090,9 @@ export async function createRecruitmentApplication(
         last_name: lastName ?? candidate.last_name,
         email: candidate.email ?? candidateEmail,
         phone: phone ?? candidate.phone,
-        phone_e164: nullIfBlank(parsed.candidate.phone_e164) ?? candidate.phone_e164,
+        phone_e164: phoneE164 ?? candidate.phone_e164,
         location: location ?? candidate.location,
+        cv_sha256: cvSha256 ?? candidate.cv_sha256,
         provided_details: nullIfBlank(parsed.candidate.provided_details) ?? candidate.provided_details,
         extracted_data: extracted ?? candidate.extracted_data,
         cv_summary: extracted?.experience_summary ?? candidate.cv_summary,
@@ -937,6 +1136,7 @@ export async function createRecruitmentApplication(
           cv_file_name: options.cvUpload.fileName,
           cv_mime_type: options.cvUpload.mimeType,
           cv_file_size_bytes: options.cvUpload.sizeBytes,
+          cv_sha256: cvSha256,
           cv_text: stored.extractedText,
           cv_extraction_status: stored.extractionStatus,
         extracted_data: extracted ?? candidate.extracted_data ?? (stored.extractionError ? { extraction_error: stored.extractionError } : null),
