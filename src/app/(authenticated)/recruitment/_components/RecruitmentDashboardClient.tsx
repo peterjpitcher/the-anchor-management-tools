@@ -2,6 +2,7 @@
 
 import { useActionState, useMemo, useRef, useState } from 'react'
 import {
+  ArrowPathIcon,
   CheckCircleIcon,
   ClockIcon,
   DocumentTextIcon,
@@ -49,6 +50,8 @@ import {
   matchRecruitmentCandidateAction,
   recordRecruitmentAppointmentOutcomeAction,
   rescoreRecruitmentApplicationAction,
+  retryManualReviewCvsAction,
+  retryRecruitmentCvExtractionAction,
   runRecruitmentRetentionAction,
   sendRecruitmentDecisionEmailAction,
   transitionRecruitmentStatusAction,
@@ -157,7 +160,8 @@ function cvExtractionMessage(candidate: any): string | null {
   if (status === 'no_cv') return null
   if (status === 'pending') return 'CV extraction is still pending.'
   if (status === 'unsupported' || status === 'failed') {
-    return `CV text extraction failed: ${error ?? status}. Add details manually or upload a text PDF/DOCX.`
+    const detail = String(error ?? status).replace(/\.+$/, '')
+    return `CV text extraction failed: ${detail}. Add details manually or upload a clearer PDF, DOC, DOCX, TXT, RTF or ODT CV.`
   }
   if (error) return `CV AI extraction failed: ${error}`
   return null
@@ -202,6 +206,8 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
   const [candidateUpdateState, candidateUpdateAction] = useActionState(updateRecruitmentCandidateAction, null)
   const [slotState, slotAction] = useActionState(createRecruitmentSlotAction, null)
   const [retentionState, retentionAction] = useActionState(runRecruitmentRetentionAction, null)
+  const [cvRetryState, cvRetryAction] = useActionState(retryRecruitmentCvExtractionAction, null)
+  const [cvBatchState, cvBatchAction] = useActionState(retryManualReviewCvsAction, null)
   const [activeTab, setActiveTab] = useState<'applications' | 'postings' | 'schedule' | 'talent' | 'communications'>('applications')
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
@@ -391,12 +397,21 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
             <p className="text-sm text-text-muted">ATS dashboard</p>
           </div>
           {permissions.canManage && (
-            <form action={retentionAction}>
-              <Button type="submit" size="sm" variant="secondary" icon={<TrashIcon className="h-4 w-4" />}>
-                Run retention
-              </Button>
-              <ActionStateMessage state={retentionState} />
-            </form>
+            <div className="flex flex-wrap items-start gap-2">
+              <form action={cvBatchAction}>
+                <input type="hidden" name="limit" value="10" />
+                <Button type="submit" size="sm" variant="secondary" icon={<ArrowPathIcon className="h-4 w-4" />}>
+                  Retry CV reviews
+                </Button>
+                <ActionStateMessage state={cvBatchState} />
+              </form>
+              <form action={retentionAction}>
+                <Button type="submit" size="sm" variant="secondary" icon={<TrashIcon className="h-4 w-4" />}>
+                  Run retention
+                </Button>
+                <ActionStateMessage state={retentionState} />
+              </form>
+            </div>
           )}
         </div>
 
@@ -641,6 +656,15 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                         <div className="rounded border border-warning/30 bg-warning-soft p-3 text-sm text-warning-fg">
                           <p className="font-medium">CV extraction needs review</p>
                           <p className="mt-1">{selectedCvExtractionMessage}</p>
+                          {selectedApplication.candidate?.cv_file_path && (
+                            <form action={cvRetryAction} className="mt-2 flex flex-wrap items-center gap-2">
+                              <input type="hidden" name="candidate_id" value={selectedApplication.candidate_id} />
+                              <Button type="submit" size="xs" variant="secondary" icon={<ArrowPathIcon className="h-4 w-4" />}>
+                                Retry extraction
+                              </Button>
+                              <ActionStateMessage state={cvRetryState} />
+                            </form>
+                          )}
                         </div>
                       )}
                       <div>
@@ -806,7 +830,7 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                       ))}
                     </Select>
                     <Input name="start_availability" placeholder="Start availability" />
-                    <input name="cv" type="file" accept=".pdf,.doc,.docx" className="rounded-default border border-border bg-surface px-3 py-2 text-[13px] md:col-span-2" />
+                    <input name="cv" type="file" accept=".pdf,.doc,.docx,.txt,.rtf,.odt" className="rounded-default border border-border bg-surface px-3 py-2 text-[13px] md:col-span-2" />
                     <div className="md:col-span-4">
                       <Textarea name="cover_note" placeholder="Cover note" rows={3} />
                     </div>
@@ -1116,6 +1140,14 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                               <Button type="button" size="xs" variant="secondary" onClick={() => openCv(candidate.id)}>
                                 CV
                               </Button>
+                            )}
+                            {candidate.cv_file_path && ['failed', 'unsupported'].includes(candidate.cv_extraction_status) && permissions.canManage && (
+                              <form action={cvRetryAction}>
+                                <input type="hidden" name="candidate_id" value={candidate.id} />
+                                <Button type="submit" size="xs" variant="secondary">
+                                  Retry
+                                </Button>
+                              </form>
                             )}
                           </div>
                         </TableCell>

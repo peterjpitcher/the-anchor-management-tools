@@ -21,6 +21,8 @@ import {
   type RecruitmentCandidatesPage,
   type RecruitmentCandidatesPageParams,
   matchRecruitmentCandidateToPosting,
+  reprocessRecruitmentCandidateCv,
+  reprocessRecruitmentManualReviewCvs,
   recordRecruitmentAppointmentOutcome,
   rescoreRecruitmentApplication,
   runRecruitmentRetentionCleanup,
@@ -312,6 +314,42 @@ export async function rescoreRecruitmentApplicationAction(formData: FormData): P
     }
   } catch (error) {
     return { success: false, error: error instanceof Error ? error.message : 'Failed to re-score application.' }
+  }
+}
+
+export async function retryRecruitmentCvExtractionAction(_prevState: unknown, formData: FormData): Promise<ActionResult> {
+  try {
+    const user = await requireRecruitmentUser()
+    const candidateId = formString(formData, 'candidate_id')
+    if (!candidateId) throw new Error('Candidate ID is required.')
+
+    const result = await reprocessRecruitmentCandidateCv(candidateId, user.id)
+    revalidatePath('/recruitment')
+    return {
+      success: true,
+      data: result,
+      message: result.cvExtractionError
+        ? `CV still needs review: ${result.cvExtractionError}`
+        : `CV extraction retried. Re-scored ${result.rescoredApplications.length} application(s).`,
+    }
+  } catch (error) {
+    return { success: false, error: error instanceof Error ? error.message : 'Failed to retry CV extraction.' }
+  }
+}
+
+export async function retryManualReviewCvsAction(_prevState: unknown, formData: FormData): Promise<ActionResult> {
+  try {
+    const user = await requireRecruitmentUser()
+    const limit = Number.parseInt(formString(formData, 'limit') ?? '10', 10)
+    const result = await reprocessRecruitmentManualReviewCvs(Number.isFinite(limit) ? limit : 10, user.id)
+    revalidatePath('/recruitment')
+    return {
+      success: true,
+      data: result,
+      message: `Retried ${result.processed.length} CV(s). ${result.failures.length} failed.`,
+    }
+  } catch (error) {
+    return { success: false, error: error instanceof Error ? error.message : 'Failed to retry CV reviews.' }
   }
 }
 
