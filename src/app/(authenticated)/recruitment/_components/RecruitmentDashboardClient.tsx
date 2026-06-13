@@ -3,7 +3,6 @@
 import { useActionState, useMemo, useRef, useState } from 'react'
 import {
   ArrowPathIcon,
-  ArchiveBoxIcon,
   CheckCircleIcon,
   ClockIcon,
   DocumentTextIcon,
@@ -1910,6 +1909,58 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
           )}
         </Drawer>
 
+        {activeTab === 'templates' && (
+          <section>
+            <Card>
+              <CardHeader title="Email templates" />
+              <CardBody className="space-y-4">
+                {templates.length === 0 && (
+                  <p className="py-6 text-center text-sm text-text-muted">No templates found.</p>
+                )}
+                {templates.map((template: any) => (
+                  <form key={template.id} action={templateAction} className="rounded-md border border-border bg-surface-2 p-4">
+                    <input type="hidden" name="id" value={template.id} />
+                    <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
+                      <Field label="Type">
+                        <Select name="type" defaultValue={template.type}>
+                          <option value="interview_invite">Interview invite</option>
+                          <option value="trial_invite">Trial invite</option>
+                          <option value="rejection">Rejection</option>
+                          <option value="already_considered">Already considered</option>
+                          <option value="offer">Offer</option>
+                          <option value="interview_confirmation">Interview confirmation</option>
+                          <option value="trial_confirmation">Trial confirmation</option>
+                          <option value="reminder">Reminder</option>
+                          <option value="manager_alert">Manager alert</option>
+                        </Select>
+                      </Field>
+                      <Field label="Subject">
+                        <Input name="subject" defaultValue={template.subject} className="md:col-span-3" />
+                      </Field>
+                      <div className="md:col-span-4">
+                        <Field label="Body">
+                          <Textarea name="body" defaultValue={template.body} rows={6} />
+                        </Field>
+                      </div>
+                      <label className="flex items-center gap-2 text-sm">
+                        <input type="checkbox" name="is_active" defaultChecked={template.is_active === true} />
+                        Active
+                      </label>
+                      <input type="hidden" name="is_active" value="false" />
+                      <div className="md:col-span-4 flex flex-wrap items-center gap-3">
+                        {permissions.canManage && <SubmitButton>Save template</SubmitButton>}
+                        <Badge tone={template.is_active ? 'success' : 'neutral'}>{template.is_active ? 'active' : 'inactive'}</Badge>
+                        <span className="text-xs text-text-muted">Updated {formatDateTime(template.updated_at)}</span>
+                      </div>
+                    </div>
+                  </form>
+                ))}
+                <ActionStateMessage state={templateState} />
+              </CardBody>
+            </Card>
+          </section>
+        )}
+
         {activeTab === 'communications' && (
           <section className="grid grid-cols-1 gap-4 xl:grid-cols-2">
             <Card>
@@ -1926,9 +1977,13 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {communications.map((communication: any) => (
+                    {filteredCommunications.map((communication: any) => (
                       <TableRow key={communication.id}>
-                        <TableCell>{communication.type?.replaceAll('_', ' ')}</TableCell>
+                        <TableCell>
+                          <button type="button" className="text-left font-medium hover:text-primary hover:underline" onClick={() => openCommunicationDetail(communication)}>
+                            {communication.type?.replaceAll('_', ' ')}
+                          </button>
+                        </TableCell>
                         <TableCell>{communication.channel}</TableCell>
                         <TableCell>{communication.delivery_status}</TableCell>
                         <TableCell className="whitespace-normal">
@@ -1939,6 +1994,9 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                     ))}
                   </TableBody>
                 </Table>
+                {filteredCommunications.length === 0 && (
+                  <p className="py-6 text-center text-sm text-text-muted">No communications yet.</p>
+                )}
               </CardBody>
             </Card>
 
@@ -1971,6 +2029,52 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
             </Card>
           </section>
         )}
+
+        <Drawer
+          open={communicationDrawerOpen && Boolean(selectedCommunication)}
+          onClose={() => setCommunicationDrawerOpen(false)}
+          title={selectedCommunication ? selectedCommunication.type?.replaceAll('_', ' ') : 'Communication'}
+          width="min(720px, 100vw)"
+        >
+          {selectedCommunication && (
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-3 text-sm md:grid-cols-4">
+                <div>
+                  <p className="text-xs font-semibold uppercase text-text-muted">Channel</p>
+                  <p>{selectedCommunication.channel}</p>
+                </div>
+                <div>
+                  <p className="text-xs font-semibold uppercase text-text-muted">Status</p>
+                  <p>{selectedCommunication.delivery_status}</p>
+                </div>
+                <div>
+                  <p className="text-xs font-semibold uppercase text-text-muted">Provider</p>
+                  <p>{selectedCommunication.provider || '-'}</p>
+                </div>
+                <div>
+                  <p className="text-xs font-semibold uppercase text-text-muted">When</p>
+                  <p>{formatDateTime(selectedCommunication.sent_at || selectedCommunication.created_at)}</p>
+                </div>
+              </div>
+              <div>
+                <p className="text-xs font-semibold uppercase text-text-muted">Subject</p>
+                <p className="text-sm text-text-strong">{selectedCommunication.subject || '-'}</p>
+              </div>
+              <div>
+                <p className="text-xs font-semibold uppercase text-text-muted">Body</p>
+                <pre className="mt-2 max-h-96 overflow-auto whitespace-pre-wrap rounded border border-border bg-surface-2 p-3 text-sm text-text">
+                  {selectedCommunication.final_body}
+                </pre>
+              </div>
+              {permissions.canSend && (
+                <form action={retryCommunicationFormAction}>
+                  <input type="hidden" name="communication_id" value={selectedCommunication.id} />
+                  <SubmitButton variant="secondary">Retry / resend</SubmitButton>
+                </form>
+              )}
+            </div>
+          )}
+        </Drawer>
       </div>
     </main>
   )

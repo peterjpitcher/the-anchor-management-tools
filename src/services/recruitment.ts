@@ -824,10 +824,11 @@ async function runApplicationScoring(
   }
 
   const result = scoring.result
+  const nextStatus = application.status === 'new' ? 'ai_screened' : application.status
   const { data, error } = await supabase
     .from('recruitment_applications')
     .update({
-      status: 'ai_screened',
+      status: nextStatus,
       ai_score: result.score,
       ai_recommendation: result.recommendation,
       ai_rationale: result.rationale,
@@ -844,14 +845,16 @@ async function runApplicationScoring(
 
   if (error) throw error
 
-  await insertStatusEvent(supabase, {
-    applicationId: application.id,
-    fromStatus: application.status,
-    toStatus: 'ai_screened',
-    changedBy: currentUserId ?? null,
-    note: 'AI screen completed',
-    metadata: { run_id: scoring.runId, manual_rerun: application.ai_scored_at != null },
-  })
+  if (application.status !== nextStatus) {
+    await insertStatusEvent(supabase, {
+      applicationId: application.id,
+      fromStatus: application.status,
+      toStatus: nextStatus,
+      changedBy: currentUserId ?? null,
+      note: 'AI screen completed',
+      metadata: { run_id: scoring.runId, manual_rerun: application.ai_scored_at != null },
+    })
+  }
 
   return { application: data as RecruitmentApplication, scoringError: null }
 }

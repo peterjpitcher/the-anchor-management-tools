@@ -18,6 +18,7 @@ vi.mock('@/lib/recruitment/ai', () => ({
 
 import {
   draftRecruitmentEmailForApplication,
+  retryRecruitmentCommunication,
   sendRecruitmentApplicationReceivedEmail,
   sendRecruitmentSms,
   sendRecruitmentTemplateEmail,
@@ -35,6 +36,18 @@ function insertUpdateChain(insertResult: { data: any; error: any } = { data: { i
   const chain: any = {}
   chain.insert = vi.fn(() => chain)
   chain.select = vi.fn(() => chain)
+  chain.single = vi.fn().mockResolvedValue(insertResult)
+  chain.update = vi.fn(() => chain)
+  chain.eq = vi.fn().mockResolvedValue({ error: null })
+  return chain
+}
+
+function retryCommunicationChain(original: any, insertResult: { data: any; error: any } = { data: { id: 'comm-retry' }, error: null }) {
+  const chain: any = {}
+  chain.select = vi.fn(() => chain)
+  chain.eq = vi.fn(() => chain)
+  chain.maybeSingle = vi.fn().mockResolvedValue({ data: original, error: null })
+  chain.insert = vi.fn(() => chain)
   chain.single = vi.fn().mockResolvedValue(insertResult)
   chain.update = vi.fn(() => chain)
   chain.eq = vi.fn().mockResolvedValue({ error: null })
@@ -175,6 +188,50 @@ describe('recruitment communications safety', () => {
     }))
     expect(sendEmail.mock.calls[0][0].text).toContain('Best,\nPeter')
     expect(sendEmail.mock.calls[0][0].text).toContain('Applications for this role close on 31 July 2026.')
+  })
+
+  it('retries communications by creating a new linked row', async () => {
+    sendEmail.mockResolvedValue({ success: true, messageId: 'email-retry-1' })
+    const communications = retryCommunicationChain({
+      id: 'comm-original',
+      application_id: 'application-1',
+      candidate_id: 'candidate-1',
+      type: 'rejection',
+      channel: 'email',
+      subject: 'Your application',
+      final_body: 'Thanks again.',
+      was_ai_assisted: false,
+      ai_run_id: null,
+      provider: 'email_service',
+      metadata: { previous_error: 'temporary failure' },
+      candidate: application.candidate,
+    })
+    const supabase = mockSupabase({
+      recruitment_communications: communications,
+    })
+
+    const result = await retryRecruitmentCommunication('comm-original', 'user-1', supabase)
+
+    expect(result).toMatchObject({
+      success: true,
+      communicationId: 'comm-retry',
+      retryOfCommunicationId: 'comm-original',
+    })
+    expect(communications.insert).toHaveBeenCalledWith(expect.objectContaining({
+      delivery_status: 'queued',
+      metadata: expect.objectContaining({
+        retry_of_communication_id: 'comm-original',
+      }),
+    }))
+    expect(sendEmail).toHaveBeenCalledWith(expect.objectContaining({
+      to: 'jane@example.com',
+      subject: 'Your application',
+      text: 'Thanks again.',
+      metadata: expect.objectContaining({
+        communication_id: 'comm-retry',
+        retry_of_communication_id: 'comm-original',
+      }),
+    }))
   })
 
   it.each(['rejection', 'already_considered'] as const)('does not pass internal AI details into %s draft context', async (type) => {
