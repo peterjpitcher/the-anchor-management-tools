@@ -22,7 +22,9 @@ import {
   CardHeader,
   Drawer,
   Input,
+  PageHeader,
   SearchInput,
+  SectionNav,
   Select,
   Table,
   TableBody,
@@ -31,7 +33,6 @@ import {
   TableHeader,
   TablePagination,
   TableRow,
-  Tabs,
   Textarea,
 } from '@/ds'
 import type { RecruitmentCandidate } from '@/types/recruitment'
@@ -294,7 +295,7 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
   const [retentionState, retentionAction] = useActionState(runRecruitmentRetentionAction, null)
   const [cvRetryState, cvRetryAction] = useActionState(retryRecruitmentCvExtractionAction, null)
   const [cvBatchState, cvBatchAction] = useActionState(retryManualReviewCvsAction, null)
-  const [activeTab, setActiveTab] = useState<'applications' | 'postings' | 'schedule' | 'talent' | 'templates' | 'communications'>('applications')
+  const [activeTab, setActiveTab] = useState<'pipeline' | 'applications' | 'postings' | 'schedule' | 'talent' | 'templates' | 'communications'>('pipeline')
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
   const [showArchived, setShowArchived] = useState(false)
@@ -313,6 +314,7 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
   const [selectedTalentCandidateId, setSelectedTalentCandidateId] = useState<string | null>(null)
   const [talentDrawerOpen, setTalentDrawerOpen] = useState(false)
   const [emailDraft, setEmailDraft] = useState<{ type: string; subject: string; body: string; error?: string } | null>(null)
+  const [emailSendState, setEmailSendState] = useState<{ success: boolean; message?: string; error?: string } | null>(null)
   const [printableText, setPrintableText] = useState<string | null>(null)
   const [clientMessage, setClientMessage] = useState<string | null>(null)
   const TALENT_PAGE_SIZE = 25
@@ -326,7 +328,6 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
   const talentSearchTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const statusFormAction = transitionRecruitmentStatusAction as unknown as (formData: FormData) => Promise<void>
   const bookingInviteFormAction = issueRecruitmentBookingInviteAction as unknown as (formData: FormData) => Promise<void>
-  const decisionEmailFormAction = sendRecruitmentDecisionEmailAction as unknown as (formData: FormData) => Promise<void>
   const hireFormAction = inviteRecruitmentCandidateAsEmployeeAction as unknown as (formData: FormData) => Promise<void>
   const erasureFormAction = eraseRecruitmentCandidateAction as unknown as (formData: FormData) => Promise<void>
   const rescoreFormAction = rescoreRecruitmentApplicationAction as unknown as (formData: FormData) => Promise<void>
@@ -428,6 +429,7 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
 
   async function draftEmail(applicationId: string, type: string) {
     setClientMessage(null)
+    setEmailSendState(null)
     setEmailDraft(null)
     const formData = new FormData()
     formData.set('application_id', applicationId)
@@ -442,6 +444,18 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
       subject: (result.data as any).subject,
       body: (result.data as any).body,
     })
+  }
+
+  async function sendDecisionEmail(formData: FormData) {
+    setClientMessage(null)
+    setEmailSendState(null)
+    const result = await sendRecruitmentDecisionEmailAction(formData)
+    if (!result.success) {
+      setEmailSendState({ success: false, error: result.error })
+      return
+    }
+    setEmailDraft(null)
+    setEmailSendState({ success: true, message: result.message ?? 'Recruitment email sent.' })
   }
 
   async function openCv(candidateId: string) {
@@ -515,6 +529,7 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
     setSelectedApplicationId(application.id)
     setSelectedCandidateId(application.candidate_id)
     setEmailDraft(null)
+    setEmailSendState(null)
     setPrintableText(null)
     setClientMessage(null)
     setDetailDrawerOpen(true)
@@ -572,12 +587,12 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
   return (
     <main className="min-h-screen bg-bg">
       <div className="px-4 py-5 sm:px-6 lg:px-8 space-y-6">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h1 className="text-xl font-semibold text-text-strong">Recruitment</h1>
-            <p className="text-sm text-text-muted">ATS dashboard</p>
-          </div>
-          {permissions.canManage && (
+        <PageHeader
+          breadcrumbs={[{ label: 'People' }, { label: 'Recruitment' }]}
+          title="Recruitment"
+          subtitle="Review applicants, manage roles, schedule interviews and keep candidate communications tidy."
+          className="mb-0"
+          actions={permissions.canManage ? (
             <div className="flex flex-wrap items-start gap-2">
               <form action={cvBatchAction}>
                 <input type="hidden" name="limit" value="10" />
@@ -593,8 +608,8 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                 <ActionStateMessage state={retentionState} />
               </form>
             </div>
-          )}
-        </div>
+          ) : null}
+        />
 
         <section className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
           {(dashboard?.actionItems ?? []).map((item: any) => (
@@ -617,22 +632,21 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
           ))}
         </section>
 
-        <section>
-          <Tabs
-            activeTab={activeTab}
-            onTabChange={(id) => setActiveTab(id as typeof activeTab)}
-            tabs={[
-              { id: 'applications', label: 'Applications', count: activeApplications.length },
-              { id: 'postings', label: 'Postings', count: postings.length },
-              { id: 'schedule', label: 'Schedule', count: appointments.length },
-              { id: 'talent', label: 'Talent pool', count: talentTotal },
-              { id: 'templates', label: 'Templates', count: templates.length },
-              { id: 'communications', label: 'Comms', count: communications.length },
-            ]}
-          />
-        </section>
+        <SectionNav
+          activeId={activeTab}
+          onSelect={(id) => setActiveTab(id as typeof activeTab)}
+          items={[
+            { id: 'pipeline', label: 'Pipeline', count: activeApplications.length },
+            { id: 'applications', label: 'Applications', count: activeApplications.length },
+            { id: 'postings', label: 'Postings', count: postings.length },
+            { id: 'schedule', label: 'Schedule', count: appointments.length },
+            { id: 'talent', label: 'Talent pool', count: talentTotal },
+            { id: 'templates', label: 'Templates', count: templates.length },
+            { id: 'communications', label: 'Comms', count: communications.length },
+          ]}
+        />
 
-        {activeTab === 'applications' && (
+        {(activeTab === 'pipeline' || activeTab === 'applications') && (
           <section className="space-y-5">
             <div className="flex flex-col gap-3 md:flex-row md:items-center">
               <SearchInput
@@ -659,39 +673,45 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
               {clientMessage && <p className="text-xs text-text-muted">{clientMessage}</p>}
             </div>
 
-            <div className="grid grid-cols-1 gap-4 xl:grid-cols-6">
-              {pipeline.map(column => (
-                <div key={column.status} className="rounded-lg border border-border bg-surface p-3">
-                  <div className="mb-2 flex items-center justify-between">
-                    <h2 className="text-xs font-semibold uppercase text-text-muted">{column.status.replaceAll('_', ' ')}</h2>
-                    <span className="text-xs text-text-muted">{column.applications.length}</span>
+            {activeTab === 'pipeline' && (
+              <div className="grid grid-cols-1 gap-4 xl:grid-cols-6">
+                {pipeline.map(column => (
+                  <div key={column.status} className="rounded-md border border-border bg-surface p-3">
+                    <div className="mb-2 flex items-center justify-between">
+                      <h2 className="text-xs font-semibold uppercase text-text-muted">{column.status.replaceAll('_', ' ')}</h2>
+                      <span className="text-xs text-text-muted">{column.applications.length}</span>
+                    </div>
+                    <div className="space-y-2">
+                      {column.applications.length === 0 && (
+                        <p className="rounded-md border border-dashed border-border bg-surface-2 p-3 text-xs text-text-muted">No applications</p>
+                      )}
+                      {column.applications.map((application: any) => (
+                        <button
+                          type="button"
+                          key={application.id}
+                          onClick={() => openApplicationDetail(application)}
+                          className="w-full rounded-md border border-border bg-surface-2 p-2 text-left hover:border-primary"
+                        >
+                          <p className="truncate text-sm font-medium text-text-strong">{candidateName(application.candidate)}</p>
+                          <p className="truncate text-xs text-text-muted">{roleTitle(application)}</p>
+                          <div className="mt-1 flex items-center justify-between gap-2">
+                            <Badge tone={scoreTone(application.ai_score)}>
+                              {scoreText(application.ai_score)}
+                            </Badge>
+                            <span className="truncate text-xs text-text-muted">{formatDateTime(application.created_at)}</span>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
                   </div>
-                  <div className="space-y-2">
-                    {column.applications.map((application: any) => (
-                      <button
-                        type="button"
-                        key={application.id}
-                        onClick={() => openApplicationDetail(application)}
-                        className="w-full rounded-md border border-border bg-surface-2 p-2 text-left hover:border-primary"
-                      >
-                        <p className="truncate text-sm font-medium text-text-strong">{candidateName(application.candidate)}</p>
-                        <p className="truncate text-xs text-text-muted">{roleTitle(application)}</p>
-                        <div className="mt-1 flex items-center justify-between gap-2">
-                          <Badge tone={scoreTone(application.ai_score)}>
-                            {scoreText(application.ai_score)}
-                          </Badge>
-                          <span className="truncate text-xs text-text-muted">{formatDateTime(application.created_at)}</span>
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            )}
 
-            <Card>
-              <CardHeader title="Applications" />
-              <CardBody>
+            {activeTab === 'applications' && (
+              <Card>
+                <CardHeader title="Applications" />
+                <CardBody>
                 {permissions.canEdit && selectedBulkIds.length > 0 && (
                   <form action={bulkFormAction} className="mb-3 flex flex-wrap items-center gap-2 rounded-md border border-border bg-surface-2 p-3">
                     {selectedBulkIds.map(id => <input key={id} type="hidden" name="ids" value={id} />)}
@@ -788,8 +808,9 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                     {showArchived ? 'No archived applications match.' : 'No active applications match.'}
                   </p>
                 )}
-              </CardBody>
-            </Card>
+                </CardBody>
+              </Card>
+            )}
 
             <Drawer
               open={detailDrawerOpen && Boolean(selectedApplication)}
@@ -994,23 +1015,28 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                   <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
                     <div className="space-y-2">
                       <p className="text-xs font-semibold uppercase text-text-muted">Email composer</p>
-                      <div className="flex flex-wrap gap-2">
-                        {['interview_invite', 'trial_invite', 'rejection', 'already_considered', 'offer'].map(type => (
-                          <Button
-                            key={type}
-                            type="button"
-                            size="sm"
-                            variant="secondary"
-                            icon={<SparklesIcon className="h-4 w-4" />}
-                            onClick={() => draftEmail(selectedApplication.id, type)}
-                          >
-                            Draft {type.replaceAll('_', ' ')}
-                          </Button>
-                        ))}
-                      </div>
+                      {permissions.canSend ? (
+                        <div className="flex flex-wrap gap-2">
+                          {['interview_invite', 'trial_invite', 'rejection', 'already_considered', 'offer'].map(type => (
+                            <Button
+                              key={type}
+                              type="button"
+                              size="sm"
+                              variant="secondary"
+                              icon={<SparklesIcon className="h-4 w-4" />}
+                              onClick={() => draftEmail(selectedApplication.id, type)}
+                            >
+                              Draft {type.replaceAll('_', ' ')}
+                            </Button>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="text-sm text-text-muted">You do not have permission to send recruitment emails.</p>
+                      )}
                       {emailDraft?.error && <p className="text-xs text-danger">{emailDraft.error}</p>}
+                      <ActionStateMessage state={emailSendState} />
                       {emailDraft && !emailDraft.error && (
-                        <form action={decisionEmailFormAction} className="space-y-2">
+                        <form action={sendDecisionEmail} className="space-y-2">
                           <input type="hidden" name="application_id" value={selectedApplication.id} />
                           <Select name="type" defaultValue={emailDraft.type}>
                             <option value="interview_invite">Interview invite</option>
@@ -1066,7 +1092,7 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
               )}
             </Drawer>
 
-            {permissions.canCreate && (
+            {activeTab === 'applications' && permissions.canCreate && (
               <Card>
                 <CardHeader title="Add Application" />
                 <CardBody>

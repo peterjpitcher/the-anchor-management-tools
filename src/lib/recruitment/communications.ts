@@ -10,7 +10,7 @@ type GenericClient = SupabaseClient<any, 'public', any>
 
 type MergeData = Record<string, string | number | null | undefined>
 
-const RECRUITMENT_APPLICATION_RECEIVED_FROM = 'peter@orangejelly.co.uk'
+const RECRUITMENT_FROM_EMAIL = 'peter@orangejelly.co.uk'
 
 const REQUIRED_TEMPLATE_PLACEHOLDERS: Partial<Record<RecruitmentTemplateType, string[]>> = {
   interview_invite: ['booking_link'],
@@ -25,6 +25,10 @@ const DECLINE_EMAIL_TYPES = new Set<RecruitmentTemplateType>(['rejection', 'alre
 
 function normalizeBodyText(value: string): string {
   return value.replace(/\r\n/g, '\n').trim()
+}
+
+function recruitmentFromEmail(): string {
+  return RECRUITMENT_FROM_EMAIL
 }
 
 function mergeTemplate(template: string, data: MergeData): string {
@@ -192,8 +196,10 @@ export async function sendRecruitmentManagerAlert(
     to,
     subject,
     text: body,
-    from: process.env.RECRUITMENT_FROM_EMAIL,
-    replyTo: process.env.RECRUITMENT_FROM_EMAIL || process.env.EMAIL_REPLY_TO,
+    provider: 'graph',
+    from: recruitmentFromEmail(),
+    graphSender: recruitmentFromEmail(),
+    replyTo: recruitmentFromEmail(),
     commType: 'recruitment_manager_alert',
     metadata: {
       application_id: input.applicationId ?? null,
@@ -381,8 +387,10 @@ export async function sendRecruitmentApplicationReceivedEmail(
     to: candidate.email,
     subject,
     text: body,
-    from: RECRUITMENT_APPLICATION_RECEIVED_FROM,
-    replyTo: RECRUITMENT_APPLICATION_RECEIVED_FROM,
+    provider: 'graph',
+    from: recruitmentFromEmail(),
+    graphSender: recruitmentFromEmail(),
+    replyTo: recruitmentFromEmail(),
     commType: 'recruitment_application_received',
     metadata: {
       application_id: applicationId,
@@ -501,8 +509,10 @@ export async function sendRecruitmentTemplateEmail(
     to: candidate.email,
     subject,
     text: body,
-    from: process.env.RECRUITMENT_FROM_EMAIL,
-    replyTo: process.env.RECRUITMENT_FROM_EMAIL || process.env.EMAIL_REPLY_TO,
+    provider: 'graph',
+    from: recruitmentFromEmail(),
+    graphSender: recruitmentFromEmail(),
+    replyTo: recruitmentFromEmail(),
     commType: `recruitment_${type}`,
     metadata: {
       application_id: applicationId,
@@ -663,8 +673,10 @@ export async function retryRecruitmentCommunication(
       to,
       subject: original.subject || 'Message from The Anchor',
       text: original.final_body,
-      from: process.env.RECRUITMENT_FROM_EMAIL,
-      replyTo: process.env.RECRUITMENT_FROM_EMAIL || process.env.EMAIL_REPLY_TO,
+      provider: 'graph',
+      from: recruitmentFromEmail(),
+      graphSender: recruitmentFromEmail(),
+      replyTo: recruitmentFromEmail(),
       commType: `recruitment_retry_${original.type}`,
       metadata: {
         application_id: original.application_id,
