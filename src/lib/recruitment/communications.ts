@@ -10,6 +10,8 @@ type GenericClient = SupabaseClient<any, 'public', any>
 
 type MergeData = Record<string, string | number | null | undefined>
 
+const RECRUITMENT_APPLICATION_RECEIVED_FROM = 'peter@orangejelly.co.uk'
+
 const REQUIRED_TEMPLATE_PLACEHOLDERS: Partial<Record<RecruitmentTemplateType, string[]>> = {
   interview_invite: ['booking_link'],
   trial_invite: ['booking_link'],
@@ -18,6 +20,8 @@ const REQUIRED_TEMPLATE_PLACEHOLDERS: Partial<Record<RecruitmentTemplateType, st
   trial_confirmation: ['appointment_time'],
   reminder: ['appointment_time', 'appointment_type'],
 }
+
+const DECLINE_EMAIL_TYPES = new Set<RecruitmentTemplateType>(['rejection', 'already_considered'])
 
 function normalizeBodyText(value: string): string {
   return value.replace(/\r\n/g, '\n').trim()
@@ -56,6 +60,28 @@ function candidateFirstName(candidate: any): string {
 
 function roleTitle(application: any): string {
   return application?.job_posting?.title || 'your application'
+}
+
+function applicationRolePhrase(application: any): string {
+  const title = application?.job_posting?.title
+  return title ? `for ${title}` : 'to The Anchor'
+}
+
+function formatApplicationClosingDate(value: string | null | undefined): string | null {
+  if (!value) return null
+  const date = new Date(`${value.slice(0, 10)}T12:00:00Z`)
+  if (Number.isNaN(date.getTime())) return null
+  return new Intl.DateTimeFormat('en-GB', {
+    dateStyle: 'long',
+    timeZone: 'Europe/London',
+  }).format(date)
+}
+
+function stringList(value: unknown): string[] {
+  if (!Array.isArray(value)) return []
+  return value
+    .map(item => typeof item === 'string' ? item.trim() : '')
+    .filter(Boolean)
 }
 
 function buildMergeData(input: {
@@ -239,6 +265,14 @@ export async function draftRecruitmentEmailForApplication(
     throw new Error(`No active ${type} recruitment email template found.`)
   }
 
+  const isDeclineEmail = DECLINE_EMAIL_TYPES.has(type)
+  const publicPositiveSignals = [
+    application.candidate?.cv_summary,
+    application.candidate?.provided_details,
+    application.cover_note,
+    ...stringList(application.ai_strengths),
+  ].filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
+
   const aiContext: Record<string, unknown> = {
     candidate: {
       first_name: application.candidate?.first_name,
@@ -246,15 +280,20 @@ export async function draftRecruitmentEmailForApplication(
       cv_summary: application.candidate?.cv_summary,
       provided_details: application.candidate?.provided_details,
     },
+    application: {
+      cover_note: application.cover_note,
+      source: application.source,
+    },
     role_title: roleTitle(application),
-    ai_score: application.ai_score,
-    ai_recommendation: application.ai_recommendation,
-    ai_rationale: application.ai_rationale,
     ai_strengths: application.ai_strengths,
+    public_positive_signals: publicPositiveSignals.slice(0, 6),
     deterministic_fields: deterministicContext,
   }
 
-  if (type !== 'rejection') {
+  if (!isDeclineEmail) {
+    aiContext.ai_score = application.ai_score
+    aiContext.ai_recommendation = application.ai_recommendation
+    aiContext.ai_rationale = application.ai_rationale
     aiContext.ai_concerns = application.ai_concerns
   }
 
@@ -281,6 +320,96 @@ export async function draftRecruitmentEmailForApplication(
     subject: mergeTemplate(draft.result.subject, deterministicContext),
     body: mergeTemplate(draft.result.body, deterministicContext),
   }
+}
+
+export async function sendRecruitmentApplicationReceivedEmail(
+  applicationId: string,
+  supabase: GenericClient = createAdminClient()
+) {
+  const application = await loadRecruitmentApplicationForComms(applicationId, supabase)
+  const candidate = application.candidate
+  if (!candidate?.email) {
+    return { success: false as const, skipped: true as const, reason: 'missing_email' }
+  }
+
+  const subject = 'Thank you for applying to The Anchor'
+  const closingDate = formatApplicationClosingDate(application.job_posting?.application_closing_date)
+  const body = normalizeBodyText([
+    `Hi ${candidateFirstName(candidate)},`,
+    '',
+    `Thank you for applying ${applicationRolePhrase(application)}. I really appreciate you taking the time to send over your application and tell us about your experience.`,
+    '',
+    closingDate ? `Applications for this role close on ${closingDate}.` : null,
+    closingDate ? '' : null,
+    "We've received it safely, and I'll review it properly. If it looks like a good fit, I'll be in touch about the next step.",
+    '',
+    'Wishing you the best of luck.',
+    '',
+    'Best,',
+    'Peter',
+  ].join('\n'))
+  const idempotencyKey = `recruitment_application_received:${applicationId}`
+
+  const { data: communication, error: commError } = await supabase
+    .from('recruitment_communications')
+    .insert({
+      application_id: applicationId,
+      candidate_id: application.candidate_id,
+      type: 'application_received',
+      channel: 'email',
+      subject,
+      final_body: body,
+      delivery_status: 'queued',
+      provider: 'email_service',
+      idempotency_key: idempotencyKey,
+      metadata: {
+        role_title: roleTitle(application),
+        application_closing_date: application.job_posting?.application_closing_date ?? null,
+      },
+    })
+    .select('id')
+    .single()
+
+  if (commError) {
+    if ((commError as any).code === '23505') {
+      return { success: true as const, skipped: true as const, reason: 'already_sent' }
+    }
+    throw commError
+  }
+
+  const result = await sendEmail({
+    to: candidate.email,
+    subject,
+    text: body,
+    from: RECRUITMENT_APPLICATION_RECEIVED_FROM,
+    replyTo: RECRUITMENT_APPLICATION_RECEIVED_FROM,
+    commType: 'recruitment_application_received',
+    metadata: {
+      application_id: applicationId,
+      candidate_id: application.candidate_id,
+      communication_id: communication.id,
+    },
+  })
+
+  await supabase
+    .from('recruitment_communications')
+    .update({
+      delivery_status: result.success ? 'sent' : 'failed',
+      provider_message_id: result.messageId ?? null,
+      sent_at: result.success ? new Date().toISOString() : null,
+      metadata: {
+        role_title: roleTitle(application),
+        application_closing_date: application.job_posting?.application_closing_date ?? null,
+        error: result.error ?? null,
+      },
+    })
+    .eq('id', communication.id)
+
+  if (!result.success) {
+    throw new Error(result.error || 'Recruitment application received email failed.')
+  }
+
+  return { success: true as const, skipped: false as const, communicationId: communication.id, messageId: result.messageId ?? null }
 }
 
 export async function sendRecruitmentTemplateEmail(
@@ -476,6 +605,116 @@ export async function sendRecruitmentSms(
   }
 
   return { success: true, communicationId: communication.id, messageSid: (result as any).messageSid ?? (result as any).sid ?? null }
+}
+
+export async function retryRecruitmentCommunication(
+  communicationId: string,
+  currentUserId?: string | null,
+  supabase: GenericClient = createAdminClient()
+) {
+  const { data: original, error } = await supabase
+    .from('recruitment_communications')
+    .select('*, candidate:recruitment_candidates(*)')
+    .eq('id', communicationId)
+    .maybeSingle()
+
+  if (error) throw error
+  if (!original) throw new Error('Communication not found.')
+
+  const candidate = original.candidate as any
+  const metadata = {
+    ...(typeof original.metadata === 'object' && original.metadata ? original.metadata : {}),
+    retry_of_communication_id: communicationId,
+  }
+
+  const { data: retryRow, error: insertError } = await supabase
+    .from('recruitment_communications')
+    .insert({
+      application_id: original.application_id,
+      candidate_id: original.candidate_id,
+      type: original.type,
+      channel: original.channel,
+      subject: original.subject,
+      final_body: original.final_body,
+      was_ai_assisted: original.was_ai_assisted,
+      ai_run_id: original.ai_run_id,
+      edited_by: currentUserId ?? null,
+      sent_by: currentUserId ?? null,
+      delivery_status: 'queued',
+      provider: original.provider,
+      metadata,
+    })
+    .select('id')
+    .single()
+
+  if (insertError) throw insertError
+
+  let success = false
+  let providerMessageId: string | null = null
+  let failure: string | null = null
+
+  if (original.channel === 'email') {
+    const to = original.type === 'manager_alert'
+      ? process.env.RECRUITMENT_NOTIFICATION_EMAIL || 'manager@the-anchor.pub'
+      : candidate?.email
+    if (!to) throw new Error('No email address is available for retry.')
+
+    const result = await sendEmail({
+      to,
+      subject: original.subject || 'Message from The Anchor',
+      text: original.final_body,
+      from: process.env.RECRUITMENT_FROM_EMAIL,
+      replyTo: process.env.RECRUITMENT_FROM_EMAIL || process.env.EMAIL_REPLY_TO,
+      commType: `recruitment_retry_${original.type}`,
+      metadata: {
+        application_id: original.application_id,
+        candidate_id: original.candidate_id,
+        communication_id: retryRow.id,
+        retry_of_communication_id: communicationId,
+      },
+    })
+
+    success = result.success
+    providerMessageId = result.messageId ?? null
+    failure = result.error ?? null
+  } else if (original.channel === 'sms') {
+    if (!candidate?.sms_consent) throw new Error('Candidate has not consented to recruitment SMS.')
+    const to = candidate?.phone_e164 || candidate?.phone
+    if (!to) throw new Error('No phone number is available for retry.')
+
+    const result = await sendSMS(to, original.final_body, {
+      createCustomerIfMissing: false,
+      allowTransactionalOverride: true,
+      metadata: {
+        recruitment_candidate_id: original.candidate_id,
+        recruitment_application_id: original.application_id,
+        recruitment_communication_id: retryRow.id,
+        retry_of_communication_id: communicationId,
+      },
+    })
+
+    success = result.success
+    providerMessageId = (result as any).messageSid ?? (result as any).sid ?? null
+    failure = result.error ?? null
+  } else {
+    throw new Error('Unsupported communication channel.')
+  }
+
+  await supabase
+    .from('recruitment_communications')
+    .update({
+      delivery_status: success ? 'sent' : 'failed',
+      provider_message_id: providerMessageId,
+      sent_at: success ? new Date().toISOString() : null,
+      metadata: { ...metadata, error: failure },
+    })
+    .eq('id', retryRow.id)
+
+  if (!success) {
+    throw new Error(failure || 'Communication retry failed.')
+  }
+
+  return { success: true as const, communicationId: retryRow.id, retryOfCommunicationId: communicationId }
 }
 
 export async function sendDueRecruitmentAppointmentReminders(

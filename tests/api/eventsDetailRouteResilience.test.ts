@@ -21,7 +21,12 @@ function buildSupabaseMock(options: {
   eventFound?: boolean
   messageTemplatesError?: { code?: string; message: string } | null
   messageTemplatesRows?: Array<{ template_type: string; content: string | null }>
-  shortLinksRows?: Array<{ short_code: string; updated_at: string | null; metadata: { channel?: string | null } | null }>
+  shortLinksRows?: Array<{
+    short_code: string
+    destination_url?: string | null
+    updated_at: string | null
+    metadata: { channel?: string | null } | null
+  }>
 }) {
   const eventFound = options.eventFound ?? true
   const eventRow = eventFound
@@ -195,8 +200,21 @@ describe('events detail route resilience', () => {
           },
           {
             short_code: 'gpabc1',
+            destination_url: 'https://www.the-anchor.pub/events/karaoke?utm_source=google',
             updated_at: '2026-02-13T10:00:00.000Z',
             metadata: { channel: 'google_business_profile' },
+          },
+          {
+            short_code: 'gcabc1',
+            destination_url: 'https://www.the-anchor.pub/events/karaoke?utm_source=game_sheet',
+            updated_at: '2026-02-14T10:00:00.000Z',
+            metadata: { channel: 'game_sheet' },
+          },
+          {
+            short_code: 'scabc1',
+            destination_url: 'https://www.the-anchor.pub/events/karaoke?utm_source=in_game_screen',
+            updated_at: '2026-02-15T10:00:00.000Z',
+            metadata: { channel: 'in_game_screen' },
           },
         ],
       })
@@ -215,12 +233,27 @@ describe('events detail route resilience', () => {
     expect(payload.data.google_business_profile_short_link).toBe('https://l.the-anchor.pub/gpabc1')
     expect(payload.data.metaAdsShortLink).toBe('https://l.the-anchor.pub/maabc1')
     expect(payload.data.meta_ads_short_link).toBe('https://l.the-anchor.pub/maabc1')
+    expect(payload.data.gameSheetShortLink).toBe('https://l.the-anchor.pub/gcabc1')
+    expect(payload.data.game_sheet_short_link).toBe('https://l.the-anchor.pub/gcabc1')
+    expect(payload.data.inGameScreenShortLink).toBe('https://l.the-anchor.pub/scabc1')
+    expect(payload.data.in_game_screen_short_link).toBe('https://l.the-anchor.pub/scabc1')
+    expect(payload.data.marketing_short_links).toMatchObject({
+      facebook: 'https://l.the-anchor.pub/fbabc1',
+      game_sheet: 'https://l.the-anchor.pub/gcabc1',
+      in_game_screen: 'https://l.the-anchor.pub/scabc1',
+    })
+    expect(payload.data.qr_short_links).toMatchObject({
+      game_sheet: 'https://l.the-anchor.pub/gcabc1',
+      in_game_screen: 'https://l.the-anchor.pub/scabc1',
+    })
     expect(payload.data.ctaLinks).toMatchObject({
       facebook: 'https://l.the-anchor.pub/fbabc1',
       instagram: 'https://l.the-anchor.pub/igabc1',
       google_business_profile: 'https://l.the-anchor.pub/gpabc1',
       gbp: 'https://l.the-anchor.pub/gpabc1',
       meta_ads: 'https://l.the-anchor.pub/maabc1',
+      game_sheet: 'https://l.the-anchor.pub/gcabc1',
+      in_game_screen: 'https://l.the-anchor.pub/scabc1',
     })
   })
 })

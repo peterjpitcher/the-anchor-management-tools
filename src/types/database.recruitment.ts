@@ -22,6 +22,7 @@ type RecruitmentJobPostingRow = {
   version: number
   opened_at: string | null
   closed_at: string | null
+  application_closing_date: string | null
   created_by: string | null
   created_at: string
   updated_at: string
@@ -96,6 +97,8 @@ type RecruitmentApplicationRow = {
   rejected_at: string | null
   rejection_reason: string | null
   duplicate_of_application_id: string | null
+  archived_at: string | null
+  archived_by: string | null
   created_by: string | null
   created_at: string
   updated_at: string
@@ -148,6 +151,8 @@ type RecruitmentAppointmentSlotRow = {
   supervisor_staff_id: string | null
   status: string
   capacity: number
+  archived_at: string | null
+  archived_by: string | null
   created_by: string | null
   created_at: string
   updated_at: string
@@ -177,6 +182,22 @@ type RecruitmentCandidateAppointmentRow = {
   outcome_rating: number | null
   meal_provided: boolean
   outcome_recorded_at: string | null
+  archived_at: string | null
+  archived_by: string | null
+  created_at: string
+  updated_at: string
+}
+
+type RecruitmentInterviewScorecardRow = {
+  id: string
+  appointment_id: string
+  application_id: string
+  candidate_id: string
+  criteria: Json
+  overall_rating: number | null
+  recommendation: string
+  comments: string | null
+  created_by: string | null
   created_at: string
   updated_at: string
 }
@@ -224,6 +245,7 @@ export type RecruitmentDatabaseExtension = {
       recruitment_ai_runs: Table<RecruitmentAiRunRow>
       recruitment_appointment_slots: Table<RecruitmentAppointmentSlotRow>
       recruitment_candidate_appointments: Table<RecruitmentCandidateAppointmentRow>
+      recruitment_interview_scorecards: Table<RecruitmentInterviewScorecardRow>
       recruitment_email_templates: Table<RecruitmentEmailTemplateRow>
       recruitment_communications: Table<RecruitmentCommunicationRow>
     }
@@ -234,6 +256,17 @@ export type RecruitmentDatabaseExtension = {
           p_to_status: string
           p_note?: string | null
           p_metadata?: Json
+        }
+        Returns: RecruitmentApplicationRow
+      }
+      recruitment_transition_application_status_actor: {
+        Args: {
+          p_application_id: string
+          p_to_status: string
+          p_note?: string | null
+          p_metadata?: Json
+          p_actor_user_id?: string | null
+          p_force?: boolean
         }
         Returns: RecruitmentApplicationRow
       }

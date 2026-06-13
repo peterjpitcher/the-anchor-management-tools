@@ -9400,6 +9400,7 @@ export type Database = {
           os: string | null
           referrer: string | null
           region: string | null
+          request_host: string | null
           short_link_id: string | null
           user_agent: string | null
           utm_campaign: string | null
@@ -9418,6 +9419,7 @@ export type Database = {
           os?: string | null
           referrer?: string | null
           region?: string | null
+          request_host?: string | null
           short_link_id?: string | null
           user_agent?: string | null
           utm_campaign?: string | null
@@ -9436,6 +9438,7 @@ export type Database = {
           os?: string | null
           referrer?: string | null
           region?: string | null
+          request_host?: string | null
           short_link_id?: string | null
           user_agent?: string | null
           utm_campaign?: string | null

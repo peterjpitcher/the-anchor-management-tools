@@ -4,6 +4,7 @@ import { withApiAuth, createApiResponse, createErrorResponse } from '@/lib/api/a
 import { eventToSchema } from '@/lib/api/schema';
 import { buildShortLinkUrl } from '@/lib/short-links/base-url';
 import { resolveEventPaymentMode, resolveEventPriceAmount } from '@/lib/events/pricing';
+import { EVENT_MARKETING_CHANNEL_MAP, isEventMarketingQrChannel, type EventMarketingChannelKey } from '@/lib/event-marketing-links';
 
 type EventFaqRow = {
   sort_order: number | null;
@@ -184,7 +185,16 @@ export async function GET(
     const linkInBioShortLink = formatMarketingShortLink(linkInBioShortLinkRow);
     const googleBusinessProfileShortLink = formatMarketingShortLink(googleBusinessProfileShortLinkRow);
     const metaAdsShortLink = formatMarketingShortLink(metaAdsShortLinkRow);
+    const marketingShortLinksByChannel = buildMarketingShortLinkMap(marketingShortLinks);
+    const marketingDestinationUrlsByChannel = buildMarketingDestinationUrlMap(marketingShortLinks);
+    const qrShortLinksByChannel = Object.fromEntries(
+      Object.entries(marketingShortLinksByChannel).filter(([channel]) => {
+        const config = EVENT_MARKETING_CHANNEL_MAP.get(channel as EventMarketingChannelKey);
+        return config ? isEventMarketingQrChannel(config) : false;
+      })
+    );
     const ctaLinks = {
+      ...marketingShortLinksByChannel,
       facebook: facebookShortLink,
       instagram: linkInBioShortLink,
       google_business_profile: googleBusinessProfileShortLink,
@@ -217,6 +227,20 @@ export async function GET(
       meta_ads_short_link: metaAdsShortLink,
       metaAdsDestinationUrl: metaAdsShortLinkRow?.destination_url || null,
       meta_ads_destination_url: metaAdsShortLinkRow?.destination_url || null,
+      printedMenuShortLink: marketingShortLinksByChannel.printed_menu || null,
+      printed_menu_short_link: marketingShortLinksByChannel.printed_menu || null,
+      gameSheetShortLink: marketingShortLinksByChannel.game_sheet || null,
+      game_sheet_short_link: marketingShortLinksByChannel.game_sheet || null,
+      inGameScreenShortLink: marketingShortLinksByChannel.in_game_screen || null,
+      in_game_screen_short_link: marketingShortLinksByChannel.in_game_screen || null,
+      venueScreenShortLink: marketingShortLinksByChannel.venue_screen || null,
+      venue_screen_short_link: marketingShortLinksByChannel.venue_screen || null,
+      marketingShortLinks: marketingShortLinksByChannel,
+      marketing_short_links: marketingShortLinksByChannel,
+      marketingDestinationUrls: marketingDestinationUrlsByChannel,
+      marketing_destination_urls: marketingDestinationUrlsByChannel,
+      qrShortLinks: qrShortLinksByChannel,
+      qr_short_links: qrShortLinksByChannel,
       ctaLinks,
       cta_links: ctaLinks,
       booking_mode: ['table', 'general', 'mixed', 'communal'].includes(String(event.booking_mode))
@@ -315,4 +339,34 @@ function formatMarketingShortLink(row: EventShortLinkRow | null): string | null 
   }
 
   return buildShortLinkUrl(row.short_code);
+}
+
+function buildMarketingShortLinkMap(rows: EventShortLinkRow[]): Record<string, string> {
+  return buildMarketingLinkMap(rows, (row) => buildShortLinkUrl(row.short_code));
+}
+
+function buildMarketingDestinationUrlMap(rows: EventShortLinkRow[]): Record<string, string> {
+  return buildMarketingLinkMap(rows, (row) => row.destination_url || '');
+}
+
+function buildMarketingLinkMap(
+  rows: EventShortLinkRow[],
+  formatter: (row: EventShortLinkRow) => string
+): Record<string, string> {
+  const result: Record<string, string> = {};
+  const channels = Array.from(new Set(rows
+    .map(row => row.metadata?.channel)
+    .filter((channel): channel is string => typeof channel === 'string' && channel.length > 0)));
+
+  for (const channel of channels) {
+    const row = resolveMarketingShortLinkRow(rows, channel);
+    if (!row) continue;
+
+    const value = formatter(row);
+    if (value) {
+      result[channel] = value;
+    }
+  }
+
+  return result;
 }

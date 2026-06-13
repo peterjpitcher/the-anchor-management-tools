@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { IconButton } from '@/ds'
 import { Loader2, Printer, QrCode, Share2 } from 'lucide-react'
 import { getOrCreateUtmVariant } from '@/app/actions/short-links'
-import { DIGITAL_CHANNELS, PRINT_CHANNELS, type ShortLinkChannel } from '@/lib/short-links/channels'
+import { DIGITAL_CHANNELS, QR_CHANNELS, type ShortLinkChannel } from '@/lib/short-links/channels'
 import { buildShortLinkUrl } from '@/lib/short-links/base-url'
 import { downloadQrPng, safeQrFilename } from './qr-download'
 import { PortalMenu, type PortalMenuEntry } from './PortalMenu'
@@ -93,7 +93,7 @@ export function UtmDropdown({ parentId, onVariantReady }: Props) {
       />
       <PortalMenu
         disabled={Boolean(loadingKey)}
-        entries={buildEntries(PRINT_CHANNELS, 'qr')}
+        entries={buildEntries(QR_CHANNELS, 'qr')}
         trigger={({ ref, onClick, 'aria-expanded': expanded }) => (
           <IconButton
             ref={ref}

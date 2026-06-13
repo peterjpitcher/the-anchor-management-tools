@@ -13,11 +13,13 @@ import {
   extractRecruitmentCandidateFromCv,
   scoreRecruitmentApplication,
 } from '@/lib/recruitment/ai'
+import { formatPhoneForStorage } from '@/lib/utils'
 import {
   RecruitmentApplicationInputSchema,
   RecruitmentAppointmentOutcomeInputSchema,
   RecruitmentAppointmentSlotInputSchema,
   RecruitmentCandidateProfileInputSchema,
+  RecruitmentInterviewScorecardInputSchema,
   RecruitmentJobPostingInputSchema,
   type RecruitmentApplication,
   type RecruitmentApplicationInput,
@@ -28,7 +30,10 @@ import {
   type RecruitmentCandidateProfileInput,
   type RecruitmentCvUpload,
   type RecruitmentDashboard,
+  type RecruitmentEmailTemplate,
+  type RecruitmentInterviewScorecardInput,
   type RecruitmentJobPosting,
+  type RecruitmentTemplateType,
 } from '@/types/recruitment'
 
 type GenericClient = SupabaseClient<any, 'public', any>
@@ -38,6 +43,25 @@ const TERMINAL_NON_HIRED_STATUSES = ['rejected', 'withdrawn', 'declined_duplicat
 const AWAITING_BOOKING_STATUSES = ['interview_invited', 'trial_offered'] as const
 const OFFER_STATUSES = ['offered'] as const
 
+export const RECRUITMENT_ALLOWED_TRANSITIONS: Record<string, string[]> = {
+  new: ['ai_screened', 'shortlisted', 'interview_invited', 'trial_offered', 'rejected', 'withdrawn', 'on_hold', 'talent_pool', 'declined_duplicate'],
+  ai_screened: ['shortlisted', 'interview_invited', 'trial_offered', 'offered', 'rejected', 'withdrawn', 'on_hold', 'talent_pool', 'declined_duplicate'],
+  shortlisted: ['interview_invited', 'interview_scheduled', 'trial_offered', 'rejected', 'withdrawn', 'on_hold', 'talent_pool'],
+  interview_invited: ['interview_scheduled', 'interviewed', 'trial_offered', 'rejected', 'withdrawn', 'on_hold', 'talent_pool'],
+  interview_scheduled: ['interviewed', 'trial_offered', 'rejected', 'withdrawn', 'on_hold', 'talent_pool'],
+  interviewed: ['trial_offered', 'trial_scheduled', 'offered', 'rejected', 'withdrawn', 'on_hold', 'talent_pool'],
+  trial_offered: ['trial_scheduled', 'trial_completed', 'offered', 'rejected', 'withdrawn', 'on_hold', 'talent_pool'],
+  trial_scheduled: ['trial_completed', 'offered', 'rejected', 'withdrawn', 'on_hold', 'talent_pool'],
+  trial_completed: ['offered', 'hired', 'rejected', 'withdrawn', 'on_hold', 'talent_pool'],
+  offered: ['hired', 'rejected', 'withdrawn', 'on_hold'],
+  on_hold: ['ai_screened', 'shortlisted', 'interview_invited', 'interview_scheduled', 'trial_offered', 'trial_scheduled', 'offered', 'rejected', 'withdrawn', 'talent_pool'],
+  talent_pool: ['new', 'ai_screened', 'shortlisted', 'interview_invited', 'trial_offered', 'rejected', 'withdrawn', 'on_hold'],
+}
+
+export function isRecruitmentTransitionAllowed(fromStatus: string, toStatus: string) {
+  return fromStatus === toStatus || (RECRUITMENT_ALLOWED_TRANSITIONS[fromStatus] ?? []).includes(toStatus)
+}
+
 function normalizeEmail(email: string | null | undefined): string | null {
   const trimmed = email?.trim().toLowerCase()
   return trimmed ? trimmed : null
@@ -46,6 +70,22 @@ function normalizeEmail(email: string | null | undefined): string | null {
 function nullIfBlank(value: string | null | undefined): string | null {
   const trimmed = value?.trim()
   return trimmed ? trimmed : null
+}
+
+function normalizePhoneForLookup(value: string | null | undefined): string | null {
+  const trimmed = nullIfBlank(value)
+  if (!trimmed) return null
+
+  try {
+    return formatPhoneForStorage(trimmed)
+  } catch {
+    return null
+  }
+}
+
+function phoneDigits(value: string | null | undefined): string | null {
+  const digits = value?.replace(/\D/g, '') ?? ''
+  return digits || null
 }
 
 function hashToken(token: string): string {
@@ -107,6 +147,20 @@ function toIsoOrNull(value: Date | string | null | undefined): string | null {
   return Number.isNaN(date.getTime()) ? null : date.toISOString()
 }
 
+function londonDateString(date = new Date()): string {
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Europe/London',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(date)
+
+  const year = parts.find(part => part.type === 'year')?.value
+  const month = parts.find(part => part.type === 'month')?.value
+  const day = parts.find(part => part.type === 'day')?.value
+  return year && month && day ? `${year}-${month}-${day}` : date.toISOString().slice(0, 10)
+}
+
 function isInfrastructureStorageError(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error ?? '')
   return /network|timeout|storage|supabase|database|fetch/i.test(message)
@@ -129,7 +183,7 @@ async function findSingleActiveCandidateBy(
     .limit(2)
 
   if (error) throw error
-  return data?.length === 1 ? data[0] as RecruitmentCandidate : null
+  return data?.[0] ? data[0] as RecruitmentCandidate : null
 }
 
 async function findExistingRecruitmentCandidate(
@@ -137,6 +191,7 @@ async function findExistingRecruitmentCandidate(
   input: {
     email: string | null
     phoneE164: string | null
+    phoneNormalized: string | null
     phone: string | null
     cvSha256: string | null
   }
@@ -144,6 +199,7 @@ async function findExistingRecruitmentCandidate(
   return (
     await findSingleActiveCandidateBy(supabase, 'email_normalized', input.email)
     ?? await findSingleActiveCandidateBy(supabase, 'phone_e164', input.phoneE164)
+    ?? await findSingleActiveCandidateBy(supabase, 'phone_normalized', input.phoneNormalized)
     ?? await findSingleActiveCandidateBy(supabase, 'phone', input.phone)
     ?? await findSingleActiveCandidateBy(supabase, 'cv_sha256', input.cvSha256)
   )
@@ -210,11 +266,13 @@ async function storeCvForCandidate(
 }
 
 export async function listPublicRecruitmentPostings(supabase: GenericClient = createAdminClient()) {
+  const today = londonDateString()
   const { data, error } = await supabase
     .from('recruitment_job_postings')
-    .select('id, title, slug, role_type, description, requirements, employment_type, positions_available, opened_at, updated_at')
+    .select('id, title, slug, role_type, description, requirements, employment_type, positions_available, application_closing_date, opened_at, updated_at')
     .eq('status', 'open')
     .eq('is_public', true)
+    .or(`application_closing_date.is.null,application_closing_date.gte.${today}`)
     .order('opened_at', { ascending: false, nullsFirst: false })
     .order('created_at', { ascending: false })
 
@@ -302,7 +360,7 @@ export async function getRecruitmentCandidatesPage(
 }
 
 export async function listRecruitmentAdminData(supabase: GenericClient = createAdminClient()) {
-  const [postings, applications, candidatesPage, slots, appointments, templates, statusEvents, aiRuns, communications] = await Promise.all([
+  const [postings, applications, candidatesPage, slots, appointments, scorecards, templates, statusEvents, aiRuns, communications] = await Promise.all([
     supabase
       .from('recruitment_job_postings')
       .select('*')
@@ -326,9 +384,13 @@ export async function listRecruitmentAdminData(supabase: GenericClient = createA
       .order('scheduled_start', { ascending: false })
       .limit(150),
     supabase
+      .from('recruitment_interview_scorecards')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(300),
+    supabase
       .from('recruitment_email_templates')
       .select('*')
-      .eq('is_active', true)
       .order('type', { ascending: true }),
     supabase
       .from('recruitment_application_status_events')
@@ -347,7 +409,7 @@ export async function listRecruitmentAdminData(supabase: GenericClient = createA
       .limit(300),
   ])
 
-  for (const result of [postings, applications, slots, appointments, templates, statusEvents, aiRuns, communications]) {
+  for (const result of [postings, applications, slots, appointments, scorecards, templates, statusEvents, aiRuns, communications]) {
     if (result.error) throw result.error
   }
 
@@ -358,6 +420,7 @@ export async function listRecruitmentAdminData(supabase: GenericClient = createA
     candidatesTotal: candidatesPage.totalCount,
     slots: slots.data ?? [],
     appointments: appointments.data ?? [],
+    scorecards: scorecards.data ?? [],
     templates: templates.data ?? [],
     statusEvents: statusEvents.data ?? [],
     aiRuns: aiRuns.data ?? [],
@@ -384,15 +447,21 @@ export async function getRecruitmentDashboard(
     supabase
       .from('recruitment_applications')
       .select('*, candidate:recruitment_candidates(*), job_posting:recruitment_job_postings(*)')
+      .is('archived_at', null)
+      .is('duplicate_of_application_id', null)
       .order('created_at', { ascending: false })
       .limit(10),
     supabase
       .from('recruitment_applications')
       .select('id', { count: 'exact', head: true })
+      .is('archived_at', null)
+      .is('duplicate_of_application_id', null)
       .eq('status', 'new'),
     supabase
       .from('recruitment_applications')
       .select('id', { count: 'exact', head: true })
+      .is('archived_at', null)
+      .is('duplicate_of_application_id', null)
       .eq('ai_recommendation', 'fast_track')
       .not('status', 'in', `(${['rejected', 'hired', 'withdrawn'].join(',')})`),
     supabase
@@ -402,10 +471,13 @@ export async function getRecruitmentDashboard(
     supabase
       .from('recruitment_applications')
       .select('id', { count: 'exact', head: true })
+      .is('archived_at', null)
+      .is('duplicate_of_application_id', null)
       .in('status', AWAITING_BOOKING_STATUSES as unknown as string[]),
     supabase
       .from('recruitment_candidate_appointments')
       .select('*, candidate:recruitment_candidates(first_name,last_name,email), application:recruitment_applications(id, status, job_posting:recruitment_job_postings(title))')
+      .is('archived_at', null)
       .eq('status', 'scheduled')
       .gte('scheduled_start', nowIso)
       .order('scheduled_start', { ascending: true })
@@ -413,10 +485,14 @@ export async function getRecruitmentDashboard(
     supabase
       .from('recruitment_applications')
       .select('id', { count: 'exact', head: true })
+      .is('archived_at', null)
+      .is('duplicate_of_application_id', null)
       .in('status', OFFER_STATUSES as unknown as string[]),
     supabase
       .from('recruitment_applications')
       .select('id', { count: 'exact', head: true })
+      .is('archived_at', null)
+      .is('duplicate_of_application_id', null)
       .in('status', TERMINAL_NON_HIRED_STATUSES as unknown as string[])
       .lt('created_at', retentionCutoff),
   ])
@@ -474,6 +550,7 @@ export async function createRecruitmentJobPosting(
       created_by: currentUserId ?? null,
       opened_at: parsed.status === 'open' ? now : null,
       closed_at: parsed.status === 'closed' || parsed.status === 'archived' ? now : null,
+      application_closing_date: parsed.application_closing_date ?? null,
     })
     .select('*')
     .single()
@@ -505,7 +582,8 @@ export async function updateRecruitmentJobPosting(
     existing.requirements !== parsed.requirements ||
     existing.ai_scoring_notes !== parsed.ai_scoring_notes ||
     existing.role_type !== parsed.role_type ||
-    existing.employment_type !== parsed.employment_type
+    existing.employment_type !== parsed.employment_type ||
+    existing.application_closing_date !== parsed.application_closing_date
 
   const { data, error } = await supabase
     .from('recruitment_job_postings')
@@ -514,6 +592,7 @@ export async function updateRecruitmentJobPosting(
       version: versionBumpNeeded ? Number(existing.version ?? 1) + 1 : existing.version,
       opened_at: statusChanged && parsed.status === 'open' ? now : existing.opened_at,
       closed_at: statusChanged && ['closed', 'archived'].includes(parsed.status) ? now : existing.closed_at,
+      application_closing_date: parsed.application_closing_date ?? null,
     })
     .eq('id', id)
     .select('*')
@@ -521,6 +600,129 @@ export async function updateRecruitmentJobPosting(
 
   if (error) throw error
   return data as RecruitmentJobPosting
+}
+
+async function nextRecruitmentPostingSlug(
+  supabase: GenericClient,
+  baseSlug: string,
+): Promise<string> {
+  const root = `${baseSlug.replace(/-copy(?:-\d+)?$/, '')}-copy`
+  const { data, error } = await supabase
+    .from('recruitment_job_postings')
+    .select('slug')
+    .ilike('slug', `${root}%`)
+
+  if (error) throw error
+
+  const existing = new Set((data ?? []).map((row: any) => row.slug))
+  if (!existing.has(root)) return root
+
+  for (let index = 2; index < 1000; index += 1) {
+    const candidate = `${root}-${index}`
+    if (!existing.has(candidate)) return candidate
+  }
+
+  return `${root}-${Date.now()}`
+}
+
+export async function duplicateRecruitmentJobPosting(
+  id: string,
+  currentUserId?: string | null,
+  supabase: GenericClient = createAdminClient()
+): Promise<RecruitmentJobPosting> {
+  const { data: existing, error: existingError } = await supabase
+    .from('recruitment_job_postings')
+    .select('*')
+    .eq('id', id)
+    .single()
+
+  if (existingError) throw existingError
+  if (!existing) throw new Error('Posting not found.')
+
+  const slug = await nextRecruitmentPostingSlug(supabase, existing.slug)
+  const title = `${existing.title} copy`
+  const { data, error } = await supabase
+    .from('recruitment_job_postings')
+    .insert({
+      title,
+      slug,
+      role_type: existing.role_type,
+      description: existing.description,
+      requirements: existing.requirements,
+      ai_scoring_notes: existing.ai_scoring_notes,
+      employment_type: existing.employment_type,
+      positions_available: existing.positions_available,
+      application_closing_date: null,
+      status: 'draft',
+      is_public: false,
+      version: 1,
+      opened_at: null,
+      closed_at: null,
+      created_by: currentUserId ?? null,
+    })
+    .select('*')
+    .single()
+
+  if (error) throw error
+  return data as RecruitmentJobPosting
+}
+
+export async function saveRecruitmentEmailTemplate(
+  input: {
+    id?: string | null
+    type: RecruitmentTemplateType
+    subject: string
+    body: string
+    isActive: boolean
+  },
+  currentUserId?: string | null,
+  supabase: GenericClient = createAdminClient()
+): Promise<RecruitmentEmailTemplate> {
+  const subject = nullIfBlank(input.subject)
+  const body = nullIfBlank(input.body)
+  if (!subject || !body) throw new Error('Template subject and body are required.')
+
+  if (input.isActive) {
+    await supabase
+      .from('recruitment_email_templates')
+      .update({ is_active: false, updated_by: currentUserId ?? null })
+      .eq('type', input.type)
+      .eq('is_active', true)
+      .neq('id', input.id ?? '00000000-0000-0000-0000-000000000000')
+  }
+
+  if (input.id) {
+    const { data, error } = await supabase
+      .from('recruitment_email_templates')
+      .update({
+        type: input.type,
+        subject,
+        body,
+        is_active: input.isActive,
+        updated_by: currentUserId ?? null,
+      })
+      .eq('id', input.id)
+      .select('*')
+      .single()
+
+    if (error) throw error
+    return data as RecruitmentEmailTemplate
+  }
+
+  const { data, error } = await supabase
+    .from('recruitment_email_templates')
+    .insert({
+      type: input.type,
+      subject,
+      body,
+      is_active: input.isActive,
+      updated_by: currentUserId ?? null,
+    })
+    .select('*')
+    .single()
+
+  if (error) throw error
+  return data as RecruitmentEmailTemplate
 }
 
 export async function updateRecruitmentCandidateProfile(
@@ -667,6 +869,9 @@ export async function rescoreRecruitmentApplication(
 
   if (error) throw error
   if (!data?.candidate) throw new Error('Application not found.')
+  if (data.duplicate_of_application_id) {
+    return { application: data as RecruitmentApplication, scoringError: null }
+  }
   if (!data.job_posting_id || !data.job_posting) {
     throw new Error('Talent-pool applications can only be scored after matching them to a posting.')
   }
@@ -1041,11 +1246,13 @@ export async function createRecruitmentApplication(
   const firstName = nullIfBlank(parsed.candidate.first_name) ?? nullIfBlank(extracted?.first_name)
   const lastName = nullIfBlank(parsed.candidate.last_name) ?? nullIfBlank(extracted?.last_name)
   const phone = nullIfBlank(parsed.candidate.phone) ?? nullIfBlank(extracted?.phone)
-  const phoneE164 = nullIfBlank(parsed.candidate.phone_e164)
+  const phoneE164 = nullIfBlank(parsed.candidate.phone_e164) ?? normalizePhoneForLookup(phone)
+  const phoneNormalized = phoneDigits(phoneE164 ?? phone)
   const location = nullIfBlank(parsed.candidate.location) ?? nullIfBlank(extracted?.location)
   const existingCandidate = await findExistingRecruitmentCandidate(supabase, {
     email: candidateEmail,
     phoneE164,
+    phoneNormalized,
     phone,
     cvSha256,
   })
@@ -1329,18 +1536,98 @@ export async function transitionRecruitmentApplicationStatus(
   options: {
     note?: string | null
     metadata?: Record<string, unknown> | null
+    actorUserId?: string | null
+    force?: boolean
   } = {},
   supabase: GenericClient = createAdminClient()
 ) {
-  const { data, error } = await supabase.rpc('recruitment_transition_application_status', {
+  const { data, error } = await supabase.rpc('recruitment_transition_application_status_actor', {
     p_application_id: applicationId,
     p_to_status: status,
     p_note: options.note ?? null,
     p_metadata: options.metadata ?? {},
+    p_actor_user_id: options.actorUserId ?? null,
+    p_force: options.force ?? false,
   })
 
   if (error) throw error
   return data as RecruitmentApplication
+}
+
+export async function bulkUpdateRecruitmentApplications(
+  applicationIds: string[],
+  input: {
+    action: 'status' | 'reject' | 'archive' | 'restore'
+    status?: string | null
+    note?: string | null
+  },
+  currentUserId?: string | null,
+  supabase: GenericClient = createAdminClient()
+) {
+  const ids = Array.from(new Set(applicationIds.filter(Boolean)))
+  if (ids.length === 0) throw new Error('Choose at least one application.')
+
+  const results: Array<{ id: string; success: boolean; error?: string }> = []
+
+  if (input.action === 'archive' || input.action === 'restore') {
+    const { error } = await supabase
+      .from('recruitment_applications')
+      .update({
+        archived_at: input.action === 'archive' ? new Date().toISOString() : null,
+        archived_by: input.action === 'archive' ? currentUserId ?? null : null,
+      })
+      .in('id', ids)
+
+    if (error) throw error
+    return { updated: ids.length, failures: [] as typeof results }
+  }
+
+  const toStatus = input.action === 'reject' ? 'rejected' : input.status
+  if (!toStatus) throw new Error('Status is required.')
+
+  for (const id of ids) {
+    try {
+      await transitionRecruitmentApplicationStatus(id, toStatus, {
+        note: input.note ?? (input.action === 'reject' ? 'Bulk rejection' : 'Bulk status change'),
+        metadata: { bulk_action: input.action },
+        actorUserId: currentUserId ?? null,
+      }, supabase)
+
+      if (input.action === 'reject' && input.note) {
+        await supabase
+          .from('recruitment_applications')
+          .update({ rejection_reason: input.note })
+          .eq('id', id)
+      }
+
+      results.push({ id, success: true })
+    } catch (error) {
+      results.push({ id, success: false, error: error instanceof Error ? error.message : 'Failed' })
+    }
+  }
+
+  return {
+    updated: results.filter(result => result.success).length,
+    failures: results.filter(result => !result.success),
+  }
+}
+
+export async function getRecruitmentApplicationsForCsv(
+  applicationIds: string[] | null,
+  supabase: GenericClient = createAdminClient()
+) {
+  let query = supabase
+    .from('recruitment_applications')
+    .select('*, candidate:recruitment_candidates(*), job_posting:recruitment_job_postings(*)')
+    .order('created_at', { ascending: false })
+
+  if (applicationIds?.length) {
+    query = query.in('id', Array.from(new Set(applicationIds)))
+  }
+
+  const { data, error } = await query.limit(1000)
+  if (error) throw error
+  return (data ?? []) as RecruitmentApplication[]
 }
 
 export async function createRecruitmentAppointmentSlot(
@@ -1367,6 +1654,91 @@ export async function createRecruitmentAppointmentSlot(
 
   if (error) throw error
   return data as RecruitmentAppointmentSlotInput & { id: string; status: string }
+}
+
+export async function updateRecruitmentAppointmentSlot(
+  slotId: string,
+  input: unknown,
+  supabase: GenericClient = createAdminClient()
+) {
+  const parsed = RecruitmentAppointmentSlotInputSchema.parse(input)
+  const startsAt = new Date(parsed.starts_at)
+  const endsAt = new Date(parsed.ends_at)
+
+  if (Number.isNaN(startsAt.getTime()) || Number.isNaN(endsAt.getTime()) || endsAt <= startsAt) {
+    throw new Error('Appointment slot must have a valid start and end time.')
+  }
+
+  const { data: existing, error: existingError } = await supabase
+    .from('recruitment_appointment_slots')
+    .select('id, status, starts_at')
+    .eq('id', slotId)
+    .maybeSingle()
+
+  if (existingError) throw existingError
+  if (!existing) throw new Error('Slot not found.')
+  if (existing.status === 'booked') throw new Error('Booked slots must be rescheduled from the appointment.')
+
+  const { data, error } = await supabase
+    .from('recruitment_appointment_slots')
+    .update(parsed)
+    .eq('id', slotId)
+    .select('*')
+    .single()
+
+  if (error) throw error
+  return data
+}
+
+export async function cancelRecruitmentAppointmentSlot(
+  slotId: string,
+  currentUserId?: string | null,
+  supabase: GenericClient = createAdminClient()
+) {
+  const { data: slot, error: slotError } = await supabase
+    .from('recruitment_appointment_slots')
+    .select('*')
+    .eq('id', slotId)
+    .maybeSingle()
+
+  if (slotError) throw slotError
+  if (!slot) throw new Error('Slot not found.')
+  if (slot.status === 'booked') throw new Error('Cancel the appointment before cancelling this booked slot.')
+
+  const { data, error } = await supabase
+    .from('recruitment_appointment_slots')
+    .update({
+      status: 'cancelled',
+      archived_at: new Date().toISOString(),
+      archived_by: currentUserId ?? null,
+    })
+    .eq('id', slotId)
+    .select('*')
+    .single()
+
+  if (error) throw error
+  return data
+}
+
+export async function setRecruitmentArchiveState(
+  table: 'recruitment_applications' | 'recruitment_appointment_slots' | 'recruitment_candidate_appointments',
+  id: string,
+  archived: boolean,
+  currentUserId?: string | null,
+  supabase: GenericClient = createAdminClient()
+) {
+  const { data, error } = await supabase
+    .from(table)
+    .update({
+      archived_at: archived ? new Date().toISOString() : null,
+      archived_by: archived ? currentUserId ?? null : null,
+    })
+    .eq('id', id)
+    .select('*')
+    .single()
+
+  if (error) throw error
+  return data
 }
 
 export async function recordRecruitmentAppointmentOutcome(
@@ -1405,11 +1777,13 @@ export async function recordRecruitmentAppointmentOutcome(
     await transitionRecruitmentApplicationStatus(appointment.application_id, appointment.type === 'trial_shift' ? 'trial_completed' : 'interviewed', {
       note: `${appointment.type === 'trial_shift' ? 'Trial shift' : 'Interview'} completed`,
       metadata: { appointment_id: appointmentId, outcome_rating: parsed.outcome_rating ?? null },
+      actorUserId: currentUserId ?? null,
     }, supabase)
   } else if (parsed.status === 'no_show') {
     await transitionRecruitmentApplicationStatus(appointment.application_id, 'on_hold', {
       note: 'Candidate did not attend appointment',
       metadata: { appointment_id: appointmentId, no_show: true },
+      actorUserId: currentUserId ?? null,
     }, supabase)
   } else if (parsed.status === 'cancelled' && appointment.slot_id) {
     await supabase
@@ -1432,10 +1806,157 @@ export async function recordRecruitmentAppointmentOutcome(
   return updated
 }
 
+export async function cancelRecruitmentAppointmentByStaff(
+  appointmentId: string,
+  reason: string | null,
+  currentUserId?: string | null,
+  supabase: GenericClient = createAdminClient()
+) {
+  const { data: appointment, error } = await supabase
+    .from('recruitment_candidate_appointments')
+    .select('*')
+    .eq('id', appointmentId)
+    .maybeSingle()
+
+  if (error) throw error
+  if (!appointment) throw new Error('Appointment not found.')
+
+  const { data, error: updateError } = await supabase
+    .from('recruitment_candidate_appointments')
+    .update({
+      status: 'cancelled',
+      outcome: nullIfBlank(reason) ?? appointment.outcome,
+      outcome_recorded_at: new Date().toISOString(),
+      calendar_sync_status: 'pending',
+      calendar_last_error: null,
+    })
+    .eq('id', appointmentId)
+    .select('*')
+    .single()
+
+  if (updateError) throw updateError
+
+  if (appointment.slot_id) {
+    await supabase
+      .from('recruitment_appointment_slots')
+      .update({ status: 'open' })
+      .eq('id', appointment.slot_id)
+  }
+
+  await transitionRecruitmentApplicationStatus(appointment.application_id, 'on_hold', {
+    note: reason ?? 'Appointment cancelled by manager',
+    metadata: { appointment_id: appointmentId, cancelled_by_staff: true },
+    actorUserId: currentUserId ?? null,
+  }, supabase)
+
+  return data
+}
+
+export async function rescheduleRecruitmentAppointmentByStaff(
+  appointmentId: string,
+  newSlotId: string,
+  currentUserId?: string | null,
+  supabase: GenericClient = createAdminClient()
+) {
+  const { data: appointment, error } = await supabase
+    .from('recruitment_candidate_appointments')
+    .select('*')
+    .eq('id', appointmentId)
+    .maybeSingle()
+
+  if (error) throw error
+  if (!appointment) throw new Error('Appointment not found.')
+
+  const { data: newSlot, error: slotError } = await supabase
+    .from('recruitment_appointment_slots')
+    .update({ status: 'booked' })
+    .eq('id', newSlotId)
+    .eq('status', 'open')
+    .is('archived_at', null)
+    .gt('starts_at', new Date().toISOString())
+    .select('*')
+    .maybeSingle()
+
+  if (slotError) throw slotError
+  if (!newSlot) throw new Error('Slot is no longer available.')
+
+  const { data, error: updateError } = await supabase
+    .from('recruitment_candidate_appointments')
+    .update({
+      slot_id: newSlot.id,
+      scheduled_start: newSlot.starts_at,
+      scheduled_end: newSlot.ends_at,
+      timezone: newSlot.timezone,
+      location: newSlot.location,
+      supervisor_staff_id: newSlot.supervisor_staff_id,
+      status: 'scheduled',
+      calendar_sync_status: 'pending',
+      calendar_last_error: null,
+      reschedule_count: Number(appointment.reschedule_count ?? 0) + 1,
+    })
+    .eq('id', appointmentId)
+    .select('*')
+    .single()
+
+  if (updateError) throw updateError
+
+  if (appointment.slot_id) {
+    await supabase
+      .from('recruitment_appointment_slots')
+      .update({ status: 'open' })
+      .eq('id', appointment.slot_id)
+  }
+
+  await insertStatusEvent(supabase, {
+    applicationId: appointment.application_id,
+    fromStatus: null,
+    toStatus: appointment.type === 'trial_shift' ? 'trial_scheduled' : 'interview_scheduled',
+    changedBy: currentUserId ?? null,
+    note: 'Appointment rescheduled by manager',
+    metadata: { appointment_id: appointmentId, old_slot_id: appointment.slot_id, new_slot_id: newSlot.id },
+  })
+
+  return data
+}
+
+export async function createRecruitmentInterviewScorecard(
+  input: RecruitmentInterviewScorecardInput,
+  currentUserId?: string | null,
+  supabase: GenericClient = createAdminClient()
+) {
+  const parsed = RecruitmentInterviewScorecardInputSchema.parse(input)
+  const { data: appointment, error: appointmentError } = await supabase
+    .from('recruitment_candidate_appointments')
+    .select('id, application_id, candidate_id')
+    .eq('id', parsed.appointment_id)
+    .maybeSingle()
+
+  if (appointmentError) throw appointmentError
+  if (!appointment) throw new Error('Appointment not found.')
+
+  const { data, error } = await supabase
+    .from('recruitment_interview_scorecards')
+    .insert({
+      appointment_id: parsed.appointment_id,
+      application_id: appointment.application_id,
+      candidate_id: appointment.candidate_id,
+      criteria: parsed.criteria,
+      overall_rating: parsed.overall_rating ?? null,
+      recommendation: parsed.recommendation,
+      comments: nullIfBlank(parsed.comments),
+      created_by: currentUserId ?? null,
+    })
+    .select('*')
+    .single()
+
+  if (error) throw error
+  return data
+}
+
 export async function issueRecruitmentBookingLink(
   applicationId: string,
   type: RecruitmentAppointmentType,
-  options: { expiresInDays?: number; note?: string | null } = {},
+  options: { expiresInDays?: number; note?: string | null; actorUserId?: string | null } = {},
   supabase: GenericClient = createAdminClient()
 ) {
   const token = createToken()
@@ -1458,6 +1979,7 @@ export async function issueRecruitmentBookingLink(
   await transitionRecruitmentApplicationStatus(applicationId, nextStatus, {
     note: options.note ?? 'Booking link issued',
     metadata: { appointment_type: type },
+    actorUserId: options.actorUserId ?? null,
   }, supabase)
 
   return {
@@ -1588,6 +2110,7 @@ export async function cancelRecruitmentAppointment(
   await transitionRecruitmentApplicationStatus(appointment.application_id, 'on_hold', {
     note: 'Candidate cancelled appointment',
     metadata: { appointment_id: appointment.id },
+    actorUserId: null,
   }, supabase)
 
   return {
@@ -1756,6 +2279,7 @@ export async function copyRecruitmentCvToEmployee(
 export async function completeRecruitmentHireHandoff(
   applicationId: string,
   employeeId: string,
+  currentUserId?: string | null,
   supabase: GenericClient = createAdminClient()
 ) {
   const { data: application, error } = await supabase
@@ -1795,6 +2319,8 @@ export async function completeRecruitmentHireHandoff(
   await transitionRecruitmentApplicationStatus(applicationId, 'hired', {
     note: 'Candidate converted to employee',
     metadata: { employee_id: employeeId },
+    actorUserId: currentUserId ?? null,
+    force: true,
   }, supabase)
 
   return { success: true }
@@ -1972,12 +2498,27 @@ export function buildRecruitmentPrintableKit(input: {
   const candidate = input.application.candidate ?? {}
   const posting = input.application.job_posting ?? {}
   const name = candidateName(candidate)
+  const list = (value: unknown) => Array.isArray(value) && value.length > 0
+    ? value.map(item => `- ${String(item)}`).join('\n')
+    : '- None recorded'
+  const aiDetails = [
+    `AI score: ${input.application.ai_score ?? 'Not scored'}`,
+    `Recommendation: ${input.application.ai_recommendation ?? 'Manual review'}`,
+    input.application.ai_rationale ? `Rationale: ${input.application.ai_rationale}` : 'Rationale: Not recorded',
+    'Strengths:',
+    list(input.application.ai_strengths),
+    'Concerns:',
+    list(input.application.ai_concerns),
+    'Flags:',
+    list(input.application.ai_flags),
+  ]
 
   if (input.kind === 'trial') {
     return [
       `Trial brief: ${name}`,
       `Role: ${posting.title ?? 'General recruitment'}`,
       `When: ${input.appointment ? formatRecruitmentAppointment(input.appointment) : 'To be confirmed'}`,
+      ...aiDetails,
       'Trial: short unpaid practical trial, paired with an existing team member.',
       'Food: complimentary main-menu item and soft drink after the trial.',
       'Right to work: check original/valid proof before any work-like duties begin.',
@@ -1990,8 +2531,7 @@ export function buildRecruitmentPrintableKit(input: {
     `Interview kit: ${name}`,
     `Role: ${posting.title ?? 'General recruitment'}`,
     `When: ${input.appointment ? formatRecruitmentAppointment(input.appointment) : 'To be confirmed'}`,
-    `AI score: ${input.application.ai_score ?? 'Not scored'}`,
-    `Recommendation: ${input.application.ai_recommendation ?? 'Manual review'}`,
+    ...aiDetails,
     'Right to work: remind candidate to bring proof.',
     'Questions:',
     '1. Relevant pub/hospitality experience',

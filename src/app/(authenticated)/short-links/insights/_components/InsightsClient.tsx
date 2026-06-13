@@ -8,13 +8,9 @@ import {
 } from '@/ds'
 import { Stat, Badge, Button, Select } from '@/ds'
 import { getShortLinkVolumeAdvanced } from '@/app/actions/short-links'
+import { SHORT_LINKS_NAV } from '../../nav'
 import { groupLinksIntoCampaigns } from '@/lib/short-links/insights-grouping'
 import type { AnalyticsLinkRow } from '@/types/short-links'
-
-const SHORT_LINKS_NAV = [
-  { id: 'links', label: 'Links', href: '/short-links' },
-  { id: 'insights', label: 'Insights', href: '/short-links/insights' },
-]
 
 const TIME_OPTIONS = [
   { value: '7', label: 'Last 7 days' },

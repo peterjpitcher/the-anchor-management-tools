@@ -16,7 +16,7 @@ import { applyDistributedRateLimit } from '@/lib/distributed-rate-limit'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getClientIp, verifyTurnstileToken } from '@/lib/turnstile'
 import { getRecruitmentCvMaxBytes, validateRecruitmentCvUpload } from '@/lib/recruitment/files'
-import { sendRecruitmentManagerAlert } from '@/lib/recruitment/communications'
+import { sendRecruitmentApplicationReceivedEmail, sendRecruitmentManagerAlert } from '@/lib/recruitment/communications'
 import { formatPhoneForStorage } from '@/lib/utils'
 import { createRecruitmentApplication, processRecruitmentApplicationAi } from '@/services/recruitment'
 import type { RecruitmentCvUpload } from '@/types/recruitment'
@@ -37,6 +37,20 @@ function formBool(formData: FormData, key: string): boolean {
   return value === 'true' || value === '1' || value === 'on'
 }
 
+function londonDateString(date = new Date()): string {
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Europe/London',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(date)
+
+  const year = parts.find(part => part.type === 'year')?.value
+  const month = parts.find(part => part.type === 'month')?.value
+  const day = parts.find(part => part.type === 'day')?.value
+  return year && month && day ? `${year}-${month}-${day}` : date.toISOString().slice(0, 10)
+}
+
 async function readCvUpload(formData: FormData): Promise<RecruitmentCvUpload | null> {
   const file = formData.get('cv')
   if (!(file instanceof File) || file.size === 0) {
@@ -51,23 +65,34 @@ async function readCvUpload(formData: FormData): Promise<RecruitmentCvUpload | n
   }
 }
 
-async function resolvePostingId(formData: FormData, supabase: ReturnType<typeof createAdminClient>) {
+async function resolvePostingId(
+  formData: FormData,
+  supabase: ReturnType<typeof createAdminClient>,
+): Promise<{ postingId: string | null; error?: string }> {
   const explicitId = formString(formData, 'job_posting_id') || formString(formData, 'posting_id')
-  if (explicitId) return explicitId
-
   const slug = formString(formData, 'job_slug') || formString(formData, 'role_slug')
-  if (!slug) return null
+  if (!explicitId && !slug) return { postingId: null }
 
-  const { data, error } = await supabase
+  let query = supabase
     .from('recruitment_job_postings')
     .select('id')
-    .eq('slug', slug)
     .eq('status', 'open')
     .eq('is_public', true)
-    .maybeSingle()
+    .or(`application_closing_date.is.null,application_closing_date.gte.${londonDateString()}`)
+
+  query = explicitId ? query.eq('id', explicitId) : query.eq('slug', slug)
+
+  const { data, error } = await query.maybeSingle()
 
   if (error) throw error
-  return data?.id ?? null
+  if (!data?.id) {
+    return {
+      postingId: null,
+      error: 'This job posting is no longer accepting applications.',
+    }
+  }
+
+  return { postingId: data.id }
 }
 
 async function handleRecruitmentApplication(request: NextRequest) {
@@ -111,7 +136,11 @@ async function handleRecruitmentApplication(request: NextRequest) {
   }
 
   const supabase = createAdminClient()
-  const postingId = await resolvePostingId(formData, supabase)
+  const postingResolution = await resolvePostingId(formData, supabase)
+  if (postingResolution.error) {
+    return createErrorResponse(postingResolution.error, 'RECRUITMENT_POSTING_CLOSED', 400)
+  }
+  const postingId = postingResolution.postingId
   const normalizedEmail = formString(formData, 'email')?.toLowerCase() ?? null
   const cvHash = cvUpload
     ? crypto.createHash('sha256').update(cvUpload.buffer).digest('hex')
@@ -220,6 +249,12 @@ async function handleRecruitmentApplication(request: NextRequest) {
     await persistIdempotencyResponse(supabase, idempotencyKey, requestHash, responsePayload)
 
     after(async () => {
+      try {
+        await sendRecruitmentApplicationReceivedEmail(result.application.id, supabase)
+      } catch (error) {
+        console.error('Recruitment application received email failed', error)
+      }
+
       let processed: Awaited<ReturnType<typeof processRecruitmentApplicationAi>> | null = null
       try {
         processed = await processRecruitmentApplicationAi(result.application.id, supabase)

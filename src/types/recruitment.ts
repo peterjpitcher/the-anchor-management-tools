@@ -39,6 +39,7 @@ export const recruitmentTemplateTypes = [
   'reminder',
   'manager_alert',
 ] as const
+export const recruitmentScorecardRecommendations = ['hire', 'hold', 'reject', 'rebook', 'no_decision'] as const
 export const rightToWorkDocumentTypes = ['Passport', 'Biometric Residence Permit', 'Share Code', 'Other', 'List A', 'List B'] as const
 
 export type RecruitmentRoleType = typeof recruitmentRoleTypes[number]
@@ -50,6 +51,7 @@ export type RecruitmentRecommendation = typeof recruitmentRecommendations[number
 export type RecruitmentAppointmentType = typeof recruitmentAppointmentTypes[number]
 export type RecruitmentAppointmentStatus = typeof recruitmentAppointmentStatuses[number]
 export type RecruitmentTemplateType = typeof recruitmentTemplateTypes[number]
+export type RecruitmentScorecardRecommendation = typeof recruitmentScorecardRecommendations[number]
 
 export const RecruitmentJobPostingInputSchema = z.object({
   title: z.string().trim().min(1).max(160),
@@ -62,6 +64,7 @@ export const RecruitmentJobPostingInputSchema = z.object({
   positions_available: z.coerce.number().int().min(1).max(100).default(1),
   status: z.enum(recruitmentPostingStatuses).default('draft'),
   is_public: z.coerce.boolean().default(false),
+  application_closing_date: z.string().date().nullable().optional(),
 })
 
 export const RecruitmentCandidateInputSchema = z.object({
@@ -124,12 +127,25 @@ export const RecruitmentAppointmentOutcomeInputSchema = z.object({
   meal_provided: z.coerce.boolean().default(false),
 })
 
+export const RecruitmentInterviewScorecardInputSchema = z.object({
+  appointment_id: z.string().uuid(),
+  comments: z.string().trim().max(10000).nullable().optional(),
+  overall_rating: z.coerce.number().int().min(1).max(5).nullable().optional(),
+  recommendation: z.enum(recruitmentScorecardRecommendations).default('no_decision'),
+  criteria: z.array(z.object({
+    label: z.string().trim().min(1).max(120),
+    rating: z.coerce.number().int().min(1).max(5).nullable().optional(),
+    notes: z.string().trim().max(1000).nullable().optional(),
+  })).default([]),
+})
+
 export type RecruitmentJobPostingInput = z.infer<typeof RecruitmentJobPostingInputSchema>
 export type RecruitmentApplicationInput = z.infer<typeof RecruitmentApplicationInputSchema>
 export type RecruitmentCandidateInput = z.infer<typeof RecruitmentCandidateInputSchema>
 export type RecruitmentAppointmentSlotInput = z.infer<typeof RecruitmentAppointmentSlotInputSchema>
 export type RecruitmentCandidateProfileInput = z.infer<typeof RecruitmentCandidateProfileInputSchema>
 export type RecruitmentAppointmentOutcomeInput = z.infer<typeof RecruitmentAppointmentOutcomeInputSchema>
+export type RecruitmentInterviewScorecardInput = z.infer<typeof RecruitmentInterviewScorecardInputSchema>
 
 export type RecruitmentCvUpload = {
   buffer: Buffer
@@ -177,6 +193,7 @@ export type RecruitmentJobPosting = RecruitmentJobPostingInput & {
   version: number
   opened_at: string | null
   closed_at: string | null
+  application_closing_date: string | null
   created_by: string | null
   created_at: string
   updated_at: string
@@ -207,11 +224,104 @@ export type RecruitmentApplication = {
   booking_token_expires_at?: string | null
   booking_token_used_at?: string | null
   rejected_at: string | null
+  rejection_reason?: string | null
   duplicate_of_application_id: string | null
+  archived_at?: string | null
+  archived_by?: string | null
   created_at: string
   updated_at: string
   candidate?: RecruitmentCandidate
   job_posting?: RecruitmentJobPosting | null
+}
+
+export type RecruitmentAppointmentSlot = RecruitmentAppointmentSlotInput & {
+  id: string
+  status: 'open' | 'booked' | 'cancelled'
+  capacity: number
+  archived_at?: string | null
+  archived_by?: string | null
+  created_by: string | null
+  created_at: string
+  updated_at: string
+}
+
+export type RecruitmentCandidateAppointment = {
+  id: string
+  application_id: string
+  candidate_id: string
+  slot_id: string | null
+  type: RecruitmentAppointmentType
+  scheduled_start: string
+  scheduled_end: string
+  timezone: string
+  location: string
+  supervisor_staff_id: string | null
+  status: RecruitmentAppointmentStatus
+  calendar_event_id: string | null
+  calendar_sync_status: string
+  calendar_last_error: string | null
+  booking_token_hash: string | null
+  token_expires_at: string | null
+  reschedule_count: number
+  reminder_email_sent_at: string | null
+  reminder_sms_sent_at: string | null
+  outcome: string | null
+  outcome_rating: number | null
+  meal_provided: boolean
+  outcome_recorded_at: string | null
+  archived_at?: string | null
+  archived_by?: string | null
+  created_at: string
+  updated_at: string
+  candidate?: Pick<RecruitmentCandidate, 'first_name' | 'last_name' | 'email'>
+  application?: Pick<RecruitmentApplication, 'id' | 'status'> & { job_posting?: Pick<RecruitmentJobPosting, 'title'> | null }
+}
+
+export type RecruitmentInterviewScorecard = {
+  id: string
+  appointment_id: string
+  application_id: string
+  candidate_id: string
+  criteria: unknown
+  overall_rating: number | null
+  recommendation: RecruitmentScorecardRecommendation
+  comments: string | null
+  created_by: string | null
+  created_at: string
+  updated_at: string
+}
+
+export type RecruitmentEmailTemplate = {
+  id: string
+  type: RecruitmentTemplateType
+  subject: string
+  body: string
+  is_active: boolean
+  updated_by: string | null
+  created_at: string
+  updated_at: string
+}
+
+export type RecruitmentCommunication = {
+  id: string
+  application_id: string | null
+  candidate_id: string
+  type: string
+  channel: 'email' | 'sms'
+  subject: string | null
+  final_body: string
+  was_ai_assisted: boolean
+  ai_run_id: string | null
+  edited_by: string | null
+  sent_by: string | null
+  sent_at: string | null
+  delivery_status: 'queued' | 'sent' | 'failed' | 'bounced' | 'suppressed'
+  provider: string | null
+  provider_message_id: string | null
+  idempotency_key: string | null
+  metadata: unknown | null
+  created_at: string
+  updated_at: string
 }
 
 export type RecruitmentDashboard = {

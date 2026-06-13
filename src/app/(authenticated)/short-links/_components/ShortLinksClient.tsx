@@ -16,15 +16,11 @@ import {
 import { ShortLinkFormModal } from './ShortLinkFormModal'
 import { ShortLinkAnalyticsModal } from './ShortLinkAnalyticsModal'
 import { ShortLinkActionsMenu } from './ShortLinkActionsMenu'
+import { SHORT_LINKS_NAV } from '../nav'
 import { buildShortLinkUrl } from '@/lib/short-links/base-url'
 import { CHANNEL_MAP } from '@/lib/short-links/channels'
 import { formatDate } from '@/lib/dateUtils'
 import type { ShortLink } from '@/types/short-links'
-
-const SHORT_LINKS_NAV = [
-  { id: 'links', label: 'Links', href: '/short-links' },
-  { id: 'insights', label: 'Insights', href: '/short-links/insights' },
-]
 
 interface Props {
   initialLinks: ShortLink[]

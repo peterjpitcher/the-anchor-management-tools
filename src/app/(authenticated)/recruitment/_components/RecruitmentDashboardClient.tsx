@@ -3,12 +3,12 @@
 import { useActionState, useMemo, useRef, useState } from 'react'
 import {
   ArrowPathIcon,
+  ArchiveBoxIcon,
   CheckCircleIcon,
   ClockIcon,
   DocumentTextIcon,
   EnvelopeIcon,
   ExclamationTriangleIcon,
-  EyeIcon,
   PlusIcon,
   PrinterIcon,
   SparklesIcon,
@@ -37,26 +37,42 @@ import {
 } from '@/ds'
 import type { RecruitmentCandidate } from '@/types/recruitment'
 import {
+  archiveRecruitmentApplicationAction,
+  archiveRecruitmentAppointmentAction,
+  archiveRecruitmentSlotAction,
+  bulkRecruitmentApplicationsAction,
+  cancelRecruitmentAppointmentAction,
+  cancelRecruitmentSlotAction,
   createManualRecruitmentApplicationAction,
   createRecruitmentPostingAction,
   createRecruitmentSlotAction,
   draftRecruitmentEmailAction,
+  duplicateRecruitmentPostingAction,
   eraseRecruitmentCandidateAction,
+  exportRecruitmentApplicationsCsvAction,
   getRecruitmentCandidates,
   getRecruitmentCvUrlAction,
   getRecruitmentPrintableKitAction,
   issueRecruitmentBookingInviteAction,
   inviteRecruitmentCandidateAsEmployeeAction,
   matchRecruitmentCandidateAction,
+  recordRecruitmentScorecardAction,
   recordRecruitmentAppointmentOutcomeAction,
+  rescheduleRecruitmentAppointmentAction,
+  restoreRecruitmentApplicationAction,
+  restoreRecruitmentAppointmentAction,
+  restoreRecruitmentSlotAction,
   rescoreRecruitmentApplicationAction,
+  retryRecruitmentCommunicationAction,
   retryManualReviewCvsAction,
   retryRecruitmentCvExtractionAction,
   runRecruitmentRetentionAction,
+  saveRecruitmentEmailTemplateAction,
   sendRecruitmentDecisionEmailAction,
   transitionRecruitmentStatusAction,
   updateRecruitmentCandidateAction,
   updateRecruitmentPostingAction,
+  updateRecruitmentSlotAction,
 } from '@/app/actions/recruitment'
 
 type Props = {
@@ -67,6 +83,7 @@ type Props = {
     canManage: boolean
     canSend: boolean
     canDelete: boolean
+    canExport?: boolean
   }
 }
 
@@ -98,12 +115,44 @@ function formatDateTime(value: string | null | undefined) {
   }).format(date)
 }
 
+function toTime(value: string | null | undefined): number {
+  if (!value) return 0
+  const time = new Date(value).getTime()
+  return Number.isNaN(time) ? 0 : time
+}
+
 function candidateName(candidate: any) {
   return [candidate?.first_name, candidate?.last_name].filter(Boolean).join(' ') || candidate?.email || 'Candidate'
 }
 
 function roleTitle(application: any) {
   return application?.job_posting?.title || 'Talent pool'
+}
+
+function scoreTone(score: number | null | undefined): 'success' | 'warning' | 'danger' | 'neutral' {
+  if (typeof score !== 'number') return 'neutral'
+  if (score >= 70) return 'success'
+  if (score >= 40) return 'warning'
+  return 'danger'
+}
+
+function scoreLabel(score: number | null | undefined) {
+  if (typeof score !== 'number') return 'Unscored'
+  if (score >= 70) return 'High'
+  if (score >= 40) return 'Medium'
+  return 'Low'
+}
+
+function scoreText(score: number | null | undefined) {
+  return typeof score === 'number' ? `${scoreLabel(score)} ${score}` : scoreLabel(score)
+}
+
+function scoreRowClass(score: number | null | undefined) {
+  const tone = scoreTone(score)
+  if (tone === 'success') return 'border-l-4 border-success/70 bg-success-soft/30'
+  if (tone === 'warning') return 'border-l-4 border-warning/70 bg-warning-soft/30'
+  if (tone === 'danger') return 'border-l-4 border-danger/70 bg-danger-soft/30'
+  return 'border-l-4 border-border'
 }
 
 function textList(value: unknown) {
@@ -182,6 +231,40 @@ function todayLocalDateTime(value: string | null | undefined) {
   return local.toISOString().slice(0, 16)
 }
 
+function dateInputValue(value: string | null | undefined) {
+  return value ? value.slice(0, 10) : ''
+}
+
+function formatDateOnly(value: string | null | undefined) {
+  if (!value) return 'Not set'
+  const date = new Date(`${value.slice(0, 10)}T12:00:00Z`)
+  if (Number.isNaN(date.getTime())) return 'Not set'
+  return new Intl.DateTimeFormat('en-GB', {
+    dateStyle: 'medium',
+    timeZone: 'Europe/London',
+  }).format(date)
+}
+
+function isPastClosingDate(value: string | null | undefined) {
+  if (!value) return false
+  return value.slice(0, 10) < new Date().toISOString().slice(0, 10)
+}
+
+function postingVisibilityText(posting: any) {
+  if (isPastClosingDate(posting.application_closing_date)) return 'Expired'
+  return posting.is_public ? 'Public' : 'Private'
+}
+
+function Field({ label, help, children }: { label: string; help?: string; children: React.ReactNode }) {
+  return (
+    <label className="block space-y-1">
+      <span className="text-xs font-semibold uppercase text-text-muted">{label}</span>
+      {children}
+      {help && <span className="block text-xs text-text-muted">{help}</span>}
+    </label>
+  )
+}
+
 function ActionStateMessage({ state }: { state: any }) {
   if (!state) return null
   return (
@@ -202,18 +285,34 @@ function SubmitButton({ children, variant = 'primary' }: { children: React.React
 export default function RecruitmentDashboardClient({ initialData, permissions }: Props) {
   const [postingState, postingAction] = useActionState(createRecruitmentPostingAction, null)
   const [postingUpdateState, postingUpdateAction] = useActionState(updateRecruitmentPostingAction, null)
+  const [postingDuplicateState, postingDuplicateAction] = useActionState(duplicateRecruitmentPostingAction, null)
   const [applicationState, applicationAction] = useActionState(createManualRecruitmentApplicationAction, null)
   const [candidateUpdateState, candidateUpdateAction] = useActionState(updateRecruitmentCandidateAction, null)
   const [slotState, slotAction] = useActionState(createRecruitmentSlotAction, null)
+  const [slotUpdateState, slotUpdateAction] = useActionState(updateRecruitmentSlotAction, null)
+  const [templateState, templateAction] = useActionState(saveRecruitmentEmailTemplateAction, null)
+  const [scorecardState, scorecardAction] = useActionState(recordRecruitmentScorecardAction, null)
   const [retentionState, retentionAction] = useActionState(runRecruitmentRetentionAction, null)
   const [cvRetryState, cvRetryAction] = useActionState(retryRecruitmentCvExtractionAction, null)
   const [cvBatchState, cvBatchAction] = useActionState(retryManualReviewCvsAction, null)
-  const [activeTab, setActiveTab] = useState<'applications' | 'postings' | 'schedule' | 'talent' | 'communications'>('applications')
+  const [activeTab, setActiveTab] = useState<'applications' | 'postings' | 'schedule' | 'talent' | 'templates' | 'communications'>('applications')
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
+  const [showArchived, setShowArchived] = useState(false)
+  const [selectedBulkIds, setSelectedBulkIds] = useState<string[]>([])
+  const [selectedPostingId, setSelectedPostingId] = useState<string | null>(null)
+  const [postingDrawerOpen, setPostingDrawerOpen] = useState(false)
   const [selectedApplicationId, setSelectedApplicationId] = useState<string | null>(null)
   const [selectedCandidateId, setSelectedCandidateId] = useState<string | null>(null)
   const [detailDrawerOpen, setDetailDrawerOpen] = useState(false)
+  const [selectedSlotId, setSelectedSlotId] = useState<string | null>(null)
+  const [slotDrawerOpen, setSlotDrawerOpen] = useState(false)
+  const [selectedAppointmentId, setSelectedAppointmentId] = useState<string | null>(null)
+  const [appointmentDrawerOpen, setAppointmentDrawerOpen] = useState(false)
+  const [selectedCommunicationId, setSelectedCommunicationId] = useState<string | null>(null)
+  const [communicationDrawerOpen, setCommunicationDrawerOpen] = useState(false)
+  const [selectedTalentCandidateId, setSelectedTalentCandidateId] = useState<string | null>(null)
+  const [talentDrawerOpen, setTalentDrawerOpen] = useState(false)
   const [emailDraft, setEmailDraft] = useState<{ type: string; subject: string; body: string; error?: string } | null>(null)
   const [printableText, setPrintableText] = useState<string | null>(null)
   const [clientMessage, setClientMessage] = useState<string | null>(null)
@@ -234,6 +333,17 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
   const rescoreFormAction = rescoreRecruitmentApplicationAction as unknown as (formData: FormData) => Promise<void>
   const matchFormAction = matchRecruitmentCandidateAction as unknown as (formData: FormData) => Promise<void>
   const outcomeFormAction = recordRecruitmentAppointmentOutcomeAction as unknown as (formData: FormData) => Promise<void>
+  const bulkFormAction = bulkRecruitmentApplicationsAction as unknown as (formData: FormData) => Promise<void>
+  const archiveApplicationFormAction = archiveRecruitmentApplicationAction as unknown as (formData: FormData) => Promise<void>
+  const restoreApplicationFormAction = restoreRecruitmentApplicationAction as unknown as (formData: FormData) => Promise<void>
+  const cancelSlotFormAction = cancelRecruitmentSlotAction as unknown as (formData: FormData) => Promise<void>
+  const archiveSlotFormAction = archiveRecruitmentSlotAction as unknown as (formData: FormData) => Promise<void>
+  const restoreSlotFormAction = restoreRecruitmentSlotAction as unknown as (formData: FormData) => Promise<void>
+  const cancelAppointmentFormAction = cancelRecruitmentAppointmentAction as unknown as (formData: FormData) => Promise<void>
+  const rescheduleAppointmentFormAction = rescheduleRecruitmentAppointmentAction as unknown as (formData: FormData) => Promise<void>
+  const archiveAppointmentFormAction = archiveRecruitmentAppointmentAction as unknown as (formData: FormData) => Promise<void>
+  const restoreAppointmentFormAction = restoreRecruitmentAppointmentAction as unknown as (formData: FormData) => Promise<void>
+  const retryCommunicationFormAction = retryRecruitmentCommunicationAction as unknown as (formData: FormData) => Promise<void>
 
   const applications = initialData.applications ?? []
   const postings = initialData.postings ?? []
@@ -241,11 +351,25 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
   const appointments = initialData.appointments ?? []
   const candidates = initialData.candidates ?? []
   const communications = initialData.communications ?? []
+  const templates = initialData.templates ?? []
+  const scorecards = initialData.scorecards ?? []
   const statusEvents = initialData.statusEvents ?? []
   const aiRuns = initialData.aiRuns ?? []
   const dashboard = initialData.dashboard
-  const activeApplications = applications.filter((application: any) => application.status !== 'talent_pool')
+  const activeApplications = applications.filter((application: any) => (
+    application.status !== 'talent_pool'
+    && application.status !== 'declined_duplicate'
+    && !application.duplicate_of_application_id
+    && !application.archived_at
+  ))
+  const selectedPosting = postings.find((posting: any) => posting.id === selectedPostingId) ?? null
   const selectedApplication = applications.find((application: any) => application.id === selectedApplicationId) ?? null
+  const selectedSlot = slots.find((slot: any) => slot.id === selectedSlotId) ?? null
+  const selectedAppointment = appointments.find((appointment: any) => appointment.id === selectedAppointmentId) ?? null
+  const selectedCommunication = communications.find((communication: any) => communication.id === selectedCommunicationId) ?? null
+  const selectedTalentCandidate = talentCandidates.find((candidate: any) => candidate.id === selectedTalentCandidateId)
+    ?? candidates.find((candidate: any) => candidate.id === selectedTalentCandidateId)
+    ?? null
   const selectedCandidate = selectedApplication?.candidate
     ?? candidates.find((candidate: any) => candidate.id === (selectedCandidateId ?? selectedApplication?.candidate_id))
     ?? null
@@ -271,10 +395,21 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
         application.status,
         application.ai_recommendation,
       ].filter(Boolean).join(' ').toLowerCase()
-      const matchesStatus = statusFilter ? application.status === statusFilter : application.status !== 'talent_pool'
-      return (!query || haystack.includes(query)) && matchesStatus
+      const isDuplicate = application.status === 'declined_duplicate' || Boolean(application.duplicate_of_application_id)
+      const archivedMatches = showArchived ? Boolean(application.archived_at) : !application.archived_at
+      const matchesStatus = statusFilter
+        ? application.status === statusFilter && !isDuplicate
+        : application.status !== 'talent_pool' && !isDuplicate
+      return archivedMatches && (!query || haystack.includes(query)) && matchesStatus
+    }).sort((a: any, b: any) => {
+      const scoreDiff = (b.ai_score ?? -1) - (a.ai_score ?? -1)
+      return scoreDiff || toTime(b.created_at) - toTime(a.created_at)
     })
-  }, [applications, search, statusFilter])
+  }, [applications, search, showArchived, statusFilter])
+
+  const filteredSlots = slots.filter((slot: any) => showArchived ? Boolean(slot.archived_at) : !slot.archived_at)
+  const filteredAppointments = appointments.filter((appointment: any) => showArchived ? Boolean(appointment.archived_at) : !appointment.archived_at)
+  const filteredCommunications = communications
 
   const pipeline = useMemo(() => {
     const columns = ['new', 'ai_screened', 'shortlisted', 'interview_scheduled', 'trial_scheduled', 'offered']
@@ -386,6 +521,53 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
     setDetailDrawerOpen(true)
   }
 
+  function openPostingDetail(posting: any) {
+    setSelectedPostingId(posting.id)
+    setPostingDrawerOpen(true)
+  }
+
+  function openSlotDetail(slot: any) {
+    setSelectedSlotId(slot.id)
+    setSlotDrawerOpen(true)
+  }
+
+  function openAppointmentDetail(appointment: any) {
+    setSelectedAppointmentId(appointment.id)
+    setAppointmentDrawerOpen(true)
+  }
+
+  function openCommunicationDetail(communication: any) {
+    setSelectedCommunicationId(communication.id)
+    setCommunicationDrawerOpen(true)
+  }
+
+  function openTalentDetail(candidate: any) {
+    setSelectedTalentCandidateId(candidate.id)
+    setTalentDrawerOpen(true)
+  }
+
+  function toggleBulkId(applicationId: string, checked: boolean) {
+    setSelectedBulkIds(ids => checked ? Array.from(new Set([...ids, applicationId])) : ids.filter(id => id !== applicationId))
+  }
+
+  async function exportApplicationsCsv() {
+    setClientMessage(null)
+    const formData = new FormData()
+    selectedBulkIds.forEach(id => formData.append('ids', id))
+    const result = await exportRecruitmentApplicationsCsvAction(formData)
+    if (!result.success || !result.data?.csv) {
+      setClientMessage(result.success ? 'Export failed.' : result.error)
+      return
+    }
+    const blob = new Blob([result.data.csv], { type: 'text/csv;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = 'recruitment-applications.csv'
+    link.click()
+    URL.revokeObjectURL(url)
+  }
+
   const talentTotalPages = Math.max(1, Math.ceil(talentTotal / TALENT_PAGE_SIZE))
 
   return (
@@ -445,6 +627,7 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
               { id: 'postings', label: 'Postings', count: postings.length },
               { id: 'schedule', label: 'Schedule', count: appointments.length },
               { id: 'talent', label: 'Talent pool', count: talentTotal },
+              { id: 'templates', label: 'Templates', count: templates.length },
               { id: 'communications', label: 'Comms', count: communications.length },
             ]}
           />
@@ -470,6 +653,10 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                   <option key={status} value={status}>{status.replaceAll('_', ' ')}</option>
                 ))}
               </Select>
+              <label className="flex items-center gap-2 text-sm text-text-muted">
+                <input type="checkbox" checked={showArchived} onChange={event => setShowArchived(event.target.checked)} />
+                Show archived
+              </label>
               {clientMessage && <p className="text-xs text-text-muted">{clientMessage}</p>}
             </div>
 
@@ -490,6 +677,12 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                       >
                         <p className="truncate text-sm font-medium text-text-strong">{candidateName(application.candidate)}</p>
                         <p className="truncate text-xs text-text-muted">{roleTitle(application)}</p>
+                        <div className="mt-1 flex items-center justify-between gap-2">
+                          <Badge tone={scoreTone(application.ai_score)}>
+                            {scoreText(application.ai_score)}
+                          </Badge>
+                          <span className="truncate text-xs text-text-muted">{formatDateTime(application.created_at)}</span>
+                        </div>
                       </button>
                     ))}
                   </div>
@@ -500,26 +693,83 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
             <Card>
               <CardHeader title="Applications" />
               <CardBody>
+                {permissions.canEdit && selectedBulkIds.length > 0 && (
+                  <form action={bulkFormAction} className="mb-3 flex flex-wrap items-center gap-2 rounded-md border border-border bg-surface-2 p-3">
+                    {selectedBulkIds.map(id => <input key={id} type="hidden" name="ids" value={id} />)}
+                    <span className="text-sm text-text-muted">{selectedBulkIds.length} selected</span>
+                    <Select name="bulk_action" defaultValue="status" className="w-36">
+                      <option value="status">Set status</option>
+                      <option value="reject">Reject</option>
+                      <option value="archive">Archive</option>
+                      <option value="restore">Restore</option>
+                    </Select>
+                    <Select name="status" defaultValue="on_hold" className="w-44">
+                      {statusOptions.map(status => (
+                        <option key={status} value={status}>{status.replaceAll('_', ' ')}</option>
+                      ))}
+                    </Select>
+                    <Input name="note" placeholder="Note or rejection reason" className="w-56" />
+                    <SubmitButton variant="secondary">Apply</SubmitButton>
+                    {permissions.canExport && (
+                      <Button type="button" size="sm" variant="secondary" onClick={exportApplicationsCsv}>
+                        Export CSV
+                      </Button>
+                    )}
+                  </form>
+                )}
                 <Table>
                   <TableHeader>
                     <TableRow>
+                      <TableHead>
+                        <input
+                          type="checkbox"
+                          checked={filteredApplications.length > 0 && selectedBulkIds.length === filteredApplications.length}
+                          onChange={event => setSelectedBulkIds(event.target.checked ? filteredApplications.map((application: any) => application.id) : [])}
+                          aria-label="Select all applications"
+                        />
+                      </TableHead>
                       <TableHead>Candidate</TableHead>
+                      <TableHead>Applied</TableHead>
                       <TableHead>Role</TableHead>
                       <TableHead>Score</TableHead>
                       <TableHead>Status</TableHead>
-                      <TableHead>Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {filteredApplications.map((application: any) => (
-                      <TableRow key={application.id} className={selectedApplication?.id === application.id ? 'bg-primary/5' : undefined}>
+                      <TableRow
+                        key={application.id}
+                        className={[
+                          scoreRowClass(application.ai_score),
+                          selectedApplication?.id === application.id ? 'bg-primary/5' : '',
+                        ].filter(Boolean).join(' ')}
+                      >
+                        <TableCell className="align-top">
+                          <input
+                            type="checkbox"
+                            checked={selectedBulkIds.includes(application.id)}
+                            onChange={event => toggleBulkId(application.id, event.target.checked)}
+                            aria-label={`Select ${candidateName(application.candidate)}`}
+                          />
+                        </TableCell>
                         <TableCell className="align-top whitespace-normal">
-                          <p className="font-medium text-text-strong">{candidateName(application.candidate)}</p>
+                          <button
+                            type="button"
+                            className="text-left font-medium text-text-strong hover:text-primary hover:underline"
+                            onClick={() => openApplicationDetail(application)}
+                          >
+                            {candidateName(application.candidate)}
+                          </button>
                           <p className="text-xs text-text-muted">{application.candidate?.email}</p>
+                        </TableCell>
+                        <TableCell className="align-top whitespace-normal text-sm text-text">
+                          {formatDateTime(application.created_at)}
                         </TableCell>
                         <TableCell className="align-top whitespace-normal">{roleTitle(application)}</TableCell>
                         <TableCell className="align-top">
-                          <span className="font-medium">{application.ai_score ?? '-'}</span>
+                          <Badge tone={scoreTone(application.ai_score)}>
+                            {scoreText(application.ai_score)}
+                          </Badge>
                           {application.ai_recommendation && (
                             <span className="ml-2 text-xs text-text-muted">{application.ai_recommendation.replaceAll('_', ' ')}</span>
                           )}
@@ -528,67 +778,17 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                           )}
                         </TableCell>
                         <TableCell className="align-top">
-                          {permissions.canEdit ? (
-                            <form action={statusFormAction} className="flex items-center gap-2">
-                              <input type="hidden" name="application_id" value={application.id} />
-                              <Select name="status" defaultValue={application.status} className="w-40">
-                                {statusOptions.map(status => (
-                                  <option key={status} value={status}>{status.replaceAll('_', ' ')}</option>
-                                ))}
-                              </Select>
-                              <SubmitButton variant="secondary">Save</SubmitButton>
-                            </form>
-                          ) : application.status.replaceAll('_', ' ')}
-                        </TableCell>
-                        <TableCell className="align-top whitespace-normal">
-                          <div className="flex flex-wrap gap-2">
-                            <Button
-                              type="button"
-                              size="sm"
-                              variant="secondary"
-                              icon={<EyeIcon className="h-4 w-4" />}
-                              onClick={() => openApplicationDetail(application)}
-                            >
-                              Detail
-                            </Button>
-                            {permissions.canManage && application.job_posting_id && (
-                              <form action={rescoreFormAction}>
-                                <input type="hidden" name="application_id" value={application.id} />
-                                <SubmitButton variant="secondary">Re-score</SubmitButton>
-                              </form>
-                            )}
-                            {permissions.canSend && (
-                              <>
-                                <form action={bookingInviteFormAction}>
-                                  <input type="hidden" name="application_id" value={application.id} />
-                                  <input type="hidden" name="type" value="interview" />
-                                  <SubmitButton variant="secondary">Interview</SubmitButton>
-                                </form>
-                                <form action={bookingInviteFormAction}>
-                                  <input type="hidden" name="application_id" value={application.id} />
-                                  <input type="hidden" name="type" value="trial_shift" />
-                                  <SubmitButton variant="secondary">Trial</SubmitButton>
-                                </form>
-                                <form action={decisionEmailFormAction}>
-                                  <input type="hidden" name="application_id" value={application.id} />
-                                  <input type="hidden" name="type" value="rejection" />
-                                  <SubmitButton variant="secondary">Reject email</SubmitButton>
-                                </form>
-                              </>
-                            )}
-                            {permissions.canManage && application.candidate?.email && (
-                              <form action={hireFormAction} className="flex gap-2">
-                                <input type="hidden" name="application_id" value={application.id} />
-                                <Input name="job_title" placeholder="Job title" className="w-32" />
-                                <SubmitButton>Hire</SubmitButton>
-                              </form>
-                            )}
-                          </div>
+                          {application.status.replaceAll('_', ' ')}
                         </TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
                 </Table>
+                {filteredApplications.length === 0 && (
+                  <p className="py-6 text-center text-sm text-text-muted">
+                    {showArchived ? 'No archived applications match.' : 'No active applications match.'}
+                  </p>
+                )}
               </CardBody>
             </Card>
 
@@ -644,6 +844,59 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                           Trial brief
                         </Button>
                       </div>
+                      {(permissions.canEdit || permissions.canManage || permissions.canSend) && (
+                        <div className="space-y-2 border-t border-border pt-3">
+                          <p className="text-xs font-semibold uppercase text-text-muted">Actions</p>
+                          {permissions.canEdit && (
+                            <form action={statusFormAction} className="flex flex-wrap items-center gap-2">
+                              <input type="hidden" name="application_id" value={selectedApplication.id} />
+                              <Select name="status" defaultValue={selectedApplication.status} className="w-44">
+                                {statusOptions.map(status => (
+                                  <option key={status} value={status}>{status.replaceAll('_', ' ')}</option>
+                                ))}
+                              </Select>
+                              <SubmitButton variant="secondary">Save status</SubmitButton>
+                            </form>
+                          )}
+                          <div className="flex flex-wrap gap-2">
+                            {permissions.canManage && selectedApplication.job_posting_id && (
+                              <form action={rescoreFormAction}>
+                                <input type="hidden" name="application_id" value={selectedApplication.id} />
+                                <SubmitButton variant="secondary">Re-score</SubmitButton>
+                              </form>
+                            )}
+                            {permissions.canSend && (
+                              <>
+                                <form action={bookingInviteFormAction}>
+                                  <input type="hidden" name="application_id" value={selectedApplication.id} />
+                                  <input type="hidden" name="type" value="interview" />
+                                  <SubmitButton variant="secondary">Interview</SubmitButton>
+                                </form>
+                                <form action={bookingInviteFormAction}>
+                                  <input type="hidden" name="application_id" value={selectedApplication.id} />
+                                  <input type="hidden" name="type" value="trial_shift" />
+                                  <SubmitButton variant="secondary">Trial</SubmitButton>
+                                </form>
+                              </>
+                            )}
+                          </div>
+                          {permissions.canManage && selectedApplication.candidate?.email && (
+                            <form action={hireFormAction} className="flex flex-wrap gap-2">
+                              <input type="hidden" name="application_id" value={selectedApplication.id} />
+                              <Input name="job_title" placeholder="Job title" className="w-40" />
+                              <SubmitButton>Hire</SubmitButton>
+                            </form>
+                          )}
+                          {permissions.canEdit && (
+                            <form action={selectedApplication.archived_at ? restoreApplicationFormAction : archiveApplicationFormAction}>
+                              <input type="hidden" name="application_id" value={selectedApplication.id} />
+                              <SubmitButton variant="secondary">
+                                {selectedApplication.archived_at ? 'Restore application' : 'Archive application'}
+                              </SubmitButton>
+                            </form>
+                          )}
+                        </div>
+                      )}
                     </div>
 
                     <div className="space-y-3">
@@ -866,86 +1119,227 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                       <TableHead>Posting</TableHead>
                       <TableHead>Status</TableHead>
                       <TableHead>Visibility</TableHead>
+                      <TableHead>Closes</TableHead>
                       <TableHead>Version</TableHead>
-                      <TableHead>Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {postings.map((posting: any) => (
-                      <TableRow key={posting.id}>
+                      <TableRow
+                        key={posting.id}
+                        className={selectedPosting?.id === posting.id ? 'bg-primary/5' : ''}
+                      >
                         <TableCell className="align-top whitespace-normal">
-                          <p className="font-medium text-text-strong">{posting.title}</p>
+                          <button
+                            type="button"
+                            className="text-left font-medium text-text-strong hover:text-primary hover:underline"
+                            onClick={() => openPostingDetail(posting)}
+                          >
+                            {posting.title}
+                          </button>
                           <p className="text-xs text-text-muted">{posting.slug}</p>
                         </TableCell>
                         <TableCell className="align-top">{posting.status}</TableCell>
-                        <TableCell className="align-top">{posting.is_public ? 'Public' : 'Private'}</TableCell>
+                        <TableCell className="align-top">{postingVisibilityText(posting)}</TableCell>
+                        <TableCell className="align-top">{formatDateOnly(posting.application_closing_date)}</TableCell>
                         <TableCell className="align-top">v{posting.version}</TableCell>
-                        <TableCell className="align-top whitespace-normal">
-                          {permissions.canEdit && (
-                            <form action={postingUpdateAction} className="grid min-w-72 grid-cols-2 gap-2">
-                              <input type="hidden" name="id" value={posting.id} />
-                              <input type="hidden" name="title" value={posting.title} />
-                              <input type="hidden" name="slug" value={posting.slug} />
-                              <input type="hidden" name="role_type" value={posting.role_type} />
-                              <input type="hidden" name="description" value={posting.description} />
-                              <input type="hidden" name="requirements" value={posting.requirements} />
-                              <input type="hidden" name="ai_scoring_notes" value={posting.ai_scoring_notes ?? ''} />
-                              <input type="hidden" name="employment_type" value={posting.employment_type} />
-                              <input type="hidden" name="positions_available" value={posting.positions_available ?? 1} />
-                              <Select name="status" defaultValue={posting.status} className="text-xs">
-                                <option value="draft">Draft</option>
-                                <option value="open">Open</option>
-                                <option value="closed">Closed</option>
-                                <option value="archived">Archived</option>
-                              </Select>
-                              <label className="flex items-center gap-1 text-xs">
-                                <input type="checkbox" name="is_public" defaultChecked={posting.is_public === true} />
-                                Public
-                              </label>
-                              <SubmitButton variant="secondary">Update</SubmitButton>
-                            </form>
-                          )}
-                        </TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
                 </Table>
-                <ActionStateMessage state={postingUpdateState} />
               </CardBody>
             </Card>
+
+            <Drawer
+              open={postingDrawerOpen && Boolean(selectedPosting)}
+              onClose={() => setPostingDrawerOpen(false)}
+              title={selectedPosting ? selectedPosting.title : 'Posting detail'}
+              width="min(760px, 100vw)"
+            >
+              {selectedPosting && (
+                <div className="space-y-4">
+                  <div className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-5">
+                    <div>
+                      <p className="text-xs font-semibold uppercase text-text-muted">Status</p>
+                      <p className="text-text-strong">{selectedPosting.status}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs font-semibold uppercase text-text-muted">Visibility</p>
+                      <p className="text-text-strong">{postingVisibilityText(selectedPosting)}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs font-semibold uppercase text-text-muted">Version</p>
+                      <p className="text-text-strong">v{selectedPosting.version}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs font-semibold uppercase text-text-muted">Openings</p>
+                      <p className="text-text-strong">{selectedPosting.positions_available ?? 1}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs font-semibold uppercase text-text-muted">Closes</p>
+                      <p className="text-text-strong">{formatDateOnly(selectedPosting.application_closing_date)}</p>
+                    </div>
+                  </div>
+
+                  {permissions.canEdit ? (
+                    <form action={postingUpdateAction} className="space-y-3">
+                      <input type="hidden" name="id" value={selectedPosting.id} />
+                      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                        <Field label="Job title">
+                          <Input name="title" defaultValue={selectedPosting.title} required />
+                        </Field>
+                        <Field label="Website slug" help="Used by the website URL and application form.">
+                          <Input name="slug" defaultValue={selectedPosting.slug} required />
+                        </Field>
+                        <Field label="Role type">
+                          <Select name="role_type" defaultValue={selectedPosting.role_type}>
+                            <option value="bar">Bar</option>
+                            <option value="kitchen">Kitchen</option>
+                            <option value="either">Either</option>
+                            <option value="management">Management</option>
+                            <option value="other">Other</option>
+                          </Select>
+                        </Field>
+                        <Field label="Employment type">
+                          <Select name="employment_type" defaultValue={selectedPosting.employment_type}>
+                            <option value="full_time">Full time</option>
+                            <option value="part_time">Part time</option>
+                            <option value="casual">Casual</option>
+                          </Select>
+                        </Field>
+                        <Field label="Status" help="Only open and public postings show on the website.">
+                          <Select name="status" defaultValue={selectedPosting.status}>
+                            <option value="draft">Draft</option>
+                            <option value="open">Open</option>
+                            <option value="closed">Closed</option>
+                            <option value="archived">Archived</option>
+                          </Select>
+                        </Field>
+                        <Field label="Positions available">
+                          <Input
+                            name="positions_available"
+                            type="number"
+                            min="1"
+                            defaultValue={selectedPosting.positions_available ?? 1}
+                          />
+                        </Field>
+                        <Field label="Application closing date" help="The last date applicants can apply. After this date it drops off the website.">
+                          <Input
+                            name="application_closing_date"
+                            type="date"
+                            defaultValue={dateInputValue(selectedPosting.application_closing_date)}
+                          />
+                        </Field>
+                      </div>
+                      <Field label="Website description">
+                        <Textarea name="description" defaultValue={selectedPosting.description} required rows={5} />
+                      </Field>
+                      <Field label="Website requirements">
+                        <Textarea name="requirements" defaultValue={selectedPosting.requirements} required rows={5} />
+                      </Field>
+                      <Field label="AI scoring notes" help="Internal guidance only. Applicants do not see this.">
+                        <Textarea
+                          name="ai_scoring_notes"
+                          defaultValue={selectedPosting.ai_scoring_notes ?? ''}
+                          rows={5}
+                        />
+                      </Field>
+                      <label className="flex items-center gap-2 text-sm">
+                        <input type="checkbox" name="is_public" defaultChecked={selectedPosting.is_public === true} />
+                        Public on website
+                      </label>
+                      <input type="hidden" name="is_public" value="false" />
+                      <div className="flex items-center gap-3">
+                        <SubmitButton>Save posting</SubmitButton>
+                        <ActionStateMessage state={postingUpdateState} />
+                      </div>
+                    </form>
+                  ) : (
+                    <div className="space-y-3 text-sm text-text">
+                      <div>
+                        <p className="text-xs font-semibold uppercase text-text-muted">Description</p>
+                        <p className="whitespace-pre-wrap">{selectedPosting.description}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs font-semibold uppercase text-text-muted">Requirements</p>
+                        <p className="whitespace-pre-wrap">{selectedPosting.requirements}</p>
+                      </div>
+                      {selectedPosting.ai_scoring_notes && (
+                        <div>
+                          <p className="text-xs font-semibold uppercase text-text-muted">AI scoring notes</p>
+                          <p className="whitespace-pre-wrap">{selectedPosting.ai_scoring_notes}</p>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {permissions.canCreate && (
+                    <form action={postingDuplicateAction} className="border-t border-border pt-4">
+                      <input type="hidden" name="id" value={selectedPosting.id} />
+                      <div className="flex flex-wrap items-center gap-3">
+                        <SubmitButton variant="secondary">Duplicate posting</SubmitButton>
+                        <ActionStateMessage state={postingDuplicateState} />
+                      </div>
+                      <p className="mt-2 text-xs text-text-muted">Creates a private draft copy with a new slug.</p>
+                    </form>
+                  )}
+                </div>
+              )}
+            </Drawer>
 
             {permissions.canCreate && (
               <Card>
                 <CardHeader title="New Posting" />
                 <CardBody>
                   <form action={postingAction} className="space-y-3">
-                    <Input name="title" placeholder="Title" required />
-                    <Input name="slug" placeholder="slug" required />
-                    <Select name="role_type" defaultValue="either">
-                      <option value="bar">Bar</option>
-                      <option value="kitchen">Kitchen</option>
-                      <option value="either">Either</option>
-                      <option value="management">Management</option>
-                      <option value="other">Other</option>
-                    </Select>
-                    <Select name="employment_type" defaultValue="part_time">
-                      <option value="full_time">Full time</option>
-                      <option value="part_time">Part time</option>
-                      <option value="casual">Casual</option>
-                    </Select>
-                    <Select name="status" defaultValue="draft">
-                      <option value="draft">Draft</option>
-                      <option value="open">Open</option>
-                      <option value="closed">Closed</option>
-                      <option value="archived">Archived</option>
-                    </Select>
-                    <Input name="positions_available" type="number" min="1" defaultValue="1" />
-                    <Textarea name="description" placeholder="Description" required rows={4} />
-                    <Textarea name="requirements" placeholder="Requirements" required rows={4} />
-                    <Textarea name="ai_scoring_notes" placeholder="AI scoring notes" rows={3} />
+                    <Field label="Job title">
+                      <Input name="title" required />
+                    </Field>
+                    <Field label="Website slug" help="Lowercase letters, numbers and hyphens only.">
+                      <Input name="slug" required />
+                    </Field>
+                    <Field label="Role type">
+                      <Select name="role_type" defaultValue="either">
+                        <option value="bar">Bar</option>
+                        <option value="kitchen">Kitchen</option>
+                        <option value="either">Either</option>
+                        <option value="management">Management</option>
+                        <option value="other">Other</option>
+                      </Select>
+                    </Field>
+                    <Field label="Employment type">
+                      <Select name="employment_type" defaultValue="part_time">
+                        <option value="full_time">Full time</option>
+                        <option value="part_time">Part time</option>
+                        <option value="casual">Casual</option>
+                      </Select>
+                    </Field>
+                    <Field label="Status">
+                      <Select name="status" defaultValue="draft">
+                        <option value="draft">Draft</option>
+                        <option value="open">Open</option>
+                        <option value="closed">Closed</option>
+                        <option value="archived">Archived</option>
+                      </Select>
+                    </Field>
+                    <Field label="Positions available">
+                      <Input name="positions_available" type="number" min="1" defaultValue="1" />
+                    </Field>
+                    <Field label="Application closing date" help="The last date applicants can apply. Leave blank if there is no date yet.">
+                      <Input name="application_closing_date" type="date" />
+                    </Field>
+                    <Field label="Website description">
+                      <Textarea name="description" required rows={4} />
+                    </Field>
+                    <Field label="Website requirements">
+                      <Textarea name="requirements" required rows={4} />
+                    </Field>
+                    <Field label="AI scoring notes" help="Internal guidance only. Applicants do not see this.">
+                      <Textarea name="ai_scoring_notes" rows={3} />
+                    </Field>
                     <label className="flex items-center gap-2 text-sm">
                       <input type="checkbox" name="is_public" />
-                      Public
+                      Public on website
                     </label>
                     <Button type="submit" variant="primary">Create posting</Button>
                     <ActionStateMessage state={postingState} />
@@ -961,6 +1355,10 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
             <Card className="xl:col-span-2">
               <CardHeader title="Slots" />
               <CardBody>
+                <label className="mb-3 flex items-center gap-2 text-sm text-text-muted">
+                  <input type="checkbox" checked={showArchived} onChange={event => setShowArchived(event.target.checked)} />
+                  Show archived
+                </label>
                 <Table>
                   <TableHeader>
                     <TableRow>
@@ -971,16 +1369,23 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {slots.map((slot: any) => (
-                      <TableRow key={slot.id}>
-                        <TableCell>{slot.type.replaceAll('_', ' ')}</TableCell>
+                    {filteredSlots.map((slot: any) => (
+                      <TableRow key={slot.id} className={slot.archived_at ? 'opacity-60' : ''}>
+                        <TableCell>
+                          <button type="button" className="text-left font-medium hover:text-primary hover:underline" onClick={() => openSlotDetail(slot)}>
+                            {slot.type.replaceAll('_', ' ')}
+                          </button>
+                        </TableCell>
                         <TableCell>{formatDateTime(slot.starts_at)}</TableCell>
                         <TableCell>{slot.location}</TableCell>
-                        <TableCell>{slot.status}</TableCell>
+                        <TableCell>{slot.archived_at ? 'archived' : slot.status}</TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
                 </Table>
+                {filteredSlots.length === 0 && (
+                  <p className="py-6 text-center text-sm text-text-muted">No slots to show.</p>
+                )}
               </CardBody>
             </Card>
 
@@ -1018,10 +1423,12 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {appointments.map((appointment: any) => (
-                      <TableRow key={appointment.id}>
+                    {filteredAppointments.map((appointment: any) => (
+                      <TableRow key={appointment.id} className={appointment.archived_at ? 'opacity-60' : ''}>
                         <TableCell className="align-top whitespace-normal">
-                          <p className="font-medium text-text-strong">{candidateName(appointment.candidate)}</p>
+                          <button type="button" className="text-left font-medium text-text-strong hover:text-primary hover:underline" onClick={() => openAppointmentDetail(appointment)}>
+                            {candidateName(appointment.candidate)}
+                          </button>
                           <p className="text-xs text-text-muted">{appointment.application?.job_posting?.title || 'Talent pool'}</p>
                         </TableCell>
                         <TableCell className="align-top">{appointment.type?.replaceAll('_', ' ')}</TableCell>
@@ -1032,39 +1439,232 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                         </TableCell>
                         <TableCell className="align-top whitespace-normal">
                           {permissions.canEdit ? (
-                            <form action={outcomeFormAction} className="grid min-w-[34rem] grid-cols-5 gap-2">
-                              <input type="hidden" name="appointment_id" value={appointment.id} />
-                              <Select name="status" defaultValue={appointment.status} className="text-xs">
-                                <option value="scheduled">Scheduled</option>
-                                <option value="completed">Completed</option>
-                                <option value="no_show">No-show</option>
-                                <option value="cancelled">Cancelled</option>
-                              </Select>
-                              <Select name="outcome_rating" defaultValue={appointment.outcome_rating ?? ''} className="text-xs">
-                                <option value="">Rating</option>
-                                <option value="1">1</option>
-                                <option value="2">2</option>
-                                <option value="3">3</option>
-                                <option value="4">4</option>
-                                <option value="5">5</option>
-                              </Select>
-                              <Input name="outcome" defaultValue={appointment.outcome ?? ''} placeholder="Notes" className="text-xs" />
-                              <label className="flex items-center gap-1 text-xs">
-                                <input type="checkbox" name="meal_provided" defaultChecked={appointment.meal_provided === true} />
-                                Meal
-                              </label>
-                              <SubmitButton variant="secondary">Save</SubmitButton>
-                            </form>
+                            <Button type="button" size="sm" variant="secondary" onClick={() => openAppointmentDetail(appointment)}>
+                              Open
+                            </Button>
                           ) : appointment.status}
                         </TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
                 </Table>
+                {filteredAppointments.length === 0 && (
+                  <p className="py-6 text-center text-sm text-text-muted">No appointments to show.</p>
+                )}
               </CardBody>
             </Card>
           </section>
         )}
+
+        <Drawer
+          open={slotDrawerOpen && Boolean(selectedSlot)}
+          onClose={() => setSlotDrawerOpen(false)}
+          title={selectedSlot ? `${selectedSlot.type?.replaceAll('_', ' ')} slot` : 'Slot'}
+          width="min(620px, 100vw)"
+        >
+          {selectedSlot && (
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-3 text-sm">
+                <div>
+                  <p className="text-xs font-semibold uppercase text-text-muted">When</p>
+                  <p>{formatDateTime(selectedSlot.starts_at)}</p>
+                </div>
+                <div>
+                  <p className="text-xs font-semibold uppercase text-text-muted">Status</p>
+                  <p>{selectedSlot.archived_at ? 'archived' : selectedSlot.status}</p>
+                </div>
+              </div>
+              {permissions.canEdit && (
+                <form action={slotUpdateAction} className="space-y-3">
+                  <input type="hidden" name="slot_id" value={selectedSlot.id} />
+                  <Field label="Type">
+                    <Select name="type" defaultValue={selectedSlot.type}>
+                      <option value="interview">Interview</option>
+                      <option value="trial_shift">Trial shift</option>
+                    </Select>
+                  </Field>
+                  <Field label="Starts">
+                    <Input name="starts_at" type="datetime-local" defaultValue={todayLocalDateTime(selectedSlot.starts_at)} required />
+                  </Field>
+                  <Field label="Ends">
+                    <Input name="ends_at" type="datetime-local" defaultValue={todayLocalDateTime(selectedSlot.ends_at)} required />
+                  </Field>
+                  <Field label="Location">
+                    <Input name="location" defaultValue={selectedSlot.location} />
+                  </Field>
+                  <Field label="Timezone">
+                    <Input name="timezone" defaultValue={selectedSlot.timezone ?? 'Europe/London'} />
+                  </Field>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <SubmitButton>Save slot</SubmitButton>
+                    <ActionStateMessage state={slotUpdateState} />
+                  </div>
+                </form>
+              )}
+              {permissions.canEdit && (
+                <div className="flex flex-wrap gap-2 border-t border-border pt-3">
+                  <form action={cancelSlotFormAction}>
+                    <input type="hidden" name="slot_id" value={selectedSlot.id} />
+                    <SubmitButton variant="secondary">Cancel slot</SubmitButton>
+                  </form>
+                  <form action={selectedSlot.archived_at ? restoreSlotFormAction : archiveSlotFormAction}>
+                    <input type="hidden" name="slot_id" value={selectedSlot.id} />
+                    <SubmitButton variant="secondary">{selectedSlot.archived_at ? 'Restore slot' : 'Archive slot'}</SubmitButton>
+                  </form>
+                </div>
+              )}
+            </div>
+          )}
+        </Drawer>
+
+        <Drawer
+          open={appointmentDrawerOpen && Boolean(selectedAppointment)}
+          onClose={() => setAppointmentDrawerOpen(false)}
+          title={selectedAppointment ? candidateName(selectedAppointment.candidate) : 'Appointment'}
+          width="min(760px, 100vw)"
+        >
+          {selectedAppointment && (
+            <div className="space-y-5">
+              <div className="grid grid-cols-2 gap-3 text-sm md:grid-cols-4">
+                <div>
+                  <p className="text-xs font-semibold uppercase text-text-muted">Type</p>
+                  <p>{selectedAppointment.type?.replaceAll('_', ' ')}</p>
+                </div>
+                <div>
+                  <p className="text-xs font-semibold uppercase text-text-muted">When</p>
+                  <p>{formatDateTime(selectedAppointment.scheduled_start)}</p>
+                </div>
+                <div>
+                  <p className="text-xs font-semibold uppercase text-text-muted">Status</p>
+                  <p>{selectedAppointment.archived_at ? 'archived' : selectedAppointment.status}</p>
+                </div>
+                <div>
+                  <p className="text-xs font-semibold uppercase text-text-muted">Calendar</p>
+                  <p>{selectedAppointment.calendar_sync_status}</p>
+                </div>
+              </div>
+
+              {permissions.canEdit && (
+                <form action={outcomeFormAction} className="grid grid-cols-1 gap-3 md:grid-cols-4">
+                  <input type="hidden" name="appointment_id" value={selectedAppointment.id} />
+                  <Field label="Outcome">
+                    <Select name="status" defaultValue={selectedAppointment.status}>
+                      <option value="scheduled">Scheduled</option>
+                      <option value="completed">Completed</option>
+                      <option value="no_show">No-show</option>
+                      <option value="cancelled">Cancelled</option>
+                    </Select>
+                  </Field>
+                  <Field label="Rating">
+                    <Select name="outcome_rating" defaultValue={selectedAppointment.outcome_rating ?? ''}>
+                      <option value="">Rating</option>
+                      <option value="1">1</option>
+                      <option value="2">2</option>
+                      <option value="3">3</option>
+                      <option value="4">4</option>
+                      <option value="5">5</option>
+                    </Select>
+                  </Field>
+                  <label className="mt-6 flex items-center gap-2 text-sm">
+                    <input type="checkbox" name="meal_provided" defaultChecked={selectedAppointment.meal_provided === true} />
+                    Meal provided
+                  </label>
+                  <div className="md:col-span-4">
+                    <Field label="Notes">
+                      <Textarea name="outcome" defaultValue={selectedAppointment.outcome ?? ''} rows={3} />
+                    </Field>
+                  </div>
+                  <div className="md:col-span-4">
+                    <SubmitButton>Save outcome</SubmitButton>
+                  </div>
+                </form>
+              )}
+
+              {permissions.canEdit && (
+                <form action={scorecardAction} className="space-y-3 border-t border-border pt-4">
+                  <input type="hidden" name="appointment_id" value={selectedAppointment.id} />
+                  <p className="text-xs font-semibold uppercase text-text-muted">Scorecard</p>
+                  <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+                    {['experience', 'attitude', 'availability'].map(label => (
+                      <div key={label} className="space-y-2">
+                        <Field label={`${label} rating`}>
+                          <Select name={`${label}_rating`} defaultValue="">
+                            <option value="">-</option>
+                            <option value="1">1</option>
+                            <option value="2">2</option>
+                            <option value="3">3</option>
+                            <option value="4">4</option>
+                            <option value="5">5</option>
+                          </Select>
+                        </Field>
+                        <Textarea name={`${label}_notes`} placeholder="Notes" rows={2} />
+                      </div>
+                    ))}
+                  </div>
+                  <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                    <Field label="Overall rating">
+                      <Select name="overall_rating" defaultValue="">
+                        <option value="">-</option>
+                        <option value="1">1</option>
+                        <option value="2">2</option>
+                        <option value="3">3</option>
+                        <option value="4">4</option>
+                        <option value="5">5</option>
+                      </Select>
+                    </Field>
+                    <Field label="Recommendation">
+                      <Select name="recommendation" defaultValue="no_decision">
+                        <option value="no_decision">No decision</option>
+                        <option value="hire">Hire</option>
+                        <option value="hold">Hold</option>
+                        <option value="reject">Reject</option>
+                        <option value="rebook">Rebook</option>
+                      </Select>
+                    </Field>
+                  </div>
+                  <Textarea name="comments" placeholder="Scorecard comments" rows={3} />
+                  <div className="flex items-center gap-2">
+                    <SubmitButton variant="secondary">Save scorecard</SubmitButton>
+                    <ActionStateMessage state={scorecardState} />
+                  </div>
+                </form>
+              )}
+
+              <div className="space-y-2">
+                <p className="text-xs font-semibold uppercase text-text-muted">Scorecards</p>
+                {scorecards.filter((scorecard: any) => scorecard.appointment_id === selectedAppointment.id).map((scorecard: any) => (
+                  <div key={scorecard.id} className="rounded border border-border bg-surface-2 p-3 text-sm">
+                    <p className="font-medium">{scorecard.recommendation?.replaceAll('_', ' ')} · {scorecard.overall_rating ?? '-'}/5</p>
+                    <p className="mt-1 whitespace-pre-wrap text-text-muted">{scorecard.comments || 'No comments'}</p>
+                  </div>
+                ))}
+              </div>
+
+              {permissions.canEdit && (
+                <div className="flex flex-wrap gap-2 border-t border-border pt-3">
+                  <form action={rescheduleAppointmentFormAction} className="flex flex-wrap gap-2">
+                    <input type="hidden" name="appointment_id" value={selectedAppointment.id} />
+                    <Select name="slot_id" className="w-56">
+                      {slots.filter((slot: any) => !slot.archived_at && slot.status === 'open' && slot.type === selectedAppointment.type).map((slot: any) => (
+                        <option key={slot.id} value={slot.id}>{formatDateTime(slot.starts_at)}</option>
+                      ))}
+                    </Select>
+                    <SubmitButton variant="secondary">Reschedule</SubmitButton>
+                  </form>
+                  <form action={cancelAppointmentFormAction} className="flex flex-wrap gap-2">
+                    <input type="hidden" name="appointment_id" value={selectedAppointment.id} />
+                    <Input name="reason" placeholder="Cancel reason" className="w-44" />
+                    <SubmitButton variant="secondary">Cancel</SubmitButton>
+                  </form>
+                  <form action={selectedAppointment.archived_at ? restoreAppointmentFormAction : archiveAppointmentFormAction}>
+                    <input type="hidden" name="appointment_id" value={selectedAppointment.id} />
+                    <SubmitButton variant="secondary">{selectedAppointment.archived_at ? 'Restore' : 'Archive'}</SubmitButton>
+                  </form>
+                </div>
+              )}
+            </div>
+          )}
+        </Drawer>
 
         {activeTab === 'talent' && (
           <section>
@@ -1128,7 +1728,9 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                     {talentCandidates.map((candidate: any) => (
                       <TableRow key={candidate.id}>
                         <TableCell className="align-top whitespace-normal">
-                          <p className="font-medium text-text-strong">{candidateName(candidate)}</p>
+                          <button type="button" className="text-left font-medium text-text-strong hover:text-primary hover:underline" onClick={() => openTalentDetail(candidate)}>
+                            {candidateName(candidate)}
+                          </button>
                           <p className="text-xs text-text-muted">{candidate.email}</p>
                         </TableCell>
                         <TableCell className="align-top">
@@ -1206,6 +1808,107 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
             </Card>
           </section>
         )}
+
+        <Drawer
+          open={talentDrawerOpen && Boolean(selectedTalentCandidate)}
+          onClose={() => setTalentDrawerOpen(false)}
+          title={selectedTalentCandidate ? candidateName(selectedTalentCandidate) : 'Candidate'}
+          width="min(760px, 100vw)"
+        >
+          {selectedTalentCandidate && (
+            <div className="space-y-5">
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <div className="space-y-3">
+                  <div>
+                    <p className="text-xs font-semibold uppercase text-text-muted">Candidate</p>
+                    <p className="text-base font-semibold text-text-strong">{candidateName(selectedTalentCandidate)}</p>
+                    <p className="text-sm text-text-muted">{selectedTalentCandidate.email || 'No email'}</p>
+                    <p className="text-sm text-text-muted">{selectedTalentCandidate.phone_e164 || selectedTalentCandidate.phone || 'No phone'}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs font-semibold uppercase text-text-muted">CV</p>
+                    <p className="text-sm text-text">{selectedTalentCandidate.cv_extraction_status?.replaceAll('_', ' ') ?? 'no cv'}</p>
+                    <p className="mt-1 text-sm text-text-muted">{profileSummary(selectedTalentCandidate) ?? 'No AI profile summary.'}</p>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {selectedTalentCandidate.cv_file_path && (
+                      <Button type="button" size="sm" variant="secondary" onClick={() => openCv(selectedTalentCandidate.id)}>
+                        Open CV
+                      </Button>
+                    )}
+                    {permissions.canManage && selectedTalentCandidate.cv_file_path && (
+                      <form action={cvRetryAction}>
+                        <input type="hidden" name="candidate_id" value={selectedTalentCandidate.id} />
+                        <SubmitButton variant="secondary">Retry CV</SubmitButton>
+                      </form>
+                    )}
+                  </div>
+                  {permissions.canManage && (
+                    <form action={matchFormAction} className="flex flex-wrap gap-2">
+                      <input type="hidden" name="candidate_id" value={selectedTalentCandidate.id} />
+                      <Select name="job_posting_id" className="w-56">
+                        {postings.map((posting: any) => (
+                          <option key={posting.id} value={posting.id}>{posting.title}</option>
+                        ))}
+                      </Select>
+                      <SubmitButton variant="secondary">Match to posting</SubmitButton>
+                    </form>
+                  )}
+                </div>
+
+                <form action={candidateUpdateAction} className="grid grid-cols-1 gap-2">
+                  <input type="hidden" name="candidate_id" value={selectedTalentCandidate.id} />
+                  <p className="text-xs font-semibold uppercase text-text-muted">Profile</p>
+                  <div className="grid grid-cols-2 gap-2">
+                    <Input name="first_name" defaultValue={selectedTalentCandidate.first_name ?? ''} placeholder="First name" />
+                    <Input name="last_name" defaultValue={selectedTalentCandidate.last_name ?? ''} placeholder="Last name" />
+                  </div>
+                  <Input name="email" defaultValue={selectedTalentCandidate.email ?? ''} placeholder="Email" />
+                  <Input name="phone" defaultValue={selectedTalentCandidate.phone ?? ''} placeholder="Phone" />
+                  <Input name="phone_e164" defaultValue={selectedTalentCandidate.phone_e164 ?? ''} placeholder="Phone E164" />
+                  <Input name="location" defaultValue={selectedTalentCandidate.location ?? ''} placeholder="Location" />
+                  <Select name="right_to_work_status" defaultValue={selectedTalentCandidate.right_to_work_status ?? 'not_checked'}>
+                    <option value="not_checked">Right to work not checked</option>
+                    <option value="pending">Right to work pending</option>
+                    <option value="verified">Right to work verified</option>
+                    <option value="failed">Right to work failed</option>
+                  </Select>
+                  <Select name="right_to_work_document_type" defaultValue={selectedTalentCandidate.right_to_work_document_type ?? ''}>
+                    <option value="">Document type</option>
+                    <option value="Passport">Passport</option>
+                    <option value="Biometric Residence Permit">Biometric Residence Permit</option>
+                    <option value="Share Code">Share Code</option>
+                    <option value="List A">List A</option>
+                    <option value="List B">List B</option>
+                    <option value="Other">Other</option>
+                  </Select>
+                  <Input name="right_to_work_checked_at" type="datetime-local" defaultValue={todayLocalDateTime(selectedTalentCandidate.right_to_work_checked_at)} />
+                  <Textarea name="notes" defaultValue={selectedTalentCandidate.notes ?? ''} placeholder="Recruitment notes" rows={3} />
+                  <label className="flex items-center gap-2 text-sm">
+                    <input type="checkbox" name="sms_consent" defaultChecked={selectedTalentCandidate.sms_consent === true} />
+                    SMS consent
+                  </label>
+                  <label className="flex items-center gap-2 text-sm">
+                    <input type="checkbox" name="future_recruitment_consent" defaultChecked={selectedTalentCandidate.future_recruitment_consent === true} />
+                    Future recruitment consent
+                  </label>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <SubmitButton>Save candidate</SubmitButton>
+                    <ActionStateMessage state={candidateUpdateState} />
+                  </div>
+                </form>
+              </div>
+
+              {permissions.canDelete && !selectedTalentCandidate.anonymised_at && (
+                <form action={erasureFormAction} className="flex flex-wrap gap-2 border-t border-border pt-4">
+                  <input type="hidden" name="candidate_id" value={selectedTalentCandidate.id} />
+                  <Input name="reason" placeholder="Erasure reason" className="w-64" />
+                  <SubmitButton variant="danger">Erase candidate data</SubmitButton>
+                </form>
+              )}
+            </div>
+          )}
+        </Drawer>
 
         {activeTab === 'communications' && (
           <section className="grid grid-cols-1 gap-4 xl:grid-cols-2">

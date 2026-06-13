@@ -123,6 +123,19 @@ function extractClientIp(request: NextRequest): string | null {
   return ip
 }
 
+function normalizeRequestHost(value: string | null): string | null {
+  if (!value) return null
+  const normalized = value.split(':')[0]?.trim().toLowerCase()
+  return normalized || null
+}
+
+function isMissingRequestHostColumn(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false
+  const code = (error as { code?: string }).code
+  const message = String((error as { message?: string }).message || '')
+  return code === '42703' || message.includes('request_host')
+}
+
 function toMetadataRecord(value: unknown): Record<string, unknown> {
   if (value && typeof value === 'object' && !Array.isArray(value)) {
     return { ...(value as Record<string, unknown>) }
@@ -443,25 +456,38 @@ export async function GET(
         }
         const ipAddress = extractClientIp(request)
 
+        const clickPayload: Record<string, unknown> = {
+          short_link_id: resolvedLink.id,
+          user_agent: userAgent,
+          referrer: request.headers.get('referer'),
+          ip_address: ipAddress,
+          country: getCountryFromHeaders(request.headers),
+          city: getCityFromHeaders(request.headers),
+          region: getRegionFromHeaders(request.headers),
+          device_type: deviceType,
+          browser,
+          os,
+          utm_source: utmParams.utm_source,
+          utm_medium: utmParams.utm_medium,
+          utm_campaign: utmParams.utm_campaign,
+          request_host: normalizeRequestHost(request.headers.get('host')),
+          metadata: resolvedViaAlias ? { alias_code: shortCode } : {}
+        }
+
         const { error: clickInsertError } = await supabase
           .from('short_link_clicks')
-          .insert({
-            short_link_id: resolvedLink.id,
-            user_agent: userAgent,
-            referrer: request.headers.get('referer'),
-            ip_address: ipAddress,
-            country: getCountryFromHeaders(request.headers),
-            city: getCityFromHeaders(request.headers),
-            region: getRegionFromHeaders(request.headers),
-            device_type: deviceType,
-            browser,
-            os,
-            utm_source: utmParams.utm_source,
-            utm_medium: utmParams.utm_medium,
-            utm_campaign: utmParams.utm_campaign,
-            metadata: resolvedViaAlias ? { alias_code: shortCode } : {}
-          })
-        if (clickInsertError) throw clickInsertError
+          .insert(clickPayload)
+        if (clickInsertError) {
+          if (!isMissingRequestHostColumn(clickInsertError)) {
+            throw clickInsertError
+          }
+
+          const { request_host: _requestHost, ...fallbackPayload } = clickPayload
+          const { error: fallbackClickInsertError } = await supabase
+            .from('short_link_clicks')
+            .insert(fallbackPayload)
+          if (fallbackClickInsertError) throw fallbackClickInsertError
+        }
 
         if (deviceType !== 'bot') {
           await supabase.rpc('increment_short_link_clicks', {

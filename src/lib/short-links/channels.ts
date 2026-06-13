@@ -1,4 +1,4 @@
-export type ChannelType = 'digital' | 'print'
+export type ChannelType = 'digital' | 'print' | 'screen'
 
 export interface ShortLinkChannel {
   key: string
@@ -32,12 +32,35 @@ export const PRINT_CHANNELS: ShortLinkChannel[] = [
   { key: 'review_card', label: 'Review Card', type: 'print', utmSource: 'review_card', utmMedium: 'print', utmContent: 'review_card_qr' },
   { key: 'window_sticker', label: 'Window Sticker', type: 'print', utmSource: 'window_sticker', utmMedium: 'print', utmContent: 'window_sticker_qr' },
   { key: 'menu_insert', label: 'Menu Insert', type: 'print', utmSource: 'menu_insert', utmMedium: 'print', utmContent: 'menu_insert_qr' },
+  { key: 'printed_menu', label: 'Printed Menu', type: 'print', utmSource: 'printed_menu', utmMedium: 'print', utmContent: 'printed_menu_qr' },
   { key: 'flyer', label: 'Flyer', type: 'print', utmSource: 'flyer', utmMedium: 'print', utmContent: 'flyer_qr' },
   { key: 'receipt', label: 'Receipt', type: 'print', utmSource: 'receipt', utmMedium: 'print', utmContent: 'receipt_qr' },
   { key: 'chalkboard', label: 'Chalkboard', type: 'print', utmSource: 'chalkboard', utmMedium: 'print', utmContent: 'chalkboard_qr' },
+  { key: 'game_sheet', label: 'Game Sheet', type: 'print', utmSource: 'game_sheet', utmMedium: 'print', utmContent: 'game_sheet_qr' },
+  { key: 'beer_mat', label: 'Beer Mat / Coaster', type: 'print', utmSource: 'beer_mat', utmMedium: 'print', utmContent: 'beer_mat_qr' },
+  { key: 'staff_badge', label: 'Staff Badge / Lanyard', type: 'print', utmSource: 'staff_badge', utmMedium: 'print', utmContent: 'staff_badge_qr' },
+  { key: 'toilet_poster', label: 'Toilet Poster', type: 'print', utmSource: 'toilet_poster', utmMedium: 'print', utmContent: 'toilet_poster_qr' },
+  { key: 'a_board', label: 'Outdoor A-board', type: 'print', utmSource: 'a_board', utmMedium: 'print', utmContent: 'a_board_qr' },
+  { key: 'bar_top_display', label: 'Bar Top Display', type: 'print', utmSource: 'bar_top_display', utmMedium: 'print', utmContent: 'bar_top_display_qr' },
+  { key: 'bill_presenter', label: 'Bill Presenter', type: 'print', utmSource: 'bill_presenter', utmMedium: 'print', utmContent: 'bill_presenter_qr' },
+  { key: 'kids_activity_sheet', label: 'Kids Activity Sheet', type: 'print', utmSource: 'kids_activity_sheet', utmMedium: 'print', utmContent: 'kids_activity_sheet_qr' },
+  { key: 'loyalty_card', label: 'Loyalty Card', type: 'print', utmSource: 'loyalty_card', utmMedium: 'print', utmContent: 'loyalty_card_qr' },
+  { key: 'wifi_card', label: 'WiFi Card / Sign', type: 'print', utmSource: 'wifi_card', utmMedium: 'print', utmContent: 'wifi_card_qr' },
+  { key: 'private_hire_pack', label: 'Private Hire Pack', type: 'print', utmSource: 'private_hire_pack', utmMedium: 'print', utmContent: 'private_hire_pack_qr' },
+  { key: 'partner_poster', label: 'Local Partner Poster', type: 'print', utmSource: 'partner_poster', utmMedium: 'print', utmContent: 'partner_poster_qr' },
 ]
 
-export const ALL_CHANNELS: ShortLinkChannel[] = [...DIGITAL_CHANNELS, ...PRINT_CHANNELS]
+export const SCREEN_CHANNELS: ShortLinkChannel[] = [
+  { key: 'in_game_screen', label: 'In-game Screen', type: 'screen', utmSource: 'in_game_screen', utmMedium: 'screen', utmContent: 'in_game_screen_qr' },
+  { key: 'venue_screen', label: 'Venue Screen', type: 'screen', utmSource: 'venue_screen', utmMedium: 'screen', utmContent: 'venue_screen_qr' },
+  { key: 'event_host_slide', label: 'Event Host Slide', type: 'screen', utmSource: 'event_host_slide', utmMedium: 'screen', utmContent: 'event_host_slide_qr' },
+  { key: 'pre_event_screen', label: 'Pre-event Waiting Screen', type: 'screen', utmSource: 'pre_event_screen', utmMedium: 'screen', utmContent: 'pre_event_screen_qr' },
+  { key: 'post_event_screen', label: 'Post-event Book Next Screen', type: 'screen', utmSource: 'post_event_screen', utmMedium: 'screen', utmContent: 'post_event_screen_qr' },
+]
+
+export const QR_CHANNELS: ShortLinkChannel[] = [...PRINT_CHANNELS, ...SCREEN_CHANNELS]
+
+export const ALL_CHANNELS: ShortLinkChannel[] = [...DIGITAL_CHANNELS, ...QR_CHANNELS]
 
 export const CHANNEL_MAP = new Map(ALL_CHANNELS.map((c) => [c.key, c]))
 
@@ -63,8 +86,26 @@ export const CHANNEL_COLOURS: Record<string, string> = {
   window_sticker: '#eab308',
   flyer: '#fb923c',
   menu_insert: '#f97316',
+  printed_menu: '#f97316',
   receipt: '#ea580c',
   chalkboard: '#854d0e',
+  game_sheet: '#c2410c',
+  beer_mat: '#b45309',
+  staff_badge: '#92400e',
+  toilet_poster: '#78350f',
+  a_board: '#f97316',
+  bar_top_display: '#ea580c',
+  bill_presenter: '#c2410c',
+  kids_activity_sheet: '#fb923c',
+  loyalty_card: '#a16207',
+  wifi_card: '#eab308',
+  private_hire_pack: '#854d0e',
+  partner_poster: '#f59e0b',
+  in_game_screen: '#14b8a6',
+  venue_screen: '#0d9488',
+  event_host_slide: '#0f766e',
+  pre_event_screen: '#2dd4bf',
+  post_event_screen: '#5eead4',
 }
 
 /** Fallback colour for unknown channels */

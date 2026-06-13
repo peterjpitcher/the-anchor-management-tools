@@ -305,3 +305,22 @@ export async function getShortLinkVolumeAdvanced(
     return { error: getErrorMessage(error) };
   }
 }
+
+export async function getLegacyDomainUsage(days: number = 90) {
+  try {
+    const canView = await checkUserPermission('short_links', 'view');
+    if (!canView) {
+      return { error: 'You do not have permission to view short link analytics' };
+    }
+
+    const validatedDays = z.number().int().min(1).max(730).parse(days);
+    const data = await ShortLinkService.getLegacyDomainUsage(validatedDays);
+    return { success: true, data };
+  } catch (error: unknown) {
+    console.error('Legacy domain usage error:', error);
+    if (error instanceof z.ZodError) {
+      return { error: error.errors[0]?.message || 'Invalid legacy usage range' };
+    }
+    return { error: getErrorMessage(error) };
+  }
+}
