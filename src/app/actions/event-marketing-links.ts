@@ -2,7 +2,7 @@
 
 import { checkUserPermission } from '@/app/actions/rbac'
 import { EventMarketingService, type EventMarketingLink } from '@/services/event-marketing'
-import { EVENT_MARKETING_CHANNELS, type EventMarketingChannelKey } from '@/lib/event-marketing-links'
+import { EVENT_MARKETING_CHANNELS, isEventMarketingQrChannel, type EventMarketingChannelKey } from '@/lib/event-marketing-links'
 import { getErrorMessage } from '@/lib/errors';
 
 export type { EventMarketingLink }
@@ -58,7 +58,7 @@ export async function generateSingleMarketingLink(
     }
 
     const channelConfig = EVENT_MARKETING_CHANNELS.find(c => c.key === channel)
-    if (!channelConfig || channelConfig.tier !== 'on_demand') {
+    if (!channelConfig || (channelConfig.tier !== 'on_demand' && !isEventMarketingQrChannel(channelConfig))) {
       return { error: 'This channel is generated automatically' }
     }
 

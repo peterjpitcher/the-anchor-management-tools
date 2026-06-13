@@ -8,6 +8,11 @@ import {
   type ShortLinkInsightsGranularity,
   validateInsightsRange,
 } from '@/lib/short-link-insights-timeframes';
+import type {
+  LegacyDomainLinkUsage,
+  LegacyDomainRecentClick,
+  LegacyDomainUsage,
+} from '@/types/short-links';
 
 // Validation schemas
 const CustomCodeSchema = z
@@ -79,6 +84,31 @@ type ShortLinkParentRow = {
   metadata: Record<string, unknown> | null;
 };
 
+type LegacyDomainShortLinkRow = {
+  id: string;
+  short_code: string;
+  name: string | null;
+  destination_url: string | null;
+  link_type: string | null;
+  metadata: Record<string, unknown> | null;
+  click_count: number | null;
+  last_clicked_at: string | null;
+};
+
+type LegacyDomainClickRow = {
+  id: string;
+  clicked_at: string | null;
+  device_type: string | null;
+  request_host?: string | null;
+  short_link_id: string | null;
+  short_links: LegacyDomainShortLinkRow | LegacyDomainShortLinkRow[] | null;
+};
+
+const LEGACY_SHORT_LINK_HOSTS = new Set(['vip-club.uk', 'www.vip-club.uk']);
+const CANONICAL_SHORT_LINK_HOSTS = new Set(['l.the-anchor.pub', 'the-anchor.pub', 'www.the-anchor.pub']);
+const LEGACY_USAGE_PAGE_SIZE = 1000;
+const LEGACY_USAGE_MAX_ROWS = 50000;
+
 function normalizeShortCode(value: string): string {
   const normalized = value.trim().replace(/^\//, '').toLowerCase();
   if (!/^[a-z0-9-]+$/.test(normalized)) {
@@ -91,6 +121,153 @@ function withUtmContent(destinationUrl: string, utmContent: string): string {
   const url = new URL(destinationUrl);
   url.searchParams.set('utm_content', utmContent.trim().toLowerCase());
   return url.toString();
+}
+
+function normalizeHost(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const normalized = value.split(':')[0]?.trim().toLowerCase();
+  return normalized || null;
+}
+
+function isLegacyShortLinkHost(value: unknown): boolean {
+  const normalized = normalizeHost(value);
+  if (!normalized) return false;
+  return LEGACY_SHORT_LINK_HOSTS.has(normalized) || normalized.endsWith('.vip-club.uk');
+}
+
+function isCanonicalShortLinkHost(value: unknown): boolean {
+  const normalized = normalizeHost(value);
+  if (!normalized) return false;
+  return CANONICAL_SHORT_LINK_HOSTS.has(normalized);
+}
+
+function isHumanClick(row: LegacyDomainClickRow): boolean {
+  return row.device_type !== 'bot';
+}
+
+function parseDestinationUrl(value: string | null): { host: string | null; path: string | null } {
+  if (!value) return { host: null, path: null };
+
+  try {
+    const parsed = new URL(value);
+    return {
+      host: parsed.hostname,
+      path: `${parsed.pathname}${parsed.search}`,
+    };
+  } catch {
+    return { host: null, path: value };
+  }
+}
+
+function getRelatedShortLink(row: LegacyDomainClickRow): LegacyDomainShortLinkRow | null {
+  if (Array.isArray(row.short_links)) {
+    return row.short_links[0] ?? null;
+  }
+  return row.short_links ?? null;
+}
+
+function addClickToLinkUsage(
+  map: Map<string, LegacyDomainLinkUsage>,
+  row: LegacyDomainClickRow,
+  human: boolean
+): void {
+  const link = getRelatedShortLink(row);
+  const shortCode = link?.short_code || row.short_link_id || 'unknown';
+  const mapKey = link?.id || row.short_link_id || shortCode;
+  const destination = parseDestinationUrl(link?.destination_url ?? null);
+  const metadata: Record<string, unknown> = link?.metadata && typeof link.metadata === 'object' && !Array.isArray(link.metadata)
+    ? link.metadata
+    : {};
+  const existing = map.get(mapKey);
+
+  if (existing) {
+    existing.totalClicks += 1;
+    if (human) existing.humanClicks += 1;
+    if (
+      row.clicked_at &&
+      (!existing.lastClickedAt || Date.parse(row.clicked_at) > Date.parse(existing.lastClickedAt))
+    ) {
+      existing.lastClickedAt = row.clicked_at;
+    }
+    return;
+  }
+
+  map.set(mapKey, {
+    shortCode,
+    name: link?.name ?? null,
+    linkType: link?.link_type ?? null,
+    destinationUrl: link?.destination_url ?? null,
+    destinationHost: destination.host,
+    destinationPath: destination.path,
+    channel: typeof metadata.channel === 'string' ? metadata.channel : null,
+    source: typeof metadata.source === 'string' ? metadata.source : null,
+    eventId: typeof metadata.event_id === 'string' ? metadata.event_id : null,
+    totalClicks: 1,
+    humanClicks: human ? 1 : 0,
+    lastClickedAt: row.clicked_at,
+    allTimeClickCount: link?.click_count ?? 0,
+  });
+}
+
+function sortLinkUsageRows(rows: LegacyDomainLinkUsage[]): LegacyDomainLinkUsage[] {
+  return rows.sort((left, right) => {
+    if (right.humanClicks !== left.humanClicks) return right.humanClicks - left.humanClicks;
+    if (right.totalClicks !== left.totalClicks) return right.totalClicks - left.totalClicks;
+    return Date.parse(right.lastClickedAt || '') - Date.parse(left.lastClickedAt || '');
+  });
+}
+
+function isMissingRequestHostColumn(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false;
+  const code = (error as { code?: string }).code;
+  const message = String((error as { message?: string }).message || '');
+  return code === '42703' || message.includes('request_host');
+}
+
+async function fetchLegacyUsageClickRows(startAt: string): Promise<{
+  rows: LegacyDomainClickRow[];
+  trackingColumnReady: boolean;
+}> {
+  const supabase = createAdminClient();
+  const rows: LegacyDomainClickRow[] = [];
+
+  async function fetchPage(from: number, to: number, includeRequestHost: boolean) {
+    const select = includeRequestHost
+      ? 'id,clicked_at,device_type,request_host,short_link_id,short_links(id,short_code,name,destination_url,link_type,metadata,click_count,last_clicked_at)'
+      : 'id,clicked_at,device_type,short_link_id,short_links(id,short_code,name,destination_url,link_type,metadata,click_count,last_clicked_at)';
+
+    return (supabase
+      .from('short_link_clicks')
+      .select(select)
+      .gte('clicked_at', startAt)
+      .order('clicked_at', { ascending: false })
+      .range(from, to) as any);
+  }
+
+  let trackingColumnReady = true;
+
+  for (let offset = 0; offset < LEGACY_USAGE_MAX_ROWS; offset += LEGACY_USAGE_PAGE_SIZE) {
+    const from = offset;
+    const to = offset + LEGACY_USAGE_PAGE_SIZE - 1;
+    let { data, error } = await fetchPage(from, to, trackingColumnReady);
+
+    if (error && trackingColumnReady && isMissingRequestHostColumn(error)) {
+      trackingColumnReady = false;
+      rows.length = 0;
+      const retry = await fetchPage(0, LEGACY_USAGE_PAGE_SIZE - 1, false);
+      data = retry.data;
+      error = retry.error;
+    }
+
+    if (error) throw new Error('Failed to load legacy domain usage');
+
+    const pageRows = (data || []) as unknown as LegacyDomainClickRow[];
+    rows.push(...pageRows);
+
+    if (pageRows.length < LEGACY_USAGE_PAGE_SIZE) break;
+  }
+
+  return { rows, trackingColumnReady };
 }
 
 export class ShortLinkService {
@@ -611,5 +788,85 @@ export class ShortLinkService {
     if (error) throw new Error('Failed to load analytics');
 
     return data;
+  }
+
+  static async getLegacyDomainUsage(days: number = 90): Promise<LegacyDomainUsage> {
+    const boundedDays = Math.min(Math.max(Math.floor(days), 1), 730);
+    const generatedAt = new Date();
+    const startAt = new Date(generatedAt.getTime() - boundedDays * 24 * 60 * 60 * 1000).toISOString();
+    const { rows, trackingColumnReady } = await fetchLegacyUsageClickRows(startAt);
+
+    let humanClicks = 0;
+    let legacyClicks = 0;
+    let legacyHumanClicks = 0;
+    let canonicalClicks = 0;
+    let canonicalHumanClicks = 0;
+    let untrackedClicks = 0;
+    let untrackedHumanClicks = 0;
+
+    const topLegacyByLink = new Map<string, LegacyDomainLinkUsage>();
+    const recentLegacyClicks: LegacyDomainRecentClick[] = [];
+
+    for (const row of rows) {
+      const human = isHumanClick(row);
+      const requestHost = normalizeHost(row.request_host);
+      const link = getRelatedShortLink(row);
+
+      if (human) humanClicks += 1;
+
+      if (!requestHost) {
+        untrackedClicks += 1;
+        if (human) untrackedHumanClicks += 1;
+        continue;
+      }
+
+      if (isCanonicalShortLinkHost(requestHost)) {
+        canonicalClicks += 1;
+        if (human) canonicalHumanClicks += 1;
+        continue;
+      }
+
+      if (!isLegacyShortLinkHost(requestHost)) {
+        continue;
+      }
+
+      legacyClicks += 1;
+      if (human) legacyHumanClicks += 1;
+
+      const shortCode = link?.short_code || row.short_link_id || 'unknown';
+      const destination = parseDestinationUrl(link?.destination_url ?? null);
+      addClickToLinkUsage(topLegacyByLink, row, human);
+
+      if (recentLegacyClicks.length < 25) {
+        recentLegacyClicks.push({
+          shortCode,
+          name: link?.name ?? null,
+          requestHost,
+          clickedAt: row.clicked_at,
+          destinationHost: destination.host,
+          destinationPath: destination.path,
+          deviceType: row.device_type,
+        });
+      }
+    }
+
+    const topLegacyLinks = sortLinkUsageRows(Array.from(topLegacyByLink.values())).slice(0, 25);
+
+    return {
+      generatedAt: generatedAt.toISOString(),
+      startAt,
+      days: boundedDays,
+      trackingColumnReady,
+      totalClicks: rows.length,
+      humanClicks,
+      legacyClicks,
+      legacyHumanClicks,
+      canonicalClicks,
+      canonicalHumanClicks,
+      untrackedClicks,
+      untrackedHumanClicks,
+      topLegacyLinks,
+      recentLegacyClicks,
+    };
   }
 }

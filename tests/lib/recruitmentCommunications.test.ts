@@ -18,6 +18,7 @@ vi.mock('@/lib/recruitment/ai', () => ({
 
 import {
   draftRecruitmentEmailForApplication,
+  sendRecruitmentApplicationReceivedEmail,
   sendRecruitmentSms,
   sendRecruitmentTemplateEmail,
 } from '@/lib/recruitment/communications'
@@ -55,6 +56,8 @@ function mockSupabase(tables: Record<string, any>) {
 const application = {
   id: 'application-1',
   candidate_id: 'candidate-1',
+  cover_note: 'I enjoy busy customer-facing work.',
+  source: 'website',
   ai_score: 72,
   ai_recommendation: 'review',
   ai_rationale: 'Good relevant experience.',
@@ -70,6 +73,7 @@ const application = {
   },
   job_posting: {
     title: 'Bartender',
+    application_closing_date: '2026-07-31',
   },
 }
 
@@ -143,7 +147,37 @@ describe('recruitment communications safety', () => {
     expect(sendEmail).not.toHaveBeenCalled()
   })
 
-  it('does not pass internal AI concerns into rejection draft context', async () => {
+  it('sends a warm application received email from Peter', async () => {
+    sendEmail.mockResolvedValue({ success: true, messageId: 'email-1' })
+    const communications = insertUpdateChain()
+    const supabase = mockSupabase({
+      recruitment_applications: maybeSingleChain({ data: application, error: null }),
+      recruitment_communications: communications,
+    })
+
+    const result = await sendRecruitmentApplicationReceivedEmail('application-1', supabase)
+
+    expect(result.success).toBe(true)
+    expect(communications.insert).toHaveBeenCalledWith(expect.objectContaining({
+      application_id: 'application-1',
+      candidate_id: 'candidate-1',
+      type: 'application_received',
+      channel: 'email',
+      idempotency_key: 'recruitment_application_received:application-1',
+    }))
+    expect(sendEmail).toHaveBeenCalledWith(expect.objectContaining({
+      to: 'jane@example.com',
+      from: 'peter@orangejelly.co.uk',
+      replyTo: 'peter@orangejelly.co.uk',
+      subject: 'Thank you for applying to The Anchor',
+      text: expect.stringContaining('Thank you for applying for Bartender.'),
+      commType: 'recruitment_application_received',
+    }))
+    expect(sendEmail.mock.calls[0][0].text).toContain('Best,\nPeter')
+    expect(sendEmail.mock.calls[0][0].text).toContain('Applications for this role close on 31 July 2026.')
+  })
+
+  it.each(['rejection', 'already_considered'] as const)('does not pass internal AI details into %s draft context', async (type) => {
     draftRecruitmentEmail.mockResolvedValue({
       runId: 'run-1',
       result: {
@@ -157,20 +191,27 @@ describe('recruitment communications safety', () => {
       recruitment_email_templates: maybeSingleChain({
         data: {
           subject: 'Your application',
-          body: 'Hi {{first_name}}, thanks for applying.',
+          body: 'Hi {{first_name}}, thanks for applying for {{role_title}}.',
         },
         error: null,
       }),
     })
 
-    const result = await draftRecruitmentEmailForApplication('application-1', 'rejection', {}, supabase)
+    const result = await draftRecruitmentEmailForApplication('application-1', type, {}, supabase)
 
     expect(result.success).toBe(true)
-    expect(draftRecruitmentEmail).toHaveBeenCalledWith(supabase, expect.objectContaining({
-      type: 'rejection',
-      context: expect.not.objectContaining({
-        ai_concerns: expect.anything(),
-      }),
-    }))
+    const context = draftRecruitmentEmail.mock.calls[0][1].context
+    expect(context).not.toHaveProperty('ai_score')
+    expect(context).not.toHaveProperty('ai_recommendation')
+    expect(context).not.toHaveProperty('ai_rationale')
+    expect(context).not.toHaveProperty('ai_concerns')
+    expect(context).toMatchObject({
+      public_positive_signals: expect.arrayContaining([
+        'Two years of bar work.',
+        'Available weekends.',
+        'I enjoy busy customer-facing work.',
+        'bar experience',
+      ]),
+    })
   })
 })

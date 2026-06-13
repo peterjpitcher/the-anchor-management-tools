@@ -17,7 +17,7 @@ export default async function RecruitmentPage() {
   return (
     <RecruitmentDashboardClient
       initialData={pageData.data as any}
-      permissions={{ canCreate: true, canEdit: true, canManage: true, canSend: true, canDelete: true }}
+      permissions={(pageData.data as any).permissions}
     />
   )
 }

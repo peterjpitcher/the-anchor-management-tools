@@ -12,7 +12,7 @@ vi.mock('qrcode', () => ({
 
 import { createAdminClient } from '@/lib/supabase/admin'
 import { EventMarketingService } from './event-marketing'
-import { EVENT_MARKETING_CHANNELS } from '@/lib/event-marketing-links'
+import { EVENT_MARKETING_CHANNELS, isEventMarketingQrChannel, shouldAutoGenerateEventMarketingChannel } from '@/lib/event-marketing-links'
 
 const mockEvent = {
   id: 'evt-123456',
@@ -50,7 +50,7 @@ describe('EventMarketingService.generateLinks', () => {
     expect(metaAds!.tier).toBe('always_on')
   })
 
-  it('only upserts always_on channels — does not touch on_demand channels', async () => {
+  it('upserts always-on and QR placement channels, but not optional digital channels', async () => {
     const insertedChannels: string[] = []
 
     const insertMock = vi.fn().mockImplementation((row: any) => {
@@ -84,11 +84,16 @@ describe('EventMarketingService.generateLinks', () => {
 
     await EventMarketingService.generateLinks(mockEvent.id)
 
-    const alwaysOnKeys = EVENT_MARKETING_CHANNELS.filter(c => c.tier === 'always_on').map(c => c.key)
-    const onDemandKeys = EVENT_MARKETING_CHANNELS.filter(c => c.tier === 'on_demand').map(c => c.key)
+    const generatedKeys = EVENT_MARKETING_CHANNELS.filter(shouldAutoGenerateEventMarketingChannel).map(c => c.key)
+    const optionalDigitalKeys = EVENT_MARKETING_CHANNELS
+      .filter(c => c.tier === 'on_demand' && !isEventMarketingQrChannel(c))
+      .map(c => c.key)
 
-    expect(insertMock).toHaveBeenCalledTimes(alwaysOnKeys.length)
-    onDemandKeys.forEach(key => {
+    expect(insertMock).toHaveBeenCalledTimes(generatedKeys.length)
+    generatedKeys.forEach(key => {
+      expect(insertedChannels).toContain(key)
+    })
+    optionalDigitalKeys.forEach(key => {
       expect(insertMock).not.toHaveBeenCalledWith(
         expect.objectContaining({ metadata: expect.objectContaining({ channel: key }) })
       )
@@ -159,6 +164,37 @@ describe('EventMarketingService.generateSingleLink', () => {
 
     expect(result.channel).toBe('poster')
     expect(result.type).toBe('print')
+    expect(result.qrCode).toBe('data:image/png;base64,mock')
+  })
+
+  it('includes qrCode for screen channels', async () => {
+    const supabaseMock = {
+      from: vi.fn().mockReturnThis(),
+      select: vi.fn().mockReturnThis(),
+      eq: vi.fn().mockReturnThis(),
+      single: vi.fn()
+        .mockResolvedValueOnce({ data: mockEvent, error: null })
+        .mockResolvedValueOnce({
+          data: {
+            id: 'sl-3',
+            short_code: 'sc123456',
+            destination_url: 'https://www.the-anchor.pub/events/test-event?utm_source=in_game_screen',
+            metadata: { event_id: mockEvent.id, channel: 'in_game_screen', utm: {} },
+            updated_at: null,
+          },
+          error: null,
+        }),
+      contains: vi.fn().mockResolvedValue({ data: [], error: null }),
+      insert: vi.fn().mockReturnThis(),
+      update: vi.fn().mockReturnThis(),
+      maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }),
+    }
+    vi.mocked(createAdminClient).mockReturnValue(supabaseMock as any)
+
+    const result = await EventMarketingService.generateSingleLink(mockEvent.id, 'in_game_screen')
+
+    expect(result.channel).toBe('in_game_screen')
+    expect(result.type).toBe('screen')
     expect(result.qrCode).toBe('data:image/png;base64,mock')
   })
 

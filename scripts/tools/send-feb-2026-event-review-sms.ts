@@ -164,7 +164,7 @@ async function readGoogleReviewLink(
 
   if (error) throw error
 
-  const fallback = 'https://vip-club.uk/jls0mu'
+  const fallback = 'https://l.the-anchor.pub/jls0mu'
 
   const pick = (value: unknown): string | null => {
     if (typeof value === 'string') {

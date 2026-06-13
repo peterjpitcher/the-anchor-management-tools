@@ -1,5 +1,15 @@
 import { createAdminClient } from '@/lib/supabase/admin';
-import { EVENT_MARKETING_CHANNELS, EVENT_MARKETING_CHANNEL_MAP, buildEventMarketingLinkPayload, buildShortCode, type EventMarketingChannelKey, type EventMarketingLinkPayload } from '@/lib/event-marketing-links';
+import {
+  EVENT_MARKETING_CHANNELS,
+  EVENT_MARKETING_CHANNEL_MAP,
+  buildEventMarketingLinkPayload,
+  buildShortCode,
+  isEventMarketingQrChannel,
+  shouldAutoGenerateEventMarketingChannel,
+  type EventMarketingChannelKey,
+  type EventMarketingChannelType,
+  type EventMarketingLinkPayload,
+} from '@/lib/event-marketing-links';
 import { buildShortLinkUrl } from '@/lib/short-links/base-url';
 import QRCode from 'qrcode';
 
@@ -7,7 +17,7 @@ export interface EventMarketingLink {
   id: string;
   channel: EventMarketingChannelKey;
   label: string;
-  type: 'digital' | 'print';
+  type: EventMarketingChannelType;
   shortCode: string;
   shortUrl: string;
   destinationUrl: string;
@@ -449,7 +459,7 @@ export class EventMarketingService {
       }
     }
 
-    for (const channel of EVENT_MARKETING_CHANNELS.filter(c => c.tier === 'always_on')) {
+    for (const channel of EVENT_MARKETING_CHANNELS.filter(shouldAutoGenerateEventMarketingChannel)) {
       const payload = buildEventMarketingLinkPayload(event, channel);
       const metadata = buildMetadata(payload, event);
       const existing = existingByChannel.get(channel.key);
@@ -541,7 +551,8 @@ export class EventMarketingService {
 
     const withQRCodes = await Promise.all(
       items.map(async (item) => {
-        if (item.type === 'print') {
+        const channelConfig = EVENT_MARKETING_CHANNEL_MAP.get(item.channel);
+        if (channelConfig && isEventMarketingQrChannel(channelConfig)) {
           try {
             const qrCode = await QRCode.toDataURL(item.shortUrl, {
               margin: 1,
@@ -619,7 +630,7 @@ export class EventMarketingService {
       clickCount: 0,
     };
 
-    if (channelConfig.type === 'print') {
+    if (isEventMarketingQrChannel(channelConfig)) {
       try {
         link.qrCode = await QRCode.toDataURL(shortUrl, { margin: 1, scale: 8 });
       } catch (err) {

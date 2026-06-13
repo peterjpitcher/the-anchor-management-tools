@@ -18,7 +18,7 @@ import toast from 'react-hot-toast'
 import { IconButton } from '@/ds'
 import { getOrCreateUtmVariant } from '@/app/actions/short-links'
 import { buildShortLinkUrl } from '@/lib/short-links/base-url'
-import { DIGITAL_CHANNELS, PRINT_CHANNELS, type ShortLinkChannel } from '@/lib/short-links/channels'
+import { DIGITAL_CHANNELS, QR_CHANNELS, type ShortLinkChannel } from '@/lib/short-links/channels'
 import type { ShortLink } from '@/types/short-links'
 import { downloadQrPng, safeQrFilename } from './qr-download'
 import { PortalMenu, type PortalMenuEntry } from './PortalMenu'
@@ -94,7 +94,7 @@ export function ShortLinkActionsMenu({ link, canManage, onAnalytics, onEdit, onD
     }
   }
 
-  const handleAllPrintQrs = async () => {
+  const handleAllQrs = async () => {
     if (loadingKey) return
     setLoadingKey('qr:all')
 
@@ -102,7 +102,7 @@ export function ShortLinkActionsMenu({ link, canManage, onAnalytics, onEdit, onD
     let failureCount = 0
 
     try {
-      for (const channel of PRINT_CHANNELS) {
+      for (const channel of QR_CHANNELS) {
         const result = await getOrCreateUtmVariant(link.id, channel.key)
         if (!result || 'error' in result) {
           failureCount += 1
@@ -122,11 +122,11 @@ export function ShortLinkActionsMenu({ link, canManage, onAnalytics, onEdit, onD
 
       await onVariantReady?.(link.id)
 
-      if (successCount > 0) toast.success(`${successCount} print QR codes downloaded`)
-      if (failureCount > 0) toast.error(`${failureCount} print QR codes failed`)
+      if (successCount > 0) toast.success(`${successCount} QR codes downloaded`)
+      if (failureCount > 0) toast.error(`${failureCount} QR codes failed`)
     } catch (error) {
-      console.error('Failed to download print QR codes', error)
-      toast.error('Failed to download print QR codes')
+      console.error('Failed to download QR codes', error)
+      toast.error('Failed to download QR codes')
     } finally {
       setLoadingKey(null)
     }
@@ -178,15 +178,15 @@ export function ShortLinkActionsMenu({ link, canManage, onAnalytics, onEdit, onD
     entries.push(
       { type: 'section', key: 'digital-section', label: 'Digital UTM links' },
       ...channelEntries(DIGITAL_CHANNELS, 'copy'),
-      { type: 'section', key: 'print-section', label: 'Print QR codes' },
+      { type: 'section', key: 'qr-section', label: 'QR codes' },
       {
         key: 'qr:all',
-        label: 'Download all print QRs',
+        label: 'Download all QRs',
         icon: loadingKey === 'qr:all' ? <Loader2 className="animate-spin" /> : <Printer />,
         disabled: Boolean(loadingKey),
-        onClick: handleAllPrintQrs,
+        onClick: handleAllQrs,
       },
-      ...channelEntries(PRINT_CHANNELS, 'qr')
+      ...channelEntries(QR_CHANNELS, 'qr')
     )
   }
 

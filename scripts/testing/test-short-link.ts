@@ -67,7 +67,7 @@ async function run(shortCode: string) {
   console.log(`Created: ${new Date(link.created_at).toLocaleString()}`)
   console.log(`Expires: ${link.expires_at ? new Date(link.expires_at).toLocaleString() : 'Never'}`)
   
-  console.log(`\nShort URL: https://vip-club.uk/${shortCode}`)
+  console.log(`\nShort URL: https://l.the-anchor.pub/${shortCode}`)
   console.log(`Redirects to: ${link.destination_url}`)
   
   // List all short links
@@ -88,7 +88,7 @@ async function run(shortCode: string) {
 
   if (allLinks.length > 0) {
     allLinks.forEach(l => {
-      console.log(`- vip-club.uk/${l.short_code} -> ${String(l.destination_url).substring(0, 60)}${String(l.destination_url).length > 60 ? '...' : ''} (clicks=${l.click_count || 0})`)
+      console.log(`- l.the-anchor.pub/${l.short_code} -> ${String(l.destination_url).substring(0, 60)}${String(l.destination_url).length > 60 ? '...' : ''} (clicks=${l.click_count || 0})`)
     })
   }
 

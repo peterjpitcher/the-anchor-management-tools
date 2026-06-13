@@ -45,3 +45,46 @@ export interface CampaignGroup {
   totalUnique: number
   topChannel: { label: string; clicks: number } | null
 }
+
+export interface LegacyDomainLinkUsage {
+  shortCode: string
+  name: string | null
+  linkType: string | null
+  destinationUrl: string | null
+  destinationHost: string | null
+  destinationPath: string | null
+  channel: string | null
+  source: string | null
+  eventId: string | null
+  totalClicks: number
+  humanClicks: number
+  lastClickedAt: string | null
+  allTimeClickCount: number
+}
+
+export interface LegacyDomainRecentClick {
+  shortCode: string
+  name: string | null
+  requestHost: string
+  clickedAt: string | null
+  destinationHost: string | null
+  destinationPath: string | null
+  deviceType: string | null
+}
+
+export interface LegacyDomainUsage {
+  generatedAt: string
+  startAt: string
+  days: number
+  trackingColumnReady: boolean
+  totalClicks: number
+  humanClicks: number
+  legacyClicks: number
+  legacyHumanClicks: number
+  canonicalClicks: number
+  canonicalHumanClicks: number
+  untrackedClicks: number
+  untrackedHumanClicks: number
+  topLegacyLinks: LegacyDomainLinkUsage[]
+  recentLegacyClicks: LegacyDomainRecentClick[]
+}
