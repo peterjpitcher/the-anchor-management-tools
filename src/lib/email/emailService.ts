@@ -13,7 +13,9 @@ export interface EmailOptions {
   cc?: string[];
   bcc?: string[];
   attachments?: EmailAttachment[];
+  provider?: EmailProvider;
   from?: string;
+  graphSender?: string;
   replyTo?: string;
   commType?: string;
   customerId?: string | null;
@@ -30,7 +32,7 @@ export interface EmailAttachment {
   contentType: string;
 }
 
-type EmailProvider = 'graph' | 'resend';
+export type EmailProvider = 'graph' | 'resend';
 type EmailSendResult = { success: boolean; error?: string; messageId?: string };
 
 let cachedResendClient: Resend | null = null;
@@ -97,7 +99,8 @@ export async function sendEmail(options: EmailOptions): Promise<EmailSendResult>
     return { success: false, error };
   }
 
-  if (getEmailProvider() === 'resend') {
+  const provider = options.provider ?? getEmailProvider();
+  if (provider === 'resend') {
     return sendEmailViaResend(options);
   }
 
@@ -185,12 +188,14 @@ async function sendEmailViaResend(options: EmailOptions): Promise<EmailSendResul
 }
 
 async function sendEmailViaGraph(options: EmailOptions): Promise<EmailSendResult> {
+  const senderEmail = options.graphSender?.trim() || process.env.MICROSOFT_USER_EMAIL || '';
+
   try {
     if (!isGraphConfigured()) {
       const error = 'Email service is not configured';
       await recordEmailOutcome(options, {
         status: 'failed',
-        fromAddress: process.env.MICROSOFT_USER_EMAIL ?? null,
+        fromAddress: senderEmail || null,
         error,
       });
       return {
@@ -200,7 +205,6 @@ async function sendEmailViaGraph(options: EmailOptions): Promise<EmailSendResult
     }
 
     const client = getGraphClient();
-    const senderEmail = process.env.MICROSOFT_USER_EMAIL!;
 
     // Build recipients
     const toRecipients = [{ emailAddress: { address: options.to } }];
@@ -267,7 +271,7 @@ async function sendEmailViaGraph(options: EmailOptions): Promise<EmailSendResult
     const message = getErrorMessage(error);
     await recordEmailOutcome(options, {
       status: 'failed',
-      fromAddress: process.env.MICROSOFT_USER_EMAIL ?? null,
+      fromAddress: senderEmail || null,
       error: message,
     });
     return {

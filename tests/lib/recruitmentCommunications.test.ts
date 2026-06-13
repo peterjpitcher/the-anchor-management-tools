@@ -50,7 +50,6 @@ function retryCommunicationChain(original: any, insertResult: { data: any; error
   chain.insert = vi.fn(() => chain)
   chain.single = vi.fn().mockResolvedValue(insertResult)
   chain.update = vi.fn(() => chain)
-  chain.eq = vi.fn().mockResolvedValue({ error: null })
   return chain
 }
 
@@ -160,6 +159,32 @@ describe('recruitment communications safety', () => {
     expect(sendEmail).not.toHaveBeenCalled()
   })
 
+  it('sends reviewed recruitment emails from Peter through Microsoft Graph by default', async () => {
+    delete process.env.RECRUITMENT_FROM_EMAIL
+    sendEmail.mockResolvedValue({ success: true, messageId: 'email-1' })
+    const communications = insertUpdateChain()
+    const supabase = mockSupabase({
+      recruitment_applications: maybeSingleChain({ data: application, error: null }),
+      recruitment_email_templates: maybeSingleChain({ data: null, error: null }),
+      recruitment_communications: communications,
+    })
+
+    const result = await sendRecruitmentTemplateEmail('application-1', 'rejection', {
+      subjectOverride: 'Your application to The Anchor',
+      bodyOverride: 'Hi {{first_name}}, thank you for applying for {{role_title}}.',
+    }, supabase)
+
+    expect(result.success).toBe(true)
+    expect(sendEmail).toHaveBeenCalledWith(expect.objectContaining({
+      to: 'jane@example.com',
+      provider: 'graph',
+      from: 'peter@orangejelly.co.uk',
+      graphSender: 'peter@orangejelly.co.uk',
+      replyTo: 'peter@orangejelly.co.uk',
+      commType: 'recruitment_rejection',
+    }))
+  })
+
   it('sends a warm application received email from Peter', async () => {
     sendEmail.mockResolvedValue({ success: true, messageId: 'email-1' })
     const communications = insertUpdateChain()
@@ -180,7 +205,9 @@ describe('recruitment communications safety', () => {
     }))
     expect(sendEmail).toHaveBeenCalledWith(expect.objectContaining({
       to: 'jane@example.com',
+      provider: 'graph',
       from: 'peter@orangejelly.co.uk',
+      graphSender: 'peter@orangejelly.co.uk',
       replyTo: 'peter@orangejelly.co.uk',
       subject: 'Thank you for applying to The Anchor',
       text: expect.stringContaining('Thank you for applying for Bartender.'),
@@ -225,6 +252,8 @@ describe('recruitment communications safety', () => {
     }))
     expect(sendEmail).toHaveBeenCalledWith(expect.objectContaining({
       to: 'jane@example.com',
+      provider: 'graph',
+      graphSender: 'peter@orangejelly.co.uk',
       subject: 'Your application',
       text: 'Thanks again.',
       metadata: expect.objectContaining({
