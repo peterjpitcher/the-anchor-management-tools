@@ -6,6 +6,7 @@ import { recordAnalyticsEvent } from '@/lib/analytics/events'
 import { sendSMS } from '@/lib/twilio'
 import { getSmartFirstName } from '@/lib/sms/name-utils'
 import { syncPubOpsEventCalendarByEventId } from '@/lib/google-calendar-events'
+import { sendEventPaymentExpiredEmail } from '@/lib/email/event-ticket-emails'
 
 function formatLondonDateTime(dateStr: string): string {
   try {
@@ -114,6 +115,8 @@ export async function GET(request: NextRequest) {
       // Send SMS notifications to customers whose booking holds expired
       for (const expiredBookingId of expiredBookingIds) {
         try {
+          await sendEventPaymentExpiredEmail(supabase, { bookingId: expiredBookingId })
+
           const { data: bookingDetail } = await supabase
             .from('bookings')
             .select('id, seats, customer_id, event_id, customers!inner(id, first_name, mobile_number, sms_status), events!inner(id, name, date, time, start_datetime, booking_url)')

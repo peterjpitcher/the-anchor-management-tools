@@ -6,7 +6,10 @@ import {
   sendEventPaymentConfirmationSms,
   sendEventPaymentManualReviewSms,
 } from '@/lib/events/event-payments'
-import { sendEventPaymentConfirmationEmail } from '@/lib/email/event-ticket-emails'
+import {
+  sendEventPaymentConfirmationEmail,
+  sendEventPaymentManualReviewEmail,
+} from '@/lib/email/event-ticket-emails'
 import {
   claimIdempotencyKey,
   computeIdempotencyRequestHash,
@@ -175,6 +178,11 @@ export async function POST(request: NextRequest): Promise<Response> {
       })
     } else if (state === 'manual_review') {
       await sendEventPaymentManualReviewSms(supabase, { bookingId })
+      await sendEventPaymentManualReviewEmail(supabase, {
+        bookingId,
+        amount,
+        currency,
+      })
     }
 
     await persistIdempotencyResponse(

@@ -23,7 +23,12 @@ import {
   sendEventPaymentConfirmationSms,
   sendEventPaymentManualReviewSms
 } from '@/lib/events/event-payments'
-import { sendEventPaymentConfirmationEmail } from '@/lib/email/event-ticket-emails'
+import {
+  sendEventBookingCancelledEmail,
+  sendEventPaymentConfirmationEmail,
+  sendEventPaymentManualReviewEmail,
+  sendEventTicketTransferredEmail,
+} from '@/lib/email/event-ticket-emails'
 import { recordAnalyticsEvent } from '@/lib/analytics/events'
 import {
   deletePubOpsEventCalendarEntryByEventId,
@@ -463,6 +468,32 @@ export async function updateEvent(id: string, formData: FormData) {
           metadata: { eventId: id, error: enqueueResult.error },
         })
         warnings.push('Event saved as cancelled, but booking cancellation could not be queued.')
+      }
+    }
+
+    const statusChangedToPostponed =
+      validationResult.data.event_status === 'postponed' && _oldStatus !== 'postponed'
+
+    if (statusChangedToPostponed && !dateChanged) {
+      const enqueueResult = await jobQueue.enqueue(
+        'send_event_postponed_notifications',
+        {
+          eventId: id,
+          eventName: validationResult.data.name || _oldName || 'your event',
+          userId: user.id,
+        },
+        {
+          priority: 25,
+          maxAttempts: 3,
+          unique: `event_postponed:${id}:${_oldStatus ?? ''}:postponed`,
+        },
+      )
+
+      if (!enqueueResult.success) {
+        logger.error('Failed to queue event postponed notifications', {
+          metadata: { eventId: id, error: enqueueResult.error },
+        })
+        warnings.push('Event saved as postponed, but postponed notifications could not be queued.')
       }
     }
 
@@ -1578,6 +1609,14 @@ export async function cancelEventManualBooking(input: {
       }
     }
 
+    await sendEventBookingCancelledEmail(supabase, {
+      bookingId: bookingRow.id,
+      refundStatus,
+      refundAmount,
+      currency: 'GBP',
+      reason: 'staff_cancel'
+    })
+
     if (bookingRow.customer_id) {
       await recordEventAnalyticsSafe(supabase, {
         customerId: bookingRow.customer_id,
@@ -1754,6 +1793,12 @@ export async function markEventBookingPaidManually(input: {
         amount: expectedAmount,
         currency: 'GBP',
         appBaseUrl: process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+      })
+    } else if (state === 'manual_review') {
+      await sendEventPaymentManualReviewEmail(supabase, {
+        bookingId: parsed.data.bookingId,
+        amount: expectedAmount,
+        currency: 'GBP'
       })
     }
 
@@ -2177,6 +2222,14 @@ export async function transferEventBooking(input: {
       smsMeta = transferSmsMeta
       smsSent = transferSmsMeta.success === true || transferSmsMeta.logFailure === true
     }
+
+    await sendEventTicketTransferredEmail(supabase, {
+      bookingId: createResult.bookingId,
+      fromEventName: fromEvent?.name || 'your original event',
+      toEventName: targetEvent.name || 'your new event',
+      eventStartIso: targetEvent.start_datetime || null,
+      appBaseUrl: process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+    })
 
     await logAuditEvent({
       user_id: user.id,

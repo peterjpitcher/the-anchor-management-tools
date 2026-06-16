@@ -8,7 +8,10 @@ import {
   sendEventPaymentConfirmationSms,
   sendEventPaymentManualReviewSms,
 } from '@/lib/events/event-payments'
-import { sendEventPaymentConfirmationEmail } from '@/lib/email/event-ticket-emails'
+import {
+  sendEventPaymentConfirmationEmail,
+  sendEventPaymentManualReviewEmail,
+} from '@/lib/email/event-ticket-emails'
 import { logAuditEvent } from '@/app/actions/audit'
 
 export const dynamic = 'force-dynamic'
@@ -77,6 +80,11 @@ export async function POST(
 
     if (result.state === 'manual_review') {
       await sendEventPaymentManualReviewSms(supabase, { bookingId })
+      await sendEventPaymentManualReviewEmail(supabase, {
+        bookingId,
+        amount: result.amount,
+        currency: result.currency,
+      })
 
       void logAuditEvent({
         operation_type: 'event_payment.paypal_capture_manual_review',

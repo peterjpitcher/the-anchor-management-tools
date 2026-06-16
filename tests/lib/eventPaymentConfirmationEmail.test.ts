@@ -24,7 +24,15 @@ vi.mock('@/lib/logger', () => ({
 
 import { sendEmail } from '@/lib/email/emailService'
 import { createEventManageToken } from '@/lib/events/manage-booking'
-import { sendEventPaymentConfirmationEmail } from '@/lib/email/event-ticket-emails'
+import {
+  sendEventBookingCancelledEmail,
+  sendEventPaymentConfirmationEmail,
+  sendEventPaymentExpiredEmail,
+  sendEventPaymentManualReviewEmail,
+  sendEventPostponedEmail,
+  sendEventRescheduledEmail,
+  sendEventTicketTransferredEmail,
+} from '@/lib/email/event-ticket-emails'
 
 function buildSupabase(options?: {
   booking?: Record<string, unknown> | null
@@ -47,6 +55,7 @@ function buildSupabase(options?: {
             start_datetime: '2026-07-17T19:00:00.000Z',
             date: '2026-07-17',
             time: '20:00:00',
+            booking_url: 'https://the-anchor.pub/events/music-bingo',
           },
         }
       : options.booking,
@@ -60,7 +69,8 @@ function buildSupabase(options?: {
     error: null,
   })
   const emailLimit = vi.fn().mockReturnValue({ maybeSingle: emailMaybeSingle })
-  const emailIn = vi.fn().mockReturnValue({ limit: emailLimit })
+  const emailContains = vi.fn().mockReturnValue({ limit: emailLimit })
+  const emailIn = vi.fn().mockReturnValue({ limit: emailLimit, contains: emailContains })
   const emailEqCommType = vi.fn().mockReturnValue({ in: emailIn })
   const emailEqBooking = vi.fn().mockReturnValue({ eq: emailEqCommType })
   const emailSelect = vi.fn().mockReturnValue({ eq: emailEqBooking })
@@ -163,5 +173,122 @@ describe('event payment confirmation email', () => {
 
     expect(result).toEqual({ success: false, skipped: true })
     expect(sendEmail).not.toHaveBeenCalled()
+  })
+
+  it('sends a manual-review email when payment needs staff action', async () => {
+    const result = await sendEventPaymentManualReviewEmail(buildSupabase() as any, {
+      bookingId: 'booking-1',
+      amount: 10,
+      currency: 'GBP',
+    })
+
+    expect(result).toEqual({ success: true, messageId: 'email-1' })
+    expect(sendEmail).toHaveBeenCalledWith(expect.objectContaining({
+      subject: 'Payment received: Music Bingo',
+      commType: 'event_payment_manual_review',
+      metadata: expect.objectContaining({
+        template_key: 'event_payment_manual_review_email',
+      }),
+    }))
+    expect((sendEmail as unknown as vi.Mock).mock.calls[0][0].text).toContain('Staff need to check your booking')
+  })
+
+  it('sends an expired hold email with a rebook link', async () => {
+    const result = await sendEventPaymentExpiredEmail(buildSupabase() as any, {
+      bookingId: 'booking-1',
+    })
+
+    expect(result).toEqual({ success: true, messageId: 'email-1' })
+    expect(sendEmail).toHaveBeenCalledWith(expect.objectContaining({
+      subject: 'Payment hold released: Music Bingo',
+      commType: 'event_payment_expired',
+      metadata: expect.objectContaining({
+        template_key: 'event_payment_expired_email',
+      }),
+    }))
+    expect((sendEmail as unknown as vi.Mock).mock.calls[0][0].text).toContain('Rebook here: https://the-anchor.pub/events/music-bingo')
+  })
+
+  it('sends a cancellation email with refund details', async () => {
+    const result = await sendEventBookingCancelledEmail(buildSupabase() as any, {
+      bookingId: 'booking-1',
+      refundStatus: 'succeeded',
+      refundAmount: 5,
+      currency: 'GBP',
+      reason: 'staff_cancel',
+    })
+
+    expect(result).toEqual({ success: true, messageId: 'email-1' })
+    expect(sendEmail).toHaveBeenCalledWith(expect.objectContaining({
+      subject: 'Booking cancelled: Music Bingo',
+      commType: 'event_booking_cancelled',
+      metadata: expect.objectContaining({
+        template_key: 'event_booking_cancelled_email',
+        refund_status: 'succeeded',
+        refund_amount: 5,
+      }),
+    }))
+    expect((sendEmail as unknown as vi.Mock).mock.calls[0][0].text).toContain('A refund of £5.00 has been issued')
+  })
+
+  it('sends a transfer email with a manage link', async () => {
+    const result = await sendEventTicketTransferredEmail(buildSupabase() as any, {
+      bookingId: 'booking-1',
+      fromEventName: 'Quiz Night',
+      toEventName: 'Music Bingo',
+      eventStartIso: '2026-07-17T19:00:00.000Z',
+      appBaseUrl: 'https://management.orangejelly.co.uk',
+    })
+
+    expect(result).toEqual({ success: true, messageId: 'email-1' })
+    expect(sendEmail).toHaveBeenCalledWith(expect.objectContaining({
+      subject: 'Tickets transferred: Music Bingo',
+      commType: 'event_ticket_transferred',
+      metadata: expect.objectContaining({
+        template_key: 'event_ticket_transferred_email',
+      }),
+    }))
+    expect((sendEmail as unknown as vi.Mock).mock.calls[0][0].text).toContain('transferred from Quiz Night to Music Bingo')
+  })
+
+  it('sends a reschedule email for a specific date change', async () => {
+    const result = await sendEventRescheduledEmail(buildSupabase() as any, {
+      bookingId: 'booking-1',
+      eventName: 'Music Bingo',
+      oldDate: '2026-07-17',
+      oldTime: '20:00',
+      newDate: '2026-07-24',
+      newTime: '20:00',
+      appBaseUrl: 'https://management.orangejelly.co.uk',
+    })
+
+    expect(result).toEqual({ success: true, messageId: 'email-1' })
+    expect(sendEmail).toHaveBeenCalledWith(expect.objectContaining({
+      subject: 'Event rescheduled: Music Bingo',
+      commType: 'event_rescheduled',
+      metadata: expect.objectContaining({
+        template_key: 'event_rescheduled_email',
+        old_date: '2026-07-17',
+        new_date: '2026-07-24',
+      }),
+    }))
+    expect((sendEmail as unknown as vi.Mock).mock.calls[0][0].text).toContain('has been rescheduled')
+  })
+
+  it('sends a postponed email telling guests staff will decide next steps', async () => {
+    const result = await sendEventPostponedEmail(buildSupabase() as any, {
+      bookingId: 'booking-1',
+      eventName: 'Music Bingo',
+    })
+
+    expect(result).toEqual({ success: true, messageId: 'email-1' })
+    expect(sendEmail).toHaveBeenCalledWith(expect.objectContaining({
+      subject: 'Event postponed: Music Bingo',
+      commType: 'event_postponed',
+      metadata: expect.objectContaining({
+        template_key: 'event_postponed_email',
+      }),
+    }))
+    expect((sendEmail as unknown as vi.Mock).mock.calls[0][0].text).toContain('Staff will decide whether to hold your tickets')
   })
 })

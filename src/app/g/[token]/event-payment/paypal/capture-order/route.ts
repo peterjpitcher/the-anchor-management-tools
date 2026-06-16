@@ -6,7 +6,10 @@ import {
   sendEventPaymentConfirmationSms,
   sendEventPaymentManualReviewSms,
 } from '@/lib/events/event-payments'
-import { sendEventPaymentConfirmationEmail } from '@/lib/email/event-ticket-emails'
+import {
+  sendEventPaymentConfirmationEmail,
+  sendEventPaymentManualReviewEmail,
+} from '@/lib/email/event-ticket-emails'
 import { checkGuestTokenThrottle } from '@/lib/guest/token-throttle'
 
 type RouteContext = {
@@ -69,6 +72,11 @@ export async function POST(request: NextRequest, context: RouteContext) {
 
   if (result.state === 'manual_review') {
     await sendEventPaymentManualReviewSms(supabase, { bookingId: result.bookingId })
+    await sendEventPaymentManualReviewEmail(supabase, {
+      bookingId: result.bookingId,
+      amount: result.amount,
+      currency: result.currency,
+    })
     return NextResponse.json(
       {
         success: false,

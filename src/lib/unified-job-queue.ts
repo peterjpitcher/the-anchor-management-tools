@@ -26,6 +26,7 @@ export type JobType =
   | 'send_sms'
   | 'send_bulk_sms'
   | 'send_event_reschedule_notifications'
+  | 'send_event_postponed_notifications'
   | 'cancel_event_bookings'
   | 'export_employees'
   | 'rebuild_category_stats'
@@ -43,6 +44,7 @@ const SUPPORTED_JOB_TYPES: JobType[] = [
   'send_sms',
   'send_bulk_sms',
   'send_event_reschedule_notifications',
+  'send_event_postponed_notifications',
   'cancel_event_bookings',
   'export_employees',
   'rebuild_category_stats',
@@ -72,6 +74,7 @@ const HEARTBEAT_MS = Number.isFinite(Number(process.env.JOB_QUEUE_HEARTBEAT_MS))
 const JOB_TIMEOUTS_MS: Partial<Record<JobType, number>> = {
   send_bulk_sms: 0,
   send_event_reschedule_notifications: 0,
+  send_event_postponed_notifications: 0,
   cancel_event_bookings: 0,
 }
 
@@ -1157,6 +1160,23 @@ export class UnifiedJobQueue {
           oldTime,
           newDate,
           newTime,
+          userId,
+        })
+      }
+
+      case 'send_event_postponed_notifications': {
+        const eventId = typeof payload.eventId === 'string' ? payload.eventId : ''
+        const eventName = typeof payload.eventName === 'string' ? payload.eventName : 'your event'
+        const userId = typeof payload.userId === 'string' ? payload.userId : ''
+
+        if (!eventId || !userId) {
+          throw new Error('send_event_postponed_notifications job blocked: missing required payload')
+        }
+
+        const { dispatchEventPostponedNotifications } = await import('@/lib/events/reschedule-notifications')
+        return dispatchEventPostponedNotifications({
+          eventId,
+          eventName,
           userId,
         })
       }

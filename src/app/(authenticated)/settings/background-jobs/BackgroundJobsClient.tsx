@@ -33,7 +33,8 @@ import { Alert } from '@/ds'
 const jobTypeLabels: Record<string, string> = {
   send_sms: 'Send SMS',
   send_bulk_sms: 'Bulk SMS',
-  send_event_reschedule_notifications: 'Event Reschedule SMS',
+  send_event_reschedule_notifications: 'Event Reschedule Notifications',
+  send_event_postponed_notifications: 'Event Postponed Notifications',
   cancel_event_bookings: 'Cancel Event Bookings',
   export_employees: 'Export Employees',
   rebuild_category_stats: 'Rebuild Category Stats',

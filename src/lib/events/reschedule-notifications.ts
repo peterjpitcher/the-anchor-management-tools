@@ -1,6 +1,10 @@
 import { logAuditEvent } from '@/app/actions/audit'
 import { createEventManageToken } from '@/lib/events/manage-booking'
 import { logger } from '@/lib/logger'
+import {
+  sendEventPostponedEmail,
+  sendEventRescheduledEmail,
+} from '@/lib/email/event-ticket-emails'
 import { buildEventRescheduledSms } from '@/lib/sms/templates'
 import { sendSMS } from '@/lib/twilio'
 import { createAdminClient } from '@/lib/supabase/admin'
@@ -84,6 +88,23 @@ export async function dispatchEventRescheduleNotifications(params: {
   let bookingsNotified = 0
   const batchSize = 20
 
+  for (let index = 0; index < bookings.length; index += batchSize) {
+    const batch = bookings.slice(index, index + batchSize)
+    await Promise.allSettled(
+      batch.map((booking) =>
+        sendEventRescheduledEmail(db, {
+          bookingId: booking.id,
+          eventName,
+          oldDate,
+          oldTime,
+          newDate,
+          newTime,
+          appBaseUrl: process.env.NEXT_PUBLIC_APP_URL || '',
+        }),
+      ),
+    )
+  }
+
   for (let index = 0; index < smsTargets.length; index += batchSize) {
     const batch = smsTargets.slice(index, index + batchSize)
 
@@ -151,6 +172,58 @@ export async function dispatchEventRescheduleNotifications(params: {
       old_time: oldTime,
       new_date: newDate,
       new_time: newTime,
+      bookings_notified: bookingsNotified,
+      total_bookings_affected: bookings.length,
+    },
+  })
+
+  return { bookingsNotified, totalBookingsAffected: bookings.length }
+}
+
+export async function dispatchEventPostponedNotifications(params: {
+  eventId: string
+  eventName: string
+  userId: string
+}): Promise<{ bookingsNotified: number; totalBookingsAffected: number }> {
+  const { eventId, eventName, userId } = params
+  const db = createAdminClient()
+
+  const { data: bookings, error } = await db
+    .from('bookings')
+    .select('id')
+    .eq('event_id', eventId)
+    .in('status', ['confirmed', 'pending_payment'])
+
+  if (error) {
+    throw new Error(`Failed to load bookings for postponed notifications: ${error.message}`)
+  }
+
+  if (!bookings || bookings.length === 0) {
+    return { bookingsNotified: 0, totalBookingsAffected: 0 }
+  }
+
+  let bookingsNotified = 0
+  const batchSize = 20
+  for (let index = 0; index < bookings.length; index += batchSize) {
+    const batch = bookings.slice(index, index + batchSize)
+    const results = await Promise.allSettled(
+      batch.map((booking) =>
+        sendEventPostponedEmail(db, {
+          bookingId: booking.id,
+          eventName,
+        }),
+      ),
+    )
+    bookingsNotified += results.filter((result) => result.status === 'fulfilled').length
+  }
+
+  await logAuditEvent({
+    user_id: userId,
+    operation_type: 'postpone',
+    resource_type: 'event',
+    resource_id: eventId,
+    operation_status: 'success',
+    additional_info: {
       bookings_notified: bookingsNotified,
       total_bookings_affected: bookings.length,
     },
