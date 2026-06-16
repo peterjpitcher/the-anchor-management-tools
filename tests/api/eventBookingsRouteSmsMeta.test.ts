@@ -144,7 +144,7 @@ describe('event booking route SMS safety meta', () => {
         throw new Error(`Unexpected table: ${table}`)
       }),
       rpc: vi.fn(async (name: string) => {
-        if (name === 'create_event_booking_v05') {
+        if (name === 'create_event_booking_v06') {
           return {
             data: {
               state: 'confirmed',
@@ -251,7 +251,7 @@ describe('event booking route SMS safety meta', () => {
         throw new Error(`Unexpected table: ${table}`)
       }),
       rpc: vi.fn(async (name: string) => {
-        if (name === 'create_event_booking_v05') {
+        if (name === 'create_event_booking_v06') {
           return {
             data: {
               state: 'confirmed',
@@ -338,7 +338,7 @@ describe('event booking route SMS safety meta', () => {
         throw new Error(`Unexpected table: ${table}`)
       }),
       rpc: vi.fn(async (name: string) => {
-        if (name === 'create_event_booking_v05') {
+        if (name === 'create_event_booking_v06') {
           return {
             data: {
               state: 'confirmed',
@@ -445,7 +445,7 @@ describe('event booking route SMS safety meta', () => {
         throw new Error(`Unexpected table: ${table}`)
       }),
       rpc: vi.fn(async (name: string) => {
-        if (name === 'create_event_booking_v05') {
+        if (name === 'create_event_booking_v06') {
           return {
             data: {
               state: 'confirmed',
@@ -553,7 +553,7 @@ describe('event booking route SMS safety meta', () => {
         throw new Error(`Unexpected table: ${table}`)
       }),
       rpc: vi.fn(async (name: string) => {
-        if (name === 'create_event_booking_v05') {
+        if (name === 'create_event_booking_v06') {
           return {
             data: {
               state: 'pending_payment',

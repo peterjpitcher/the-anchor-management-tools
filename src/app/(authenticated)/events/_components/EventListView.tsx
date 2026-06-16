@@ -9,7 +9,7 @@ import { BarMini } from './BarMini'
 import type { Event } from '@/types/database'
 import { formatDateInLondon } from '@/lib/dateUtils'
 import { useState, useCallback } from 'react'
-import { resolveEventPaymentMode, resolveEventPriceAmount } from '@/lib/events/pricing'
+import { resolveEventPaymentMode, resolveEventPriceAmount, resolveEventTicketPriceAmount } from '@/lib/events/pricing'
 
 type BadgeTone = 'neutral' | 'primary' | 'success' | 'warning' | 'danger' | 'info'
 
@@ -37,6 +37,16 @@ function getStatusTone(status: string | null | undefined): BadgeTone {
 function formatStatusLabel(status: string | null | undefined): string {
   if (!status) return 'Unknown'
   return status.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
+}
+
+function formatEventPriceSummary(event: Event): string {
+  const ticketPrice = resolveEventTicketPriceAmount(event)
+  const onlinePrice = resolveEventPriceAmount(event)
+  const paymentMode = resolveEventPaymentMode(event)
+
+  if (ticketPrice === 0 && paymentMode === 'free') return 'Free'
+  if (onlinePrice !== ticketPrice) return `Ticket ${formatCurrency(ticketPrice)} / Online ${formatCurrency(onlinePrice)}`
+  return formatCurrency(ticketPrice)
 }
 
 function formatCurrency(amount: number | null | undefined): string {
@@ -129,8 +139,6 @@ export function EventListView({
               const booked = (event as Event & { booked_count?: number }).booked_count ?? 0
               const bookedRatio = capacity > 0 ? Math.round((booked / capacity) * 100) : 0
               const linkClicks = (event as Event & { link_clicks?: number }).link_clicks ?? 0
-              const price = resolveEventPriceAmount(event)
-              const paymentMode = resolveEventPaymentMode(event)
               return (
                 <TableRow key={event.id} onClick={() => onEventClick(event)}>
                   <TableCell>
@@ -166,9 +174,7 @@ export function EventListView({
                   <TableCell align="right">
                     <span className="text-xs text-text-muted">{linkClicks > 0 ? linkClicks.toLocaleString() : '-'}</span>
                   </TableCell>
-                  <TableCell align="right">
-                    {price === 0 && paymentMode === 'free' ? 'Free' : formatCurrency(price)}
-                  </TableCell>
+                  <TableCell align="right">{formatEventPriceSummary(event)}</TableCell>
                   <TableCell>
                     <Badge tone={getStatusTone(event.event_status)} dot>
                       {formatStatusLabel(event.event_status)}

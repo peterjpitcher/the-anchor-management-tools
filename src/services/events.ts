@@ -7,7 +7,7 @@ import { sendSMS } from '@/lib/twilio';
 import { buildEventCancelledSms, buildRefundNote } from '@/lib/sms/templates';
 import { processEventRefund } from '@/lib/events/manage-booking';
 import { logger } from '@/lib/logger';
-import { normalizeEventPricingFields } from '@/lib/events/pricing';
+import { normalizeEventPricingFields, resolveEventPriceAmount } from '@/lib/events/pricing';
 import { buildEventBookingStats } from '@/lib/events/stats';
 
 function sanitizeEventSearchTerm(value: string): string {
@@ -69,6 +69,8 @@ export type CreateEventInput = {
   performer_name?: string | null;
   performer_type?: string | null;
   price?: number;
+  online_discount_type?: 'fixed' | 'percent' | null;
+  online_discount_value?: number | null;
   is_free?: boolean;
   booking_url?: string | null;
   hero_image_url?: string | null;
@@ -140,6 +142,8 @@ type PublishValidationInput = {
   poster_image_url?: string | null
   is_free?: boolean | null
   price?: number | null
+  online_discount_type?: string | null
+  online_discount_value?: number | null
   payment_mode?: string | null
   booking_mode?: string | null
 }
@@ -200,6 +204,34 @@ async function updateEventSplitCapacities(
   return data
 }
 
+async function updateEventOnlineDiscountFields(
+  eventId: string,
+  input: Pick<UpdateEventInput, 'online_discount_type' | 'online_discount_value'>
+) {
+  const payload = {
+    online_discount_type: input.online_discount_type ?? null,
+    online_discount_value: input.online_discount_value ?? null,
+  }
+
+  const admin = createAdminClient()
+  const { data, error } = await admin
+    .from('events')
+    .update(payload)
+    .eq('id', eventId)
+    .select('*')
+    .maybeSingle()
+
+  if (error) {
+    logger.error('Failed to update event online discount fields', {
+      error: error instanceof Error ? error : new Error(String(error)),
+      metadata: { eventId }
+    })
+    throw new Error('Failed to update event online discount')
+  }
+
+  return data
+}
+
 export function isWorldCup2026Event(input: { name?: string | null; slug?: string | null }): boolean {
   const normalizedSlug = typeof input.slug === 'string' ? normalizeSlugValue(input.slug) : ''
   return normalizedSlug.startsWith('world-cup-2026-') || isWorldCup2026EventName(input.name)
@@ -230,18 +262,23 @@ export function getPublishValidationIssues(input: PublishValidationInput): Publi
 
   const pricing = normalizeEventPricingFields({
     price: input.price,
+    online_discount_type: input.online_discount_type,
+    online_discount_value: input.online_discount_value,
     is_free: input.is_free,
     payment_mode: input.payment_mode,
   })
-  const isFree = pricing.is_free
+  const isFree = input.is_free === true || (input.payment_mode === 'free' && pricing.price === 0)
   const price = pricing.price
 
   if (!isFree && (price === null || price <= 0)) {
     errors.push('ticket price (or mark event as free)')
   }
 
-  if (pricing.payment_mode === 'prepaid' && price <= 0) {
-    errors.push('Prepaid events must have a price set')
+  if (pricing.payment_mode === 'prepaid') {
+    const onlinePrice = resolveEventPriceAmount(pricing)
+    if (onlinePrice <= 0) {
+      errors.push('Prepaid events must have a payable online price')
+    }
   }
 
   if (!input.booking_mode) {
@@ -373,6 +410,15 @@ export const eventSchema = z.object({
     },
     z.number().min(0).max(99999.99).default(0).nullable()
   ),
+  online_discount_type: z.enum(['fixed', 'percent']).nullable().optional(),
+  online_discount_value: z.preprocess(
+    (val) => {
+      if (val === '' || val === null || val === undefined) return null;
+      const num = Number(val);
+      return isNaN(num) ? null : num;
+    },
+    z.number().min(0).max(99999.99).nullable().optional()
+  ),
   is_free: z.boolean().default(false),
   booking_url: z.string().nullable().optional().transform(val => {
     if (!val || val.trim() === '') return null
@@ -469,6 +515,8 @@ export class EventService {
       poster_image_url: input.poster_image_url,
       is_free: input.is_free,
       price: input.price,
+      online_discount_type: input.online_discount_type,
+      online_discount_value: input.online_discount_value,
       payment_mode: input.payment_mode,
       booking_mode: input.booking_mode
     })
@@ -494,6 +542,8 @@ export class EventService {
     const forcePromoSmsDisabled = isWorldCup2026Event({ name: input.name, slug })
     const pricing = normalizeEventPricingFields({
       price: input.price,
+      online_discount_type: input.online_discount_type,
+      online_discount_value: input.online_discount_value,
       is_free: input.is_free,
       payment_mode: input.payment_mode,
     })
@@ -502,6 +552,8 @@ export class EventService {
       ...input,
       slug,
       price: pricing.price,
+      online_discount_type: pricing.online_discount_type,
+      online_discount_value: pricing.online_discount_value,
       is_free: pricing.is_free,
       payment_mode: pricing.payment_mode,
       ...(forcePromoSmsDisabled ? { promo_sms_enabled: false } : {}),
@@ -523,11 +575,15 @@ export class EventService {
       throw new Error('Failed to create event');
     }
 
+    const discountEvent = await updateEventOnlineDiscountFields(event.id, {
+      online_discount_type: pricing.online_discount_type,
+      online_discount_value: pricing.online_discount_value,
+    })
     const capacityEvent = await updateEventSplitCapacities(event.id, {
       seated_capacity: input.seated_capacity,
       standing_capacity: input.standing_capacity,
     })
-    const savedEvent = capacityEvent || event
+    const savedEvent = capacityEvent || discountEvent || event
 
     // Attempt marketing link generation — non-blocking for save, but capture failures
     let marketingLinksWarning: string | null = null
@@ -562,6 +618,8 @@ export class EventService {
         poster_image_url,
         is_free,
         price,
+        online_discount_type,
+        online_discount_value,
         payment_mode,
         booking_mode,
         seated_capacity,
@@ -584,6 +642,8 @@ export class EventService {
     const nextPosterImage = input.poster_image_url ?? currentEvent.poster_image_url
     const nextIsFree = input.is_free ?? currentEvent.is_free
     const nextPrice = input.price ?? currentEvent.price
+    const nextOnlineDiscountType = input.online_discount_type ?? currentEvent.online_discount_type
+    const nextOnlineDiscountValue = input.online_discount_value ?? currentEvent.online_discount_value
     const nextPaymentMode = input.payment_mode ?? currentEvent.payment_mode
 
     let slug: string | undefined
@@ -648,6 +708,8 @@ export class EventService {
       poster_image_url: nextPosterImage,
       is_free: nextIsFree,
       price: typeof nextPrice === 'number' ? nextPrice : Number(nextPrice || 0),
+      online_discount_type: nextOnlineDiscountType,
+      online_discount_value: typeof nextOnlineDiscountValue === 'number' ? nextOnlineDiscountValue : Number(nextOnlineDiscountValue || 0),
       payment_mode: nextPaymentMode,
       booking_mode: nextBookingMode
     })
@@ -679,6 +741,8 @@ export class EventService {
     })
     const pricing = normalizeEventPricingFields({
       price: nextPrice,
+      online_discount_type: nextOnlineDiscountType,
+      online_discount_value: nextOnlineDiscountValue,
       is_free: nextIsFree,
       payment_mode: nextPaymentMode,
     })
@@ -687,6 +751,8 @@ export class EventService {
       ...input,
       ...(requestedBookingMode !== undefined ? { booking_mode: requestedBookingMode } : {}),
       price: pricing.price,
+      online_discount_type: pricing.online_discount_type,
+      online_discount_value: pricing.online_discount_value,
       is_free: pricing.is_free,
       payment_mode: pricing.payment_mode,
       slug, // might be undefined, handled by COALESCE in SQL
@@ -705,11 +771,15 @@ export class EventService {
       throw new Error('Failed to update event');
     }
 
+    const discountEvent = await updateEventOnlineDiscountFields(id, {
+      online_discount_type: pricing.online_discount_type,
+      online_discount_value: pricing.online_discount_value,
+    })
     const capacityEvent = await updateEventSplitCapacities(id, {
       seated_capacity: input.seated_capacity,
       standing_capacity: input.standing_capacity,
     })
-    const savedEvent = capacityEvent || event
+    const savedEvent = capacityEvent || discountEvent || event
 
     // Attempt marketing link refresh — non-blocking for save, but capture failures
     let marketingLinksWarning: string | null = null

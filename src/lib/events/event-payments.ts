@@ -284,7 +284,7 @@ export async function getEventPaymentPreviewByRawToken(
 
   const { data: eventRow, error: eventError } = await supabase
     .from('events')
-    .select('id, name, price_per_seat, price')
+    .select('id, name, payment_mode, price_per_seat, price, online_discount_type, online_discount_value')
     .eq('id', booking.event_id)
     .maybeSingle()
 
@@ -355,7 +355,7 @@ export async function getEventPaymentPreviewByBookingId(
 
   const { data: eventRow, error: eventError } = await supabase
     .from('events')
-    .select('id, name, price_per_seat, price')
+    .select('id, name, payment_mode, price_per_seat, price, online_discount_type, online_discount_value')
     .eq('id', booking.event_id)
     .maybeSingle()
 

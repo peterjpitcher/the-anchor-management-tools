@@ -3,7 +3,7 @@ import { eventSchema, getPublishValidationIssues, isWorldCup2026Event } from '@/
 
 const baseEventInput = {
   name: 'Test Event',
-  date: '2026-06-15',
+  date: '2026-06-20',
   time: '20:00',
   capacity: null,
 }
@@ -103,7 +103,7 @@ describe('getPublishValidationIssues', () => {
     const issues = getPublishValidationIssues({
       status: 'scheduled',
       name: 'Quiz Night',
-      date: '2026-06-15',
+      date: '2026-06-20',
       time: '20:00',
       slug: '',
       short_description: '',
@@ -122,7 +122,7 @@ describe('getPublishValidationIssues', () => {
     const issues = getPublishValidationIssues({
       status: 'scheduled',
       name: 'Quiz Night',
-      date: '2026-06-15',
+      date: '2026-06-20',
       time: '20:00',
       slug: 'quiz-night-2026-06-15',
       short_description: 'Weekly pub quiz with prizes.',

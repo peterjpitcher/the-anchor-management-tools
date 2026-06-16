@@ -432,7 +432,7 @@ async function recordAnalyticsSafe(
 
 export class EventBookingService {
   /**
-   * Create an event booking via the create_event_booking_v05 RPC.
+   * Create an event booking via the create_event_booking_v06 RPC.
    *
    * Shared by the public API (brand_site), FOH API (admin / walk-in), and the
    * SMS reply-to-book webhook (sms_reply — Phase 5).
