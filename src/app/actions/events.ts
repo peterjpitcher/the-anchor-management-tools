@@ -48,6 +48,9 @@ export type EventBookingRow = {
   source?: string | null
   hold_expires_at?: string | null
   event_seating_type?: 'seated' | 'standing' | null
+  paid_amount?: number | null
+  payment_status_summary?: string | null
+  payment_method_summary?: string | null
   customer?: {
     id: string
     first_name: string | null
@@ -237,6 +240,12 @@ async function prepareEventDataFromFormData(formData: FormData, _existingEventId
     performer_name: rawData.performer_name as string || null,
     performer_type: rawData.performer_type as string || categoryDefaults.performer_type || null,
     price: (rawData.price as string) ? Number(rawData.price) : categoryDefaults.price || 0,
+    ...(rawData.online_discount_type === 'fixed' || rawData.online_discount_type === 'percent'
+      ? { online_discount_type: rawData.online_discount_type as 'fixed' | 'percent' }
+      : { online_discount_type: null }),
+    ...(rawData.online_discount_value !== undefined
+      ? { online_discount_value: rawData.online_discount_value === '' ? null : Number(rawData.online_discount_value) }
+      : {}),
     is_free: isFree,
     booking_url: rawData.booking_url as string || categoryDefaults.booking_url || null,
     hero_image_url: rawData.hero_image_url as string || categoryDefaults.hero_image_url || null,
@@ -251,10 +260,14 @@ async function prepareEventDataFromFormData(formData: FormData, _existingEventId
 
   const pricing = normalizeEventPricingFields({
     price: data.price,
+    online_discount_type: data.online_discount_type,
+    online_discount_value: data.online_discount_value,
     is_free: data.is_free,
     payment_mode: data.payment_mode,
   })
   data.price = pricing.price
+  data.online_discount_type = pricing.online_discount_type
+  data.online_discount_value = pricing.online_discount_value
   data.is_free = pricing.is_free
   data.payment_mode = pricing.payment_mode
 
@@ -586,7 +599,73 @@ export async function getEventBookings(eventId: string): Promise<{ data?: EventB
 
     if (error) throw error
 
-    return { data: (data ?? []) as unknown as EventBookingRow[] }
+    const bookings = (data ?? []) as unknown as EventBookingRow[]
+    const bookingIds = bookings.map((booking) => booking.id).filter(Boolean)
+
+    if (bookingIds.length === 0) {
+      return { data: bookings }
+    }
+
+    const { data: paymentRows, error: paymentsError } = await supabase
+      .from('payments')
+      .select('event_booking_id, amount, status, payment_method, payment_provider')
+      .in('event_booking_id', bookingIds)
+
+    if (paymentsError) throw paymentsError
+
+    type PaymentRow = {
+      event_booking_id: string | null
+      amount: number | null
+      status: string | null
+      payment_method: string | null
+      payment_provider: string | null
+    }
+
+    const paymentsByBooking = new Map<string, PaymentRow[]>()
+    for (const payment of (paymentRows ?? []) as PaymentRow[]) {
+      if (!payment.event_booking_id) continue
+      const current = paymentsByBooking.get(payment.event_booking_id) ?? []
+      current.push(payment)
+      paymentsByBooking.set(payment.event_booking_id, current)
+    }
+
+    const paidStatuses = new Set(['succeeded', 'paid', 'partially_refunded', 'refunded'])
+    const withPayments = bookings.map((booking) => {
+      const payments = paymentsByBooking.get(booking.id) ?? []
+      const paidRows = payments.filter((payment) => paidStatuses.has(String(payment.status || '').toLowerCase()))
+      const paidAmount = paidRows.reduce((sum, payment) => sum + Math.max(0, Number(payment.amount || 0)), 0)
+      const statuses = new Set(payments.map((payment) => String(payment.status || '').toLowerCase()).filter(Boolean))
+      const methods = new Set(payments.map((payment) => String(payment.payment_method || payment.payment_provider || '').toLowerCase()).filter(Boolean))
+      const paymentStatusSummary =
+        statuses.has('refunded')
+          ? 'Refunded'
+          : statuses.has('partially_refunded')
+            ? 'Part refunded'
+            : paidRows.length > 0
+              ? 'Paid'
+              : statuses.has('pending')
+                ? 'Pending'
+                : null
+      const paymentMethodSummary =
+        methods.has('comp')
+          ? 'Comp'
+          : methods.has('card_terminal')
+            ? 'Card'
+            : methods.has('cash')
+              ? 'Cash'
+              : methods.has('paypal')
+                ? 'PayPal'
+                : null
+
+      return {
+        ...booking,
+        paid_amount: Number(paidAmount.toFixed(2)),
+        payment_status_summary: paymentStatusSummary,
+        payment_method_summary: paymentMethodSummary,
+      }
+    })
+
+    return { data: withPayments }
   } catch (error: unknown) {
     logger.error('Error fetching event bookings', {
       error: error instanceof Error ? error : new Error(String(error)),
@@ -1176,7 +1255,7 @@ export async function cancelEventManualBooking(input: {
         seats,
         status,
         is_reminder_only,
-        event:events(id, name, start_datetime, date, time, payment_mode, price, price_per_seat, is_free),
+        event:events(id, name, start_datetime, date, time, payment_mode, price, price_per_seat, online_discount_type, online_discount_value, is_free),
         customer:customers(id, first_name, mobile_number, sms_status)
       `)
       .eq('id', parsed.data.bookingId)
@@ -1593,7 +1672,7 @@ export async function markEventBookingPaidManually(input: {
     const supabase = createAdminClient()
     const { data: bookingRow, error: bookingError } = await supabase
       .from('bookings')
-      .select('id, event_id, customer_id, seats, status, event:events(id, name, payment_mode, price, price_per_seat, is_free)')
+      .select('id, event_id, customer_id, seats, status, event:events(id, name, payment_mode, price, price_per_seat, online_discount_type, online_discount_value, is_free)')
       .eq('id', parsed.data.bookingId)
       .maybeSingle()
 
@@ -1832,7 +1911,7 @@ export async function transferEventBooking(input: {
         status,
         event_seating_type,
         customer:customers(id, first_name, mobile_number, sms_status),
-        event:events(id, name, payment_mode, price, price_per_seat, is_free)
+        event:events(id, name, payment_mode, price, price_per_seat, online_discount_type, online_discount_value, is_free)
       `)
       .eq('id', parsed.data.bookingId)
       .maybeSingle()
@@ -1883,7 +1962,7 @@ export async function transferEventBooking(input: {
 
     const { data: targetEvent, error: targetEventError } = await supabase
       .from('events')
-      .select('id, name, booking_mode, payment_mode, price, price_per_seat, is_free, event_status, start_datetime, date, time')
+      .select('id, name, booking_mode, payment_mode, price, price_per_seat, online_discount_type, online_discount_value, is_free, event_status, start_datetime, date, time')
       .eq('id', parsed.data.targetEventId)
       .maybeSingle()
 

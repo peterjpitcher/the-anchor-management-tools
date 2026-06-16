@@ -41,7 +41,7 @@ import { EventMarketingLinksCard } from '@/components/features/events/EventMarke
 import { EventPromotionContentCard } from '@/components/features/events/EventPromotionContentCard'
 import { EventChecklistCard } from '@/components/features/events/EventChecklistCard'
 import { formatDateInLondon, formatTime12Hour } from '@/lib/dateUtils'
-import { resolveEventPaymentMode, resolveEventPriceAmount } from '@/lib/events/pricing'
+import { resolveEventOnlineDiscountAmount, resolveEventPaymentMode, resolveEventPriceAmount, resolveEventTicketPriceAmount } from '@/lib/events/pricing'
 import { buildEventBookingStats } from '@/lib/events/stats'
 
 /* ------------------------------------------------------------------ */
@@ -114,15 +114,32 @@ function formatPaymentMode(paymentMode: Event['payment_mode']): string | null {
 }
 
 function formatEventCost(event: Event): string {
-  const price = resolveEventPriceAmount(event)
+  const ticketPrice = resolveEventTicketPriceAmount(event)
+  const onlinePrice = resolveEventPriceAmount(event)
+  const onlineSaving = resolveEventOnlineDiscountAmount(event)
   const paymentModeValue = resolveEventPaymentMode(event) as Event['payment_mode']
   const paymentMode = formatPaymentMode(paymentModeValue)
 
-  if (price === 0 && paymentModeValue === 'free') {
+  if (ticketPrice === 0 && paymentModeValue === 'free') {
     return 'Free'
   }
 
-  return `${formatCurrency(price)} per person${paymentMode ? `, ${paymentMode}` : ''}`
+  if (onlineSaving > 0 && onlinePrice !== ticketPrice) {
+    return `Ticket ${formatCurrency(ticketPrice)} per person, online ${formatCurrency(onlinePrice)} (save ${formatCurrency(onlineSaving)})${paymentMode ? `, ${paymentMode}` : ''}`
+  }
+
+  return `${formatCurrency(ticketPrice)} per person${paymentMode ? `, ${paymentMode}` : ''}`
+}
+
+function formatBookingPayment(booking: EventBookingRow): string {
+  const amount = Number(booking.paid_amount ?? 0)
+  if (!Number.isFinite(amount) || amount <= 0) {
+    return booking.payment_method_summary === 'Comp' ? 'Comp' : '-'
+  }
+
+  const status = booking.payment_status_summary || 'Paid'
+  const method = booking.payment_method_summary ? ` · ${booking.payment_method_summary}` : ''
+  return `${formatCurrency(amount)} ${status.toLowerCase()}${method}`
 }
 
 function copyToClipboard(text: string, label: string): void {
@@ -192,10 +209,14 @@ export default function EventDetailClient({
   const totalSeats = eventStats?.totalSeats ?? 0
   const capacityPct = eventStats?.capacityPct ?? null
   const estimatedRevenue = eventStats?.estimatedRevenue ?? 0
+  const totalPaidAmount = useMemo(
+    () => activeBookings.reduce((sum, booking) => sum + Math.max(0, Number(booking.paid_amount || 0)), 0),
+    [activeBookings],
+  )
   const totalLinkClicks = eventStats?.totalLinkClicks ?? 0
 
   const canDeleteEvent = permissions.canDelete || permissions.canManage
-  const resolvedEventPrice = event ? resolveEventPriceAmount(event) : 0
+  const resolvedEventPrice = event ? resolveEventTicketPriceAmount(event) : 0
   const resolvedPaymentMode = event ? resolveEventPaymentMode(event) : 'free'
 
   /* ---- Refresh bookings ---- */
@@ -491,6 +512,7 @@ export default function EventDetailClient({
                 activeBookingsCount={activeBookings.length}
                 capacityPct={capacityPct}
                 estimatedRevenue={estimatedRevenue}
+                totalPaidAmount={totalPaidAmount}
                 totalLinkClicks={totalLinkClicks}
                 selectedCustomerId={selectedCustomerId}
                 onCustomerSelect={(customer) => {
@@ -763,6 +785,7 @@ function AttendeesTab({
   activeBookingsCount,
   capacityPct,
   estimatedRevenue,
+  totalPaidAmount,
   totalLinkClicks,
   selectedCustomerId,
   onCustomerSelect,
@@ -798,6 +821,7 @@ function AttendeesTab({
   activeBookingsCount: number
   capacityPct: number | null
   estimatedRevenue: number | null
+  totalPaidAmount: number
   totalLinkClicks: number
   selectedCustomerId: string | null
   onCustomerSelect: (customer: { id: string; first_name: string; last_name: string | null; mobile_number: string | null; email: string | null } | null) => void
@@ -827,7 +851,7 @@ function AttendeesTab({
   return (
     <div className="flex flex-col gap-6">
       {/* Stat cards */}
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-5">
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 xl:grid-cols-6">
         <Card padding="md">
           <p className="text-xs font-medium text-text-muted">Total Seats Booked</p>
           <p className="mt-1 text-2xl font-semibold text-text-primary">{totalSeats}</p>
@@ -843,6 +867,10 @@ function AttendeesTab({
         <Card padding="md">
           <p className="text-xs font-medium text-text-muted">Est. Revenue</p>
           <p className="mt-1 text-2xl font-semibold text-text-primary">{estimatedRevenue !== null ? formatCurrency(estimatedRevenue) : '-'}</p>
+        </Card>
+        <Card padding="md">
+          <p className="text-xs font-medium text-text-muted">Paid</p>
+          <p className="mt-1 text-2xl font-semibold text-text-primary">{formatCurrency(totalPaidAmount)}</p>
         </Card>
         <Card padding="md">
           <p className="text-xs font-medium text-text-muted">Link Clicks</p>
@@ -948,6 +976,7 @@ function AttendeesTab({
                     <TableHead>Phone</TableHead>
                     <TableHead>Seats</TableHead>
                     {event.booking_mode === 'communal' && <TableHead>Type</TableHead>}
+                    <TableHead>Paid</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead>Created</TableHead>
                     {canManage && <TableHead>Actions</TableHead>}
@@ -998,6 +1027,7 @@ function AttendeesTab({
                             </Badge>
                           </TableCell>
                         )}
+                        <TableCell>{formatBookingPayment(booking)}</TableCell>
                         <TableCell>
                           <Badge
                             tone={booking.status === 'cancelled' ? 'danger' : booking.status === 'confirmed' ? 'success' : 'neutral'}

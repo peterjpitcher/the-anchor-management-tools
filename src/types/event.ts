@@ -23,6 +23,8 @@ export interface Event {
   performer_name: string | null
   performer_type: string | null
   price: number
+  online_discount_type: 'fixed' | 'percent' | null
+  online_discount_value: number | null
   price_currency: string
   is_free: boolean
   booking_url: string | null
@@ -101,6 +103,8 @@ export interface EventFormData {
   performer_name?: string
   performer_type?: string
   price?: number
+  online_discount_type?: 'fixed' | 'percent' | null
+  online_discount_value?: number | null
   price_currency?: string
   is_free?: boolean
   booking_url?: string

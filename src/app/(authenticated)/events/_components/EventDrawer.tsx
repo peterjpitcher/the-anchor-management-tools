@@ -17,7 +17,7 @@ import { SquareImageUpload } from '@/components/features/shared/SquareImageUploa
 import type { Event } from '@/types/database'
 import type { EventCategory } from '@/types/event-categories'
 import type { EventChecklistItem } from '@/lib/event-checklist'
-import { resolveEventPaymentMode, resolveEventPriceAmount } from '@/lib/events/pricing'
+import { resolveEventPaymentMode, resolveEventTicketPriceAmount } from '@/lib/events/pricing'
 
 type GenerationPhase = 'checking' | 'drafting' | null
 
@@ -47,6 +47,12 @@ const PAYMENT_MODE_OPTIONS = [
   { value: 'free', label: 'Free' },
   { value: 'cash_only', label: 'Cash on arrival' },
   { value: 'prepaid', label: 'Prepaid (online payment)' },
+]
+
+const ONLINE_DISCOUNT_OPTIONS = [
+  { value: '', label: 'No online discount' },
+  { value: 'fixed', label: '£ discount online' },
+  { value: 'percent', label: '% discount online' },
 ]
 
 const BOOKING_MODE_OPTIONS = [
@@ -93,6 +99,8 @@ export function EventDrawer({ open, onClose, event, categories, onSave }: EventD
 
   // ── Pricing & booking ──
   const [price, setPrice] = useState('')
+  const [onlineDiscountType, setOnlineDiscountType] = useState('')
+  const [onlineDiscountValue, setOnlineDiscountValue] = useState('')
   const [isFree, setIsFree] = useState(true)
   const [paymentMode, setPaymentMode] = useState('free')
   const [bookingMode, setBookingMode] = useState('table')
@@ -164,9 +172,11 @@ export function EventDrawer({ open, onClose, event, categories, onSave }: EventD
       setDurationMinutes(event.duration_minutes?.toString() || '')
       setPerformerName(event.performer_name || '')
       setPerformerType(event.performer_type || '')
-      const resolvedPrice = resolveEventPriceAmount(event)
+      const resolvedPrice = resolveEventTicketPriceAmount(event)
       const resolvedPaymentMode = resolveEventPaymentMode(event)
       setPrice(resolvedPrice > 0 ? resolvedPrice.toString() : '0')
+      setOnlineDiscountType((event as any).online_discount_type || '')
+      setOnlineDiscountValue((event as any).online_discount_value != null ? String((event as any).online_discount_value) : '')
       setIsFree(resolvedPrice === 0 && resolvedPaymentMode === 'free')
       setPaymentMode(resolvedPaymentMode)
       setBookingMode(event.booking_mode || 'table')
@@ -206,6 +216,8 @@ export function EventDrawer({ open, onClose, event, categories, onSave }: EventD
       setPerformerName('')
       setPerformerType('')
       setPrice('')
+      setOnlineDiscountType('')
+      setOnlineDiscountValue('')
       setIsFree(true)
       setPaymentMode('free')
       setBookingMode('table')
@@ -339,6 +351,8 @@ export function EventDrawer({ open, onClose, event, categories, onSave }: EventD
 
       // Pricing & booking
       formData.set('price', price || '0')
+      formData.set('online_discount_type', onlineDiscountType)
+      formData.set('online_discount_value', onlineDiscountValue.trim())
       formData.set('is_free', String(isFree))
       formData.set('payment_mode', paymentMode)
       if (bookingUrl.trim()) formData.set('booking_url', bookingUrl.trim())
@@ -674,9 +688,9 @@ export function EventDrawer({ open, onClose, event, categories, onSave }: EventD
 
         {/* ── Pricing & Booking ── */}
         <Section title="Pricing & Booking">
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-2 gap-3">
             <Input
-              label="Price (£)"
+              label="Ticket price (£)"
               type="number"
               value={price}
               onChange={(e) => {
@@ -687,6 +701,27 @@ export function EventDrawer({ open, onClose, event, categories, onSave }: EventD
               }}
               placeholder="0.00"
             />
+            <Select
+              label="Online discount"
+              options={ONLINE_DISCOUNT_OPTIONS}
+              value={onlineDiscountType}
+              onChange={(e) => {
+                setOnlineDiscountType(e.target.value)
+                if (!e.target.value) setOnlineDiscountValue('')
+              }}
+            />
+          </div>
+          {onlineDiscountType ? (
+            <Input
+              label={onlineDiscountType === 'percent' ? 'Discount (%)' : 'Discount (£)'}
+              type="number"
+              value={onlineDiscountValue}
+              onChange={(e) => setOnlineDiscountValue(e.target.value)}
+              placeholder={onlineDiscountType === 'percent' ? '10' : '2.00'}
+              className="mt-3"
+            />
+          ) : null}
+          <div className="grid grid-cols-2 gap-3 mt-3">
             <Select
               label="Payment Mode"
               options={PAYMENT_MODE_OPTIONS}

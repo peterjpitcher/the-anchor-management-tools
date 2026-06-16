@@ -78,7 +78,7 @@ export async function GET(request: NextRequest) {
 
   const { data: events, error } = await auth.supabase.from('events')
     .select(
-      'id, name, date, time, end_time, start_datetime, duration_minutes, payment_mode, price_per_seat, price, capacity, seated_capacity, standing_capacity, booking_open, event_status, booking_mode'
+      'id, name, date, time, end_time, start_datetime, duration_minutes, payment_mode, price_per_seat, price, online_discount_type, online_discount_value, capacity, seated_capacity, standing_capacity, booking_open, event_status, booking_mode'
     )
     .eq('date', bookingDate)
     .or('booking_open.is.null,booking_open.eq.true')
