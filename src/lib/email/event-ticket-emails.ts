@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { sendEmail } from '@/lib/email/emailService'
+import { createEventManageToken } from '@/lib/events/manage-booking'
 import { logger } from '@/lib/logger'
 
 function formatLondonDateTime(value: string | null | undefined): string {
@@ -27,6 +28,18 @@ function escapeHtml(value: string): string {
     .replace(/"/g, '&quot;')
 }
 
+function formatCurrency(amount: number | null | undefined, currency = 'GBP'): string | null {
+  if (typeof amount !== 'number' || !Number.isFinite(amount)) return null
+  try {
+    return new Intl.NumberFormat('en-GB', {
+      style: 'currency',
+      currency,
+    }).format(amount)
+  } catch {
+    return `£${amount.toFixed(2)}`
+  }
+}
+
 async function loadEventTicketEmailContext(
   supabase: SupabaseClient<any, 'public', any>,
   bookingId: string
@@ -37,6 +50,7 @@ async function loadEventTicketEmailContext(
   firstName: string
   eventName: string
   eventStart: string
+  eventStartIso: string | null
   seats: number
 } | null> {
   const { data: booking, error } = await supabase
@@ -58,6 +72,7 @@ async function loadEventTicketEmailContext(
   const event = Array.isArray(eventRaw) ? eventRaw[0] : eventRaw
   const email = typeof customer?.email === 'string' ? customer.email.trim() : ''
   if (!email) return null
+  const eventStartIso = event?.start_datetime || (event?.date ? `${event.date}T${event.time || '00:00'}:00` : null)
 
   return {
     bookingId: booking.id,
@@ -65,8 +80,39 @@ async function loadEventTicketEmailContext(
     email,
     firstName: customer.first_name || 'there',
     eventName: event?.name || 'your event',
-    eventStart: formatLondonDateTime(event?.start_datetime || (event?.date ? `${event.date}T${event.time || '00:00'}:00` : null)),
+    eventStart: formatLondonDateTime(eventStartIso),
+    eventStartIso,
     seats: Math.max(1, Number((booking as any).seats || 1)),
+  }
+}
+
+async function hasSuccessfulEventPaymentConfirmationEmail(
+  supabase: SupabaseClient<any, 'public', any>,
+  bookingId: string
+): Promise<boolean> {
+  try {
+    const { data, error } = await (supabase.from('email_messages') as any)
+      .select('id')
+      .eq('event_booking_id', bookingId)
+      .eq('comm_type', 'event_payment_confirmation')
+      .in('status', ['queued', 'sent', 'delivered', 'delivery_delayed', 'opened', 'clicked'])
+      .limit(1)
+      .maybeSingle()
+
+    if (error) {
+      logger.warn('Failed to check existing event payment confirmation email', {
+        metadata: { bookingId, error: error.message },
+      })
+      return false
+    }
+
+    return Boolean(data)
+  } catch (error) {
+    logger.warn('Event payment confirmation email duplicate check unavailable', {
+      error: error instanceof Error ? error : new Error(String(error)),
+      metadata: { bookingId },
+    })
+    return false
   }
 }
 
@@ -125,6 +171,80 @@ export async function sendEventPaymentLinkEmail(
     metadata: {
       template_key: input.reminder ? 'event_payment_reminder_email' : 'event_payment_link_email',
       payment_link: input.paymentLink,
+    },
+  })
+}
+
+export async function sendEventPaymentConfirmationEmail(
+  supabase: SupabaseClient<any, 'public', any>,
+  input: {
+    bookingId: string
+    amount?: number | null
+    currency?: string | null
+    appBaseUrl?: string
+  }
+): Promise<{ success: boolean; error?: string; messageId?: string; skipped?: boolean }> {
+  const context = await loadEventTicketEmailContext(supabase, input.bookingId)
+  if (!context) return { success: false, skipped: true }
+
+  const alreadySent = await hasSuccessfulEventPaymentConfirmationEmail(supabase, input.bookingId)
+  if (alreadySent) return { success: true, skipped: true }
+
+  const seatWord = context.seats === 1 ? 'ticket' : 'tickets'
+  const amountText = formatCurrency(input.amount ?? null, input.currency || 'GBP')
+  let manageLink: string | null = null
+
+  try {
+    const manageToken = await createEventManageToken(supabase, {
+      customerId: context.customerId,
+      bookingId: context.bookingId,
+      eventStartIso: context.eventStartIso,
+      appBaseUrl: input.appBaseUrl,
+    })
+    manageLink = manageToken.url
+  } catch {
+    manageLink = null
+  }
+
+  const subject = `Booking confirmed: ${context.eventName}`
+  const safeName = escapeHtml(context.firstName)
+  const safeEventName = escapeHtml(context.eventName)
+  const safeManageLink = manageLink ? escapeHtml(manageLink) : null
+  const paidLine = amountText
+    ? `We have received your ${amountText} payment.`
+    : 'We have received your payment.'
+  const text = [
+    `Hi ${context.firstName},`,
+    '',
+    `${paidLine} Your booking for ${context.eventName} on ${context.eventStart} is confirmed for ${context.seats} ${seatWord}.`,
+    manageLink ? `Manage your booking here: ${manageLink}` : null,
+    '',
+    'The Anchor',
+  ].filter(Boolean).join('\n')
+
+  const html = `
+<div style="font-family: Arial, Helvetica, sans-serif; max-width: 620px; margin: 0 auto; color: #111827;">
+  <h2 style="font-family: Arial, Helvetica, sans-serif;">Your booking is confirmed</h2>
+  <p>Hi ${safeName},</p>
+  <p>${escapeHtml(paidLine)} Your booking for <strong>${safeEventName}</strong> on ${escapeHtml(context.eventStart)} is confirmed for ${context.seats} ${seatWord}.</p>
+  ${safeManageLink ? `<p><a href="${safeManageLink}" style="display: inline-block; padding: 10px 14px; background: #111827; color: #ffffff; text-decoration: none; border-radius: 6px;">Manage booking</a></p>` : ''}
+  <p style="font-size: 13px; color: #6b7280;">This is a service message about your booking.</p>
+  <p>The Anchor</p>
+</div>`
+
+  return sendEmail({
+    to: context.email,
+    subject,
+    text,
+    html,
+    commType: 'event_payment_confirmation',
+    customerId: context.customerId,
+    eventBookingId: context.bookingId,
+    metadata: {
+      template_key: 'event_payment_confirmation_email',
+      amount: input.amount ?? null,
+      currency: input.currency || 'GBP',
+      manage_link_included: Boolean(manageLink),
     },
   })
 }

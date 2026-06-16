@@ -6,6 +6,7 @@ import {
   sendEventPaymentConfirmationSms,
   sendEventPaymentManualReviewSms,
 } from '@/lib/events/event-payments'
+import { sendEventPaymentConfirmationEmail } from '@/lib/email/event-ticket-emails'
 import {
   claimIdempotencyKey,
   computeIdempotencyRequestHash,
@@ -157,6 +158,19 @@ export async function POST(request: NextRequest): Promise<Response> {
         bookingId,
         eventName: 'your event',
         seats: 1,
+        appBaseUrl: process.env.NEXT_PUBLIC_APP_URL,
+      })
+      await sendEventPaymentConfirmationEmail(supabase, {
+        bookingId,
+        amount,
+        currency,
+        appBaseUrl: process.env.NEXT_PUBLIC_APP_URL,
+      })
+    } else if (state === 'already_confirmed') {
+      await sendEventPaymentConfirmationEmail(supabase, {
+        bookingId,
+        amount,
+        currency,
         appBaseUrl: process.env.NEXT_PUBLIC_APP_URL,
       })
     } else if (state === 'manual_review') {

@@ -7,6 +7,7 @@ import {
   sendEventPaymentConfirmationSms,
   sendEventPaymentManualReviewSms,
 } from '@/lib/events/event-payments'
+import { sendEventPaymentConfirmationEmail } from '@/lib/email/event-ticket-emails'
 
 function extractCapture(order: any): { id: string; amount: number; currency: string } | null {
   const capture = order?.purchase_units?.[0]?.payments?.captures?.[0]
@@ -87,6 +88,12 @@ export async function GET(request: NextRequest) {
             appBaseUrl: process.env.NEXT_PUBLIC_APP_URL,
           })
         }
+        await sendEventPaymentConfirmationEmail(supabase, {
+          bookingId: row.event_booking_id as string,
+          amount: capture.amount,
+          currency: capture.currency,
+          appBaseUrl: process.env.NEXT_PUBLIC_APP_URL,
+        })
       } else if (state === 'manual_review') {
         result.manualReview++
         await sendEventPaymentManualReviewSms(supabase, { bookingId: row.event_booking_id as string })
