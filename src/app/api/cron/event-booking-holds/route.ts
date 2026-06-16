@@ -39,6 +39,7 @@ export async function GET(request: NextRequest) {
 
   const supabase = createAdminClient()
   const nowIso = new Date().toISOString()
+  const paymentRaceCutoffIso = new Date(Date.now() - 10 * 60 * 1000).toISOString()
 
   try {
     const result = {
@@ -58,7 +59,7 @@ export async function GET(request: NextRequest) {
       .select('id, event_id')
       .eq('status', 'pending_payment')
       .not('hold_expires_at', 'is', null)
-      .lte('hold_expires_at', nowIso)
+      .lte('hold_expires_at', paymentRaceCutoffIso)
       .limit(1000)
 
     if (pendingError) {

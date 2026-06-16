@@ -56,6 +56,8 @@ function blockedReasonMessage(reason: string | undefined): string {
       return 'Please enter a seat count larger than your current booking.'
     case 'booking_not_confirmed':
       return 'Seat increases can only be applied to confirmed prepaid bookings.'
+    case 'online_seat_increase_unavailable':
+      return 'Please contact the venue to add paid tickets to this booking.'
     case 'already_cancelled':
       return 'This booking has already been cancelled.'
     case 'rate_limited':

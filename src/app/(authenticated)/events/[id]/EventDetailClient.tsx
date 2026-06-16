@@ -28,6 +28,8 @@ import {
   createEventManualBooking,
   updateEventManualBookingSeats,
   cancelEventManualBooking,
+  markEventBookingPaidManually,
+  transferEventBooking,
   deleteEvent,
 } from '@/app/actions/events'
 import {
@@ -167,6 +169,8 @@ export default function EventDetailClient({
 
   // Cancel confirmation state
   const [cancellingBookingId, setCancellingBookingId] = useState<string | null>(null)
+  const [transferringBookingId, setTransferringBookingId] = useState<string | null>(null)
+  const [transferTargetEventId, setTransferTargetEventId] = useState('')
 
   /* ---- Derived data ---- */
 
@@ -279,12 +283,61 @@ export default function EventDetailClient({
       if ('error' in result) {
         toast.error(result.error)
       } else {
-        toast.success('Booking cancelled')
+        const refundAmount = result.data.refund_amount || 0
+        if (result.data.refund_status === 'succeeded' && refundAmount > 0) {
+          toast.success(`Booking cancelled. Refund issued: ${formatCurrency(refundAmount)}`)
+        } else if (result.data.refund_status === 'pending' && refundAmount > 0) {
+          toast.success(`Booking cancelled. Refund pending: ${formatCurrency(refundAmount)}`)
+        } else if ((result.data.refund_status === 'manual_required' || result.data.refund_status === 'failed') && refundAmount > 0) {
+          toast.warning(`Booking cancelled. Refund needs staff follow-up: ${formatCurrency(refundAmount)}`)
+        } else {
+          toast.success('Booking cancelled')
+        }
         setCancellingBookingId(null)
         await refreshBookings()
       }
     })
   }, [cancellingBookingId, event, refreshBookings])
+
+  const handleMarkPaid = useCallback((bookingId: string, method: 'cash' | 'card_terminal' | 'comp') => {
+    startTransition(async () => {
+      const result = await markEventBookingPaidManually({ bookingId, method })
+      if ('error' in result) {
+        toast.error(result.error)
+        return
+      }
+      if (result.data.state === 'manual_review') {
+        toast.warning('Payment recorded. Booking needs staff review.')
+      } else if (result.data.state === 'blocked') {
+        toast.error(formatStatusLabel(result.data.reason || 'Payment blocked'))
+      } else {
+        toast.success('Booking marked paid')
+      }
+      await refreshBookings()
+    })
+  }, [refreshBookings])
+
+  const handleTransferBooking = useCallback(() => {
+    if (!transferringBookingId || !transferTargetEventId.trim()) return
+    startTransition(async () => {
+      const result = await transferEventBooking({
+        bookingId: transferringBookingId,
+        targetEventId: transferTargetEventId.trim()
+      })
+      if ('error' in result) {
+        toast.error(result.error)
+        return
+      }
+      if (result.data.state === 'blocked') {
+        toast.error(formatStatusLabel(result.data.reason || 'Transfer blocked'))
+        return
+      }
+      toast.success('Booking transferred')
+      setTransferringBookingId(null)
+      setTransferTargetEventId('')
+      await refreshBookings()
+    })
+  }, [transferringBookingId, transferTargetEventId, refreshBookings])
 
   /* ---- Marketing links ---- */
 
@@ -467,6 +520,19 @@ export default function EventDetailClient({
                 onSaveSeats={handleSaveSeats}
                 onCancelEdit={() => setEditingBookingId(null)}
                 onCancelBooking={setCancellingBookingId}
+                onMarkPaid={handleMarkPaid}
+                transferringBookingId={transferringBookingId}
+                transferTargetEventId={transferTargetEventId}
+                onStartTransfer={(bookingId) => {
+                  setTransferringBookingId(bookingId)
+                  setTransferTargetEventId('')
+                }}
+                onTransferTargetEventIdChange={setTransferTargetEventId}
+                onConfirmTransfer={handleTransferBooking}
+                onCancelTransfer={() => {
+                  setTransferringBookingId(null)
+                  setTransferTargetEventId('')
+                }}
                 isPending={isPending}
               />
               <MarketingMessagesCard messages={marketingMessages} />
@@ -714,6 +780,13 @@ function AttendeesTab({
   onSaveSeats,
   onCancelEdit,
   onCancelBooking,
+  onMarkPaid,
+  transferringBookingId,
+  transferTargetEventId,
+  onStartTransfer,
+  onTransferTargetEventIdChange,
+  onConfirmTransfer,
+  onCancelTransfer,
   isPending,
 }: {
   event: Event
@@ -742,6 +815,13 @@ function AttendeesTab({
   onSaveSeats: () => void
   onCancelEdit: () => void
   onCancelBooking: (id: string) => void
+  onMarkPaid: (id: string, method: 'cash' | 'card_terminal' | 'comp') => void
+  transferringBookingId: string | null
+  transferTargetEventId: string
+  onStartTransfer: (id: string) => void
+  onTransferTargetEventIdChange: (v: string) => void
+  onConfirmTransfer: () => void
+  onCancelTransfer: () => void
   isPending: boolean
 }) {
   return (
@@ -876,6 +956,7 @@ function AttendeesTab({
                 <TableBody>
                   {visibleBookings.map((booking) => {
                     const isEditing = editingBookingId === booking.id
+                    const isTransferring = transferringBookingId === booking.id
                     const customerName = [
                       booking.customer?.first_name,
                       booking.customer?.last_name,
@@ -935,24 +1016,63 @@ function AttendeesTab({
                         {canManage && (
                           <TableCell>
                             {!isCancelled && !isEditing && (
-                              <div className="flex items-center gap-1">
-                                <Button
-                                  size="sm"
-                                  variant="ghost"
-                                  onClick={() => onStartEditSeats(booking)}
-                                  icon={<Icon name="edit" size={14} />}
-                                >
-                                  Edit
-                                </Button>
-                                <Button
-                                  size="sm"
-                                  variant="ghost"
-                                  onClick={() => onCancelBooking(booking.id)}
-                                  className="text-danger hover:text-danger"
-                                >
-                                  Cancel
-                                </Button>
-                              </div>
+                              isTransferring ? (
+                                <div className="flex flex-wrap items-center gap-1">
+                                  <Input
+                                    value={transferTargetEventId}
+                                    onChange={(e) => onTransferTargetEventIdChange(e.target.value)}
+                                    placeholder="Target event ID"
+                                    className="w-44"
+                                  />
+                                  <Button size="sm" variant="primary" onClick={onConfirmTransfer} disabled={!transferTargetEventId.trim() || isPending}>
+                                    Transfer
+                                  </Button>
+                                  <Button size="sm" variant="ghost" onClick={onCancelTransfer}>
+                                    Cancel
+                                  </Button>
+                                </div>
+                              ) : (
+                                <div className="flex flex-wrap items-center gap-1">
+                                  {booking.status === 'pending_payment' && (
+                                    <>
+                                      <Button size="sm" variant="ghost" onClick={() => onMarkPaid(booking.id, 'cash')}>
+                                        Cash paid
+                                      </Button>
+                                      <Button size="sm" variant="ghost" onClick={() => onMarkPaid(booking.id, 'card_terminal')}>
+                                        Card paid
+                                      </Button>
+                                      <Button size="sm" variant="ghost" onClick={() => onMarkPaid(booking.id, 'comp')}>
+                                        Comp
+                                      </Button>
+                                    </>
+                                  )}
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    onClick={() => onStartEditSeats(booking)}
+                                    icon={<Icon name="edit" size={14} />}
+                                  >
+                                    Edit
+                                  </Button>
+                                  {booking.status === 'confirmed' && (
+                                    <Button
+                                      size="sm"
+                                      variant="ghost"
+                                      onClick={() => onStartTransfer(booking.id)}
+                                    >
+                                      Transfer
+                                    </Button>
+                                  )}
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    onClick={() => onCancelBooking(booking.id)}
+                                    className="text-danger hover:text-danger"
+                                  >
+                                    Cancel
+                                  </Button>
+                                </div>
+                              )
                             )}
                           </TableCell>
                         )}

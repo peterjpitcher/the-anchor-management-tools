@@ -1,6 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { createGuestToken, hashGuestToken } from '@/lib/guest/tokens'
-import { createStripeCheckoutSession, createStripeRefund } from '@/lib/payments/stripe'
+import { refundPayPalPayment } from '@/lib/paypal'
 import { recordAnalyticsEvent } from '@/lib/analytics/events'
 import { logger } from '@/lib/logger'
 
@@ -60,7 +60,8 @@ export type EventRefundResult = {
   status: 'none' | 'succeeded' | 'pending' | 'failed' | 'manual_required'
   amount: number
   currency: string
-  stripeRefundId?: string
+  paypalRefundId?: string
+  paypalRefundIds?: string[]
   reason?: string
 }
 
@@ -85,6 +86,7 @@ export type EventSeatIncreaseCheckoutResult =
         | 'invalid_target_seats'
         | 'event_started'
         | 'invalid_amount'
+        | 'online_seat_increase_unavailable'
     }
 
 const THREE_DAYS_MS = 3 * 24 * 60 * 60 * 1000
@@ -114,24 +116,10 @@ function roundCurrencyAmount(value: number): number {
   return Number(value.toFixed(2))
 }
 
-function amountToMinor(value: number): number {
-  return Math.round(value * 100)
-}
-
 function parseIsoDate(value: string | undefined): Date | null {
   if (!value) return null
   const parsed = new Date(value)
   return Number.isFinite(parsed.getTime()) ? parsed : null
-}
-
-function computeCheckoutExpiryUnix(holdUntil: Date | null): number | undefined {
-  if (!holdUntil) return undefined
-  const minWindowMs = 31 * 60 * 1000
-  const nowMs = Date.now()
-  if (holdUntil.getTime() - nowMs < minWindowMs) {
-    return undefined
-  }
-  return Math.floor(holdUntil.getTime() / 1000)
 }
 
 function resolveBaseUrl(appBaseUrl?: string): string {
@@ -152,19 +140,15 @@ function computeManageTokenExpiry(eventStartIso?: string | null): string {
 }
 
 function mapRefundStatus(status: string | null): 'refunded' | 'pending' | 'failed' {
-  switch (status) {
-    case 'succeeded':
+  switch ((status || '').toUpperCase()) {
+    case 'COMPLETED':
+    case 'SUCCEEDED':
       return 'refunded'
-    case 'pending':
-    case 'requires_action':
+    case 'PENDING':
       return 'pending'
     default:
       return 'failed'
   }
-}
-
-function isDuplicateKeyError(error: { code?: string; message?: string } | null | undefined): boolean {
-  return error?.code === '23505'
 }
 
 export async function getEventManagePreviewByRawToken(
@@ -254,6 +238,7 @@ export async function processEventRefund(
     eventId: string
     amount: number
     reason: string
+    sourcePaymentId?: string
     metadata?: Record<string, unknown>
   }
 ): Promise<EventRefundResult> {
@@ -266,197 +251,271 @@ export async function processEventRefund(
     }
   }
 
-  const { data: payment, error: paymentLookupError } = await supabase
+  let paymentQuery = supabase
     .from('payments')
-    .select('id, amount, currency, stripe_payment_intent_id')
+    .select('id, amount, currency, paypal_capture_id')
     .eq('event_booking_id', input.bookingId)
     .in('charge_type', ['prepaid_event', 'seat_increase'])
     .in('status', ['succeeded', 'partially_refunded'])
-    .not('stripe_payment_intent_id', 'is', null)
+    .eq('payment_provider', 'paypal')
+    .not('paypal_capture_id', 'is', null)
     .order('created_at', { ascending: false })
-    .limit(1)
-    .maybeSingle()
+
+  if (input.sourcePaymentId) {
+    paymentQuery = paymentQuery.eq('id', input.sourcePaymentId)
+  }
+
+  const { data: payments, error: paymentLookupError } = await paymentQuery
 
   if (paymentLookupError) {
     throw paymentLookupError
   }
 
-  if (!payment?.stripe_payment_intent_id) {
+  const paymentRows = Array.isArray(payments) ? payments : []
+
+  if (paymentRows.length === 0) {
     return {
       status: 'manual_required',
       amount: refundAmount,
       currency: 'GBP',
-      reason: 'payment_intent_not_found'
+      reason: 'paypal_capture_not_found'
     }
   }
 
-  const { data: existingRefund, error: existingRefundError } = await supabase.from('payments')
-    .select('id, status, currency, metadata')
-    .eq('event_booking_id', input.bookingId)
-    .eq('charge_type', 'refund')
-    .contains('metadata', { source_payment_id: payment.id })
-    .in('status', ['refunded', 'pending', 'succeeded'])
-    .order('created_at', { ascending: false })
-    .limit(1)
-    .maybeSingle()
+  let remaining = refundAmount
+  let processedAmount = 0
+  let sawPending = false
+  let sawFailure = false
+  let sawManualRequired = false
+  const paypalRefundIds: string[] = []
+  const currency = (paymentRows[0]?.currency || 'GBP').toUpperCase()
 
-  if (existingRefundError) {
-    throw existingRefundError
-  }
+  for (const payment of paymentRows) {
+    if (remaining <= 0.004) break
+    if (!payment?.paypal_capture_id) continue
 
-  if (existingRefund) {
-    const existingMetadata =
-      typeof existingRefund.metadata === 'object' && existingRefund.metadata !== null
-        ? (existingRefund.metadata as Record<string, unknown>)
-        : {}
+    const { data: existingReasonRefunds, error: existingReasonError } = await supabase.from('payments')
+      .select('id, amount, status, currency, metadata')
+      .eq('charge_type', 'refund')
+      .contains('metadata', { source_payment_id: payment.id, reason: input.reason })
+      .in('status', ['refunded', 'pending', 'succeeded'])
+      .order('created_at', { ascending: false })
 
-    const existingStripeRefundId =
-      typeof existingMetadata.stripe_refund_id === 'string' ? existingMetadata.stripe_refund_id : undefined
+    if (existingReasonError) {
+      throw existingReasonError
+    }
 
-    if (existingRefund.status === 'pending') {
-      return {
-        status: 'pending',
-        amount: refundAmount,
-        currency: (existingRefund.currency || payment.currency || 'GBP').toUpperCase(),
-        stripeRefundId: existingStripeRefundId
+    for (const existingRefund of existingReasonRefunds || []) {
+      const existingAmount = Math.max(0, Number(existingRefund.amount || 0))
+      if (existingAmount <= 0) continue
+
+      processedAmount += existingAmount
+      remaining = roundCurrencyAmount(Math.max(0, remaining - existingAmount))
+
+      if (existingRefund.status === 'pending') {
+        sawPending = true
+      }
+
+      const metadata =
+        typeof existingRefund.metadata === 'object' && existingRefund.metadata !== null
+          ? (existingRefund.metadata as Record<string, unknown>)
+          : {}
+      if (typeof metadata.paypal_refund_id === 'string') {
+        paypalRefundIds.push(metadata.paypal_refund_id)
       }
     }
 
-    return {
-      status: 'succeeded',
-      amount: refundAmount,
-      currency: (existingRefund.currency || payment.currency || 'GBP').toUpperCase(),
-      stripeRefundId: existingStripeRefundId
-    }
-  }
+    if (remaining <= 0.004) break
 
-  let stripeRefundMeta: { id: string; status: string; currency: string | null } | null = null
+    const { data: allRefundsForPayment, error: allRefundsError } = await supabase.from('payments')
+      .select('amount')
+      .eq('charge_type', 'refund')
+      .contains('metadata', { source_payment_id: payment.id })
+      .in('status', ['refunded', 'pending', 'succeeded'])
 
-  try {
-    const stripeRefund = await createStripeRefund({
-      paymentIntentId: payment.stripe_payment_intent_id,
-      amountMinor: amountToMinor(refundAmount),
-      reason: 'requested_by_customer',
-      idempotencyKey: `event_refund_${input.bookingId}_${payment.id}_${amountToMinor(refundAmount)}`
-    })
-    stripeRefundMeta = {
-      id: stripeRefund.id,
-      status: String(stripeRefund.status || 'unknown'),
-      currency: stripeRefund.currency || null
+    if (allRefundsError) {
+      throw allRefundsError
     }
 
-    const mappedStatus = mapRefundStatus(stripeRefund.status)
-    const paymentStatus =
-      mappedStatus === 'refunded'
-        ? 'refunded'
-        : mappedStatus === 'pending'
-          ? 'pending'
-          : 'failed'
+    const alreadyRefunded = (allRefundsForPayment || []).reduce(
+      (sum, row) => sum + Math.max(0, Number(row.amount || 0)),
+      0
+    )
+    const paymentAmount = Math.max(0, Number(payment.amount || 0))
+    const available = roundCurrencyAmount(Math.max(0, paymentAmount - alreadyRefunded))
+    if (available <= 0) continue
 
-    const currency = (stripeRefund.currency || payment.currency || 'GBP').toUpperCase()
+    const amountForPayment = roundCurrencyAmount(Math.min(remaining, available))
+    let paypalRefundMeta: { id: string; status: string; currency: string | null } | null = null
 
-    const { error: refundInsertError } = await supabase
-      .from('payments')
-      .insert({
-        event_booking_id: input.bookingId,
-        charge_type: 'refund',
-        stripe_payment_intent_id: payment.stripe_payment_intent_id,
-        amount: refundAmount,
-        currency,
-        status: paymentStatus,
-        metadata: {
-          source_payment_id: payment.id,
-          stripe_refund_id: stripeRefund.id,
-          stripe_refund_status: stripeRefund.status,
-          reason: input.reason,
-          ...(input.metadata || {})
-        }
-      })
+    try {
+      const paypalRefund = await refundPayPalPayment(
+        payment.paypal_capture_id,
+        amountForPayment,
+        `event-refund-${input.bookingId}-${payment.id}-${input.reason}-${Math.round(amountForPayment * 100)}`.slice(0, 108)
+      )
+      paypalRefundMeta = {
+        id: paypalRefund.refundId,
+        status: String(paypalRefund.status || 'unknown'),
+        currency: 'GBP'
+      }
 
-    if (refundInsertError) {
-      throw refundInsertError
-    }
+      const mappedStatus = mapRefundStatus(paypalRefund.status)
+      const paymentStatus =
+        mappedStatus === 'refunded'
+          ? 'refunded'
+          : mappedStatus === 'pending'
+            ? 'pending'
+            : 'failed'
 
-    if (mappedStatus === 'refunded' || mappedStatus === 'pending') {
-      try {
-        await recordAnalyticsEvent(supabase, {
-          customerId: input.customerId,
-          eventBookingId: input.bookingId,
-          eventType: 'refund_created',
+      const { error: refundInsertError } = await supabase
+        .from('payments')
+        .insert({
+          event_booking_id: input.bookingId,
+          charge_type: 'refund',
+          payment_provider: 'paypal',
+          payment_method: 'paypal',
+          amount: amountForPayment,
+          currency: (payment.currency || 'GBP').toUpperCase(),
+          status: paymentStatus,
           metadata: {
-            event_id: input.eventId,
-            amount: refundAmount,
-            currency,
-            stripe_refund_id: stripeRefund.id,
-            stripe_refund_status: stripeRefund.status,
-            reason: input.reason
+            source_payment_id: payment.id,
+            source_paypal_capture_id: payment.paypal_capture_id,
+            paypal_refund_id: paypalRefund.refundId,
+            paypal_refund_status: paypalRefund.status,
+            paypal_refund_status_details: paypalRefund.statusDetails,
+            reason: input.reason,
+            ...(input.metadata || {})
           }
         })
-      } catch (analyticsError) {
-        logger.warn('Failed to record event refund analytics event', {
-          metadata: {
-            bookingId: input.bookingId,
+
+      if (refundInsertError) {
+        throw refundInsertError
+      }
+
+      paypalRefundIds.push(paypalRefund.refundId)
+      processedAmount = roundCurrencyAmount(processedAmount + amountForPayment)
+      remaining = roundCurrencyAmount(Math.max(0, remaining - amountForPayment))
+
+      if (mappedStatus === 'pending') {
+        sawPending = true
+      }
+
+      if (mappedStatus === 'refunded') {
+        const totalRefundedForPayment = roundCurrencyAmount(alreadyRefunded + amountForPayment)
+        await supabase
+          .from('payments')
+          .update({
+            status: totalRefundedForPayment + 0.004 >= paymentAmount ? 'refunded' : 'partially_refunded',
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', payment.id)
+      }
+
+      if (mappedStatus === 'refunded' || mappedStatus === 'pending') {
+        try {
+          await recordAnalyticsEvent(supabase, {
             customerId: input.customerId,
-            error: analyticsError instanceof Error ? analyticsError.message : String(analyticsError)
-          }
-        })
-      }
-    }
-
-    return {
-      status: mappedStatus === 'refunded' ? 'succeeded' : mappedStatus,
-      amount: refundAmount,
-      currency,
-      stripeRefundId: stripeRefund.id
-    }
-  } catch (error) {
-    logger.error('Event refund request failed', {
-      error: error instanceof Error ? error : new Error(String(error)),
-      metadata: {
-        bookingId: input.bookingId,
-        amount: refundAmount
-      }
-    })
-
-    const { error: failedInsertError } = await supabase
-      .from('payments')
-      .insert({
-        event_booking_id: input.bookingId,
-        charge_type: 'refund',
-        amount: refundAmount,
-        currency: (stripeRefundMeta?.currency || payment.currency || 'GBP').toUpperCase(),
-        status: stripeRefundMeta ? 'pending' : 'failed',
-        metadata: {
-          reason: input.reason,
-          error: error instanceof Error ? error.message : String(error),
-          source_payment_id: payment.id,
-          stripe_refund_id: stripeRefundMeta?.id,
-          stripe_refund_status: stripeRefundMeta?.status,
-          persistence_gap: stripeRefundMeta ? true : undefined,
-          ...(input.metadata || {})
+            eventBookingId: input.bookingId,
+            eventType: 'refund_created',
+            metadata: {
+              event_id: input.eventId,
+              amount: amountForPayment,
+              currency: (payment.currency || 'GBP').toUpperCase(),
+              paypal_refund_id: paypalRefund.refundId,
+              paypal_refund_status: paypalRefund.status,
+              reason: input.reason
+            }
+          })
+        } catch (analyticsError) {
+          logger.warn('Failed to record event refund analytics event', {
+            metadata: {
+              bookingId: input.bookingId,
+              customerId: input.customerId,
+              error: analyticsError instanceof Error ? analyticsError.message : String(analyticsError)
+            }
+          })
         }
-      })
-
-    if (failedInsertError) {
-      logger.warn('Failed persisting event refund fallback row', {
+      }
+    } catch (error) {
+      sawFailure = true
+      logger.error('Event refund request failed', {
+        error: error instanceof Error ? error : new Error(String(error)),
         metadata: {
           bookingId: input.bookingId,
-          amount: refundAmount,
-          error: failedInsertError.message
+          paymentId: payment.id,
+          amount: amountForPayment
         }
       })
-    }
 
-    return {
-      status: stripeRefundMeta ? 'manual_required' : 'failed',
-      amount: refundAmount,
-      currency: (stripeRefundMeta?.currency || payment.currency || 'GBP').toUpperCase(),
-      reason: stripeRefundMeta
-        ? 'refund_processed_but_local_record_failed'
-        : error instanceof Error
-          ? error.message
-          : String(error)
+      const { error: failedInsertError } = await supabase
+        .from('payments')
+        .insert({
+          event_booking_id: input.bookingId,
+          charge_type: 'refund',
+          payment_provider: 'paypal',
+          payment_method: 'paypal',
+          amount: amountForPayment,
+          currency: (paypalRefundMeta?.currency || payment.currency || 'GBP').toUpperCase(),
+          status: paypalRefundMeta ? 'pending' : 'failed',
+          metadata: {
+            reason: input.reason,
+            error: error instanceof Error ? error.message : String(error),
+            source_payment_id: payment.id,
+            source_paypal_capture_id: payment.paypal_capture_id,
+            paypal_refund_id: paypalRefundMeta?.id,
+            paypal_refund_status: paypalRefundMeta?.status,
+            persistence_gap: paypalRefundMeta ? true : undefined,
+            ...(input.metadata || {})
+          }
+        })
+
+      if (paypalRefundMeta) {
+        sawManualRequired = true
+        paypalRefundIds.push(paypalRefundMeta.id)
+      }
+
+      if (failedInsertError) {
+        logger.warn('Failed persisting event refund fallback row', {
+          metadata: {
+            bookingId: input.bookingId,
+            amount: amountForPayment,
+            error: failedInsertError.message
+          }
+        })
+      }
+
+      break
     }
+  }
+
+  const amount = roundCurrencyAmount(processedAmount)
+  if (amount <= 0) {
+    return {
+      status: sawFailure ? 'failed' : 'manual_required',
+      amount: refundAmount,
+      currency,
+      reason: sawFailure ? 'paypal_refund_failed' : 'insufficient_refundable_capture_balance'
+    }
+  }
+
+  const fullAmountProcessed = amount + 0.004 >= refundAmount
+  const status =
+    sawManualRequired || !fullAmountProcessed
+      ? 'manual_required'
+      : sawFailure
+        ? 'failed'
+        : sawPending
+          ? 'pending'
+          : 'succeeded'
+
+  return {
+    status,
+    amount,
+    currency,
+    paypalRefundId: paypalRefundIds[0],
+    paypalRefundIds,
+    reason: fullAmountProcessed ? undefined : 'partial_refund_only'
   }
 }
 
@@ -528,104 +587,8 @@ export async function createSeatIncreaseCheckoutByManageToken(
     return { state: 'blocked', reason: 'invalid_amount' }
   }
 
-  const tokenHash = hashGuestToken(input.rawToken)
-  const baseUrl = resolveBaseUrl(input.appBaseUrl)
-  const encodedToken = encodeURIComponent(input.rawToken)
-
-  const successUrl = `${baseUrl}/g/${encodedToken}/manage-booking?state=seat_increase_success&target_seats=${targetSeats}&session_id={CHECKOUT_SESSION_ID}`
-  const cancelUrl = `${baseUrl}/g/${encodedToken}/manage-booking?state=seat_increase_cancelled&target_seats=${targetSeats}`
-
-  const session = await createStripeCheckoutSession({
-    idempotencyKey: `event_seat_increase_${preview.booking_id}_${targetSeats}_${tokenHash.slice(0, 24)}`,
-    successUrl,
-    cancelUrl,
-    bookingId: preview.booking_id,
-    eventId: preview.event_id,
-    quantity: deltaSeats,
-    unitAmountMinor: amountToMinor(unitPrice),
-    currency: 'GBP',
-    productName: `${preview.event_name || 'Event booking'} additional seats (${deltaSeats})`,
-    tokenHash,
-    expiresAtUnix: computeCheckoutExpiryUnix(eventStart),
-    metadata: {
-      payment_kind: 'seat_increase',
-      target_seats: String(targetSeats),
-      delta_seats: String(deltaSeats)
-    }
-  })
-
-  if (!session.url) {
-    throw new Error('Stripe checkout did not return a URL')
-  }
-
-  const { data: existingPayment, error: existingPaymentLookupError } = await supabase
-    .from('payments')
-    .select('id')
-    .eq('stripe_checkout_session_id', session.id)
-    .limit(1)
-    .maybeSingle()
-
-  if (existingPaymentLookupError) {
-    throw new Error(
-      `Failed to verify existing seat-increase payment row before checkout persistence: ${existingPaymentLookupError.message}`
-    )
-  }
-
-  if (!existingPayment) {
-    const { data: insertedPayment, error: paymentInsertError } = await supabase
-      .from('payments')
-      .insert({
-        event_booking_id: preview.booking_id,
-        charge_type: 'seat_increase',
-        stripe_checkout_session_id: session.id,
-        stripe_payment_intent_id: session.payment_intent ?? null,
-        amount,
-        currency: 'GBP',
-        status: 'pending',
-        metadata: {
-          payment_kind: 'seat_increase',
-          target_seats: targetSeats,
-          delta_seats: deltaSeats,
-          checkout_url: session.url
-        }
-      })
-      .select('id')
-      .maybeSingle()
-
-    if (paymentInsertError) {
-      if (isDuplicateKeyError(paymentInsertError)) {
-        const { data: concurrentPayment, error: concurrentLookupError } = await supabase
-          .from('payments')
-          .select('id')
-          .eq('stripe_checkout_session_id', session.id)
-          .limit(1)
-          .maybeSingle()
-
-        if (concurrentLookupError) {
-          throw new Error(
-            `Failed to verify concurrent seat-increase payment row after duplicate insert: ${concurrentLookupError.message}`
-          )
-        }
-
-        if (!concurrentPayment) {
-          throw new Error('Failed to resolve concurrent seat-increase payment row after duplicate insert')
-        }
-      } else {
-        throw new Error(`Failed to persist pending seat-increase payment row: ${paymentInsertError.message}`)
-      }
-    } else if (!insertedPayment) {
-      throw new Error('Seat-increase payment insert affected no rows')
-    }
-  }
-
   return {
-    state: 'created',
-    checkoutUrl: session.url,
-    bookingId: preview.booking_id,
-    targetSeats,
-    deltaSeats,
-    amount,
-    currency: 'GBP',
-    sessionId: session.id
+    state: 'blocked',
+    reason: 'online_seat_increase_unavailable'
   }
 }

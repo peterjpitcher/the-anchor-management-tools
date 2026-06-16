@@ -1066,9 +1066,11 @@ export class EventService {
     const bookingIds = bookings.map(b => b.id)
     const { data: payments } = await db
       .from('payments')
-      .select('id, event_booking_id, amount, status, stripe_payment_intent_id')
+      .select('id, event_booking_id, amount, status')
       .in('event_booking_id', bookingIds)
-      .eq('status', 'succeeded')
+      .in('charge_type', ['prepaid_event', 'seat_increase'])
+      .eq('payment_provider', 'paypal')
+      .in('status', ['succeeded', 'partially_refunded'])
 
     // Track refund results per booking for SMS
     const refundResults = new Map<string, { succeeded: boolean; amount: number }>()
@@ -1087,6 +1089,7 @@ export class EventService {
             eventId,
             amount: payment.amount,
             reason: 'event_cancelled',
+            sourcePaymentId: payment.id,
             metadata: { cancelled_by: cancelledBy }
           })
           refundsProcessed++
