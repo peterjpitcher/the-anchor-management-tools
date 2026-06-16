@@ -8,6 +8,7 @@ import {
   sendEventPaymentConfirmationSms,
   sendEventPaymentManualReviewSms,
 } from '@/lib/events/event-payments'
+import { sendEventPaymentConfirmationEmail } from '@/lib/email/event-ticket-emails'
 import { logAuditEvent } from '@/app/actions/audit'
 
 export const dynamic = 'force-dynamic'
@@ -35,14 +36,21 @@ export async function POST(
     })
 
     if (result.state === 'confirmed' || result.state === 'already_confirmed') {
+      const appBaseUrl = process.env.NEXT_PUBLIC_APP_URL || request.nextUrl.origin
       if (result.state === 'confirmed') {
         await sendEventPaymentConfirmationSms(supabase, {
           bookingId,
           eventName: 'your event',
           seats: 1,
-          appBaseUrl: process.env.NEXT_PUBLIC_APP_URL || request.nextUrl.origin,
+          appBaseUrl,
         })
       }
+      await sendEventPaymentConfirmationEmail(supabase, {
+        bookingId,
+        amount: result.amount,
+        currency: result.currency,
+        appBaseUrl,
+      })
 
       void logAuditEvent({
         operation_type: 'event_payment.paypal_capture_confirmed',

@@ -6,6 +6,7 @@ import {
   sendEventPaymentConfirmationSms,
   sendEventPaymentManualReviewSms,
 } from '@/lib/events/event-payments'
+import { sendEventPaymentConfirmationEmail } from '@/lib/email/event-ticket-emails'
 import { checkGuestTokenThrottle } from '@/lib/guest/token-throttle'
 
 type RouteContext = {
@@ -41,14 +42,21 @@ export async function POST(request: NextRequest, context: RouteContext) {
   })
 
   if (result.state === 'confirmed' || result.state === 'already_confirmed') {
+    const appBaseUrl = process.env.NEXT_PUBLIC_APP_URL || request.nextUrl.origin
     if (result.state === 'confirmed') {
       await sendEventPaymentConfirmationSms(supabase, {
         bookingId: result.bookingId,
         eventName: 'your event',
         seats: 1,
-        appBaseUrl: process.env.NEXT_PUBLIC_APP_URL || request.nextUrl.origin,
+        appBaseUrl,
       })
     }
+    await sendEventPaymentConfirmationEmail(supabase, {
+      bookingId: result.bookingId,
+      amount: result.amount,
+      currency: result.currency,
+      appBaseUrl,
+    })
 
     return NextResponse.json({
       success: true,

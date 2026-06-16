@@ -23,6 +23,7 @@ import {
   sendEventPaymentConfirmationSms,
   sendEventPaymentManualReviewSms
 } from '@/lib/events/event-payments'
+import { sendEventPaymentConfirmationEmail } from '@/lib/email/event-ticket-emails'
 import { recordAnalyticsEvent } from '@/lib/analytics/events'
 import {
   deletePubOpsEventCalendarEntryByEventId,
@@ -1745,6 +1746,15 @@ export async function markEventBookingPaidManually(input: {
       const smsResult = await sendEventPaymentManualReviewSms(supabase, { bookingId: parsed.data.bookingId })
       smsSent = smsResult.success === true || smsResult.logFailure === true
       smsMeta = smsResult
+    }
+
+    if (state === 'confirmed' || state === 'already_confirmed') {
+      await sendEventPaymentConfirmationEmail(supabase, {
+        bookingId: parsed.data.bookingId,
+        amount: expectedAmount,
+        currency: 'GBP',
+        appBaseUrl: process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+      })
     }
 
     await logAuditEvent({
