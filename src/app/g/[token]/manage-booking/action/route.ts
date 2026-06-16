@@ -17,6 +17,7 @@ import {
   syncPubOpsEventCalendarByBookingId,
   syncPubOpsEventCalendarByEventId,
 } from '@/lib/google-calendar-events'
+import { sendEventBookingCancelledEmail } from '@/lib/email/event-ticket-emails'
 import { logger } from '@/lib/logger'
 
 type RouteContext = {
@@ -183,6 +184,16 @@ export async function POST(request: NextRequest, context: RouteContext) {
       }
 
       const { refundStatus, refundAmount } = await processGuestCancellationRefundSafe(supabase, cancelResult)
+
+      if (cancelResult.booking_id) {
+        await sendEventBookingCancelledEmail(supabase, {
+          bookingId: cancelResult.booking_id,
+          refundStatus,
+          refundAmount,
+          currency: 'GBP',
+          reason: 'guest_cancel',
+        })
+      }
 
       if (cancelResult.customer_id && cancelResult.booking_id) {
         await recordGuestManageBookingAnalyticsSafe(supabase, {

@@ -5,7 +5,8 @@ import { generateEventMarketingLinks } from '@/app/actions/event-marketing-links
 import { z } from 'zod';
 import { sendSMS } from '@/lib/twilio';
 import { buildEventCancelledSms, buildRefundNote } from '@/lib/sms/templates';
-import { processEventRefund } from '@/lib/events/manage-booking';
+import { processEventRefund, type EventRefundResult } from '@/lib/events/manage-booking';
+import { sendEventBookingCancelledEmail } from '@/lib/email/event-ticket-emails';
 import { logger } from '@/lib/logger';
 import { normalizeEventPricingFields, resolveEventPriceAmount } from '@/lib/events/pricing';
 import { buildEventBookingStats } from '@/lib/events/stats';
@@ -1142,8 +1143,8 @@ export class EventService {
       .eq('payment_provider', 'paypal')
       .in('status', ['succeeded', 'partially_refunded'])
 
-    // Track refund results per booking for SMS
-    const refundResults = new Map<string, { succeeded: boolean; amount: number }>()
+    // Track refund results per booking for SMS/email
+    const refundResults = new Map<string, { status: EventRefundResult['status']; amount: number }>()
 
     if (payments && payments.length > 0) {
       for (const payment of payments) {
@@ -1153,7 +1154,7 @@ export class EventService {
         const customer = booking?.customers as unknown as { id: string } | undefined
 
         try {
-          await processEventRefund(db, {
+          const refundResult = await processEventRefund(db, {
             bookingId: payment.event_booking_id,
             customerId: customer?.id || '',
             eventId,
@@ -1163,12 +1164,16 @@ export class EventService {
             metadata: { cancelled_by: cancelledBy }
           })
           refundsProcessed++
-          const existing = refundResults.get(payment.event_booking_id) || { succeeded: true, amount: 0 }
-          existing.amount += payment.amount
+          const existing: { status: EventRefundResult['status']; amount: number } =
+            refundResults.get(payment.event_booking_id) ?? { status: 'succeeded', amount: 0 }
+          existing.amount += refundResult.amount
+          if (refundResult.status !== 'succeeded') {
+            existing.status = refundResult.status
+          }
           refundResults.set(payment.event_booking_id, existing)
         } catch (err) {
           refundsFailed++
-          refundResults.set(payment.event_booking_id, { succeeded: false, amount: 0 })
+          refundResults.set(payment.event_booking_id, { status: 'failed', amount: Math.max(0, Number(payment.amount || 0)) })
           logger.error('Failed to process refund during event cancellation', {
             error: err instanceof Error ? err : new Error(String(err)),
             metadata: { paymentId: payment.id, bookingId: payment.event_booking_id, eventId }
@@ -1187,14 +1192,22 @@ export class EventService {
         mobile_number: string | null
         sms_status: string | null
       }
+      const refundResult = refundResults.get(booking.id)
+      await sendEventBookingCancelledEmail(db, {
+        bookingId: booking.id,
+        refundStatus: refundResult?.status ?? 'none',
+        refundAmount: refundResult?.amount ?? 0,
+        currency: 'GBP',
+        reason: 'event_cancelled'
+      })
+
       if (!customer?.sms_status || customer.sms_status !== 'active' || !customer.mobile_number) continue
 
       try {
-        const refundResult = refundResults.get(booking.id)
         const isPrepaid = !!refundResult
         const refundNote = buildRefundNote({
           isPrepaid,
-          refundSucceeded: refundResult?.succeeded ?? false,
+          refundSucceeded: refundResult?.status === 'succeeded',
           refundAmount: refundResult?.amount ?? null
         })
 
