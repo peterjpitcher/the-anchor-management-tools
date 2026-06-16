@@ -1,10 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-vi.mock('@/lib/payments/stripe', () => ({
-  computeStripeCheckoutExpiresAtUnix: vi.fn(() => 1_900_000_000),
-  createStripeCheckoutSession: vi.fn(),
-}))
-
 vi.mock('@/lib/guest/tokens', () => ({
   createGuestToken: vi.fn().mockResolvedValue({
     rawToken: 'raw-token',

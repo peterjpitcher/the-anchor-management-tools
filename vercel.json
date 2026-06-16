@@ -102,6 +102,14 @@
       "schedule": "*/5 * * * *"
     },
     {
+      "path": "/api/cron/event-paypal-reconciliation",
+      "schedule": "*/15 * * * *"
+    },
+    {
+      "path": "/api/cron/event-payment-reminders",
+      "schedule": "*/15 * * * *"
+    },
+    {
       "path": "/api/cron/event-waitlist-offers",
       "schedule": "*/5 * * * *"
     },

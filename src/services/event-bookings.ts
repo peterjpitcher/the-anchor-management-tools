@@ -8,6 +8,7 @@ import { createEventManageToken } from '@/lib/events/manage-booking'
 import { recordAnalyticsEvent } from '@/lib/analytics/events'
 import { syncPubOpsEventCalendarByEventId } from '@/lib/google-calendar-events'
 import { logger } from '@/lib/logger'
+import { sendEventPaymentLinkEmail } from '@/lib/email/event-ticket-emails'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -115,6 +116,11 @@ export type CreateBookingParams = {
    * metadata so paid-booking truth survives browser pixel failures.
    */
   attribution?: EventBookingAttribution
+  /**
+   * Payment hold duration for prepaid events. Website uses 15 minutes; staff
+   * links use 24 hours, capped inside the RPC by event start.
+   */
+  paymentHoldMinutes?: number
 }
 
 export type CreateBookingResult = {
@@ -459,7 +465,8 @@ export class EventBookingService {
       supabaseClient,
       logTag = 'event booking',
       firstName,
-      attribution = null
+      attribution = null,
+      paymentHoldMinutes
     } = params
 
     // Capitalised form used when logTag starts a log message.
@@ -467,20 +474,21 @@ export class EventBookingService {
 
     const supabase = supabaseClient ?? createAdminClient()
 
-    // ── 1. Call create_event_booking_v05 RPC ──────────────────────────────────
+    // ── 1. Call create_event_booking_v06 RPC ──────────────────────────────────
     const { data: rpcResultRaw, error: rpcError } = await supabase.rpc(
-      'create_event_booking_v05',
+      'create_event_booking_v06',
       {
         p_event_id: eventId,
         p_customer_id: customerId,
         p_seats: seats,
         p_source: source,
-        p_seating_preference: normalizeSeatingPreference(seatingPreference)
+        p_seating_preference: normalizeSeatingPreference(seatingPreference),
+        p_payment_hold_minutes: paymentHoldMinutes ?? (source === 'brand_site' ? 15 : 24 * 60)
       }
     )
 
     if (rpcError) {
-      logger.error('create_event_booking_v05 RPC failed', {
+      logger.error('create_event_booking_v06 RPC failed', {
         error: new Error(rpcError.message),
         metadata: { eventId, customerId, source }
       })
@@ -725,6 +733,22 @@ export class EventBookingService {
               })
               smsMeta = { success: false, code: 'unexpected_exception', logFailure: false }
             })
+        })
+      }
+
+      if (
+        resolvedState === 'pending_payment' &&
+        source !== 'brand_site' &&
+        rpcResult.booking_id &&
+        nextStepUrl
+      ) {
+        tasks.push({
+          label: 'email:event_payment_link',
+          promise: sendEventPaymentLinkEmail(supabase, {
+            bookingId: rpcResult.booking_id,
+            paymentLink: nextStepUrl,
+            holdExpiresAt: rpcResult.hold_expires_at,
+          })
         })
       }
 

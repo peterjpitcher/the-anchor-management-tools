@@ -5,6 +5,7 @@ import { headers } from 'next/headers'
 import { checkGuestTokenThrottle } from '@/lib/guest/token-throttle'
 import { formatGuestGreeting, getCustomerFirstNameById } from '@/lib/guest/names'
 import { GuestPageShell } from '@/components/features/shared/GuestPageShell'
+import { EventPayPalPaymentClient } from './EventPayPalPaymentClient'
 
 type EventPaymentPageProps = {
   params: Promise<{ token: string }>
@@ -160,6 +161,8 @@ export default async function EventPaymentPage({ params, searchParams }: EventPa
 
   const guestFirstName = await getCustomerFirstNameById(supabase, preview.customerId)
   const seatWord = preview.seats === 1 ? 'seat' : 'seats'
+  const paypalClientId = process.env.PAYPAL_CLIENT_ID ?? ''
+  const paypalEnvironment = process.env.PAYPAL_ENVIRONMENT ?? 'live'
 
   return (
     <GuestPageShell>
@@ -186,14 +189,13 @@ export default async function EventPaymentPage({ params, searchParams }: EventPa
           Need help? Call {contactPhone}.
         </p>
 
-        <form method="post" action={`/g/${token}/event-payment/checkout`} className="mt-6">
-          <button
-            type="submit"
-            className="inline-flex w-full items-center justify-center rounded-md bg-sidebar px-4 py-2 text-sm font-semibold text-white transition hover:bg-sidebar/90"
-          >
-            Pay now
-          </button>
-        </form>
+        <EventPayPalPaymentClient
+          token={token}
+          paypalClientId={paypalClientId}
+          paypalEnvironment={paypalEnvironment}
+          currency={preview.currency}
+          fallbackUrl={`/g/${token}/event-payment`}
+        />
       </div>
     </GuestPageShell>
   )

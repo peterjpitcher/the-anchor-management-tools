@@ -18,10 +18,13 @@ The chosen approach is:
 - Remove all Stripe references from the event ticket payment flow in both repos.
 - Keep the current `pending_payment` booking state.
 - Hold seats only while payment is outstanding.
+- Website checkout holds last 15 minutes.
+- Staff, phone, and bar payment links last 24 hours, or until event start if sooner.
 - Confirm the booking only after PayPal capture is verified.
 - Send payment links by SMS and email for staff-created bookings.
 - Send follow-up reminders.
 - Automatically cancel unpaid bookings and release seats when the hold expires.
+- Collect customer details before payment so abandoned payment holds can receive service follow-up. Do not use abandoned payment data for future marketing unless separate consent or a valid soft opt-in exists.
 
 No card details should be handled by either app. PayPal hosts the payment UI.
 
@@ -30,6 +33,19 @@ PayPal references:
 - PayPal JavaScript SDK uses `createOrder` and `onApprove` callbacks, with final capture done by the server: https://developer.paypal.com/sdk/js/reference/
 - PayPal webhooks support `PAYMENT.CAPTURE.COMPLETED`: https://developer.paypal.com/docs/api/webhooks/v1/
 - PayPal Orders v2 is the API used to create and capture orders: https://developer.paypal.com/docs/api/orders/v2/
+
+## Implementation Status
+
+Implemented in this change:
+
+- Event-ticket PayPal order/capture helpers, guest payment page, public website inline PayPal, external website proxy routes, PayPal webhook, and PayPal reconciliation cron.
+- Channel-aware holds: 15 minutes for website, 24 hours for staff links, capped at event start.
+- Provider-neutral payment fields and event PayPal/manual confirmation RPCs.
+- Staff-created payment links by SMS and email, plus 12-hour and 2-hour staff-link reminders with duplicate-send logging.
+- Staff manual settlement from the event attendee table: cash paid, card-terminal paid, or comp.
+- Staff cancellation applies the locked event refund policy and uses PayPal refunds for PayPal event-ticket payments.
+- Customer transfer support is once per original booking, manager-gated, and audit logged.
+- Event-ticket Stripe runtime/copy/tests were removed or disabled while shared non-event Stripe code remains.
 
 ## Current State
 
@@ -83,26 +99,91 @@ Main gaps:
 - Event conversion tracking happens only for already-confirmed booking responses. It needs to also fire after payment capture.
 - The form currently has no email field.
 
-## Stripe Removal Requirement
+## Event Ticket Stripe Removal Requirement
 
-As part of this change, remove Stripe from the event ticket payment stack.
+As part of this change, remove Stripe from the event ticket payment stack only. Do not remove shared Stripe code that still supports table bookings, charge approvals, cashing-up, or historic refunds unless a separate business-wide Stripe removal project is approved.
 
 This means:
 
-- Delete or replace event-payment imports from `src/lib/payments/stripe`.
+- Delete or replace event-payment imports from `src/lib/payments/stripe` only where they are used for event tickets.
 - Remove Stripe checkout creation from `src/lib/events/event-payments.ts`.
 - Replace `src/app/g/[token]/event-payment/checkout/route.ts` so it no longer creates a Stripe checkout session.
 - Remove Stripe wording from event payment pages, customer copy, staff UI, analytics labels, tests, comments, docs, and feature flags.
 - Remove Stripe payment heuristics from `/Users/peterpitcher/Cursor/OJ-The-Anchor.pub/lib/event-booking-experience.ts` and `/Users/peterpitcher/Cursor/OJ-The-Anchor.pub/lib/event-booking-copy.ts`.
-- Remove event-ticket Stripe refund paths from `src/lib/events/manage-booking.ts`.
-- Remove any event-ticket Stripe reporting labels from cashing-up, booking sheets, dashboards, and payment history.
+- Stop new event-ticket Stripe refunds from being created. Keep historic event-ticket Stripe payments displayable and refundable as described below.
+- Remove event-ticket Stripe reporting labels for new payments. Keep a historic Stripe label for old rows if old paid rows exist.
 - Audit old pending event payment links before launch. Migrate them to PayPal links or let them expire before Stripe routes are removed.
 
 Database rule:
 
 - New event ticket payment code must not read or write Stripe payment fields.
-- New event ticket payment CHECK constraints should only allow `paypal` and `manual`.
-- If old Stripe columns cannot be dropped immediately because the shared `payments` table or old migrations still need them, they may remain as inert legacy columns only. They must not be used by event ticket payment runtime code.
+- New event ticket payments should use `payment_provider = 'paypal'` or `payment_provider = 'manual'`.
+- Allow `payment_provider = 'stripe'` as an inert legacy value for historic paid rows. Do not delete, expire, or archive paid financial records to satisfy a new constraint.
+- If old Stripe columns cannot be dropped immediately because the shared `payments` table, table booking flows, or old migrations still need them, they may remain as legacy columns. They must not be used by new event ticket payment runtime code.
+
+Historic event payment rule:
+
+- Discovery (2026-06-16) found **zero** paid Stripe event-ticket rows in production, so this rule is a safety net for any event payment taken before cutover, not a migration of existing data.
+- Existing paid Stripe event ticket rows must remain visible in admin reports and customer histories.
+- Historic Stripe event payments must remain refundable. Either keep a restricted Stripe refund path for pre-cutover event rows, or document that these refunds are handled manually in the Stripe dashboard with an audit note in the management app.
+- Do not remove the last refund path for money already taken.
+
+### Stripe Discovery Inventory (verified 2026-06-16)
+
+Discovery was run across both repos with a provider-focused grep (excluding false positives such as `stripEventTimeZoneOffset` and visual "stripe" styling) and cross-checked against the live database (Supabase project `tfcasgxopxegwrabvwat`).
+
+#### Live database ground truth
+
+This is the single most important input for safe removal:
+
+- `payments` holds **19 rows, all `charge_type = 'table_deposit'`. There are zero event-ticket payment rows.** 6 succeeded table-deposit rows carry Stripe IDs; the other 13 (pending/failed) carry none.
+- **No Stripe event-ticket payment has ever been recorded in production.** The event Stripe checkout path exists in code but has never written a `payments` row. Removing the event Stripe code therefore carries no event-data-migration or historic-event-refund risk. The "historic event payment rule" above is precautionary only, in case an event payment is taken before cutover.
+- Stripe columns exist on only three live tables: `payments` (`stripe_payment_intent_id`, `stripe_checkout_session_id`), `charge_requests` (`stripe_payment_intent_id`), and `customers` (`stripe_customer_id`, legacy / not populated for payments).
+- `table_bookings` deposits already use **PayPal** (`paypal_deposit_order_id`, `paypal_deposit_capture_id`) - no Stripe columns. The 6 Stripe `payments` rows are historic table deposits taken before that migration. Stripe's live payment data footprint is historic table deposits. The charge-approval schema/code path is still Stripe-capable, but current live `charge_requests` rows have 0 Stripe payment intent rows. Neither is event-ticket.
+- `card_captures` does **not** exist as a live table. Ignore any inventory that references it or a `complete_table_card_capture_v05` dependency.
+- Current `payments` constraints: `charge_type IN ('prepaid_event','seat_increase','refund','approved_fee','walkout','table_deposit')`; `status IN ('pending','succeeded','failed','refunded','partially_refunded')`; no `payment_provider` column yet.
+
+#### Independent verification note
+
+Independent discovery re-ran provider grep across both repos and checked live counts. It matched the external discovery on the event-ticket risk: 0 event payment rows, no live website Stripe integration, and only event-ticket Stripe code should be removed. It tightened one point: `charge_requests` exists and should be kept, but current live rows have 0 Stripe payment intent values.
+
+#### REMOVE - event-ticket only (safe; no production data)
+
+- `src/lib/events/event-payments.ts` - the Stripe checkout block only (`createStripeCheckoutSession`, `computeStripeCheckoutExpiresAtUnix`). The file's token/SMS logic stays; swap the Stripe block for PayPal helpers.
+- `src/lib/events/manage-booking.ts` - event refund / seat-increase Stripe calls (`createStripeCheckoutSession`, `createStripeRefund`). Make provider-aware; do not delete the file.
+- `src/app/g/[token]/event-payment/checkout/route.ts` - Stripe redirect; replace with a redirect to the PayPal event-payment page.
+- `src/app/api/stripe/webhook/route.ts` - only the `prepaid_event` and `seat_increase` branches (calling `confirm_event_payment_v05` and `apply_event_seat_increase_payment_v05`). See "shared" below - do not delete the route.
+- `src/app/api/foh/bookings/[id]/cancel/route.ts` - the event-side `expireStripeCheckoutSession` call only; the route stays.
+- `confirm_event_payment_v05` (RPC) - superseded by `confirm_event_paypal_payment_v01`; leave it inert once the event webhook branch is gone.
+- Event-only Stripe tests: `tests/lib/eventPaymentsPersistence.test.ts`, `tests/lib/eventManageBookingCheckoutPersistence.test.ts`, and the event-checkout assertions inside `tests/lib/eventPaymentSmsSafetyMeta.test.ts` / `tests/lib/eventBookingSeatUpdateSmsSafety.test.ts`.
+
+#### KEEP - load-bearing for live non-event flows (do NOT remove here)
+
+Verified to back live table-booking, charge-approval, refund, or reconciliation behaviour. An earlier draft listed several of these for removal:
+
+- `src/app/api/stripe/webhook/route.ts` - shared route. Keep signature verification and the `table_deposit` (`confirm_table_payment_v05`) and `approved_charge` (`approve_table_charge_payment_v05`) branches.
+- `src/lib/payments/stripe.ts` - keep. Table bookings and charges use `createStripeTableDepositCheckoutSession`, `createStripeOffSessionCharge`, `createStripeRefund`, `expireStripeCheckoutSession`, `verifyStripeWebhookSignature`, `isStripeConfigured`, `computeStripeCheckoutExpiresAtUnix`. Only `createStripeCheckoutSession` is event-only and may be deleted once `event-payments.ts` drops it.
+- `src/lib/table-bookings/bookings.ts`, `refunds.ts`, `charge-approvals.ts`, `table-payment-blocked-reason.ts`, `ui.ts` - keep.
+- `src/app/api/boh/table-bookings/[id]/route.ts` - keep.
+- `src/lib/env.ts` - keep `STRIPE_SECRET_KEY` and `STRIPE_WEBHOOK_SECRET`.
+- `charge_requests` table + `stripe_payment_intent_id` - keep. The schema and charge-approval code path remain Stripe-capable even though current live rows have 0 Stripe payment intent values.
+- Cashing-up Stripe fields/labels: `src/services/cashing-up.service.ts`, `src/app/actions/cashing-up-import.ts`, `src/components/features/cashing-up/DailyCashupForm.tsx`, authenticated cashing-up screens - keep; they reconcile real historic Stripe takings.
+- Shared webhook tests (`tests/api/stripe-webhook-route.test.ts`, `tests/api/stripeWebhookMutationGuards.test.ts`, `tests/api/stripeWebhookTableDepositLockFailure.test.ts`) - keep; trim only the event-branch assertions.
+- `customers.stripe_customer_id` - legacy/inert column; leave dormant.
+
+#### Public website - no live Stripe
+
+The website has no Stripe SDK, dependency, env var, API route, or test. The only references are the literal token `stripe` in two provider-detection regexes (`lib/event-booking-experience.ts`, `lib/event-booking-copy.ts`, already covered by `online|payment_link|prepaid|ticket`), plus archival docs and `docs/architecture/env-vars.md` (which correctly states the site has no Stripe). Website work is copy/doc hygiene only - drop the `stripe` token from the two regexes and tidy docs. No functional change, no live code.
+
+#### Migrations
+
+Do not edit applied migrations. Add forward migrations only - to add `payment_provider` and PayPal columns/indexes - and never to drop shared Stripe columns, constraints, or functions still used by table bookings, charges, or cashing-up.
+
+#### Final acceptance gate
+
+- Re-run the provider-focused grep across both repos after implementation.
+- Event-ticket runtime code, event-ticket tests, customer event copy, event staff UI, event feature flags, and active event docs must have no Stripe references.
+- Any remaining Stripe hits must fall in the KEEP list, historic applied migrations, the inert `customers.stripe_customer_id` column, or archived docs - each listed in the implementation notes.
 
 ## Target Customer Flows
 
@@ -148,6 +229,22 @@ For manual bar payment, the booking should be confirmed immediately and an audit
 
 ## Core Design
 
+### Locked business rules
+
+- Website event ticket holds are 15 minutes.
+- Staff-created event ticket payment links are 24 hours, capped at event start time.
+- Seats stay reserved while a booking is `pending_payment` and the payment hold is active.
+- If PayPal captures money but the booking can no longer be honoured, store the payment, do not confirm the booking, create a staff-resolution exception, notify the customer, alert staff, and do not fire conversion tracking.
+- Customer cancellation refund policy:
+  - 7 or more days before event start: 100% refund.
+  - 3 to 7 days before event start: 50% refund.
+  - Under 3 days before event start: no refund.
+- If The Anchor cancels an event, paid event tickets receive an automatic full refund.
+- If an event is postponed or rescheduled, staff must choose whether to refund, transfer, or keep the booking on hold.
+- Customers may transfer tickets once only.
+- Manual refund approval requires manager access or higher.
+- Abandoned-payment reminders are service messages only. No future marketing use is allowed without separate consent or valid soft opt-in.
+
 ### Booking state model
 
 Use the existing states:
@@ -181,10 +278,10 @@ Remove event ticket payment runtime use of Stripe columns. Do not build new Stri
 
 Add provider-neutral fields to `public.payments`:
 
-- `payment_provider text`, values: `paypal`, `manual`.
+- `payment_provider text`, values: `paypal`, `manual`, `stripe`.
 - `paypal_order_id text`.
 - `paypal_capture_id text`.
-- `payment_method text`, values: `paypal`, `cash`, `card_terminal`, `comp`.
+- `payment_method text`, values: `paypal`, `cash`, `card_terminal`, `comp`, `stripe`.
 - `updated_at timestamptz`.
 
 Indexes:
@@ -193,7 +290,7 @@ Indexes:
 - Unique partial index on `paypal_capture_id` where not null.
 - Index on `(event_booking_id, payment_provider, status)`.
 
-Add CHECK constraints for `payment_provider` and `payment_method`. If any existing event payment rows have Stripe IDs, migrate, expire, or archive them before launch so new event ticket payment constraints do not need a Stripe value.
+Add CHECK constraints for `payment_provider` and `payment_method`, but keep `stripe` as a permitted legacy value because `payments` is shared with live table-deposit Stripe rows. Backfill before adding the constraint: the 6 succeeded table-deposit rows that carry Stripe IDs become `payment_provider = 'stripe'`; there are no event rows to migrate. Forbid new event-ticket Stripe writes in application code and tests, not by deleting historic financial rows.
 
 ### PayPal order creation
 
@@ -252,13 +349,23 @@ After capture:
 
 Capture must be idempotent. Repeating the same capture call for an already-confirmed booking should return success if the stored capture matches.
 
+If the payment has captured but confirmation is blocked because capacity or linked table availability is gone, the capture path must:
+
+- Insert or update the succeeded payment row.
+- Insert an `event_payment_exceptions` row with `reason = 'capacity_unavailable_after_capture'` or `reason = 'table_unavailable_after_capture'`.
+- Return a manual-review response to the caller, not a confirmed response.
+- Send customer SMS/email saying staff are checking the booking.
+- Alert staff.
+- Avoid conversion tracking until staff resolves the exception.
+
 ### Database confirmation
 
 Do not make browser routes perform many independent updates.
 
-Add one new database confirmation path:
+Add two new database confirmation paths:
 
 - `confirm_event_paypal_payment_v01`.
+- `confirm_event_manual_payment_v01`.
 
 Do not generalise `confirm_event_payment_v05`. Leave it untouched for old code paths only.
 
@@ -267,9 +374,11 @@ The confirmation path must:
 - Lock the booking row.
 - Confirm only pending-payment bookings.
 - Handle already-confirmed replay safely.
-- Recover from a recently expired hold using the existing 10-minute event payment grace window.
+- Recover from a recently expired hold using a 10-minute event payment grace window.
 - Update `bookings`, `booking_holds`, `payments`, and related table bookings together.
-- Return a structured result: `confirmed`, `already_confirmed`, or `blocked`.
+- Return a structured result: `confirmed`, `already_confirmed`, `manual_review`, or `blocked`.
+
+Use a single application constant, `EVENT_PAYMENT_GRACE_WINDOW_MINUTES = 10`, for the route, webhook, reconciliation, and hold-expiry cron. The RPC should also use the same 10-minute value.
 
 ### Management API routes
 
@@ -342,14 +451,14 @@ Webhook rules:
 
 ### Reconciliation
 
-Extend or add a cron job to catch payment edge cases:
+Add a separate cron job to catch payment edge cases:
 
 - Pending event payments with PayPal order IDs.
 - PayPal says captured but local booking is still pending.
 - Local booking expired but PayPal captured inside the grace window.
 - PayPal order is gone or never captured and local hold is expired.
 
-This can live beside the existing PayPal table deposit reconciliation pattern.
+This must not be folded into `/api/cron/event-booking-holds`. The hold cron handles fast expiry/race-window checks. The event PayPal reconciliation cron runs every 15 minutes and handles stuck or orphaned PayPal orders/captures.
 
 ## Reminders And Auto-Cancel
 
@@ -362,7 +471,7 @@ Add reminder sending before expiry.
 Recommended reminder stages:
 
 - `payment_due_12h`: send when a staff-created hold has 12 hours or less left.
-- `payment_due_2h`: send when any hold has 2 hours or less left.
+- `payment_due_2h`: send when a staff-created hold has 2 hours or less left.
 
 Do not send reminder SMS for 15-minute website holds. The inline PayPal UI is the reminder.
 
@@ -390,7 +499,7 @@ Send channels:
 - SMS if the customer has an active mobile number.
 - Email if the customer has an email address.
 
-Expired notification already exists by SMS. Add email equivalent when email exists.
+Expired notification already exists by SMS. Add email equivalent when email exists if the customer provided email.
 
 ## Staff UI Changes
 
@@ -414,9 +523,9 @@ Likely areas:
 
 ### Manual payment at bar
 
-Add a staff-only action or route:
+Add a staff-only server action, and optionally expose it through FOH later:
 
-- `POST /api/foh/event-bookings/[id]/mark-paid`
+- `markEventBookingPaidManually`
 
 Inputs:
 
@@ -431,10 +540,24 @@ Rules:
 - Hold must be active, or staff must confirm an override.
 - `amount` must be validated against the canonical booking total calculated server-side.
 - `cash` and `card_terminal` payments must match the canonical total unless a manager override is recorded.
-- `comp` means no money taken, must use amount `0`, and must require a note.
+- `comp` means no money taken and must use amount `0`.
 - Insert `payments` row with `payment_provider = 'manual'` and `status = 'succeeded'`.
 - Confirm booking using the same confirmation path.
 - Write audit log with staff user ID.
+
+### Customer transfers
+
+Managers can transfer a confirmed event booking once per original booking.
+
+Rules:
+
+- The original booking must be confirmed.
+- The target event must be bookable and must have capacity.
+- If the target event is prepaid, the existing paid value must cover the target ticket value; otherwise staff must take payment separately before transferring.
+- The replacement booking is created first, then confirmed, then the old booking is cancelled.
+- Existing event-ticket payment rows move to the replacement booking so future refunds are tied to the active booking.
+- A row is written to `event_ticket_transfers` to enforce the one-transfer rule and preserve the audit trail.
+- Customer SMS is sent with the new event details and a manage-booking link.
 
 ## Public Website Changes
 
@@ -570,11 +693,16 @@ Rules:
 - Manual payments are marked for manual refund, not refunded automatically.
 - Partial seat reduction refunds use the original provider capture/payment ID.
 - Refund rows in `payments` should include provider and original payment reference in metadata.
-- Remove old event-ticket Stripe refund code. If any old Stripe event payments exist, identify them before launch and decide whether to migrate, manually handle, or archive them before removing the code.
+- Keep historic Stripe event payments refundable. Either retain a restricted pre-cutover Stripe refund path, or require staff to refund manually in the Stripe dashboard and record the manual refund in the management app.
+- Customer-requested cancellations use the locked refund policy: 7+ days full, 3-7 days 50%, under 3 days none.
+- Anchor-cancelled events auto-refund paid PayPal tickets in full.
+- Postponed or rescheduled events create staff actions; the system must not auto-refund or auto-transfer without staff choice.
+- Customer transfers are limited to one transfer per original booking.
+- Manual refund overrides require manager access or higher and must write audit logs.
 
 ## Reporting Changes
 
-Any report that says "Stripe" for event ticket money needs to be updated. Event ticket money should report as PayPal or manual payment going forward.
+Reports should show PayPal or manual payment for new event ticket money. If historic Stripe event ticket rows exist, keep a `Stripe` label for those old rows so old money remains auditable.
 
 Likely areas:
 
@@ -586,6 +714,7 @@ Likely areas:
 Use labels:
 
 - `PayPal`
+- `Stripe` for historic rows only
 - `Cash`
 - `Card terminal`
 - `Comp`
@@ -614,7 +743,6 @@ Do not mix PayPal ticket sales into any Stripe-only field.
 - Add event PayPal create/capture helpers.
 - Add event PayPal external routes.
 - Add event PayPal confirmation RPC.
-- Remove event-ticket Stripe checkout, refund, route, copy, test, and reporting references.
 - Add tests.
 
 ### Phase 2: Guest payment links
@@ -647,6 +775,16 @@ Suggested flags:
 - Update reporting and cashing-up labels.
 - Add operational dashboard checks for stuck payments.
 
+### Phase 6: Event-ticket Stripe removal
+
+Start this only after PayPal guest links and website inline checkout are live and verified.
+
+- Migrate any open pending event payment links to PayPal, or let them expire.
+- Disable event-ticket handling in the shared Stripe webhook without breaking non-event Stripe behaviour.
+- Remove event-ticket Stripe checkout, refund, route, copy, test, and reporting references.
+- Keep historic Stripe event payments displayable and refundable.
+- Run the final provider-focused grep gate and list any remaining allowed Stripe references.
+
 ## Acceptance Criteria
 
 - A prepaid website booking shows PayPal during booking.
@@ -661,13 +799,19 @@ Suggested flags:
 - Duplicate clicks, retries, and webhooks do not create duplicate payments.
 - Amount changes invalidate old PayPal orders.
 - Free and pay-on-arrival events keep their current booking behaviour.
-- Table deposit, private booking, and parking PayPal flows still work.
+- Existing table booking, private booking, parking, charge approval, and cashing-up flows still work.
 - No new Stripe checkout sessions are created for event tickets.
-- No event-ticket runtime code, customer copy, staff UI, tests, or reporting labels reference Stripe.
+- No new event-ticket runtime code, customer copy, staff UI, tests, or new-payment reporting labels reference Stripe.
+- Historic Stripe event payments remain visible and refundable.
+
+## Resolved Decisions
+
+- Stripe removal scope is event-ticket-only. Shared Stripe code, columns, env vars, webhook branches, and reporting needed for table bookings, charge approvals, cashing-up, or historic refunds stay in place.
 
 ## Open Decisions
 
 - Confirm exact website hold length. Recommended: 15 minutes.
 - Confirm whether website event booking should require email or keep it optional. Recommended: optional.
 - Confirm if staff can override expired holds when marking a manual payment. Recommended: yes, with audit log.
-- Confirm whether any existing pending Stripe event payment links need PayPal migration before launch.
+- Existing pending Stripe event payment links: discovery found zero event payment rows in production, so there are none to migrate today. Re-check immediately before cutover.
+- Historic Stripe event refund handling: discovery found zero paid event rows, so there is nothing to refund today. If any event payment is taken before cutover, keep a restricted Stripe refund path or refund manually via the Stripe dashboard with an audit record.

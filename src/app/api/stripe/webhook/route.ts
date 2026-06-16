@@ -8,19 +8,9 @@ import {
   releaseIdempotencyClaim
 } from '@/lib/api/idempotency'
 import {
-  createStripeRefund,
   verifyStripeWebhookSignature
 } from '@/lib/payments/stripe'
 import { recordAnalyticsEvent } from '@/lib/analytics/events'
-import {
-  sendEventBookingSeatUpdateSms,
-  sendEventPaymentConfirmationSms,
-  sendEventPaymentRetrySms
-} from '@/lib/events/event-payments'
-import {
-  syncPubOpsEventCalendarByBookingId,
-  syncPubOpsEventCalendarByEventId,
-} from '@/lib/google-calendar-events'
 import {
   sendTableBookingConfirmedAfterDepositSmsIfAllowed,
 } from '@/lib/table-bookings/bookings'
@@ -95,27 +85,6 @@ async function logStripeWebhook(
   }
 }
 
-type CheckoutCompletedResult = {
-  state: 'confirmed' | 'already_confirmed' | 'blocked'
-  booking_id?: string
-  customer_id?: string
-  event_id?: string
-  event_name?: string
-  seats?: number
-}
-
-type SeatIncreaseCompletedResult = {
-  state: 'updated' | 'blocked'
-  reason?: string
-  booking_id?: string
-  customer_id?: string
-  event_id?: string
-  event_name?: string
-  old_seats?: number
-  new_seats?: number
-  delta?: number
-}
-
 type TableDepositCompletedResult = {
   state: 'confirmed' | 'blocked'
   reason?: string
@@ -125,69 +94,11 @@ type TableDepositCompletedResult = {
   party_size?: number
 }
 
-function mapRefundStatus(status: string | null): 'refunded' | 'pending' | 'failed' {
-  switch (status) {
-    case 'succeeded':
-      return 'refunded'
-    case 'pending':
-    case 'requires_action':
-      return 'pending'
-    default:
-      return 'failed'
-  }
-}
-
 function getSessionMetadata(stripeSession: any): Record<string, string> {
   if (typeof stripeSession?.metadata === 'object' && stripeSession.metadata !== null) {
     return stripeSession.metadata as Record<string, string>
   }
   return {}
-}
-
-type EventPaymentRetrySmsResult = {
-  success?: boolean
-  code?: string | null
-  logFailure?: boolean
-  error?: string | null
-} | null | undefined
-
-function logEventPaymentRetrySmsOutcome(input: {
-  bookingId: string
-  checkoutSessionId: string
-  context: 'blocked_checkout' | 'checkout_failure'
-}, smsResult: EventPaymentRetrySmsResult): void {
-  if (!smsResult || smsResult.success === true) {
-    return
-  }
-
-  const smsCode = typeof smsResult.code === 'string' ? smsResult.code : null
-  const smsLogFailure = smsResult.logFailure === true || smsCode === 'logging_failed'
-  const smsError = typeof smsResult.error === 'string' ? smsResult.error : null
-
-  if (smsLogFailure) {
-    logger.error('Stripe webhook event payment retry SMS reported logging failure', {
-      metadata: {
-        bookingId: input.bookingId,
-        checkoutSessionId: input.checkoutSessionId,
-        context: input.context,
-        code: smsCode,
-        logFailure: smsLogFailure,
-        error: smsError
-      }
-    })
-    return
-  }
-
-  logger.warn('Stripe webhook event payment retry SMS send returned non-success', {
-    metadata: {
-      bookingId: input.bookingId,
-      checkoutSessionId: input.checkoutSessionId,
-      context: input.context,
-      code: smsCode,
-      logFailure: smsLogFailure,
-      error: smsError
-    }
-  })
 }
 
 async function recordAnalyticsEventSafe(
@@ -207,263 +118,9 @@ async function recordAnalyticsEventSafe(
   }
 }
 
-async function handleSeatIncreaseCheckoutCompleted(
-  supabase: ReturnType<typeof createAdminClient>,
-  stripeSession: any,
-  appBaseUrl: string
-): Promise<void> {
-  const checkoutSessionId = typeof stripeSession?.id === 'string' ? stripeSession.id : null
-  if (!checkoutSessionId) {
-    return
-  }
-
-  const metadata = getSessionMetadata(stripeSession)
-  const bookingId = typeof metadata.event_booking_id === 'string'
-    ? metadata.event_booking_id
-    : typeof stripeSession?.client_reference_id === 'string'
-      ? stripeSession.client_reference_id
-      : null
-  const targetSeats = Number.parseInt(metadata.target_seats || '', 10)
-  const paymentIntentId = typeof stripeSession?.payment_intent === 'string'
-    ? stripeSession.payment_intent
-    : ''
-  const amount = typeof stripeSession?.amount_total === 'number'
-    ? Number((stripeSession.amount_total / 100).toFixed(2))
-    : 0
-  const currency = typeof stripeSession?.currency === 'string'
-    ? stripeSession.currency.toUpperCase()
-    : 'GBP'
-
-  if (!bookingId || !Number.isFinite(targetSeats) || targetSeats < 1) {
-    return
-  }
-
-  const { data: rpcResultRaw, error: rpcError } = await supabase.rpc('apply_event_seat_increase_payment_v05', {
-    p_event_booking_id: bookingId,
-    p_target_seats: targetSeats,
-    p_checkout_session_id: checkoutSessionId,
-    p_payment_intent_id: paymentIntentId,
-    p_amount: amount,
-    p_currency: currency
-  })
-
-  if (rpcError) {
-    throw rpcError
-  }
-
-  const rpcResult = (rpcResultRaw ?? {}) as SeatIncreaseCompletedResult
-
-  if (rpcResult.state === 'updated' && rpcResult.booking_id && rpcResult.customer_id) {
-    const [analyticsOutcome, smsOutcome] = await Promise.allSettled([
-      recordAnalyticsEventSafe(supabase, {
-        customerId: rpcResult.customer_id,
-        eventBookingId: rpcResult.booking_id,
-        eventType: 'payment_succeeded',
-        metadata: {
-          payment_kind: 'seat_increase',
-          stripe_checkout_session_id: checkoutSessionId,
-          stripe_payment_intent_id: paymentIntentId || null,
-          amount,
-          currency,
-          old_seats: rpcResult.old_seats ?? null,
-          new_seats: rpcResult.new_seats ?? null,
-          delta: rpcResult.delta ?? null
-        }
-      }, 'seat_increase_payment_succeeded'),
-      sendEventBookingSeatUpdateSms(supabase, {
-        bookingId: rpcResult.booking_id,
-        eventName: rpcResult.event_name || null,
-        oldSeats: Math.max(1, Number(rpcResult.old_seats ?? 1)),
-        newSeats: Math.max(1, Number(rpcResult.new_seats ?? 1)),
-        appBaseUrl
-      })
-    ])
-
-    if (analyticsOutcome.status === 'rejected') {
-      const reason = analyticsOutcome.reason instanceof Error ? analyticsOutcome.reason.message : String(analyticsOutcome.reason)
-      logger.warn('Seat increase analytics task rejected unexpectedly', {
-        metadata: {
-          bookingId: rpcResult.booking_id,
-          checkoutSessionId,
-          error: reason,
-        },
-      })
-    }
-
-    if (smsOutcome.status === 'rejected') {
-      const reason = smsOutcome.reason instanceof Error ? smsOutcome.reason.message : String(smsOutcome.reason)
-      logger.error('Seat increase seat-update SMS task rejected unexpectedly', {
-        error: smsOutcome.reason instanceof Error ? smsOutcome.reason : new Error(String(smsOutcome.reason)),
-        metadata: {
-          bookingId: rpcResult.booking_id,
-          checkoutSessionId,
-          error: reason,
-        },
-      })
-    } else {
-      const smsResult = smsOutcome.value as {
-        success?: boolean
-        code?: string | null
-        logFailure?: boolean
-        error?: string | null
-      } | null
-      const smsCode = typeof smsResult?.code === 'string' ? smsResult.code : null
-      const smsLogFailure = smsResult?.logFailure === true || smsCode === 'logging_failed'
-      if (smsResult && smsResult.success !== true) {
-        if (smsLogFailure) {
-          logger.error('Seat increase seat-update SMS reported logging failure', {
-            metadata: {
-              bookingId: rpcResult.booking_id,
-              checkoutSessionId,
-              code: smsCode,
-              logFailure: smsLogFailure,
-              error: typeof smsResult.error === 'string' ? smsResult.error : null
-            }
-          })
-        } else {
-          logger.warn('Seat increase seat-update SMS send returned non-success', {
-            metadata: {
-              bookingId: rpcResult.booking_id,
-              checkoutSessionId,
-              code: smsCode,
-              logFailure: smsLogFailure,
-              error: typeof smsResult.error === 'string' ? smsResult.error : null
-            }
-          })
-        }
-      }
-    }
-
-    if (rpcResult.event_id) {
-      await syncPubOpsEventCalendarByEventId(supabase, rpcResult.event_id, {
-        bookingId: rpcResult.booking_id,
-        checkoutSessionId,
-        context: 'seat_increase_payment_confirmed',
-      })
-    } else {
-      await syncPubOpsEventCalendarByBookingId(supabase, rpcResult.booking_id, {
-        checkoutSessionId,
-        context: 'seat_increase_payment_confirmed',
-      })
-    }
-    return
-  }
-
-  if (rpcResult.state === 'blocked') {
-    const { data: markedPayments, error: markPaymentFailedError } = await supabase
-      .from('payments')
-      .update({
-        status: 'failed',
-        metadata: {
-          payment_kind: 'seat_increase',
-          apply_reason: rpcResult.reason || 'blocked'
-        }
-      })
-      .eq('stripe_checkout_session_id', checkoutSessionId)
-      .eq('status', 'pending')
-      .select('id, status')
-
-    if (markPaymentFailedError) {
-      throw markPaymentFailedError
-    }
-
-    if (!Array.isArray(markedPayments) || markedPayments.length === 0) {
-      const { data: existingPayment, error: existingPaymentLookupError } = await supabase
-        .from('payments')
-        .select('id, status')
-        .eq('stripe_checkout_session_id', checkoutSessionId)
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle()
-
-      if (existingPaymentLookupError) {
-        throw existingPaymentLookupError
-      }
-
-      if (!existingPayment) {
-        throw new Error(`Seat increase blocked checkout missing payment row: ${checkoutSessionId}`)
-      }
-
-      const existingStatus =
-        typeof existingPayment?.status === 'string' ? existingPayment.status as string : null
-
-      if (existingStatus !== 'failed' && existingStatus !== 'refunded') {
-        throw new Error(
-          `Seat increase blocked checkout payment row was not transitioned to failed: ${checkoutSessionId}`
-        )
-      }
-    }
-
-    if (paymentIntentId && amount > 0) {
-      try {
-        const refund = await createStripeRefund({
-          paymentIntentId,
-          amountMinor: Math.round(amount * 100),
-          reason: 'requested_by_customer',
-          idempotencyKey: `seat_increase_refund_${checkoutSessionId}`
-        })
-
-        const refundStatus = mapRefundStatus(refund.status)
-        const paymentStatus = refundStatus === 'refunded' ? 'refunded' : refundStatus === 'pending' ? 'pending' : 'failed'
-
-        const { error: refundPaymentInsertError } = await supabase.from('payments').insert({
-          event_booking_id: bookingId,
-          charge_type: 'refund',
-          stripe_payment_intent_id: paymentIntentId,
-          amount,
-          currency,
-          status: paymentStatus,
-          metadata: {
-            payment_kind: 'seat_increase',
-            stripe_refund_id: refund.id,
-            stripe_refund_status: refund.status,
-            seat_increase_block_reason: rpcResult.reason || null,
-            checkout_session_id: checkoutSessionId
-          }
-        })
-
-        if (refundPaymentInsertError) {
-          throw refundPaymentInsertError
-        }
-      } catch (refundError) {
-        logger.error('Failed to auto-refund blocked seat increase payment', {
-          error: refundError instanceof Error ? refundError : new Error(String(refundError)),
-          metadata: { bookingId, checkoutSessionId }
-        })
-        throw refundError
-      }
-    }
-
-    if (rpcResult.customer_id && rpcResult.booking_id) {
-      try {
-        await recordAnalyticsEvent(supabase, {
-          customerId: rpcResult.customer_id,
-          eventBookingId: rpcResult.booking_id,
-          eventType: 'payment_failed',
-          metadata: {
-            payment_kind: 'seat_increase',
-            reason: rpcResult.reason || 'blocked',
-            stripe_checkout_session_id: checkoutSessionId
-          }
-        })
-      } catch (analyticsError) {
-        logger.warn('Failed recording seat increase blocked payment analytics event', {
-          metadata: {
-            bookingId: rpcResult.booking_id,
-            customerId: rpcResult.customer_id,
-            checkoutSessionId,
-            error: analyticsError instanceof Error ? analyticsError.message : String(analyticsError)
-          }
-        })
-      }
-    }
-  }
-}
-
 async function handleCheckoutSessionCompleted(
   supabase: ReturnType<typeof createAdminClient>,
-  stripeSession: any,
-  appBaseUrl: string
+  stripeSession: any
 ): Promise<void> {
   const checkoutSessionId = typeof stripeSession?.id === 'string' ? stripeSession.id : null
   if (!checkoutSessionId) {
@@ -471,7 +128,7 @@ async function handleCheckoutSessionCompleted(
   }
 
   const metadata = getSessionMetadata(stripeSession)
-  const paymentKind = metadata.payment_kind || 'prepaid_event'
+  const paymentKind = metadata.payment_kind || 'unknown'
 
   if (paymentKind === 'table_deposit') {
     const tableBookingId = typeof metadata.table_booking_id === 'string'
@@ -660,160 +317,12 @@ async function handleCheckoutSessionCompleted(
     return
   }
 
-  if (paymentKind === 'seat_increase') {
-    await handleSeatIncreaseCheckoutCompleted(supabase, stripeSession, appBaseUrl)
-    return
-  }
-
-  const bookingId = typeof metadata.event_booking_id === 'string'
-    ? metadata.event_booking_id
-    : typeof stripeSession?.client_reference_id === 'string'
-      ? stripeSession.client_reference_id
-      : null
-
-  if (!bookingId) {
-    return
-  }
-
-  const paymentIntentId = typeof stripeSession?.payment_intent === 'string'
-    ? stripeSession.payment_intent
-    : ''
-  const amount = typeof stripeSession?.amount_total === 'number'
-    ? Number((stripeSession.amount_total / 100).toFixed(2))
-    : null
-  const currency = typeof stripeSession?.currency === 'string'
-    ? stripeSession.currency.toUpperCase()
-    : 'GBP'
-
-  const { data: rpcResultRaw, error: rpcError } = await supabase.rpc('confirm_event_payment_v05', {
-    p_event_booking_id: bookingId,
-    p_checkout_session_id: checkoutSessionId,
-    p_payment_intent_id: paymentIntentId,
-    p_amount: amount,
-    p_currency: currency
+  logger.info('Ignoring non-table Stripe checkout session in shared webhook', {
+    metadata: {
+      checkoutSessionId,
+      paymentKind,
+    }
   })
-
-  if (rpcError) {
-    throw rpcError
-  }
-
-  const rpcResult = (rpcResultRaw ?? {}) as CheckoutCompletedResult
-
-  if (rpcResult.state === 'confirmed' && rpcResult.booking_id && rpcResult.customer_id) {
-    const [analyticsOutcome, smsOutcome] = await Promise.allSettled([
-      recordAnalyticsEventSafe(supabase, {
-        customerId: rpcResult.customer_id,
-        eventBookingId: rpcResult.booking_id,
-        eventType: 'payment_succeeded',
-        metadata: {
-          stripe_checkout_session_id: checkoutSessionId,
-          stripe_payment_intent_id: paymentIntentId || null,
-          amount: amount ?? null,
-          currency
-        }
-      }, 'prepaid_event_payment_succeeded'),
-      sendEventPaymentConfirmationSms(supabase, {
-        bookingId: rpcResult.booking_id,
-        eventName: rpcResult.event_name || 'your event',
-        seats: Math.max(1, Number(rpcResult.seats ?? 1)),
-        appBaseUrl
-      })
-    ])
-
-    if (analyticsOutcome.status === 'rejected') {
-      const reason = analyticsOutcome.reason instanceof Error ? analyticsOutcome.reason.message : String(analyticsOutcome.reason)
-      logger.warn('Prepaid event payment analytics task rejected unexpectedly', {
-        metadata: {
-          bookingId: rpcResult.booking_id,
-          customerId: rpcResult.customer_id,
-          checkoutSessionId,
-          error: reason
-        }
-      })
-    }
-
-    if (smsOutcome.status === 'rejected') {
-      const reason = smsOutcome.reason instanceof Error ? smsOutcome.reason.message : String(smsOutcome.reason)
-      logger.error('Prepaid event payment confirmation SMS task rejected unexpectedly', {
-        error: smsOutcome.reason instanceof Error ? smsOutcome.reason : new Error(String(smsOutcome.reason)),
-        metadata: {
-          bookingId: rpcResult.booking_id,
-          checkoutSessionId,
-          error: reason
-        }
-      })
-    } else {
-      const smsResult = smsOutcome.value as {
-        success?: boolean
-        code?: string | null
-        logFailure?: boolean
-        error?: string | null
-      } | null
-      const smsCode = typeof smsResult?.code === 'string' ? smsResult.code : null
-      const smsLogFailure = smsResult?.logFailure === true || smsCode === 'logging_failed'
-      if (smsResult && smsResult.success !== true) {
-        if (smsLogFailure) {
-          logger.error('Prepaid event payment confirmation SMS reported logging failure', {
-            metadata: {
-              bookingId: rpcResult.booking_id,
-              checkoutSessionId,
-              code: smsCode,
-              logFailure: smsLogFailure,
-              error: typeof smsResult.error === 'string' ? smsResult.error : null
-            }
-          })
-        } else {
-          logger.warn('Prepaid event payment confirmation SMS send returned non-success', {
-            metadata: {
-              bookingId: rpcResult.booking_id,
-              checkoutSessionId,
-              code: smsCode,
-              logFailure: smsLogFailure,
-              error: typeof smsResult.error === 'string' ? smsResult.error : null
-            }
-          })
-        }
-      }
-    }
-
-    if (rpcResult.event_id) {
-      await syncPubOpsEventCalendarByEventId(supabase, rpcResult.event_id, {
-        bookingId: rpcResult.booking_id,
-        checkoutSessionId,
-        context: 'prepaid_event_payment_confirmed',
-      })
-    } else {
-      await syncPubOpsEventCalendarByBookingId(supabase, rpcResult.booking_id, {
-        checkoutSessionId,
-        context: 'prepaid_event_payment_confirmed',
-      })
-    }
-  }
-
-  if (rpcResult.state === 'blocked' && rpcResult.booking_id) {
-    try {
-      const retrySmsResult = await sendEventPaymentRetrySms(supabase, {
-        bookingId: rpcResult.booking_id,
-        appBaseUrl
-      })
-      logEventPaymentRetrySmsOutcome(
-        {
-          bookingId: rpcResult.booking_id,
-          checkoutSessionId,
-          context: 'blocked_checkout'
-        },
-        retrySmsResult
-      )
-    } catch (retrySmsError) {
-      logger.warn('Failed to send event payment retry SMS from Stripe webhook (blocked checkout)', {
-        metadata: {
-          bookingId: rpcResult.booking_id,
-          checkoutSessionId,
-          error: retrySmsError instanceof Error ? retrySmsError.message : String(retrySmsError)
-        }
-      })
-    }
-  }
 }
 
 async function handleApprovedChargePaymentIntentEvent(
@@ -978,11 +487,12 @@ async function handleChargeRefunded(
   }
 
   const fullyRefunded = charge?.refunded === true
-  const newStatus = fullyRefunded ? 'refunded' : 'partial_refund'
+  const newStatus = fullyRefunded ? 'refunded' : 'partially_refunded'
 
   const { data: payments, error: lookupError } = await supabase.from('payments')
-    .select('id, table_booking_id, event_booking_id, customer_id')
+    .select('id, table_booking_id, customer_id')
     .eq('stripe_payment_intent_id', paymentIntentId)
+    .not('table_booking_id', 'is', null)
 
   if (lookupError) {
     throw lookupError
@@ -1000,14 +510,13 @@ async function handleChargeRefunded(
     throw updateError
   }
 
-  const payment = payments[0] as { table_booking_id?: string; event_booking_id?: string; customer_id?: string }
+  const payment = payments[0] as { table_booking_id?: string; customer_id?: string }
   const customerId = payment.customer_id
 
   if (customerId) {
     await recordAnalyticsEventSafe(supabase, {
       customerId,
       tableBookingId: payment.table_booking_id,
-      eventBookingId: payment.event_booking_id,
       eventType: fullyRefunded ? 'payment_refunded' : 'payment_partially_refunded',
       metadata: {
         stripe_payment_intent_id: paymentIntentId,
@@ -1020,8 +529,7 @@ async function handleChargeRefunded(
 async function handleCheckoutSessionFailure(
   supabase: ReturnType<typeof createAdminClient>,
   stripeSession: any,
-  failureType: string,
-  appBaseUrl: string
+  failureType: string
 ): Promise<void> {
   const checkoutSessionId = typeof stripeSession?.id === 'string' ? stripeSession.id : null
   if (!checkoutSessionId) {
@@ -1029,7 +537,7 @@ async function handleCheckoutSessionFailure(
   }
 
   const metadata = getSessionMetadata(stripeSession)
-  const paymentKind = metadata.payment_kind || 'prepaid_event'
+  const paymentKind = metadata.payment_kind || 'unknown'
 
   if (paymentKind === 'table_deposit') {
     const nowIso = new Date().toISOString()
@@ -1130,118 +638,13 @@ async function handleCheckoutSessionFailure(
     return
   }
 
-  const { data: rows, error } = await supabase
-    .from('payments')
-    .update({
-      status: 'failed',
-      metadata: {
-        payment_kind: paymentKind,
-        stripe_failure_type: failureType,
-        updated_at: new Date().toISOString()
-      }
-    })
-    .eq('stripe_checkout_session_id', checkoutSessionId)
-    .eq('status', 'pending')
-    .select('event_booking_id')
-
-  if (error) {
-    throw error
-  }
-
-  if (!Array.isArray(rows) || rows.length === 0) {
-    const { data: existingPayment, error: existingPaymentLookupError } = await supabase
-      .from('payments')
-      .select('id, status')
-      .eq('stripe_checkout_session_id', checkoutSessionId)
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .maybeSingle()
-
-    if (existingPaymentLookupError) {
-      throw new Error(
-        `Failed to verify existing payment after checkout failure webhook: ${existingPaymentLookupError.message}`
-      )
+  logger.info('Ignoring non-table Stripe checkout failure in shared webhook', {
+    metadata: {
+      checkoutSessionId,
+      paymentKind,
+      failureType,
     }
-
-    if (!existingPayment) {
-      throw new Error(`Checkout failure webhook missing payment row: ${checkoutSessionId}`)
-    }
-
-    const existingStatus =
-      typeof existingPayment?.status === 'string' ? existingPayment.status as string : null
-
-    if (
-      existingStatus !== 'failed' &&
-      existingStatus !== 'succeeded' &&
-      existingStatus !== 'refunded' &&
-      existingStatus !== 'partially_refunded'
-    ) {
-      throw new Error(
-        `Checkout failure webhook payment row was not transitioned to failed: ${checkoutSessionId}`
-      )
-    }
-
-    return
-  }
-
-  const bookingId = rows?.[0]?.event_booking_id as string | undefined
-  if (!bookingId) {
-    throw new Error(`Checkout failure webhook updated payment without booking id: ${checkoutSessionId}`)
-  }
-
-  const { data: booking, error: bookingLookupError } = await supabase
-    .from('bookings')
-    .select('id, customer_id')
-    .eq('id', bookingId)
-    .maybeSingle()
-
-  if (bookingLookupError) {
-    logger.warn('Checkout failure webhook could not load booking for analytics', {
-      metadata: {
-        bookingId,
-        checkoutSessionId,
-        error: bookingLookupError.message
-      }
-    })
-  }
-
-  if (booking && booking.customer_id) {
-    await recordAnalyticsEventSafe(supabase, {
-      customerId: booking.customer_id,
-      eventBookingId: bookingId,
-      eventType: 'payment_failed',
-      metadata: {
-        payment_kind: paymentKind,
-        stripe_checkout_session_id: checkoutSessionId,
-        failure_type: failureType
-      }
-    }, 'checkout_session_failure')
-  }
-
-  if (paymentKind !== 'seat_increase') {
-    try {
-      const retrySmsResult = await sendEventPaymentRetrySms(supabase, {
-        bookingId,
-        appBaseUrl
-      })
-      logEventPaymentRetrySmsOutcome(
-        {
-          bookingId,
-          checkoutSessionId,
-          context: 'checkout_failure'
-        },
-        retrySmsResult
-      )
-    } catch (retrySmsError) {
-      logger.warn('Failed to send event payment retry SMS from Stripe webhook', {
-        metadata: {
-          bookingId,
-          checkoutSessionId,
-          error: retrySmsError instanceof Error ? retrySmsError.message : String(retrySmsError)
-        }
-      })
-    }
-  }
+  })
 }
 
 export async function POST(request: NextRequest) {
@@ -1270,7 +673,6 @@ export async function POST(request: NextRequest) {
   }
 
   const supabase = createAdminClient()
-  const appBaseUrl = process.env.NEXT_PUBLIC_APP_URL || request.nextUrl.origin
   const headers = Object.fromEntries(request.headers.entries())
   const requestHash = computeIdempotencyRequestHash(event)
   const idempotencyKey = `webhook:stripe:${eventId}`
@@ -1329,11 +731,11 @@ export async function POST(request: NextRequest) {
 
   try {
     if (event.type === 'checkout.session.completed') {
-      await handleCheckoutSessionCompleted(supabase, event.data?.object, appBaseUrl)
+      await handleCheckoutSessionCompleted(supabase, event.data?.object)
     } else if (event.type === 'checkout.session.expired') {
-      await handleCheckoutSessionFailure(supabase, event.data?.object, 'checkout_session_expired', appBaseUrl)
+      await handleCheckoutSessionFailure(supabase, event.data?.object, 'checkout_session_expired')
     } else if (event.type === 'checkout.session.async_payment_failed') {
-      await handleCheckoutSessionFailure(supabase, event.data?.object, 'checkout_session_async_failed', appBaseUrl)
+      await handleCheckoutSessionFailure(supabase, event.data?.object, 'checkout_session_async_failed')
     } else if (event.type === 'payment_intent.succeeded' || event.type === 'payment_intent.payment_failed') {
       await handleApprovedChargePaymentIntentEvent(supabase, event.data?.object, event.type)
     } else if (event.type === 'charge.refunded') {

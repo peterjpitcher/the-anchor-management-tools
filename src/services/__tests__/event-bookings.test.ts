@@ -113,7 +113,7 @@ const INACTIVE_CUSTOMER_ROW = {
  * Build a chainable Supabase mock.
  *
  * `rpcResults` is a map of rpc-name → resolved value, e.g.:
- *   { create_event_booking_v05: { data: CONFIRMED_RPC_RESULT, error: null } }
+ *   { create_event_booking_v06: { data: CONFIRMED_RPC_RESULT, error: null } }
  *
  * `fromResults` is a map of table-name → resolved value for .from() chains.
  */
@@ -124,7 +124,11 @@ function makeSupabaseMock(options: {
   const rpcResults = options.rpcResults ?? {}
   const fromResults = options.fromResults ?? {}
 
-  const rpcMock = vi.fn((name: string) => Promise.resolve(rpcResults[name] ?? { data: null, error: null }))
+  const rpcMock = vi.fn((name: string) => Promise.resolve(
+    rpcResults[name] ??
+    (name === 'create_event_booking_v06' ? rpcResults.create_event_booking_v05 : undefined) ??
+    { data: null, error: null }
+  ))
 
   const fromMock = vi.fn((table: string) => ({
     select: vi.fn().mockReturnThis(),
@@ -160,7 +164,7 @@ describe('EventBookingService.createBooking', () => {
 
   // ── RPC parameter forwarding ────────────────────────────────────────────────
 
-  it('calls create_event_booking_v05 with correct parameters for brand_site source', async () => {
+  it('calls create_event_booking_v06 with correct parameters for brand_site source', async () => {
     const supabase = makeSupabaseMock({
       rpcResults: {
         create_event_booking_v05: { data: CONFIRMED_RPC_RESULT, error: null }
@@ -170,16 +174,17 @@ describe('EventBookingService.createBooking', () => {
 
     await EventBookingService.createBooking({ ...BASE_PARAMS, source: 'brand_site' })
 
-    expect(supabase.rpc).toHaveBeenCalledWith('create_event_booking_v05', {
+    expect(supabase.rpc).toHaveBeenCalledWith('create_event_booking_v06', {
       p_event_id: BASE_PARAMS.eventId,
       p_customer_id: BASE_PARAMS.customerId,
       p_seats: BASE_PARAMS.seats,
       p_source: 'brand_site',
-      p_seating_preference: 'seated'
+      p_seating_preference: 'seated',
+      p_payment_hold_minutes: 15
     })
   })
 
-  it('calls create_event_booking_v05 with correct parameters for admin source', async () => {
+  it('calls create_event_booking_v06 with correct parameters for admin source', async () => {
     const supabase = makeSupabaseMock({
       rpcResults: {
         create_event_booking_v05: { data: CONFIRMED_RPC_RESULT, error: null }
@@ -189,12 +194,13 @@ describe('EventBookingService.createBooking', () => {
 
     await EventBookingService.createBooking({ ...BASE_PARAMS, source: 'admin' })
 
-    expect(supabase.rpc).toHaveBeenCalledWith('create_event_booking_v05', expect.objectContaining({
-      p_source: 'admin'
+    expect(supabase.rpc).toHaveBeenCalledWith('create_event_booking_v06', expect.objectContaining({
+      p_source: 'admin',
+      p_payment_hold_minutes: 1440
     }))
   })
 
-  it('calls create_event_booking_v05 with correct parameters for walk-in source', async () => {
+  it('calls create_event_booking_v06 with correct parameters for walk-in source', async () => {
     const supabase = makeSupabaseMock({
       rpcResults: {
         create_event_booking_v05: { data: CONFIRMED_RPC_RESULT, error: null }
@@ -204,12 +210,13 @@ describe('EventBookingService.createBooking', () => {
 
     await EventBookingService.createBooking({ ...BASE_PARAMS, source: 'walk-in' })
 
-    expect(supabase.rpc).toHaveBeenCalledWith('create_event_booking_v05', expect.objectContaining({
-      p_source: 'walk-in'
+    expect(supabase.rpc).toHaveBeenCalledWith('create_event_booking_v06', expect.objectContaining({
+      p_source: 'walk-in',
+      p_payment_hold_minutes: 1440
     }))
   })
 
-  it('calls create_event_booking_v05 with correct parameters for sms_reply source', async () => {
+  it('calls create_event_booking_v06 with correct parameters for sms_reply source', async () => {
     const supabase = makeSupabaseMock({
       rpcResults: {
         create_event_booking_v05: { data: CONFIRMED_RPC_RESULT, error: null }
@@ -219,8 +226,9 @@ describe('EventBookingService.createBooking', () => {
 
     await EventBookingService.createBooking({ ...BASE_PARAMS, source: 'sms_reply' })
 
-    expect(supabase.rpc).toHaveBeenCalledWith('create_event_booking_v05', expect.objectContaining({
-      p_source: 'sms_reply'
+    expect(supabase.rpc).toHaveBeenCalledWith('create_event_booking_v06', expect.objectContaining({
+      p_source: 'sms_reply',
+      p_payment_hold_minutes: 1440
     }))
   })
 
@@ -297,7 +305,7 @@ describe('EventBookingService.createBooking', () => {
     expect(result.rpcFailed).toBe(true)
     expect(result.resolvedState).toBe('blocked')
     expect(logger.error).toHaveBeenCalledWith(
-      'create_event_booking_v05 RPC failed',
+      'create_event_booking_v06 RPC failed',
       expect.objectContaining({
         error: expect.any(Error)
       })
@@ -423,7 +431,7 @@ describe('EventBookingService.createBooking', () => {
     })
 
     expect(supabase.rpc).toHaveBeenCalledWith(
-      'create_event_booking_v05',
+      'create_event_booking_v06',
       expect.objectContaining({
         p_seating_preference: 'standing'
       })

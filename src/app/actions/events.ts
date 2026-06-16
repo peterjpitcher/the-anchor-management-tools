@@ -11,8 +11,18 @@ import { createClient } from '@/lib/supabase/server' // Required for getting use
 import { createAdminClient } from '@/lib/supabase/admin'
 import { formatPhoneForStorage } from '@/lib/utils'
 import { ensureCustomerForPhone } from '@/lib/sms/customers'
-import { updateEventBookingSeatsById } from '@/lib/events/manage-booking'
-import { sendEventBookingSeatUpdateSms } from '@/lib/events/event-payments'
+import {
+  createEventManageToken,
+  getEventRefundPolicy,
+  processEventRefund,
+  updateEventBookingSeatsById,
+  type EventRefundResult
+} from '@/lib/events/manage-booking'
+import {
+  sendEventBookingSeatUpdateSms,
+  sendEventPaymentConfirmationSms,
+  sendEventPaymentManualReviewSms
+} from '@/lib/events/event-payments'
 import { recordAnalyticsEvent } from '@/lib/analytics/events'
 import {
   deletePubOpsEventCalendarEntryByEventId,
@@ -23,7 +33,7 @@ import { ensureReplyInstruction } from '@/lib/sms/support'
 import { getSmartFirstName } from '@/lib/sms/bulk'
 import { logger } from '@/lib/logger'
 import { buildKeywordsUnion } from '@/lib/keywords'
-import { normalizeEventPricingFields } from '@/lib/events/pricing'
+import { normalizeEventPricingFields, resolveEventPriceAmount } from '@/lib/events/pricing'
 import { jobQueue } from '@/lib/unified-job-queue'
 
 export type EventBookingRow = {
@@ -35,6 +45,8 @@ export type EventBookingRow = {
   notes: string | null
   created_at: string
   status?: string | null
+  source?: string | null
+  hold_expires_at?: string | null
   event_seating_type?: 'seated' | 'standing' | null
   customer?: {
     id: string
@@ -51,11 +63,19 @@ type PreparedEventData = Partial<CreateEventInput> & { faqs?: EventFaqInput[] }
 
 type SmsSafetyMeta =
   | {
-    success: boolean
-    code: string | null
-    logFailure: boolean
+      success: boolean
+      code: string | null
+      logFailure: boolean
   }
   | null
+
+type RequiredSmsSafetyMeta = NonNullable<SmsSafetyMeta>
+
+type EventManualPaymentMethod = 'cash' | 'card_terminal' | 'comp'
+
+function toMoney(value: number): number {
+  return Number(value.toFixed(2))
+}
 
 function getErrorMessage(error: unknown, fallback: string): string {
   return error instanceof Error ? error.message : fallback
@@ -560,7 +580,7 @@ export async function getEventBookings(eventId: string): Promise<{ data?: EventB
     const supabase = createAdminClient()
     const { data, error } = await supabase
       .from('bookings')
-      .select('id, customer_id, event_id, seats, event_seating_type, is_reminder_only, notes, created_at, status, customer:customers(id, first_name, last_name, mobile_number, email)')
+      .select('id, customer_id, event_id, seats, event_seating_type, is_reminder_only, notes, created_at, status, source, hold_expires_at, customer:customers(id, first_name, last_name, mobile_number, email)')
       .eq('event_id', eventId)
       .order('created_at', { ascending: false })
 
@@ -811,6 +831,8 @@ type CancelEventManualBookingResult =
       reason: string | null
       booking_id: string
       sms_sent: boolean
+      refund_status: EventRefundResult['status']
+      refund_amount: number
     }
     meta?: {
       sms: SmsSafetyMeta
@@ -881,13 +903,29 @@ function buildEventBookingCancelledSms(input: {
   eventStartText: string
   seats: number
   isReminderOnly: boolean
+  refundNote?: string | null
 }): string {
   if (input.isReminderOnly) {
     return `The Anchor: ${input.firstName}, your reminder guest entry for ${input.eventName} on ${input.eventStartText} has been removed. Reply if you need help rejoining.`
   }
 
   const seatWord = input.seats === 1 ? 'seat' : 'seats'
-  return `The Anchor: ${input.firstName}, your booking for ${input.eventName} on ${input.eventStartText} has been cancelled (${input.seats} ${seatWord}). Reply if you need help rebooking.`
+  const refundPart = input.refundNote ? ` ${input.refundNote}` : ''
+  return `The Anchor: ${input.firstName}, your booking for ${input.eventName} on ${input.eventStartText} has been cancelled (${input.seats} ${seatWord}).${refundPart} Reply if you need help rebooking.`
+}
+
+function buildStaffCancellationRefundNote(input: {
+  refundStatus: EventRefundResult['status']
+  refundAmount: number
+}): string | null {
+  if (input.refundAmount <= 0) return 'No refund is due under the event cancellation policy.'
+  const formatted = new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP' }).format(input.refundAmount)
+  if (input.refundStatus === 'succeeded') return `Refund issued: ${formatted}.`
+  if (input.refundStatus === 'pending') return `Refund pending: ${formatted}.`
+  if (input.refundStatus === 'manual_required' || input.refundStatus === 'failed') {
+    return `Refund needs staff follow-up: ${formatted}.`
+  }
+  return null
 }
 
 export async function updateEventManualBookingSeats(input: {
@@ -1138,7 +1176,7 @@ export async function cancelEventManualBooking(input: {
         seats,
         status,
         is_reminder_only,
-        event:events(id, name, start_datetime, date, time),
+        event:events(id, name, start_datetime, date, time, payment_mode, price, price_per_seat, is_free),
         customer:customers(id, first_name, mobile_number, sms_status)
       `)
       .eq('id', parsed.data.bookingId)
@@ -1156,7 +1194,9 @@ export async function cancelEventManualBooking(input: {
           state: 'already_cancelled',
           reason: bookingStatus,
           booking_id: bookingRow.id,
-          sms_sent: false
+          sms_sent: false,
+          refund_status: 'none',
+          refund_amount: 0
         }
       }
     }
@@ -1168,7 +1208,9 @@ export async function cancelEventManualBooking(input: {
           state: 'blocked',
           reason: 'status_not_cancellable',
           booking_id: bookingRow.id,
-          sms_sent: false
+          sms_sent: false,
+          refund_status: 'none',
+          refund_amount: 0
         }
       }
     }
@@ -1339,6 +1381,58 @@ export async function cancelEventManualBooking(input: {
 
     const eventRecord = Array.isArray(bookingRow.event) ? bookingRow.event[0] : bookingRow.event
     const customerRecord = Array.isArray(bookingRow.customer) ? bookingRow.customer[0] : bookingRow.customer
+    let refundStatus: EventRefundResult['status'] = 'none'
+    let refundAmount = 0
+
+    if (
+      bookingStatus === 'confirmed' &&
+      bookingRow.is_reminder_only !== true &&
+      bookingRow.customer_id &&
+      bookingRow.event_id &&
+      eventRecord &&
+      (eventRecord as any).payment_mode === 'prepaid'
+    ) {
+      const eventStartIso =
+        (eventRecord as any).start_datetime ||
+        ((eventRecord as any).date ? `${(eventRecord as any).date}T${((eventRecord as any).time || '00:00').slice(0, 5)}:00` : null)
+      const policy = eventStartIso
+        ? getEventRefundPolicy(eventStartIso)
+        : { refundRate: 0, policyBand: 'none' as const }
+      const seatCount = Math.max(1, Number(bookingRow.seats || 1))
+      const pricePerSeat = resolveEventPriceAmount(eventRecord as unknown as Event)
+      const candidateRefundAmount = toMoney(seatCount * pricePerSeat * policy.refundRate)
+
+      if (candidateRefundAmount > 0) {
+        try {
+          const refundResult = await processEventRefund(supabase, {
+            bookingId: bookingRow.id,
+            customerId: bookingRow.customer_id,
+            eventId: bookingRow.event_id,
+            amount: candidateRefundAmount,
+            reason: `staff_cancel_${policy.policyBand}`,
+            metadata: {
+              cancelled_by: 'admin',
+              policy_band: policy.policyBand,
+              seats: seatCount
+            }
+          })
+          refundStatus = refundResult.status
+          refundAmount = refundResult.amount
+        } catch (refundError) {
+          refundStatus = 'manual_required'
+          refundAmount = candidateRefundAmount
+          logger.error('Failed to process event refund during staff cancellation', {
+            error: refundError instanceof Error ? refundError : new Error(String(refundError)),
+            metadata: {
+              bookingId: bookingRow.id,
+              customerId: bookingRow.customer_id,
+              eventId: bookingRow.event_id,
+              refundAmount: candidateRefundAmount
+            }
+          })
+        }
+      }
+    }
 
     let smsSent = false
     let smsMeta: SmsSafetyMeta = null
@@ -1360,7 +1454,8 @@ export async function cancelEventManualBooking(input: {
             time: eventRecord?.time ?? null
           }),
           seats: Math.max(0, Number(bookingRow.seats || 0)),
-          isReminderOnly: bookingRow.is_reminder_only === true
+          isReminderOnly: bookingRow.is_reminder_only === true,
+          refundNote: buildStaffCancellationRefundNote({ refundStatus, refundAmount })
         }),
         process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || process.env.TWILIO_PHONE_NUMBER || undefined
       )
@@ -1412,7 +1507,9 @@ export async function cancelEventManualBooking(input: {
           event_id: bookingRow.event_id,
           seats: bookingRow.seats,
           source: 'admin',
-          sms_sent: smsSent
+          sms_sent: smsSent,
+          refund_status: refundStatus,
+          refund_amount: refundAmount
         }
       }, {
         customerId: bookingRow.customer_id,
@@ -1433,7 +1530,9 @@ export async function cancelEventManualBooking(input: {
         state: 'cancelled',
         reason: null,
         booking_id: bookingRow.id,
-        sms_sent: smsSent
+        sms_sent: smsSent,
+        refund_status: refundStatus,
+        refund_amount: refundAmount
       },
       meta: {
         sms: smsMeta,
@@ -1444,5 +1543,600 @@ export async function cancelEventManualBooking(input: {
       error: error instanceof Error ? error : new Error(String(error)),
     })
     return { error: getErrorMessage(error, 'Failed to cancel booking.') }
+  }
+}
+
+const markEventBookingPaidSchema = z.object({
+  bookingId: z.string().uuid(),
+  method: z.enum(['cash', 'card_terminal', 'comp']),
+  note: z.string().trim().max(500).optional(),
+  sendSms: z.boolean().optional().default(true)
+})
+
+type MarkEventBookingPaidResult =
+  | { error: string }
+  | {
+      success: true
+      data: {
+        state: 'confirmed' | 'already_confirmed' | 'manual_review' | 'blocked'
+        reason: string | null
+        booking_id: string
+        payment_id: string | null
+        sms_sent: boolean
+      }
+      meta?: { sms: SmsSafetyMeta }
+    }
+
+export async function markEventBookingPaidManually(input: {
+  bookingId: string
+  method: EventManualPaymentMethod
+  note?: string
+  sendSms?: boolean
+}): Promise<MarkEventBookingPaidResult> {
+  try {
+    const canManageEvents = await checkUserPermission('events', 'manage')
+    if (!canManageEvents) {
+      return { error: 'You do not have permission to mark event bookings paid.' }
+    }
+
+    const parsed = markEventBookingPaidSchema.safeParse(input)
+    if (!parsed.success) {
+      return { error: parsed.error.issues[0]?.message || 'Invalid payment details.' }
+    }
+
+    const authSupabase = await createClient()
+    const { data: { user }, error: authError } = await authSupabase.auth.getUser()
+    if (authError || !user) {
+      return { error: 'Unauthorized' }
+    }
+
+    const supabase = createAdminClient()
+    const { data: bookingRow, error: bookingError } = await supabase
+      .from('bookings')
+      .select('id, event_id, customer_id, seats, status, event:events(id, name, payment_mode, price, price_per_seat, is_free)')
+      .eq('id', parsed.data.bookingId)
+      .maybeSingle()
+
+    if (bookingError || !bookingRow) {
+      return { error: 'Booking not found.' }
+    }
+
+    if (bookingRow.status === 'cancelled' || bookingRow.status === 'expired') {
+      return { error: 'This booking is no longer payable.' }
+    }
+
+    const eventRecord = Array.isArray(bookingRow.event) ? bookingRow.event[0] : bookingRow.event
+    const seatCount = Math.max(1, Number(bookingRow.seats || 1))
+    const expectedAmount = parsed.data.method === 'comp'
+      ? 0
+      : toMoney(resolveEventPriceAmount(eventRecord as unknown as Event) * seatCount)
+
+    const { data: confirmRaw, error: confirmError } = await supabase.rpc(
+      'confirm_event_manual_payment_v01',
+      {
+        p_event_booking_id: parsed.data.bookingId,
+        p_payment_method: parsed.data.method,
+        p_amount: expectedAmount,
+        p_currency: 'GBP',
+        p_performed_by: user.id,
+        p_note: parsed.data.note || null
+      }
+    )
+
+    if (confirmError) {
+      return { error: confirmError.message || 'Failed to confirm manual payment.' }
+    }
+
+    const confirm = (confirmRaw || {}) as Record<string, unknown>
+    const state = typeof confirm.state === 'string' ? confirm.state : 'blocked'
+    const reason = typeof confirm.reason === 'string' ? confirm.reason : null
+    const paymentId = typeof confirm.payment_id === 'string' ? confirm.payment_id : null
+    const typedState: 'confirmed' | 'already_confirmed' | 'manual_review' | 'blocked' =
+      state === 'confirmed' ||
+      state === 'already_confirmed' ||
+      state === 'manual_review'
+        ? state
+        : 'blocked'
+
+    if (state === 'blocked') {
+      return {
+        success: true,
+        data: {
+          state: 'blocked',
+          reason: reason || 'confirmation_blocked',
+          booking_id: parsed.data.bookingId,
+          payment_id: paymentId,
+          sms_sent: false
+        }
+      }
+    }
+
+    let smsSent = false
+    let smsMeta: SmsSafetyMeta = null
+    if (parsed.data.sendSms !== false && (state === 'confirmed' || state === 'already_confirmed')) {
+      const smsResult = await sendEventPaymentConfirmationSms(supabase, {
+        bookingId: parsed.data.bookingId,
+        eventName: typeof confirm.event_name === 'string' ? confirm.event_name : 'your event',
+        seats: typeof confirm.seats === 'number' ? confirm.seats : seatCount,
+        appBaseUrl: process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+      })
+      smsSent = smsResult.success === true || smsResult.logFailure === true
+      smsMeta = smsResult
+    } else if (state === 'manual_review') {
+      const smsResult = await sendEventPaymentManualReviewSms(supabase, { bookingId: parsed.data.bookingId })
+      smsSent = smsResult.success === true || smsResult.logFailure === true
+      smsMeta = smsResult
+    }
+
+    await logAuditEvent({
+      user_id: user.id,
+      user_email: user.email ?? undefined,
+      operation_type: 'mark_event_booking_paid',
+      resource_type: 'event_booking',
+      resource_id: parsed.data.bookingId,
+      operation_status: 'success',
+      additional_info: {
+        event_id: bookingRow.event_id,
+        method: parsed.data.method,
+        amount: expectedAmount,
+        state,
+        reason
+      }
+    })
+
+    if (bookingRow.event_id) {
+      await syncPubOpsEventCalendarByEventId(supabase, bookingRow.event_id, {
+        bookingId: parsed.data.bookingId,
+        context: 'admin_event_booking_marked_paid',
+      })
+      revalidatePath(`/events/${bookingRow.event_id}`)
+    }
+    revalidatePath('/events')
+    revalidatePath('/table-bookings/foh')
+    revalidateTag('dashboard')
+
+    return {
+      success: true,
+      data: {
+        state: typedState,
+        reason,
+        booking_id: parsed.data.bookingId,
+        payment_id: paymentId,
+        sms_sent: smsSent
+      },
+      meta: { sms: smsMeta }
+    }
+  } catch (error) {
+    logger.error('Unexpected markEventBookingPaidManually error', {
+      error: error instanceof Error ? error : new Error(String(error)),
+    })
+    return { error: getErrorMessage(error, 'Failed to mark booking paid.') }
+  }
+}
+
+async function sendEventTransferSms(input: {
+  supabase: ReturnType<typeof createAdminClient>
+  bookingId: string
+  customerId: string
+  fromEventName: string
+  toEventName: string
+  eventStartIso?: string | null
+  appBaseUrl?: string
+}): Promise<RequiredSmsSafetyMeta> {
+  const { data: customer, error: customerError } = await input.supabase
+    .from('customers')
+    .select('id, first_name, mobile_number, sms_status')
+    .eq('id', input.customerId)
+    .maybeSingle()
+
+  if (customerError || !customer || customer.sms_status !== 'active' || !customer.mobile_number) {
+    return { success: false, code: customerError ? 'safety_unavailable' : null, logFailure: false }
+  }
+
+  let manageLink: string | null = null
+  try {
+    const token = await createEventManageToken(input.supabase, {
+      customerId: input.customerId,
+      bookingId: input.bookingId,
+      eventStartIso: input.eventStartIso,
+      appBaseUrl: input.appBaseUrl || process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+    })
+    manageLink = token.url
+  } catch {
+    manageLink = null
+  }
+
+  const firstName = getSmartFirstName(customer.first_name)
+  const body = ensureReplyInstruction(
+    `The Anchor: Hi ${firstName}, your tickets have been transferred from ${input.fromEventName} to ${input.toEventName}.${manageLink ? ` Manage booking: ${manageLink}` : ''}`,
+    process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || process.env.TWILIO_PHONE_NUMBER || undefined
+  )
+
+  try {
+    const smsResult = await sendSMS(customer.mobile_number, body, {
+      customerId: customer.id,
+      metadata: {
+        event_booking_id: input.bookingId,
+        template_key: 'event_ticket_transferred'
+      }
+    })
+    const code = typeof smsResult.code === 'string' ? smsResult.code : null
+    const logFailure = smsResult.logFailure === true || code === 'logging_failed'
+    return { success: smsResult.success === true, code, logFailure }
+  } catch (smsError) {
+    logger.warn('Event transfer SMS send failed', {
+      metadata: {
+        bookingId: input.bookingId,
+        customerId: input.customerId,
+        error: smsError instanceof Error ? smsError.message : String(smsError)
+      }
+    })
+    return { success: false, code: 'unexpected_exception', logFailure: false }
+  }
+}
+
+const transferEventBookingSchema = z.object({
+  bookingId: z.string().uuid(),
+  targetEventId: z.string().uuid(),
+  sendSms: z.boolean().optional().default(true)
+})
+
+type TransferEventBookingResult =
+  | { error: string }
+  | {
+      success: true
+      data: {
+        state: 'transferred' | 'blocked'
+        reason: string | null
+        original_booking_id: string
+        new_booking_id: string | null
+        sms_sent: boolean
+      }
+      meta?: { sms: SmsSafetyMeta }
+    }
+
+export async function transferEventBooking(input: {
+  bookingId: string
+  targetEventId: string
+  sendSms?: boolean
+}): Promise<TransferEventBookingResult> {
+  try {
+    const canManageEvents = await checkUserPermission('events', 'manage')
+    if (!canManageEvents) {
+      return { error: 'You do not have permission to transfer event bookings.' }
+    }
+
+    const parsed = transferEventBookingSchema.safeParse(input)
+    if (!parsed.success) {
+      return { error: parsed.error.issues[0]?.message || 'Invalid transfer details.' }
+    }
+
+    if (parsed.data.bookingId === parsed.data.targetEventId) {
+      return { error: 'Choose a different event.' }
+    }
+
+    const authSupabase = await createClient()
+    const { data: { user }, error: authError } = await authSupabase.auth.getUser()
+    if (authError || !user) {
+      return { error: 'Unauthorized' }
+    }
+
+    const supabase = createAdminClient()
+    const { data: bookingRow, error: bookingError } = await supabase
+      .from('bookings')
+      .select(`
+        id,
+        event_id,
+        customer_id,
+        seats,
+        status,
+        event_seating_type,
+        customer:customers(id, first_name, mobile_number, sms_status),
+        event:events(id, name, payment_mode, price, price_per_seat, is_free)
+      `)
+      .eq('id', parsed.data.bookingId)
+      .maybeSingle()
+
+    if (bookingError || !bookingRow) {
+      return { error: 'Booking not found.' }
+    }
+
+    if (bookingRow.status !== 'confirmed') {
+      return {
+        success: true,
+        data: {
+          state: 'blocked',
+          reason: 'booking_not_confirmed',
+          original_booking_id: parsed.data.bookingId,
+          new_booking_id: null,
+          sms_sent: false
+        }
+      }
+    }
+
+    if (bookingRow.event_id === parsed.data.targetEventId) {
+      return { error: 'Choose a different event.' }
+    }
+
+    const { data: existingTransfer, error: existingTransferError } = await (supabase.from('event_ticket_transfers') as any)
+      .select('id')
+      .eq('original_booking_id', parsed.data.bookingId)
+      .in('status', ['pending', 'completed'])
+      .maybeSingle()
+
+    if (existingTransferError) {
+      throw existingTransferError
+    }
+
+    if (existingTransfer) {
+      return {
+        success: true,
+        data: {
+          state: 'blocked',
+          reason: 'transfer_already_used',
+          original_booking_id: parsed.data.bookingId,
+          new_booking_id: null,
+          sms_sent: false
+        }
+      }
+    }
+
+    const { data: targetEvent, error: targetEventError } = await supabase
+      .from('events')
+      .select('id, name, booking_mode, payment_mode, price, price_per_seat, is_free, event_status, start_datetime, date, time')
+      .eq('id', parsed.data.targetEventId)
+      .maybeSingle()
+
+    if (targetEventError || !targetEvent) {
+      return { error: 'Target event not found.' }
+    }
+
+    if (['cancelled', 'draft'].includes(String(targetEvent.event_status || ''))) {
+      return {
+        success: true,
+        data: {
+          state: 'blocked',
+          reason: 'target_event_not_bookable',
+          original_booking_id: parsed.data.bookingId,
+          new_booking_id: null,
+          sms_sent: false
+        }
+      }
+    }
+
+    const customerRecord = Array.isArray(bookingRow.customer) ? bookingRow.customer[0] : bookingRow.customer
+    const fromEvent = Array.isArray(bookingRow.event) ? bookingRow.event[0] : bookingRow.event
+    const seats = Math.max(1, Number(bookingRow.seats || 1))
+
+    const { data: paymentRows, error: paymentsError } = await supabase
+      .from('payments')
+      .select('id, amount, charge_type, status')
+      .eq('event_booking_id', parsed.data.bookingId)
+      .in('charge_type', ['prepaid_event', 'seat_increase'])
+      .in('status', ['succeeded', 'partially_refunded'])
+
+    if (paymentsError) {
+      throw paymentsError
+    }
+
+    const paidTotal = (paymentRows || []).reduce((sum, row) => sum + Math.max(0, Number(row.amount || 0)), 0)
+    const targetAmount = toMoney(resolveEventPriceAmount(targetEvent as unknown as Event) * seats)
+
+    if (targetEvent.payment_mode === 'prepaid' && paidTotal + 0.004 < targetAmount) {
+      return {
+        success: true,
+        data: {
+          state: 'blocked',
+          reason: 'target_event_costs_more',
+          original_booking_id: parsed.data.bookingId,
+          new_booking_id: null,
+          sms_sent: false
+        }
+      }
+    }
+
+    const bookingMode = EventBookingService.normalizeBookingMode(targetEvent.booking_mode)
+    const createResult = await EventBookingService.createBooking({
+      eventId: parsed.data.targetEventId,
+      customerId: bookingRow.customer_id,
+      normalizedPhone: customerRecord?.mobile_number || '',
+      seats,
+      source: 'admin',
+      bookingMode,
+      seatingPreference: bookingRow.event_seating_type === 'standing' ? 'standing' : 'seated',
+      appBaseUrl: process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000',
+      shouldSendSms: false,
+      supabaseClient: supabase,
+      logTag: 'admin event transfer',
+      firstName: customerRecord?.first_name || undefined
+    })
+
+    if (createResult.rpcFailed || createResult.rollbackFailed || createResult.paymentLinkFailed) {
+      return { error: 'Could not create the replacement booking.' }
+    }
+
+    if (!createResult.bookingId || !['confirmed', 'pending_payment'].includes(createResult.resolvedState)) {
+      return {
+        success: true,
+        data: {
+          state: 'blocked',
+          reason: createResult.resolvedReason || 'target_event_unavailable',
+          original_booking_id: parsed.data.bookingId,
+          new_booking_id: null,
+          sms_sent: false
+        }
+      }
+    }
+
+    if (createResult.resolvedState === 'pending_payment') {
+      const { data: confirmRaw, error: confirmError } = await supabase.rpc(
+        'confirm_event_manual_payment_v01',
+        {
+          p_event_booking_id: createResult.bookingId,
+          p_payment_method: 'comp',
+          p_amount: 0,
+          p_currency: 'GBP',
+          p_performed_by: user.id,
+          p_note: `Transfer credit from booking ${parsed.data.bookingId}`
+        }
+      )
+
+      if (confirmError) {
+        return { error: confirmError.message || 'Could not confirm replacement booking.' }
+      }
+
+      const state = typeof (confirmRaw as any)?.state === 'string' ? (confirmRaw as any).state : 'blocked'
+      if (state !== 'confirmed' && state !== 'already_confirmed') {
+        return {
+          success: true,
+          data: {
+            state: 'blocked',
+            reason: typeof (confirmRaw as any)?.reason === 'string' ? (confirmRaw as any).reason : 'replacement_confirmation_failed',
+            original_booking_id: parsed.data.bookingId,
+            new_booking_id: createResult.bookingId,
+            sms_sent: false
+          }
+        }
+      }
+    }
+
+    const nowIso = new Date().toISOString()
+
+    const { error: movePaymentsError } = await supabase
+      .from('payments')
+      .update({
+        event_booking_id: createResult.bookingId,
+        updated_at: nowIso
+      })
+      .eq('event_booking_id', parsed.data.bookingId)
+      .in('charge_type', ['prepaid_event', 'seat_increase', 'refund'])
+
+    if (movePaymentsError) {
+      throw movePaymentsError
+    }
+
+    const { error: cancelOriginalError } = await supabase
+      .from('bookings')
+      .update({
+        status: 'cancelled',
+        cancelled_at: nowIso,
+        cancelled_by: 'admin_transfer',
+        updated_at: nowIso
+      })
+      .eq('id', parsed.data.bookingId)
+
+    if (cancelOriginalError) {
+      throw cancelOriginalError
+    }
+
+    const [releaseHoldsResult, cancelTablesResult] = await Promise.all([
+      supabase.from('booking_holds')
+        .update({ status: 'released', released_at: nowIso, updated_at: nowIso })
+        .eq('event_booking_id', parsed.data.bookingId)
+        .eq('status', 'active'),
+      supabase.from('table_bookings')
+        .update({
+          status: 'cancelled',
+          cancellation_reason: 'event_booking_transferred',
+          cancelled_at: nowIso,
+          updated_at: nowIso
+        })
+        .eq('event_booking_id', parsed.data.bookingId)
+        .not('status', 'in', '(cancelled,no_show)')
+    ])
+
+    if (releaseHoldsResult.error) {
+      throw releaseHoldsResult.error
+    }
+    if (cancelTablesResult.error) {
+      throw cancelTablesResult.error
+    }
+
+    const { error: transferInsertError } = await (supabase.from('event_ticket_transfers') as any)
+      .insert({
+        original_booking_id: parsed.data.bookingId,
+        new_booking_id: createResult.bookingId,
+        from_event_id: bookingRow.event_id,
+        to_event_id: parsed.data.targetEventId,
+        status: 'completed',
+        requested_by: 'staff',
+        approved_by: user.id,
+        metadata: {
+          seats,
+          paid_total: paidTotal,
+          target_amount: targetAmount
+        },
+        completed_at: nowIso
+      })
+
+    if (transferInsertError) {
+      throw transferInsertError
+    }
+
+    let smsSent = false
+    let smsMeta: SmsSafetyMeta = null
+    if (parsed.data.sendSms !== false) {
+      const transferSmsMeta = await sendEventTransferSms({
+        supabase,
+        bookingId: createResult.bookingId,
+        customerId: bookingRow.customer_id,
+        fromEventName: fromEvent?.name || 'your original event',
+        toEventName: targetEvent.name || 'your new event',
+        eventStartIso: targetEvent.start_datetime || null,
+        appBaseUrl: process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+      })
+      smsMeta = transferSmsMeta
+      smsSent = transferSmsMeta.success === true || transferSmsMeta.logFailure === true
+    }
+
+    await logAuditEvent({
+      user_id: user.id,
+      user_email: user.email ?? undefined,
+      operation_type: 'transfer_event_booking',
+      resource_type: 'event_booking',
+      resource_id: parsed.data.bookingId,
+      operation_status: 'success',
+      additional_info: {
+        new_booking_id: createResult.bookingId,
+        from_event_id: bookingRow.event_id,
+        to_event_id: parsed.data.targetEventId,
+        paid_total: paidTotal,
+        target_amount: targetAmount
+      }
+    })
+
+    await Promise.allSettled([
+      syncPubOpsEventCalendarByEventId(supabase, bookingRow.event_id, {
+        bookingId: parsed.data.bookingId,
+        context: 'admin_event_booking_transferred_from',
+      }),
+      syncPubOpsEventCalendarByEventId(supabase, parsed.data.targetEventId, {
+        bookingId: createResult.bookingId,
+        context: 'admin_event_booking_transferred_to',
+      })
+    ])
+
+    revalidatePath(`/events/${bookingRow.event_id}`)
+    revalidatePath(`/events/${parsed.data.targetEventId}`)
+    revalidatePath('/events')
+    revalidatePath('/table-bookings/foh')
+    revalidateTag('dashboard')
+
+    return {
+      success: true,
+      data: {
+        state: 'transferred',
+        reason: null,
+        original_booking_id: parsed.data.bookingId,
+        new_booking_id: createResult.bookingId,
+        sms_sent: smsSent
+      },
+      meta: { sms: smsMeta }
+    }
+  } catch (error) {
+    logger.error('Unexpected transferEventBooking error', {
+      error: error instanceof Error ? error : new Error(String(error)),
+    })
+    return { error: getErrorMessage(error, 'Failed to transfer booking.') }
   }
 }
