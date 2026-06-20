@@ -281,6 +281,27 @@ export async function withApiAuth(
   );
   
   if (!hasPermissions) {
+    const endpoint = safePathname(request?.url || headersList.get('x-url'));
+    const method = normalizeRequestMethod(request?.method || headersList.get('x-method'));
+    const responseTime = Date.now() - startTime;
+    console.warn('[API Auth] Rejected API key with insufficient permissions', {
+      apiKeyId: validatedKey.id,
+      apiKeyName: validatedKey.name,
+      endpoint,
+      requiredPermissions,
+      grantedPermissions: validatedKey.permissions,
+    });
+    safeLogApiUsage(
+      validatedKey.id,
+      endpoint,
+      method,
+      403,
+      responseTime
+    ).catch(err =>
+      console.warn('[API Auth] Failed to log forbidden API usage', {
+        error: err instanceof Error ? err.message : String(err),
+      })
+    );
     return createErrorResponse('Insufficient permissions', 'FORBIDDEN', 403);
   }
   
