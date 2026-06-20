@@ -68,6 +68,18 @@ type SpaceAreaSetupResponse = {
   error?: string
 }
 
+type PacingSettings = {
+  busy_threshold_covers: number
+  filling_threshold_covers: number
+  window_minutes: number
+}
+
+type PacingSettingsResponse = {
+  success: boolean
+  data?: PacingSettings
+  error?: string
+}
+
 type TableDraft = {
   name: string
   table_number: string
@@ -106,6 +118,13 @@ export function TableSetupManager() {
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
   const [savingSpaceAreaLinks, setSavingSpaceAreaLinks] = useState(false)
   const [creatingTable, setCreatingTable] = useState(false)
+  const [loadingPacing, setLoadingPacing] = useState(true)
+  const [savingPacing, setSavingPacing] = useState(false)
+  const [pacingDraft, setPacingDraft] = useState({
+    busy_threshold_covers: '30',
+    filling_threshold_covers: '20',
+    window_minutes: '60'
+  })
   const [newTable, setNewTable] = useState<TableDraft>({
     name: '',
     table_number: '',
@@ -168,6 +187,26 @@ export function TableSetupManager() {
     }
   }
 
+  async function loadPacingSettings() {
+    setLoadingPacing(true)
+    try {
+      const response = await fetch('/api/settings/table-bookings/pacing', { cache: 'no-store' })
+      const payload = (await response.json()) as PacingSettingsResponse
+      if (!response.ok || !payload.success || !payload.data) {
+        throw new Error(payload.error || 'Failed to load pacing settings')
+      }
+      setPacingDraft({
+        busy_threshold_covers: String(payload.data.busy_threshold_covers),
+        filling_threshold_covers: String(payload.data.filling_threshold_covers),
+        window_minutes: String(payload.data.window_minutes)
+      })
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : 'Failed to load pacing settings')
+    } finally {
+      setLoadingPacing(false)
+    }
+  }
+
   async function loadJoinGroups() {
     setLoadingGroups(true)
     try {
@@ -186,6 +225,7 @@ export function TableSetupManager() {
 
   useEffect(() => {
     void loadSetup()
+    void loadPacingSettings()
     void loadJoinGroups()
   }, [])
 
@@ -482,6 +522,64 @@ export function TableSetupManager() {
     }
   }
 
+  async function savePacingSettings() {
+    const busy = Number.parseInt(pacingDraft.busy_threshold_covers, 10)
+    const filling = Number.parseInt(pacingDraft.filling_threshold_covers, 10)
+    const windowMinutes = Number.parseInt(pacingDraft.window_minutes, 10)
+
+    if (!Number.isFinite(busy) || busy < 2 || busy > 200) {
+      setErrorMessage('Busy threshold must be between 2 and 200 covers')
+      return
+    }
+
+    if (!Number.isFinite(filling) || filling < 1 || filling > 199) {
+      setErrorMessage('Filling threshold must be between 1 and 199 covers')
+      return
+    }
+
+    if (filling >= busy) {
+      setErrorMessage('Filling threshold must be lower than busy threshold')
+      return
+    }
+
+    if (!Number.isFinite(windowMinutes) || windowMinutes < 30 || windowMinutes > 180 || windowMinutes % 2 !== 0) {
+      setErrorMessage('Window must be an even number between 30 and 180 minutes')
+      return
+    }
+
+    setSavingPacing(true)
+    setErrorMessage(null)
+    setStatusMessage(null)
+
+    try {
+      const response = await fetch('/api/settings/table-bookings/pacing', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          busy_threshold_covers: busy,
+          filling_threshold_covers: filling,
+          window_minutes: windowMinutes
+        })
+      })
+
+      const payload = (await response.json().catch(() => null)) as PacingSettingsResponse | null
+      if (!response.ok || !payload?.success || !payload.data) {
+        throw new Error(payload?.error || 'Failed to save pacing settings')
+      }
+
+      setPacingDraft({
+        busy_threshold_covers: String(payload.data.busy_threshold_covers),
+        filling_threshold_covers: String(payload.data.filling_threshold_covers),
+        window_minutes: String(payload.data.window_minutes)
+      })
+      setStatusMessage('Pacing settings saved')
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : 'Failed to save pacing settings')
+    } finally {
+      setSavingPacing(false)
+    }
+  }
+
   return (
     <div className="space-y-6">
       {statusMessage && (
@@ -497,6 +595,83 @@ export function TableSetupManager() {
           <option key={area.id} value={area.name} />
         ))}
       </datalist>
+
+      {/* Booking pacing */}
+      <div className="rounded-lg border border-gray-200 bg-white p-4">
+        <h3 className="text-sm font-semibold text-gray-900">Booking pacing</h3>
+        <p className="mt-1 text-xs text-gray-500">
+          Tune the soft customer-facing busy labels. These settings do not block bookings.
+        </p>
+
+        {loadingPacing ? (
+          <p className="mt-3 text-sm text-gray-500">Loading pacing settings...</p>
+        ) : (
+          <div className="mt-4 grid gap-3 md:grid-cols-3">
+            <label className="text-xs font-medium text-gray-700">
+              Filling up threshold
+              <input
+                type="number"
+                min={1}
+                max={199}
+                value={pacingDraft.filling_threshold_covers}
+                onChange={(event) =>
+                  setPacingDraft((current) => ({
+                    ...current,
+                    filling_threshold_covers: event.target.value
+                  }))
+                }
+                className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+              />
+            </label>
+
+            <label className="text-xs font-medium text-gray-700">
+              Busy threshold
+              <input
+                type="number"
+                min={2}
+                max={200}
+                value={pacingDraft.busy_threshold_covers}
+                onChange={(event) =>
+                  setPacingDraft((current) => ({
+                    ...current,
+                    busy_threshold_covers: event.target.value
+                  }))
+                }
+                className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+              />
+            </label>
+
+            <label className="text-xs font-medium text-gray-700">
+              Window minutes
+              <input
+                type="number"
+                min={30}
+                max={180}
+                step={2}
+                value={pacingDraft.window_minutes}
+                onChange={(event) =>
+                  setPacingDraft((current) => ({
+                    ...current,
+                    window_minutes: event.target.value
+                  }))
+                }
+                className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+              />
+            </label>
+
+            <div className="md:col-span-3">
+              <Button
+                onClick={() => { void savePacingSettings() }}
+                disabled={savingPacing}
+                loading={savingPacing}
+                size="sm"
+              >
+                Save pacing settings
+              </Button>
+            </div>
+          </div>
+        )}
+      </div>
 
       {/* Existing tables */}
       <div className="rounded-lg border border-gray-200 bg-white p-4">
