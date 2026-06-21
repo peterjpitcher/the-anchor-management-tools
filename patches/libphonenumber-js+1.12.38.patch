@@ -1,0 +1,16 @@
+diff --git a/node_modules/libphonenumber-js/min/index.cjs.js b/node_modules/libphonenumber-js/min/index.cjs.js
+index a1f67cc..ab31e37 100644
+--- a/node_modules/libphonenumber-js/min/index.cjs.js
++++ b/node_modules/libphonenumber-js/min/index.cjs.js
+@@ -6,6 +6,11 @@
+ // https://gitlab.com/catamphetamine/libphonenumber-js/-/issues/61#note_950728292
+ 
+ var metadata = require('../metadata.min.json')
++// patch-package: under some loaders (e.g. tsx, used for one-off scripts) the
++// JSON require above yields a module namespace ({ default }) instead of the
++// metadata object, which the core rejects. Unwrap it. No-op in a normal CJS
++// require, where `metadata.countries` is already present.
++if (metadata && !metadata.countries && metadata.default) { metadata = metadata.default }
+ var core = require('../core/index.cjs')
+ 
+ function call(func, _arguments) {
