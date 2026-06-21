@@ -10,13 +10,14 @@ import { LinkButton } from '@/ds'
 export default async function TableBookingsBohPage() {
   const supabase = await createClient()
 
-  const [authResult, canView, canEdit, canManage, canViewReports, canManageSettings, permissionsResult] = await Promise.all([
+  const [authResult, canView, canEdit, canManage, canViewReports, canManageSettings, canSendMessages, permissionsResult] = await Promise.all([
     supabase.auth.getUser(),
     checkUserPermission('table_bookings', 'view'),
     checkUserPermission('table_bookings', 'edit'),
     checkUserPermission('table_bookings', 'manage'),
     checkUserPermission('reports', 'view'),
     checkUserPermission('settings', 'manage'),
+    checkUserPermission('messages', 'send'),
     getUserPermissions()
   ])
 
@@ -69,7 +70,7 @@ export default async function TableBookingsBohPage() {
         ) : undefined
       }
     >
-      <BohBookingsClient canEdit={canEdit} canManage={canManage} canWaiveDeposit={canWaiveDeposit} />
+      <BohBookingsClient canEdit={canEdit} canManage={canManage} canWaiveDeposit={canWaiveDeposit} canSendMessages={canSendMessages} />
     </PageLayout>
   )
 }

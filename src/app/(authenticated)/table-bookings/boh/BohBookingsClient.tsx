@@ -2,10 +2,11 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Plus } from 'lucide-react'
+import { Plus, MessageSquare } from 'lucide-react'
 import { Button } from '@/ds'
 import { EmptyState } from '@/ds'
 import toast from 'react-hot-toast'
+import { MessageGuestsModal } from './MessageGuestsModal'
 import { FohCreateBookingModal } from '../foh/components/FohCreateBookingModal'
 import { useFohCreateBooking } from '../foh/hooks/useFohCreateBooking'
 import { buildTimelineRange } from '../foh/utils'
@@ -343,13 +344,16 @@ function getDeltaDisplay(
 export function BohBookingsClient({
   canEdit,
   canManage,
-  canWaiveDeposit = false
+  canWaiveDeposit = false,
+  canSendMessages = false
 }: {
   canEdit: boolean
   canManage: boolean
   canWaiveDeposit?: boolean
+  canSendMessages?: boolean
 }) {
   const router = useRouter()
+  const [isMessageModalOpen, setIsMessageModalOpen] = useState(false)
   const [view, setView] = useState<BohViewMode>('week')
   const [focusDate, setFocusDate] = useState<string>(getTodayIsoDate())
   const [rangeStartDate, setRangeStartDate] = useState<string>(focusDate)
@@ -674,6 +678,16 @@ export function BohBookingsClient({
                 Book table
               </Button>
             )}
+            {canSendMessages && (
+              <Button
+                variant="secondary"
+                size="sm"
+                icon={<MessageSquare className="h-4 w-4" aria-hidden="true" />}
+                onClick={() => setIsMessageModalOpen(true)}
+              >
+                Message guests
+              </Button>
+            )}
             <Button
               variant="secondary"
               size="sm"
@@ -927,6 +941,12 @@ export function BohBookingsClient({
           )}
         </div>
       </div>
+
+      <MessageGuestsModal
+        open={isMessageModalOpen}
+        onClose={() => setIsMessageModalOpen(false)}
+        bookingDate={focusDate}
+      />
 
       <FohCreateBookingModal
         open={createBooking.isCreateModalOpen}
