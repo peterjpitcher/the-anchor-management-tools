@@ -5,7 +5,7 @@ import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { PageLayout } from '@/ds';
 import { LinkButton } from '@/ds';
-import { Cog6ToothIcon } from '@heroicons/react/24/outline';
+import { Cog6ToothIcon, DocumentDuplicateIcon, BanknotesIcon, ChartBarIcon } from '@heroicons/react/24/outline';
 import RotaFeedButton from './RotaFeedButton';
 import {
   getOrCreateRotaWeek,
@@ -239,14 +239,14 @@ export default async function RotaPage({ searchParams }: RotaPageProps) {
         <div className="flex flex-wrap items-center justify-end gap-2">
           <RotaPublishStatus week={week} shifts={shifts} publishedShifts={publishedShifts} canPublish={canPublish} />
           <RotaFeedButton feedUrl={feedUrl} showCalendarSync={Boolean(process.env.GOOGLE_CALENDAR_ROTA_ID)} />
-          <LinkButton href="/rota/templates" size="sm" variant="secondary" leftIcon={<Cog6ToothIcon className="h-4 w-4" />}>
+          <LinkButton href="/rota/templates" size="sm" variant="secondary" icon={<DocumentDuplicateIcon className="h-4 w-4" />}>
             Templates
           </LinkButton>
           {canManageSettings && (
             <>
-              <LinkButton href="/settings/rota" variant="secondary" size="sm">Rota Settings</LinkButton>
-              <LinkButton href="/settings/pay-bands" variant="secondary" size="sm">Pay Bands</LinkButton>
-              <LinkButton href="/settings/budgets" variant="secondary" size="sm">Budgets</LinkButton>
+              <LinkButton href="/settings/rota" variant="secondary" size="sm" icon={<Cog6ToothIcon className="h-4 w-4" />}>Rota Settings</LinkButton>
+              <LinkButton href="/settings/pay-bands" variant="secondary" size="sm" icon={<BanknotesIcon className="h-4 w-4" />}>Pay Bands</LinkButton>
+              <LinkButton href="/settings/budgets" variant="secondary" size="sm" icon={<ChartBarIcon className="h-4 w-4" />}>Budgets</LinkButton>
             </>
           )}
         </div>

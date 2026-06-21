@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { CalendarDaysIcon, ClipboardDocumentIcon, CheckIcon, XMarkIcon, ArrowPathIcon } from '@heroicons/react/24/outline';
 import toast from 'react-hot-toast';
+import { Button } from '@/ds';
 
 interface RotaFeedButtonProps {
   feedUrl: string;
@@ -65,25 +66,27 @@ export default function RotaFeedButton({ feedUrl, showCalendarSync }: RotaFeedBu
   return (
     <div className="relative flex items-center gap-2">
       {showCalendarSync && (
-        <button
+        <Button
           type="button"
+          variant="secondary"
+          size="sm"
           onClick={handleSync}
-          disabled={syncing}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50"
+          loading={syncing}
+          icon={<ArrowPathIcon className="h-4 w-4" />}
         >
-          <ArrowPathIcon className={`h-4 w-4 ${syncing ? 'animate-spin' : ''}`} />
           {syncing ? 'Syncing…' : 'Sync calendar'}
-        </button>
+        </Button>
       )}
 
-      <button
+      <Button
         type="button"
+        variant="secondary"
+        size="sm"
         onClick={() => setOpen(v => !v)}
-        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+        icon={<CalendarDaysIcon className="h-4 w-4" />}
       >
-        <CalendarDaysIcon className="h-4 w-4" />
         Subscribe
-      </button>
+      </Button>
 
       {open && (
         <>
