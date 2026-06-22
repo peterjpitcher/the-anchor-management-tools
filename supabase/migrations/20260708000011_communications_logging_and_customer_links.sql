@@ -331,7 +331,7 @@ SELECT
     'event_booking_id', m.event_booking_id,
     'table_booking_id', m.table_booking_id,
     'private_booking_id', m.private_booking_id,
-    'parking_booking_id', m.parking_booking_id,
+    'parking_booking_id', NULL,
     'invoice_id', NULL,
     'quote_id', NULL
   ) AS context,
