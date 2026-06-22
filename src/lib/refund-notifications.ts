@@ -4,6 +4,7 @@ import { sendSMS } from '@/lib/twilio'
 export type NotificationStatus = 'email_sent' | 'sms_sent' | 'skipped' | 'failed'
 
 interface RefundNotificationParams {
+  customerId?: string | null
   customerName: string
   email: string | null
   phone: string | null
@@ -39,6 +40,10 @@ export async function sendRefundNotification(
       to: params.email,
       subject: 'Refund Confirmation \u2014 The Anchor',
       html: buildEmailHtml(params.customerName, amount),
+      customerId: params.customerId ?? null,
+      commType: 'refund_confirmation',
+      requireLog: true,
+      metadata: { template_key: 'refund_confirmation_email' },
     })
     if (emailResult.success) return 'email_sent'
   }

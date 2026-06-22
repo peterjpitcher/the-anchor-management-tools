@@ -6,8 +6,14 @@ import { ChatBubbleLeftRightIcon } from '@heroicons/react/24/outline'
 import toast from 'react-hot-toast'
 import { useSupabase } from '@/components/providers/SupabaseProvider'
 import { usePermissions } from '@/contexts/PermissionContext'
-import type { Customer, Message } from '@/types/database'
-import { toggleCustomerSmsOptIn, getCustomerMessages, getCustomerSmsStats } from '@/app/actions/customerSmsActions'
+import type { Customer } from '@/types/database'
+import type { CustomerCommunication } from '@/types/communications'
+import {
+  toggleCustomerSmsOptIn,
+  toggleCustomerWhatsAppOptIn,
+  getCustomerMessages,
+  getCustomerSmsStats
+} from '@/app/actions/customerSmsActions'
 import { markMessagesAsRead } from '@/app/actions/messageActions'
 import { updateCustomer as updateCustomerAction, updateCustomerNotes } from '@/app/actions/customers'
 import { getCustomerLabelAssignments, getCustomerLabels, type CustomerLabel, type CustomerLabelAssignment } from '@/app/actions/customer-labels'
@@ -38,6 +44,16 @@ const CUSTOMER_DETAIL_SELECT = `
   last_successful_sms_at,
   sms_deactivated_at,
   sms_deactivation_reason,
+  whatsapp_opt_in,
+  whatsapp_status,
+  whatsapp_delivery_failures,
+  last_whatsapp_failure_reason,
+  last_successful_whatsapp_at,
+  whatsapp_opt_in_at,
+  whatsapp_opted_out_at,
+  whatsapp_deactivated_at,
+  whatsapp_deactivation_reason,
+  last_whatsapp_inbound_at,
   internal_notes
 `
 
@@ -218,7 +234,8 @@ export default function CustomerViewPage() {
   const [customer, setCustomer] = useState<Customer | null>(null)
   const [loading, setLoading] = useState(true)
   const [togglingSmsSetting, setTogglingSmsSetting] = useState(false)
-  const [messages, setMessages] = useState<Message[]>([])
+  const [togglingWhatsAppSetting, setTogglingWhatsAppSetting] = useState(false)
+  const [messages, setMessages] = useState<CustomerCommunication[]>([])
   const [messagesLoading, setMessagesLoading] = useState(false)
   const [tableBookings, setTableBookings] = useState<CustomerTableBooking[]>([])
   const [eventBookings, setEventBookings] = useState<CustomerEventBooking[]>([])
@@ -270,7 +287,10 @@ export default function CustomerViewPage() {
 
       if (canViewMessages) {
         const hasUnreadInbound = messagesResult.messages.some(
-          (message) => message.direction === 'inbound' && !message.read_at
+          (message: CustomerCommunication) => message.direction === 'inbound' && (
+            (message.channel === 'email' && !message.staff_read_at) ||
+            ((message.channel === 'sms' || message.channel === 'whatsapp') && !message.read_at)
+          )
         )
         if (hasUnreadInbound) {
           await markMessagesAsRead(customerId)
@@ -550,6 +570,29 @@ export default function CustomerViewPage() {
     }
 
     setTogglingSmsSetting(false)
+  }
+
+  const handleToggleWhatsApp = async () => {
+    if (!customer) return
+
+    setTogglingWhatsAppSetting(true)
+    const newOptIn = customer.whatsapp_opt_in !== true
+    const result = await toggleCustomerWhatsAppOptIn(customer.id, newOptIn)
+
+    if ('error' in result) {
+      toast.error(`Failed to update WhatsApp settings: ${result.error}`)
+      setTogglingWhatsAppSetting(false)
+      return
+    }
+
+    toast.success(`WhatsApp ${newOptIn ? 'activated' : 'deactivated'} for customer`)
+    setCustomer({
+      ...customer,
+      whatsapp_opt_in: newOptIn,
+      whatsapp_status: newOptIn ? 'active' : 'opted_out',
+      whatsapp_delivery_failures: newOptIn ? 0 : customer.whatsapp_delivery_failures,
+    })
+    setTogglingWhatsAppSetting(false)
   }
 
   const handleUpdateCustomer = async (data: Omit<Customer, 'id' | 'created_at'>) => {
@@ -1046,6 +1089,26 @@ export default function CustomerViewPage() {
               </CardBody>
             </Card>
 
+            <Card>
+              <CardBody>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-3">
+                    <ChatBubbleLeftRightIcon className="h-5 w-5 text-gray-400" />
+                    <span
+                      className={`text-sm font-medium ${customer.whatsapp_opt_in === true ? 'text-green-600' : 'text-red-600'}`}
+                    >
+                      WhatsApp {customer.whatsapp_opt_in === true ? 'Active' : 'Inactive'}
+                    </span>
+                  </div>
+                  {customer.whatsapp_delivery_failures && customer.whatsapp_delivery_failures > 0 && (
+                    <span className="text-sm text-orange-600">
+                      {customer.whatsapp_delivery_failures} failed deliveries
+                    </span>
+                  )}
+                </div>
+              </CardBody>
+            </Card>
+
             {hasPermission('customers', 'manage') && (
               <Card header={<CardTitle>Customer Labels</CardTitle>}>
                 <CustomerLabelSelector
@@ -1199,6 +1262,59 @@ export default function CustomerViewPage() {
                     </p>
                   )}
                 </Alert>
+              )}
+            </Card>
+
+            <Card
+              header={
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <CardTitle>WhatsApp Messaging Status</CardTitle>
+                    <CardDescription>
+                      Control whether this customer receives transactional WhatsApp messages.
+                    </CardDescription>
+                  </div>
+                  <Button
+                    onClick={handleToggleWhatsApp}
+                    disabled={togglingWhatsAppSetting || !canManageCustomers}
+                    variant={customer.whatsapp_opt_in === true ? 'secondary' : 'primary'}
+                    size="sm"
+                  >
+                    {togglingWhatsAppSetting
+                      ? 'Updating...'
+                      : customer.whatsapp_opt_in === true
+                        ? 'Deactivate'
+                        : 'Activate'}
+                  </Button>
+                </div>
+              }
+            >
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div>
+                  <dt className="text-sm font-medium text-gray-500">Status</dt>
+                  <dd className="mt-1 text-sm text-gray-900">{customer.whatsapp_status || 'unknown'}</dd>
+                </div>
+                <div>
+                  <dt className="text-sm font-medium text-gray-500">Failed</dt>
+                  <dd className="mt-1 text-sm text-gray-900">{customer.whatsapp_delivery_failures || 0}</dd>
+                </div>
+                <div>
+                  <dt className="text-sm font-medium text-gray-500">Last success</dt>
+                  <dd className="mt-1 text-sm text-gray-900">
+                    {customer.last_successful_whatsapp_at ? formatLondonDateTime(customer.last_successful_whatsapp_at) : 'Never'}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-sm font-medium text-gray-500">Last inbound</dt>
+                  <dd className="mt-1 text-sm text-gray-900">
+                    {customer.last_whatsapp_inbound_at ? formatLondonDateTime(customer.last_whatsapp_inbound_at) : 'Never'}
+                  </dd>
+                </div>
+              </div>
+              {customer.last_whatsapp_failure_reason && (
+                <p className="mt-4 text-sm text-orange-700">
+                  Last failure: {customer.last_whatsapp_failure_reason}
+                </p>
               )}
             </Card>
           </div>

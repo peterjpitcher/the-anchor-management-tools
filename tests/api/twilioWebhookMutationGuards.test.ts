@@ -279,7 +279,7 @@ describe('twilio webhook mutation guards', () => {
     expect(messageDeliveryStatusInsert).toHaveBeenCalledTimes(1)
   })
 
-  it('recovers inbound customer create duplicate-key races by loading the concurrent customer row', async () => {
+  it('does not auto-create customers for unmatched inbound SMS', async () => {
     ;(twilio.validateRequest as unknown as vi.Mock).mockReturnValue(true)
 
     const webhookLogInsert = vi.fn().mockResolvedValue({ error: null })
@@ -376,10 +376,10 @@ describe('twilio webhook mutation guards', () => {
     const payload = await response.json()
 
     expect(response.status).toBe(200)
-    expect(payload).toEqual({ success: true, messageId: 'message-inbound-1' })
-    expect(createCustomerInsert).toHaveBeenCalledTimes(1)
-    expect(customerLimit).toHaveBeenCalledTimes(2)
-    expect(inboundInsert).toHaveBeenCalledTimes(1)
+    expect(payload).toEqual({ success: true, unmatchedId: null })
+    expect(createCustomerInsert).not.toHaveBeenCalled()
+    expect(customerLimit).toHaveBeenCalledTimes(1)
+    expect(inboundInsert).not.toHaveBeenCalled()
   })
 
   it('returns retriable 500 when status webhook cannot load the target message due to DB errors', async () => {

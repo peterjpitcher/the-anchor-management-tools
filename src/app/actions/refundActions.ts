@@ -31,6 +31,7 @@ interface SourceBookingData {
   captureId: string | null
   captureDate: string | null
   originalAmount: number
+  customerId: string | null
   customerName: string | null
   customerEmail: string | null
   customerPhone: string | null
@@ -56,7 +57,7 @@ async function loadSourceBooking(
   if (sourceType === 'private_booking') {
     const { data } = await db
       .from('private_bookings')
-      .select('id, paypal_deposit_capture_id, deposit_paid_date, deposit_amount, customer_name, contact_email, contact_phone')
+      .select('id, paypal_deposit_capture_id, deposit_paid_date, deposit_amount, customer_id, customer_name, contact_email, contact_phone')
       .eq('id', sourceId)
       .maybeSingle()
     if (!data) return null
@@ -65,6 +66,7 @@ async function loadSourceBooking(
       captureId: data.paypal_deposit_capture_id,
       captureDate: data.deposit_paid_date,
       originalAmount: Number(data.deposit_amount) || 0,
+      customerId: data.customer_id ?? null,
       customerName: data.customer_name,
       customerEmail: data.contact_email,
       customerPhone: data.contact_phone,
@@ -84,6 +86,7 @@ async function loadSourceBooking(
       captureId: data.paypal_deposit_capture_id,
       captureDate: data.card_capture_completed_at,
       originalAmount: Number(data.deposit_amount_locked ?? data.deposit_amount) || 0,
+      customerId: data.customer_id ?? null,
       customerName: customer ? `${customer.first_name} ${customer.last_name}`.trim() : null,
       customerEmail: customer?.email ?? null,
       customerPhone: customer?.mobile_e164 ?? null,
@@ -93,7 +96,7 @@ async function loadSourceBooking(
   if (sourceType === 'parking') {
     const { data } = await db
       .from('parking_booking_payments')
-      .select('id, transaction_id, paid_at, amount, booking_id, parking_bookings(guest_name, email, phone)')
+      .select('id, transaction_id, paid_at, amount, booking_id, parking_bookings(customer_id, guest_name, email, phone)')
       .eq('id', sourceId)
       .maybeSingle()
     if (!data) return null
@@ -103,6 +106,7 @@ async function loadSourceBooking(
       captureId: data.transaction_id,
       captureDate: data.paid_at,
       originalAmount: Number(data.amount) || 0,
+      customerId: booking?.customer_id ?? null,
       customerName: booking?.guest_name ?? null,
       customerEmail: booking?.email ?? null,
       customerPhone: booking?.phone ?? null,
@@ -285,6 +289,7 @@ export async function processPayPalRefund(
       let notificationStatus: string | null = null
       if (booking.customerName) {
         notificationStatus = await sendRefundNotification({
+          customerId: booking.customerId,
           customerName: booking.customerName,
           email: booking.customerEmail,
           phone: booking.customerPhone,

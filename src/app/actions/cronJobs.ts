@@ -11,7 +11,12 @@ type JobConfig = {
 }
 
 const JOBS: Record<
-  'recurring-invoices' | 'invoice-reminders' | 'job-queue' | 'event-guest-engagement',
+  | 'recurring-invoices'
+  | 'invoice-reminders'
+  | 'job-queue'
+  | 'event-guest-engagement'
+  | 'communications-monitor'
+  | 'communications-retention',
   JobConfig
 > = {
   'recurring-invoices': {
@@ -28,6 +33,14 @@ const JOBS: Record<
   },
   'event-guest-engagement': {
     path: '/api/cron/event-guest-engagement',
+    method: 'GET',
+  },
+  'communications-monitor': {
+    path: '/api/cron/communications-monitor',
+    method: 'GET',
+  },
+  'communications-retention': {
+    path: '/api/cron/communications-retention',
     method: 'GET',
   },
 }

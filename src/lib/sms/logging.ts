@@ -10,6 +10,7 @@ type RecordOutboundSmsParams = {
   body: string
   sid: string
   fromNumber?: string | null
+  channel?: 'sms' | 'whatsapp'
   status?: string
   twilioStatus?: string
   metadata?: Record<string, unknown> | null
@@ -17,6 +18,7 @@ type RecordOutboundSmsParams = {
   costUsd?: number
   sentAt?: string | null
   readAt?: string | null
+  attachments?: Array<Record<string, unknown>> | null
 }
 
 function metadataString(metadata: Record<string, unknown> | null, key: string): string | null {
@@ -28,10 +30,10 @@ function metadataString(metadata: Record<string, unknown> | null, key: string): 
 }
 
 /**
- * Persist an outbound SMS in the central `messages` table so it appears in customer timelines.
+ * Persist an outbound SMS/WhatsApp message in the central `messages` table so it appears in customer timelines.
  * Falls back gracefully if no customer id is available.
  */
-export async function recordOutboundSmsMessage(params: RecordOutboundSmsParams): Promise<string | null> {
+export async function recordOutboundMessage(params: RecordOutboundSmsParams): Promise<string | null> {
   const {
     supabase,
     customerId,
@@ -39,6 +41,7 @@ export async function recordOutboundSmsMessage(params: RecordOutboundSmsParams):
     body,
     sid,
     fromNumber,
+    channel = 'sms',
     status = 'sent',
     twilioStatus = 'queued',
     metadata = null,
@@ -46,11 +49,12 @@ export async function recordOutboundSmsMessage(params: RecordOutboundSmsParams):
     costUsd,
     sentAt,
     readAt,
+    attachments = null,
   } = params
 
   if (!customerId) {
-    logger.debug('Skipping SMS log – no customer id provided', {
-      metadata: { sid, to }
+    logger.debug('Skipping outbound message log – no customer id provided', {
+      metadata: { sid, to, channel }
     })
     return null
   }
@@ -68,13 +72,15 @@ export async function recordOutboundSmsMessage(params: RecordOutboundSmsParams):
     body,
     status,
     twilio_status: twilioStatus,
-    from_number: fromNumber ?? process.env.TWILIO_PHONE_NUMBER ?? null,
+    from_number: fromNumber ?? (channel === 'whatsapp' ? process.env.TWILIO_WHATSAPP_FROM : process.env.TWILIO_PHONE_NUMBER) ?? null,
     to_number: to,
-    message_type: 'sms',
+    message_type: channel,
     segments: computedSegments,
     cost_usd: computedCostUsd,
     sent_at: sentAt ?? new Date().toISOString(),
     read_at: readAt ?? new Date().toISOString(),
+    has_attachments: Boolean(attachments?.length),
+    attachments,
   }
 
   if (status === 'failed') {
@@ -112,7 +118,7 @@ export async function recordOutboundSmsMessage(params: RecordOutboundSmsParams):
   try {
     // insertPayload is built dynamically; cast required because Database type enforces
     // all required columns explicitly, but we build the object conditionally above.
-    const { data, error } = await client.from('messages')
+    const { data, error } = await (client.from('messages') as any)
       .insert(insertPayload)
       .select('id')
       .single()
@@ -130,7 +136,7 @@ export async function recordOutboundSmsMessage(params: RecordOutboundSmsParams):
       if (isMetadataMissing) {
         const { metadata: _removed, ...withoutMetadata } = insertPayload
 
-        const { data: fallbackData, error: fallbackError } = await client.from('messages')
+        const { data: fallbackData, error: fallbackError } = await (client.from('messages') as any)
           .insert(withoutMetadata)
           .select('id')
           .single()
@@ -147,10 +153,14 @@ export async function recordOutboundSmsMessage(params: RecordOutboundSmsParams):
 
     return data?.id ?? null
   } catch (error) {
-    logger.error('Failed to record outbound SMS message', {
+    logger.error('Failed to record outbound message', {
       error: error instanceof Error ? error : new Error(String(error)),
-      metadata: { customerId, sid }
+      metadata: { customerId, sid, channel }
     })
     return null
   }
+}
+
+export async function recordOutboundSmsMessage(params: RecordOutboundSmsParams): Promise<string | null> {
+  return recordOutboundMessage({ ...params, channel: 'sms' })
 }

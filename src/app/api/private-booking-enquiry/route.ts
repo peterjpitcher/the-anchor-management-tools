@@ -16,6 +16,7 @@ import { logAuditEvent } from '@/app/actions/audit'
 import { logger } from '@/lib/logger'
 import { sendManagerPrivateBookingCreatedEmail } from '@/lib/private-bookings/manager-notifications'
 import { verifyTurnstileToken, getClientIp } from '@/lib/turnstile'
+import { recordPrivateBookingWebEnquiryCommunication } from '@/lib/communications/web-enquiry'
 
 const EnquirySchema = z.object({
   phone: z.string().min(5),
@@ -210,6 +211,11 @@ export async function POST(request: NextRequest) {
         source: 'website'
       })
       mutationCommitted = true
+
+      await recordPrivateBookingWebEnquiryCommunication({
+        booking: booking as any,
+        endpoint: '/api/private-booking-enquiry'
+      })
 
       if (booking?.customer_id) {
         await recordPrivateBookingEnquiryAnalyticsSafe(supabase, {

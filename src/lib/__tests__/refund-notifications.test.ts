@@ -30,11 +30,13 @@ describe('sendRefundNotification', () => {
     })
 
     expect(result).toBe('email_sent')
-    expect(mockSendEmail).toHaveBeenCalledWith({
+    expect(mockSendEmail).toHaveBeenCalledWith(expect.objectContaining({
       to: 'jane@example.com',
       subject: 'Refund Confirmation \u2014 The Anchor',
       html: expect.stringContaining('\u00a325.50'),
-    })
+      requireLog: true,
+      commType: 'refund_confirmation',
+    }))
     expect(mockSendSMS).not.toHaveBeenCalled()
   })
 

@@ -86,16 +86,6 @@ export async function sendInvoiceEmail(
   emailOptions?: InvoiceEmailOptions
 ): Promise<{ success: boolean; error?: string; messageId?: string }> {
   try {
-    if (!isGraphConfigured()) {
-      return {
-        success: false,
-        error: 'Email service is not configured'
-      }
-    }
-
-    const client = await getGraphClient()
-    const senderEmail = process.env.MICROSOFT_USER_EMAIL!
-
     // Generate invoice PDF with 'sent' status if currently draft
     const invoiceForPDF = invoice.status === 'draft'
       ? { ...invoice, status: 'sent' as const }
@@ -160,60 +150,45 @@ ${CONTACT_PHONE}
 
 P.S. The invoice is attached as a PDF for easy viewing and printing.`)
 
-    const attachments: any[] = [
+    const attachments = [
       {
-        '@odata.type': '#microsoft.graph.fileAttachment',
         name: emailOptions?.pdfFilename
           ?? (isRemittanceAdvice
             ? `receipt-${invoice.invoice_number}.pdf`
             : `invoice-${invoice.invoice_number}.pdf`),
         contentType: 'application/pdf',
-        contentBytes: bufferToBase64(pdfBuffer)
+        content: pdfBuffer,
       }
     ]
 
     for (const extra of additionalAttachments || []) {
       if (!extra?.name || !extra?.buffer) continue
       attachments.push({
-        '@odata.type': '#microsoft.graph.fileAttachment',
         name: extra.name,
         contentType: extra.contentType || 'application/octet-stream',
-        contentBytes: bufferToBase64(extra.buffer)
+        content: extra.buffer,
       })
     }
 
-    // Create email message
-    const message: any = {
+    const { sendEmail } = await import('@/lib/email/emailService')
+    const result = await sendEmail({
+      to: recipientEmail,
       subject: emailSubject,
-      body: {
-        contentType: 'Text',
-        content: emailBody
+      text: emailBody,
+      cc: ccRecipients,
+      attachments,
+      commType: isRemittanceAdvice ? 'invoice_receipt' : 'invoice',
+      invoiceId: invoice.id,
+      metadata: {
+        invoice_number: invoice.invoice_number,
+        document_kind: documentKind,
       },
-      toRecipients: [
-        {
-          emailAddress: {
-            address: recipientEmail
-          }
-        }
-      ],
-      attachments
-    }
-
-    if (ccRecipients && ccRecipients.length) {
-      message.ccRecipients = ccRecipients.map(addr => ({ emailAddress: { address: addr } }))
-    }
-
-    // Send email
-    const response = await client
-      .api(`/users/${senderEmail}/sendMail`)
-      .post({
-        message,
-        saveToSentItems: true
-      })
+    })
 
     return {
-      success: true,
-      messageId: response?.id
+      success: result.success,
+      error: result.error,
+      messageId: result.messageId
     }
   } catch (error: unknown) {
     console.error('Error sending invoice email:', error)
@@ -233,16 +208,6 @@ export async function sendQuoteEmail(
   ccRecipients?: string[]
 ): Promise<{ success: boolean; error?: string; messageId?: string }> {
   try {
-    if (!isGraphConfigured()) {
-      return {
-        success: false,
-        error: 'Email service is not configured'
-      }
-    }
-
-    const client = await getGraphClient()
-    const senderEmail = process.env.MICROSOFT_USER_EMAIL!
-
     // Generate quote PDF
     const pdfBuffer = await generateQuotePDF(quote)
 
@@ -268,45 +233,30 @@ ${CONTACT_PHONE}
 
 P.S. The quote is attached as a PDF for your convenience.`
 
-    // Create email message
-    const message: any = {
+    const { sendEmail } = await import('@/lib/email/emailService')
+    const result = await sendEmail({
+      to: recipientEmail,
       subject: emailSubject,
-      body: {
-        contentType: 'Text',
-        content: emailBody
-      },
-      toRecipients: [
-        {
-          emailAddress: {
-            address: recipientEmail
-          }
-        }
-      ],
+      text: emailBody,
+      cc: ccRecipients,
       attachments: [
         {
-          '@odata.type': '#microsoft.graph.fileAttachment',
           name: `quote-${quote.quote_number}.pdf`,
           contentType: 'application/pdf',
-          contentBytes: bufferToBase64(pdfBuffer)
+          content: pdfBuffer,
         }
-      ]
-    }
-
-    if (ccRecipients && ccRecipients.length) {
-      message.ccRecipients = ccRecipients.map(addr => ({ emailAddress: { address: addr } }))
-    }
-
-    // Send email
-    const response = await client
-      .api(`/users/${senderEmail}/sendMail`)
-      .post({
-        message,
-        saveToSentItems: true
-      })
+      ],
+      commType: 'quote',
+      quoteId: quote.id,
+      metadata: {
+        quote_number: quote.quote_number,
+      },
+    })
 
     return {
-      success: true,
-      messageId: response?.id
+      success: result.success,
+      error: result.error,
+      messageId: result.messageId
     }
   } catch (error: unknown) {
     console.error('Error sending quote email:', error)

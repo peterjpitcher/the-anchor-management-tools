@@ -3,6 +3,14 @@ import { Resend } from 'resend'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { logger } from '@/lib/logger'
 import { getErrorMessage } from '@/lib/errors'
+import { recordEmailMessage } from '@/lib/email/logging'
+import {
+  downloadAndStoreAttachment,
+  findCustomerByEmail,
+  findUnmatchedByResendId,
+  recordUnmatchedCommunication,
+} from '@/lib/communications/unmatched'
+import { isCommunicationBodyMediaCaptureEnabled } from '@/lib/communications/capture'
 
 export const runtime = 'nodejs'
 
@@ -11,13 +19,33 @@ type ResendEmailEvent = {
   created_at?: string
   data?: {
     email_id?: string
+    from?: string
     to?: string[]
+    bcc?: string[]
+    cc?: string[]
+    message_id?: string
     subject?: string
+    attachments?: Array<Record<string, unknown>>
     failed?: { reason?: string }
     suppressed?: { message?: string; type?: string }
     bounce?: { message?: string; type?: string; subType?: string }
     [key: string]: unknown
   }
+}
+
+type ReceivedEmailBody = {
+  id?: string
+  from?: string | null
+  to?: string[] | null
+  cc?: string[] | null
+  bcc?: string[] | null
+  reply_to?: string[] | null
+  subject?: string | null
+  text?: string | null
+  html?: string | null
+  headers?: Record<string, string> | null
+  message_id?: string | null
+  created_at?: string | null
 }
 
 function requireHeader(request: Request, name: string): string {
@@ -78,6 +106,190 @@ function errorFromEvent(event: ResendEmailEvent): string | null {
   }
 
   return null
+}
+
+function extractEmailAddress(value: string | null | undefined): string | null {
+  if (!value) {
+    return null
+  }
+
+  const trimmed = value.trim()
+  const angleMatch = trimmed.match(/<([^<>@\s]+@[^<>@\s]+)>/)
+  const candidate = angleMatch?.[1] ?? trimmed
+  const emailMatch = candidate.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i)
+  return emailMatch ? emailMatch[0].toLowerCase() : null
+}
+
+function sanitizeAttachmentName(value: string | null | undefined): string {
+  const fallback = 'attachment'
+  if (!value) {
+    return fallback
+  }
+
+  return value.replace(/[^a-zA-Z0-9._-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 120) || fallback
+}
+
+async function getExistingInboundEmail(adminClient: any, emailId: string) {
+  const { data, error } = await (adminClient.from('email_messages') as any)
+    .select('id')
+    .eq('resend_message_id', emailId)
+    .maybeSingle()
+
+  if (error) {
+    throw new Error(`Failed to look up inbound email: ${error.message}`)
+  }
+
+  return data ?? null
+}
+
+async function fetchReceivedEmail(resend: Resend, emailId: string): Promise<ReceivedEmailBody> {
+  const { data, error } = await resend.emails.receiving.get(emailId)
+  if (error) {
+    throw new Error(`Failed to fetch received email content: ${error.message}`)
+  }
+  return (data ?? {}) as ReceivedEmailBody
+}
+
+async function captureResendAttachments(adminClient: any, resend: Resend, emailId: string) {
+  const { data, error } = await resend.emails.receiving.attachments.list({ emailId })
+  if (error) {
+    throw new Error(`Failed to fetch received email attachments: ${error.message}`)
+  }
+
+  const attachmentRows = ((data as any)?.data ?? []) as Array<Record<string, unknown>>
+  const attachments: Array<Record<string, unknown>> = []
+
+  for (const attachment of attachmentRows) {
+    const id = typeof attachment.id === 'string' ? attachment.id : crypto.randomUUID()
+    const filename = sanitizeAttachmentName(typeof attachment.filename === 'string' ? attachment.filename : null)
+    const contentType = typeof attachment.content_type === 'string' ? attachment.content_type : 'application/octet-stream'
+    const downloadUrl = typeof attachment.download_url === 'string' ? attachment.download_url : null
+
+    if (!downloadUrl) {
+      attachments.push({ ...attachment, id, filename, capture_error: 'Missing download URL' })
+      continue
+    }
+
+    try {
+      const stored = await downloadAndStoreAttachment({
+        adminClient,
+        url: downloadUrl,
+        path: `email/${emailId}/${id}-${filename}`,
+        contentType,
+      })
+      attachments.push({
+        ...attachment,
+        id,
+        filename,
+        ...stored,
+      })
+    } catch (attachmentError) {
+      logger.warn('Failed to capture Resend attachment', {
+        error: attachmentError instanceof Error ? attachmentError : new Error(String(attachmentError)),
+        metadata: { emailId, attachmentId: id },
+      })
+      attachments.push({
+        ...attachment,
+        id,
+        filename,
+        capture_error: attachmentError instanceof Error ? attachmentError.message : String(attachmentError),
+      })
+    }
+  }
+
+  return attachments
+}
+
+async function handleReceivedEmailEvent(adminClient: any, resend: Resend, event: ResendEmailEvent) {
+  const emailId = event.data?.email_id
+  if (!emailId) {
+    logger.warn('Resend email.received webhook missing email_id')
+    return { success: true, note: 'Missing email_id' }
+  }
+
+  const existingEmail = await getExistingInboundEmail(adminClient, emailId)
+  if (existingEmail?.id) {
+    return { success: true, duplicate: true, emailMessageId: existingEmail.id }
+  }
+
+  const existingUnmatched = await findUnmatchedByResendId(adminClient, emailId)
+  if (existingUnmatched?.id) {
+    return { success: true, duplicate: true, unmatchedId: existingUnmatched.id }
+  }
+
+  const captureBodyMedia = isCommunicationBodyMediaCaptureEnabled()
+  const receivedEmail = captureBodyMedia ? await fetchReceivedEmail(resend, emailId) : {}
+  const attachments = captureBodyMedia ? await captureResendAttachments(adminClient, resend, emailId) : []
+  const fromAddress = extractEmailAddress(receivedEmail.from ?? event.data?.from ?? null)
+  const toAddress = extractEmailAddress(receivedEmail.to?.[0] ?? event.data?.to?.[0] ?? null)
+  const receivedAt = resolveEventTime(event)
+  const subject = receivedEmail.subject ?? event.data?.subject ?? null
+  const metadata = {
+    headers: receivedEmail.headers ?? null,
+    cc: receivedEmail.cc ?? event.data?.cc ?? [],
+    bcc: receivedEmail.bcc ?? event.data?.bcc ?? [],
+    reply_to: receivedEmail.reply_to ?? [],
+    provider_message_id: receivedEmail.message_id ?? event.data?.message_id ?? null,
+    raw_event: event.data ?? {},
+  }
+
+  if (!fromAddress || !toAddress) {
+    const unmatchedId = await recordUnmatchedCommunication({
+      adminClient,
+      channel: 'email',
+      resendMessageId: emailId,
+      fromAddress,
+      toAddress,
+      subject,
+      bodyText: receivedEmail.text ?? null,
+      bodyHtml: receivedEmail.html ?? null,
+      rawPayload: metadata,
+      attachments,
+      receivedAt,
+    })
+    return { success: true, unmatchedId }
+  }
+
+  const { customer, candidates } = await findCustomerByEmail(adminClient, fromAddress)
+  if (!customer) {
+    const unmatchedId = await recordUnmatchedCommunication({
+      adminClient,
+      channel: 'email',
+      resendMessageId: emailId,
+      fromAddress,
+      toAddress,
+      subject,
+      bodyText: receivedEmail.text ?? null,
+      bodyHtml: receivedEmail.html ?? null,
+      rawPayload: metadata,
+      attachments,
+      receivedAt,
+      candidateCustomerIds: candidates,
+    })
+    return { success: true, unmatchedId }
+  }
+
+  const emailMessageId = await recordEmailMessage({
+    customerId: customer.id,
+    toAddress,
+    fromAddress,
+    commType: 'inbound',
+    subject,
+    resendMessageId: emailId,
+    status: 'received',
+    direction: 'inbound',
+    bodyText: receivedEmail.text ?? null,
+    bodyHtml: receivedEmail.html ?? null,
+    attachments,
+    receivedAt,
+    metadata,
+  })
+
+  if (!emailMessageId) {
+    throw new Error('Failed to record inbound email message')
+  }
+
+  return { success: true, emailMessageId }
 }
 
 function suppressionReason(type: string): 'bounce' | 'complaint' | 'suppression' | null {
@@ -185,6 +397,12 @@ export async function POST(request: Request) {
       webhookSecret,
     }) as unknown as ResendEmailEvent
 
+    const adminClient = createAdminClient()
+    if (event.type === 'email.received') {
+      const result = await handleReceivedEmailEvent(adminClient, resend, event)
+      return NextResponse.json(result)
+    }
+
     const status = mapStatus(event.type)
     if (!status) {
       return NextResponse.json({ success: true, ignored: true })
@@ -198,7 +416,6 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: true, note: 'Missing email_id' })
     }
 
-    const adminClient = createAdminClient()
     const eventTime = resolveEventTime(event)
     const updatePayload: Record<string, unknown> = {
       status,

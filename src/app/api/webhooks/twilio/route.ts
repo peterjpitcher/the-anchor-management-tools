@@ -4,15 +4,21 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import { createClient } from '@supabase/supabase-js';
 import type { Database } from '@/types/database.generated';
 import twilio from 'twilio';
-import { retry, RetryConfigs } from '@/lib/retry';
 import { logger } from '@/lib/logger';
 import { mapTwilioStatus, isStatusUpgrade, formatErrorMessage } from '@/lib/sms-status';
 import { skipTwilioSignatureValidation } from '@/lib/env';
-import { formatPhoneForStorage, generatePhoneVariants } from '@/lib/utils';
+import { formatPhoneForStorage } from '@/lib/utils';
 import { recordAnalyticsEvent } from '@/lib/analytics/events';
 import { getErrorMessage } from '@/lib/errors';
 import { handleReplyToBook } from '@/lib/sms/reply-to-book';
 import { sendSMS } from '@/lib/twilio';
+import {
+  captureTwilioMedia,
+  findCustomerByPhone,
+  findUnmatchedByTwilioSid,
+  recordUnmatchedCommunication,
+} from '@/lib/communications/unmatched';
+import { isCommunicationBodyMediaCaptureEnabled } from '@/lib/communications/capture';
 
 // Create public Supabase client for logging (no auth required)
 function getPublicSupabaseClient() {
@@ -345,13 +351,107 @@ async function applySmsDeliveryOutcome(
   }
 }
 
+async function applyWhatsAppDeliveryOutcome(
+  adminClient: any,
+  input: {
+    customerId?: string | null
+    messageStatus?: string | null
+    errorCode?: string | null
+  }
+) {
+  const normalizedStatus = typeof input.messageStatus === 'string'
+    ? input.messageStatus.toLowerCase()
+    : null
+
+  if (!normalizedStatus) {
+    return
+  }
+
+  const isDelivered = normalizedStatus === 'delivered' || normalizedStatus === 'read'
+  const isFailureStatus = ['failed', 'undelivered', 'canceled'].includes(normalizedStatus)
+  if (!isDelivered && !isFailureStatus) {
+    return
+  }
+
+  const customerId = input.customerId
+  if (!customerId) {
+    return
+  }
+
+  const nowIso = new Date().toISOString()
+  const { data: customer, error: customerError } = await adminClient
+    .from('customers')
+    .select('id, whatsapp_status, whatsapp_delivery_failures')
+    .eq('id', customerId)
+    .maybeSingle()
+
+  if (customerError) {
+    throw new Error(`Failed to load customer for WhatsApp delivery outcome update: ${customerError.message}`)
+  }
+
+  if (!customer) {
+    throw new Error(`Customer row missing for WhatsApp delivery outcome update: ${customerId}`)
+  }
+
+  if (isDelivered) {
+    const { error } = await adminClient
+      .from('customers')
+      .update({
+        whatsapp_delivery_failures: 0,
+        last_whatsapp_failure_reason: null,
+        last_successful_whatsapp_at: nowIso,
+        whatsapp_status: 'active'
+      })
+      .eq('id', customerId)
+
+    if (error) {
+      throw new Error(`Failed to reset WhatsApp delivery failure counters: ${error.message}`)
+    }
+    return
+  }
+
+  const nextFailures = Number(customer.whatsapp_delivery_failures || 0) + 1
+  const shouldDeactivate = nextFailures > 3 && customer.whatsapp_status !== 'opted_out'
+  const updatePayload: Record<string, unknown> = {
+    whatsapp_delivery_failures: nextFailures,
+    last_whatsapp_failure_reason: input.errorCode ? formatErrorMessage(input.errorCode) : 'WhatsApp delivery failed'
+  }
+
+  if (shouldDeactivate && customer.whatsapp_status !== 'whatsapp_deactivated') {
+    updatePayload.whatsapp_status = 'whatsapp_deactivated'
+    updatePayload.whatsapp_opt_in = false
+    updatePayload.whatsapp_deactivated_at = nowIso
+    updatePayload.whatsapp_deactivation_reason = 'delivery_failures'
+  }
+
+  const { error } = await adminClient
+    .from('customers')
+    .update(updatePayload)
+    .eq('id', customerId)
+
+  if (error) {
+    throw new Error(`Failed to update WhatsApp delivery failure counters: ${error.message}`)
+  }
+
+  if (shouldDeactivate && customer.whatsapp_status !== 'whatsapp_deactivated') {
+    await recordAnalyticsEventSafe(adminClient, {
+      customerId,
+      eventType: 'whatsapp_deactivated',
+      metadata: {
+        reason: 'delivery_failures',
+        failures: nextFailures
+      }
+    }, 'whatsapp_deactivated')
+  }
+}
+
 async function findMessageBySid(
   adminClient: any,
   messageSid: string
-): Promise<{ id: string; twilio_status?: string | null; customer_id?: string | null } | null> {
+): Promise<{ id: string; twilio_status?: string | null; customer_id?: string | null; message_type?: string | null } | null> {
   const { data, error } = await adminClient
     .from('messages')
-    .select('id, twilio_status, customer_id')
+    .select('id, twilio_status, customer_id, message_type')
     .eq('twilio_message_sid', messageSid)
     .order('created_at', { ascending: false })
     .limit(1)
@@ -476,8 +576,12 @@ async function handleInboundSMS(
     const fromNumber = params.From;
     const toNumber = params.To;
     const messageSid = params.MessageSid || params.SmsSid;
+    const isWhatsApp = /^whatsapp:/i.test(fromNumber || '') || /^whatsapp:/i.test(toNumber || '')
+    const channel = isWhatsApp ? 'whatsapp' : 'sms'
+    const rawFromNumber = fromNumber?.replace(/^whatsapp:/i, '') || ''
+    const rawToNumber = toNumber?.replace(/^whatsapp:/i, '') || ''
 
-    if (!fromNumber || !toNumber || !messageSid) {
+    if (!rawFromNumber || !rawToNumber || !messageSid) {
       if (publicClient) {
         await logWebhookAttempt(
           publicClient,
@@ -508,144 +612,99 @@ async function handleInboundSMS(
       return NextResponse.json({ success: true, messageId: existingInboundMessage.id, duplicate: true });
     }
 
-    let canonicalFromNumber: string;
+    const existingUnmatched = await findUnmatchedByTwilioSid(adminClient, messageSid)
+    if (existingUnmatched?.id) {
+      if (publicClient) {
+        await logWebhookAttempt(
+          publicClient,
+          'duplicate_unmatched_inbound',
+          headers,
+          body,
+          params,
+          undefined,
+          undefined,
+          { unmatched_communication_id: existingUnmatched.id }
+        )
+      }
+      return NextResponse.json({ success: true, unmatchedId: existingUnmatched.id, duplicate: true })
+    }
+
+    const { customer, candidates, canonicalPhone } = await findCustomerByPhone(adminClient, rawFromNumber)
+    const normalizedFromNumber = canonicalPhone
+    let normalizedToNumber = rawToNumber
     try {
-      canonicalFromNumber = formatPhoneForStorage(fromNumber);
+      normalizedToNumber = formatPhoneForStorage(rawToNumber)
     } catch {
-      throw new Error('Failed to normalize inbound sender phone number');
-    }
-    const normalizedFromNumber = canonicalFromNumber;
-
-    // ── Reply-to-book: attempt to handle before normal inbound processing ──
-    // When a customer replies to a cross-promotion SMS with a seat count, we
-    // book them automatically and short-circuit the normal message thread.
-    try {
-      const replyResult = await handleReplyToBook(normalizedFromNumber, messageBody);
-      if (replyResult.handled) {
-        if (replyResult.response) {
-          // Edge-case response (sold out, too many seats, already booked).
-          // Customer is actively replying so bypass quiet hours for immediate feedback.
-          await sendSMS(normalizedFromNumber, replyResult.response, {
-            skipQuietHours: true,
-            createCustomerIfMissing: false,
-            metadata: { template_key: 'event_reply_booking_response' },
-          });
-        }
-        return NextResponse.json({ success: true });
-      }
-    } catch (replyError) {
-      // Non-fatal: log and fall through to standard inbound handling.
-      logger.warn('reply-to-book handler threw unexpectedly; falling through to standard inbound handling', {
-        error: replyError instanceof Error ? replyError : new Error(String(replyError)),
-        metadata: { from: normalizedFromNumber },
-      });
-    }
-    // ── End reply-to-book ──────────────────────────────────────────────────
-
-    // Look up or create customer
-    let customer;
-    
-    // Try to find existing customer
-    const phoneVariants = generatePhoneVariants(normalizedFromNumber);
-
-    const orClauses = [
-      `mobile_e164.eq.${canonicalFromNumber}`,
-      ...phoneVariants.map(variant => `mobile_number.eq.${variant}`)
-    ];
-
-    if (orClauses.length === 0) {
-      throw new Error('Unable to resolve customer phone lookup variants')
+      normalizedToNumber = rawToNumber
     }
 
-    const orConditions = orClauses.join(',');
-    const { data: customers, error: customerError } = await adminClient
-      .from('customers')
-      .select('id, mobile_e164')
-      .or(orConditions)
-      .limit(1);
-    
-    if (customerError) {
-      throw new Error(`Customer lookup failed: ${customerError.message}`);
-    }
-    
-    if (!customers || customers.length === 0) {
-      // Create new customer with retry
-      const { data: newCustomer, error: createError } = await retry(
-        async () => {
-          return await adminClient
-            .from('customers')
-            .insert({
-              first_name: 'Unknown',
-              last_name: `(${fromNumber})`,
-              mobile_number: normalizedFromNumber,
-              mobile_e164: canonicalFromNumber,
-              sms_opt_in: true,
-              sms_status: 'active'
-            })
-            .select()
-            .single();
-        },
-        {
-          ...RetryConfigs.database,
-          onRetry: (error, attempt) => {
-            logger.warn(`Retry creating customer for webhook`, {
-              error,
-              metadata: { attempt, fromNumber }
-            });
-          }
-        }
-      );
-      
-      if (createError) {
-        const createErrorCode = (createError as { code?: string } | null)?.code
-        if (createErrorCode === '23505') {
-          const { data: concurrentCustomers, error: concurrentLookupError } = await adminClient
-            .from('customers')
-            .select('id, mobile_e164')
-            .or(orConditions)
-            .limit(1)
+    const attachments = isCommunicationBodyMediaCaptureEnabled()
+      ? await captureTwilioMedia({
+        adminClient,
+        messageSid,
+        params,
+        channel,
+      })
+      : []
 
-          if (concurrentLookupError) {
-            throw new Error(`Failed to resolve concurrently-created customer: ${concurrentLookupError.message}`)
-          }
+    if (!customer) {
+      const unmatchedId = await recordUnmatchedCommunication({
+        adminClient,
+        channel,
+        twilioMessageSid: messageSid,
+        fromAddress: normalizedFromNumber,
+        toAddress: normalizedToNumber,
+        bodyText: messageBody,
+        rawPayload: params,
+        attachments,
+        candidateCustomerIds: candidates,
+      })
 
-          if (!concurrentCustomers || concurrentCustomers.length === 0) {
-            throw new Error('Failed to resolve concurrently-created customer after duplicate insert')
-          }
-
-          customer = concurrentCustomers[0]
-        } else {
-          throw new Error(`Failed to create customer: ${createError.message}`);
-        }
-      } else {
-        customer = newCustomer;
+      if (publicClient) {
+        await logWebhookAttempt(
+          publicClient,
+          'unmatched_inbound',
+          headers,
+          body,
+          params,
+          undefined,
+          undefined,
+          { unmatched_communication_id: unmatchedId, candidate_customer_ids: candidates }
+        )
       }
 
-      if (!customer) {
-        throw new Error('Failed to resolve inbound webhook customer')
+      return NextResponse.json({ success: true, unmatchedId })
+    }
+
+    if (!customer.mobile_e164) {
+      const { data: syncedCustomer, error: mobileSyncError } = await adminClient
+        .from('customers')
+        .update({ mobile_e164: canonicalPhone })
+        .eq('id', customer.id)
+        .select('id')
+        .maybeSingle()
+
+      if (mobileSyncError) {
+        logger.warn('Failed syncing canonical mobile_e164 from inbound webhook', {
+          metadata: { customerId: customer.id, error: mobileSyncError.message }
+        })
+      } else if (!syncedCustomer) {
+        logger.warn('Inbound mobile_e164 sync affected no customer rows', {
+          metadata: { customerId: customer.id }
+        })
       }
-    } else {
-      customer = customers[0];
+    }
 
-      if (!customer.mobile_e164) {
-        const { data: syncedCustomer, error: mobileSyncError } = await adminClient
-          .from('customers')
-          .update({
-            mobile_e164: canonicalFromNumber
-          })
-          .eq('id', customer.id)
-          .select('id')
-          .maybeSingle()
+    if (isWhatsApp) {
+      const { error: inboundAtError } = await adminClient
+        .from('customers')
+        .update({ last_whatsapp_inbound_at: new Date().toISOString() })
+        .eq('id', customer.id)
 
-        if (mobileSyncError) {
-          logger.warn('Failed syncing canonical mobile_e164 from inbound webhook', {
-            metadata: { customerId: customer.id, error: mobileSyncError.message }
-          })
-        } else if (!syncedCustomer) {
-          logger.warn('Inbound mobile_e164 sync affected no customer rows', {
-            metadata: { customerId: customer.id }
-          })
-        }
+      if (inboundAtError) {
+        logger.warn('Failed updating customer last_whatsapp_inbound_at', {
+          metadata: { customerId: customer.id, error: inboundAtError.message }
+        })
       }
     }
     
@@ -655,13 +714,22 @@ async function handleInboundSMS(
     const isOptOut = stopKeywords.some(keyword => messageUpper === keyword || messageUpper.startsWith(keyword + ' '));
     
     if (isOptOut) {
+      const optOutPayload = isWhatsApp
+        ? {
+            whatsapp_opt_in: false,
+            marketing_whatsapp_opt_in: false,
+            whatsapp_status: 'opted_out',
+            whatsapp_opted_out_at: new Date().toISOString(),
+          }
+        : {
+            sms_opt_in: false,
+            sms_status: 'opted_out',
+            marketing_sms_opt_in: false,
+          }
+
       const { data: optedOutCustomer, error: optOutError } = await adminClient
         .from('customers')
-        .update({
-          sms_opt_in: false,
-          sms_status: 'opted_out',
-          marketing_sms_opt_in: false
-        })
+        .update(optOutPayload)
         .eq('id', customer.id)
         .select('id')
         .maybeSingle();
@@ -681,12 +749,12 @@ async function handleInboundSMS(
       {
         await recordAnalyticsEventSafe(adminClient, {
           customerId: customer.id,
-          eventType: 'sms_opted_out',
+          eventType: isWhatsApp ? 'whatsapp_opted_out' : 'sms_opted_out',
           metadata: {
-            source: 'twilio_inbound_stop',
+            source: isWhatsApp ? 'twilio_whatsapp_inbound_stop' : 'twilio_inbound_stop',
             keyword: messageUpper.split(' ')[0]
           }
-        }, 'inbound_opt_out')
+        }, isWhatsApp ? 'whatsapp_inbound_opt_out' : 'inbound_opt_out')
       }
     }
     
@@ -700,28 +768,17 @@ async function handleInboundSMS(
       status: 'received',
       twilio_status: 'received',
       from_number: normalizedFromNumber,
-      to_number: toNumber,
-      message_type: 'sms'
+      to_number: normalizedToNumber,
+      message_type: channel,
+      has_attachments: attachments.length > 0,
+      attachments: attachments.length > 0 ? attachments : null,
     };
     
-    const { data: savedMessage, error: messageError } = await retry(
-      async () => {
-        return await adminClient
-          .from('messages')
-          .insert(messageData)
-          .select()
-          .single();
-      },
-      {
-        ...RetryConfigs.database,
-        onRetry: (error, attempt) => {
-          logger.warn(`Retry saving inbound message`, {
-            error,
-            metadata: { attempt, messageSid }
-          });
-        }
-      }
-    );
+    const { data: savedMessage, error: messageError } = await adminClient
+      .from('messages')
+      .insert(messageData)
+      .select()
+      .single();
     
     if (messageError) {
       const duplicateErrorCode = (messageError as { code?: string } | null)?.code
@@ -746,6 +803,25 @@ async function handleInboundSMS(
       throw new Error(`Failed to save message: ${messageError.message}`);
     }
 
+    if (!isWhatsApp) {
+      try {
+        const replyResult = await handleReplyToBook(normalizedFromNumber, messageBody);
+        if (replyResult.handled && replyResult.response) {
+          await sendSMS(normalizedFromNumber, replyResult.response, {
+            skipQuietHours: true,
+            createCustomerIfMissing: false,
+            customerId: customer.id,
+            metadata: { template_key: 'event_reply_booking_response' },
+          });
+        }
+      } catch (replyError) {
+        logger.warn('reply-to-book handler threw unexpectedly after inbound SMS logging', {
+          error: replyError instanceof Error ? replyError : new Error(String(replyError)),
+          metadata: { from: normalizedFromNumber, messageId: savedMessage.id },
+        });
+      }
+    }
+
     // Log success
     if (publicClient) {
       await logWebhookAttempt(
@@ -756,7 +832,7 @@ async function handleInboundSMS(
         params,
         undefined,
         undefined,
-        { customer_id: customer.id, message_id: savedMessage.id }
+        { customer_id: customer.id, message_id: savedMessage.id, channel }
       );
     }
     
@@ -814,7 +890,7 @@ async function handleStatusUpdate(
     // First, try to find the existing message
     const { data: existingMessage, error: fetchError } = await adminClient
       .from('messages')
-      .select('id, status, twilio_status, direction, customer_id, sent_at')
+      .select('id, status, twilio_status, direction, customer_id, sent_at, message_type')
       .eq('twilio_message_sid', messageSid)
       .order('created_at', { ascending: false })
       .limit(1)
@@ -1003,11 +1079,19 @@ async function handleStatusUpdate(
       });
     }
 
-    await applySmsDeliveryOutcome(adminClient, {
-      customerId: existingMessage.customer_id,
-      messageStatus,
-      errorCode: errorCode || null
-    })
+    if (existingMessage.message_type === 'whatsapp') {
+      await applyWhatsAppDeliveryOutcome(adminClient, {
+        customerId: existingMessage.customer_id,
+        messageStatus,
+        errorCode: errorCode || null
+      })
+    } else {
+      await applySmsDeliveryOutcome(adminClient, {
+        customerId: existingMessage.customer_id,
+        messageStatus,
+        errorCode: errorCode || null
+      })
+    }
     
     // Log success
     if (publicClient) {

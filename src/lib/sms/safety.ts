@@ -338,15 +338,18 @@ export async function evaluateSmsSafetyLimits(
     supabase.from('messages')
       .select('id', { count: 'exact', head: true })
       .eq('direction', 'outbound')
+      .eq('message_type', 'sms')
       .gte('created_at', hourAgoIso),
     supabase.from('messages')
       .select('id', { count: 'exact', head: true })
       .eq('direction', 'outbound')
+      .eq('message_type', 'sms')
       .eq(recipientColumn, recipientValue)
       .gte('created_at', hourAgoIso),
     supabase.from('messages')
       .select('id', { count: 'exact', head: true })
       .eq('direction', 'outbound')
+      .eq('message_type', 'sms')
       .eq(recipientColumn, recipientValue)
       .gte('created_at', dayAgoIso)
   ])

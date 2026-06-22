@@ -73,6 +73,8 @@ export default function BackgroundJobsClient({
   const [isMutating, startMutateTransition] = useTransition()
   const [isProcessing, setIsProcessing] = useState(false)
   const [isProcessingEngagement, setIsProcessingEngagement] = useState(false)
+  const [isProcessingCommsMonitor, setIsProcessingCommsMonitor] = useState(false)
+  const [isProcessingCommsRetention, setIsProcessingCommsRetention] = useState(false)
 
   useEffect(() => {
     setJobs(initialJobs)
@@ -185,6 +187,54 @@ export default function BackgroundJobsClient({
       })
       .finally(() => {
         setIsProcessingEngagement(false)
+      })
+  }
+
+  const processCommunicationsMonitor = () => {
+    setIsProcessingCommsMonitor(true)
+    setError(null)
+    runCronJob('communications-monitor')
+      .then((result) => {
+        if (!result.success) {
+          const message = result.error ?? 'Failed to run communications monitor'
+          setError(message)
+          toast.error(message)
+          return
+        }
+        toast.success('Communications monitor triggered')
+      })
+      .catch((err) => {
+        console.error('Error running communications monitor:', err)
+        const message = err instanceof Error ? err.message : 'Failed to run communications monitor'
+        setError(message)
+        toast.error(message)
+      })
+      .finally(() => {
+        setIsProcessingCommsMonitor(false)
+      })
+  }
+
+  const processCommunicationsRetention = () => {
+    setIsProcessingCommsRetention(true)
+    setError(null)
+    runCronJob('communications-retention')
+      .then((result) => {
+        if (!result.success) {
+          const message = result.error ?? 'Failed to run communications retention'
+          setError(message)
+          toast.error(message)
+          return
+        }
+        toast.success('Communications retention triggered')
+      })
+      .catch((err) => {
+        console.error('Error running communications retention:', err)
+        const message = err instanceof Error ? err.message : 'Failed to run communications retention'
+        setError(message)
+        toast.error(message)
+      })
+      .finally(() => {
+        setIsProcessingCommsRetention(false)
       })
   }
 
@@ -304,6 +354,28 @@ export default function BackgroundJobsClient({
 
   const headerActions = canManage ? (
     <div className="flex items-center gap-2">
+      <Button
+        variant="secondary"
+        size="sm"
+        onClick={processCommunicationsMonitor}
+        disabled={!canManage || isProcessingCommsMonitor}
+        loading={isProcessingCommsMonitor}
+        leftIcon={!isProcessingCommsMonitor && <PlayIcon />}
+        title={!canManage ? 'You need settings manage permission to process jobs.' : undefined}
+      >
+        {isProcessingCommsMonitor ? 'Running Monitor...' : 'Run Comms Monitor'}
+      </Button>
+      <Button
+        variant="secondary"
+        size="sm"
+        onClick={processCommunicationsRetention}
+        disabled={!canManage || isProcessingCommsRetention}
+        loading={isProcessingCommsRetention}
+        leftIcon={!isProcessingCommsRetention && <PlayIcon />}
+        title={!canManage ? 'You need settings manage permission to process jobs.' : undefined}
+      >
+        {isProcessingCommsRetention ? 'Running Retention...' : 'Run Comms Retention'}
+      </Button>
       <Button
         variant="secondary"
         size="sm"

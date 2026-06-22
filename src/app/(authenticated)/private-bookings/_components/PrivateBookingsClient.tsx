@@ -47,6 +47,7 @@ import {
   TableHead,
   TableCell,
   TablePagination,
+  CustomerLink,
 } from '@/ds/composites'
 
 /* ---------- Constants ---------- */
@@ -527,7 +528,17 @@ export default function PrivateBookingsClient({
                       </TableCell>
 
                       <TableCell>
-                        <div className="text-[13px] font-medium text-text-strong">{booking.customer_name}</div>
+                        <div
+                          className="text-[13px] font-medium"
+                          onClick={(event) => event.stopPropagation()}
+                        >
+                          <CustomerLink
+                            customerId={booking.customer_id ?? null}
+                            name={booking.customer_name}
+                            fallback="Unknown Customer"
+                            className="text-blue-600 hover:text-blue-700"
+                          />
+                        </div>
                         {booking.contact_phone && (
                           <div className="text-[12px] text-text-muted flex items-center gap-1">
                             <PhoneIcon className="h-3 w-3" />
@@ -652,7 +663,17 @@ export default function PrivateBookingsClient({
                 >
                   <div className="flex justify-between items-start mb-3">
                     <div className="flex-1 min-w-0 mr-2">
-                      <div className="font-medium text-text-strong truncate">{booking.customer_name}</div>
+                      <div
+                        className="font-medium truncate"
+                        onClick={(event) => event.stopPropagation()}
+                      >
+                        <CustomerLink
+                          customerId={booking.customer_id ?? null}
+                          name={booking.customer_name}
+                          fallback="Unknown Customer"
+                          className="text-blue-600 hover:text-blue-700"
+                        />
+                      </div>
                       {booking.is_date_tbd ? (
                         <div className="text-sm text-warning-fg">Date to be confirmed</div>
                       ) : (
