@@ -213,7 +213,8 @@ async function isSmsEligible(
 async function isWhatsAppEligible(
   customer: CustomerChannelState | null,
   whatsappTo: string | null | undefined,
-  category: NotificationCategory
+  category: NotificationCategory,
+  templateKey?: string | null
 ): Promise<boolean> {
   const to = whatsappTo || customer?.mobile_e164 || customer?.mobile_number || null
   if (!to || !customer?.id) {
@@ -221,7 +222,8 @@ async function isWhatsAppEligible(
   }
 
   const result = await isCustomerWhatsAppSendAllowed(customer.id, to, {
-    marketing: category === 'marketing'
+    marketing: category === 'marketing',
+    templateKey
   })
 
   return result.allowed
@@ -239,6 +241,10 @@ export async function notifyCustomer(input: NotifyCustomerInput): Promise<Notify
   const smsTo = input.sms?.to || customer?.mobile_e164 || customer?.mobile_number || null
   const whatsappTo = input.whatsapp?.to || customer?.mobile_e164 || customer?.mobile_number || null
   const emailTo = input.email?.to || customer?.email || null
+  const whatsappTemplateKey = input.whatsapp?.options?.templateKey
+    ?? (typeof input.whatsapp?.options?.metadata?.template_key === 'string'
+      ? input.whatsapp.options.metadata.template_key
+      : undefined)
   const deliveryId = await createDeliveryRecord(
     { ...input, delayedFallbackAllowed: route.delayedFallbackAllowed },
     customer
@@ -252,7 +258,8 @@ export async function notifyCustomer(input: NotifyCustomerInput): Promise<Notify
     whatsapp: Boolean(input.whatsapp) && await isWhatsAppEligible(
       customer,
       whatsappTo,
-      category
+      category,
+      whatsappTemplateKey
     ),
     sms: Boolean(input.sms) && await isSmsEligible(
       customer,
@@ -312,7 +319,7 @@ export async function notifyCustomer(input: NotifyCustomerInput): Promise<Notify
       attempts.push(attempt)
       await recordAttempt({ deliveryId, attemptOrder: attempts.length, attempt })
 
-      if (input.policy === 'email_first' && result.success) {
+      if (result.success) {
         break
       }
 

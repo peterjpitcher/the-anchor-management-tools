@@ -1,9 +1,12 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getTodayIsoDate } from '@/lib/dateUtils'
 import { logger } from '@/lib/logger'
+import { generatePhoneVariants } from '@/lib/utils'
 
 const COMMUNICATION_ATTACHMENT_BUCKET = 'communication-attachments'
 const COMMUNICATION_RETENTION_MONTHS = 24
+const GDPR_BATCH_SIZE = 1000
+const GDPR_UPDATE_BATCH_SIZE = 500
 
 interface ExportData {
   profile: any
@@ -29,6 +32,183 @@ function addMonths(date: Date, months: number): Date {
 
 function normalizeEmail(value: unknown): string | null {
   return typeof value === 'string' && value.trim() ? value.trim().toLowerCase() : null
+}
+
+function uniqueStrings(values: unknown[]): string[] {
+  return Array.from(new Set(
+    values
+      .filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
+      .map((value) => value.trim())
+  ))
+}
+
+function collectPhoneIdentity(values: unknown[]): string[] {
+  const variants = new Set<string>()
+
+  for (const value of values) {
+    if (typeof value !== 'string' || !value.trim()) continue
+
+    for (const variant of generatePhoneVariants(value)) {
+      const normalized = variant.trim()
+      if (/^[+\d]+$/.test(normalized)) {
+        variants.add(normalized)
+      }
+    }
+  }
+
+  return Array.from(variants)
+}
+
+function buildCommunicationIdentity(profile: any, customers: any[]) {
+  const emails = uniqueStrings([
+    normalizeEmail(profile?.email),
+    ...customers.map((customer) => normalizeEmail(customer?.email)),
+  ])
+
+  const phones = collectPhoneIdentity(
+    customers.flatMap((customer) => [
+      customer?.mobile_e164,
+      customer?.mobile_number,
+      customer?.mobile_number_raw,
+    ])
+  )
+
+  return {
+    customerIds: uniqueStrings(customers.map((customer) => customer?.id)),
+    emails,
+    phones,
+  }
+}
+
+function chunkArray<T>(values: T[], size: number): T[][] {
+  const chunks: T[][] = []
+  for (let index = 0; index < values.length; index += size) {
+    chunks.push(values.slice(index, index + size))
+  }
+  return chunks
+}
+
+function safePostgrestValues(values: string[]): string[] {
+  return values.filter((value) => !/[,\n\r()]/.test(value))
+}
+
+function equalityClauses(columns: string[], values: string[]): string[] {
+  return columns.flatMap((column) =>
+    safePostgrestValues(values).map((value) => `${column}.eq.${value}`)
+  )
+}
+
+function ilikeClauses(columns: string[], values: string[]): string[] {
+  return columns.flatMap((column) =>
+    safePostgrestValues(values).map((value) => `${column}.ilike.%${value}%`)
+  )
+}
+
+async function fetchAllRows<T>(buildQuery: () => any): Promise<T[]> {
+  const rows: T[] = []
+  let from = 0
+
+  while (true) {
+    const { data, error } = await buildQuery().range(from, from + GDPR_BATCH_SIZE - 1)
+
+    if (error) {
+      throw new Error(error.message)
+    }
+
+    const batch = (data || []) as T[]
+    rows.push(...batch)
+
+    if (batch.length < GDPR_BATCH_SIZE) {
+      break
+    }
+
+    from += GDPR_BATCH_SIZE
+  }
+
+  return rows
+}
+
+function mergeRowsById<T extends { id?: string | null }>(rows: T[][]): T[] {
+  const seen = new Set<string>()
+  const merged: T[] = []
+
+  for (const group of rows) {
+    for (const row of group) {
+      const id = row?.id
+      if (id && seen.has(id)) continue
+      if (id) seen.add(id)
+      merged.push(row)
+    }
+  }
+
+  return merged
+}
+
+async function fetchUnmatchedCommunicationRows(
+  adminClient: any,
+  identity: ReturnType<typeof buildCommunicationIdentity>,
+  select = '*'
+) {
+  const queries: Array<Promise<any[]>> = []
+
+  if (identity.customerIds.length > 0) {
+    queries.push(fetchAllRows(() =>
+      (adminClient.from('unmatched_communications') as any)
+        .select(select)
+        .in('linked_customer_id', identity.customerIds)
+    ))
+    queries.push(fetchAllRows(() =>
+      (adminClient.from('unmatched_communications') as any)
+        .select(select)
+        .overlaps('candidate_customer_ids', identity.customerIds)
+    ))
+  }
+
+  const addressClauses = [
+    ...equalityClauses(['from_address', 'to_address'], identity.emails),
+    ...equalityClauses(['from_address', 'to_address'], identity.phones),
+  ]
+
+  if (addressClauses.length > 0) {
+    queries.push(fetchAllRows(() =>
+      (adminClient.from('unmatched_communications') as any)
+        .select(select)
+        .or(addressClauses.join(','))
+    ))
+  }
+
+  return mergeRowsById(await Promise.all(queries))
+}
+
+async function fetchWebhookLogRows(
+  adminClient: any,
+  identity: ReturnType<typeof buildCommunicationIdentity>,
+  select = '*'
+) {
+  const queries: Array<Promise<any[]>> = []
+
+  if (identity.customerIds.length > 0) {
+    queries.push(fetchAllRows(() =>
+      (adminClient.from('webhook_logs') as any)
+        .select(select)
+        .in('customer_id', identity.customerIds)
+    ))
+  }
+
+  const webhookClauses = [
+    ...equalityClauses(['from_number', 'to_number'], identity.phones),
+    ...ilikeClauses(['body', 'message_body'], [...identity.emails, ...identity.phones]),
+  ]
+
+  if (webhookClauses.length > 0) {
+    queries.push(fetchAllRows(() =>
+      (adminClient.from('webhook_logs') as any)
+        .select(select)
+        .or(webhookClauses.join(','))
+    ))
+  }
+
+  return mergeRowsById(await Promise.all(queries))
 }
 
 function collectAttachmentPaths(rows: any[]): string[] {
@@ -70,15 +250,21 @@ async function removeCommunicationStorageObjects(paths: string[]): Promise<void>
 async function updateRows(table: string, values: Record<string, unknown>, column: string, ids: string[]) {
   if (ids.length === 0) return 0
   const adminClient = createAdminClient()
-  const { error, count } = await (adminClient.from(table) as any)
-    .update(values, { count: 'exact' })
-    .in(column, ids)
+  let total = 0
 
-  if (error) {
-    throw new Error(`Failed to update ${table}: ${error.message}`)
+  for (const batch of chunkArray(ids, GDPR_UPDATE_BATCH_SIZE)) {
+    const { error, count } = await (adminClient.from(table) as any)
+      .update(values, { count: 'exact' })
+      .in(column, batch)
+
+    if (error) {
+      throw new Error(`Failed to update ${table}: ${error.message}`)
+    }
+
+    total += count ?? 0
   }
 
-  return count ?? 0
+  return total
 }
 
 export class GdprService {
@@ -118,7 +304,8 @@ export class GdprService {
       : { data: [] as any[] }
 
     exportData.customers = customers || []
-    const customerIds = exportData.customers.map((customer) => customer.id).filter(Boolean)
+    const identity = buildCommunicationIdentity(profileData, exportData.customers)
+    const customerIds = identity.customerIds
 
     if (customerIds.length > 0) {
       const [
@@ -150,9 +337,7 @@ export class GdprService {
         (adminClient.from('email_messages') as any)
           .select('*')
           .in('customer_id', customerIds),
-        (adminClient.from('unmatched_communications') as any)
-          .select('*')
-          .or(`linked_customer_id.in.(${customerIds.join(',')}),candidate_customer_id.in.(${customerIds.join(',')})`),
+        fetchUnmatchedCommunicationRows(adminClient, identity),
       ])
 
       exportData.bookings = bookings.data || []
@@ -161,31 +346,25 @@ export class GdprService {
       exportData.parkingBookings = parkingBookings.data || []
       exportData.messages = messages.data || []
       exportData.emailMessages = emailMessages.data || []
-      exportData.unmatchedCommunications = unmatchedCommunications.data || []
+      exportData.unmatchedCommunications = unmatchedCommunications || []
     }
 
-    if (email) {
-      const [employeeRows, webhookRowsByEmail, unmatchedRowsByEmail] = await Promise.all([
+    if (identity.emails.length > 0 || identity.phones.length > 0 || identity.customerIds.length > 0) {
+      const [employeeRows, webhookRows, unmatchedRowsByIdentity] = await Promise.all([
         adminClient
           .from('employees')
           .select('*')
-          .eq('email_address', email),
-        (adminClient.from('webhook_logs') as any)
-          .select('*')
-          .or(`body.ilike.%${email}%,message_body.ilike.%${email}%`)
-          .limit(1000),
-        (adminClient.from('unmatched_communications') as any)
-          .select('*')
-          .or(`from_email.eq.${email},to_email.eq.${email}`)
-          .limit(1000),
+          .in('email_address', identity.emails.length ? identity.emails : ['__no_email__']),
+        fetchWebhookLogRows(adminClient, identity),
+        fetchUnmatchedCommunicationRows(adminClient, identity),
       ])
 
       exportData.employees = employeeRows.data || []
-      exportData.webhookLogs = webhookRowsByEmail.data || []
-      exportData.unmatchedCommunications = [
-        ...exportData.unmatchedCommunications,
-        ...(unmatchedRowsByEmail.data || []),
-      ]
+      exportData.webhookLogs = webhookRows || []
+      exportData.unmatchedCommunications = mergeRowsById([
+        exportData.unmatchedCommunications,
+        unmatchedRowsByIdentity,
+      ])
     }
 
     const { data: auditLogs } = await adminClient
@@ -230,30 +409,28 @@ export class GdprService {
     const { data: customers } = email
       ? await adminClient
           .from('customers')
-          .select('id')
+          .select('id, email, mobile_number, mobile_e164, mobile_number_raw')
           .eq('email', email)
       : { data: [] as any[] }
 
-    const customerIds = (customers || []).map((customer) => customer.id).filter(Boolean)
+    const identity = buildCommunicationIdentity(profileData, customers || [])
+    const customerIds = identity.customerIds
 
-    const [messageRows, emailRows, unmatchedRows] = await Promise.all([
+    const [messageRows, emailRows, unmatchedRows, webhookRows] = await Promise.all([
       customerIds.length
         ? adminClient.from('messages').select('id, attachments').in('customer_id', customerIds)
         : Promise.resolve({ data: [] as any[] }),
       customerIds.length
         ? (adminClient.from('email_messages') as any).select('id, attachments').in('customer_id', customerIds)
         : Promise.resolve({ data: [] as any[] }),
-      customerIds.length
-        ? (adminClient.from('unmatched_communications') as any)
-            .select('id, attachments')
-            .or(`linked_customer_id.in.(${customerIds.join(',')}),candidate_customer_id.in.(${customerIds.join(',')})`)
-        : Promise.resolve({ data: [] as any[] }),
+      fetchUnmatchedCommunicationRows(adminClient, identity, 'id, attachments'),
+      fetchWebhookLogRows(adminClient, identity, 'id'),
     ])
 
     const storagePaths = collectAttachmentPaths([
       ...(messageRows.data || []),
       ...(emailRows.data || []),
-      ...(unmatchedRows.data || []),
+      ...(unmatchedRows || []),
     ])
 
     const anonymizedAt = new Date().toISOString()
@@ -310,39 +487,32 @@ export class GdprService {
       }
     }
 
-    if (unmatchedRows.data?.length) {
+    if (unmatchedRows.length) {
       counts.unmatchedCommunications = await updateRows('unmatched_communications', {
-        from_phone: null,
-        to_phone: null,
-        from_email: null,
-        to_email: null,
+        from_address: null,
+        to_address: null,
         subject: null,
         body_text: anonymizedText,
         body_html: null,
+        raw_payload: { erased: true, reason: 'gdpr_erasure', erased_at: anonymizedAt },
         attachments: null,
-        has_attachments: false,
+        candidate_customer_ids: [],
         status: 'ignored',
         updated_at: anonymizedAt,
-      }, 'id', unmatchedRows.data.map((row: any) => row.id))
+      }, 'id', unmatchedRows.map((row: any) => row.id))
     }
 
-    if (email) {
-      const { count, error } = await (adminClient.from('webhook_logs') as any)
-        .update({
-          body: null,
-          message_body: null,
-          headers: {},
-          error_details: { erased: true, reason: 'gdpr_erasure', erased_at: anonymizedAt },
-        }, { count: 'exact' })
-        .or(`body.ilike.%${email}%,message_body.ilike.%${email}%`)
-
-      if (error) {
-        logger.warn('Failed to anonymize matching webhook logs', {
-          metadata: { userId, error: error.message },
-        })
-      } else {
-        counts.webhookLogs = count ?? 0
-      }
+    if (webhookRows.length) {
+      counts.webhookLogs = await updateRows('webhook_logs', {
+        body: null,
+        message_body: null,
+        headers: null,
+        params: null,
+        from_number: null,
+        to_number: null,
+        customer_id: null,
+        error_details: { erased: true, reason: 'gdpr_erasure', erased_at: anonymizedAt },
+      }, 'id', webhookRows.map((row: any) => row.id))
     }
 
     await removeCommunicationStorageObjects(storagePaths)
@@ -355,69 +525,98 @@ export class GdprService {
   static async runCommunicationRetentionCleanup(referenceDate = new Date()) {
     const adminClient = createAdminClient()
     const cutoffIso = addMonths(referenceDate, -COMMUNICATION_RETENTION_MONTHS).toISOString()
+    const anonymizedText = '[removed after communications retention period]'
 
-    const [messageRows, emailRows, unmatchedRows] = await Promise.all([
-      adminClient
-        .from('messages')
-        .select('id, attachments')
-        .lt('created_at', cutoffIso)
-        .limit(1000),
-      (adminClient.from('email_messages') as any)
-        .select('id, attachments')
-        .lt('created_at', cutoffIso)
-        .limit(1000),
-      (adminClient.from('unmatched_communications') as any)
-        .select('id, attachments')
-        .lt('received_at', cutoffIso)
-        .limit(1000),
+    const [messageRows, emailRows, unmatchedRows, webhookRows] = await Promise.all([
+      fetchAllRows<any>(() =>
+        adminClient
+          .from('messages')
+          .select('id, attachments')
+          .lt('created_at', cutoffIso)
+          .neq('body', anonymizedText)
+          .order('created_at', { ascending: true })
+      ),
+      fetchAllRows<any>(() =>
+        (adminClient.from('email_messages') as any)
+          .select('id, attachments')
+          .lt('created_at', cutoffIso)
+          .or('body_text.not.is.null,body_html.not.is.null,attachments.not.is.null')
+          .order('created_at', { ascending: true })
+      ),
+      fetchAllRows<any>(() =>
+        (adminClient.from('unmatched_communications') as any)
+          .select('id, attachments')
+          .lt('received_at', cutoffIso)
+          .order('received_at', { ascending: true })
+      ),
+      fetchAllRows<any>(() =>
+        (adminClient.from('webhook_logs') as any)
+          .select('id')
+          .lt('processed_at', cutoffIso)
+          .or('body.not.is.null,message_body.not.is.null,headers.not.is.null,params.not.is.null,from_number.not.is.null,to_number.not.is.null,customer_id.not.is.null')
+          .order('processed_at', { ascending: true })
+      ),
     ])
 
     const storagePaths = collectAttachmentPaths([
-      ...(messageRows.data || []),
-      ...(emailRows.data || []),
-      ...(unmatchedRows.data || []),
+      ...messageRows,
+      ...emailRows,
+      ...unmatchedRows,
     ])
 
-    const anonymizedText = '[removed after communications retention period]'
     const cleanedAt = new Date().toISOString()
 
-    if (messageRows.data?.length) {
+    if (messageRows.length) {
       await updateRows('messages', {
         body: anonymizedText,
         attachments: null,
         has_attachments: false,
         updated_at: cleanedAt,
-      }, 'id', messageRows.data.map((row: any) => row.id))
+      }, 'id', messageRows.map((row: any) => row.id))
     }
 
-    if (emailRows.data?.length) {
+    if (emailRows.length) {
       await updateRows('email_messages', {
         body_text: null,
         body_html: null,
         attachments: null,
         has_attachments: false,
         updated_at: cleanedAt,
-      }, 'id', emailRows.data.map((row: any) => row.id))
+      }, 'id', emailRows.map((row: any) => row.id))
     }
 
-    if (unmatchedRows.data?.length) {
+    if (unmatchedRows.length) {
       await updateRows('unmatched_communications', {
-        body_text: anonymizedText,
+        body_text: null,
         body_html: null,
+        raw_payload: {},
         attachments: null,
-        has_attachments: false,
         status: 'ignored',
         updated_at: cleanedAt,
-      }, 'id', unmatchedRows.data.map((row: any) => row.id))
+      }, 'id', unmatchedRows.map((row: any) => row.id))
+    }
+
+    if (webhookRows.length) {
+      await updateRows('webhook_logs', {
+        body: null,
+        message_body: null,
+        headers: null,
+        params: null,
+        from_number: null,
+        to_number: null,
+        customer_id: null,
+        error_details: { retained: false, reason: 'communications_retention', cleaned_at: cleanedAt },
+      }, 'id', webhookRows.map((row: any) => row.id))
     }
 
     await removeCommunicationStorageObjects(storagePaths)
 
     return {
       cutoffIso,
-      messages: messageRows.data?.length || 0,
-      emailMessages: emailRows.data?.length || 0,
-      unmatchedCommunications: unmatchedRows.data?.length || 0,
+      messages: messageRows.length,
+      emailMessages: emailRows.length,
+      unmatchedCommunications: unmatchedRows.length,
+      webhookLogs: webhookRows.length,
       storageObjects: storagePaths.length,
     }
   }

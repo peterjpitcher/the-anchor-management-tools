@@ -60,6 +60,26 @@ export type SendWhatsAppOptions = Omit<SendSMSOptions, 'skipQuietHours' | 'allow
 }
 
 const TWILIO_SCHEDULE_MIN_DELAY_MS = 15 * 60 * 1000;
+const WHATSAPP_SERVICE_WINDOW_MS = 24 * 60 * 60 * 1000;
+
+function normalizeTemplateKey(value: unknown): string | null {
+  return typeof value === 'string' && value.trim().length > 0 ? value.trim() : null
+}
+
+function approvedWhatsAppTemplateKeys(): Set<string> {
+  return new Set(
+    (process.env.TWILIO_WHATSAPP_APPROVED_TEMPLATE_KEYS || '')
+      .split(',')
+      .map(value => value.trim())
+      .filter(Boolean)
+  )
+}
+
+function isRecentWhatsAppInbound(value: unknown): boolean {
+  if (typeof value !== 'string' || !value.trim()) return false
+  const timestamp = new Date(value).getTime()
+  return Number.isFinite(timestamp) && Date.now() - timestamp <= WHATSAPP_SERVICE_WINDOW_MS
+}
 
 async function resolveCustomerIdIfNeeded(
   to: string,
@@ -96,6 +116,8 @@ type SmsSendEligibility =
         | 'customer_phone_mismatch'
         | 'sms_status_blocked'
         | 'sms_opt_in_blocked'
+        | 'whatsapp_template_required'
+        | 'whatsapp_template_not_approved'
     }
 
 function doesCustomerPhoneMatchTo(params: {
@@ -198,13 +220,13 @@ export async function isCustomerSmsSendAllowed(
 export async function isCustomerWhatsAppSendAllowed(
   customerId: string,
   to: string,
-  options?: { marketing?: boolean }
+  options?: { marketing?: boolean; templateKey?: string | null }
 ): Promise<SmsSendEligibility> {
   try {
     const supabase = createAdminClient();
     const { data: customer, error } = await supabase
       .from('customers')
-      .select('whatsapp_status, whatsapp_opt_in, marketing_whatsapp_opt_in, mobile_e164, mobile_number')
+      .select('whatsapp_status, whatsapp_opt_in, marketing_whatsapp_opt_in, mobile_e164, mobile_number, last_whatsapp_inbound_at')
       .eq('id', customerId)
       .maybeSingle();
 
@@ -231,6 +253,17 @@ export async function isCustomerWhatsAppSendAllowed(
 
     if ((customer as any).whatsapp_opt_in !== true) {
       return { allowed: false, reason: 'sms_opt_in_blocked' };
+    }
+
+    if (!isRecentWhatsAppInbound((customer as any).last_whatsapp_inbound_at)) {
+      const templateKey = normalizeTemplateKey(options?.templateKey)
+      if (!templateKey) {
+        return { allowed: false, reason: 'whatsapp_template_required' };
+      }
+
+      if (!approvedWhatsAppTemplateKeys().has(templateKey)) {
+        return { allowed: false, reason: 'whatsapp_template_not_approved' };
+      }
     }
 
     return { allowed: true };
@@ -783,8 +816,10 @@ export const sendWhatsApp = async (to: string, body: string, options: SendWhatsA
   }
 
   const normalizedTo = stripWhatsAppPrefix(to)
+  const templateKey = normalizeTemplateKey(options.templateKey) ?? normalizeTemplateKey(options.metadata?.template_key)
   const eligibility = await isCustomerWhatsAppSendAllowed(customerId, normalizedTo, {
-    marketing: options.metadata?.marketing === true
+    marketing: options.metadata?.marketing === true,
+    templateKey
   })
 
   if (!eligibility.allowed) {
@@ -845,7 +880,7 @@ export const sendWhatsApp = async (to: string, body: string, options: SendWhatsA
           twilioStatus: message.status ?? 'queued',
           metadata: {
             ...(options.metadata ?? {}),
-            template_key: options.templateKey ?? options.metadata?.template_key ?? null
+            template_key: templateKey
           },
           segments: 1,
           costUsd: 0

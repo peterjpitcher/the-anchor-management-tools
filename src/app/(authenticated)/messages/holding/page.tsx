@@ -1,5 +1,7 @@
+import { redirect } from 'next/navigation'
 import { PageHeader, Card, CardBody, Badge, Button, Input } from '@/ds'
 import { CommunicationsService } from '@/services/communications'
+import { checkUserPermission } from '@/app/actions/rbac'
 import {
   ignoreUnmatchedCommunicationAction,
   linkUnmatchedCommunicationAction,
@@ -22,6 +24,11 @@ function channelLabel(channel: string): string {
 }
 
 export default async function HoldingQueuePage() {
+  const canViewMessages = await checkUserPermission('messages', 'view')
+  if (!canViewMessages) {
+    redirect('/unauthorized')
+  }
+
   let rows: any[] = []
   let error: string | null = null
 

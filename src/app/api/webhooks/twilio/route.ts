@@ -394,14 +394,21 @@ async function applyWhatsAppDeliveryOutcome(
   }
 
   if (isDelivered) {
+    const isCustomerBlocked = customer.whatsapp_status === 'opted_out'
+      || customer.whatsapp_status === 'whatsapp_deactivated'
+    const updatePayload: Record<string, unknown> = {
+      last_successful_whatsapp_at: nowIso
+    }
+
+    if (!isCustomerBlocked) {
+      updatePayload.whatsapp_delivery_failures = 0
+      updatePayload.last_whatsapp_failure_reason = null
+      updatePayload.whatsapp_status = 'active'
+    }
+
     const { error } = await adminClient
       .from('customers')
-      .update({
-        whatsapp_delivery_failures: 0,
-        last_whatsapp_failure_reason: null,
-        last_successful_whatsapp_at: nowIso,
-        whatsapp_status: 'active'
-      })
+      .update(updatePayload)
       .eq('id', customerId)
 
     if (error) {

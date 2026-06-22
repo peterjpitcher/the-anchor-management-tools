@@ -4,6 +4,7 @@ import { revalidatePath, revalidateTag } from 'next/cache'
 import { CommunicationsService, type ConversationSummary } from '@/services/communications'
 import type { CustomerCommunication } from '@/types/communications'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { checkUserPermission } from '@/app/actions/rbac'
 
 export type { ConversationSummary }
 
@@ -53,6 +54,11 @@ export async function getConversationMessages(customerId: string): Promise<Conve
 }
 
 export async function markMessageAsRead(messageId: string) {
+  const hasPermission = await checkUserPermission('messages', 'view')
+  if (!hasPermission) {
+    throw new Error('Insufficient permissions')
+  }
+
   const adminClient = createAdminClient()
   const { data, error } = await adminClient
     .from('messages')
